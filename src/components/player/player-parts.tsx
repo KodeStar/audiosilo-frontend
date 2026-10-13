@@ -5,6 +5,7 @@ import { Platform, ScrollView, View } from 'react-native';
 
 import { useCapability, useLibrariesAll } from '@/api/hooks';
 import type { Book } from '@/api/types';
+import { CastButton } from '@/cast/cast-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -298,6 +299,12 @@ export function PlayerActions({ wide, upNext }: { wide: boolean; upNext: boolean
           testID="player-output"
         />
       ) : null}
+      <CastButton
+        look="outline"
+        className="h-11 min-w-[44px] flex-row gap-2 px-3.5"
+        hitSlop={ROUND_SLOP}
+        testID="player-cast"
+      />
       {wide ? <EffectsPill /> : null}
       {upNext && supported === true ? (
         <Pill

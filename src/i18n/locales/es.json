@@ -146,11 +146,6 @@
       "accounts": "Cuentas y dispositivos",
       "support": "Apoyar AudioSilo"
     },
-    "household": {
-      "title": "Los perfiles llegarán más adelante",
-      "body": "Un lugar propio en cada libro para cada persona de la casa, un modo infantil y compartir llegarán con los perfiles en una próxima actualización.",
-      "flag": "Llega con los perfiles"
-    },
     "accounts": {
       "intro": "Los servidores en los que este dispositivo tiene la sesión iniciada. Abre uno para ver su contraseña, tus dispositivos y las claves de API."
     },
@@ -989,7 +984,11 @@
       "noCache": "Este navegador no puede guardar audio sin conexión. Usa un navegador actual o la app de iOS o Android.",
       "noWorker": "La reproducción sin conexión aún no está lista en este navegador. Recarga la página y, si no sirve, usa la app de iOS o Android."
     },
-    "loading": "Cargando descargas"
+    "loading": "Cargando descargas",
+    "orphans": {
+      "title": "Sin sesión iniciada",
+      "body": "Descargas de una cuenta que ya no tiene la sesión iniciada en este dispositivo. Vuelve a iniciar sesión en ella para escucharlas, o quítalas para liberar espacio."
+    }
   },
   "search": {
     "placeholder": "Busca libros, personas, series, personajes",
@@ -1216,7 +1215,7 @@
       "label": "Notas"
     },
     "routePicker": {
-      "label": "AirPlay / Cast"
+      "label": "Salida de audio"
     },
     "sleepTimer": {
       "title": "Temporizador",
@@ -1490,6 +1489,11 @@
     "browseHere": "Explorar la demo aquí"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Sin sesión en ese servidor",
+      "hint": "Este enlace es de un servidor en el que este dispositivo ya no tiene sesión iniciada.",
+      "back": "Volver"
+    },
     "home": "Inicio de AudioSilo",
     "offline": "Sin conexión · las descargas se reproducen",
     "serverMore_one": "{{name}} + {{count}} más",
@@ -2023,5 +2027,211 @@
     "signedOut": "Conecta un servidor en AudioSilo para escuchar en el coche",
     "unavailable": "Este libro no se puede reproducir ahora",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "cast": {
+    "button": {
+      "label": "Enviar",
+      "connecting": "Conectando con un dispositivo Cast",
+      "connected": "Enviando",
+      "connectedTo": "Enviando a {{device}}",
+      "blockedLabel": "Enviar, no disponible para este libro"
+    },
+    "blocked": {
+      "title": "Este libro no se puede enviar",
+      "unsupported": "Su servidor aún no admite Cast. Actualizar AudioSilo en el servidor lo añade.",
+      "local-address": "La app llega a tu servidor por la dirección propia de este dispositivo (localhost), a la que un dispositivo Cast no puede llegar. Conéctate al servidor por su dirección de red.",
+      "codec": "Su formato de audio no se reproduce en dispositivos Cast y el servidor no puede convertirlo.",
+      "no-connection": "Su servidor no tiene la sesión iniciada en este dispositivo. Vuelve a iniciar sesión para enviarlo."
+    },
+    "failed": {
+      "title": "No se pudo empezar a enviar",
+      "titleDevice": "No se pudo reproducir en {{device}}",
+      "description": "El libro sigue en este dispositivo. Comprueba que el dispositivo Cast puede llegar a tu servidor.",
+      "connect": "No se pudo conectar con el dispositivo Cast"
+    }
+  },
+  "house": {
+    "title": "Lo que se escucha en casa",
+    "sub": "{{server}} · compartido por elección",
+    "settingsLink": "Ajustes de compartir",
+    "listLabel": "Lo que se escucha en casa en {{server}}",
+    "inTheHouse": "En casa",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "Escuchando ahora",
+      "paused": "En pausa",
+      "today": "Hoy, más temprano",
+      "yesterday": "Ayer",
+      "earlier": "Hace poco"
+    },
+    "label": {
+      "playing": "{{name}} está escuchando {{title}}",
+      "paused": "{{name}} pausó {{title}}",
+      "today": "{{name}} escuchó {{title}} hoy, más temprano",
+      "yesterday": "{{name}} escuchó {{title}} ayer",
+      "earlier": "{{name}} escuchó {{title}} hace poco",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Compartir con la casa lo que escucho",
+      "switchLabel": "Compartir con la casa lo que escucho en {{server}}",
+      "body": "Tu libro actual aparece en la página de inicio de las demás personas de {{server}} que también comparten el suyo. Desactivado por defecto.",
+      "saving": "Guardando",
+      "loadFailed": "No se pudo cargar este ajuste.",
+      "failed": "No se pudo cambiar el uso compartido en {{server}}",
+      "failedBody": "No ha cambiado nada. Comprueba la conexión y vuelve a intentarlo.",
+      "demo": "Las cuentas de demostración no pueden compartir lo que escuchan."
+    }
+  },
+  "kids": {
+    "greeting": "Hola, {{name}}",
+    "greetingNoName": "Hola",
+    "grownUps": {
+      "label": "Adultos",
+      "button": "Adultos: mantener pulsado",
+      "holding": "Sigue pulsando",
+      "hint": "Mantén pulsado para salir del modo infantil",
+      "action": "Salir del modo infantil"
+    },
+    "bedtime": {
+      "nowTitle": "Es la hora de dormir",
+      "timerLeft_one": "Temporizador de sueño activo, queda {{count}} minuto",
+      "timerLeft_other": "Temporizador de sueño activo, quedan {{count}} minutos",
+      "at": "La hora de dormir es a las {{time}}",
+      "now": "El temporizador de sueño se activa cuando empieza un cuento",
+      "later": "Después de la hora de dormir, un cuento se para solo a los 20 minutos y el sonido baja poco a poco."
+    },
+    "player": {
+      "play": "Reproducir",
+      "pause": "Pausa",
+      "retry": "Reintentar",
+      "previous": "Capítulo anterior",
+      "next": "Capítulo siguiente",
+      "back_one": "Retroceder {{count}} segundo",
+      "back_other": "Retroceder {{count}} segundos",
+      "progress": "Cuánto llevas de este capítulo",
+      "chapterLeft_one": "{{chapter}} · queda {{count}} minuto",
+      "chapterLeft_other": "{{chapter}} · quedan {{count}} minutos"
+    },
+    "stories": {
+      "title": "Tus cuentos",
+      "play": "Escuchar {{title}}",
+      "playing": "Sonando",
+      "loading": "Buscando tus cuentos",
+      "emptyTitle": "Todavía no hay cuentos aquí",
+      "emptyBody": "Pide a un adulto que añada algunos en {{server}}.",
+      "errorTitle": "Ahora no se pueden cargar los cuentos",
+      "errorBody": "{{server}} no responde. No se ha perdido nada.",
+      "offlineBody": "No se puede acceder a {{server}} y no hay cuentos guardados en este dispositivo.",
+      "retry": "Reintentar",
+      "onDevice": "Estos cuentos están guardados en este dispositivo."
+    },
+    "startFailed": {
+      "title": "Ese cuento no se puede iniciar ahora",
+      "body": "Prueba con otro o pide ayuda a un adulto."
+    }
+  },
+  "profiles": {
+    "someone": "Alguien",
+    "status": {
+      "listening": "Escuchando ahora",
+      "kids": "Modo infantil · a dormir a las {{time}}",
+      "servers_one": "{{name}} + {{count}} más",
+      "servers_other": "{{name}} + {{count}} más"
+    },
+    "picker": {
+      "eyebrow": "Este dispositivo es compartido",
+      "title": "¿Quién escucha?",
+      "lead": "Cada persona conserva su punto en cada libro, su propia cola y sus propias estadísticas.",
+      "close": "Cerrar y seguir escuchando como ahora",
+      "needsPin": "pide un PIN",
+      "emptyTitle": "Aún no hay nadie conectado aquí",
+      "emptyHint": "Inicia sesión con una cuenta de AudioSilo para empezar a escuchar."
+    },
+    "add": {
+      "label": "Añadir a alguien",
+      "hint": "Inicia sesión con su propia cuenta",
+      "a11y": "Añadir a alguien: iniciar sesión con su propia cuenta",
+      "chooseAdult": "Elige a un adulto antes de añadir a alguien."
+    },
+    "connect": {
+      "title": "Añadir a alguien a este dispositivo.",
+      "lead": "Inicia sesión con su propia cuenta, en tu servidor o en el suyo. Cada persona conserva su punto en cada libro.",
+      "knownHeading": "Servidores de este dispositivo"
+    },
+    "menu": {
+      "listeningAs": "Escuchando como",
+      "switchTo": "Cambiar a {{name}}"
+    },
+    "gate": {
+      "title": "Esto es de {{name}}",
+      "body": "Está en la cuenta de {{name}} en este dispositivo. Cambia a {{name}} para abrirlo.",
+      "switch": "Cambiar a {{name}}",
+      "back": "Volver"
+    },
+    "pin": {
+      "label": "PIN",
+      "onBody": "Se pide cuando alguien cambia a {{name}}",
+      "offBody": "Desactivado. Cualquiera en este dispositivo puede cambiar a esta persona.",
+      "set": "Establecer un PIN",
+      "setA11y": "Establecer un PIN para {{name}}",
+      "change": "Cambiar",
+      "changeA11y": "Cambiar el PIN de {{name}}",
+      "remove": "Quitar",
+      "removeA11y": "Quitar el PIN de {{name}}",
+      "enterTitle": "Introduce el PIN de {{name}}",
+      "enterBody": "Cuatro dígitos.",
+      "currentTitle": "Introduce el PIN actual de {{name}}",
+      "chooseTitle": "Elige un PIN de 4 dígitos",
+      "confirmTitle": "Introduce el PIN otra vez",
+      "chooseBody": "Se pide cada vez que alguien cambia a {{name}} en este dispositivo. Se queda en este dispositivo.",
+      "fieldLabel": "PIN de {{name}}",
+      "wrong": "Ese PIN no coincide",
+      "mismatch": "Los PIN no coinciden. Elige uno otra vez.",
+      "wait_one": "Demasiados intentos. Vuelve a intentarlo en {{count}} segundo.",
+      "wait_other": "Demasiados intentos. Vuelve a intentarlo en {{count}} segundos.",
+      "forgot": "¿Lo has olvidado? Quita a {{name}} de este dispositivo en Ajustes y vuelve a iniciar sesión.",
+      "readFailed": "No se pudo comprobar el PIN en este dispositivo. Inténtalo de nuevo.",
+      "noneSet": "{{name}} no tiene ningún PIN en este dispositivo.",
+      "saveFailed": "No se pudo guardar el PIN en este dispositivo. No ha cambiado nada."
+    },
+    "rename": {
+      "label": "Nombre",
+      "action": "Cambiar nombre",
+      "title": "Cambiar el nombre de {{name}}",
+      "body": "El nombre solo se muestra en este dispositivo. La cuenta conserva su nombre de usuario.",
+      "empty": "Escribe un nombre"
+    },
+    "kids": {
+      "label": "Modo infantil",
+      "body": "Una sola biblioteca con portadas grandes, una hora de dormir y sin ajustes ni búsqueda. Para salir hace falta una persona adulta.",
+      "switchA11y": "Modo infantil para {{name}}",
+      "library": "Biblioteca",
+      "libraryBody": "La biblioteca que muestra el modo infantil",
+      "libraryOn": "{{name}} en {{server}}",
+      "firstLibrary": "La primera ({{name}})",
+      "librariesLoading": "Cargando las bibliotecas",
+      "librariesFailed": "No se pudieron cargar las bibliotecas.",
+      "noLibraries": "Esta cuenta no ve ninguna biblioteca. Pide a quien administra el servidor que comparta una.",
+      "bedtime": "Hora de dormir",
+      "bedtimeBody": "Desde entonces hasta las {{until}}, al reproducir se activa un temporizador de 20 minutos",
+      "needsGrownUp": "Alguien en este dispositivo tiene que seguir siendo una persona adulta, o nadie podría salir del modo infantil. Añade primero a una persona adulta."
+    },
+    "remove": {
+      "label": "Quitar de este dispositivo",
+      "hint": "Cierra la sesión de {{name}} en sus servidores aquí. Su punto en cada libro sigue en el servidor.",
+      "action": "Quitar de este dispositivo",
+      "title": "¿Quitar a {{name}} de este dispositivo?",
+      "body": "Se cerrará la sesión de {{name}} en {{servers}} en este dispositivo y se borrarán sus descargas aquí. Su punto en cada libro sigue en el servidor.",
+      "noPassword": "{{name}} no tiene contraseña en {{server}}: sin una, necesitará una nueva invitación para volver a entrar.",
+      "confirm": "Quitar y cerrar sesión"
+    },
+    "household": {
+      "intro": "Todas las personas que escuchan en este dispositivo, cada una con sus servidores, su punto en cada libro, su cola y sus estadísticas.",
+      "switch": "Cambiar",
+      "askAtLaunch": "Preguntar quién escucha al abrir la app",
+      "askAtLaunchBody": "Con dos o más personas en este dispositivo",
+      "noSharing": "Ninguno de tus servidores lo ofrece todavía."
+    }
   }
 }

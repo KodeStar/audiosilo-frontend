@@ -62,6 +62,43 @@ export function splitDownloads(entries: Iterable<DownloadEntry>): {
   return { active, ready };
 }
 
+/**
+ * The downloads a person may see: the entries of `connectionIds` (the person listening's,
+ * Phase 8 profiles), split as `splitDownloads` splits them. The device keeps every
+ * person's downloads (and they keep playing for their owner), but each surface lists only
+ * the listener's: the Downloads page, the car's Downloads tab and kids mode's offline
+ * stories all read them here.
+ */
+export function visibleDownloads(
+  entries: Record<string, DownloadEntry>,
+  connectionIds: readonly string[],
+): { active: DownloadEntry[]; ready: DownloadEntry[] } {
+  const theirs = new Set(connectionIds);
+  return splitDownloads(Object.values(entries).filter((e) => theirs.has(e.connectionId)));
+}
+
+/**
+ * Downloads no connection in the session holds ("Not signed in"): left by a connection that
+ * went without its purge (a token that could not be read dropped it from the session, an
+ * identity the key migration could not move). Nobody else would ever list them, so their
+ * room would be taken for good: the Downloads page lists them to remove (signing in to the
+ * account again shows them in their place). `sessionIds` is every connection's id, every
+ * person's: another person's downloads are theirs, not orphans. Only with a session that
+ * was read (`settled`): before that, or after a failed read, every download would look
+ * orphaned. Newest first, whatever their state.
+ */
+export function orphanDownloads(
+  entries: Record<string, DownloadEntry>,
+  sessionIds: readonly string[],
+  settled: boolean,
+): DownloadEntry[] {
+  if (!settled) return [];
+  const known = new Set(sessionIds);
+  return Object.values(entries)
+    .filter((e) => !known.has(e.connectionId))
+    .sort((a, b) => b.manifest.savedAt.localeCompare(a.manifest.savedAt));
+}
+
 export type ServerRef = { id: string; name: string };
 
 export type ServerGroup = {

@@ -20,6 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKeyboardAvoidance } from '@/lib/keyboard-lift';
+import { releaseKeyboard, useReleaseOnClose } from '@/lib/keyboard-release';
 import { useLayout } from '@/lib/layout';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -119,7 +120,10 @@ export function Sheet({
   // `visible` prop; `exiting` extends the mount past a close until the slide-down
   // finishes. Both drive `mounted` below.
   const [exiting, setExiting] = useState(false);
-  const mounted = visible || exiting;
+  // The closing commit keeps it too, and gives the keyboard up while a focused field (a
+  // note) is still on screen (`useReleaseOnClose`); `exiting` takes over from there.
+  const closing = useReleaseOnClose(visible);
+  const mounted = visible || exiting || closing;
   // Whether the sheet has ever been open; gates the exit branch so a first mount
   // with `visible={false}` doesn't flash-mount to animate a close that never opened.
   const wasVisible = useRef(visible);
@@ -191,6 +195,12 @@ export function Sheet({
     marginBottom: lift.value,
   }));
 
+  // The backdrop, the close button and back: the keyboard goes before the caller closes.
+  const close = () => {
+    releaseKeyboard();
+    onClose();
+  };
+
   const onLayout = (e: LayoutChangeEvent) => {
     panelHeight.value = e.nativeEvent.layout.height;
   };
@@ -218,7 +228,7 @@ export function Sheet({
       >
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={onClose}
+          onPress={close}
           accessibilityRole="button"
           accessibilityLabel={t('common.close')}
         />
@@ -247,7 +257,7 @@ export function Sheet({
             <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
               <Text variant="title">{title}</Text>
               <Pressable
-                onPress={onClose}
+                onPress={close}
                 hitSlop={12}
                 className="h-9 w-9 items-center justify-center rounded-full active:bg-accent"
                 accessibilityRole="button"
@@ -283,7 +293,7 @@ export function Sheet({
   // be mounted at screen level. The host stays mounted until `mounted` flips false (after
   // the exit animation), so the slide-down is seen.
   return (
-    <OverlayHost visible={mounted} onRequestClose={onClose}>
+    <OverlayHost visible={mounted} onRequestClose={close}>
       {overlay}
     </OverlayHost>
   );

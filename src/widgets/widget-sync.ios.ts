@@ -8,9 +8,11 @@ import { AppState } from 'react-native';
 import { resolveClient } from '@/api/connection-clients';
 import { cachedCapability } from '@/api/hooks';
 import type { CoverSize } from '@/api/types';
+import { resolveConnectionId } from '@/lib/connection-id';
 import { onForeground } from '@/lib/when-active';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { type NowPlaying, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { profileConnectionIds, useProfiles } from '@/stores/profiles';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
@@ -58,7 +60,8 @@ import {
  *   the front), updated when the end moves (extend, freeze, seek or speed under an
  *   end-of-chapter timer, a new chapter), ended IMMEDIATELY when the timer fires or is
  *   cancelled. One the listener swiped away is not started again for that timer.
- * - **Sign-out.** Removing the connection whose book the widget shows clears it.
+ * - **Sign-out.** Removing the connection whose book the widget shows clears it; so does
+ *   switching to a profile (another person) without that connection.
  */
 
 type T = TFunction;
@@ -294,12 +297,29 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
   const unsubPlayer = usePlayer.subscribe(onPlayer);
   const unsubTimer = useSleepTimer.subscribe(() => reconcileActivity());
   const unsubForeground = deps.onForeground(() => reconcileActivity());
-  const unsubRemoved = onConnectionRemoved((id) => {
-    if (lastProps?.connectionId !== id) return;
+  const clearWidget = () => {
     covers = null;
     coverJob = null;
     deps.clearCovers();
     write(emptyContinueListeningProps(deps.t()));
+  };
+  const unsubRemoved = onConnectionRemoved((id) => {
+    // What the widget showed can name an old connection id (written before the identity
+    // migration): it is the removed connection's when it resolves to it.
+    const shown = lastProps?.connectionId;
+    if (!shown || resolveConnectionId(shown) !== id) return;
+    clearWidget();
+  });
+  // Another person on this device (a profile switch): the widget shows nobody's book
+  // until theirs plays. Their own book (a connection of the new profile) stays. The
+  // store's first read at launch (nobody -> the stored person) is not a switch: the widget
+  // was written for that person, and the session's connections are not loaded yet then
+  // (its keychain reads land after the profiles document), so it would read as nobody's.
+  const unsubProfiles = useProfiles.subscribe((s, prev) => {
+    if (!prev.hydrated || s.activeProfileId === prev.activeProfileId) return;
+    const shown = lastProps?.connectionId;
+    if (!shown || profileConnectionIds().includes(resolveConnectionId(shown))) return;
+    clearWidget();
   });
   // A new language: every string the widget and the activity show is the app's.
   const onLanguage = () => {
@@ -318,6 +338,7 @@ export function runWidgetSync(deps: WidgetSyncDeps): () => void {
     unsubTimer();
     unsubForeground();
     unsubRemoved();
+    unsubProfiles();
     i18next.off('languageChanged', onLanguage);
   };
 }

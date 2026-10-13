@@ -5,9 +5,11 @@ import { resolveClient } from '@/api/connection-clients';
 import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
+import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
+import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { onConnectionRemoved } from '@/stores/session';
@@ -42,8 +44,6 @@ import type {
   DownloadOutcome,
   StorageEstimate,
 } from './types';
-
-const KEY = 'audiosilo.downloads';
 
 export const downloadKey = contentKey;
 
@@ -96,7 +96,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   supported: engine.supported,
 
   hydrate: async () => {
-    const saved = (await getItem<Registry>(KEY)) ?? {};
+    const saved = (await getItem<Registry>(DOWNLOADS_KEY)) ?? {};
     const cleaned: Registry = {};
     for (const raw of Object.values(saved)) {
       // Re-resolve stored file uris against the live storage root first: the app's
@@ -122,6 +122,11 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
         seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
       } else if (revived) {
         cleaned[key] = revived;
+      } else if (identityMovePending()) {
+        // The identity migration gave up mid-move this launch: the files can be under the
+        // new id while this entry names the old one (or the reverse). Kept as stored,
+        // never dropped and deleted; the launch that finishes the move finds them.
+        cleaned[key] = raw;
       } else {
         void engine.removeBook(e.connectionId, e.libraryId, e.path);
       }
@@ -454,7 +459,7 @@ function persist(): Promise<void> {
     pendingSave.watch.remove();
     pendingSave = null;
   }
-  return setItem(KEY, useDownloads.getState().entries);
+  return setItem(DOWNLOADS_KEY, useDownloads.getState().entries);
 }
 
 /** Save the registry within `PERSIST_EVERY_MS`: a book of many files lands one file at
@@ -626,8 +631,12 @@ function afterLaunch(task: () => void) {
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`fileName` for audio, `cover.jpg` for the
  * cover), so the (connectionId, libraryId, path, fileName) → live-uri mapping lives
- * here too; `engine.localUri` supplies the container-current absolute uri. A no-op
- * when the engine has no `localUri` (web), where uris are stable cache keys, not paths.
+ * here too; `engine.localUri` supplies the container-current absolute uri (native) or
+ * the virtual cache url (web). Recomputing from the entry's own connection id is also
+ * what carries a download across the identity migration, which rewrites `connectionId`
+ * but not the stored uris (and moves the files on native; the web engine finds them under
+ * the legacy id, `legacyIdOf`). A no-op only for an engine without
+ * `localUri` (no offline storage).
  */
 function relocateEntry(e: DownloadEntry): DownloadEntry {
   const resolve = engine.localUri;
@@ -828,8 +837,8 @@ async function runOne(key: string) {
 }
 
 // Removing a connection purges its downloads: abort any in-flight transfer, delete the
-// files, and drop the entries. Re-adding the server mints a new id, so these are
-// otherwise unreachable forever.
+// files, and drop the entries (signing out of an account takes its downloads with it;
+// nothing else would ever reach them).
 onConnectionRemoved(async (id) => {
   const entries = useDownloads.getState().entries;
   const doomed = Object.entries(entries).filter(([, e]) => e.connectionId === id);

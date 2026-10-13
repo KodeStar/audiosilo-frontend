@@ -396,6 +396,23 @@ describe('hydrate pruning', () => {
     expect(await readPersisted()).toEqual({});
   });
 
+  it('keeps an entry whose files are not where it says while an identity move is on its way', async () => {
+    const { setIdentityMovePending } =
+      jest.requireActual<typeof import('@/lib/connection-id')>('@/lib/connection-id');
+    mockEngine.fileExists.mockResolvedValue(false); // moved to the new id's folder already
+    const key = downloadKey('c1', 2, 'A/Book');
+    await seed({ [key]: downloadedEntry() });
+    setIdentityMovePending(true);
+    try {
+      await useDownloads.getState().hydrate();
+    } finally {
+      setIdentityMovePending(false);
+    }
+    expect(useDownloads.getState().entries[key]).toBeDefined();
+    expect(mockEngine.removeBook).not.toHaveBeenCalled();
+    expect(await readPersisted()).toHaveProperty([key]);
+  });
+
   it('prunes a download that finished no file before the app closed', async () => {
     const entry = downloadedEntry({ status: 'downloading', progress: 0.1 });
     entry.manifest.files = [];

@@ -1,8 +1,10 @@
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import { restoreLanguage } from '@/i18n/language-provider';
+import { loadConnectionAliases } from '@/lib/connection-id';
 import { migrateStorage } from '@/lib/storage-migration';
 import { useLibrarySelection } from '@/stores/library-selection';
+import { useProfiles } from '@/stores/profiles';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -21,12 +23,17 @@ let pending: Promise<void> | null = null;
  *    connection identity scheme changed, everyone re-pairs) and `cacheReset` (the
  *    disposable download/progress cache schema changed, logins intact). Guarded: a
  *    keychain or storage hiccup must never skip the hydration below, which would strand
- *    the app on 'loading' forever.
- * 2. When either axis reset, the downloaded files no longer match the registry (an auth
+ *    the app on 'loading' forever. It also moves legacy connection ids to
+ *    `<server_id>.<user_id>` (the identity migration), before any store reads them.
+ * 2. The connection aliases (old id -> new id) are loaded, so an old id arriving from
+ *    outside (a car item, a widget link, the Android service's book) resolves
+ *    (`resolveConnectionId`) from here on: by the identity migration's first read, else
+ *    (that read failed, or the migration never ran) by `loadConnectionAliases`.
+ * 3. When either axis reset, the downloaded files no longer match the registry (an auth
  *    wipe orphans them; a cache-schema bump invalidates them): wipe the whole downloads
  *    root once, or they leak, uncounted, forever.
- * 3. Hydrate the session, settings, downloads, series orderings and library selection, all
- *    started together in that order. Resolves once each has settled (a store's own hydrate
+ * 4. Hydrate the session, settings, downloads, series orderings, library selection and the
+ *    profiles (who is listening on this device), all started together in that order. Resolves once each has settled (a store's own hydrate
  *    has its fail-safe; a rejection is logged, never thrown).
  *
  * Alongside all of it (it reads no store and no record a reset touches), the listener's
@@ -42,12 +49,15 @@ export function bootstrapPlayback(): Promise<void> {
 async function run(): Promise<void> {
   const language = restoreLanguage(); // never rejects
   let didReset = false;
+  let aliasesLoaded = false;
   try {
-    const { authReset, cacheReset } = await migrateStorage();
+    const { authReset, cacheReset, identity } = await migrateStorage();
     didReset = authReset || cacheReset;
+    aliasesLoaded = !(identity.status === 'aborted' && identity.step === 'read');
   } catch (e) {
     console.warn('[storage] stale-state reset failed', e);
   }
+  if (!aliasesLoaded) await loadConnectionAliases(); // never rejects
   if (didReset && engine.clearAll) {
     try {
       await engine.clearAll();
@@ -61,6 +71,9 @@ async function run(): Promise<void> {
     useDownloads.getState().hydrate(),
     useSeriesOrderings.getState().hydrate(),
     useLibrarySelection.getState().hydrate(),
+    // After the session in this list: it reconciles with the session's connections once
+    // those have loaded (whichever settles last), building the document when it is missing.
+    useProfiles.getState().hydrate(),
   ]);
   for (const r of results) {
     if (r.status === 'rejected') console.warn('[bootstrap] a store failed to hydrate', r.reason);

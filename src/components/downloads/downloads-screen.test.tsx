@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { Platform } from 'react-native';
 
@@ -36,13 +36,16 @@ jest.mock('@/api/hooks', () => ({
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useAllProgressAll: () => ({ progress: mockProgress, isLoading: false, error: null }),
 }));
+let mockSessionStatus = 'authenticated';
 jest.mock('@/stores/session', () => {
   const connections = [
     { id: 'a', name: 'Home Library' },
     { id: 'b', name: "Maya's Shelf" },
   ];
   return {
-    useSession: (sel: (s: { connections: typeof connections }) => unknown) => sel({ connections }),
+    useSession: (sel: (s: { connections: typeof connections; status: string }) => unknown) =>
+      sel({ connections, status: mockSessionStatus }),
+    sessionHydrateFailed: () => false,
   };
 });
 jest.mock('@/downloads/engine', () => ({
@@ -84,6 +87,7 @@ jest.mock('@/downloads/keep-ahead-controller', () => {
 /* eslint-disable import/first */
 import { useKeepAhead } from '@/downloads/keep-ahead-controller';
 import { useDownloads } from '@/downloads/store';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import { DownloadsScreen } from './downloads-screen';
@@ -147,6 +151,8 @@ function setEntries(...pairs: [string, DownloadEntry][]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetProfilesForTests();
+  mockSessionStatus = 'authenticated';
   mockLayout = 'desktop';
   mockProgress = [];
   mockCaps = {};
@@ -257,6 +263,64 @@ describe('DownloadsScreen', () => {
     expect(screen.getByText('Remove this download?')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
     expect(store().remove).toHaveBeenCalledWith('b', 1, 'Emma');
+  });
+
+  it("lists only the person listening's downloads (another person's stay theirs)", async () => {
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a'] },
+        { id: 'maya', name: 'Maya', connectionIds: ['b'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    setEntries(
+      entry('Dune', 'downloaded', { totalBytes: 2048 }),
+      entry('Emma', 'downloaded', { connectionId: 'b', totalBytes: 1024 }),
+      entry('Persuasion', 'downloading', { connectionId: 'b' }),
+    );
+    await mount();
+    expect(screen.getByText('Dune')).toBeTruthy();
+    expect(screen.queryByText('Emma')).toBeNull();
+    expect(screen.queryByText('Persuasion')).toBeNull();
+    expect(screen.queryByText("Maya's Shelf · 1 KB")).toBeNull();
+  });
+
+  it('finding 10: lists downloads no signed-in account holds, to remove only', async () => {
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a'] },
+        { id: 'maya', name: 'Maya', connectionIds: ['b'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    setEntries(
+      entry('Dune', 'downloaded', { totalBytes: 2048 }),
+      // Maya's: hers, not an orphan, and not listed for Chris.
+      entry('Emma', 'downloaded', { connectionId: 'b', totalBytes: 1024 }),
+      // An account no longer in the session (its purge never ran).
+      entry('Ivanhoe', 'downloaded', { connectionId: 'gone.4', totalBytes: 4096 }),
+    );
+    await mount();
+    const orphans = screen.getByTestId('downloads-orphans');
+    expect(within(orphans).getByText('Not signed in')).toBeTruthy();
+    expect(within(orphans).getByText('Ivanhoe')).toBeTruthy();
+    expect(within(orphans).queryByText('Emma')).toBeNull();
+    expect(screen.queryByText('Emma')).toBeNull();
+    // Nothing to open or play it with: it can only go.
+    expect(screen.queryByRole('button', { name: 'Play Ivanhoe' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Remove Ivanhoe' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
+    expect(store().remove).toHaveBeenCalledWith('gone.4', 1, 'Ivanhoe');
+  });
+
+  it('finding 10: lists no orphans while the session is still being read', async () => {
+    mockSessionStatus = 'loading';
+    setEntries(entry('Ivanhoe', 'downloaded', { connectionId: 'gone.4', totalBytes: 4096 }));
+    await mount();
+    expect(screen.queryByTestId('downloads-orphans')).toBeNull();
+    expect(screen.queryByText('Ivanhoe')).toBeNull();
   });
 
   it('shows the books keep-ahead is holding back, and cancelling declines them', async () => {

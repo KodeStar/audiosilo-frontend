@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { BackHandler, Platform, Text } from 'react-native';
+import { BackHandler, Keyboard, Platform, Text, TextInput } from 'react-native';
 
 // Zero insets so the sheet doesn't depend on a SafeAreaProvider in the test tree.
 jest.mock('react-native-safe-area-context', () => ({
@@ -132,6 +132,33 @@ describe('Sheet', () => {
     });
     // The mocked timing invokes its completion callback synchronously.
     expect(screen.queryByText('Sheet body')).toBeNull();
+  });
+
+  it('releases the keyboard while a focused field is still on screen, however it closes', async () => {
+    const order: string[] = [];
+    const spy = jest
+      .spyOn(Keyboard, 'dismiss')
+      .mockImplementation(
+        () => void order.push(screen.queryByTestId('note') ? 'dismiss:field' : 'dismiss:gone'),
+      );
+    const onClose = jest.fn(() => order.push('close'));
+    const ui = (visible: boolean) => (
+      <Sheet visible={visible} onClose={onClose}>
+        <TextInput testID="note" autoFocus />
+      </Sheet>
+    );
+    const { rerender } = await mount(ui(true));
+    // The backdrop (and the close button, and back): before the caller closes.
+    await fireEvent.press(screen.getByLabelText('Close'));
+    expect(order).toEqual(['dismiss:field', 'close']);
+    // The caller turning it off (a Save in the sheet): before the field goes.
+    order.length = 0;
+    await act(async () => {
+      rerender(ui(false));
+    });
+    expect(order).toEqual(['dismiss:field']);
+    expect(screen.queryByTestId('note')).toBeNull();
+    spy.mockRestore();
   });
 
   it('presents through an OverlayHost (no RN Modal) and routes Android hardware-back to onClose', async () => {

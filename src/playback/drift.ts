@@ -1,5 +1,6 @@
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
+import { DRIFT_STORAGE_KEY } from '@/lib/storage-keys';
 
 /**
  * Drift-offs: the nights a sleep timer stopped a book the listener had fallen asleep to
@@ -13,9 +14,6 @@ import { getItem, setItem } from '@/lib/storage';
  * by connection"). Stale records age out (`DRIFT_TTL_MS`) and the document is capped, so
  * a removed server's entries need no purge of their own.
  */
-
-/** The storage key of the drift document. */
-export const DRIFT_STORAGE_KEY = 'audiosilo.driftOffs';
 
 /** How long a drift-off is worth offering: tonight's, and tomorrow night's play still
  * remembers it; anything older is a different evening. */

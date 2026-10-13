@@ -121,7 +121,8 @@ describe('a pairing link', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
     expect(conn()).toMatchObject({
-      id: 'srv-1',
+      id: 'srv-1.1',
+      serverId: 'srv-1',
       serverUrl: AWAY,
       name: 'Hearthside',
       addresses: { home: HOME, away: AWAY },
@@ -129,7 +130,7 @@ describe('a pairing link', () => {
     // The device's first connection: on to "Your library is ready."
     expect(mockReplace).toHaveBeenCalledWith({
       pathname: '/connect/ready',
-      params: { connection: 'srv-1' },
+      params: { connection: 'srv-1.1' },
     });
   });
 
@@ -272,7 +273,11 @@ describe('the address field', () => {
     await fireEvent.press(screen.getByText('Continue'));
     await fireEvent.press(await screen.findByText('Try the demo'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(conn()).toMatchObject({ id: 'srv-demo', name: 'Hearthside', addresses: { away: AWAY } });
+    expect(conn()).toMatchObject({
+      id: 'srv-demo.1',
+      name: 'Hearthside',
+      addresses: { away: AWAY },
+    });
   });
 });
 
@@ -319,6 +324,23 @@ describe('remembered servers', () => {
     await fireEvent.press(await screen.findByLabelText('Reconnect to Hearthside'));
     await waitFor(() => expect(mockPush).toHaveBeenCalled());
     expect(useSession.getState().pendingServerUrl).toBe(AWAY);
+  });
+
+  it('"Add someone" offers the same servers as a sign-in, not a reconnect', async () => {
+    await remember({ serverId: 'srv-1', serverUrl: AWAY, name: 'Hearthside' });
+    mockApi.serverInfo.mockResolvedValue(info());
+    mockParams = { add: '1', profile: 'new' };
+    await render(<ConnectStart />);
+    await fireEvent.press(await screen.findByLabelText('Sign in to Hearthside'));
+    expect(screen.getByText('Servers on this device')).toBeTruthy();
+    expect(screen.queryByText('Reconnect')).toBeNull();
+    expect(screen.queryByLabelText('Reconnect to Hearthside')).toBeNull();
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/connect/sign-in',
+        params: { serverName: 'Hearthside' },
+      }),
+    );
   });
 
   it('hides a server this device is signed in to', async () => {

@@ -1,9 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 import type { AuthSession, User } from '@/api/types';
+import { checkPin, setPin } from '@/lib/profile-pin';
+import { CONNECTIONS_KEY, PROFILES_KEY } from '@/lib/storage-keys';
 import { useSession } from '@/stores/session';
 
 import { finishConnect } from './finish-connect';
+
+// A change of person unloads the previous person's book (the player store, reduced).
+jest.mock('@/playback/store', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/player-store-mock').createPlayerStoreMock(),
+);
 
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
@@ -45,7 +54,9 @@ beforeEach(async () => {
   });
 });
 
-const conn = (id: string) => useSession.getState().connections.find((c) => c.id === id);
+// The connection a sign-in to `serverId` made (user 1: `<server_id>.1`).
+const conn = (serverId: string) =>
+  useSession.getState().connections.find((c) => c.id === `${serverId}.1`);
 
 it('ends the first sign-in on "Your library is ready." for the new connection', async () => {
   await finishConnect({
@@ -56,7 +67,7 @@ it('ends the first sign-in on "Your library is ready." for the new connection', 
   });
   expect(mockReplace).toHaveBeenCalledWith({
     pathname: '/connect/ready',
-    params: { connection: 'srv-1' },
+    params: { connection: 'srv-1.1' },
   });
   expect(mockDismissTo).not.toHaveBeenCalled();
   expect(conn('srv-1')).toMatchObject({
@@ -88,7 +99,7 @@ it('a reconnect through the away address keeps the address the server was paired
   await finishConnect({
     serverUrl: AWAY,
     session: session('srv-1', { token: 'fresh', addresses: { away: AWAY } }),
-    reconnectId: 'srv-1',
+    reconnectId: 'srv-1.1',
   });
   expect(useSession.getState().connections).toHaveLength(1);
   expect(conn('srv-1')).toMatchObject({
@@ -99,19 +110,23 @@ it('a reconnect through the away address keeps the address the server was paired
 });
 
 it('a reset server reached through its away address retires the dead identity', async () => {
+  /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+  const { resetProfilesForTests, useProfiles } = require('@/stores/profiles');
+  resetProfilesForTests();
+  await useProfiles.getState().hydrate();
   await finishConnect({
     serverUrl: HOME,
     session: session('old'),
     linkAddresses: { home: HOME, away: AWAY },
   });
-  useSession.getState().markNeedsReconnect('old', 'server-reset');
+  useSession.getState().markNeedsReconnect('old.1', 'server-reset');
   await finishConnect({
     serverUrl: AWAY,
     session: session('new', { addresses: { away: AWAY } }),
-    reconnectId: 'old',
+    reconnectId: 'old.1',
   });
   const ids = useSession.getState().connections.map((c) => c.id);
-  expect(ids).toEqual(['new']);
+  expect(ids).toEqual(['new.1']);
   expect(conn('new')).toMatchObject({
     serverUrl: HOME,
     addresses: { home: HOME, away: AWAY },
@@ -147,5 +162,247 @@ describe('the addresses a pairing taught (link merged with the answer, once)', (
 
   it('stores none when neither said anything', async () => {
     expect(await addressesAfter(undefined, undefined)).toBeUndefined();
+  });
+});
+
+it('another user on a server the device has gets a connection of their own, on its paired address', async () => {
+  await finishConnect({
+    serverUrl: HOME,
+    session: session('srv-1'),
+    linkAddresses: { home: HOME, away: AWAY },
+  });
+  const id = await finishConnect({
+    serverUrl: AWAY,
+    session: session('srv-1', { token: 'kit', user: { ...user, id: 7, username: 'kit' } }),
+  });
+  expect(id).toBe('srv-1.7');
+  const conns = useSession.getState().connections;
+  expect(conns.map((c) => [c.id, c.token])).toEqual([
+    ['srv-1.1', 'tok-srv-1'],
+    ['srv-1.7', 'kit'],
+  ]);
+  // Signed in through the away address of a server already paired at home: the paired
+  // address stays the server's, and the home address carries over.
+  expect(conns[1]).toMatchObject({ serverUrl: HOME, addresses: { home: HOME, away: AWAY } });
+});
+
+describe('placing the new connection in a profile (Phase 8)', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const profiles = () => require('@/stores/profiles') as typeof import('@/stores/profiles');
+  const intent = () =>
+    require('@/components/profiles/connect-intent') as typeof import('@/components/profiles/connect-intent');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const sam: User = { ...user, id: 2, username: 'sam' };
+  const people = () =>
+    profiles()
+      .useProfiles.getState()
+      .profiles.map((p) => [p.name, p.connectionIds]);
+
+  beforeEach(async () => {
+    profiles().resetProfilesForTests();
+    intent().setConnectForNewProfile(false);
+    await profiles().useProfiles.getState().hydrate();
+  });
+
+  it('finding 7: a child signs in only as itself while a grown-up is on the device', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    const kid = profiles().activeProfile()!.id; // Sam, now a kids profile
+    profiles().setProfileKids(kid, { bedtime: '20:00' });
+    const before = useSession.getState().connections;
+    // "Add someone" (the demo) and a new server are refused before anything is stored.
+    intent().setConnectForNewProfile(true);
+    await expect(
+      finishConnect({ serverUrl: 'https://demo', session: session('demo') }),
+    ).rejects.toThrow();
+    intent().setConnectForNewProfile(false);
+    await expect(
+      finishConnect({ serverUrl: 'https://two', session: session('srv-2', { user: sam }) }),
+    ).rejects.toThrow();
+    expect(useSession.getState().connections).toBe(before);
+    expect(profiles().activeProfile()?.id).toBe(kid);
+    // Signing in again as itself (a dead token) still works, and stays in kids mode.
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    expect(profiles().activeProfile()?.id).toBe(kid);
+    expect(profiles().activeProfile()?.kids).toBeDefined();
+  });
+
+  it('a kids profile alone on the device may still add a grown-up (no way out otherwise)', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    profiles().setProfileKids(profiles().activeProfile()!.id, { bedtime: '20:00' });
+    intent().setConnectForNewProfile(true);
+    await finishConnect({ serverUrl: 'https://two', session: session('srv-2', { user: sam }) });
+    expect(profiles().activeProfile()?.name).toBe('sam');
+  });
+
+  it('a new server joins the active person', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: 'https://two', session: session('srv-2') });
+    expect(people()).toEqual([['chris', ['srv-1.1', 'srv-2.1']]]);
+  });
+
+  it('another user on a server the active person has: a new person, made active', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    expect(people()).toEqual([
+      ['chris', ['srv-1.1']],
+      ['sam', ['srv-1.2']],
+    ]);
+    expect(profiles().activeProfile()?.name).toBe('sam');
+    expect(useSession.getState().defaultConnectionId).toBe('srv-1.2');
+    expect(profiles().useProfiles.getState().askAtLaunch).toBe(true);
+  });
+
+  it('"Add someone" puts even a new server in a new person', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    intent().setConnectForNewProfile(true);
+    await finishConnect({ serverUrl: 'https://two', session: session('srv-2', { user: sam }) });
+    expect(people()).toEqual([
+      ['chris', ['srv-1.1']],
+      ['sam', ['srv-2.2']],
+    ]);
+    expect(profiles().activeProfile()?.name).toBe('sam');
+  });
+
+  it('a re-pair keeps its person; "Add someone" as a person already here switches to them', async () => {
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: sam }) });
+    // Sam is active; Chris signs in again (a re-pair): Chris keeps his profile, Sam stays.
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    expect(people()).toEqual([
+      ['chris', ['srv-1.1']],
+      ['sam', ['srv-1.2']],
+    ]);
+    expect(profiles().activeProfile()?.name).toBe('sam');
+    intent().setConnectForNewProfile(true);
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    expect(profiles().activeProfile()?.name).toBe('chris');
+    expect(people()).toHaveLength(2);
+  });
+
+  describe('a server that was reset (another server_id at the same address)', () => {
+    const kit: User = { ...user, id: 9, username: 'kit' };
+    /** Chris (PIN) and Sam on one server, Sam listening; then the server is rebuilt. */
+    const household = async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('old') });
+      await finishConnect({ serverUrl: AWAY, session: session('old', { user: sam }) });
+      const chris = profiles().profileOf('old.1')!.id;
+      await setPin(chris, '1357');
+      profiles().setProfileHasPin(chris, true);
+      useSession.getState().markNeedsReconnect('old.1', 'server-reset');
+      useSession.getState().markNeedsReconnect('old.2', 'server-reset');
+      return { chris, sam: profiles().profileOf('old.2')!.id };
+    };
+
+    it("re-pairing retires only the signer's dead identity, never another person", async () => {
+      const ids = await household();
+      const removed: string[] = [];
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      const off = require('@/stores/session').onConnectionRemoved((id: string) => {
+        removed.push(id);
+      });
+      try {
+        // Sam's reconnect banner: the rebuilt server, Sam's new account there.
+        await finishConnect({
+          serverUrl: AWAY,
+          session: session('new', { user: kit }),
+          reconnectId: 'old.2',
+        });
+      } finally {
+        off();
+      }
+      expect(removed).toEqual(['old.2']);
+      // Sam's profile now holds the new connection; Chris is still on the device, PIN and
+      // all, his connection kept (flagged for him to sign in again).
+      expect(people()).toEqual([
+        ['chris', ['old.1']],
+        ['sam', ['new.9']],
+      ]);
+      expect(profiles().profileOf('new.9')?.id).toBe(ids.sam);
+      expect(profiles().activeProfile()?.id).toBe(ids.sam);
+      expect(await checkPin(ids.chris, '1357')).toBe(true);
+      expect(profiles().profileOf('old.1')?.hasPin).toBe(true);
+      const old = useSession.getState().connections.find((c) => c.id === 'old.1');
+      expect(old?.needsReconnect).toBe('server-reset');
+      expect(await SecureStore.getItemAsync('audiosilo.token.old.1')).toBe('tok-old');
+    });
+
+    it('"Add someone" on a reset server retires nobody\'s identity', async () => {
+      await household();
+      intent().setConnectForNewProfile(true);
+      await finishConnect({ serverUrl: AWAY, session: session('new', { user: kit }) });
+      expect(people()).toEqual([
+        ['chris', ['old.1']],
+        ['sam', ['old.2']],
+        ['kit', ['new.9']],
+      ]);
+    });
+
+    it('a kids profile signs in again to its own reset server, and stays in kids mode', async () => {
+      const ids = await household();
+      profiles().setProfileKids(ids.sam, {
+        library: { connectionId: 'old.2', libraryId: 3 },
+        bedtime: '19:00',
+      });
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('new', { user: kit }),
+        reconnectId: 'old.2',
+      });
+      const kid = profiles().activeProfile();
+      expect(kid?.id).toBe(ids.sam);
+      expect(kid?.connectionIds).toEqual(['new.9']);
+      expect(kid?.kids).toEqual({
+        library: { connectionId: 'new.9', libraryId: 3 },
+        bedtime: '19:00',
+      });
+    });
+  });
+
+  it("a re-pair after the session's read failed stays with its own person, PIN and all", async () => {
+    const bea: User = { ...user, id: 7, username: 'bea' };
+    const a = { id: 'srvA.1', serverId: 'srvA', serverUrl: 'https://a', name: 'A', user };
+    const b = { id: 'srvB.7', serverId: 'srvB', serverUrl: 'https://b', name: 'B', user: bea };
+    await AsyncStorage.setItem(CONNECTIONS_KEY, JSON.stringify([a, b]));
+    await SecureStore.setItemAsync('audiosilo.token.srvA.1', 'ta');
+    await SecureStore.setItemAsync('audiosilo.token.srvB.7', 'tb');
+    const household = [
+      { id: 'pa', name: 'Alex', connectionIds: ['srvA.1'] },
+      { id: 'pb', name: 'Bea', connectionIds: ['srvB.7'], hasPin: true },
+    ];
+    await AsyncStorage.setItem(
+      PROFILES_KEY,
+      JSON.stringify({ version: 1, profiles: household, activeProfileId: 'pa', askAtLaunch: true }),
+    );
+    await setPin('pb', '2468');
+    profiles().resetProfilesForTests();
+    useSession.setState({ status: 'loading', connections: [] });
+    // One token read throws at launch: the session's read fails (the connect screen shows).
+    const get = SecureStore.getItemAsync as jest.Mock;
+    const read = get.getMockImplementation()!;
+    let thrown = false;
+    get.mockImplementation((k: string) => {
+      if (k === 'audiosilo.token.srvA.1' && !thrown) {
+        thrown = true;
+        return Promise.reject(new Error('keystore busy'));
+      }
+      return read(k);
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await Promise.all([
+        useSession.getState().hydrate(),
+        profiles().useProfiles.getState().hydrate(),
+      ]);
+      expect(thrown).toBe(true);
+      // Bea signs in again from there: her connection stays hers, and so does her PIN.
+      await finishConnect({ serverUrl: 'https://b', session: session('srvB', { user: bea }) });
+      expect(profiles().useProfiles.getState().profiles).toEqual(household);
+      expect(profiles().activeProfile()?.name).toBe('Alex');
+      expect(await checkPin('pb', '2468')).toBe(true);
+    } finally {
+      get.mockImplementation(read);
+      warn.mockRestore();
+    }
   });
 });

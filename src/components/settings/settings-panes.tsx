@@ -8,11 +8,10 @@ import {
   useAutoDownloadModes,
 } from '@/components/downloads/rules-card';
 import { EffectsSettings } from '@/components/player/effects-settings';
+import { HouseholdPane } from '@/components/profiles/household-pane';
 import { ShakeSensitivityControl } from '@/components/player/sleep-timer-button';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Notice } from '@/components/ui/notice';
 import {
   Select,
   SelectContent,
@@ -382,25 +381,6 @@ function LanguagePane() {
   );
 }
 
-/** Household and sharing: profiles, kids mode and "Listening in the house" arrive with
- * the household phase (8). Until then a quiet notice says so, flagged like any other
- * feature that waits on server work (STYLEGUIDE section 15). */
-function HouseholdPane() {
-  const { t } = useTranslation();
-  return (
-    <View className="gap-3" testID="settings-pane-household">
-      <Notice
-        icon="users"
-        title={t('settings.household.title')}
-        body={t('settings.household.body')}
-      />
-      <Badge variant="outline" className="self-start">
-        <Text>{t('settings.household.flag')}</Text>
-      </Badge>
-    </View>
-  );
-}
-
 /** The signed-in servers (each opening its own Account) and Add a server. */
 function AccountsPane({ onRemove }: { onRemove: (c: Connection) => void }) {
   const { t } = useTranslation();
@@ -451,6 +431,7 @@ export function SettingsPaneBody({
     case 'language':
       return <LanguagePane />;
     case 'household':
+      // Phase 8: the people on this device, kids mode and Listening in the house.
       return <HouseholdPane />;
     case 'accounts':
       return <AccountsPane onRemove={onRemoveConnection} />;

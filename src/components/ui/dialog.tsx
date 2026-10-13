@@ -1,5 +1,5 @@
 import * as DialogPrimitive from '@rn-primitives/dialog';
-import type { ComponentType, ReactNode } from 'react';
+import { type ComponentType, type ReactNode, useLayoutEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   type GestureResponderEvent,
@@ -13,6 +13,7 @@ import { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { useKeyboardAvoidance } from '@/lib/keyboard-lift';
+import { releaseKeyboard, useReleaseOnClose } from '@/lib/keyboard-release';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -111,7 +112,42 @@ export function DialogFrame<P extends FrameContentProps>({
 export const dialogHeaderClass = 'gap-2';
 export const dialogFooterClass = 'flex-col-reverse gap-2 sm:flex-row sm:justify-end';
 
-export const Dialog = DialogPrimitive.Root;
+/**
+ * The dialog root (controlled: `open` + `onOpenChange`). Closing gives the software
+ * keyboard up BEFORE the content unmounts (`useReleaseOnClose`): a close from inside (the
+ * close button, the backdrop, Android's back) releases it before `onOpenChange` runs, and
+ * any close keeps the content (the children of the last open render, so a caller's
+ * `{open ? <Body /> : null}` too) for one more commit in which the keyboard is released
+ * while the focused field is still on screen.
+ */
+export function Dialog({
+  open,
+  onOpenChange,
+  children,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  const controlled = open !== undefined;
+  const keep = useReleaseOnClose(!!open);
+  // The content of the last open render, kept through the closing commit.
+  const lastOpen = useRef<ReactNode>(children);
+  useLayoutEffect(() => {
+    if (open) lastOpen.current = children;
+  });
+  const holding = controlled && !open && keep;
+  return (
+    <DialogPrimitive.Root
+      {...props}
+      open={controlled ? open || keep : undefined}
+      onOpenChange={(next) => {
+        if (!next) releaseKeyboard();
+        onOpenChange?.(next);
+      }}
+    >
+      {/* eslint-disable-next-line react-hooks/refs -- written by the layout effect above, read only in the closing commit */}
+      {holding ? lastOpen.current : children}
+    </DialogPrimitive.Root>
+  );
+}
 export const DialogTrigger = DialogPrimitive.Trigger;
 
 /** The scrim + dismiss-on-backdrop wrapper every dialog frame sits in (the command

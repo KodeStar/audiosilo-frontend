@@ -1,4 +1,5 @@
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
+import { priorConnection, serverIdOf } from '@/lib/connection-id';
 import type { KnownServer } from '@/lib/known-servers';
 import { normalizeUrl, type PairingScan } from '@/lib/pairing';
 import {
@@ -9,6 +10,7 @@ import {
   type ServerIdProbe,
 } from '@/lib/server-address';
 import { isInProgress } from '@/lib/progress-view';
+import { isLoopbackHost } from '@/lib/url-host';
 
 /**
  * The connect flow's rules (onboarding: connect, sign in, "Your library is ready."),
@@ -22,12 +24,19 @@ export const CONNECT_STEPS = 3;
 export type ConnectStep = 0 | 1 | 2;
 
 /** The part of a connection a re-pair reads. */
-export type RepairConnection = AddressedConnection & { needsReconnect?: string };
+export type RepairConnection = AddressedConnection & {
+  needsReconnect?: string;
+  user?: { id?: number };
+};
 
 /**
  * What a sign-in stores, given the address it signed in through (`pending`), the
  * `server_id` that answered, the device's connections, and the connection a reconnect
  * was started for (`reconnectId`, from the reconnect banner):
+ *
+ * Connections are matched to the answering server by `serverIdOf` (a connection id also
+ * names its user). `userId` (who signed in) picks that user's connection when the device
+ * has several on the server, else any of them: what is read here is server-level.
  *
  * - **The same connection again** (its `server_id` answered, through one of its own
  *   addresses: the reconnect banner signs in through the address in use now, which away
@@ -36,9 +45,10 @@ export type RepairConnection = AddressedConnection & { needsReconnect?: string }
  *   picks the right address by itself.
  * - **A server that was reset** (the banner's connection, reached through one of its own
  *   addresses, answered with a NEW `server_id`): store the old connection's `serverUrl`,
- *   so the session store retires the dead identity (it drops another id at the same
- *   `serverUrl`), and carry its addresses over (the home address is probed against the
- *   new id before it is used, so this never sends a token to another box).
+ *   so the session store retires the dead identity (it drops a connection to another
+ *   `server_id` at the same `serverUrl`), and carry its addresses over (the home address is
+ *   probed against the new `server_id` before it is used, so this never sends a token to
+ *   another box).
  * - **A remembered server signed in to again** (`known`, the known-servers entry with the
  *   answering `server_id`, reached through one of its addresses: a "Reconnect to <server>"
  *   row signs in through the home address when it answers as that server): keep the
@@ -55,16 +65,26 @@ export function repairPlan(input: {
   reconnectId?: string;
   answer?: ServerAddresses;
   known?: KnownServer;
+  userId?: number;
 }): { serverUrl: string; addresses: ServerAddresses | undefined } {
-  const { pending, serverId, connections, reconnectId, answer, known } = input;
-  const same = connections.find((c) => c.id === serverId);
+  const { pending, serverId, connections, reconnectId, answer, known, userId } = input;
+  // The connection the session will update (`priorConnection`), else another user's on
+  // the same server (its address is the server's own all the same).
+  const same =
+    (userId !== undefined ? priorConnection(connections, serverId, userId) : undefined) ??
+    connections.find((c) => serverIdOf(c) === serverId);
   if (same && isOwnAddress(pending, same)) {
     return { serverUrl: same.serverUrl, addresses: answer };
   }
   if (
     !same &&
     known?.serverId === serverId &&
-    isOwnAddress(pending, { id: serverId, serverUrl: known.serverUrl, addresses: known.addresses })
+    isOwnAddress(pending, {
+      id: serverId,
+      serverId,
+      serverUrl: known.serverUrl,
+      addresses: known.addresses,
+    })
   ) {
     return { serverUrl: known.serverUrl, addresses: answer };
   }
@@ -120,7 +140,7 @@ export function looksLikeHomeAddress(url: string): boolean {
     return false;
   }
   host = host.replace(/^\[|\]$/g, '').toLowerCase();
-  if (!host || host === 'localhost' || host === '::1' || /^127\./.test(host)) return false;
+  if (!host || isLoopbackHost(host)) return false;
   if (isPrivateV4(host) || isPrivateV6(host)) return true;
   if (/^\d+(\.\d+){3}$/.test(host) || host.includes(':')) return false;
   return /\.(local|lan|home\.arpa)$/.test(host) || !host.includes('.');
@@ -139,12 +159,13 @@ export function httpFallback(typed: string): string | null {
 }
 
 /** The remembered servers the connect screen offers to reconnect to: those this device
- * is not signed in to now. */
+ * is not signed in to now. `serverIds` are the signed-in connections' servers
+ * (`serverIdOf`), never their connection ids. */
 export function knownToOffer(
   known: readonly KnownServer[],
-  connectionIds: readonly string[],
+  serverIds: readonly string[],
 ): KnownServer[] {
-  return known.filter((k) => !connectionIds.includes(k.serverId));
+  return known.filter((k) => !serverIds.includes(k.serverId));
 }
 
 /**
@@ -161,7 +182,12 @@ export function reconnectAddress(
 ): Promise<string> {
   if (web) return Promise.resolve(entry.serverUrl);
   return pickAddress(
-    { id: entry.serverId, serverUrl: entry.serverUrl, addresses: entry.addresses },
+    {
+      id: entry.serverId,
+      serverId: entry.serverId,
+      serverUrl: entry.serverUrl,
+      addresses: entry.addresses,
+    },
     probe,
   );
 }

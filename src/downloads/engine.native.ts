@@ -28,6 +28,27 @@ function bookDir(connectionId: string, libraryId: number, path: string): Directo
   return new Directory(Paths.document, ROOT, connectionId, String(libraryId), slug(path));
 }
 
+function connectionDir(connectionId: string): Directory {
+  return new Directory(Paths.document, ROOT, connectionId);
+}
+
+/**
+ * Move everything in `from` into `to`, which exists: an entry `to` lacks is moved over (a
+ * rename, inside one volume), a folder both have is merged the same way, and a file both
+ * have keeps the copy already in `to` (a run cut short moved it there whole: a move is a
+ * rename). `from` is deleted once it is empty. Throws on the first entry that can't move.
+ */
+async function mergeInto(from: Directory, to: Directory): Promise<void> {
+  for (const item of from.list()) {
+    const target = item instanceof File ? new File(to, item.name) : new Directory(to, item.name);
+    if (!target.exists) await item.move(to);
+    else if (item instanceof Directory && target instanceof Directory)
+      await mergeInto(item, target);
+    else item.delete();
+  }
+  from.delete();
+}
+
 function ensureDir(dir: Directory) {
   if (!dir.exists) dir.create({ intermediates: true });
 }
@@ -123,6 +144,18 @@ export const engine: DownloadEngine = {
     } catch {
       // best-effort cleanup
     }
+  },
+
+  // `downloads/<from>` becomes `downloads/<to>` (the identity migration). Idempotent: no
+  // `<from>` = nothing to do (moved already, or never downloaded); no `<to>` = one rename of
+  // the folder; both (a run cut short) = merge what `<to>` lacks, then drop `<from>`.
+  async moveConnection(fromId, toId) {
+    if (fromId === toId) return;
+    const from = connectionDir(fromId);
+    if (!from.exists) return;
+    const to = connectionDir(toId);
+    if (!to.exists) await from.move(to);
+    else await mergeInto(from, to);
   },
 
   async clearAll() {

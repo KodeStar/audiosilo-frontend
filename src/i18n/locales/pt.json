@@ -146,11 +146,6 @@
       "accounts": "Contas e dispositivos",
       "support": "Apoiar o AudioSilo"
     },
-    "household": {
-      "title": "Os perfis chegam mais tarde",
-      "body": "Um lugar próprio em cada livro para cada pessoa da casa, um modo para crianças e a partilha chegam com os perfis numa próxima atualização.",
-      "flag": "Chega com os perfis"
-    },
     "accounts": {
       "intro": "Os servidores em que este dispositivo tem sessão iniciada. Abra um para a palavra-passe, os seus dispositivos e as chaves de API."
     },
@@ -989,7 +984,11 @@
       "noCache": "Este navegador não consegue guardar áudio offline. Use um navegador atual ou o app para iOS ou Android.",
       "noWorker": "A reprodução offline ainda não está pronta neste navegador. Recarregue a página e, se não resolver, use o app para iOS ou Android."
     },
-    "loading": "Carregando downloads"
+    "loading": "Carregando downloads",
+    "orphans": {
+      "title": "Sem sessão iniciada",
+      "body": "Transferências de uma conta que já não tem sessão iniciada neste dispositivo. Inicie sessão nela outra vez para as ouvir, ou remova-as para libertar espaço."
+    }
   },
   "search": {
     "placeholder": "Procurar livros, pessoas, séries, personagens",
@@ -1216,7 +1215,7 @@
       "label": "Notas"
     },
     "routePicker": {
-      "label": "AirPlay / Cast"
+      "label": "Saída de áudio"
     },
     "sleepTimer": {
       "title": "Temporizador",
@@ -1490,6 +1489,11 @@
     "browseHere": "Explorar a demo aqui"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Sem sessão nesse servidor",
+      "hint": "Esta ligação é de um servidor em que este dispositivo já não tem sessão iniciada.",
+      "back": "Voltar"
+    },
     "home": "Início do AudioSilo",
     "offline": "Offline · as transferências tocam",
     "serverMore_one": "{{name}} + mais {{count}}",
@@ -2023,5 +2027,211 @@
     "signedOut": "Ligue um servidor no AudioSilo para ouvir no carro",
     "unavailable": "Este livro não pode ser reproduzido agora",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "cast": {
+    "button": {
+      "label": "Transmitir",
+      "connecting": "A ligar a um dispositivo Cast",
+      "connected": "A transmitir",
+      "connectedTo": "A transmitir para {{device}}",
+      "blockedLabel": "Transmitir, indisponível para este livro"
+    },
+    "blocked": {
+      "title": "Este livro não pode ser transmitido",
+      "unsupported": "O servidor ainda não suporta Cast. Atualizar o AudioSilo no servidor acrescenta-o.",
+      "local-address": "A app chega ao servidor pelo endereço deste próprio dispositivo (localhost), que um dispositivo Cast não consegue alcançar. Liga-te ao servidor pelo endereço de rede.",
+      "codec": "O formato de áudio não toca em dispositivos Cast e o servidor não o consegue converter.",
+      "no-connection": "O servidor não tem sessão iniciada neste dispositivo. Inicia sessão de novo para o transmitir."
+    },
+    "failed": {
+      "title": "Não foi possível começar a transmitir",
+      "titleDevice": "Não foi possível tocar em {{device}}",
+      "description": "O livro fica neste dispositivo. Verifica se o dispositivo Cast consegue chegar ao servidor.",
+      "connect": "Não foi possível ligar ao dispositivo Cast"
+    }
+  },
+  "house": {
+    "title": "O que se ouve em casa",
+    "sub": "{{server}} · partilhado por escolha",
+    "settingsLink": "Definições de partilha",
+    "listLabel": "O que se ouve em casa em {{server}}",
+    "inTheHouse": "Em casa",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "A ouvir agora",
+      "paused": "Em pausa",
+      "today": "Hoje, mais cedo",
+      "yesterday": "Ontem",
+      "earlier": "Recentemente"
+    },
+    "label": {
+      "playing": "{{name}} está a ouvir {{title}}",
+      "paused": "{{name}} pausou {{title}}",
+      "today": "{{name}} ouviu {{title}} hoje, mais cedo",
+      "yesterday": "{{name}} ouviu {{title}} ontem",
+      "earlier": "{{name}} ouviu {{title}} recentemente",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Partilhar com a casa o que estou a ouvir",
+      "switchLabel": "Partilhar com a casa o que estou a ouvir em {{server}}",
+      "body": "O teu livro atual aparece na página inicial das outras pessoas em {{server}} que também partilham o seu. Desativado por predefinição.",
+      "saving": "A guardar",
+      "loadFailed": "Não foi possível carregar esta definição.",
+      "failed": "Não foi possível alterar a partilha em {{server}}",
+      "failedBody": "Nada mudou. Verifica a ligação e tenta novamente.",
+      "demo": "As contas de demonstração não podem partilhar o que ouvem."
+    }
+  },
+  "kids": {
+    "greeting": "Olá, {{name}}",
+    "greetingNoName": "Olá",
+    "grownUps": {
+      "label": "Adultos",
+      "button": "Adultos: manter premido",
+      "holding": "Continua a premir",
+      "hint": "Mantém premido para sair do modo crianças",
+      "action": "Sair do modo crianças"
+    },
+    "bedtime": {
+      "nowTitle": "É hora de dormir",
+      "timerLeft_one": "Temporizador de sono ligado, falta {{count}} minuto",
+      "timerLeft_other": "Temporizador de sono ligado, faltam {{count}} minutos",
+      "at": "A hora de dormir é às {{time}}",
+      "now": "O temporizador de sono liga-se quando uma história começa",
+      "later": "Depois da hora de dormir, uma história para sozinha ao fim de 20 minutos e o som vai baixando devagar."
+    },
+    "player": {
+      "play": "Reproduzir",
+      "pause": "Pausa",
+      "retry": "Tentar de novo",
+      "previous": "Capítulo anterior",
+      "next": "Capítulo seguinte",
+      "back_one": "Recuar {{count}} segundo",
+      "back_other": "Recuar {{count}} segundos",
+      "progress": "Quanto já ouviste deste capítulo",
+      "chapterLeft_one": "{{chapter}} · falta {{count}} minuto",
+      "chapterLeft_other": "{{chapter}} · faltam {{count}} minutos"
+    },
+    "stories": {
+      "title": "As tuas histórias",
+      "play": "Ouvir {{title}}",
+      "playing": "A tocar",
+      "loading": "À procura das tuas histórias",
+      "emptyTitle": "Ainda não há histórias aqui",
+      "emptyBody": "Pede a um adulto para adicionar algumas em {{server}}.",
+      "errorTitle": "Não é possível carregar as histórias agora",
+      "errorBody": "{{server}} não está a responder. Não se perdeu nada.",
+      "offlineBody": "Não é possível ligar a {{server}} e não há histórias guardadas neste dispositivo.",
+      "retry": "Tentar de novo",
+      "onDevice": "Estas histórias estão guardadas neste dispositivo."
+    },
+    "startFailed": {
+      "title": "Essa história não arranca agora",
+      "body": "Experimenta outra ou pede ajuda a um adulto."
+    }
+  },
+  "profiles": {
+    "someone": "Alguém",
+    "status": {
+      "listening": "A ouvir agora",
+      "kids": "Modo infantil · deitar às {{time}}",
+      "servers_one": "{{name}} + {{count}} outro",
+      "servers_other": "{{name}} + {{count}} outros"
+    },
+    "picker": {
+      "eyebrow": "Este dispositivo é partilhado",
+      "title": "Quem está a ouvir?",
+      "lead": "Cada pessoa mantém o seu ponto em cada livro, a sua fila e as suas estatísticas.",
+      "close": "Fechar e continuar a ouvir como agora",
+      "needsPin": "pede um PIN",
+      "emptyTitle": "Ainda ninguém iniciou sessão aqui",
+      "emptyHint": "Inicie sessão com uma conta AudioSilo para começar a ouvir."
+    },
+    "add": {
+      "label": "Adicionar alguém",
+      "hint": "Inicia sessão com a própria conta",
+      "a11y": "Adicionar alguém: iniciar sessão com a própria conta",
+      "chooseAdult": "Escolha um adulto antes de adicionar alguém."
+    },
+    "connect": {
+      "title": "Adicionar alguém a este dispositivo.",
+      "lead": "A pessoa inicia sessão com a própria conta, no seu servidor ou no dela. Cada um mantém o seu ponto em cada livro.",
+      "knownHeading": "Servidores deste dispositivo"
+    },
+    "menu": {
+      "listeningAs": "A ouvir como",
+      "switchTo": "Mudar para {{name}}"
+    },
+    "gate": {
+      "title": "Isto é de {{name}}",
+      "body": "Está na conta de {{name}} neste dispositivo. Mude para {{name}} para o abrir.",
+      "switch": "Mudar para {{name}}",
+      "back": "Voltar"
+    },
+    "pin": {
+      "label": "PIN",
+      "onBody": "Pedido quando alguém muda para {{name}}",
+      "offBody": "Desligado. Qualquer pessoa neste dispositivo pode mudar para esta pessoa.",
+      "set": "Definir um PIN",
+      "setA11y": "Definir um PIN para {{name}}",
+      "change": "Alterar",
+      "changeA11y": "Alterar o PIN de {{name}}",
+      "remove": "Remover",
+      "removeA11y": "Remover o PIN de {{name}}",
+      "enterTitle": "Introduza o PIN de {{name}}",
+      "enterBody": "Quatro dígitos.",
+      "currentTitle": "Introduza o PIN atual de {{name}}",
+      "chooseTitle": "Escolha um PIN de 4 dígitos",
+      "confirmTitle": "Introduza o PIN outra vez",
+      "chooseBody": "Pedido sempre que alguém muda para {{name}} neste dispositivo. Fica neste dispositivo.",
+      "fieldLabel": "PIN de {{name}}",
+      "wrong": "Esse PIN não corresponde",
+      "mismatch": "Os PIN não correspondem. Escolha um outra vez.",
+      "wait_one": "Demasiadas tentativas. Tente de novo dentro de {{count}} segundo.",
+      "wait_other": "Demasiadas tentativas. Tente de novo dentro de {{count}} segundos.",
+      "forgot": "Esqueceu-se? Remova {{name}} deste dispositivo nas Definições e inicie sessão de novo.",
+      "readFailed": "Não foi possível verificar o PIN neste dispositivo. Tente de novo.",
+      "noneSet": "Não há nenhum PIN definido para {{name}} neste dispositivo.",
+      "saveFailed": "Não foi possível guardar o PIN neste dispositivo. Nada mudou."
+    },
+    "rename": {
+      "label": "Nome",
+      "action": "Mudar o nome",
+      "title": "Mudar o nome de {{name}}",
+      "body": "O nome só aparece neste dispositivo. A conta mantém o seu nome de utilizador.",
+      "empty": "Introduza um nome"
+    },
+    "kids": {
+      "label": "Modo infantil",
+      "body": "Uma só biblioteca com capas grandes, uma hora de deitar e sem definições nem pesquisa. Sair exige um adulto.",
+      "switchA11y": "Modo infantil para {{name}}",
+      "library": "Biblioteca",
+      "libraryBody": "A biblioteca que o modo infantil mostra",
+      "libraryOn": "{{name}} em {{server}}",
+      "firstLibrary": "A primeira ({{name}})",
+      "librariesLoading": "A carregar as bibliotecas",
+      "librariesFailed": "Não foi possível carregar as bibliotecas.",
+      "noLibraries": "Esta conta não vê nenhuma biblioteca. Peça a quem administra o servidor que partilhe uma.",
+      "bedtime": "Hora de deitar",
+      "bedtimeBody": "A partir daí até às {{until}}, reproduzir inicia um temporizador de 20 minutos",
+      "needsGrownUp": "Alguém neste dispositivo tem de continuar adulto, ou ninguém poderia sair do modo infantil. Adicione primeiro um adulto."
+    },
+    "remove": {
+      "label": "Remover deste dispositivo",
+      "hint": "Termina a sessão de {{name}} nos seus servidores aqui. O ponto em cada livro fica no servidor.",
+      "action": "Remover deste dispositivo",
+      "title": "Remover {{name}} deste dispositivo?",
+      "body": "Isto termina a sessão de {{name}} em {{servers}} neste dispositivo e apaga as transferências aqui. O ponto em cada livro fica no servidor.",
+      "noPassword": "{{name}} não tem palavra-passe em {{server}}: sem uma, vai precisar de um novo convite para voltar a entrar.",
+      "confirm": "Remover e terminar sessão"
+    },
+    "household": {
+      "intro": "Todas as pessoas que ouvem neste dispositivo, cada uma com os seus servidores, o seu ponto em cada livro, a sua fila e as suas estatísticas.",
+      "switch": "Mudar",
+      "askAtLaunch": "Perguntar quem está a ouvir ao abrir a app",
+      "askAtLaunchBody": "Com duas ou mais pessoas neste dispositivo",
+      "noSharing": "Nenhum dos seus servidores oferece isto ainda."
+    }
   }
 }

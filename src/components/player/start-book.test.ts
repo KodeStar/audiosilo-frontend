@@ -21,6 +21,7 @@ jest.mock('@/playback/store', () => ({
 import { queryClient } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 
 import { FRESH_SOURCE_WAIT_MS, startBookInPlace } from './start-book';
 /* eslint-enable import/first */
@@ -61,6 +62,24 @@ beforeEach(() => {
 });
 
 describe('startBookInPlace', () => {
+  it("refuses another person's book before fetching anything (the car's old items)", async () => {
+    try {
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'sam', name: 'Sam', connectionIds: ['c9'] },
+          { id: 'alex', name: 'Alex', connectionIds: ['c1'] },
+        ],
+        activeProfileId: 'sam',
+      });
+      await expect(startBookInPlace(target)).resolves.toBe(false);
+      expect(mockItem).not.toHaveBeenCalled();
+      expect(mockPlayBook).not.toHaveBeenCalled();
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
   it('plays the book with its item and chapters, from the saved place', async () => {
     await expect(startBookInPlace(target)).resolves.toBe(true);
     expect(mockItem).toHaveBeenCalledWith(2, target.path, expect.anything());

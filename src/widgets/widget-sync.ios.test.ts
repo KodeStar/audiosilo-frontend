@@ -21,6 +21,16 @@ jest.mock('@/stores/session', () => ({
     return () => mockRemoval.fns.delete(fn);
   },
 }));
+// Profiles: who is listening, and that person's connections.
+const mockProfile = { ids: ['srv'] };
+jest.mock('@/stores/profiles', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { create } = require('zustand');
+  return {
+    useProfiles: create(() => ({ activeProfileId: 'chris', hydrated: true })),
+    profileConnectionIds: () => mockProfile.ids,
+  };
+});
 // A file system of names in a set: enough for `prepareCovers` (the sync itself takes its
 // covers injected).
 const mockFiles = new Map<string, Uint8Array>();
@@ -61,8 +71,10 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import { Directory } from 'expo-file-system';
 
+import { setConnectionAliases } from '@/lib/connection-id';
 import type { NowPlaying } from '@/playback/store';
 import { useSleepTimer } from '@/playback/sleep-timer';
+import { useProfiles } from '@/stores/profiles';
 
 import type { ContinueListeningProps, SleepTimerActivityProps } from './widget-model';
 import { prepareCovers, runWidgetSync, type Covers, type WidgetSyncDeps } from './widget-sync.ios';
@@ -184,6 +196,8 @@ beforeEach(() => {
   useSleepTimer.setState({ ...IDLE_TIMER, remaining: null, origin: null, label: null });
   mockConnections.ids = ['srv'];
   mockRemoval.fns.clear();
+  mockProfile.ids = ['srv'];
+  useProfiles.setState({ activeProfileId: 'chris', hydrated: true });
 });
 
 afterEach(() => {
@@ -265,6 +279,65 @@ describe('the Continue listening widget', () => {
     now += 120_000;
     player.usePlayer.setState({ bookPosition: 300 });
     jest.advanceTimersByTime(5000);
+    expect(h.writes.at(-1)).toEqual({ emptyText: 'Play a book and it shows up here.' });
+  });
+});
+
+describe('the Continue listening widget and profiles', () => {
+  it("clears another person's book on a profile switch, and keeps the new person's own", async () => {
+    const h = harness();
+    run(h);
+    loadBook(100);
+    jest.advanceTimersByTime(5000);
+    expect(h.writes.at(-1)).toMatchObject({ title: 'Book' });
+    // A switch to someone who also has this connection (cannot happen across people, but
+    // a profile holding it keeps it): nothing changes.
+    useProfiles.setState({ activeProfileId: 'also' });
+    expect(h.writes.at(-1)).toMatchObject({ title: 'Book' });
+    // Someone else: the widget shows nobody's book.
+    mockProfile.ids = ['other'];
+    useProfiles.setState({ activeProfileId: 'sam' });
+    expect(h.writes.at(-1)).toEqual({ emptyText: 'Play a book and it shows up here.' });
+    expect(h.deps.clearCovers).toHaveBeenCalled();
+  });
+
+  it('keeps the book through the launch read of the profiles (not a switch)', async () => {
+    // A cold launch: the profiles store starts with nobody and reads the stored person
+    // while the session's connections are still loading (none yet).
+    useProfiles.setState({ activeProfileId: null, hydrated: false });
+    mockProfile.ids = [];
+    const left = {
+      title: 'Left',
+      isPlaying: false,
+      connectionId: 'srv',
+      deepLink: 'audiosilo://player?connection=srv',
+    };
+    const h = harness({ timeline: [left] });
+    run(h);
+    await flush();
+    useProfiles.setState({ activeProfileId: 'chris', hydrated: true });
+    expect(h.writes).toEqual([]);
+    expect(h.deps.clearCovers).not.toHaveBeenCalled();
+  });
+});
+
+describe('the Continue listening widget after the identity migration', () => {
+  afterEach(() => setConnectionAliases({}));
+
+  it('clears a book written before it (an old connection id) when its new connection signs out', async () => {
+    setConnectionAliases({ srv: 'srv.3' });
+    const left = {
+      title: 'Old',
+      isPlaying: false,
+      connectionId: 'srv',
+      deepLink: 'audiosilo://player?connection=srv',
+    };
+    const h = harness({ timeline: [left] });
+    run(h);
+    await flush();
+    for (const fn of mockRemoval.fns) fn('other.1');
+    expect(h.writes).toEqual([]); // not that connection's: kept
+    for (const fn of mockRemoval.fns) fn('srv.3');
     expect(h.writes.at(-1)).toEqual({ emptyText: 'Play a book and it shows up here.' });
   });
 });

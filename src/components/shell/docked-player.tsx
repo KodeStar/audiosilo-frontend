@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CastButton } from '@/cast/cast-button';
 import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
 import { ControlPill, slopTo44 } from '@/components/player/control-pill';
@@ -296,6 +297,9 @@ export function DockedPlayer() {
               >
                 <Icon name="airplay" size={16} color={themed.foreground} />
               </ControlPill>
+            ) : null}
+            {allActions ? (
+              <CastButton className={DOCK_PILL} hitSlop={DOCK_SLOP} compact testID="dock-cast" />
             ) : null}
             <UpNextButton variant="dock" />
             <ControlPill

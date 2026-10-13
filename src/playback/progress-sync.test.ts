@@ -245,6 +245,23 @@ describe('progress-sync', () => {
     expect(await readQueue()).toHaveLength(0);
   });
 
+  it('keeps a group no connection takes while an identity move is still on its way', async () => {
+    const { setIdentityMovePending } =
+      jest.requireActual<typeof import('@/lib/connection-id')>('@/lib/connection-id');
+    reachable.mockReturnValue(false);
+    const offline = fakeApi(() => Promise.resolve());
+    await saveProgress(offline, { ...save, connectionId: 'srv.3', position: 42 });
+    reachable.mockReturnValue(true);
+    routeClients({}); // the session still shows the old id this launch
+    setIdentityMovePending(true);
+    try {
+      await flushQueue();
+      expect(await readQueue()).toEqual([expect.objectContaining({ position: 42 })]);
+    } finally {
+      setIdentityMovePending(false);
+    }
+  });
+
   it('is a no-op while the session is not ready (queue left intact)', async () => {
     reachable.mockReturnValue(false);
     const offline = fakeApi(() => Promise.resolve());

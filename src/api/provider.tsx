@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'r
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
 import { flushConnection } from '@/playback/progress-sync';
+import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/stores/profiles';
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
@@ -25,8 +26,9 @@ function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
   if (isServerInfoKey(key)) {
     // Public /server success proves nothing about the token - never clears the flag;
     // it only DETECTS a server reset (a differing server_id ⇒ re-pair required).
-    const cid = serverResetCid(key, data);
-    if (cid) useSession.getState().markNeedsReconnect(cid, 'server-reset');
+    const { connections, markNeedsReconnect } = useSession.getState();
+    const cid = serverResetCid(key, data, connections);
+    if (cid) markNeedsReconnect(cid, 'server-reset');
     return;
   }
   // Hot path: fires on EVERY successful fetch, so bail before allocating when nothing
@@ -234,19 +236,24 @@ export function useOptionalApi(connectionId?: string): ApiClient | null {
   return clients.get(cid) ?? null;
 }
 
-/** Every connection paired with its client, in user-defined order. The same array while
- * the connections and clients are (callers memoise on it: the Journal's per-server
- * queries and their merge). */
+/** Every connection of the person listening (the active profile's, Phase 8) paired with
+ * its client, in user-defined order: what every aggregated screen shows (Home, Search,
+ * the Library picker, You, the Journal). Background work never comes through here; it
+ * resolves its own connection (`resolveClient`). The same array while the connections,
+ * the clients and the profile's connections are (callers memoise on it: the Journal's
+ * per-server queries and their merge). */
 export function useApis(): ApiConnection[] {
   const { clients, connections } = useContext(ApiContext);
+  // None while someone must be chosen (`mustChoose`): nothing of anyone shows.
+  const ids = useProfiles(visibleConnectionIds);
   return useMemo(
     () =>
-      connections
+      connectionsOfProfile(connections, ids)
         .map((connection) => {
           const client = clients.get(connection.id);
           return client ? { connection, client } : null;
         })
         .filter((x): x is ApiConnection => x !== null),
-    [clients, connections],
+    [clients, connections, ids],
   );
 }

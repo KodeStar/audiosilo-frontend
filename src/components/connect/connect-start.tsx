@@ -12,6 +12,7 @@ import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { servedOrigin, webOrigin } from '@/lib/base-url';
+import { serverIdOf } from '@/lib/connection-id';
 import { getDeviceName } from '@/lib/device';
 import {
   forget as forgetServer,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
 import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from './connect-frame';
@@ -55,15 +57,22 @@ import { useLinkPairing } from './use-pairing';
 export function ConnectStart() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away } = useLocalSearchParams<{
+  const { token, server, home, away, profile } = useLocalSearchParams<{
     token?: string;
     server?: string;
     home?: string;
     away?: string;
+    profile?: string;
   }>();
+  // "Add someone" (Phase 8): a new person signs in, maybe on a server this device knows.
+  const newPerson = profile === 'new';
   const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const savedUrl = useSession((s) => s.pendingServerUrl);
-  const connectionIds = useSession((s) => s.connections.map((c) => c.id).join('\n'));
+  // The signed-in servers (`serverIdOf`: a connection id also names its user), one line each.
+  const serverIds = useSession((s) => s.connections.map(serverIdOf).join('\n'));
+  // The servers of the person listening: a remembered server another person on this device
+  // uses is still one this person can sign in to.
+  const personServerIds = useProfileConnections().map(serverIdOf);
   // The served player's field, shown only when its own server didn't answer, has the origin.
   const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? '');
   // The served player's own server: `pending` while asking it, then `found` (the card is the
@@ -245,7 +254,7 @@ export function ConnectStart() {
   }
 
   const isServed = served === 'found';
-  const offered = knownToOffer(known, connectionIds ? connectionIds.split('\n') : []);
+  const offered = knownToOffer(known, newPerson ? [] : personServerIds);
   const isWeb = Platform.OS === 'web';
   const lead = isServed
     ? 'onboarding.start.leadServed'
@@ -257,7 +266,7 @@ export function ConnectStart() {
     <ConnectFrame testID="connect-start">
       {/* Adding a server (a connection already exists): a way back to the app. The first
           run has nowhere to go back to. */}
-      {connectionIds ? (
+      {serverIds ? (
         <View className="flex-row justify-end">
           <Button
             variant="ghost"
@@ -275,10 +284,10 @@ export function ConnectStart() {
       <StepDots step={0} />
       <View className="gap-2">
         <Text variant={phone ? 'display' : 'display-xl'} accessibilityRole="header">
-          {t('onboarding.start.title')}
+          {newPerson ? t('profiles.connect.title') : t('onboarding.start.title')}
         </Text>
         <Text variant="muted" className="text-[15px] leading-[22px]">
-          {t(lead)}
+          {newPerson ? t('profiles.connect.lead') : t(lead)}
         </Text>
       </View>
       {pairError ? (
@@ -389,13 +398,16 @@ export function ConnectStart() {
       ) : null}
       {offered.length > 0 ? (
         <View className="gap-2" role="list">
-          <Text variant="eyebrow">{t('reconnect.connect.heading')}</Text>
+          <Text variant="eyebrow">
+            {newPerson ? t('profiles.connect.knownHeading') : t('reconnect.connect.heading')}
+          </Text>
           {offered.map((entry) => (
             <KnownServerRow
               key={entry.serverId}
               entry={entry}
               busy={busy === entry.serverId}
               disabled={busy !== null}
+              newPerson={newPerson}
               onReconnect={() => void onReconnect(entry)}
               onForget={() => onForget(entry.serverId)}
             />

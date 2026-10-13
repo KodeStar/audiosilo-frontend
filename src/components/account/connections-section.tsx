@@ -17,6 +17,7 @@ import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { useProfileConnections } from '@/stores/profiles';
 import { useSession, type Connection } from '@/stores/session';
 
 /** The drawn remove button's size in rem (`h-9 w-9`). */
@@ -90,7 +91,8 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
 export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => void }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const connections = useSession((s) => s.connections);
+  // The person listening's servers (Phase 8 profiles): Settings > Servers is theirs.
+  const connections = useProfileConnections();
   const { frameClass, hitSlop } = touchTarget(REMOVE_REM, REMOVE_REM);
 
   return (

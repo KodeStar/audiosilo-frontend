@@ -18,6 +18,7 @@ import {
   type SourcedProgress,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { endCastForCar } from '@/cast/cast-session';
 import type { Book, Progress, QueueEntry } from '@/api/types';
 import { progressAt } from '@/components/home/home-model';
 import { startBookInPlace } from '@/components/player/start-book';
@@ -27,10 +28,15 @@ import { downloadedEntryOf, useDownloads } from '@/downloads/store';
 import type { DownloadManifest } from '@/downloads/types';
 import i18n from '@/i18n';
 import { bootstrapPlayback } from '@/lib/bootstrap';
+import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
+import {
+  CAR_BOOKMARKS_KEY as RETRY_KEY,
+  CAR_SNAPSHOT_WRITTEN_KEY as WRITTEN_KEY,
+} from '@/lib/storage-keys';
 import { onForeground } from '@/lib/when-active';
 import { buildBookQueue, toBookPosition } from '@/playback/book-queue';
 import { bookSourceOf } from '@/playback/book-source';
@@ -49,6 +55,7 @@ import {
   resolveLibrarySelection,
   useLibrarySelection,
 } from '@/stores/library-selection';
+import { mayActFor, profileConnections, useProfiles } from '@/stores/profiles';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
@@ -125,12 +132,8 @@ const COVER_SIZE = 320;
 const ARTWORK_CONCURRENCY = 3;
 /** Items read at once. */
 const ITEM_CONCURRENCY = 4;
-/** Car bookmarks that couldn't reach their server yet (retried at the next drain). */
-const RETRY_KEY = 'audiosilo.carBookmarks';
 /** Set once a car (CarPlay or Android Auto) has connected on this device. */
 const CAR_SEEN_KEY = 'audiosilo.carSeen';
-/** Set once native has been handed a snapshot on this device (it keeps the last one). */
-const WRITTEN_KEY = 'audiosilo.carSnapshotWritten';
 
 /** Started (`startCarSync`), and how many callers hold it. */
 let active = false;
@@ -174,7 +177,7 @@ async function itemOf(ref: BookRef): Promise<Book | null> {
 /** The progress rows of every signed-in server, and which servers' rows are known (read now
  * or cached): only those can stand in for the server in a resume lookup. */
 async function progressRows(): Promise<{ rows: SourcedProgress[]; known: Set<string> }> {
-  const conns = useSession.getState().connections;
+  const conns = profileConnections();
   const known = new Set<string>();
   const lists = await Promise.all(
     conns.map(async (c) => {
@@ -199,11 +202,10 @@ async function progressRows(): Promise<{ rows: SourcedProgress[]; known: Set<str
 /** The Up next queue the app shows (`queueConnectionId`: the loaded book's server, else the
  * default, else the first), or null when that server keeps none (no `queue`). */
 async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } | null> {
-  const { connections, defaultConnectionId } = useSession.getState();
   const cid = queueConnectionId(
     usePlayer.getState().nowPlaying?.connectionId,
-    defaultConnectionId,
-    connections,
+    useSession.getState().defaultConnectionId,
+    profileConnections(),
   );
   const client = cid ? resolveClient(cid) : null;
   if (!cid || !client) return null;
@@ -218,7 +220,7 @@ async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } |
  * tab resolves it), over every signed-in server's library list. */
 async function selectedLibrary(): Promise<{ connectionId: string; libraryId: number } | null> {
   const groups = await Promise.all(
-    useSession.getState().connections.map(async (c): Promise<LibraryGroup> => {
+    profileConnections().map(async (c): Promise<LibraryGroup> => {
       const client = resolveClient(c.id);
       const libs = client
         ? await read({ ...librariesQuery(c.id, client), staleTime: LIST_STALE_MS })
@@ -303,18 +305,29 @@ let missingArtwork = new Map<string, { name: string; url: string }>();
 /** Whether native keeps a snapshot from before (`WRITTEN_KEY`), read once; null until then. */
 let wroteBefore: boolean | null = null;
 
+const SNAPSHOT_OWNER_KEY = 'audiosilo.carSnapshotOwner';
+const snapshotOwner = () =>
+  JSON.stringify([
+    useProfiles.getState().activeProfileId,
+    profileConnections()
+      .map((c) => c.id)
+      .sort(),
+  ]);
+
 async function buildAndWrite(): Promise<void> {
+  const owner = snapshotOwner();
   // The session's connections never loaded (a locked keychain at a CarPlay launch): the
   // snapshot native kept is better than a signed-out one (its downloads still play).
   if (sessionHydrateFailed()) return;
   const t = i18n.t.bind(i18n);
   const settings = useSettings.getState();
-  const conns = useSession.getState().connections;
+  // The person listening on this device: the car lists their servers only (Phase 8).
+  const conns = profileConnections();
   const signedIn = conns.length > 0;
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   const live: LivePlace | null =
-    np && player.snapshot.state !== 'ended'
+    np && mayActFor(np.connectionId) && player.snapshot.state !== 'ended'
       ? {
           ref: bookRefOf(np),
           position: selectBookPosition(player),
@@ -329,11 +342,11 @@ async function buildAndWrite(): Promise<void> {
   // Signed in, yet no server's list could be read or found cached (a fresh runtime away from
   // every server: the car's offline case): the snapshot native kept from last time is better
   // than one with empty lists, and its covers are still wanted. Nothing is written or pruned
-  // until a server's lists can be read; only a device that never wrote one writes what it
-  // has (its downloads).
+  // until a server's lists can be read, unless the owner changed or is unknown. Then write
+  // the current person's downloads so native cannot start the previous person's books.
   if (signedIn && known.size === 0) {
     wroteBefore ??= (await getItem<boolean>(WRITTEN_KEY)) === true;
-    if (wroteBefore) return;
+    if (wroteBefore && (await getItem<string>(SNAPSHOT_OWNER_KEY)) === owner) return;
   }
   const progressByKey = new Map<string, Progress>();
   for (const r of rows) progressByKey.set(contentKeyOf(progressAt(r)), r);
@@ -351,7 +364,10 @@ async function buildAndWrite(): Promise<void> {
         return { ref, book: e.book ?? null, progress: progressOf(ref) };
       })
     : null;
-  const downloads = downloadedEntries(useDownloads.getState().entries).map((e): CarBook => {
+  const downloads = downloadedEntries(
+    useDownloads.getState().entries,
+    conns.map((c) => c.id),
+  ).map((e): CarBook => {
     const ref = bookRefOf(e);
     return { ref, book: e.manifest.book, progress: progressOf(ref) };
   });
@@ -421,6 +437,7 @@ async function buildAndWrite(): Promise<void> {
     },
   );
   // Serialized once: the body is what is compared, and the date goes in front of it.
+  if (snapshotOwner() !== owner) return;
   const bodyJson = JSON.stringify(body);
   if (
     bodyJson !== lastBody &&
@@ -429,6 +446,7 @@ async function buildAndWrite(): Promise<void> {
     ))
   ) {
     lastBody = bodyJson;
+    await setItem(SNAPSHOT_OWNER_KEY, owner);
     if (wroteBefore !== true) {
       wroteBefore = true;
       void setItem(WRITTEN_KEY, true);
@@ -502,8 +520,7 @@ async function write(): Promise<void> {
 
 /** The car asked to play a book (its item id). */
 export async function handleCarPlayRequest(id: string): Promise<void> {
-  const ref = parseCarItemId(id);
-  if (!ref) {
+  if (!parseCarItemId(id)) {
     console.warn('[car] not a car item id', id);
     return;
   }
@@ -511,6 +528,17 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
   // the root layout's path comes before the launch steps hydrated the session and the
   // downloads: started then, the book would find no connection and no download.
   await bootstrapPlayback();
+  // Read again now the aliases are loaded: an item of a snapshot written before the identity
+  // migration names the old connection id.
+  const ref = parseCarItemId(id)!;
+  // Casting: a play the car asks for plays in the car, never on the TV it would not hear (and
+  // the car would show nothing playing). The cast ends with its place brought back here
+  // first (`endCastForCar`); ending it beats refusing, since the listener is in the car and
+  // a refusal there leaves a driver with silence to sort out. Another person's book is left
+  // to the start below, which refuses it, so their cast is not ended for nothing.
+  if (mayActFor(ref.connectionId)) {
+    await endCastForCar().catch((err) => console.warn('[car] could not end the cast', err));
+  }
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (np && contentKeyOf(np) === contentKeyOf(ref)) {
@@ -523,8 +551,12 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
       return;
     }
   }
+  // An item of a snapshot written before a switch may name another person's book: the
+  // start refuses it (`mayActFor`), quietly.
   try {
-    if (!(await startBookInPlace(ref))) console.warn('[car] the book has no connection');
+    if (!(await startBookInPlace(ref))) {
+      console.warn("[car] the book can't start here (no connection, or another person's)");
+    }
   } catch (err) {
     console.warn('[car] the book could not start', err);
   }
@@ -595,7 +627,14 @@ function addBookmarks(fresh: CarBookmark[]): Promise<void> {
     // read as a connection that is gone and be dropped, the kept ones with them.
     await bootstrapPlayback();
     const stored = await getItem<unknown[]>(RETRY_KEY);
-    const kept = Array.isArray(stored) ? stored.filter(isCarBookmark) : [];
+    // A kept one is read back here, so an old connection id in it (kept before the identity
+    // migration) reads as its new one, now the aliases are loaded. The fresh ones come
+    // through the native adapter, which resolved theirs (`car-native.native.ts`).
+    const kept = Array.isArray(stored)
+      ? stored
+          .filter(isCarBookmark)
+          .map((b) => ({ ...b, connectionId: resolveConnectionId(b.connectionId) }))
+      : [];
     const todo = [...kept, ...fresh];
     if (todo.length === 0) return;
     const retry: CarBookmark[] = [];
@@ -662,10 +701,25 @@ function checkLoadedBook(): Promise<void> {
       if (asked.loadingBook) return;
       const loaded = await carNative.getLoadedBook();
       if (!loaded) return;
+      // Another person's book (a play spec of an older snapshot that native started with no
+      // JS): never adopted, and stopped here, since nothing else would stop it (the store
+      // has no book to stop). Its id may be a legacy one (`resolveConnectionId`).
+      const refused = (b: { connectionId: string }) =>
+        !mayActFor(resolveConnectionId(b.connectionId));
       const player = usePlayer.getState();
       if (player.loadingBook || player.nowPlaying !== asked.nowPlaying) return;
+      if (refused(loaded)) {
+        await carNative.stopPlayback?.();
+        request(true);
+        return;
+      }
       if (player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded)) return;
       if (await player.adoptLoaded(loaded)) request(true);
+      else if (refused(loaded)) {
+        // The person switched while the adoption read the book: stop it if still loaded.
+        const current = await carNative.getLoadedBook();
+        if (current && refused(current)) await carNative.stopPlayback?.();
+      }
     } catch (err) {
       console.warn('[car] adopting the loaded book failed', err);
     }
@@ -765,6 +819,10 @@ export function startCarSync(): () => void {
     useSession.subscribe((s, prev) => {
       if (s.connections !== prev.connections || s.defaultConnectionId !== prev.defaultConnectionId)
         request(false);
+    }),
+    // Another person on this device: their lists, at once (a fresh build, as on a connect).
+    useProfiles.subscribe((s, prev) => {
+      if (s.activeProfileId !== prev.activeProfileId) request(true);
     }),
     useLibrarySelection.subscribe((s, prev) => {
       if (s.selection !== prev.selection) request(false);

@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { BASE_URL as BASE } from '@/lib/base-url';
+import { legacyIdOf } from '@/lib/connection-id';
 
 import type { DownloadEngine, DownloadProgressCb } from './types';
 
@@ -34,9 +35,11 @@ function slug(path: string): string {
 
 /** Same-origin, in-scope url prefix for a book's files (ends with `/`). The extra
  * `<connectionId>` segment scopes downloads per server; public/sw.js matches these
- * by `includes('/_offline/')`, so the extra segment needs no service-worker change. */
+ * by `includes('/_offline/')`, so the extra segment needs no service-worker change. A
+ * connection the identity migration moved keeps its files under its legacy id
+ * (`legacyIdOf`): the web never moves them (no `moveConnection` here). */
 function bookPrefix(connectionId: string, libraryId: number, path: string): string {
-  return `${location.origin}${BASE}/_offline/${connectionId}/${libraryId}/${slug(path)}/`;
+  return `${location.origin}${BASE}/_offline/${legacyIdOf(connectionId)}/${libraryId}/${slug(path)}/`;
 }
 
 /** Resolve true once our service worker controls this page (it serves the cached

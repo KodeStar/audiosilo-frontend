@@ -2,6 +2,7 @@ import type { SourcedProgress } from '@/api/hooks';
 import type { Book, Chapter, Progress } from '@/api/types';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import i18n from '@/i18n';
+import { setConnectionAliases } from '@/lib/connection-id';
 
 import {
   buildCarSnapshot,
@@ -95,6 +96,26 @@ describe('carItemId / parseCarItemId', () => {
     ['nothing', ''],
   ])('rejects %s', (_name, id) => {
     expect(parseCarItemId(id)).toBeNull();
+  });
+
+  describe('an item from a snapshot written before the identity migration', () => {
+    afterEach(() => setConnectionAliases({}));
+
+    it('names the new connection id (and a new-form id round-trips)', () => {
+      setConnectionAliases({ srv: 'srv.3' });
+      const old = carItemId({ connectionId: 'srv', libraryId: 2, path: 'A/Book.m4b' });
+      expect(parseCarItemId(old)).toEqual({
+        connectionId: 'srv.3',
+        libraryId: 2,
+        path: 'A/Book.m4b',
+      });
+      const fresh = carItemId({ connectionId: 'srv.3', libraryId: 2, path: 'A/Book.m4b' });
+      expect(parseCarItemId(fresh)).toEqual({
+        connectionId: 'srv.3',
+        libraryId: 2,
+        path: 'A/Book.m4b',
+      });
+    });
   });
 });
 
@@ -199,7 +220,16 @@ describe('downloadedEntries', () => {
       c: makeEntry({ path: 'c', status: 'downloading' }),
       d: makeEntry({ path: 'd', status: 'error' }),
     };
-    expect(downloadedEntries(entries).map((e) => e.path)).toEqual(['b', 'a']);
+    expect(downloadedEntries(entries, ['c1']).map((e) => e.path)).toEqual(['b', 'a']);
+  });
+
+  it("lists only the given connections' (the person listening's) downloads", () => {
+    const entries = {
+      mine: makeEntry({ connectionId: 'c1', path: 'mine' }),
+      theirs: makeEntry({ connectionId: 'c2', path: 'theirs' }),
+    };
+    expect(downloadedEntries(entries, ['c1']).map((e) => e.path)).toEqual(['mine']);
+    expect(downloadedEntries(entries, [])).toEqual([]);
   });
 });
 

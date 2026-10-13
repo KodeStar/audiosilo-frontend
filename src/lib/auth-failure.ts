@@ -1,4 +1,5 @@
 import type { ServerInfo } from '@/api/types';
+import { serverIdOf } from '@/lib/connection-id';
 
 // Dead-token DETECTION (the 401-only rule and why 403/network failures don't count)
 // lives on the ApiClient's `onAuthError` callback - see `client.ts`. This module keeps
@@ -37,14 +38,22 @@ export function isServerInfoKey(key: readonly unknown[]): boolean {
 /**
  * The connection id to flag as `server-reset`, given a `/server` response for a known
  * connection key. If the server now reports a different `server_id` than the connection's
- * id, the install was rebuilt from scratch - this identity is gone, so re-pairing is
- * required. Piggybacks on the existing `useServerInfo()` fetch (no dedicated poller).
- * Returns null when the key isn't a server key or the id still matches (nothing to flag).
+ * server (`serverIdOf`: never the connection id itself, which also names the user), the
+ * install was rebuilt from scratch - this identity is gone, so re-pairing is required.
+ * Piggybacks on the existing `useServerInfo()` fetch (no dedicated poller). Returns null when
+ * the key isn't a server key or the id still matches (nothing to flag). `connections` are
+ * the signed-in ones (their `serverId`); a key naming none of them is read by its id alone
+ * (`parseConnectionId`).
  */
-export function serverResetCid(key: readonly unknown[], data: unknown): string | null {
+export function serverResetCid(
+  key: readonly unknown[],
+  data: unknown,
+  connections: readonly { id: string; serverId?: string }[] = [],
+): string | null {
   if (!isServerInfoKey(key)) return null;
   const cid = typeof key[1] === 'string' ? key[1] : null;
   const serverId = (data as ServerInfo | undefined)?.server_id;
-  if (cid && typeof serverId === 'string' && serverId && serverId !== cid) return cid;
-  return null;
+  if (!cid || typeof serverId !== 'string' || !serverId) return null;
+  const conn = connections.find((c) => c.id === cid) ?? { id: cid };
+  return serverId !== serverIdOf(conn) ? cid : null;
 }

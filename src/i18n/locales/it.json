@@ -146,11 +146,6 @@
       "accounts": "Account e dispositivi",
       "support": "Sostieni AudioSilo"
     },
-    "household": {
-      "title": "I profili arriveranno più avanti",
-      "body": "Un posto tutto suo in ogni libro per ogni persona di casa, una modalità bambini e la condivisione arriveranno con i profili in un prossimo aggiornamento.",
-      "flag": "Arriva con i profili"
-    },
     "accounts": {
       "intro": "I server a cui questo dispositivo ha effettuato l'accesso. Aprine uno per la password, i tuoi dispositivi e le chiavi API."
     },
@@ -989,7 +984,11 @@
       "noCache": "Questo browser non può conservare audio offline. Usa un browser aggiornato oppure l’app iOS o Android.",
       "noWorker": "La riproduzione offline non è ancora pronta in questo browser. Ricarica la pagina e, se non basta, usa l’app iOS o Android."
     },
-    "loading": "Caricamento dei download"
+    "loading": "Caricamento dei download",
+    "orphans": {
+      "title": "Non connesso",
+      "body": "Download di un account non più connesso su questo dispositivo. Accedi di nuovo per ascoltarli, oppure rimuovili per liberare spazio."
+    }
   },
   "search": {
     "placeholder": "Cerca libri, persone, serie, personaggi",
@@ -1216,7 +1215,7 @@
       "label": "Note"
     },
     "routePicker": {
-      "label": "AirPlay / Cast"
+      "label": "Uscita audio"
     },
     "sleepTimer": {
       "title": "Timer di spegnimento",
@@ -1490,6 +1489,11 @@
     "browseHere": "Esplora la demo qui"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Accesso non effettuato a quel server",
+      "hint": "Questo link è di un server a cui questo dispositivo non ha più accesso.",
+      "back": "Indietro"
+    },
     "home": "Home di AudioSilo",
     "offline": "Offline · i download si riproducono",
     "serverMore_one": "{{name}} + un altro",
@@ -2023,5 +2027,211 @@
     "signedOut": "Collega un server in AudioSilo per ascoltare in auto",
     "unavailable": "Questo libro non può essere riprodotto ora",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "cast": {
+    "button": {
+      "label": "Trasmetti",
+      "connecting": "Connessione a un dispositivo Cast",
+      "connected": "Trasmissione in corso",
+      "connectedTo": "Trasmissione su {{device}}",
+      "blockedLabel": "Trasmetti, non disponibile per questo libro"
+    },
+    "blocked": {
+      "title": "Questo libro non può essere trasmesso",
+      "unsupported": "Il suo server non supporta ancora Cast. Aggiornare AudioSilo sul server lo aggiunge.",
+      "local-address": "L’app raggiunge il server all’indirizzo di questo dispositivo (localhost), che un dispositivo Cast non può raggiungere. Collegati al server con il suo indirizzo di rete.",
+      "codec": "Il suo formato audio non si riproduce sui dispositivi Cast e il server non può convertirlo.",
+      "no-connection": "Il suo server non ha un accesso attivo su questo dispositivo. Accedi di nuovo per trasmetterlo."
+    },
+    "failed": {
+      "title": "Impossibile avviare la trasmissione",
+      "titleDevice": "Impossibile riprodurre su {{device}}",
+      "description": "Il libro resta su questo dispositivo. Controlla che il dispositivo Cast possa raggiungere il server.",
+      "connect": "Impossibile connettersi al dispositivo Cast"
+    }
+  },
+  "house": {
+    "title": "Cosa si ascolta in casa",
+    "sub": "{{server}} · condiviso per scelta",
+    "settingsLink": "Impostazioni di condivisione",
+    "listLabel": "Cosa si ascolta in casa su {{server}}",
+    "inTheHouse": "In casa",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "In ascolto ora",
+      "paused": "In pausa",
+      "today": "Oggi, prima",
+      "yesterday": "Ieri",
+      "earlier": "Di recente"
+    },
+    "label": {
+      "playing": "{{name}} sta ascoltando {{title}}",
+      "paused": "{{name}} ha messo in pausa {{title}}",
+      "today": "{{name}} ha ascoltato {{title}} oggi, prima",
+      "yesterday": "{{name}} ha ascoltato {{title}} ieri",
+      "earlier": "{{name}} ha ascoltato {{title}} di recente",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Condividi con la casa cosa sto ascoltando",
+      "switchLabel": "Condividi con la casa cosa sto ascoltando su {{server}}",
+      "body": "Il tuo libro attuale compare nella pagina Home delle altre persone su {{server}} che condividono anche il loro. Disattivato per impostazione predefinita.",
+      "saving": "Salvataggio",
+      "loadFailed": "Impossibile caricare questa impostazione.",
+      "failed": "Impossibile cambiare la condivisione su {{server}}",
+      "failedBody": "Non è cambiato nulla. Controlla la connessione e riprova.",
+      "demo": "Gli account demo non possono condividere cosa ascoltano."
+    }
+  },
+  "kids": {
+    "greeting": "Ciao {{name}}",
+    "greetingNoName": "Ciao",
+    "grownUps": {
+      "label": "Adulti",
+      "button": "Adulti: tieni premuto",
+      "holding": "Continua a tenere premuto",
+      "hint": "Tieni premuto per uscire dalla modalità bambini",
+      "action": "Esci dalla modalità bambini"
+    },
+    "bedtime": {
+      "nowTitle": "È l'ora della nanna",
+      "timerLeft_one": "Timer di spegnimento attivo, manca {{count}} minuto",
+      "timerLeft_other": "Timer di spegnimento attivo, mancano {{count}} minuti",
+      "at": "L'ora della nanna è alle {{time}}",
+      "now": "Il timer di spegnimento parte quando inizia una storia",
+      "later": "Dopo l'ora della nanna, una storia si ferma da sola dopo 20 minuti e il suono si abbassa piano piano."
+    },
+    "player": {
+      "play": "Riproduci",
+      "pause": "Pausa",
+      "retry": "Riprova",
+      "previous": "Capitolo precedente",
+      "next": "Capitolo successivo",
+      "back_one": "Torna indietro di {{count}} secondo",
+      "back_other": "Torna indietro di {{count}} secondi",
+      "progress": "A che punto sei del capitolo",
+      "chapterLeft_one": "{{chapter}} · manca {{count}} minuto",
+      "chapterLeft_other": "{{chapter}} · mancano {{count}} minuti"
+    },
+    "stories": {
+      "title": "Le tue storie",
+      "play": "Ascolta {{title}}",
+      "playing": "In ascolto",
+      "loading": "Cerchiamo le tue storie",
+      "emptyTitle": "Qui non ci sono ancora storie",
+      "emptyBody": "Chiedi a un adulto di aggiungerne qualcuna su {{server}}.",
+      "errorTitle": "Le storie non si caricano in questo momento",
+      "errorBody": "{{server}} non risponde. Non si è perso niente.",
+      "offlineBody": "{{server}} non è raggiungibile e su questo dispositivo non ci sono storie salvate.",
+      "retry": "Riprova",
+      "onDevice": "Queste storie sono salvate su questo dispositivo."
+    },
+    "startFailed": {
+      "title": "Questa storia non parte in questo momento",
+      "body": "Provane un'altra o chiedi a un adulto."
+    }
+  },
+  "profiles": {
+    "someone": "Qualcuno",
+    "status": {
+      "listening": "In ascolto ora",
+      "kids": "Modalità bambini · a letto alle {{time}}",
+      "servers_one": "{{name}} + {{count}} altro",
+      "servers_other": "{{name}} + altri {{count}}"
+    },
+    "picker": {
+      "eyebrow": "Questo dispositivo è condiviso",
+      "title": "Chi ascolta?",
+      "lead": "Ogni persona mantiene il proprio punto in ogni libro, la propria coda e le proprie statistiche.",
+      "close": "Chiudi e continua ad ascoltare come ora",
+      "needsPin": "chiede un PIN",
+      "emptyTitle": "Qui non ha ancora effettuato l'accesso nessuno",
+      "emptyHint": "Accedi con un account AudioSilo per iniziare ad ascoltare."
+    },
+    "add": {
+      "label": "Aggiungi qualcuno",
+      "hint": "Accede con il proprio account",
+      "a11y": "Aggiungi qualcuno: accede con il proprio account",
+      "chooseAdult": "Scegli un adulto prima di aggiungere qualcuno."
+    },
+    "connect": {
+      "title": "Aggiungi qualcuno a questo dispositivo.",
+      "lead": "Accede con il proprio account, sul tuo server o sul suo. Ognuno mantiene il proprio punto in ogni libro.",
+      "knownHeading": "Server di questo dispositivo"
+    },
+    "menu": {
+      "listeningAs": "In ascolto come",
+      "switchTo": "Passa a {{name}}"
+    },
+    "gate": {
+      "title": "Questo è di {{name}}",
+      "body": "Si trova nell'account di {{name}} su questo dispositivo. Passa a {{name}} per aprirlo.",
+      "switch": "Passa a {{name}}",
+      "back": "Indietro"
+    },
+    "pin": {
+      "label": "PIN",
+      "onBody": "Richiesto quando qualcuno passa a {{name}}",
+      "offBody": "Disattivato. Chiunque su questo dispositivo può passare a questa persona.",
+      "set": "Imposta un PIN",
+      "setA11y": "Imposta un PIN per {{name}}",
+      "change": "Cambia",
+      "changeA11y": "Cambia il PIN di {{name}}",
+      "remove": "Rimuovi",
+      "removeA11y": "Rimuovi il PIN di {{name}}",
+      "enterTitle": "Inserisci il PIN di {{name}}",
+      "enterBody": "Quattro cifre.",
+      "currentTitle": "Inserisci il PIN attuale di {{name}}",
+      "chooseTitle": "Scegli un PIN di 4 cifre",
+      "confirmTitle": "Inserisci di nuovo il PIN",
+      "chooseBody": "Richiesto ogni volta che qualcuno passa a {{name}} su questo dispositivo. Resta su questo dispositivo.",
+      "fieldLabel": "PIN di {{name}}",
+      "wrong": "Questo PIN non corrisponde",
+      "mismatch": "I PIN non corrispondono. Scegline uno di nuovo.",
+      "wait_one": "Troppi tentativi. Riprova tra {{count}} secondo.",
+      "wait_other": "Troppi tentativi. Riprova tra {{count}} secondi.",
+      "forgot": "Dimenticato? Rimuovi {{name}} da questo dispositivo nelle Impostazioni e accedi di nuovo.",
+      "readFailed": "Impossibile verificare il PIN su questo dispositivo. Riprova.",
+      "noneSet": "Nessun PIN impostato per {{name}} su questo dispositivo.",
+      "saveFailed": "Impossibile salvare il PIN su questo dispositivo. Non è cambiato nulla."
+    },
+    "rename": {
+      "label": "Nome",
+      "action": "Rinomina",
+      "title": "Rinomina {{name}}",
+      "body": "Il nome appare solo su questo dispositivo. L'account mantiene il suo nome utente.",
+      "empty": "Inserisci un nome"
+    },
+    "kids": {
+      "label": "Modalità bambini",
+      "body": "Una sola libreria a copertine grandi, un orario per la nanna e niente impostazioni o ricerca. Per uscire serve un adulto.",
+      "switchA11y": "Modalità bambini per {{name}}",
+      "library": "Libreria",
+      "libraryBody": "L'unica libreria che mostra la modalità bambini",
+      "libraryOn": "{{name}} su {{server}}",
+      "firstLibrary": "La prima ({{name}})",
+      "librariesLoading": "Caricamento delle librerie",
+      "librariesFailed": "Impossibile caricare le librerie.",
+      "noLibraries": "Questo account non vede nessuna libreria. Chiedi a chi amministra il server di condividerne una.",
+      "bedtime": "Ora della nanna",
+      "bedtimeBody": "Da quell'ora fino alle {{until}}, la riproduzione avvia un timer di spegnimento di 20 minuti",
+      "needsGrownUp": "Qualcuno su questo dispositivo deve restare un adulto, altrimenti nessuno potrebbe uscire dalla modalità bambini. Aggiungi prima un adulto."
+    },
+    "remove": {
+      "label": "Rimuovi da questo dispositivo",
+      "hint": "Disconnette {{name}} dai propri server qui. Il punto in ogni libro resta sul server.",
+      "action": "Rimuovi da questo dispositivo",
+      "title": "Rimuovere {{name}} da questo dispositivo?",
+      "body": "{{name}} verrà disconnesso da {{servers}} su questo dispositivo e i suoi download qui verranno eliminati. Il punto in ogni libro resta sul server.",
+      "noPassword": "{{name}} non ha una password su {{server}}: senza, servirà un nuovo invito per accedere di nuovo.",
+      "confirm": "Rimuovi e disconnetti"
+    },
+    "household": {
+      "intro": "Tutte le persone che ascoltano su questo dispositivo, ognuna con i propri server, il proprio punto in ogni libro, la propria coda e le proprie statistiche.",
+      "switch": "Cambia",
+      "askAtLaunch": "Chiedi chi ascolta all'apertura dell'app",
+      "askAtLaunchBody": "Con due o più persone su questo dispositivo",
+      "noSharing": "Nessuno dei tuoi server lo offre ancora."
+    }
   }
 }

@@ -15,6 +15,7 @@ import { useLayout } from '@/lib/layout';
 import { openSettings } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { useSearchStore } from '@/stores/search';
+import { useProfileConnections } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -44,7 +45,8 @@ export function serverLine(
 
 function ServerLine() {
   const { t } = useTranslation();
-  const connections = useSession((s) => s.connections);
+  // The servers of the person listening (Phase 8 profiles).
+  const connections = useProfileConnections();
   const defaultId = useSession((s) => s.defaultConnectionId);
   const online = useReachability((s) => s.online);
   const line = serverLine(connections, defaultId, online);

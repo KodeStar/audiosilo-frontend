@@ -1,10 +1,21 @@
 import { router } from 'expo-router';
 
 import type { AuthSession, ServerAddresses } from '@/api/types';
+import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
+import i18n from '@/i18n';
+import { priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
-import { useSession } from '@/stores/session';
+import {
+  activeProfile,
+  placeConnection,
+  profileOf,
+  staleToRetire,
+  switchProfile,
+  useProfiles,
+} from '@/stores/profiles';
+import { sessionHydrateFailed, staleIdentities, useSession } from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
 
@@ -36,6 +47,11 @@ export async function finishConnect(input: {
   reconnectId?: string;
 }): Promise<string> {
   const serverId = input.session.server_id;
+  // The connections first, when they never loaded (a failed session read leaves the
+  // connect screen up): whose sign-in this is is read from them, and an unread list would
+  // take a re-pair for a new connection (`placeConnection` would pull it out of its
+  // person's profile, their PIN with it, into the one listening).
+  if (sessionHydrateFailed()) await useSession.getState().hydrate();
   // The remembered server, for a sign-in again after signing out (`repairPlan`).
   const known = (await listKnownServers()).find((k) => k.serverId === serverId);
   const { connections, setSession } = useSession.getState();
@@ -47,7 +63,35 @@ export async function finishConnect(input: {
     reconnectId: input.reconnectId,
     answer: mergeAddresses(input.linkAddresses, input.session.addresses),
     known,
+    userId: input.session.user.id,
   });
+  const newPerson = connectForNewProfile();
+  // A connection the device already had (a re-pair) keeps its person; read before the
+  // session adds a new one (the profiles reconcile places it at once).
+  const existing = priorConnection(connections, serverId, input.session.user.id);
+  // A server that was reset (another server_id at this address): only the stale identity
+  // of the person signing in is retired, and the new connection takes its place in their
+  // profile; anyone else's stays for them (`staleToRetire`).
+  const retire = existing
+    ? []
+    : staleToRetire(
+        staleIdentities(connections, serverId, plan.serverUrl).map((c) => c.id),
+        useProfiles.getState(),
+        { reconnectId: input.reconnectId, newPerson },
+      );
+  const replaced = retire[0];
+  const hadProfile = existing
+    ? profileOf(existing.id)
+    : replaced !== undefined
+      ? profileOf(replaced)
+      : null;
+  // Kids mode signs in again only as a connection this device has (a re-pair, or the
+  // child's own identity on a server that was reset, keeps its person): anyone or anything
+  // new would join or replace the child's profile without a grown-up (`mayAddPerson`;
+  // "Who's listening?" disables "Add someone" the same way).
+  if ((newPerson || (!existing && replaced === undefined)) && !mayAddPerson()) {
+    throw new Error(i18n.t('profiles.add.chooseAdult'));
+  }
   const id = await setSession({
     serverUrl: plan.serverUrl,
     serverId,
@@ -55,8 +99,33 @@ export async function finishConnect(input: {
     user: input.session.user,
     ...(input.name ? { name: input.name } : {}),
     addresses: plan.addresses,
+    retire,
   });
+  await placeSignedIn(id, hadProfile?.id ?? null, newPerson);
   if (first) router.replace(readyHref(id));
   else leaveOnboarding();
   return id;
+}
+
+/**
+ * The profile the connection just signed in belongs to (Phase 8, `src/stores/profiles.ts`):
+ * - a NEW connection goes into the active profile, unless that profile already has this
+ *   server (another user on it is another person) or the flow was "Add someone": then a
+ *   profile of its own, which becomes active (`placeConnection`);
+ * - a re-pair keeps the person it had; "Add someone" signing in as a person already on
+ *   this device switches to them.
+ * A change of person goes through `switchProfile` (the previous person's book unloads).
+ */
+async function placeSignedIn(
+  id: string,
+  hadProfileId: string | null,
+  newPerson: boolean,
+): Promise<void> {
+  const before = activeProfile()?.id ?? null;
+  const target = hadProfileId
+    ? newPerson
+      ? hadProfileId
+      : null
+    : placeConnection(id, { newProfile: newPerson });
+  if (target && target !== before) await switchProfile(target);
 }

@@ -2,21 +2,25 @@ import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteError, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
+import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
+import {
+  PROGRESS_MIRROR_KEY as MIRROR_KEY,
+  PROGRESS_QUEUE_KEY as QUEUE_KEY,
+} from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
 
-const QUEUE_KEY = 'audiosilo.progressQueue';
 const DEVICE_KEY = 'audiosilo.deviceId';
-// Durable, never-pruned mirror of the last-known progress per (connection, library,
-// path). Unlike the offline queue (cleared once a save syncs), this survives sync so a
-// returning listener can resume even when the server momentarily can't be reached - the
-// fix for "an in-progress book restarted from 0 because the resume fetch failed".
-const MIRROR_KEY = 'audiosilo.progressMirror';
+// `MIRROR_KEY`: the durable, never-pruned mirror of the last-known progress per
+// (connection, library, path). Unlike the offline queue (cleared once a save syncs), this
+// survives sync so a returning listener can resume even when the server momentarily can't
+// be reached - the fix for "an in-progress book restarted from 0 because the resume fetch
+// failed".
 
 let deviceIdCache: string | null = null;
 
@@ -33,7 +37,8 @@ export async function getDeviceId(): Promise<string> {
 }
 
 export type ProgressSave = {
-  /** Which server this save belongs to (never replay it against another). */
+  /** Which connection (one user on one server) this save belongs to (never replay it
+   * against another). */
   connectionId: string;
   libraryId: number;
   path: string;
@@ -372,7 +377,10 @@ export async function flushQueue(): Promise<void> {
       [...groups].map(async ([cid, saves]) => {
         if (!isReachable(cid)) return saves; // this server known down; keep its saves queued
         const client = resolveClient(cid);
-        if (!client) return []; // connection removed - unroutable, drop the whole group
+        // A connection removed: unroutable, drop the whole group. Not while an identity
+        // move is on its way (`identityMovePending`): the id can be one the documents
+        // moved and the connections don't show yet, so the saves wait for that launch.
+        if (!client) return identityMovePending() ? saves : [];
         return flushGroup(cid, client, saves);
       }),
     );
@@ -406,8 +414,8 @@ export async function flushConnection(connectionId: string): Promise<void> {
   });
 }
 
-// Removing a connection orphans its scoped state forever (re-adding mints a new id),
-// so drop its mirror records and queued saves here.
+// Removing a connection orphans its scoped state (signing in again starts from the
+// server's own record), so drop its mirror records and queued saves here.
 onConnectionRemoved(async (id) => {
   // The mirror and queue take independent locks and touch disjoint storage keys, so
   // purge them concurrently rather than serializing the two storage round-trips.

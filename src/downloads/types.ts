@@ -60,8 +60,8 @@ export type DownloadManifest = {
 };
 
 export type DownloadEntry = {
-  /** Which server this download belongs to (the server's stable id). Scopes the
-   * on-disk location and the registry key. */
+  /** Which connection (one user on one server, `<server_id>.<user_id>`) this download
+   * belongs to. Scopes the on-disk location and the registry key. */
   connectionId: string;
   libraryId: number;
   path: string;
@@ -174,6 +174,17 @@ export interface DownloadEngine {
    * would orphan on disk (and keep inflating `totalBytesUsed`) forever.
    */
   clearAll?(): Promise<void>;
+  /**
+   * Move every file of connection `fromId` to connection `toId` (the identity migration,
+   * `src/lib/identity-migration.ts`: a legacy `<server_id>` becomes `<server_id>.<user_id>`).
+   * Idempotent and resumable: nothing under `fromId` is done; a run cut short finishes,
+   * keeping what already reached `toId`. Rejects when a file could not be moved (the files
+   * that did stay at `toId`; moving back is the same call reversed). Omitted where there is
+   * no offline storage, and on the web, which keeps a moved connection's files under its
+   * legacy id instead (`legacyIdOf`: the Cache API can't rename, and a copy of every file
+   * held the launch).
+   */
+  moveConnection?(fromId: string, toId: string): Promise<void>;
   /** Total bytes used by all downloads. */
   totalBytesUsed(): Promise<number>;
   /** How much room there is (see {@link StorageEstimate}), or null when the platform

@@ -146,11 +146,6 @@
       "accounts": "Accounts and devices",
       "support": "Support AudioSilo"
     },
-    "household": {
-      "title": "Profiles arrive later",
-      "body": "Everyone in the house with their own place in every book, a kids mode and sharing come with profiles in a later update.",
-      "flag": "Arrives with profiles"
-    },
     "accounts": {
       "intro": "The servers this device is signed in to. Open one for its password, your devices and API keys."
     },
@@ -989,7 +984,11 @@
       "noCache": "This browser can't keep audio offline. Use a current browser, or the iOS or Android app.",
       "noWorker": "Offline playback isn't ready in this browser yet. Reload the page, and if that doesn't help, use the iOS or Android app."
     },
-    "loading": "Loading downloads"
+    "loading": "Loading downloads",
+    "orphans": {
+      "title": "Not signed in",
+      "body": "Downloads of an account that is no longer signed in on this device. Sign in to it again to play them, or remove them to free the room."
+    }
   },
   "search": {
     "placeholder": "Search books, people, series, characters",
@@ -1216,7 +1215,7 @@
       "label": "Notes"
     },
     "routePicker": {
-      "label": "AirPlay or Cast"
+      "label": "Audio output"
     },
     "sleepTimer": {
       "title": "Sleep timer",
@@ -1490,6 +1489,11 @@
     "browseHere": "Browse the demo here"
   },
   "shell": {
+    "unknownConnection": {
+      "title": "Not signed in to that server",
+      "hint": "This link is for a server this device is no longer signed in to.",
+      "back": "Go back"
+    },
     "home": "AudioSilo home",
     "offline": "Offline · downloads play",
     "serverMore_one": "{{name}} + {{count}} more",
@@ -2023,5 +2027,211 @@
     "signedOut": "Connect a server in AudioSilo to listen in the car",
     "unavailable": "This book can't play right now",
     "subtitle": "{{author}} · {{left}}"
+  },
+  "cast": {
+    "button": {
+      "label": "Cast",
+      "connecting": "Connecting to a Cast device",
+      "connected": "Casting",
+      "connectedTo": "Casting to {{device}}",
+      "blockedLabel": "Cast, not available for this book"
+    },
+    "blocked": {
+      "title": "This book can't be cast",
+      "unsupported": "Its server doesn't support casting yet. Updating AudioSilo on the server adds it.",
+      "local-address": "The app reaches your server at this device's own address (localhost), which a Cast device can't reach. Connect to the server by its network address instead.",
+      "codec": "Its audio format doesn't play on Cast devices, and the server can't convert it.",
+      "no-connection": "Its server isn't signed in on this device. Sign in again to cast it."
+    },
+    "failed": {
+      "title": "Couldn't start casting",
+      "titleDevice": "Couldn't play on {{device}}",
+      "description": "The book stays on this device. Check that the Cast device can reach your server.",
+      "connect": "Couldn't connect to the Cast device"
+    }
+  },
+  "house": {
+    "title": "Listening in the house",
+    "sub": "{{server}} · shared by choice",
+    "settingsLink": "Sharing settings",
+    "listLabel": "Listening in the house on {{server}}",
+    "inTheHouse": "In the house",
+    "line": "{{when}} · {{chapter}}",
+    "when": {
+      "playing": "Listening now",
+      "paused": "Paused",
+      "today": "Earlier today",
+      "yesterday": "Yesterday",
+      "earlier": "Recently"
+    },
+    "label": {
+      "playing": "{{name}} is listening to {{title}}",
+      "paused": "{{name}} paused {{title}}",
+      "today": "{{name}} listened to {{title}} earlier today",
+      "yesterday": "{{name}} listened to {{title}} yesterday",
+      "earlier": "{{name}} listened to {{title}} recently",
+      "withChapter": "{{sentence}}, {{chapter}}"
+    },
+    "share": {
+      "label": "Share what I'm listening to with the house",
+      "switchLabel": "Share what I'm listening to with the house on {{server}}",
+      "body": "Your current book shows on the Home page of other people on {{server}} who share theirs too. Off by default.",
+      "saving": "Saving",
+      "loadFailed": "Couldn't load this setting.",
+      "failed": "Couldn't change sharing on {{server}}",
+      "failedBody": "Nothing changed. Check the connection and try again.",
+      "demo": "Demo accounts can't share what they listen to."
+    }
+  },
+  "kids": {
+    "greeting": "Hi {{name}}",
+    "greetingNoName": "Hi there",
+    "grownUps": {
+      "label": "Grown-ups",
+      "button": "Grown-ups: hold",
+      "holding": "Keep holding",
+      "hint": "Hold to leave kids mode",
+      "action": "Leave kids mode"
+    },
+    "bedtime": {
+      "nowTitle": "It's bedtime",
+      "timerLeft_one": "Sleep timer on, {{count}} minute left",
+      "timerLeft_other": "Sleep timer on, {{count}} minutes left",
+      "at": "Bedtime is at {{time}}",
+      "now": "Sleep timer comes on when a story starts",
+      "later": "After bedtime, a story stops by itself after 20 minutes and the sound fades out slowly."
+    },
+    "player": {
+      "play": "Play",
+      "pause": "Pause",
+      "retry": "Try again",
+      "previous": "Previous chapter",
+      "next": "Next chapter",
+      "back_one": "Go back {{count}} second",
+      "back_other": "Go back {{count}} seconds",
+      "progress": "How far into this chapter",
+      "chapterLeft_one": "{{chapter}} · {{count}} minute left",
+      "chapterLeft_other": "{{chapter}} · {{count}} minutes left"
+    },
+    "stories": {
+      "title": "Your stories",
+      "play": "Play {{title}}",
+      "playing": "Playing",
+      "loading": "Finding your stories",
+      "emptyTitle": "No stories here yet",
+      "emptyBody": "Ask a grown-up to add some on {{server}}.",
+      "errorTitle": "The stories can't load right now",
+      "errorBody": "{{server}} isn't answering. Nothing is lost.",
+      "offlineBody": "{{server}} can't be reached and there are no stories saved on this device.",
+      "retry": "Try again",
+      "onDevice": "These stories are saved on this device."
+    },
+    "startFailed": {
+      "title": "That story won't start right now",
+      "body": "Try another one, or ask a grown-up."
+    }
+  },
+  "profiles": {
+    "someone": "Someone",
+    "status": {
+      "listening": "Listening now",
+      "kids": "Kids mode · bedtime {{time}}",
+      "servers_one": "{{name}} + {{count}} more",
+      "servers_other": "{{name}} + {{count}} more"
+    },
+    "picker": {
+      "eyebrow": "This device is shared",
+      "title": "Who's listening?",
+      "lead": "Each person keeps their own place in every book, their own queue and their own stats.",
+      "close": "Close and keep listening as now",
+      "needsPin": "asks for a PIN",
+      "emptyTitle": "Nobody is signed in here yet",
+      "emptyHint": "Sign in with an AudioSilo account to start listening."
+    },
+    "add": {
+      "label": "Add someone",
+      "hint": "Signs in with their own account",
+      "a11y": "Add someone: sign in with their own account",
+      "chooseAdult": "Choose a grown-up before adding someone."
+    },
+    "connect": {
+      "title": "Add someone to this device.",
+      "lead": "They sign in with their own account on your server or theirs. Everyone keeps their own place in every book.",
+      "knownHeading": "Servers on this device"
+    },
+    "menu": {
+      "listeningAs": "Listening as",
+      "switchTo": "Switch to {{name}}"
+    },
+    "gate": {
+      "title": "This belongs to {{name}}",
+      "body": "It's on {{name}}'s account on this device. Switch to {{name}} to open it.",
+      "switch": "Switch to {{name}}",
+      "back": "Go back"
+    },
+    "pin": {
+      "label": "PIN",
+      "onBody": "Asked when someone switches to {{name}}",
+      "offBody": "Off. Anyone on this device can switch to this person.",
+      "set": "Set a PIN",
+      "setA11y": "Set a PIN for {{name}}",
+      "change": "Change",
+      "changeA11y": "Change {{name}}'s PIN",
+      "remove": "Remove",
+      "removeA11y": "Remove {{name}}'s PIN",
+      "enterTitle": "Enter {{name}}'s PIN",
+      "enterBody": "Four digits.",
+      "currentTitle": "Enter {{name}}'s current PIN",
+      "chooseTitle": "Choose a 4-digit PIN",
+      "confirmTitle": "Enter the PIN again",
+      "chooseBody": "Asked whenever someone switches to {{name}} on this device. It stays on this device.",
+      "fieldLabel": "PIN for {{name}}",
+      "wrong": "That PIN doesn't match",
+      "mismatch": "Those PINs don't match. Choose one again.",
+      "wait_one": "Too many tries. Try again in {{count}} second.",
+      "wait_other": "Too many tries. Try again in {{count}} seconds.",
+      "forgot": "Forgotten it? Remove {{name}} from this device in Settings and sign in again.",
+      "readFailed": "Couldn't check the PIN on this device. Try again.",
+      "noneSet": "There's no PIN set for {{name}} on this device.",
+      "saveFailed": "Couldn't save the PIN on this device. Nothing changed."
+    },
+    "rename": {
+      "label": "Name",
+      "action": "Rename",
+      "title": "Rename {{name}}",
+      "body": "The name shows on this device only. The account keeps its username.",
+      "empty": "Enter a name"
+    },
+    "kids": {
+      "label": "Kids mode",
+      "body": "One library as big covers, a bedtime, and no settings or search. Leaving needs a grown-up.",
+      "switchA11y": "Kids mode for {{name}}",
+      "library": "Library",
+      "libraryBody": "The one library kids mode shows",
+      "libraryOn": "{{name}} on {{server}}",
+      "firstLibrary": "The first one ({{name}})",
+      "librariesLoading": "Loading the libraries",
+      "librariesFailed": "Couldn't load the libraries.",
+      "noLibraries": "This account sees no libraries. Ask the server's admin to share one.",
+      "bedtime": "Bedtime",
+      "bedtimeBody": "From then until {{until}}, playing starts a 20 minute sleep timer",
+      "needsGrownUp": "Someone on this device has to stay a grown-up, or nobody could leave kids mode. Add a grown-up first."
+    },
+    "remove": {
+      "label": "Remove from this device",
+      "hint": "Signs {{name}} out of their servers here. Their place in every book stays on the server.",
+      "action": "Remove from this device",
+      "title": "Remove {{name}} from this device?",
+      "body": "This signs {{name}} out of {{servers}} on this device and deletes their downloads here. Their place in every book stays on the server.",
+      "noPassword": "{{name}} has no password on {{server}}: without one they'll need a new invite to sign in again.",
+      "confirm": "Remove and sign out"
+    },
+    "household": {
+      "intro": "Everyone who listens on this device, each with their own servers, place in every book, queue and stats.",
+      "switch": "Switch",
+      "askAtLaunch": "Ask who's listening when the app opens",
+      "askAtLaunchBody": "With two or more people on this device",
+      "noSharing": "None of your servers offers this yet."
+    }
   }
 }

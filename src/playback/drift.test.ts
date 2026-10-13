@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { DRIFT_STORAGE_KEY } from '@/lib/storage-keys';
+
 import {
-  DRIFT_STORAGE_KEY,
   DRIFT_TTL_MS,
   driftOffer,
   pruneDrifts,

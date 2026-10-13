@@ -1,4 +1,4 @@
-import { contentKey } from '@/lib/content-key';
+import { contentKey, isKeyOf } from '@/lib/content-key';
 import { onConnectionRemoved } from '@/stores/session';
 
 /**
@@ -35,8 +35,7 @@ export function clearScrollMemory(): void {
 
 // Drop a removed connection's remembered offsets (keys are `${connectionId}:...`).
 onConnectionRemoved((id) => {
-  const prefix = `${id}:`;
   for (const key of offsets.keys()) {
-    if (key.startsWith(prefix)) offsets.delete(key);
+    if (isKeyOf(key, id)) offsets.delete(key);
   }
 });

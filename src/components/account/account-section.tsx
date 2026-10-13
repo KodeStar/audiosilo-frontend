@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { APP_VERSION } from '@/lib/version';
+import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { resolveAccountCid, signedInSessions } from './account-model';
@@ -54,7 +55,9 @@ const CARDS_BESIDE_MIN = 680;
  */
 export function AccountSection({ connectionId }: { connectionId?: string }) {
   const { t } = useTranslation();
-  const connections = useSession((s) => s.connections);
+  // The servers of the person listening (Phase 8 profiles); a link to another person's
+  // account is gated by the route's ContentScope first.
+  const connections = useProfileConnections();
   const defaultId = useSession((s) => s.defaultConnectionId);
   const [picked, setPicked] = useState<string | null>(null);
   const cid = resolveAccountCid(

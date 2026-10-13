@@ -131,6 +131,7 @@ import { queryClient } from '@/api/provider';
 import { engine as downloadEngine } from '@/downloads/engine';
 import { isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
+import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import { flushConnection } from './progress-sync';
@@ -145,6 +146,7 @@ import {
   selectIsTransportLive,
   stopPlaybackForConnection,
   teardownBeforeTokenRevoke,
+  initializePlayback,
   usePlayer,
 } from './store';
 /* eslint-enable import/first */
@@ -229,6 +231,14 @@ afterEach(() => {
 });
 
 // --- persist() (reached via the engine stop transition) --------------------
+
+it('finding 12: initializing playback creates the shared service without loading or playing', async () => {
+  await initializePlayback();
+  expect(mockSvc.setup).toHaveBeenCalledTimes(1);
+  expect(mockSvc.load).not.toHaveBeenCalled();
+  expect(mockSvc.play).not.toHaveBeenCalled();
+  expect(usePlayer.getState().nowPlaying).toBeNull();
+});
 
 describe('persist (via the engine snapshot transition)', () => {
   it('does NOT save when the whole-book position is <= 0', async () => {
@@ -1006,6 +1016,160 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
 // --- per-connection scoping of saves + the download hot-swap -----------------
 
 describe('connection scoping', () => {
+  describe("finding 11: a switch to another server's book saves the previous book through its own server", () => {
+    const client2 = { ...fakeClient, coverUrl: () => 'c2-cover' };
+    const playing = () => {
+      pushSnapshot(snap('playing', 40));
+    };
+    /** A start on c2 whose resume lookup is still out (the window between the switch and
+     * the new book becoming `nowPlaying`). */
+    async function startOnOtherServer() {
+      let resume!: (value: ResumeLookup) => void;
+      mockLoadInitialProgress.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resume = resolve;
+          }),
+      );
+      const starting = usePlayer
+        .getState()
+        .playBook('c2', 2, makeBook({ rel_path: 'B/Other.m4b' }));
+      for (let i = 0; i < 40; i++) await Promise.resolve();
+      return { resume, starting };
+    }
+
+    beforeEach(() => {
+      mockResolveClient.mockImplementation((cid: string) =>
+        cid === 'c2' ? (client2 as typeof fakeClient) : fakeClient,
+      );
+    });
+    afterEach(() => mockResolveClient.mockImplementation(() => fakeClient));
+
+    it("saves the previous book's place at the switch, through its own server", async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      mockSaveProgress.mockClear();
+      const { resume, starting } = await startOnOtherServer();
+      expect(mockSaveProgress).toHaveBeenCalledWith(
+        fakeClient,
+        expect.objectContaining({ connectionId: 'c1', path: 'A/Book.m4b', position: 40 }),
+      );
+      resume({ kind: 'empty' });
+      await starting;
+    });
+
+    it("a save before the next book is loaded (a lock-screen pause) is the previous book's, to its server", async () => {
+      await startBook(makeBook(), 0, 'c1');
+      playing();
+      const { resume, starting } = await startOnOtherServer();
+      mockSaveProgress.mockClear();
+      // The old book is still the engine's and `nowPlaying`: paused from the lock screen.
+      pushSnapshot(snap('paused', 45));
+      await flushMicrotasks();
+      expect(mockSaveProgress).toHaveBeenCalledWith(
+        fakeClient,
+        expect.objectContaining({ connectionId: 'c1', position: 45 }),
+      );
+      expect(mockSaveProgress).not.toHaveBeenCalledWith(client2, expect.anything());
+      resume({ kind: 'empty' });
+      await starting;
+    });
+  });
+
+  it('finding 5: switching profiles cancels a pending resume before load or play', async () => {
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'alice',
+      profiles: [
+        { id: 'alice', name: 'Alice', connectionIds: ['c1'] },
+        { id: 'bob', name: 'Bob', connectionIds: ['c9'] },
+      ],
+    });
+    let resume!: (value: ResumeLookup) => void;
+    mockLoadInitialProgress.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resume = resolve;
+        }),
+    );
+    try {
+      const starting = usePlayer.getState().playBook('c1', 2, makeBook());
+      for (let i = 0; i < 40; i++) await Promise.resolve();
+      expect(resume).toBeDefined();
+      await switchProfile('bob');
+      resume({ kind: 'empty' });
+      await starting;
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
+  it('finding 5: switching profiles while the book loads never plays it, nor leaves it loading', async () => {
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'alice',
+      profiles: [
+        { id: 'alice', name: 'Alice', connectionIds: ['c1'] },
+        { id: 'bob', name: 'Bob', connectionIds: ['c9'] },
+      ],
+    });
+    let landed!: () => void;
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          landed = resolve;
+        }),
+    );
+    try {
+      const starting = usePlayer.getState().playBook('c1', 2, makeBook());
+      for (let i = 0; i < 40; i++) await Promise.resolve();
+      expect(landed).toBeDefined();
+      expect(usePlayer.getState().loadingBook).not.toBeNull();
+      await switchProfile('bob'); // stops Alice's book (it is nowPlaying by now)
+      (mockSvc.reset as jest.Mock).mockClear();
+      landed();
+      await starting;
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      expect(mockSvc.reset).toHaveBeenCalled(); // the load landed after stop's reset
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      // Not left "loading": an adoption (a car or Cast book of Bob's) stands back while set.
+      expect(usePlayer.getState().loadingBook).toBeNull();
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
+  // Decision 7 regression (Phase 8): the one "only the person listening may play" rule
+  // (`mayActFor`) is enforced here, so the player route, the car and every start obey it.
+  it("never starts another person's book, nor anyone's while nobody is chosen", async () => {
+    try {
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'sam', name: 'Sam', connectionIds: ['c9'] },
+          { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+        ],
+        activeProfileId: 'sam',
+      });
+      await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      useProfiles.setState({ activeProfileId: null });
+      await usePlayer.getState().playBook('c9', 2, makeBook(), undefined, 0);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      // The listening person's own book plays.
+      useProfiles.setState({ activeProfileId: 'sam' });
+      await usePlayer.getState().playBook('c9', 2, makeBook(), undefined, 0);
+      expect(usePlayer.getState().nowPlaying?.connectionId).toBe('c9');
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
   it('persist stamps the connectionId of the loaded connection into the save', async () => {
     await usePlayer.getState().playBook('c9', 2, makeBook(), undefined, 0);
 

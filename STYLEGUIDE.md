@@ -507,7 +507,11 @@ tokens are dashed with an eye-off icon.
 text"), Add (needs an invite). Choosing Leo switches the whole app to **kids mode**: warm gradient, Fredoka, "Hi
 Leo", a bedtime card, one huge book with a 120 px play button and 84 px skip buttons, then the Kids library as big
 rounded covers. No search, settings or downloads. Leaving needs a grown-up to **press and hold for 2 seconds**.
-Decision for the owner: profiles on a device marked "shared" switch without a password.
+The owner's decision (Phase 8): a profile may have an optional 4-digit PIN, kept on the device only, asked when
+switching into that profile (a wrong PIN shakes the field and says "That PIN doesn't match"; five wrong tries wait
+30 s). In this codebase "Who's listening?" is a full-screen root route (`/profiles`, 76 px avatars on a phone),
+"Add someone" signs a new person in through the connect flow, and the picker opens at launch with two or more
+people when "Ask who's listening when the app opens" is on (Settings > Household).
 
 ### Year in listening *custom*
 9:16 story cards with progress bars, tap right/left to move, 6 s auto-advance. Built (Phase 5,
@@ -758,7 +762,8 @@ options, the match in `brand-ink` bold, key hints and the result count in the fo
 Narrators, Characters (met only, the rest counted in a note row) and Go to, from the Search screen's
 model in `src/components/search/`) and the
 top bar's **profile menu** (`profile-menu.tsx`, a DropdownMenu: servers with their state, Add a server,
-the account, appearance; the household waits for Phase 8). The appearance items show the sun or the moon
+the account, appearance; since Phase 8 it starts with the person listening, the other people on this device
+and "Who's listening?", and lists only that person's servers). The appearance items show the sun or the moon
 of the appearance they switch to.
 
 ### Fonts

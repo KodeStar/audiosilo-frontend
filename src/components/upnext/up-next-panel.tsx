@@ -24,7 +24,8 @@ import {
   selectIsPlaying,
   usePlayer,
 } from '@/playback/store';
-import { useConnectionName, useSession } from '@/stores/session';
+import { useProfileConnections } from '@/stores/profiles';
+import { useConnectionName } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -37,7 +38,7 @@ import { usePlayNow, useUpNextData } from './use-up-next';
 /** "7h 2m queued" (with the server's name first when signed in to several). */
 export function useQueuedLine(cid: string | undefined, seconds: number, count: number): string {
   const { t } = useTranslation();
-  const several = useSession((s) => s.connections.length > 1);
+  const several = useProfileConnections().length > 1;
   const name = useConnectionName(cid);
   const amount =
     count === 0 ? t('upnext.nothingQueued') : t('upnext.queued', { time: formatDuration(seconds) });

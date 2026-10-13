@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { ReconnectBanner } from './reconnect-banner';
@@ -24,6 +25,7 @@ const AWAY = 'https://books.example.com';
 
 const os = Platform.OS;
 beforeEach(async () => {
+  resetProfilesForTests();
   await AsyncStorage.clear();
   mockPush.mockClear();
   useAddressRoute.setState({ picks: {} });
@@ -42,7 +44,7 @@ beforeEach(async () => {
     name: 'Hearthside',
     addresses: { home: HOME, away: AWAY },
   });
-  useSession.getState().markNeedsReconnect('srv-1', 'auth');
+  useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
 });
 afterAll(() => {
   Platform.OS = os;
@@ -50,13 +52,13 @@ afterAll(() => {
 
 it('away from home, signs in again through the away address the connection uses now', async () => {
   Platform.OS = 'ios';
-  setAddressPick('srv-1', AWAY);
+  setAddressPick('srv-1.1', AWAY);
   await render(<ReconnectBanner />);
   await fireEvent.press(screen.getByRole('button'));
   expect(useSession.getState().pendingServerUrl).toBe(AWAY);
   expect(mockPush).toHaveBeenCalledWith({
     pathname: '/connect/sign-in',
-    params: { serverName: 'Hearthside', reconnect: 'srv-1' },
+    params: { serverName: 'Hearthside', reconnect: 'srv-1.1' },
   });
 });
 
@@ -68,7 +70,24 @@ it('without a pick, signs in through the paired address', async () => {
 });
 
 it('renders nothing when no connection needs reconnecting', async () => {
-  useSession.getState().clearNeedsReconnect('srv-1');
+  useSession.getState().clearNeedsReconnect('srv-1.1');
   await render(<ReconnectBanner />);
   expect(screen.queryByRole('button')).toBeNull();
+});
+
+describe('ReconnectBanner and the people on this device (Phase 8)', () => {
+  it("asks only about the person listening's servers", async () => {
+    const id = useSession.getState().connections[0].id;
+    useSession.getState().markNeedsReconnect(id, 'auth');
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['other.1'] },
+        { id: 'sam', name: 'Sam', connectionIds: [id] },
+      ],
+      activeProfileId: 'chris',
+    });
+    const view = await render(<ReconnectBanner />);
+    expect(view.toJSON()).toBeNull();
+  });
 });

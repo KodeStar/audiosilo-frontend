@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 
 import { getItem } from '@/lib/storage';
-import { DRIFT_STORAGE_KEY, type DriftRecords, pruneDrifts } from '@/playback/drift';
+import { DRIFT_STORAGE_KEY } from '@/lib/storage-keys';
+import { type DriftRecords, pruneDrifts } from '@/playback/drift';
 
 /**
  * This device's drift-off records (`src/playback/drift.ts`), read once when the Diary

@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
-import { contentKey } from '@/lib/content-key';
+import { contentKey, isKeyOf } from '@/lib/content-key';
 import { persistedDocument } from '@/lib/storage';
+import { TIME_SAVED_KEY } from '@/lib/storage-keys';
 import { onForeground } from '@/lib/when-active';
 import { onConnectionRemoved } from '@/stores/session';
 
@@ -62,9 +63,8 @@ export function mergeSaved(a: TimeSavedDoc, b: TimeSavedDoc): TimeSavedDoc {
 /** `doc` without the books of the connection `connectionId` (their keys are
  * `contentKey`s, which start with it). The lifetime total stays: it is this device's. */
 export function withoutConnection(doc: TimeSavedDoc, connectionId: string): TimeSavedDoc {
-  const prefix = `${connectionId}:`;
   const books = Object.fromEntries(
-    Object.entries(doc.books).filter(([k]) => !k.startsWith(prefix)),
+    Object.entries(doc.books).filter(([k]) => !isKeyOf(k, connectionId)),
   );
   return { lifetime: doc.lifetime, books };
 }
@@ -93,7 +93,7 @@ export function savedForDisplay(seconds: number): number {
   return whole < 60 ? whole : whole - (whole % 60);
 }
 
-const stored = persistedDocument<TimeSavedDoc>('audiosilo.timeSaved', parseTimeSaved);
+const stored = persistedDocument<TimeSavedDoc>(TIME_SAVED_KEY, parseTimeSaved);
 
 /** The counts as the UI shows them: the stored ones plus what this run added. */
 export const useTimeSavedStore = create<TimeSavedDoc>()(() => EMPTY);
@@ -159,7 +159,7 @@ export function resetTimeSavedBase(): void {
   base = null;
 }
 
-// A removed connection's books go with it (re-adding a server mints a new id).
+// A removed connection's books go with it (signing out forgets that account here).
 onConnectionRemoved(async (id) => {
   await hydrateTimeSaved();
   const doc = docOf(useTimeSavedStore.getState());

@@ -181,17 +181,17 @@ export interface PlaybackService {
   setVolume(volume: number): Promise<void>;
   reset(): Promise<void>;
   /**
-   * Present the OS audio-route / casting picker so the user can send playback to
-   * another output: AirPlay on iOS / Safari (→ HomePod, AirPlay speakers), the
-   * media-output switcher on Android (→ Bluetooth e.g. an Echo, Cast devices), and
-   * the Remote Playback API elsewhere. Resolves `true` if a picker was shown.
-   * Optional — engines/platforms without route support omit it.
+   * Present the OS audio-route picker so the user can send playback to another output:
+   * AirPlay on iOS / Safari (→ HomePod, AirPlay speakers) and the media-output switcher on
+   * Android (→ Bluetooth, e.g. an Echo). Resolves `true` if a picker was shown. Optional:
+   * engines/platforms without route support omit it. Chromecast is not a route picker: it
+   * is a playback route of its own (`src/cast/`), with a cast token in the receiver's URLs.
    */
   showRoutePicker?(): Promise<boolean>;
   /**
    * Whether a route picker can be shown right now, so the UI can hide the button
-   * where there's no support (e.g. a desktop browser without Remote Playback or
-   * AirPlay). Native engines return true; web checks the available media APIs.
+   * where there is no support (any browser but Safari, which has AirPlay). Native engines
+   * return true; web checks for the AirPlay picker.
    */
   canShowRoutePicker?(): boolean;
   /**
@@ -232,6 +232,21 @@ export interface PlaybackService {
    * native bridge has an engine it did not load.
    */
   adoptPlace?(snapshot: PlaybackSnapshot): void;
+  /**
+   * The queue of a book the store took over without `load` (`adoptLoaded`: the Android
+   * service's book, a Cast receiver's), or the phone's own copy of the loaded book (its
+   * download landed while casting). The Cast route switch (`RoutedPlaybackService`) hands
+   * this queue to a receiver when a session starts, and back to the phone when it ends.
+   * Optional: only the route switch keeps one.
+   */
+  rememberLoad?(load: {
+    tracks: PlaybackTrack[];
+    chapters?: PlaybackChapter[];
+    book?: BookRef;
+  }): void;
+  /** Whether playback is on a Cast receiver, or on its way there (the route switch). A
+   * receiver streams the book from the server whatever the phone holds. */
+  isCasting?(): boolean;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

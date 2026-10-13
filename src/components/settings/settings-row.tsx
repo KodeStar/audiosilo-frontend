@@ -60,7 +60,13 @@ export function SettingRow({
         inline ? 'flex-row items-center justify-between gap-4' : 'gap-2.5',
       )}
     >
-      <View className={cn('gap-0.5', inline && 'min-w-0 shrink')}>
+      {/* Inline, the words take the room the control leaves (`flex-1`, not `shrink`): a
+          shrunk column kept the height of its unshrunk one-line text on native (Yoga), so
+          a description that wrapped beside two buttons was cut to its first line. */}
+      <View
+        testID={testID ? `${testID}-text` : undefined}
+        className={cn('gap-0.5', inline && 'min-w-0 flex-1')}
+      >
         <Text>{label}</Text>
         {typeof description === 'string' && description ? (
           <Text variant="caption">{description}</Text>

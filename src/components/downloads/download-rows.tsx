@@ -306,8 +306,9 @@ export function ReadyRow({
   /** "38%", "Not started" or "Finished", when the listener's progress is known. */
   progressLabel?: string;
   first: boolean;
-  onOpen: () => void;
-  onPlay: () => void;
+  /** Absent for a download no signed-in account holds ("Not signed in"): it can only go. */
+  onOpen?: () => void;
+  onPlay?: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -326,7 +327,8 @@ export function ReadyRow({
     <View className={cn('flex-row items-center gap-2 pr-3', !first && 'border-t border-border')}>
       <AnimatedPressable
         onPress={onOpen}
-        accessibilityRole="button"
+        disabled={!onOpen}
+        accessibilityRole={onOpen ? 'button' : 'text'}
         accessibilityLabel={[entry.title, meta].filter(Boolean).join(', ')}
         className={cn(
           'min-w-0 flex-1 flex-row items-center gap-3 py-3 pl-4 active:bg-accent hover:bg-accent',
@@ -357,13 +359,15 @@ export function ReadyRow({
           </Text>
         )}
       </AnimatedPressable>
-      <Button
-        variant="ghost"
-        size="icon"
-        icon="play"
-        accessibilityLabel={t('downloads.row.play', { title: entry.title })}
-        onPress={onPlay}
-      />
+      {onPlay ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          icon="play"
+          accessibilityLabel={t('downloads.row.play', { title: entry.title })}
+          onPress={onPlay}
+        />
+      ) : null}
       <Button
         variant="ghost"
         size="icon"

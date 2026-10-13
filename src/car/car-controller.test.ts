@@ -12,6 +12,7 @@ type MockBookmarkHandler = (
 
 const mockNative = {
   available: true,
+  stopPlayback: jest.fn(async () => {}),
   setSnapshot: jest.fn(async (_json: string) => true),
   getLoadedBook: jest.fn(async (): Promise<unknown> => null),
   consumePendingBookmarks: jest.fn(async (): Promise<unknown[]> => []),
@@ -57,6 +58,9 @@ jest.mock('./car-artwork', () => ({
 const mockArtOnDisk = new Map<string, string>();
 
 jest.mock('@/lib/bootstrap', () => ({ bootstrapPlayback: jest.fn(async () => {}) }));
+
+const mockEndCastForCar = jest.fn(async () => false);
+jest.mock('@/cast/cast-session', () => ({ endCastForCar: () => mockEndCastForCar() }));
 
 const mockStartBookInPlace = jest.fn(async (..._a: unknown[]) => true);
 jest.mock('@/components/player/start-book', () => ({
@@ -163,8 +167,11 @@ import { AppState, Platform } from 'react-native';
 
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
+import { bootstrapPlayback } from '@/lib/bootstrap';
+import { setConnectionAliases } from '@/lib/connection-id';
 import * as store from '@/playback/store';
 import { useLibrarySelection } from '@/stores/library-selection';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession, type Connection } from '@/stores/session';
 import { getItem, setItem } from '@/lib/storage';
 
@@ -341,6 +348,7 @@ beforeEach(async () => {
   mockLocalPlaces.mirror = {};
   mockLocalPlaces.queue = [];
   connect([]);
+  resetProfilesForTests();
   // A car has met this phone before (the snapshot's gate); the gate's own tests clear it.
   await setItem('audiosilo.carSeen', true);
 });
@@ -659,6 +667,61 @@ describe('startCarSync', () => {
     expect(mockNative.setSnapshot).toHaveBeenCalledTimes(2);
   });
 
+  it("lists only the active profile's servers, and rebuilds at once on a switch", async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({
+      progress: [makeProgress({ path: 'P1', position: 60 })],
+      items: { P1: makeBook({ rel_path: 'P1', title: "Chris's book" }) },
+    });
+    mockClients.c2 = fakeClient({
+      progress: [makeProgress({ path: 'P2', position: 60 })],
+      items: { P2: makeBook({ rel_path: 'P2', title: "Sam's book" }) },
+    });
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['c1'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'continue')!.items.map((i) => i.title)).toEqual(["Chris's book"]);
+    expect(mockClients.c2.allProgress).not.toHaveBeenCalled();
+    await settle(MIN_GAP_MS);
+    const writes = mockNative.setSnapshot.mock.calls.length;
+
+    useProfiles.setState({ activeProfileId: 'sam' });
+    // At once, as far as the gap after the last write allows (not after the settle).
+    await settle(MIN_GAP_MS);
+    expect(mockNative.setSnapshot.mock.calls.length).toBeGreaterThan(writes);
+    expect(tab(lastSnapshot(), 'continue')!.items.map((i) => i.title)).toEqual(["Sam's book"]);
+  });
+
+  it("lists only the active profile's downloads (no play spec for another person's)", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({});
+    mockClients.c2 = fakeClient({});
+    useDownloads.setState({
+      entries: { 'c1:2:Mine': downloaded('c1', 'Mine'), 'c2:2:Theirs': downloaded('c2', 'Theirs') },
+    });
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c1'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c2'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    stop = startCarSync();
+    await settle();
+    const snap = lastSnapshot();
+    expect(tab(snap, 'downloads')!.items.map((i) => i.title)).toEqual(['Downloaded Mine']);
+    expect(JSON.stringify(snap)).not.toContain('Theirs');
+  });
+
   it('runs the connect path once for a car connected before it started (CarPlay-first: the iOS car start heard the queued connect)', async () => {
     await setItem('audiosilo.carSeen', false);
     connect(['c1']);
@@ -742,6 +805,72 @@ describe('play requests', () => {
     });
     await handleCarPlayRequest(carItemId(ref));
     expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+  });
+
+  it('an item of a snapshot from before the identity migration starts the book on its new connection', async () => {
+    // The aliases load in the launch steps, which a tap queued while JS booted waits for.
+    jest.mocked(bootstrapPlayback).mockImplementationOnce(async () => {
+      setConnectionAliases({ srv: 'srv.3' });
+    });
+    try {
+      await handleCarPlayRequest(carItemId({ ...ref, connectionId: 'srv' }));
+      expect(mockStartBookInPlace).toHaveBeenCalledWith({ ...ref, connectionId: 'srv.3' });
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
+  it("leaves another person's book to the start, which refuses it (an older snapshot's item)", async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    // `startBookInPlace` holds the rule (`mayActFor`, tested with it): the car keeps no copy.
+    mockStartBookInPlace.mockResolvedValueOnce(false);
+    await handleCarPlayRequest(carItemId(ref));
+    expect(mockStartBookInPlace).toHaveBeenCalledWith(ref);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("another person's"));
+    warn.mockRestore();
+  });
+
+  it('finding 9: casting, a play from the car ends the cast first and plays in the car', async () => {
+    const order: string[] = [];
+    mockEndCastForCar.mockImplementationOnce(async () => {
+      order.push('end cast');
+      // The book came back here, paused at the receiver's place.
+      usePlayer.setState({
+        nowPlaying: { ...ref, queue: { offsets: [0], total: 100 } },
+        snapshot: { state: 'paused', trackIndex: 0, position: 70, duration: 100, rate: 1 },
+      });
+      return true;
+    });
+    usePlayer.getState().toggle.mockImplementationOnce(async () => {
+      order.push('play');
+    });
+    await handleCarPlayRequest(carItemId(ref));
+    expect(order).toEqual(['end cast', 'play']);
+    expect(mockStartBookInPlace).not.toHaveBeenCalled();
+  });
+
+  it("finding 9: another person's book from an old snapshot never ends their cast", async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'] },
+      ],
+      activeProfileId: 'sam',
+    });
+    mockStartBookInPlace.mockResolvedValueOnce(false);
+    await handleCarPlayRequest(carItemId(ref));
+    expect(mockEndCastForCar).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('ignores an id that is not a car item, and logs a failed start', async () => {
@@ -876,6 +1005,33 @@ describe('bookmarks from outside the app', () => {
     expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
   });
 
+  it('adds ones naming an old connection id (from before the identity migration) on its new one', async () => {
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      connect(['srv.3']);
+      mockClients['srv.3'] = fakeClient({});
+      useDownloads.setState({ entries: { 'srv.3:2:D': downloaded('srv.3', 'D') } });
+      // One kept from an earlier drain (read back here, so resolved here); one the Android
+      // service queued while no JS ran, which the native adapter already resolved
+      // (`car-native.native.test.ts`).
+      await setItem('audiosilo.carBookmarks', [
+        { connectionId: 'srv', libraryId: 2, path: 'D', position: 12 },
+      ]);
+      mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+        { connectionId: 'srv.3', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark.mock.calls).toEqual([
+        ['srv.3', 2, 'D', 12],
+        ['srv.3', 2, 'D', 130],
+      ]);
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   it('reads a streaming book’s timeline through its item and chapters', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({
@@ -908,6 +1064,47 @@ describe('adopting the service’s book (Android)', () => {
     stop = startCarSync();
     await settle();
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+  });
+
+  it('finding 9: stops unauthorized native audio without adopting or saving it', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockNative.getLoadedBook.mockResolvedValue(loaded);
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    stop = startCarSync();
+    await settle();
+    expect(mockNative.stopPlayback).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+  });
+
+  it("finding 9: stops another person's book named by its legacy connection id", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockNative.stopPlayback.mockClear();
+    // A play spec from a snapshot written before the identity migration.
+    mockNative.getLoadedBook.mockResolvedValue({ ...loaded, connectionId: 'srv' });
+    setConnectionAliases({ srv: 'c1' });
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'sam', name: 'Sam', connectionIds: ['c2'] },
+        { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+      ],
+      activeProfileId: 'sam',
+    });
+    try {
+      stop = startCarSync();
+      await settle();
+      expect(mockNative.stopPlayback).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('leaves the player alone when it already has that book, or one is loading', async () => {
@@ -1154,6 +1351,36 @@ describe('offline', () => {
     await settle(SETTLE_MS + MIN_GAP_MS);
     expect(mockNative.setSnapshot).not.toHaveBeenCalled();
     expect(pruneArtwork).not.toHaveBeenCalled();
+  });
+
+  it('finding 9: an offline profile switch replaces the previous native snapshot', async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({});
+    mockClients.c2 = fakeClient({});
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'alice',
+      profiles: [
+        { id: 'alice', name: 'Alice', connectionIds: ['c1'] },
+        { id: 'bob', name: 'Bob', connectionIds: ['c2'] },
+      ],
+    });
+    useDownloads.setState({
+      entries: { 'c1:2:D': downloaded('c1', 'D'), 'c2:2:E': downloaded('c2', 'E') },
+    });
+    stop = startCarSync();
+    await settle();
+    mockNative.setSnapshot.mockClear();
+    unreachable(mockClients.c1);
+    unreachable(mockClients.c2);
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0] } },
+    });
+    useProfiles.setState({ activeProfileId: 'bob' });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(mockNative.setSnapshot).toHaveBeenCalled();
+    expect(tab(lastSnapshot(), 'continue')?.items ?? []).toEqual([]);
+    expect(tab(lastSnapshot(), 'downloads')!.items.map((i) => i.title)).toEqual(['Downloaded E']);
   });
 
   it('still writes what it has when no snapshot was ever written', async () => {

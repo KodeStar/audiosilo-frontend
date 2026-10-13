@@ -39,7 +39,7 @@ import { cn } from '@/lib/utils';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useRecentSearches } from '@/stores/search';
-import { useSession } from '@/stores/session';
+import { useProfileConnections } from '@/stores/profiles';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -340,7 +340,7 @@ function PaletteBody() {
   const recent = useRecentSearches((s) => s.recent);
   const remember = useRecentSearches((s) => s.remember);
   const close = usePalette((s) => s.close);
-  const connections = useSession((s) => s.connections);
+  const connections = useProfileConnections();
   const debounced = useDebouncedValue(query.trim(), DEBOUNCE_MS);
   const [selected, setSelected] = useState(0);
 

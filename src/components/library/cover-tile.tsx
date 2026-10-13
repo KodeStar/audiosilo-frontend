@@ -15,6 +15,7 @@ import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
 import { percentOf, progressFractionRemaining } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
+import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 
@@ -75,7 +76,7 @@ function tileStateLabels(opts: {
 /** A tile's friend-server flag: the connection's name when several servers are signed
  * in and it isn't the default one, else nothing (`CoverTile`'s `server`). */
 export function useServerFlag(): (connectionId: string) => string | undefined {
-  const connections = useSession((s) => s.connections);
+  const connections = useProfileConnections();
   const defaultCid = useSession((s) => s.defaultConnectionId);
   return (cid) =>
     connections.length > 1 && cid !== defaultCid

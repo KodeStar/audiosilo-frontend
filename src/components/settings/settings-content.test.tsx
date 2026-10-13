@@ -35,6 +35,11 @@ jest.mock('@/components/account/connections-section', () => {
     useConnectionRemoval: () => ({ onRemove: mockOnRemove, dialog: null }),
   };
 });
+// The household pane has its own tests (`household-pane.test.tsx`).
+jest.mock('@/components/profiles/household-pane', () => {
+  const { Text: RNText } = jest.requireActual('react-native');
+  return { HouseholdPane: () => <RNText>household-pane</RNText> };
+});
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'light', pref: 'system', setPref: jest.fn() }),
 }));
@@ -133,7 +138,7 @@ describe('SettingsContent, stacked', () => {
     expect(screen.getAllByText('Skip back')).toHaveLength(1);
     expect(screen.getAllByText('Download automatically')).toHaveLength(1);
     expect(screen.getAllByText('keep-ahead')).toHaveLength(1);
-    expect(screen.getByText('Arrives with profiles')).toBeTruthy();
+    expect(screen.getAllByText('household-pane')).toHaveLength(1);
     // No Journal row: the Journal lives in the You hub.
     expect(screen.queryByText('Journal')).toBeNull();
   });

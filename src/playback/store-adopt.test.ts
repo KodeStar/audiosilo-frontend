@@ -28,12 +28,18 @@ const mockSvc = {
   setVolume: jest.fn(async () => {}),
   reset: jest.fn(async () => {}),
   adoptPlace: jest.fn(),
+  rememberLoad: jest.fn(),
+  isCasting: jest.fn(() => false),
   getSnapshot: jest.fn(() => ({ ...INITIAL })),
   subscribe: jest.fn((listener: (s: PlaybackSnapshot) => void) => {
     pushSnapshot = listener;
     return () => {};
   }),
-} as unknown as PlaybackService & { adoptPlace: jest.Mock };
+} as unknown as PlaybackService & {
+  adoptPlace: jest.Mock;
+  rememberLoad: jest.Mock;
+  isCasting: jest.Mock;
+};
 
 jest.mock('./service', () => ({ createPlaybackService: () => mockSvc }));
 
@@ -75,6 +81,8 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
+import { setConnectionAliases } from '@/lib/connection-id';
+import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
 import { onPickedUpAgain, usePlayer } from './store';
@@ -174,6 +182,54 @@ afterEach(() => {
 });
 
 describe('adoptLoaded', () => {
+  it('finding 5: switching profiles invalidates an adoption awaiting its source', async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'alice',
+      profiles: [
+        { id: 'alice', name: 'Alice', connectionIds: ['c1'] },
+        { id: 'bob', name: 'Bob', connectionIds: ['c9'] },
+      ],
+    });
+    try {
+      const adopting = usePlayer.getState().adoptLoaded(loadedB({}));
+      await switchProfile('bob');
+      expect(await adopting).toBe(false);
+      expect(mockSvc.adoptPlace).not.toHaveBeenCalled();
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
+  // Decision 7 regression (Phase 8): `mayActFor` inside the adoption, which both the
+  // Android car path and a Cast session resumed with a receiver's book go through.
+  it("never adopts another person's book (an old car play spec, a receiver's book after a switch)", async () => {
+    try {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'sam', name: 'Sam', connectionIds: ['c9'] },
+          { id: 'alex', name: 'Alex', connectionIds: ['c1'], hasPin: true },
+        ],
+        activeProfileId: 'sam',
+      });
+      expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: true }))).toBe(false);
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      useProfiles.setState({ activeProfileId: null });
+      expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: true }))).toBe(false);
+      // Once they are the one listening, theirs is adopted.
+      useProfiles.setState({ activeProfileId: 'alex' });
+      expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: false }))).toBe(true);
+      expect(usePlayer.getState().nowPlaying?.connectionId).toBe('c1');
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+
   it("asks for another device's newer place before its first save when the book plays", async () => {
     // The engine's place was never checked against the server: a car start plays the place
     // its snapshot was built with, and the tablet may have played on since.
@@ -407,10 +463,159 @@ describe('adoptLoaded', () => {
     expect(usePlayer.getState().snapshot.state).toBe('paused');
   });
 
+  // Phase 8: a play spec from a car snapshot written before the identity migration names the
+  // old connection id. Fails without the alias in `adoptLoadedBook`: the store would hold the
+  // book under the old id (its download not found, its saves filed under a dead id).
+  it('adopts a book the service names by an old connection id under the new one', async () => {
+    setConnectionAliases({ c0: 'c1' });
+    try {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+      expect(await usePlayer.getState().adoptLoaded({ ...loadedB({}), connectionId: 'c0' })).toBe(
+        true,
+      );
+      const { nowPlaying } = usePlayer.getState();
+      expect(nowPlaying).toMatchObject({ connectionId: 'c1', libraryId: 2, path: 'B' });
+      // Its download, found under the new id.
+      expect(nowPlaying!.queue.tracks.map((t) => t.url)).toEqual([
+        'file:///d/1.mp3',
+        'file:///d/2.mp3',
+      ]);
+      expect(mockResolveClient).not.toHaveBeenCalledWith('c0');
+    } finally {
+      setConnectionAliases({});
+    }
+  });
+
   it('gives up when the book is neither downloaded nor on a signed-in server', async () => {
     mockResolveClient.mockReturnValue(null);
     expect(await usePlayer.getState().adoptLoaded(loadedB({}))).toBe(false);
     expect(usePlayer.getState().nowPlaying).toBeNull();
     mockResolveClient.mockReturnValue(fakeClient);
+  });
+});
+
+describe('a start racing a stop, a cast or a download (Phase 8 review)', () => {
+  afterEach(() => {
+    resetProfilesForTests();
+    mockSvc.isCasting.mockImplementation(() => false);
+    (mockSvc.load as jest.Mock).mockImplementation(async () => {});
+    mockSaveProgress.mockImplementation(async () => {});
+  });
+
+  it("gives the route the adopted book's queue (a cast started later hands it over)", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({}));
+    expect(mockSvc.rememberLoad).toHaveBeenCalledWith(
+      expect.objectContaining({
+        book: { connectionId: 'c1', libraryId: 2, path: 'B' },
+        tracks: [
+          expect.objectContaining({ url: 'file:///d/1.mp3' }),
+          expect.objectContaining({ url: 'file:///d/2.mp3' }),
+        ],
+      }),
+    );
+  });
+
+  it("a download landing while casting doesn't reload the receiver; the route keeps the copy", async () => {
+    await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 50);
+    pushSnapshot(snap('playing', 0, 50));
+    (mockSvc.load as jest.Mock).mockClear();
+    mockSvc.isCasting.mockImplementation(() => true);
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await flushMicrotasks(20);
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(mockSvc.rememberLoad).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tracks: [
+          expect.objectContaining({ url: 'file:///d/1.mp3' }),
+          expect.objectContaining({ url: 'file:///d/2.mp3' }),
+        ],
+      }),
+    );
+    // The store plays the local copy from here (it comes back to the phone with it).
+    expect(usePlayer.getState().nowPlaying!.queue.tracks[0].url).toBe('file:///d/1.mp3');
+  });
+
+  it("a switch of person while a new book loads never saves the previous book's place under it", async () => {
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'alice',
+      profiles: [
+        { id: 'alice', name: 'Alice', connectionIds: ['c1'] },
+        { id: 'bob', name: 'Bob', connectionIds: ['c9'] },
+      ],
+    });
+    // Alice is deep into book A...
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 10);
+    pushSnapshot(snap('playing', 0, 3100));
+    jest.advanceTimersByTime(15_000);
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    // ...and starts B, whose load is on its way (a receiver's load takes seconds).
+    let land!: () => void;
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          land = resolve;
+        }),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 0);
+    await flushMicrotasks(20);
+    expect(usePlayer.getState().loadingBook).toBe('c1:2:B');
+    await switchProfile('bob');
+    land();
+    await starting;
+    expect(savedPaths()).not.toContain('B');
+  });
+
+  it('a start whose load fails leaves no book "loading" behind (saves and moves go on)', async () => {
+    (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+      throw new Error('No session'); // the Cast session ended mid-load
+    });
+    await expect(
+      usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 0),
+    ).rejects.toThrow('No session');
+    expect(usePlayer.getState().loadingBook).toBeNull();
+  });
+
+  it('a start another start overtook while it loaded neither sets its speed nor plays', async () => {
+    let landFirst!: () => void;
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          landFirst = resolve;
+        }),
+    );
+    const first = usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 0, undefined, 1.75);
+    await flushMicrotasks(20);
+    await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 0); // a second tap
+    (mockSvc.setRate as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    landFirst();
+    await first;
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('B');
+  });
+
+  it("a stop still saving never cuts off a book started meanwhile (a switch's route starts it)", async () => {
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined, 10);
+    pushSnapshot(snap('playing', 0, 40));
+    let saved!: () => void;
+    mockSaveProgress.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          saved = resolve;
+        }),
+    );
+    (mockSvc.reset as jest.Mock).mockClear();
+    const stopping = usePlayer.getState().stop();
+    await flushMicrotasks();
+    // The new person's book starts while the old place is still being saved.
+    await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 0);
+    saved();
+    await stopping;
+    expect(mockSvc.reset).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying?.path).toBe('B');
   });
 });

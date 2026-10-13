@@ -8,6 +8,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { startAddressRouting } from '@/api/address-runner';
 import { ApiProvider } from '@/api/provider';
 import { startCarSync } from '@/car/car-controller';
+import { startCastSync } from '@/cast/cast-session';
+import { KidsRouteGuard } from '@/components/kids/kids-route-guard';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
@@ -52,6 +54,11 @@ function RootNavigator() {
         <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="finished" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="year" options={{ presentation: 'fullScreenModal' }} />
+        {/* "Who's listening?" (Phase 8): chosen, never swiped away. */}
+        <Stack.Screen
+          name="profiles"
+          options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
+        />
       </Stack>
       {/* Root-level so it covers every layout (phone modal + wide desktop): drives the
           end-of-book flow when a book reaches its natural end. */}
@@ -62,6 +69,8 @@ function RootNavigator() {
       {/* A shake must keep the listener going while the phone is locked
           and no player screen is mounted. */}
       <ShakeToExtendListener />
+      {/* Kids mode (Phase 8): a kids profile stays on /kids, whatever the route. */}
+      <KidsRouteGuard />
       {/* Web: the browser tab names the page, or the book playing. */}
       <DocumentTitle />
     </>
@@ -126,6 +135,11 @@ export default function RootLayout() {
   useEffect(() => {
     startCarSync();
   }, []);
+
+  // Chromecast: follows Cast sessions and switches the player's route to the receiver and
+  // back (the cast is a playback route, not a second player). Framework-free like the
+  // others; a no-op where this device or binary can't cast. See `src/cast/cast-session.ts`.
+  useEffect(() => startCastSync(), []);
 
   // On returning to the foreground: refresh data, and (Android) reset to Home if the
   // app was swiped away from recents. See @/lib/app-resume.

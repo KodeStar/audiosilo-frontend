@@ -10,18 +10,42 @@ import { portraitColors, type PortraitKind } from './people-model';
 
 const BARS = 24;
 
+/** The gap between a ringed portrait and its ring, and the ring's width (the prototype's
+ * `0 0 0 2px background, 0 0 0 4px brand`). */
+const RING_GAP = 2;
+const RING_WIDTH = 2;
+/** The room a portrait that can be ringed keeps around its box (`ring`). */
+export const RING_ROOM = RING_GAP + RING_WIDTH;
+
 /**
  * A person's portrait (STYLEGUIDE section 8, "Avatar, portrait"): no photos, a monogram
  * on colours from the name. An author is a pale gradient disc with deep initials; a
  * narrator a rounded square in a deeper gradient with white initials over a faint
- * waveform; the listener (`user`, the account page's avatar) a vivid gradient disc with
- * white initials. Decorative: the name is always written beside it.
+ * waveform; a listener (`user`: the account page, the people of the household, the house
+ * rows) a vivid gradient disc with white initials, the same colours wherever the name
+ * shows, so a person looks the same everywhere. Decorative: the name is always written
+ * beside it.
+ *
+ * `ring` (a `user` disc) is the pink ring that marks who is listening on this device. Pass
+ * it, true or false, wherever a ring can show: the portrait then keeps `RING_ROOM` around
+ * itself and draws the ring in that room, so ringing one never moves the layout. Leave it
+ * out where no ring ever shows.
  */
-export function Portrait({ name, kind, size }: { name: string; kind: PortraitKind; size: number }) {
+export function Portrait({
+  name,
+  kind,
+  size,
+  ring,
+}: {
+  name: string;
+  kind: PortraitKind;
+  size: number;
+  ring?: boolean;
+}) {
   const id = useDomId('pt');
   const c = portraitColors(name, kind);
   const narrator = kind === 'narrator';
-  return (
+  const disc = (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
@@ -78,6 +102,32 @@ export function Portrait({ name, kind, size }: { name: string; kind: PortraitKin
       >
         {initials(name)}
       </Text>
+    </View>
+  );
+  if (ring === undefined) return disc;
+  return (
+    <View
+      testID="portrait-ringed"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="shrink-0"
+      style={{ margin: RING_ROOM }}
+    >
+      {ring ? (
+        <View
+          testID="portrait-ring"
+          pointerEvents="none"
+          className="absolute rounded-full border-brand"
+          style={{
+            left: -RING_ROOM,
+            top: -RING_ROOM,
+            width: size + 2 * RING_ROOM,
+            height: size + 2 * RING_ROOM,
+            borderWidth: RING_WIDTH,
+          }}
+        />
+      ) : null}
+      {disc}
     </View>
   );
 }

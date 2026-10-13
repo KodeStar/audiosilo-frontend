@@ -1,4 +1,5 @@
 import type { ServerAddresses } from '@/api/types';
+import { serverIdOf } from '@/lib/connection-id';
 
 /**
  * Home and away addresses (capability `addresses`): which of a server's addresses the
@@ -9,7 +10,7 @@ import type { ServerAddresses } from '@/api/types';
  * - `serverUrl` is what the listener paired with or typed. It is never rewritten.
  * - With no `home`, the player uses `serverUrl`.
  * - With a `home`, the player asks `GET <home>/api/v1/server` WITHOUT a token and uses
- *   `home` only when it answers with this connection's own `server_id`. Another box at
+ *   `home` only when it answers with this connection's server's `server_id`. Another box at
  *   the same private IP on someone else's network must never receive the token.
  *   Otherwise it uses `away`, else `serverUrl`.
  */
@@ -20,8 +21,10 @@ export type AddressKind = 'home' | 'away' | 'paired';
 
 /** The part of a connection the address rules read. */
 export type AddressedConnection = {
-  /** The server-minted `server_id`. */
+  /** The connection id (`<server_id>.<user_id>`, or a legacy bare `server_id`). */
   id: string;
+  /** The server's `server_id` (`serverIdOf` reads the id when it is absent). */
+  serverId?: string;
   serverUrl: string;
   addresses?: ServerAddresses;
 };
@@ -85,13 +88,14 @@ export function fallbackAddress(c: AddressedConnection): string {
 
 /**
  * The pick rule, given what the home address answered (`homeServerId`: the
- * `server_id` it answered, or null for no answer). Home only on a matching
- * `server_id`; no home at all keeps the paired URL.
+ * `server_id` it answered, or null for no answer). Home only on the connection's own
+ * server's `server_id` (`serverIdOf`, never the connection id, which also names the
+ * user); no home at all keeps the paired URL.
  */
 export function chooseAddress(c: AddressedConnection, homeServerId: string | null): string {
   const home = c.addresses?.home;
   if (!home) return c.serverUrl;
-  if (homeServerId !== null && homeServerId === c.id) return home;
+  if (homeServerId !== null && homeServerId === serverIdOf(c)) return home;
   return fallbackAddress(c);
 }
 

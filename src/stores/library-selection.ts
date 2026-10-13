@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { persistedDocument } from '@/lib/storage';
+import { LIBRARY_SELECTION_KEY } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
 /** The library the Library tab's browse modes act on: one library on one server. */
@@ -28,7 +29,7 @@ function parseDoc(raw: unknown): Partial<Doc> {
 // Device-local, connection-scoped: a removed connection's pick is dropped below. Not in
 // session.ts's SCOPED_STORAGE_KEYS: a stale pick is harmless (it resolves to the first
 // library, `resolveLibrarySelection`), so neither storage-reset axis needs to wipe it.
-const stored = persistedDocument<Doc>('audiosilo.librarySelection', parseDoc);
+const stored = persistedDocument<Doc>(LIBRARY_SELECTION_KEY, parseDoc);
 
 type LibrarySelectionState = Doc & {
   /** The library the browse modes last showed, in memory only: a fallback (no pick, or
@@ -76,8 +77,8 @@ export const useLibrarySelection = create<LibrarySelectionState>()((set, get) =>
   },
 }));
 
-// A removed connection's pick would point at a server that is gone for good (re-adding
-// it mints a new id): drop it with the rest of its scoped state.
+// A removed connection's pick would point at an account that is no longer signed in: drop
+// it with the rest of its scoped state.
 onConnectionRemoved((id) => {
   if (useLibrarySelection.getState().selection?.connectionId === id) {
     useLibrarySelection.getState().clear();

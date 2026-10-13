@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 // Capture the connection id ContentScope publishes as the scope, plus any redirect. A
@@ -18,13 +18,17 @@ jest.mock('@/api/provider', () => ({
   },
 }));
 
-// The route's own local param drives the scope; flip it per test. Redirect is a spy so we
-// can assert the unknown-connection guard fires without a real router.
+// The route's own local param drives the scope; flip it per test. A Redirect would be a
+// spy: an unknown connection must never render one (it fired on every focus of its tab).
 const mockRedirect = jest.fn((_props: { href: unknown }) => null);
+const mockRouter = { canGoBack: jest.fn(() => true), back: jest.fn(), dismissTo: jest.fn() };
 let mockParams: Record<string, unknown> = {};
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
   Redirect: (props: { href: unknown }) => mockRedirect(props),
+  get router() {
+    return mockRouter;
+  },
 }));
 
 let mockConnections: { id: string }[] = [];
@@ -33,15 +37,28 @@ jest.mock('@/stores/session', () => ({
     selector({ connections: mockConnections }),
 }));
 
+jest.mock('@/components/profiles/other-person-gate', () => {
+  const { Text: RNText } = jest.requireActual('react-native');
+  return {
+    OtherPersonGate: ({ profile }: { profile: { name: string } }) => (
+      <RNText>{`gate-${profile.name}`}</RNText>
+    ),
+  };
+});
+
 /* eslint-disable import/first */
-import { ContentScope } from './content-scope';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
+
+import { ContentScope, useRouteConnection } from './content-scope';
 /* eslint-enable import/first */
 
 beforeEach(() => {
+  resetProfilesForTests();
   scopedTo = undefined;
   mockParams = {};
   mockConnections = [];
   mockRedirect.mockClear();
+  jest.clearAllMocks();
 });
 
 const Probe = () => <Text>content</Text>;
@@ -81,16 +98,25 @@ describe('ContentScope resolves the scope from the route local param (not the de
     expect(scopedTo).toBe('c2');
   });
 
-  it('redirects home (no scope, no children) when the id is not a signed-in connection', async () => {
+  it('says so (no scope, no children, no redirect) when the id is not a signed-in connection', async () => {
     mockParams = { connection: 'ghost' };
     mockConnections = [{ id: 'c1' }];
 
     await mount();
 
-    expect(mockRedirect).toHaveBeenCalledWith({ href: '/' });
+    // A not-found state, never a <Redirect>: left in a tab stack, a redirect fired on every
+    // focus of the tab, so the tab flashed blank and jumped Home on each tap.
+    expect(mockRedirect).not.toHaveBeenCalled();
+    expect(screen.getByText('Not signed in to that server')).toBeTruthy();
     // Guarded: the children never render, so a sub-component's useApi() can't throw.
     expect(screen.queryByText('content')).toBeNull();
     expect(scopedTo).toBeUndefined();
+    // Its way out goes back once (or Home with no history).
+    await fireEvent.press(screen.getByText('Go back'));
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    mockRouter.canGoBack.mockReturnValueOnce(false);
+    await fireEvent.press(screen.getByText('Go back'));
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith('/');
   });
 
   it("defaults to '' when the route carries no connection (aggregated screens)", async () => {
@@ -102,5 +128,80 @@ describe('ContentScope resolves the scope from the route local param (not the de
     // Empty scope -> useCid() falls back to the default connection; never redirects.
     expect(scopedTo).toBe('');
     expect(mockRedirect).not.toHaveBeenCalled();
+  });
+});
+
+describe('ContentScope and the people on this device (Phase 8)', () => {
+  it("never shows another person's content silently: it offers to switch to them first", async () => {
+    mockConnections = [{ id: 'a.1' }, { id: 'a.2' }];
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a.1'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['a.2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    mockParams = { connection: 'a.2' };
+    await mount();
+    expect(screen.getByText('gate-Sam')).toBeTruthy();
+    expect(screen.queryByText('content')).toBeNull();
+    expect(scopedTo).toBeUndefined();
+  });
+
+  it("opens the person listening's own content", async () => {
+    mockConnections = [{ id: 'a.1' }, { id: 'a.2' }];
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'chris', name: 'Chris', connectionIds: ['a.1'] },
+        { id: 'sam', name: 'Sam', connectionIds: ['a.2'] },
+      ],
+      activeProfileId: 'chris',
+    });
+    mockParams = { connection: 'a.1' };
+    await mount();
+    expect(screen.getByText('content')).toBeTruthy();
+    expect(scopedTo).toBe('a.1');
+  });
+});
+
+// The root modals (the player, the end credits, the Year story) sit outside any scope and
+// follow the same rule through the hook.
+describe('useRouteConnection (the root modals)', () => {
+  function RootModal({ connection }: { connection?: string }) {
+    const { cid, gate } = useRouteConnection(connection);
+    return gate ?? <Text>{`modal-${cid}`}</Text>;
+  }
+  const show = async (connection?: string) => {
+    await act(async () => {
+      render(<RootModal connection={connection} />);
+    });
+  };
+
+  it('shows the screen for a signed-in connection, or for none (the fallback scope)', async () => {
+    mockConnections = [{ id: 'c1' }];
+    await show('c1');
+    expect(screen.getByText('modal-c1')).toBeTruthy();
+    await show(undefined);
+    expect(screen.getByText('modal-')).toBeTruthy();
+  });
+
+  it("an unknown connection gets the not-found state; another person's, the gate", async () => {
+    mockConnections = [{ id: 'c1' }, { id: 'c2' }];
+    await show('gone');
+    expect(screen.getByTestId('unknown-connection')).toBeTruthy();
+    useProfiles.setState({
+      hydrated: true,
+      profiles: [
+        { id: 'p', name: 'Chris', connectionIds: ['c1'] },
+        { id: 's', name: 'Sam', connectionIds: ['c2'] },
+      ],
+      activeProfileId: 'p',
+    });
+    await show('c2');
+    expect(screen.getByText('gate-Sam')).toBeTruthy();
+    await show('c1');
+    expect(screen.getByText('modal-c1')).toBeTruthy();
   });
 });

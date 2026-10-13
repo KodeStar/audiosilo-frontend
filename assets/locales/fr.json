@@ -1,7 +1,8 @@
 {
   "ios": {
     "CFBundleDisplayName": "AudioSilo",
-    "NSCameraUsageDescription": "Autorisez AudioSilo à scanner le QR code d'association de votre serveur."
+    "NSCameraUsageDescription": "Autorisez AudioSilo à scanner le QR code d'association de votre serveur.",
+    "NSLocalNetworkUsageDescription": "AudioSilo utilise votre réseau local pour joindre votre serveur AudioSilo et trouver des appareils Cast sur lesquels écouter."
   },
   "android": {
     "app_name": "AudioSilo"

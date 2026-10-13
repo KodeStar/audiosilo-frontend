@@ -11,11 +11,12 @@ import { Notice } from '@/components/ui/notice';
 import { Text } from '@/components/ui/text';
 import {
   groupByServer,
+  orphanDownloads,
   type ServerRef,
-  splitDownloads,
   statusSignature,
   storageBar,
   unsupportedReason,
+  visibleDownloads,
 } from '@/downloads/downloads-view';
 import { type KeepAheadSlot } from '@/downloads/keep-ahead';
 import { useKeepAhead } from '@/downloads/keep-ahead-controller';
@@ -27,7 +28,8 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { useSession } from '@/stores/session';
+import { useProfileConnections } from '@/stores/profiles';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { ActiveRow, PlannedRow, ReadyRow } from './download-rows';
@@ -105,7 +107,9 @@ export function DownloadsScreen() {
   const entries = useMemo(() => useDownloads.getState().entries, [signature]);
   const supported = useDownloads((s) => s.supported);
   const hydrated = useDownloads((s) => s.hydrated);
-  const connections = useSession((s) => s.connections);
+  // The person listening's servers and downloads (Phase 8 profiles); another person's
+  // downloads stay on the device (and keep playing for them) but are theirs to see.
+  const connections = useProfileConnections();
   const slots = useKeepAhead((s) => s.slots);
   const progressLabels = useProgressLabels();
   const storage = useStorage();
@@ -117,8 +121,28 @@ export function DownloadsScreen() {
   );
   const serverName = (id: string) =>
     servers.find((s) => s.id === id)?.name ?? t('downloads.storage.unknownServer');
-  const { active, ready } = useMemo(() => splitDownloads(Object.values(entries)), [entries]);
+  const { active, ready } = useMemo(
+    () =>
+      visibleDownloads(
+        entries,
+        servers.map((s) => s.id),
+      ),
+    [entries, servers],
+  );
   const groups = useMemo(() => groupByServer(ready, servers), [ready, servers]);
+  // Downloads no signed-in account holds ("Not signed in", `orphanDownloads`): listed to
+  // remove, since nothing else would ever free their room.
+  const allConnections = useSession((s) => s.connections);
+  const sessionRead = useSession((s) => s.status !== 'loading') && !sessionHydrateFailed();
+  const orphans = useMemo(
+    () =>
+      orphanDownloads(
+        entries,
+        allConnections.map((c) => c.id),
+        hydrated && sessionRead,
+      ),
+    [entries, allConnections, hydrated, sessionRead],
+  );
   // Books the keep-ahead plan is holding back (Wi-Fi, room, its turn) and that aren't in
   // the registry yet.
   const planned = slots
@@ -160,7 +184,12 @@ export function DownloadsScreen() {
     );
   }
 
-  const nothing = hydrated && active.length === 0 && ready.length === 0 && planned.length === 0;
+  const nothing =
+    hydrated &&
+    active.length === 0 &&
+    ready.length === 0 &&
+    planned.length === 0 &&
+    orphans.length === 0;
 
   return (
     <ScrollView
@@ -271,6 +300,23 @@ export function DownloadsScreen() {
                 </Card>
               </View>
             ))}
+          </View>
+        ) : null}
+
+        {orphans.length > 0 ? (
+          <View className="gap-3" testID="downloads-orphans">
+            <SectionHead title={t('downloads.orphans.title')} sub={formatCount(orphans.length)} />
+            <Text variant="muted">{t('downloads.orphans.body')}</Text>
+            <Card className="overflow-hidden p-0">
+              {orphans.map((e, i) => (
+                <ReadyRow
+                  key={downloadKey(e.connectionId, e.libraryId, e.path)}
+                  entry={e}
+                  first={i === 0}
+                  onRemove={() => setRemoving(e)}
+                />
+              ))}
+            </Card>
           </View>
         ) : null}
 

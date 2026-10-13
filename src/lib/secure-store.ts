@@ -96,3 +96,27 @@ export async function deleteSecure(key: string): Promise<void> {
   }
   await SecureStore.deleteItemAsync(key);
 }
+
+/** Protection records must distinguish unavailable storage from a missing value.
+ * Token callers keep their existing behavior; PIN callers opt into these strict operations. */
+function webStorage(): Storage {
+  const storage = globalThis.localStorage;
+  if (!storage) throw new Error('Secure storage is unavailable');
+  return storage;
+}
+
+export async function getSecureStrict(key: string): Promise<string | null> {
+  return Platform.OS === 'web' ? webStorage().getItem(key) : getSecure(key);
+}
+
+export async function setSecureStrict(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') webStorage().setItem(key, value);
+  else await setSecure(key, value);
+  if ((await getSecureStrict(key)) !== value) throw new Error('Secure write did not verify');
+}
+
+export async function deleteSecureStrict(key: string): Promise<void> {
+  if (Platform.OS === 'web') webStorage().removeItem(key);
+  else await deleteSecure(key);
+  if ((await getSecureStrict(key)) !== null) throw new Error('Secure deletion did not verify');
+}

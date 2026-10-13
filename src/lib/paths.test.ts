@@ -1,5 +1,7 @@
+import { setConnectionAliases } from '@/lib/connection-id';
 import {
   accountHref,
+  connectionParam,
   authorHref,
   bookHref,
   collectionHref,
@@ -18,6 +20,24 @@ import {
   yearHref,
   youHref,
 } from '@/lib/paths';
+
+describe('connectionParam', () => {
+  afterEach(() => setConnectionAliases({}));
+
+  it('normalises the param to one string', () => {
+    expect(connectionParam(undefined)).toBe('');
+    expect(connectionParam('srv.3')).toBe('srv.3');
+    expect(connectionParam(['srv.3', 'x'])).toBe('srv.3');
+    expect(connectionParam([])).toBe('');
+  });
+
+  it('reads an old id the identity migration moved as its new one (a widget link, web history)', () => {
+    setConnectionAliases({ srv: 'srv.3' });
+    expect(connectionParam('srv')).toBe('srv.3');
+    expect(connectionParam(['srv'])).toBe('srv.3');
+    expect(connectionParam('other')).toBe('other');
+  });
+});
 
 describe('segmentsToPath', () => {
   it('returns empty string for undefined', () => {

@@ -1,7 +1,8 @@
 {
   "ios": {
     "CFBundleDisplayName": "AudioSilo",
-    "NSCameraUsageDescription": "Permita que o AudioSilo leia o código QR de emparelhamento do seu servidor."
+    "NSCameraUsageDescription": "Permita que o AudioSilo leia o código QR de emparelhamento do seu servidor.",
+    "NSLocalNetworkUsageDescription": "O AudioSilo usa a tua rede local para chegar ao teu servidor AudioSilo e encontrar dispositivos Cast onde tocar."
   },
   "android": {
     "app_name": "AudioSilo"

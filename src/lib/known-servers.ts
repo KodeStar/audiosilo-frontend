@@ -10,6 +10,10 @@ import { getItem, setItem } from '@/lib/storage';
  * `addresses`), so a reconnect at home can use the home address and the connection it
  * makes keeps both.
  *
+ * Server-level, never per user: keyed by the server's `server_id` (`serverIdOf` of a
+ * connection, never its connection id), so two people signed in to one server share one
+ * row, and the session stores the addresses either of them learns here.
+ *
  * It lives under its own AsyncStorage key that `resetStaleStorage()` does NOT
  * clear (neither the auth wipe nor the cache wipe touches it), so the shortcut
  * survives signing out of every connection - which is exactly when it's most

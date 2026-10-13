@@ -1,6 +1,14 @@
 import { act, fireEvent, renderHook, screen } from '@testing-library/react-native';
 import { useState } from 'react';
-import { Dimensions, Keyboard, type KeyboardEvent, Platform, Text } from 'react-native';
+import {
+  Dimensions,
+  Keyboard,
+  type KeyboardEvent,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -59,6 +67,89 @@ describe('Dialog', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Close' }));
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
     expect(screen.queryByText('Rename')).toBeNull();
+  });
+});
+
+describe('Dialog, the keyboard on close', () => {
+  /** A dialog with a text field, its content rendered only while open (like the PIN
+   * prompt and the rename dialog), that the caller can also take away while open. */
+  function FieldDialog({ onOpenChange }: { onOpenChange?: (open: boolean) => void }) {
+    const [open, setOpen] = useState(true);
+    const [shown, setShown] = useState(true);
+    return (
+      <>
+        <Pressable accessibilityLabel="Leave" onPress={() => setShown(false)} />
+        {shown ? (
+          <Dialog
+            open={open}
+            onOpenChange={(o) => {
+              onOpenChange?.(o);
+              setOpen(o);
+            }}
+          >
+            {open ? (
+              <DialogContent>
+                <DialogTitle>Rename</DialogTitle>
+                <TextInput testID="field" autoFocus />
+                <Button title="Save" onPress={() => setOpen(false)} />
+              </DialogContent>
+            ) : null}
+          </Dialog>
+        ) : null}
+      </>
+    );
+  }
+
+  /** Each `Keyboard.dismiss`, noting whether the field was still on screen then. */
+  function trackDismiss(order: string[]) {
+    return jest
+      .spyOn(Keyboard, 'dismiss')
+      .mockImplementation(
+        () => void order.push(screen.queryByTestId('field') ? 'dismiss:field' : 'dismiss:gone'),
+      );
+  }
+
+  it('releases the keyboard before onOpenChange (the close button)', async () => {
+    const order: string[] = [];
+    const spy = trackDismiss(order);
+    await mountWithPortal(<FieldDialog onOpenChange={(o) => order.push(`change:${o}`)} />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    expect(order[0]).toBe('dismiss:field');
+    expect(order).toContain('change:false');
+    expect(order.indexOf('dismiss:field')).toBeLessThan(order.indexOf('change:false'));
+    expect(screen.queryByTestId('field')).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('releases the keyboard while the field is still on screen when the caller closes it', async () => {
+    const order: string[] = [];
+    const spy = trackDismiss(order);
+    await mountWithPortal(<FieldDialog />);
+    // A button of the dialog's own: the caller turns `open` off and drops the content.
+    await fireEvent.press(screen.getByText('Save'));
+    expect(order).toEqual(['dismiss:field']);
+    // Then it goes (one commit later).
+    expect(screen.queryByTestId('field')).toBeNull();
+    expect(screen.queryByText('Rename')).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('releases the keyboard when it is taken away while open (its screen navigated away)', async () => {
+    const order: string[] = [];
+    const spy = trackDismiss(order);
+    await mountWithPortal(<FieldDialog />);
+    await fireEvent.press(screen.getByLabelText('Leave'));
+    expect(order).toEqual(['dismiss:field']);
+    expect(screen.queryByTestId('field')).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('leaves the keyboard alone while it stays open', async () => {
+    const spy = jest.spyOn(Keyboard, 'dismiss');
+    await mountWithPortal(<FieldDialog />);
+    await fireEvent.changeText(screen.getByTestId('field'), 'Shelf');
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 

@@ -1,4 +1,5 @@
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
+import { setConnectionAliases } from '@/lib/connection-id';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 
@@ -71,6 +72,23 @@ describe('connection-clients', () => {
     const client = resolveClient('c1')!;
     await expect(client.me()).rejects.toMatchObject({ name: 'ApiError', status: 401 });
     expect(markNeedsReconnect).toHaveBeenCalledWith('c1', 'auth');
+  });
+
+  it('resolves an old id the identity migration moved (an offline save, a car bookmark) to its connection', async () => {
+    setConnectionAliases({ srv: 'srv.3' });
+    try {
+      setStore([{ id: 'srv.3', serverUrl: 'https://h', token: 'dead' }]);
+      installFetch(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+      const client = resolveClient('srv')!;
+      expect(client.baseUrl).toBe('https://h');
+      await expect(client.me()).rejects.toMatchObject({ status: 401 });
+      // The flag lands on the connection itself, under its id now.
+      expect(markNeedsReconnect).toHaveBeenCalledWith('srv.3', 'auth');
+      setStore([]);
+      expect(resolveClient('srv')).toBeNull();
+    } finally {
+      setConnectionAliases({});
+    }
   });
 
   it('a 403 through the resolved client does NOT flag reconnect (valid token, forbidden)', async () => {

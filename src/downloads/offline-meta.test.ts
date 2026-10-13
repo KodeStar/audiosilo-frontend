@@ -52,13 +52,14 @@ jest.mock('@/stores/session', () => {
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
+
 import {
   canMatch,
   captureOfflineMeta,
   currentServerSnapshot,
   forgetServerSnapshot,
   OFFLINE_META_FILE,
-  OFFLINE_SERVERS_KEY,
   type OfflineMeta,
   parseOfflineMeta,
   readOfflineMeta,
