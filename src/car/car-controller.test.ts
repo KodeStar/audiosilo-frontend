@@ -1,4 +1,11 @@
-import type { Book, ChaptersResponse, Progress, QueueEntry } from '@/api/types';
+import type {
+  Book,
+  ChaptersResponse,
+  Collection,
+  CollectionDetail,
+  Progress,
+  QueueEntry,
+} from '@/api/types';
 
 import type { CarSnapshot } from './car-model';
 
@@ -236,8 +243,16 @@ function fakeClient(data: {
   books?: Book[];
   items?: Record<string, Book>;
   chapters?: Record<string, ChaptersResponse>;
+  collections?: Collection[];
+  details?: Record<number, CollectionDetail>;
 }) {
   return {
+    collections: jest.fn(async () => data.collections ?? []),
+    collection: jest.fn(async (id: number) => {
+      const d = data.details?.[id];
+      if (!d) throw new Error('no collection');
+      return d;
+    }),
     allProgress: jest.fn(async () => data.progress ?? []),
     queue: jest.fn(async () => data.queue ?? []),
     libraries: jest.fn(async () => [{ id: 2, name: 'Books' }]),
@@ -697,6 +712,143 @@ describe('startCarSync', () => {
     await settle(MIN_GAP_MS);
     expect(mockNative.setSnapshot.mock.calls.length).toBeGreaterThan(writes);
     expect(tab(lastSnapshot(), 'continue')!.items.map((i) => i.title)).toEqual(["Sam's book"]);
+  });
+
+  describe('a kids profile: the kids shelf only (Phase 8b-1)', () => {
+    const ADAM = { id: 1, username: 'adam' };
+    const coll = (id: number, name: string): Collection => ({
+      id,
+      name,
+      description: '',
+      owner: ADAM,
+      owned: false,
+      item_count: 0,
+      preview: [],
+      created_at: '',
+      updated_at: '',
+    });
+    const detail = (c: Collection, paths: string[]): CollectionDetail => ({
+      collection: c,
+      items: paths.map((path) => ({
+        library_id: 2,
+        path,
+        added_at: '',
+        book: makeBook({ rel_path: path, title: `Story ${path}` }),
+      })),
+    });
+    /** Chris (c1, a grown-up with a queue, a download and a library) and the kid (c2). */
+    function household(kidUser: object, kids = true) {
+      useSession.setState({
+        status: 'authenticated',
+        connections: [
+          { id: 'c1', serverUrl: 'https://c1', name: 'c1', token: 's', user: {} },
+          { id: 'c2', serverUrl: 'https://c1', name: 'c1', token: 's', user: kidUser },
+        ] as Connection[],
+        defaultConnectionId: 'c1',
+      });
+      mockCaps.c1 = { queue: true };
+      mockCaps.c2 = { queue: true, collections: true };
+      mockClients.c1 = fakeClient({
+        progress: [makeProgress({ path: 'Grown', position: 60 })],
+        items: { Grown: makeBook({ rel_path: 'Grown', title: "Chris's book" }) },
+        books: [makeBook({ rel_path: 'Thriller', title: 'Thriller' })],
+      });
+      useDownloads.setState({
+        entries: { 'c1:2:Mine': downloaded('c1', 'Mine'), 'c2:2:Kept': downloaded('c2', 'Kept') },
+      });
+      useProfiles.setState({
+        hydrated: true,
+        profiles: [
+          { id: 'chris', name: 'Chris', connectionIds: ['c1'] },
+          {
+            id: 'evie',
+            name: 'Evie',
+            connectionIds: ['c2'],
+            ...(kids ? { kids: { bedtime: '19:30' } } : {}),
+          },
+        ],
+        activeProfileId: 'evie',
+      });
+    }
+
+    it("a member's shared collections: Continue for its stories in progress, and Your stories", async () => {
+      household({ id: 12, managed_by: ADAM, member_kind: 'kid' });
+      const evies = coll(4, "Evie's books");
+      const bedtime = coll(5, 'Bedtime');
+      mockClients.c2 = fakeClient({
+        progress: [
+          makeProgress({ path: 'fox', position: 60 }),
+          makeProgress({ path: 'Old', position: 60 }),
+        ],
+        collections: [evies, bedtime],
+        details: { 4: detail(evies, ['moon', 'fox']), 5: detail(bedtime, ['owl', 'moon']) },
+        queue: [{ library_id: 2, path: 'Q', added_at: 'x' }],
+      });
+      stop = startCarSync();
+      await settle();
+      const snap = lastSnapshot();
+      expect(snap.tabs.map((t) => [t.id, t.title, t.items.map((i) => i.book.path)])).toEqual([
+        ['continue', 'Continue listening', ['fox']],
+        ['library', 'Your stories', ['fox', 'moon', 'owl']],
+      ]);
+      // Nothing of the grown-up's, no queue, no library page, no downloads tab.
+      expect(JSON.stringify(snap)).not.toMatch(/Chris|Thriller|Mine|Kept|"Q"/);
+      expect(mockClients.c2.listBooks).not.toHaveBeenCalled();
+      expect(mockClients.c2.queue).not.toHaveBeenCalled();
+      expect(mockClients.c1.allProgress).not.toHaveBeenCalled();
+    });
+
+    it('an account nobody manages (Phase 8): the one library, in its own order', async () => {
+      household({ id: 12 });
+      mockClients.c2 = fakeClient({
+        books: [makeBook({ rel_path: 'a', title: 'A' }), makeBook({ rel_path: 'b', title: 'B' })],
+      });
+      stop = startCarSync();
+      await settle();
+      const snap = lastSnapshot();
+      expect(snap.tabs.map((t) => [t.id, t.items.map((i) => i.title)])).toEqual([
+        ['library', ['A', 'B']],
+      ]);
+      expect(mockClients.c2.collections).not.toHaveBeenCalled();
+      // The library's own order (not the Library tab's recently added).
+      expect(mockClients.c2.listBooks).toHaveBeenCalledWith(2, { limit: 50 });
+    });
+
+    it("offline with nothing cached: the stories downloaded on the kid's account", async () => {
+      household({ id: 12, managed_by: ADAM, member_kind: 'kid' });
+      mockClients.c2 = fakeClient({});
+      mockClients.c2.allProgress.mockRejectedValue(new Error('offline'));
+      mockClients.c2.collections.mockRejectedValue(new Error('offline'));
+      stop = startCarSync();
+      await settle();
+      const snap = lastSnapshot();
+      expect(snap.tabs.map((t) => [t.id, t.items.map((i) => i.title)])).toEqual([
+        ['library', ['Downloaded Kept']],
+      ]);
+    });
+
+    it('kids mode turned on for the person listening rebuilds at once', async () => {
+      household({ id: 12 }, false);
+      mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'a', title: 'A' })] });
+      stop = startCarSync();
+      await settle();
+      expect(lastSnapshot().tabs.map((t) => t.id)).toEqual([
+        'continue',
+        'upnext',
+        'downloads',
+        'library',
+      ]);
+      await settle(MIN_GAP_MS);
+      useProfiles.setState({
+        profiles: useProfiles
+          .getState()
+          .profiles.map((p) => (p.id === 'evie' ? { ...p, kids: { bedtime: '19:30' } } : p)),
+      });
+      await settle(MIN_GAP_MS);
+      expect(lastSnapshot().tabs.map((t) => [t.id, t.title])).toEqual([
+        ['library', 'Your stories'],
+      ]);
+    });
   });
 
   it("lists only the active profile's downloads (no play spec for another person's)", async () => {

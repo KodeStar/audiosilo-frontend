@@ -20,6 +20,17 @@ import {
 import { queryClient } from '@/api/provider';
 import { endCastForCar } from '@/cast/cast-session';
 import type { Book, Progress, QueueEntry } from '@/api/types';
+import {
+  kidsCollections,
+  kidsCollectionSections,
+  kidsConnectionId,
+  kidsContinuePaths,
+  kidsDownloads,
+  kidsLibrary,
+  kidsOfflineLibraryId,
+  kidsSectionBooks,
+  kidsShelf,
+} from '@/components/kids/kids-model';
 import { progressAt } from '@/components/home/home-model';
 import { startBookInPlace } from '@/components/player/start-book';
 import { queueConnectionId } from '@/components/upnext/up-next-model';
@@ -55,8 +66,14 @@ import {
   resolveLibrarySelection,
   useLibrarySelection,
 } from '@/stores/library-selection';
-import { mayActFor, profileConnections, useProfiles } from '@/stores/profiles';
-import { sessionHydrateFailed, useSession } from '@/stores/session';
+import {
+  activeProfile,
+  type KidsSettings,
+  mayActFor,
+  profileConnections,
+  useProfiles,
+} from '@/stores/profiles';
+import { type Connection, sessionHydrateFailed, useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 
 import type { PendingBookmark } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
@@ -68,10 +85,12 @@ import {
   carLabels,
   continueRefs,
   downloadedEntries,
+  kidsCarBooks,
   parseCarItemId,
   playSpec,
   type CarBook,
   type CarPlaySpec,
+  type CarSnapshotInput,
   type LivePlace,
 } from './car-model';
 import { isCarConnected, setCarConnected } from './car-connection';
@@ -174,10 +193,11 @@ async function itemOf(ref: BookRef): Promise<Book | null> {
   );
 }
 
-/** The progress rows of every signed-in server, and which servers' rows are known (read now
- * or cached): only those can stand in for the server in a resume lookup. */
-async function progressRows(): Promise<{ rows: SourcedProgress[]; known: Set<string> }> {
-  const conns = profileConnections();
+/** The progress rows of `conns` (the person listening's servers), and which servers' rows are
+ * known (read now or cached): only those can stand in for the server in a resume lookup. */
+async function progressRows(
+  conns: readonly Connection[],
+): Promise<{ rows: SourcedProgress[]; known: Set<string> }> {
   const known = new Set<string>();
   const lists = await Promise.all(
     conns.map(async (c) => {
@@ -251,6 +271,91 @@ async function libraryBooks(): Promise<{ cid: string; books: Book[] } | null> {
   return { cid: lib.connectionId, books: page?.books ?? [] };
 }
 
+// --- Kids mode ----------------------------------------------------------------------------
+
+/** The kids shelf's library page (the library's own order, as kids mode lists it), apart
+ * from the Library tab's recently added page. */
+const kidsLibraryKey = (cid: string, libraryId: number) =>
+  [...qk.carLibrary(cid, libraryId), 'kids'] as const;
+
+/**
+ * A kids profile's shelf on its connection, as kids mode shows it (`useKidsStories`, without
+ * React: a car-only session runs no React tree): the collections the account's owner shares
+ * with it (`kidsCollections`, a household member on a server with `collections`), else one
+ * library (`kidsLibrary`, its stories in progress first, then its first page). Null when it
+ * can't be read (offline with nothing cached): the caller falls back to the downloads.
+ */
+async function kidsShelfOf(
+  conn: Connection,
+  kids: KidsSettings,
+  progress: readonly Progress[],
+): Promise<Book[] | null> {
+  const client = resolveClient(conn.id);
+  if (!client) return null;
+  if (conn.user.managed_by) {
+    const caps = await fetchCapabilities(conn.id, client).catch(() => null);
+    if (!caps) return null;
+    if (caps.collections) {
+      const list = await read({
+        queryKey: qk.collections(conn.id),
+        queryFn: ({ signal }) => client.collections(signal),
+        staleTime: LIST_STALE_MS,
+      });
+      if (!list) return null;
+      const shared = kidsCollections(list, conn.user);
+      if (shared.length > 0) {
+        const details = await mapLimit(shared, ITEM_CONCURRENCY, (c) =>
+          read({
+            queryKey: qk.collection(conn.id, c.id),
+            queryFn: ({ signal }) => client.collection(c.id, signal),
+            staleTime: LIST_STALE_MS,
+          }),
+        );
+        if (details.every((d) => d === undefined)) return null;
+        return kidsSectionBooks(kidsCollectionSections(shared, details, progress));
+      }
+    }
+  }
+  const libraries = await read({ ...librariesQuery(conn.id, client), staleTime: LIST_STALE_MS });
+  if (!libraries) return null;
+  const lib = kidsLibrary(libraries, conn.id, kids);
+  if (!lib) return [];
+  const page = await read({
+    queryKey: kidsLibraryKey(conn.id, lib.id),
+    queryFn: () => client.listBooks(lib.id, { limit: CAR_TAB_LIMITS.library }),
+    staleTime: LIST_STALE_MS,
+  });
+  if (!page) return null;
+  const continuing = await mapLimit(kidsContinuePaths(progress, lib.id), ITEM_CONCURRENCY, (path) =>
+    itemOf({ connectionId: conn.id, libraryId: lib.id, path }),
+  );
+  return kidsShelf(
+    continuing.filter((b): b is Book => b !== null),
+    page.books,
+  );
+}
+
+/** A kids profile's car books (`kidsCarBooks`): its shelf, else (unreadable) the stories
+ * downloaded on its account, as kids mode falls back to them offline. */
+async function kidsBooks(
+  conn: Connection | null,
+  kids: KidsSettings,
+  rows: SourcedProgress[],
+  live: LivePlace | null,
+  progressOf: (ref: BookRef) => Progress | null,
+): Promise<CarSnapshotInput['books']> {
+  if (!conn) return kidsCarBooks('', [], [], null, progressOf);
+  const shelf =
+    (await kidsShelfOf(conn, kids, rows)) ??
+    kidsDownloads(
+      useDownloads.getState().entries,
+      conn.id,
+      // A member's shelf may be collections, across libraries: every story on the account.
+      conn.user.managed_by ? null : kidsOfflineLibraryId(null, conn.id, kids),
+    );
+  return kidsCarBooks(conn.id, shelf, rows, live?.ref ?? null, progressOf);
+}
+
 // --- Play specs (Android) ---------------------------------------------------------------
 
 /** The last play spec of each downloaded book, with what it was built from. */
@@ -312,6 +417,8 @@ const snapshotOwner = () =>
     profileConnections()
       .map((c) => c.id)
       .sort(),
+    // Kids mode on or off is another list (the kids shelf only).
+    !!activeProfile()?.kids,
   ]);
 
 async function buildAndWrite(): Promise<void> {
@@ -336,9 +443,16 @@ async function buildAndWrite(): Promise<void> {
         }
       : null;
 
-  const [{ rows, known }, queue, library] = signedIn
-    ? await Promise.all([progressRows(), upNextEntries(), libraryBooks()])
-    : [{ rows: [], known: new Set<string>() }, null, null];
+  // A kids profile: its kids shelf only, on the connection kids mode shows (Phase 8b-1).
+  const profile = activeProfile();
+  const kids = profile?.kids ?? null;
+  const kidsCid = kids ? kidsConnectionId(profile?.connectionIds ?? [], kids) : null;
+  const kidsConn = conns.find((c) => c.id === kidsCid) ?? null;
+  const [{ rows, known }, queue, library] = !signedIn
+    ? [{ rows: [], known: new Set<string>() }, null, null]
+    : kids
+      ? [await progressRows(kidsConn ? [kidsConn] : []), null, null]
+      : await Promise.all([progressRows(conns), upNextEntries(), libraryBooks()]);
   // Signed in, yet no server's list could be read or found cached (a fresh runtime away from
   // every server: the car's offline case): the snapshot native kept from last time is better
   // than one with empty lists, and its covers are still wanted. Nothing is written or pruned
@@ -352,35 +466,13 @@ async function buildAndWrite(): Promise<void> {
   for (const r of rows) progressByKey.set(contentKeyOf(progressAt(r)), r);
   const progressOf = (ref: BookRef) => progressByKey.get(contentKeyOf(ref)) ?? null;
 
-  const continuing = continueRefs(rows, live?.ref ?? null);
-  const continueBooks = await mapLimit(
-    continuing,
-    ITEM_CONCURRENCY,
-    async ({ ref, progress }): Promise<CarBook> => ({ ref, book: await itemOf(ref), progress }),
-  );
-  const upNextBooks: CarBook[] | null = queue
-    ? queue.entries.map((e) => {
-        const ref = { connectionId: queue.cid, libraryId: e.library_id, path: e.path };
-        return { ref, book: e.book ?? null, progress: progressOf(ref) };
-      })
-    : null;
-  const downloads = downloadedEntries(
-    useDownloads.getState().entries,
-    conns.map((c) => c.id),
-  ).map((e): CarBook => {
-    const ref = bookRefOf(e);
-    return { ref, book: e.manifest.book, progress: progressOf(ref) };
-  });
-  const libraryList: CarBook[] = library
-    ? library.books.map((b) => {
-        const ref = { connectionId: library.cid, libraryId: b.library_id, path: b.rel_path };
-        return { ref, book: b, progress: progressOf(ref) };
-      })
-    : [];
+  const books: CarSnapshotInput['books'] = kids
+    ? await kidsBooks(kidsConn, kids, rows, live, progressOf)
+    : await everyoneBooks(rows, live, queue, library, conns, progressOf);
 
   // Every book any tab lists, once: its play spec (downloaded only) and its cover.
   const all = new Map<string, CarBook>();
-  for (const b of [...continueBooks, ...(upNextBooks ?? []), ...downloads, ...libraryList]) {
+  for (const b of Object.values(books).flatMap((list) => list ?? [])) {
     const key = contentKeyOf(b.ref);
     const had = all.get(key);
     if (!had || (!had.book && b.book)) all.set(key, b);
@@ -425,7 +517,9 @@ async function buildAndWrite(): Promise<void> {
       generatedAt: new Date().toISOString(),
       labels: carLabels(t),
       signedIn,
-      books: { continue: continueBooks, upnext: upNextBooks, downloads, library: libraryList },
+      books,
+      // The kids shelf is the Library tab, under kids mode's own heading.
+      ...(kids ? { titles: { library: t('kids.stories.title') } } : {}),
     },
     {
       t,
@@ -454,6 +548,44 @@ async function buildAndWrite(): Promise<void> {
   }
   pruneArtwork(names, onDisk);
   missingArtwork = missing;
+}
+
+/** Everyone else's car books: Continue listening (Home's rule, every server of the person
+ * listening), Up next, their downloads and the selected library's recently added. */
+async function everyoneBooks(
+  rows: SourcedProgress[],
+  live: LivePlace | null,
+  queue: { cid: string; entries: QueueEntry[] } | null,
+  library: { cid: string; books: Book[] } | null,
+  conns: readonly Connection[],
+  progressOf: (ref: BookRef) => Progress | null,
+): Promise<CarSnapshotInput['books']> {
+  const continuing = continueRefs(rows, live?.ref ?? null);
+  const continueBooks = await mapLimit(
+    continuing,
+    ITEM_CONCURRENCY,
+    async ({ ref, progress }): Promise<CarBook> => ({ ref, book: await itemOf(ref), progress }),
+  );
+  const upNextBooks: CarBook[] | null = queue
+    ? queue.entries.map((e) => {
+        const ref = { connectionId: queue.cid, libraryId: e.library_id, path: e.path };
+        return { ref, book: e.book ?? null, progress: progressOf(ref) };
+      })
+    : null;
+  const downloads = downloadedEntries(
+    useDownloads.getState().entries,
+    conns.map((c) => c.id),
+  ).map((e): CarBook => {
+    const ref = bookRefOf(e);
+    return { ref, book: e.manifest.book, progress: progressOf(ref) };
+  });
+  const libraryList: CarBook[] = library
+    ? library.books.map((b) => {
+        const ref = { connectionId: library.cid, libraryId: b.library_id, path: b.rel_path };
+        return { ref, book: b, progress: progressOf(ref) };
+      })
+    : [];
+  return { continue: continueBooks, upnext: upNextBooks, downloads, library: libraryList };
 }
 
 /** Write the covers the last snapshot lacked, then ask for a snapshot that names them. */
@@ -820,9 +952,15 @@ export function startCarSync(): () => void {
       if (s.connections !== prev.connections || s.defaultConnectionId !== prev.defaultConnectionId)
         request(false);
     }),
-    // Another person on this device: their lists, at once (a fresh build, as on a connect).
+    // Another person on this device, or kids mode turned on or off (or its library
+    // changed): their lists, at once (a fresh build, as on a connect).
     useProfiles.subscribe((s, prev) => {
-      if (s.activeProfileId !== prev.activeProfileId) request(true);
+      if (
+        s.activeProfileId !== prev.activeProfileId ||
+        JSON.stringify(activeProfile(s)?.kids) !== JSON.stringify(activeProfile(prev)?.kids)
+      ) {
+        request(true);
+      }
     }),
     useLibrarySelection.subscribe((s, prev) => {
       if (s.selection !== prev.selection) request(false);
@@ -834,6 +972,10 @@ export function startCarSync(): () => void {
       if (event.type !== 'updated' || event.action.type !== 'success') return;
       const key = event.query.queryKey;
       if (isQueueKey(key) || isAllProgressKey(key)) request(false);
+      // A kids shelf of shared collections: a collection read anew (a story added).
+      else if ((key[0] === 'collections' || key[0] === 'collection') && activeProfile()?.kids) {
+        request(false);
+      }
     }),
     (() => {
       const onLanguage = () => request(true);
