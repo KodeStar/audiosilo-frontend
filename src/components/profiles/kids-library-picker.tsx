@@ -26,7 +26,7 @@ const optionValue = (o: { connectionId: string; libraryId: number }) =>
   `${o.connectionId}|${o.libraryId}`;
 
 /**
- * Which library kids mode shows for `profile` (Settings > Household): the libraries its
+ * Which library kids mode shows for `profile` (the Household page): the libraries its
  * connections list (GET /libraries, the server's scopes are the truth: an admin limits the
  * kid's account there), named with their server when the profile has several. No pick
  * means the first library the kid's connection lists (kids mode's own fallback). Loading,
