@@ -2219,7 +2219,7 @@
       "mismatch": "Die PINs stimmen nicht überein. Wähle noch einmal eine.",
       "wait_one": "Zu viele Versuche. Versuche es in {{count}} Sekunde noch einmal.",
       "wait_other": "Zu viele Versuche. Versuche es in {{count}} Sekunden noch einmal.",
-      "forgot": "Vergessen? Entferne {{name}} in den Einstellungen von diesem Gerät und melde dich neu an.",
+      "forgot": "Vergessen? Entferne {{name}} auf der Seite Haushalt von diesem Gerät und melde dich neu an.",
       "readFailed": "Die PIN konnte auf diesem Gerät nicht geprüft werden. Versuche es noch einmal.",
       "noneSet": "Für {{name}} ist auf diesem Gerät keine PIN festgelegt.",
       "saveFailed": "Die PIN konnte auf diesem Gerät nicht gespeichert werden. Nichts wurde geändert."

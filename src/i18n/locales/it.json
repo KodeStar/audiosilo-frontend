@@ -2219,7 +2219,7 @@
       "mismatch": "I PIN non corrispondono. Scegline uno di nuovo.",
       "wait_one": "Troppi tentativi. Riprova tra {{count}} secondo.",
       "wait_other": "Troppi tentativi. Riprova tra {{count}} secondi.",
-      "forgot": "Dimenticato? Rimuovi {{name}} da questo dispositivo nelle Impostazioni e accedi di nuovo.",
+      "forgot": "Dimenticato? Rimuovi {{name}} da questo dispositivo dalla pagina Famiglia e accedi di nuovo.",
       "readFailed": "Impossibile verificare il PIN su questo dispositivo. Riprova.",
       "noneSet": "Nessun PIN impostato per {{name}} su questo dispositivo.",
       "saveFailed": "Impossibile salvare il PIN su questo dispositivo. Non è cambiato nulla."
