@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { isKidAccount } from '@/lib/account';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
@@ -109,6 +110,8 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const { data: server } = useServerInfo(cid);
   const caps = server?.capabilities;
   const demo = !!user?.is_demo;
+  // A kid's account (8b-1) can't have API keys either (the server refuses them).
+  const kid = isKidAccount(user);
 
   // Side by side where the measured column fits both (assumed until it is measured, off
   // a phone, so a desktop doesn't flash a single column first).
@@ -127,10 +130,10 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   // (see `canRevoke`).
   const signOut = useSignOut(cid);
 
-  // API keys: only where the server advertises them, and never for demo accounts (the
-  // server refuses them). The manager runs unconditionally; `apiKeysEnabled` gates its
-  // list query and the section.
-  const apiKeysEnabled = caps?.api_keys === true && !demo;
+  // API keys: only where the server advertises them, and never for demo or kid accounts
+  // (the server refuses them). The manager runs unconditionally; `apiKeysEnabled` gates
+  // its list query and the section.
+  const apiKeysEnabled = caps?.api_keys === true && !demo && !kid;
   const apiKeys = useApiKeysManager(cid, apiKeysEnabled);
 
   return (
@@ -165,7 +168,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         <DevicesSection connectionId={cid} serverName={serverName} />
       ) : null}
 
-      {demo ? null : apiKeysEnabled ? (
+      {demo || kid ? null : apiKeysEnabled ? (
         <ApiKeysSection manager={apiKeys} />
       ) : caps?.api_keys === false ? (
         <ApiKeysUnavailable serverName={serverName} />

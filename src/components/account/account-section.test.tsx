@@ -223,6 +223,19 @@ describe('AccountSection', () => {
     expect(screen.queryByText(/Not available/)).toBeNull();
   });
 
+  it("hides API keys from a kid's account, which can't have any", async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      managed_by: { id: 2, username: 'adam' },
+      member_kind: 'kid',
+    });
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    expect(screen.queryByText('Personal API keys')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create API key' })).toBeNull();
+    expect(screen.queryByText(/Not available/)).toBeNull();
+  });
+
   it('switches between signed-in servers when no server is given', async () => {
     await mountWithPortal(<AccountSection />);
     expect(screen.getByRole('radio', { name: 'Hearthside' })).toBeChecked();

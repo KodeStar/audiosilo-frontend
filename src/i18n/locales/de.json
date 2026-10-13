@@ -108,6 +108,7 @@
       "revoke": "{{name}} widerrufen",
       "createError": "Der API-Schlüssel konnte nicht erstellt werden.",
       "revokeError": "Der API-Schlüssel konnte nicht widerrufen werden.",
+      "kidError": "Ein Kinderkonto kann keine API-Schlüssel haben.",
       "createdModal": {
         "title": "Dein neuer API-Schlüssel",
         "description": "Kopiere ihn jetzt. Er wird nicht noch einmal angezeigt.",

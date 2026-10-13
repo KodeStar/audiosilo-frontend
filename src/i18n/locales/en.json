@@ -108,6 +108,7 @@
       "revoke": "Revoke {{name}}",
       "createError": "Could not create the API key.",
       "revokeError": "Could not revoke the API key.",
+      "kidError": "A kid's account can't have API keys.",
       "createdModal": {
         "title": "Your new API key",
         "description": "Copy it now. You won't be able to see it again.",

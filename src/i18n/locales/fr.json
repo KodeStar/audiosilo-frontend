@@ -108,6 +108,7 @@
       "revoke": "Révoquer {{name}}",
       "createError": "Impossible de créer la clé d'API.",
       "revokeError": "Impossible de révoquer la clé d'API.",
+      "kidError": "Un compte enfant ne peut pas avoir de clés API.",
       "createdModal": {
         "title": "Votre nouvelle clé API",
         "description": "Copiez-la maintenant. Elle ne sera plus affichée.",
