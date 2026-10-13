@@ -20,7 +20,7 @@ import { isKidAccount, managerName } from '@/lib/account';
 /** What signing out without a password means for `user`: an ordinary account needs a new
  * invite from its admin; a household member's owner can sign it in again from their
  * Household page (8b-1), and a kid's account can't have a password at all. */
-export function signOutWarning(
+function signOutWarning(
   user: Pick<User, 'managed_by' | 'member_kind'> | null | undefined,
   t: TFunction,
 ): string {

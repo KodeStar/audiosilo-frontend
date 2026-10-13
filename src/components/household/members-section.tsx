@@ -61,7 +61,7 @@ export function HouseholdMembers() {
  * `reason: member`), the section says who manages their account instead of "People
  * you've added" (`user.managed_by` of their connection).
  */
-export function MembersSection({
+function MembersSection({
   connection,
   showServer,
   onAdd,

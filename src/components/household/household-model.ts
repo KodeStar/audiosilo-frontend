@@ -18,7 +18,7 @@ import { serverIdOf } from '@/lib/connection-id';
 
 /** A member's name: 1-40 characters (runes) once trimmed, no control characters (the
  * server's own rule, so a 400 `invalid_name` is never the first anyone hears of it). */
-export const MEMBER_NAME_MAX = 40;
+const MEMBER_NAME_MAX = 40;
 
 // Control characters (C0, DEL and C1): the server refuses a name holding one.
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;

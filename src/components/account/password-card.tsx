@@ -25,7 +25,7 @@ import { PW_MIN, type PasswordEditor } from './use-password-editor';
  * how it signed in (a pairing link, a code or a household owner all leave none), only
  * what is true. A kid's account can't have one (the server refuses it): its owner signs it
  * in. A household member's was set up by its owner. */
-export function noPasswordBody(
+function noPasswordBody(
   user: Pick<User, 'managed_by' | 'member_kind'> | null | undefined,
   t: TFunction,
 ): string {

@@ -36,7 +36,7 @@ export function connectForNewProfile(): boolean {
 }
 
 /** The connect flow's href for "Add someone". */
-export const ADD_SOMEONE_HREF = '/connect?add=1&profile=new';
+const ADD_SOMEONE_HREF = '/connect?add=1&profile=new';
 
 /** "Add someone": the connect flow for a new person. From kids mode (only enabled there
  * on a device with no grown-up) it also lets kids mode through the flow

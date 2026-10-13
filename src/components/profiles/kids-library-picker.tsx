@@ -19,7 +19,7 @@ import { connectionsOfProfile, type Profile, setProfileKids } from '@/stores/pro
 import { useSession } from '@/stores/session';
 
 /** A library of one of a profile's connections, as the picker offers it. */
-export type KidsLibraryOption = { connectionId: string; libraryId: number; label: string };
+type KidsLibraryOption = { connectionId: string; libraryId: number; label: string };
 
 /** The value a library option carries in the Select. */
 const optionValue = (o: { connectionId: string; libraryId: number }) =>
