@@ -1,7 +1,8 @@
 import type { TFunction } from 'i18next';
 
 import { ApiError } from '@/api/client';
-import type { HouseholdMember, HouseholdMembers } from '@/api/types';
+import type { HouseholdMembers } from '@/api/types';
+import { householdMember } from '@/testing/household-fixtures';
 
 import {
   addBlock,
@@ -20,18 +21,7 @@ import {
   writeErrorText,
 } from './household-model';
 
-const member = (over: Partial<HouseholdMember> = {}): HouseholdMember => ({
-  id: 12,
-  name: 'Evie',
-  username: 'evie',
-  kind: 'kid',
-  access: 'collections',
-  created_at: '2026-10-13T10:00:00.000Z',
-  collections: [],
-  devices: 0,
-  last_listened_at: null,
-  ...over,
-});
+const member = householdMember;
 const list = (over: Partial<HouseholdMembers> = {}): HouseholdMembers => ({
   allowed: true,
   max: 2,

@@ -5,20 +5,13 @@ import type { AuthSession } from '@/api/types';
 
 const mockAddHere = jest.fn();
 const mockSignedInHere = jest.fn();
-jest.mock('@/components/connect/add-member-here', () => {
-  class AddMemberHereError extends Error {
-    readonly code: string;
-    constructor(mockCode: string) {
-      super(mockCode);
-      this.code = mockCode;
-    }
-  }
-  return {
-    AddMemberHereError,
+jest.mock('@/components/connect/add-member-here', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/household-fixtures').addMemberHereMock({
     addMemberHere: (...a: unknown[]) => mockAddHere(...a),
     memberSignedInHere: (...a: unknown[]) => mockSignedInHere(...a),
-  };
-});
+  }),
+);
 
 /* eslint-disable import/first */
 import { AddMemberHereError } from '@/components/connect/add-member-here';

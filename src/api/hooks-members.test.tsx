@@ -4,23 +4,14 @@ import type { ReactNode } from 'react';
 
 import { ApiError } from '@/api/client';
 import type { Capabilities, HouseholdMember, HouseholdMembers, ServerInfo } from '@/api/types';
+import { householdMember } from '@/testing/household-fixtures';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // The household member hooks (player redesign Phase 8b-1) ask only a server that
 // advertises `household_members`: an older server is never called, and a write to it
 // rejects with a CapabilityError (CROSS-REPO §15). The provider is mocked to resolve
 // each connection id to its own stub client (no id = 'c1').
-const evie: HouseholdMember = {
-  id: 12,
-  name: 'Evie',
-  username: 'evie',
-  kind: 'kid',
-  access: 'collections',
-  created_at: '2026-10-13T10:00:00.000Z',
-  collections: [],
-  devices: 1,
-  last_listened_at: null,
-};
+const evie: HouseholdMember = householdMember({ devices: 1 });
 const ellis: HouseholdMember = { ...evie, id: 13, name: 'Ellis', username: 'ellis' };
 const list: HouseholdMembers = { allowed: true, max: 6, members: [evie, ellis] };
 

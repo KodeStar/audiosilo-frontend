@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
 import type { AuthSession, HouseholdMember, MyDevice, PairingPayload } from '@/api/types';
+import { householdMember } from '@/testing/household-fixtures';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 // The dialogs portal to the root host, which the app's ApiProvider wraps (its query
@@ -24,20 +25,13 @@ jest.mock('@/components/profiles/use-remove-person', () => ({
 }));
 const mockAddHere = jest.fn();
 const mockSignedInHere = jest.fn();
-jest.mock('@/components/connect/add-member-here', () => {
-  class AddMemberHereError extends Error {
-    readonly code: string;
-    constructor(mockCode: string) {
-      super(mockCode);
-      this.code = mockCode;
-    }
-  }
-  return {
-    AddMemberHereError,
+jest.mock('@/components/connect/add-member-here', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/household-fixtures').addMemberHereMock({
     addMemberHere: (...a: unknown[]) => mockAddHere(...a),
     memberSignedInHere: (...a: unknown[]) => mockSignedInHere(...a),
-  };
-});
+  }),
+);
 
 let mockDevices: { data?: MyDevice[]; isPending: boolean; isError: boolean; refetch: jest.Mock };
 const mockDevicesAsked = jest.fn();
@@ -105,18 +99,9 @@ const owner = {
   user: { id: 1, username: 'adam' },
 } as unknown as Connection;
 
-const member = (over: Partial<HouseholdMember> = {}): HouseholdMember => ({
-  id: 12,
-  name: 'Evie',
-  username: 'evie',
-  kind: 'kid',
-  access: 'collections',
-  created_at: '2026-10-13T10:00:00.000Z',
-  collections: [{ id: 4, name: 'Bedtime', items: 2 }],
-  devices: 1,
-  last_listened_at: null,
-  ...over,
-});
+/** Evie, with Bedtime shared and signed in on one device. */
+const member = (over: Partial<HouseholdMember> = {}): HouseholdMember =>
+  householdMember({ collections: [{ id: 4, name: 'Bedtime', items: 2 }], devices: 1, ...over });
 const device = (over: Partial<MyDevice> = {}): MyDevice => ({
   id: 70,
   kind: 'session',

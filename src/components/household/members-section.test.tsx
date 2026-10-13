@@ -8,6 +8,7 @@ import type {
   HouseholdMembers as Members,
   PairingPayload,
 } from '@/api/types';
+import { householdMember } from '@/testing/household-fixtures';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 const mockToast = jest.fn();
@@ -40,20 +41,13 @@ jest.mock('@/lib/profile-pin', () => ({
 // addMemberHere belongs to workstream P: here it is a mock.
 const mockAddHere = jest.fn();
 const mockSignedInHere = jest.fn();
-jest.mock('@/components/connect/add-member-here', () => {
-  class AddMemberHereError extends Error {
-    readonly code: string;
-    constructor(mockCode: string) {
-      super(mockCode);
-      this.code = mockCode;
-    }
-  }
-  return {
-    AddMemberHereError,
+jest.mock('@/components/connect/add-member-here', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/testing/household-fixtures').addMemberHereMock({
     addMemberHere: (...a: unknown[]) => mockAddHere(...a),
     memberSignedInHere: (...a: unknown[]) => mockSignedInHere(...a),
-  };
-});
+  }),
+);
 
 type Query<T> = { data?: T; isError?: boolean; refetch?: jest.Mock };
 const mockCaps: Record<string, { household_members?: boolean; collections?: boolean }> = {};
@@ -100,18 +94,7 @@ const conn = (id: string, name: string) =>
     user: { id: Number(id.split('.')[1]), username: 'adam' },
   }) as unknown as Connection;
 
-const member = (over: Partial<HouseholdMember> = {}): HouseholdMember => ({
-  id: 12,
-  name: 'Evie',
-  username: 'evie',
-  kind: 'kid',
-  access: 'collections',
-  created_at: '2026-10-13T10:00:00.000Z',
-  collections: [],
-  devices: 0,
-  last_listened_at: null,
-  ...over,
-});
+const member = householdMember;
 const list = (over: Partial<Members> = {}): Query<Members> => ({
   data: { allowed: true, max: 6, members: [], ...over },
 });
