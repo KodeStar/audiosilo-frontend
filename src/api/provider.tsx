@@ -1,5 +1,5 @@
-import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { type Query, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
 import { flushConnection } from '@/playback/progress-sync';
@@ -142,6 +142,42 @@ function connectionClients(
   return new Map([...built].map(([id, b]) => [id, b.client]));
 }
 
+/** The lists a screen reads first for a connection (kids mode's shelf, the Household card's
+ * library pick): read again with a new token even when their last answer was fine. */
+const READ_AGAIN_ON_SIGN_IN = new Set(['server', 'libraries', 'collections']);
+
+/** Whether `query`, of connection `cid` (every key carries it, though not always second),
+ * is read again once that connection has a new token: whatever failed while it was signed
+ * out, and the lists screens read first. */
+export function readAgainOnSignIn(query: Pick<Query, 'queryKey' | 'state'>, cid: string): boolean {
+  if (!query.queryKey.includes(cid)) return false;
+  return query.state.status === 'error' || READ_AGAIN_ON_SIGN_IN.has(String(query.queryKey[0]));
+}
+
+/**
+ * Read a connection's answers again once it has a new token (signed in again: the
+ * Household page's "Sign in again", the connect flow's reconnect): what failed while it was
+ * signed out would otherwise keep its error until a reload (`readAgainOnSignIn`). In the
+ * provider's effect, which runs after every screen's own: the queries already hold the new
+ * client (`useApiRegistry`) by then, and a read any earlier would ask with the dead token
+ * and flag the connection again.
+ */
+function useReadAgainOnSignIn(connections: readonly Connection[]) {
+  const tokens = useRef(new Map<string, string>());
+  useEffect(() => {
+    const seen = tokens.current;
+    for (const c of connections) {
+      const before = seen.get(c.id);
+      seen.set(c.id, c.token);
+      if (before === undefined || before === c.token) continue;
+      void queryClient.invalidateQueries({ predicate: (q) => readAgainOnSignIn(q, c.id) });
+    }
+    for (const id of seen.keys()) {
+      if (!connections.some((c) => c.id === id)) seen.delete(id);
+    }
+  }, [connections]);
+}
+
 export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
   // Which of each connection's addresses (home / away) requests go to right now.
@@ -159,6 +195,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setReachabilityClients(registry.clients);
   }, [registry]);
+  useReadAgainOnSignIn(connections);
 
   return (
     <QueryClientProvider client={queryClient}>

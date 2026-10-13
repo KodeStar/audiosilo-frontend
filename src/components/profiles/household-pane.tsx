@@ -1,6 +1,5 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -241,29 +240,6 @@ function KidsLibraryRow({ profile, manager }: { profile: Profile; manager: strin
   );
 }
 
-/**
- * Read `connections`' answers again once one of them has a new token (signed in again:
- * "Sign in again" here, or the connect flow's reconnect): what failed while signed out (the
- * kids library pick, the shared collections) would otherwise keep its error until a
- * reload. In an effect of the card, never right after `renewMemberHere`: the hooks below
- * hand their queries the new client (`useApiRegistry`) in their own effects, which run
- * before this one; a refetch any earlier would ask with the dead token and flag the
- * connection again.
- */
-function useRefetchWhenSignedInAgain(connections: readonly Connection[]) {
-  const qc = useQueryClient();
-  const tokens = useRef(new Map<string, string>());
-  useEffect(() => {
-    for (const c of connections) {
-      const before = tokens.current.get(c.id);
-      tokens.current.set(c.id, c.token);
-      if (before === undefined || before === c.token) continue;
-      // Every key carries its connection id (`qk`), though not always second.
-      void qc.invalidateQueries({ predicate: (q) => q.queryKey.includes(c.id) });
-    }
-  }, [connections, qc]);
-}
-
 /** The PIN prompt's step: `check` the current PIN (as `startPin` read it), then set a new
  * one or clear it; or `set` one. */
 type PinFlow = null | { step: 'check'; then: 'set' | 'clear'; stored: StoredPin } | { step: 'set' };
@@ -295,8 +271,8 @@ function PersonCard({
     () => connectionsOfProfile(connections, profile.connectionIds),
     [connections, profile.connectionIds],
   );
+  // Signed in again, what failed meanwhile is read again (`ApiProvider`).
   const signedOut = own.find((c) => c.needsReconnect) ?? null;
-  useRefetchWhenSignedInAgain(own);
   // A household member's account (Phase 8b-1): kids mode shows what the person who
   // manages it shares, so its lines name them, never "ask the server's admin".
   const manager = kidsManager(profile, connections);

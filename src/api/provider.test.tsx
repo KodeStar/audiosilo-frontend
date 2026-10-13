@@ -179,3 +179,53 @@ describe('the query cache with `<server_id>.<user_id>` connection ids', () => {
     expect(useSession.getState().connections[0].needsReconnect).toBe('server-reset');
   });
 });
+
+describe('a connection signed in again (a new token, 8b-1)', () => {
+  it('reads again what failed and the lists screens read first, for that connection only', async () => {
+    const at = (id: string, token: string) => ({
+      id,
+      serverId: 'srv',
+      name: 'H',
+      serverUrl: 'https://h',
+      token,
+    });
+    useSession.setState({ connections: [at('srv.3', 'dead'), at('srv.1', 't')] } as never);
+    await render(ui(0));
+    queryClient.setQueryData(qk.libraries('srv.3'), [{ id: 4 }]);
+    queryClient.setQueryData(qk.libraries('srv.1'), [{ id: 4 }]);
+    queryClient.setQueryData(qk.allProgress('srv.3'), []);
+    // Asked while signed out: a 401.
+    await queryClient
+      .fetchQuery({
+        queryKey: qk.libraryBooks('srv.3', 4, {}),
+        queryFn: async () => {
+          throw new Error('401');
+        },
+      })
+      .catch(() => undefined);
+    const stale = (key: readonly unknown[]) =>
+      queryClient.getQueryState(key)?.isInvalidated === true;
+    expect(stale(qk.libraries('srv.3'))).toBe(false);
+
+    await act(async () =>
+      useSession.setState({ connections: [at('srv.3', 'fresh'), at('srv.1', 't')] } as never),
+    );
+    expect(stale(qk.libraries('srv.3'))).toBe(true);
+    expect(stale(qk.libraryBooks('srv.3', 4, {}))).toBe(true);
+    // An answer that was fine stays, and another connection is left alone.
+    expect(stale(qk.allProgress('srv.3'))).toBe(false);
+    expect(stale(qk.libraries('srv.1'))).toBe(false);
+  });
+
+  it('reads nothing again for a connection that is new, or whose token stayed', async () => {
+    const c = { id: 'srv.5', serverId: 'srv', name: 'H', serverUrl: 'https://h', token: 't' };
+    useSession.setState({ connections: [] } as never);
+    await render(ui(0));
+    queryClient.setQueryData(qk.libraries('srv.5'), [{ id: 4 }]);
+    await act(async () => useSession.setState({ connections: [c] } as never));
+    await act(async () =>
+      useSession.setState({ connections: [{ ...c, name: 'Renamed' }] } as never),
+    );
+    expect(queryClient.getQueryState(qk.libraries('srv.5'))?.isInvalidated).toBe(false);
+  });
+});

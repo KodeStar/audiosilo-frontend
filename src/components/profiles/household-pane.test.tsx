@@ -540,10 +540,8 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
       expect(screen.queryByText("Couldn't load the libraries.")).toBeNull();
       await fireEvent.press(screen.getByRole('button', { name: 'Sign Leo in again' }));
       await waitFor(() => expect(screen.getByTestId('household-kids-library-leo')).toBeTruthy());
-      // What failed while Leo was signed out is asked again, for Leo's connection only.
-      expect(client.getQueryState(qk.libraries('a.3'))?.isInvalidated).toBe(true);
-      client.setQueryData(qk.libraries('a.1'), []);
-      expect(client.getQueryState(qk.libraries('a.1'))?.isInvalidated).toBe(false);
+      // What failed while Leo was signed out is asked again, for Leo's connection only: the
+      // provider's (provider.test, "a connection signed in again").
     });
 
     it('says too many tries when the server refuses the new session with a 429', async () => {
