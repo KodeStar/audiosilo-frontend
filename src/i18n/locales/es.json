@@ -2095,7 +2095,8 @@
       "loadFailed": "No se pudo cargar este ajuste.",
       "failed": "No se pudo cambiar el uso compartido en {{server}}",
       "failedBody": "No ha cambiado nada. Comprueba la conexión y vuelve a intentarlo.",
-      "demo": "Las cuentas de demostración no pueden compartir lo que escuchan."
+      "demo": "Las cuentas de demostración no pueden compartir lo que escuchan.",
+      "kid": "Una cuenta infantil no puede compartir lo que escucha."
     }
   },
   "kids": {

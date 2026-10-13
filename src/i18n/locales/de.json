@@ -2095,7 +2095,8 @@
       "loadFailed": "Diese Einstellung konnte nicht geladen werden.",
       "failed": "Teilen auf {{server}} konnte nicht geändert werden",
       "failedBody": "Nichts wurde geändert. Prüfe die Verbindung und versuche es erneut.",
-      "demo": "Demo-Konten können nicht teilen, was sie hören."
+      "demo": "Demo-Konten können nicht teilen, was sie hören.",
+      "kid": "Ein Kinderkonto kann nicht teilen, was es hört."
     }
   },
   "kids": {

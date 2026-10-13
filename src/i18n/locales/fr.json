@@ -2095,7 +2095,8 @@
       "loadFailed": "Impossible de charger ce réglage.",
       "failed": "Impossible de modifier le partage sur {{server}}",
       "failedBody": "Rien n’a changé. Vérifiez la connexion et réessayez.",
-      "demo": "Les comptes de démonstration ne peuvent pas partager ce qu’ils écoutent."
+      "demo": "Les comptes de démonstration ne peuvent pas partager ce qu’ils écoutent.",
+      "kid": "Un compte enfant ne peut pas partager ce qu'il écoute."
     }
   },
   "kids": {

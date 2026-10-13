@@ -2095,7 +2095,8 @@
       "loadFailed": "Impossibile caricare questa impostazione.",
       "failed": "Impossibile cambiare la condivisione su {{server}}",
       "failedBody": "Non è cambiato nulla. Controlla la connessione e riprova.",
-      "demo": "Gli account demo non possono condividere cosa ascoltano."
+      "demo": "Gli account demo non possono condividere cosa ascoltano.",
+      "kid": "Un account per bambini non può condividere ciò che ascolta."
     }
   },
   "kids": {

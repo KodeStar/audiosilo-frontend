@@ -2095,7 +2095,8 @@
       "loadFailed": "Couldn't load this setting.",
       "failed": "Couldn't change sharing on {{server}}",
       "failedBody": "Nothing changed. Check the connection and try again.",
-      "demo": "Demo accounts can't share what they listen to."
+      "demo": "Demo accounts can't share what they listen to.",
+      "kid": "A kid's account can't share what it listens to."
     }
   },
   "kids": {

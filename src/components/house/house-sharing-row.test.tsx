@@ -16,8 +16,12 @@ jest.mock('@/api/hooks', () => {
     useSetHousehold: () => ({ mutateAsync: (share: boolean) => mockMutate(share) }),
   };
 });
+/** The stored user's `member_kind` on c1 (a test's own). */
+let mockKind: 'kid' | 'grownup' | undefined;
 jest.mock('@/stores/session', () => ({
   useConnectionName: (id: string) => (id === 'c1' ? 'Hearthside' : ''),
+  useSession: (selector: (s: unknown) => unknown) =>
+    selector({ connections: [{ id: 'c1', user: { id: 1, member_kind: mockKind } }] }),
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
@@ -43,6 +47,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  mockKind = undefined;
   mockSettings = { data: { share_listening: false }, isError: false, refetch: jest.fn() };
   mockMutate.mockReset();
   mockToast.mockReset();
@@ -104,6 +109,25 @@ describe('HouseSharingRow', () => {
     expect(mockToast).toHaveBeenCalledWith({
       title: "Demo accounts can't share what they listen to.",
     });
+  });
+
+  it("tells a kid's account it cannot share in its own words (a coded 403)", async () => {
+    mockMutate.mockRejectedValue(new ApiError(403, 'kid accounts cannot', 'kid_account'));
+    await render(<HouseSharingRow connectionId="c1" />);
+    await fireEvent.press(screen.getByRole('switch', { name: SWITCH }));
+    expect(mockToast).toHaveBeenCalledWith({
+      title: "A kid's account can't share what it listens to.",
+    });
+  });
+
+  it("says a kid's account can't share, switched off, never offering the switch", async () => {
+    mockKind = 'kid';
+    await render(<HouseSharingRow connectionId="c1" />);
+    expect(screen.getByText("A kid's account can't share what it listens to.")).toBeTruthy();
+    expect(screen.queryByText(/Demo accounts/)).toBeNull();
+    const sw = screen.getByRole('switch', { name: SWITCH });
+    expect(sw).not.toBeChecked();
+    expect(sw).toBeDisabled();
   });
 
   it('says nothing when the request was never sent (the flag went away)', async () => {
