@@ -14,8 +14,9 @@ import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { joinList } from '@/lib/names';
 
-import { joinList, type ReadyLine } from './connect-model';
+import type { ReadyLine } from './connect-model';
 import { ConnectFrame, StepDots } from './connect-frame';
 import { addressesBody } from './connect-parts';
 import { ReadyShelf } from './ready-shelf';

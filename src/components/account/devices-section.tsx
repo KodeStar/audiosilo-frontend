@@ -23,6 +23,7 @@ import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { joinList } from '@/lib/names';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +31,6 @@ import { AccountListRow } from './account-list-row';
 import {
   canRevoke,
   deviceGlyph,
-  joinNames,
   knownPlatform,
   lastSeen,
   memberSignIns,
@@ -218,7 +218,7 @@ function RevokeDeviceDialog({
   }
   const name = device ? deviceName(device, t) : '';
   const members = device ? memberSignIns(device) : [];
-  const names = joinNames(
+  const names = joinList(
     members.map((m) => m.name),
     (first, second) => t('account.devices.names', { first, second }),
   );

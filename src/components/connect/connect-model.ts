@@ -258,14 +258,6 @@ export function latestPlace(rows: readonly Progress[] | undefined): Progress | u
 /** How many library names the ready screen lists before it gives a count instead. */
 export const LISTED_LIBRARIES = 4;
 
-/** Names as one phrase: "Fiction", "Fiction and Kids", "Fiction, Kids and Podcasts", with
- * the locale's last joiner from `and` ("{{rest}} and {{last}}"). Hermes has no
- * `Intl.ListFormat`. */
-export function joinList(names: readonly string[], and: (rest: string, last: string) => string) {
-  if (names.length <= 1) return names[0] ?? '';
-  return and(names.slice(0, -1).join(', '), names[names.length - 1]);
-}
-
 /** What the ready screen says about the library (`onboarding.ready.<kind>`). */
 export type ReadyLine =
   | { kind: 'booksIn'; books: number; names: string[] }

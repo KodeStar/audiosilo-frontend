@@ -21,19 +21,6 @@ export function pairingSecondsLeft(expiresAt: number, now: number): number {
   return Math.min(PAIRING_TTL_MS / 1000, Math.max(0, Math.ceil((expiresAt - now) / 1000)));
 }
 
-/**
- * People's names as one phrase: "Evie", "Evie and Ellis", "Evie, Ellis and Sam" (`two`
- * and `last` are the language's own "{{first}} and {{second}}"). Hermes has no
- * `Intl.ListFormat`, so the list is put together here.
- */
-export function joinNames(
-  names: readonly string[],
-  two: (first: string, second: string) => string,
-): string {
-  if (names.length <= 1) return names[0] ?? '';
-  return two(names.slice(0, -1).join(', '), names[names.length - 1]);
-}
-
 /** The household members a device's sign-out may take with it (its `member_sign_ins`,
  * Phase 8b-1): only another device's, never this one's (which signs out only through the
  * app's own sign-out). */

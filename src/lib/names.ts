@@ -27,3 +27,11 @@ export function initials(name: string): string {
   const last = words.length > 1 ? ([...words[words.length - 1]][0] ?? '') : '';
   return (first + last).toLocaleUpperCase();
 }
+
+/** Names as one phrase: "Evie", "Evie and Ellis", "Evie, Ellis and Sam", with the
+ * locale's last joiner from `and` ("{{rest}} and {{last}}"). Hermes has no
+ * `Intl.ListFormat`, so the list is put together here. */
+export function joinList(names: readonly string[], and: (rest: string, last: string) => string) {
+  if (names.length <= 1) return names[0] ?? '';
+  return and(names.slice(0, -1).join(', '), names[names.length - 1]);
+}
