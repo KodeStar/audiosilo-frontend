@@ -39,7 +39,6 @@ jest.mock('@/playback/store', () => {
   };
 });
 let mockStories: KidsStories = { status: 'loading' };
-let mockSignedOut = false;
 const mockRetry = jest.fn();
 jest.mock('./use-kids', () => ({
   useKidsProfile: () => ({
@@ -51,8 +50,6 @@ jest.mock('./use-kids', () => ({
   useKidsStories: () => ({
     stories: mockStories,
     connectionId: 'c',
-    library: null,
-    signedOut: mockSignedOut,
     retry: mockRetry,
     loadMore: jest.fn(),
   }),
@@ -85,7 +82,6 @@ beforeEach(() => {
   mockLayout = 'phone';
   mockLoadedKey = null;
   mockLive = false;
-  mockSignedOut = false;
   resetKidsStartForTests();
 });
 afterEach(() => {
@@ -243,8 +239,13 @@ it('lays the stories out in rows by the measured width, at most 1200 wide', asyn
 });
 
 it("asks a grown-up when the kid's sign-in ended, with no way into the connect flow (D1)", async () => {
-  mockSignedOut = true;
-  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
+  mockStories = {
+    status: 'ready',
+    books: [book('kids/a', 'A')],
+    offline: false,
+    more: 'none',
+    signedOut: true,
+  };
   await render(<KidsScreen />);
   const notice = screen.getByTestId('kids-signed-out');
   expect(within(notice).getByText('Ask a grown-up to sign Leo in again.')).toBeTruthy();
@@ -256,8 +257,7 @@ it("asks a grown-up when the kid's sign-in ended, with no way into the connect f
 });
 
 it('says the sign-in ended (not "isn\'t answering") and offers no Try again (D4)', async () => {
-  mockSignedOut = true;
-  mockStories = { status: 'error', serverName: 'Hearthside', offline: false };
+  mockStories = { status: 'signed-out', serverName: 'Hearthside' };
   await render(<KidsScreen />);
   expect(screen.getByText('Signed out of Hearthside')).toBeTruthy();
   expect(screen.getByText('Ask a grown-up to sign Leo in again.')).toBeTruthy();
@@ -274,7 +274,7 @@ it('says what failed under the grid, and no bare Try again once signed out (D4)'
     within(screen.getByTestId('kids-more-failed')).getByText("Some stories didn't load."),
   ).toBeTruthy();
 
-  mockSignedOut = true;
+  mockStories = { ...mockStories, signedOut: true };
   await view.rerender(<KidsScreen />);
   expect(screen.queryByTestId('kids-more-failed')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
@@ -282,8 +282,13 @@ it('says what failed under the grid, and no bare Try again once signed out (D4)'
 });
 
 it('asks a grown-up when a story will not start after the sign-in ended', async () => {
-  mockSignedOut = true;
-  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
+  mockStories = {
+    status: 'ready',
+    books: [book('kids/a', 'A')],
+    offline: false,
+    more: 'none',
+    signedOut: true,
+  };
   mockStart.mockRejectedValueOnce(new Error('401'));
   await render(<KidsScreen />);
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));

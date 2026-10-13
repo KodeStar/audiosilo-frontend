@@ -270,6 +270,23 @@ export function librariesQuery(cid: string, client: MaybeClient) {
   });
 }
 
+/** The caller's collections (their own and those shared with them). Ask only a server
+ * with `collections`. */
+export function collectionsQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.collections(cid),
+    queryFn: client ? ({ signal }) => client.collections(signal) : skipToken,
+  });
+}
+
+/** One collection with its items. Ask only a server with `collections`. */
+export function collectionQuery(cid: string, client: MaybeClient, id: number) {
+  return queryOptions({
+    queryKey: qk.collection(cid, id),
+    queryFn: client ? ({ signal }) => client.collection(id, signal) : skipToken,
+  });
+}
+
 /** The Up next queue. Ask only a server with `queue`. */
 export function queueQuery(cid: string, client: MaybeClient) {
   return queryOptions({

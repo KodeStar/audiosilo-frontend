@@ -102,7 +102,7 @@ function rowsOf(books: readonly Book[], columns: number, prefix = ''): KidsRow[]
 function linesOf(ready: Extract<KidsStories, { status: 'ready' }>, columns: number): KidsRow[] {
   if (!ready.sections) return rowsOf(ready.books, columns);
   return ready.sections.flatMap((section) => [
-    ...(section.title ? [{ key: `${section.key}:title`, heading: section.title }] : []),
+    { key: `${section.key}:title`, heading: section.title },
     ...rowsOf(section.books, columns, `${section.key}:`),
   ]);
 }
@@ -113,16 +113,14 @@ export function askToSignIn(name: string, t: TFunction): string {
   return name ? t('kids.signedOut.ask', { name }) : t('kids.signedOut.askNoName');
 }
 
-/** The grid's state when it has no stories to show: loading, empty, or an error (the
- * kid's sign-in ended: say so and who can fix it, with no Try again that can't help). */
+/** The grid's state when it has no stories to show: loading, empty, an error, or the
+ * kid's sign-in ended (say so and who can fix it, with no Try again that can't help). */
 function StoriesState({
   stories,
-  signedOut,
   name,
   onRetry,
 }: {
   stories: KidsStories;
-  signedOut: boolean;
   name: string;
   onRetry: () => void;
 }) {
@@ -157,18 +155,17 @@ function StoriesState({
           }
         />
       );
+    case 'signed-out':
+      return (
+        <EmptyState
+          variant="card"
+          size="large"
+          icon="key"
+          title={t('kids.signedOut.title', { server: stories.serverName })}
+          hint={askToSignIn(name, t)}
+        />
+      );
     case 'error':
-      if (signedOut) {
-        return (
-          <EmptyState
-            variant="card"
-            size="large"
-            icon="key"
-            title={t('kids.signedOut.title', { server: stories.serverName })}
-            hint={askToSignIn(name, t)}
-          />
-        );
-      }
       return (
         <EmptyState
           variant="card"
@@ -196,7 +193,8 @@ function StoriesState({
  * end (`onEndReached`). Loading, empty, error and offline states: offline with stories
  * downloaded, those (with a line saying why), else a message with Try again; a page that
  * failed to load further down says so and offers Try again under the grid. A kid whose
- * sign-in ended (`signedOut`) is told to ask a grown-up instead, with no Try again.
+ * sign-in ended (`signed-out`, or `signedOut` stories) is told to ask a grown-up instead,
+ * with no Try again.
  */
 export function KidsStoriesList({
   stories,
@@ -209,7 +207,6 @@ export function KidsStoriesList({
   onEndReached,
   listRef,
   contentContainerStyle,
-  signedOut = false,
   name = '',
 }: {
   stories: KidsStories;
@@ -222,8 +219,6 @@ export function KidsStoriesList({
   onEndReached: () => void;
   listRef?: Ref<FlashListRef<KidsRow>>;
   contentContainerStyle?: StyleProp<ViewStyle>;
-  /** The kid's sign-in ended (`useKidsStories`): no Try again, a grown-up signs them in. */
-  signedOut?: boolean;
   /** The kid's name, for "Ask a grown-up to sign <name> in again." */
   name?: string;
 }) {
@@ -277,15 +272,13 @@ export function KidsStoriesList({
           ) : null}
         </View>
       }
-      ListEmptyComponent={
-        <StoriesState stories={stories} signedOut={signedOut} name={name} onRetry={onRetry} />
-      }
+      ListEmptyComponent={<StoriesState stories={stories} name={name} onRetry={onRetry} />}
       ListFooterComponent={
         ready?.more === 'loading' ? (
           <View className="items-center py-6" testID="kids-more-loading">
             <Spinner />
           </View>
-        ) : ready?.more === 'failed' && !signedOut ? (
+        ) : ready?.more === 'failed' && !ready.signedOut ? (
           // Says what failed (never a bare Try again). Signed out, asking again can't
           // help, and the notice over the stories already says who can.
           <View className="items-center gap-3 py-6" testID="kids-more-failed">

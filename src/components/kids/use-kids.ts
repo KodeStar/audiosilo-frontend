@@ -1,6 +1,5 @@
 import {
   type QueryObserverResult,
-  skipToken,
   useQueries,
   useQuery,
   useQueryClient,
@@ -9,24 +8,20 @@ import { useMemo } from 'react';
 
 import {
   allProgressQuery,
+  collectionQuery,
+  collectionsQuery,
   itemQuery,
   librariesQuery,
   qk,
-  useCapability,
   useLibraryBooks,
   useServerInfo,
 } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
-import type { Book, CollectionDetail, Library } from '@/api/types';
+import type { Book, CollectionDetail } from '@/api/types';
 import { statusSignature } from '@/downloads/downloads-view';
 import { useDownloads } from '@/downloads/store';
-import {
-  connectionsOfProfile,
-  type Profile,
-  useActiveProfile,
-  useProfileConnections,
-} from '@/stores/profiles';
+import { connectionsOfProfile, type Profile, useActiveProfile } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import {
@@ -36,10 +31,11 @@ import {
   kidsContinuePaths,
   kidsDownloads,
   kidsLibrary,
-  kidsOfflineLibraryId,
+  kidsOfflineScope,
   kidsSectionBooks,
   kidsShelf,
   type KidsSection,
+  kidsShelfMode,
 } from './kids-model';
 
 /** The active profile when it is in kids mode, else null. */
@@ -53,6 +49,42 @@ export function useKidsActive(): boolean {
   return useKidsProfile() !== null;
 }
 
+/**
+ * Where kids mode's shelf for `profile` comes from (`kidsShelfMode`): its connection
+ * (`kidsConnectionId`), and for a household member on a server with `collections`, the
+ * collections the account's owner shares with it (`kidsCollections`, the same cache entry
+ * as `useCollections`). Never asked while the kid's connection is signed out
+ * (`needsReconnect`): a 401 can't tell, and a grown-up signs them in again first. A server
+ * whose /server fails keeps no collections (the one-library view, no wait). The one
+ * reading behind kids mode's stories (`useKidsStories`) and the Household card
+ * (`useKidsSharedShelf`); the car reads the same rules without React.
+ */
+function useKidsShelfSource(profile: Profile | null) {
+  const all = useSession((s) => s.connections);
+  const ids = profile?.connectionIds;
+  const connections = useMemo(() => (ids ? connectionsOfProfile(all, ids) : []), [all, ids]);
+  const cid = kidsConnectionId(
+    connections.map((c) => c.id),
+    profile?.kids,
+  );
+  const connection = connections.find((c) => c.id === cid);
+  // '' (not undefined) when there is no connection, so no default connection stands in.
+  const client = useOptionalApi(cid ?? '');
+  const server = useServerInfo(cid ?? '');
+  const caps = server.data?.capabilities;
+  const hasCollections = caps ? !!caps.collections : server.isError ? false : undefined;
+  const signedOut = !!connection?.needsReconnect;
+  const ask = !!connection?.user.managed_by && hasCollections === true && !signedOut;
+  const collections = useQuery(collectionsQuery(cid ?? '', ask ? client : null));
+  const user = connection?.user;
+  const shared = useMemo(
+    () => kidsCollections(collections.data ?? [], user),
+    [collections.data, user],
+  );
+  const mode = kidsShelfMode(user, hasCollections, collections.data);
+  return { cid, connection, client, signedOut, ask, collections, shared, mode };
+}
+
 /** Where kids mode's shelf for a profile comes from, as the Household card needs it
  * (`useKidsSharedShelf`): the collections the account's owner shares, the profile's
  * library pick, or `unknown` (the kid's sign-in there ended, or asking for the shared
@@ -61,33 +93,16 @@ export type KidsShelfSource = 'shared' | 'library' | 'unknown';
 
 /**
  * Whether kids mode's shelf for `profile` is the collections its account's owner shares
- * with it (8b-1, D6: a household member with at least one shared collection, on a server
- * with `collections`), as `useKidsStories` decides it, through the same cache entry: then
- * the profile's library pick is not used. `library` while that isn't known yet, and for
- * anyone else. `unknown` while the kid's connection is signed out (`needsReconnect`: the
- * collections aren't asked for, a 401 can't tell) or the member's collections couldn't be
- * read.
+ * with it (8b-1, D6: `kidsShelfMode`, as `useKidsStories` decides it): then the profile's
+ * library pick is not used. `library` while that isn't known yet, and for anyone else.
+ * `unknown` while the kid's connection is signed out or the member's collections couldn't
+ * be read.
  */
 export function useKidsSharedShelf(profile: Profile): KidsShelfSource {
-  const connections = useSession((s) => s.connections);
-  const own = connectionsOfProfile(connections, profile.connectionIds);
-  const cid = kidsConnectionId(
-    own.map((c) => c.id),
-    profile.kids,
-  );
-  const connection = own.find((c) => c.id === cid);
-  const client = useOptionalApi(cid ?? '');
-  const hasCollections = useCapability('collections', cid ?? '');
-  const signedOut = !!connection?.needsReconnect;
-  const ask = !!connection?.user.managed_by && hasCollections === true && !signedOut;
-  const collections = useQuery({
-    queryKey: qk.collections(cid ?? ''),
-    queryFn: ask && client ? ({ signal }) => client.collections(signal) : skipToken,
-  });
+  const { signedOut, mode, ask, collections } = useKidsShelfSource(profile);
   if (signedOut) return 'unknown';
-  if (!ask) return 'library';
-  if (kidsCollections(collections.data ?? [], connection?.user).length > 0) return 'shared';
-  return collections.isError ? 'unknown' : 'library';
+  if (mode === 'collections') return 'shared';
+  return ask && collections.isError ? 'unknown' : 'library';
 }
 
 /** What kids mode's story grid shows. */
@@ -100,17 +115,23 @@ export type KidsStories =
   | { status: 'empty'; serverName: string; askGrownUp?: boolean }
   /** The server can't be reached and nothing is downloaded. */
   | { status: 'error'; serverName: string; offline: boolean }
+  /** The kid's sign-in there ended (a revoked session, a deleted account: a 401, or a
+   * server that was reset; `needsReconnect`) and there are no stories to show: only a
+   * grown-up can sign them in again, so asking again can't help. */
+  | { status: 'signed-out'; serverName: string }
   /** `offline`: the server can't be reached and these are the downloaded stories. `more`:
    * whether the library has more stories than listed so far (`loadMore` asks for them),
    * on their way, or whether asking failed (`retry` asks again). `sections`: the shelf
    * in titled runs (several collections shared by the kid's owner), else absent (one
-   * run: `books`). `books` is always every story, in order. */
+   * run: `books`). `books` is always every story, in order. `signedOut`: the kid's sign-in
+   * ended (as `signed-out`), so these are what the device still has. */
   | {
       status: 'ready';
       books: Book[];
       sections?: KidsSection[];
       offline: boolean;
       more: KidsMore;
+      signedOut?: boolean;
     };
 
 export type KidsMore = 'none' | 'available' | 'loading' | 'failed';
@@ -140,7 +161,8 @@ function combineContinuing(results: QueryObserverResult<Book>[]) {
 }
 
 /**
- * Kids mode's stories: the kid's connection (`kidsConnectionId`), then either
+ * Kids mode's stories: the kid's connection (`kidsConnectionId`), then (`kidsShelfMode`)
+ * either
  * - the collections the account's owner shares with it (Phase 8b-1, `kidsCollections`: a
  *   household member, `user.managed_by`, on a server with `collections`), each read whole
  *   (GET /me/collections/{id}), stories in progress first (`kidsCollectionSections`); or,
@@ -150,64 +172,24 @@ function combineContinuing(results: QueryObserverResult<Book>[]) {
  *   account may see), the stories in progress first (their items, by `kidsContinuePaths`),
  *   then the library's books page by page (`loadMore` asks for the next one as the grid
  *   scrolls near its end).
- * Offline, the downloaded stories of that connection (`kidsDownloads`). `retry` asks again.
- * `signedOut`: the kid's sign-in there ended, so asking again can't help.
+ * Offline, the downloaded stories of that connection (`kidsDownloads`, `kidsOfflineScope`).
+ * `retry` asks again. A kid whose sign-in there ended sees what the device still has, else
+ * `signed-out`.
  */
 export function useKidsStories(): {
   stories: KidsStories;
   connectionId: string | null;
-  library: Library | null;
-  /** The kid's sign-in on that server ended (a revoked session, a deleted account: a 401,
-   * or a server that was reset; `needsReconnect`): only a grown-up can sign them in again. */
-  signedOut: boolean;
   retry: () => void;
   loadMore: () => void;
 } {
   const qc = useQueryClient();
   const profile = useKidsProfile();
-  const connections = useProfileConnections();
-  const cid = kidsConnectionId(
-    connections.map((c) => c.id),
-    profile?.kids,
-  );
-  const connection = connections.find((c) => c.id === cid);
-  // '' (not undefined) when there is no connection, so no default connection stands in.
-  const client = useOptionalApi(cid ?? '');
-  const server = useServerInfo(cid ?? '');
-  // The owner's shared collections, asked for only for a household member on a server
-  // that keeps collections (the same cache entry as `useCollections`).
-  const managed = !!connection?.user.managed_by;
-  const caps = server.data?.capabilities;
-  // undefined while not known; a server whose /server fails is no wait (the library view).
-  const hasCollections = caps ? !!caps.collections : server.isError ? false : undefined;
-  const askCollections = managed && hasCollections === true && !!client;
-  const collections = useQuery({
-    queryKey: qk.collections(cid ?? ''),
-    queryFn: askCollections && client ? ({ signal }) => client.collections(signal) : skipToken,
-  });
-  const shared = useMemo(
-    () => kidsCollections(collections.data ?? [], connection?.user),
-    [collections.data, connection?.user],
-  );
+  const { cid, connection, client, signedOut, ask, collections, shared, mode } =
+    useKidsShelfSource(profile);
   const details = useQueries({
-    queries: shared.map((c) => ({
-      queryKey: qk.collection(cid ?? '', c.id),
-      queryFn:
-        askCollections && client
-          ? ({ signal }: { signal: AbortSignal }) => client.collection(c.id, signal)
-          : skipToken,
-    })),
+    queries: shared.map((c) => collectionQuery(cid ?? '', ask ? client : null, c.id)),
     combine: combineDetails,
   });
-  // Which view: the collections, the one library, or not known yet.
-  const mode: 'collections' | 'library' | 'unknown' =
-    !managed || hasCollections === false
-      ? 'library'
-      : hasCollections === undefined || collections.data === undefined
-        ? 'unknown'
-        : shared.length > 0
-          ? 'collections'
-          : 'library';
 
   const libraries = useQuery(librariesQuery(cid ?? '', client));
   const library = cid && libraries.data ? kidsLibrary(libraries.data, cid, profile?.kids) : null;
@@ -231,11 +213,9 @@ export function useKidsStories(): {
   // Re-read when a download lands or goes, never on a progress tick (which would
   // re-render the whole kids screen several times a second while one downloads).
   const downloadsSig = useDownloads((s) => statusSignature(s.entries));
-  // The picked library even while GET /libraries can't be read (`kidsOfflineLibraryId`);
-  // every story downloaded on the kid's own account when the shelf is collections (they
-  // can span libraries).
-  const offlineLibraryId =
-    cid && mode !== 'collections' ? kidsOfflineLibraryId(library, cid, profile?.kids) : null;
+  // The picked library even while GET /libraries can't be read; every story downloaded on
+  // the kid's own account when the shelf is (or may be) collections (`kidsOfflineScope`).
+  const offlineLibraryId = cid ? kidsOfflineScope(mode, library, cid, profile?.kids) : null;
   const downloaded = useMemo(
     () => (cid ? kidsDownloads(useDownloads.getState().entries, cid, offlineLibraryId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read on the signature
@@ -249,10 +229,11 @@ export function useKidsStories(): {
         : [],
     [mode, shared, details.details, progress.data],
   );
+  const sectionBooks = useMemo(() => kidsSectionBooks(sections), [sections]);
 
   const retry = () => {
-    void libraries.refetch();
-    if (askCollections) {
+    if (mode !== 'collections') void libraries.refetch();
+    if (ask) {
       void collections.refetch();
       for (const c of shared) {
         void qc.refetchQueries({ queryKey: qk.collection(cid ?? '', c.id), type: 'all' });
@@ -271,10 +252,19 @@ export function useKidsStories(): {
   };
 
   const serverName = connection?.name ?? '';
+  const ready = (
+    books: Book[],
+    rest: { offline: boolean; more: KidsMore; sections?: KidsSection[] },
+  ): KidsStories => ({
+    status: 'ready',
+    books,
+    ...rest,
+    signedOut,
+  });
   // The server can't give the stories: the downloaded ones, else an error.
   const fallback = (): KidsStories =>
     downloaded.length > 0
-      ? { status: 'ready', books: downloaded, offline: true, more: 'none' }
+      ? ready(downloaded, { offline: true, more: 'none' })
       : { status: 'error', serverName, offline };
   const more: KidsMore = !pages.hasNextPage
     ? 'none'
@@ -291,9 +281,10 @@ export function useKidsStories(): {
   // The streamed stories wouldn't play: show the ones on this device.
   else if (offline && downloaded.length > 0) stories = fallback();
   else if (mode === 'unknown') {
-    // The server can't say (yet) which view: unreachable, or the collections list failed.
+    // The server can't say (yet) which view: unreachable, signed out (the collections
+    // aren't asked), or the collections list failed.
     stories =
-      (librariesFailed && !libraries.data) || collections.isError
+      (librariesFailed && !libraries.data) || collections.isError || signedOut
         ? fallback()
         : { status: 'loading' };
   } else if (mode === 'collections') {
@@ -302,13 +293,11 @@ export function useKidsStories(): {
     else if (sections.length === 0) {
       stories = details.failed ? fallback() : { status: 'empty', serverName, askGrownUp: true };
     } else {
-      stories = {
-        status: 'ready',
-        books: kidsSectionBooks(sections),
+      stories = ready(sectionBooks, {
         ...(sections.length > 1 ? { sections } : {}),
         offline: false,
         more: details.failed ? 'failed' : 'none',
-      };
+      });
     }
   } else if (librariesFailed && !libraries.data) stories = fallback();
   else if (libraries.isPending) stories = { status: 'loading' };
@@ -318,8 +307,11 @@ export function useKidsStories(): {
     stories = { status: 'loading' };
   } else if (pages.isError && shelf.length === 0) stories = fallback();
   else if (shelf.length === 0) stories = { status: 'empty', serverName };
-  else stories = { status: 'ready', books: shelf, offline: false, more };
+  else stories = ready(shelf, { offline: false, more });
+  // Signed out with nothing to show: only a grown-up can help, whatever else went wrong.
+  if (signedOut && stories.status !== 'ready' && stories.status !== 'no-connection') {
+    stories = { status: 'signed-out', serverName };
+  }
 
-  const signedOut = !!connection?.needsReconnect;
-  return { stories, connectionId: cid, library, signedOut, retry, loadMore };
+  return { stories, connectionId: cid, retry, loadMore };
 }

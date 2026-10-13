@@ -7,6 +7,8 @@ import {
   addBookmark,
   allProgressQuery,
   cachedCapability,
+  collectionQuery,
+  collectionsQuery,
   fetchCapabilities,
   fetchFailFast,
   isAllProgressKey,
@@ -19,7 +21,7 @@ import {
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { endCastForCar } from '@/cast/cast-session';
-import type { Book, Progress, QueueEntry } from '@/api/types';
+import type { Book, Collection, Progress, QueueEntry } from '@/api/types';
 import {
   kidsCollections,
   kidsCollectionSections,
@@ -27,9 +29,11 @@ import {
   kidsContinuePaths,
   kidsDownloads,
   kidsLibrary,
-  kidsOfflineLibraryId,
+  kidsOfflineScope,
   kidsSectionBooks,
   kidsShelf,
+  type KidsShelfMode,
+  kidsShelfMode,
 } from '@/components/kids/kids-model';
 import { progressAt } from '@/components/home/home-model';
 import { startBookInPlace } from '@/components/player/start-book';
@@ -279,82 +283,124 @@ async function libraryBooks(): Promise<{ cid: string; books: Book[] } | null> {
 const kidsLibraryKey = (cid: string, libraryId: number) =>
   [...qk.carLibrary(cid, libraryId), 'kids'] as const;
 
+/** How a kids profile's shelf reads (`readKidsShelf`): where it comes from
+ * (`kidsShelfMode`), and `shelf(progress)` to finish it with the connection's progress rows
+ * (null when it can't be read: offline with nothing cached). */
+type KidsShelfRead = {
+  mode: KidsShelfMode;
+  shelf: (progress: readonly Progress[]) => Promise<Book[] | null>;
+};
+
+const unreadable = async () => null;
+
+/** For a household member (`managed_by`): whether its server keeps collections (undefined
+ * while that can't be known) and its GET /me/collections answer (undefined when unread).
+ * Neither is asked for anyone else (`kidsShelfMode` is the one library then). */
+async function memberCollections(
+  conn: Connection,
+  client: NonNullable<ReturnType<typeof resolveClient>>,
+): Promise<{ has: boolean | undefined; list: Collection[] | undefined }> {
+  if (!conn.user.managed_by) return { has: undefined, list: undefined };
+  const caps = await fetchCapabilities(conn.id, client).catch(() => null);
+  const has = caps ? !!caps.collections : undefined;
+  const list = has
+    ? await read({ ...collectionsQuery(conn.id, client), staleTime: LIST_STALE_MS })
+    : undefined;
+  return { has, list };
+}
+
 /**
  * A kids profile's shelf on its connection, as kids mode shows it (`useKidsStories`, without
  * React: a car-only session runs no React tree): the collections the account's owner shares
- * with it (`kidsCollections`, a household member on a server with `collections`), else one
- * library (`kidsLibrary`, its stories in progress first, then its first page). Null when it
- * can't be read (offline with nothing cached): the caller falls back to the downloads.
+ * with it (`kidsShelfMode`: a household member on a server with `collections`), else one
+ * library (`kidsLibrary`, its stories in progress first, then its first page). Everything
+ * that doesn't need the progress is read here, while the caller reads the progress
+ * (`buildAndWrite`): the libraries alongside the collections, then the shared collections'
+ * items or the library's page.
  */
-async function kidsShelfOf(
-  conn: Connection,
-  kids: KidsSettings,
-  progress: readonly Progress[],
-): Promise<Book[] | null> {
+async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<KidsShelfRead> {
   const client = resolveClient(conn.id);
-  if (!client) return null;
-  if (conn.user.managed_by) {
-    const caps = await fetchCapabilities(conn.id, client).catch(() => null);
-    if (!caps) return null;
-    if (caps.collections) {
-      const list = await read({
-        queryKey: qk.collections(conn.id),
-        queryFn: ({ signal }) => client.collections(signal),
-        staleTime: LIST_STALE_MS,
-      });
-      if (!list) return null;
-      const shared = kidsCollections(list, conn.user);
-      if (shared.length > 0) {
-        const details = await mapLimit(shared, ITEM_CONCURRENCY, (c) =>
-          read({
-            queryKey: qk.collection(conn.id, c.id),
-            queryFn: ({ signal }) => client.collection(c.id, signal),
-            staleTime: LIST_STALE_MS,
-          }),
-        );
-        if (details.every((d) => d === undefined)) return null;
-        return kidsSectionBooks(kidsCollectionSections(shared, details, progress));
-      }
-    }
+  if (!client) return { mode: kidsShelfMode(conn.user, undefined, undefined), shelf: unreadable };
+  const [libraries, collections] = await Promise.all([
+    read({ ...librariesQuery(conn.id, client), staleTime: LIST_STALE_MS }),
+    memberCollections(conn, client),
+  ]);
+  const mode = kidsShelfMode(conn.user, collections.has, collections.list);
+  if (mode === 'unknown') return { mode, shelf: unreadable };
+  if (mode === 'collections') {
+    const shared = kidsCollections(collections.list ?? [], conn.user);
+    const details = await mapLimit(shared, ITEM_CONCURRENCY, (c) =>
+      read({ ...collectionQuery(conn.id, client, c.id), staleTime: LIST_STALE_MS }),
+    );
+    if (details.every((d) => d === undefined)) return { mode, shelf: unreadable };
+    return {
+      mode,
+      shelf: async (progress) =>
+        kidsSectionBooks(kidsCollectionSections(shared, details, progress)),
+    };
   }
-  const libraries = await read({ ...librariesQuery(conn.id, client), staleTime: LIST_STALE_MS });
-  if (!libraries) return null;
+  if (!libraries) return { mode, shelf: unreadable };
   const lib = kidsLibrary(libraries, conn.id, kids);
-  if (!lib) return [];
+  if (!lib) return { mode, shelf: async () => [] };
   const page = await read({
     queryKey: kidsLibraryKey(conn.id, lib.id),
     queryFn: () => client.listBooks(lib.id, { limit: CAR_TAB_LIMITS.library }),
     staleTime: LIST_STALE_MS,
   });
-  if (!page) return null;
-  const continuing = await mapLimit(kidsContinuePaths(progress, lib.id), ITEM_CONCURRENCY, (path) =>
-    itemOf({ connectionId: conn.id, libraryId: lib.id, path }),
-  );
-  return kidsShelf(
-    continuing.filter((b): b is Book => b !== null),
-    page.books,
-  );
+  if (!page) return { mode, shelf: unreadable };
+  return {
+    mode,
+    shelf: async (progress) => {
+      const continuing = await mapLimit(
+        kidsContinuePaths(progress, lib.id),
+        ITEM_CONCURRENCY,
+        (path) => itemOf({ connectionId: conn.id, libraryId: lib.id, path }),
+      );
+      return kidsShelf(
+        continuing.filter((b): b is Book => b !== null),
+        page.books,
+      );
+    },
+  };
 }
 
 /** A kids profile's car books (`kidsCarBooks`): its shelf, else (unreadable) the stories
- * downloaded on its account, as kids mode falls back to them offline. */
+ * downloaded on its account, as kids mode falls back to them offline (`kidsOfflineScope`). */
 async function kidsBooks(
   conn: Connection | null,
   kids: KidsSettings,
+  shelfRead: KidsShelfRead | null,
   rows: SourcedProgress[],
   live: LivePlace | null,
   progressOf: (ref: BookRef) => Progress | null,
 ): Promise<CarSnapshotInput['books']> {
-  if (!conn) return kidsCarBooks('', [], [], null, progressOf);
+  if (!conn || !shelfRead) return kidsCarBooks('', [], [], null, progressOf);
   const shelf =
-    (await kidsShelfOf(conn, kids, rows)) ??
+    (await shelfRead.shelf(rows)) ??
     kidsDownloads(
       useDownloads.getState().entries,
       conn.id,
-      // A member's shelf may be collections, across libraries: every story on the account.
-      conn.user.managed_by ? null : kidsOfflineLibraryId(null, conn.id, kids),
+      kidsOfflineScope(shelfRead.mode, null, conn.id, kids),
     );
   return kidsCarBooks(conn.id, shelf, rows, live?.ref ?? null, progressOf);
+}
+
+/** The kids shelf's collection answers last seen (by query hash), so an answer read again
+ * unchanged (the cache keeps the same data then) builds nothing. */
+const kidsShelfSeen = new Map<string, unknown>();
+
+/** Whether a query's new answer changes a kids profile's shelf of shared collections (a
+ * story added to one): a collections or collection key of the connection kids mode shows,
+ * with data other than last time. */
+function kidsShelfChanged(key: readonly unknown[], hash: string, data: unknown): boolean {
+  if (key[0] !== 'collections' && key[0] !== 'collection') return false;
+  const profile = activeProfile();
+  if (!profile?.kids || key[1] !== kidsConnectionId(profile.connectionIds, profile.kids)) {
+    return false;
+  }
+  if (kidsShelfSeen.get(hash) === data) return false;
+  kidsShelfSeen.set(hash, data);
+  return true;
 }
 
 // --- Play specs (Android) ---------------------------------------------------------------
@@ -449,6 +495,8 @@ async function buildAndWrite(): Promise<void> {
   const kids = profile?.kids ?? null;
   const kidsCid = kids ? kidsConnectionId(profile?.connectionIds ?? [], kids) : null;
   const kidsConn = conns.find((c) => c.id === kidsCid) ?? null;
+  // The kids shelf reads alongside the progress (only the stories in progress wait for it).
+  const kidsRead = signedIn && kids && kidsConn ? readKidsShelf(kidsConn, kids) : null;
   const [{ rows, known }, queue, library] = !signedIn
     ? [{ rows: [], known: new Set<string>() }, null, null]
     : kids
@@ -468,7 +516,7 @@ async function buildAndWrite(): Promise<void> {
   const progressOf = (ref: BookRef) => progressByKey.get(contentKeyOf(ref)) ?? null;
 
   const books: CarSnapshotInput['books'] = kids
-    ? await kidsBooks(kidsConn, kids, rows, live, progressOf)
+    ? await kidsBooks(kidsConn, kids, await kidsRead, rows, live, progressOf)
     : await everyoneBooks(rows, live, queue, library, conns, progressOf);
 
   // Every book any tab lists, once: its play spec (downloaded only) and its cover.
@@ -973,8 +1021,7 @@ export function startCarSync(): () => void {
       if (event.type !== 'updated' || event.action.type !== 'success') return;
       const key = event.query.queryKey;
       if (isQueueKey(key) || isAllProgressKey(key)) request(false);
-      // A kids shelf of shared collections: a collection read anew (a story added).
-      else if ((key[0] === 'collections' || key[0] === 'collection') && activeProfile()?.kids) {
+      else if (kidsShelfChanged(key, event.query.queryHash, event.query.state.data)) {
         request(false);
       }
     }),
@@ -1015,6 +1062,7 @@ function teardown() {
   if (timer) clearTimeout(timer);
   timer = null;
   again = null;
+  kidsShelfSeen.clear();
   setCarConnected(false);
 }
 

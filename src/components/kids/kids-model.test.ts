@@ -12,10 +12,11 @@ import {
   kidsGrid,
   kidsLibrary,
   kidsManager,
-  kidsOfflineLibraryId,
+  kidsOfflineScope,
   kidsOrder,
   kidsSectionBooks,
   kidsShelf,
+  kidsShelfMode,
 } from './kids-model';
 
 const lib = (id: number, name = `Lib ${id}`): Library => ({
@@ -226,13 +227,19 @@ describe('kidsGrid', () => {
   });
 });
 
-describe('kidsOfflineLibraryId', () => {
-  it('is the shown library, else the pick on this connection, else none', () => {
+describe('kidsOfflineScope', () => {
+  it('is the shown library, else the pick on this connection, else none (one library)', () => {
     const kids = { library: { connectionId: 'c', libraryId: 4 } };
-    expect(kidsOfflineLibraryId({ id: 9 }, 'c', kids)).toBe(9);
-    expect(kidsOfflineLibraryId(null, 'c', kids)).toBe(4);
-    expect(kidsOfflineLibraryId(null, 'd', kids)).toBeNull();
-    expect(kidsOfflineLibraryId(null, 'c', undefined)).toBeNull();
+    expect(kidsOfflineScope('library', { id: 9 }, 'c', kids)).toBe(9);
+    expect(kidsOfflineScope('library', null, 'c', kids)).toBe(4);
+    expect(kidsOfflineScope('library', null, 'd', kids)).toBeNull();
+    expect(kidsOfflineScope('library', null, 'c', undefined)).toBeNull();
+  });
+
+  it("is every story on the account for a member's collections, or a shelf not known yet", () => {
+    const kids = { library: { connectionId: 'c', libraryId: 4 } };
+    expect(kidsOfflineScope('collections', { id: 9 }, 'c', kids)).toBeNull();
+    expect(kidsOfflineScope('unknown', null, 'c', kids)).toBeNull();
   });
 });
 
@@ -286,14 +293,14 @@ describe("a household member's shelf (Phase 8b-1)", () => {
     ]);
   });
 
-  it('kidsCollectionSections: one run is the whole shelf; several are titled; empty left out', () => {
+  it('kidsCollectionSections: titled runs, stories in progress first; empty left out', () => {
     const one = kidsCollectionSections(
       [coll(1), coll(2)],
       [detail(coll(1), [book('a'), null, book('b')]), detail(coll(2), [])],
       [progress('b')],
     );
     expect(one.map((s) => [s.key, s.title, s.books.map((b) => b.rel_path)])).toEqual([
-      ['collection-1', null, ['b', 'a']],
+      ['collection-1', 'C1', ['b', 'a']],
     ]);
     const two = kidsCollectionSections(
       [coll(1), coll(2), coll(3)],
@@ -306,6 +313,22 @@ describe("a household member's shelf (Phase 8b-1)", () => {
     ]);
     expect(kidsSectionBooks(two).map((b) => b.rel_path)).toEqual(['a', 'c']);
     expect(kidsCollectionSections([coll(1)], [detail(coll(1), [null])], [])).toEqual([]);
+  });
+
+  it('kidsShelfMode: the shared collections, else one library, unknown until both answers', () => {
+    const member = { managed_by: ADAM };
+    const shared = [coll(1)];
+    const others = [coll(2, { id: 3, username: 'bob' })];
+    expect(kidsShelfMode(member, true, shared)).toBe('collections');
+    expect(kidsShelfMode(member, true, others)).toBe('library');
+    expect(kidsShelfMode(member, true, [])).toBe('library');
+    // A server without collections, or an account nobody manages: one library at once.
+    expect(kidsShelfMode(member, false, undefined)).toBe('library');
+    expect(kidsShelfMode({ managed_by: null }, undefined, undefined)).toBe('library');
+    expect(kidsShelfMode(undefined, true, shared)).toBe('library');
+    // Not known yet: the capability, or the list.
+    expect(kidsShelfMode(member, undefined, shared)).toBe('unknown');
+    expect(kidsShelfMode(member, true, undefined)).toBe('unknown');
   });
 });
 

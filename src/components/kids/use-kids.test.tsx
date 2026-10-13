@@ -115,15 +115,18 @@ it("shows the profile's picked library while GET /libraries still lists it", asy
   setKids({ bedtime: '19:30', library: { connectionId: CONN.id, libraryId: 2 } });
   const { result } = await mount();
   await waitFor(() => expect(result.current.stories.status).toBe('ready'));
-  expect(result.current.library?.id).toBe(2);
   expect(mockClient.listBooks.mock.calls[0][0]).toBe(2);
+  const s = result.current.stories;
+  expect(s.status === 'ready' && s.books.map((b) => b.rel_path)).toEqual(['a', 'b', 'c']);
 });
 
 it('falls back to the first library listed when the pick is gone', async () => {
   setKids({ bedtime: '19:30', library: { connectionId: CONN.id, libraryId: 9 } });
   const { result } = await mount();
   await waitFor(() => expect(result.current.stories.status).toBe('ready'));
-  expect(result.current.library?.id).toBe(1);
+  expect(mockClient.listBooks.mock.calls[0][0]).toBe(1);
+  const s = result.current.stories;
+  expect(s.status === 'ready' && s.books.map((b) => b.rel_path)).toEqual(['x']);
 });
 
 it('puts the stories in progress first', async () => {
@@ -186,11 +189,24 @@ it("says the kid's sign-in ended (D4: a 401 marks the connection), so retrying c
   setKids({ bedtime: '19:30' });
   const { result } = await mount();
   await waitFor(() => expect(result.current.stories.status).toBe('ready'));
-  expect(result.current.signedOut).toBe(false);
+  expect(result.current.stories).toMatchObject({ status: 'ready', signedOut: false });
   await act(async () =>
     useSession.setState({ connections: [{ ...CONN, needsReconnect: 'auth' }] }),
   );
-  expect(result.current.signedOut).toBe(true);
+  expect(result.current.stories).toMatchObject({ status: 'ready', signedOut: true });
+});
+
+it('signed out with nothing to show: says so, never an error to retry', async () => {
+  useSession.setState({
+    connections: [{ ...CONN, needsReconnect: 'auth' }],
+    defaultConnectionId: CONN.id,
+  });
+  seedProfile({ connectionIds: [CONN.id], kids: { bedtime: '19:30' } });
+  mockClient.libraries.mockRejectedValue(new Error('401'));
+  const { result } = await mount();
+  await waitFor(() =>
+    expect(result.current.stories).toEqual({ status: 'signed-out', serverName: 'Hearthside' }),
+  );
 });
 
 it('shows the downloaded stories while the server is unreachable', async () => {
@@ -553,6 +569,16 @@ describe("a household member's kids shelf: the owner's shared collections (Phase
       expect(result.current).toBe('unknown');
       expect(mockClient.collections).not.toHaveBeenCalled();
     });
+  });
+
+  it("a signed-out member's collections are not asked: what the device has, else signed-out", async () => {
+    setMember({ ...MEMBER, needsReconnect: 'auth' });
+    mockClient.collections.mockResolvedValue([evies]);
+    const { result } = await mount();
+    await waitFor(() =>
+      expect(result.current.stories).toEqual({ status: 'signed-out', serverName: 'Hearthside' }),
+    );
+    expect(mockClient.collections).not.toHaveBeenCalled();
   });
 
   it('waits on the collections list (loading, not the library)', async () => {

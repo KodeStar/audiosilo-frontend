@@ -88,6 +88,12 @@ export function kidsLibrary(
   return libraries[0] ?? null;
 }
 
+/** The progress rows of stories partway through, most recently played first: the order
+ * kids mode shows them in, first (`kidsContinuePaths`, `kidsOrder`). */
+function inProgressNewestFirst(progress: readonly Progress[]): Progress[] {
+  return progress.filter(isInProgress).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+}
+
 /**
  * The stories the child is partway through in `libraryId`, most recently played first, by
  * path (a book with two rows is listed once): kids mode shows them first (`kidsShelf`).
@@ -95,9 +101,8 @@ export function kidsLibrary(
 export function kidsContinuePaths(progress: readonly Progress[], libraryId: number): string[] {
   return [
     ...new Set(
-      progress
-        .filter((p) => p.library_id === libraryId && isInProgress(p))
-        .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      inProgressNewestFirst(progress)
+        .filter((p) => p.library_id === libraryId)
         .map((p) => p.path),
     ),
   ];
@@ -114,9 +119,9 @@ export function kidsShelf(continuing: readonly Book[], listed: readonly Book[]):
   return [...continuing, ...listed.filter((b) => !first.has(b.rel_path))];
 }
 
-/** One run of kids mode's stories: a collection's (titled with its name when the shelf
- * has several), or the whole shelf (`title` null). */
-export type KidsSection = { key: string; title: string | null; books: Book[] };
+/** One run of kids mode's stories: a collection's, titled with its name (shown when the
+ * shelf has several). */
+export type KidsSection = { key: string; title: string; books: Book[] };
 
 /**
  * The collections kids mode shows for a household member (Phase 8b-1): those the account's
@@ -135,9 +140,41 @@ export function kidsCollections(
   return collections.filter((c) => !c.owned && c.owner.id === owner);
 }
 
+/** Where kids mode's shelf comes from (8b-1, D6): the collections the account's owner
+ * shares (`kidsCollections`), one library (`kidsLibrary`), or not known yet. */
+export type KidsShelfMode = 'collections' | 'library' | 'unknown';
+
+/**
+ * Kids mode's shelf for an account (`user`), on a server that keeps collections or not
+ * (`hasCollections`, undefined while not known) with its GET /me/collections answer
+ * (`collections`, undefined while unread): the owner's shared collections when there are
+ * any, else one library. An account nobody manages, or a server without collections, is
+ * always the one library; a household member's shelf is unknown until both answers are in.
+ */
+export function kidsShelfMode(
+  user: Pick<User, 'managed_by'> | undefined,
+  hasCollections: boolean | undefined,
+  collections: readonly Collection[] | undefined,
+): KidsShelfMode {
+  if (!user?.managed_by || hasCollections === false) return 'library';
+  if (hasCollections === undefined || collections === undefined) return 'unknown';
+  return kidsCollections(collections, user).length > 0 ? 'collections' : 'library';
+}
+
 /** A book's place in kids mode's lists, across libraries (a collection can hold books of
  * several). */
 const storyKey = (libraryId: number, path: string) => `${libraryId}:${path}`;
+
+/** `books` once each (a book listed twice keeps its first place). */
+function uniqueStories(books: readonly Book[]): Book[] {
+  const seen = new Set<string>();
+  return books.filter((b) => {
+    const key = storyKey(b.library_id, b.rel_path);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 /**
  * `books` in the order kids mode shows them: the ones the child is partway through first
@@ -146,20 +183,11 @@ const storyKey = (libraryId: number, path: string) => `${libraryId}:${path}`;
  */
 export function kidsOrder(books: readonly Book[], progress: readonly Progress[]): Book[] {
   const rank = new Map<string, number>();
-  progress
-    .filter(isInProgress)
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-    .forEach((p) => {
-      const key = storyKey(p.library_id, p.path);
-      if (!rank.has(key)) rank.set(key, rank.size);
-    });
-  const seen = new Set<string>();
-  const unique = books.filter((b) => {
-    const key = storyKey(b.library_id, b.rel_path);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  for (const p of inProgressNewestFirst(progress)) {
+    const key = storyKey(p.library_id, p.path);
+    if (!rank.has(key)) rank.set(key, rank.size);
+  }
+  const unique = uniqueStories(books);
   const rankOf = (b: Book) => rank.get(storyKey(b.library_id, b.rel_path));
   const started = unique
     .filter((b) => rankOf(b) !== undefined)
@@ -170,44 +198,45 @@ export function kidsOrder(books: readonly Book[], progress: readonly Progress[])
 /**
  * Kids mode's shelf from the owner's shared collections (`kidsCollections`, with each
  * one's GET /me/collections/{id} answer in `details`, undefined while unread): the indexed
- * books of each, stories in progress first (`kidsOrder`). A collection with no stories is
- * left out; one section left is the whole shelf (no title), several are titled with their
- * collection's name. Empty when no collection has a story yet.
+ * books of each, stories in progress first (`kidsOrder`), titled with the collection's
+ * name. A collection with no stories is left out. Empty when no collection has a story
+ * yet.
  */
 export function kidsCollectionSections(
   collections: readonly Collection[],
   details: readonly (CollectionDetail | undefined)[],
   progress: readonly Progress[],
 ): KidsSection[] {
-  const sections = collections.flatMap((c, i): KidsSection[] => {
+  return collections.flatMap((c, i): KidsSection[] => {
     const books = (details[i]?.items ?? []).flatMap((item) => (item.book ? [item.book] : []));
     return books.length > 0
       ? [{ key: `collection-${c.id}`, title: c.name, books: kidsOrder(books, progress) }]
       : [];
   });
-  return sections.length === 1 ? [{ ...sections[0], title: null }] : sections;
 }
 
-/** Every story of `sections`, once each, in order (the car's shelf, a flat count). */
+/** Every story of `sections`, once each, in order (the whole shelf: the grid's `books`,
+ * the car's). */
 export function kidsSectionBooks(sections: readonly KidsSection[]): Book[] {
-  return kidsOrder(
-    sections.flatMap((s) => s.books),
-    [],
-  );
+  return uniqueStories(sections.flatMap((s) => s.books));
 }
 
 /**
- * The library kids mode's offline stories come from (`kidsDownloads`): the library the
- * screen shows when it is known, else, while GET /libraries can't be read (offline), the
- * profile's pick when it is on this connection, else null (every story downloaded on the
- * connection). Without it, offline, the grown-ups' downloads of another library on the
- * same account would show in kids mode.
+ * The library kids mode's offline stories come from (`kidsDownloads`), on a shelf of
+ * `mode`. A one-library shelf: the library the screen shows when it is known, else, while
+ * GET /libraries can't be read (offline), the profile's pick when it is on this
+ * connection, else null (every story downloaded on the connection); without it, offline,
+ * the grown-ups' downloads of another library on the same account would show in kids
+ * mode. A household member's shelf of collections, or one not known yet, is null: the
+ * collections can span libraries, and the server already limits what the account sees.
  */
-export function kidsOfflineLibraryId(
+export function kidsOfflineScope(
+  mode: KidsShelfMode,
   library: Pick<Library, 'id'> | null,
   connectionId: string,
   kids: Pick<KidsSettings, 'library'> | undefined,
 ): number | null {
+  if (mode !== 'library') return null;
   if (library) return library.id;
   const pick = kids?.library;
   return pick && pick.connectionId === connectionId ? pick.libraryId : null;

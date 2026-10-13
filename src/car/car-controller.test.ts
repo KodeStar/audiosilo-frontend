@@ -827,6 +827,64 @@ describe('startCarSync', () => {
       ]);
     });
 
+    it("rebuilds for a story read anew in the kid's shared collection, never another server's or the same answer", async () => {
+      household({ id: 12, managed_by: ADAM, member_kind: 'kid' });
+      const evies = coll(4, "Evie's books");
+      mockClients.c2 = fakeClient({
+        collections: [evies],
+        details: { 4: detail(evies, ['moon']) },
+      });
+      stop = startCarSync();
+      await settle();
+      await settle(MIN_GAP_MS);
+      // Every build reads the kid's collections (the fake reads skip the cache).
+      const builds = () => mockClients.c2.collections.mock.calls.length;
+      const before = builds();
+      const answered = (queryKey: unknown[], data: unknown) =>
+        mockCacheListener?.({
+          type: 'updated',
+          action: { type: 'success' },
+          query: { queryKey, queryHash: JSON.stringify(queryKey), state: { data } },
+        });
+      const moon = detail(evies, ['moon']);
+      // Another server's collection: not the kids shelf.
+      answered(['collection', 'c1', 4], moon);
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(builds()).toBe(before);
+      answered(['collection', 'c2', 4], moon);
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(builds()).toBe(before + 1);
+      // The same answer read again (the cache keeps the same data): nothing new.
+      answered(['collection', 'c2', 4], moon);
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(builds()).toBe(before + 1);
+      answered(['collection', 'c2', 4], detail(evies, ['moon', 'fox']));
+      await settle(SETTLE_MS + MIN_GAP_MS);
+      expect(builds()).toBe(before + 2);
+    });
+
+    it('reads the shelf alongside the progress, not after it', async () => {
+      household({ id: 12, managed_by: ADAM, member_kind: 'kid' });
+      const evies = coll(4, "Evie's books");
+      mockClients.c2 = fakeClient({
+        collections: [evies],
+        details: { 4: detail(evies, ['moon']) },
+      });
+      let answerProgress: (rows: Progress[]) => void = () => undefined;
+      mockClients.c2.allProgress.mockImplementationOnce(
+        () => new Promise<Progress[]>((r) => (answerProgress = r)),
+      );
+      stop = startCarSync();
+      await settle();
+      // The progress is still on its way: the collections and their stories are read.
+      expect(mockClients.c2.collections).toHaveBeenCalled();
+      expect(mockClients.c2.collection).toHaveBeenCalledWith(4, undefined);
+      expect(mockClients.c2.libraries).toHaveBeenCalled();
+      answerProgress([]);
+      await settle();
+      expect(tab(lastSnapshot(), 'library')!.items.map((i) => i.book.path)).toEqual(['moon']);
+    });
+
     it('kids mode turned on for the person listening rebuilds at once', async () => {
       household({ id: 12 }, false);
       mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'a', title: 'A' })] });
