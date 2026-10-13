@@ -100,10 +100,18 @@ export function MemberCard({
     });
   };
 
-  /** Change the member; false (and a toast saying nothing changed) when refused. */
+  /** Change the member; false (and a toast saying nothing changed) when refused. A new
+   * kind reaches their account on this device too (when they are here), so its password
+   * card, kids mode and "Who's listening?" follow the Kids switch now, not at their next
+   * sign-in. */
   const change = async (body: Parameters<typeof update.mutateAsync>[0]['body']) => {
     try {
       await update.mutateAsync({ id: member.id, body });
+      if (here && body.kind) {
+        void useSession
+          .getState()
+          .setConnectionUser(here.id, { ...here.user, member_kind: body.kind });
+      }
       return true;
     } catch (e) {
       refused(e);

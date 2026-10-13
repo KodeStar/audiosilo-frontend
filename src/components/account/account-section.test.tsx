@@ -32,8 +32,9 @@ jest.mock('@/api/hooks', () => {
 });
 
 const mockLogout = jest.fn(async () => {});
+const mockMe = jest.fn();
 jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({ logout: mockLogout, me: jest.fn(), pair: jest.fn() }),
+  useOptionalApi: () => ({ logout: mockLogout, me: mockMe, pair: jest.fn() }),
 }));
 
 type Conn = {
@@ -269,6 +270,28 @@ describe('AccountSection', () => {
     await fireEvent.press(setButtons[setButtons.length - 1]);
     expect(await screen.findByLabelText('New password')).toBeTruthy();
     expect(mockSession.removeConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountSection: the account read again', () => {
+  // The owner flipped the Kids switch after this account signed in here (8b-1): the stored
+  // user still says grown-up until /me is read again.
+  it('stores what /me says now as the page opens, once', async () => {
+    const kid = user({ role: 'user', has_password: false, member_kind: 'kid' });
+    mockMe.mockResolvedValue(kid);
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    await waitFor(() => expect(mockSession.setConnectionUser).toHaveBeenCalledWith('c1', kid));
+    // Re-rendered meanwhile (a new client object each render here): asked once.
+    await fireEvent.press(screen.getByRole('button', { name: 'Change password' }));
+    expect(mockMe).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the stored user when /me fails (offline)', async () => {
+    mockMe.mockRejectedValue(new Error('offline'));
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    await waitFor(() => expect(mockMe).toHaveBeenCalled());
+    expect(mockSession.setConnectionUser).not.toHaveBeenCalled();
+    expect(screen.getByText('Password')).toBeTruthy();
   });
 });
 

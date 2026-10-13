@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
 import type { AuthSession, HouseholdMember, MyDevice, PairingPayload } from '@/api/types';
@@ -320,6 +320,25 @@ describe('MemberCard', () => {
     expect(useProfiles.getState().profiles.find((p) => p.id === 'evie')?.name).toBe('Evelyn');
     // The owner's own profile keeps its name.
     expect(useProfiles.getState().profiles.find((p) => p.id === 'adam')?.name).toBe('Adam');
+  });
+
+  it('gives their account on this device the new kind when the Kids switch flips', async () => {
+    const here = {
+      ...owner,
+      id: 'a.12',
+      user: { id: 12, username: 'evie', member_kind: 'kid' },
+    } as Connection;
+    useSession.setState({ connections: [owner, here] });
+    await mount();
+    await fireEvent(screen.getByTestId('member-kid-12'), 'checkedChange', false);
+    expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { kind: 'grownup' } });
+    await waitFor(() =>
+      expect(useSession.getState().connections.find((c) => c.id === 'a.12')?.user.member_kind).toBe(
+        'grownup',
+      ),
+    );
+    // The owner's own account is untouched.
+    expect(useSession.getState().connections.find((c) => c.id === 'a.1')?.user).toEqual(owner.user);
   });
 
   it("leaves this device's profile alone when the server refuses the new name", async () => {

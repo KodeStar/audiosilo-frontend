@@ -1,9 +1,10 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { useActiveAddress } from '@/api/address-route';
 import { useMyDevices, useServerAddresses, useServerInfo } from '@/api/hooks';
+import { useOptionalApi } from '@/api/provider';
 import type { Capabilities } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
@@ -120,6 +121,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const devices = useMyDevices(cid);
   const deviceCount = devices.data ? signedInSessions(devices.data).length : undefined;
 
+  useFreshUser(cid);
   const password = usePasswordEditor(cid);
   // The guarded sign-out, scoped to this connection: the only way this device signs out
   // (see `canRevoke`).
@@ -245,4 +247,30 @@ function AccountAddresses({ cid, caps }: { cid: string; caps: Capabilities | und
       inUse={Platform.OS === 'web' ? undefined : inUse}
     />
   );
+}
+
+/** Read the account again (`/me`) once as its page opens, into the stored connection user
+ * (`setConnectionUser`, as a password change does): what this page says about it can have
+ * changed since sign-in, most of all a household member's `member_kind`, which their owner
+ * flips with the Kids switch (8b-1; the password card then says a kid's account can't have
+ * one). Best effort: offline, the stored user stands. */
+function useFreshUser(cid: string) {
+  const api = useOptionalApi(cid);
+  const setConnectionUser = useSession((s) => s.setConnectionUser);
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!api || asked.current) return;
+    asked.current = true;
+    // Kept after the page closes too: it is the session's user (`setConnectionUser` drops it
+    // when the connection has gone meanwhile).
+    void (async () => {
+      try {
+        const fresh = await api.me();
+        if (fresh) await setConnectionUser(cid, fresh);
+      } catch {
+        // Unreachable or signed out: the stored user stands (the dead-token path is the
+        // regular requests').
+      }
+    })();
+  }, [api, cid, setConnectionUser]);
 }
