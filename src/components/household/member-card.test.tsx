@@ -288,6 +288,15 @@ describe('MemberCard', () => {
     expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { name: 'Evelyn' } });
   });
 
+  it('keeps a name of 40 emoji whole (the limit counts characters, not UTF-16 units)', async () => {
+    const fox = '\u{1F98A}';
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Rename Evie' }));
+    await fireEvent.changeText(screen.getByTestId('rename-field'), fox.repeat(41));
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { name: fox.repeat(40) } });
+  });
+
   it("never sends a name the server's rule refuses (a control character)", async () => {
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'Rename Evie' }));

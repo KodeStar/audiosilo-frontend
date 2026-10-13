@@ -29,9 +29,9 @@ import type { Connection } from '@/stores/session';
 import { AccessPicker, memberBooksName } from './access-picker';
 import {
   type AddForm,
+  clipName,
   collectionIdsFor,
   createsBooks,
-  MEMBER_NAME_MAX,
   newAddForm,
   validMemberName,
   withAccess,
@@ -200,8 +200,7 @@ function FormStep({
           testID="add-member-name"
           label={t('household.add.name')}
           value={form.name}
-          onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
-          maxLength={MEMBER_NAME_MAX}
+          onChangeText={(v) => setForm((f) => ({ ...f, name: clipName(v) }))}
           autoFocus
           autoCapitalize="words"
           autoComplete="off"

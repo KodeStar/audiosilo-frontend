@@ -6,6 +6,7 @@ import { householdMember } from '@/testing/household-fixtures';
 
 import {
   addBlock,
+  clipName,
   collectionIdsFor,
   collectionsMembers,
   confirmsName,
@@ -202,5 +203,16 @@ describe('namedCollection (D10)', () => {
     expect(namedCollection(own, "Evie's book")).toBeUndefined();
     expect(namedCollection(own, '  ')).toBeUndefined();
     expect(namedCollection([], "Evie's books")).toBeUndefined();
+  });
+});
+
+describe('clipName', () => {
+  it('cuts by characters (code points), as the server counts them', () => {
+    const fox = '\u{1F98A}'; // two UTF-16 units
+    expect(clipName(fox.repeat(40))).toBe(fox.repeat(40));
+    expect(clipName(fox.repeat(41))).toBe(fox.repeat(40));
+    // Never half an emoji.
+    expect(clipName(`${'a'.repeat(39)}${fox}${fox}`)).toBe(`${'a'.repeat(39)}${fox}`);
+    expect(clipName('Evie')).toBe('Evie');
   });
 });

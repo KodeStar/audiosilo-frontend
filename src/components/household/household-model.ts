@@ -28,6 +28,15 @@ export function validMemberName(name: string): boolean {
   return n > 0 && n <= MEMBER_NAME_MAX && !CONTROL.test(name);
 }
 
+/** `name` cut to `MEMBER_NAME_MAX` characters counted as the server counts them (code
+ * points, Go's runes), never splitting an emoji's surrogate pair. A field's `maxLength`
+ * and `String.slice` count UTF-16 units instead, which halves the limit for such names
+ * and can leave half a character behind. */
+export function clipName(name: string): string {
+  const chars = Array.from(name);
+  return chars.length > MEMBER_NAME_MAX ? chars.slice(0, MEMBER_NAME_MAX).join('') : name;
+}
+
 /** Why the members section offers no "Add someone to your household": the server's
  * `reason`, or `at_cap` when the caller has as many members as the server allows. Null
  * when they may add. */

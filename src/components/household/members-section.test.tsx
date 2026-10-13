@@ -527,8 +527,18 @@ describe('the add dialog', () => {
     await mount();
     await openAdd();
     expect(screen.getByTestId('add-member-submit')).toBeDisabled();
-    await typeName('x'.repeat(41));
+    await typeName('Ev\u0007ie');
     expect(screen.getByText('Use a name of up to 40 characters.')).toBeTruthy();
+    expect(screen.getByTestId('add-member-submit')).toBeDisabled();
+  });
+
+  it('stops a name at 40 characters, counted as the server counts them', async () => {
+    const fox = '\u{1F98A}'; // two UTF-16 units: a field's maxLength would stop at 20
+    await mount();
+    await openAdd();
+    await typeName(fox.repeat(41));
+    expect(screen.getByTestId('add-member-name').props.value).toBe(fox.repeat(40));
+    expect(screen.queryByText('Use a name of up to 40 characters.')).toBeNull();
   });
 
   it.each([

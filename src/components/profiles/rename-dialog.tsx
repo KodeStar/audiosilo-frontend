@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { MEMBER_NAME_MAX } from '@/components/household/household-model';
+import { clipName } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,17 +13,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
-/** The longest name a person gets (it fits under an avatar and in a menu): a household
- * member's limit, so a name that fits here fits on the server too. */
-const NAME_MAX = MEMBER_NAME_MAX;
-
 /**
  * Rename a person (the shared Dialog: a bottom sheet on a phone that lifts above the
  * keyboard): on this device (a profile; the server account keeps its username), or a
  * household member's name on the server (Phase 8b-1). `onSave` gets the trimmed name and
  * resolves to whether it was saved (the dialog stays open on false, and the caller has said
  * why); `body` says what the name is; `validate` says what is wrong with a name (undefined:
- * nothing), by default only an empty one.
+ * nothing), by default only an empty one. A name is at most a household member's limit in
+ * characters (it fits under an avatar and in a menu, and on the server too), counted as
+ * the server counts them (`clipName`).
  */
 export function RenameDialog({
   open,
@@ -75,7 +73,7 @@ function RenameBody({
     if (!ok || saving) return;
     setSaving(true);
     try {
-      if (await onSave(value.slice(0, NAME_MAX).trim())) onClose();
+      if (await onSave(clipName(value.trim()))) onClose();
     } finally {
       setSaving(false);
     }
@@ -90,8 +88,7 @@ function RenameBody({
         testID="rename-field"
         label={t('profiles.rename.label')}
         value={value}
-        onChangeText={setValue}
-        maxLength={NAME_MAX}
+        onChangeText={(v) => setValue(clipName(v))}
         autoFocus
         autoCapitalize="words"
         returnKeyType="done"
