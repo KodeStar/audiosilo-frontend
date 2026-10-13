@@ -576,12 +576,15 @@ function useCapabilityQuery<T>(
  * - `mutationKey` names the connection: a pending (or queued) mutation takes each
  *   re-render's options, so a hook switched to another connection would send a queued
  *   write there. A changed key detaches the pending mutations instead, and they keep
- *   their own client and cache. */
+ *   their own client and cache.
+ * - `failed` runs when the request was sent and did not succeed (a refusal, a 404 for
+ *   something already gone, no answer): for the reads that may be stale either way. */
 function useCapabilityMutation<V, T>(
   flag: keyof Capabilities,
   connectionId: string | undefined,
   request: (api: ApiClient, vars: V) => Promise<T>,
   store?: (cache: { qc: QueryClient; cid: string }, answer: T, vars: V) => unknown,
+  failed?: (cache: { qc: QueryClient; cid: string }, vars: V) => void,
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
@@ -592,7 +595,13 @@ function useCapabilityMutation<V, T>(
     mutationFn: async (vars: V) => {
       if (!api) throw new Error('no connection');
       if (supported !== true) throw new CapabilityError(flag, supported === undefined);
-      const answer = await request(api, vars);
+      let answer: T;
+      try {
+        answer = await request(api, vars);
+      } catch (e) {
+        failed?.({ qc, cid }, vars);
+        throw e;
+      }
       await store?.({ qc, cid }, answer, vars);
       return answer;
     },
@@ -1998,18 +2007,24 @@ export function useMemberPairing(connectionId?: string) {
 
 /** Sign a member out of one of their devices (`{ id, deviceId }`, `id` the member's).
  * Refreshes that member's devices, the members list (its device count) and the caller's
- * devices (their `member_sign_ins`). */
+ * devices (their `member_sign_ins`) whatever the answer: a 404 means the device was
+ * signed out already (elsewhere), so the list on screen is the stale one. */
 export function useRevokeMemberDevice(connectionId?: string) {
+  const refresh = (
+    { qc, cid }: { qc: QueryClient; cid: string },
+    { id }: { id: number; deviceId: number },
+  ) => {
+    void qc.invalidateQueries({ queryKey: qk.memberDevices(cid, id) });
+    void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+    void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+  };
   return useCapabilityMutation(
     'household_members',
     connectionId,
     (api, { id, deviceId }: { id: number; deviceId: number }) =>
       api.revokeMemberDevice(id, deviceId),
-    ({ qc, cid }, _answer, { id }) => {
-      void qc.invalidateQueries({ queryKey: qk.memberDevices(cid, id) });
-      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
-      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
-    },
+    (cache, _answer, vars) => refresh(cache, vars),
+    refresh,
   );
 }
 

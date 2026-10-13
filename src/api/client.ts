@@ -78,10 +78,15 @@ function withCleanAddresses<T extends { addresses?: ServerAddresses }>(answer: T
   return { ...answer, addresses: cleanAddresses(answer.addresses) };
 }
 
+/** The server answered with an error status. `message` is the body's `error` (the
+ * server's English, for logs: never shown as it is), `code` the body's machine-readable
+ * `code` when the route gives one (`member_limit`, `invalid_name`, ...); branch on the
+ * code, with the status as the fallback for an older server or a route without codes. */
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -292,8 +297,10 @@ export class ApiClient {
         throw new ApiError(res.status, fallbackMsg);
       }
       if (!res.ok) {
-        const msg = (data as { error?: string } | undefined)?.error;
-        throw new ApiError(res.status, msg || fallbackMsg);
+        const body = data as { error?: unknown; code?: unknown } | undefined;
+        const msg = typeof body?.error === 'string' ? body.error : '';
+        const code = typeof body?.code === 'string' && body.code ? body.code : undefined;
+        throw new ApiError(res.status, msg || fallbackMsg, code);
       }
       return data as T;
     } catch (e) {

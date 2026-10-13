@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { ApiError } from '@/api/client';
 import type { Capabilities, HouseholdMember, HouseholdMembers, ServerInfo } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
@@ -315,6 +316,17 @@ describe('household member writes', () => {
   it("signing a member out of a device refreshes that member's devices, the list and the caller's", async () => {
     const { result, qc } = await mountCached(useRevokeMemberDevice);
     await run(result.current.m, { id: 12, deviceId: 21 });
+    expect(stale(qc, qk.memberDevices('c1', 12))).toBe(true);
+    expect(stale(qc, qk.memberDevices('c1', 13))).toBe(false);
+    expect(stale(qc, qk.householdMembers('c1'))).toBe(true);
+    expect(stale(qc, qk.myDevices('c1'))).toBe(true);
+  });
+
+  it('a sign-out the server refuses (404: signed out already) still refreshes the lists', async () => {
+    const { result, qc } = await mountCached(useRevokeMemberDevice);
+    mockClients.c1.revokeMemberDevice.mockRejectedValueOnce(new ApiError(404, 'device not found'));
+    const { error } = await run(result.current.m, { id: 12, deviceId: 21 });
+    expect(error).toMatchObject({ status: 404 });
     expect(stale(qc, qk.memberDevices('c1', 12))).toBe(true);
     expect(stale(qc, qk.memberDevices('c1', 13))).toBe(false);
     expect(stale(qc, qk.householdMembers('c1'))).toBe(true);

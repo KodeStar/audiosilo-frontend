@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import {
   ApiClient,
+  ApiError,
   isPlainSeriesQuery,
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
@@ -80,6 +81,28 @@ describe('ApiClient', () => {
       status: 403,
       message: 'forbidden',
     });
+  });
+
+  it("carries the error body's code, and none when the body has none", async () => {
+    installFetch(() => ({
+      status: 409,
+      body: { error: 'member limit reached', code: 'member_limit' },
+    }));
+    const coded = await new ApiClient('https://h', 'tok')
+      .addMember({ name: 'Evie', kind: 'kid', access: 'collections' })
+      .catch((e: unknown) => e);
+    expect(coded).toBeInstanceOf(ApiError);
+    expect(coded).toMatchObject({ status: 409, code: 'member_limit' });
+
+    installFetch(() => ({ status: 403, body: { error: 'forbidden' } }));
+    const plain = await new ApiClient('https://h', 'tok').me().catch((e: unknown) => e);
+    expect(plain).toMatchObject({ status: 403, message: 'forbidden' });
+    expect((plain as ApiError).code).toBeUndefined();
+
+    // A code that is not a string is no code.
+    installFetch(() => ({ status: 400, body: { error: 'bad', code: 7 } }));
+    const odd = await new ApiClient('https://h', 'tok').me().catch((e: unknown) => e);
+    expect((odd as ApiError).code).toBeUndefined();
   });
 
   it('returns undefined for 204 responses', async () => {

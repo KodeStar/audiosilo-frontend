@@ -157,6 +157,10 @@ export type User = {
    * account, absent on older servers. A kid's account has no password or API keys and
    * can't pair a device itself: their owner signs them in. */
   member_kind?: MemberKind | null;
+  /** A household member's name as their owner gave it (capability `household_members`):
+   * a new profile for this account is named after it. Absent for an ordinary account and
+   * on older servers (the username stands in). */
+  display_name?: string;
 };
 
 /** Response of /auth/exchange and /auth/login. The token is the session secret;
