@@ -51,6 +51,7 @@ import {
 import { onForeground } from '@/lib/when-active';
 import { buildBookQueue, toBookPosition } from '@/playback/book-queue';
 import { bookSourceOf } from '@/playback/book-source';
+import { listenerDefaultRate } from '@/playback/default-rate';
 import { noteInteraction } from '@/playback/last-interaction';
 import { readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
 import {
@@ -381,7 +382,8 @@ async function playSpecs(
   const next: typeof specs = new Map();
   if (downloaded.length > 0) {
     const places = await readLocalPlaces();
-    const { defaultRate, virtualChapterInterval } = useSettings.getState();
+    const { virtualChapterInterval } = useSettings.getState();
+    const defaultRate = listenerDefaultRate();
     for (const { key, ref, manifest } of downloaded) {
       const { connectionId, libraryId, path } = ref;
       const row = known.has(connectionId) ? progressOf(ref) : undefined;
@@ -427,7 +429,6 @@ async function buildAndWrite(): Promise<void> {
   // snapshot native kept is better than a signed-out one (its downloads still play).
   if (sessionHydrateFailed()) return;
   const t = i18n.t.bind(i18n);
-  const settings = useSettings.getState();
   // The person listening on this device: the car lists their servers only (Phase 8).
   const conns = profileConnections();
   const signedIn = conns.length > 0;
@@ -523,7 +524,7 @@ async function buildAndWrite(): Promise<void> {
     },
     {
       t,
-      defaultRate: settings.defaultRate,
+      defaultRate: listenerDefaultRate(),
       live,
       isDownloaded: (ref) => !!downloadedEntryOf(ref),
       artworkFor: (ref) => artwork.get(contentKeyOf(ref)) ?? null,

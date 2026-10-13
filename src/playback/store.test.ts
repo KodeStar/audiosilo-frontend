@@ -931,6 +931,50 @@ describe('the speed a book starts at', () => {
     expect(usePlayer.getState().rate).toBe(1.8);
   });
 
+  // Decision 7 regression (8b-1, D3): the one change here is the default a book with no
+  // speed of its own starts at (`listenerDefaultRate`): 1x for a kids profile.
+  describe('in kids mode', () => {
+    beforeEach(() =>
+      useProfiles.setState({
+        hydrated: true,
+        activeProfileId: 'evie',
+        profiles: [{ id: 'evie', name: 'Evie', connectionIds: ['c1'], kids: { bedtime: '19:30' } }],
+      }),
+    );
+    afterEach(() => {
+      resetProfilesForTests();
+      useSettings.setState({ defaultRate: 1 });
+    });
+
+    it("starts a story at 1x, never the grown-up's default speed", async () => {
+      useSettings.setState({ defaultRate: 1.4 });
+      mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'empty' });
+      await usePlayer.getState().playBook('c1', 2, makeBook());
+      expect(usePlayer.getState().rate).toBe(1);
+      expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1]]);
+    });
+
+    it('keeps a speed saved for the kid on that story', async () => {
+      useSettings.setState({ defaultRate: 1.4 });
+      mockLoadInitialProgress.mockResolvedValueOnce({
+        kind: 'progress',
+        progress: makeProgress({ position: 30, playback_speed: 1.2 }),
+      });
+      await usePlayer.getState().playBook('c1', 2, makeBook());
+      expect(usePlayer.getState().rate).toBe(1.2);
+    });
+
+    it('a grown-up still starts at their default speed', async () => {
+      useProfiles.setState({
+        profiles: [{ id: 'evie', name: 'Evie', connectionIds: ['c1'] }],
+      });
+      useSettings.setState({ defaultRate: 1.4 });
+      mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'empty' });
+      await usePlayer.getState().playBook('c1', 2, makeBook());
+      expect(usePlayer.getState().rate).toBe(1.4);
+    });
+  });
+
   it('is the asked-for speed, set before the engine starts, over a saved one', async () => {
     mockReadMirror.mockResolvedValue(mirror(1.4, '2026-10-01T00:00:00Z'));
     mockLoadInitialProgress.mockResolvedValueOnce({
