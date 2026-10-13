@@ -267,30 +267,39 @@ type SessionState = {
   hydrate: () => Promise<void>;
   /** Add a connection for `user` on the server `serverId`, or update the one this device
    * already has for that user there (matched by `serverIdOf` + `user.id`, even at a
-   * different URL), and make it the default. Returns the connection id: the existing one's
-   * (a legacy id stays until the key migration moves it), else `connectionIdOf(serverId,
-   * user.id)`. */
-  setSession: (s: {
-    serverUrl: string;
-    serverId: string;
-    token: string;
-    user: User;
-    name?: string;
-    /** The server's addresses from the pairing link, the redeem payload, or the exchange
-     * / login answer (cleaned where they arrived). Absent keeps what the connection
-     * already knew (a re-pair through an older server, or a link without them, must not
-     * erase what a newer pairing taught it); present is merged with it
-     * (`mergeAddresses`). */
-    addresses?: ServerAddresses;
-    /** The stale identities at this address (`staleIdentities`: a server that was reset)
-     * this sign-in retires: the person signing in's own (`finishConnect` names them). Each
-     * is dropped with its token and scoped state, and the new connection takes its place in
-     * that person's profile (`onConnectionReplaced`). Every OTHER stale identity is kept,
-     * flagged `server-reset`: it is another person's, theirs to sign in again, and dropping
-     * it would delete them (their profile, PIN and kids settings) from the device. Absent:
-     * none is retired. */
-    retire?: readonly string[];
-  }) => Promise<string>;
+   * different URL), and make it the default (unless `opts.makeDefault` is false). Returns
+   * the connection id: the existing one's (a legacy id stays until the key migration moves
+   * it), else `connectionIdOf(serverId, user.id)`. */
+  setSession: (
+    s: {
+      serverUrl: string;
+      serverId: string;
+      token: string;
+      user: User;
+      name?: string;
+      /** The server's addresses from the pairing link, the redeem payload, or the exchange
+       * / login answer (cleaned where they arrived). Absent keeps what the connection
+       * already knew (a re-pair through an older server, or a link without them, must not
+       * erase what a newer pairing taught it); present is merged with it
+       * (`mergeAddresses`). */
+      addresses?: ServerAddresses;
+      /** The stale identities at this address (`staleIdentities`: a server that was reset)
+       * this sign-in retires: the person signing in's own (`finishConnect` names them). Each
+       * is dropped with its token and scoped state, and the new connection takes its place in
+       * that person's profile (`onConnectionReplaced`). Every OTHER stale identity is kept,
+       * flagged `server-reset`: it is another person's, theirs to sign in again, and dropping
+       * it would delete them (their profile, PIN and kids settings) from the device. Absent:
+       * none is retired. */
+      retire?: readonly string[];
+    },
+    opts?: {
+      /** False: the default connection stays where it is (a household member signed in on
+       * the owner's device, `addMemberHere`: the owner keeps listening). It still becomes
+       * the default when there is none yet, or the default is no longer signed in. Default
+       * true. */
+      makeDefault?: boolean;
+    },
+  ) => Promise<string>;
   /** Remember the server URL mid-connect, before authenticating. */
   setPendingServerUrl: (url: string) => Promise<void>;
   /** Update a specific connection's user (a `/me` refresh after a password change
@@ -442,7 +451,10 @@ export const useSession = create<SessionState>()((set, get) => ({
     }
   },
 
-  setSession: async ({ serverUrl, serverId, token, user, name, addresses, retire }) => {
+  setSession: async (
+    { serverUrl, serverId, token, user, name, addresses, retire },
+    { makeDefault = true } = {},
+  ) => {
     // The connection id is the server-minted server_id plus the user's id
     // (`connectionIdOf`): it keys every per-connection store (downloads, the progress
     // mirror/queue, the query cache, scroll memory, the secure-store token). A blank
@@ -498,7 +510,12 @@ export const useSession = create<SessionState>()((set, get) => ({
     // Best-effort drop each stale identity's dead token. No server revoke - the token is
     // already dead, so there's nothing to call.
     await Promise.all(stale.map((c) => deleteSecure(tokenKey(c.id)).catch(() => undefined)));
-    await persist(connections, id);
+    // The default: this connection, unless the caller keeps the current one (which must
+    // still be signed in; a retired stale identity can't stay the default).
+    const current = get().defaultConnectionId;
+    const defaultId =
+      makeDefault || !current || !connections.some((c) => c.id === current) ? id : current;
+    await persist(connections, defaultId);
     // The list just written is the one in memory: settled, even when the hydrate above failed
     // again (unreadable storage, not a locked phone: a sign-in means it is unlocked).
     if (hydrateFailed) hydrateEnded(false);
@@ -517,7 +534,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     }
     // Building `conn` fresh (with no `needsReconnect`) inherently clears any prior flag on
     // a re-pair of an existing connection.
-    set({ connections, pendingServerUrl: null, ...mirror(connections, id) });
+    set({ connections, pendingServerUrl: null, ...mirror(connections, defaultId) });
     // Purge each dropped stale identity's scoped state (downloads, progress mirror/queue,
     // query cache, scroll memory), same semantics as removeConnection: run every cleanup,
     // never let one block the re-pair.

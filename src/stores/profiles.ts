@@ -262,19 +262,31 @@ export function reconcileProfiles(
   return sameDoc(next, doc) ? doc : next;
 }
 
+/** How `placeInDoc` places a connection. */
+export type PlaceOptions = {
+  /** A profile of its own ("Add someone", a household member signed in here). */
+  newProfile?: boolean;
+  /** The new profile does NOT become active: the person listening stays (a household
+   * member signed in on the owner's device, `addMemberHere`). */
+  keepActive?: boolean;
+  /** The new profile's name (trimmed; empty: the user's username). */
+  name?: string;
+};
+
 /**
  * Where a connection the connect flow just signed in goes (the contract's rule): into the
  * active profile, unless that profile already has a connection to this server (another
  * user: another person), or the flow was "Add someone" (`newProfile`); then into a new
- * profile, which becomes active. A connection already in a profile is taken out of it
- * first (the reconcile may have placed it a moment earlier). Returns the document and the
- * profile now holding the connection.
+ * profile, which becomes active unless `keepActive` (the active person then stays, or
+ * nobody when the active person was only this connection). A connection already in a
+ * profile is taken out of it first (the reconcile may have placed it a moment earlier).
+ * Returns the document and the profile now holding the connection.
  */
 export function placeInDoc(
   doc: ProfilesDoc,
   conn: ProfileConnection,
   connections: readonly ProfileConnection[],
-  opts: { newProfile?: boolean },
+  opts: PlaceOptions,
   newId: () => string = randomUUID,
 ): { doc: ProfilesDoc; profileId: string } {
   const byId = new Map(connections.map((c) => [c.id, c]));
@@ -297,9 +309,13 @@ export function placeInDoc(
       profileId: active.id,
     };
   }
-  const created = newProfileFor(conn, newId);
+  const made = newProfileFor(conn, newId);
+  const created = opts.name?.trim() ? { ...made, name: opts.name.trim() } : made;
+  const profiles = [...without, created];
   return {
-    doc: { ...doc, profiles: [...without, created], activeProfileId: created.id },
+    doc: opts.keepActive
+      ? withProfiles(doc, profiles)
+      : { ...doc, profiles, activeProfileId: created.id },
     profileId: created.id,
   };
 }
@@ -711,20 +727,38 @@ function updateProfile(profileId: string, change: (p: Profile) => Profile): void
 }
 
 /**
+ * Whether every connection of `profile` is a kid's account (the server says so:
+ * `user.member_kind === 'kid'`, a household member, Phase 8b-1). False for a profile with
+ * no connection the session knows, and on a server without household members.
+ */
+export function isKidsAccount(
+  profile: Pick<Profile, 'connectionIds'>,
+  connections: readonly ProfileConnection[],
+): boolean {
+  const own = connections.filter((c) => profile.connectionIds.includes(c.id));
+  return own.length > 0 && own.every((c) => c.user?.member_kind === 'kid');
+}
+
+/**
  * Whether kids mode may be turned on for `profileId`: only while another profile on the
  * device stays a grown-up (not in kids mode). Leaving kids mode is a grown-up's (the
  * Grown-ups hold opens "Who's listening?", and only a grown-up's Settings turn it off), so
  * a device whose every profile is a kids profile would have no way out but "Add someone"
- * (`mayAddPerson` keeps that open for exactly this case). True for a profile already in
- * kids mode (a change of its library or bedtime).
+ * (`mayAddPerson` keeps that open for exactly this case). The one exception: a profile
+ * whose accounts the server says are a kid's (`isKidsAccount`) may be in kids mode with no
+ * grown-up on the device (a kid's own phone, paired from their owner's QR): the server
+ * already limits that account, and it has no grown-up to leave kids mode for. True for a
+ * profile already in kids mode (a change of its library or bedtime).
  */
 export function mayTurnOnKids(
   profileId: string,
   state: Pick<ProfilesDoc, 'profiles'> = useProfiles.getState(),
+  connections: readonly ProfileConnection[] = useSession.getState().connections,
 ): boolean {
   const profile = state.profiles.find((p) => p.id === profileId);
   if (!profile) return false;
   if (profile.kids) return true;
+  if (isKidsAccount(profile, connections)) return true;
   return state.profiles.some((p) => p.id !== profileId && !p.kids);
 }
 
@@ -775,10 +809,7 @@ export function deleteProfile(profileId: string): void {
  * Place a connection the connect flow just signed in (`placeInDoc`). Returns the id of
  * the profile holding it, or null before hydration or for an unknown connection.
  */
-export function placeConnection(
-  connectionId: string,
-  opts: { newProfile?: boolean } = {},
-): string | null {
+export function placeConnection(connectionId: string, opts: PlaceOptions = {}): string | null {
   const s = useProfiles.getState();
   const { connections } = useSession.getState();
   const conn = connections.find((c) => c.id === connectionId);

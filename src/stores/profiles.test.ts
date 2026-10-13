@@ -13,6 +13,7 @@ import {
   deleteProfile,
   HYDRATE_ATTEMPTS,
   HYDRATE_RETRY_MS,
+  isKidsAccount,
   mayActFor,
   mayTurnOnKids,
   mustChoose,
@@ -312,6 +313,48 @@ describe('placeInDoc (the connect flow)', () => {
     expect(placed.profiles[0].connectionIds).toEqual([A1.id, C3.id]);
     const { doc: next } = placeInDoc(placed, C3, [A1, C3], { newProfile: true }, ids);
     expect(next.profiles.map((p) => p.connectionIds)).toEqual([[A1.id], [C3.id]]);
+  });
+  it('keepActive: a new profile, named, while the person listening stays (a member signed in here)', () => {
+    const { doc: placed, profileId } = placeInDoc(
+      base,
+      A2,
+      [A1, A2],
+      { newProfile: true, keepActive: true, name: '  Evie ' },
+      ids,
+    );
+    expect(profileId).toBe('p1');
+    expect(placed.profiles).toEqual([
+      { id: 'p', name: 'chris', connectionIds: [A1.id] },
+      { id: 'p1', name: 'Evie', connectionIds: [A2.id] },
+    ]);
+    expect(placed.activeProfileId).toBe('p');
+    // Without it, the new profile is made active (as before).
+    expect(placeInDoc(base, A2, [A1, A2], { newProfile: true }, ids).doc.activeProfileId).toBe(
+      'p2',
+    );
+  });
+
+  it('keepActive moves a connection the reconcile put in another person, keeping the active one', () => {
+    const two = doc({
+      profiles: [
+        { id: 'p', name: 'chris', connectionIds: [A1.id] },
+        { id: 'q', name: 'jo', connectionIds: [C3.id] },
+      ],
+      activeProfileId: 'p',
+    });
+    // The reconcile puts the new user on srvA in the first profile without srvA: jo's.
+    const placed = reconcileProfiles(two, [A1, C3, A2], A1.id, ids);
+    expect(placed.profiles[1].connectionIds).toEqual([C3.id, A2.id]);
+    const { doc: next } = placeInDoc(
+      placed,
+      A2,
+      [A1, C3, A2],
+      { newProfile: true, keepActive: true },
+      ids,
+    );
+    expect(next.profiles.map((p) => p.connectionIds)).toEqual([[A1.id], [C3.id], [A2.id]]);
+    expect(next.profiles[2].name).toBe('sam');
+    expect(next.activeProfileId).toBe('p');
   });
 });
 
@@ -833,5 +876,74 @@ describe('kids mode keeps a grown-up on the device', () => {
     expect(mayTurnOnKids('g', { profiles: [{ id: 'g', name: 'Gran', connectionIds: [] }] })).toBe(
       false,
     );
+  });
+});
+
+describe("a kid's account (household members, Phase 8b-1)", () => {
+  const kid = (serverId: string, userId: number): Connection => ({
+    ...conn(serverId, userId, 'evie'),
+    user: {
+      ...user(userId, 'evie'),
+      has_password: false,
+      managed_by: { id: 1, username: 'adam' },
+      member_kind: 'kid',
+    },
+  });
+  const grownMember = (serverId: string, userId: number): Connection => ({
+    ...conn(serverId, userId, 'ellis'),
+    user: {
+      ...user(userId, 'ellis'),
+      managed_by: { id: 1, username: 'adam' },
+      member_kind: 'grownup',
+    },
+  });
+  const K = kid('srvA', 12);
+  afterEach(() => resetProfilesForTests());
+
+  it('isKidsAccount: every account of the profile is a kid', () => {
+    const p = (ids: string[]) => ({ connectionIds: ids });
+    expect(isKidsAccount(p([K.id]), [A1, K])).toBe(true);
+    expect(isKidsAccount(p([K.id, B1.id]), [A1, K, B1])).toBe(false);
+    expect(isKidsAccount(p([A1.id]), [A1, K])).toBe(false);
+    expect(isKidsAccount(p(['gone.1']), [A1, K])).toBe(false);
+    expect(isKidsAccount(p([]), [A1, K])).toBe(false);
+    const G = grownMember('srvA', 13);
+    expect(isKidsAccount(p([G.id]), [G])).toBe(false);
+  });
+
+  it('may be in kids mode with no grown-up on the device (a kid-only device)', () => {
+    setSession([K]);
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'k',
+      profiles: [{ id: 'k', name: 'Evie', connectionIds: [K.id] }],
+    });
+    expect(mayTurnOnKids('k')).toBe(true);
+    setProfileKids('k', { bedtime: '19:00' });
+    expect(activeProfile()?.kids).toEqual({ bedtime: '19:00' });
+  });
+
+  it('never kids mode for the last grown-up account, a grown-up member included', () => {
+    const G = grownMember('srvA', 13);
+    setSession([G, B1]);
+    useProfiles.setState({
+      hydrated: true,
+      activeProfileId: 'g',
+      profiles: [
+        { id: 'g', name: 'Ellis', connectionIds: [G.id] },
+        { id: 'c', name: 'chris', connectionIds: [B1.id] },
+      ],
+    });
+    setProfileKids('c', { bedtime: '19:00' });
+    expect(mayTurnOnKids('g')).toBe(false);
+    setProfileKids('g', { bedtime: '19:00' });
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'g')?.kids).toBeUndefined();
+    // A profile holding a kid's account AND a grown-up's is a grown-up's.
+    expect(
+      mayTurnOnKids('x', { profiles: [{ id: 'x', name: 'x', connectionIds: [K.id, B1.id] }] }, [
+        K,
+        B1,
+      ]),
+    ).toBe(false);
   });
 });
