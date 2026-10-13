@@ -169,6 +169,8 @@
     "signOut": {
       "title": "Terminar sessão?",
       "warning": "Não tem qualquer palavra-passe definida. Sem ela, vai precisar de um novo convite do seu administrador para iniciar sessão novamente neste servidor.",
+      "warningMember": "Sem palavra-passe, {{owner}} pode voltar a iniciar a sua sessão a partir da página Casa.",
+      "warningKid": "Uma conta de criança não tem palavra-passe. {{owner}} pode voltar a iniciar a sessão da conta a partir da página Casa.",
       "setPassword": "Definir uma palavra-passe",
       "confirm": "Terminar sessão mesmo assim",
       "downloadsWarning_one": "Terminar sessão também elimina {{count}} livro descarregado deste servidor neste dispositivo.",

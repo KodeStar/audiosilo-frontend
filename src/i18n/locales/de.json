@@ -169,6 +169,8 @@
     "signOut": {
       "title": "Abmelden?",
       "warning": "Du hast kein Passwort festgelegt. Ohne Passwort brauchst du eine neue Einladung von deinem Administrator, um dich wieder bei diesem Server anzumelden.",
+      "warningMember": "Ohne Passwort kann {{owner}} dich auf der Seite Haushalt wieder anmelden.",
+      "warningKid": "Ein Kinderkonto hat kein Passwort. {{owner}} kann es auf der Seite Haushalt wieder anmelden.",
       "setPassword": "Passwort festlegen",
       "confirm": "Trotzdem abmelden",
       "downloadsWarning_one": "Beim Abmelden wird außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladenes Buch gelöscht.",

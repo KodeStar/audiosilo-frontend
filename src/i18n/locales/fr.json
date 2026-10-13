@@ -169,6 +169,8 @@
     "signOut": {
       "title": "Se déconnecter ?",
       "warning": "Vous n’avez pas défini de mot de passe. Sans cela, il vous faudra une nouvelle invitation de votre administrateur pour vous reconnecter à ce serveur.",
+      "warningMember": "Sans mot de passe, {{owner}} peut vous reconnecter depuis sa page Foyer.",
+      "warningKid": "Un compte enfant n'a pas de mot de passe. {{owner}} peut le reconnecter depuis sa page Foyer.",
       "setPassword": "Définir un mot de passe",
       "confirm": "Se déconnecter quand même",
       "downloadsWarning_one": "La déconnexion supprimera aussi {{count}} livre téléchargé depuis ce serveur sur cet appareil.",

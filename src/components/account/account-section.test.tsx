@@ -273,6 +273,47 @@ describe('AccountSection', () => {
   });
 });
 
+describe('AccountSection: signing a household member out', () => {
+  const adam = { id: 1, username: 'adam' };
+  const signOut = async () => {
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out of Hearthside' }));
+    expect(await screen.findByText('Sign out?')).toBeTruthy();
+  };
+
+  it('says their owner can sign them in again, never "a new invite"', async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      has_password: false,
+      managed_by: adam,
+      member_kind: 'grownup',
+    });
+    await signOut();
+    expect(
+      screen.getByText('Without a password, adam can sign you in again from their Household page.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/new invite/)).toBeNull();
+    // A grown-up member can still set one.
+    expect(screen.getAllByRole('button', { name: 'Set a password' })).toHaveLength(2);
+  });
+
+  it("offers a kid's account no password (it can't have one)", async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      has_password: false,
+      managed_by: adam,
+      member_kind: 'kid',
+    });
+    await signOut();
+    expect(
+      screen.getByText(
+        "A kid's account has no password. adam can sign it in again from their Household page.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Set a password' })).toBeNull();
+  });
+});
+
 describe('AccountSection: the account read again', () => {
   // The owner flipped the Kids switch after this account signed in here (8b-1): the stored
   // user still says grown-up until /me is read again.

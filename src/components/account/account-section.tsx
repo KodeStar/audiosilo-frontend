@@ -195,6 +195,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       <SignOutConfirm
         visible={signOut.confirmVisible}
         connectionId={cid}
+        user={user}
         onCancel={() => signOut.setConfirmVisible(false)}
         onSignOut={signOut.signOut}
         onSetPassword={() => {

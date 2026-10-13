@@ -169,6 +169,8 @@
     "signOut": {
       "title": "Disconnettersi?",
       "warning": "Non hai impostato alcuna password. Senza di essa, ti servirà un nuovo invito dal tuo amministratore per accedere di nuovo a questo server.",
+      "warningMember": "Senza password, {{owner}} può ricollegarti dalla sua pagina Famiglia.",
+      "warningKid": "Un account per bambini non ha password. {{owner}} può ricollegarlo dalla sua pagina Famiglia.",
       "setPassword": "Imposta una password",
       "confirm": "Disconnetti comunque",
       "downloadsWarning_one": "Disconnettendoti verrà eliminato anche {{count}} libro scaricato da questo server su questo dispositivo.",

@@ -169,6 +169,8 @@
     "signOut": {
       "title": "¿Cerrar sesión?",
       "warning": "No tienes ninguna contraseña configurada. Sin ella, necesitarás una nueva invitación de tu administrador para volver a iniciar sesión en este servidor.",
+      "warningMember": "Sin contraseña, {{owner}} puede volver a iniciar tu sesión desde su página Hogar.",
+      "warningKid": "Una cuenta infantil no tiene contraseña. {{owner}} puede volver a iniciar su sesión desde su página Hogar.",
       "setPassword": "Establecer una contraseña",
       "confirm": "Cerrar sesión de todas formas",
       "downloadsWarning_one": "Cerrar sesión también eliminará {{count}} libro descargado de este servidor en este dispositivo.",
