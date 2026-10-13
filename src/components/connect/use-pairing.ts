@@ -59,13 +59,17 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       return true;
     } catch (e) {
       if (!live.current) return false;
-      // The server's limiter (429) in words of our own, never its English.
+      // In words of our own, never the server's English: its limiter (429), a link it
+      // refused (expired, used up, unknown: 401; or malformed), it failing itself (5xx), or
+      // no answer at all.
       setError(
         apiErrorKind(e) === 'too_many'
           ? t('common.tooManyTries')
-          : e instanceof ApiError
-            ? t('connect.server.pairingFailed', { message: e.message })
-            : t('connect.server.pairingReachError'),
+          : !(e instanceof ApiError)
+            ? t('connect.server.pairingReachError')
+            : e.status >= 500
+              ? t('connect.server.pairingServerError')
+              : t('connect.server.pairingRefused'),
       );
       setPairing(false);
       return false;
