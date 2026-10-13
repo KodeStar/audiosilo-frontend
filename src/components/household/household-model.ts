@@ -95,13 +95,18 @@ export function withAccess(form: AddForm, access: MemberAccess): AddForm {
   return { ...form, access, accessPicked: true };
 }
 
-/** The collections a body sends: the chosen ones for "Only collections I share", none
- * otherwise (the server treats `collection_ids` as the full set to share). */
+/** The collections a body sends (the server treats `collection_ids` as the full set of
+ * the caller's collections to share): the chosen ones for "Only collections I share". A
+ * member switched from that to "Everything I can listen to" (`was`) is sent none, so the
+ * owner's shares to them stop and their kids shelf is the one library again (8b-1, D6);
+ * otherwise nothing is sent, and any shares stay as they are. */
 export function collectionIdsFor(
   access: MemberAccess,
   ids: readonly number[],
+  was?: MemberAccess,
 ): number[] | undefined {
-  return access === 'collections' ? [...ids] : undefined;
+  if (access === 'collections') return [...ids];
+  return was === 'collections' ? [] : undefined;
 }
 
 /** What a refused add or change says (a key under `household.errors`, `writeErrorText`).

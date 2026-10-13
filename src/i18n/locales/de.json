@@ -2385,6 +2385,7 @@
       "change": "Ändern",
       "changeA11y": "Ändern, was {{name}} hören kann",
       "accessTitle": "Was darf {{name}} hören?",
+      "stopsSharing": "Mit „Alles“ teilst du deine Sammlungen nicht mehr mit {{name}}.",
       "kid": "Kinderkonto",
       "kidBody": "Kein Passwort und keine API-Schlüssel. Du meldest es an.",
       "kidA11y": "Kinderkonto für {{name}}",

@@ -90,6 +90,12 @@ describe('the add form (decision J)', () => {
     expect(collectionIdsFor('collections', [4, 5])).toEqual([4, 5]);
     expect(collectionIdsFor('collections', [])).toEqual([]);
     expect(collectionIdsFor('all', [4])).toBeUndefined();
+    expect(collectionIdsFor('all', [4], 'all')).toBeUndefined();
+  });
+
+  it('sends none when a member is switched from collections to everything', () => {
+    expect(collectionIdsFor('all', [4], 'collections')).toEqual([]);
+    expect(collectionIdsFor('collections', [4], 'collections')).toEqual([4]);
   });
 });
 

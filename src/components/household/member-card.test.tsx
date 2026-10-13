@@ -249,10 +249,27 @@ describe('MemberCard', () => {
     expect(screen.getByTestId('member-access-dialog')).toBeTruthy();
   });
 
-  it('changes them to everything without sending collections', async () => {
+  it('changes them to everything and stops sharing the collections with them', async () => {
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    expect(screen.queryByTestId('member-access-stops-sharing')).toBeNull();
     await fireEvent.press(screen.getByRole('radio', { name: /^Everything I can listen to/ }));
+    expect(
+      screen.getByText('Switching to everything stops sharing your collections with Evie.'),
+    ).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('member-access-save'));
+    // The full set to share is none: the owner's shares to Evie go, and her kids shelf is
+    // the one library again.
+    expect(mockUpdate).toHaveBeenCalledWith({
+      id: 12,
+      body: { access: 'all', collection_ids: [] },
+    });
+  });
+
+  it('leaves the shares alone when they were on everything already', async () => {
+    await mount(member({ access: 'all' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    expect(screen.queryByTestId('member-access-stops-sharing')).toBeNull();
     await fireEvent.press(screen.getByTestId('member-access-save'));
     expect(mockUpdate).toHaveBeenCalledWith({
       id: 12,

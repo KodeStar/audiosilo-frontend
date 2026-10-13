@@ -120,7 +120,11 @@ export function MemberCard({
         id: member.id,
         body: {
           access,
-          collection_ids: collectionIdsFor(access, newId === null ? ids : [...ids, newId]),
+          collection_ids: collectionIdsFor(
+            access,
+            newId === null ? ids : [...ids, newId],
+            member.access,
+          ),
         },
       }),
     );
@@ -547,7 +551,7 @@ function RevokeMemberDevice({
 /** "What can they listen to?" for an existing member: the same picker as the add form
  * (without its own heading: the dialog's title asks the question), saved as one change
  * (access and, for collections, the full set to share, "<Name>'s books" created first
- * when chosen). */
+ * when chosen; switching to everything stops sharing those collections, and says so). */
 function AccessBody({
   connectionId,
   serverName,
@@ -595,6 +599,11 @@ function AccessBody({
           onCollections={setIds}
           onNewBooks={setNewBooks}
         />
+        {member.access === 'collections' && access === 'all' ? (
+          <Text variant="caption" className="mt-2.5" testID="member-access-stops-sharing">
+            {t('household.card.stopsSharing', { name: member.name })}
+          </Text>
+        ) : null}
       </ScrollView>
       <DialogFooter>
         <Button title={t('common.cancel')} variant="ghost" onPress={onClose} />

@@ -122,9 +122,10 @@ export type KidsSection = { key: string; title: string; books: Book[] };
  * The collections kids mode shows for a household member (Phase 8b-1): those the account's
  * owner (`user.managed_by`) shares with it, in the order GET /me/collections lists them
  * (the owner's). Empty for an account nobody manages (an ordinary one, a Phase 8 kid the
- * admin limited, an older server): kids mode then shows one library (`kidsLibrary`). A
- * member on "Everything I can listen to" whose owner also shares collections with them
- * sees those collections too.
+ * admin limited, an older server): kids mode then shows one library (`kidsLibrary`).
+ * Switching a member to "Everything I can listen to" stops the owner's shares to them
+ * (the member card sends `collection_ids: []`), so their shelf is the one library; a
+ * collection the owner shares with them later (ordinary sharing) shows here again.
  */
 export function kidsCollections(
   collections: readonly Collection[],

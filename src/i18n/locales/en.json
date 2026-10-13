@@ -2385,6 +2385,7 @@
       "change": "Change",
       "changeA11y": "Change what {{name}} can listen to",
       "accessTitle": "What can {{name}} listen to?",
+      "stopsSharing": "Switching to everything stops sharing your collections with {{name}}.",
       "kid": "Kids account",
       "kidBody": "No password or API keys. You sign them in.",
       "kidA11y": "Kids account for {{name}}",

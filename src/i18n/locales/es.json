@@ -2385,6 +2385,7 @@
       "change": "Cambiar",
       "changeA11y": "Cambiar lo que puede escuchar {{name}}",
       "accessTitle": "¿Qué puede escuchar {{name}}?",
+      "stopsSharing": "Al cambiar a todo, dejas de compartir tus colecciones con {{name}}.",
       "kid": "Cuenta infantil",
       "kidBody": "Sin contraseña ni claves de API. Tú inicias su sesión.",
       "kidA11y": "Cuenta infantil para {{name}}",
