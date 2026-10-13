@@ -882,6 +882,12 @@ media GETs only.
   `persistedDocument('audiosilo.timeSaved')`, flushed on a halt, on leaving the foreground and
   every 30 s (an `engineTicker`), purged per connection; read through `useTimeSaved` /
   `useBookTimeSaved`.
+- **The download hot-swap plays on from intent, not from `playing`** (`switchCurrentBookToLocal`:
+  `wasPlaying` is `playing` or `wantsPlayback`). A short book's automatic download
+  (`autoDownloadNext`, default `'wifi'`) can land while its start is still `loading`, or just
+  after the engine began playing but before its `playing` reached JS; iOS's `load` pauses the
+  player (Android keeps `playWhenReady`), so a swap that didn't play left a kid's first story
+  stopped on Play, or on a watchdog error (8b-1).
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
