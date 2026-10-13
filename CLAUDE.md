@@ -423,8 +423,10 @@ a grown-up off `/kids`; the auth gate never mounts the shell for it. The page is
 (`KidsStoriesList`: the header, then the shelf as big cover tiles, stories in progress first,
 paged as it scrolls; offline, the stories downloaded for that shelf, `kidsOfflineScope`); a story
 starts in place with `startBookInPlace` (never the full player), played by `KidsPlayer`. The
-Grown-ups button is a 2 s hold that opens "Who's listening?", where PINs apply; the shell's
-reconnect banner shows on the kids screen too. **Bedtime** is the auto sleep rule while a kids
+Grown-ups button is a 2 s hold that opens "Who's listening?", where PINs apply. The shell's
+reconnect banner never shows there (it opens the connect flow): a kid whose sign-in ended sees
+`SignedOutNotice` in the page header, a line asking a grown-up (who signs them in again from the
+Household page). **Bedtime** is the auto sleep rule while a kids
 profile is active (`listenerSettings()` in `src/playback/listener-settings.ts`, which also makes
 its default speed 1x: from its bedtime until `KIDS_BEDTIME_UNTIL`, a `KIDS_BEDTIME_MINUTES` timer on
 every story; never in the car). **The gate**: `connect/_layout.tsx` is the only gate between the
