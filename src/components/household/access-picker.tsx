@@ -1,24 +1,31 @@
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { useCapability, useCollections, useCreateCollection } from '@/api/hooks';
+import { useCapability, useCollections } from '@/api/hooks';
 import type { MemberAccess } from '@/api/types';
-import { collectionFailed } from '@/components/library/collections/collection-dialogs';
 import { ownCollections, toggleId } from '@/components/library/collections/collections-model';
 import { Button } from '@/components/ui/button';
 import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 
 import { CheckRow } from './check-row';
 import { validMemberName } from './household-model';
 
+/** The name "Create <Name>'s books" gives the new collection (`name` trimmed). */
+export function memberBooksName(name: string, t: TFunction): string {
+  return t('household.access.booksName', { name: name.trim() });
+}
+
 /**
  * "What can they listen to?" (Phase 8b-1, the add form and a member card's Change): two
  * radio cards, "Everything I can listen to" and "Only collections I share", and for the
  * second the caller's own collections to share with them plus "Create <Name>'s books".
+ * That one creates nothing here: it shows the new collection ticked (`newBooks`), and the
+ * form creates it when it is saved (`useMemberBooks`), so Cancel leaves nothing behind.
+ * `showTitle` false: the dialog's own title already asks the question.
  */
 export function AccessPicker({
   connectionId,
@@ -26,8 +33,11 @@ export function AccessPicker({
   name,
   access,
   collectionIds,
+  newBooks,
+  showTitle = true,
   onAccess,
   onCollections,
+  onNewBooks,
 }: {
   connectionId: string;
   serverName: string;
@@ -35,16 +45,22 @@ export function AccessPicker({
   name: string;
   access: MemberAccess;
   collectionIds: readonly number[];
+  /** "<Name>'s books" is to be created and shared on save. */
+  newBooks: boolean;
+  showTitle?: boolean;
   onAccess: (access: MemberAccess) => void;
   onCollections: (ids: number[]) => void;
+  onNewBooks: (on: boolean) => void;
 }) {
   const { t } = useTranslation();
   const label = t('household.access.title');
   return (
     <View className="gap-2.5" testID="access-picker">
-      <Text variant="eyebrow" accessibilityRole="header">
-        {label}
-      </Text>
+      {showTitle ? (
+        <Text variant="eyebrow" accessibilityRole="header">
+          {label}
+        </Text>
+      ) : null}
       <View role="radiogroup" aria-label={label} accessibilityLabel={label} className="gap-2">
         <AccessOption
           testID="access-all"
@@ -66,7 +82,9 @@ export function AccessPicker({
           connectionId={connectionId}
           name={name}
           ids={collectionIds}
+          newBooks={newBooks}
           onChange={onCollections}
+          onNewBooks={onNewBooks}
         />
       ) : null}
     </View>
@@ -118,39 +136,32 @@ function AccessOption({
 }
 
 /** The caller's own collections as checkboxes (the full set to share with the member),
- * and "Create <Name>'s books", which makes one and ticks it. */
+ * and "Create <Name>'s books", which adds the new collection ticked, to be created on
+ * save (untick it to take it back). */
 function CollectionPicker({
   connectionId,
   name,
   ids,
+  newBooks,
   onChange,
+  onNewBooks,
 }: {
   connectionId: string;
   name: string;
   ids: readonly number[];
+  newBooks: boolean;
   onChange: (ids: number[]) => void;
+  onNewBooks: (on: boolean) => void;
 }) {
   const { t } = useTranslation();
   const available = useCapability('collections', connectionId);
   const { data, isLoading, error, refetch } = useCollections(connectionId);
   const own = ownCollections(data);
-  const create = useCreateCollection(connectionId);
   const named = validMemberName(name);
 
   if (available === false) {
     return <Text variant="muted">{t('household.access.collectionsOff')}</Text>;
   }
-
-  const make = async () => {
-    const label = t('household.access.booksName', { name: name.trim() });
-    try {
-      const c = await create.mutateAsync({ name: label });
-      onChange([...ids, c.id]);
-      toast({ title: t('household.access.created', { name: c.name }) });
-    } catch (e) {
-      collectionFailed(e, t, 'tooMany');
-    }
-  };
 
   return (
     <View className="gap-2" testID="collection-picker">
@@ -161,7 +172,7 @@ function CollectionPicker({
           <Skeleton className="h-11 w-full rounded-xl" />
           <Skeleton className="h-11 w-full rounded-xl" />
         </View>
-      ) : own.length === 0 ? (
+      ) : own.length === 0 && !newBooks ? (
         <Text variant="muted">{t('household.access.none')}</Text>
       ) : (
         <View className="gap-1" accessibilityLabel={t('household.access.pickLabel')}>
@@ -175,25 +186,35 @@ function CollectionPicker({
               onPress={() => onChange(toggleId(ids, c.id))}
             />
           ))}
+          {newBooks ? (
+            <CheckRow
+              testID="pick-new-books"
+              label={named ? memberBooksName(name, t) : t('household.access.createUnnamedName')}
+              detail={t('household.access.newDetail')}
+              checked
+              onPress={() => onNewBooks(false)}
+            />
+          ) : null}
         </View>
       )}
-      {ids.length === 0 && own.length > 0 ? (
+      {ids.length === 0 && !newBooks && own.length > 0 ? (
         <Text variant="caption">{t('household.access.noneChosen')}</Text>
       ) : null}
-      <Button
-        testID="create-member-books"
-        variant="outline"
-        icon="plus"
-        className="self-start"
-        title={
-          named
-            ? t('household.access.create', { name: name.trim() })
-            : t('household.access.createUnnamed')
-        }
-        disabled={!named || available !== true}
-        loading={create.isPending}
-        onPress={() => void make()}
-      />
+      {newBooks ? null : (
+        <Button
+          testID="create-member-books"
+          variant="outline"
+          icon="plus"
+          className="self-start"
+          title={
+            named
+              ? t('household.access.create', { name: name.trim() })
+              : t('household.access.createUnnamed')
+          }
+          disabled={!named || available !== true}
+          onPress={() => onNewBooks(true)}
+        />
+      )}
     </View>
   );
 }

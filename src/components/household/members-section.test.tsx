@@ -62,6 +62,7 @@ let mockMembers: Record<string, Query<Members>> = {};
 let mockCollections: Collection[] = [];
 const mockAddMember = jest.fn();
 const mockCreate = jest.fn();
+const mockDeleteCollection = jest.fn();
 const mockPair = jest.fn();
 const mockSession = jest.fn();
 jest.mock('@/api/hooks', () => {
@@ -76,6 +77,7 @@ jest.mock('@/api/hooks', () => {
     useAddMember: () => mutation(mockAddMember),
     useCollections: () => ({ data: mockCollections, isLoading: false, error: null }),
     useCreateCollection: () => mutation(mockCreate),
+    useDeleteCollection: () => mutation(mockDeleteCollection),
     useMemberPairing: () => mutation(mockPair),
     useMemberSession: () => mutation(mockSession),
   };
@@ -209,6 +211,26 @@ describe('the members section', () => {
     await mount();
     expect(screen.getByText(words)).toBeTruthy();
     expect(screen.queryByText('Add someone to your household')).toBeNull();
+  });
+
+  it('tells a member who manages their account, instead of "People you\'ve added"', async () => {
+    useSession.setState({
+      connections: [
+        {
+          ...conn('a.1', 'Hearthside'),
+          user: { id: 13, username: 'ellis', managed_by: { id: 1, username: 'adam' } },
+        } as unknown as Connection,
+      ],
+    });
+    mockMembers['a.1'] = list({ allowed: false, reason: 'member' });
+    await mount();
+    expect(screen.getByText('adam manages your account.')).toBeTruthy();
+    expect(
+      screen.queryByText("People you've added. You choose what each of them can listen to."),
+    ).toBeNull();
+    expect(
+      screen.getByText('Only adam can add people or change what you can listen to.'),
+    ).toBeTruthy();
   });
 
   it('explains the cap when the members fill it', async () => {
@@ -356,6 +378,10 @@ describe('the add dialog', () => {
     expect(
       screen.getByRole('image', { name: 'Pairing code for Ellis on Hearthside' }),
     ).toBeTruthy();
+    // One Done, the dialog's (its footer), which closes it.
+    expect(screen.getAllByRole('button', { name: 'Done' })).toHaveLength(1);
+    await fireEvent.press(screen.getByTestId('add-grownup-done'));
+    expect(screen.queryByText('Show Ellis this code')).toBeNull();
   });
 
   it('"They\'ll also use this phone" signs the grown-up in here as an ordinary person', async () => {
@@ -398,16 +424,95 @@ describe('the add dialog', () => {
     );
   });
 
-  it('creates "<Name>\'s books" and ticks it', async () => {
+  it('"Create <Name>\'s books" creates nothing at once: a ticked new collection, made on submit', async () => {
     mockCreate.mockResolvedValue(collection(9, "Evie's books"));
     await mount();
     await openAdd();
     expect(screen.getByTestId('create-member-books')).toBeDisabled();
     await typeName('Evie');
+    await fireEvent.press(screen.getByTestId('pick-collection-4'));
     await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
-    expect(mockCreate).toHaveBeenCalledWith({ name: "Evie's books" });
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('pick-new-books')).toBeChecked();
+    expect(screen.getByText('New collection, created when you save')).toBeTruthy();
+    expect(screen.queryByTestId('create-member-books')).toBeNull();
     await fireEvent.press(screen.getByTestId('add-member-submit'));
-    expect(mockAddMember).toHaveBeenCalledWith(expect.objectContaining({ collection_ids: [9] }));
+    // Created first, so its id is in the member's collections.
+    expect(mockCreate).toHaveBeenCalledWith({ name: "Evie's books" });
+    expect(mockAddMember).toHaveBeenCalledWith(expect.objectContaining({ collection_ids: [4, 9] }));
+    expect(mockCreate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockAddMember.mock.invocationCallOrder[0],
+    );
+    expect(mockDeleteCollection).not.toHaveBeenCalled();
+  });
+
+  it('Cancel after "Create <Name>\'s books" leaves nothing behind', async () => {
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockAddMember).not.toHaveBeenCalled();
+  });
+
+  it('unticking the new collection takes it back, and switching to everything drops it', async () => {
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByTestId('pick-new-books'));
+    expect(screen.queryByTestId('pick-new-books')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(radio(/^Everything I can listen to/));
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockAddMember).toHaveBeenCalledWith(
+      expect.objectContaining({ access: 'all', name: 'Evie' }),
+    );
+  });
+
+  it('a refused add deletes the new collection again and says why', async () => {
+    mockCreate.mockResolvedValue(collection(9, "Evie's books"));
+    mockAddMember.mockRejectedValue(new ApiError(409, 'limit', 'member_limit'));
+    mockDeleteCollection.mockResolvedValue(undefined);
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(mockDeleteCollection).toHaveBeenCalledWith(9);
+    expect(screen.getByTestId('add-member-error')).toHaveTextContent(
+      "You've added the most people this server allows.",
+    );
+    expect(mockAddHere).not.toHaveBeenCalled();
+  });
+
+  it('says so when the new collection could not be deleted again', async () => {
+    mockCreate.mockResolvedValue(collection(9, "Evie's books"));
+    mockAddMember.mockRejectedValue(new ApiError(500, 'oops'));
+    mockDeleteCollection.mockRejectedValue(new TypeError('Network request failed'));
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(screen.getByTestId('add-member-error')).toHaveTextContent(
+      "Hearthside didn't answer, so nothing changed. Try again. Evie's books was created and is still in your collections.",
+    );
+  });
+
+  it('adds nobody when the new collection cannot be created', async () => {
+    mockCreate.mockRejectedValue(new ApiError(409, 'too many', 'collections_full'));
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(mockAddMember).not.toHaveBeenCalled();
+    expect(screen.getByTestId('add-member-error')).toHaveTextContent(
+      'You have as many collections as this server allows. Delete one to make another.',
+    );
   });
 
   it('needs a name the server takes', async () => {
@@ -435,5 +540,41 @@ describe('the add dialog', () => {
     if (status === 409 || status === 403) {
       expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ['householdMembers', 'a.1'] });
     }
+  });
+
+  it.each([
+    [409, 'member_limit', "You've added the most people this server allows."],
+    [
+      409,
+      'username_taken',
+      "Hearthside couldn't make a username from that name. Try another name.",
+    ],
+    [400, 'invalid_name', "Hearthside didn't accept that name. Use up to 40 characters."],
+    [
+      400,
+      'invalid_collections',
+      "One of those collections can't be shared from this account any more. Check them and try again.",
+    ],
+    [403, 'feature_off', "Your server's admin has turned off adding people."],
+    [403, 'not_allowed', "Your server's admin hasn't let this account add people."],
+    [403, 'member_cannot_manage', 'Only the person who manages your account can do that.'],
+  ])('reads the code of a %i %s, not only its status', async (status, code, words) => {
+    mockAddMember.mockRejectedValue(new ApiError(status, 'nope', code));
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(screen.getByTestId('add-member-error')).toHaveTextContent(words);
+  });
+
+  it("says too many tries on a 429, never that the server didn't answer", async () => {
+    mockAddMember.mockRejectedValue(new ApiError(429, 'too many attempts, try again later'));
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(screen.getByTestId('add-member-error')).toHaveTextContent(
+      'Too many tries. Wait a few minutes and try again.',
+    );
   });
 });

@@ -25,16 +25,17 @@ import { useLayout } from '@/lib/layout';
 import { type Profile, useActiveProfile } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
 
-import { AccessPicker } from './access-picker';
+import { AccessPicker, memberBooksName } from './access-picker';
 import {
   type AddForm,
   collectionIdsFor,
+  createsBooks,
+  listIsStale,
   MEMBER_NAME_MAX,
   newAddForm,
   validMemberName,
   withAccess,
   withKid,
-  type WriteError,
   writeError,
 } from './household-model';
 import { MemberPairing } from './member-pairing';
@@ -44,6 +45,7 @@ import {
   signInHereFailure,
   useSignInHere,
 } from './use-sign-in-here';
+import { booksRunText, useMemberBooks } from './use-member-books';
 
 /** Where the add flow is: the form; a kid signed in here (`here`: how that went); a
  * grown-up's pairing code (`here`: "They'll also use this phone", not asked yet = null). */
@@ -143,9 +145,10 @@ function FormStep({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const add = useAddMember(connectionId);
+  const books = useMemberBooks(connectionId);
   const [form, setForm] = useState<AddForm>(() => newAddForm());
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<WriteError | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const cap = useBodyCap();
   const name = form.name.trim();
   const valid = validMemberName(form.name);
@@ -154,18 +157,34 @@ function FormStep({
     if (!valid || busy) return;
     setBusy(true);
     setError(null);
-    const ids = collectionIdsFor(form.access, form.collectionIds);
-    const body: AddMemberBody = {
-      name,
-      kind: form.kid ? 'kid' : 'grownup',
-      access: form.access,
-      ...(form.kid ? { sign_in_here: true } : {}),
-      ...(ids ? { collection_ids: ids } : {}),
-    };
+    // "Create <Name>'s books": made now, before the member, so its id is in the body;
+    // deleted again when the add is refused (`useMemberBooks`).
+    const booksName = createsBooks(form.access, form.newBooks) ? memberBooksName(name, t) : null;
+    let sent: number[] | undefined;
+    const run = await books.run(booksName, (newId) => {
+      const chosen = newId === null ? form.collectionIds : [...form.collectionIds, newId];
+      sent = collectionIdsFor(form.access, chosen);
+      const body: AddMemberBody = {
+        name,
+        kind: form.kid ? 'kid' : 'grownup',
+        access: form.access,
+        ...(form.kid ? { sign_in_here: true } : {}),
+        ...(sent ? { collection_ids: sent } : {}),
+      };
+      return add.mutateAsync(body);
+    });
     try {
-      const result = await add.mutateAsync(body);
+      if (!run.ok) {
+        setError(booksRunText(run, { server: serverName, booksName }, t));
+        // The cap or the admin's switch changed under the page: show it as it is now.
+        if (run.stage === 'write' && listIsStale(writeError(run.error))) {
+          void qc.invalidateQueries({ queryKey: qk.householdMembers(connectionId) });
+        }
+        return;
+      }
+      const result = run.value;
       // The collections now list them among the people each is shared with.
-      if (ids?.length) void qc.invalidateQueries({ queryKey: qk.collections(connectionId) });
+      if (sent?.length) void qc.invalidateQueries({ queryKey: qk.collections(connectionId) });
       if (!form.kid) {
         onAdded({ kind: 'grownup', member: result.member, here: null });
         return;
@@ -180,13 +199,6 @@ function FormStep({
         }
       }
       onAdded({ kind: 'kid', member: result.member, here });
-    } catch (e) {
-      const why = writeError(e);
-      setError(why);
-      // The cap or the admin's switch changed under the page: show it as it is now.
-      if (why === 'limit' || why === 'forbidden') {
-        void qc.invalidateQueries({ queryKey: qk.householdMembers(connectionId) });
-      }
     } finally {
       setBusy(false);
     }
@@ -233,8 +245,10 @@ function FormStep({
           name={form.name}
           access={form.access}
           collectionIds={form.collectionIds}
+          newBooks={form.newBooks}
           onAccess={(a) => setForm((f) => withAccess(f, a))}
           onCollections={(ids) => setForm((f) => ({ ...f, collectionIds: ids }))}
+          onNewBooks={(on) => setForm((f) => ({ ...f, newBooks: on }))}
         />
       </ScrollView>
       {error ? (
@@ -243,7 +257,7 @@ function FormStep({
           className="text-sm text-destructive"
           accessibilityLiveRegion="polite"
         >
-          {t(`household.errors.${error}`, { server: serverName })}
+          {error}
         </Text>
       ) : null}
       <DialogFooter>
@@ -320,7 +334,8 @@ function KidStep({
   );
 }
 
-/** A grown-up was added: their pairing code, and "They'll also use this phone". */
+/** A grown-up was added: their pairing code, then "They'll also use this phone" above
+ * the footer's Done. */
 function GrownUpStep({
   step,
   connection,
@@ -355,12 +370,7 @@ function GrownUpStep({
         </DialogDescription>
       </DialogHeader>
       <ScrollView style={{ maxHeight: cap, flexShrink: 1 }} contentContainerClassName="gap-4">
-        <MemberPairing
-          connectionId={connectionId}
-          serverName={serverName}
-          member={step.member}
-          onDone={onClose}
-        />
+        <MemberPairing connectionId={connectionId} serverName={serverName} member={step.member} />
         {step.here?.status === 'done' ? (
           <Text variant="muted" testID="add-grownup-here">
             {t('household.here.done', { name })}
@@ -388,6 +398,9 @@ function GrownUpStep({
           </View>
         )}
       </ScrollView>
+      <DialogFooter>
+        <Button testID="add-grownup-done" title={t('common.done')} onPress={onClose} />
+      </DialogFooter>
     </>
   );
 }

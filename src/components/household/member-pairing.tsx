@@ -14,18 +14,17 @@ import { Skeleton } from '@/components/ui/skeleton';
  * own device"): asked for as soon as it shows (`POST /me/household/members/{id}/pair`,
  * single-use for 10 minutes), then the same QR, countdown, copy or share and "Make a new
  * code" as "Pair another device" (`PairingCode`). The member scans it with the app on
- * their own device, which signs in as them.
+ * their own device, which signs in as them. Done is the dialog's (its footer): the code
+ * has none of its own here.
  */
 export function MemberPairing({
   connectionId,
   serverName,
   member,
-  onDone,
 }: {
   connectionId: string;
   serverName: string;
   member: Pick<HouseholdMember, 'id' | 'name'>;
-  onDone: () => void;
 }) {
   const { t } = useTranslation();
   const mint = useMemberPairing(connectionId);
@@ -48,7 +47,7 @@ export function MemberPairing({
           pairing={pairing}
           qrLabel={t('household.qr.a11y', { name: member.name, server: serverName })}
           body={t('household.qr.body', { name: member.name })}
-          onDone={onDone}
+          hideDone
         />
       ) : pairing.error ? (
         <Button

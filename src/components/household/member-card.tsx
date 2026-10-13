@@ -40,12 +40,21 @@ import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useOpen } from '@/lib/open';
 import { useNow } from '@/lib/use-now';
-import { profileOf } from '@/stores/profiles';
+import { profileOf, renameProfile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
-import { AccessPicker } from './access-picker';
-import { collectionIdsFor, confirmsName, memberConnection, writeError } from './household-model';
+import { AccessPicker, memberBooksName } from './access-picker';
+import {
+  collectionIdsFor,
+  confirmsName,
+  createsBooks,
+  isTooMany,
+  memberConnection,
+  writeError,
+  writeErrorText,
+} from './household-model';
 import { MemberPairing } from './member-pairing';
+import { booksRunText, useMemberBooks } from './use-member-books';
 import { hereFailure, useSignInHere } from './use-sign-in-here';
 
 /** Which of the card's confirmations or dialogs is open. */
@@ -76,6 +85,7 @@ export function MemberCard({
   const update = useUpdateMember(cid);
   const remove = useDeleteMember(cid);
   const signIn = useSignInHere(connection);
+  const books = useMemberBooks(cid);
   const removal = useRemovePerson();
   const [open, setOpen] = useState<Open>(null);
   const close = () => setOpen(null);
@@ -84,6 +94,15 @@ export function MemberCard({
   const hereProfile = here ? profileOf(here.id) : null;
   const kid = member.kind === 'kid';
 
+  /** Say a change was refused and changed nothing (a toast), unless it was never sent. */
+  const refused = (e: unknown, description?: string) => {
+    if (e instanceof CapabilityError) return;
+    toast({
+      title: t('household.card.failed', { name }),
+      description: description ?? writeErrorText(writeError(e), server, t),
+    });
+  };
+
   /** Change the member; false (and a toast saying nothing changed) when refused. */
   const change = async (body: Parameters<typeof update.mutateAsync>[0]['body']) => {
     try {
@@ -91,14 +110,38 @@ export function MemberCard({
       if (body.collection_ids) void qc.invalidateQueries({ queryKey: qk.collections(cid) });
       return true;
     } catch (e) {
-      if (!(e instanceof CapabilityError)) {
-        toast({
-          title: t('household.card.failed', { name }),
-          description: t(`household.errors.${writeError(e)}`, { server }),
-        });
-      }
+      refused(e);
       return false;
     }
+  };
+
+  /** "What can they listen to?" saved: "<Name>'s books" first when it was chosen (its id
+   * joins the set), deleted again when the change is refused (`useMemberBooks`). */
+  const saveAccess = async (access: MemberAccess, ids: number[], newBooks: boolean) => {
+    const booksName = createsBooks(access, newBooks) ? memberBooksName(name, t) : null;
+    const run = await books.run(booksName, (newId) =>
+      update.mutateAsync({
+        id: member.id,
+        body: {
+          access,
+          collection_ids: collectionIdsFor(access, newId === null ? ids : [...ids, newId]),
+        },
+      }),
+    );
+    if (run.ok) {
+      if (access === 'collections') void qc.invalidateQueries({ queryKey: qk.collections(cid) });
+      close();
+      return;
+    }
+    refused(run.error, booksRunText(run, { server, booksName }, t));
+  };
+
+  /** Renamed on the server: their profile on this device (when they are here) takes the
+   * new name too, so the owner's change shows everywhere they look. */
+  const rename = async (next: string) => {
+    if (!(await change({ name: next }))) return false;
+    if (hereProfile) renameProfile(hereProfile.id, next);
+    return true;
   };
 
   const makeKid = async () => {
@@ -121,7 +164,7 @@ export function MemberCard({
       if (!(e instanceof CapabilityError)) {
         toast({
           title: t('household.delete.failed', { name }),
-          description: t('household.errors.failed', { server }),
+          description: writeErrorText(writeError(e), server, t),
         });
       }
     }
@@ -261,10 +304,7 @@ export function MemberCard({
         connectionId={cid}
         serverName={server}
         member={member}
-        onSave={async (access, ids) => {
-          if (await change({ access, collection_ids: collectionIdsFor(access, ids) })) close();
-        }}
-        saving={update.isPending}
+        onSave={saveAccess}
         onClose={close}
       />
       <ConfirmDialog
@@ -283,15 +323,26 @@ export function MemberCard({
               <DialogTitle>{t('household.qr.title', { name })}</DialogTitle>
               <DialogDescription>{t('household.qr.lead', { name, server })}</DialogDescription>
             </DialogHeader>
-            <MemberPairing connectionId={cid} serverName={server} member={member} onDone={close} />
+            <MemberPairing connectionId={cid} serverName={server} member={member} />
+            <DialogFooter>
+              <Button
+                testID={`member-qr-done-${member.id}`}
+                title={t('common.done')}
+                onPress={close}
+              />
+            </DialogFooter>
           </DialogContent>
         ) : null}
       </Dialog>
       <RenameDialog
         open={open === 'rename'}
         name={name}
-        body={t('household.card.renameBody', { server })}
-        onSave={(next) => change({ name: next })}
+        body={
+          hereProfile
+            ? t('household.card.renameBodyHere', { server })
+            : t('household.card.renameBody', { server })
+        }
+        onSave={rename}
         onClose={close}
       />
       <ConfirmDialog
@@ -452,13 +503,18 @@ function RevokeMemberDevice({
       toast({ title: t('household.devices.done', { name, device: label }) });
     } catch (e) {
       if (e instanceof CapabilityError) return;
-      // Signed out already (404): the lists catch up either way.
-      toast({
-        title:
-          e instanceof ApiError && e.status === 404
-            ? t('account.devices.gone', { name: label })
-            : t('account.devices.failed', { name: label }),
-      });
+      // Signed out already (404): the lists are read again whatever the answer
+      // (`useRevokeMemberDevice`).
+      toast(
+        e instanceof ApiError && e.status === 404
+          ? { title: t('account.devices.gone', { name: label }) }
+          : isTooMany(e)
+            ? {
+                title: t('account.devices.failed', { name: label }),
+                description: t('common.tooManyTries'),
+              }
+            : { title: t('account.devices.failed', { name: label }) },
+      );
     }
   };
   return (
@@ -475,14 +531,15 @@ function RevokeMemberDevice({
   );
 }
 
-/** "What can they listen to?" for an existing member: the same picker as the add form,
- * saved as one change (access and, for collections, the full set to share). */
+/** "What can they listen to?" for an existing member: the same picker as the add form
+ * (without its own heading: the dialog's title asks the question), saved as one change
+ * (access and, for collections, the full set to share, "<Name>'s books" created first
+ * when chosen). */
 function AccessDialog({
   open,
   connectionId,
   serverName,
   member,
-  saving,
   onSave,
   onClose,
 }: {
@@ -490,8 +547,7 @@ function AccessDialog({
   connectionId: string;
   serverName: string;
   member: HouseholdMember;
-  saving: boolean;
-  onSave: (access: MemberAccess, ids: number[]) => Promise<void>;
+  onSave: (access: MemberAccess, ids: number[], newBooks: boolean) => Promise<void>;
   onClose: () => void;
 }) {
   return (
@@ -501,7 +557,6 @@ function AccessDialog({
           connectionId={connectionId}
           serverName={serverName}
           member={member}
-          saving={saving}
           onSave={onSave}
           onClose={onClose}
         />
@@ -514,20 +569,29 @@ function AccessBody({
   connectionId,
   serverName,
   member,
-  saving,
   onSave,
   onClose,
 }: {
   connectionId: string;
   serverName: string;
   member: HouseholdMember;
-  saving: boolean;
-  onSave: (access: MemberAccess, ids: number[]) => Promise<void>;
+  onSave: (access: MemberAccess, ids: number[], newBooks: boolean) => Promise<void>;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const [access, setAccess] = useState(member.access);
   const [ids, setIds] = useState(() => (member.collections ?? []).map((c) => c.id));
+  const [newBooks, setNewBooks] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(access, ids, newBooks);
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <DialogContent testID="member-access-dialog">
       <DialogHeader>
@@ -540,8 +604,11 @@ function AccessBody({
           name={member.name}
           access={access}
           collectionIds={ids}
+          newBooks={newBooks}
+          showTitle={false}
           onAccess={setAccess}
           onCollections={setIds}
+          onNewBooks={setNewBooks}
         />
       </ScrollView>
       <DialogFooter>
@@ -550,7 +617,7 @@ function AccessBody({
           testID="member-access-save"
           title={t('common.save')}
           loading={saving}
-          onPress={() => void onSave(access, ids)}
+          onPress={() => void save()}
         />
       </DialogFooter>
     </DialogContent>

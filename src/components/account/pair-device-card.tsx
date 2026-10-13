@@ -75,8 +75,9 @@ export function PairingError({ error }: { error: string | null }) {
  * A pairing code on screen: the server's QR image with a live countdown ("Expires in
  * 9:42"), the link to copy (web) or share (iOS and Android: the share sheet, whose first
  * action is Copy), "Make a new code" once it has expired, and Done (`onDone`, else the
- * code is put away). Used by "Pair another device" and a household member's own device
- * ("Show Ellis this code").
+ * code is put away; `hideDone`: the dialog it sits in has Done in its footer). The link
+ * shows on one line, cut short with an ellipsis (Copy link copies all of it). Used by
+ * "Pair another device" and a household member's own device ("Show Ellis this code").
  */
 export function PairingCode({
   pairing,
@@ -84,6 +85,7 @@ export function PairingCode({
   body,
   onDone,
   doneLabel,
+  hideDone = false,
 }: {
   pairing: PairingCodeState;
   /** The QR image's screen-reader label. */
@@ -92,6 +94,7 @@ export function PairingCode({
   body: string;
   onDone?: () => void;
   doneLabel?: string;
+  hideDone?: boolean;
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -154,18 +157,26 @@ export function PairingCode({
               onPress={() => void shareText(payload.web_url)}
             />
           )}
-          <Button
-            variant="ghost"
-            title={doneLabel ?? t('settings.devices.done')}
-            onPress={() => {
-              setCopied(false);
-              if (onDone) onDone();
-              else pairing.dismiss();
-            }}
-          />
+          {hideDone ? null : (
+            <Button
+              variant="ghost"
+              title={doneLabel ?? t('settings.devices.done')}
+              onPress={() => {
+                setCopied(false);
+                if (onDone) onDone();
+                else pairing.dismiss();
+              }}
+            />
+          )}
         </View>
         {!pairing.expired && Platform.OS === 'web' ? (
-          <Text selectable variant="caption" numberOfLines={2}>
+          <Text
+            selectable
+            variant="caption"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            testID="pair-link"
+          >
             {payload.web_url}
           </Text>
         ) : null}

@@ -29,16 +29,20 @@ export function HouseholdMembers() {
   const [adding, setAdding] = useState<Connection | null>(null);
   const pin = useSetPin();
   if (servers.length === 0) return null;
+  // The dialogs sit outside the gapped column: a closed dialog still mounts an empty view,
+  // which a flex gap would space out like a section.
   return (
-    <View className="gap-8" testID="household-members">
-      {servers.map((c) => (
-        <MembersSection
-          key={c.id}
-          connection={c}
-          showServer={servers.length > 1}
-          onAdd={() => setAdding(c)}
-        />
-      ))}
+    <View testID="household-members">
+      <View className="gap-8">
+        {servers.map((c) => (
+          <MembersSection
+            key={c.id}
+            connection={c}
+            showServer={servers.length > 1}
+            onAdd={() => setAdding(c)}
+          />
+        ))}
+      </View>
       <AddMemberDialog
         connection={adding}
         onClose={() => setAdding(null)}
@@ -52,7 +56,9 @@ export function HouseholdMembers() {
 /**
  * One server's household: the members the person listening manages (a card each), "Add
  * someone to your household" while they may add and are under the server's cap, else one
- * line saying why not (the server's `reason`, or the cap).
+ * line saying why not (the server's `reason`, or the cap). For a member (the server's
+ * `reason: member`), the section says who manages their account instead of "People
+ * you've added" (`user.managed_by` of their connection).
  */
 export function MembersSection({
   connection,
@@ -68,6 +74,9 @@ export function MembersSection({
   const server = connection.name;
   const data = list.data;
   const block = data ? addBlock(data) : null;
+  // A member's own Household: who manages them (their connection's `managed_by`).
+  const manager =
+    data?.reason === 'member' ? (connection.user?.managed_by?.username ?? null) : null;
 
   return (
     <View className="gap-3" testID={`household-members-${connection.id}`}>
@@ -75,7 +84,11 @@ export function MembersSection({
         title={
           showServer ? t('household.members.titleOn', { server }) : t('household.members.title')
         }
-        sub={t('household.members.sub')}
+        sub={
+          manager
+            ? t('household.members.managedBy', { owner: manager })
+            : t('household.members.sub')
+        }
       />
       {list.isError && !data ? (
         <ErrorNote
@@ -116,7 +129,9 @@ export function MembersSection({
             </View>
           ) : (
             <Text variant="muted" testID="household-add-blocked">
-              {t(`household.members.reason.${block}`, { max: data.max })}
+              {manager
+                ? t('household.members.reason.memberNamed', { owner: manager })
+                : t(`household.members.reason.${block}`, { max: data.max })}
             </Text>
           )}
         </>

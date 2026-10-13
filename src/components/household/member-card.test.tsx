@@ -41,6 +41,8 @@ const mockDelete = jest.fn();
 const mockRevoke = jest.fn();
 const mockPair = jest.fn();
 const mockSession = jest.fn();
+const mockCreate = jest.fn();
+const mockDeleteCollection = jest.fn();
 jest.mock('@/api/hooks', () => {
   const actual = jest.requireActual('@/api/hooks');
   const mutation = (fn: jest.Mock) => ({ mutateAsync: fn, isPending: false });
@@ -74,7 +76,8 @@ jest.mock('@/api/hooks', () => {
       isLoading: false,
       error: null,
     }),
-    useCreateCollection: () => mutation(jest.fn()),
+    useCreateCollection: () => mutation(mockCreate),
+    useDeleteCollection: () => mutation(mockDeleteCollection),
   };
 });
 
@@ -202,6 +205,53 @@ describe('MemberCard', () => {
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ['collections', 'a.1'] });
   });
 
+  it('asks "What can Evie listen to?" once: the picker has no heading of its own there', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    expect(screen.getByText('What can Evie listen to?')).toBeTruthy();
+    expect(screen.queryByText('What can they listen to?')).toBeNull();
+  });
+
+  it('creates "<Name>\'s books" only on Save, before the change, and never on Cancel', async () => {
+    mockCreate.mockResolvedValue({ id: 9, name: "Evie's books" });
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    expect(screen.getByTestId('pick-new-books')).toBeChecked();
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    expect(mockCreate).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    expect(screen.queryByTestId('pick-new-books')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByTestId('member-access-save'));
+    expect(mockCreate).toHaveBeenCalledWith({ name: "Evie's books" });
+    expect(mockUpdate).toHaveBeenCalledWith({
+      id: 12,
+      body: { access: 'collections', collection_ids: [4, 9] },
+    });
+    expect(mockDeleteCollection).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('member-access-dialog')).toBeNull();
+  });
+
+  it('deletes the new collection again when the change is refused', async () => {
+    mockCreate.mockResolvedValue({ id: 9, name: "Evie's books" });
+    mockDeleteCollection.mockResolvedValue(undefined);
+    mockUpdate.mockRejectedValue(new ApiError(400, 'bad', 'invalid_collections'));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByTestId('member-access-save'));
+    expect(mockDeleteCollection).toHaveBeenCalledWith(9);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: "Couldn't change Evie's account",
+      description:
+        "One of those collections can't be shared from this account any more. Check them and try again.",
+    });
+    // Still open, to try again.
+    expect(screen.getByTestId('member-access-dialog')).toBeTruthy();
+  });
+
   it('changes them to everything without sending collections', async () => {
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
@@ -216,9 +266,53 @@ describe('MemberCard', () => {
   it('renames them on the server', async () => {
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'Rename Evie' }));
+    expect(
+      screen.getByText('Their name on Hearthside. Their username stays the same.'),
+    ).toBeTruthy();
     await fireEvent.changeText(screen.getByTestId('rename-field'), 'Evelyn ');
     await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
     expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { name: 'Evelyn' } });
+  });
+
+  it('renames their profile on this device too when they are here', async () => {
+    const here = { ...owner, id: 'a.12', user: { id: 12, username: 'evie' } } as Connection;
+    useSession.setState({ connections: [owner, here] });
+    useProfiles.setState({
+      profiles: [
+        { id: 'adam', name: 'Adam', connectionIds: ['a.1'] },
+        { id: 'evie', name: 'Evie', connectionIds: ['a.12'] },
+      ],
+    });
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Rename Evie' }));
+    expect(
+      screen.getByText(
+        'Their name on Hearthside and on this device. Their username stays the same.',
+      ),
+    ).toBeTruthy();
+    await fireEvent.changeText(screen.getByTestId('rename-field'), 'Evelyn');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { name: 'Evelyn' } });
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'evie')?.name).toBe('Evelyn');
+    // The owner's own profile keeps its name.
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'adam')?.name).toBe('Adam');
+  });
+
+  it("leaves this device's profile alone when the server refuses the new name", async () => {
+    const here = { ...owner, id: 'a.12', user: { id: 12, username: 'evie' } } as Connection;
+    useSession.setState({ connections: [owner, here] });
+    useProfiles.setState({
+      profiles: [
+        { id: 'adam', name: 'Adam', connectionIds: ['a.1'] },
+        { id: 'evie', name: 'Evie', connectionIds: ['a.12'] },
+      ],
+    });
+    mockUpdate.mockRejectedValue(new ApiError(400, 'bad', 'invalid_name'));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Rename Evie' }));
+    await fireEvent.changeText(screen.getByTestId('rename-field'), 'Evelyn');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(useProfiles.getState().profiles.find((p) => p.id === 'evie')?.name).toBe('Evie');
   });
 
   it('lists their devices and signs one out after a confirmation', async () => {
@@ -228,6 +322,22 @@ describe('MemberCard', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
     expect(mockRevoke).toHaveBeenCalledWith({ id: 12, deviceId: 70 });
     expect(mockToast).toHaveBeenCalledWith({ title: 'Signed Evie out of Kitchen iPad' });
+  });
+
+  it('says a device signed out already, and too many tries, in words', async () => {
+    mockRevoke.mockRejectedValueOnce(new ApiError(404, 'device not found'));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie out of Kitchen iPad' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+    expect(mockToast).toHaveBeenLastCalledWith({ title: 'Kitchen iPad was already signed out' });
+
+    mockRevoke.mockRejectedValueOnce(new ApiError(429, 'too many attempts, try again later'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie out of Kitchen iPad' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+    expect(mockToast).toHaveBeenLastCalledWith({
+      title: "Couldn't sign out Kitchen iPad",
+      description: 'Too many tries. Wait a few minutes and try again.',
+    });
   });
 
   it('says when they are signed in nowhere, and shows loading and errors', async () => {
@@ -251,6 +361,29 @@ describe('MemberCard', () => {
     expect(mockPair).toHaveBeenCalledWith(12);
     expect(screen.getByText('Show Evie this code')).toBeTruthy();
     expect(screen.getByRole('image', { name: 'Pairing code for Evie on Hearthside' })).toBeTruthy();
+    // Done is the dialog's, in its footer (the code has none of its own here).
+    expect(screen.getAllByRole('button', { name: 'Done' })).toHaveLength(1);
+    await fireEvent.press(screen.getByTestId('member-qr-done-12'));
+    expect(screen.queryByText('Show Evie this code')).toBeNull();
+  });
+
+  it("says too many tries when the server's limiter refuses a code, never its own words", async () => {
+    mockPair.mockRejectedValue(new ApiError(429, 'too many attempts, try again later'));
+    await mount();
+    await fireEvent.press(
+      screen.getByRole('button', { name: "Show a code to set up Evie's own device" }),
+    );
+    expect(screen.queryByText('too many attempts, try again later')).toBeNull();
+    expect(screen.getByText('Too many tries. Wait a few minutes and try again.')).toBeTruthy();
+  });
+
+  it('says too many tries when signing them in here is refused by the limiter', async () => {
+    mockSession.mockRejectedValue(new ApiError(429, 'too many attempts, try again later'));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie in on this device' }));
+    expect(mockToast).toHaveBeenLastCalledWith({
+      title: 'Too many tries. Wait a few minutes and try again.',
+    });
   });
 
   it('signs them in on this device, never minting a session when they are already here', async () => {
