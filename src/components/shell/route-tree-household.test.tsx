@@ -1,7 +1,7 @@
 import { store } from 'expo-router/build/global-state/router-store';
 import { renderRouter } from 'expo-router/testing-library';
 
-import { openHousehold } from '@/components/household/open-household';
+import { openHousehold } from '@/lib/open';
 import { playerHref } from '@/lib/paths';
 import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
 

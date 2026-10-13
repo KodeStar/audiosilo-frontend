@@ -5,9 +5,8 @@ import { View } from 'react-native';
 
 import { effectiveUrl } from '@/api/address-route';
 import { apiErrorKind } from '@/api/client';
-import { CapabilityError, useCapabilitiesAll, useMemberSession } from '@/api/hooks';
+import { CapabilityError, useMemberSession } from '@/api/hooks';
 import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-member-here';
-import { HouseSharingRow } from '@/components/house/house-sharing-row';
 import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
 import { kidsManager } from '@/components/kids/kids-model';
@@ -31,18 +30,17 @@ import {
   setAskAtLaunch,
   setProfileHasPin,
   setProfileKids,
-  useProfileConnections,
   useProfiles,
 } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
-import { openAddSomeone } from './connect-intent';
-import { KidsLibraryPicker } from './kids-library-picker';
-import { PinDialog } from './pin-dialog';
-import { profileName, serversLine } from './profiles-model';
-import { RenameDialog } from './rename-dialog';
-import { openProfiles, useChooseProfile } from './use-choose-profile';
-import { useRemovePerson } from './use-remove-person';
+import { openAddSomeone } from '@/components/profiles/connect-intent';
+import { KidsLibraryPicker } from '@/components/profiles/kids-library-picker';
+import { PinDialog } from '@/components/profiles/pin-dialog';
+import { profileName, serversLine } from '@/components/profiles/profiles-model';
+import { RenameDialog } from '@/components/profiles/rename-dialog';
+import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose-profile';
+import { useRemovePerson } from '@/components/profiles/use-remove-person';
 
 /**
  * The Household page's "On this device" (Phase 8; a page of its own since 8b-1,
@@ -121,32 +119,6 @@ export function DevicePeople() {
 
       {chooseDialog}
       {removal.dialog}
-    </View>
-  );
-}
-
-/** "Listening in the house": "Share what I'm listening to with the house", one row
- * (`HouseSharingRow`) per server of the person listening whose server has `household`; a
- * note when none does (once every server has answered). */
-export function HouseSharing() {
-  const { t } = useTranslation();
-  const connections = useProfileConnections();
-  const caps = useCapabilitiesAll();
-  const sharing = connections.filter((c) => caps[c.id]?.household === true);
-  const known = connections.every((c) => caps[c.id] !== undefined);
-  if (sharing.length === 0 && !known) return null;
-  return (
-    <View className="gap-3" testID="household-sharing">
-      <SectionTitle title={t('house.title')} />
-      {sharing.length === 0 ? (
-        <Text variant="muted">{t('profiles.household.noSharing')}</Text>
-      ) : (
-        <SettingsCard>
-          {sharing.map((c, i) => (
-            <HouseSharingRow key={c.id} connectionId={c.id} first={i === 0} />
-          ))}
-        </SettingsCard>
-      )}
     </View>
   );
 }

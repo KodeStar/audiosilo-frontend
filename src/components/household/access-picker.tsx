@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
-import { CheckRow } from './check-row';
+import { CheckRow } from '@/components/ui/check-row';
 import { namedCollection, validMemberName } from './household-model';
 
 /** The name "Create <Name>'s books" gives the new collection (`name` trimmed). */

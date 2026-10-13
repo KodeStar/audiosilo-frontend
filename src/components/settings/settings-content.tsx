@@ -4,11 +4,11 @@ import { Platform, type ScrollView, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { useConnectionRemoval } from '@/components/account/connections-section';
-import { openHousehold } from '@/components/household/open-household';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { openHousehold } from '@/lib/open';
 import { useLayout } from '@/lib/layout';
 import { isSupportAvailable } from '@/lib/support';
 import { cn } from '@/lib/utils';

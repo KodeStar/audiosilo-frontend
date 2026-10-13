@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CheckRow } from '@/components/household/check-row';
+import { CheckRow } from '@/components/ui/check-row';
 import { DialogIcon } from '@/components/ui/dialog';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';

@@ -1,9 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { DevicePeople, HouseSharing } from '@/components/profiles/household-pane';
 import { Text } from '@/components/ui/text';
 
+import { DevicePeople } from './device-people';
+import { HouseSharing } from './house-sharing';
 import { HouseholdMembers } from './members-section';
 
 /**

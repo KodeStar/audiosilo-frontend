@@ -15,7 +15,6 @@ import {
 
 import { type MergedBook, useAllProgressAll, useSourceLabeller } from '@/api/hooks';
 import { useApi, useApis } from '@/api/provider';
-import { openHousehold } from '@/components/household/open-household';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { Highlighted } from '@/components/search/highlighted';
 import { NameToken } from '@/components/search/name-token';
@@ -32,7 +31,7 @@ import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useGlobalShortcut } from '@/lib/keyboard';
 import { useLayout } from '@/lib/layout';
-import { useOpen } from '@/lib/open';
+import { openHousehold, useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 import { useDebouncedValue } from '@/lib/use-debounced-value';

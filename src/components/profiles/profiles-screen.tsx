@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { useEffect } from 'react';
 import { BackHandler, Platform, ScrollView, View } from 'react-native';
 
-import { openHousehold } from '@/components/household/open-household';
 import { Portrait, RING_ROOM } from '@/components/series/portrait';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
@@ -12,6 +11,7 @@ import { SafeAreaView } from '@/components/ui/safe-area-view';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { openHousehold } from '@/lib/open';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { type Profile, useActiveProfile, useMustChoose, useProfiles } from '@/stores/profiles';

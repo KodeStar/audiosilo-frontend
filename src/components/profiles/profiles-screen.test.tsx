@@ -17,7 +17,8 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/lib/root-stack', () => ({ popTabToRoot: jest.fn() }));
 const mockOpenHousehold = jest.fn();
-jest.mock('@/components/household/open-household', () => ({
+jest.mock('@/lib/open', () => ({
+  ...jest.requireActual('@/lib/open'),
   openHousehold: () => mockOpenHousehold(),
 }));
 jest.mock('@/playback/store', () =>

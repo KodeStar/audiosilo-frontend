@@ -13,8 +13,6 @@ const mockOpenBook = jest.fn();
 const mockOpenHousehold = jest.fn();
 jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openBook: (...a: unknown[]) => mockOpenBook(...a) }),
-}));
-jest.mock('@/components/household/open-household', () => ({
   openHousehold: (...a: unknown[]) => mockOpenHousehold(...a),
 }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));

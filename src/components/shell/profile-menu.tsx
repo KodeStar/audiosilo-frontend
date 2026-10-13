@@ -11,14 +11,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { openHousehold } from '@/components/household/open-household';
 import { profileName } from '@/components/profiles/profiles-model';
 import { Portrait } from '@/components/series/portrait';
 import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose-profile';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
-import { openJournal, openSettings } from '@/lib/open';
+import { openHousehold, openJournal, openSettings } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useActiveProfile, useProfileConnections, useProfiles } from '@/stores/profiles';

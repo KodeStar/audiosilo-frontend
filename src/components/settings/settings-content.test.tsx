@@ -37,7 +37,8 @@ jest.mock('@/components/account/connections-section', () => {
 });
 // The Household page (8b-1) is a page of its own: Settings only links to it.
 const mockOpenHousehold = jest.fn();
-jest.mock('@/components/household/open-household', () => ({
+jest.mock('@/lib/open', () => ({
+  ...jest.requireActual('@/lib/open'),
   openHousehold: () => mockOpenHousehold(),
 }));
 jest.mock('@/theme/theme-provider', () => ({

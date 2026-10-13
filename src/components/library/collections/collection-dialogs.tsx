@@ -17,7 +17,7 @@ import {
   useUpdateCollection,
 } from '@/api/hooks';
 import type { Collection, HouseholdMember } from '@/api/types';
-import { CheckRow } from '@/components/household/check-row';
+import { CheckRow } from '@/components/ui/check-row';
 import { collectionsMembers } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
 import {
