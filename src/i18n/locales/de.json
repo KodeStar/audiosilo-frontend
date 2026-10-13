@@ -2248,6 +2248,7 @@
       "label": "Von diesem Gerät entfernen",
       "hint": "Meldet {{name}} hier von den eigenen Servern ab. Die Stelle in jedem Buch bleibt auf dem Server.",
       "action": "Von diesem Gerät entfernen",
+      "a11y": "{{name}} von diesem Gerät entfernen",
       "title": "{{name}} von diesem Gerät entfernen?",
       "body": "Damit wird {{name}} auf diesem Gerät von {{servers}} abgemeldet und die Downloads hier werden gelöscht. Die Stelle in jedem Buch bleibt auf dem Server.",
       "noPassword": "{{name}} hat auf {{server}} kein Passwort: Ohne eines ist für die nächste Anmeldung eine neue Einladung nötig.",

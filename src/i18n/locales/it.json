@@ -2248,6 +2248,7 @@
       "label": "Rimuovi da questo dispositivo",
       "hint": "Disconnette {{name}} dai propri server qui. Il punto in ogni libro resta sul server.",
       "action": "Rimuovi da questo dispositivo",
+      "a11y": "Rimuovi {{name}} da questo dispositivo",
       "title": "Rimuovere {{name}} da questo dispositivo?",
       "body": "{{name}} verrà disconnesso da {{servers}} su questo dispositivo e i suoi download qui verranno eliminati. Il punto in ogni libro resta sul server.",
       "noPassword": "{{name}} non ha una password su {{server}}: senza, servirà un nuovo invito per accedere di nuovo.",

@@ -2248,6 +2248,7 @@
       "label": "Remove from this device",
       "hint": "Signs {{name}} out of their servers here. Their place in every book stays on the server.",
       "action": "Remove from this device",
+      "a11y": "Remove {{name}} from this device",
       "title": "Remove {{name}} from this device?",
       "body": "This signs {{name}} out of {{servers}} on this device and deletes their downloads here. Their place in every book stays on the server.",
       "noPassword": "{{name}} has no password on {{server}}: without one they'll need a new invite to sign in again.",

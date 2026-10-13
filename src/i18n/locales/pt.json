@@ -2248,6 +2248,7 @@
       "label": "Remover deste dispositivo",
       "hint": "Termina a sessão de {{name}} nos seus servidores aqui. O ponto em cada livro fica no servidor.",
       "action": "Remover deste dispositivo",
+      "a11y": "Remover {{name}} deste dispositivo",
       "title": "Remover {{name}} deste dispositivo?",
       "body": "Isto termina a sessão de {{name}} em {{servers}} neste dispositivo e apaga as transferências aqui. O ponto em cada livro fica no servidor.",
       "noPassword": "{{name}} não tem palavra-passe em {{server}}: sem uma, vai precisar de um novo convite para voltar a entrar.",

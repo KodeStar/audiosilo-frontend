@@ -53,14 +53,22 @@ export function useKidsActive(): boolean {
   return useKidsProfile() !== null;
 }
 
+/** Where kids mode's shelf for a profile comes from, as the Household card needs it
+ * (`useKidsSharedShelf`): the collections the account's owner shares, the profile's
+ * library pick, or `unknown` (the kid's sign-in there ended, or asking for the shared
+ * collections failed), when neither the pick nor its errors mean anything yet. */
+export type KidsShelfSource = 'shared' | 'library' | 'unknown';
+
 /**
  * Whether kids mode's shelf for `profile` is the collections its account's owner shares
  * with it (8b-1, D6: a household member with at least one shared collection, on a server
  * with `collections`), as `useKidsStories` decides it, through the same cache entry: then
- * the profile's library pick is not used. False while that isn't known, and for anyone
- * else.
+ * the profile's library pick is not used. `library` while that isn't known yet, and for
+ * anyone else. `unknown` while the kid's connection is signed out (`needsReconnect`: the
+ * collections aren't asked for, a 401 can't tell) or the member's collections couldn't be
+ * read.
  */
-export function useKidsSharedShelf(profile: Profile): boolean {
+export function useKidsSharedShelf(profile: Profile): KidsShelfSource {
   const connections = useSession((s) => s.connections);
   const own = connectionsOfProfile(connections, profile.connectionIds);
   const cid = kidsConnectionId(
@@ -70,12 +78,16 @@ export function useKidsSharedShelf(profile: Profile): boolean {
   const connection = own.find((c) => c.id === cid);
   const client = useOptionalApi(cid ?? '');
   const hasCollections = useCapability('collections', cid ?? '');
-  const ask = !!connection?.user.managed_by && hasCollections === true;
+  const signedOut = !!connection?.needsReconnect;
+  const ask = !!connection?.user.managed_by && hasCollections === true && !signedOut;
   const collections = useQuery({
     queryKey: qk.collections(cid ?? ''),
     queryFn: ask && client ? ({ signal }) => client.collections(signal) : skipToken,
   });
-  return ask && kidsCollections(collections.data ?? [], connection?.user).length > 0;
+  if (signedOut) return 'unknown';
+  if (!ask) return 'library';
+  if (kidsCollections(collections.data ?? [], connection?.user).length > 0) return 'shared';
+  return collections.isError ? 'unknown' : 'library';
 }
 
 /** What kids mode's story grid shows. */

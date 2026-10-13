@@ -1,11 +1,13 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { effectiveUrl } from '@/api/address-route';
 import { CapabilityError, useCapabilitiesAll, useMemberSession } from '@/api/hooks';
 import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-member-here';
+import { isTooMany } from '@/components/household/household-model';
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
 import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
@@ -190,7 +192,9 @@ function SignInAgainRow({ name, connection }: { name: string; connection: Connec
       toast({ title: t('profiles.signIn.done', { name }) });
     } catch (e) {
       if (e instanceof CapabilityError) return;
-      toast({ title: t('profiles.signIn.failed', { name }) });
+      toast({
+        title: isTooMany(e) ? t('common.tooManyTries') : t('profiles.signIn.failed', { name }),
+      });
     }
   };
   return (
@@ -216,13 +220,16 @@ function SignInAgainRow({ name, connection }: { name: string; connection: Connec
  * Kids mode's library for `profile`: the picker (`KidsLibraryPicker`), beside its label on
  * a wide card and under it on a phone, where a message (no libraries, couldn't load) left
  * the label one letter wide (8b-1, D7). Hidden while kids mode shows the collections the
- * account's owner shares (`useKidsSharedShelf`, 8b-1 D6): the pick is not used then.
+ * account's owner shares (`useKidsSharedShelf`, 8b-1 D6): the pick is not used then. Also
+ * hidden while that can't be told (the kid's sign-in ended, or the shared collections
+ * couldn't be read): the libraries would only fail to load (the signed-out row above says
+ * what to do).
  */
 function KidsLibraryRow({ profile, manager }: { profile: Profile; manager: string | null }) {
   const { t } = useTranslation();
-  const shared = useKidsSharedShelf(profile);
+  const shelf = useKidsSharedShelf(profile);
   const label = t('profiles.kids.library');
-  if (shared) return null;
+  if (shelf !== 'library') return null;
   return (
     <SettingRow
       testID={`household-kids-library-${profile.id}`}
@@ -237,6 +244,29 @@ function KidsLibraryRow({ profile, manager }: { profile: Profile; manager: strin
       <KidsLibraryPicker profile={profile} label={label} manager={manager} />
     </SettingRow>
   );
+}
+
+/**
+ * Read `connections`' answers again once one of them has a new token (signed in again:
+ * "Sign in again" here, or the connect flow's reconnect): what failed while signed out (the
+ * kids library pick, the shared collections) would otherwise keep its error until a
+ * reload. In an effect of the card, never right after `renewMemberHere`: the hooks below
+ * hand their queries the new client (`useApiRegistry`) in their own effects, which run
+ * before this one; a refetch any earlier would ask with the dead token and flag the
+ * connection again.
+ */
+function useRefetchWhenSignedInAgain(connections: readonly Connection[]) {
+  const qc = useQueryClient();
+  const tokens = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const c of connections) {
+      const before = tokens.current.get(c.id);
+      tokens.current.set(c.id, c.token);
+      if (before === undefined || before === c.token) continue;
+      // Every key carries its connection id (`qk`), though not always second.
+      void qc.invalidateQueries({ predicate: (q) => q.queryKey.includes(c.id) });
+    }
+  }, [connections, qc]);
 }
 
 /** The PIN prompt's step: `check` the current PIN (as `startPin` read it), then set a new
@@ -266,8 +296,12 @@ function PersonCard({
   const kids = profile.kids;
   // A sign-in of theirs that ended here (a revoked session, a deleted account, a server
   // that was reset): signing them in again is this page's (a grown-up's), never kids mode's.
-  const signedOut =
-    connectionsOfProfile(connections, profile.connectionIds).find((c) => c.needsReconnect) ?? null;
+  const own = useMemo(
+    () => connectionsOfProfile(connections, profile.connectionIds),
+    [connections, profile.connectionIds],
+  );
+  const signedOut = own.find((c) => c.needsReconnect) ?? null;
+  useRefetchWhenSignedInAgain(own);
   // A household member's account (Phase 8b-1): kids mode shows what the person who
   // manages it shares, so its lines name them, never "ask the server's admin".
   const manager = kidsManager(profile, connections);
@@ -435,7 +469,7 @@ function PersonCard({
         <Button
           testID={`remove-person-${profile.id}`}
           title={t('profiles.remove.action')}
-          accessibilityLabel={t('profiles.remove.title', { name })}
+          accessibilityLabel={t('profiles.remove.a11y', { name })}
           variant="destructive-outline"
           size="sm"
           icon="logout"

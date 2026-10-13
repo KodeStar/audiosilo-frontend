@@ -504,37 +504,53 @@ describe("a household member's kids shelf: the owner's shared collections (Phase
       return result;
     };
 
-    it('is true for a member kid whose owner shares a collection', async () => {
+    it("is 'shared' for a member kid whose owner shares a collection", async () => {
       setMember();
       mockClient.collections.mockResolvedValue([evies]);
       const result = await shelf();
-      await waitFor(() => expect(result.current).toBe(true));
+      await waitFor(() => expect(result.current).toBe('shared'));
     });
 
-    it('is false when nobody shares one', async () => {
+    it("is 'library' when nobody shares one", async () => {
       setMember();
       mockClient.collections.mockResolvedValue([
         collection(8, "Someone else's", { id: 3, username: 'bob' }),
       ]);
       const result = await shelf();
       await waitFor(() => expect(mockClient.collections).toHaveBeenCalled());
-      expect(result.current).toBe(false);
+      expect(result.current).toBe('library');
     });
 
-    it('is false for an ordinary account (collections never asked)', async () => {
+    it("is 'library' for an ordinary account (collections never asked)", async () => {
       setKids({ bedtime: '19:30' });
       const result = await shelf();
       await waitFor(() => expect(mockClient.serverInfo).toHaveBeenCalled());
-      expect(result.current).toBe(false);
+      expect(result.current).toBe('library');
       expect(mockClient.collections).not.toHaveBeenCalled();
     });
 
-    it('is false on a server without collections', async () => {
+    it("is 'library' on a server without collections", async () => {
       mockClient.serverInfo.mockResolvedValue({ capabilities: {} });
       setMember();
       const result = await shelf();
       await waitFor(() => expect(mockClient.serverInfo).toHaveBeenCalled());
-      expect(result.current).toBe(false);
+      expect(result.current).toBe('library');
+      expect(mockClient.collections).not.toHaveBeenCalled();
+    });
+
+    it("is 'unknown' while the member's collections can't be read (the pick's errors mean nothing then)", async () => {
+      setMember();
+      mockClient.collections.mockRejectedValue(new Error('down'));
+      const result = await shelf();
+      await waitFor(() => expect(result.current).toBe('unknown'));
+    });
+
+    it("is 'unknown' while the kid's sign-in there ended, collections not asked", async () => {
+      setMember({ ...MEMBER, needsReconnect: 'auth' });
+      mockClient.collections.mockResolvedValue([evies]);
+      const result = await shelf();
+      await waitFor(() => expect(mockClient.serverInfo).toHaveBeenCalled());
+      expect(result.current).toBe('unknown');
       expect(mockClient.collections).not.toHaveBeenCalled();
     });
   });

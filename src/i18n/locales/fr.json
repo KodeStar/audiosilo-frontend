@@ -2248,6 +2248,7 @@
       "label": "Retirer de cet appareil",
       "hint": "Déconnecte {{name}} de ses serveurs ici. Sa place dans chaque livre reste sur le serveur.",
       "action": "Retirer de cet appareil",
+      "a11y": "Retirer {{name}} de cet appareil",
       "title": "Retirer {{name}} de cet appareil ?",
       "body": "{{name}} sera déconnecté de {{servers}} sur cet appareil et ses téléchargements ici seront supprimés. Sa place dans chaque livre reste sur le serveur.",
       "noPassword": "{{name}} n'a pas de mot de passe sur {{server}} : sans mot de passe, une nouvelle invitation sera nécessaire pour se reconnecter.",

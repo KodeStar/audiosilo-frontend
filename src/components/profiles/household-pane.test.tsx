@@ -304,6 +304,13 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     expect(leo()?.name).toBe('Leo junior');
   });
 
+  it("labels Remove from this device with the action, not the confirm dialog's question", async () => {
+    await mount();
+    expect(screen.getByTestId('remove-person-leo').props.accessibilityLabel).toBe(
+      'Remove Leo from this device',
+    );
+  });
+
   it('removes a person: signs out each of their servers, then forgets them', async () => {
     await mount();
     await fireEvent.press(screen.getByTestId('remove-person-leo'));
@@ -518,6 +525,39 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
       );
       expect(useSession.getState().pendingServerUrl).toBe('https://hearthside.example');
       expect(mockMemberSession.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("shows no library pick (nor its error) while the kid is signed out, and reads that server again once they're signed in again", async () => {
+      kidsHousehold(leoKid({ needsReconnect: 'auth' }));
+      mockMemberSession.mutateAsync.mockResolvedValueOnce({
+        token: 'fresh',
+        server_id: 'a',
+        user: leoKid().user,
+      });
+      await mount();
+      expect(screen.getByTestId('household-signed-out-a.3')).toBeTruthy();
+      expect(screen.queryByTestId('household-kids-library-leo')).toBeNull();
+      expect(screen.queryByText("Couldn't load the libraries.")).toBeNull();
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign Leo in again' }));
+      await waitFor(() => expect(screen.getByTestId('household-kids-library-leo')).toBeTruthy());
+      // What failed while Leo was signed out is asked again, for Leo's connection only.
+      expect(client.getQueryState(qk.libraries('a.3'))?.isInvalidated).toBe(true);
+      client.setQueryData(qk.libraries('a.1'), []);
+      expect(client.getQueryState(qk.libraries('a.1'))?.isInvalidated).toBe(false);
+    });
+
+    it('says too many tries when the server refuses the new session with a 429', async () => {
+      kidsHousehold(leoKid({ needsReconnect: 'auth' }));
+      const { ApiError } = jest.requireActual('@/api/client');
+      mockMemberSession.mutateAsync.mockRejectedValueOnce(new ApiError(429, 'slow down'));
+      await mount();
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign Leo in again' }));
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith({
+          title: 'Too many tries. Wait a few minutes and try again.',
+        }),
+      );
+      expect(useSession.getState().connections.find((c) => c.id === 'a.3')?.token).toBe('t');
     });
 
     it('offers no sign-in again while the sign-in is fine', async () => {

@@ -289,7 +289,7 @@ export function MemberCard({
             <Button
               testID={`member-remove-${member.id}`}
               title={t('profiles.remove.action')}
-              accessibilityLabel={t('profiles.remove.title', { name: profileName(hereProfile, t) })}
+              accessibilityLabel={t('profiles.remove.a11y', { name: profileName(hereProfile, t) })}
               variant="ghost"
               size="sm"
               icon="logout"

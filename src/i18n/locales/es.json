@@ -2248,6 +2248,7 @@
       "label": "Quitar de este dispositivo",
       "hint": "Cierra la sesión de {{name}} en sus servidores aquí. Su punto en cada libro sigue en el servidor.",
       "action": "Quitar de este dispositivo",
+      "a11y": "Quitar a {{name}} de este dispositivo",
       "title": "¿Quitar a {{name}} de este dispositivo?",
       "body": "Se cerrará la sesión de {{name}} en {{servers}} en este dispositivo y se borrarán sus descargas aquí. Su punto en cada libro sigue en el servidor.",
       "noPassword": "{{name}} no tiene contraseña en {{server}}: sin una, necesitará una nueva invitación para volver a entrar.",

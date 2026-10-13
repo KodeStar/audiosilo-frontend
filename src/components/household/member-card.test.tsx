@@ -449,6 +449,10 @@ describe('MemberCard', () => {
     expect(screen.getByText('On this device')).toBeTruthy();
     // Already here: no way to sign them in again.
     expect(screen.queryByTestId('member-here-12')).toBeNull();
+    // Labelled with the action, not the confirm dialog's question.
+    expect(screen.getByTestId('member-remove-12').props.accessibilityLabel).toBe(
+      'Remove Evie from this device',
+    );
     await fireEvent.press(screen.getByTestId('member-remove-12'));
     expect(mockRemoveRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 'evie' }), 'Evie');
     expect(mockDelete).not.toHaveBeenCalled();
