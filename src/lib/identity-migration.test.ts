@@ -744,6 +744,25 @@ describe('initialProfiles', () => {
   });
 });
 
+describe('initialProfiles names', () => {
+  it("names a household member's profile after their display name", () => {
+    const doc = initialProfiles(
+      [
+        {
+          id: 'x.12',
+          serverId: 'x',
+          serverUrl: '',
+          name: '',
+          user: { ...kit, id: 12, display_name: 'Evie Rose' },
+        },
+      ] as never,
+      'x.12',
+      () => 'p1',
+    );
+    expect(doc.profiles).toEqual([{ id: 'p1', name: 'Evie Rose', connectionIds: ['x.12'] }]);
+  });
+});
+
 describe('rekey', () => {
   it('maps only the connection part of a contentKey', () => {
     const plan = { a: 'a.1' };

@@ -38,3 +38,14 @@ export function needsPasswordWarning(user: User | null | undefined): boolean {
 export function accountFlagsKnown(user: User | null | undefined): boolean {
   return !!user && (user as { has_password?: boolean }).has_password !== undefined;
 }
+
+/** The name a new person on this device is given for `user`: a household member's name
+ * as their owner gave it (`display_name`, Phase 8b-1), else the username. Read
+ * defensively: a stored connection's user may come from an older build. */
+export function personName(
+  user: Partial<Pick<User, 'username' | 'display_name'>> | null | undefined,
+): string {
+  const display = typeof user?.display_name === 'string' ? user.display_name.trim() : '';
+  if (display) return display;
+  return typeof user?.username === 'string' ? user.username : '';
+}

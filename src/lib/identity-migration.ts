@@ -10,6 +10,7 @@ import {
   setConnectionAliases,
   usableUserId,
 } from '@/lib/connection-id';
+import { personName } from '@/lib/account';
 import { connectionOfKey, contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
@@ -279,7 +280,7 @@ export function initialProfiles<C extends Pick<PersistedConnection, 'id' | 'serv
     const named = g.find((c) => c.id === defaultId) ?? g[0];
     return {
       id: newId(),
-      name: typeof named.user?.username === 'string' ? named.user.username : '',
+      name: personName(named.user),
       connectionIds: g.map((c) => c.id),
     };
   });

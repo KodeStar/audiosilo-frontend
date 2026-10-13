@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { AppState, type NativeEventSubscription } from 'react-native';
 import { create } from 'zustand';
 
+import { personName } from '@/lib/account';
 import { serverIdOf } from '@/lib/connection-id';
 import { parseHhMm } from '@/lib/hhmm';
 import { initialProfiles } from '@/lib/identity-migration';
@@ -149,8 +150,9 @@ export function parseProfilesDoc(raw: unknown): ProfilesDoc {
 /** What the rules need of a connection. */
 export type ProfileConnection = Pick<Connection, 'id' | 'serverId' | 'user'>;
 
-const usernameOf = (c: ProfileConnection | undefined): string =>
-  typeof c?.user?.username === 'string' ? c.user.username : '';
+/** A new or unnamed profile's name: the member's `display_name`, else the username
+ * (`personName`). */
+const usernameOf = (c: ProfileConnection | undefined): string => personName(c?.user);
 
 function sameDoc(a: ProfilesDoc, b: ProfilesDoc): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -191,7 +193,8 @@ function holdsServer(
  *    active (`mustChoose`): the next person may have a PIN, so they are chosen on "Who's
  *    listening?", never assumed. Only a document built from nothing (no profiles before)
  *    starts with someone: the default connection's profile, else the first.
- * 6. Every profile has a name (trimmed): its own, else its first connection's username in
+ * 6. Every profile has a name (trimmed): its own, else its first connection's name
+ *    (`personName`: a household member's display name, else the username) in
  *    the session's order (a profile made before the username was known gets it once the
  *    session has it), so screens read `profile.name` (`profileName`) and never the raw
  *    connections for it.
@@ -269,7 +272,7 @@ export type PlaceOptions = {
   /** The new profile does NOT become active: the person listening stays (a household
    * member signed in on the owner's device, `addMemberHere`). */
   keepActive?: boolean;
-  /** The new profile's name (trimmed; empty: the user's username). */
+  /** The new profile's name (trimmed; empty: the user's `personName`). */
   name?: string;
 };
 

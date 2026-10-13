@@ -186,6 +186,33 @@ describe('reconcileProfiles', () => {
     expect(next.activeProfileId).toBe('p1');
   });
 
+  it("names a household member's profile after their display name (Phase 8b-1)", () => {
+    // The kid's own device, paired by QR: the first person on it greets them by the name
+    // their owner gave them, not the username the server made up.
+    const evie: Connection = {
+      ...conn('srvA', 12, 'evie'),
+      user: {
+        ...user(12, 'evie'),
+        display_name: 'Evie Rose',
+        managed_by: { id: 1, username: 'chris' },
+      },
+    };
+    const built = reconcileProfiles(doc(), [evie], evie.id, ids);
+    expect(built.profiles).toEqual([{ id: 'p1', name: 'Evie Rose', connectionIds: [evie.id] }]);
+    // Placed as another person beside someone already here.
+    const base = doc({
+      profiles: [{ id: 'p', name: 'chris', connectionIds: [A1.id] }],
+      activeProfileId: 'p',
+    });
+    const placed = reconcileProfiles(base, [A1, evie], A1.id, ids);
+    expect(placed.profiles[1]).toMatchObject({ name: 'Evie Rose', connectionIds: [evie.id] });
+    const { doc: viaConnect } = placeInDoc(base, evie, [A1, evie], { newProfile: true }, ids);
+    expect(viaConnect.profiles[1]).toMatchObject({ name: 'Evie Rose' });
+    // A blank display name (an ordinary account) is the username, as before.
+    const plain = { ...evie, user: { ...evie.user, display_name: ' ' } };
+    expect(reconcileProfiles(doc(), [plain], plain.id, ids).profiles[0].name).toBe('evie');
+  });
+
   it('drops a removed connection and deletes a profile left empty', () => {
     const d = doc({
       profiles: [
