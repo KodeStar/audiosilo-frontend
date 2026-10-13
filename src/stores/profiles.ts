@@ -3,7 +3,8 @@ import { useMemo } from 'react';
 import { AppState, type NativeEventSubscription } from 'react-native';
 import { create } from 'zustand';
 
-import { isKidAccount, personName } from '@/lib/account';
+import type { User } from '@/api/types';
+import { type DevicePeople, isKidAccount, managerName, personName } from '@/lib/account';
 import { serverIdOf } from '@/lib/connection-id';
 import { parseHhMm } from '@/lib/hhmm';
 import { initialProfiles } from '@/lib/identity-migration';
@@ -712,6 +713,37 @@ export function useProfileConnections(): Connection[] {
   const connections = useSession((s) => s.connections);
   const ids = useProfiles(visibleConnectionIds);
   return useMemo(() => connectionsOfProfile(connections, ids), [connections, ids]);
+}
+
+/** This device's people (every connection and the profiles holding them), as
+ * `managerName` reads them to name a household member's owner. Framework-free. */
+export function devicePeople(): DevicePeople {
+  return {
+    connections: useSession.getState().connections,
+    profiles: useProfiles.getState().profiles,
+  };
+}
+
+/** {@link devicePeople}, live: the same object while neither changes. */
+export function useDevicePeople(): DevicePeople {
+  const connections = useSession((s) => s.connections);
+  const profiles = useProfiles((s) => s.profiles);
+  return useMemo(() => ({ connections, profiles }), [connections, profiles]);
+}
+
+/** Who manages the account of `connectionId` (`managerName` with this device's people), or
+ * of `user` when given (a fresher copy than the stored connection's). */
+export function useManagerName(
+  connectionId: string | null | undefined,
+  user?: Pick<User, 'managed_by'> | null,
+): string | null {
+  const people = useDevicePeople();
+  if (!connectionId) return managerName(user);
+  const conn = people.connections.find((c) => c.id === connectionId);
+  return managerName(user === undefined ? conn?.user : user, {
+    connection: conn ?? { id: connectionId },
+    people,
+  });
 }
 
 // --- Changes --------------------------------------------------------------------------------

@@ -338,9 +338,10 @@ describe('kidsManager (8b-1)', () => {
     { id: 'a.1', user: user(1) },
     { id: 'a.12', user: user(12, 'adam') },
   ];
+  const people = { connections, profiles: [] };
 
   it("names who manages the account kids mode shows, by the kids connection's user", () => {
-    expect(kidsManager({ connectionIds: ['a.12'], kids: { bedtime: '19:30' } }, connections)).toBe(
+    expect(kidsManager({ connectionIds: ['a.12'], kids: { bedtime: '19:30' } }, people)).toBe(
       'adam',
     );
     // The picked library's connection decides which account that is.
@@ -350,23 +351,39 @@ describe('kidsManager (8b-1)', () => {
           connectionIds: ['a.12', 'a.1'],
           kids: { bedtime: '19:30', library: { connectionId: 'a.1', libraryId: 2 } },
         },
-        connections,
+        people,
       ),
     ).toBeNull();
-    expect(kidsManager({ connectionIds: [] }, connections)).toBeNull();
+    expect(kidsManager({ connectionIds: [] }, people)).toBeNull();
   });
 
   it("with no pick, takes the first of the profile's connections in the session's order, as kids mode does", () => {
     // The profile lists a.12 first (a sign-in again after a server reset keeps its slot),
     // the session a.1: kids mode shows a.1, so it is a.1's account that counts.
     expect(
-      kidsManager({ connectionIds: ['a.12', 'a.1'], kids: { bedtime: '19:30' } }, connections),
+      kidsManager({ connectionIds: ['a.12', 'a.1'], kids: { bedtime: '19:30' } }, people),
     ).toBeNull();
     expect(
-      kidsManager({ connectionIds: ['a.12', 'a.1'], kids: { bedtime: '19:30' } }, [
-        connections[1],
-        connections[0],
-      ]),
+      kidsManager(
+        { connectionIds: ['a.12', 'a.1'], kids: { bedtime: '19:30' } },
+        { connections: [connections[1], connections[0]], profiles: [] },
+      ),
     ).toBe('adam');
+  });
+
+  it("names the owner as this device's profile holding their own sign-in, when there is one", () => {
+    // a.1 is adam's own sign-in on server a (managed_by.id 1): his profile is "Dad" here.
+    expect(
+      kidsManager(
+        { connectionIds: ['a.12'], kids: { bedtime: '19:30' } },
+        {
+          connections,
+          profiles: [
+            { name: 'Dad', connectionIds: ['a.1'] },
+            { name: 'Ellie', connectionIds: ['a.12'] },
+          ],
+        },
+      ),
+    ).toBe('Dad');
   });
 });

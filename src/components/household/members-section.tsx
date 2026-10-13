@@ -9,8 +9,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { managerName } from '@/lib/account';
-import { useProfileConnections } from '@/stores/profiles';
+import { useManagerName, useProfileConnections } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
 
 import { AddMemberDialog } from './add-member-dialog';
@@ -76,7 +75,8 @@ function MembersSection({
   const data = list.data;
   const block = data ? addBlock(data) : null;
   // A member's own Household: who manages them (their connection's `managed_by`).
-  const manager = data?.reason === 'member' ? managerName(connection.user) : null;
+  const owner = useManagerName(connection.id);
+  const manager = data?.reason === 'member' ? owner : null;
 
   return (
     <View className="gap-3" testID={`household-members-${connection.id}`}>

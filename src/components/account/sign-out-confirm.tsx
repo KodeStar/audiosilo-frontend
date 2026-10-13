@@ -15,16 +15,17 @@ import { Button } from '@/components/ui/button';
 import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
-import { isKidAccount, managerName } from '@/lib/account';
+import { isKidAccount } from '@/lib/account';
+import { useManagerName } from '@/stores/profiles';
 
 /** What signing out without a password means for `user`: an ordinary account needs a new
  * invite from its admin; a household member's owner can sign it in again from their
  * Household page (8b-1), and a kid's account can't have a password at all. */
 function signOutWarning(
-  user: Pick<User, 'managed_by' | 'member_kind'> | null | undefined,
+  user: Pick<User, 'member_kind'> | null | undefined,
+  owner: string | null,
   t: TFunction,
 ): string {
-  const owner = managerName(user);
   if (!owner) return t('account.signOut.warning');
   return t(isKidAccount(user) ? 'account.signOut.warningKid' : 'account.signOut.warningMember', {
     owner,
@@ -57,6 +58,7 @@ export function SignOutConfirm({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const owner = useManagerName(connectionId, user ?? null);
   // The dialog stays mounted (hidden) in the account screen, so only count while
   // visible - otherwise this selector would filter the registry on every download
   // progress tick.
@@ -70,7 +72,7 @@ export function SignOutConfirm({
           <DialogIcon name="logout" tone="destructive" />
           <AlertDialogHeader className="flex-1">
             <AlertDialogTitle>{t('account.signOut.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{signOutWarning(user, t)}</AlertDialogDescription>
+            <AlertDialogDescription>{signOutWarning(user, owner, t)}</AlertDialogDescription>
             {downloadCount > 0 ? (
               <Text variant="muted">
                 {t('account.signOut.downloadsWarning', { count: downloadCount })}

@@ -1,4 +1,5 @@
-import type { User } from '@/api/types';
+import type { User, UserRef } from '@/api/types';
+import { serverIdOf, usableUserId } from '@/lib/connection-id';
 
 /**
  * Whether to warn the user before they sign out. A password-less account has no
@@ -50,10 +51,44 @@ export function personName(
   return typeof user?.username === 'string' ? user.username : '';
 }
 
-/** Who manages `user`'s account when it is a household member (`managed_by`, Phase 8b-1),
- * by username; null for an ordinary account and on older servers. */
-export function managerName(user: Pick<User, 'managed_by'> | null | undefined): string | null {
-  return user?.managed_by?.username || null;
+/** This device's people, as {@link managerName} reads them: the session's connections and
+ * the profiles holding them (`useDevicePeople` / `devicePeople` in `src/stores/profiles.ts`). */
+export type DevicePeople = {
+  connections: readonly {
+    id: string;
+    serverId?: string;
+    user?: Pick<User, 'id' | 'managed_by'> | null;
+  }[];
+  profiles: readonly { name: string; connectionIds: readonly string[] }[];
+};
+
+/**
+ * Who manages `user`'s account when it is a household member (`managed_by`, Phase 8b-1),
+ * by the name this device knows them by; null for an ordinary account and on older
+ * servers. With `here` (the member's connection and this device's people): when the
+ * owner's own sign-in to that server is on this device, the name of the profile holding
+ * it (the name "Who's listening?" shows). Else the owner's `display_name` if the server
+ * ever sends one, else their username. Read defensively: a stored connection's user may
+ * come from an older build.
+ */
+export function managerName(
+  user: Pick<User, 'managed_by'> | null | undefined,
+  here?: { connection: { id: string; serverId?: string }; people: DevicePeople } | null,
+): string | null {
+  const owner = user?.managed_by as (UserRef & { display_name?: unknown }) | null | undefined;
+  const username = typeof owner?.username === 'string' ? owner.username : '';
+  if (!username) return null;
+  if (here) {
+    const server = serverIdOf(here.connection);
+    const theirs = here.people.connections.find(
+      (c) => serverIdOf(c) === server && usableUserId(c.user) === owner?.id,
+    );
+    const profile = theirs && here.people.profiles.find((p) => p.connectionIds.includes(theirs.id));
+    const name = typeof profile?.name === 'string' ? profile.name.trim() : '';
+    if (name) return name;
+  }
+  const display = typeof owner?.display_name === 'string' ? owner.display_name.trim() : '';
+  return display || username;
 }
 
 /** Whether `user` is a kid's account (a household member the server says is a kid,

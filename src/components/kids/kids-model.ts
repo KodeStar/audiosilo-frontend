@@ -4,9 +4,8 @@ import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
 import type { LayoutClass } from '@/lib/layout';
 import { isInProgress } from '@/lib/progress-view';
-import { managerName } from '@/lib/account';
+import { type DevicePeople, managerName } from '@/lib/account';
 import type { KidsSettings, Profile } from '@/stores/profiles';
-import type { Connection } from '@/stores/session';
 
 /**
  * Kids mode's rules (Phase 8), pure and framework-free: which connection and library the
@@ -50,18 +49,20 @@ export function kidsConnectionId(
 }
 
 /** Who manages the account kids mode shows for `profile` (its kids connection's
- * `managerName`, Phase 8b-1), by username; null for an ordinary account. `connections` are
- * the session's: the profile's are taken in their order, as kids mode picks its own. */
+ * `managerName`, Phase 8b-1): by the name this device knows them by (`people`); null for an
+ * ordinary account. `people.connections` are the session's: the profile's are taken in
+ * their order, as kids mode picks its own. */
 export function kidsManager(
   profile: Pick<Profile, 'connectionIds' | 'kids'>,
-  connections: readonly Pick<Connection, 'id' | 'user'>[],
+  people: DevicePeople,
 ): string | null {
-  const own = connections.filter((c) => profile.connectionIds.includes(c.id));
+  const own = people.connections.filter((c) => profile.connectionIds.includes(c.id));
   const id = kidsConnectionId(
     own.map((c) => c.id),
     profile.kids,
   );
-  return managerName(own.find((c) => c.id === id)?.user);
+  const conn = own.find((c) => c.id === id);
+  return conn ? managerName(conn.user, { connection: conn, people }) : null;
 }
 
 /**

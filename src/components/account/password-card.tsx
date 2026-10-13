@@ -16,8 +16,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
-import { isKidAccount, managerName } from '@/lib/account';
+import { isKidAccount } from '@/lib/account';
 import { cn } from '@/lib/utils';
+import { useManagerName } from '@/stores/profiles';
 
 import { PW_MIN, type PasswordEditor } from './use-password-editor';
 
@@ -26,10 +27,10 @@ import { PW_MIN, type PasswordEditor } from './use-password-editor';
  * what is true. A kid's account can't have one (the server refuses it): its owner signs it
  * in. A household member's was set up by its owner. */
 function noPasswordBody(
-  user: Pick<User, 'managed_by' | 'member_kind'> | null | undefined,
+  user: Pick<User, 'member_kind'> | null | undefined,
+  owner: string | null,
   t: TFunction,
 ): string {
-  const owner = managerName(user);
   if (isKidAccount(user)) {
     return owner ? t('account.password.bodyKid', { owner }) : t('account.password.bodyKidNoOwner');
   }
@@ -43,14 +44,19 @@ function noPasswordBody(
 export function PasswordCard({
   editor,
   user,
+  connectionId,
   className,
 }: {
   editor: PasswordEditor;
+  /** The account's connection: names a household member's owner as this device knows
+   * them (`useManagerName`). */
+  connectionId?: string;
   /** The account's user (`managed_by`, `member_kind`: a household member's copy). */
   user?: Pick<User, 'managed_by' | 'member_kind'> | null;
   className?: string;
 }) {
   const { t } = useTranslation();
+  const owner = useManagerName(connectionId, user ?? null);
   const set = editor.hasPassword;
   const kid = isKidAccount(user) && !set;
   return (
@@ -65,7 +71,9 @@ export function PasswordCard({
           </Text>
         </Badge>
       </View>
-      <Text variant="muted">{set ? t('account.password.bodySet') : noPasswordBody(user, t)}</Text>
+      <Text variant="muted">
+        {set ? t('account.password.bodySet') : noPasswordBody(user, owner, t)}
+      </Text>
       {kid ? null : (
         <Button
           variant="outline"

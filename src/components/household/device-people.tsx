@@ -34,6 +34,7 @@ import {
   type Profile,
   setAskAtLaunch,
   setProfileKids,
+  useDevicePeople,
   useProfiles,
 } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -238,7 +239,9 @@ function PersonCard({
   const signedOut = own.find((c) => c.needsReconnect) ?? null;
   // A household member's account (Phase 8b-1): kids mode shows what the person who
   // manages it shares, so its lines name them, never "ask the server's admin".
-  const manager = kidsManager(profile, connections);
+  // By the name this device knows them by (`managerName`).
+  const people = useDevicePeople();
+  const manager = kidsManager(profile, people);
   // Never the last grown-up: nobody could leave kids mode (`mayTurnOnKids`).
   const kidsAllowed = useProfiles((s) => mayTurnOnKids(profile.id, s));
   const kidsLabel = t('profiles.kids.label');

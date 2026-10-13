@@ -337,7 +337,7 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     expect(await screen.findByText(/Leo has no password on Hearthside/)).toBeTruthy();
   });
 
-  it('says who can sign a household member in again, never that they need a new invite', async () => {
+  it('says who can sign a household member in again (by their name here), never that they need a new invite', async () => {
     useSession.setState({
       connections: [
         conn('a.1', 'Hearthside', 'chris'),
@@ -359,7 +359,7 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     await fireEvent.press(screen.getByTestId('remove-person-leo'));
     expect(
       await screen.findByText(
-        "Leo's account on Hearthside stays. chris can sign Leo in here again from the Household page, or set up a device just for Leo.",
+        "Leo's account on Hearthside stays. Chris can sign Leo in here again from the Household page, or set up a device just for Leo.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/new invite/)).toBeNull();
@@ -386,7 +386,7 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     queryClient.clear();
   });
 
-  it("describes a household member's kids mode by who manages them, never the server's admin", async () => {
+  it("describes a household member's kids mode by who manages them (their profile's name here, not their username), never the server's admin", async () => {
     useSession.setState({
       connections: [
         conn('a.1', 'Hearthside', 'chris'),
@@ -413,15 +413,15 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     client.setQueryData(qk.libraries('a.3'), []);
     await waitFor(() =>
       expect(
-        screen.getByText('Nothing to pick. chris shares stories from the Household page.'),
+        screen.getByText('Nothing to pick. Chris shares stories from the Household page.'),
       ).toBeTruthy(),
     );
     expect(
       screen.getByText(
-        'The stories chris shares, as big covers, with a bedtime and no settings or search. Leaving needs a grown-up.',
+        'The stories Chris shares, as big covers, with a bedtime and no settings or search. Leaving needs a grown-up.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText('Shown when chris shares no collections')).toBeTruthy();
+    expect(screen.getByText('Shown when Chris shares no collections')).toBeTruthy();
     expect(screen.queryByText(/Ask the server's admin/)).toBeNull();
   });
 
