@@ -6,6 +6,7 @@ import {
   CapabilityError,
   useDeleteMember,
   useMemberDevices,
+  useMyDevices,
   useRevokeMemberDevice,
   useUpdateMember,
 } from '@/api/hooks';
@@ -89,6 +90,13 @@ export function MemberCard({
   const here = useSession((s) => memberConnection(s.connections, connection, member.id));
   const hereProfile = here ? profileOf(here.id) : null;
   const kid = member.kind === 'kid';
+  // Which of their devices is this one: their own list, read with their token here, marks
+  // it `current` (the owner's list of their devices never does). Asked only while they are
+  // here and signed in somewhere; the answer of another connection is never read.
+  const theirs = useMyDevices(here?.id ?? cid, {
+    enabled: here !== undefined && member.devices > 0,
+  });
+  const thisDevice = here ? (theirs.data?.find((d) => d.current)?.id ?? null) : null;
 
   /** Say a write was refused and changed nothing (a toast: "Couldn't change <Name>'s
    * account" unless `title` says otherwise, then why), unless it was never sent. */
@@ -228,6 +236,7 @@ export function MemberCard({
         <MemberDevices
           connectionId={cid}
           member={member}
+          thisDevice={thisDevice}
           onRevoke={(d) => setOpen({ revoke: d })}
         />
         <View className="mt-2 flex-row flex-wrap gap-2">
@@ -351,6 +360,8 @@ export function MemberCard({
         connectionId={cid}
         member={member}
         device={typeof open === 'object' && open ? open.revoke : null}
+        here={thisDevice !== null ? here : undefined}
+        thisDevice={thisDevice}
         onClose={close}
       />
     </SettingsCard>
@@ -419,15 +430,19 @@ function RemoveHereButton({ memberId, profile }: { memberId: number; profile: Pr
 }
 
 /** A member's signed-in devices (their sessions and API keys, as the list's count has
- * them: the card is the only place the owner sees either), each with Sign out; loading,
- * error and none states. None is said from the members list's count, without asking. */
+ * them: the card is the only place the owner sees either), each with Sign out, their
+ * session on this device marked; loading, error and none states. None is said from the
+ * members list's count, without asking. */
 function MemberDevices({
   connectionId,
   member,
+  thisDevice,
   onRevoke,
 }: {
   connectionId: string;
   member: HouseholdMember;
+  /** Their session on this device (its id), when they are signed in here. */
+  thisDevice: number | null;
   onRevoke: (d: MyDevice) => void;
 }) {
   const { t } = useTranslation();
@@ -462,7 +477,9 @@ function MemberDevices({
   if (rows.length === 0) {
     return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
   }
-  return <MemberDeviceRows member={member} rows={rows} onRevoke={onRevoke} />;
+  return (
+    <MemberDeviceRows member={member} rows={rows} thisDevice={thisDevice} onRevoke={onRevoke} />
+  );
 }
 
 /** The rows of `MemberDevices`, each with Sign out; the clock ticks only while they show
@@ -470,10 +487,12 @@ function MemberDevices({
 function MemberDeviceRows({
   member,
   rows,
+  thisDevice,
   onRevoke,
 }: {
   member: HouseholdMember;
   rows: MyDevice[];
+  thisDevice: number | null;
   onRevoke: (d: MyDevice) => void;
 }) {
   const { t } = useTranslation();
@@ -488,6 +507,13 @@ function MemberDeviceRows({
             testID={`member-device-${d.id}`}
             icon={deviceGlyph(d)}
             title={device}
+            badge={
+              d.id === thisDevice ? (
+                <Badge variant="success">
+                  <Text>{t('account.devices.thisDevice')}</Text>
+                </Badge>
+              ) : null
+            }
             detail={deviceDetail(d, t, now)}
             first={i === 0}
             action={{
@@ -505,16 +531,23 @@ function MemberDeviceRows({
   );
 }
 
-/** "Sign Evie out of Kitchen iPad?", then the sign-out and a toast. */
+/** "Sign Evie out of Kitchen iPad?", then the sign-out and a toast. Their session on this
+ * device (`thisDevice`, of their connection `here`) is dead once signed out: that
+ * connection takes the dead-token path at once (`markNeedsReconnect`, as a 401 would), so
+ * this device shows them signed out (with "Sign in again") instead of failing later. */
 function RevokeMemberDevice({
   connectionId,
   member,
   device,
+  here,
+  thisDevice,
   onClose,
 }: {
   connectionId: string;
   member: HouseholdMember;
   device: MyDevice | null;
+  here: Connection | undefined;
+  thisDevice: number | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -524,8 +557,14 @@ function RevokeMemberDevice({
   const confirm = async () => {
     if (!device) return;
     onClose();
+    const signedOutHere = () => {
+      if (here && device.id === thisDevice) {
+        useSession.getState().markNeedsReconnect(here.id, 'auth');
+      }
+    };
     try {
       await revoke.mutateAsync({ id: member.id, deviceId: device.id });
+      signedOutHere();
       toast({ title: t('household.devices.done', { name, device: label }) });
     } catch (e) {
       if (e instanceof CapabilityError) return;
@@ -533,6 +572,7 @@ function RevokeMemberDevice({
       // (`useRevokeMemberDevice`).
       const why = writeError(e);
       if (why === 'gone') {
+        signedOutHere();
         toast({ title: t('account.devices.gone', { name: label }) });
         return;
       }

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
 import type { AuthSession, HouseholdMember, MyDevice, PairingPayload } from '@/api/types';
@@ -35,6 +35,10 @@ jest.mock('@/components/connect/add-member-here', () =>
 
 let mockDevices: { data?: MyDevice[]; isPending: boolean; isError: boolean; refetch: jest.Mock };
 const mockDevicesAsked = jest.fn();
+const mockMyDevicesAsked = jest.fn();
+let mockMyDevices: Record<string, MyDevice[] | undefined> = {};
+/** What the cache holds for a list asked nothing (another connection's): never read. */
+let mockCachedMyDevices: MyDevice[] | undefined;
 const mockUpdate = jest.fn();
 const mockDelete = jest.fn();
 const mockRevoke = jest.fn();
@@ -53,6 +57,11 @@ jest.mock('@/api/hooks', () => {
     useMemberDevices: (...a: unknown[]) => {
       mockDevicesAsked(...a);
       return mockDevices;
+    },
+    // Their own list, with their token here (`current`: this device).
+    useMyDevices: (cid: string, opts: { enabled?: boolean }) => {
+      mockMyDevicesAsked(cid, opts);
+      return { data: opts.enabled === false ? mockCachedMyDevices : mockMyDevices[cid] };
     },
     useUpdateMember: () => mutation(mockUpdate),
     useDeleteMember: () => mutation(mockDelete),
@@ -125,6 +134,8 @@ const mount = (m: HouseholdMember = member()) =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockMoreCollections = [];
+  mockMyDevices = {};
+  mockCachedMyDevices = undefined;
   resetProfilesForTests();
   mockDevices = { data: [device()], isPending: false, isError: false, refetch: jest.fn() };
   mockUpdate.mockImplementation(async ({ id, body }) => ({ ...member({ id }), ...body }));
@@ -329,6 +340,60 @@ describe('MemberCard', () => {
     expect(useProfiles.getState().profiles.find((p) => p.id === 'evie')?.name).toBe('Evelyn');
     // The owner's own profile keeps its name.
     expect(useProfiles.getState().profiles.find((p) => p.id === 'adam')?.name).toBe('Adam');
+  });
+
+  describe('their session on this device', () => {
+    const evieHere = { ...owner, id: 'a.12', user: { id: 12, username: 'evie' } } as Connection;
+    const ipad = device({ id: 70, name: 'Kitchen iPad' });
+    const phone = device({ id: 71, name: "Adam's phone" });
+    beforeEach(() => {
+      mockDevices = { data: [ipad, phone], isPending: false, isError: false, refetch: jest.fn() };
+    });
+
+    it('is marked "This device" (from their own list, read with their token)', async () => {
+      useSession.setState({ connections: [owner, evieHere] });
+      mockMyDevices['a.12'] = [{ ...phone, current: true }];
+      await mount(member({ devices: 2 }));
+      expect(mockMyDevicesAsked).toHaveBeenCalledWith('a.12', { enabled: true });
+      expect(within(screen.getByTestId('member-device-71')).getByText('This device')).toBeTruthy();
+      expect(within(screen.getByTestId('member-device-70')).queryByText('This device')).toBeNull();
+    });
+
+    it("marks nothing when they aren't here (another connection's list is never read)", async () => {
+      // The owner's own list (its current row is the owner's session) sits in the cache.
+      mockCachedMyDevices = [{ ...phone, current: true }];
+      await mount(member({ devices: 2 }));
+      expect(mockMyDevicesAsked).toHaveBeenCalledWith('a.1', { enabled: false });
+      expect(screen.queryByText('This device')).toBeNull();
+    });
+
+    it('signed out, takes their connection here down the dead-token path', async () => {
+      useSession.setState({ connections: [owner, evieHere] });
+      mockMyDevices['a.12'] = [{ ...phone, current: true }];
+      await mount(member({ devices: 2 }));
+      await fireEvent.press(screen.getByRole('button', { name: "Sign Evie out of Adam's phone" }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+      expect(mockRevoke).toHaveBeenCalledWith({ id: 12, deviceId: 71 });
+      expect(useSession.getState().connections.find((c) => c.id === 'a.12')?.needsReconnect).toBe(
+        'auth',
+      );
+      // The owner's own connection is untouched.
+      expect(useSession.getState().connections.find((c) => c.id === 'a.1')?.needsReconnect).toBe(
+        undefined,
+      );
+    });
+
+    it('signing out another of their devices leaves this one signed in', async () => {
+      useSession.setState({ connections: [owner, evieHere] });
+      mockMyDevices['a.12'] = [{ ...phone, current: true }];
+      await mount(member({ devices: 2 }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie out of Kitchen iPad' }));
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+      expect(mockRevoke).toHaveBeenCalledWith({ id: 12, deviceId: 70 });
+      expect(
+        useSession.getState().connections.find((c) => c.id === 'a.12')?.needsReconnect,
+      ).toBeUndefined();
+    });
   });
 
   it('gives their account on this device the new kind when the Kids switch flips', async () => {

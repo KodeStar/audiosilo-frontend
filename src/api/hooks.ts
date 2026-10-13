@@ -1857,13 +1857,15 @@ export function useClearListeningGoal(connectionId?: string) {
 }
 
 /** The caller's own signed-in devices, most recently seen first (capability
- * `my_devices`). */
-export function useMyDevices(connectionId?: string) {
+ * `my_devices`). `enabled: false` asks nothing (its `data` may still be a cached answer:
+ * ignore it then). */
+export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } = {}) {
   return useCapabilityQuery(
     'my_devices',
     qk.myDevices,
     (api, signal) => api.myDevices(signal),
     connectionId,
+    { ready: opts.enabled !== false },
   );
 }
 
