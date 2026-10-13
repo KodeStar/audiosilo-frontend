@@ -171,7 +171,7 @@ export function ProfilesScreen() {
                 className="mt-8"
                 title={t('household.manage')}
                 disabled={switching !== null}
-                onPress={() => openHousehold()}
+                onPress={openHousehold}
               />
             )}
           </>

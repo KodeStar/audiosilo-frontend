@@ -134,7 +134,7 @@ function useGoToItems(): PaletteItem[] {
   const { openSettings, openYou } = useOpen();
   return buildGoToItems(
     TOP_BAR_TABS,
-    { tab: press, you: openYou, settings: () => openSettings(), household: () => openHousehold() },
+    { tab: press, you: openYou, settings: () => openSettings(), household: openHousehold },
     t,
   );
 }

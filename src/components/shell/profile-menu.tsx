@@ -145,11 +145,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
           <DropdownMenuItem icon="history" onPress={() => openJournal()}>
             <Text>{t('journal.title')}</Text>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            testID="profile-menu-household"
-            icon="users"
-            onPress={() => openHousehold()}
-          >
+          <DropdownMenuItem testID="profile-menu-household" icon="users" onPress={openHousehold}>
             <Text>{t('household.title')}</Text>
           </DropdownMenuItem>
           <DropdownMenuItem icon="settings" onPress={() => openSettings()}>

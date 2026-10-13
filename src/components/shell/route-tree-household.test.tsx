@@ -43,6 +43,16 @@ it('pushes the Household page on the current tab, and stays put when already the
   expect(routeInfo().pathname).toBe('/library');
 });
 
+it('opens it when a press hands the handler its event (the Settings rows pass it as is)', async () => {
+  // Settings wires `onPress={openHousehold}`: the press event once arrived as the nav
+  // state and `focusedRoute` threw on it, so the wide nav item and the narrow card did
+  // nothing.
+  await mount('/library');
+  const onPress = openHousehold as (event: unknown) => void;
+  await nav(() => onPress({ nativeEvent: {}, type: 'press' }));
+  expect(routeInfo().segments).toEqual(['(app)', '(library)', 'household']);
+});
+
 it('opens it from over the full player in the shell underneath', async () => {
   await mount('/search');
   await nav(() => router.push(playerHref('c', 1, 'x')));

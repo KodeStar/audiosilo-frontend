@@ -53,7 +53,7 @@ function HouseSection({ connection, active }: { connection: Connection; active: 
     <HomeSection
       title={t('house.title')}
       sub={t('house.sub', { server: connection.name })}
-      action={{ label: t('house.settingsLink'), onPress: () => openHousehold() }}
+      action={{ label: t('house.settingsLink'), onPress: openHousehold }}
     >
       <View
         testID={`house-row-${connection.id}`}
