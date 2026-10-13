@@ -1,14 +1,18 @@
-import type { Book, Library, Progress } from '@/api/types';
+import type { Book, Collection, CollectionDetail, Library, Progress } from '@/api/types';
 import type { DownloadEntry } from '@/downloads/types';
 
 import {
   kidsAllowsPath,
+  kidsCollections,
+  kidsCollectionSections,
   kidsConnectionId,
   kidsContinuePaths,
   kidsDownloads,
   kidsGrid,
   kidsLibrary,
   kidsOfflineLibraryId,
+  kidsOrder,
+  kidsSectionBooks,
   kidsShelf,
 } from './kids-model';
 
@@ -216,5 +220,78 @@ describe('kidsOfflineLibraryId', () => {
     expect(kidsOfflineLibraryId(null, 'c', kids)).toBe(4);
     expect(kidsOfflineLibraryId(null, 'd', kids)).toBeNull();
     expect(kidsOfflineLibraryId(null, 'c', undefined)).toBeNull();
+  });
+});
+
+describe("a household member's shelf (Phase 8b-1)", () => {
+  const ADAM = { id: 1, username: 'adam' };
+  const coll = (id: number, owner = ADAM, owned = false): Collection => ({
+    id,
+    name: `C${id}`,
+    description: '',
+    owner,
+    owned,
+    item_count: 0,
+    preview: [],
+    created_at: '',
+    updated_at: '',
+  });
+  const detail = (c: Collection, books: (Book | null)[]): CollectionDetail => ({
+    collection: c,
+    items: books.map((b, i) => ({
+      library_id: b?.library_id ?? 1,
+      path: b?.rel_path ?? `gone-${i}`,
+      added_at: '',
+      ...(b ? { book: b } : {}),
+    })),
+  });
+
+  it("kidsCollections: only those the account's owner shares, in the list's order", () => {
+    const list = [coll(1), coll(2, { id: 3, username: 'bob' }), coll(3, ADAM), coll(4, ADAM)];
+    expect(kidsCollections(list, { managed_by: ADAM }).map((c) => c.id)).toEqual([1, 3, 4]);
+    // Its own collections never (even were the owner's id its own).
+    expect(kidsCollections([coll(5, ADAM, true)], { managed_by: ADAM })).toEqual([]);
+    // Nobody manages it (an ordinary account, a Phase 8 kid, an older server): none.
+    expect(kidsCollections(list, { managed_by: null })).toEqual([]);
+    expect(kidsCollections(list, {})).toEqual([]);
+    expect(kidsCollections(list, undefined)).toEqual([]);
+  });
+
+  it('kidsOrder: in progress first (newest first, across libraries), then in order, once each', () => {
+    const books = [book('a', 1), book('b', 2), book('c', 1), book('a', 2), book('a', 1)];
+    const rows = [
+      progress('c', { updated_at: '2026-10-01T09:00:00.000Z' }),
+      progress('a', { library_id: 2, updated_at: '2026-10-01T11:00:00.000Z' }),
+      progress('b', { library_id: 2, finished: true }),
+      progress('zzz'),
+    ];
+    expect(kidsOrder(books, rows).map((b) => `${b.library_id}/${b.rel_path}`)).toEqual([
+      '2/a',
+      '1/c',
+      '1/a',
+      '2/b',
+    ]);
+  });
+
+  it('kidsCollectionSections: one run is the whole shelf; several are titled; empty left out', () => {
+    const one = kidsCollectionSections(
+      [coll(1), coll(2)],
+      [detail(coll(1), [book('a'), null, book('b')]), detail(coll(2), [])],
+      [progress('b')],
+    );
+    expect(one.map((s) => [s.key, s.title, s.books.map((b) => b.rel_path)])).toEqual([
+      ['collection-1', null, ['b', 'a']],
+    ]);
+    const two = kidsCollectionSections(
+      [coll(1), coll(2), coll(3)],
+      [detail(coll(1), [book('a')]), undefined, detail(coll(3), [book('c'), book('a')])],
+      [],
+    );
+    expect(two.map((s) => [s.title, s.books.map((b) => b.rel_path)])).toEqual([
+      ['C1', ['a']],
+      ['C3', ['c', 'a']],
+    ]);
+    expect(kidsSectionBooks(two).map((b) => b.rel_path)).toEqual(['a', 'c']);
+    expect(kidsCollectionSections([coll(1)], [detail(coll(1), [null])], [])).toEqual([]);
   });
 });

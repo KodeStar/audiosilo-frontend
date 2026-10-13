@@ -2,10 +2,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import type { Book, Library, Progress } from '@/api/types';
+import type { Book, Collection, CollectionDetail, Library, Progress } from '@/api/types';
 
 const mockClient = {
-  serverInfo: jest.fn(async () => ({ capabilities: {} })),
+  serverInfo: jest.fn(async (): Promise<{ capabilities: Record<string, boolean> }> => ({
+    capabilities: {},
+  })),
+  collections: jest.fn(async (): Promise<Collection[]> => []),
+  collection: jest.fn(async (id: number): Promise<CollectionDetail> => {
+    throw new Error(`no collection ${id}`);
+  }),
   libraries: jest.fn(async (): Promise<Library[]> => []),
   listBooks: jest.fn(async (_lib: number, _q: { cursor?: string }) => ({
     books: [] as Book[],
@@ -24,6 +30,8 @@ jest.mock('@/api/provider', () =>
       listBooks: (lib: number, q: { cursor?: string }) => mockClient.listBooks(lib, q),
       allProgress: () => mockClient.allProgress(),
       item: (lib: number, path: string) => mockClient.item(lib, path),
+      collections: () => mockClient.collections(),
+      collection: (id: number) => mockClient.collection(id),
     },
   }),
 );
@@ -79,6 +87,8 @@ function mount(onRender?: () => void) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockClient.serverInfo.mockResolvedValue({ capabilities: {} });
+  mockClient.collections.mockResolvedValue([]);
   mockClient.libraries.mockResolvedValue([lib(1), lib(2)]);
   mockClient.listBooks.mockImplementation(async (libraryId: number) => ({
     books: libraryId === 2 ? [book('a'), book('b'), book('c')] : [book('x', 1)],
@@ -298,4 +308,181 @@ it('does not re-render on a download progress tick', async () => {
     useDownloads.setState({ entries: { k: { ...entry, progress: 0.5, bytes: 50 } } }),
   );
   expect(renders).toBe(before);
+});
+
+describe("a household member's kids shelf: the owner's shared collections (Phase 8b-1)", () => {
+  const ADAM = { id: 1, username: 'adam' };
+  const MEMBER = {
+    ...CONN,
+    user: { ...CONN.user, managed_by: ADAM, member_kind: 'kid' },
+  } as Connection;
+  const collection = (id: number, name: string, owner = ADAM, owned = false): Collection => ({
+    id,
+    name,
+    description: '',
+    owner,
+    owned,
+    item_count: 0,
+    preview: [],
+    created_at: '2026-10-01T00:00:00.000Z',
+    updated_at: '2026-10-01T00:00:00.000Z',
+  });
+  const detail = (c: Collection, books: Book[]): CollectionDetail => ({
+    collection: c,
+    items: books.map((b) => ({
+      library_id: b.library_id,
+      path: b.rel_path,
+      added_at: '2026-10-01T00:00:00.000Z',
+      book: b,
+    })),
+  });
+  const started = (path: string, libraryId: number): Progress => ({
+    library_id: libraryId,
+    path,
+    position: 60,
+    duration: 600,
+    finished: false,
+    playback_speed: 1,
+    version: 0,
+    device_id: 'd',
+    updated_at: '2026-10-02T00:00:00.000Z',
+  });
+
+  function setMember(connection: Connection = MEMBER) {
+    useSession.setState({ connections: [connection], defaultConnectionId: connection.id });
+    seedProfile({ connectionIds: [connection.id], kids: { bedtime: '19:30' } });
+  }
+
+  beforeEach(() => {
+    mockClient.serverInfo.mockResolvedValue({ capabilities: { collections: true } });
+  });
+
+  const evies = collection(4, "Evie's books");
+  const bedtime = collection(5, 'Bedtime');
+
+  it("one collection: the whole shelf, in the owner's order, stories in progress first", async () => {
+    setMember();
+    mockClient.collections.mockResolvedValue([
+      collection(9, 'Mine', { id: 7, username: 'leo' }, true),
+      collection(8, "Someone else's", { id: 3, username: 'bob' }),
+      evies,
+    ]);
+    mockClient.collection.mockResolvedValue(
+      detail(evies, [book('x', 1), book('y', 2), book('z', 2)]),
+    );
+    mockClient.allProgress.mockResolvedValue([started('z', 2)]);
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+    const s = result.current.stories;
+    expect(s.status === 'ready' && s.books.map((b) => b.rel_path)).toEqual(['z', 'x', 'y']);
+    expect(s.status === 'ready' && s.sections).toBeUndefined();
+    expect(mockClient.collection.mock.calls).toEqual([[4]]);
+    // Never the one-library view.
+    expect(mockClient.listBooks).not.toHaveBeenCalled();
+    result.current.loadMore();
+    expect(mockClient.listBooks).not.toHaveBeenCalled();
+  });
+
+  it('several collections: one titled run each, in the list order', async () => {
+    setMember();
+    mockClient.collections.mockResolvedValue([bedtime, evies]);
+    mockClient.collection.mockImplementation(async (id: number) =>
+      id === 5 ? detail(bedtime, [book('moon'), book('owl')]) : detail(evies, [book('fox')]),
+    );
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+    const s = result.current.stories;
+    expect(
+      s.status === 'ready' && s.sections?.map((x) => [x.title, x.books.map((b) => b.rel_path)]),
+    ).toEqual([
+      ['Bedtime', ['moon', 'owl']],
+      ["Evie's books", ['fox']],
+    ]);
+    expect(s.status === 'ready' && s.books.map((b) => b.rel_path)).toEqual(['moon', 'owl', 'fox']);
+  });
+
+  it('collections with no stories yet: ask a grown-up', async () => {
+    setMember();
+    mockClient.collections.mockResolvedValue([evies]);
+    mockClient.collection.mockResolvedValue(detail(evies, []));
+    const { result } = await mount();
+    await waitFor(() =>
+      expect(result.current.stories).toEqual({
+        status: 'empty',
+        serverName: 'Hearthside',
+        askGrownUp: true,
+      }),
+    );
+    expect(mockClient.listBooks).not.toHaveBeenCalled();
+  });
+
+  it('a collection that fails beside one that loads: its stories, and Try again', async () => {
+    setMember();
+    mockClient.collections.mockResolvedValue([bedtime, evies]);
+    mockClient.collection.mockImplementation(async (id: number) => {
+      if (id === 5) throw new Error('down');
+      return detail(evies, [book('fox')]);
+    });
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+    const s = result.current.stories;
+    expect(s.status === 'ready' && [s.books.map((b) => b.rel_path), s.more]).toEqual([
+      ['fox'],
+      'failed',
+    ]);
+    mockClient.collection.mockImplementation(async (id: number) =>
+      id === 5 ? detail(bedtime, [book('moon')]) : detail(evies, [book('fox')]),
+    );
+    await act(async () => result.current.retry());
+    await waitFor(() => {
+      const r = result.current.stories;
+      expect(r.status === 'ready' && r.books.map((b) => b.rel_path)).toEqual(['moon', 'fox']);
+    });
+  });
+
+  it('every collection failing is an error it can retry', async () => {
+    setMember();
+    mockClient.collections.mockResolvedValue([evies]);
+    mockClient.collection.mockRejectedValue(new Error('down'));
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('error'));
+  });
+
+  it("a member nobody shares a collection with (an 'all' member): the one-library view", async () => {
+    setMember();
+    mockClient.collections.mockResolvedValue([
+      collection(8, "Someone else's", { id: 3, username: 'bob' }),
+    ]);
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+    const s = result.current.stories;
+    expect(s.status === 'ready' && s.books.map((b) => b.rel_path)).toEqual(['x']);
+    expect(mockClient.collection).not.toHaveBeenCalled();
+  });
+
+  it('a Phase 8 account (nobody manages it): the one-library view, collections never asked', async () => {
+    setKids({ bedtime: '19:30' });
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+    expect(mockClient.listBooks).toHaveBeenCalled();
+    expect(mockClient.collections).not.toHaveBeenCalled();
+  });
+
+  it('a server without collections: the one-library view', async () => {
+    mockClient.serverInfo.mockResolvedValue({ capabilities: {} });
+    setMember();
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+    expect(mockClient.listBooks).toHaveBeenCalled();
+    expect(mockClient.collections).not.toHaveBeenCalled();
+  });
+
+  it('waits on the collections list (loading, not the library)', async () => {
+    setMember();
+    mockClient.collections.mockImplementation(() => new Promise(() => {}));
+    const { result } = await mount();
+    await waitFor(() => expect(mockClient.collections).toHaveBeenCalled());
+    expect(result.current.stories).toEqual({ status: 'loading' });
+    expect(mockClient.listBooks).not.toHaveBeenCalled();
+  });
 });

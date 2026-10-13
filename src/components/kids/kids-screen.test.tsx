@@ -272,3 +272,30 @@ it("offers the kid's own sign-in again when its token is dead (the shell's banne
     useProfiles.setState({ profiles: [], activeProfileId: null });
   }
 });
+
+it("shows several shared collections under their own names (a household member's shelf)", async () => {
+  const fox = book('kids/fox', 'Fox');
+  mockStories = {
+    status: 'ready',
+    books: [book('kids/moon', 'Moon'), fox],
+    sections: [
+      { key: 'collection-5', title: 'Bedtime', books: [book('kids/moon', 'Moon'), fox] },
+      { key: 'collection-4', title: "Evie's books", books: [fox] },
+    ],
+    offline: false,
+    more: 'none',
+  };
+  await render(<KidsScreen />);
+  const headings = screen.getAllByRole('header').map((h) => h.props.children);
+  expect(headings).toEqual(expect.arrayContaining(['Bedtime', "Evie's books"]));
+  // A story in two collections is in both.
+  expect(screen.getAllByRole('button', { name: 'Play Fox' })).toHaveLength(2);
+  expect(screen.getAllByRole('button', { name: 'Play Moon' })).toHaveLength(1);
+});
+
+it('asks for a grown-up when the shared collections hold no stories yet', async () => {
+  mockStories = { status: 'empty', serverName: 'Hearthside', askGrownUp: true };
+  await render(<KidsScreen />);
+  expect(screen.getByText('Ask a grown-up to add stories.')).toBeTruthy();
+  expect(screen.queryByText(/Hearthside/)).toBeNull();
+});

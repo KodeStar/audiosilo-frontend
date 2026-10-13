@@ -1,4 +1,4 @@
-import type { Book, Library, Progress } from '@/api/types';
+import type { Book, Collection, CollectionDetail, Library, Progress, User } from '@/api/types';
 import { type GridSpec, gridMetrics } from '@/components/library/cover-layout';
 import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
@@ -86,6 +86,88 @@ export function kidsContinuePaths(progress: readonly Progress[], libraryId: numb
 export function kidsShelf(continuing: readonly Book[], listed: readonly Book[]): Book[] {
   const first = new Set(continuing.map((b) => b.rel_path));
   return [...continuing, ...listed.filter((b) => !first.has(b.rel_path))];
+}
+
+/** One run of kids mode's stories: a collection's (titled with its name when the shelf
+ * has several), or the whole shelf (`title` null). */
+export type KidsSection = { key: string; title: string | null; books: Book[] };
+
+/**
+ * The collections kids mode shows for a household member (Phase 8b-1): those the account's
+ * owner (`user.managed_by`) shares with it, in the order GET /me/collections lists them
+ * (the owner's). Empty for an account nobody manages (an ordinary one, a Phase 8 kid the
+ * admin limited, an older server): kids mode then shows one library (`kidsLibrary`). A
+ * member on "Everything I can listen to" whose owner also shares collections with them
+ * sees those collections too.
+ */
+export function kidsCollections(
+  collections: readonly Collection[],
+  user: Pick<User, 'managed_by'> | undefined,
+): Collection[] {
+  const owner = user?.managed_by?.id;
+  if (owner === undefined) return [];
+  return collections.filter((c) => !c.owned && c.owner.id === owner);
+}
+
+/** A book's place in kids mode's lists, across libraries (a collection can hold books of
+ * several). */
+const storyKey = (libraryId: number, path: string) => `${libraryId}:${path}`;
+
+/**
+ * `books` in the order kids mode shows them: the ones the child is partway through first
+ * (most recently played first, as `kidsContinuePaths`), then the rest in their own order;
+ * a book listed twice is shown once.
+ */
+export function kidsOrder(books: readonly Book[], progress: readonly Progress[]): Book[] {
+  const rank = new Map<string, number>();
+  progress
+    .filter(isInProgress)
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    .forEach((p) => {
+      const key = storyKey(p.library_id, p.path);
+      if (!rank.has(key)) rank.set(key, rank.size);
+    });
+  const seen = new Set<string>();
+  const unique = books.filter((b) => {
+    const key = storyKey(b.library_id, b.rel_path);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const rankOf = (b: Book) => rank.get(storyKey(b.library_id, b.rel_path));
+  const started = unique
+    .filter((b) => rankOf(b) !== undefined)
+    .sort((a, b) => rankOf(a)! - rankOf(b)!);
+  return [...started, ...unique.filter((b) => rankOf(b) === undefined)];
+}
+
+/**
+ * Kids mode's shelf from the owner's shared collections (`kidsCollections`, with each
+ * one's GET /me/collections/{id} answer in `details`, undefined while unread): the indexed
+ * books of each, stories in progress first (`kidsOrder`). A collection with no stories is
+ * left out; one section left is the whole shelf (no title), several are titled with their
+ * collection's name. Empty when no collection has a story yet.
+ */
+export function kidsCollectionSections(
+  collections: readonly Collection[],
+  details: readonly (CollectionDetail | undefined)[],
+  progress: readonly Progress[],
+): KidsSection[] {
+  const sections = collections.flatMap((c, i): KidsSection[] => {
+    const books = (details[i]?.items ?? []).flatMap((item) => (item.book ? [item.book] : []));
+    return books.length > 0
+      ? [{ key: `collection-${c.id}`, title: c.name, books: kidsOrder(books, progress) }]
+      : [];
+  });
+  return sections.length === 1 ? [{ ...sections[0], title: null }] : sections;
+}
+
+/** Every story of `sections`, once each, in order (the car's shelf, a flat count). */
+export function kidsSectionBooks(sections: readonly KidsSection[]): Book[] {
+  return kidsOrder(
+    sections.flatMap((s) => s.books),
+    [],
+  );
 }
 
 /**

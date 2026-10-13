@@ -22,7 +22,7 @@ import { DEFAULT_BEDTIME } from '@/stores/profiles';
 
 import { GrownUpsButton } from './grown-ups-button';
 import { KidsPlayer } from './kids-player';
-import { KidsStoriesList } from './kids-stories';
+import { type KidsRow, KidsStoriesList } from './kids-stories';
 import { MoonCard } from './moon-card';
 import { useKidsProfile, useKidsStories } from './use-kids';
 
@@ -69,7 +69,7 @@ export function KidsScreen() {
   const profile = useKidsProfile();
   const { stories, connectionId, retry, loadMore } = useKidsStories();
   const loaded = usePlayer((s) => s.nowPlaying !== null);
-  const list = useRef<FlashListRef<Book[]>>(null);
+  const list = useRef<FlashListRef<KidsRow>>(null);
   const [outer, setOuter] = useState(0);
 
   useFocusEffect(

@@ -81,12 +81,29 @@ const StoryTile = memo(function StoryTile({
   );
 });
 
+/** One line of the list: a row of stories, or a collection's name over its stories. */
+export type KidsRow =
+  { key: string; books: Book[]; heading?: undefined } | { key: string; heading: string };
+
 /** Rows of `columns` stories: the list is virtualised by row, so a column count of the
  * measured width needs no remount and each row lays its own gaps. */
-function rowsOf(books: readonly Book[], columns: number): Book[][] {
-  const rows: Book[][] = [];
-  for (let i = 0; i < books.length; i += columns) rows.push(books.slice(i, i + columns));
+function rowsOf(books: readonly Book[], columns: number, prefix = ''): KidsRow[] {
+  const rows: KidsRow[] = [];
+  for (let i = 0; i < books.length; i += columns) {
+    const row = books.slice(i, i + columns);
+    rows.push({ key: `${prefix}${row[0].library_id}:${row[0].rel_path}`, books: row });
+  }
   return rows;
+}
+
+/** The list's lines: the stories in rows, each titled section (several collections) under
+ * its own heading. */
+function linesOf(ready: Extract<KidsStories, { status: 'ready' }>, columns: number): KidsRow[] {
+  if (!ready.sections) return rowsOf(ready.books, columns);
+  return ready.sections.flatMap((section) => [
+    ...(section.title ? [{ key: `${section.key}:title`, heading: section.title }] : []),
+    ...rowsOf(section.books, columns, `${section.key}:`),
+  ]);
 }
 
 /** The grid's state when it has no stories to show: loading, empty, or an error. */
@@ -115,7 +132,11 @@ function StoriesState({ stories, onRetry }: { stories: KidsStories; onRetry: () 
           size="large"
           icon="book"
           title={t('kids.stories.emptyTitle')}
-          hint={t('kids.stories.emptyBody', { server: stories.serverName })}
+          hint={
+            stories.askGrownUp
+              ? t('kids.stories.askGrownUp')
+              : t('kids.stories.emptyBody', { server: stories.serverName })
+          }
         />
       );
     case 'error':
@@ -140,7 +161,8 @@ function StoriesState({ stories, onRetry }: { stories: KidsStories; onRetry: () 
  * Kids mode's page as one virtualised list (FlashList): the page's `header` (greeting,
  * bedtime card, player, the Stories heading), then the stories as big cover tiles (2
  * columns on a phone, as many 180 pt tiles as fit wider, by the content column's measured
- * `width`: `kidsGrid`), continue-listening first, each tap playing the story (`onPlay`).
+ * `width`: `kidsGrid`), continue-listening first, each tap playing the story (`onPlay`);
+ * several collections shared by the kid's owner each come under their own name.
  * Rows mount as they scroll in, and the next page of the library is asked for near the
  * end (`onEndReached`). Loading, empty, error and offline states: offline with stories
  * downloaded, those (with a line saying why), else a message with Try again; a page that
@@ -166,35 +188,46 @@ export function KidsStoriesList({
   onPlay: (book: Book) => void;
   onRetry: () => void;
   onEndReached: () => void;
-  listRef?: Ref<FlashListRef<Book[]>>;
+  listRef?: Ref<FlashListRef<KidsRow>>;
   contentContainerStyle?: StyleProp<ViewStyle>;
 }) {
   const { t } = useTranslation();
   const loadedKey = usePlayer(selectBookKey);
   const { columns, tile, columnGap, rowGap } = kidsGrid(width, layout);
   const ready = stories.status === 'ready' ? stories : null;
-  const rows = ready && connectionId ? rowsOf(ready.books, columns) : [];
+  const rows = ready && connectionId ? linesOf(ready, columns) : [];
 
   return (
     <FlashList
       ref={listRef}
       data={rows}
-      keyExtractor={(row) => row[0].rel_path}
+      keyExtractor={(row) => row.key}
+      getItemType={(row) => (row.heading !== undefined ? 'heading' : 'row')}
       extraData={`${loadedKey}|${tile}|${columnGap}`}
-      renderItem={({ item }) => (
-        <View className="flex-row" style={{ columnGap, paddingBottom: rowGap }}>
-          {item.map((b) => (
-            <StoryTile
-              key={b.rel_path}
-              book={b}
-              connectionId={connectionId as string}
-              width={tile}
-              loaded={loadedKey === contentKey(connectionId as string, b.library_id, b.rel_path)}
-              onPlay={onPlay}
-            />
-          ))}
-        </View>
-      )}
+      renderItem={({ item }) =>
+        item.heading !== undefined ? (
+          <Text
+            accessibilityRole="header"
+            numberOfLines={2}
+            className="mb-3 font-display-semibold text-xl tracking-tight text-foreground"
+          >
+            {item.heading}
+          </Text>
+        ) : (
+          <View className="flex-row" style={{ columnGap, paddingBottom: rowGap }}>
+            {item.books.map((b) => (
+              <StoryTile
+                key={`${b.library_id}:${b.rel_path}`}
+                book={b}
+                connectionId={connectionId as string}
+                width={tile}
+                loaded={loadedKey === contentKey(connectionId as string, b.library_id, b.rel_path)}
+                onPlay={onPlay}
+              />
+            ))}
+          </View>
+        )
+      }
       ListHeaderComponent={
         <View>
           {header}
