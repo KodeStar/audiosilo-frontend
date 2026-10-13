@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
+import { RECONNECT_STRIP_CLASS } from '@/components/layout/reconnect-banner';
 import { startBookInPlace } from '@/components/player/start-book';
 import { openProfiles } from '@/components/profiles/use-choose-profile';
 import { Screen } from '@/components/ui/screen';
@@ -60,7 +61,10 @@ function SignedOutNotice({ name }: { name: string }) {
     <View
       testID="kids-signed-out"
       accessibilityRole="alert"
-      className="mb-4 flex-row items-center gap-2.5 rounded-lg border-l-4 border-l-brand bg-brand/10 px-3.5 py-3"
+      className={cn(
+        'mb-4 flex-row items-center gap-2.5 rounded-lg px-3.5 py-3',
+        RECONNECT_STRIP_CLASS,
+      )}
     >
       <Icon name="key" size={16} color={themed.brand} />
       <Text className="flex-1 font-sans-semibold text-base text-brand-ink">

@@ -7,8 +7,23 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
-import { useSession } from '@/stores/session';
+import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
+
+/** The brand strip a reconnect line sits on (the banner, kids mode's signed-out line). */
+export const RECONNECT_STRIP_CLASS = 'border-l-4 border-l-brand bg-brand/10';
+
+/** Start the reconnect flow for `conn`: the sign-in step for its server, through the
+ * address the connection uses NOW (`effectiveUrl`; away from home that is its away
+ * address, not the home address it may have been paired with, which can't answer).
+ * Signing in keeps the connection's own `serverUrl` (`repairPlan`). */
+export async function reconnectConnection(conn: Connection): Promise<void> {
+  await useSession.getState().setPendingServerUrl(effectiveUrl(conn));
+  router.push({
+    pathname: '/connect/sign-in',
+    params: { serverName: conn.name, reconnect: conn.id },
+  });
+}
 
 /**
  * Slim, accent-bordered bar shown when a connection's token is being rejected (or its
@@ -26,7 +41,6 @@ export function ReconnectBanner({ className }: { className?: string } = {}) {
   const { t } = useTranslation();
   // The person listening's servers only: another person's sign-in is theirs to renew.
   const connections = useProfileConnections();
-  const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const needing = connections.filter((c) => c.needsReconnect);
 
   if (needing.length === 0) return null;
@@ -38,24 +52,14 @@ export function ReconnectBanner({ className }: { className?: string } = {}) {
       ? t('reconnect.banner.serverReset', { name: conn.name })
       : t('reconnect.banner.auth', { name: conn.name });
 
-  // Sign in through the address the connection uses NOW: away from home that is its away
-  // address, not the home address it may have been paired with (which can't answer).
-  // Signing in keeps the connection's own `serverUrl` (`repairPlan`).
-  const onPress = async () => {
-    await setPendingServerUrl(effectiveUrl(conn));
-    router.push({
-      pathname: '/connect/sign-in',
-      params: { serverName: conn.name, reconnect: conn.id },
-    });
-  };
-
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityHint={t('reconnect.banner.hint')}
-      onPress={onPress}
+      onPress={() => void reconnectConnection(conn)}
       className={cn(
-        'flex-row items-center gap-2 border-b border-l-4 border-b-border border-l-brand bg-brand/10 px-3 py-2 active:opacity-80',
+        'flex-row items-center gap-2 border-b border-b-border px-3 py-2 active:opacity-80',
+        RECONNECT_STRIP_CLASS,
         className,
       )}
     >

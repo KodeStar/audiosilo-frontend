@@ -1,12 +1,11 @@
-import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { effectiveUrl } from '@/api/address-route';
 import { apiErrorKind } from '@/api/client';
 import { CapabilityError, useMemberSession } from '@/api/hooks';
 import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-member-here';
+import { reconnectConnection } from '@/components/layout/reconnect-banner';
 import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
 import { kidsManager } from '@/components/kids/kids-model';
@@ -140,14 +139,9 @@ function SignInAgainRow({ name, connection }: { name: string; connection: Connec
     connection.needsReconnect === 'auth' ? memberOwnerHere(connection, s.connections) : null,
   );
   const session = useMemberSession(owner?.id ?? '');
-  const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
   const onPress = async () => {
     if (!owner) {
-      await setPendingServerUrl(effectiveUrl(connection));
-      router.push({
-        pathname: '/connect/sign-in',
-        params: { serverName: connection.name, reconnect: connection.id },
-      });
+      await reconnectConnection(connection);
       return;
     }
     try {
