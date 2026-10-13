@@ -61,6 +61,11 @@ beforeEach(() => {
   mockSetRate.mockReset();
 });
 
+/** Until `fn` has been called (a start reaches its reads after a few awaits). */
+async function asked(fn: jest.Mock) {
+  for (let i = 0; i < 50 && fn.mock.calls.length === 0; i++) await Promise.resolve();
+}
+
 describe('startBookInPlace', () => {
   it("refuses another person's book before fetching anything (the car's old items)", async () => {
     try {
@@ -197,6 +202,37 @@ describe('startBookInPlace', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('joins a start of the same book already on its way, never a second one (8b-1, D2)', async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    mockItem.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const first = startBookInPlace(target);
+    // A second tap while the item is looked up: the same start.
+    expect(startBookInPlace(target)).toBe(first);
+    // Another place in the same book is its own start.
+    const elsewhere = startBookInPlace(target, { position: 60 });
+    expect(elsewhere).not.toBe(first);
+    await asked(mockItem);
+    answer({ rel_path: target.path });
+    await expect(first).resolves.toBe(true);
+    await elsewhere;
+    expect(mockPlayBook).toHaveBeenCalledTimes(2);
+    // Settled: a tap afterwards starts it again.
+    await startBookInPlace(target);
+    expect(mockPlayBook).toHaveBeenCalledTimes(3);
+  });
+
+  it('joins a start that fails, then lets the next one try again', async () => {
+    let fail: (e: Error) => void = () => undefined;
+    mockChapters.mockImplementationOnce(() => new Promise((_, r) => (fail = r)));
+    const first = startBookInPlace(target);
+    const again = startBookInPlace(target);
+    await asked(mockChapters);
+    fail(new Error('offline'));
+    await expect(first).rejects.toThrow('offline');
+    await expect(again).rejects.toThrow('offline');
+    await expect(startBookInPlace(target)).resolves.toBe(true);
   });
 
   it('rejects, without playing, when the book cannot be fetched', async () => {

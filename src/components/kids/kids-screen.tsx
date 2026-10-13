@@ -34,37 +34,20 @@ import { useKidsProfile, useKidsStories } from './use-kids';
 /** The widest the page's content gets. */
 const MAX_WIDTH = 1200;
 
-/** The story whose start is still on its way (its item, chapters and place being looked
- * up, before the player shows it): a second tap on it meanwhile is the same start, never
- * a second one (8b-1, D2). */
-let starting: string | null = null;
-
 /**
  * Play a story. Kids mode is its own player: a story starts in place
  * (`startBookInPlace`) on every layout and never opens the full player, which kids mode
  * doesn't allow; the story already loaded plays on (a tap never pauses it: the big play
- * button does that), and so does one still starting (`starting`). Rejects when the story
- * couldn't be fetched.
+ * button does that), and so does one still starting (`startBookInPlace` joins it). Rejects
+ * when the story couldn't be fetched.
  */
 async function playStory(target: PlayTarget): Promise<void> {
-  const key = contentKey(target.connectionId, target.libraryId, target.path);
-  if (starting === key) return;
   const store = usePlayer.getState();
-  if (selectBookKey(store) === key) {
+  if (selectBookKey(store) === contentKey(target.connectionId, target.libraryId, target.path)) {
     if (!selectIsTransportLive(store)) await store.toggle();
     return;
   }
-  starting = key;
-  try {
-    await startBookInPlace(target);
-  } finally {
-    if (starting === key) starting = null;
-  }
-}
-
-/** Tests only: no story is starting. */
-export function resetKidsStartForTests(): void {
-  starting = null;
+  await startBookInPlace(target);
 }
 
 /** The kid's sign-in ended (a revoked session, a deleted account, a reset server): a

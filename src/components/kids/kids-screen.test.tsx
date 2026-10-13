@@ -68,7 +68,7 @@ import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 
 import { HOLD_MS } from './grown-ups-button';
-import { KidsScreen, resetKidsStartForTests } from './kids-screen';
+import { KidsScreen } from './kids-screen';
 /* eslint-enable import/first */
 
 const book = (path: string, title = path): Book =>
@@ -82,7 +82,6 @@ beforeEach(() => {
   mockLayout = 'phone';
   mockLoadedKey = null;
   mockLive = false;
-  resetKidsStartForTests();
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -298,7 +297,8 @@ it('asks a grown-up when a story will not start after the sign-in ended', async 
   });
 });
 
-it('starts a story once when it is tapped again while its start is on its way (D2)', async () => {
+it('a tap again while its start is on its way asks for the same start, never a pause (D2)', async () => {
+  // `startBookInPlace` joins a start already on its way (its own suite, start-book.test).
   mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
   let finish: (ok: boolean) => void = () => undefined;
   mockStart.mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)));
@@ -306,12 +306,10 @@ it('starts a story once when it is tapped again while its start is on its way (D
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
   // The player doesn't show it yet (its item, chapters and place are being looked up).
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
-  expect(mockStart).toHaveBeenCalledTimes(1);
+  const story = { connectionId: 'c', libraryId: 3, path: 'kids/a' };
+  expect(mockStart.mock.calls).toEqual([[story], [story]]);
   expect(mockToggle).not.toHaveBeenCalled();
   await act(async () => finish(true));
-  // Settled: a tap starts it again (it was not loaded after all, in this mock).
-  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
-  expect(mockStart).toHaveBeenCalledTimes(2);
 });
 
 it("shows several shared collections under their own names (a household member's shelf)", async () => {
