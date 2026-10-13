@@ -6,6 +6,7 @@ import type {
   Collection,
   HouseholdMember,
   HouseholdMembers as Members,
+  HouseholdMembersReason,
   PairingPayload,
 } from '@/api/types';
 import { householdMember } from '@/testing/household-fixtures';
@@ -188,8 +189,10 @@ describe('the members section', () => {
     ['not_allowed', "Your server's admin hasn't let this account add people."],
     ['member', 'Only the person who manages your account can add people.'],
     ['demo', "Demo accounts can't add people."],
+    // A newer server's reason: a generic line, never the translation key.
+    ['paused', "Adding people isn't available for this account."],
   ] as const)('explains %s instead of offering to add', async (reason, words) => {
-    mockMembers['a.1'] = list({ allowed: false, reason });
+    mockMembers['a.1'] = list({ allowed: false, reason: reason as HouseholdMembersReason });
     await mount();
     expect(screen.getByText(words)).toBeTruthy();
     expect(screen.queryByText('Add someone to your household')).toBeNull();

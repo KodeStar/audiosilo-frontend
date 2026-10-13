@@ -2302,6 +2302,7 @@
         "member": "Only the person who manages your account can add people.",
         "demo": "Demo accounts can't add people.",
         "at_cap": "You've added the most people this server allows ({{max}}).",
+        "other": "Adding people isn't available for this account.",
         "memberNamed": "Only {{owner}} can add people or change what you can listen to."
       },
       "managedBy": "{{owner}} manages your account."

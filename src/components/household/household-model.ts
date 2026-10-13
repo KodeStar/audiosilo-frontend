@@ -38,12 +38,23 @@ export function clipName(name: string): string {
 }
 
 /** Why the members section offers no "Add someone to your household": the server's
- * `reason`, or `at_cap` when the caller has as many members as the server allows. Null
- * when they may add. */
-export type AddBlock = HouseholdMembersReason | 'at_cap';
+ * `reason`, `at_cap` when the caller has as many members as the server allows, or `other`
+ * for a reason this build doesn't know (a newer server's: a generic line, never a key's
+ * name). Null when they may add. */
+export type AddBlock = HouseholdMembersReason | 'at_cap' | 'other';
+
+const REASONS: ReadonlySet<string> = new Set<HouseholdMembersReason>([
+  'feature_off',
+  'not_allowed',
+  'member',
+  'demo',
+]);
 
 export function addBlock(list: HouseholdMembers): AddBlock | null {
-  if (!list.allowed) return list.reason ?? 'not_allowed';
+  if (!list.allowed) {
+    if (list.reason === undefined) return 'not_allowed';
+    return REASONS.has(list.reason) ? list.reason : 'other';
+  }
   return list.members.length >= list.max ? 'at_cap' : null;
 }
 

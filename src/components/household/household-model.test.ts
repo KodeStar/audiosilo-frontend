@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import { ApiError } from '@/api/client';
-import type { HouseholdMembers } from '@/api/types';
+import type { HouseholdMembers, HouseholdMembersReason } from '@/api/types';
 import { householdMember } from '@/testing/household-fixtures';
 
 import {
@@ -59,6 +59,11 @@ describe('addBlock', () => {
     }
     // No reason given: the admin's switch is the likely one.
     expect(addBlock(list({ allowed: false }))).toBe('not_allowed');
+  });
+
+  it("says a reason this build doesn't know generically, never as a key", () => {
+    const reason = 'paused' as unknown as HouseholdMembersReason;
+    expect(addBlock(list({ allowed: false, reason }))).toBe('other');
   });
 
   it('is at the cap when the members fill it (the server sends no reason for that)', () => {

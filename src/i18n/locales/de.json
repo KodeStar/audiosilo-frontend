@@ -2302,6 +2302,7 @@
         "member": "Nur die Person, die dein Konto verwaltet, kann Personen hinzufügen.",
         "demo": "Demokonten können keine Personen hinzufügen.",
         "at_cap": "Du hast so viele Personen hinzugefügt, wie dieser Server erlaubt ({{max}}).",
+        "other": "Für dieses Konto ist das Hinzufügen von Personen nicht verfügbar.",
         "memberNamed": "Nur {{owner}} kann Personen hinzufügen oder ändern, was du hören kannst."
       },
       "managedBy": "{{owner}} verwaltet dein Konto."

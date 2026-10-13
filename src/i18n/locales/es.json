@@ -2302,6 +2302,7 @@
         "member": "Solo la persona que gestiona tu cuenta puede añadir personas.",
         "demo": "Las cuentas de demostración no pueden añadir personas.",
         "at_cap": "Has añadido el máximo de personas que permite este servidor ({{max}}).",
+        "other": "Añadir personas no está disponible para esta cuenta.",
         "memberNamed": "Solo {{owner}} puede añadir personas o cambiar lo que puedes escuchar."
       },
       "managedBy": "{{owner}} gestiona tu cuenta."
