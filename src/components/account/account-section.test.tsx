@@ -66,6 +66,7 @@ import { Platform } from 'react-native';
 
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 
 import { AccountSection } from './account-section';
 import { IdentityCard } from './identity-card';
@@ -223,17 +224,35 @@ describe('AccountSection', () => {
     expect(screen.queryByText(/Not available/)).toBeNull();
   });
 
-  it("hides API keys from a kid's account, which can't have any", async () => {
+  it("hides API keys and pairing from a kid's account, which can't have either", async () => {
     mockSession.connections[0].user = user({
       role: 'user',
+      has_password: false,
       managed_by: { id: 2, username: 'adam' },
       member_kind: 'kid',
     });
     await mountWithPortal(<AccountSection connectionId="c1" />);
     expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    // The server refuses a kid's pairing code (403 kid_account): the password card says
+    // who signs it in instead.
+    expect(screen.queryByText('Pair another device')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show a pairing code' })).toBeNull();
+    expect(
+      screen.getByText("A kid's account has no password. adam signs it in on a new device."),
+    ).toBeTruthy();
     expect(screen.queryByText('Personal API keys')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Create API key' })).toBeNull();
     expect(screen.queryByText(/Not available/)).toBeNull();
+  });
+
+  it('offers a grown-up member pairing', async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      managed_by: { id: 2, username: 'adam' },
+      member_kind: 'grownup',
+    });
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
   });
 
   it('switches between signed-in servers when no server is given', async () => {
@@ -324,6 +343,49 @@ describe('AccountSection: signing a household member out', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Set a password' })).toBeNull();
+  });
+
+  it('names the owner as this device knows them when their own sign-in is here, not by username', async () => {
+    mockSession.connections = [
+      { id: 'srv.1', name: 'Hearthside', serverUrl: 'https://books.example', user: user() },
+      {
+        id: 'c1',
+        name: 'Hearthside',
+        serverUrl: 'https://books.example',
+        user: user({
+          id: 12,
+          username: 'ellie',
+          role: 'user',
+          has_password: false,
+          managed_by: adam,
+          member_kind: 'kid',
+        }),
+      },
+    ];
+    // adam (user 1) is signed in to the same server here, as the profile "Dad".
+    (mockSession.connections[0] as Conn & { serverId: string }).serverId = 'srv';
+    (mockSession.connections[1] as Conn & { serverId: string }).serverId = 'srv';
+    useProfiles.setState({
+      profiles: [
+        { id: 'p1', name: 'Dad', connectionIds: ['srv.1'] },
+        { id: 'p2', name: 'Ellie', connectionIds: ['c1'] },
+      ],
+      activeProfileId: 'p2',
+    });
+    try {
+      await signOut();
+      expect(
+        screen.getByText(
+          "A kid's account has no password. Dad can sign it in again from their Household page.",
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByText("A kid's account has no password. Dad signs it in on a new device."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/adam/)).toBeNull();
+    } finally {
+      resetProfilesForTests();
+    }
   });
 });
 

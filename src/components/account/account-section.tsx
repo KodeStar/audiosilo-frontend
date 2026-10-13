@@ -110,7 +110,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const { data: server } = useServerInfo(cid);
   const caps = server?.capabilities;
   const demo = !!user?.is_demo;
-  // A kid's account (8b-1) can't have API keys either (the server refuses them).
+  // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
 
   // Side by side where the measured column fits both (assumed until it is measured, off
@@ -153,13 +153,22 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       <View className={beside ? 'flex-row items-stretch gap-4' : 'gap-4'}>
         {/* Demo accounts can't set a password (the server refuses it). */}
         {!demo ? (
-          <PasswordCard editor={password} user={user} className={cn(beside && 'flex-1')} />
+          <PasswordCard
+            editor={password}
+            user={user}
+            connectionId={cid}
+            className={cn(beside && 'flex-1')}
+          />
         ) : null}
-        <PairDeviceCard
-          connectionId={cid}
-          serverName={serverName}
-          className={cn(beside && 'flex-1')}
-        />
+        {/* A kid's account can't pair a device (the server refuses it, 403 kid_account): its
+            owner signs it in, as the password card says. */}
+        {!kid ? (
+          <PairDeviceCard
+            connectionId={cid}
+            serverName={serverName}
+            className={cn(beside && 'flex-1')}
+          />
+        ) : null}
       </View>
 
       <AccountAddresses cid={cid} caps={caps} />
