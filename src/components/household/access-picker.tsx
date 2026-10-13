@@ -35,6 +35,7 @@ export function AccessPicker({
   access,
   collectionIds,
   newBooks,
+  saving = false,
   showTitle = true,
   onAccess,
   onCollections,
@@ -48,6 +49,9 @@ export function AccessPicker({
   collectionIds: readonly number[];
   /** "<Name>'s books" is to be created and shared on save. */
   newBooks: boolean;
+  /** The form is being saved: the "<Name>'s books" it creates is its own, never one to
+   * pick instead (`CollectionPicker`). */
+  saving?: boolean;
   showTitle?: boolean;
   onAccess: (access: MemberAccess) => void;
   onCollections: (ids: number[]) => void;
@@ -84,6 +88,7 @@ export function AccessPicker({
           name={name}
           ids={collectionIds}
           newBooks={newBooks}
+          saving={saving}
           onChange={onCollections}
           onNewBooks={onNewBooks}
         />
@@ -145,6 +150,7 @@ function CollectionPicker({
   name,
   ids,
   newBooks,
+  saving,
   onChange,
   onNewBooks,
 }: {
@@ -152,6 +158,7 @@ function CollectionPicker({
   name: string;
   ids: readonly number[];
   newBooks: boolean;
+  saving: boolean;
   onChange: (ids: number[]) => void;
   onNewBooks: (on: boolean) => void;
 }) {
@@ -165,13 +172,15 @@ function CollectionPicker({
   const existing = named ? namedCollection(own, memberBooksName(name, t)) : undefined;
   const existingId = existing?.id;
   // Chosen to be created before that name was typed or the list arrived: the existing
-  // one, ticked, instead.
+  // one, ticked, instead. Never while the form is saved: the save creates "<Name>'s books"
+  // itself, and the list read again then holds it; adopting it would keep its id in the
+  // form after a refused save deleted it again (`useMemberBooks`), refusing every retry.
   useEffect(() => {
-    if (!newBooks || existingId === undefined) return;
+    if (saving || !newBooks || existingId === undefined) return;
     onNewBooks(false);
     if (!ids.includes(existingId)) onChange([...ids, existingId]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- on the match only
-  }, [newBooks, existingId]);
+  }, [saving, newBooks, existingId]);
 
   if (available === false) {
     return <Text variant="muted">{t('household.access.collectionsOff')}</Text>;

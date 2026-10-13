@@ -223,6 +223,25 @@ describe('startBookInPlace', () => {
     expect(mockPlayBook).toHaveBeenCalledTimes(3);
   });
 
+  it('starts a book again when another book was started after it: the last tap wins', async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    mockItem.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const first = startBookInPlace(target);
+    // Story B, then A again while A's first start is still on its way: B's start would
+    // take the player over A's, so joining that one would drop the last tap.
+    const other = startBookInPlace({ ...target, path: 'Other/Story' });
+    const again = startBookInPlace(target);
+    expect(again).not.toBe(first);
+    await asked(mockItem);
+    answer({ rel_path: target.path });
+    await Promise.all([first, other, again]);
+    // A, B, then A again: three starts (A's twice), never two.
+    expect(mockPlayBook).toHaveBeenCalledTimes(3);
+    // Settled: the replaced start left no entry behind; a tap now is a fresh start.
+    await startBookInPlace(target);
+    expect(mockPlayBook).toHaveBeenCalledTimes(4);
+  });
+
   it('joins a start that fails, then lets the next one try again', async () => {
     let fail: (e: Error) => void = () => undefined;
     mockChapters.mockImplementationOnce(() => new Promise((_, r) => (fail = r)));

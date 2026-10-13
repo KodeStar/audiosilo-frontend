@@ -16,7 +16,7 @@ jest.mock('@/components/connect/add-member-here', () =>
 /* eslint-disable import/first */
 import { AddMemberHereError } from '@/components/connect/add-member-here';
 
-import { hereFailure, signInMemberHere } from './use-sign-in-here';
+import { hereFailure, sessionRefusalText, signInMemberHere } from './use-sign-in-here';
 /* eslint-enable import/first */
 
 const evie = { id: 12, name: 'Evie' };
@@ -66,6 +66,22 @@ describe('signInMemberHere', () => {
     await expect(signInMemberHere(down, evie, 'srv')).resolves.toEqual({ status: 'failed' });
     expect(mockAddHere).not.toHaveBeenCalled();
   });
+
+  it('tells a member the admin disabled (409 member_disabled) and one gone (404) apart', async () => {
+    const disabled = async () => Promise.reject(new ApiError(409, 'disabled', 'member_disabled'));
+    await expect(signInMemberHere(disabled, evie, 'srv')).resolves.toEqual({
+      status: 'failed',
+      reason: 'member_disabled',
+    });
+    const gone = async () => Promise.reject(new ApiError(404, 'member not found'));
+    await expect(signInMemberHere(gone, evie, 'srv')).resolves.toEqual({
+      status: 'failed',
+      reason: 'not_found',
+    });
+    // Any other 409 is no refusal of its own: nothing more is said than "try again".
+    const other = async () => Promise.reject(new ApiError(409, 'x', 'collection_full'));
+    await expect(signInMemberHere(other, evie, 'srv')).resolves.toEqual({ status: 'failed' });
+  });
 });
 
 describe('hereFailure', () => {
@@ -80,6 +96,24 @@ describe('hereFailure', () => {
     expect(hereFailure({ status: 'failed', reason: 'choose_adult' }, 'Evie', t)).toBe(
       'profiles.add.chooseAdult',
     );
+    expect(hereFailure({ status: 'failed', reason: 'member_disabled' }, 'Evie', t)).toBe(
+      'household.here.disabled:Evie',
+    );
+    expect(hereFailure({ status: 'failed', reason: 'not_found' }, 'Evie', t)).toBe(
+      'household.here.gone:Evie',
+    );
     expect(hereFailure({ status: 'failed' }, 'Evie', t)).toBe('household.here.failedRetry:Evie');
+  });
+});
+
+describe('sessionRefusalText', () => {
+  it("says a refusal another try can't change, else nothing (the caller's own words)", () => {
+    expect(sessionRefusalText(new ApiError(409, 'x', 'member_disabled'), 'Evie', t)).toBe(
+      'household.here.disabled:Evie',
+    );
+    expect(sessionRefusalText(new ApiError(404, 'x'), 'Evie', t)).toBe('household.here.gone:Evie');
+    expect(sessionRefusalText(new ApiError(429, 'x'), 'Evie', t)).toBe('common.tooManyTries');
+    expect(sessionRefusalText(new ApiError(500, 'x'), 'Evie', t)).toBeNull();
+    expect(sessionRefusalText(new TypeError('Network request failed'), 'Evie', t)).toBeNull();
   });
 });

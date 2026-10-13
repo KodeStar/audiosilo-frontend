@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -10,6 +11,17 @@ import { Button } from '@/components/ui/button';
 import { FormError } from '@/components/ui/form-error';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLatest } from '@/lib/use-latest';
+
+import { writeError, writeErrorText } from './household-model';
+
+/** What a member's pairing code that could not be made says: a refusal in the household's
+ * words (a member the admin disabled or no longer in the household, too many tries, ...:
+ * `writeErrorText`), else (no answer, a server error) that no code was made. */
+function memberPairingError(e: unknown, server: string, t: TFunction): string {
+  return writeError(e) === 'failed'
+    ? t('household.qr.failed', { server })
+    : writeErrorText(e, server, t);
+}
 
 /**
  * A household member's own pairing code (Phase 8b-1: "Show Ellis this code", "Set up their
@@ -32,7 +44,7 @@ export function MemberPairing({
   const mint = useMemberPairing(connectionId);
   const pairing = usePairingCode(
     () => mint.mutateAsync(member.id),
-    t('household.qr.failed', { server: serverName }),
+    (e) => memberPairingError(e, serverName, t),
   );
   // Asked for once, when it shows (`create` is stable; the ref keeps a second mount pass
   // from minting a second code).

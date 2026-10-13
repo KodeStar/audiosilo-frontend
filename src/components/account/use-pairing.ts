@@ -2,7 +2,7 @@ import type { TFunction } from 'i18next';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { apiErrorKind } from '@/api/client';
+import { ApiError, apiErrorKind } from '@/api/client';
 import { useOptionalApi } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
 import { useNow } from '@/lib/use-now';
@@ -23,15 +23,14 @@ export type PairingCodeState = {
 /**
  * A single-use pairing code from `mint` (null: nothing to ask yet): the server's QR image
  * and `web_url`. The code works once, for 10 minutes; the hook counts down from when it
- * arrived and marks it expired at 0 (the view then offers a new one). Never the server's
- * own words (its English): too many tries (429) and a kid's account (403 `kid_account`)
- * say so, anything else says `failedText` (`pairingError`).
+ * arrived and marks it expired at 0 (the view then offers a new one). A code that could
+ * not be made says `errorText(e)`: the caller's own words, never the server's (its
+ * English), telling a refusal apart from no answer (`pairingError`).
  */
 export function usePairingCode(
   mint: (() => Promise<PairingPayload>) | null,
-  failedText: string,
+  errorText: (e: unknown) => string,
 ): PairingCodeState {
-  const { t } = useTranslation();
   const [pairing, setPairing] = useState<{ payload: PairingPayload; expiresAt: number } | null>(
     null,
   );
@@ -56,7 +55,7 @@ export function usePairingCode(
       const payload = await mint();
       setPairing({ payload, expiresAt: Date.now() + PAIRING_TTL_MS });
     } catch (e) {
-      setError(pairingError(e, failedText, t));
+      setError(errorText(e));
     } finally {
       setLoading(false);
     }
@@ -73,12 +72,16 @@ export function usePairingCode(
   };
 }
 
-/** What a pairing code that could not be made says (`usePairingCode`), translated. */
-export function pairingError(e: unknown, failedText: string, t: TFunction): string {
+/** What a pairing code `POST /auth/pair` could not make says (`usePairingCode`),
+ * translated: too many tries (429), a kid's account (403 `kid_account`), any other answer
+ * the server refused with (it was reached: never "couldn't reach"), else no answer. */
+function pairingError(e: unknown, server: string, t: TFunction): string {
   const kind = apiErrorKind(e);
   if (kind === 'too_many') return t('common.tooManyTries');
   if (kind === 'kid_account') return t('account.pair.kid');
-  return failedText;
+  return e instanceof ApiError
+    ? t('account.pair.refused', { server })
+    : t('account.pair.error', { server });
 }
 
 /**
@@ -89,8 +92,5 @@ export function pairingError(e: unknown, failedText: string, t: TFunction): stri
 export function usePairing(connectionId: string, serverName: string): PairingCodeState {
   const { t } = useTranslation();
   const api = useOptionalApi(connectionId);
-  return usePairingCode(
-    api ? () => api.pair() : null,
-    t('account.pair.error', { server: serverName }),
-  );
+  return usePairingCode(api ? () => api.pair() : null, (e) => pairingError(e, serverName, t));
 }

@@ -139,14 +139,21 @@ export type KidsMore = 'none' | 'available' | 'loading' | 'failed';
 /** How long an in-progress story's item stays fresh (as the series page's rails). */
 const ITEM_STALE_MS = 5 * 60_000;
 
+/** Whether a read can't give its answer now: it failed, or it is paused (React Query's
+ * offline state: a first read with no answer waits there for as long as the device is
+ * offline), which counts as unreachable, never as on its way. */
+function unreadableNow(r: Pick<QueryObserverResult, 'isError' | 'isPending' | 'fetchStatus'>) {
+  return r.isError || (r.isPending && r.fetchStatus === 'paused');
+}
+
 /** The shared collections' answers, in order (undefined while unread), and whether any is
- * still on its way or failed. Module-level, so the combined answer is the same object until
- * a result changes. */
+ * still on its way or can't be read (`unreadableNow`). Module-level, so the combined
+ * answer is the same object until a result changes. */
 function combineDetails(results: QueryObserverResult<CollectionDetail>[]) {
   return {
     details: results.map((r) => r.data),
-    loading: results.some((r) => r.isPending && r.fetchStatus !== 'idle'),
-    failed: results.some((r) => r.isError),
+    loading: results.some((r) => r.isPending && r.fetchStatus === 'fetching'),
+    failed: results.some(unreadableNow),
   };
 }
 
@@ -275,8 +282,7 @@ export function useKidsStories(): {
         : 'available';
   let stories: KidsStories;
   // Paused (React Query's offline state) counts as unreachable, as does a failed read.
-  const librariesFailed =
-    libraries.isError || (libraries.isPending && libraries.fetchStatus === 'paused');
+  const librariesFailed = unreadableNow(libraries);
   if (!cid) stories = { status: 'no-connection' };
   // The streamed stories wouldn't play: show the ones on this device.
   else if (offline && downloaded.length > 0) stories = fallback();
@@ -284,7 +290,7 @@ export function useKidsStories(): {
     // The server can't say (yet) which view: unreachable, signed out (the collections
     // aren't asked), or the collections list failed.
     stories =
-      (librariesFailed && !libraries.data) || collections.isError || signedOut
+      (librariesFailed && !libraries.data) || unreadableNow(collections) || signedOut
         ? fallback()
         : { status: 'loading' };
   } else if (mode === 'collections') {

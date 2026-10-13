@@ -270,6 +270,7 @@ describe('household member writes', () => {
     mounted.qc.setQueryData(qk.memberDevices('c1', 13), []);
     mounted.qc.setQueryData(qk.myDevices('c1'), []);
     mounted.qc.setQueryData(qk.collections('c1'), []);
+    mounted.qc.setQueryData(qk.collection('c1', 5), { collection: { id: 5 }, items: [] });
     return mounted;
   }
   const stale = (qc: QueryClient, key: readonly unknown[]) =>
@@ -299,6 +300,9 @@ describe('household member writes', () => {
       collection_ids: [5],
     });
     expect(stale(qc, qk.collections('c1'))).toBe(true);
+    // Each detail too: the share sheet saves its `shared_with` back as the full set, so a
+    // stale one would take the new member off again.
+    expect(stale(qc, qk.collection('c1', 5))).toBe(true);
   });
 
   it.each([409, 403, 400, 500])(
@@ -332,6 +336,31 @@ describe('household member writes', () => {
     expect(stale(qc, qk.householdMembers('c1'))).toBe(false);
     expect(stale(qc, qk.myDevices('c1'))).toBe(false);
   });
+
+  it.each([
+    { name: 'a session', useHook: useMemberSession, method: 'memberSession', vars: 12 },
+    { name: 'a pairing', useHook: useMemberPairing, method: 'memberPairing', vars: 12 },
+    {
+      name: 'a change',
+      useHook: useUpdateMember,
+      method: 'updateMember',
+      vars: { id: 12, body: { name: 'Evie B' } },
+    },
+  ] as const)(
+    '$name the server refuses (404: deleted elsewhere) reads the members list again',
+    async ({ useHook, method, vars }) => {
+      const { result, qc } = await mountCached(
+        useHook as () => { mutateAsync: (vars: never) => Promise<unknown> },
+      );
+      (mockClients.c1[method] as jest.Mock).mockRejectedValueOnce(
+        new ApiError(404, 'member not found'),
+      );
+      const { error } = await run(result.current.m, vars);
+      expect(error).toMatchObject({ status: 404 });
+      expect(stale(qc, qk.householdMembers('c1'))).toBe(true);
+      expect(qc.getQueryData<HouseholdMembers>(qk.householdMembers('c1'))).toEqual(list);
+    },
+  );
 
   it("signing a member out of a device refreshes that member's devices, the list and the caller's", async () => {
     const { result, qc } = await mountCached(useRevokeMemberDevice);
@@ -377,6 +406,7 @@ describe('household member writes', () => {
     const { result, qc } = await mountCached(useUpdateMember);
     await run(result.current.m, { id: 12, body: { access: 'collections', collection_ids: [] } });
     expect(stale(qc, qk.collections('c1'))).toBe(true);
+    expect(stale(qc, qk.collection('c1', 5))).toBe(true);
     expect(stale(qc, qk.memberDevices('c1', 12))).toBe(false);
   });
 
@@ -390,6 +420,9 @@ describe('household member writes', () => {
     expect(qc.getQueryState(qk.memberDevices('c1', 12))).toBeUndefined();
     expect(qc.getQueryState(qk.memberDevices('c1', 13))).toBeDefined();
     expect(stale(qc, qk.myDevices('c1'))).toBe(true);
+    // The shares with them went with the account: the collections list them no more.
+    expect(stale(qc, qk.collections('c1'))).toBe(true);
+    expect(stale(qc, qk.collection('c1', 5))).toBe(true);
   });
 
   it('a refused delete (404: deleted already, elsewhere) reads the list again', async () => {

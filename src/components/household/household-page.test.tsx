@@ -558,6 +558,28 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
       expect(useSession.getState().connections.find((c) => c.id === 'a.3')?.token).toBe('t');
     });
 
+    it('says a kid the admin disabled, or one no longer in the household, in words (never "try again")', async () => {
+      kidsHousehold(leoKid({ needsReconnect: 'auth' }));
+      const { ApiError } = jest.requireActual('@/api/client');
+      mockMemberSession.mutateAsync.mockRejectedValueOnce(
+        new ApiError(409, 'disabled', 'member_disabled'),
+      );
+      await mount();
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign Leo in again' }));
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith({
+          title: "Leo's account is turned off on this server. Only its admin can turn it back on.",
+        }),
+      );
+      mockMemberSession.mutateAsync.mockRejectedValueOnce(new ApiError(404, 'member not found'));
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign Leo in again' }));
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenLastCalledWith({
+          title: "Leo isn't in your household on this server any more.",
+        }),
+      );
+    });
+
     it('offers no sign-in again while the sign-in is fine', async () => {
       kidsHousehold(leoKid());
       await mount();

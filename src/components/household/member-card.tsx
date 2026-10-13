@@ -10,7 +10,7 @@ import {
   useUpdateMember,
 } from '@/api/hooks';
 import type { HouseholdMember, MemberAccess, MyDevice } from '@/api/types';
-import { deviceGlyph, signedInSessions } from '@/components/account/account-model';
+import { deviceGlyph } from '@/components/account/account-model';
 import { AccountListRow } from '@/components/account/account-list-row';
 import { deviceDetail, deviceName } from '@/components/account/devices-section';
 import { profileName } from '@/components/profiles/profiles-model';
@@ -40,6 +40,7 @@ import { type Profile, profileOf, renameProfile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
 import { AccessPicker, memberBooksName } from './access-picker';
+import { useBodyCap } from './add-member-dialog';
 import {
   collectionIdsFor,
   confirmsName,
@@ -405,8 +406,9 @@ function RemoveHereButton({ memberId, profile }: { memberId: number; profile: Pr
   );
 }
 
-/** A member's signed-in devices, each with Sign out; loading, error and none states. None
- * is said from the members list's count, without asking. */
+/** A member's signed-in devices (their sessions and API keys, as the list's count has
+ * them: the card is the only place the owner sees either), each with Sign out; loading,
+ * error and none states. None is said from the members list's count, without asking. */
 function MemberDevices({
   connectionId,
   member,
@@ -419,7 +421,7 @@ function MemberDevices({
   const { t } = useTranslation();
   const signedIn = member.devices > 0;
   const devices = useMemberDevices(member.id, connectionId, { enabled: signedIn });
-  const rows = signedInSessions(devices.data);
+  const rows = devices.data ?? [];
   if (!signedIn) {
     return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
   }
@@ -564,6 +566,7 @@ function AccessBody({
   const [ids, setIds] = useState(() => (member.collections ?? []).map((c) => c.id));
   const [newBooks, setNewBooks] = useState(false);
   const [saving, setSaving] = useState(false);
+  const cap = useBodyCap();
   const save = async () => {
     if (saving) return;
     setSaving(true);
@@ -578,7 +581,7 @@ function AccessBody({
       <DialogHeader>
         <DialogTitle>{t('household.card.accessTitle', { name: member.name })}</DialogTitle>
       </DialogHeader>
-      <ScrollView className="max-h-[440px]" keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ maxHeight: cap, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
         <AccessPicker
           connectionId={connectionId}
           serverName={serverName}
@@ -586,6 +589,7 @@ function AccessBody({
           access={access}
           collectionIds={ids}
           newBooks={newBooks}
+          saving={saving}
           showTitle={false}
           onAccess={setAccess}
           onCollections={setIds}

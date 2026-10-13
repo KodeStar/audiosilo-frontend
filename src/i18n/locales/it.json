@@ -206,7 +206,8 @@
       "copy": "Copia link",
       "qr": "Codice di associazione per {{server}}",
       "error": "Impossibile raggiungere {{server}}. Nessun codice creato, riprova.",
-      "kid": "Un account bambini non può associare un dispositivo. La persona che lo gestisce configura i suoi dispositivi da Famiglia."
+      "kid": "Un account bambini non può associare un dispositivo. La persona che lo gestisce configura i suoi dispositivi da Famiglia.",
+      "refused": "{{server}} non ha creato nessun codice. Riprova più tardi."
     },
     "devices": {
       "title": "Dispositivi connessi",
@@ -2343,6 +2344,7 @@
       "invalidName": "{{server}} non ha accettato quel nome. Usa al massimo 40 caratteri.",
       "invalidCollections": "Una di quelle raccolte non si può più condividere da questo account. Controllale e riprova.",
       "member": "Solo la persona che gestisce il tuo account può farlo.",
+      "disabled": "Questo account è disattivato su {{server}}. Solo l'amministratore del server può riattivarlo.",
       "kid": "Non è disponibile per un account bambini.",
       "demo": "Gli account demo non possono farlo.",
       "gone": "Quella persona non fa più parte della tua famiglia su {{server}}."
@@ -2358,7 +2360,9 @@
       "already": "L'accesso di {{name}} è già attivo su questo dispositivo.",
       "failed": "L'account di {{name}} è pronto, ma questo dispositivo non è riuscito a collegarlo.",
       "failedRetry": "Impossibile collegare {{name}} su questo dispositivo. Riprova.",
-      "failedCard": "Usa Accedi su questo dispositivo nella sua scheda."
+      "failedCard": "Usa Accedi su questo dispositivo nella sua scheda.",
+      "disabled": "L'account di {{name}} è disattivato su questo server. Solo l'amministratore può riattivarlo.",
+      "gone": "{{name}} non fa più parte della tua famiglia su questo server."
     },
     "qr": {
       "title": "Mostra questo codice a {{name}}",

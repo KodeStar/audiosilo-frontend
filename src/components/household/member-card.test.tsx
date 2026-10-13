@@ -42,6 +42,8 @@ const mockPair = jest.fn();
 const mockSession = jest.fn();
 const mockCreate = jest.fn();
 const mockDeleteCollection = jest.fn();
+/** Collections the owner has besides Bedtime and Dinosaurs (a test's own). */
+let mockMoreCollections: object[] = [];
 jest.mock('@/api/hooks', () => {
   const actual = jest.requireActual('@/api/hooks');
   const mutation = (fn: jest.Mock) => ({ mutateAsync: fn, isPending: false });
@@ -74,6 +76,7 @@ jest.mock('@/api/hooks', () => {
           item_count: 7,
           owner: { id: 1, username: 'adam' },
         },
+        ...mockMoreCollections,
       ],
       isLoading: false,
       error: null,
@@ -87,6 +90,7 @@ jest.mock('@/api/hooks', () => {
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
+import { AccessPicker } from './access-picker';
 import { MemberCard } from './member-card';
 /* eslint-enable import/first */
 
@@ -120,6 +124,7 @@ const mount = (m: HouseholdMember = member()) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockMoreCollections = [];
   resetProfilesForTests();
   mockDevices = { data: [device()], isPending: false, isError: false, refetch: jest.fn() };
   mockUpdate.mockImplementation(async ({ id, body }) => ({ ...member({ id }), ...body }));
@@ -387,6 +392,83 @@ describe('MemberCard', () => {
     expect(screen.getByText('Too many tries. Wait a few minutes and try again.')).toBeTruthy();
   });
 
+  it("says a member the admin disabled can't be paired or signed in here, never to try again", async () => {
+    mockPair.mockRejectedValue(new ApiError(409, 'disabled', 'member_disabled'));
+    await mount();
+    await fireEvent.press(
+      screen.getByRole('button', { name: "Show a code to set up Evie's own device" }),
+    );
+    expect(
+      screen.getByText(
+        "This account is turned off on Hearthside. Only the server's admin can turn it back on.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/didn't answer/)).toBeNull();
+    await fireEvent.press(screen.getByTestId('member-qr-done-12'));
+
+    mockSession.mockRejectedValue(new ApiError(409, 'disabled', 'member_disabled'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie in on this device' }));
+    expect(mockToast).toHaveBeenLastCalledWith({
+      title: "Evie's account is turned off on this server. Only its admin can turn it back on.",
+    });
+  });
+
+  it('says a member no longer in the household (404) is gone, never to try again', async () => {
+    mockSession.mockRejectedValue(new ApiError(404, 'member not found'));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie in on this device' }));
+    expect(mockToast).toHaveBeenLastCalledWith({
+      title: "Evie isn't in your household on this server any more.",
+    });
+    mockPair.mockRejectedValue(new ApiError(404, 'member not found'));
+    await fireEvent.press(
+      screen.getByRole('button', { name: "Show a code to set up Evie's own device" }),
+    );
+    expect(
+      screen.getByText("That person isn't in your household on Hearthside any more."),
+    ).toBeTruthy();
+  });
+
+  it('lists their API keys with their sessions, each with Sign out (the list counts both)', async () => {
+    mockDevices = {
+      data: [device(), device({ id: 71, kind: 'api', name: 'Home script', client: undefined })],
+      isPending: false,
+      isError: false,
+      refetch: jest.fn(),
+    };
+    await mount(member({ devices: 2 }));
+    expect(screen.getByTestId('member-device-71')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie out of Home script' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+    expect(mockRevoke).toHaveBeenCalledWith({ id: 12, deviceId: 71 });
+
+    // Only an API key: still listed, never "signed in nowhere".
+    mockDevices = {
+      data: [device({ id: 71, kind: 'api', name: 'Home script', client: undefined })],
+      isPending: false,
+      isError: false,
+      refetch: jest.fn(),
+    };
+    await mount();
+    expect(screen.queryByText("Evie isn't signed in anywhere yet.")).toBeNull();
+    expect(screen.getByTestId('member-device-71')).toBeTruthy();
+  });
+
+  it("keeps the new collection when the change got no answer (it may have landed), saying it's there", async () => {
+    mockCreate.mockResolvedValue({ id: 9, name: "Evie's books" });
+    mockUpdate.mockRejectedValue(new TypeError('Network request failed'));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evie's books" }));
+    await fireEvent.press(screen.getByTestId('member-access-save'));
+    expect(mockDeleteCollection).not.toHaveBeenCalled();
+    expect(mockToast).toHaveBeenCalledWith({
+      title: "Couldn't change Evie's account",
+      description:
+        "Hearthside didn't answer, so nothing changed. Try again. Evie's books was created and is still in your collections.",
+    });
+  });
+
   it('says too many tries when signing them in here is refused by the limiter', async () => {
     mockSession.mockRejectedValue(new ApiError(429, 'too many attempts, try again later'));
     await mount();
@@ -465,5 +547,47 @@ describe('MemberCard', () => {
     await fireEvent.press(screen.getByTestId('member-remove-12'));
     expect(mockRemoveRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 'evie' }), 'Evie');
     expect(mockDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccessPicker while its form is saved', () => {
+  const picker = (saving: boolean, fns: { onNewBooks: jest.Mock; onCollections: jest.Mock }) => (
+    <AccessPicker
+      connectionId="a.1"
+      serverName="Hearthside"
+      name="Evie"
+      access="collections"
+      collectionIds={[]}
+      newBooks
+      saving={saving}
+      onAccess={jest.fn()}
+      onCollections={fns.onCollections}
+      onNewBooks={fns.onNewBooks}
+    />
+  );
+
+  it('never takes the "<Name>\'s books" its own save created for one to pick instead', async () => {
+    // The save created "Evie's books" and the list read again holds it.
+    mockMoreCollections = [
+      {
+        id: 9,
+        name: "Evie's books",
+        owned: true,
+        item_count: 0,
+        owner: { id: 1, username: 'adam' },
+      },
+    ];
+    const saving = { onNewBooks: jest.fn(), onCollections: jest.fn() };
+    await mountWithPortal(picker(true, saving));
+    // A refused save deletes it again: had the form taken its id, every retry would be
+    // refused (a collection that is gone, which the picker can't show to untick).
+    expect(saving.onNewBooks).not.toHaveBeenCalled();
+    expect(saving.onCollections).not.toHaveBeenCalled();
+
+    // Not saving: one of that name already there is ticked instead of making a second.
+    const idle = { onNewBooks: jest.fn(), onCollections: jest.fn() };
+    await mountWithPortal(picker(false, idle));
+    expect(idle.onNewBooks).toHaveBeenCalledWith(false);
+    expect(idle.onCollections).toHaveBeenCalledWith([9]);
   });
 });

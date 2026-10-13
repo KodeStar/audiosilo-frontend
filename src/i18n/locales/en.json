@@ -206,7 +206,8 @@
       "copy": "Copy link",
       "qr": "Pairing code for {{server}}",
       "error": "Couldn't reach {{server}}. No code was made, so try again.",
-      "kid": "A kid's account can't pair a device. The person who manages it sets up its devices from Household."
+      "kid": "A kid's account can't pair a device. The person who manages it sets up its devices from Household.",
+      "refused": "{{server}} didn't make a code. Try again later."
     },
     "devices": {
       "title": "Signed-in devices",
@@ -2343,6 +2344,7 @@
       "invalidName": "{{server}} didn't accept that name. Use up to 40 characters.",
       "invalidCollections": "One of those collections can't be shared from this account any more. Check them and try again.",
       "member": "Only the person who manages your account can do that.",
+      "disabled": "This account is turned off on {{server}}. Only the server's admin can turn it back on.",
       "kid": "That isn't available for a kid's account.",
       "demo": "Demo accounts can't do that.",
       "gone": "That person isn't in your household on {{server}} any more."
@@ -2358,7 +2360,9 @@
       "already": "{{name}} is already signed in on this device.",
       "failed": "{{name}}'s account is ready, but this device couldn't sign them in.",
       "failedRetry": "Couldn't sign {{name}} in on this device. Try again.",
-      "failedCard": "Use Sign in on this device on their card."
+      "failedCard": "Use Sign in on this device on their card.",
+      "disabled": "{{name}}'s account is turned off on this server. Only its admin can turn it back on.",
+      "gone": "{{name}} isn't in your household on this server any more."
     },
     "qr": {
       "title": "Show {{name}} this code",

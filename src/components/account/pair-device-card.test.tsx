@@ -115,14 +115,13 @@ describe('PairDeviceCard', () => {
     expect(screen.queryByRole('image')).toBeNull();
   });
 
-  it("never shows the server's own words: a refusal says nothing was made", async () => {
+  it("never shows the server's own words: a refusal says no code was made, never that it couldn't be reached", async () => {
     mockPair.mockRejectedValue(new ApiError(403, 'API keys cannot pair devices'));
     await mount();
     await showCode();
     expect(screen.queryByText('API keys cannot pair devices')).toBeNull();
-    expect(
-      screen.getByText("Couldn't reach Hearthside. No code was made, so try again."),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Couldn't reach/)).toBeNull();
+    expect(screen.getByText("Hearthside didn't make a code. Try again later.")).toBeTruthy();
   });
 
   it('says too many tries on a 429, never that the server did not answer', async () => {

@@ -1171,12 +1171,33 @@ describe('Phase 1b mutation cache updates', () => {
       useDeleteCollection,
     );
     qc.setQueryData(qk.collection('c1', 5), { collection: { id: 5 }, items: [] });
-    qc.setQueryData(qk.collections('c1'), []);
+    const kept = col(1, true, '2026-10-01T00:00:00.000Z');
+    qc.setQueryData(qk.collections('c1'), [col(5, true, '2026-10-02T00:00:00.000Z'), kept]);
+    qc.setQueryData(qk.householdMembers('c1'), { allowed: true, max: 6, members: [] });
     await act(async () => {
       await result.current.m.mutateAsync(5);
     });
     expect(qc.getQueryState(qk.collection('c1', 5))).toBeUndefined();
+    // Gone from the list at once (a picker never offers one deleted a moment ago), and the
+    // list is read again.
+    expect(qc.getQueryData(qk.collections('c1'))).toEqual([kept]);
     expect(qc.getQueryState(qk.collections('c1'))?.isInvalidated).toBe(true);
+    // The household members list names each member's shared collections.
+    expect(qc.getQueryState(qk.householdMembers('c1'))?.isInvalidated).toBe(true);
+  });
+
+  it("new shares read the household members list again (it names each member's collections)", async () => {
+    const { result, qc } = await mountMutation(
+      { collections: true },
+      'collections',
+      useSetCollectionShares,
+    );
+    qc.setQueryData(qk.householdMembers('c1'), { allowed: true, max: 6, members: [] });
+    await act(async () => {
+      await result.current.m.mutateAsync({ id: 2, userIds: [] });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryState(qk.householdMembers('c1'))?.isInvalidated).toBe(true);
   });
 
   it('revoking another device refreshes the device and API key lists', async () => {

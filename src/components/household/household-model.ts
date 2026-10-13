@@ -105,10 +105,11 @@ export function collectionIdsFor(
 }
 
 /** What a refused add or change says (a key under `household.errors`, `writeErrorText`).
- * The server's `code` decides (Phase 8b-1's coded refusals, `apiErrorKind`); the status
- * stands in for a route or an older server without one: 409 the cap, 400 a name or
- * collection it would not take, 403 adding turned off for this account, 404 the member is
- * gone, 429 too many tries, anything else (or no answer) nothing changed. */
+ * The server's `code` decides (Phase 8b-1's coded refusals, `apiErrorKind`; `disabled`: a
+ * member the admin turned off, 409 `member_disabled`); the status stands in for a route or
+ * an older server without one: 409 the cap, 400 a name or collection it would not take,
+ * 403 adding turned off for this account, 404 the member is gone, 429 too many tries,
+ * anything else (or no answer) nothing changed. */
 export type WriteError =
   | 'limit'
   | 'usernameTaken'
@@ -118,6 +119,7 @@ export type WriteError =
   | 'featureOff'
   | 'notAllowed'
   | 'member'
+  | 'disabled'
   | 'kid'
   | 'demo'
   | 'forbidden'
@@ -133,6 +135,7 @@ const BY_KIND: Readonly<Record<ApiErrorKind, WriteError>> = {
   feature_off: 'featureOff',
   not_allowed: 'notAllowed',
   member_cannot_manage: 'member',
+  member_disabled: 'disabled',
   kid_account: 'kid',
   demo_account: 'demo',
   too_many: 'tooMany',

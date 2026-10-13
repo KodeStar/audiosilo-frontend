@@ -206,7 +206,8 @@
       "copy": "Link kopieren",
       "qr": "Kopplungscode für {{server}}",
       "error": "{{server}} war nicht erreichbar. Es wurde kein Code erstellt, versuch es noch einmal.",
-      "kid": "Ein Kinderkonto kann kein Gerät koppeln. Die Person, die es verwaltet, richtet seine Geräte unter Haushalt ein."
+      "kid": "Ein Kinderkonto kann kein Gerät koppeln. Die Person, die es verwaltet, richtet seine Geräte unter Haushalt ein.",
+      "refused": "{{server}} hat keinen Code erstellt. Versuch es später noch einmal."
     },
     "devices": {
       "title": "Angemeldete Geräte",
@@ -2343,6 +2344,7 @@
       "invalidName": "{{server}} hat diesen Namen nicht angenommen. Nutze höchstens 40 Zeichen.",
       "invalidCollections": "Eine dieser Sammlungen kann von diesem Konto nicht mehr geteilt werden. Prüfe sie und versuch es noch einmal.",
       "member": "Das kann nur die Person, die dein Konto verwaltet.",
+      "disabled": "Dieses Konto ist auf {{server}} ausgeschaltet. Nur der Admin des Servers kann es wieder einschalten.",
       "kid": "Das ist für ein Kinderkonto nicht verfügbar.",
       "demo": "Mit Demokonten geht das nicht.",
       "gone": "Diese Person gehört auf {{server}} nicht mehr zu deinem Haushalt."
@@ -2358,7 +2360,9 @@
       "already": "{{name}} ist auf diesem Gerät schon angemeldet.",
       "failed": "Das Konto von {{name}} ist bereit, aber dieses Gerät konnte {{name}} nicht anmelden.",
       "failedRetry": "{{name}} konnte auf diesem Gerät nicht angemeldet werden. Versuch es noch einmal.",
-      "failedCard": "Nutze Auf diesem Gerät anmelden auf der Karte."
+      "failedCard": "Nutze Auf diesem Gerät anmelden auf der Karte.",
+      "disabled": "Das Konto von {{name}} ist auf diesem Server ausgeschaltet. Nur der Admin kann es wieder einschalten.",
+      "gone": "{{name}} gehört auf diesem Server nicht mehr zu deinem Haushalt."
     },
     "qr": {
       "title": "Zeig {{name}} diesen Code",

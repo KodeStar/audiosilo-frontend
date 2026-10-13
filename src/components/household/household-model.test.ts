@@ -115,6 +115,8 @@ describe('writeError', () => {
     expect(coded(403, 'member_cannot_manage')).toBe('member');
     expect(coded(403, 'kid_account')).toBe('kid');
     expect(coded(403, 'demo_account')).toBe('demo');
+    // A member the admin disabled: never the cap, nor a name or collection refused.
+    expect(coded(409, 'member_disabled')).toBe('disabled');
   });
 
   it('falls back on the status for a refusal without a code (an older server)', () => {

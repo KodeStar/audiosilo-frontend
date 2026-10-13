@@ -206,7 +206,8 @@
       "copy": "Copiar ligação",
       "qr": "Código de associação para {{server}}",
       "error": "Não foi possível contactar {{server}}. Nenhum código foi criado, tente novamente.",
-      "kid": "Uma conta infantil não pode associar um dispositivo. A pessoa que a gere configura os dispositivos dela a partir de Casa."
+      "kid": "Uma conta infantil não pode associar um dispositivo. A pessoa que a gere configura os dispositivos dela a partir de Casa.",
+      "refused": "{{server}} não criou nenhum código. Tente novamente mais tarde."
     },
     "devices": {
       "title": "Dispositivos com sessão iniciada",
@@ -2343,6 +2344,7 @@
       "invalidName": "{{server}} não aceitou esse nome. Use no máximo 40 caracteres.",
       "invalidCollections": "Uma dessas coleções já não pode ser partilhada a partir desta conta. Verifique-as e tente novamente.",
       "member": "Só a pessoa que gere a sua conta pode fazer isso.",
+      "disabled": "Esta conta está desativada em {{server}}. Só o administrador do servidor a pode voltar a ativar.",
       "kid": "Isso não está disponível para uma conta infantil.",
       "demo": "As contas de demonstração não podem fazer isso.",
       "gone": "Essa pessoa já não faz parte da sua casa em {{server}}."
@@ -2358,7 +2360,9 @@
       "already": "A sessão de {{name}} já está iniciada neste dispositivo.",
       "failed": "A conta de {{name}} está pronta, mas este dispositivo não conseguiu iniciar a sessão.",
       "failedRetry": "Não foi possível iniciar a sessão de {{name}} neste dispositivo. Tente novamente.",
-      "failedCard": "Use Iniciar sessão neste dispositivo no cartão."
+      "failedCard": "Use Iniciar sessão neste dispositivo no cartão.",
+      "disabled": "A conta de {{name}} está desativada neste servidor. Só o administrador a pode voltar a ativar.",
+      "gone": "{{name}} já não faz parte da sua casa neste servidor."
     },
     "qr": {
       "title": "Mostre este código a {{name}}",

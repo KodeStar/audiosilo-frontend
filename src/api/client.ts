@@ -94,19 +94,10 @@ export class ApiError extends Error {
 }
 
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'
- * (Phase 8b-1), and `kid_account` on pairing too. */
-export type ApiErrorCode =
-  | 'member_limit'
-  | 'username_taken'
-  | 'invalid_name'
-  | 'invalid_collections'
-  | 'feature_off'
-  | 'not_allowed'
-  | 'member_cannot_manage'
-  | 'kid_account'
-  | 'demo_account';
-
-const KNOWN_CODES: ReadonlySet<string> = new Set<ApiErrorCode>([
+ * (Phase 8b-1; `member_disabled` is a 409 for a member the admin disabled, on their
+ * session and their pairing), and `kid_account` on pairing too. One list, so the type and
+ * the set `apiErrorKind` checks can't drift apart. */
+const API_ERROR_CODES = [
   'member_limit',
   'username_taken',
   'invalid_name',
@@ -114,9 +105,14 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<ApiErrorCode>([
   'feature_off',
   'not_allowed',
   'member_cannot_manage',
+  'member_disabled',
   'kid_account',
   'demo_account',
-]);
+] as const;
+
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+const KNOWN_CODES: ReadonlySet<string> = new Set<string>(API_ERROR_CODES);
 
 /**
  * What kind of failure `e` is ({@link apiErrorKind}): the server's code when it is one the

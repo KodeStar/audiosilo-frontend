@@ -12,23 +12,39 @@ import {
 } from '@/components/connect/add-member-here';
 import { serverIdOf } from '@/lib/connection-id';
 
+/** Why the server refused a member's session, as `signInMemberHere` tells them apart: its
+ * limiter (429), a member the admin disabled (409 `member_disabled`), or one no longer in
+ * the caller's household (404: deleted, or moved, elsewhere). */
+export type SessionRefusal = 'too_many' | 'member_disabled' | 'not_found';
+
+const SESSION_REFUSALS: ReadonlySet<string> = new Set<SessionRefusal>([
+  'too_many',
+  'member_disabled',
+  'not_found',
+]);
+
+/** The refusal of a member's session `e` is, when it is one `hereFailure` says in words. */
+function sessionRefusal(e: unknown): SessionRefusal | undefined {
+  const kind = apiErrorKind(e);
+  return SESSION_REFUSALS.has(kind) ? (kind as SessionRefusal) : undefined;
+}
+
 /** How signing a member in on this device ended: signed in, already signed in here (as
  * any person: their profile is on this device), or it didn't work (nothing changed here;
- * `reason`: why, when it is known: `addMemberHere`'s refusal, or `too_many` when the
- * server's limiter refused the session, 429). */
+ * `reason`: why, when it is known: `addMemberHere`'s refusal, or the server's
+ * (`SessionRefusal`)). */
 export type SignInHereResult =
   | { status: 'done' }
   | { status: 'already' }
-  | { status: 'failed'; reason?: Exclude<AddMemberHereCode, 'already_here'> | 'too_many' };
+  | { status: 'failed'; reason?: Exclude<AddMemberHereCode, 'already_here'> | SessionRefusal };
 
 /** What a failed sign-in here (the session, or `addMemberHere` after it) comes to. */
 function signInHereFailure(e: unknown): SignInHereResult {
   if (e instanceof AddMemberHereError) {
     return e.code === 'already_here' ? { status: 'already' } : { status: 'failed', reason: e.code };
   }
-  return apiErrorKind(e) === 'too_many'
-    ? { status: 'failed', reason: 'too_many' }
-    : { status: 'failed' };
+  const reason = sessionRefusal(e);
+  return reason ? { status: 'failed', reason } : { status: 'failed' };
 }
 
 /**
@@ -55,13 +71,18 @@ export async function signInMemberHere(
   }
 }
 
-/** What a sign-in here that didn't work says: already here, too many tries, why
- * `addMemberHere` refused, else that it can be tried again. */
+/** What a sign-in here that didn't work says: already here, too many tries, a member the
+ * admin disabled or no longer in the household, why `addMemberHere` refused, else that it
+ * can be tried again. */
 export function hereFailure(here: SignInHereResult, name: string, t: TFunction): string {
   if (here.status === 'already') return t('household.here.already', { name });
   switch (here.status === 'failed' ? here.reason : undefined) {
     case 'too_many':
       return t('common.tooManyTries');
+    case 'member_disabled':
+      return t('household.here.disabled', { name });
+    case 'not_found':
+      return t('household.here.gone', { name });
     case 'not_ready':
       return t('connect.memberNotReady');
     case 'choose_adult':
@@ -69,6 +90,14 @@ export function hereFailure(here: SignInHereResult, name: string, t: TFunction):
     default:
       return t('household.here.failedRetry', { name });
   }
+}
+
+/** What a member's session the server refused says (`hereFailure`'s words for too many
+ * tries, a disabled member or one no longer in the household), for `name`; null for any
+ * other failure, which the caller says in its own words. */
+export function sessionRefusalText(e: unknown, name: string, t: TFunction): string | null {
+  const reason = sessionRefusal(e);
+  return reason ? hereFailure({ status: 'failed', reason }, name, t) : null;
 }
 
 /** `signInMemberHere` with a session `owner` mints (`useMemberSession`), and whether one

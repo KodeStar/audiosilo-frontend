@@ -827,6 +827,28 @@ describe('startCarSync', () => {
       ]);
     });
 
+    it("offline with its library known: only that library's downloads, never another library's", async () => {
+      household({ id: 12 });
+      mockClients.c2 = fakeClient({});
+      mockClients.c2.libraries.mockResolvedValue([
+        { id: 2, name: 'Kids' },
+        { id: 3, name: 'Grown-ups' },
+      ]);
+      // The library is known, its page can't be read.
+      mockClients.c2.listBooks.mockRejectedValue(new Error('offline'));
+      useDownloads.setState({
+        entries: {
+          'c2:2:Kept': downloaded('c2', 'Kept'),
+          'c2:3:Thriller': { ...downloaded('c2', 'Thriller'), libraryId: 3 },
+        },
+      });
+      stop = startCarSync();
+      await settle();
+      expect(tab(lastSnapshot(), 'library')!.items.map((i) => i.title)).toEqual([
+        'Downloaded Kept',
+      ]);
+    });
+
     it("rebuilds for a story read anew in the kid's shared collection, never another server's or the same answer", async () => {
       household({ id: 12, managed_by: ADAM, member_kind: 'kid' });
       const evies = coll(4, "Evie's books");

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { apiErrorKind } from '@/api/client';
 import { CapabilityError, useMemberSession } from '@/api/hooks';
 import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-member-here';
 import { kidsManager } from '@/components/kids/kids-model';
@@ -40,6 +39,7 @@ import {
 import { type Connection, useSession } from '@/stores/session';
 
 import { PersonHeader, RenameRow } from './person-rows';
+import { sessionRefusalText } from './use-sign-in-here';
 
 /**
  * The Household page's "On this device" (Phase 8; a page of its own since 8b-1,
@@ -149,12 +149,9 @@ function SignInAgainRow({ name, connection }: { name: string; connection: Connec
       toast({ title: t('profiles.signIn.done', { name }) });
     } catch (e) {
       if (e instanceof CapabilityError) return;
-      toast({
-        title:
-          apiErrorKind(e) === 'too_many'
-            ? t('common.tooManyTries')
-            : t('profiles.signIn.failed', { name }),
-      });
+      // A refusal another try can't change (disabled, no longer in the household) says
+      // why, never "try again".
+      toast({ title: sessionRefusalText(e, name, t) ?? t('profiles.signIn.failed', { name }) });
     }
   };
   return (

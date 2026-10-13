@@ -71,19 +71,27 @@ async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
  *
  * A start asked for again while the same one is on its way (the same book from the same
  * place: a second tap while its item, chapters and place are looked up, before the player
- * shows it; 8b-1, D2) joins it, never a second start.
+ * shows it; 8b-1, D2) joins it, never a second start. Only while it is the latest start: a
+ * start of another book after it (a tap on story B between two on A) takes over the
+ * player, so asking for A again starts A again, as the last tap must win.
  */
 export function startBookInPlace(target: PlayTarget, opts: StartOptions = {}): Promise<boolean> {
   const key = JSON.stringify([contentKeyOf(target), opts.position, opts.track, opts.speed]);
   const running = starting.get(key);
-  if (running) return running;
-  const start = startNow(target, opts).finally(() => starting.delete(key));
+  if (running && latestStart === key) return running;
+  latestStart = key;
+  const start: Promise<boolean> = startNow(target, opts).finally(() => {
+    // Only its own entry: a later start of the same book may have replaced it.
+    if (starting.get(key) === start) starting.delete(key);
+  });
   starting.set(key, start);
   return start;
 }
 
 /** The starts on their way, by book and options (`startBookInPlace`). */
 const starting = new Map<string, Promise<boolean>>();
+/** The key of the start asked for last (`startBookInPlace`). */
+let latestStart: string | null = null;
 
 async function startNow(target: PlayTarget, opts: StartOptions): Promise<boolean> {
   if (!mayActFor(target.connectionId)) return false;

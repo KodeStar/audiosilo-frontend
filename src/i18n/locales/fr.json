@@ -206,7 +206,8 @@
       "copy": "Copier le lien",
       "qr": "Code d'association pour {{server}}",
       "error": "Impossible de joindre {{server}}. Aucun code n'a été créé, réessayez.",
-      "kid": "Un compte enfant ne peut pas associer d'appareil. La personne qui le gère configure ses appareils depuis Foyer."
+      "kid": "Un compte enfant ne peut pas associer d'appareil. La personne qui le gère configure ses appareils depuis Foyer.",
+      "refused": "{{server}} n'a pas créé de code. Réessayez plus tard."
     },
     "devices": {
       "title": "Appareils connectés",
@@ -2343,6 +2344,7 @@
       "invalidName": "{{server}} n'a pas accepté ce nom. Utilisez 40 caractères au plus.",
       "invalidCollections": "L'une de ces collections ne peut plus être partagée depuis ce compte. Vérifiez-les et réessayez.",
       "member": "Seule la personne qui gère votre compte peut faire cela.",
+      "disabled": "Ce compte est désactivé sur {{server}}. Seul l'administrateur du serveur peut le réactiver.",
       "kid": "Ce n'est pas disponible pour un compte enfant.",
       "demo": "Les comptes de démo ne peuvent pas faire cela.",
       "gone": "Cette personne ne fait plus partie de votre foyer sur {{server}}."
@@ -2358,7 +2360,9 @@
       "already": "La session de {{name}} est déjà ouverte sur cet appareil.",
       "failed": "Le compte de {{name}} est prêt, mais cet appareil n'a pas pu ouvrir sa session.",
       "failedRetry": "Impossible de connecter {{name}} sur cet appareil. Réessayez.",
-      "failedCard": "Utilisez Connecter sur cet appareil sur sa carte."
+      "failedCard": "Utilisez Connecter sur cet appareil sur sa carte.",
+      "disabled": "Le compte de {{name}} est désactivé sur ce serveur. Seul son administrateur peut le réactiver.",
+      "gone": "{{name}} ne fait plus partie de votre foyer sur ce serveur."
     },
     "qr": {
       "title": "Montrez ce code à {{name}}",

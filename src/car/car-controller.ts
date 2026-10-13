@@ -21,7 +21,7 @@ import {
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { endCastForCar } from '@/cast/cast-session';
-import type { Book, Collection, Progress, QueueEntry } from '@/api/types';
+import type { Book, Collection, Library, Progress, QueueEntry } from '@/api/types';
 import {
   kidsCollections,
   kidsCollectionSections,
@@ -75,6 +75,7 @@ import {
   activeProfile,
   type KidsSettings,
   mayActFor,
+  profileConnectionIds,
   profileConnections,
   useProfiles,
 } from '@/stores/profiles';
@@ -284,10 +285,13 @@ const kidsLibraryKey = (cid: string, libraryId: number) =>
   [...qk.carLibrary(cid, libraryId), 'kids'] as const;
 
 /** How a kids profile's shelf reads (`readKidsShelf`): where it comes from
- * (`kidsShelfMode`), and `shelf(progress)` to finish it with the connection's progress rows
- * (null when it can't be read: offline with nothing cached). */
+ * (`kidsShelfMode`), the library it shows when that is one library and it is known (the
+ * offline fallback's scope, `kidsOfflineScope`), and `shelf(progress)` to finish it with
+ * the connection's progress rows (null when it can't be read: offline with nothing
+ * cached). */
 type KidsShelfRead = {
   mode: KidsShelfMode;
+  library: Library | null;
   shelf: (progress: readonly Progress[]) => Promise<Book[] | null>;
 };
 
@@ -320,36 +324,46 @@ async function memberCollections(
  */
 async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<KidsShelfRead> {
   const client = resolveClient(conn.id);
-  if (!client) return { mode: kidsShelfMode(conn.user, undefined, undefined), shelf: unreadable };
+  if (!client) {
+    return {
+      mode: kidsShelfMode(conn.user, undefined, undefined),
+      library: null,
+      shelf: unreadable,
+    };
+  }
   const [libraries, collections] = await Promise.all([
     read({ ...librariesQuery(conn.id, client), staleTime: LIST_STALE_MS }),
     memberCollections(conn, client),
   ]);
   const mode = kidsShelfMode(conn.user, collections.has, collections.list);
-  if (mode === 'unknown') return { mode, shelf: unreadable };
+  if (mode === 'unknown') return { mode, library: null, shelf: unreadable };
   if (mode === 'collections') {
     const shared = kidsCollections(collections.list ?? [], conn.user);
     const details = await mapLimit(shared, ITEM_CONCURRENCY, (c) =>
       read({ ...collectionQuery(conn.id, client, c.id), staleTime: LIST_STALE_MS }),
     );
-    if (details.every((d) => d === undefined)) return { mode, shelf: unreadable };
+    if (details.every((d) => d === undefined)) return { mode, library: null, shelf: unreadable };
     return {
       mode,
+      library: null,
       shelf: async (progress) =>
         kidsSectionBooks(kidsCollectionSections(shared, details, progress)),
     };
   }
-  if (!libraries) return { mode, shelf: unreadable };
+  if (!libraries) return { mode, library: null, shelf: unreadable };
   const lib = kidsLibrary(libraries, conn.id, kids);
-  if (!lib) return { mode, shelf: async () => [] };
+  if (!lib) return { mode, library: null, shelf: async () => [] };
   const page = await read({
     queryKey: kidsLibraryKey(conn.id, lib.id),
     queryFn: () => client.listBooks(lib.id, { limit: CAR_TAB_LIMITS.library }),
     staleTime: LIST_STALE_MS,
   });
-  if (!page) return { mode, shelf: unreadable };
+  // Its page unreadable (offline, nothing cached): the library is still known, so the
+  // downloads offered instead are that library's only, as kids mode's own.
+  if (!page) return { mode, library: lib, shelf: unreadable };
   return {
     mode,
+    library: lib,
     shelf: async (progress) => {
       const continuing = await mapLimit(
         kidsContinuePaths(progress, lib.id),
@@ -380,7 +394,7 @@ async function kidsBooks(
     kidsDownloads(
       useDownloads.getState().entries,
       conn.id,
-      kidsOfflineScope(shelfRead.mode, null, conn.id, kids),
+      kidsOfflineScope(shelfRead.mode, shelfRead.library, conn.id, kids),
     );
   return kidsCarBooks(conn.id, shelf, rows, live?.ref ?? null, progressOf);
 }
@@ -395,7 +409,8 @@ const kidsShelfSeen = new Map<string, unknown>();
 function kidsShelfChanged(key: readonly unknown[], hash: string, data: unknown): boolean {
   if (key[0] !== 'collections' && key[0] !== 'collection') return false;
   const profile = activeProfile();
-  if (!profile?.kids || key[1] !== kidsConnectionId(profile.connectionIds, profile.kids)) {
+  // The person listening's connections in the session's order, as kids mode reads them.
+  if (!profile?.kids || key[1] !== kidsConnectionId(profileConnectionIds(), profile.kids)) {
     return false;
   }
   if (kidsShelfSeen.get(hash) === data) return false;
@@ -493,7 +508,13 @@ async function buildAndWrite(): Promise<void> {
   // A kids profile: its kids shelf only, on the connection kids mode shows (Phase 8b-1).
   const profile = activeProfile();
   const kids = profile?.kids ?? null;
-  const kidsCid = kids ? kidsConnectionId(profile?.connectionIds ?? [], kids) : null;
+  // On `conns` (the session's order), as kids mode picks it (`useKidsStories`).
+  const kidsCid = kids
+    ? kidsConnectionId(
+        conns.map((c) => c.id),
+        kids,
+      )
+    : null;
   const kidsConn = conns.find((c) => c.id === kidsCid) ?? null;
   // The kids shelf reads alongside the progress (only the stories in progress wait for it).
   const kidsRead = signedIn && kids && kidsConn ? readKidsShelf(kidsConn, kids) : null;

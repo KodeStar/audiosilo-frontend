@@ -109,6 +109,8 @@ describe('ApiClient', () => {
   it("apiErrorKind: the server's code when the app knows it, else the status's kind", () => {
     expect(apiErrorKind(new ApiError(409, 'x', 'member_limit'))).toBe('member_limit');
     expect(apiErrorKind(new ApiError(403, 'x', 'kid_account'))).toBe('kid_account');
+    // A member the admin disabled (their session or pairing): not the generic 409.
+    expect(apiErrorKind(new ApiError(409, 'x', 'member_disabled'))).toBe('member_disabled');
     // A code the app doesn't know reads by its status.
     expect(apiErrorKind(new ApiError(409, 'x', 'collection_full'))).toBe('conflict');
     expect(apiErrorKind(new ApiError(429, 'too many attempts'))).toBe('too_many');

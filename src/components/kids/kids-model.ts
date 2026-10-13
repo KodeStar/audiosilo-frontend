@@ -50,13 +50,18 @@ export function kidsConnectionId(
 }
 
 /** Who manages the account kids mode shows for `profile` (its kids connection's
- * `managerName`, Phase 8b-1), by username; null for an ordinary account. */
+ * `managerName`, Phase 8b-1), by username; null for an ordinary account. `connections` are
+ * the session's: the profile's are taken in their order, as kids mode picks its own. */
 export function kidsManager(
   profile: Pick<Profile, 'connectionIds' | 'kids'>,
   connections: readonly Pick<Connection, 'id' | 'user'>[],
 ): string | null {
-  const id = kidsConnectionId(profile.connectionIds, profile.kids);
-  return managerName(connections.find((c) => c.id === id)?.user);
+  const own = connections.filter((c) => profile.connectionIds.includes(c.id));
+  const id = kidsConnectionId(
+    own.map((c) => c.id),
+    profile.kids,
+  );
+  return managerName(own.find((c) => c.id === id)?.user);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
@@ -37,6 +37,7 @@ jest.mock('@/api/provider', () =>
 );
 
 /* eslint-disable import/first */
+import { qk } from '@/api/hooks';
 import { useReachability } from '@/api/reachability';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
@@ -472,6 +473,29 @@ describe("a household member's kids shelf: the owner's shared collections (Phase
       const r = result.current.stories;
       expect(r.status === 'ready' && r.books.map((b) => b.rel_path)).toEqual(['moon', 'fox']);
     });
+  });
+
+  it('a collection whose first read waits offline (paused) is unreachable, never an endless load', async () => {
+    setMember();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    // Read before the device went offline: the server, the list, the libraries, the progress.
+    qc.setQueryData(qk.server(CONN.id), { capabilities: { collections: true } });
+    qc.setQueryData(qk.collections(CONN.id), [evies]);
+    qc.setQueryData(qk.libraries(CONN.id), [lib(1)]);
+    qc.setQueryData(qk.allProgress(CONN.id), []);
+    onlineManager.setOnline(false);
+    try {
+      const { result } = await renderHook(() => useKidsStories(), {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+        ),
+      });
+      // Evie's books was never read: it waits for the network, so nothing to show yet.
+      await waitFor(() => expect(result.current.stories.status).toBe('error'));
+      expect(mockClient.collection).not.toHaveBeenCalled();
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 
   it('every collection failing is an error it can retry', async () => {

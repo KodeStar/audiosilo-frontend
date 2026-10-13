@@ -66,6 +66,28 @@ it("runs none of the flow while a kids profile listens (D1: a link's token stays
   });
 });
 
+it('runs nothing of the flow before the profiles are read (a cold start through a link)', async () => {
+  // The session is read; the profiles are not yet (or their read is failing).
+  await render(<ConnectLayout />);
+  expect(screen.queryByText('connect flow')).toBeNull();
+  expect(mockDismissTo).not.toHaveBeenCalled();
+  // Read: kids mode was on, so the link opened in it, and a grown-up is asked to open it.
+  await act(async () => seedProfile({ kids: true }));
+  expect(screen.queryByText('connect flow')).toBeNull();
+  expect(mockDismissTo).toHaveBeenCalledWith('/kids');
+  expect(mockToast).toHaveBeenCalledWith({
+    title: 'Ask a grown-up to open this link',
+    description: 'A grown-up holds Grown-ups first, then opens the link again.',
+  });
+});
+
+it('runs the flow for a grown-up once the profiles are read', async () => {
+  await render(<ConnectLayout />);
+  expect(screen.queryByText('connect flow')).toBeNull();
+  await act(async () => seedProfile());
+  expect(screen.getByText('connect flow')).toBeTruthy();
+});
+
 it("takes kids mode turned on mid-flow (a kid's first sign-in) to /kids, saying nothing", async () => {
   seedProfile();
   await render(<ConnectLayout />);

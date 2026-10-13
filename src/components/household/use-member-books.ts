@@ -1,14 +1,22 @@
 import type { TFunction } from 'i18next';
 
-import { apiErrorKind } from '@/api/client';
-import { useCreateCollection, useDeleteCollection } from '@/api/hooks';
+import { ApiError, apiErrorKind } from '@/api/client';
+import { CapabilityError, useCreateCollection, useDeleteCollection } from '@/api/hooks';
 
 import { writeErrorText } from './household-model';
 
+/** Whether a write failed with nothing changed on the server: refused (a 4xx answer), or
+ * never sent (`CapabilityError`). Not when no answer came, nor a server error (5xx): the
+ * write may have landed first. */
+function refused(e: unknown): boolean {
+  return e instanceof CapabilityError || (e instanceof ApiError && e.status < 500);
+}
+
 /** How a write that may first create "<Name>'s books" ended: its answer, or where it
  * stopped (`books`: the collection could not be created, nothing else was sent;
- * `write`: the collection was created and the write refused, and the collection deleted
- * again unless `leftBehind`). */
+ * `write`: the collection was created and the write failed, and the collection deleted
+ * again unless `leftBehind`: it couldn't be, or the write got no answer and may have
+ * landed). */
 export type BooksRun<T> =
   | { ok: true; value: T }
   | { ok: false; stage: 'books' | 'write'; error: unknown; leftBehind: boolean };
@@ -18,7 +26,8 @@ export type BooksRun<T> =
  * owner saves: `run(booksName, write)` creates the collection first (when `booksName` is
  * given), then runs `write` with its id so the member's `collection_ids` can hold it, and
  * when `write` is refused deletes the collection again, so a refused add or change leaves
- * nothing behind (as Cancel never made anything). Never throws.
+ * nothing behind (as Cancel never made anything). A write with no answer keeps it: it may
+ * have landed, sharing it with the member. Never throws.
  */
 export function useMemberBooks(connectionId: string) {
   const create = useCreateCollection(connectionId);
@@ -40,10 +49,16 @@ export function useMemberBooks(connectionId: string) {
     } catch (error) {
       let leftBehind = false;
       if (made !== null) {
-        try {
-          await remove.mutateAsync(made);
-        } catch {
-          leftBehind = true;
+        // Only a refusal changed nothing on the server. No answer, or a server error, may
+        // come after the write landed: the member may hold the new collection already, so
+        // it stays (and the message says so).
+        if (!refused(error)) leftBehind = true;
+        else {
+          try {
+            await remove.mutateAsync(made);
+          } catch {
+            leftBehind = true;
+          }
         }
       }
       return { ok: false, stage: 'write', error, leftBehind };

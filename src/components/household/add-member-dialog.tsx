@@ -117,8 +117,8 @@ function AddMemberFlow({
 /** The form's scroller: the dialog has no height cap of its own on a native phone (only
  * while the keyboard is up, `keyboardCap`), so the fields scroll within most of the
  * window, and shrink (`flexShrink`) under the keyboard's cap so the footer stays on
- * screen. */
-function useBodyCap() {
+ * screen. Also the member card's "What can they listen to?" (the same picker). */
+export function useBodyCap() {
   const { height } = useWindowDimensions();
   return Math.round(height * (useLayout() === 'phone' ? 0.6 : 0.62));
 }
@@ -227,6 +227,7 @@ function FormStep({
           access={form.access}
           collectionIds={form.collectionIds}
           newBooks={form.newBooks}
+          saving={busy}
           onAccess={(a) => setForm((f) => withAccess(f, a))}
           onCollections={(ids) => setForm((f) => ({ ...f, collectionIds: ids }))}
           onNewBooks={(on) => setForm((f) => ({ ...f, newBooks: on }))}
