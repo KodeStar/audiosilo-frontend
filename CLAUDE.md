@@ -458,6 +458,9 @@ them in) or a grown-up, each on "Everything I can listen to" or "Only collection
   (`removeConnection`'s hook in `hooks.ts`).
 - **Refusals**: `ApiError.code` with `apiErrorKind(e)` (`client.ts`): branch on the code, fall back
   on the status for an older server, and say it in the app's words; never show `ApiError.message`.
+- **Naming the owner**: copy names a member's owner through `managerName(user, { connection,
+  people })` / `useManagerName`: the profile holding the owner's own sign-in on this device, else
+  `managed_by.display_name`, else the username; never `managed_by.username` directly.
 - **Signing a member in here**: `addMemberHere` (a new member, or "They'll also use this phone"),
   `renewMemberHere` (their session here ended) and `signInMemberHere` (`use-sign-in-here.ts`).
   They store the session with `setSession(..., { makeDefault: false })` and give the member a
