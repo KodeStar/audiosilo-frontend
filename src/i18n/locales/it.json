@@ -2342,8 +2342,6 @@
       "usernameTaken": "{{server}} non è riuscito a creare un nome utente da quel nome. Prova con un altro nome.",
       "invalidName": "{{server}} non ha accettato quel nome. Usa al massimo 40 caratteri.",
       "invalidCollections": "Una di quelle raccolte non si può più condividere da questo account. Controllale e riprova.",
-      "featureOff": "L'amministratore del tuo server ha disattivato l'aggiunta di persone.",
-      "notAllowed": "L'amministratore del tuo server non permette a questo account di aggiungere persone.",
       "member": "Solo la persona che gestisce il tuo account può farlo.",
       "kid": "Non è disponibile per un account bambini.",
       "demo": "Gli account demo non possono farlo.",

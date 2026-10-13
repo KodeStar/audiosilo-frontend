@@ -150,10 +150,14 @@ export function writeError(e: unknown): WriteError {
   return BY_KIND[kind];
 }
 
-/** What a refused write `e` says, in words (`writeError`). */
+/** What a refused write `e` says, in words (`writeError`). The admin's switches read as
+ * the members section says them (`household.members.reason`). */
 export function writeErrorText(e: unknown, server: string, t: TFunction): string {
   const why = writeError(e);
-  return why === 'tooMany' ? t('common.tooManyTries') : t(`household.errors.${why}`, { server });
+  if (why === 'tooMany') return t('common.tooManyTries');
+  if (why === 'featureOff') return t('household.members.reason.feature_off');
+  if (why === 'notAllowed') return t('household.members.reason.not_allowed');
+  return t(`household.errors.${why}`, { server });
 }
 
 /** The connection on this device that is `memberId` on the owner's server (signed in

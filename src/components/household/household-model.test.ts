@@ -146,6 +146,16 @@ describe('writeError', () => {
     expect(writeErrorText(new ApiError(429, 'x'), 'Hearthside', t)).toBe('common.tooManyTries');
     expect(writeErrorText(new ApiError(500, 'x'), 'Hearthside', t)).toBe('household.errors.failed');
   });
+
+  it("says the admin's switches in the members section's own words", () => {
+    const t = ((key: string) => key) as unknown as TFunction;
+    expect(writeErrorText(new ApiError(403, 'x', 'feature_off'), 'Hearthside', t)).toBe(
+      'household.members.reason.feature_off',
+    );
+    expect(writeErrorText(new ApiError(403, 'x', 'not_allowed'), 'Hearthside', t)).toBe(
+      'household.members.reason.not_allowed',
+    );
+  });
 });
 
 describe('memberConnection', () => {

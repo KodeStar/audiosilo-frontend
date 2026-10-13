@@ -2342,8 +2342,6 @@
       "usernameTaken": "{{server}} não conseguiu criar um nome de utilizador a partir desse nome. Experimente outro nome.",
       "invalidName": "{{server}} não aceitou esse nome. Use no máximo 40 caracteres.",
       "invalidCollections": "Uma dessas coleções já não pode ser partilhada a partir desta conta. Verifique-as e tente novamente.",
-      "featureOff": "A administração do seu servidor desativou a adição de pessoas.",
-      "notAllowed": "A administração do seu servidor não permite que esta conta adicione pessoas.",
       "member": "Só a pessoa que gere a sua conta pode fazer isso.",
       "kid": "Isso não está disponível para uma conta infantil.",
       "demo": "As contas de demonstração não podem fazer isso.",

@@ -2342,8 +2342,6 @@
       "usernameTaken": "{{server}} couldn't make a username from that name. Try another name.",
       "invalidName": "{{server}} didn't accept that name. Use up to 40 characters.",
       "invalidCollections": "One of those collections can't be shared from this account any more. Check them and try again.",
-      "featureOff": "Your server's admin has turned off adding people.",
-      "notAllowed": "Your server's admin hasn't let this account add people.",
       "member": "Only the person who manages your account can do that.",
       "kid": "That isn't available for a kid's account.",
       "demo": "Demo accounts can't do that.",
