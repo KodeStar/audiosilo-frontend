@@ -147,7 +147,9 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
       <View className={beside ? 'flex-row items-stretch gap-4' : 'gap-4'}>
         {/* Demo accounts can't set a password (the server refuses it). */}
-        {!demo ? <PasswordCard editor={password} className={cn(beside && 'flex-1')} /> : null}
+        {!demo ? (
+          <PasswordCard editor={password} user={user} className={cn(beside && 'flex-1')} />
+        ) : null}
         <PairDeviceCard
           connectionId={cid}
           serverName={serverName}

@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
@@ -12,7 +13,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
 import { CheckRow } from './check-row';
-import { validMemberName } from './household-model';
+import { namedCollection, validMemberName } from './household-model';
 
 /** The name "Create <Name>'s books" gives the new collection (`name` trimmed). */
 export function memberBooksName(name: string, t: TFunction): string {
@@ -137,7 +138,8 @@ function AccessOption({
 
 /** The caller's own collections as checkboxes (the full set to share with the member),
  * and "Create <Name>'s books", which adds the new collection ticked, to be created on
- * save (untick it to take it back). */
+ * save (untick it to take it back); when the caller already has a collection of that
+ * name, "Share <Name>'s books" ticks that one instead. */
 function CollectionPicker({
   connectionId,
   name,
@@ -158,6 +160,18 @@ function CollectionPicker({
   const { data, isLoading, error, refetch } = useCollections(connectionId);
   const own = ownCollections(data);
   const named = validMemberName(name);
+  // A collection of the caller's already named "<Name>'s books" (8b-1, D10): offered,
+  // ticked, instead of creating a second one of the same name.
+  const existing = named ? namedCollection(own, memberBooksName(name, t)) : undefined;
+  const existingId = existing?.id;
+  // Chosen to be created before that name was typed or the list arrived: the existing
+  // one, ticked, instead.
+  useEffect(() => {
+    if (!newBooks || existingId === undefined) return;
+    onNewBooks(false);
+    if (!ids.includes(existingId)) onChange([...ids, existingId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the match only
+  }, [newBooks, existingId]);
 
   if (available === false) {
     return <Text variant="muted">{t('household.access.collectionsOff')}</Text>;
@@ -200,7 +214,18 @@ function CollectionPicker({
       {ids.length === 0 && !newBooks && own.length > 0 ? (
         <Text variant="caption">{t('household.access.noneChosen')}</Text>
       ) : null}
-      {newBooks ? null : (
+      {existing ? (
+        ids.includes(existing.id) ? null : (
+          <Button
+            testID="use-member-books"
+            variant="outline"
+            icon="plus"
+            className="self-start"
+            title={t('household.access.useExisting', { name: existing.name })}
+            onPress={() => onChange([...ids, existing.id])}
+          />
+        )
+      ) : newBooks ? null : (
         <Button
           testID="create-member-books"
           variant="outline"

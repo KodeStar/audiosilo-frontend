@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
 import type {
@@ -444,6 +444,35 @@ describe('the add dialog', () => {
       mockAddMember.mock.invocationCallOrder[0],
     );
     expect(mockDeleteCollection).not.toHaveBeenCalled();
+  });
+
+  it('offers the owner\'s own "Evie\'s books" ticked instead of a second one of that name (D10)', async () => {
+    mockCollections = [collection(4, 'Bedtime'), collection(7, "evie's Books ")];
+    await mount();
+    await openAdd();
+    await typeName('Evie');
+    expect(screen.queryByRole('button', { name: "Create Evie's books" })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: "Share evie's Books" }));
+    expect(screen.getByTestId('pick-collection-7')).toBeChecked();
+    expect(screen.queryByTestId('use-member-books')).toBeNull();
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockAddMember).toHaveBeenCalledWith(expect.objectContaining({ collection_ids: [7] }));
+  });
+
+  it('turns "Create" chosen before the name matched into the existing collection, ticked (D10)', async () => {
+    mockCollections = [collection(4, 'Bedtime'), collection(7, "Evie's books")];
+    await mount();
+    await openAdd();
+    await typeName('Evi');
+    await fireEvent.press(screen.getByRole('button', { name: "Create Evi's books" }));
+    expect(screen.getByTestId('pick-new-books')).toBeChecked();
+    await typeName('Evie');
+    await waitFor(() => expect(screen.queryByTestId('pick-new-books')).toBeNull());
+    expect(screen.getByTestId('pick-collection-7')).toBeChecked();
+    await fireEvent.press(screen.getByTestId('add-member-submit'));
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockAddMember).toHaveBeenCalledWith(expect.objectContaining({ collection_ids: [7] }));
   });
 
   it('Cancel after "Create <Name>\'s books" leaves nothing behind', async () => {

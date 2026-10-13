@@ -74,6 +74,17 @@ export function createsBooks(access: MemberAccess, newBooks: boolean): boolean {
   return access === 'collections' && newBooks;
 }
 
+/** The caller's own collection already named `booksName` (trimmed, case aside): "Create
+ * <Name>'s books" offers that one instead of a second collection of the same name
+ * (8b-1, D10). */
+export function namedCollection<T extends { name: string }>(
+  own: readonly T[],
+  booksName: string,
+): T | undefined {
+  const want = booksName.trim().toLocaleLowerCase();
+  return want ? own.find((c) => c.name.trim().toLocaleLowerCase() === want) : undefined;
+}
+
 /** The Kids switch flipped: the access follows it until the owner picked one. */
 export function withKid(form: AddForm, kid: boolean): AddForm {
   return { ...form, kid, access: form.accessPicked ? form.access : defaultAccess(kid) };

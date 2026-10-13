@@ -11,6 +11,7 @@ import {
   createsBooks,
   defaultAccess,
   memberConnection,
+  namedCollection,
   newAddForm,
   validMemberName,
   withAccess,
@@ -191,5 +192,18 @@ describe('collectionsMembers', () => {
     );
     expect([...m.keys()]).toEqual([12]);
     expect(collectionsMembers(undefined).size).toBe(0);
+  });
+});
+
+describe('namedCollection (D10)', () => {
+  const own = [
+    { id: 1, name: 'Bedtime' },
+    { id: 2, name: " evie's Books" },
+  ];
+  it("finds the caller's collection of that name, case and outer spaces aside", () => {
+    expect(namedCollection(own, "Evie's books")?.id).toBe(2);
+    expect(namedCollection(own, "Evie's book")).toBeUndefined();
+    expect(namedCollection(own, '  ')).toBeUndefined();
+    expect(namedCollection([], "Evie's books")).toBeUndefined();
   });
 });
