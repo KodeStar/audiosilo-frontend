@@ -12,7 +12,13 @@ import {
 } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { addMemberHere, AddMemberHereError, memberSignedInHere } from './add-member-here';
+import {
+  addMemberHere,
+  AddMemberHereError,
+  memberOwnerHere,
+  memberSignedInHere,
+  renewMemberHere,
+} from './add-member-here';
 import { finishConnect } from './finish-connect';
 
 // The owner's book must play on: a switch of person would stop it.
@@ -172,4 +178,41 @@ it('refuses while the profiles are not read, and with no connection to that serv
   resetProfilesForTests();
   await expect(addMemberHere(memberSession(evie), { name: 'Evie', kids: true })).rejects.toThrow();
   expect(useSession.getState().connections.map((c) => c.id)).toEqual(['srv.1']);
+});
+
+describe('signing a member this device holds in again (8b-1, D1)', () => {
+  it('renews only the token: same connection, person, kids mode; the owner keeps listening', async () => {
+    const { profileId } = await addMemberHere(memberSession(evie), { name: 'Evie', kids: true });
+    await useSession.getState().markNeedsReconnect('srv.12', 'auth');
+    const before = profileOf('srv.12');
+    const id = await renewMemberHere(memberSession(evie, { token: 'fresh' }));
+    expect(id).toBe('srv.12');
+    const renewed = useSession.getState().connections.find((c) => c.id === 'srv.12');
+    expect(renewed).toMatchObject({ token: 'fresh', serverUrl: HOME, name: 'Hearthside' });
+    expect(renewed?.needsReconnect).toBeUndefined();
+    expect(profileOf('srv.12')).toEqual(before);
+    expect(profileOf('srv.12')?.id).toBe(profileId);
+    expect(activeProfile()?.name).toBe('adam');
+    expect(useSession.getState().defaultConnectionId).toBe('srv.1');
+    expect(mockStop).not.toHaveBeenCalled();
+  });
+
+  it('refuses a member this device does not hold, changing nothing', async () => {
+    const connections = useSession.getState().connections;
+    await expect(renewMemberHere(memberSession(evie))).rejects.toThrow();
+    expect(useSession.getState().connections).toBe(connections);
+  });
+
+  it("finds the member's owner among the person listening's connections, and only theirs", async () => {
+    await addMemberHere(memberSession(evie), { name: 'Evie', kids: true });
+    const kid = useSession.getState().connections.find((c) => c.id === 'srv.12')!;
+    expect(memberOwnerHere(kid)?.id).toBe('srv.1');
+    // Someone else listening: not theirs to renew.
+    const evieProfile = profileOf('srv.12')!.id;
+    useProfiles.setState({ activeProfileId: evieProfile });
+    expect(memberOwnerHere(kid)).toBeNull();
+    // An ordinary account has no owner.
+    const owner = useSession.getState().connections.find((c) => c.id === 'srv.1')!;
+    expect(memberOwnerHere(owner)).toBeNull();
+  });
 });

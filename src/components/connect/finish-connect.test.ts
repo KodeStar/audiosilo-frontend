@@ -369,16 +369,15 @@ describe('placing the new connection in a profile (Phase 8)', () => {
       member_kind: 'kid',
     };
 
-    it("starts in kids mode on the kid's own device, with no grown-up there", async () => {
+    it("starts in kids mode on the kid's own device, with no grown-up there, skipping the ready step", async () => {
       await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: evie }) });
       const kid = profiles().activeProfile();
       expect(kid?.connectionIds).toEqual(['srv-1.12']);
       expect(kid?.kids).toEqual({ bedtime: profiles().DEFAULT_BEDTIME });
-      // The first sign-in still ends on "Your library is ready." (allowed in kids mode).
-      expect(mockReplace).toHaveBeenCalledWith({
-        pathname: '/connect/ready',
-        params: { connection: 'srv-1.12' },
-      });
+      // Straight to kids mode (D9): never the grown-up "Your library is ready." step,
+      // which kids mode doesn't allow. Home, where the route guard takes it to /kids.
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(mockDismissTo).toHaveBeenCalledWith('/');
     });
 
     it('starts in kids mode when a grown-up signs the kid in on their device', async () => {

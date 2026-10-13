@@ -40,11 +40,11 @@ jest.mock('@/api/provider', () =>
 import { useReachability } from '@/api/reachability';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
-import { type KidsSettings, resetProfilesForTests } from '@/stores/profiles';
+import { type KidsSettings, resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 import { seedProfile } from '@/testing/seed-profile';
 
-import { useKidsStories } from './use-kids';
+import { useKidsSharedShelf, useKidsStories } from './use-kids';
 /* eslint-enable import/first */
 
 const lib = (id: number): Library => ({
@@ -69,6 +69,13 @@ const CONN = {
 function setKids(kids: KidsSettings) {
   useSession.setState({ connections: [CONN], defaultConnectionId: CONN.id });
   seedProfile({ connectionIds: [CONN.id], kids });
+}
+
+function wrapperOf() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
 }
 
 function mount(onRender?: () => void) {
@@ -173,6 +180,17 @@ it('reports an error it can retry when the server fails and nothing is downloade
   mockClient.libraries.mockResolvedValue([lib(1)]);
   result.current.retry();
   await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+});
+
+it("says the kid's sign-in ended (D4: a 401 marks the connection), so retrying can't help", async () => {
+  setKids({ bedtime: '19:30' });
+  const { result } = await mount();
+  await waitFor(() => expect(result.current.stories.status).toBe('ready'));
+  expect(result.current.signedOut).toBe(false);
+  await act(async () =>
+    useSession.setState({ connections: [{ ...CONN, needsReconnect: 'auth' }] }),
+  );
+  expect(result.current.signedOut).toBe(true);
 });
 
 it('shows the downloaded stories while the server is unreachable', async () => {
@@ -475,6 +493,50 @@ describe("a household member's kids shelf: the owner's shared collections (Phase
     await waitFor(() => expect(result.current.stories.status).toBe('ready'));
     expect(mockClient.listBooks).toHaveBeenCalled();
     expect(mockClient.collections).not.toHaveBeenCalled();
+  });
+
+  describe('useKidsSharedShelf (D6: the library pick is not used then)', () => {
+    const shelf = async () => {
+      const profile = useProfiles.getState().profiles[0];
+      const { result } = await renderHook(() => useKidsSharedShelf(profile), {
+        wrapper: wrapperOf(),
+      });
+      return result;
+    };
+
+    it('is true for a member kid whose owner shares a collection', async () => {
+      setMember();
+      mockClient.collections.mockResolvedValue([evies]);
+      const result = await shelf();
+      await waitFor(() => expect(result.current).toBe(true));
+    });
+
+    it('is false when nobody shares one', async () => {
+      setMember();
+      mockClient.collections.mockResolvedValue([
+        collection(8, "Someone else's", { id: 3, username: 'bob' }),
+      ]);
+      const result = await shelf();
+      await waitFor(() => expect(mockClient.collections).toHaveBeenCalled());
+      expect(result.current).toBe(false);
+    });
+
+    it('is false for an ordinary account (collections never asked)', async () => {
+      setKids({ bedtime: '19:30' });
+      const result = await shelf();
+      await waitFor(() => expect(mockClient.serverInfo).toHaveBeenCalled());
+      expect(result.current).toBe(false);
+      expect(mockClient.collections).not.toHaveBeenCalled();
+    });
+
+    it('is false on a server without collections', async () => {
+      mockClient.serverInfo.mockResolvedValue({ capabilities: {} });
+      setMember();
+      const result = await shelf();
+      await waitFor(() => expect(mockClient.serverInfo).toHaveBeenCalled());
+      expect(result.current).toBe(false);
+      expect(mockClient.collections).not.toHaveBeenCalled();
+    });
   });
 
   it('waits on the collections list (loading, not the library)', async () => {

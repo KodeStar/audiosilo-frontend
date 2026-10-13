@@ -186,12 +186,15 @@
     },
     "password": {
       "bodySet": "Úsala para iniciar sesión en un dispositivo nuevo o en un navegador.",
-      "bodyNotSet": "Iniciaste sesión con un código de invitación y aún no tienes contraseña. Crea una para poder iniciar sesión en un dispositivo nuevo.",
+      "bodyNotSet": "Aún no tienes contraseña. Crea una para poder iniciar sesión en un dispositivo nuevo.",
       "dialogSet": "Al menos {{count}} caracteres. Tus otros dispositivos siguen con la sesión iniciada.",
       "dialogChange": "Escribe tu contraseña actual y luego la nueva. Tus otros dispositivos siguen con la sesión iniciada.",
       "doneSet": "Contraseña creada",
       "doneChanged": "Contraseña cambiada",
-      "doneBody": "Tus otros dispositivos siguen con la sesión iniciada."
+      "doneBody": "Tus otros dispositivos siguen con la sesión iniciada.",
+      "bodyMember": "{{owner}} configuró esta cuenta, así que aún no tiene contraseña. Crea una para iniciar sesión por tu cuenta en un dispositivo nuevo.",
+      "bodyKid": "Una cuenta infantil no tiene contraseña. {{owner}} inicia su sesión en un dispositivo nuevo.",
+      "bodyKidNoOwner": "Una cuenta infantil no tiene contraseña. Un adulto inicia su sesión en un dispositivo nuevo."
     },
     "pair": {
       "title": "Vincular otro dispositivo",
@@ -2135,11 +2138,21 @@
       "offlineBody": "No se puede acceder a {{server}} y no hay cuentos guardados en este dispositivo.",
       "retry": "Reintentar",
       "onDevice": "Estos cuentos están guardados en este dispositivo.",
-      "askGrownUp": "Pide a un adulto que añada cuentos."
+      "askGrownUp": "Pide a un adulto que añada cuentos.",
+      "moreFailed": "Algunos cuentos no se cargaron."
     },
     "startFailed": {
       "title": "Ese cuento no se puede iniciar ahora",
       "body": "Prueba con otro o pide ayuda a un adulto."
+    },
+    "link": {
+      "title": "Pide a un adulto que abra este enlace",
+      "body": "Un adulto mantiene pulsado Adultos primero y luego vuelve a abrir el enlace."
+    },
+    "signedOut": {
+      "ask": "Pide a un adulto que vuelva a iniciar la sesión de {{name}}.",
+      "askNoName": "Pide a un adulto que vuelva a iniciar tu sesión.",
+      "title": "Sesión cerrada en {{server}}"
     }
   },
   "profiles": {
@@ -2247,6 +2260,14 @@
       "askAtLaunch": "Preguntar quién escucha al abrir la app",
       "askAtLaunchBody": "Con dos o más personas en este dispositivo",
       "noSharing": "Ninguno de tus servidores lo ofrece todavía."
+    },
+    "signIn": {
+      "label": "Sesión cerrada",
+      "body": "La sesión de {{name}} en {{server}} ha terminado.",
+      "action": "Volver a iniciar sesión",
+      "a11y": "Volver a iniciar la sesión de {{name}}",
+      "done": "{{name}} ha vuelto a iniciar sesión",
+      "failed": "No se pudo volver a iniciar la sesión de {{name}}. Inténtalo de nuevo."
     }
   },
   "household": {
@@ -2300,7 +2321,8 @@
       "createFailed": "No se pudo crear {{name}}, así que no se guardó nada. Vuelve a intentarlo.",
       "leftBehind": "Se creó {{name}} y sigue en tus colecciones.",
       "newDetail": "Colección nueva, se crea al guardar",
-      "createUnnamedName": "Sus libros"
+      "createUnnamedName": "Sus libros",
+      "useExisting": "Compartir {{name}}"
     },
     "add": {
       "title": "Añadir a alguien a tu hogar",

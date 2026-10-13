@@ -7,11 +7,11 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Book } from '@/api/types';
-import { ReconnectBanner } from '@/components/layout/reconnect-banner';
 import type { PlayTarget } from '@/components/player/play-route';
 import { startBookInPlace } from '@/components/player/start-book';
 import { openProfiles } from '@/components/profiles/use-choose-profile';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
@@ -19,10 +19,11 @@ import { contentKey } from '@/lib/content-key';
 import { cn } from '@/lib/utils';
 import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
 import { DEFAULT_BEDTIME } from '@/stores/profiles';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { GrownUpsButton } from './grown-ups-button';
 import { KidsPlayer } from './kids-player';
-import { type KidsRow, KidsStoriesList } from './kids-stories';
+import { askToSignIn, type KidsRow, KidsStoriesList } from './kids-stories';
 import { MoonCard } from './moon-card';
 import { useKidsProfile, useKidsStories } from './use-kids';
 
@@ -32,19 +33,57 @@ import { useKidsProfile, useKidsStories } from './use-kids';
 /** The widest the page's content gets. */
 const MAX_WIDTH = 1200;
 
+/** The story whose start is still on its way (its item, chapters and place being looked
+ * up, before the player shows it): a second tap on it meanwhile is the same start, never
+ * a second one (8b-1, D2). */
+let starting: string | null = null;
+
 /**
  * Play a story. Kids mode is its own player: a story starts in place
  * (`startBookInPlace`) on every layout and never opens the full player, which kids mode
  * doesn't allow; the story already loaded plays on (a tap never pauses it: the big play
- * button does that). Rejects when the story couldn't be fetched.
+ * button does that), and so does one still starting (`starting`). Rejects when the story
+ * couldn't be fetched.
  */
 async function playStory(target: PlayTarget): Promise<void> {
+  const key = contentKey(target.connectionId, target.libraryId, target.path);
+  if (starting === key) return;
   const store = usePlayer.getState();
-  if (selectBookKey(store) === contentKey(target.connectionId, target.libraryId, target.path)) {
+  if (selectBookKey(store) === key) {
     if (!selectIsTransportLive(store)) await store.toggle();
     return;
   }
-  await startBookInPlace(target);
+  starting = key;
+  try {
+    await startBookInPlace(target);
+  } finally {
+    if (starting === key) starting = null;
+  }
+}
+
+/** Tests only: no story is starting. */
+export function resetKidsStartForTests(): void {
+  starting = null;
+}
+
+/** The kid's sign-in ended (a revoked session, a deleted account, a reset server): a
+ * plain line, not a button. Signing in again is a grown-up's (8b-1, D1): through the
+ * Grown-ups hold, never the connect flow from here. */
+function SignedOutNotice({ name }: { name: string }) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  return (
+    <View
+      testID="kids-signed-out"
+      accessibilityRole="alert"
+      className="mb-4 flex-row items-center gap-2.5 rounded-lg border-l-4 border-l-brand bg-brand/10 px-3.5 py-3"
+    >
+      <Icon name="key" size={16} color={themed.brand} />
+      <Text className="flex-1 font-sans-semibold text-base text-brand-ink">
+        {askToSignIn(name, t)}
+      </Text>
+    </View>
+  );
 }
 
 /**
@@ -67,7 +106,7 @@ export function KidsScreen() {
   const phone = layout === 'phone';
   const reduced = useReducedMotion();
   const profile = useKidsProfile();
-  const { stories, connectionId, retry, loadMore } = useKidsStories();
+  const { stories, connectionId, signedOut, retry, loadMore } = useKidsStories();
   const loaded = usePlayer((s) => s.nowPlaying !== null);
   const list = useRef<FlashListRef<KidsRow>>(null);
   const [outer, setOuter] = useState(0);
@@ -79,16 +118,22 @@ export function KidsScreen() {
     }, []),
   );
 
+  const name = profile?.name.trim() ?? '';
+
   // Stable, so a story tile (memoised) redraws only when its own props change.
   const onPlay = useCallback(
     (book: Book) => {
       if (!connectionId) return;
       list.current?.scrollToOffset({ offset: 0, animated: !reduced });
       playStory({ connectionId, libraryId: book.library_id, path: book.rel_path }).catch(() => {
-        toast({ title: t('kids.startFailed.title'), description: t('kids.startFailed.body') });
+        toast({
+          title: t('kids.startFailed.title'),
+          // Signed out, only a grown-up can help: never "try another one".
+          description: signedOut ? askToSignIn(name, t) : t('kids.startFailed.body'),
+        });
       });
     },
-    [connectionId, reduced, t],
+    [connectionId, reduced, t, signedOut, name],
   );
 
   // The content column: the page less its insets and gutters, at most MAX_WIDTH wide,
@@ -98,13 +143,12 @@ export function KidsScreen() {
   const width = outer > 0 ? Math.min(MAX_WIDTH, room) : 0;
   const centring = (room - width) / 2;
 
-  const name = profile?.name.trim() ?? '';
-  // The kid's own sign-in needing renewal (a dead token, a server that was reset): the
-  // shell's reconnect banner is not on this screen, so it shows here. Signing in again
-  // keeps the child's profile and kids mode (`finishConnect`).
+  // The kid's own sign-in ended (a dead token, a server that was reset): said here, as a
+  // line asking a grown-up, never the shell's reconnect banner, which opens the connect
+  // flow (8b-1, D1). With no stories to show the list's own state says it instead.
   const header = (
     <View>
-      <ReconnectBanner className="mb-4 rounded-lg" />
+      {signedOut && stories.status !== 'error' ? <SignedOutNotice name={name} /> : null}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <Text
           accessibilityRole="header"
@@ -153,6 +197,8 @@ export function KidsScreen() {
           onPlay={onPlay}
           onRetry={retry}
           onEndReached={loadMore}
+          signedOut={signedOut}
+          name={name}
           contentContainerStyle={{
             paddingTop: insets.top + (phone ? 16 : 28),
             paddingBottom: insets.bottom + 40,

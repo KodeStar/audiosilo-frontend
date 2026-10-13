@@ -1,4 +1,5 @@
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import type { TFunction } from 'i18next';
 import { memo, type ReactElement, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, type StyleProp, View, type ViewStyle } from 'react-native';
@@ -106,8 +107,25 @@ function linesOf(ready: Extract<KidsStories, { status: 'ready' }>, columns: numb
   ]);
 }
 
-/** The grid's state when it has no stories to show: loading, empty, or an error. */
-function StoriesState({ stories, onRetry }: { stories: KidsStories; onRetry: () => void }) {
+/** "Ask a grown-up to sign Leo in again." (no name: "...to sign you in again"): the
+ * kid's sign-in ended, and signing in is a grown-up's (8b-1, D1/D4). */
+export function askToSignIn(name: string, t: TFunction): string {
+  return name ? t('kids.signedOut.ask', { name }) : t('kids.signedOut.askNoName');
+}
+
+/** The grid's state when it has no stories to show: loading, empty, or an error (the
+ * kid's sign-in ended: say so and who can fix it, with no Try again that can't help). */
+function StoriesState({
+  stories,
+  signedOut,
+  name,
+  onRetry,
+}: {
+  stories: KidsStories;
+  signedOut: boolean;
+  name: string;
+  onRetry: () => void;
+}) {
   const { t } = useTranslation();
   switch (stories.status) {
     case 'ready':
@@ -140,6 +158,17 @@ function StoriesState({ stories, onRetry }: { stories: KidsStories; onRetry: () 
         />
       );
     case 'error':
+      if (signedOut) {
+        return (
+          <EmptyState
+            variant="card"
+            size="large"
+            icon="key"
+            title={t('kids.signedOut.title', { server: stories.serverName })}
+            hint={askToSignIn(name, t)}
+          />
+        );
+      }
       return (
         <EmptyState
           variant="card"
@@ -166,7 +195,8 @@ function StoriesState({ stories, onRetry }: { stories: KidsStories; onRetry: () 
  * Rows mount as they scroll in, and the next page of the library is asked for near the
  * end (`onEndReached`). Loading, empty, error and offline states: offline with stories
  * downloaded, those (with a line saying why), else a message with Try again; a page that
- * failed to load further down offers Try again under the grid.
+ * failed to load further down says so and offers Try again under the grid. A kid whose
+ * sign-in ended (`signedOut`) is told to ask a grown-up instead, with no Try again.
  */
 export function KidsStoriesList({
   stories,
@@ -179,6 +209,8 @@ export function KidsStoriesList({
   onEndReached,
   listRef,
   contentContainerStyle,
+  signedOut = false,
+  name = '',
 }: {
   stories: KidsStories;
   connectionId: string | null;
@@ -190,6 +222,10 @@ export function KidsStoriesList({
   onEndReached: () => void;
   listRef?: Ref<FlashListRef<KidsRow>>;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /** The kid's sign-in ended (`useKidsStories`): no Try again, a grown-up signs them in. */
+  signedOut?: boolean;
+  /** The kid's name, for "Ask a grown-up to sign <name> in again." */
+  name?: string;
 }) {
   const { t } = useTranslation();
   const loadedKey = usePlayer(selectBookKey);
@@ -241,14 +277,21 @@ export function KidsStoriesList({
           ) : null}
         </View>
       }
-      ListEmptyComponent={<StoriesState stories={stories} onRetry={onRetry} />}
+      ListEmptyComponent={
+        <StoriesState stories={stories} signedOut={signedOut} name={name} onRetry={onRetry} />
+      }
       ListFooterComponent={
         ready?.more === 'loading' ? (
           <View className="items-center py-6" testID="kids-more-loading">
             <Spinner />
           </View>
-        ) : ready?.more === 'failed' ? (
-          <View className="items-center py-6">
+        ) : ready?.more === 'failed' && !signedOut ? (
+          // Says what failed (never a bare Try again). Signed out, asking again can't
+          // help, and the notice over the stories already says who can.
+          <View className="items-center gap-3 py-6" testID="kids-more-failed">
+            <Text className="text-center font-sans text-base text-muted-foreground">
+              {t('kids.stories.moreFailed')}
+            </Text>
             <Button size="xl" title={t('kids.stories.retry')} onPress={onRetry} />
           </View>
         ) : null

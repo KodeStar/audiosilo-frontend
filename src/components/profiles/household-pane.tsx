@@ -3,11 +3,14 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useCapabilitiesAll } from '@/api/hooks';
+import { effectiveUrl } from '@/api/address-route';
+import { CapabilityError, useCapabilitiesAll, useMemberSession } from '@/api/hooks';
+import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-member-here';
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
 import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
 import { kidsConnectionId } from '@/components/kids/kids-model';
+import { useKidsSharedShelf } from '@/components/kids/use-kids';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SectionTitle } from '@/components/ui/section-title';
@@ -20,6 +23,7 @@ import { formatTimeOfDay } from '@/lib/format';
 import { clearPin, readPin, type StoredPin } from '@/lib/profile-pin';
 import { KIDS_BEDTIME_UNTIL } from '@/playback/auto-sleep-controller';
 import {
+  connectionsOfProfile,
   DEFAULT_BEDTIME,
   mayTurnOnKids,
   type Profile,
@@ -31,7 +35,7 @@ import {
 } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
-import { ADD_SOMEONE_HREF } from './connect-intent';
+import { openAddSomeone } from './connect-intent';
 import { KidsLibraryPicker } from './kids-library-picker';
 import { PinDialog } from './pin-dialog';
 import { profileName, serversLine } from './profiles-model';
@@ -94,7 +98,7 @@ export function DevicePeople() {
               title={t('household.device.signInExisting')}
               icon="plus"
               variant="secondary"
-              onPress={() => router.push(ADD_SOMEONE_HREF)}
+              onPress={openAddSomeone}
             />
           </View>
         </View>
@@ -154,6 +158,87 @@ export function kidsManager(profile: Profile, connections: readonly Connection[]
   return owner || null;
 }
 
+/**
+ * "Signed out" on a person whose sign-in to `connection`'s server ended (8b-1, D1): kids
+ * mode only asks for a grown-up, and this is where one signs them in again. A household
+ * member the person listening manages there is signed in again at once with a session
+ * the owner mints (`memberOwnerHere`, `useMemberSession`, `renewMemberHere`: a kid has no
+ * password to type); anyone else, and anyone on a server that was reset, goes through the
+ * connect flow's sign-in for that connection (as the reconnect banner does), which keeps
+ * them the person they were.
+ */
+function SignInAgainRow({ name, connection }: { name: string; connection: Connection }) {
+  const { t } = useTranslation();
+  // A reset server no longer knows the member (nor the owner's old sign-in): signing in
+  // again there is the connect flow's.
+  const owner = useSession((s) =>
+    connection.needsReconnect === 'auth' ? memberOwnerHere(connection, s.connections) : null,
+  );
+  const session = useMemberSession(owner?.id ?? '');
+  const setPendingServerUrl = useSession((s) => s.setPendingServerUrl);
+  const onPress = async () => {
+    if (!owner) {
+      await setPendingServerUrl(effectiveUrl(connection));
+      router.push({
+        pathname: '/connect/sign-in',
+        params: { serverName: connection.name, reconnect: connection.id },
+      });
+      return;
+    }
+    try {
+      await renewMemberHere(await session.mutateAsync(connection.user.id));
+      toast({ title: t('profiles.signIn.done', { name }) });
+    } catch (e) {
+      if (e instanceof CapabilityError) return;
+      toast({ title: t('profiles.signIn.failed', { name }) });
+    }
+  };
+  return (
+    <SettingRow
+      testID={`household-signed-out-${connection.id}`}
+      label={t('profiles.signIn.label')}
+      description={t('profiles.signIn.body', { name, server: connection.name })}
+    >
+      <Button
+        title={t('profiles.signIn.action')}
+        accessibilityLabel={t('profiles.signIn.a11y', { name })}
+        variant="outline"
+        size="sm"
+        icon="key"
+        loading={session.isPending}
+        onPress={() => void onPress()}
+      />
+    </SettingRow>
+  );
+}
+
+/**
+ * Kids mode's library for `profile`: the picker (`KidsLibraryPicker`), beside its label on
+ * a wide card and under it on a phone, where a message (no libraries, couldn't load) left
+ * the label one letter wide (8b-1, D7). Hidden while kids mode shows the collections the
+ * account's owner shares (`useKidsSharedShelf`, 8b-1 D6): the pick is not used then.
+ */
+function KidsLibraryRow({ profile, manager }: { profile: Profile; manager: string | null }) {
+  const { t } = useTranslation();
+  const shared = useKidsSharedShelf(profile);
+  const label = t('profiles.kids.library');
+  if (shared) return null;
+  return (
+    <SettingRow
+      testID={`household-kids-library-${profile.id}`}
+      control="wide"
+      label={label}
+      description={
+        manager
+          ? t('profiles.kids.libraryBodyMember', { owner: manager })
+          : t('profiles.kids.libraryBody')
+      }
+    >
+      <KidsLibraryPicker profile={profile} label={label} manager={manager} />
+    </SettingRow>
+  );
+}
+
 /** The PIN prompt's step: `check` the current PIN (as `startPin` read it), then set a new
  * one or clear it; or `set` one. */
 type PinFlow = null | { step: 'check'; then: 'set' | 'clear'; stored: StoredPin } | { step: 'set' };
@@ -179,13 +264,16 @@ function PersonCard({
   const [renaming, setRenaming] = useState(false);
   const [pin, setPin] = useState<PinFlow>(null);
   const kids = profile.kids;
+  // A sign-in of theirs that ended here (a revoked session, a deleted account, a server
+  // that was reset): signing them in again is this page's (a grown-up's), never kids mode's.
+  const signedOut =
+    connectionsOfProfile(connections, profile.connectionIds).find((c) => c.needsReconnect) ?? null;
   // A household member's account (Phase 8b-1): kids mode shows what the person who
   // manages it shares, so its lines name them, never "ask the server's admin".
   const manager = kidsManager(profile, connections);
   // Never the last grown-up: nobody could leave kids mode (`mayTurnOnKids`).
   const kidsAllowed = useProfiles((s) => mayTurnOnKids(profile.id, s));
   const kidsLabel = t('profiles.kids.label');
-  const libraryLabel = t('profiles.kids.library');
   const bedtimeLabel = t('profiles.kids.bedtime');
 
   // Set, Change and Remove read the secure store first, never trusting the profile's
@@ -252,6 +340,8 @@ function PersonCard({
           />
         )}
       </View>
+
+      {signedOut ? <SignInAgainRow name={name} connection={signedOut} /> : null}
 
       <SettingRow label={t('profiles.rename.label')} description={name}>
         <Button
@@ -321,16 +411,7 @@ function PersonCard({
       </SettingRow>
       {kids ? (
         <>
-          <SettingRow
-            label={libraryLabel}
-            description={
-              manager
-                ? t('profiles.kids.libraryBodyMember', { owner: manager })
-                : t('profiles.kids.libraryBody')
-            }
-          >
-            <KidsLibraryPicker profile={profile} label={libraryLabel} manager={manager} />
-          </SettingRow>
+          <KidsLibraryRow profile={profile} manager={manager} />
           <SettingRow
             label={bedtimeLabel}
             description={t('profiles.kids.bedtimeBody', {

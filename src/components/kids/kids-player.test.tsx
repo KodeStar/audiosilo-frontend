@@ -19,6 +19,7 @@ type MockPlayer = {
   } | null;
   snapshot: { state: string; trackIndex: number; position: number; duration: number };
   rate: number;
+  loadingBook?: string | null;
   toggle: jest.Mock;
   retry: jest.Mock;
   skipSeconds: jest.Mock;
@@ -31,6 +32,10 @@ jest.mock('@/playback/store', () => {
   const position = (s: MockPlayer) => s.snapshot.position;
   return {
     usePlayer: create(() => ({})),
+    selectBookKey: (s: MockPlayer) =>
+      s.nowPlaying
+        ? `${s.nowPlaying.connectionId}|${s.nowPlaying.libraryId}|${s.nowPlaying.path}`
+        : null,
     selectIsPlaying: (s: MockPlayer) => s.snapshot.state === 'playing',
     selectBookPosition: position,
     selectCurrentChapter: (s: MockPlayer) =>
@@ -73,6 +78,7 @@ beforeEach(() => {
     },
     snapshot: { state: 'paused', trackIndex: 0, position: 900, duration: 3600 },
     rate: 1,
+    loadingBook: null,
     toggle: jest.fn(),
     retry: jest.fn(),
     skipSeconds: jest.fn(),
@@ -130,6 +136,21 @@ it('says Pause while playing, and Try again after an error', async () => {
   await press('Try again');
   expect(player.getState().retry).toHaveBeenCalledTimes(1);
   expect(player.getState().toggle).not.toHaveBeenCalled();
+});
+
+it('shows the spinner while the story loads in, not a play button over a story on its way (D2)', async () => {
+  // The previous book was stopped (`idle`) and this one is still loading into the engine.
+  player.setState({
+    snapshot: { state: 'idle', trackIndex: 0, position: 0, duration: 0 },
+    loadingBook: 'c|1|kids/robot',
+  });
+  await render(<KidsPlayer width={368} />);
+  expect(screen.getByTestId('kids-play').props.accessibilityState?.busy).toBe(true);
+
+  // Loaded: the engine's own state again (another book loading in is not this one's).
+  await act(async () => player.setState({ loadingBook: 'c|1|kids/other' }));
+  expect(screen.getByTestId('kids-play').props.accessibilityState?.busy).toBeFalsy();
+  expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
 });
 
 it('lays out by the measured width, never under the kids minimum', () => {

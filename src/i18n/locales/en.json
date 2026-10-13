@@ -186,12 +186,15 @@
     },
     "password": {
       "bodySet": "Sign in with it on a new device or in a browser.",
-      "bodyNotSet": "You signed in with an invite code and haven't set a password. Set one so you can sign in on a new device.",
+      "bodyNotSet": "You haven't set a password. Set one so you can sign in on a new device.",
       "dialogSet": "At least {{count}} characters. Your other devices stay signed in.",
       "dialogChange": "Enter your current password, then the new one. Your other devices stay signed in.",
       "doneSet": "Password set",
       "doneChanged": "Password changed",
-      "doneBody": "Your other devices stay signed in."
+      "doneBody": "Your other devices stay signed in.",
+      "bodyMember": "{{owner}} set up this account, so it has no password yet. Set one to sign in on a new device yourself.",
+      "bodyKid": "A kid's account has no password. {{owner}} signs it in on a new device.",
+      "bodyKidNoOwner": "A kid's account has no password. A grown-up signs it in on a new device."
     },
     "pair": {
       "title": "Pair another device",
@@ -2135,11 +2138,21 @@
       "offlineBody": "{{server}} can't be reached and there are no stories saved on this device.",
       "retry": "Try again",
       "onDevice": "These stories are saved on this device.",
-      "askGrownUp": "Ask a grown-up to add stories."
+      "askGrownUp": "Ask a grown-up to add stories.",
+      "moreFailed": "Some stories didn't load."
     },
     "startFailed": {
       "title": "That story won't start right now",
       "body": "Try another one, or ask a grown-up."
+    },
+    "link": {
+      "title": "Ask a grown-up to open this link",
+      "body": "A grown-up holds Grown-ups first, then opens the link again."
+    },
+    "signedOut": {
+      "ask": "Ask a grown-up to sign {{name}} in again.",
+      "askNoName": "Ask a grown-up to sign you in again.",
+      "title": "Signed out of {{server}}"
     }
   },
   "profiles": {
@@ -2247,6 +2260,14 @@
       "askAtLaunch": "Ask who's listening when the app opens",
       "askAtLaunchBody": "With two or more people on this device",
       "noSharing": "None of your servers offers this yet."
+    },
+    "signIn": {
+      "label": "Signed out",
+      "body": "{{name}}'s sign-in to {{server}} has ended.",
+      "action": "Sign in again",
+      "a11y": "Sign {{name}} in again",
+      "done": "{{name}} is signed in again",
+      "failed": "Couldn't sign {{name}} in again. Try again."
     }
   },
   "household": {
@@ -2300,7 +2321,8 @@
       "createFailed": "Couldn't create {{name}}, so nothing was saved. Try again.",
       "leftBehind": "{{name}} was created and is still in your collections.",
       "newDetail": "New collection, created when you save",
-      "createUnnamedName": "Their books"
+      "createUnnamedName": "Their books",
+      "useExisting": "Share {{name}}"
     },
     "add": {
       "title": "Add someone to your household",

@@ -186,12 +186,15 @@
     },
     "password": {
       "bodySet": "Damit meldest du dich auf einem neuen Gerät oder im Browser an.",
-      "bodyNotSet": "Du hast dich mit einem Einladungscode angemeldet und noch kein Passwort festgelegt. Leg eines fest, damit du dich auf einem neuen Gerät anmelden kannst.",
+      "bodyNotSet": "Du hast noch kein Passwort festgelegt. Leg eines fest, damit du dich auf einem neuen Gerät anmelden kannst.",
       "dialogSet": "Mindestens {{count}} Zeichen. Deine anderen Geräte bleiben angemeldet.",
       "dialogChange": "Gib dein aktuelles Passwort und dann das neue ein. Deine anderen Geräte bleiben angemeldet.",
       "doneSet": "Passwort festgelegt",
       "doneChanged": "Passwort geändert",
-      "doneBody": "Deine anderen Geräte bleiben angemeldet."
+      "doneBody": "Deine anderen Geräte bleiben angemeldet.",
+      "bodyMember": "{{owner}} hat dieses Konto eingerichtet, daher hat es noch kein Passwort. Leg eines fest, um dich selbst auf einem neuen Gerät anzumelden.",
+      "bodyKid": "Ein Kinderkonto hat kein Passwort. {{owner}} meldet es auf einem neuen Gerät an.",
+      "bodyKidNoOwner": "Ein Kinderkonto hat kein Passwort. Ein Erwachsener meldet es auf einem neuen Gerät an."
     },
     "pair": {
       "title": "Weiteres Gerät koppeln",
@@ -2135,11 +2138,21 @@
       "offlineBody": "{{server}} ist nicht erreichbar, und auf diesem Gerät sind keine Geschichten gespeichert.",
       "retry": "Nochmal versuchen",
       "onDevice": "Diese Geschichten sind auf diesem Gerät gespeichert.",
-      "askGrownUp": "Bitte einen Erwachsenen, Geschichten hinzuzufügen."
+      "askGrownUp": "Bitte einen Erwachsenen, Geschichten hinzuzufügen.",
+      "moreFailed": "Einige Geschichten wurden nicht geladen."
     },
     "startFailed": {
       "title": "Diese Geschichte startet gerade nicht",
       "body": "Probier eine andere oder frag einen Erwachsenen."
+    },
+    "link": {
+      "title": "Bitte einen Erwachsenen, diesen Link zu öffnen",
+      "body": "Ein Erwachsener hält zuerst Erwachsene gedrückt und öffnet den Link dann noch einmal."
+    },
+    "signedOut": {
+      "ask": "Bitte einen Erwachsenen, {{name}} wieder anzumelden.",
+      "askNoName": "Bitte einen Erwachsenen, dich wieder anzumelden.",
+      "title": "Von {{server}} abgemeldet"
     }
   },
   "profiles": {
@@ -2247,6 +2260,14 @@
       "askAtLaunch": "Beim Öffnen der App fragen, wer zuhört",
       "askAtLaunchBody": "Wenn zwei oder mehr Personen auf diesem Gerät sind",
       "noSharing": "Noch keiner deiner Server bietet das an."
+    },
+    "signIn": {
+      "label": "Abgemeldet",
+      "body": "Die Anmeldung von {{name}} bei {{server}} ist abgelaufen.",
+      "action": "Wieder anmelden",
+      "a11y": "{{name}} wieder anmelden",
+      "done": "{{name}} ist wieder angemeldet",
+      "failed": "{{name}} konnte nicht wieder angemeldet werden. Versuch es noch einmal."
     }
   },
   "household": {
@@ -2300,7 +2321,8 @@
       "createFailed": "{{name}} konnte nicht angelegt werden, es wurde also nichts gespeichert. Versuch es noch einmal.",
       "leftBehind": "{{name}} wurde angelegt und ist noch in deinen Sammlungen.",
       "newDetail": "Neue Sammlung, wird beim Speichern angelegt",
-      "createUnnamedName": "Bücher für sie"
+      "createUnnamedName": "Bücher für sie",
+      "useExisting": "{{name}} teilen"
     },
     "add": {
       "title": "Jemanden zum Haushalt hinzufügen",

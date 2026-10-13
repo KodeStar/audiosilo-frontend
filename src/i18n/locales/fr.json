@@ -186,12 +186,15 @@
     },
     "password": {
       "bodySet": "Utilisez-le pour vous connecter sur un nouvel appareil ou dans un navigateur.",
-      "bodyNotSet": "Vous vous êtes connecté avec un code d'invitation et n'avez pas encore de mot de passe. Définissez-en un pour pouvoir vous connecter sur un nouvel appareil.",
+      "bodyNotSet": "Vous n'avez pas encore de mot de passe. Définissez-en un pour pouvoir vous connecter sur un nouvel appareil.",
       "dialogSet": "Au moins {{count}} caractères. Vos autres appareils restent connectés.",
       "dialogChange": "Saisissez votre mot de passe actuel, puis le nouveau. Vos autres appareils restent connectés.",
       "doneSet": "Mot de passe défini",
       "doneChanged": "Mot de passe modifié",
-      "doneBody": "Vos autres appareils restent connectés."
+      "doneBody": "Vos autres appareils restent connectés.",
+      "bodyMember": "{{owner}} a créé ce compte, il n'a donc pas encore de mot de passe. Définissez-en un pour vous connecter vous-même sur un nouvel appareil.",
+      "bodyKid": "Un compte enfant n'a pas de mot de passe. {{owner}} le connecte sur un nouvel appareil.",
+      "bodyKidNoOwner": "Un compte enfant n'a pas de mot de passe. Un adulte le connecte sur un nouvel appareil."
     },
     "pair": {
       "title": "Associer un autre appareil",
@@ -2135,11 +2138,21 @@
       "offlineBody": "{{server}} est injoignable et aucune histoire n'est enregistrée sur cet appareil.",
       "retry": "Réessayer",
       "onDevice": "Ces histoires sont enregistrées sur cet appareil.",
-      "askGrownUp": "Demande à un adulte d'ajouter des histoires."
+      "askGrownUp": "Demande à un adulte d'ajouter des histoires.",
+      "moreFailed": "Certaines histoires ne se sont pas chargées."
     },
     "startFailed": {
       "title": "Cette histoire ne démarre pas pour l'instant",
       "body": "Essaie une autre histoire ou demande à un adulte."
+    },
+    "link": {
+      "title": "Demande à un adulte d'ouvrir ce lien",
+      "body": "Un adulte maintient d'abord Adultes, puis rouvre le lien."
+    },
+    "signedOut": {
+      "ask": "Demande à un adulte de reconnecter {{name}}.",
+      "askNoName": "Demande à un adulte de te reconnecter.",
+      "title": "Connexion à {{server}} terminée"
     }
   },
   "profiles": {
@@ -2247,6 +2260,14 @@
       "askAtLaunch": "Demander qui écoute à l'ouverture de l'app",
       "askAtLaunchBody": "Avec deux personnes ou plus sur cet appareil",
       "noSharing": "Aucun de vos serveurs ne le propose encore."
+    },
+    "signIn": {
+      "label": "Connexion terminée",
+      "body": "La connexion de {{name}} à {{server}} a pris fin.",
+      "action": "Reconnecter",
+      "a11y": "Reconnecter {{name}}",
+      "done": "La connexion de {{name}} est rétablie",
+      "failed": "Impossible de reconnecter {{name}}. Réessayez."
     }
   },
   "household": {
@@ -2300,7 +2321,8 @@
       "createFailed": "Impossible de créer {{name}}, rien n'a donc été enregistré. Réessayez.",
       "leftBehind": "{{name}} a été créée et figure toujours dans vos collections.",
       "newDetail": "Nouvelle collection, créée à l'enregistrement",
-      "createUnnamedName": "Ses livres"
+      "createUnnamedName": "Ses livres",
+      "useExisting": "Partager {{name}}"
     },
     "add": {
       "title": "Ajouter quelqu'un à votre foyer",

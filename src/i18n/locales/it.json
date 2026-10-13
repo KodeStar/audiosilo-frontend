@@ -186,12 +186,15 @@
     },
     "password": {
       "bodySet": "Usala per accedere da un nuovo dispositivo o da un browser.",
-      "bodyNotSet": "Hai effettuato l'accesso con un codice di invito e non hai ancora una password. Impostane una per poter accedere da un nuovo dispositivo.",
+      "bodyNotSet": "Non hai ancora una password. Impostane una per poter accedere da un nuovo dispositivo.",
       "dialogSet": "Almeno {{count}} caratteri. Gli altri tuoi dispositivi restano connessi.",
       "dialogChange": "Inserisci la password attuale, poi quella nuova. Gli altri tuoi dispositivi restano connessi.",
       "doneSet": "Password impostata",
       "doneChanged": "Password cambiata",
-      "doneBody": "Gli altri tuoi dispositivi restano connessi."
+      "doneBody": "Gli altri tuoi dispositivi restano connessi.",
+      "bodyMember": "{{owner}} ha creato questo account, quindi non ha ancora una password. Impostane una per accedere in autonomia da un nuovo dispositivo.",
+      "bodyKid": "Un account per bambini non ha password. {{owner}} lo collega su un nuovo dispositivo.",
+      "bodyKidNoOwner": "Un account per bambini non ha password. Un adulto lo collega su un nuovo dispositivo."
     },
     "pair": {
       "title": "Associa un altro dispositivo",
@@ -2135,11 +2138,21 @@
       "offlineBody": "{{server}} non è raggiungibile e su questo dispositivo non ci sono storie salvate.",
       "retry": "Riprova",
       "onDevice": "Queste storie sono salvate su questo dispositivo.",
-      "askGrownUp": "Chiedi a un adulto di aggiungere delle storie."
+      "askGrownUp": "Chiedi a un adulto di aggiungere delle storie.",
+      "moreFailed": "Alcune storie non si sono caricate."
     },
     "startFailed": {
       "title": "Questa storia non parte in questo momento",
       "body": "Provane un'altra o chiedi a un adulto."
+    },
+    "link": {
+      "title": "Chiedi a un adulto di aprire questo link",
+      "body": "Un adulto tiene prima premuto Adulti, poi riapre il link."
+    },
+    "signedOut": {
+      "ask": "Chiedi a un adulto di far accedere di nuovo {{name}}.",
+      "askNoName": "Chiedi a un adulto di farti accedere di nuovo.",
+      "title": "Accesso a {{server}} terminato"
     }
   },
   "profiles": {
@@ -2247,6 +2260,14 @@
       "askAtLaunch": "Chiedi chi ascolta all'apertura dell'app",
       "askAtLaunchBody": "Con due o più persone su questo dispositivo",
       "noSharing": "Nessuno dei tuoi server lo offre ancora."
+    },
+    "signIn": {
+      "label": "Accesso terminato",
+      "body": "L'accesso di {{name}} a {{server}} è terminato.",
+      "action": "Accedi di nuovo",
+      "a11y": "Fai accedere di nuovo {{name}}",
+      "done": "{{name}} ha di nuovo effettuato l'accesso",
+      "failed": "Impossibile far accedere di nuovo {{name}}. Riprova."
     }
   },
   "household": {
@@ -2300,7 +2321,8 @@
       "createFailed": "Impossibile creare {{name}}, quindi non è stato salvato niente. Riprova.",
       "leftBehind": "{{name}} è stata creata ed è ancora tra le tue raccolte.",
       "newDetail": "Nuova raccolta, creata quando salvi",
-      "createUnnamedName": "I suoi libri"
+      "createUnnamedName": "I suoi libri",
+      "useExisting": "Condividi {{name}}"
     },
     "add": {
       "title": "Aggiungi qualcuno alla tua famiglia",

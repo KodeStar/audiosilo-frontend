@@ -38,6 +38,7 @@ import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
 import { resetLaunchDecisionForTests, takeLaunchDecision } from './profiles-model';
+import { endKidsConnect, kidsConnectAllowed } from './connect-intent';
 import { ProfilesScreen } from './profiles-screen';
 import { forgetPickerOpener, openProfiles } from './use-choose-profile';
 /* eslint-enable import/first */
@@ -229,6 +230,31 @@ it('finding 7: kids cannot enter onboarding through Add someone', async () => {
   await fireEvent.press(screen.getByTestId('profiles-add'));
   expect(mockRouter.push).not.toHaveBeenCalled();
   expect(useProfiles.getState().activeProfileId).toBe('leo');
+});
+
+it("a kid-only device: a grown-up's Add someone opens the connect flow, which kids mode lets through (D1)", async () => {
+  useProfiles.setState({
+    profiles: [{ id: 'leo', name: 'Leo', connectionIds: ['a.2'], kids: { bedtime: '19:30' } }],
+    activeProfileId: 'leo',
+  });
+  try {
+    await mountWithPortal(<ProfilesScreen />);
+    await fireEvent.press(screen.getByTestId('profiles-add'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/connect?add=1&profile=new');
+    expect(kidsConnectAllowed()).toBe(true);
+  } finally {
+    endKidsConnect();
+  }
+});
+
+it('says "This device is shared" only once two people are on it (D12)', async () => {
+  const { unmount } = await mountWithPortal(<ProfilesScreen />);
+  expect(screen.getByText('This device is shared')).toBeTruthy();
+  await unmount();
+  useProfiles.setState({ profiles: [{ id: 'chris', name: 'Chris', connectionIds: ['a.1'] }] });
+  await mountWithPortal(<ProfilesScreen />);
+  expect(screen.getByText("Who's listening?")).toBeTruthy();
+  expect(screen.queryByText('This device is shared')).toBeNull();
 });
 
 describe('Manage household (8b-1)', () => {

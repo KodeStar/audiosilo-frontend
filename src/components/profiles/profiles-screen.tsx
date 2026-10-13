@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect } from 'react';
 import { BackHandler, Platform, ScrollView, View } from 'react-native';
@@ -19,7 +18,7 @@ import { type Profile, useActiveProfile, useMustChoose, useProfiles } from '@/st
 import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { ADD_SOMEONE_HREF, mayAddPerson } from './connect-intent';
+import { mayAddPerson, openAddSomeone } from './connect-intent';
 import { profileName, profileStatus, takeLaunchDecision } from './profiles-model';
 import { forgetPickerOpener, leavePicker, useChooseProfile } from './use-choose-profile';
 
@@ -98,13 +97,16 @@ export function ProfilesScreen() {
             action={{
               label: t('profiles.add.label'),
               icon: 'plus',
-              onPress: () => router.push(ADD_SOMEONE_HREF),
+              onPress: openAddSomeone,
             }}
           />
         ) : (
           <>
             <View className="max-w-[440px] items-center gap-2 pb-8 pt-4">
-              <Text variant="eyebrow">{t('profiles.picker.eyebrow')}</Text>
+              {/* "This device is shared" only once it is (8b-1, D12). */}
+              {profiles.length > 1 ? (
+                <Text variant="eyebrow">{t('profiles.picker.eyebrow')}</Text>
+              ) : null}
               <Text
                 variant={phone ? 'display' : 'display-xl'}
                 accessibilityRole="header"
@@ -137,7 +139,7 @@ export function ProfilesScreen() {
               ))}
               <AnimatedPressable
                 testID="profiles-add"
-                onPress={() => router.push(ADD_SOMEONE_HREF)}
+                onPress={openAddSomeone}
                 disabled={switching !== null || !canAdd}
                 accessibilityRole="button"
                 accessibilityLabel={t('profiles.add.a11y')}

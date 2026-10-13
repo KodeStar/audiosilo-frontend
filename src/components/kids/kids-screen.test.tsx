@@ -39,6 +39,7 @@ jest.mock('@/playback/store', () => {
   };
 });
 let mockStories: KidsStories = { status: 'loading' };
+let mockSignedOut = false;
 const mockRetry = jest.fn();
 jest.mock('./use-kids', () => ({
   useKidsProfile: () => ({
@@ -51,6 +52,7 @@ jest.mock('./use-kids', () => ({
     stories: mockStories,
     connectionId: 'c',
     library: null,
+    signedOut: mockSignedOut,
     retry: mockRetry,
     loadMore: jest.fn(),
   }),
@@ -69,7 +71,7 @@ import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 
 import { HOLD_MS } from './grown-ups-button';
-import { KidsScreen } from './kids-screen';
+import { KidsScreen, resetKidsStartForTests } from './kids-screen';
 /* eslint-enable import/first */
 
 const book = (path: string, title = path): Book =>
@@ -83,6 +85,8 @@ beforeEach(() => {
   mockLayout = 'phone';
   mockLoadedKey = null;
   mockLive = false;
+  mockSignedOut = false;
+  resetKidsStartForTests();
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -238,39 +242,71 @@ it('lays the stories out in rows by the measured width, at most 1200 wide', asyn
   expect(widths).toHaveLength(7);
 });
 
-it("offers the kid's own sign-in again when its token is dead (the shell's banner is not here)", async () => {
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const { useSession } = require('@/stores/session') as typeof import('@/stores/session');
-  const { useProfiles } = require('@/stores/profiles') as typeof import('@/stores/profiles');
-  /* eslint-enable @typescript-eslint/no-require-imports */
-  useProfiles.setState({
-    hydrated: true,
-    activeProfileId: 'p',
-    profiles: [{ id: 'p', name: 'Leo', connectionIds: ['c'], kids: { bedtime: '19:30' } }],
+it("asks a grown-up when the kid's sign-in ended, with no way into the connect flow (D1)", async () => {
+  mockSignedOut = true;
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
+  await render(<KidsScreen />);
+  const notice = screen.getByTestId('kids-signed-out');
+  expect(within(notice).getByText('Ask a grown-up to sign Leo in again.')).toBeTruthy();
+  // A line, not a button: the only buttons are the Grown-ups hold and the stories.
+  const labels = screen.getAllByRole('button').map((b) => b.props.accessibilityLabel);
+  expect(labels).toEqual(['Grown-ups', 'Play A']);
+  await fireEvent.press(screen.getByText('Ask a grown-up to sign Leo in again.'));
+  expect(mockPush).not.toHaveBeenCalled();
+});
+
+it('says the sign-in ended (not "isn\'t answering") and offers no Try again (D4)', async () => {
+  mockSignedOut = true;
+  mockStories = { status: 'error', serverName: 'Hearthside', offline: false };
+  await render(<KidsScreen />);
+  expect(screen.getByText('Signed out of Hearthside')).toBeTruthy();
+  expect(screen.getByText('Ask a grown-up to sign Leo in again.')).toBeTruthy();
+  expect(screen.queryByText(/isn't answering/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  // Said once: the notice over the stories stands back for the card.
+  expect(screen.queryByTestId('kids-signed-out')).toBeNull();
+});
+
+it('says what failed under the grid, and no bare Try again once signed out (D4)', async () => {
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'failed' };
+  const view = await render(<KidsScreen />);
+  expect(
+    within(screen.getByTestId('kids-more-failed')).getByText("Some stories didn't load."),
+  ).toBeTruthy();
+
+  mockSignedOut = true;
+  await view.rerender(<KidsScreen />);
+  expect(screen.queryByTestId('kids-more-failed')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  expect(screen.getByTestId('kids-signed-out')).toBeTruthy();
+});
+
+it('asks a grown-up when a story will not start after the sign-in ended', async () => {
+  mockSignedOut = true;
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
+  mockStart.mockRejectedValueOnce(new Error('401'));
+  await render(<KidsScreen />);
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
+  expect(toast).toHaveBeenCalledWith({
+    title: "That story won't start right now",
+    description: 'Ask a grown-up to sign Leo in again.',
   });
-  useSession.setState({
-    connections: [
-      {
-        id: 'c',
-        serverUrl: 'https://kids.example',
-        name: 'Story Box',
-        token: 't',
-        user: { id: 1, username: 'leo' } as never,
-        needsReconnect: 'auth',
-      },
-    ],
-  });
-  try {
-    await render(<KidsScreen />);
-    await fireEvent.press(screen.getByText(/Story Box/));
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/connect/sign-in',
-      params: { serverName: 'Story Box', reconnect: 'c' },
-    });
-  } finally {
-    useSession.setState({ connections: [] });
-    useProfiles.setState({ profiles: [], activeProfileId: null });
-  }
+});
+
+it('starts a story once when it is tapped again while its start is on its way (D2)', async () => {
+  mockStories = { status: 'ready', books: [book('kids/a', 'A')], offline: false, more: 'none' };
+  let finish: (ok: boolean) => void = () => undefined;
+  mockStart.mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)));
+  await render(<KidsScreen />);
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
+  // The player doesn't show it yet (its item, chapters and place are being looked up).
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
+  expect(mockStart).toHaveBeenCalledTimes(1);
+  expect(mockToggle).not.toHaveBeenCalled();
+  await act(async () => finish(true));
+  // Settled: a tap starts it again (it was not loaded after all, in this mock).
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Play A' })));
+  expect(mockStart).toHaveBeenCalledTimes(2);
 });
 
 it("shows several shared collections under their own names (a household member's shelf)", async () => {

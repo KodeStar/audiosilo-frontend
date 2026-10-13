@@ -31,9 +31,15 @@ jest.mock('@/components/account/use-sign-out', () => ({
   signOutConnection: (id: string) => mockSignOut(id),
 }));
 const mockCaps: Record<string, { household?: boolean }> = {};
+const mockMemberSession = { mutateAsync: jest.fn(), isPending: false };
+const mockMemberSessionFor = jest.fn();
 jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
   useCapabilitiesAll: () => mockCaps,
+  useMemberSession: (cid: string) => {
+    mockMemberSessionFor(cid);
+    return mockMemberSession;
+  },
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({
@@ -414,6 +420,111 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     const sharing = screen.getByRole('header', { name: 'Listening in the house' });
     expect(device.props.className).toContain('text-xl');
     expect(sharing.props.className).toBe(device.props.className);
+  });
+
+  describe("a household member kid's own sign-in and shelf (8b-1, D1, D6, D7)", () => {
+    const leoKid = (extra: Record<string, unknown> = {}) =>
+      ({
+        ...conn('a.3', 'Hearthside', 'leo'),
+        serverUrl: 'https://hearthside.example',
+        user: {
+          id: 3,
+          username: 'leo',
+          role: 'user',
+          has_password: false,
+          has_recovery: false,
+          managed_by: { id: 1, username: 'chris' },
+          member_kind: 'kid',
+        },
+        ...extra,
+      }) as unknown as Connection;
+    const kidsHousehold = (leoConn: Connection) => {
+      useSession.setState({ connections: [conn('a.1', 'Hearthside', 'chris'), leoConn] });
+      useProfiles.setState({
+        profiles: [
+          { id: 'chris', name: 'Chris', connectionIds: ['a.1'] },
+          { id: 'leo', name: 'Leo', connectionIds: ['a.3'], kids: { bedtime: '19:30' } },
+        ],
+      });
+    };
+
+    it('hides the library pick while kids mode shows the collections chris shares (D6)', async () => {
+      kidsHousehold(leoKid());
+      await mount();
+      expect(screen.getByTestId('household-kids-library-leo')).toBeTruthy();
+      await waitFor(() => {
+        client.setQueryData(qk.server('a.3'), { capabilities: { collections: true } });
+        client.setQueryData(qk.collections('a.3'), [
+          { id: 4, name: "Leo's books", owned: false, owner: { id: 1, username: 'chris' } },
+        ]);
+        expect(screen.queryByTestId('household-kids-library-leo')).toBeNull();
+      });
+    });
+
+    it("puts the library pick under its label on a phone, so a message can't squeeze it (D7)", async () => {
+      kidsHousehold(leoKid());
+      await mount();
+      const row = screen.getByTestId('household-kids-library-leo');
+      expect(row.props.className).not.toContain('flex-row');
+      expect(screen.getByTestId('household-kids-library-leo-text').props.className).not.toContain(
+        'flex-1',
+      );
+    });
+
+    it('signs a member kid whose sign-in ended in again here, with a session the owner mints (D1)', async () => {
+      kidsHousehold(leoKid({ needsReconnect: 'auth' }));
+      mockMemberSession.mutateAsync.mockResolvedValueOnce({
+        token: 'fresh',
+        server_id: 'a',
+        user: leoKid().user,
+      });
+      await mount();
+      const row = screen.getByTestId('household-signed-out-a.3');
+      expect(row).toBeTruthy();
+      expect(screen.getByText("Leo's sign-in to Hearthside has ended.")).toBeTruthy();
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign Leo in again' }));
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith({ title: 'Leo is signed in again' }),
+      );
+      // Through chris's own connection to that server, for Leo's account.
+      expect(mockMemberSessionFor).toHaveBeenCalledWith('a.1');
+      expect(mockMemberSession.mutateAsync).toHaveBeenCalledWith(3);
+      const renewed = useSession.getState().connections.find((c) => c.id === 'a.3');
+      expect(renewed).toMatchObject({ token: 'fresh', serverUrl: 'https://hearthside.example' });
+      expect(renewed?.needsReconnect).toBeUndefined();
+      // Chris keeps listening, Leo keeps the kids profile, and no connect flow opened.
+      expect(useSession.getState().defaultConnectionId).toBe('a.1');
+      expect(useProfiles.getState().activeProfileId).toBe('chris');
+      expect(leo()?.kids).toBeDefined();
+      expect(mockRouter.push).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('household-signed-out-a.3')).toBeNull();
+    });
+
+    it('signs anyone else in again through the sign-in step for that connection', async () => {
+      // An ordinary account (nobody here manages it): a grown-up types its code or password.
+      kidsHousehold(
+        leoKid({
+          needsReconnect: 'auth',
+          user: { id: 3, username: 'leo', has_password: true, has_recovery: false },
+        }),
+      );
+      await mount();
+      await fireEvent.press(screen.getByRole('button', { name: 'Sign Leo in again' }));
+      await waitFor(() =>
+        expect(mockRouter.push).toHaveBeenCalledWith({
+          pathname: '/connect/sign-in',
+          params: { serverName: 'Hearthside', reconnect: 'a.3' },
+        }),
+      );
+      expect(useSession.getState().pendingServerUrl).toBe('https://hearthside.example');
+      expect(mockMemberSession.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('offers no sign-in again while the sign-in is fine', async () => {
+      kidsHousehold(leoKid());
+      await mount();
+      expect(screen.queryByTestId('household-signed-out-a.3')).toBeNull();
+    });
   });
 
   it('turns asking who is listening off', async () => {

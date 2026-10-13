@@ -12,6 +12,7 @@ import {
   itemQuery,
   librariesQuery,
   qk,
+  useCapability,
   useLibraryBooks,
   useServerInfo,
 } from '@/api/hooks';
@@ -20,7 +21,13 @@ import { useReachability } from '@/api/reachability';
 import type { Book, CollectionDetail, Library } from '@/api/types';
 import { statusSignature } from '@/downloads/downloads-view';
 import { useDownloads } from '@/downloads/store';
-import { type Profile, useActiveProfile, useProfileConnections } from '@/stores/profiles';
+import {
+  connectionsOfProfile,
+  type Profile,
+  useActiveProfile,
+  useProfileConnections,
+} from '@/stores/profiles';
+import { useSession } from '@/stores/session';
 
 import {
   kidsCollections,
@@ -44,6 +51,31 @@ export function useKidsProfile(): Profile | null {
 /** Whether the active profile is in kids mode (the gate keeps it on `/kids`). */
 export function useKidsActive(): boolean {
   return useKidsProfile() !== null;
+}
+
+/**
+ * Whether kids mode's shelf for `profile` is the collections its account's owner shares
+ * with it (8b-1, D6: a household member with at least one shared collection, on a server
+ * with `collections`), as `useKidsStories` decides it, through the same cache entry: then
+ * the profile's library pick is not used. False while that isn't known, and for anyone
+ * else.
+ */
+export function useKidsSharedShelf(profile: Profile): boolean {
+  const connections = useSession((s) => s.connections);
+  const own = connectionsOfProfile(connections, profile.connectionIds);
+  const cid = kidsConnectionId(
+    own.map((c) => c.id),
+    profile.kids,
+  );
+  const connection = own.find((c) => c.id === cid);
+  const client = useOptionalApi(cid ?? '');
+  const hasCollections = useCapability('collections', cid ?? '');
+  const ask = !!connection?.user.managed_by && hasCollections === true;
+  const collections = useQuery({
+    queryKey: qk.collections(cid ?? ''),
+    queryFn: ask && client ? ({ signal }) => client.collections(signal) : skipToken,
+  });
+  return ask && kidsCollections(collections.data ?? [], connection?.user).length > 0;
 }
 
 /** What kids mode's story grid shows. */
@@ -107,11 +139,15 @@ function combineContinuing(results: QueryObserverResult<Book>[]) {
  *   then the library's books page by page (`loadMore` asks for the next one as the grid
  *   scrolls near its end).
  * Offline, the downloaded stories of that connection (`kidsDownloads`). `retry` asks again.
+ * `signedOut`: the kid's sign-in there ended, so asking again can't help.
  */
 export function useKidsStories(): {
   stories: KidsStories;
   connectionId: string | null;
   library: Library | null;
+  /** The kid's sign-in on that server ended (a revoked session, a deleted account: a 401,
+   * or a server that was reset; `needsReconnect`): only a grown-up can sign them in again. */
+  signedOut: boolean;
   retry: () => void;
   loadMore: () => void;
 } {
@@ -272,5 +308,6 @@ export function useKidsStories(): {
   else if (shelf.length === 0) stories = { status: 'empty', serverName };
   else stories = { status: 'ready', books: shelf, offline: false, more };
 
-  return { stories, connectionId: cid, library, retry, loadMore };
+  const signedOut = !!connection?.needsReconnect;
+  return { stories, connectionId: cid, library, signedOut, retry, loadMore };
 }

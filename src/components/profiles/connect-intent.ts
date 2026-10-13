@@ -1,3 +1,5 @@
+import { router } from 'expo-router';
+
 import { activeProfile, useProfiles } from '@/stores/profiles';
 
 /**
@@ -23,6 +25,37 @@ export function connectForNewProfile(): boolean {
 
 /** The connect flow's href for "Add someone". */
 export const ADD_SOMEONE_HREF = '/connect?add=1&profile=new';
+
+/**
+ * Whether kids mode lets the connect flow on screen through (8b-1, D1): kids mode never
+ * opens the connect flow (a link, a banner, a typed URL all send it back to `/kids`), with
+ * ONE exception, a grown-up's "Add someone" on "Who's listening?" (reached through the
+ * Grown-ups hold) on a device with no grown-up (`mayAddPerson`): how a kid-only device is
+ * signed in again. Module state set only by that button (`openAddSomeone`), never by a
+ * route param a link could carry; ended when the flow is left (`connect/_layout.tsx`
+ * unmounts) and by the route guard once the route is anywhere but the flow or the picker.
+ */
+let grownUpConnect = false;
+
+/** "Add someone": the connect flow for a new person. From kids mode (only enabled there
+ * on a device with no grown-up) it also lets kids mode through the flow
+ * (`kidsConnectAllowed`). */
+export function openAddSomeone(): void {
+  const state = useProfiles.getState();
+  if (activeProfile(state)?.kids && mayAddPerson(state)) grownUpConnect = true;
+  router.push(ADD_SOMEONE_HREF);
+}
+
+/** Whether the connect flow on screen was opened by a grown-up from kids mode
+ * (`openAddSomeone`). */
+export function kidsConnectAllowed(): boolean {
+  return grownUpConnect;
+}
+
+/** The grown-up's connect flow from kids mode is over (left, or never reached). */
+export function endKidsConnect(): void {
+  grownUpConnect = false;
+}
 
 type ProfilesState = ReturnType<typeof useProfiles.getState>;
 

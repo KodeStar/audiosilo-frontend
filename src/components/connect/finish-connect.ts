@@ -30,7 +30,8 @@ export function readyHref(connectionId: string) {
 /**
  * The end of every way into a server (a pairing link or QR, an invite code, a password,
  * the demo): store the connection, then show "Your library is ready." when it is the
- * device's first, else go straight back to the app (`leaveOnboarding`).
+ * device's first (not for a kid's account, which goes straight to kids mode), else go
+ * straight back to the app (`leaveOnboarding`).
  *
  * `serverUrl` is the address signed in through; `repairPlan` decides what is stored (a
  * re-pair of a known connection keeps the address it was paired with). `linkAddresses`
@@ -108,7 +109,10 @@ export async function finishConnect(input: {
   // A kid's account signed in for the first time on this device starts in kids mode (a
   // re-pair, or a sign-in again after a server reset, keeps what its person had).
   if (!existing && replaced === undefined) kidsOnForKidAccount(id);
-  if (first) router.replace(readyHref(id));
+  // "Your library is ready." is a grown-up's first run (8b-1, D9): a kid's account (or
+  // anyone signing in while kids mode listens) goes straight to kids mode, which the
+  // route guard takes on from Home.
+  if (first && !activeProfile()?.kids) router.replace(readyHref(id));
   else leaveOnboarding();
   return id;
 }

@@ -105,3 +105,52 @@ export async function addMemberHere(
   if (opts.kids) setProfileKids(profileId, { bedtime: DEFAULT_BEDTIME });
   return { connectionId: id, profileId };
 }
+
+/**
+ * The connection on this device that manages `member` (8b-1, D1): the person listening's
+ * own sign-in to the member's server, as the user who owns the member's account
+ * (`managed_by`). Through it the owner can mint the member a new session
+ * (`memberSession`) and `renewMemberHere` with it. Null when the person listening isn't
+ * the member's owner there (anyone else signs them in through the connect flow).
+ */
+export function memberOwnerHere(
+  member: Pick<Connection, 'id' | 'serverId' | 'user'>,
+  connections: readonly Connection[] = useSession.getState().connections,
+): Connection | null {
+  const ownerId = member.user.managed_by?.id;
+  if (ownerId === undefined) return null;
+  const mine = activeProfile()?.connectionIds ?? [];
+  const server = serverIdOf(member);
+  return (
+    connections.find(
+      (c) => mine.includes(c.id) && serverIdOf(c) === server && c.user.id === ownerId,
+    ) ?? null
+  );
+}
+
+/**
+ * Sign a household member this device already holds in again (8b-1, D1: their sign-in
+ * here ended, `needsReconnect`; a kid in kids mode can't do it, a grown-up does, from the
+ * Household page) with the session their owner just minted (`memberSession`). Only the
+ * token changes: the connection keeps its id, its person's profile, PIN and kids settings,
+ * and the person listening and the default connection stay where they are
+ * (`setSession(..., { makeDefault: false })`; a fresh connection clears the flag). Refuses
+ * with an `Error` when the device doesn't hold that member. Resolves to the connection id.
+ */
+export async function renewMemberHere(session: AuthSession): Promise<string> {
+  if (sessionHydrateFailed()) await useSession.getState().hydrate();
+  const { connections, setSession } = useSession.getState();
+  const prior = priorConnection(connections, session.server_id, session.user.id);
+  if (!prior) throw new Error(i18n.t('connect.memberNotReady'));
+  return setSession(
+    {
+      serverUrl: prior.serverUrl,
+      serverId: session.server_id,
+      token: session.token,
+      user: session.user,
+      name: prior.name,
+      addresses: session.addresses,
+    },
+    { makeDefault: false },
+  );
+}
