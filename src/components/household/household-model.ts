@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { ApiError } from '@/api/client';
+import { ApiError, type ApiErrorKind, apiErrorKind } from '@/api/client';
 import type {
   HouseholdMember,
   HouseholdMembers,
@@ -105,10 +105,10 @@ export function collectionIdsFor(
 }
 
 /** What a refused add or change says (a key under `household.errors`, `writeErrorText`).
- * The server's `code` decides (Phase 8b-1's coded refusals); the status stands in for a
- * route or an older server without one: 409 the cap, 400 a name or collection it would
- * not take, 403 adding turned off for this account, 404 the member is gone, 429 too many
- * tries, anything else (or no answer) nothing changed. */
+ * The server's `code` decides (Phase 8b-1's coded refusals, `apiErrorKind`); the status
+ * stands in for a route or an older server without one: 409 the cap, 400 a name or
+ * collection it would not take, 403 adding turned off for this account, 404 the member is
+ * gone, 429 too many tries, anything else (or no answer) nothing changed. */
 export type WriteError =
   | 'limit'
   | 'usernameTaken'
@@ -125,7 +125,7 @@ export type WriteError =
   | 'tooMany'
   | 'failed';
 
-const BY_CODE: Readonly<Record<string, WriteError>> = {
+const BY_KIND: Readonly<Record<ApiErrorKind, WriteError>> = {
   member_limit: 'limit',
   username_taken: 'usernameTaken',
   invalid_name: 'invalidName',
@@ -135,27 +135,19 @@ const BY_CODE: Readonly<Record<string, WriteError>> = {
   member_cannot_manage: 'member',
   kid_account: 'kid',
   demo_account: 'demo',
+  too_many: 'tooMany',
+  conflict: 'limit',
+  invalid: 'invalid',
+  forbidden: 'forbidden',
+  not_found: 'gone',
+  failed: 'failed',
 };
 
 export function writeError(e: unknown): WriteError {
-  if (!(e instanceof ApiError)) return 'failed';
-  const coded = e.code ? BY_CODE[e.code] : undefined;
-  if (coded) return coded;
-  switch (e.status) {
-    case 429:
-      return 'tooMany';
-    case 409:
-      // A coded 409 that is not the cap (a collection's share cap): the change was refused.
-      return e.code ? 'invalid' : 'limit';
-    case 400:
-      return 'invalid';
-    case 403:
-      return 'forbidden';
-    case 404:
-      return 'gone';
-    default:
-      return 'failed';
-  }
+  const kind = apiErrorKind(e);
+  // A coded 409 that is not the cap (a collection's share cap): the change was refused.
+  if (kind === 'conflict' && e instanceof ApiError && e.code) return 'invalid';
+  return BY_KIND[kind];
 }
 
 /** Whether a refusal means the members list on screen is out of date (the cap or the
@@ -170,14 +162,10 @@ export function listIsStale(why: WriteError): boolean {
   );
 }
 
-/** What a refused write says, in words (`writeError`). */
-export function writeErrorText(why: WriteError, server: string, t: TFunction): string {
+/** What a refused write `e` says, in words (`writeError`). */
+export function writeErrorText(e: unknown, server: string, t: TFunction): string {
+  const why = writeError(e);
   return why === 'tooMany' ? t('common.tooManyTries') : t(`household.errors.${why}`, { server });
-}
-
-/** Whether `e` is the server's "too many tries" (429, its rate limiter). */
-export function isTooMany(e: unknown): boolean {
-  return e instanceof ApiError && e.status === 429;
 }
 
 /** The connection on this device that is `memberId` on the owner's server (signed in

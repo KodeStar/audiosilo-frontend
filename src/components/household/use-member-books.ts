@@ -1,9 +1,9 @@
 import type { TFunction } from 'i18next';
 
-import { ApiError } from '@/api/client';
+import { apiErrorKind } from '@/api/client';
 import { useCreateCollection, useDeleteCollection } from '@/api/hooks';
 
-import { writeError, writeErrorText } from './household-model';
+import { writeErrorText } from './household-model';
 
 /** How a write that may first create "<Name>'s books" ended: its answer, or where it
  * stopped (`books`: the collection could not be created, nothing else was sent;
@@ -61,11 +61,11 @@ export function booksRunText(
   t: TFunction,
 ): string {
   if (r.stage === 'books') {
-    return r.error instanceof ApiError && r.error.status === 409
+    return apiErrorKind(r.error) === 'conflict'
       ? t('library.collection.tooMany')
       : t('household.access.createFailed', { name: booksName ?? '' });
   }
-  const why = writeErrorText(writeError(r.error), server, t);
+  const why = writeErrorText(r.error, server, t);
   return r.leftBehind && booksName
     ? `${why} ${t('household.access.leftBehind', { name: booksName })}`
     : why;

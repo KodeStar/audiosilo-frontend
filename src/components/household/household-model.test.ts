@@ -144,10 +144,8 @@ describe('writeError', () => {
 
   it('a 429 reads as too many tries, never as no answer', () => {
     const t = ((key: string) => key) as unknown as TFunction;
-    expect(writeErrorText(writeError(new ApiError(429, 'x')), 'Hearthside', t)).toBe(
-      'common.tooManyTries',
-    );
-    expect(writeErrorText('failed', 'Hearthside', t)).toBe('household.errors.failed');
+    expect(writeErrorText(new ApiError(429, 'x'), 'Hearthside', t)).toBe('common.tooManyTries');
+    expect(writeErrorText(new ApiError(500, 'x'), 'Hearthside', t)).toBe('household.errors.failed');
   });
 
   it('marks the refusals that leave the members list out of date', () => {

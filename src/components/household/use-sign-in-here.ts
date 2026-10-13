@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { useState } from 'react';
 
+import { apiErrorKind } from '@/api/client';
 import { useMemberSession } from '@/api/hooks';
 import type { HouseholdMember } from '@/api/types';
 import {
@@ -9,8 +10,6 @@ import {
   memberSignedInHere,
 } from '@/components/connect/add-member-here';
 import { serverIdOf } from '@/lib/connection-id';
-
-import { isTooMany } from './household-model';
 
 /** How signing a member in on this device ended: signed in, already signed in here (as
  * any person: their profile is on this device), or it didn't work (nothing changed here;
@@ -26,7 +25,7 @@ export type SignInHereResult =
  * server's English), so the caller's own words stand in. */
 export function signInHereFailure(e: unknown, fromAddHere: boolean): SignInHereResult {
   if (e instanceof AddMemberHereError) return { status: 'already' };
-  if (isTooMany(e)) return { status: 'failed', tooMany: true };
+  if (apiErrorKind(e) === 'too_many') return { status: 'failed', tooMany: true };
   return fromAddHere && e instanceof Error && e.message
     ? { status: 'failed', message: e.message }
     : { status: 'failed' };

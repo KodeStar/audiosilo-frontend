@@ -5,9 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { effectiveUrl } from '@/api/address-route';
+import { apiErrorKind } from '@/api/client';
 import { CapabilityError, useCapabilitiesAll, useMemberSession } from '@/api/hooks';
 import { memberOwnerHere, renewMemberHere } from '@/components/connect/add-member-here';
-import { isTooMany } from '@/components/household/household-model';
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
 import { Portrait } from '@/components/series/portrait';
 import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
@@ -193,7 +193,10 @@ function SignInAgainRow({ name, connection }: { name: string; connection: Connec
     } catch (e) {
       if (e instanceof CapabilityError) return;
       toast({
-        title: isTooMany(e) ? t('common.tooManyTries') : t('profiles.signIn.failed', { name }),
+        title:
+          apiErrorKind(e) === 'too_many'
+            ? t('common.tooManyTries')
+            : t('profiles.signIn.failed', { name }),
       });
     }
   };

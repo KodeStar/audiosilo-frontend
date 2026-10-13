@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
-import { ApiError } from '@/api/client';
 import {
   CapabilityError,
   qk,
@@ -48,7 +47,6 @@ import {
   collectionIdsFor,
   confirmsName,
   createsBooks,
-  isTooMany,
   memberConnection,
   writeError,
   writeErrorText,
@@ -94,12 +92,13 @@ export function MemberCard({
   const hereProfile = here ? profileOf(here.id) : null;
   const kid = member.kind === 'kid';
 
-  /** Say a change was refused and changed nothing (a toast), unless it was never sent. */
-  const refused = (e: unknown, description?: string) => {
+  /** Say a write was refused and changed nothing (a toast: "Couldn't change <Name>'s
+   * account" unless `title` says otherwise, then why), unless it was never sent. */
+  const refused = (e: unknown, say: { title?: string; description?: string } = {}) => {
     if (e instanceof CapabilityError) return;
     toast({
-      title: t('household.card.failed', { name }),
-      description: description ?? writeErrorText(writeError(e), server, t),
+      title: say.title ?? t('household.card.failed', { name }),
+      description: say.description ?? writeErrorText(e, server, t),
     });
   };
 
@@ -133,7 +132,7 @@ export function MemberCard({
       close();
       return;
     }
-    refused(run.error, booksRunText(run, { server, booksName }, t));
+    refused(run.error, { description: booksRunText(run, { server, booksName }, t) });
   };
 
   /** Renamed on the server: their profile on this device (when they are here) takes the
@@ -155,18 +154,13 @@ export function MemberCard({
       close();
       toast({ title: t('household.delete.done', { name }) });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) {
+      if (writeError(e) === 'gone') {
         // Gone already (deleted from another device): the list catches up.
         close();
         void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
         return;
       }
-      if (!(e instanceof CapabilityError)) {
-        toast({
-          title: t('household.delete.failed', { name }),
-          description: writeErrorText(writeError(e), server, t),
-        });
-      }
+      refused(e, { title: t('household.delete.failed', { name }) });
     }
   };
 
@@ -505,16 +499,15 @@ function RevokeMemberDevice({
       if (e instanceof CapabilityError) return;
       // Signed out already (404): the lists are read again whatever the answer
       // (`useRevokeMemberDevice`).
-      toast(
-        e instanceof ApiError && e.status === 404
-          ? { title: t('account.devices.gone', { name: label }) }
-          : isTooMany(e)
-            ? {
-                title: t('account.devices.failed', { name: label }),
-                description: t('common.tooManyTries'),
-              }
-            : { title: t('account.devices.failed', { name: label }) },
-      );
+      const why = writeError(e);
+      if (why === 'gone') {
+        toast({ title: t('account.devices.gone', { name: label }) });
+        return;
+      }
+      toast({
+        title: t('account.devices.failed', { name: label }),
+        ...(why === 'tooMany' ? { description: t('common.tooManyTries') } : {}),
+      });
     }
   };
   return (

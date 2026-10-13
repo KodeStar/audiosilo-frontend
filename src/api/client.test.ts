@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import {
   ApiClient,
   ApiError,
+  apiErrorKind,
   isPlainSeriesQuery,
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
@@ -103,6 +104,21 @@ describe('ApiClient', () => {
     installFetch(() => ({ status: 400, body: { error: 'bad', code: 7 } }));
     const odd = await new ApiClient('https://h', 'tok').me().catch((e: unknown) => e);
     expect((odd as ApiError).code).toBeUndefined();
+  });
+
+  it("apiErrorKind: the server's code when the app knows it, else the status's kind", () => {
+    expect(apiErrorKind(new ApiError(409, 'x', 'member_limit'))).toBe('member_limit');
+    expect(apiErrorKind(new ApiError(403, 'x', 'kid_account'))).toBe('kid_account');
+    // A code the app doesn't know reads by its status.
+    expect(apiErrorKind(new ApiError(409, 'x', 'collection_full'))).toBe('conflict');
+    expect(apiErrorKind(new ApiError(429, 'too many attempts'))).toBe('too_many');
+    expect(apiErrorKind(new ApiError(404, 'x'))).toBe('not_found');
+    expect(apiErrorKind(new ApiError(403, 'x'))).toBe('forbidden');
+    expect(apiErrorKind(new ApiError(400, 'x'))).toBe('invalid');
+    expect(apiErrorKind(new ApiError(500, 'x'))).toBe('failed');
+    // No answer at all.
+    expect(apiErrorKind(new TypeError('Network request failed'))).toBe('failed');
+    expect(apiErrorKind(undefined)).toBe('failed');
   });
 
   it('returns undefined for 204 responses', async () => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
@@ -61,7 +61,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       if (!live.current) return false;
       // The server's limiter (429) in words of our own, never its English.
       setError(
-        e instanceof ApiError && e.status === 429
+        apiErrorKind(e) === 'too_many'
           ? t('common.tooManyTries')
           : e instanceof ApiError
             ? t('connect.server.pairingFailed', { message: e.message })

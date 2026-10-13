@@ -2,7 +2,7 @@ import type { TFunction } from 'i18next';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError } from '@/api/client';
+import { apiErrorKind } from '@/api/client';
 import { useOptionalApi } from '@/api/provider';
 import type { PairingPayload } from '@/api/types';
 import { useNow } from '@/lib/use-now';
@@ -75,8 +75,9 @@ export function usePairingCode(
 
 /** What a pairing code that could not be made says (`usePairingCode`), translated. */
 export function pairingError(e: unknown, failedText: string, t: TFunction): string {
-  if (e instanceof ApiError && e.status === 429) return t('common.tooManyTries');
-  if (e instanceof ApiError && e.code === 'kid_account') return t('account.pair.kid');
+  const kind = apiErrorKind(e);
+  if (kind === 'too_many') return t('common.tooManyTries');
+  if (kind === 'kid_account') return t('account.pair.kid');
   return failedText;
 }
 
