@@ -35,11 +35,11 @@ jest.mock('@/components/account/connections-section', () => {
     useConnectionRemoval: () => ({ onRemove: mockOnRemove, dialog: null }),
   };
 });
-// The household pane has its own tests (`household-pane.test.tsx`).
-jest.mock('@/components/profiles/household-pane', () => {
-  const { Text: RNText } = jest.requireActual('react-native');
-  return { HouseholdPane: () => <RNText>household-pane</RNText> };
-});
+// The Household page (8b-1) is a page of its own: Settings only links to it.
+const mockOpenHousehold = jest.fn();
+jest.mock('@/components/household/open-household', () => ({
+  openHousehold: () => mockOpenHousehold(),
+}));
 jest.mock('@/theme/theme-provider', () => ({
   useTheme: () => ({ scheme: 'light', pref: 'system', setPref: jest.fn() }),
 }));
@@ -114,6 +114,30 @@ describe('SettingsContent, wide', () => {
   });
 });
 
+describe('SettingsContent, the Household link (8b-1)', () => {
+  beforeEach(() => mockOpenHousehold.mockClear());
+
+  it('ends the wide App group with a link that opens the Household page', async () => {
+    await render(<SettingsContent />);
+    await layOut(1000);
+    expect(screen.queryByTestId('settings-pane-household')).toBeNull();
+    await fireEvent.press(screen.getByTestId('settings-nav-household'));
+    expect(mockOpenHousehold).toHaveBeenCalledTimes(1);
+    // A link, not a pane: the pane shown stays.
+    expect(screen.getByTestId('settings-pane-playback')).toBeTruthy();
+  });
+
+  it("stacked, opens it through the caller's own way when given (the phone hub)", async () => {
+    mockLayout = 'phone';
+    const onOpenHousehold = jest.fn();
+    await render(<SettingsContent embedded onOpenHousehold={onOpenHousehold} />);
+    await layOut(390);
+    await fireEvent.press(screen.getByTestId('settings-household-link'));
+    expect(onOpenHousehold).toHaveBeenCalledTimes(1);
+    expect(mockOpenHousehold).not.toHaveBeenCalled();
+  });
+});
+
 describe('SettingsContent, stacked', () => {
   beforeEach(() => {
     mockLayout = 'phone';
@@ -128,7 +152,6 @@ describe('SettingsContent, stacked', () => {
       'downloads',
       'appearance',
       'language',
-      'household',
       'accounts',
       'support',
     ]) {
@@ -138,7 +161,8 @@ describe('SettingsContent, stacked', () => {
     expect(screen.getAllByText('Skip back')).toHaveLength(1);
     expect(screen.getAllByText('Download automatically')).toHaveLength(1);
     expect(screen.getAllByText('keep-ahead')).toHaveLength(1);
-    expect(screen.getAllByText('household-pane')).toHaveLength(1);
+    // Household is a link to its page, where its pane was.
+    expect(screen.getAllByTestId('settings-section-household')).toHaveLength(1);
     // No Journal row: the Journal lives in the You hub.
     expect(screen.queryByText('Journal')).toBeNull();
   });

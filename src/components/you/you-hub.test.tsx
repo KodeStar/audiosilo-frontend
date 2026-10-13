@@ -25,10 +25,29 @@ jest.mock('@/components/journal/journal-screen', () => {
   };
 });
 jest.mock('@/components/settings/settings-content', () => {
+  const { Pressable, Text } = jest.requireActual('react-native');
+  return {
+    SettingsContent: ({
+      embedded,
+      onOpenHousehold,
+    }: {
+      embedded?: boolean;
+      onOpenHousehold?: () => void;
+    }) => (
+      <>
+        <Text>{`settings-section embedded=${String(!!embedded)}`}</Text>
+        {onOpenHousehold ? (
+          <Pressable testID="settings-open-household" onPress={onOpenHousehold} />
+        ) : null}
+      </>
+    ),
+  };
+});
+jest.mock('@/components/household/household-page', () => {
   const { Text } = jest.requireActual('react-native');
   return {
-    SettingsContent: ({ embedded }: { embedded?: boolean }) => (
-      <Text>{`settings-section embedded=${String(!!embedded)}`}</Text>
+    HouseholdPage: ({ embedded }: { embedded?: boolean }) => (
+      <Text>{`household-section embedded=${String(!!embedded)}`}</Text>
     ),
   };
 });
@@ -68,9 +87,9 @@ beforeEach(() => {
 });
 
 describe('YouHub on a phone', () => {
-  it('offers all five sections and opens Stats by default', async () => {
+  it('offers all six sections and opens Stats by default', async () => {
     await mount();
-    for (const label of ['Stats', 'Year', 'Journal', 'Settings', 'Account']) {
+    for (const label of ['Stats', 'Year', 'Journal', 'Settings', 'Household', 'Account']) {
       expect(screen.getByLabelText(label)).toBeTruthy();
     }
     expect(screen.getByLabelText('Stats')).toBeChecked();
@@ -105,8 +124,39 @@ describe('YouHub on a phone', () => {
   });
 });
 
+describe('YouHub Household (Phase 8b-1)', () => {
+  it('is the sixth segment, between Settings and Account, embedded under the large title', async () => {
+    await mount({ section: 'household' });
+    const labels = screen.getAllByRole('radio').map((r) => r.props.accessibilityLabel);
+    expect(labels).toEqual(['Stats', 'Year', 'Journal', 'Settings', 'Household', 'Account']);
+    expect(screen.getByLabelText('Household')).toBeChecked();
+    expect(screen.getByText('household-section embedded=true')).toBeTruthy();
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'Household' });
+  });
+
+  it("opens from the phone's Settings segment as the hub's own segment", async () => {
+    await mount({ section: 'settings' });
+    await fireEvent.press(screen.getByTestId('settings-open-household'));
+    expect(mockSetParams).toHaveBeenLastCalledWith({ section: 'household', tab: undefined });
+  });
+
+  it('is not offered on tablet or desktop, where it is a page; an old link still renders', async () => {
+    mockLayout = 'desktop';
+    await mount({ section: 'household' });
+    const sections = useSubNav.getState().slots['(me)']?.sections;
+    expect(sections?.options.map((o) => o.value)).not.toContain('household');
+    expect(screen.getByText('household-section embedded=false')).toBeTruthy();
+  });
+
+  it('leaves the wide Settings to its own Household link (the pushed page)', async () => {
+    mockLayout = 'tablet';
+    await mount({ section: 'settings' });
+    expect(screen.queryByTestId('settings-open-household')).toBeNull();
+  });
+});
+
 describe('YouHub scrolling', () => {
-  it.each(['stats', 'year', 'account'])(
+  it.each(['stats', 'year', 'household', 'account'])(
     "insets the %s section's scroller for the iOS tab bar itself",
     async (section) => {
       // The scroller sits under the segmented control, where react-native-screens'

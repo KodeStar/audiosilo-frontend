@@ -15,6 +15,7 @@ import {
 
 import { type MergedBook, useAllProgressAll, useSourceLabeller } from '@/api/hooks';
 import { useApi, useApis } from '@/api/provider';
+import { openHousehold } from '@/components/household/open-household';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { Highlighted } from '@/components/search/highlighted';
 import { NameToken } from '@/components/search/name-token';
@@ -126,14 +127,14 @@ function useActionItems(): PaletteItem[] {
 }
 
 /** Go to (`buildGoToItems`): the top bar's destinations (Downloads only where this
- * browser can keep books), You's sections, the Journal and Settings. */
+ * browser can keep books), You's sections, the Journal, Settings and Household. */
 function useGoToItems(): PaletteItem[] {
   const { t } = useTranslation();
   const { press } = useTabPress();
   const { openSettings, openYou } = useOpen();
   return buildGoToItems(
     TOP_BAR_TABS,
-    { tab: press, you: openYou, settings: () => openSettings() },
+    { tab: press, you: openYou, settings: () => openSettings(), household: () => openHousehold() },
     t,
   );
 }

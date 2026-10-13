@@ -10,10 +10,12 @@ jest.mock('@/lib/layout', () => ({
   useLayout: () => mockLayout,
 }));
 const mockOpenBook = jest.fn();
-const mockOpenSettings = jest.fn();
+const mockOpenHousehold = jest.fn();
 jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openBook: (...a: unknown[]) => mockOpenBook(...a) }),
-  openSettings: (...a: unknown[]) => mockOpenSettings(...a),
+}));
+jest.mock('@/components/household/open-household', () => ({
+  openHousehold: (...a: unknown[]) => mockOpenHousehold(...a),
 }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 
@@ -67,7 +69,7 @@ beforeEach(() => {
   for (const k of Object.keys(mockHouse)) delete mockHouse[k];
   mockListening.mockReset();
   mockOpenBook.mockReset();
-  mockOpenSettings.mockReset();
+  mockOpenHousehold.mockReset();
   mockFocused = true;
   mockLayout = 'desktop';
 });
@@ -116,11 +118,11 @@ describe('HouseRow', () => {
     expect(mockOpenBook).toHaveBeenCalledWith('b', 7, 'Sci-Fi/Leviathan Wakes');
   });
 
-  it('links to the sharing settings', async () => {
+  it('links to the sharing settings, on the Household page (8b-1)', async () => {
     share('a', [row()]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
     await fireEvent.press(screen.getByRole('link', { name: 'Sharing settings' }));
-    expect(mockOpenSettings).toHaveBeenCalledWith('household');
+    expect(mockOpenHousehold).toHaveBeenCalledTimes(1);
   });
 
   it('is one section per server, and none where nobody is listening', async () => {

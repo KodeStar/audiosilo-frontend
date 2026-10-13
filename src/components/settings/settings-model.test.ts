@@ -1,4 +1,6 @@
 import {
+  HOUSEHOLD_LINK_GROUP,
+  isHouseholdSection,
   parseSettingsSection,
   sectionParam,
   settingsGroups,
@@ -17,11 +19,15 @@ describe('settingsGroups', () => {
       'downloads',
       'appearance',
       'language',
-      'household',
       'accounts',
       'support',
     ]);
     expect(new Set(panes).size).toBe(panes.length);
+  });
+
+  it('has no Household pane: the App group links to the Household page instead (8b-1)', () => {
+    expect(settingsGroups(true).flatMap((g) => g.panes)).not.toContain('household');
+    expect(HOUSEHOLD_LINK_GROUP).toBe('app');
   });
 
   it('drops Support where the build may not link to it (Apple)', () => {
@@ -39,7 +45,6 @@ describe('parseSettingsSection', () => {
 
   it('opens any pane by name', () => {
     expect(parseSettingsSection('sleep', true)).toBe('sleep');
-    expect(parseSettingsSection('household', true)).toBe('household');
     expect(parseSettingsSection(['language', 'sleep'], true)).toBe('language');
   });
 
@@ -48,6 +53,17 @@ describe('parseSettingsSection', () => {
     expect(parseSettingsSection('accessibility', true)).toBe('playback');
     expect(parseSettingsSection('support', false)).toBe('playback');
     expect(parseSettingsSection('support', true)).toBe('support');
+  });
+});
+
+describe('isHouseholdSection', () => {
+  it('knows the old Household pane link, which the route sends to the page', () => {
+    expect(isHouseholdSection('household')).toBe(true);
+    expect(isHouseholdSection(['household'])).toBe(true);
+    expect(isHouseholdSection('sleep')).toBe(false);
+    expect(isHouseholdSection(undefined)).toBe(false);
+    // Not a pane any more: Settings itself opens on the first one.
+    expect(parseSettingsSection('household', true)).toBe('playback');
   });
 });
 

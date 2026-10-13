@@ -5,12 +5,13 @@ import { View } from 'react-native';
 
 import type { HouseListeningRow } from '@/api/types';
 import { HomeSection } from '@/components/home/home-section';
+import { openHousehold } from '@/components/household/open-household';
 import { BookCover } from '@/components/library/book-cover';
 import { Portrait } from '@/components/series/portrait';
 import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
-import { openSettings, useOpen } from '@/lib/open';
+import { useOpen } from '@/lib/open';
 import { useToday } from '@/lib/use-day-label';
 import type { Connection } from '@/stores/session';
 
@@ -52,7 +53,7 @@ function HouseSection({ connection, active }: { connection: Connection; active: 
     <HomeSection
       title={t('house.title')}
       sub={t('house.sub', { server: connection.name })}
-      action={{ label: t('house.settingsLink'), onPress: () => openSettings('household') }}
+      action={{ label: t('house.settingsLink'), onPress: () => openHousehold() }}
     >
       <View
         testID={`house-row-${connection.id}`}

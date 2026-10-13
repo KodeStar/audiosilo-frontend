@@ -243,7 +243,12 @@
       "failedBody": "{{server}} non ha risposto. Non è cambiato nulla, riprova.",
       "gone": "{{name}} era già disconnesso",
       "goneBody": "L'elenco è aggiornato.",
-      "loadError": "Impossibile caricare i tuoi dispositivi da {{server}}."
+      "loadError": "Impossibile caricare i tuoi dispositivi da {{server}}.",
+      "alsoSignOut": "Disconnetti anche {{names}} su quel dispositivo",
+      "alsoSignOutBody": "Le persone della tua famiglia che hai collegato lì",
+      "names": "{{first}} e {{second}}",
+      "doneMembers_one": "Dovrà accedere di nuovo per raggiungere {{server}}. È stata disconnessa anche {{count}} persona della tua famiglia.",
+      "doneMembers_other": "Dovrà accedere di nuovo per raggiungere {{server}}. Sono state disconnesse anche {{count}} persone della tua famiglia."
     },
     "danger": {
       "title": "Esci da {{server}}",
@@ -1457,14 +1462,16 @@
       "year": "Anno",
       "journal": "Diario",
       "settings": "Impostazioni",
-      "account": "Account"
+      "account": "Account",
+      "household": "Famiglia"
     },
     "titles": {
       "stats": "Il tuo ascolto",
       "year": "Il tuo anno di ascolto",
       "journal": "Diario",
       "settings": "Impostazioni",
-      "account": "Account"
+      "account": "Account",
+      "household": "Famiglia"
     }
   },
   "ui": {
@@ -2235,6 +2242,151 @@
       "askAtLaunch": "Chiedi chi ascolta all'apertura dell'app",
       "askAtLaunchBody": "Con due o più persone su questo dispositivo",
       "noSharing": "Nessuno dei tuoi server lo offre ancora."
+    }
+  },
+  "household": {
+    "title": "Famiglia",
+    "manage": "Gestisci la famiglia",
+    "paletteHint": "Le persone su questo dispositivo e la tua famiglia",
+    "settingsLink": {
+      "body": "Persone su questo dispositivo, modalità bambini, le persone che hai aggiunto e condivisione",
+      "hint": "Apre la pagina Famiglia"
+    },
+    "device": {
+      "title": "Su questo dispositivo",
+      "signInExisting": "Fai accedere qualcuno che ha già un account"
+    },
+    "members": {
+      "title": "La tua famiglia",
+      "titleOn": "La tua famiglia su {{server}}",
+      "sub": "Le persone che hai aggiunto. Scegli tu cosa può ascoltare ciascuna.",
+      "empty": "Aggiungi un bambino o un adulto. Ogni persona ha il proprio account e il proprio punto in ogni libro, senza email né invito.",
+      "loadFailed": "Impossibile caricare la tua famiglia da {{server}}.",
+      "add": "Aggiungi qualcuno alla tua famiglia",
+      "count_one": "{{count}} su {{max}} aggiunta",
+      "count_other": "{{count}} su {{max}} aggiunte",
+      "reason": {
+        "feature_off": "L'amministratore del tuo server ha disattivato l'aggiunta di persone.",
+        "not_allowed": "L'amministratore del tuo server non permette a questo account di aggiungere persone.",
+        "member": "Solo la persona che gestisce il tuo account può aggiungere persone.",
+        "demo": "Gli account demo non possono aggiungere persone.",
+        "at_cap": "Hai aggiunto il numero massimo di persone che questo server consente ({{max}})."
+      }
+    },
+    "kind": {
+      "kid": "Bambino o bambina",
+      "grownup": "Adulto"
+    },
+    "access": {
+      "title": "Cosa può ascoltare?",
+      "all": "Tutto quello che posso ascoltare io",
+      "allBody": "Tutto quello che puoi ascoltare su {{server}}, ora e in futuro.",
+      "collections": "Solo le raccolte che condivido",
+      "collectionsBody": "Solo i libri delle raccolte che condividi con questa persona.",
+      "pickLabel": "Le tue raccolte da condividere",
+      "none": "Non hai ancora raccolte. Creane una qui.",
+      "noneChosen": "Niente selezionato: non avrà niente da ascoltare finché non condividi una raccolta.",
+      "create": "Crea i libri di {{name}}",
+      "createUnnamed": "Crea i suoi libri",
+      "booksName": "I libri di {{name}}",
+      "created": "Creata {{name}}",
+      "collectionsOff": "Questo server non offre raccolte, quindi per ora non c'è niente da condividere."
+    },
+    "add": {
+      "title": "Aggiungi qualcuno alla tua famiglia",
+      "body": "Avrà il proprio account su {{server}}, con il proprio punto in ogni libro.",
+      "name": "Nome",
+      "nameError": "Usa un nome di 40 caratteri al massimo.",
+      "kids": "Account bambini",
+      "kidsBody": "Nessuna password. Collegato subito su questo dispositivo, in modalità bambini.",
+      "submitKid": "Aggiungi e collega qui",
+      "submitGrownUp": "Aggiungi e mostra il codice"
+    },
+    "errors": {
+      "limit": "Hai aggiunto il numero massimo di persone che questo server consente.",
+      "invalid": "{{server}} non ha accettato quel nome o quelle raccolte. Controllali e riprova.",
+      "forbidden": "L'amministratore del tuo server non permette a questo account di aggiungere persone.",
+      "failed": "{{server}} non ha risposto, quindi non è cambiato niente. Riprova."
+    },
+    "kid": {
+      "title": "{{name}} fa parte della famiglia",
+      "body": "L'accesso di {{name}} è attivo su questo dispositivo, in modalità bambini. Scegli {{name}} in Chi ascolta? quando è il suo turno.",
+      "pinOffer": "Imposta un PIN per {{owner}}, così {{name}} non può passare al tuo profilo senza.",
+      "notNow": "Non ora"
+    },
+    "here": {
+      "done": "L'accesso di {{name}} è attivo anche su questo dispositivo.",
+      "already": "L'accesso di {{name}} è già attivo su questo dispositivo.",
+      "failed": "L'account di {{name}} è pronto, ma questo dispositivo non è riuscito a collegarlo. Usa Accedi su questo dispositivo nella sua scheda.",
+      "failedRetry": "Impossibile collegare {{name}} su questo dispositivo. Riprova.",
+      "failedCard": "Usa Accedi su questo dispositivo nella sua scheda."
+    },
+    "qr": {
+      "title": "Mostra questo codice a {{name}}",
+      "lead": "Ora {{name}} ha un account su {{server}}. Per ascoltare sul proprio dispositivo basta scansionarlo con l'app AudioSilo.",
+      "body": "Scansionalo nell'app AudioSilo o apri il link. Funziona una sola volta.",
+      "a11y": "Codice di associazione per {{name}} su {{server}}",
+      "failed": "Impossibile creare un codice. {{server}} non ha risposto, riprova.",
+      "alsoHerePhone": "Userà anche questo telefono",
+      "alsoHereDevice": "Userà anche questo dispositivo"
+    },
+    "card": {
+      "who": "{{kind}} · {{username}}",
+      "onThisDevice": "Su questo dispositivo",
+      "access": "Cosa può ascoltare",
+      "everything": "Tutto quello che puoi ascoltare tu",
+      "onlyCollections": "Solo le raccolte che condividi:",
+      "noCollections": "Solo le raccolte che condividi, e non ne hai ancora condivisa nessuna.",
+      "collection": "{{name}} ({{count}})",
+      "openCollection": "Apri {{name}}",
+      "change": "Cambia",
+      "changeA11y": "Cambia cosa può ascoltare {{name}}",
+      "accessTitle": "Cosa può ascoltare {{name}}?",
+      "kid": "Account bambini",
+      "kidBody": "Nessuna password né chiavi API. L'accesso lo fai tu.",
+      "kidA11y": "Account bambini per {{name}}",
+      "kidConfirm": {
+        "title": "Rendere quello di {{name}} un account bambini?",
+        "body": "La password e le chiavi API verranno rimosse. I dispositivi su cui l'account è collegato restano collegati.",
+        "confirm": "Rendilo un account bambini"
+      },
+      "devices": "I suoi dispositivi",
+      "devicesFailed": "Impossibile caricare i dispositivi di {{name}}.",
+      "noDevices": "{{name}} non ha ancora effettuato l'accesso da nessuna parte.",
+      "setUp": "Configura il suo dispositivo",
+      "setUpA11y": "Mostra un codice per configurare il dispositivo di {{name}}",
+      "signInHere": "Accedi su questo dispositivo",
+      "signInHereA11y": "Fai accedere {{name}} su questo dispositivo",
+      "renameBody": "Il nome che vedono tutti su {{server}}. Il nome utente resta lo stesso.",
+      "failed": "Impossibile modificare l'account di {{name}}"
+    },
+    "devices": {
+      "signOutA11y": "Disconnetti {{name}} da {{device}}",
+      "confirmTitle": "Disconnettere {{name}} da {{device}}?",
+      "confirmBody": "{{name}} non potrà ascoltare su {{device}} finché non lo configuri di nuovo.",
+      "done": "Sessione di {{name}} chiusa su {{device}}"
+    },
+    "delete": {
+      "label": "Elimina il suo account",
+      "hint": "Elimina l'account di {{name}} su {{server}}, con la cronologia di ascolto.",
+      "action": "Elimina il suo account",
+      "a11y": "Elimina l'account di {{name}}",
+      "title": "Eliminare l'account di {{name}}?",
+      "body": "Verrà eliminato l'account di {{name}} su {{server}}, con cronologia di ascolto, segnalibri e note. Non si può annullare.",
+      "continue": "Continua",
+      "typedTitle": "Scrivi {{name}} per eliminare l'account",
+      "typedBody": "Anche la cronologia di ascolto viene eliminata. Non si può annullare.",
+      "alsoHere": "{{name}} resta su questo dispositivo come persona finché non la rimuovi da qui.",
+      "field": "Scrivi {{name}}",
+      "confirm": "Elimina account",
+      "done": "Account di {{name}} eliminato",
+      "failed": "Impossibile eliminare l'account di {{name}}"
+    },
+    "pin": {
+      "already": "{{name}} ha già un PIN su questo dispositivo."
+    },
+    "share": {
+      "member": "{{name}} può ascoltare tutto ciò che c'è in questa raccolta."
     }
   }
 }

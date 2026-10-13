@@ -229,8 +229,8 @@ describe('CommandPalette', () => {
     expect(screen.getByLabelText('Go to')).toBeTruthy();
     expect(screen.getByText('Journal')).toBeTruthy();
     // Five actions, one book in progress, three destinations, Your listening, Year in
-    // listening, the Journal and Settings.
-    expect(screen.getByText('13 results · Hearthside')).toBeTruthy();
+    // listening, the Journal, Settings and Household.
+    expect(screen.getByText('14 results · Hearthside')).toBeTruthy();
   });
 
   it('searches books, moves with the arrows and opens the active one with Enter', async () => {
@@ -340,6 +340,12 @@ describe('CommandPalette', () => {
     await fireEvent.changeText(screen.getByTestId('palette-input'), 'settings');
     await fireEvent.press(screen.getByText('Settings'));
     expect(mockRouter.push).toHaveBeenCalledWith('/settings');
+
+    // Household (8b-1): a page pushed on the current tab too.
+    await act(async () => usePalette.getState().openPalette());
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'household');
+    await fireEvent.press(screen.getByText('Household'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/household');
   });
 
   it('says so when nothing matches, and offers recent searches on an empty query', async () => {

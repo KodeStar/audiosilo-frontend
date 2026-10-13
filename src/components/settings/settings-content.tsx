@@ -4,6 +4,7 @@ import { Platform, type ScrollView, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { useConnectionRemoval } from '@/components/account/connections-section';
+import { openHousehold } from '@/components/household/open-household';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -15,6 +16,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
+  HOUSEHOLD_LINK_GROUP,
   parseSettingsSection,
   type SettingsGroup,
   type SettingsPane,
@@ -29,10 +31,14 @@ const PANE_ICON: Record<SettingsPane, IconName> = {
   downloads: 'download',
   appearance: 'sun',
   language: 'globe',
-  household: 'users',
   accounts: 'server',
   support: 'heart',
 };
+
+/** The Household page's link: where its pane was (`HOUSEHOLD_LINK_GROUP`), by the same
+ * name (Phase 8b-1). */
+const HOUSEHOLD_LABEL = 'settings.sections.household' as const;
+const HOUSEHOLD_ICON: IconName = 'users';
 
 /** A pane's name (the section nav's item, the pane's heading). */
 const paneKey = (pane: SettingsPane) => `settings.sections.${pane}` as const;
@@ -41,8 +47,8 @@ const groupKey = (group: SettingsGroup['key']) => `settings.groups.${group}` as 
 /**
  * Settings (STYLEGUIDE section 2, the Stacks prototype's `Settings()`): every app setting,
  * each in exactly one pane, grouped Listening (Playback, Sleep, Up next and downloads), App
- * (Appearance, Language, Household and sharing) and Servers (Accounts and devices,
- * Support), then the version. Laid out by its MEASURED width (`settingsLayout`): from 720
+ * (Appearance, Language, then a link to the Household page) and Servers (Accounts and
+ * devices, Support), then the version. Laid out by its MEASURED width (`settingsLayout`): from 720
  * a grouped section nav beside one pane's card, the pane named by `section`; narrower,
  * every pane stacked under its group's heading, scrolled to `section` when it names one.
  *
@@ -55,6 +61,7 @@ export function SettingsContent({
   section,
   onSectionChange,
   embedded = false,
+  onOpenHousehold = openHousehold,
 }: {
   /** The pane to show (`/settings?section=`; `preferences`, `accounts` or a pane name). */
   section?: string | string[];
@@ -62,6 +69,8 @@ export function SettingsContent({
   onSectionChange?: (pane: SettingsPane) => void;
   /** Inside the You hub: no page heading of its own. */
   embedded?: boolean;
+  /** Opens the Household page (the phone hub switches to its Household segment). */
+  onOpenHousehold?: () => void;
 }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
@@ -107,7 +116,12 @@ export function SettingsContent({
           {heading}
           <View className="flex-row items-start gap-8">
             <View className="w-[220px] gap-4">
-              <SectionNav groups={groups} pane={pane} onChoose={choose} />
+              <SectionNav
+                groups={groups}
+                pane={pane}
+                onChoose={choose}
+                onOpenHousehold={onOpenHousehold}
+              />
               {version}
             </View>
             <View className="min-w-0 max-w-[760px] flex-1 gap-3.5" testID="settings-pane">
@@ -125,6 +139,7 @@ export function SettingsContent({
           heading={heading}
           footer={version}
           onRemoveConnection={removal.onRemove}
+          onOpenHousehold={onOpenHousehold}
         />
       )}
       {removal.dialog}
@@ -132,15 +147,25 @@ export function SettingsContent({
   );
 }
 
-/** The wide page's section nav: the groups' names over their panes, the shown one marked. */
+const navItemClass = (current: boolean) =>
+  cn(
+    'min-h-[44px] flex-row items-center gap-3 rounded-control border px-3',
+    current ? 'border-border bg-card' : 'border-transparent active:bg-accent',
+    Platform.select({ web: cn(FOCUS_RING_CLASS, !current && 'hover:bg-accent') }),
+  );
+
+/** The wide page's section nav: the groups' names over their panes, the shown one marked;
+ * the App group ends with the Household page's link. */
 function SectionNav({
   groups,
   pane,
   onChoose,
+  onOpenHousehold,
 }: {
   groups: readonly SettingsGroup[];
   pane: SettingsPane;
   onChoose: (pane: SettingsPane) => void;
+  onOpenHousehold: () => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
@@ -167,11 +192,7 @@ function SectionNav({
                 accessibilityLabel={t(paneKey(p))}
                 accessibilityState={{ selected: current }}
                 aria-current={current ? 'page' : undefined}
-                className={cn(
-                  'min-h-[44px] flex-row items-center gap-3 rounded-control border px-3',
-                  current ? 'border-border bg-card' : 'border-transparent active:bg-accent',
-                  Platform.select({ web: cn(FOCUS_RING_CLASS, !current && 'hover:bg-accent') }),
-                )}
+                className={navItemClass(current)}
               >
                 <Icon
                   name={PANE_ICON[p]}
@@ -190,8 +211,54 @@ function SectionNav({
               </AnimatedPressable>
             );
           })}
+          {g.key === HOUSEHOLD_LINK_GROUP ? (
+            <AnimatedPressable
+              testID="settings-nav-household"
+              onPress={onOpenHousehold}
+              accessibilityRole="button"
+              accessibilityLabel={t(HOUSEHOLD_LABEL)}
+              accessibilityHint={t('household.settingsLink.hint')}
+              className={navItemClass(false)}
+            >
+              <Icon name={HOUSEHOLD_ICON} size={16} color={themed.mutedForeground} />
+              <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={1}>
+                {t(HOUSEHOLD_LABEL)}
+              </Text>
+              <Icon name="chevron-right" size={14} color={themed.mutedForeground} />
+            </AnimatedPressable>
+          ) : null}
         </Fragment>
       ))}
+    </View>
+  );
+}
+
+/** The narrow page's Household section: one row that opens the Household page. */
+function HouseholdLinkCard({ onOpen }: { onOpen: () => void }) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  return (
+    <View className="gap-2.5" testID="settings-section-household">
+      <Text variant="title" accessibilityRole="header">
+        {t(HOUSEHOLD_LABEL)}
+      </Text>
+      <AnimatedPressable
+        testID="settings-household-link"
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={t(HOUSEHOLD_LABEL)}
+        accessibilityHint={t('household.settingsLink.hint')}
+        className={cn(
+          'min-h-[56px] flex-row items-center gap-3 rounded-card border border-border bg-card px-4 py-3 active:bg-accent',
+          Platform.select({ web: cn(FOCUS_RING_CLASS, 'hover:bg-accent') }),
+        )}
+      >
+        <Icon name={HOUSEHOLD_ICON} size={18} color={themed.mutedForeground} />
+        <Text variant="muted" className="flex-1">
+          {t('household.settingsLink.body')}
+        </Text>
+        <Icon name="chevron-right" size={16} color={themed.mutedForeground} />
+      </AnimatedPressable>
     </View>
   );
 }
@@ -204,12 +271,14 @@ function StackedPanes({
   heading,
   footer,
   onRemoveConnection,
+  onOpenHousehold,
 }: {
   groups: readonly SettingsGroup[];
   scrollTo: SettingsPane;
   heading: ReactNode;
   footer: ReactNode;
   onRemoveConnection: Parameters<typeof SettingsPaneBody>[0]['onRemoveConnection'];
+  onOpenHousehold: () => void;
 }) {
   const { t } = useTranslation();
   const reduced = useReducedMotion();
@@ -242,6 +311,7 @@ function StackedPanes({
               <SettingsPaneBody pane={p} onRemoveConnection={onRemoveConnection} />
             </View>
           ))}
+          {g.key === HOUSEHOLD_LINK_GROUP ? <HouseholdLinkCard onOpen={onOpenHousehold} /> : null}
         </Fragment>
       ))}
       <View className="mt-4">{footer}</View>

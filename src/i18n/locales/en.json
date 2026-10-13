@@ -243,7 +243,12 @@
       "failedBody": "{{server}} didn't answer. Nothing changed, so try again.",
       "gone": "{{name}} was already signed out",
       "goneBody": "The list is up to date now.",
-      "loadError": "Couldn't load your devices from {{server}}."
+      "loadError": "Couldn't load your devices from {{server}}.",
+      "alsoSignOut": "Also sign out {{names}} on that device",
+      "alsoSignOutBody": "People in your household you signed in there",
+      "names": "{{first}} and {{second}}",
+      "doneMembers_one": "It needs to sign in again to reach {{server}}. {{count}} person in your household was signed out with it.",
+      "doneMembers_other": "It needs to sign in again to reach {{server}}. {{count}} people in your household were signed out with it."
     },
     "danger": {
       "title": "Sign out of {{server}}",
@@ -1457,14 +1462,16 @@
       "year": "Year",
       "journal": "Journal",
       "settings": "Settings",
-      "account": "Account"
+      "account": "Account",
+      "household": "Household"
     },
     "titles": {
       "stats": "Your listening",
       "year": "Year in listening",
       "journal": "Journal",
       "settings": "Settings",
-      "account": "Account"
+      "account": "Account",
+      "household": "Household"
     }
   },
   "ui": {
@@ -2235,6 +2242,151 @@
       "askAtLaunch": "Ask who's listening when the app opens",
       "askAtLaunchBody": "With two or more people on this device",
       "noSharing": "None of your servers offers this yet."
+    }
+  },
+  "household": {
+    "title": "Household",
+    "manage": "Manage household",
+    "paletteHint": "People on this device and your household",
+    "settingsLink": {
+      "body": "People on this device, kids mode, the people you've added and sharing",
+      "hint": "Opens the Household page"
+    },
+    "device": {
+      "title": "On this device",
+      "signInExisting": "Sign in someone who already has an account"
+    },
+    "members": {
+      "title": "Your household",
+      "titleOn": "Your household on {{server}}",
+      "sub": "People you've added. You choose what each of them can listen to.",
+      "empty": "Add a kid or a grown-up. They get their own account and their own place in every book, with no email or invite.",
+      "loadFailed": "Couldn't load your household from {{server}}.",
+      "add": "Add someone to your household",
+      "count_one": "{{count}} of {{max}} added",
+      "count_other": "{{count}} of {{max}} added",
+      "reason": {
+        "feature_off": "Your server's admin has turned off adding people.",
+        "not_allowed": "Your server's admin hasn't let this account add people.",
+        "member": "Only the person who manages your account can add people.",
+        "demo": "Demo accounts can't add people.",
+        "at_cap": "You've added the most people this server allows ({{max}})."
+      }
+    },
+    "kind": {
+      "kid": "Kid",
+      "grownup": "Grown-up"
+    },
+    "access": {
+      "title": "What can they listen to?",
+      "all": "Everything I can listen to",
+      "allBody": "Whatever you can listen to on {{server}}, now and later.",
+      "collections": "Only collections I share",
+      "collectionsBody": "Just the books in the collections you share with them.",
+      "pickLabel": "Your collections to share",
+      "none": "You have no collections yet. Create one for them here.",
+      "noneChosen": "Nothing ticked: they'll have nothing to listen to until you share a collection.",
+      "create": "Create {{name}}'s books",
+      "createUnnamed": "Create their books",
+      "booksName": "{{name}}'s books",
+      "created": "Created {{name}}",
+      "collectionsOff": "This server doesn't offer collections, so there's nothing to share yet."
+    },
+    "add": {
+      "title": "Add someone to your household",
+      "body": "They get their own account on {{server}}, with their own place in every book.",
+      "name": "Name",
+      "nameError": "Use a name of up to 40 characters.",
+      "kids": "Kids account",
+      "kidsBody": "No password. Signed in on this device straight away, in kids mode.",
+      "submitKid": "Add and sign in here",
+      "submitGrownUp": "Add and show their code"
+    },
+    "errors": {
+      "limit": "You've added the most people this server allows.",
+      "invalid": "{{server}} didn't accept that name or those collections. Check them and try again.",
+      "forbidden": "Your server's admin doesn't let this account add people.",
+      "failed": "{{server}} didn't answer, so nothing changed. Try again."
+    },
+    "kid": {
+      "title": "{{name}} is added",
+      "body": "{{name}} is signed in on this device, in kids mode. Choose them in Who's listening? when it's their turn.",
+      "pinOffer": "Set a PIN for {{owner}}, so {{name}} can't switch to you without it.",
+      "notNow": "Not now"
+    },
+    "here": {
+      "done": "{{name}} is signed in on this device too.",
+      "already": "{{name}} is already signed in on this device.",
+      "failed": "{{name}}'s account is ready, but this device couldn't sign them in. Use Sign in on this device on their card.",
+      "failedRetry": "Couldn't sign {{name}} in on this device. Try again.",
+      "failedCard": "Use Sign in on this device on their card."
+    },
+    "qr": {
+      "title": "Show {{name}} this code",
+      "lead": "{{name}} has an account on {{server}}. To listen on their own device, they scan this with the AudioSilo app.",
+      "body": "Scan it in the AudioSilo app, or open the link. It works once.",
+      "a11y": "Pairing code for {{name}} on {{server}}",
+      "failed": "Couldn't make a code. {{server}} didn't answer, so try again.",
+      "alsoHerePhone": "They'll also use this phone",
+      "alsoHereDevice": "They'll also use this device"
+    },
+    "card": {
+      "who": "{{kind}} · {{username}}",
+      "onThisDevice": "On this device",
+      "access": "What they can listen to",
+      "everything": "Everything you can listen to",
+      "onlyCollections": "Only the collections you share:",
+      "noCollections": "Only collections you share, and none is shared yet.",
+      "collection": "{{name}} ({{count}})",
+      "openCollection": "Open {{name}}",
+      "change": "Change",
+      "changeA11y": "Change what {{name}} can listen to",
+      "accessTitle": "What can {{name}} listen to?",
+      "kid": "Kids account",
+      "kidBody": "No password or API keys. You sign them in.",
+      "kidA11y": "Kids account for {{name}}",
+      "kidConfirm": {
+        "title": "Make {{name}} a kids account?",
+        "body": "Their password and API keys will be removed. Devices they're signed in on stay signed in.",
+        "confirm": "Make it a kids account"
+      },
+      "devices": "Their devices",
+      "devicesFailed": "Couldn't load {{name}}'s devices.",
+      "noDevices": "{{name}} isn't signed in anywhere yet.",
+      "setUp": "Set up their own device",
+      "setUpA11y": "Show a code to set up {{name}}'s own device",
+      "signInHere": "Sign in on this device",
+      "signInHereA11y": "Sign {{name}} in on this device",
+      "renameBody": "The name everyone on {{server}} sees. Their username stays the same.",
+      "failed": "Couldn't change {{name}}'s account"
+    },
+    "devices": {
+      "signOutA11y": "Sign {{name}} out of {{device}}",
+      "confirmTitle": "Sign {{name}} out of {{device}}?",
+      "confirmBody": "{{name}} can't listen on {{device}} until you set it up again.",
+      "done": "Signed {{name}} out of {{device}}"
+    },
+    "delete": {
+      "label": "Delete their account",
+      "hint": "Deletes {{name}}'s account on {{server}}, with their listening history.",
+      "action": "Delete their account",
+      "a11y": "Delete {{name}}'s account",
+      "title": "Delete {{name}}'s account?",
+      "body": "This deletes {{name}}'s account on {{server}}, with their listening history, bookmarks and notes. It can't be undone.",
+      "continue": "Continue",
+      "typedTitle": "Type {{name}} to delete their account",
+      "typedBody": "Their listening history goes with it. This can't be undone.",
+      "alsoHere": "{{name}} stays on this device as a person until you remove them from it.",
+      "field": "Type {{name}}",
+      "confirm": "Delete account",
+      "done": "Deleted {{name}}'s account",
+      "failed": "Couldn't delete {{name}}'s account"
+    },
+    "pin": {
+      "already": "{{name}} already has a PIN on this device."
+    },
+    "share": {
+      "member": "{{name}} can listen to everything in this collection."
     }
   }
 }

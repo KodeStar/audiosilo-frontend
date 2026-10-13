@@ -57,7 +57,7 @@ import { checkPin, setPin } from '@/lib/profile-pin';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
-import { HouseholdPane } from './household-pane';
+import { HouseholdPage } from '@/components/household/household-page';
 /* eslint-enable import/first */
 
 const conn = (id: string, name: string, username: string) =>
@@ -79,7 +79,7 @@ async function mount() {
   ]);
   await mountWithPortal(
     <QueryClientProvider client={client}>
-      <HouseholdPane />
+      <HouseholdPage />
     </QueryClientProvider>,
   );
 }
@@ -111,7 +111,24 @@ beforeEach(async () => {
 
 const leo = () => useProfiles.getState().profiles.find((p) => p.id === 'leo');
 
-describe('Settings > Household', () => {
+describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
+  it('heads the page, and signs in someone who already has an account through connect', async () => {
+    await mount();
+    expect(screen.getByRole('header', { name: 'Household' })).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'On this device' })).toBeTruthy();
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Sign in someone who already has an account' }),
+    );
+    expect(mockRouter.push).toHaveBeenCalledWith('/connect?add=1&profile=new');
+  });
+
+  it('has no members section on a server without household_members (old servers)', async () => {
+    mockCaps['a.1'] = { household: true };
+    await mount();
+    expect(screen.queryByTestId('household-members')).toBeNull();
+    expect(screen.queryByText('Add someone to your household')).toBeNull();
+  });
+
   it('lists the people on this device, the one listening marked', async () => {
     await mount();
     expect(screen.getByTestId('household-person-chris')).toBeTruthy();

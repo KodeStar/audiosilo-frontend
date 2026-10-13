@@ -243,7 +243,12 @@
       "failedBody": "{{server}} hat nicht geantwortet. Es hat sich nichts geändert, versuch es noch einmal.",
       "gone": "{{name}} war schon abgemeldet",
       "goneBody": "Die Liste ist jetzt aktuell.",
-      "loadError": "Deine Geräte konnten nicht von {{server}} geladen werden."
+      "loadError": "Deine Geräte konnten nicht von {{server}} geladen werden.",
+      "alsoSignOut": "Auch {{names}} auf diesem Gerät abmelden",
+      "alsoSignOutBody": "Personen aus deinem Haushalt, die du dort angemeldet hast",
+      "names": "{{first}} und {{second}}",
+      "doneMembers_one": "Es muss sich neu anmelden, um {{server}} zu erreichen. {{count}} Person aus deinem Haushalt wurde mit abgemeldet.",
+      "doneMembers_other": "Es muss sich neu anmelden, um {{server}} zu erreichen. {{count}} Personen aus deinem Haushalt wurden mit abgemeldet."
     },
     "danger": {
       "title": "Von {{server}} abmelden",
@@ -1457,14 +1462,16 @@
       "year": "Jahr",
       "journal": "Journal",
       "settings": "Einstellungen",
-      "account": "Konto"
+      "account": "Konto",
+      "household": "Haushalt"
     },
     "titles": {
       "stats": "Dein Hören",
       "year": "Dein Hörjahr",
       "journal": "Journal",
       "settings": "Einstellungen",
-      "account": "Konto"
+      "account": "Konto",
+      "household": "Haushalt"
     }
   },
   "ui": {
@@ -2235,6 +2242,151 @@
       "askAtLaunch": "Beim Öffnen der App fragen, wer zuhört",
       "askAtLaunchBody": "Wenn zwei oder mehr Personen auf diesem Gerät sind",
       "noSharing": "Noch keiner deiner Server bietet das an."
+    }
+  },
+  "household": {
+    "title": "Haushalt",
+    "manage": "Haushalt verwalten",
+    "paletteHint": "Personen auf diesem Gerät und dein Haushalt",
+    "settingsLink": {
+      "body": "Personen auf diesem Gerät, Kindermodus, die Personen, die du hinzugefügt hast, und Teilen",
+      "hint": "Öffnet die Seite Haushalt"
+    },
+    "device": {
+      "title": "Auf diesem Gerät",
+      "signInExisting": "Jemanden mit eigenem Konto anmelden"
+    },
+    "members": {
+      "title": "Dein Haushalt",
+      "titleOn": "Dein Haushalt auf {{server}}",
+      "sub": "Personen, die du hinzugefügt hast. Du bestimmst, was sie jeweils hören können.",
+      "empty": "Füge ein Kind oder einen Erwachsenen hinzu. Sie bekommen ein eigenes Konto und ihre eigene Stelle in jedem Buch, ganz ohne E-Mail oder Einladung.",
+      "loadFailed": "Dein Haushalt konnte nicht von {{server}} geladen werden.",
+      "add": "Jemanden zum Haushalt hinzufügen",
+      "count_one": "{{count}} von {{max}} hinzugefügt",
+      "count_other": "{{count}} von {{max}} hinzugefügt",
+      "reason": {
+        "feature_off": "Die Admins deines Servers haben das Hinzufügen von Personen ausgeschaltet.",
+        "not_allowed": "Die Admins deines Servers erlauben diesem Konto nicht, Personen hinzuzufügen.",
+        "member": "Nur die Person, die dein Konto verwaltet, kann Personen hinzufügen.",
+        "demo": "Demokonten können keine Personen hinzufügen.",
+        "at_cap": "Du hast so viele Personen hinzugefügt, wie dieser Server erlaubt ({{max}})."
+      }
+    },
+    "kind": {
+      "kid": "Kind",
+      "grownup": "Erwachsen"
+    },
+    "access": {
+      "title": "Was dürfen sie hören?",
+      "all": "Alles, was ich hören kann",
+      "allBody": "Alles, was du auf {{server}} hören kannst, jetzt und später.",
+      "collections": "Nur Sammlungen, die ich teile",
+      "collectionsBody": "Nur die Bücher in den Sammlungen, die du mit ihnen teilst.",
+      "pickLabel": "Deine Sammlungen zum Teilen",
+      "none": "Du hast noch keine Sammlungen. Leg hier eine für sie an.",
+      "noneChosen": "Nichts ausgewählt: Sie haben nichts zu hören, bis du eine Sammlung teilst.",
+      "create": "Bücher für {{name}} anlegen",
+      "createUnnamed": "Bücher für sie anlegen",
+      "booksName": "Bücher für {{name}}",
+      "created": "{{name}} angelegt",
+      "collectionsOff": "Dieser Server bietet keine Sammlungen an, daher gibt es noch nichts zu teilen."
+    },
+    "add": {
+      "title": "Jemanden zum Haushalt hinzufügen",
+      "body": "Sie bekommen ein eigenes Konto auf {{server}}, mit ihrer eigenen Stelle in jedem Buch.",
+      "name": "Name",
+      "nameError": "Verwende einen Namen mit höchstens 40 Zeichen.",
+      "kids": "Kinderkonto",
+      "kidsBody": "Kein Passwort. Sofort auf diesem Gerät angemeldet, im Kindermodus.",
+      "submitKid": "Hinzufügen und hier anmelden",
+      "submitGrownUp": "Hinzufügen und Code zeigen"
+    },
+    "errors": {
+      "limit": "Du hast so viele Personen hinzugefügt, wie dieser Server erlaubt.",
+      "invalid": "{{server}} hat diesen Namen oder diese Sammlungen nicht angenommen. Prüfe sie und versuch es noch einmal.",
+      "forbidden": "Die Admins deines Servers erlauben diesem Konto nicht, Personen hinzuzufügen.",
+      "failed": "{{server}} hat nicht geantwortet, es hat sich also nichts geändert. Versuch es noch einmal."
+    },
+    "kid": {
+      "title": "{{name}} ist hinzugefügt",
+      "body": "{{name}} ist auf diesem Gerät im Kindermodus angemeldet. Wähle {{name}} unter Wer hört zu?, wenn es so weit ist.",
+      "pinOffer": "Lege eine PIN für {{owner}} fest, damit {{name}} nicht ohne sie zu dir wechseln kann.",
+      "notNow": "Nicht jetzt"
+    },
+    "here": {
+      "done": "{{name}} ist auch auf diesem Gerät angemeldet.",
+      "already": "{{name}} ist auf diesem Gerät schon angemeldet.",
+      "failed": "Das Konto von {{name}} ist bereit, aber dieses Gerät konnte {{name}} nicht anmelden. Nutze Auf diesem Gerät anmelden auf der Karte.",
+      "failedRetry": "{{name}} konnte auf diesem Gerät nicht angemeldet werden. Versuch es noch einmal.",
+      "failedCard": "Nutze Auf diesem Gerät anmelden auf der Karte."
+    },
+    "qr": {
+      "title": "Zeig {{name}} diesen Code",
+      "lead": "{{name}} hat jetzt ein Konto auf {{server}}. Um auf dem eigenen Gerät zu hören, scannt {{name}} ihn mit der AudioSilo-App.",
+      "body": "In der AudioSilo-App scannen oder den Link öffnen. Er funktioniert einmal.",
+      "a11y": "Kopplungscode für {{name}} auf {{server}}",
+      "failed": "Es konnte kein Code erstellt werden. {{server}} hat nicht geantwortet, versuch es noch einmal.",
+      "alsoHerePhone": "Nutzt auch dieses Handy",
+      "alsoHereDevice": "Nutzt auch dieses Gerät"
+    },
+    "card": {
+      "who": "{{kind}} · {{username}}",
+      "onThisDevice": "Auf diesem Gerät",
+      "access": "Was sie hören können",
+      "everything": "Alles, was du hören kannst",
+      "onlyCollections": "Nur die Sammlungen, die du teilst:",
+      "noCollections": "Nur Sammlungen, die du teilst, und noch keine ist geteilt.",
+      "collection": "{{name}} ({{count}})",
+      "openCollection": "{{name}} öffnen",
+      "change": "Ändern",
+      "changeA11y": "Ändern, was {{name}} hören kann",
+      "accessTitle": "Was darf {{name}} hören?",
+      "kid": "Kinderkonto",
+      "kidBody": "Kein Passwort und keine API-Schlüssel. Du meldest es an.",
+      "kidA11y": "Kinderkonto für {{name}}",
+      "kidConfirm": {
+        "title": "{{name}} zu einem Kinderkonto machen?",
+        "body": "Passwort und API-Schlüssel werden entfernt. Geräte, auf denen das Konto angemeldet ist, bleiben angemeldet.",
+        "confirm": "Zum Kinderkonto machen"
+      },
+      "devices": "Ihre Geräte",
+      "devicesFailed": "Die Geräte von {{name}} konnten nicht geladen werden.",
+      "noDevices": "{{name}} ist noch nirgends angemeldet.",
+      "setUp": "Eigenes Gerät einrichten",
+      "setUpA11y": "Einen Code zeigen, um das eigene Gerät von {{name}} einzurichten",
+      "signInHere": "Auf diesem Gerät anmelden",
+      "signInHereA11y": "{{name}} auf diesem Gerät anmelden",
+      "renameBody": "Der Name, den alle auf {{server}} sehen. Der Benutzername bleibt gleich.",
+      "failed": "Das Konto von {{name}} konnte nicht geändert werden"
+    },
+    "devices": {
+      "signOutA11y": "{{name}} von {{device}} abmelden",
+      "confirmTitle": "{{name}} von {{device}} abmelden?",
+      "confirmBody": "{{name}} kann auf {{device}} erst wieder hören, wenn du es neu einrichtest.",
+      "done": "{{name}} von {{device}} abgemeldet"
+    },
+    "delete": {
+      "label": "Konto löschen",
+      "hint": "Löscht das Konto von {{name}} auf {{server}}, mit dem Hörverlauf.",
+      "action": "Konto löschen",
+      "a11y": "Konto von {{name}} löschen",
+      "title": "Konto von {{name}} löschen?",
+      "body": "Damit wird das Konto von {{name}} auf {{server}} gelöscht, mit Hörverlauf, Lesezeichen und Notizen. Das lässt sich nicht rückgängig machen.",
+      "continue": "Weiter",
+      "typedTitle": "Gib {{name}} ein, um das Konto zu löschen",
+      "typedBody": "Der Hörverlauf wird mit gelöscht. Das lässt sich nicht rückgängig machen.",
+      "alsoHere": "{{name}} bleibt als Person auf diesem Gerät, bis du sie davon entfernst.",
+      "field": "{{name}} eingeben",
+      "confirm": "Konto löschen",
+      "done": "Konto von {{name}} gelöscht",
+      "failed": "Das Konto von {{name}} konnte nicht gelöscht werden"
+    },
+    "pin": {
+      "already": "{{name}} hat auf diesem Gerät schon eine PIN."
+    },
+    "share": {
+      "member": "{{name}} kann alles in dieser Sammlung hören."
     }
   }
 }

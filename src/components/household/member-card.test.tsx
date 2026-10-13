@@ -1,0 +1,323 @@
+import { fireEvent, screen } from '@testing-library/react-native';
+
+import { ApiError } from '@/api/client';
+import type { AuthSession, HouseholdMember, MyDevice, PairingPayload } from '@/api/types';
+import { mountWithPortal } from '@/testing/render-overlay';
+
+// The dialogs portal to the root host, which the app's ApiProvider wraps (its query
+// client); the tests' host has none, so the client is a stand-in.
+const mockInvalidate = jest.fn();
+jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual('@tanstack/react-query'),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
+}));
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
+jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
+const mockOpenCollection = jest.fn();
+jest.mock('@/lib/open', () => ({
+  useOpen: () => ({ openCollection: (...a: unknown[]) => mockOpenCollection(...a) }),
+}));
+const mockRemoveRequest = jest.fn();
+jest.mock('@/components/profiles/use-remove-person', () => ({
+  useRemovePerson: () => ({ request: (...a: unknown[]) => mockRemoveRequest(...a), dialog: null }),
+}));
+const mockAddHere = jest.fn();
+const mockSignedInHere = jest.fn();
+jest.mock('@/components/connect/add-member-here', () => {
+  class AddMemberHereError extends Error {
+    readonly code = 'already_here' as const;
+  }
+  return {
+    AddMemberHereError,
+    addMemberHere: (...a: unknown[]) => mockAddHere(...a),
+    memberSignedInHere: (...a: unknown[]) => mockSignedInHere(...a),
+  };
+});
+
+let mockDevices: { data?: MyDevice[]; isPending: boolean; isError: boolean; refetch: jest.Mock };
+const mockUpdate = jest.fn();
+const mockDelete = jest.fn();
+const mockRevoke = jest.fn();
+const mockPair = jest.fn();
+const mockSession = jest.fn();
+jest.mock('@/api/hooks', () => {
+  const actual = jest.requireActual('@/api/hooks');
+  const mutation = (fn: jest.Mock) => ({ mutateAsync: fn, isPending: false });
+  return {
+    CapabilityError: actual.CapabilityError,
+    qk: actual.qk,
+    useMemberDevices: () => mockDevices,
+    useUpdateMember: () => mutation(mockUpdate),
+    useDeleteMember: () => mutation(mockDelete),
+    useRevokeMemberDevice: () => mutation(mockRevoke),
+    useMemberPairing: () => mutation(mockPair),
+    useMemberSession: () => mutation(mockSession),
+    useCapability: () => true,
+    useCollections: () => ({
+      data: [
+        {
+          id: 4,
+          name: 'Bedtime',
+          owned: true,
+          item_count: 2,
+          owner: { id: 1, username: 'adam' },
+        },
+        {
+          id: 5,
+          name: 'Dinosaurs',
+          owned: true,
+          item_count: 7,
+          owner: { id: 1, username: 'adam' },
+        },
+      ],
+      isLoading: false,
+      error: null,
+    }),
+    useCreateCollection: () => mutation(jest.fn()),
+  };
+});
+
+/* eslint-disable import/first */
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
+import { type Connection, useSession } from '@/stores/session';
+
+import { MemberCard } from './member-card';
+/* eslint-enable import/first */
+
+const owner = {
+  id: 'a.1',
+  serverId: 'a',
+  name: 'Hearthside',
+  serverUrl: 'u',
+  token: 't',
+  user: { id: 1, username: 'adam' },
+} as unknown as Connection;
+
+const member = (over: Partial<HouseholdMember> = {}): HouseholdMember => ({
+  id: 12,
+  name: 'Evie',
+  username: 'evie',
+  kind: 'kid',
+  access: 'collections',
+  created_at: '2026-10-13T10:00:00.000Z',
+  collections: [{ id: 4, name: 'Bedtime', items: 2 }],
+  devices: 1,
+  last_listened_at: null,
+  ...over,
+});
+const device = (over: Partial<MyDevice> = {}): MyDevice => ({
+  id: 70,
+  kind: 'session',
+  name: 'Kitchen iPad',
+  client: { app: 'AudioSilo', version: '2.1.0', platform: 'ios' },
+  created_at: '2026-10-13T10:00:00Z',
+  last_seen: new Date().toISOString(),
+  last_ip: '',
+  current: false,
+  ...over,
+});
+const payload = { qr_png_data_uri: 'data:image/png;base64,AAAA', web_url: 'w' } as PairingPayload;
+
+const mount = (m: HouseholdMember = member()) =>
+  mountWithPortal(<MemberCard connection={owner} member={m} />);
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  resetProfilesForTests();
+  mockDevices = { data: [device()], isPending: false, isError: false, refetch: jest.fn() };
+  mockUpdate.mockImplementation(async ({ id, body }) => ({ ...member({ id }), ...body }));
+  mockDelete.mockResolvedValue(undefined);
+  mockRevoke.mockResolvedValue(undefined);
+  mockPair.mockResolvedValue(payload);
+  mockSession.mockResolvedValue({ token: 's', user: { id: 12, username: 'evie' } } as AuthSession);
+  mockAddHere.mockResolvedValue({ connectionId: 'a.12', profileId: 'p' });
+  mockSignedInHere.mockReturnValue(false);
+  useSession.setState({ connections: [owner] });
+  useProfiles.setState({
+    hydrated: true,
+    profiles: [{ id: 'adam', name: 'Adam', connectionIds: ['a.1'] }],
+    activeProfileId: 'adam',
+  });
+});
+
+describe('MemberCard', () => {
+  it('says who they are and what they can listen to, each collection opening its page', async () => {
+    await mount();
+    expect(screen.getByRole('header', { name: 'Evie' })).toBeTruthy();
+    expect(screen.getByText('Kid · evie')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Open Bedtime' }));
+    expect(mockOpenCollection).toHaveBeenCalledWith('a.1', 4);
+  });
+
+  it('says "Everything you can listen to" for an all member, and none shared yet', async () => {
+    await mount(member({ access: 'all', collections: undefined, kind: 'grownup' }));
+    expect(screen.getByText('Everything you can listen to')).toBeTruthy();
+    expect(screen.getByText('Grown-up · evie')).toBeTruthy();
+    await mount(member({ collections: [] }));
+    expect(screen.getByText('Only collections you share, and none is shared yet.')).toBeTruthy();
+  });
+
+  it('confirms before making a grown-up a kid, then changes the kind', async () => {
+    await mount(member({ kind: 'grownup', access: 'all', collections: undefined }));
+    await fireEvent(screen.getByTestId('member-kid-12'), 'checkedChange', true);
+    expect(screen.getByText('Make Evie a kids account?')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Their password and API keys will be removed. Devices they're signed in on stay signed in.",
+      ),
+    ).toBeTruthy();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Make it a kids account' }));
+    expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { kind: 'kid' } });
+  });
+
+  it('makes a kid a grown-up at once (nothing is removed)', async () => {
+    await mount();
+    await fireEvent(screen.getByTestId('member-kid-12'), 'checkedChange', false);
+    expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { kind: 'grownup' } });
+  });
+
+  it('says a refused change changed nothing', async () => {
+    mockUpdate.mockRejectedValue(new ApiError(500, 'x'));
+    await mount();
+    await fireEvent(screen.getByTestId('member-kid-12'), 'checkedChange', false);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: "Couldn't change Evie's account",
+      description: "Hearthside didn't answer, so nothing changed. Try again.",
+    });
+  });
+
+  it('changes what they can listen to: the collections as the full set', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    expect(screen.getByRole('radio', { name: /^Only collections I share/ })).toBeChecked();
+    expect(screen.getByTestId('pick-collection-4')).toBeChecked();
+    await fireEvent.press(screen.getByTestId('pick-collection-5'));
+    await fireEvent.press(screen.getByTestId('member-access-save'));
+    expect(mockUpdate).toHaveBeenCalledWith({
+      id: 12,
+      body: { access: 'collections', collection_ids: [4, 5] },
+    });
+    expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ['collections', 'a.1'] });
+  });
+
+  it('changes them to everything without sending collections', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change what Evie can listen to' }));
+    await fireEvent.press(screen.getByRole('radio', { name: /^Everything I can listen to/ }));
+    await fireEvent.press(screen.getByTestId('member-access-save'));
+    expect(mockUpdate).toHaveBeenCalledWith({
+      id: 12,
+      body: { access: 'all', collection_ids: undefined },
+    });
+  });
+
+  it('renames them on the server', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Rename Evie' }));
+    await fireEvent.changeText(screen.getByTestId('rename-field'), 'Evelyn ');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { name: 'Evelyn' } });
+  });
+
+  it('lists their devices and signs one out after a confirmation', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie out of Kitchen iPad' }));
+    expect(screen.getByText('Sign Evie out of Kitchen iPad?')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+    expect(mockRevoke).toHaveBeenCalledWith({ id: 12, deviceId: 70 });
+    expect(mockToast).toHaveBeenCalledWith({ title: 'Signed Evie out of Kitchen iPad' });
+  });
+
+  it('says when they are signed in nowhere, and shows loading and errors', async () => {
+    mockDevices = { data: [], isPending: false, isError: false, refetch: jest.fn() };
+    await mount();
+    expect(screen.getByText("Evie isn't signed in anywhere yet.")).toBeTruthy();
+    mockDevices = { isPending: true, isError: false, refetch: jest.fn() };
+    await mount();
+    expect(screen.getByTestId('member-devices-loading-12')).toBeTruthy();
+    mockDevices = { isPending: false, isError: true, refetch: jest.fn() };
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockDevices.refetch).toHaveBeenCalled();
+  });
+
+  it("shows their own device's pairing code", async () => {
+    await mount();
+    await fireEvent.press(
+      screen.getByRole('button', { name: "Show a code to set up Evie's own device" }),
+    );
+    expect(mockPair).toHaveBeenCalledWith(12);
+    expect(screen.getByText('Show Evie this code')).toBeTruthy();
+    expect(screen.getByRole('image', { name: 'Pairing code for Evie on Hearthside' })).toBeTruthy();
+  });
+
+  it('signs them in on this device, never minting a session when they are already here', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie in on this device' }));
+    expect(mockSignedInHere).toHaveBeenCalledWith('a', 12);
+    expect(mockSession).toHaveBeenCalledWith(12);
+    expect(mockAddHere).toHaveBeenCalledWith(expect.objectContaining({ token: 's' }), {
+      name: 'Evie',
+      kids: true,
+    });
+    expect(mockToast).toHaveBeenLastCalledWith({
+      title: 'Evie is signed in on this device too.',
+    });
+
+    jest.clearAllMocks();
+    mockSignedInHere.mockReturnValue(true);
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign Evie in on this device' }));
+    expect(mockSession).not.toHaveBeenCalled();
+    expect(mockToast).toHaveBeenLastCalledWith({
+      title: 'Evie is already signed in on this device.',
+    });
+  });
+
+  it('deletes their account only after two confirmations, the second by typing the name', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: "Delete Evie's account" }));
+    expect(screen.getByText("Delete Evie's account?")).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(screen.getByText('Type Evie to delete their account')).toBeTruthy();
+    expect(screen.getByTestId('member-delete-confirm')).toBeDisabled();
+    await fireEvent.changeText(screen.getByTestId('member-delete-field'), 'Evi');
+    expect(screen.getByTestId('member-delete-confirm')).toBeDisabled();
+    await fireEvent.changeText(screen.getByTestId('member-delete-field'), 'evie');
+    await fireEvent.press(screen.getByTestId('member-delete-confirm'));
+    expect(mockDelete).toHaveBeenCalledWith(12);
+    expect(mockToast).toHaveBeenCalledWith({ title: "Deleted Evie's account" });
+  });
+
+  it('never deletes when the first confirmation is cancelled', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: "Delete Evie's account" }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Type Evie to delete their account')).toBeNull();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('offers "Remove from this device" apart from deleting, only when they are here', async () => {
+    const { unmount } = await mount();
+    expect(screen.queryByTestId('member-remove-12')).toBeNull();
+    await unmount();
+    const here = { ...owner, id: 'a.12', user: { id: 12, username: 'evie' } } as Connection;
+    useSession.setState({ connections: [owner, here] });
+    useProfiles.setState({
+      profiles: [
+        { id: 'adam', name: 'Adam', connectionIds: ['a.1'] },
+        { id: 'evie', name: 'Evie', connectionIds: ['a.12'], kids: { bedtime: '19:30' } },
+      ],
+    });
+    await mount();
+    expect(screen.getByText('On this device')).toBeTruthy();
+    // Already here: no way to sign them in again.
+    expect(screen.queryByTestId('member-here-12')).toBeNull();
+    await fireEvent.press(screen.getByTestId('member-remove-12'));
+    expect(mockRemoveRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 'evie' }), 'Evie');
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+});

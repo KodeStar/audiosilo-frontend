@@ -8,7 +8,6 @@ import {
   useAutoDownloadModes,
 } from '@/components/downloads/rules-card';
 import { EffectsSettings } from '@/components/player/effects-settings';
-import { HouseholdPane } from '@/components/profiles/household-pane';
 import { ShakeSensitivityControl } from '@/components/player/sleep-timer-button';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -430,9 +429,6 @@ export function SettingsPaneBody({
       return <AppearancePane />;
     case 'language':
       return <LanguagePane />;
-    case 'household':
-      // Phase 8: the people on this device, kids mode and Listening in the house.
-      return <HouseholdPane />;
     case 'accounts':
       return <AccountsPane onRemove={onRemoveConnection} />;
     case 'support':

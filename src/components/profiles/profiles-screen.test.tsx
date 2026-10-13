@@ -16,6 +16,10 @@ jest.mock('expo-router', () => ({
   },
 }));
 jest.mock('@/lib/root-stack', () => ({ popTabToRoot: jest.fn() }));
+const mockOpenHousehold = jest.fn();
+jest.mock('@/components/household/open-household', () => ({
+  openHousehold: () => mockOpenHousehold(),
+}));
 jest.mock('@/playback/store', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/testing/player-store-mock').createPlayerStoreMock(),
@@ -225,4 +229,22 @@ it('finding 7: kids cannot enter onboarding through Add someone', async () => {
   await fireEvent.press(screen.getByTestId('profiles-add'));
   expect(mockRouter.push).not.toHaveBeenCalled();
   expect(useProfiles.getState().activeProfileId).toBe('leo');
+});
+
+describe('Manage household (8b-1)', () => {
+  it('opens the Household page', async () => {
+    await mountWithPortal(<ProfilesScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Manage household' }));
+    expect(mockOpenHousehold).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not offered while someone must be chosen, nor to a kids profile', async () => {
+    useProfiles.setState({ activeProfileId: null });
+    const { unmount } = await mountWithPortal(<ProfilesScreen />);
+    expect(screen.queryByTestId('profiles-manage')).toBeNull();
+    await unmount();
+    useProfiles.setState({ activeProfileId: 'leo' });
+    await mountWithPortal(<ProfilesScreen />);
+    expect(screen.queryByTestId('profiles-manage')).toBeNull();
+  });
 });

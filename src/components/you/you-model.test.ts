@@ -8,7 +8,7 @@ import {
 
 describe('parseYouSection', () => {
   it('opens each named section', () => {
-    for (const s of ['stats', 'year', 'journal', 'settings', 'account'] as const) {
+    for (const s of ['stats', 'year', 'journal', 'settings', 'household', 'account'] as const) {
       expect(parseYouSection(s)).toBe(s);
     }
   });
@@ -23,8 +23,15 @@ describe('parseYouSection', () => {
 });
 
 describe('youSectionsFor', () => {
-  it('offers all five sections on a phone', () => {
-    expect(youSectionsFor('phone')).toEqual(['stats', 'year', 'journal', 'settings', 'account']);
+  it('offers all six sections on a phone, Household between Settings and Account', () => {
+    expect(youSectionsFor('phone')).toEqual([
+      'stats',
+      'year',
+      'journal',
+      'settings',
+      'household',
+      'account',
+    ]);
   });
 
   it('offers Stats, Year and Journal where the top bar has the gear and profile menu', () => {
@@ -43,6 +50,7 @@ describe('labels and titles', () => {
   it("titles a phone's hub after its section", () => {
     expect(youTitleKey('stats')).toBe('you.titles.stats');
     expect(youTitleKey('account')).toBe('you.titles.account');
+    expect(youTitleKey('household')).toBe('you.titles.household');
   });
 });
 

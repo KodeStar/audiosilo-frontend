@@ -38,13 +38,13 @@ import { openProfiles, useChooseProfile } from './use-choose-profile';
 import { useRemovePerson } from './use-remove-person';
 
 /**
- * Settings > App > Household and sharing (Phase 8): the people on this device, each with
- * their name, PIN, kids mode (library and bedtime) and "Remove from this device"; "Ask
- * who's listening when the app opens"; and, per server of the person listening, "Share
- * what I'm listening to with the house" (`HouseSharingRow`, where the server has
- * `household`).
+ * The Household page's "On this device" (Phase 8; a page of its own since 8b-1,
+ * `HouseholdPage`): the people on this device, each with their name, PIN, kids mode
+ * (library and bedtime) and "Remove from this device"; "Who's listening?" and "Sign in
+ * someone who already has an account" (the connect flow for a new person, which was "Add
+ * someone"); and "Ask who's listening when the app opens".
  */
-export function HouseholdPane() {
+export function DevicePeople() {
   const { t } = useTranslation();
   const hydrated = useProfiles((s) => s.hydrated);
   const profiles = useProfiles((s) => s.profiles);
@@ -56,15 +56,18 @@ export function HouseholdPane() {
 
   if (!hydrated) {
     return (
-      <View className="items-center py-8" testID="settings-pane-household">
+      <View className="items-center py-8" testID="household-device">
         <Spinner />
       </View>
     );
   }
 
   return (
-    <View className="gap-6" testID="settings-pane-household">
+    <View className="gap-6" testID="household-device">
       <View className="gap-3">
+        <Text variant="title" accessibilityRole="header">
+          {t('household.device.title')}
+        </Text>
         <Text variant="muted">{t('profiles.household.intro')}</Text>
         {profiles.map((p) => (
           <PersonCard
@@ -85,7 +88,8 @@ export function HouseholdPane() {
             onPress={openProfiles}
           />
           <Button
-            title={t('profiles.add.label')}
+            testID="household-sign-in-existing"
+            title={t('household.device.signInExisting')}
             icon="plus"
             variant="secondary"
             onPress={() => router.push(ADD_SOMEONE_HREF)}
@@ -107,17 +111,16 @@ export function HouseholdPane() {
         </SettingRow>
       </SettingsCard>
 
-      <HouseSharing />
-
       {chooseDialog}
       {removal.dialog}
     </View>
   );
 }
 
-/** "Listening in the house": one row per server of the person listening whose server has
- * `household`; a note when none does (once every server has answered). */
-function HouseSharing() {
+/** "Listening in the house": "Share what I'm listening to with the house", one row
+ * (`HouseSharingRow`) per server of the person listening whose server has `household`; a
+ * note when none does (once every server has answered). */
+export function HouseSharing() {
   const { t } = useTranslation();
   const connections = useProfileConnections();
   const caps = useCapabilitiesAll();

@@ -243,7 +243,12 @@
       "failedBody": "{{server}} n'a pas répondu. Rien n'a changé, réessayez.",
       "gone": "{{name}} était déjà déconnecté",
       "goneBody": "La liste est à jour.",
-      "loadError": "Impossible de charger vos appareils depuis {{server}}."
+      "loadError": "Impossible de charger vos appareils depuis {{server}}.",
+      "alsoSignOut": "Déconnecter aussi {{names}} sur cet appareil",
+      "alsoSignOutBody": "Les personnes de votre foyer que vous y avez connectées",
+      "names": "{{first}} et {{second}}",
+      "doneMembers_one": "Il devra se reconnecter pour accéder à {{server}}. {{count}} personne de votre foyer a été déconnectée avec lui.",
+      "doneMembers_other": "Il devra se reconnecter pour accéder à {{server}}. {{count}} personnes de votre foyer ont été déconnectées avec lui."
     },
     "danger": {
       "title": "Se déconnecter de {{server}}",
@@ -1457,14 +1462,16 @@
       "year": "Année",
       "journal": "Journal",
       "settings": "Réglages",
-      "account": "Compte"
+      "account": "Compte",
+      "household": "Foyer"
     },
     "titles": {
       "stats": "Votre écoute",
       "year": "Votre année d'écoute",
       "journal": "Journal",
       "settings": "Réglages",
-      "account": "Compte"
+      "account": "Compte",
+      "household": "Foyer"
     }
   },
   "ui": {
@@ -2235,6 +2242,151 @@
       "askAtLaunch": "Demander qui écoute à l'ouverture de l'app",
       "askAtLaunchBody": "Avec deux personnes ou plus sur cet appareil",
       "noSharing": "Aucun de vos serveurs ne le propose encore."
+    }
+  },
+  "household": {
+    "title": "Foyer",
+    "manage": "Gérer le foyer",
+    "paletteHint": "Les personnes sur cet appareil et votre foyer",
+    "settingsLink": {
+      "body": "Les personnes sur cet appareil, le mode enfant, les personnes que vous avez ajoutées et le partage",
+      "hint": "Ouvre la page Foyer"
+    },
+    "device": {
+      "title": "Sur cet appareil",
+      "signInExisting": "Connecter une personne qui a déjà un compte"
+    },
+    "members": {
+      "title": "Votre foyer",
+      "titleOn": "Votre foyer sur {{server}}",
+      "sub": "Les personnes que vous avez ajoutées. Vous choisissez ce que chacune peut écouter.",
+      "empty": "Ajoutez un enfant ou un adulte. Chaque personne a son propre compte et sa place dans chaque livre, sans e-mail ni invitation.",
+      "loadFailed": "Impossible de charger votre foyer depuis {{server}}.",
+      "add": "Ajouter quelqu'un à votre foyer",
+      "count_one": "{{count}} sur {{max}} ajoutée",
+      "count_other": "{{count}} sur {{max}} ajoutées",
+      "reason": {
+        "feature_off": "L'administrateur de votre serveur a désactivé l'ajout de personnes.",
+        "not_allowed": "L'administrateur de votre serveur n'autorise pas ce compte à ajouter des personnes.",
+        "member": "Seule la personne qui gère votre compte peut ajouter des personnes.",
+        "demo": "Les comptes de démo ne peuvent pas ajouter de personnes.",
+        "at_cap": "Vous avez ajouté le nombre maximal de personnes que ce serveur autorise ({{max}})."
+      }
+    },
+    "kind": {
+      "kid": "Enfant",
+      "grownup": "Adulte"
+    },
+    "access": {
+      "title": "Que peut-on écouter ?",
+      "all": "Tout ce que je peux écouter",
+      "allBody": "Tout ce que vous pouvez écouter sur {{server}}, maintenant et plus tard.",
+      "collections": "Seulement les collections que je partage",
+      "collectionsBody": "Uniquement les livres des collections que vous partagez avec cette personne.",
+      "pickLabel": "Vos collections à partager",
+      "none": "Vous n'avez pas encore de collection. Créez-en une ici.",
+      "noneChosen": "Rien de coché : il n'y aura rien à écouter tant que vous ne partagez pas de collection.",
+      "create": "Créer les livres de {{name}}",
+      "createUnnamed": "Créer ses livres",
+      "booksName": "Les livres de {{name}}",
+      "created": "{{name}} créée",
+      "collectionsOff": "Ce serveur ne propose pas de collections, il n'y a donc rien à partager pour l'instant."
+    },
+    "add": {
+      "title": "Ajouter quelqu'un à votre foyer",
+      "body": "Cette personne aura son propre compte sur {{server}}, avec sa place dans chaque livre.",
+      "name": "Nom",
+      "nameError": "Utilisez un nom de 40 caractères au plus.",
+      "kids": "Compte enfant",
+      "kidsBody": "Pas de mot de passe. Connecté sur cet appareil tout de suite, en mode enfant.",
+      "submitKid": "Ajouter et connecter ici",
+      "submitGrownUp": "Ajouter et afficher son code"
+    },
+    "errors": {
+      "limit": "Vous avez ajouté le nombre maximal de personnes que ce serveur autorise.",
+      "invalid": "{{server}} n'a pas accepté ce nom ou ces collections. Vérifiez-les et réessayez.",
+      "forbidden": "L'administrateur de votre serveur n'autorise pas ce compte à ajouter des personnes.",
+      "failed": "{{server}} n'a pas répondu, rien n'a donc changé. Réessayez."
+    },
+    "kid": {
+      "title": "{{name}} fait partie du foyer",
+      "body": "La session de {{name}} est ouverte sur cet appareil, en mode enfant. Choisissez {{name}} dans Qui écoute ? le moment venu.",
+      "pinOffer": "Définissez un code PIN pour {{owner}}, pour que {{name}} ne puisse pas passer sur votre profil sans lui.",
+      "notNow": "Pas maintenant"
+    },
+    "here": {
+      "done": "La session de {{name}} est aussi ouverte sur cet appareil.",
+      "already": "La session de {{name}} est déjà ouverte sur cet appareil.",
+      "failed": "Le compte de {{name}} est prêt, mais cet appareil n'a pas pu ouvrir sa session. Utilisez Connecter sur cet appareil sur sa carte.",
+      "failedRetry": "Impossible de connecter {{name}} sur cet appareil. Réessayez.",
+      "failedCard": "Utilisez Connecter sur cet appareil sur sa carte."
+    },
+    "qr": {
+      "title": "Montrez ce code à {{name}}",
+      "lead": "{{name}} a maintenant un compte sur {{server}}. Pour écouter sur son propre appareil, il suffit de scanner ce code avec l'app AudioSilo.",
+      "body": "Scannez-le dans l'app AudioSilo, ou ouvrez le lien. Il ne sert qu'une fois.",
+      "a11y": "Code d'association pour {{name}} sur {{server}}",
+      "failed": "Impossible de créer un code. {{server}} n'a pas répondu, réessayez.",
+      "alsoHerePhone": "Utilisera aussi ce téléphone",
+      "alsoHereDevice": "Utilisera aussi cet appareil"
+    },
+    "card": {
+      "who": "{{kind}} · {{username}}",
+      "onThisDevice": "Sur cet appareil",
+      "access": "Ce qui est accessible",
+      "everything": "Tout ce que vous pouvez écouter",
+      "onlyCollections": "Seulement les collections que vous partagez :",
+      "noCollections": "Seulement les collections que vous partagez, et aucune n'est encore partagée.",
+      "collection": "{{name}} ({{count}})",
+      "openCollection": "Ouvrir {{name}}",
+      "change": "Modifier",
+      "changeA11y": "Modifier ce que {{name}} peut écouter",
+      "accessTitle": "Que peut écouter {{name}} ?",
+      "kid": "Compte enfant",
+      "kidBody": "Pas de mot de passe ni de clés API. C'est vous qui le connectez.",
+      "kidA11y": "Compte enfant pour {{name}}",
+      "kidConfirm": {
+        "title": "Faire de {{name}} un compte enfant ?",
+        "body": "Son mot de passe et ses clés API seront supprimés. Les appareils où le compte est connecté le restent.",
+        "confirm": "En faire un compte enfant"
+      },
+      "devices": "Ses appareils",
+      "devicesFailed": "Impossible de charger les appareils de {{name}}.",
+      "noDevices": "Aucune session ouverte pour {{name}} pour l'instant.",
+      "setUp": "Configurer son propre appareil",
+      "setUpA11y": "Afficher un code pour configurer l'appareil de {{name}}",
+      "signInHere": "Connecter sur cet appareil",
+      "signInHereA11y": "Connecter {{name}} sur cet appareil",
+      "renameBody": "Le nom que tout le monde voit sur {{server}}. Le nom d'utilisateur ne change pas.",
+      "failed": "Impossible de modifier le compte de {{name}}"
+    },
+    "devices": {
+      "signOutA11y": "Déconnecter {{name}} de {{device}}",
+      "confirmTitle": "Déconnecter {{name}} de {{device}} ?",
+      "confirmBody": "{{name}} ne pourra plus écouter sur {{device}} tant que vous ne l'aurez pas reconfiguré.",
+      "done": "Session de {{name}} fermée sur {{device}}"
+    },
+    "delete": {
+      "label": "Supprimer son compte",
+      "hint": "Supprime le compte de {{name}} sur {{server}}, avec son historique d'écoute.",
+      "action": "Supprimer son compte",
+      "a11y": "Supprimer le compte de {{name}}",
+      "title": "Supprimer le compte de {{name}} ?",
+      "body": "Cela supprime le compte de {{name}} sur {{server}}, avec son historique d'écoute, ses signets et ses notes. C'est irréversible.",
+      "continue": "Continuer",
+      "typedTitle": "Saisissez {{name}} pour supprimer le compte",
+      "typedBody": "L'historique d'écoute est supprimé aussi. C'est irréversible.",
+      "alsoHere": "{{name}} reste sur cet appareil comme personne jusqu'à ce que vous l'en retiriez.",
+      "field": "Saisissez {{name}}",
+      "confirm": "Supprimer le compte",
+      "done": "Compte de {{name}} supprimé",
+      "failed": "Impossible de supprimer le compte de {{name}}"
+    },
+    "pin": {
+      "already": "{{name}} a déjà un code PIN sur cet appareil."
+    },
+    "share": {
+      "member": "{{name}} peut écouter tout ce que contient cette collection."
     }
   }
 }
