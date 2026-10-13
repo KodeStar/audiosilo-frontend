@@ -16,7 +16,6 @@ import {
   validMemberName,
   withAccess,
   withKid,
-  listIsStale,
   writeError,
   writeErrorText,
 } from './household-model';
@@ -146,14 +145,6 @@ describe('writeError', () => {
     const t = ((key: string) => key) as unknown as TFunction;
     expect(writeErrorText(new ApiError(429, 'x'), 'Hearthside', t)).toBe('common.tooManyTries');
     expect(writeErrorText(new ApiError(500, 'x'), 'Hearthside', t)).toBe('household.errors.failed');
-  });
-
-  it('marks the refusals that leave the members list out of date', () => {
-    expect(listIsStale('limit')).toBe(true);
-    expect(listIsStale('featureOff')).toBe(true);
-    expect(listIsStale('gone')).toBe(true);
-    expect(listIsStale('invalidName')).toBe(false);
-    expect(listIsStale('tooMany')).toBe(false);
   });
 });
 

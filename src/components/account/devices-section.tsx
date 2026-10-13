@@ -97,10 +97,7 @@ export function DevicesSection({
     const name = deviceName(device, t);
     setBusyId(device.id);
     try {
-      // The plain id when there are no members to take along (today's call).
-      const res = await revoke.mutateAsync(
-        memberSignIns(device).length > 0 ? { id: device.id, alsoMembers } : device.id,
-      );
+      const res = await revoke.mutateAsync({ id: device.id, alsoMembers });
       const members = res?.members_signed_out ?? 0;
       toast({
         title: t('account.devices.done', { name }),

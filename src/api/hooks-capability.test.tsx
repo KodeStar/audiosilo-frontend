@@ -866,7 +866,7 @@ const mutationCases: MutationCase[] = [
     name: 'useRevokeMyDevice',
     flag: 'my_devices',
     useHook: useRevokeMyDevice,
-    vars: 11,
+    vars: { id: 11 },
     method: 'revokeMyDevice',
     args: [11],
   },
@@ -1188,7 +1188,7 @@ describe('Phase 1b mutation cache updates', () => {
     qc.setQueryData(qk.myDevices('c1'), []);
     qc.setQueryData(qk.apiKeys('c1'), []);
     await act(async () => {
-      await result.current.m.mutateAsync(12);
+      await result.current.m.mutateAsync({ id: 12 });
     });
     expect(qc.getQueryState(qk.myDevices('c1'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(qk.apiKeys('c1'))?.isInvalidated).toBe(true);
@@ -1204,7 +1204,7 @@ describe('Phase 1b mutation cache updates', () => {
     qc.setQueryData(qk.myDevices('c1'), []);
     let res: unknown;
     await act(async () => {
-      res = await result.current.m.mutateAsync(11);
+      res = await result.current.m.mutateAsync({ id: 11 });
     });
     expect(res).toEqual({ current: true });
     expect(qc.getQueryState(qk.myDevices('c1'))?.isInvalidated).toBe(false);

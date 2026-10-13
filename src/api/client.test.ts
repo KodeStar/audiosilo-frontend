@@ -1836,7 +1836,7 @@ describe('ApiClient household members (Phase 8b-1)', () => {
     });
   });
 
-  it("lists a member's devices with GET .../{id}/devices (a bare array, or wrapped)", async () => {
+  it("lists a member's devices with GET .../{id}/devices (a bare array)", async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: [device] }));
     await expect(c().memberDevices(12)).resolves.toEqual([device]);
     expect(sent(fetchMock)).toMatchObject({
@@ -1844,8 +1844,6 @@ describe('ApiClient household members (Phase 8b-1)', () => {
       method: 'GET',
       body: undefined,
     });
-    installFetch(() => ({ status: 200, body: { devices: [device] } }));
-    await expect(c().memberDevices(12)).resolves.toEqual([device]);
     installFetch(() => ({ status: 200, body: null }));
     await expect(c().memberDevices(12)).resolves.toEqual([]);
   });

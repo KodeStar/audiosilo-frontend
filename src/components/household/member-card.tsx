@@ -1,11 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import {
   CapabilityError,
-  qk,
   useDeleteMember,
   useMemberDevices,
   useRevokeMemberDevice,
@@ -76,7 +74,6 @@ export function MemberCard({
   member: HouseholdMember;
 }) {
   const { t } = useTranslation();
-  const qc = useQueryClient();
   const cid = connection.id;
   const server = connection.name;
   const name = member.name;
@@ -106,7 +103,6 @@ export function MemberCard({
   const change = async (body: Parameters<typeof update.mutateAsync>[0]['body']) => {
     try {
       await update.mutateAsync({ id: member.id, body });
-      if (body.collection_ids) void qc.invalidateQueries({ queryKey: qk.collections(cid) });
       return true;
     } catch (e) {
       refused(e);
@@ -128,7 +124,6 @@ export function MemberCard({
       }),
     );
     if (run.ok) {
-      if (access === 'collections') void qc.invalidateQueries({ queryKey: qk.collections(cid) });
       close();
       return;
     }
@@ -155,9 +150,9 @@ export function MemberCard({
       toast({ title: t('household.delete.done', { name }) });
     } catch (e) {
       if (writeError(e) === 'gone') {
-        // Gone already (deleted from another device): the list catches up.
+        // Gone already (deleted from another device): the list catches up
+        // (`useDeleteMember`).
         close();
-        void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
         return;
       }
       refused(e, { title: t('household.delete.failed', { name }) });

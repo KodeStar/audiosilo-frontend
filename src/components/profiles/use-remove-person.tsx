@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { qk } from '@/api/hooks';
+import { invalidateHousehold } from '@/api/hooks';
 import { useApiRegistry } from '@/api/provider';
 import { freshAccountUser, signOutConnection } from '@/components/account/use-sign-out';
 import {
@@ -139,8 +139,6 @@ function refreshHousehold(qc: QueryClient, removed: Connection) {
   const server = serverIdOf(removed);
   for (const c of useSession.getState().connections) {
     if (c.id === removed.id || serverIdOf(c) !== server) continue;
-    void qc.invalidateQueries({ queryKey: qk.memberDevicesAll(c.id) });
-    void qc.invalidateQueries({ queryKey: qk.householdMembers(c.id) });
-    void qc.invalidateQueries({ queryKey: qk.myDevices(c.id) });
+    invalidateHousehold(qc, c.id);
   }
 }

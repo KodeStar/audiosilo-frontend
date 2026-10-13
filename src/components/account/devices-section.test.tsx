@@ -107,8 +107,8 @@ describe('DevicesSection', () => {
     expect(screen.getAllByRole('button', { name: /^Sign out / })).toHaveLength(1);
     await signOutLaptop();
     await waitFor(() => expect(mockRevoke).toHaveBeenCalledTimes(1));
-    expect(mockRevoke).toHaveBeenCalledWith(11);
-    expect(mockRevoke).not.toHaveBeenCalledWith(10);
+    expect(mockRevoke).toHaveBeenCalledWith({ id: 11, alsoMembers: false });
+    expect(mockRevoke).not.toHaveBeenCalledWith(expect.objectContaining({ id: 10 }));
   });
 
   it('signs another device out after a confirmation and says so', async () => {
@@ -256,7 +256,7 @@ describe('DevicesSection: household members signed in on a device (8b-1)', () =>
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out Work laptop' }));
     expect(screen.queryByTestId('revoke-also-members')).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
-    await waitFor(() => expect(mockRevoke).toHaveBeenCalledWith(11));
+    await waitFor(() => expect(mockRevoke).toHaveBeenCalledWith({ id: 11, alsoMembers: false }));
   });
 
   it('never offers this device a sign-out, member sign-ins or not', async () => {

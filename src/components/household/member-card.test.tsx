@@ -202,7 +202,6 @@ describe('MemberCard', () => {
       id: 12,
       body: { access: 'collections', collection_ids: [4, 5] },
     });
-    expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ['collections', 'a.1'] });
   });
 
   it('asks "What can Evie listen to?" once: the picker has no heading of its own there', async () => {

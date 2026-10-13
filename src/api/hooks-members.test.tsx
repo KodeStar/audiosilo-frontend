@@ -215,9 +215,9 @@ describe('household member queries', () => {
     expect(qc.getQueryData(qk.memberDevices('c1', 12))).toEqual([]);
   });
 
-  it("ask no member's devices before a member is chosen", async () => {
+  it("ask no member's devices while told not to (a member signed in nowhere)", async () => {
     const { result } = await mount({ household_members: true }, () => ({
-      none: useMemberDevices(undefined),
+      none: useMemberDevices(12, undefined, { enabled: false }),
       control: useHouseholdMembers(),
     }));
     await waitFor(() => expect(result.current.control.isSuccess).toBe(true));
@@ -278,6 +278,7 @@ describe('household member writes', () => {
     mounted.qc.setQueryData(qk.memberDevices('c1', 12), []);
     mounted.qc.setQueryData(qk.memberDevices('c1', 13), []);
     mounted.qc.setQueryData(qk.myDevices('c1'), []);
+    mounted.qc.setQueryData(qk.collections('c1'), []);
     return mounted;
   }
   const stale = (qc: QueryClient, key: readonly unknown[]) =>
@@ -295,7 +296,35 @@ describe('household member writes', () => {
     });
     await run(result.current.m, { name: 'Evie', kind: 'kid', access: 'all', sign_in_here: true });
     expect(stale(qc, qk.myDevices('c1'))).toBe(true);
+    expect(stale(qc, qk.collections('c1'))).toBe(false);
   });
+
+  it('adding with collections to share reads the collections again (each lists its people)', async () => {
+    const { result, qc } = await mountCached(useAddMember);
+    await run(result.current.m, {
+      name: 'Evie',
+      kind: 'kid',
+      access: 'collections',
+      collection_ids: [5],
+    });
+    expect(stale(qc, qk.collections('c1'))).toBe(true);
+  });
+
+  it.each([409, 403, 400, 500])(
+    'a refused add (%i) still reads the members list again (the cap or the switch moved)',
+    async (status) => {
+      const { result, qc } = await mountCached(useAddMember);
+      mockClients.c1.addMember.mockRejectedValueOnce(new ApiError(status, 'nope'));
+      const { error } = await run(result.current.m, {
+        name: 'Ellis',
+        kind: 'grownup',
+        access: 'all',
+      });
+      expect(error).toMatchObject({ status });
+      expect(stale(qc, qk.householdMembers('c1'))).toBe(true);
+      expect(stale(qc, qk.myDevices('c1'))).toBe(false);
+    },
+  );
 
   it("a member session refreshes the list, that member's devices and the caller's", async () => {
     const { result, qc } = await mountCached(useMemberSession);
@@ -333,14 +362,31 @@ describe('household member writes', () => {
     expect(stale(qc, qk.myDevices('c1'))).toBe(true);
   });
 
-  it('a change puts the answer in the list and reads it again', async () => {
+  it('a change puts the answer in the list, which needs no second read', async () => {
     const { result, qc } = await mountCached(useUpdateMember);
     const { answer } = await run(result.current.m, { id: 12, body: { name: 'Evie B' } });
     expect(answer).toMatchObject({ id: 12, name: 'Evie B' });
     const cached = qc.getQueryData<HouseholdMembers>(qk.householdMembers('c1'));
     expect(cached?.members.map((m) => m.name)).toEqual(['Evie B', 'Ellis']);
+    // The answer is the member as the server has them now.
+    expect(stale(qc, qk.householdMembers('c1'))).toBe(false);
+    expect(stale(qc, qk.memberDevices('c1', 12))).toBe(false);
+    expect(stale(qc, qk.collections('c1'))).toBe(false);
+  });
+
+  it('making them a kid reads their devices and the list again (their API keys go)', async () => {
+    const { result, qc } = await mountCached(useUpdateMember);
+    await run(result.current.m, { id: 12, body: { kind: 'kid' } });
     expect(stale(qc, qk.householdMembers('c1'))).toBe(true);
     expect(stale(qc, qk.memberDevices('c1', 12))).toBe(true);
+    expect(stale(qc, qk.memberDevices('c1', 13))).toBe(false);
+  });
+
+  it('a change of what is shared with them reads the collections again', async () => {
+    const { result, qc } = await mountCached(useUpdateMember);
+    await run(result.current.m, { id: 12, body: { access: 'collections', collection_ids: [] } });
+    expect(stale(qc, qk.collections('c1'))).toBe(true);
+    expect(stale(qc, qk.memberDevices('c1', 12))).toBe(false);
   });
 
   it('a delete takes the member off the list at once and forgets their devices', async () => {
@@ -348,10 +394,20 @@ describe('household member writes', () => {
     await run(result.current.m, 12);
     const cached = qc.getQueryData<HouseholdMembers>(qk.householdMembers('c1'));
     expect(cached?.members.map((m) => m.id)).toEqual([13]);
-    expect(stale(qc, qk.householdMembers('c1'))).toBe(true);
+    // The list just taken them off needs no second read.
+    expect(stale(qc, qk.householdMembers('c1'))).toBe(false);
     expect(qc.getQueryState(qk.memberDevices('c1', 12))).toBeUndefined();
     expect(qc.getQueryState(qk.memberDevices('c1', 13))).toBeDefined();
     expect(stale(qc, qk.myDevices('c1'))).toBe(true);
+  });
+
+  it('a refused delete (404: deleted already, elsewhere) reads the list again', async () => {
+    const { result, qc } = await mountCached(useDeleteMember);
+    mockClients.c1.deleteMember.mockRejectedValueOnce(new ApiError(404, 'member not found'));
+    const { error } = await run(result.current.m, 12);
+    expect(error).toMatchObject({ status: 404 });
+    expect(stale(qc, qk.householdMembers('c1'))).toBe(true);
+    expect(qc.getQueryData<HouseholdMembers>(qk.householdMembers('c1'))).toEqual(list);
   });
 });
 
@@ -365,9 +421,9 @@ describe('useRevokeMyDevice and alsoMembers', () => {
     return mounted;
   }
 
-  it('keeps the old call shape: a bare id sends the id alone', async () => {
+  it('keeps the old call: without alsoMembers it sends the id alone', async () => {
     const { result } = await mountRevoke(ON);
-    await run(result.current.m, 11);
+    await run(result.current.m, { id: 11 });
     expect(mockClients.c1.revokeMyDevice).toHaveBeenCalledWith(11);
     expect(mockClients.c1.revokeMyDevice.mock.calls[0]).toHaveLength(1);
   });

@@ -10,13 +10,6 @@ import type {
 } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
 
-// The dialogs portal to the root host, which the app's ApiProvider wraps (its query
-// client); the tests' host has none, so the client is a stand-in.
-const mockInvalidate = jest.fn();
-jest.mock('@tanstack/react-query', () => ({
-  ...jest.requireActual('@tanstack/react-query'),
-  useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
-}));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
@@ -303,8 +296,6 @@ describe('the add dialog', () => {
       sign_in_here: true,
       collection_ids: [5],
     });
-    // The shared collection now lists Evie.
-    expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ['collections', 'a.1'] });
     expect(mockAddHere).toHaveBeenCalledWith(session, { name: 'Evie', kids: true });
     expect(screen.getByText('Evie is added')).toBeTruthy();
     expect(screen.getByTestId('add-kid-result')).toHaveTextContent(
@@ -565,10 +556,6 @@ describe('the add dialog', () => {
     await fireEvent.press(screen.getByTestId('add-member-submit'));
     expect(screen.getByTestId('add-member-error')).toHaveTextContent(words);
     expect(mockAddHere).not.toHaveBeenCalled();
-    // The cap or the admin's switch moved: the section reads the list again.
-    if (status === 409 || status === 403) {
-      expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ['householdMembers', 'a.1'] });
-    }
   });
 
   it.each([

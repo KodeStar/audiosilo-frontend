@@ -1,9 +1,8 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, useWindowDimensions, View } from 'react-native';
 
-import { qk, useAddMember } from '@/api/hooks';
+import { useAddMember } from '@/api/hooks';
 import type { AddMemberBody, HouseholdMember } from '@/api/types';
 import { addMemberHere } from '@/components/connect/add-member-here';
 import { profileName } from '@/components/profiles/profiles-model';
@@ -30,13 +29,11 @@ import {
   type AddForm,
   collectionIdsFor,
   createsBooks,
-  listIsStale,
   MEMBER_NAME_MAX,
   newAddForm,
   validMemberName,
   withAccess,
   withKid,
-  writeError,
 } from './household-model';
 import { MemberPairing } from './member-pairing';
 import {
@@ -143,7 +140,6 @@ function FormStep({
   onAdded: (step: Step) => void;
 }) {
   const { t } = useTranslation();
-  const qc = useQueryClient();
   const add = useAddMember(connectionId);
   const books = useMemberBooks(connectionId);
   const [form, setForm] = useState<AddForm>(() => newAddForm());
@@ -160,10 +156,9 @@ function FormStep({
     // "Create <Name>'s books": made now, before the member, so its id is in the body;
     // deleted again when the add is refused (`useMemberBooks`).
     const booksName = createsBooks(form.access, form.newBooks) ? memberBooksName(name, t) : null;
-    let sent: number[] | undefined;
     const run = await books.run(booksName, (newId) => {
       const chosen = newId === null ? form.collectionIds : [...form.collectionIds, newId];
-      sent = collectionIdsFor(form.access, chosen);
+      const sent = collectionIdsFor(form.access, chosen);
       const body: AddMemberBody = {
         name,
         kind: form.kid ? 'kid' : 'grownup',
@@ -174,17 +169,13 @@ function FormStep({
       return add.mutateAsync(body);
     });
     try {
+      // A refusal reads the list again (`useAddMember`): the cap or the admin's switch
+      // may have moved under the page.
       if (!run.ok) {
         setError(booksRunText(run, { server: serverName, booksName }, t));
-        // The cap or the admin's switch changed under the page: show it as it is now.
-        if (run.stage === 'write' && listIsStale(writeError(run.error))) {
-          void qc.invalidateQueries({ queryKey: qk.householdMembers(connectionId) });
-        }
         return;
       }
       const result = run.value;
-      // The collections now list them among the people each is shared with.
-      if (sent?.length) void qc.invalidateQueries({ queryKey: qk.collections(connectionId) });
       if (!form.kid) {
         onAdded({ kind: 'grownup', member: result.member, here: null });
         return;

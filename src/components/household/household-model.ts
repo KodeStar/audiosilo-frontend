@@ -150,18 +150,6 @@ export function writeError(e: unknown): WriteError {
   return BY_KIND[kind];
 }
 
-/** Whether a refusal means the members list on screen is out of date (the cap or the
- * admin's switch changed under the page, or the member is gone): read it again. */
-export function listIsStale(why: WriteError): boolean {
-  return (
-    why === 'limit' ||
-    why === 'featureOff' ||
-    why === 'notAllowed' ||
-    why === 'forbidden' ||
-    why === 'gone'
-  );
-}
-
 /** What a refused write `e` says, in words (`writeError`). */
 export function writeErrorText(e: unknown, server: string, t: TFunction): string {
   const why = writeError(e);

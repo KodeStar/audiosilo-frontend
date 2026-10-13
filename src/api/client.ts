@@ -1100,14 +1100,10 @@ export class ApiClient {
   }
   /** One member's signed-in devices (sessions and API keys); `current` is always false. */
   async memberDevices(id: number, signal?: AbortSignal): Promise<MyDevice[]> {
-    const r = await this.request<MyDevice[] | { devices: MyDevice[] | null } | null>(
-      'GET',
-      `/me/household/members/${id}/devices`,
-      { signal },
-    );
-    // The route answers a bare array; a `{ devices }` wrapper (as /me/devices answers)
-    // reads the same.
-    return (Array.isArray(r) ? r : r?.devices) ?? [];
+    const r = await this.request<MyDevice[] | null>('GET', `/me/household/members/${id}/devices`, {
+      signal,
+    });
+    return r ?? [];
   }
   /** Sign a member out of one device (204). A device that isn't theirs is a 404. */
   revokeMemberDevice(id: number, deviceId: number) {
