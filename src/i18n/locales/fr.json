@@ -2190,6 +2190,7 @@
       "wait_other": "Trop d'essais. Réessayez dans {{count}} secondes.",
       "forgot": "Oublié ? Retirez {{name}} de cet appareil dans les réglages et reconnectez-vous.",
       "readFailed": "Impossible de vérifier le code PIN sur cet appareil. Réessayez.",
+      "noneSet": "Aucun code PIN n'est défini pour {{name}} sur cet appareil.",
       "saveFailed": "Impossible d'enregistrer le code PIN sur cet appareil. Rien n'a changé."
     },
     "rename": {

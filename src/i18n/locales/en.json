@@ -2190,6 +2190,7 @@
       "wait_other": "Too many tries. Try again in {{count}} seconds.",
       "forgot": "Forgotten it? Remove {{name}} from this device in Settings and sign in again.",
       "readFailed": "Couldn't check the PIN on this device. Try again.",
+      "noneSet": "There's no PIN set for {{name}} on this device.",
       "saveFailed": "Couldn't save the PIN on this device. Nothing changed."
     },
     "rename": {

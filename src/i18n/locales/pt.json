@@ -2190,6 +2190,7 @@
       "wait_other": "Demasiadas tentativas. Tente de novo dentro de {{count}} segundos.",
       "forgot": "Esqueceu-se? Remova {{name}} deste dispositivo nas Definições e inicie sessão de novo.",
       "readFailed": "Não foi possível verificar o PIN neste dispositivo. Tente de novo.",
+      "noneSet": "Não há nenhum PIN definido para {{name}} neste dispositivo.",
       "saveFailed": "Não foi possível guardar o PIN neste dispositivo. Nada mudou."
     },
     "rename": {

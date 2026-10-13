@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { TABS } from '@/components/shell/destinations';
+import { toast } from '@/components/ui/toast';
 import { readPin, type StoredPin } from '@/lib/profile-pin';
 import { popTabToRoot } from '@/lib/root-stack';
 import { type Profile, setProfileHasPin, switchProfile, useProfiles } from '@/stores/profiles';
@@ -54,17 +55,17 @@ export function leavePicker(): void {
  * `mustChoose`, nobody is active); a profile with a PIN asks for it
  * first (`PinDialog`). Whether there is one is the secure store's answer, read for every
  * choice: a hash the mirror lost still asks (and repairs the mirror), and a mirror whose
- * hash the secure store doesn't have any more counts as no PIN. Then `switchProfile` and
- * Home (`homeForNewPerson`). `stay`: switch where the
+ * hash the secure store doesn't have any more counts as no PIN. A store that can't be read
+ * never switches, whatever the mirror says: it says it couldn't check, and the listener
+ * tries again. Then `switchProfile` and Home (`homeForNewPerson`). `stay`: switch where the
  * listener is (a link to another person's book that switches first) instead of going Home.
  * Render `dialog` somewhere in the screen (it portals).
  */
 export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
   const { t } = useTranslation();
   /** The person whose PIN is asked, with the PIN as `choose` read it (the prompt checks
-   * against it instead of reading the secure store again; absent when that read failed,
-   * and the prompt then reads, and says it couldn't check). */
-  const [pinFor, setPinFor] = useState<{ profile: Profile; stored?: StoredPin } | null>(null);
+   * against it instead of reading the secure store again). */
+  const [pinFor, setPinFor] = useState<{ profile: Profile; stored: StoredPin } | null>(null);
   const [switching, setSwitching] = useState<string | null>(null);
 
   const finish = async (profile: Profile) => {
@@ -88,20 +89,20 @@ export function useChooseProfile({ stay = false }: { stay?: boolean } = {}) {
     // The secure store says whether there is a PIN, never the profile's mirror (`hasPin`)
     // alone: the mirror is written best effort with the whole profiles document, which a
     // failed write or a second web tab holding an older document can leave without it.
-    const stored = await readPin(profile.id).catch(() => undefined);
+    let stored: StoredPin | null;
+    try {
+      stored = await readPin(profile.id);
+    } catch {
+      // Unreadable: never switch on the mirror's word (a lost mirror would let anyone in).
+      toast({ title: t('profiles.pin.readFailed') });
+      return;
+    }
     if (stored) {
       if (!profile.hasPin) setProfileHasPin(profile.id, true);
       setPinFor({ profile, stored });
       return;
     }
-    if (profile.hasPin) {
-      // An unreadable store still asks: the prompt says it couldn't check.
-      if (stored === undefined) {
-        setPinFor({ profile });
-        return;
-      }
-      setProfileHasPin(profile.id, false);
-    }
+    if (profile.hasPin) setProfileHasPin(profile.id, false);
     await finish(profile);
   };
 

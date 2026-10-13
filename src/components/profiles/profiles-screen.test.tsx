@@ -20,9 +20,15 @@ jest.mock('@/playback/store', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({
+  ...jest.requireActual('@/components/ui/toast'),
+  toast: (o: unknown) => mockToast(o),
+}));
 
 /* eslint-disable import/first */
 import { popTabToRoot } from '@/lib/root-stack';
+import * as profilePin from '@/lib/profile-pin';
 import { setPin } from '@/lib/profile-pin';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -119,6 +125,39 @@ describe("Who's listening?", () => {
     expect(useProfiles.getState().activeProfileId).toBe('chris');
     // The mirror is repaired, so the picker shows the key again.
     expect(useProfiles.getState().profiles.find((p) => p.id === 'sam')?.hasPin).toBe(true);
+  });
+
+  it('never switches when the PIN store cannot be read, even with no PIN mirrored', async () => {
+    await setPin('sam', '2468');
+    // The mirror lost the PIN (a failed write, an older web tab) and the store is unreadable.
+    useProfiles.setState({
+      profiles: useProfiles
+        .getState()
+        .profiles.map((p) => (p.id === 'sam' ? { ...p, hasPin: undefined } : p)),
+    });
+    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    await mountWithPortal(<ProfilesScreen />);
+    await fireEvent.press(screen.getByLabelText('Sam, Hearthside'));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Couldn't check the PIN on this device. Try again.",
+      }),
+    );
+    expect(useProfiles.getState().activeProfileId).toBe('chris');
+    expect(mockRouter.dismissTo).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    read.mockRestore();
+  });
+
+  it('an unreadable PIN store refuses a mirrored PIN the same way', async () => {
+    await setPin('sam', '2468');
+    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    await mountWithPortal(<ProfilesScreen />);
+    await fireEvent.press(screen.getByLabelText('Sam, Hearthside, asks for a PIN'));
+    await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
+    expect(useProfiles.getState().activeProfileId).toBe('chris');
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    read.mockRestore();
   });
 
   it('the person listening just goes back', async () => {

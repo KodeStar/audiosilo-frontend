@@ -13,7 +13,9 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { TimeStepper } from '@/components/ui/time-stepper';
+import { toast } from '@/components/ui/toast';
 import { formatTimeOfDay } from '@/lib/format';
+import { clearPin, readPin, type StoredPin } from '@/lib/profile-pin';
 import { KIDS_BEDTIME_UNTIL } from '@/playback/auto-sleep-controller';
 import {
   DEFAULT_BEDTIME,
@@ -34,7 +36,6 @@ import { profileName, serversLine } from './profiles-model';
 import { RenameDialog } from './rename-dialog';
 import { openProfiles, useChooseProfile } from './use-choose-profile';
 import { useRemovePerson } from './use-remove-person';
-import { clearPin, readPin } from '@/lib/profile-pin';
 
 /**
  * Settings > App > Household and sharing (Phase 8): the people on this device, each with
@@ -141,7 +142,9 @@ function HouseSharing() {
   );
 }
 
-type PinFlow = null | { step: 'check'; then: 'set' | 'clear' } | { step: 'set' };
+/** The PIN prompt's step: `check` the current PIN (as `startPin` read it), then set a new
+ * one or clear it; or `set` one. */
+type PinFlow = null | { step: 'check'; then: 'set' | 'clear'; stored: StoredPin } | { step: 'set' };
 
 /** One person on this device: name, PIN, kids mode, remove. */
 function PersonCard({
@@ -170,16 +173,31 @@ function PersonCard({
   const libraryLabel = t('profiles.kids.library');
   const bedtimeLabel = t('profiles.kids.bedtime');
 
-  // A PIN the secure store holds is only ever changed after it is given, even when the
-  // profile's mirror (`hasPin`) lost it (see `useChooseProfile`): never overwritten.
-  const startSetPin = async () => {
-    const stored = await readPin(profile.id).catch(() => undefined);
-    if (stored) {
-      setProfileHasPin(profile.id, true);
-      setPin({ step: 'check', then: 'set' });
+  // Set, Change and Remove read the secure store first, never trusting the profile's
+  // mirror (`hasPin`, see `useChooseProfile`). A PIN it holds is only ever changed or
+  // removed after it is given, even when the mirror lost it: never overwritten. A mirror
+  // whose hash is gone is repaired and says so, instead of asking for a PIN nothing can
+  // match (every try "doesn't match", then the 30 second wait). An unreadable store
+  // changes nothing: it says it couldn't check.
+  const startPin = async (then: 'set' | 'clear') => {
+    let stored: StoredPin | null;
+    try {
+      stored = await readPin(profile.id);
+    } catch {
+      toast({ title: t('profiles.pin.readFailed') });
       return;
     }
-    setPin({ step: 'set' });
+    if (stored) {
+      if (!profile.hasPin) setProfileHasPin(profile.id, true);
+      setPin({ step: 'check', then, stored });
+      return;
+    }
+    if (then === 'set' && !profile.hasPin) {
+      setPin({ step: 'set' });
+      return;
+    }
+    setProfileHasPin(profile.id, false);
+    toast({ title: t('profiles.pin.noneSet', { name }) });
   };
 
   const pinVerified = () => {
@@ -245,14 +263,14 @@ function PersonCard({
               accessibilityLabel={t('profiles.pin.changeA11y', { name })}
               variant="ghost"
               size="sm"
-              onPress={() => setPin({ step: 'check', then: 'set' })}
+              onPress={() => void startPin('set')}
             />
             <Button
               title={t('profiles.pin.remove')}
               accessibilityLabel={t('profiles.pin.removeA11y', { name })}
               variant="ghost"
               size="sm"
-              onPress={() => setPin({ step: 'check', then: 'clear' })}
+              onPress={() => void startPin('clear')}
             />
           </View>
         ) : (
@@ -262,7 +280,7 @@ function PersonCard({
             variant="ghost"
             size="sm"
             icon="key"
-            onPress={() => void startSetPin()}
+            onPress={() => void startPin('set')}
           />
         )}
       </SettingRow>
@@ -327,6 +345,7 @@ function PersonCard({
         open={pin !== null}
         mode={pin?.step ?? 'check'}
         profileId={profile.id}
+        stored={pin?.step === 'check' ? pin.stored : undefined}
         name={name}
         title={pin?.step === 'check' ? t('profiles.pin.currentTitle', { name }) : undefined}
         onDone={pin?.step === 'set' ? () => setPin(null) : pinVerified}

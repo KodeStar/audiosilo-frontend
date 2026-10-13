@@ -35,6 +35,11 @@ jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
   useCapabilitiesAll: () => mockCaps,
 }));
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({
+  ...jest.requireActual('@/components/ui/toast'),
+  toast: (o: unknown) => mockToast(o),
+}));
 jest.mock('@/components/house/house-sharing-row', () => {
   const { Text } = jest.requireActual('react-native');
   return {
@@ -47,6 +52,7 @@ jest.mock('@/components/house/house-sharing-row', () => {
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
 import { formatTimeOfDay } from '@/lib/format';
+import * as profilePin from '@/lib/profile-pin';
 import { checkPin, setPin } from '@/lib/profile-pin';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -204,6 +210,67 @@ describe('Settings > Household', () => {
     await fireEvent.changeText(screen.getByTestId('pin-field'), '9999');
     expect(await screen.findByText("That PIN doesn't match")).toBeTruthy();
     expect(await checkPin('leo', '1111')).toBe(true);
+  });
+
+  it('"Set a PIN" with an unreadable PIN store says so and never chooses a new one', async () => {
+    await setPin('leo', '1111');
+    useProfiles.setState({
+      profiles: useProfiles
+        .getState()
+        .profiles.map((p) => (p.id === 'leo' ? { ...p, hasPin: undefined } : p)),
+    });
+    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    await mount();
+    await fireEvent.press(screen.getByLabelText('Set a PIN for Leo'));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Couldn't check the PIN on this device. Try again.",
+      }),
+    );
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    read.mockRestore();
+    expect(await checkPin('leo', '1111')).toBe(true);
+  });
+
+  it.each([
+    ['Change', "Change Leo's PIN"],
+    ['Remove', "Remove Leo's PIN"],
+  ])(
+    '%s over a mirror whose PIN is gone repairs the mirror and says there is none',
+    async (_, label) => {
+      // The mirror says PIN, the secure store has no hash (a restore without the store).
+      await profilePin.clearPin('leo');
+      useProfiles.setState({
+        profiles: useProfiles
+          .getState()
+          .profiles.map((p) => (p.id === 'leo' ? { ...p, hasPin: true } : p)),
+      });
+      await mount();
+      await fireEvent.press(screen.getByLabelText(label));
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith({
+          title: "There's no PIN set for Leo on this device.",
+        }),
+      );
+      expect(screen.queryByTestId('pin-field')).toBeNull();
+      expect(leo()?.hasPin).toBeFalsy();
+      expect(screen.getByLabelText('Set a PIN for Leo')).toBeTruthy();
+    },
+  );
+
+  it('Change with an unreadable PIN store says it could not check, and asks nothing', async () => {
+    await setPin('leo', '1111');
+    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    await mount();
+    await fireEvent.press(screen.getByLabelText("Change Leo's PIN"));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Couldn't check the PIN on this device. Try again.",
+      }),
+    );
+    expect(screen.queryByTestId('pin-field')).toBeNull();
+    expect(leo()?.hasPin).toBe(true);
+    read.mockRestore();
   });
 
   it('renames a person on this device', async () => {
