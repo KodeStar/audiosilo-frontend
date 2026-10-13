@@ -150,17 +150,13 @@ export function parseProfilesDoc(raw: unknown): ProfilesDoc {
 /** What the rules need of a connection. */
 export type ProfileConnection = Pick<Connection, 'id' | 'serverId' | 'user'>;
 
-/** A new or unnamed profile's name: the member's `display_name`, else the username
- * (`personName`). */
-const usernameOf = (c: ProfileConnection | undefined): string => personName(c?.user);
-
 function sameDoc(a: ProfilesDoc, b: ProfilesDoc): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** A new profile for one connection, named after its user. */
 function newProfileFor(c: ProfileConnection, newId: () => string): Profile {
-  return { id: newId(), name: usernameOf(c), connectionIds: [c.id] };
+  return { id: newId(), name: personName(c.user), connectionIds: [c.id] };
 }
 
 /** Whether `p` holds a connection to `server` (other than `exceptId`). */
@@ -258,7 +254,7 @@ export function reconcileProfiles(
   }
   profiles = profiles.map((p) => {
     const name =
-      p.name.trim() || usernameOf(connections.find((c) => p.connectionIds.includes(c.id)));
+      p.name.trim() || personName(connections.find((c) => p.connectionIds.includes(c.id))?.user);
     return name === p.name ? p : { ...p, name };
   });
   const next: ProfilesDoc = { ...doc, profiles, activeProfileId };
