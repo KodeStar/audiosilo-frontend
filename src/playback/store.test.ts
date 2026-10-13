@@ -1269,6 +1269,82 @@ describe('connection scoping', () => {
   });
 });
 
+describe('the download hot-swap', () => {
+  /** The playing book's own download landing (c1, the book `startBook` plays). */
+  function downloadLands() {
+    const book = makeBook();
+    const manifest: DownloadManifest = {
+      book,
+      chapters: null,
+      files: [{ relPath: book.rel_path, localUri: 'file:///dl/0.m4b' }],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    const entry: DownloadEntry = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: book.rel_path,
+      title: book.title,
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest,
+    };
+    useDownloads.setState({ entries: { [`c1:2:${book.rel_path}`]: entry } });
+  }
+  const loadedUrls = () =>
+    (mockSvc.load as jest.Mock).mock.calls.map((c) => (c[0] as { url: string }[])[0].url);
+
+  // Decision 7 regression (8b-1): a kid's first tap on a short story on an iPhone loaded it
+  // and stopped on Play. The story's automatic download landed while the start was still on
+  // its way (the snapshot `loading`; the engine had begun, its `playing` not yet in JS), and
+  // the swap played on only from `playing`: iOS's `load` pauses the player, so it stayed
+  // stopped, with no error (the engine's pause then read as the listener's own).
+  it('plays on when the download lands while the book is still starting', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('ready', 0)); // the load's own report, still starting
+    expect(usePlayer.getState().snapshot.state).toBe('loading');
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+
+    downloadLands();
+    await flushMicrotasks();
+
+    expect(loadedUrls()).toEqual(['file:///dl/0.m4b']);
+    expect(mockSvc.play).toHaveBeenCalledTimes(1);
+    expect((mockSvc.play as jest.Mock).mock.invocationCallOrder[0]).toBeGreaterThan(
+      (mockSvc.load as jest.Mock).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('plays on when the download lands while the book plays', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 10));
+    (mockSvc.play as jest.Mock).mockClear();
+
+    downloadLands();
+    await flushMicrotasks();
+
+    expect(loadedUrls()).toEqual(['stream:2:A/Book.m4b', 'file:///dl/0.m4b']);
+    expect(mockSvc.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays paused when the download lands on a book the listener paused', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 10));
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 10));
+    (mockSvc.play as jest.Mock).mockClear();
+
+    downloadLands();
+    await flushMicrotasks();
+
+    expect(loadedUrls()).toEqual(['stream:2:A/Book.m4b', 'file:///dl/0.m4b']);
+    expect(mockSvc.play).not.toHaveBeenCalled();
+  });
+});
+
 // --- offline playback of a downloaded book whose connection is gone ----------------
 // A connection whose secure-store token fails to hydrate is dropped from the session, so
 // resolveClient() returns null - but downloads.hydrate keeps its entry. A fully-local
