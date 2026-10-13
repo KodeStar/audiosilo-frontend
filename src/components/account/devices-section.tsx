@@ -9,7 +9,16 @@ import type { MyDevice } from '@/api/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { CheckRow } from '@/components/household/check-row';
+import { DialogIcon } from '@/components/ui/dialog';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -18,15 +27,23 @@ import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 
 import { AccountListRow } from './account-list-row';
-import { canRevoke, deviceGlyph, knownPlatform, lastSeen, signedInSessions } from './account-model';
+import {
+  canRevoke,
+  deviceGlyph,
+  joinNames,
+  knownPlatform,
+  lastSeen,
+  memberSignIns,
+  signedInSessions,
+} from './account-model';
 
 /** The name a device row shows: the one it sent at sign-in, else "Unnamed device". */
-function deviceName(d: MyDevice, t: TFunction): string {
+export function deviceName(d: MyDevice, t: TFunction): string {
   return d.name.trim() || t('account.devices.unnamed');
 }
 
 /** "AudioSilo 1.4.2 · iOS · last seen 2 hours ago". */
-function deviceDetail(d: MyDevice, t: TFunction, now: number): string {
+export function deviceDetail(d: MyDevice, t: TFunction, now: number): string {
   const parts: string[] = [];
   if (d.client) {
     parts.push(`${d.client.app} ${d.client.version}`.trim());
@@ -52,7 +69,10 @@ function deviceDetail(d: MyDevice, t: TFunction, now: number): string {
  * server has it): the account's sessions, this device first and marked, each with its
  * app, platform and when it was last seen. Another device signs out after a
  * confirmation (`useRevokeMyDevice`) and a toast says so, or what went wrong and that
- * nothing changed. The device the listener is on offers no sign-out (`canRevoke`).
+ * nothing changed. The device the listener is on offers no sign-out (`canRevoke`). A
+ * device where the listener signed in household members of theirs (its
+ * `member_sign_ins`, Phase 8b-1) offers "Also sign out Evie and Ellis on that device",
+ * ticked: a lost phone takes the kids' sign-ins with it.
  */
 export function DevicesSection({
   connectionId,
@@ -70,17 +90,24 @@ export function DevicesSection({
   // "last seen 5 minutes ago" moves by the minute.
   const now = useNow(60_000);
 
-  const confirm = async () => {
+  const confirm = async (alsoMembers: boolean) => {
     const device = pending;
     setPending(null);
     if (!device || !canRevoke(device)) return;
     const name = deviceName(device, t);
     setBusyId(device.id);
     try {
-      await revoke.mutateAsync(device.id);
+      // The plain id when there are no members to take along (today's call).
+      const res = await revoke.mutateAsync(
+        memberSignIns(device).length > 0 ? { id: device.id, alsoMembers } : device.id,
+      );
+      const members = res?.members_signed_out ?? 0;
       toast({
         title: t('account.devices.done', { name }),
-        description: t('account.devices.doneBody', { server: serverName }),
+        description:
+          members > 0
+            ? t('account.devices.doneMembers', { count: members, server: serverName })
+            : t('account.devices.doneBody', { server: serverName }),
       });
     } catch (e) {
       // Never sent (the server lost the flag meanwhile): nothing to report.
@@ -155,22 +182,78 @@ export function DevicesSection({
       {devices.isSuccess && rows.length <= 1 ? (
         <Text variant="caption">{t('account.devices.onlyThis')}</Text>
       ) : null}
-      <ConfirmDialog
-        visible={pending !== null}
-        title={t('account.devices.confirm.title', {
-          name: pending ? deviceName(pending, t) : '',
-        })}
-        message={t('account.devices.confirm.message', {
-          name: pending ? deviceName(pending, t) : '',
-          server: serverName,
-        })}
-        confirmLabel={t('account.devices.confirm.confirm')}
-        confirmIcon="logout"
-        destructive
-        onConfirm={() => void confirm()}
+      <RevokeDeviceDialog
+        device={pending}
+        serverName={serverName}
+        onConfirm={(also) => void confirm(also)}
         onCancel={() => setPending(null)}
       />
     </View>
+  );
+}
+
+/**
+ * "Sign out <device>?": what signing out does, and for a device holding sign-ins of the
+ * listener's household members, "Also sign out Evie and Ellis on that device", ticked by
+ * default (decision B of Phase 8b-1). The tick starts again for every device.
+ */
+function RevokeDeviceDialog({
+  device,
+  serverName,
+  onConfirm,
+  onCancel,
+}: {
+  device: MyDevice | null;
+  serverName: string;
+  onConfirm: (alsoMembers: boolean) => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const [also, setAlso] = useState(true);
+  // A new device asks afresh: ticked.
+  const [shown, setShown] = useState(device?.id);
+  if (device?.id !== shown) {
+    setShown(device?.id);
+    setAlso(true);
+  }
+  const name = device ? deviceName(device, t) : '';
+  const members = device ? memberSignIns(device) : [];
+  const names = joinNames(
+    members.map((m) => m.name),
+    (first, second) => t('account.devices.names', { first, second }),
+  );
+  return (
+    <AlertDialog open={device !== null} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent>
+        <View className="flex-row items-start gap-3.5">
+          <DialogIcon name="logout" tone="destructive" />
+          <AlertDialogHeader className="flex-1">
+            <AlertDialogTitle>{t('account.devices.confirm.title', { name })}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('account.devices.confirm.message', { name, server: serverName })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+        </View>
+        {members.length > 0 ? (
+          <CheckRow
+            testID="revoke-also-members"
+            wrap
+            label={t('account.devices.alsoSignOut', { names })}
+            detail={t('account.devices.alsoSignOutBody')}
+            checked={also}
+            onPress={() => setAlso((v) => !v)}
+          />
+        ) : null}
+        <AlertDialogFooter>
+          <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
+          <Button
+            title={t('account.devices.confirm.confirm')}
+            variant="destructive"
+            onPress={() => onConfirm(members.length > 0 && also)}
+          />
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

@@ -5,8 +5,10 @@ import {
   ACTIVE_NOW_MS,
   canRevoke,
   deviceGlyph,
+  joinNames,
   knownPlatform,
   lastSeen,
+  memberSignIns,
   PAIRING_TTL_MS,
   pairingSecondsLeft,
   resolveAccountCid,
@@ -178,5 +180,33 @@ describe('the Account page crumb', () => {
     expect(accountParentKey({ name: 'you' })).toBe('you.titles.stats');
     expect(accountParentKey({ name: 'book/[libraryId]' })).toBeNull();
     expect(accountParentKey(undefined)).toBeNull();
+  });
+});
+
+describe('joinNames', () => {
+  const two = (a: string, b: string) => `${a} and ${b}`;
+  it('joins one, two and more names the way the language says "and"', () => {
+    expect(joinNames([], two)).toBe('');
+    expect(joinNames(['Evie'], two)).toBe('Evie');
+    expect(joinNames(['Evie', 'Ellis'], two)).toBe('Evie and Ellis');
+    expect(joinNames(['Evie', 'Ellis', 'Sam'], two)).toBe('Evie, Ellis and Sam');
+  });
+});
+
+describe('memberSignIns', () => {
+  const d: Omit<MyDevice, 'current'> = {
+    id: 1,
+    kind: 'session',
+    name: '',
+    client: null,
+    created_at: '',
+    last_seen: null,
+    last_ip: '',
+  };
+  it("names another device's member sign-ins, never this device's", () => {
+    const m = [{ id: 12, name: 'Evie' }];
+    expect(memberSignIns({ ...d, current: false, member_sign_ins: m })).toEqual(m);
+    expect(memberSignIns({ ...d, current: true, member_sign_ins: m })).toEqual([]);
+    expect(memberSignIns({ ...d, current: false })).toEqual([]);
   });
 });

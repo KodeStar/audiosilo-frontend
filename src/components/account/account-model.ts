@@ -22,6 +22,26 @@ export function pairingSecondsLeft(expiresAt: number, now: number): number {
 }
 
 /**
+ * People's names as one phrase: "Evie", "Evie and Ellis", "Evie, Ellis and Sam" (`two`
+ * and `last` are the language's own "{{first}} and {{second}}"). Hermes has no
+ * `Intl.ListFormat`, so the list is put together here.
+ */
+export function joinNames(
+  names: readonly string[],
+  two: (first: string, second: string) => string,
+): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return two(names.slice(0, -1).join(', '), names[names.length - 1]);
+}
+
+/** The household members a device's sign-out may take with it (its `member_sign_ins`,
+ * Phase 8b-1): only another device's, never this one's (which signs out only through the
+ * app's own sign-out). */
+export function memberSignIns(device: MyDevice): { id: number; name: string }[] {
+  return device.current ? [] : (device.member_sign_ins ?? []);
+}
+
+/**
  * The server an account page shows: the route's own connection when it names one,
  * else the one the listener picked in the switcher while it is still signed in, else
  * the default connection (or the first, should the default be gone). `null` with no
