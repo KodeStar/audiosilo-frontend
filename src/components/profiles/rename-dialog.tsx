@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { MEMBER_NAME_MAX } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,47 +12,38 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { renameProfile } from '@/stores/profiles';
 
-/** The longest name a person gets on this device (it fits under an avatar and in a menu). */
-export const NAME_MAX = 40;
+/** The longest name a person gets (it fits under an avatar and in a menu): a household
+ * member's limit, so a name that fits here fits on the server too. */
+const NAME_MAX = MEMBER_NAME_MAX;
 
-/** Rename a person on this device (the shared Dialog: a bottom sheet on a phone that lifts
- * above the keyboard). The name is local: the server account keeps its username.
- *
- * `onSave` renames something else instead (a household member's name on the server,
- * Phase 8b-1): it gets the trimmed name and resolves to whether it was saved (the dialog
- * stays open on false, and the caller has said why); `body` then says what the name is. */
+/**
+ * Rename a person (the shared Dialog: a bottom sheet on a phone that lifts above the
+ * keyboard): on this device (a profile; the server account keeps its username), or a
+ * household member's name on the server (Phase 8b-1). `onSave` gets the trimmed name and
+ * resolves to whether it was saved (the dialog stays open on false, and the caller has said
+ * why); `body` says what the name is; `validate` says what is wrong with a name (undefined:
+ * nothing), by default only an empty one.
+ */
 export function RenameDialog({
   open,
-  profileId,
   name,
   body,
+  validate,
   onSave,
   onClose,
 }: {
   open: boolean;
-  profileId?: string;
   name: string;
   body?: string;
-  onSave?: (name: string) => Promise<boolean>;
+  validate?: (name: string) => string | undefined;
+  onSave: (name: string) => Promise<boolean>;
   onClose: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       {open ? (
-        <RenameBody
-          name={name}
-          body={body}
-          onSave={
-            onSave ??
-            (async (next) => {
-              if (profileId) renameProfile(profileId, next);
-              return true;
-            })
-          }
-          onClose={onClose}
-        />
+        <RenameBody name={name} body={body} validate={validate} onSave={onSave} onClose={onClose} />
       ) : null}
     </Dialog>
   );
@@ -60,18 +52,25 @@ export function RenameDialog({
 function RenameBody({
   name,
   body,
+  validate,
   onSave,
   onClose,
 }: {
   name: string;
   body?: string;
+  validate?: (name: string) => string | undefined;
   onSave: (name: string) => Promise<boolean>;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const [value, setValue] = useState(name);
   const [saving, setSaving] = useState(false);
-  const ok = value.trim().length > 0;
+  const error = validate
+    ? validate(value)
+    : value.trim().length > 0
+      ? undefined
+      : t('profiles.rename.empty');
+  const ok = error === undefined;
   const save = async () => {
     if (!ok || saving) return;
     setSaving(true);
@@ -97,7 +96,7 @@ function RenameBody({
         autoCapitalize="words"
         returnKeyType="done"
         onSubmitEditing={() => void save()}
-        error={ok ? undefined : t('profiles.rename.empty')}
+        error={error}
       />
       <DialogFooter>
         <Button title={t('common.cancel')} variant="ghost" onPress={onClose} />

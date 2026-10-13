@@ -25,6 +25,7 @@ import {
   connectionsOfProfile,
   DEFAULT_BEDTIME,
   mayTurnOnKids,
+  renameProfile,
   type Profile,
   setAskAtLaunch,
   setProfileHasPin,
@@ -417,8 +418,11 @@ function PersonCard({
 
       <RenameDialog
         open={renaming}
-        profileId={profile.id}
         name={name}
+        onSave={async (next) => {
+          renameProfile(profile.id, next);
+          return true;
+        }}
         onClose={() => setRenaming(false)}
       />
       <PinDialog

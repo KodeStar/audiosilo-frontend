@@ -277,6 +277,16 @@ describe('MemberCard', () => {
     expect(mockUpdate).toHaveBeenCalledWith({ id: 12, body: { name: 'Evelyn' } });
   });
 
+  it("never sends a name the server's rule refuses (a control character)", async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Rename Evie' }));
+    await fireEvent.changeText(screen.getByTestId('rename-field'), 'Ev\u0007ie');
+    expect(screen.getByText('Use a name of up to 40 characters.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   it('renames their profile on this device too when they are here', async () => {
     const here = { ...owner, id: 'a.12', user: { id: 12, username: 'evie' } } as Connection;
     useSession.setState({ connections: [owner, here] });

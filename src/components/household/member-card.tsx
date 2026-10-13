@@ -46,6 +46,7 @@ import {
   confirmsName,
   createsBooks,
   memberConnection,
+  validMemberName,
   writeError,
   writeErrorText,
 } from './household-model';
@@ -331,6 +332,7 @@ export function MemberCard({
             ? t('household.card.renameBodyHere', { server })
             : t('household.card.renameBody', { server })
         }
+        validate={(next) => (validMemberName(next) ? undefined : t('household.add.nameError'))}
         onSave={rename}
         onClose={close}
       />
