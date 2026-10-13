@@ -375,6 +375,8 @@
       "title": "Tus audiolibros, desde tu propio servidor.",
       "lead": "Introduce la dirección que te dio tu administrador, o escanea el código de su pantalla.",
       "leadWeb": "Introduce la dirección que te dio tu administrador, o pega el enlace de emparejamiento que te envió.",
+      "leadServed": "Inicia sesión con el código o la contraseña que te dio tu administrador, o pega el enlace de emparejamiento que te envió.",
+      "finding": "Buscando tu servidor…",
       "continue": "Continuar"
     },
     "signIn": {

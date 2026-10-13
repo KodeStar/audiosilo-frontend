@@ -1,7 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { YearStoryScreen } from '@/components/you/year/year-story-screen';
+import { usePageTitle } from '@/lib/use-page-title';
 
 /**
  * The phone's full-screen Year in listening story, a root modal like the player and the
@@ -10,7 +12,9 @@ import { YearStoryScreen } from '@/components/you/year/year-story-screen';
  * gate (`useRouteConnection`: an unknown connection, another person's year).
  */
 export default function YearScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ year?: string; connection?: string; card?: string }>();
+  usePageTitle(t('you.titles.year'));
   const { gate } = useRouteConnection(params.connection);
   return gate ?? <YearStoryScreen {...params} />;
 }

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { webOrigin } from '@/lib/base-url';
+import { servedOrigin, webOrigin } from '@/lib/base-url';
 import { serverIdOf } from '@/lib/connection-id';
 import { getDeviceName } from '@/lib/device';
 import {
@@ -48,6 +48,11 @@ import { useLinkPairing } from './use-pairing';
  * A pairing link or QR opens this screen with its `token` (and on native the `server` it
  * belongs to, and the server's `home` / `away` addresses when it has them): the token is
  * exchanged at once, with nothing to type.
+ *
+ * The player the server serves at `/web` (`servedOrigin`) asks nothing: it asks its own origin
+ * who it is on open and shows what it found, with Sign in, and no address field or remembered
+ * servers (the server's CSP lets it reach no other). Only when that fails does the field show,
+ * filled in with the origin.
  */
 export function ConnectStart() {
   const { t } = useTranslation();
@@ -68,7 +73,13 @@ export function ConnectStart() {
   // The servers of the person listening: a remembered server another person on this device
   // uses is still one this person can sign in to.
   const personServerIds = useProfileConnections().map(serverIdOf);
-  const [url, setUrl] = useState(savedUrl ?? '');
+  // The served player's field, shown only when its own server didn't answer, has the origin.
+  const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? '');
+  // The served player's own server: `pending` while asking it, then `found` (the card is the
+  // screen). `null` everywhere else (the field), and for a pairing link.
+  const [served, setServed] = useState<'pending' | 'found' | null>(() =>
+    servedOrigin() && !token ? 'pending' : null,
+  );
   const [known, setKnown] = useState<KnownServer[]>([]);
   // Which connect action is in flight (a remembered server's `serverId`, or `'manual'` for
   // the address field), so only the tapped control spins and every other one stays inert
@@ -97,8 +108,20 @@ export function ConnectStart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, home, away, pair, fail]);
 
-  // Remembered servers (durable, no token): one-tap reconnect, with zero typing.
+  // The served player: ask its own server who it is, once.
   useEffect(() => {
+    const origin = servedOrigin();
+    if (served !== 'pending' || !origin) return;
+    // As typed: the card shows, nothing goes on by itself (an origin has its scheme, so
+    // there is no http retry).
+    void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Remembered servers (durable, no token): one-tap reconnect, with zero typing. Not on the
+  // served player, which reaches only its own server.
+  useEffect(() => {
+    if (servedOrigin()) return;
     let cancelled = false;
     void listKnownServers().then((k) => {
       if (!cancelled) setKnown(k);
@@ -114,16 +137,17 @@ export function ConnectStart() {
   const goSignIn = (name: string) =>
     router.push({ pathname: '/connect/sign-in', params: { serverName: name } });
 
-  // Ask the server who it is. The typed address shows what was found (or why not); a
-  // remembered server goes straight on to sign-in unless it runs a demo.
-  const connect = async (target: string, tag: string) => {
+  // Ask the server who it is. The typed address and the served player's own server show what
+  // was found (or why not); a remembered server goes straight on to sign-in unless it runs a
+  // demo. True when the server answered.
+  const connect = async (target: string, tag: string): Promise<boolean> => {
     setFieldError(null);
     setDemoError(null);
     setProbe(null);
     const normalized = normalizeUrl(target);
     if (!normalized) {
       setFieldError(t('connect.server.enterAddress'));
-      return;
+      return false;
     }
     setBusy(tag);
     try {
@@ -153,6 +177,7 @@ export function ConnectStart() {
       };
       if (tag !== 'manual' && !found.demo) goSignIn(info.name);
       else setProbe(found);
+      return true;
     } catch (e) {
       setProbe(
         e instanceof ApiError
@@ -163,6 +188,7 @@ export function ConnectStart() {
               home: looksLikeHomeAddress(normalized),
             },
       );
+      return false;
     } finally {
       setBusy(null);
     }
@@ -213,20 +239,28 @@ export function ConnectStart() {
     void pair(scan);
   };
 
-  if (pairing) {
+  if (served === 'pending' || pairing) {
     return (
       <ConnectFrame>
         <View className="items-center gap-4" accessibilityLiveRegion="polite">
           <Logo size={56} />
           <Spinner size="large" />
-          <Text variant="muted">{t('connect.server.connecting')}</Text>
+          <Text variant="muted">
+            {pairing ? t('connect.server.connecting') : t('onboarding.start.finding')}
+          </Text>
         </View>
       </ConnectFrame>
     );
   }
 
+  const isServed = served === 'found';
   const offered = knownToOffer(known, newPerson ? [] : personServerIds);
   const isWeb = Platform.OS === 'web';
+  const lead = isServed
+    ? 'onboarding.start.leadServed'
+    : isWeb
+      ? 'onboarding.start.leadWeb'
+      : 'onboarding.start.lead';
 
   return (
     <ConnectFrame testID="connect-start">
@@ -253,11 +287,7 @@ export function ConnectStart() {
           {newPerson ? t('profiles.connect.title') : t('onboarding.start.title')}
         </Text>
         <Text variant="muted" className="text-[15px] leading-[22px]">
-          {newPerson
-            ? t('profiles.connect.lead')
-            : isWeb
-              ? t('onboarding.start.leadWeb')
-              : t('onboarding.start.lead')}
+          {newPerson ? t('profiles.connect.lead') : t(lead)}
         </Text>
       </View>
       {pairError ? (
@@ -266,43 +296,46 @@ export function ConnectStart() {
         </Text>
       ) : null}
       <View className="gap-3">
-        {/* The label above the row, so the field and Continue line up at the top. */}
-        <View className="gap-1.5">
-          <Text variant="eyebrow" nativeID="server-address-label">
-            {t('connect.server.addressLabel')}
-          </Text>
-          <View className="flex-row items-start gap-2">
-            <View className="min-w-0 flex-1">
-              <ConnectInput
+        {/* The label above the row, so the field and Continue line up at the top. The served
+            player found its own server: no address to ask for. */}
+        {isServed ? null : (
+          <View className="gap-1.5">
+            <Text variant="eyebrow" nativeID="server-address-label">
+              {t('connect.server.addressLabel')}
+            </Text>
+            <View className="flex-row items-start gap-2">
+              <View className="min-w-0 flex-1">
+                <ConnectInput
+                  size="lg"
+                  accessibilityLabel={t('connect.server.addressLabel')}
+                  aria-labelledby="server-address-label"
+                  placeholder="books.example.com"
+                  value={url}
+                  onChangeText={(v) => {
+                    setUrl(v);
+                    setProbe(null);
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  inputMode="url"
+                  textContentType="URL"
+                  error={fieldError ?? undefined}
+                  returnKeyType="go"
+                  onSubmitEditing={() => connect(url, 'manual')}
+                />
+              </View>
+              <Button
                 size="lg"
-                accessibilityLabel={t('connect.server.addressLabel')}
-                aria-labelledby="server-address-label"
-                placeholder="books.example.com"
-                value={url}
-                onChangeText={(v) => {
-                  setUrl(v);
-                  setProbe(null);
-                }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                inputMode="url"
-                textContentType="URL"
-                error={fieldError ?? undefined}
-                returnKeyType="go"
-                onSubmitEditing={() => connect(url, 'manual')}
+                className="h-[48px]"
+                title={t('onboarding.start.continue')}
+                loading={busy === 'manual'}
+                disabled={busy !== null}
+                onPress={() => connect(url, 'manual')}
               />
             </View>
-            <Button
-              size="lg"
-              className="h-[48px]"
-              title={t('onboarding.start.continue')}
-              loading={busy === 'manual'}
-              disabled={busy !== null}
-              onPress={() => connect(url, 'manual')}
-            />
           </View>
-        </View>
+        )}
         {probe ? (
           // Scrolled into view when it appears: the keyboard is usually still up.
           <ConnectReveal testID="probe-reveal">

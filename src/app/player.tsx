@@ -8,7 +8,8 @@ import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { PlayerView } from '@/components/player/player-view';
 import { Spinner } from '@/components/ui/spinner';
-import { segmentsToPath } from '@/lib/paths';
+import { bookTitle, segmentsToPath } from '@/lib/paths';
+import { usePageTitle } from '@/lib/use-page-title';
 import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
@@ -44,6 +45,15 @@ export default function PlayerScreen() {
   const goToTrack = usePlayer((s) => s.goToTrack);
 
   const { data: book } = useBook(libraryId, path, connectionId);
+  // Opened bare (the mini player, the docked bar, the palette) there is no route book:
+  // the book on screen is the one loaded.
+  usePageTitle(
+    book
+      ? bookTitle(book.title, path)
+      : nowPlaying
+        ? bookTitle(nowPlaying.title, nowPlaying.path)
+        : undefined,
+  );
   const chaptersQuery = useChapters(libraryId, path, connectionId);
   const chapterData = chaptersQuery.data;
 

@@ -9,6 +9,7 @@ import { AccountSection } from '@/components/account/account-section';
 import { ContentScope } from '@/components/layout/content-scope';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { BreadCrumbs, type Crumb } from '@/components/ui/breadcrumbs';
+import { usePageTitle } from '@/lib/use-page-title';
 import { useSession } from '@/stores/session';
 
 /**
@@ -35,6 +36,8 @@ function AccountContent() {
   const { t } = useTranslation();
   const cid = useScopedCid();
   const name = useSession((s) => s.connections.find((c) => c.id === cid)?.name);
+  const label = name || t('settings.account.label');
+  usePageTitle(label);
   const navigation = useNavigation();
   // Read once: the page is on top of its stack when it mounts.
   const [parentKey] = useState(() =>
@@ -46,7 +49,7 @@ function AccountContent() {
   const crumbs: Crumb[] | null = parentKey
     ? [
         { label: t(parentKey), onPress: () => router.back() },
-        { label: name ?? t('settings.account.label'), active: true },
+        { label, active: true },
       ]
     : null;
 

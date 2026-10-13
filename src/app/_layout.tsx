@@ -13,6 +13,7 @@ import { KidsRouteGuard } from '@/components/kids/kids-route-guard';
 import { BookEndedListener } from '@/components/player/book-ended-listener';
 import { CompanionRevealListener } from '@/components/player/companion/reveal-listener';
 import { ShakeToExtendListener } from '@/components/player/shake-to-extend-listener';
+import { DocumentTitle, StaticDocumentTitle } from '@/components/shell/document-title';
 import { ShellToastHost } from '@/components/shell/shell-toast-host';
 import { RootInsetsProvider } from '@/components/ui/overlay';
 import { startKeepAhead } from '@/downloads/keep-ahead-controller';
@@ -70,6 +71,8 @@ function RootNavigator() {
       <ShakeToExtendListener />
       {/* Kids mode (Phase 8): a kids profile stays on /kids, whatever the route. */}
       <KidsRouteGuard />
+      {/* Web: the browser tab names the page, or the book playing. */}
+      <DocumentTitle />
     </>
   );
 }
@@ -144,6 +147,8 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* Web's static HTML: the tab's title before the app (below) hydrates. */}
+      <StaticDocumentTitle />
       <SafeAreaProvider>
         {/* The window's insets, for every overlay wherever it is opened from. */}
         <RootInsetsProvider>

@@ -375,6 +375,8 @@
       "title": "Deine Hörbücher, von deinem eigenen Server.",
       "lead": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder scanne den Code auf dessen Bildschirm.",
       "leadWeb": "Gib die Adresse ein, die du von deinem Admin bekommen hast, oder füge den Kopplungslink ein, den du bekommen hast.",
+      "leadServed": "Melde dich mit dem Code oder Passwort von deinem Admin an, oder füge den Kopplungslink ein, den du bekommen hast.",
+      "finding": "Dein Server wird gesucht…",
       "continue": "Weiter"
     },
     "signIn": {

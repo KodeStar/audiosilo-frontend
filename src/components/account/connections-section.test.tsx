@@ -14,6 +14,12 @@ jest.mock('@/downloads/store', () => ({
   useDownloads: { getState: () => ({ entries: {} }) },
 }));
 
+let mockServed: string | null = null;
+jest.mock('@/lib/base-url', () => ({
+  ...jest.requireActual('@/lib/base-url'),
+  servedOrigin: () => mockServed,
+}));
+
 /* eslint-disable import/first */
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -23,6 +29,7 @@ import { ConnectionsSection } from './connections-section';
 /* eslint-enable import/first */
 
 beforeEach(() => {
+  mockServed = null;
   jest.clearAllMocks();
   resetProfilesForTests();
   useSession.setState({
@@ -85,6 +92,19 @@ describe('ConnectionsSection', () => {
     expect(onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
     await fireEvent.press(screen.getByText('Add a server'));
     expect(mockRouter.push).toHaveBeenCalledWith('/connect?add=1');
+  });
+
+  it('offers no other server on the player the server serves', async () => {
+    mockServed = 'https://books.example';
+    await render(<ConnectionsSection onRemove={jest.fn()} />);
+    expect(screen.getByLabelText('Manage Hearthside')).toBeTruthy();
+    expect(screen.queryByText('Add a server')).toBeNull();
+  });
+
+  it('still adds servers on a web build hosted beside its servers', async () => {
+    mockServed = 'https://player.example';
+    await render(<ConnectionsSection onRemove={jest.fn()} />);
+    expect(screen.getByText('Add a server')).toBeTruthy();
   });
 
   it('gives the remove button a 44 pt target on native', async () => {

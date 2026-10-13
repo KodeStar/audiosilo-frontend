@@ -23,8 +23,9 @@ import {
   presentLetters,
   sectionIndexForLetter,
 } from '@/lib/alpha-sections';
-import { libraryHref, segmentsToPath } from '@/lib/paths';
+import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
+import { usePageTitle } from '@/lib/use-page-title';
 
 import { AzRail } from './books/az-rail';
 
@@ -155,6 +156,7 @@ function BrowseContent() {
 
   const libraryName =
     libraries?.find((l) => l.id === libraryId)?.name ?? t('library.browse.fallbackName');
+  usePageTitle(path ? pathLeaf(path) : libraryName);
   const crumbs = pathCrumbs(libraryName, path, (sub) =>
     router.push(libraryHref(cid, libraryId, sub)),
   );

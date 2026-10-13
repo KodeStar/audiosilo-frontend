@@ -26,6 +26,12 @@ jest.mock('@/playback/store', () =>
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
 
+let mockServed: string | null = null;
+jest.mock('@/lib/base-url', () => ({
+  ...jest.requireActual('@/lib/base-url'),
+  servedOrigin: () => mockServed,
+}));
+
 /* eslint-disable import/first */
 import { useReachability } from '@/api/reachability';
 import { setSecure } from '@/lib/secure-store';
@@ -39,6 +45,7 @@ import { ProfileMenu } from './profile-menu';
 const user = (username: string) => ({ username }) as never;
 
 beforeEach(() => {
+  mockServed = null;
   jest.clearAllMocks();
   resetProfilesForTests();
   mockScheme = 'light';
@@ -108,6 +115,25 @@ describe('ProfileMenu', () => {
     await open();
     await fireEvent.press(screen.getByText('Add a server'));
     expect(mockRouter.push).toHaveBeenCalledWith('/connect?add=1');
+  });
+
+  it('offers no other server on the player the server serves', async () => {
+    mockServed = 'https://books.example';
+    useSession.setState((s) => ({
+      connections: s.connections.map((c) => ({ ...c, serverUrl: 'https://books.example' })),
+    }));
+    await open();
+    expect(screen.getByText('Hearthside')).toBeTruthy();
+    expect(screen.queryByText('Add a server')).toBeNull();
+  });
+
+  it('still adds servers on a web build hosted beside its servers', async () => {
+    mockServed = 'https://player.example';
+    useSession.setState((s) => ({
+      connections: s.connections.map((c) => ({ ...c, serverUrl: 'https://books.example' })),
+    }));
+    await open();
+    expect(screen.getByText('Add a server')).toBeTruthy();
   });
 
   it('opens the account on the default server', async () => {

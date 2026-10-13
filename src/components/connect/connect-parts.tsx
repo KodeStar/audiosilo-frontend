@@ -9,6 +9,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { PressableRow } from '@/components/ui/row-surface';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { servedOrigin } from '@/lib/base-url';
 import type { KnownServer } from '@/lib/known-servers';
 import { clothColor } from '@/lib/monogram';
 import { hostOf } from '@/lib/pairing';
@@ -196,14 +197,15 @@ export function addressesBody(name: string, t: TFunction): string {
   return Platform.OS === 'web' ? t('addresses.body') : t('onboarding.addresses.body', { name });
 }
 
-/** "Another server": back to the first step. */
+/** "Another server": back to the first step (only "Back" on the served player, which has no
+ * other server to offer). */
 export function BackToStart({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   return (
     <Button variant="ghost" onPress={onPress} className="self-start">
       <Icon name="arrow-left" size={16} color={themed.foreground} />
-      <Text>{t('onboarding.anotherServer')}</Text>
+      <Text>{servedOrigin() ? t('nav.back') : t('onboarding.anotherServer')}</Text>
     </Button>
   );
 }

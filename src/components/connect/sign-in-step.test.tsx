@@ -9,13 +9,22 @@ import { SignInStep } from './sign-in-step';
 
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
+const mockBack = jest.fn();
+let mockCanGoBack = true;
 jest.mock('expo-router', () => ({
   router: {
     replace: (h: unknown) => mockReplace(h),
     dismissTo: (h: unknown) => mockDismissTo(h),
+    back: () => mockBack(),
+    canGoBack: () => mockCanGoBack,
   },
 }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test device' }));
+let mockServed: string | null = null;
+jest.mock('@/lib/base-url', () => ({
+  ...jest.requireActual('@/lib/base-url'),
+  servedOrigin: () => mockServed,
+}));
 
 const mockApi = { redeemCode: jest.fn(), exchange: jest.fn(), login: jest.fn() };
 const mockBases: string[] = [];
@@ -40,6 +49,8 @@ const HOME = 'http://192.168.1.20:8080';
 const AWAY = 'https://books.example.com';
 
 beforeEach(async () => {
+  mockServed = null;
+  mockCanGoBack = true;
   await AsyncStorage.clear();
   jest.clearAllMocks();
   mockBases.length = 0;
@@ -143,4 +154,24 @@ it('"Another server" goes back to the first step', async () => {
   await render(<SignInStep server={AWAY} />);
   await fireEvent.press(screen.getByText('Another server'));
   expect(mockDismissTo).toHaveBeenCalledWith('/connect');
+  expect(mockBack).not.toHaveBeenCalled();
+});
+
+it('is only "Back" on the player the server serves, which has no other server', async () => {
+  mockServed = AWAY;
+  await render(<SignInStep server={AWAY} />);
+  expect(screen.queryByText('Another server')).toBeNull();
+  // Back to where it came from: the found card, or the app the reconnect banner was in.
+  await fireEvent.press(screen.getByText('Back'));
+  expect(mockBack).toHaveBeenCalled();
+  expect(mockDismissTo).not.toHaveBeenCalled();
+});
+
+it('goes to the first step from "Back" with nothing to go back to (a cold link)', async () => {
+  mockServed = AWAY;
+  mockCanGoBack = false;
+  await render(<SignInStep server={AWAY} />);
+  await fireEvent.press(screen.getByText('Back'));
+  expect(mockDismissTo).toHaveBeenCalledWith('/connect');
+  expect(mockBack).not.toHaveBeenCalled();
 });

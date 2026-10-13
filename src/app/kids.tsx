@@ -1,9 +1,11 @@
 import { Stack } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { KidsScreen } from '@/components/kids/kids-screen';
 import { useKidsActive } from '@/components/kids/use-kids';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
+import { usePageTitle } from '@/lib/use-page-title';
 
 /**
  * Kids mode (Phase 8): the whole app for a profile in kids mode, a root route outside the
@@ -15,7 +17,9 @@ import { Spinner } from '@/components/ui/spinner';
  * as while the profiles load).
  */
 export default function KidsRoute() {
+  const { t } = useTranslation();
   const kids = useKidsActive();
+  usePageTitle(t('kids.stories.title'));
   return (
     <>
       <Stack.Screen options={{ gestureEnabled: false }} />
