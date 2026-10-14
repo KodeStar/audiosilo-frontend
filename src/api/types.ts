@@ -250,6 +250,8 @@ export type FsEntry = {
   author?: string;
   series?: string;
   series_index?: number;
+  /** The end of a range position (an omnibus of 1-3), as on a `Book`. */
+  series_index_end?: number;
   duration?: number;
   /** Per-folder detection override ("book" | "collection"); empty when auto-detected.
    * An admin-console concern - the player browses read-only - but mirrored for completeness. */
@@ -773,6 +775,8 @@ export type Favourite = {
   author: string;
   series: string;
   series_index: number;
+  /** The end of a range position (an omnibus of 1-3), as on a `Book`. */
+  series_index_end?: number;
   duration: number;
   created_at: string;
 };

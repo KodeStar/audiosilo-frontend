@@ -146,7 +146,12 @@ function UnfavouriteButton({ fav }: { fav: SourcedFavourite }) {
 function BookRow({ fav, server }: { fav: SourcedFavourite; server?: string }) {
   const { openBook } = useOpen();
   const subtitle = [
-    bookSubtitle({ author: fav.author, series: fav.series, seriesIndex: fav.series_index }),
+    bookSubtitle({
+      author: fav.author,
+      series: fav.series,
+      seriesIndex: fav.series_index,
+      seriesIndexEnd: fav.series_index_end,
+    }),
     server,
   ]
     .filter(Boolean)
