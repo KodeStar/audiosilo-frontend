@@ -53,11 +53,6 @@ export function seriesRails(
     .filter((r) => r.views.some((v) => others(v.works).length > 0));
 }
 
-/** A series position ("1", "2.5", "1-3.5") as a number: its start (see
- * `@/lib/series-position`). Unparsable positions are never guessed at - the caller drops
- * them, because mis-ordering a series is worse than omitting an entry. */
-export { seriesPositionValue } from '@/lib/series-position';
-
 /**
  * The earlier books of every series this work belongs to: the works positioned
  * BEFORE the current work, deduplicated by work id (two series can list the same

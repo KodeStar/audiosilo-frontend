@@ -18,7 +18,7 @@ import {
   summaryIsVisible,
 } from './book-meta';
 import { recapDescriptor, sortRecaps } from './meta-gating';
-import { previousWorks, seriesPositionValue, seriesRails } from './series-rails';
+import { previousWorks, seriesRails } from './series-rails';
 /* eslint-enable import/first */
 
 function work(id: string, position: string) {
@@ -171,23 +171,6 @@ describe('sortRecaps', () => {
     ];
     expect(sortRecaps(input).map((r) => r.through.chapter)).toEqual([0, 4, 9]);
     expect(input.map((r) => r.through.chapter)).toEqual([9, 0, 4]);
-  });
-});
-
-describe('seriesPositionValue', () => {
-  it('reads the leading number, including a decimal position', () => {
-    expect(seriesPositionValue('1')).toBe(1);
-    expect(seriesPositionValue('2.5')).toBe(2.5);
-  });
-
-  it('takes the FIRST number of a span (an omnibus sorts at its start)', () => {
-    expect(seriesPositionValue('1-3.5')).toBe(1);
-  });
-
-  it('is undefined for an unparsable or missing position', () => {
-    expect(seriesPositionValue('')).toBeUndefined();
-    expect(seriesPositionValue('novella')).toBeUndefined();
-    expect(seriesPositionValue(undefined)).toBeUndefined();
   });
 });
 

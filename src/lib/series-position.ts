@@ -24,15 +24,17 @@ export function seriesSpan(start: number, end?: number): SeriesSpan {
  * Unparsable positions are never guessed at: callers drop or append them.
  */
 export function parseSeriesPosition(text: string | undefined): SeriesSpan | undefined {
-  const start = parseFloat(text ?? '');
-  if (!Number.isFinite(start)) return undefined;
+  const start = seriesPositionValue(text);
+  if (start === undefined) return undefined;
   const range = RANGE.exec(text ?? '');
   return range ? seriesSpan(start, Number(range[2])) : { start };
 }
 
-/** A rail position's text as the number it sorts by (a range's start), or undefined. */
+/** A rail position's text as the number it sorts by (its first number, so a range's
+ * start), or undefined. */
 export function seriesPositionValue(text: string | undefined): number | undefined {
-  return parseSeriesPosition(text)?.start;
+  const n = parseFloat(text ?? '');
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /** A span's last slot: its end, else its start. */
@@ -48,7 +50,7 @@ export function spanCovers(span: SeriesSpan, n: number): boolean {
 /** A position as shown, without a "#" or "Book": "3", "2.5", "1-3"; '' when it has none
  * (a start of 0 or less). */
 export function seriesNumber(start: number | undefined, end?: number): string {
-  if (start === undefined || !(start > 0)) return '';
+  if (!start || start < 0) return '';
   const span = seriesSpan(start, end);
   return span.end === undefined ? String(start) : `${start}-${span.end}`;
 }

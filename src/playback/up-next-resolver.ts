@@ -77,7 +77,7 @@ export function entryHolds(entry: BookRef, libraryId: number, path: string): boo
 function seriesPosition(
   book: { series_index?: number; series_index_end?: number } | undefined,
 ): string | undefined {
-  return (book && bookSeriesNumber(book)) || undefined;
+  return bookSeriesNumber(book ?? {}) || undefined;
 }
 
 function seriesOf(name: string | undefined, position: string | undefined) {

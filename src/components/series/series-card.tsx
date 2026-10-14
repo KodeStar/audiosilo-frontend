@@ -7,7 +7,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
-import { bookSeriesSpan } from '@/lib/series-position';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -69,9 +68,8 @@ export function SeriesCard({
   const { books } = useSeriesBooks(libraryId, series.name, connectionId, { batch: true });
   const entries =
     books.length > 0 ? localEntries(books, { connectionId, connectionName, progressOf }) : null;
-  // The list's positions are starts only: the loaded books add the ranges they hold, so
-  // an omnibus 1-3 leaves no gap at 2 and 3.
-  const gaps = localGaps([...series.positions, ...books.map(bookSeriesSpan)]).length;
+  // The list's positions hold every slot a range covers (an omnibus 1-3 gives 1, 2, 3).
+  const gaps = localGaps(series.positions).length;
   const average = series.books > 0 ? series.duration / series.books : undefined;
   const inProgress = entries?.filter((e) => e.started && !e.finished).length ?? 0;
   const finished = entries?.filter((e) => e.finished).length ?? 0;

@@ -18,6 +18,7 @@ import {
   railPositionLabel,
   type SeriesSpan,
   seriesPositionValue,
+  seriesSpan,
   spanCovers,
   spanEnd,
 } from '@/lib/series-position';
@@ -187,13 +188,18 @@ const MAX_LOCAL_GAPS = 60;
  * book 3 is missing. A range holds every whole number in it (1-3 and 4 owned: none
  * missing); fractional positions (3.5) never make gaps of their own. */
 export function localGaps(positions: readonly (number | SeriesSpan)[]): number[] {
-  const spans = positions
-    .map((p) => (typeof p === 'number' ? { start: p } : p))
-    .filter((p) => p.start > 0);
-  const top = Math.floor(Math.max(0, ...spans.map(spanEnd)));
+  const held = new Set<number>();
+  let top = 0;
+  for (const p of positions) {
+    const span = typeof p === 'number' ? seriesSpan(p) : p;
+    if (!(span.start > 0)) continue;
+    const end = spanEnd(span);
+    for (let n = Math.ceil(span.start); n <= end; n++) held.add(n);
+    top = Math.max(top, Math.floor(end));
+  }
   const gaps: number[] = [];
   for (let n = 1; n <= top; n++) {
-    if (spans.some((p) => spanCovers(p, n))) continue;
+    if (held.has(n)) continue;
     gaps.push(n);
     if (gaps.length > MAX_LOCAL_GAPS) return [];
   }
@@ -373,7 +379,7 @@ export function railEntries(
     const span = e.kind === 'ghost' ? undefined : parseSeriesPosition(e.position);
     return span?.end !== undefined ? [span] : [];
   });
-  return ranges.length ? out.filter((e) => e.kind !== 'ghost' || !heldByRange(e, ranges)) : out;
+  return out.filter((e) => e.kind !== 'ghost' || !heldByRange(e, ranges));
 }
 
 /** The book the listener is on: the started, unfinished entry they played last. */
