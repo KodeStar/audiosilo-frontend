@@ -1,4 +1,4 @@
-import { isLoopbackHost, urlHost } from './url-host';
+import { isLoopbackHost, urlEndpoint, urlHost } from './url-host';
 
 describe('urlHost', () => {
   it('reads the host without URL.hostname (React Native does not implement it)', () => {
@@ -6,6 +6,28 @@ describe('urlHost', () => {
     expect(urlHost('http://[::1]:80')).toBe('::1');
     expect(urlHost('https://user@books.example.com')).toBe('books.example.com');
     expect(urlHost('nope')).toBeNull();
+  });
+});
+
+describe('urlEndpoint', () => {
+  it("reads the scheme, host and port, the port defaulting to the scheme's", () => {
+    expect(urlEndpoint('HTTPS://Books.Example.com:8443/api')).toEqual({
+      scheme: 'https',
+      host: 'books.example.com',
+      port: '8443',
+    });
+    expect(urlEndpoint('https://nas.local')).toEqual({
+      scheme: 'https',
+      host: 'nas.local',
+      port: '443',
+    });
+    expect(urlEndpoint('http://user@[fd00::5]?x')).toEqual({
+      scheme: 'http',
+      host: 'fd00::5',
+      port: '80',
+    });
+    expect(urlEndpoint('ftp://files.example')?.port).toBe('');
+    expect(urlEndpoint('nope')).toBeNull();
   });
 });
 

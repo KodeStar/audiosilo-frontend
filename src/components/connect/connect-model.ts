@@ -1,4 +1,4 @@
-import { ApiError } from '@/api/client';
+import { ApiError, TimeoutError } from '@/api/client';
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
 import { priorConnection, serverIdOf } from '@/lib/connection-id';
 import type { KnownServer } from '@/lib/known-servers';
@@ -11,7 +11,7 @@ import {
   type ServerIdProbe,
 } from '@/lib/server-address';
 import { isInProgress } from '@/lib/progress-view';
-import { isLoopbackHost } from '@/lib/url-host';
+import { isLoopbackHost, urlEndpoint } from '@/lib/url-host';
 
 /**
  * The connect flow's rules (onboarding: connect, sign in, "Your library is ready."),
@@ -159,31 +159,45 @@ export function httpFallback(typed: string): string | null {
   return normalizeUrl(`http://${raw}`) || null;
 }
 
-/** A URL's scheme, host and port (the scheme's default port when it names none), or null.
- * A regex rather than `URL`: React Native's URL polyfill has no `hostname` or `port`. */
-function endpoint(url: string): { scheme: string; host: string; port: string } | null {
-  const m = /^(https?):\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::(\d+))?(?:[/?#]|$)/i.exec(
-    url.trim(),
-  );
-  if (!m) return null;
-  const scheme = m[1].toLowerCase();
-  return { scheme, host: m[2].toLowerCase(), port: m[3] ?? (scheme === 'https' ? '443' : '80') };
+/**
+ * Ask `attempt` at `primary`; when that fails without a server answering (not an
+ * `ApiError`) and `fallback(error)` names another address, ask there once. Resolves the
+ * answer and the address that gave it. A failure at the fallback that isn't its server's
+ * own answer reports the primary's error, which says what the listener asked for.
+ */
+export async function withFallback<T>(
+  primary: string,
+  attempt: (base: string) => Promise<T>,
+  fallback: (error: unknown) => string | null,
+): Promise<{ answer: T; base: string }> {
+  try {
+    return { answer: await attempt(primary), base: primary };
+  } catch (e) {
+    const alt = e instanceof ApiError ? null : fallback(e);
+    if (!alt) throw e;
+    try {
+      return { answer: await attempt(alt), base: alt };
+    } catch (e2) {
+      throw e2 instanceof ApiError ? e2 : e;
+    }
+  }
 }
 
 /**
- * Where to exchange a pairing link's token when the exchange at the link's base failed
- * with `error`: its `home` address, or null to give up. A server on its own (self-signed)
- * certificate, which the device can't trust, also answers plain http to home-network
- * devices on the same port, and its links carry that as `home=http://<host:port>`. So
- * only when the base never answered (not an `ApiError`: a server that answered refused or
- * failed the token itself), the base is https, and the home address is plain http on the
- * base's own host and port: the token goes to no host the link's base didn't name.
+ * Where to exchange a pairing link's token when its base could not connect (`withFallback`
+ * keeps a server's own answer from getting here): its `home` address, or null to give up.
+ * A server on its own (self-signed) certificate, which the device can't trust, also
+ * answers plain http to home-network devices on the same port, and its links carry that
+ * as `home=http://<host:port>`. So only when the base is https and the home address is
+ * plain http on the base's own host and port (the token goes to no host the link's base
+ * didn't name), and not after a timeout: a host that never answered would only time out
+ * again on http.
  */
 export function pairingFallback(scan: PairingScan, error: unknown): string | null {
   const home = scan.addresses?.home;
-  if (!home || error instanceof ApiError) return null;
-  const base = endpoint(scan.base);
-  const at = endpoint(home);
+  if (!home || error instanceof TimeoutError) return null;
+  const base = urlEndpoint(scan.base);
+  const at = urlEndpoint(home);
   if (base?.scheme !== 'https' || at?.scheme !== 'http') return null;
   return at.host === base.host && at.port === base.port ? home : null;
 }

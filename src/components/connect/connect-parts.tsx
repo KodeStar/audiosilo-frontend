@@ -34,7 +34,7 @@ export type Probe =
       home: boolean;
       /** It was tried over https, so a certificate the device can't trust (the server's
        * own, self-signed) may be why: said in the notice. */
-      tls?: boolean;
+      tls: boolean;
     }
   | { kind: 'error'; message: string };
 

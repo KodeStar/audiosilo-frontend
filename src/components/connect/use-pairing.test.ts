@@ -128,29 +128,19 @@ describe('useLinkPairing: the home http fallback', () => {
     expect(mockFinish).not.toHaveBeenCalled();
   });
 
-  it('never sends the token to a home on another host', async () => {
+  it("says the base couldn't be reached when the home can't either", async () => {
     mockExchange.mockRejectedValue(new TypeError('Network request failed'));
-    const { paired } = await pairWith({
-      ...homeScan,
-      addresses: { home: 'http://192.168.1.99:8080' },
-    });
+    const { paired, error } = await pairWith(homeScan);
     expect(paired).toBe(false);
-    expect(mockExchangedAt).toEqual([BASE]);
+    expect(mockExchangedAt).toEqual([BASE, HOME]);
+    expect(error).toMatch(/^Couldn't reach the server/);
   });
 
-  it("says the base couldn't be reached when the home can't either, and the home's answer when it has one", async () => {
-    mockExchange.mockRejectedValue(new TypeError('Network request failed'));
-    let out = await pairWith(homeScan);
-    expect(out.paired).toBe(false);
-    expect(mockExchangedAt).toEqual([BASE, HOME]);
-    expect(out.error).toMatch(/^Couldn't reach the server/);
-
+  it("says what the home's server answered when it answered", async () => {
     mockExchange
-      .mockReset()
       .mockRejectedValueOnce(new TypeError('Network request failed'))
       .mockRejectedValueOnce(new ApiError(500, 'boom'));
-    out = await pairWith(homeScan);
-    expect(out.error).toMatch(/^The server couldn't finish pairing/);
+    expect((await pairWith(homeScan)).error).toMatch(/^The server couldn't finish pairing/);
     expect(mockFinish).not.toHaveBeenCalled();
   });
 });

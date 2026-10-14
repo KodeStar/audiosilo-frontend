@@ -186,7 +186,9 @@ export function ConnectStart() {
               kind: 'unreachable',
               address: hostOf(normalized),
               home: looksLikeHomeAddress(normalized),
-              tls: normalized.startsWith('https://'),
+              // Only https was tried (a scheme was typed, so no http retry): a
+              // certificate the device can't trust may be why.
+              tls: normalized.startsWith('https://') && !httpFallback(target),
             },
       );
       return false;

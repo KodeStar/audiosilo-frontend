@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Platform } from 'react-native';
 
 import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
 
-import { pairingFallback } from './connect-model';
+import { pairingFallback, withFallback } from './connect-model';
 import { finishConnect } from './finish-connect';
 
 export type LinkPairing = {
@@ -27,7 +28,9 @@ export type LinkPairing = {
  * merges the link's addresses with the answer's). When the link's https base can't be
  * reached (a self-signed certificate the device can't trust), the exchange goes once to
  * the link's plain-http home address on the same host and port (`pairingFallback`), and
- * the connection is stored with that address. Resolves whether it paired. Bare client: a
+ * the connection is stored with that address: the https base is the one address known not
+ * to work for it (the address runner still moves it to an `away` the server names).
+ * Resolves whether it paired. Bare client: a
  * failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
@@ -56,23 +59,16 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       ]);
     };
     try {
-      let serverUrl = scan.base;
-      let answer: Awaited<ReturnType<typeof exchangeAt>>;
-      try {
-        answer = await exchangeAt(scan.base);
-      } catch (e) {
-        // The link's https base could not connect (a server on its own certificate): its
-        // plain-http home address on the same host and port, once (`pairingFallback`). A
-        // failure there that isn't the server's own answer reports the base's.
-        const home = live.current ? pairingFallback(scan, e) : null;
-        if (!home) throw e;
-        answer = await exchangeAt(home).catch((e2: unknown) => {
-          throw e2 instanceof ApiError ? e2 : e;
-        });
-        serverUrl = home;
-      }
+      // The link's https base could not connect (a server on its own certificate): its
+      // plain-http home address on the same host and port, once (`pairingFallback`). Native
+      // only: the web player keeps its own origin, and an https page can't call http.
+      const {
+        answer: [session, info],
+        base: serverUrl,
+      } = await withFallback(scan.base, exchangeAt, (e) =>
+        live.current && Platform.OS !== 'web' ? pairingFallback(scan, e) : null,
+      );
       if (!live.current) return false;
-      const [session, info] = answer;
       await finishConnect({
         serverUrl,
         session,

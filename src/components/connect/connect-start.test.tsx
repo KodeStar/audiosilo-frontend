@@ -274,6 +274,12 @@ describe('the address field', () => {
     await fireEvent.press(screen.getByText('Continue'));
     expect(await screen.findByText("Couldn't reach 192.168.1.20:8080")).toBeTruthy();
     expect(screen.queryByTestId('probe-self-signed')).toBeNull();
+
+    // Typed without a scheme: plain http was tried too, so the hint has nothing to add.
+    await fireEvent.changeText(screen.getByLabelText('Server address'), '192.168.1.21:8080');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText("Couldn't reach 192.168.1.21:8080")).toBeTruthy();
+    expect(screen.queryByTestId('probe-self-signed')).toBeNull();
   });
 
   it('says nothing about encryption for an https server', async () => {

@@ -1,4 +1,4 @@
-import { ApiError } from '@/api/client';
+import { ApiError, TimeoutError } from '@/api/client';
 import type { PeopleList, Progress } from '@/api/types';
 import { serverIdOf } from '@/lib/connection-id';
 
@@ -16,6 +16,7 @@ import {
   revealOffset,
   revealSpan,
   scanParams,
+  withFallback,
 } from './connect-model';
 
 const HOME = 'http://192.168.1.20:8080';
@@ -204,6 +205,7 @@ describe('revealSpan', () => {
 
 describe('pairingFallback', () => {
   const BASE = 'https://192.168.1.205:8080';
+  const SAME_HOST = 'http://192.168.1.205:8080';
   const link = (home?: string, base = BASE) => ({
     base,
     token: 'tok',
@@ -212,9 +214,7 @@ describe('pairingFallback', () => {
   const down = new TypeError('Network request failed');
 
   it("falls back to the link's plain-http home on the base's own host and port", () => {
-    expect(pairingFallback(link('http://192.168.1.205:8080'), down)).toBe(
-      'http://192.168.1.205:8080',
-    );
+    expect(pairingFallback(link(SAME_HOST), down)).toBe(SAME_HOST);
     expect(pairingFallback(link('http://NAS.local:8080', 'https://nas.local:8080'), down)).toBe(
       'http://NAS.local:8080',
     );
@@ -233,9 +233,7 @@ describe('pairingFallback', () => {
 
   it('only from an https base to a plain-http home', () => {
     expect(pairingFallback(link('https://192.168.1.205:8080'), down)).toBeNull();
-    expect(
-      pairingFallback(link('http://192.168.1.205:8080', 'http://192.168.1.205:8080'), down),
-    ).toBeNull();
+    expect(pairingFallback(link(SAME_HOST, SAME_HOST), down)).toBeNull();
   });
 
   it('not without a home address', () => {
@@ -245,13 +243,52 @@ describe('pairingFallback', () => {
     ).toBeNull();
   });
 
-  it('not when the server answered (refused or failed the token itself)', () => {
-    expect(
-      pairingFallback(link('http://192.168.1.205:8080'), new ApiError(401, 'expired')),
-    ).toBeNull();
-    expect(
-      pairingFallback(link('http://192.168.1.205:8080'), new ApiError(500, 'boom')),
-    ).toBeNull();
+  it('not after a timeout: a host that never answered would only time out again', () => {
+    expect(pairingFallback(link(SAME_HOST), new TimeoutError(15000))).toBeNull();
+  });
+});
+
+describe('withFallback', () => {
+  const ask = (answers: Record<string, unknown>) => {
+    const asked: string[] = [];
+    const attempt = async (base: string) => {
+      asked.push(base);
+      const a = answers[base];
+      if (a instanceof Error) throw a;
+      return a;
+    };
+    return { asked, attempt };
+  };
+  const down = new TypeError('Network request failed');
+
+  it('answers from the primary when it answers, without asking the fallback', async () => {
+    const { asked, attempt } = ask({ a: 1 });
+    await expect(withFallback('a', attempt, () => 'b')).resolves.toEqual({ answer: 1, base: 'a' });
+    expect(asked).toEqual(['a']);
+  });
+
+  it('asks the fallback once when the primary could not connect', async () => {
+    const { asked, attempt } = ask({ a: down, b: 2 });
+    await expect(withFallback('a', attempt, () => 'b')).resolves.toEqual({ answer: 2, base: 'b' });
+    expect(asked).toEqual(['a', 'b']);
+  });
+
+  it("never falls back after a server's own answer", async () => {
+    const refused = new ApiError(401, 'expired');
+    const { asked, attempt } = ask({ a: refused, b: 2 });
+    await expect(withFallback('a', attempt, () => 'b')).rejects.toBe(refused);
+    expect(asked).toEqual(['a']);
+  });
+
+  it("reports the fallback's server answer, else the primary's error", async () => {
+    const boom = new ApiError(500, 'boom');
+    await expect(withFallback('a', ask({ a: down, b: boom }).attempt, () => 'b')).rejects.toBe(
+      boom,
+    );
+    await expect(
+      withFallback('a', ask({ a: down, b: new TypeError('also down') }).attempt, () => 'b'),
+    ).rejects.toBe(down);
+    await expect(withFallback('a', ask({ a: down }).attempt, () => null)).rejects.toBe(down);
   });
 });
 
