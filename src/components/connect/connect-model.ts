@@ -211,6 +211,21 @@ export async function pairingFallback(
   return (await probe(home)) === scan.serverId ? home : null;
 }
 
+/**
+ * Whether a certificate the device can't trust (a server on its own, self-signed one) may
+ * be why `base` could not connect: an https address that failed without its server
+ * answering and without timing out, on native. Not on the web (`web`), where the browser
+ * judges the certificate and an https page can't call http.
+ */
+export function selfSignedMayBeWhy(base: string, error: unknown, web: boolean): boolean {
+  return (
+    !web &&
+    /^https:\/\//i.test(base) &&
+    !(error instanceof ApiError) &&
+    !(error instanceof TimeoutError)
+  );
+}
+
 /** The remembered servers the connect screen offers to reconnect to: those this device
  * is not signed in to now. `serverIds` are the signed-in connections' servers
  * (`serverIdOf`), never their connection ids. */

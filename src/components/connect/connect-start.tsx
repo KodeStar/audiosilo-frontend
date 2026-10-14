@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { ApiClient, ApiError, TimeoutError } from '@/api/client';
+import { ApiClient, ApiError } from '@/api/client';
 import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
@@ -21,6 +21,7 @@ import {
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
 import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import { firstParam } from '@/lib/paths';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -30,6 +31,7 @@ import {
   knownToOffer,
   looksLikeHomeAddress,
   reconnectAddress,
+  selfSignedMayBeWhy,
 } from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
@@ -103,7 +105,8 @@ export function ConnectStart() {
       fail(t('connect.server.missingAddress'));
       return;
     }
-    const serverId = sid?.trim();
+    // Expo Router hands back a repeated param as a list (`firstParam`).
+    const serverId = firstParam(sid).trim();
     void pair({
       base,
       token,
@@ -193,15 +196,9 @@ export function ConnectStart() {
               kind: 'unreachable',
               address: hostOf(normalized),
               home: looksLikeHomeAddress(normalized),
-              // Only https was tried (a scheme was typed, so no http retry) and it failed
-              // without timing out, on native: a certificate the device can't trust may be
-              // why. Not on the web, where the browser judges the certificate and an https
-              // page can't call http.
-              tls:
-                Platform.OS !== 'web' &&
-                normalized.startsWith('https://') &&
-                !http &&
-                !(e instanceof TimeoutError),
+              // Only https was tried (no http retry) and a certificate the device can't
+              // trust may be why (`selfSignedMayBeWhy`).
+              tls: !http && selfSignedMayBeWhy(normalized, e, Platform.OS === 'web'),
             },
       );
       return false;

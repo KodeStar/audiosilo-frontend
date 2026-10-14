@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiClient, ApiError, apiErrorKind, TimeoutError } from '@/api/client';
+import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { probeServerId } from '@/api/server-id-probe';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
 
-import { pairingFallback, withFallback } from './connect-model';
+import { pairingFallback, selfSignedMayBeWhy, withFallback } from './connect-model';
 import { finishConnect } from './finish-connect';
 
 export type LinkPairing = {
@@ -60,6 +60,9 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         client.serverInfo().catch(() => null),
       ]);
     };
+    // The exchange is done: a failure after it is this device's (storing the connection),
+    // never a server that couldn't be reached.
+    let exchanged = false;
     try {
       // The link's https base could not connect (a server on its own certificate): its
       // plain-http home address on the same host and port, once, when home answers as the
@@ -85,6 +88,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
           return live.current ? home : null;
         },
       );
+      exchanged = true;
       if (!live.current) return false;
       await finishConnect({
         serverUrl: scan.base,
@@ -98,15 +102,13 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       if (!live.current) return false;
       // In words of our own, never the server's English: its limiter (429), a link it
       // refused (expired, used up, unknown: 401; or malformed), it failing itself (5xx), or
-      // no answer at all (naming a self-signed certificate only where one may be why: an
-      // https link on native that failed without timing out).
+      // no answer at all (naming a self-signed certificate only where one may be why,
+      // `selfSignedMayBeWhy`, and never for a failure after the exchange).
       setError(
         apiErrorKind(e) === 'too_many'
           ? t('common.tooManyTries')
           : !(e instanceof ApiError)
-            ? Platform.OS !== 'web' &&
-              /^https:\/\//i.test(scan.base) &&
-              !(e instanceof TimeoutError)
+            ? !exchanged && selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web')
               ? t('connect.server.pairingReachSelfSigned')
               : t('connect.server.pairingReachError')
             : e.status >= 500

@@ -102,6 +102,26 @@ it('makes the address that answered the first pick, never the stored serverUrl',
   expect(effectiveUrl(conn('srv-1')!)).toBe(home);
 });
 
+it('sets the pick before the session lands, so nothing asks serverUrl first', async () => {
+  const base = 'https://192.168.1.205:8080';
+  const home = 'http://192.168.1.205:8080';
+  const seen: (string | undefined)[] = [];
+  const stop = useSession.subscribe((s, prev) => {
+    if (s.connections !== prev.connections) seen.push(useAddressRoute.getState().picks['srv-1.1']);
+  });
+  try {
+    await finishConnect({
+      serverUrl: base,
+      session: session('srv-1'),
+      linkAddresses: { home },
+      answeredAt: home,
+    });
+  } finally {
+    stop();
+  }
+  expect(seen).toEqual([home]);
+});
+
 it('sets no pick without an address that answered', async () => {
   const id = await finishConnect({
     serverUrl: AWAY,

@@ -203,6 +203,14 @@ describe('useLinkPairing: the home http fallback', () => {
     expect(error).toMatch(/^Couldn't reach the server/);
   });
 
+  it('names no certificate for a failure after the exchange (storing the connection)', async () => {
+    mockExchange.mockResolvedValueOnce(session);
+    mockFinish.mockRejectedValueOnce(new Error('could not store'));
+    const { paired, error } = await pairWith(homeScan);
+    expect(paired).toBe(false);
+    expect(error).toBe('Could not reach the server to finish pairing.');
+  });
+
   it("says what the home's server answered when it answered", async () => {
     mockExchange.mockRejectedValueOnce(down()).mockRejectedValueOnce(new ApiError(500, 'boom'));
     expect((await pairWith(homeScan)).error).toMatch(/^The server couldn't finish pairing/);

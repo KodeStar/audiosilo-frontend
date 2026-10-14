@@ -17,6 +17,7 @@ import {
   revealOffset,
   revealSpan,
   scanParams,
+  selfSignedMayBeWhy,
   withFallback,
 } from './connect-model';
 
@@ -324,6 +325,24 @@ describe('withFallback', () => {
       withFallback('a', ask({ a: down, b: new TypeError('also down') }).attempt, () => 'b'),
     ).rejects.toBe(down);
     await expect(withFallback('a', ask({ a: down }).attempt, () => null)).rejects.toBe(down);
+  });
+});
+
+describe('selfSignedMayBeWhy', () => {
+  const down = new TypeError('Network request failed');
+
+  it('for an https address on native that could not connect', () => {
+    expect(selfSignedMayBeWhy('https://192.168.1.205:8080', down, false)).toBe(true);
+    expect(selfSignedMayBeWhy('HTTPS://nas.local', down, false)).toBe(true);
+  });
+
+  it('never for plain http, the web, a timeout or a server that answered', () => {
+    expect(selfSignedMayBeWhy('http://192.168.1.205:8080', down, false)).toBe(false);
+    expect(selfSignedMayBeWhy('https://books.example', down, true)).toBe(false);
+    expect(selfSignedMayBeWhy('https://books.example', new TimeoutError(15000), false)).toBe(false);
+    expect(selfSignedMayBeWhy('https://books.example', new ApiError(500, 'boom'), false)).toBe(
+      false,
+    );
   });
 });
 

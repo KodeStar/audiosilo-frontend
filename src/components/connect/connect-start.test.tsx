@@ -94,6 +94,7 @@ beforeEach(async () => {
   mockCanGoBack = true;
   mockServed = null;
   Platform.OS = 'ios';
+  useAddressRoute.setState({ picks: {} });
   useSession.setState({
     status: 'unauthenticated',
     connections: [],
