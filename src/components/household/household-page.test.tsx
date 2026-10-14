@@ -176,18 +176,22 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     expect(useProfiles.getState().profiles.find((p) => p.id === 'chris')?.kids).toBeUndefined();
   });
 
+  // A PIN is set and checked through 10,000 SHA-256 rounds in JS (profile-pin.ts), which a
+  // busy CI runner can take longer than waitFor's 1 s default to finish.
+  const PIN_HASHED = { timeout: 10_000 };
+
   it('sets a PIN, and asks for the current one before removing it', async () => {
     await mount();
     await fireEvent.press(screen.getByLabelText('Set a PIN for Leo'));
     await fireEvent.changeText(screen.getByTestId('pin-field'), '1234');
     await fireEvent.changeText(screen.getByTestId('pin-field'), '1234');
-    await waitFor(() => expect(leo()?.hasPin).toBe(true));
+    await waitFor(() => expect(leo()?.hasPin).toBe(true), PIN_HASHED);
     expect(await checkPin('leo', '1234')).toBe(true);
 
     await fireEvent.press(screen.getByLabelText("Remove Leo's PIN"));
     expect(await screen.findByText("Enter Leo's current PIN")).toBeTruthy();
     await fireEvent.changeText(screen.getByTestId('pin-field'), '1234');
-    await waitFor(() => expect(leo()?.hasPin).toBeUndefined());
+    await waitFor(() => expect(leo()?.hasPin).toBeUndefined(), PIN_HASHED);
   });
 
   it('changing a PIN asks the current one, then the new one twice', async () => {
@@ -195,11 +199,11 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     await mount();
     await fireEvent.press(screen.getByLabelText("Change Leo's PIN"));
     await fireEvent.changeText(screen.getByTestId('pin-field'), '1111');
-    expect(await screen.findByText('Choose a 4-digit PIN')).toBeTruthy();
+    expect(await screen.findByText('Choose a 4-digit PIN', {}, PIN_HASHED)).toBeTruthy();
     const dismiss = jest.spyOn(Keyboard, 'dismiss');
     await fireEvent.changeText(screen.getByTestId('pin-field'), '2222');
     await fireEvent.changeText(screen.getByTestId('pin-field'), '2222');
-    await waitFor(async () => expect(await checkPin('leo', '2222')).toBe(true));
+    await waitFor(async () => expect(await checkPin('leo', '2222')).toBe(true), PIN_HASHED);
     // Saved: the number pad goes with the prompt (Android kept a keyboard up otherwise).
     await waitFor(() => expect(screen.queryByTestId('pin-field')).toBeNull());
     expect(dismiss).toHaveBeenCalled();
