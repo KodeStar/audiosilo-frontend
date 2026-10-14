@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 const mockExchange = jest.fn();
 // The base URL of each exchange, in order.
@@ -25,20 +26,20 @@ jest.mock('./finish-connect', () => ({ finishConnect: (...a: unknown[]) => mockF
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Kitchen iPad' }));
 
 /* eslint-disable import/first */
-import { ApiError } from '@/api/client';
+import { ApiError, TimeoutError } from '@/api/client';
 
 import { useLinkPairing } from './use-pairing';
 /* eslint-enable import/first */
 
 const scan = { base: 'https://books.example', token: 'tok' };
 
-/** The error a refused exchange `e` leaves, in words. */
-async function errorFor(e: unknown): Promise<string | null> {
+/** The error a refused exchange `e` of `link` leaves, in words. */
+async function errorFor(e: unknown, link: typeof scan = scan): Promise<string | null> {
   mockExchange.mockRejectedValue(e);
   const { result } = await renderHook(() => useLinkPairing());
   let paired: boolean | undefined;
   await act(async () => {
-    paired = await result.current.pair(scan);
+    paired = await result.current.pair(link);
   });
   expect(paired).toBe(false);
   expect(result.current.pairing).toBe(false);
@@ -85,6 +86,20 @@ describe('useLinkPairing', () => {
     expect(await errorFor(new TypeError('Network request failed'))).toBe(
       "Couldn't reach the server. If it uses its own (self-signed) certificate, update the server, or connect on your home network.",
     );
+  });
+
+  it('names a self-signed certificate only for an https link on native that did not time out', async () => {
+    const plain = 'Could not reach the server to finish pairing.';
+    const down = new TypeError('Network request failed');
+    expect(await errorFor(new TimeoutError(15000))).toBe(plain);
+    expect(await errorFor(down, { base: 'http://192.168.1.20:8080', token: 'tok' })).toBe(plain);
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      expect(await errorFor(down)).toBe(plain);
+    } finally {
+      Platform.OS = os;
+    }
   });
 });
 

@@ -12,9 +12,10 @@ function buildProperties(): Options {
 
 describe('expo-build-properties', () => {
   // A server on plain http (TLS off, or a self-signed server's home http) must be
-  // reachable from a release build, as on iOS (NSAllowsArbitraryLoads): Android allows
-  // cleartext only in the debug manifest unless the main one says so. Media3's
-  // DefaultHttpDataSource follows the same policy, so streaming needs it too.
+  // reachable from a release build: Android allows cleartext only in the debug manifest
+  // unless the main one says so. Media3's DefaultHttpDataSource follows the same policy,
+  // so streaming needs it too. (iOS keeps Expo's ATS default, NSAllowsLocalNetworking
+  // without NSAllowsArbitraryLoads: see CLAUDE.md, "Connect and onboarding".)
   it('allows cleartext http on Android', () => {
     expect(buildProperties().android).toMatchObject({ usesCleartextTraffic: true });
   });

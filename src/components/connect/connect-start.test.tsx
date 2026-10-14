@@ -61,7 +61,7 @@ jest.mock('@/api/client', () => {
   };
 });
 
-const { ApiError } = jest.requireActual('@/api/client');
+const { ApiError, TimeoutError } = jest.requireActual('@/api/client');
 
 const user: User = {
   id: 1,
@@ -279,6 +279,28 @@ describe('the address field', () => {
     await fireEvent.changeText(screen.getByLabelText('Server address'), '192.168.1.21:8080');
     await fireEvent.press(screen.getByText('Continue'));
     expect(await screen.findByText("Couldn't reach 192.168.1.21:8080")).toBeTruthy();
+    expect(screen.queryByTestId('probe-self-signed')).toBeNull();
+  });
+
+  it('names no certificate after a timeout, or on the web', async () => {
+    mockApi.serverInfo.mockRejectedValue(new TimeoutError(15000));
+    await render(<ConnectStart />);
+    await fireEvent.changeText(
+      screen.getByLabelText('Server address'),
+      'https://books.example.com',
+    );
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText("Couldn't reach books.example.com")).toBeTruthy();
+    expect(screen.queryByTestId('probe-self-signed')).toBeNull();
+
+    Platform.OS = 'web';
+    mockApi.serverInfo.mockRejectedValue(new TypeError('Failed to fetch'));
+    await fireEvent.changeText(
+      screen.getByLabelText('Server address'),
+      'https://books.example.org',
+    );
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText("Couldn't reach books.example.org")).toBeTruthy();
     expect(screen.queryByTestId('probe-self-signed')).toBeNull();
   });
 

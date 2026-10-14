@@ -7,7 +7,7 @@ export function urlEndpoint(url: string): { scheme: string; host: string; port: 
   );
   if (!m) return null;
   const scheme = m[1].toLowerCase();
-  const port = m[3] ?? ({ https: '443', http: '80' } as Record<string, string>)[scheme] ?? '';
+  const port = m[3] ?? (scheme === 'https' ? '443' : scheme === 'http' ? '80' : '');
   return { scheme, host: m[2].replace(/^\[|\]$/g, '').toLowerCase(), port };
 }
 

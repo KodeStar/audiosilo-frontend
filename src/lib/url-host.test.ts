@@ -27,6 +27,8 @@ describe('urlEndpoint', () => {
       port: '80',
     });
     expect(urlEndpoint('ftp://files.example')?.port).toBe('');
+    // A scheme named like an Object.prototype member has no default port either.
+    expect(urlEndpoint('constructor://files.example')?.port).toBe('');
     expect(urlEndpoint('nope')).toBeNull();
   });
 });

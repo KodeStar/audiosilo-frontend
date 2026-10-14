@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiClient, ApiError, TimeoutError } from '@/api/client';
 import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
@@ -150,16 +150,16 @@ export function ConnectStart() {
       return false;
     }
     setBusy(tag);
+    // Typed without a scheme: plain http, tried once when https could not connect (not a
+    // server's error), as a server at home often serves only that.
+    const http = tag === 'manual' ? httpFallback(target) : null;
     try {
       let base = normalized;
       let info: ServerInfo;
       try {
         info = await new ApiClient(base).serverInfo();
       } catch (e) {
-        // Typed without a scheme, and https could not connect (not a server's error):
-        // try plain http once, as a server at home often serves only that.
-        const http = tag === 'manual' && !(e instanceof ApiError) ? httpFallback(target) : null;
-        if (!http) throw e;
+        if (!http || e instanceof ApiError) throw e;
         info = await new ApiClient(http).serverInfo().catch((e2: unknown) => {
           throw e2 instanceof ApiError ? e2 : e;
         });
@@ -186,9 +186,15 @@ export function ConnectStart() {
               kind: 'unreachable',
               address: hostOf(normalized),
               home: looksLikeHomeAddress(normalized),
-              // Only https was tried (a scheme was typed, so no http retry): a
-              // certificate the device can't trust may be why.
-              tls: normalized.startsWith('https://') && !httpFallback(target),
+              // Only https was tried (a scheme was typed, so no http retry) and it failed
+              // without timing out, on native: a certificate the device can't trust may be
+              // why. Not on the web, where the browser judges the certificate and an https
+              // page can't call http.
+              tls:
+                Platform.OS !== 'web' &&
+                normalized.startsWith('https://') &&
+                !http &&
+                !(e instanceof TimeoutError),
             },
       );
       return false;

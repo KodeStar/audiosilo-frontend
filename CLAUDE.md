@@ -333,9 +333,11 @@ answer taught, merged there once, and shows `/connect/ready?connection=` ("Your 
 ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. A
 pairing link whose https base can't connect (a server on its own self-signed certificate) exchanges
 once at the link's `home` instead, only when that is plain http on the base's own host and port and
-never after an `ApiError` (`pairingFallback`), and the connection is stored with that address;
-Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`, as iOS's
-`NSAllowsArbitraryLoads`). `repairPlan`: a
+never after an `ApiError` or a timeout (`pairingFallback`), and the connection is stored with that
+address. Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`).
+iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
+`NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
+single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
 banner signs in through `effectiveUrl` and passes `reconnect=<cid>`, so a reset server reached
 through its away address still retires its dead identity. `/connect` decides its "nothing to add"

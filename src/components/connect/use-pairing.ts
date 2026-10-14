@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
+import { ApiClient, ApiError, apiErrorKind, TimeoutError } from '@/api/client';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
@@ -30,8 +30,7 @@ export type LinkPairing = {
  * the link's plain-http home address on the same host and port (`pairingFallback`), and
  * the connection is stored with that address: the https base is the one address known not
  * to work for it (the address runner still moves it to an `away` the server names).
- * Resolves whether it paired. Bare client: a
- * failed exchange must never flag a reconnect.
+ * Resolves whether it paired. Bare client: a failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
@@ -80,12 +79,17 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       if (!live.current) return false;
       // In words of our own, never the server's English: its limiter (429), a link it
       // refused (expired, used up, unknown: 401; or malformed), it failing itself (5xx), or
-      // no answer at all.
+      // no answer at all (naming a self-signed certificate only where one may be why: an
+      // https link on native that failed without timing out).
       setError(
         apiErrorKind(e) === 'too_many'
           ? t('common.tooManyTries')
           : !(e instanceof ApiError)
-            ? t('connect.server.pairingReachError')
+            ? Platform.OS !== 'web' &&
+              /^https:\/\//i.test(scan.base) &&
+              !(e instanceof TimeoutError)
+              ? t('connect.server.pairingReachSelfSigned')
+              : t('connect.server.pairingReachError')
             : e.status >= 500
               ? t('connect.server.pairingServerError')
               : t('connect.server.pairingRefused'),
