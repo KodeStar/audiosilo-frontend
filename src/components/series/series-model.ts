@@ -15,6 +15,7 @@ import {
   bookSeriesNumber,
   bookSeriesSpan,
   parseSeriesPosition,
+  placedPositionLabel,
   railPositionLabel,
   type SeriesSpan,
   seriesPositionValue,
@@ -310,7 +311,9 @@ function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
  * series' own books (a series named unlike the rail is not placed by the server) - then
  * to a copy on another server by title and author, else a ghost. Owned books the rail
  * doesn't list keep their place by `series_index` among the numbered entries (unnumbered
- * ones go last), so nothing the listener owns ever disappears from the page. A ghost
+ * ones go last), so nothing the listener owns ever disappears from the page. An omnibus
+ * the server placed at the single entry it starts at shows its range there
+ * (`placedPositionLabel`), and is one entry when the rail also lists its range. A ghost
  * inside a range a copy holds (`heldByRange`) is left out: the omnibus is that book.
  * `extraBooks` are the rows of placed books from OTHER libraries.
  */
@@ -319,42 +322,48 @@ export function railEntries(
   books: readonly Book[],
   src: Source & { extraBooks?: readonly Book[] },
 ): SeriesEntry[] {
-  const byKey = new Map<string, Book>();
-  for (const b of [...books, ...(src.extraBooks ?? [])]) {
-    byKey.set(contentKey(src.connectionId, b.library_id, b.rel_path), b);
-  }
+  const keyOf = (libraryId: number, path: string) => contentKey(src.connectionId, libraryId, path);
+  const bookKey = (b: Book) => keyOf(b.library_id, b.rel_path);
+  // The series' own books are numbered by this series; a placed book from another
+  // library by its own main series.
+  const own = new Map(books.map((b) => [bookKey(b), b]));
+  const byKey = new Map(own);
+  for (const b of src.extraBooks ?? []) byKey.set(bookKey(b), b);
+  const isRange = (w: BookMetaSeriesWork) => parseSeriesPosition(w.position)?.end !== undefined;
+  // The server places an omnibus at its range entry ("1-3") AND at the single entry it
+  // starts at ("1"): one entry, the range's (the single one is then a ghost it holds).
+  const atRange = new Set(
+    view.works.flatMap((w) =>
+      w.local && isRange(w) ? [keyOf(w.local.library_id, w.local.path)] : [],
+    ),
+  );
   const used = new Set<string>();
   const out: SeriesEntry[] = [];
   for (const w of view.works) {
     let copy: SeriesCopy | undefined;
+    let position = railPositionLabel(w.position);
     if (w.local) {
-      const k = contentKey(src.connectionId, w.local.library_id, w.local.path);
-      copy = {
-        connectionId: src.connectionId,
-        connectionName: src.connectionName,
-        libraryId: w.local.library_id,
-        path: w.local.path,
-        book: byKey.get(k),
-      };
-      used.add(k);
+      const k = keyOf(w.local.library_id, w.local.path);
+      if (isRange(w) || !atRange.has(k)) {
+        copy = {
+          connectionId: src.connectionId,
+          connectionName: src.connectionName,
+          libraryId: w.local.library_id,
+          path: w.local.path,
+          book: byKey.get(k),
+        };
+        used.add(k);
+        position = placedPositionLabel(w.position, own.get(k));
+      }
     } else {
       const title = looseKey(w.title);
-      const b = books.find(
-        (x) =>
-          !used.has(contentKey(src.connectionId, x.library_id, x.rel_path)) &&
-          looseKey(x.title) === title,
-      );
+      const b = books.find((x) => !used.has(bookKey(x)) && looseKey(x.title) === title);
       if (b) {
         copy = bookCopy(b, src.connectionId, src.connectionName);
-        used.add(contentKey(src.connectionId, b.library_id, b.rel_path));
+        used.add(bookKey(b));
       }
     }
-    const base = {
-      key: `w:${w.id}`,
-      position: railPositionLabel(w.position),
-      workId: w.id,
-      webUrl: w.web_url,
-    };
+    const base = { key: `w:${w.id}`, position, workId: w.id, webUrl: w.web_url };
     if (copy) {
       out.push(
         copyEntry('owned', { ...base, title: copy.book?.title || w.title }, copy, src.progressOf),
@@ -370,7 +379,7 @@ export function railEntries(
     }
   }
   for (const b of sortSeriesBooks(books)) {
-    if (used.has(contentKey(src.connectionId, b.library_id, b.rel_path))) continue;
+    if (used.has(bookKey(b))) continue;
     const entry = ownedBookEntry(b, src);
     if (b.series_index > 0) insertByPosition(out, entry, b.series_index, -Infinity);
     else out.push(entry);

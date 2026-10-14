@@ -416,7 +416,9 @@ export type SeriesMembership = { name: string; position: number; position_end?: 
 
 /** One distinct series in a library (GET /libraries/{id}/series, capability
  * `browse_people`): its book count, total `duration` (seconds), and the
- * `series_index` values the library holds (`positions`), so a UI can show gaps. */
+ * `series_index` values the library holds (`positions`), so a UI can show gaps. A book
+ * at a range holds every whole position in it (an omnibus 1-3 gives 1, 2 and 3), so
+ * `positions` can outnumber `books`. */
 export type SeriesCount = {
   name: string;
   author: string;
@@ -435,7 +437,8 @@ export type SeriesCount = {
  *   the caller's books, in ANY of their libraries, so `next.library_id` can differ
  *   from the library asked. `next`, `book` and `work` (with `local`) are all set.
  * - `series`: the next higher `series_index` of the same, exactly named, series in
- *   the same library; no `next` means the end of that numbered local series.
+ *   the same library (after a range, past its END); no `next` means the end of that
+ *   numbered local series.
  * - `folder`: the next item in the book's parent folder (`book` only when indexed).
  * - `none`: nothing found.
  * The community rail answers only when it places its next work: failing to place it

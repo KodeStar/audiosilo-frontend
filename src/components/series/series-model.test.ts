@@ -353,6 +353,37 @@ describe('a range (an omnibus of books 1-3)', () => {
       expect(seriesStats(entries)).toMatchObject({ entries: 2, owned: 1, missing: 1 });
     });
 
+    it('shows an omnibus the server placed at the entry it starts at by its range', () => {
+      const placed = {
+        ...view,
+        works: [work('w1', 'Leviathan Wakes', '1', omnibus), ...view.works.slice(1)],
+      };
+      const entries = railEntries(placed, [omnibus], src);
+      expect(entries.map((e) => [e.kind, e.position, e.title])).toEqual([
+        ['owned', '1-3', 'The First Trilogy'],
+        ['ghost', '4', 'Cibola Burn'],
+      ]);
+    });
+
+    it('lists an omnibus the server placed at its range and at its start once', () => {
+      const placed = {
+        ...view,
+        // As the server places it: on its start ("1") and on its range.
+        works: [
+          work('w1', 'Leviathan Wakes', '1', omnibus),
+          ...view.works.slice(1, 3),
+          work('o', 'The First Trilogy', '1-3', omnibus),
+          view.works[3],
+        ],
+      };
+      const entries = railEntries(placed, [omnibus], src);
+      expect(entries.map((e) => [e.kind, e.position, e.key])).toEqual([
+        ['owned', '1-3', 'w:o'],
+        ['ghost', '4', 'w:w4'],
+      ]);
+      expect(seriesStats(entries)).toMatchObject({ owned: 1, missing: 1 });
+    });
+
     it('holds them from a rail entry whose position is a range', () => {
       const placed = book('Omnibus', 1, { rel_path: 'Corey/Expanse/Omnibus' });
       const withOmnibus = {

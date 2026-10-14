@@ -4,6 +4,7 @@ import { useQueries } from '@tanstack/react-query';
 import { itemQuery, searchQuery, tagBooks, useAllLibraryBooks } from '@/api/hooks';
 import { useApis, useOptionalApi } from '@/api/provider';
 import type { Book, BookRef } from '@/api/types';
+import { contentKey } from '@/lib/content-key';
 
 import { inSeries, type ElsewhereBook } from './series-model';
 
@@ -51,12 +52,14 @@ export function useElsewhereBooks(connectionId: string, seriesName: string | und
 /**
  * The list rows of books a rail places in OTHER libraries than the page's (a community
  * series can span them): `/item` for each, keyed like `useBook` so the book page reuses
- * the answer. Only what isn't already loaded is asked for.
+ * the answer. Only what isn't already loaded is asked for, and each book once (the
+ * server places an omnibus at its range entry and at the entry it starts at).
  */
 export function usePlacedBooks(connectionId: string, refs: readonly BookRef[]): Book[] {
   const client = useOptionalApi(connectionId);
+  const unique = new Map(refs.map((r) => [contentKey(connectionId, r.library_id, r.path), r]));
   return useQueries({
-    queries: refs.map((r) => ({
+    queries: [...unique.values()].map((r) => ({
       ...itemQuery(connectionId, client, r.library_id, r.path),
       staleTime: 5 * 60_000,
     })),

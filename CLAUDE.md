@@ -1480,10 +1480,13 @@ author) or `ghost` (a community entry nobody has; a local gap without community 
 "Book 3"). A series position may be a RANGE (an omnibus of books 1-3: `Book.series_index_end`,
 `SeriesMembership.position_end`, a rail entry's `"1-3"`; older servers send none): read, show
 and compare positions only through `src/lib/series-position.ts` (`parseSeriesPosition`,
-`bookSeriesNumber` -> "1-3", `spanCovers`). A range is one entry at its start and holds every
-slot in it (no local gap; a rail ghost inside a copy's range is left out); a single position
-never hides a ghost; "previous books" takes an omnibus only once it ends before the current
-work. The page draws it as a bookcase (`bookcase.tsx`, `spine.tsx`): spine sizes and title fit
+`bookSeriesNumber` -> "1-3", `spanCovers`; a range only within the server's bounds). A range is
+one entry at its start and holds every slot in it (no local gap; a rail ghost inside a copy's
+range is left out); a single position never hides a ghost; the server places an owned omnibus
+on the single rail entry it starts at (and on its range entry when the rail lists one): it
+shows its range there (`placedPositionLabel`, also Up next's community answer) and is one
+entry; "previous books" takes an omnibus only once it ends before the current work. The page
+draws it as a bookcase (`bookcase.tsx`, `spine.tsx`): spine sizes and title fit
 are the pure `spine-fit.ts` (text is estimated from a per-font advance table, never measured),
 colours `spine-colors.ts` (the cover's colour, else a cloth colour from the title,
 `src/lib/monogram.ts`). Then the entry list with each entry's one action (`entry-actions.tsx`:

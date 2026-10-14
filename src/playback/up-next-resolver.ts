@@ -1,7 +1,7 @@
 import type { Book, BookRef, Capabilities, FsEntry, NextBook, QueueEntry } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
-import { bookSeriesNumber, railPositionLabel } from '@/lib/series-position';
+import { bookSeriesNumber, placedPositionLabel, railPositionLabel } from '@/lib/series-position';
 
 // What plays after a finished book: ONE answer for every end-of-book surface (the end
 // credits' Play now and countdown, the background auto-play in `BookEndedListener`).
@@ -124,10 +124,11 @@ function fromServer(connectionId: string, answer: NextBook): UpNextAnswer {
   const next = answer.next;
   if (!next) return { next: null, unplaced };
   const book = answer.book;
-  // A community answer names its place on the rail; a local series one its index.
+  // A community answer names its place on the rail (an omnibus placed at the entry it
+  // starts at, its range); a local series one its index.
   const position =
     answer.source === 'community' && work?.local
-      ? railPositionLabel(work.position) || seriesPosition(book)
+      ? placedPositionLabel(work.position, book) || seriesPosition(book)
       : seriesPosition(book);
   return {
     next: {

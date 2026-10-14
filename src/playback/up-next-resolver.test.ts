@@ -230,6 +230,23 @@ describe('resolveUpNext', () => {
       })),
     });
     expect((await resolveUpNext(community, FINISHED)).next?.series?.position).toBe('4-6');
+    // The server places an omnibus on the single entry it starts at: its range shows.
+    const atStart = sources({
+      nextBook: jest.fn(async (): Promise<NextBook> => ({
+        source: 'community',
+        next: { library_id: 1, path: 'Series/Books 4-6' },
+        book: { ...omnibus, series_index_end: 6 },
+        work: {
+          id: 'w4',
+          title: 'Book Four',
+          position: '4',
+          authors: [],
+          web_url: 'https://meta/w4',
+          local: { library_id: 1, path: 'Series/Books 4-6' },
+        },
+      })),
+    });
+    expect((await resolveUpNext(atStart, FINISHED)).next?.series?.position).toBe('4-6');
   });
 
   it('(b) a server folder answer is labelled folder', async () => {

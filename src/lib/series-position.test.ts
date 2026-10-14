@@ -2,6 +2,7 @@ import {
   bookSeriesNumber,
   bookSeriesSpan,
   parseSeriesPosition,
+  placedPositionLabel,
   railPositionLabel,
   seriesNumber,
   seriesPositionValue,
@@ -27,6 +28,13 @@ describe('parseSeriesPosition', () => {
   it('keeps only the start of a range that does not run forward', () => {
     expect(parseSeriesPosition('3-1')).toEqual({ start: 3 });
     expect(parseSeriesPosition('2-2')).toEqual({ start: 2 });
+  });
+
+  it('reads a range only where the server takes one (above 0, at most 100 places on)', () => {
+    expect(parseSeriesPosition('0-3')).toEqual({ start: 0 });
+    expect(parseSeriesPosition('1-101')).toEqual({ start: 1, end: 101 });
+    expect(parseSeriesPosition('1-102')).toEqual({ start: 1 });
+    expect(parseSeriesPosition('99999-100001')).toEqual({ start: 99999 });
   });
 
   it('reads the leading number of anything else, as positions always have', () => {
@@ -105,5 +113,23 @@ describe('railPositionLabel', () => {
     expect(railPositionLabel(' 4 ')).toBe('4');
     expect(railPositionLabel('novella')).toBe('novella');
     expect(railPositionLabel(undefined)).toBe('');
+    // No range the server takes: as written, never blanked.
+    expect(railPositionLabel('0-3')).toBe('0-3');
+  });
+});
+
+describe('placedPositionLabel', () => {
+  it('shows an omnibus placed at the entry it starts at by its range', () => {
+    expect(placedPositionLabel('1', { series_index: 1, series_index_end: 3 })).toBe('1-3');
+  });
+
+  it("else the rail's label", () => {
+    expect(placedPositionLabel('1 - 3', { series_index: 1, series_index_end: 3 })).toBe('1-3');
+    expect(placedPositionLabel('2', { series_index: 1, series_index_end: 3 })).toBe('2');
+    expect(placedPositionLabel('1', { series_index: 1 })).toBe('1');
+    expect(placedPositionLabel('novella', { series_index: 1, series_index_end: 3 })).toBe(
+      'novella',
+    );
+    expect(placedPositionLabel('4', undefined)).toBe('4');
   });
 });
