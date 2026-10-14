@@ -332,9 +332,16 @@ stores the connection with the server's name and the addresses the link (`linkAd
 answer taught, merged there once, and shows `/connect/ready?connection=` ("Your library is
 ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. A
 pairing link whose https base can't connect (a server on its own self-signed certificate) exchanges
-once at the link's `home` instead, only when that is plain http on the base's own host and port and
-never after an `ApiError` or a timeout (`pairingFallback`), and the connection is stored with that
-address. Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`).
+once at the link's `home` instead (native only): only when that is plain http on the base's own
+host and port, never after an `ApiError` or a timeout, and only when the link names the server
+(`sid=<server_id>`, `PairingScan.serverId`; an older server's link has none, so no fallback) and
+home, asked with no token (`probeServerId`), answers as exactly that server (`pairingFallback`); a
+session another server issues there is not kept. The token crosses the network in the clear, so
+it goes to that server only. The connection is still stored with the https base as its `serverUrl`
+(the address used when home is not an option fails safely by TLS on another network, where a
+plain-http address could be another box), and `finishConnect`'s `answeredAt` makes home its first
+address pick so the first requests go there; the address runner re-checks it as any home pick.
+Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`).
 iOS does NOT allow arbitrary loads: Expo's ATS default is `NSAllowsArbitraryLoads: false` with
 `NSAllowsLocalNetworking: true`, so plain http works there for IP addresses, `.local` and
 single-label names, but not for a `.lan`, `.home.arpa` or `.internal` home. `repairPlan`: a

@@ -1,6 +1,7 @@
 import { ApiError, TimeoutError } from '@/api/client';
 import type { PeopleList, Progress } from '@/api/types';
 import { serverIdOf } from '@/lib/connection-id';
+import type { PairingScan } from '@/lib/pairing';
 
 import {
   httpFallback,
@@ -206,45 +207,79 @@ describe('revealSpan', () => {
 describe('pairingFallback', () => {
   const BASE = 'https://192.168.1.205:8080';
   const SAME_HOST = 'http://192.168.1.205:8080';
-  const link = (home?: string, base = BASE) => ({
+  const SID = 'srv-home';
+  const link = (home?: string, base = BASE, serverId = SID): PairingScan => ({
     base,
     token: 'tok',
     ...(home ? { addresses: { home } } : {}),
+    ...(serverId ? { serverId } : {}),
   });
   const down = new TypeError('Network request failed');
+  // Home answers as `answers` (null: no answer); records what was asked.
+  const probeAs = (answers: string | null) => {
+    const asked: string[] = [];
+    const probe = async (url: string) => {
+      asked.push(url);
+      return answers;
+    };
+    return { asked, probe };
+  };
+  const fallback = (scan: PairingScan, error: unknown = down) =>
+    pairingFallback(scan, error, probeAs(SID).probe);
 
-  it("falls back to the link's plain-http home on the base's own host and port", () => {
-    expect(pairingFallback(link(SAME_HOST), down)).toBe(SAME_HOST);
-    expect(pairingFallback(link('http://NAS.local:8080', 'https://nas.local:8080'), down)).toBe(
+  it("falls back to the link's plain-http home on the base's own host and port, as its server", async () => {
+    const { asked, probe } = probeAs(SID);
+    await expect(pairingFallback(link(SAME_HOST), down, probe)).resolves.toBe(SAME_HOST);
+    expect(asked).toEqual([SAME_HOST]);
+    await expect(fallback(link('http://NAS.local:8080', 'https://nas.local:8080'))).resolves.toBe(
       'http://NAS.local:8080',
     );
-    expect(pairingFallback(link('http://[fd00::5]:8080', 'https://[fd00::5]:8080'), down)).toBe(
+    await expect(fallback(link('http://[fd00::5]:8080', 'https://[fd00::5]:8080'))).resolves.toBe(
       'http://[fd00::5]:8080',
     );
   });
 
-  it('never sends the token to a host or port the base did not name', () => {
-    expect(pairingFallback(link('http://192.168.1.99:8080'), down)).toBeNull();
-    expect(pairingFallback(link('http://192.168.1.205:8081'), down)).toBeNull();
-    expect(pairingFallback(link('http://evil.example:8080'), down)).toBeNull();
-    // No port named: https means 443 and http means 80, two different ports.
-    expect(pairingFallback(link('http://nas.local', 'https://nas.local'), down)).toBeNull();
+  it('never when home answers as another server, or not at all', async () => {
+    const other = probeAs('srv-other');
+    await expect(pairingFallback(link(SAME_HOST), down, other.probe)).resolves.toBeNull();
+    expect(other.asked).toEqual([SAME_HOST]);
+    await expect(pairingFallback(link(SAME_HOST), down, probeAs(null).probe)).resolves.toBeNull();
   });
 
-  it('only from an https base to a plain-http home', () => {
-    expect(pairingFallback(link('https://192.168.1.205:8080'), down)).toBeNull();
-    expect(pairingFallback(link(SAME_HOST, SAME_HOST), down)).toBeNull();
+  it("never without the server's id in the link (an older server), and then asks nothing", async () => {
+    const { asked, probe } = probeAs(SID);
+    await expect(pairingFallback(link(SAME_HOST, BASE, ''), down, probe)).resolves.toBeNull();
+    expect(asked).toEqual([]);
   });
 
-  it('not without a home address', () => {
-    expect(pairingFallback(link(), down)).toBeNull();
-    expect(
-      pairingFallback({ ...link(), addresses: { away: 'https://books.example' } }, down),
-    ).toBeNull();
+  it('never sends the token to a host or port the base did not name, and asks it nothing', async () => {
+    const { asked, probe } = probeAs(SID);
+    for (const scan of [
+      link('http://192.168.1.99:8080'),
+      link('http://192.168.1.205:8081'),
+      link('http://evil.example:8080'),
+      // No port named: https means 443 and http means 80, two different ports.
+      link('http://nas.local', 'https://nas.local'),
+    ]) {
+      await expect(pairingFallback(scan, down, probe)).resolves.toBeNull();
+    }
+    expect(asked).toEqual([]);
   });
 
-  it('not after a timeout: a host that never answered would only time out again', () => {
-    expect(pairingFallback(link(SAME_HOST), new TimeoutError(15000))).toBeNull();
+  it('only from an https base to a plain-http home', async () => {
+    await expect(fallback(link('https://192.168.1.205:8080'))).resolves.toBeNull();
+    await expect(fallback(link(SAME_HOST, SAME_HOST))).resolves.toBeNull();
+  });
+
+  it('not without a home address', async () => {
+    await expect(fallback(link())).resolves.toBeNull();
+    await expect(
+      fallback({ ...link(), addresses: { away: 'https://books.example' } }),
+    ).resolves.toBeNull();
+  });
+
+  it('not after a timeout: a host that never answered would only time out again', async () => {
+    await expect(fallback(link(SAME_HOST), new TimeoutError(15000))).resolves.toBeNull();
   });
 });
 
@@ -462,12 +497,20 @@ describe('readyLine', () => {
   });
 });
 
-it('scanParams carries the addresses only when the code has them', () => {
+it("scanParams carries the addresses and the server's id only when the code has them", () => {
   expect(scanParams({ base: AWAY, token: 't' })).toEqual({ server: AWAY, token: 't' });
-  expect(scanParams({ base: AWAY, token: 't', addresses: { home: HOME, away: AWAY } })).toEqual({
+  expect(
+    scanParams({
+      base: AWAY,
+      token: 't',
+      addresses: { home: HOME, away: AWAY },
+      serverId: 'srv-1',
+    }),
+  ).toEqual({
     server: AWAY,
     token: 't',
     home: HOME,
     away: AWAY,
+    sid: 'srv-1',
   });
 });

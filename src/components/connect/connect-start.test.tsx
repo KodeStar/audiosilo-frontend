@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
+import { effectiveUrl, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
 import { remember } from '@/lib/known-servers';
 import { useSession } from '@/stores/session';
@@ -134,20 +135,36 @@ describe('a pairing link', () => {
     });
   });
 
-  it("pairs at the link's plain-http home when its https base can't connect, and keeps that address", async () => {
+  it("pairs at the link's plain-http home when its https base can't connect and home is its server", async () => {
     // A server on its default self-signed certificate: the device can't trust it, so the
     // link's https base fails to connect, and the server answers plain http at home.
     const base = 'https://192.168.1.205:8080';
     const home = 'http://192.168.1.205:8080';
-    mockParams = { token: 'tok', server: base, home };
+    mockParams = { token: 'tok', server: base, home, sid: 'srv-1' };
     mockApi.exchange
       .mockRejectedValueOnce(new TypeError('Network request failed'))
       .mockResolvedValueOnce({ token: 'session', server_id: 'srv-1', user });
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockBases).toEqual([base, home]);
-    expect(conn()).toMatchObject({ serverUrl: home, name: 'Hearthside', addresses: { home } });
+    // The exchange at the base, home asked who it is (no token), the exchange at home.
+    expect(mockBases).toEqual([base, home, home]);
+    // Stored with the https base, never the plain-http address; home is the first pick.
+    expect(conn()).toMatchObject({ serverUrl: base, name: 'Hearthside', addresses: { home } });
+    expect(useAddressRoute.getState().picks[conn().id]).toBe(home);
+    expect(effectiveUrl(conn())).toBe(home);
+  });
+
+  it("does not pair at home without the server's id in the link", async () => {
+    const base = 'https://192.168.1.205:8080';
+    const home = 'http://192.168.1.205:8080';
+    mockParams = { token: 'tok', server: base, home };
+    mockApi.exchange.mockRejectedValue(new TypeError('Network request failed'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    expect(await screen.findByText(/^Couldn't reach the server/)).toBeTruthy();
+    expect(mockBases).toEqual([base]);
+    expect(useSession.getState().connections).toHaveLength(0);
   });
 
   it('a link without addresses pairs exactly as before (no addresses stored)', async () => {

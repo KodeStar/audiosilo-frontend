@@ -46,7 +46,7 @@ import { useLinkPairing } from './use-pairing';
  * link (web), and one-tap "Reconnect to <server>" rows for remembered servers.
  *
  * A pairing link or QR opens this screen with its `token` (and on native the `server` it
- * belongs to, and the server's `home` / `away` addresses when it has them): the token is
+ * belongs to, the server's `home` / `away` addresses when it has them, and its id `sid`): the token is
  * exchanged at once, with nothing to type.
  *
  * The player the server serves at `/web` (`servedOrigin`) asks nothing: it asks its own origin
@@ -57,11 +57,12 @@ import { useLinkPairing } from './use-pairing';
 export function ConnectStart() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away, profile } = useLocalSearchParams<{
+  const { token, server, home, away, sid, profile } = useLocalSearchParams<{
     token?: string;
     server?: string;
     home?: string;
     away?: string;
+    sid?: string;
     profile?: string;
   }>();
   // "Add someone" (Phase 8): a new person signs in, maybe on a server this device knows.
@@ -102,11 +103,17 @@ export function ConnectStart() {
       fail(t('connect.server.missingAddress'));
       return;
     }
-    void pair({ base, token, addresses: cleanAddresses({ home, away }) }).then((ok) => {
+    const serverId = sid?.trim();
+    void pair({
+      base,
+      token,
+      addresses: cleanAddresses({ home, away }),
+      ...(serverId ? { serverId } : {}),
+    }).then((ok) => {
       if (!ok) setUrl((u) => u || base);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, server, home, away, pair, fail]);
+  }, [token, server, home, away, sid, pair, fail]);
 
   // The served player: ask its own server who it is, once.
   useEffect(() => {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
 import { ApiClient, ApiError, apiErrorKind, TimeoutError } from '@/api/client';
+import { probeServerId } from '@/api/server-id-probe';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
@@ -27,10 +28,12 @@ export type LinkPairing = {
  * alongside, so the connection isn't named after its host), then `finishConnect` (which
  * merges the link's addresses with the answer's). When the link's https base can't be
  * reached (a self-signed certificate the device can't trust), the exchange goes once to
- * the link's plain-http home address on the same host and port (`pairingFallback`), and
- * the connection is stored with that address: the https base is the one address known not
- * to work for it (the address runner still moves it to an `away` the server names).
- * Resolves whether it paired. Bare client: a failed exchange must never flag a reconnect.
+ * the link's plain-http home address on the same host and port, only when home answers as
+ * the server the link names (`pairingFallback`), and the session must come from that
+ * server too. The connection is still stored with the https base (which fails safely by
+ * TLS on another network, where a plain-http address could be another box), with home as
+ * its first address pick (`answeredAt`). Resolves whether it paired. Bare client: a
+ * failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
@@ -59,20 +62,36 @@ export function useLinkPairing(startPairing = false): LinkPairing {
     };
     try {
       // The link's https base could not connect (a server on its own certificate): its
-      // plain-http home address on the same host and port, once (`pairingFallback`). Native
-      // only: the web player keeps its own origin, and an https page can't call http.
+      // plain-http home address on the same host and port, once, when home answers as the
+      // link's server (`pairingFallback`). Native only: the web player keeps its own
+      // origin, and an https page can't call http. A session from any other server there
+      // is not kept (reported as the base not answering).
       const {
         answer: [session, info],
-        base: serverUrl,
-      } = await withFallback(scan.base, exchangeAt, (e) =>
-        live.current && Platform.OS !== 'web' ? pairingFallback(scan, e) : null,
+        base: answeredAt,
+      } = await withFallback(
+        scan.base,
+        async (base) => {
+          const answer = await exchangeAt(base);
+          if (base !== scan.base && answer[0].server_id !== scan.serverId) {
+            throw new Error('another server answered at the home address');
+          }
+          return answer;
+        },
+        async (e) => {
+          if (!live.current || Platform.OS === 'web') return null;
+          const home = await pairingFallback(scan, e, probeServerId);
+          // Left while home was asked: the token goes nowhere more.
+          return live.current ? home : null;
+        },
       );
       if (!live.current) return false;
       await finishConnect({
-        serverUrl,
+        serverUrl: scan.base,
         session,
         linkAddresses: scan.addresses,
         name: info?.name,
+        ...(answeredAt !== scan.base ? { answeredAt } : {}),
       });
       return true;
     } catch (e) {

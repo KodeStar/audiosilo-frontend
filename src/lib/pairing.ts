@@ -55,8 +55,15 @@ export function cleanAddresses(
 }
 
 /** The `{ base, token }` of a pairing link, plus the server's addresses when the link
- * carries them (`home=` / `away=`, capability `addresses`). */
-export type PairingScan = { base: string; token: string; addresses?: ServerAddresses };
+ * carries them (`home=` / `away=`, capability `addresses`), and the server's `server_id`
+ * when it names it (`sid=`: what `GET /server` answers there, so the app can tell it is
+ * talking to that server before the token goes anywhere but the link's base). */
+export type PairingScan = {
+  base: string;
+  token: string;
+  addresses?: ServerAddresses;
+  serverId?: string;
+};
 
 function queryParam(query: string, key: string): string | null {
   for (const pair of query.split('&')) {
@@ -86,7 +93,8 @@ function optionalParam(query: string, key: string): string | null {
 // we also accept the custom-scheme deep link `audiosilo://connect?server=&token=`.
 // Both may also carry the server's `home=` and `away=` addresses (capability
 // `addresses`), returned as `addresses` (cleaned by `cleanAddresses`; absent when the
-// link has none, so an older server's link parses exactly as before).
+// link has none, so an older server's link parses exactly as before), and its
+// `sid=<server_id>`, returned as `serverId` (absent when blank or malformed).
 // Returns null when the text is not a recognizable pairing payload.
 export function parsePairingScan(raw: string): PairingScan | null {
   const text = raw.trim();
@@ -97,8 +105,16 @@ export function parsePairingScan(raw: string): PairingScan | null {
     home: optionalParam(query, 'home'),
     away: optionalParam(query, 'away'),
   });
+  const serverId = optionalParam(query, 'sid')?.trim();
   const scan = (base: string): PairingScan | null =>
-    base ? { base, token, ...(addresses ? { addresses } : {}) } : null;
+    base
+      ? {
+          base,
+          token,
+          ...(addresses ? { addresses } : {}),
+          ...(serverId ? { serverId } : {}),
+        }
+      : null;
 
   if (/^audiosilo:/i.test(text)) {
     const server = queryParam(query, 'server');

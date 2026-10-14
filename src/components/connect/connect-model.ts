@@ -168,12 +168,12 @@ export function httpFallback(typed: string): string | null {
 export async function withFallback<T>(
   primary: string,
   attempt: (base: string) => Promise<T>,
-  fallback: (error: unknown) => string | null,
+  fallback: (error: unknown) => string | null | Promise<string | null>,
 ): Promise<{ answer: T; base: string }> {
   try {
     return { answer: await attempt(primary), base: primary };
   } catch (e) {
-    const alt = e instanceof ApiError ? null : fallback(e);
+    const alt = e instanceof ApiError ? null : await fallback(e);
     if (!alt) throw e;
     try {
       return { answer: await attempt(alt), base: alt };
@@ -188,18 +188,27 @@ export async function withFallback<T>(
  * keeps a server's own answer from getting here): its `home` address, or null to give up.
  * A server on its own (self-signed) certificate, which the device can't trust, also
  * answers plain http to home-network devices on the same port, and its links carry that
- * as `home=http://<host:port>`. So only when the base is https and the home address is
- * plain http on the base's own host and port (the token goes to no host the link's base
- * didn't name), and not after a timeout: a host that never answered would only time out
- * again on http.
+ * as `home=http://<host:port>` with its `sid=<server_id>`. The token would cross the
+ * network in the clear, so only to that server:
+ * - the base is https and the home address plain http on the base's own host and port
+ *   (no host the link's base didn't name);
+ * - the link names the server (`serverId`; an older server's link doesn't, and such a
+ *   server serves no home http anyway), and home, asked with no token (`probe`), answers
+ *   as exactly that server (another box can sit at the same address on another network);
+ * - not after a timeout: a host that never answered would only time out again on http.
  */
-export function pairingFallback(scan: PairingScan, error: unknown): string | null {
+export async function pairingFallback(
+  scan: PairingScan,
+  error: unknown,
+  probe: ServerIdProbe,
+): Promise<string | null> {
   const home = scan.addresses?.home;
-  if (!home || error instanceof TimeoutError) return null;
+  if (!home || !scan.serverId || error instanceof TimeoutError) return null;
   const base = urlEndpoint(scan.base);
   const at = urlEndpoint(home);
   if (base?.scheme !== 'https' || at?.scheme !== 'http') return null;
-  return at.host === base.host && at.port === base.port ? home : null;
+  if (at.host !== base.host || at.port !== base.port) return null;
+  return (await probe(home)) === scan.serverId ? home : null;
 }
 
 /** The remembered servers the connect screen offers to reconnect to: those this device
@@ -335,12 +344,13 @@ export function readyLine(input: {
 }
 
 /** A scanned pairing code as `/connect` route params: its server, token, and the
- * server's home and away addresses when the code carries them. */
+ * server's home and away addresses and its id (`sid`) when the code carries them. */
 export function scanParams(scan: PairingScan): Record<string, string> {
   return {
     server: scan.base,
     token: scan.token,
     ...(scan.addresses?.home ? { home: scan.addresses.home } : {}),
     ...(scan.addresses?.away ? { away: scan.addresses.away } : {}),
+    ...(scan.serverId ? { sid: scan.serverId } : {}),
   };
 }

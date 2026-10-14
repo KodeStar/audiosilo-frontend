@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
+import { effectiveUrl, useAddressRoute } from '@/api/address-route';
 import type { AuthSession, User } from '@/api/types';
 import { checkPin, setPin } from '@/lib/profile-pin';
 import { CONNECTIONS_KEY, PROFILES_KEY } from '@/lib/storage-keys';
@@ -43,6 +44,7 @@ const AWAY = 'https://books.example.com';
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  useAddressRoute.setState({ picks: {} });
   mockReplace.mockClear();
   mockDismissTo.mockClear();
   useSession.setState({
@@ -83,6 +85,30 @@ it('goes straight back to the app for an added server', async () => {
   await finishConnect({ serverUrl: 'https://other.example.com', session: session('srv-2') });
   expect(mockReplace).not.toHaveBeenCalled();
   expect(mockDismissTo).toHaveBeenCalledWith('/');
+});
+
+it('makes the address that answered the first pick, never the stored serverUrl', async () => {
+  // A pairing link's https base could not connect; its plain-http home answered.
+  const base = 'https://192.168.1.205:8080';
+  const home = 'http://192.168.1.205:8080';
+  const id = await finishConnect({
+    serverUrl: base,
+    session: session('srv-1'),
+    linkAddresses: { home },
+    answeredAt: home,
+  });
+  expect(conn('srv-1')).toMatchObject({ serverUrl: base, addresses: { home } });
+  expect(useAddressRoute.getState().picks[id]).toBe(home);
+  expect(effectiveUrl(conn('srv-1')!)).toBe(home);
+});
+
+it('sets no pick without an address that answered', async () => {
+  const id = await finishConnect({
+    serverUrl: AWAY,
+    session: session('srv-1'),
+    linkAddresses: { home: HOME, away: AWAY },
+  });
+  expect(useAddressRoute.getState().picks[id]).toBeUndefined();
 });
 
 it('names the connection after its host when the flow does not know the name', async () => {
