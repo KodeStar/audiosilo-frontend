@@ -28,7 +28,14 @@ export type Probe =
       /** It answered over plain http (said in the notice, with the address). */
       unencrypted?: boolean;
     }
-  | { kind: 'unreachable'; address: string; home: boolean }
+  | {
+      kind: 'unreachable';
+      address: string;
+      home: boolean;
+      /** It was tried over https, so a certificate the device can't trust (the server's
+       * own, self-signed) may be why: said in the notice. */
+      tls?: boolean;
+    }
   | { kind: 'error'; message: string };
 
 /**
@@ -88,6 +95,11 @@ export function ProbeNotice({
           {probe.kind === 'found' && probe.unencrypted ? (
             <Text variant="muted" testID="probe-unencrypted">
               {t('connect.probe.unencrypted', { address: probe.base })}
+            </Text>
+          ) : null}
+          {probe.kind === 'unreachable' && probe.tls ? (
+            <Text variant="muted" testID="probe-self-signed">
+              {t('connect.probe.selfSignedHint')}
             </Text>
           ) : null}
         </View>

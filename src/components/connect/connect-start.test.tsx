@@ -134,6 +134,22 @@ describe('a pairing link', () => {
     });
   });
 
+  it("pairs at the link's plain-http home when its https base can't connect, and keeps that address", async () => {
+    // A server on its default self-signed certificate: the device can't trust it, so the
+    // link's https base fails to connect, and the server answers plain http at home.
+    const base = 'https://192.168.1.205:8080';
+    const home = 'http://192.168.1.205:8080';
+    mockParams = { token: 'tok', server: base, home };
+    mockApi.exchange
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockBases).toEqual([base, home]);
+    expect(conn()).toMatchObject({ serverUrl: home, name: 'Hearthside', addresses: { home } });
+  });
+
   it('a link without addresses pairs exactly as before (no addresses stored)', async () => {
     mockParams = { token: 'tok', server: AWAY };
     mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
@@ -227,6 +243,37 @@ describe('the address field', () => {
     expect(screen.getByLabelText('Server address').props.value).toBe(
       'http://mac-studio-3.local:18571',
     );
+  });
+
+  it('tries plain http for a bare IP and port, as a self-signed server answers at home', async () => {
+    mockApi.serverInfo
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(info());
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), '192.168.1.205:8080');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
+    expect(mockBases).toEqual(['https://192.168.1.205:8080', 'http://192.168.1.205:8080']);
+    expect(useSession.getState().pendingServerUrl).toBe('http://192.168.1.205:8080');
+  });
+
+  it('names a self-signed certificate as a likely cause only when https could not connect', async () => {
+    mockApi.serverInfo.mockRejectedValue(new TypeError('Network request failed'));
+    await render(<ConnectStart />);
+    await fireEvent.changeText(
+      screen.getByLabelText('Server address'),
+      'https://books.example.com',
+    );
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText("Couldn't reach books.example.com")).toBeTruthy();
+    expect(screen.getByTestId('probe-self-signed')).toHaveTextContent(
+      /own \(self-signed\) certificate/,
+    );
+
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'http://192.168.1.20:8080');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText("Couldn't reach 192.168.1.20:8080")).toBeTruthy();
+    expect(screen.queryByTestId('probe-self-signed')).toBeNull();
   });
 
   it('says nothing about encryption for an https server', async () => {

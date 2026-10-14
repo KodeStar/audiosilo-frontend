@@ -6,6 +6,7 @@ import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
 
+import { pairingFallback } from './connect-model';
 import { finishConnect } from './finish-connect';
 
 export type LinkPairing = {
@@ -23,8 +24,11 @@ export type LinkPairing = {
  * Pairing by link (a pairing QR, an invite link, a pasted link, a deep link): exchange
  * the link's token on the link's server for a session, with the server's own name (read
  * alongside, so the connection isn't named after its host), then `finishConnect` (which
- * merges the link's addresses with the answer's). Resolves whether it paired. Bare
- * client: a failed exchange must never flag a reconnect.
+ * merges the link's addresses with the answer's). When the link's https base can't be
+ * reached (a self-signed certificate the device can't trust), the exchange goes once to
+ * the link's plain-http home address on the same host and port (`pairingFallback`), and
+ * the connection is stored with that address. Resolves whether it paired. Bare client: a
+ * failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
@@ -43,15 +47,34 @@ export function useLinkPairing(startPairing = false): LinkPairing {
   const pair = useLatest(async (scan: PairingScan): Promise<boolean> => {
     setError(null);
     setPairing(true);
-    try {
-      const client = new ApiClient(scan.base);
-      const [session, info] = await Promise.all([
+    // The token's exchange at `base`, with the server's name read alongside.
+    const exchangeAt = (base: string) => {
+      const client = new ApiClient(base);
+      return Promise.all([
         client.exchange(scan.token, getDeviceName()),
         client.serverInfo().catch(() => null),
       ]);
+    };
+    try {
+      let serverUrl = scan.base;
+      let answer: Awaited<ReturnType<typeof exchangeAt>>;
+      try {
+        answer = await exchangeAt(scan.base);
+      } catch (e) {
+        // The link's https base could not connect (a server on its own certificate): its
+        // plain-http home address on the same host and port, once (`pairingFallback`). A
+        // failure there that isn't the server's own answer reports the base's.
+        const home = live.current ? pairingFallback(scan, e) : null;
+        if (!home) throw e;
+        answer = await exchangeAt(home).catch((e2: unknown) => {
+          throw e2 instanceof ApiError ? e2 : e;
+        });
+        serverUrl = home;
+      }
       if (!live.current) return false;
+      const [session, info] = answer;
       await finishConnect({
-        serverUrl: scan.base,
+        serverUrl,
         session,
         linkAddresses: scan.addresses,
         name: info?.name,

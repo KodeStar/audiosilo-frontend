@@ -186,6 +186,7 @@ export function ConnectStart() {
               kind: 'unreachable',
               address: hostOf(normalized),
               home: looksLikeHomeAddress(normalized),
+              tls: normalized.startsWith('https://'),
             },
       );
       return false;

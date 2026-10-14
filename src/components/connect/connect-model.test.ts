@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/client';
 import type { PeopleList, Progress } from '@/api/types';
 import { serverIdOf } from '@/lib/connection-id';
 
@@ -8,6 +9,7 @@ import {
   knownToOffer,
   latestPlace,
   looksLikeHomeAddress,
+  pairingFallback,
   readyLine,
   reconnectAddress,
   repairPlan,
@@ -200,10 +202,64 @@ describe('revealSpan', () => {
   });
 });
 
+describe('pairingFallback', () => {
+  const BASE = 'https://192.168.1.205:8080';
+  const link = (home?: string, base = BASE) => ({
+    base,
+    token: 'tok',
+    ...(home ? { addresses: { home } } : {}),
+  });
+  const down = new TypeError('Network request failed');
+
+  it("falls back to the link's plain-http home on the base's own host and port", () => {
+    expect(pairingFallback(link('http://192.168.1.205:8080'), down)).toBe(
+      'http://192.168.1.205:8080',
+    );
+    expect(pairingFallback(link('http://NAS.local:8080', 'https://nas.local:8080'), down)).toBe(
+      'http://NAS.local:8080',
+    );
+    expect(pairingFallback(link('http://[fd00::5]:8080', 'https://[fd00::5]:8080'), down)).toBe(
+      'http://[fd00::5]:8080',
+    );
+  });
+
+  it('never sends the token to a host or port the base did not name', () => {
+    expect(pairingFallback(link('http://192.168.1.99:8080'), down)).toBeNull();
+    expect(pairingFallback(link('http://192.168.1.205:8081'), down)).toBeNull();
+    expect(pairingFallback(link('http://evil.example:8080'), down)).toBeNull();
+    // No port named: https means 443 and http means 80, two different ports.
+    expect(pairingFallback(link('http://nas.local', 'https://nas.local'), down)).toBeNull();
+  });
+
+  it('only from an https base to a plain-http home', () => {
+    expect(pairingFallback(link('https://192.168.1.205:8080'), down)).toBeNull();
+    expect(
+      pairingFallback(link('http://192.168.1.205:8080', 'http://192.168.1.205:8080'), down),
+    ).toBeNull();
+  });
+
+  it('not without a home address', () => {
+    expect(pairingFallback(link(), down)).toBeNull();
+    expect(
+      pairingFallback({ ...link(), addresses: { away: 'https://books.example' } }, down),
+    ).toBeNull();
+  });
+
+  it('not when the server answered (refused or failed the token itself)', () => {
+    expect(
+      pairingFallback(link('http://192.168.1.205:8080'), new ApiError(401, 'expired')),
+    ).toBeNull();
+    expect(
+      pairingFallback(link('http://192.168.1.205:8080'), new ApiError(500, 'boom')),
+    ).toBeNull();
+  });
+});
+
 describe('httpFallback', () => {
   it('offers plain http for an address typed without a scheme', () => {
     expect(httpFallback('mac-studio-3.local:18571')).toBe('http://mac-studio-3.local:18571');
     expect(httpFallback(' 192.168.1.20:8080/ ')).toBe('http://192.168.1.20:8080');
+    expect(httpFallback('192.168.1.205:8080')).toBe('http://192.168.1.205:8080');
     expect(httpFallback('books.example.com/audiosilo')).toBe('http://books.example.com/audiosilo');
   });
 

@@ -1,12 +1,21 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 const mockExchange = jest.fn();
+// The base URL of each exchange, in order.
+const mockExchangedAt: string[] = [];
 jest.mock('@/api/client', () => {
   const actual = jest.requireActual('@/api/client');
   return {
     ...actual,
     ApiClient: class {
-      exchange = (...a: unknown[]) => mockExchange(...a);
+      base: string;
+      constructor(base: string) {
+        this.base = base;
+      }
+      exchange = (...a: unknown[]) => {
+        mockExchangedAt.push(this.base);
+        return mockExchange(...a);
+      };
       serverInfo = async () => ({ name: 'Hearthside' });
     },
   };
@@ -36,7 +45,10 @@ async function errorFor(e: unknown): Promise<string | null> {
   return result.current.error;
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockExchangedAt.length = 0;
+});
 
 describe('useLinkPairing', () => {
   it('pairs and finishes the connect flow with the server name', async () => {
@@ -71,7 +83,74 @@ describe('useLinkPairing', () => {
       'Too many tries. Wait a few minutes and try again.',
     );
     expect(await errorFor(new TypeError('Network request failed'))).toBe(
-      'Could not reach the server to finish pairing.',
+      "Couldn't reach the server. If it uses its own (self-signed) certificate, update the server, or connect on your home network.",
     );
+  });
+});
+
+describe('useLinkPairing: the home http fallback', () => {
+  const session = { token: 's', user: { id: 1, username: 'evie' }, server_id: 'a' };
+  const BASE = 'https://192.168.1.205:8080';
+  const HOME = 'http://192.168.1.205:8080';
+  const homeScan = { base: BASE, token: 'tok', addresses: { home: HOME } };
+
+  async function pairWith(s: typeof homeScan) {
+    const { result } = await renderHook(() => useLinkPairing());
+    let paired: boolean | undefined;
+    await act(async () => {
+      paired = await result.current.pair(s);
+    });
+    return { paired, error: result.current.error };
+  }
+
+  it("exchanges at the link's plain-http home when its https base can't connect", async () => {
+    mockExchange
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(session);
+    expect((await pairWith(homeScan)).paired).toBe(true);
+    expect(mockExchangedAt).toEqual([BASE, HOME]);
+    expect(mockFinish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serverUrl: HOME,
+        session,
+        linkAddresses: { home: HOME },
+        name: 'Hearthside',
+      }),
+    );
+  });
+
+  it('does not fall back when the base answered, and reports what it said', async () => {
+    mockExchange.mockRejectedValueOnce(new ApiError(401, 'expired'));
+    const { paired, error } = await pairWith(homeScan);
+    expect(paired).toBe(false);
+    expect(mockExchangedAt).toEqual([BASE]);
+    expect(error).toMatch(/expired or was already used/);
+    expect(mockFinish).not.toHaveBeenCalled();
+  });
+
+  it('never sends the token to a home on another host', async () => {
+    mockExchange.mockRejectedValue(new TypeError('Network request failed'));
+    const { paired } = await pairWith({
+      ...homeScan,
+      addresses: { home: 'http://192.168.1.99:8080' },
+    });
+    expect(paired).toBe(false);
+    expect(mockExchangedAt).toEqual([BASE]);
+  });
+
+  it("says the base couldn't be reached when the home can't either, and the home's answer when it has one", async () => {
+    mockExchange.mockRejectedValue(new TypeError('Network request failed'));
+    let out = await pairWith(homeScan);
+    expect(out.paired).toBe(false);
+    expect(mockExchangedAt).toEqual([BASE, HOME]);
+    expect(out.error).toMatch(/^Couldn't reach the server/);
+
+    mockExchange
+      .mockReset()
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockRejectedValueOnce(new ApiError(500, 'boom'));
+    out = await pairWith(homeScan);
+    expect(out.error).toMatch(/^The server couldn't finish pairing/);
+    expect(mockFinish).not.toHaveBeenCalled();
   });
 });

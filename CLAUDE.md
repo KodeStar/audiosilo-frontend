@@ -330,7 +330,12 @@ one in use (`inUse`); the web passes no `inUse` and says only what the addresses
 every way in (pairing link or QR, invite code, password, demo) ends in `finishConnect`, which
 stores the connection with the server's name and the addresses the link (`linkAddresses`) and the
 answer taught, merged there once, and shows `/connect/ready?connection=` ("Your library is
-ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. `repairPlan`: a
+ready.") only for the device's first connection; an added server goes back with `leaveOnboarding()`. A
+pairing link whose https base can't connect (a server on its own self-signed certificate) exchanges
+once at the link's `home` instead, only when that is plain http on the base's own host and port and
+never after an `ApiError` (`pairingFallback`), and the connection is stored with that address;
+Android allows cleartext for it (`expo-build-properties` `android.usesCleartextTraffic`, as iOS's
+`NSAllowsArbitraryLoads`). `repairPlan`: a
 re-pair through one of a connection's own addresses keeps its paired `serverUrl`; the reconnect
 banner signs in through `effectiveUrl` and passes `reconnect=<cid>`, so a reset server reached
 through its away address still retires its dead identity. `/connect` decides its "nothing to add"

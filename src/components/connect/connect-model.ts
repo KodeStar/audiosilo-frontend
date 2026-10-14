@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/client';
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
 import { priorConnection, serverIdOf } from '@/lib/connection-id';
 import type { KnownServer } from '@/lib/known-servers';
@@ -156,6 +157,35 @@ export function httpFallback(typed: string): string | null {
   const raw = typed.trim();
   if (!raw || /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return null;
   return normalizeUrl(`http://${raw}`) || null;
+}
+
+/** A URL's scheme, host and port (the scheme's default port when it names none), or null.
+ * A regex rather than `URL`: React Native's URL polyfill has no `hostname` or `port`. */
+function endpoint(url: string): { scheme: string; host: string; port: string } | null {
+  const m = /^(https?):\/\/(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#]+)(?::(\d+))?(?:[/?#]|$)/i.exec(
+    url.trim(),
+  );
+  if (!m) return null;
+  const scheme = m[1].toLowerCase();
+  return { scheme, host: m[2].toLowerCase(), port: m[3] ?? (scheme === 'https' ? '443' : '80') };
+}
+
+/**
+ * Where to exchange a pairing link's token when the exchange at the link's base failed
+ * with `error`: its `home` address, or null to give up. A server on its own (self-signed)
+ * certificate, which the device can't trust, also answers plain http to home-network
+ * devices on the same port, and its links carry that as `home=http://<host:port>`. So
+ * only when the base never answered (not an `ApiError`: a server that answered refused or
+ * failed the token itself), the base is https, and the home address is plain http on the
+ * base's own host and port: the token goes to no host the link's base didn't name.
+ */
+export function pairingFallback(scan: PairingScan, error: unknown): string | null {
+  const home = scan.addresses?.home;
+  if (!home || error instanceof ApiError) return null;
+  const base = endpoint(scan.base);
+  const at = endpoint(home);
+  if (base?.scheme !== 'https' || at?.scheme !== 'http') return null;
+  return at.host === base.host && at.port === base.port ? home : null;
 }
 
 /** The remembered servers the connect screen offers to reconnect to: those this device

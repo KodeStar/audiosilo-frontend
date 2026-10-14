@@ -332,7 +332,7 @@
       "missingAddress": "A questo link di abbinamento manca l'indirizzo del server. Inseriscilo qui sotto.",
       "pairingRefused": "Questo link di abbinamento è scaduto o è già stato usato. Chiedine uno nuovo, oppure inserisci il tuo codice di invito nella schermata di accesso.",
       "pairingServerError": "Il server non è riuscito a completare l'abbinamento. Riprova, oppure inserisci il tuo codice di invito nella schermata di accesso.",
-      "pairingReachError": "Impossibile raggiungere il server per completare l'abbinamento.",
+      "pairingReachError": "Impossibile raggiungere il server. Se usa un proprio certificato (autofirmato), aggiorna il server o connettiti dalla rete di casa.",
       "demoError": "Impossibile avviare la demo: {{message}}",
       "demoReachError": "Impossibile raggiungere il server demo.",
       "tryDemo": "Prova la demo",
@@ -373,6 +373,7 @@
       "unreachable": "Impossibile raggiungere {{address}}",
       "hint": "Controlla come è scritto e che il server sia online. Un indirizzo di casa come 192.168.1.20:8080 funziona solo sulla stessa rete del server.",
       "homeHint": "È un indirizzo della rete di casa, quindi risponde solo sulla stessa rete del server. Controlla che questo dispositivo sia su quella rete, e come è scritto.",
+      "selfSignedHint": "Se il server usa un proprio certificato (autofirmato), aggiornalo oppure, sulla rete di casa, inserisci il suo indirizzo senza https://.",
       "errorTitle": "Il server ha risposto con un errore",
       "errorBody": "Messaggio: {{message}}"
     },
