@@ -107,8 +107,8 @@ describe('DevicesSection', () => {
     expect(screen.getAllByRole('button', { name: /^Sign out / })).toHaveLength(1);
     await signOutLaptop();
     await waitFor(() => expect(mockRevoke).toHaveBeenCalledTimes(1));
-    expect(mockRevoke).toHaveBeenCalledWith(11);
-    expect(mockRevoke).not.toHaveBeenCalledWith(10);
+    expect(mockRevoke).toHaveBeenCalledWith({ id: 11, alsoMembers: false });
+    expect(mockRevoke).not.toHaveBeenCalledWith(expect.objectContaining({ id: 10 }));
   });
 
   it('signs another device out after a confirmation and says so', async () => {
@@ -195,5 +195,73 @@ describe('DevicesSection', () => {
     Platform.OS = 'ios';
     await mount();
     expectNativeTarget(screen.getByRole('button', { name: 'Sign out Work laptop' }));
+  });
+});
+
+describe('DevicesSection: household members signed in on a device (8b-1)', () => {
+  const phone = device({
+    id: 30,
+    name: 'Kitchen phone',
+    member_sign_ins: [
+      { id: 12, name: 'Evie' },
+      { id: 13, name: 'Ellis' },
+    ],
+  });
+
+  it('offers "Also sign out Evie and Ellis", ticked, and passes alsoMembers', async () => {
+    mockDevices = loaded([here, phone]);
+    mockRevoke.mockResolvedValue({ current: false, members_signed_out: 2 });
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out Kitchen phone' }));
+    const tick = screen.getByTestId('revoke-also-members');
+    expect(tick).toBeChecked();
+    expect(within(tick).getByText('Also sign out Evie and Ellis on that device')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+    await waitFor(() => expect(mockRevoke).toHaveBeenCalledWith({ id: 30, alsoMembers: true }));
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Signed out Kitchen phone',
+      description:
+        'It needs to sign in again to reach Hearthside. 2 people in your household were signed out with it.',
+    });
+  });
+
+  it('unticked, signs the device out alone (the members stay signed in there)', async () => {
+    mockDevices = loaded([here, phone]);
+    mockRevoke.mockResolvedValue({ current: false, members_signed_out: 0 });
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out Kitchen phone' }));
+    await fireEvent.press(screen.getByTestId('revoke-also-members'));
+    expect(screen.getByTestId('revoke-also-members')).not.toBeChecked();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+    await waitFor(() => expect(mockRevoke).toHaveBeenCalledWith({ id: 30, alsoMembers: false }));
+  });
+
+  it('asks afresh, ticked, for the next device', async () => {
+    const tablet = device({ id: 31, name: 'Tablet', member_sign_ins: [{ id: 12, name: 'Evie' }] });
+    mockDevices = loaded([here, phone, tablet]);
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out Kitchen phone' }));
+    await fireEvent.press(screen.getByTestId('revoke-also-members'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out Tablet' }));
+    const tick = screen.getByTestId('revoke-also-members');
+    expect(tick).toBeChecked();
+    expect(within(tick).getByText('Also sign out Evie on that device')).toBeTruthy();
+  });
+
+  it('shows no tick, and sends the plain id, for a device with no member sign-ins', async () => {
+    mockDevices = loaded([here, laptop]);
+    mockRevoke.mockResolvedValue({ current: false });
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out Work laptop' }));
+    expect(screen.queryByTestId('revoke-also-members')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out device' }));
+    await waitFor(() => expect(mockRevoke).toHaveBeenCalledWith({ id: 11, alsoMembers: false }));
+  });
+
+  it('never offers this device a sign-out, member sign-ins or not', async () => {
+    mockDevices = loaded([{ ...here, member_sign_ins: [{ id: 12, name: 'Evie' }] }, laptop]);
+    await mount();
+    expect(within(screen.getByTestId('device-10')).queryByRole('button')).toBeNull();
   });
 });

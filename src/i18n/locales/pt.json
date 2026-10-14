@@ -9,7 +9,8 @@
     "on": "Ativado",
     "off": "Desativado",
     "resumeChapter": "Retomar o capítulo {{chapter}}",
-    "resumeTitled": "Retomar {{title}}"
+    "resumeTitled": "Retomar {{title}}",
+    "tooManyTries": "Demasiadas tentativas. Aguarde alguns minutos e tente novamente."
   },
   "settings": {
     "title": "Definições",
@@ -107,6 +108,7 @@
       "revoke": "Revogar {{name}}",
       "createError": "Não foi possível criar a chave de API.",
       "revokeError": "Não foi possível revogar a chave de API.",
+      "kidError": "Uma conta de criança não pode ter chaves de API.",
       "createdModal": {
         "title": "A sua nova chave de API",
         "description": "Copie-a agora. Não será mostrada novamente.",
@@ -142,7 +144,6 @@
       "downloads": "A seguir e transferências",
       "appearance": "Aparência",
       "language": "Idioma",
-      "household": "Casa e partilha",
       "accounts": "Contas e dispositivos",
       "support": "Apoiar o AudioSilo"
     },
@@ -169,6 +170,8 @@
     "signOut": {
       "title": "Terminar sessão?",
       "warning": "Não tem qualquer palavra-passe definida. Sem ela, vai precisar de um novo convite do seu administrador para iniciar sessão novamente neste servidor.",
+      "warningMember": "Sem palavra-passe, {{owner}} pode voltar a iniciar a sua sessão a partir da página Casa.",
+      "warningKid": "Uma conta de criança não tem palavra-passe. {{owner}} pode voltar a iniciar a sessão da conta a partir da página Casa.",
       "setPassword": "Definir uma palavra-passe",
       "confirm": "Terminar sessão mesmo assim",
       "downloadsWarning_one": "Terminar sessão também elimina {{count}} livro descarregado deste servidor neste dispositivo.",
@@ -186,12 +189,15 @@
     },
     "password": {
       "bodySet": "Use-a para iniciar sessão num novo dispositivo ou num navegador.",
-      "bodyNotSet": "Iniciou sessão com um código de convite e ainda não definiu uma palavra-passe. Defina uma para poder iniciar sessão num novo dispositivo.",
+      "bodyNotSet": "Ainda não definiu uma palavra-passe. Defina uma para poder iniciar sessão num novo dispositivo.",
       "dialogSet": "Pelo menos {{count}} caracteres. Os seus outros dispositivos mantêm a sessão iniciada.",
       "dialogChange": "Introduza a palavra-passe atual e depois a nova. Os seus outros dispositivos mantêm a sessão iniciada.",
       "doneSet": "Palavra-passe definida",
       "doneChanged": "Palavra-passe alterada",
-      "doneBody": "Os seus outros dispositivos mantêm a sessão iniciada."
+      "doneBody": "Os seus outros dispositivos mantêm a sessão iniciada.",
+      "bodyMember": "{{owner}} configurou esta conta, por isso ainda não tem palavra-passe. Defina uma para iniciar sessão por conta própria num novo dispositivo.",
+      "bodyKid": "Uma conta de criança não tem palavra-passe. {{owner}} inicia a sessão da conta num novo dispositivo.",
+      "bodyKidNoOwner": "Uma conta de criança não tem palavra-passe. Um adulto inicia a sessão da conta num novo dispositivo."
     },
     "pair": {
       "title": "Associar outro dispositivo",
@@ -202,7 +208,9 @@
       "renew": "Criar um novo código",
       "copy": "Copiar ligação",
       "qr": "Código de associação para {{server}}",
-      "error": "Não foi possível contactar {{server}}. Nenhum código foi criado, tente novamente."
+      "error": "Não foi possível contactar {{server}}. Nenhum código foi criado, tente novamente.",
+      "kid": "Uma conta infantil não pode associar um dispositivo. A pessoa que a gere configura os dispositivos dela a partir de Casa.",
+      "refused": "{{server}} não criou nenhum código. Tente novamente mais tarde."
     },
     "devices": {
       "title": "Dispositivos com sessão iniciada",
@@ -243,7 +251,12 @@
       "failedBody": "{{server}} não respondeu. Nada mudou, tente novamente.",
       "gone": "{{name}} já não tinha sessão iniciada",
       "goneBody": "A lista está atualizada.",
-      "loadError": "Não foi possível carregar os seus dispositivos de {{server}}."
+      "loadError": "Não foi possível carregar os seus dispositivos de {{server}}.",
+      "alsoSignOut": "Terminar também a sessão de {{names}} nesse dispositivo",
+      "alsoSignOutBody": "Pessoas da sua casa cuja sessão iniciou lá",
+      "names": "{{first}} e {{second}}",
+      "doneMembers_one": "Terá de iniciar sessão novamente para chegar a {{server}}. Também foi terminada a sessão de {{count}} pessoa da sua casa.",
+      "doneMembers_other": "Terá de iniciar sessão novamente para chegar a {{server}}. Também foi terminada a sessão de {{count}} pessoas da sua casa."
     },
     "danger": {
       "title": "Terminar sessão em {{server}}",
@@ -317,7 +330,8 @@
       "addressLabel": "Endereço do servidor",
       "enterAddress": "Introduz o endereço do teu servidor",
       "missingAddress": "Falta o endereço do servidor a esta ligação de emparelhamento. Introduze-o abaixo.",
-      "pairingFailed": "Falha no emparelhamento: {{message}}. Também podes ligar-te introduzindo o teu código de convite no ecrã de início de sessão.",
+      "pairingRefused": "Esta ligação de emparelhamento expirou ou já foi usada. Pede uma nova, ou introduz o teu código de convite no ecrã de início de sessão.",
+      "pairingServerError": "O servidor não conseguiu concluir o emparelhamento. Tenta de novo, ou introduz o teu código de convite no ecrã de início de sessão.",
       "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",
       "demoError": "Não foi possível iniciar a demonstração: {{message}}",
       "demoReachError": "Não foi possível contactar o servidor de demonstração.",
@@ -367,7 +381,8 @@
       "label": "Ligação de emparelhamento",
       "connect": "Ligar",
       "invalid": "Isto não é uma ligação de emparelhamento do AudioSilo. Estas ligações são como https://<servidor>/web/connect?token=... ou audiosilo://connect?..."
-    }
+    },
+    "memberNotReady": "Este dispositivo ainda não consegue iniciar a sessão dessa pessoa. Tente novamente daqui a pouco."
   },
   "onboarding": {
     "step": "Passo {{step}} de {{count}}",
@@ -1455,14 +1470,16 @@
       "year": "Ano",
       "journal": "Diário",
       "settings": "Definições",
-      "account": "Conta"
+      "account": "Conta",
+      "household": "Casa"
     },
     "titles": {
       "stats": "O que ouve",
       "year": "O seu ano a ouvir",
       "journal": "Diário",
       "settings": "Definições",
-      "account": "Conta"
+      "account": "Conta",
+      "household": "Casa"
     }
   },
   "ui": {
@@ -2080,7 +2097,8 @@
       "loadFailed": "Não foi possível carregar esta definição.",
       "failed": "Não foi possível alterar a partilha em {{server}}",
       "failedBody": "Nada mudou. Verifica a ligação e tenta novamente.",
-      "demo": "As contas de demonstração não podem partilhar o que ouvem."
+      "demo": "As contas de demonstração não podem partilhar o que ouvem.",
+      "kid": "Uma conta de criança não pode partilhar o que ouve."
     }
   },
   "kids": {
@@ -2124,11 +2142,22 @@
       "errorBody": "{{server}} não está a responder. Não se perdeu nada.",
       "offlineBody": "Não é possível ligar a {{server}} e não há histórias guardadas neste dispositivo.",
       "retry": "Tentar de novo",
-      "onDevice": "Estas histórias estão guardadas neste dispositivo."
+      "onDevice": "Estas histórias estão guardadas neste dispositivo.",
+      "askGrownUp": "Pede a um adulto para adicionar histórias.",
+      "moreFailed": "Algumas histórias não carregaram."
     },
     "startFailed": {
       "title": "Essa história não arranca agora",
       "body": "Experimenta outra ou pede ajuda a um adulto."
+    },
+    "link": {
+      "title": "Pede a um adulto para abrir esta ligação",
+      "body": "Um adulto mantém premido Adultos primeiro e depois volta a abrir a ligação."
+    },
+    "signedOut": {
+      "ask": "Pede a um adulto para voltar a iniciar a sessão de {{name}}.",
+      "askNoName": "Pede a um adulto para voltar a iniciar a tua sessão.",
+      "title": "Sessão terminada em {{server}}"
     }
   },
   "profiles": {
@@ -2190,7 +2219,7 @@
       "mismatch": "Os PIN não correspondem. Escolha um outra vez.",
       "wait_one": "Demasiadas tentativas. Tente de novo dentro de {{count}} segundo.",
       "wait_other": "Demasiadas tentativas. Tente de novo dentro de {{count}} segundos.",
-      "forgot": "Esqueceu-se? Remova {{name}} deste dispositivo nas Definições e inicie sessão de novo.",
+      "forgot": "Esqueceu-se? Remova {{name}} deste dispositivo na página Casa e inicie sessão de novo.",
       "readFailed": "Não foi possível verificar o PIN neste dispositivo. Tente de novo.",
       "noneSet": "Não há nenhum PIN definido para {{name}} neste dispositivo.",
       "saveFailed": "Não foi possível guardar o PIN neste dispositivo. Nada mudou."
@@ -2215,16 +2244,21 @@
       "noLibraries": "Esta conta não vê nenhuma biblioteca. Peça a quem administra o servidor que partilhe uma.",
       "bedtime": "Hora de deitar",
       "bedtimeBody": "A partir daí até às {{until}}, reproduzir inicia um temporizador de 20 minutos",
-      "needsGrownUp": "Alguém neste dispositivo tem de continuar adulto, ou ninguém poderia sair do modo infantil. Adicione primeiro um adulto."
+      "needsGrownUp": "Alguém neste dispositivo tem de continuar adulto, ou ninguém poderia sair do modo infantil. Adicione primeiro um adulto.",
+      "bodyMember": "As histórias que {{owner}} partilha, com capas grandes, uma hora de deitar e sem definições nem pesquisa. Sair exige um adulto.",
+      "libraryBodyMember": "Mostrada quando {{owner}} não partilha nenhuma coleção",
+      "noLibrariesMember": "Nada para escolher. {{owner}} partilha histórias a partir da página Casa."
     },
     "remove": {
       "label": "Remover deste dispositivo",
       "hint": "Termina a sessão de {{name}} nos seus servidores aqui. O ponto em cada livro fica no servidor.",
       "action": "Remover deste dispositivo",
+      "a11y": "Remover {{name}} deste dispositivo",
       "title": "Remover {{name}} deste dispositivo?",
       "body": "Isto termina a sessão de {{name}} em {{servers}} neste dispositivo e apaga as transferências aqui. O ponto em cada livro fica no servidor.",
       "noPassword": "{{name}} não tem palavra-passe em {{server}}: sem uma, vai precisar de um novo convite para voltar a entrar.",
-      "confirm": "Remover e terminar sessão"
+      "confirm": "Remover e terminar sessão",
+      "member": "A conta de {{name}} em {{server}} mantém-se. {{owner}} pode voltar a iniciar a sessão de {{name}} aqui a partir da página Casa, ou configurar um dispositivo só para {{name}}."
     },
     "household": {
       "intro": "Todas as pessoas que ouvem neste dispositivo, cada uma com os seus servidores, o seu ponto em cada livro, a sua fila e as suas estatísticas.",
@@ -2232,6 +2266,178 @@
       "askAtLaunch": "Perguntar quem está a ouvir ao abrir a app",
       "askAtLaunchBody": "Com duas ou mais pessoas neste dispositivo",
       "noSharing": "Nenhum dos seus servidores oferece isto ainda."
+    },
+    "signIn": {
+      "label": "Sessão terminada",
+      "body": "A sessão de {{name}} em {{server}} terminou.",
+      "action": "Voltar a iniciar sessão",
+      "a11y": "Voltar a iniciar a sessão de {{name}}",
+      "done": "{{name}} voltou a iniciar sessão",
+      "failed": "Não foi possível voltar a iniciar a sessão de {{name}}. Tente de novo."
+    }
+  },
+  "household": {
+    "title": "Casa",
+    "manage": "Gerir a casa",
+    "paletteHint": "As pessoas neste dispositivo e a sua casa",
+    "settingsLink": {
+      "body": "Pessoas neste dispositivo, modo infantil, as pessoas que adicionou e partilha",
+      "hint": "Abre a página Casa"
+    },
+    "device": {
+      "title": "Neste dispositivo",
+      "signInExisting": "Iniciar sessão de alguém que já tem conta"
+    },
+    "members": {
+      "title": "A sua casa",
+      "titleOn": "A sua casa em {{server}}",
+      "sub": "As pessoas que adicionou. Escolhe o que cada uma pode ouvir.",
+      "empty": "Adicione uma criança ou um adulto. Cada pessoa tem a sua própria conta e o seu ponto em cada livro, sem email nem convite.",
+      "loadFailed": "Não foi possível carregar a sua casa a partir de {{server}}.",
+      "add": "Adicionar alguém à sua casa",
+      "count_one": "{{count}} de {{max}} adicionada",
+      "count_other": "{{count}} de {{max}} adicionadas",
+      "reason": {
+        "feature_off": "A administração do seu servidor desativou a adição de pessoas.",
+        "not_allowed": "A administração do seu servidor não permite que esta conta adicione pessoas.",
+        "member": "Só a pessoa que gere a sua conta pode adicionar pessoas.",
+        "demo": "As contas de demonstração não podem adicionar pessoas.",
+        "at_cap": "Já adicionou o máximo de pessoas que este servidor permite ({{max}}).",
+        "other": "Adicionar pessoas não está disponível para esta conta.",
+        "memberNamed": "Só {{owner}} pode adicionar pessoas ou mudar o que pode ouvir."
+      },
+      "managedBy": "{{owner}} gere a sua conta."
+    },
+    "kind": {
+      "kid": "Criança",
+      "grownup": "Adulto"
+    },
+    "access": {
+      "title": "O que pode ouvir?",
+      "all": "Tudo o que eu posso ouvir",
+      "allBody": "Tudo o que pode ouvir em {{server}}, agora e mais tarde.",
+      "collections": "Só as coleções que partilho",
+      "collectionsBody": "Só os livros das coleções que partilha com esta pessoa.",
+      "pickLabel": "As suas coleções para partilhar",
+      "none": "Ainda não tem coleções. Crie uma aqui.",
+      "noneChosen": "Nada assinalado: não terá nada para ouvir até partilhar uma coleção.",
+      "create": "Criar os livros de {{name}}",
+      "createUnnamed": "Criar os seus livros",
+      "booksName": "Livros de {{name}}",
+      "collectionsOff": "Este servidor não oferece coleções, por isso ainda não há nada para partilhar.",
+      "createFailed": "Não foi possível criar {{name}}, por isso nada foi guardado. Tente novamente.",
+      "leftBehind": "{{name}} foi criada e continua nas suas coleções.",
+      "newDetail": "Coleção nova, criada ao guardar",
+      "createUnnamedName": "Os seus livros",
+      "useExisting": "Partilhar {{name}}"
+    },
+    "add": {
+      "title": "Adicionar alguém à sua casa",
+      "body": "Terá a sua própria conta em {{server}}, com o seu ponto em cada livro.",
+      "name": "Nome",
+      "nameError": "Use um nome com 40 caracteres no máximo.",
+      "kids": "Conta infantil",
+      "kidsBody": "Sem palavra-passe. Com sessão iniciada neste dispositivo de imediato, em modo infantil.",
+      "submitKid": "Adicionar e iniciar sessão aqui",
+      "submitGrownUp": "Adicionar e mostrar o código"
+    },
+    "errors": {
+      "limit": "Já adicionou o máximo de pessoas que este servidor permite.",
+      "invalid": "{{server}} não aceitou esse nome ou essas coleções. Verifique-os e tente novamente.",
+      "forbidden": "A administração do seu servidor não permite que esta conta adicione pessoas.",
+      "failed": "{{server}} não respondeu, por isso nada mudou. Tente novamente.",
+      "usernameTaken": "{{server}} não conseguiu criar um nome de utilizador a partir desse nome. Experimente outro nome.",
+      "invalidName": "{{server}} não aceitou esse nome. Use no máximo 40 caracteres.",
+      "invalidCollections": "Uma dessas coleções já não pode ser partilhada a partir desta conta. Verifique-as e tente novamente.",
+      "member": "Só a pessoa que gere a sua conta pode fazer isso.",
+      "disabled": "Esta conta está desativada em {{server}}. Só o administrador do servidor a pode voltar a ativar.",
+      "kid": "Isso não está disponível para uma conta infantil.",
+      "demo": "As contas de demonstração não podem fazer isso.",
+      "gone": "Essa pessoa já não faz parte da sua casa em {{server}}."
+    },
+    "kid": {
+      "title": "{{name}} já faz parte da casa",
+      "body": "A sessão de {{name}} está iniciada neste dispositivo, em modo infantil. Escolha {{name}} em Quem está a ouvir? quando for a sua vez.",
+      "pinOffer": "Defina um PIN para {{owner}}, para que {{name}} não possa mudar para o seu perfil sem ele.",
+      "notNow": "Agora não"
+    },
+    "here": {
+      "done": "A sessão de {{name}} também está iniciada neste dispositivo.",
+      "already": "A sessão de {{name}} já está iniciada neste dispositivo.",
+      "failed": "A conta de {{name}} está pronta, mas este dispositivo não conseguiu iniciar a sessão.",
+      "failedRetry": "Não foi possível iniciar a sessão de {{name}} neste dispositivo. Tente novamente.",
+      "failedCard": "Use Iniciar sessão neste dispositivo no cartão.",
+      "disabled": "A conta de {{name}} está desativada neste servidor. Só o administrador a pode voltar a ativar.",
+      "gone": "{{name}} já não faz parte da sua casa neste servidor."
+    },
+    "qr": {
+      "title": "Mostre este código a {{name}}",
+      "lead": "{{name}} já tem conta em {{server}}. Para ouvir no próprio dispositivo, basta ler este código com a app AudioSilo.",
+      "body": "Leia-o na app AudioSilo ou abra a ligação. Só funciona uma vez.",
+      "a11y": "Código de associação para {{name}} em {{server}}",
+      "failed": "Não foi possível criar um código. {{server}} não respondeu, tente novamente.",
+      "alsoHerePhone": "Também vai usar este telemóvel",
+      "alsoHereDevice": "Também vai usar este dispositivo"
+    },
+    "card": {
+      "who": "{{kind}} · {{username}}",
+      "onThisDevice": "Neste dispositivo",
+      "access": "O que pode ouvir",
+      "everything": "Tudo o que pode ouvir",
+      "onlyCollections": "Só as coleções que partilha:",
+      "noCollections": "Só as coleções que partilha, e ainda não há nenhuma partilhada.",
+      "collection": "{{name}} ({{count}})",
+      "openCollection": "Abrir {{name}}",
+      "change": "Alterar",
+      "changeA11y": "Alterar o que {{name}} pode ouvir",
+      "accessTitle": "O que pode {{name}} ouvir?",
+      "stopsSharing": "Ao mudar para tudo, deixa de partilhar as suas coleções com {{name}}.",
+      "kid": "Conta infantil",
+      "kidBody": "Sem palavra-passe nem chaves de API. É você quem inicia a sessão.",
+      "kidA11y": "Conta infantil para {{name}}",
+      "kidConfirm": {
+        "title": "Tornar a conta de {{name}} infantil?",
+        "body": "A palavra-passe e as chaves de API vão ser removidas. Os dispositivos com sessão iniciada mantêm-na.",
+        "confirm": "Tornar conta infantil"
+      },
+      "devices": "Os seus dispositivos",
+      "devicesFailed": "Não foi possível carregar os dispositivos de {{name}}.",
+      "noDevices": "Ainda não há sessões de {{name}} em nenhum dispositivo.",
+      "setUp": "Configurar o próprio dispositivo",
+      "setUpA11y": "Mostrar um código para configurar o dispositivo de {{name}}",
+      "signInHere": "Iniciar sessão neste dispositivo",
+      "signInHereA11y": "Iniciar a sessão de {{name}} neste dispositivo",
+      "renameBody": "O nome em {{server}}. O nome de utilizador não muda.",
+      "failed": "Não foi possível alterar a conta de {{name}}",
+      "renameBodyHere": "O nome em {{server}} e neste dispositivo. O nome de utilizador não muda."
+    },
+    "devices": {
+      "signOutA11y": "Terminar a sessão de {{name}} em {{device}}",
+      "confirmTitle": "Terminar a sessão de {{name}} em {{device}}?",
+      "confirmBody": "{{name}} não poderá ouvir em {{device}} até o voltar a configurar.",
+      "done": "Sessão de {{name}} terminada em {{device}}"
+    },
+    "delete": {
+      "label": "Eliminar a conta",
+      "hint": "Elimina a conta de {{name}} em {{server}}, com o histórico de audição.",
+      "action": "Eliminar a conta",
+      "a11y": "Eliminar a conta de {{name}}",
+      "title": "Eliminar a conta de {{name}}?",
+      "body": "Isto elimina a conta de {{name}} em {{server}}, com o histórico de audição, marcadores e notas. Não pode ser anulado.",
+      "continue": "Continuar",
+      "typedTitle": "Escreva {{name}} para eliminar a conta",
+      "typedBody": "O histórico de audição também é eliminado. Não pode ser anulado.",
+      "alsoHere": "{{name}} continua neste dispositivo como pessoa até a remover dele.",
+      "field": "Escreva {{name}}",
+      "confirm": "Eliminar conta",
+      "done": "Conta de {{name}} eliminada",
+      "failed": "Não foi possível eliminar a conta de {{name}}"
+    },
+    "pin": {
+      "already": "{{name}} já tem um PIN neste dispositivo."
+    },
+    "share": {
+      "member": "{{name}} pode ouvir tudo o que está nesta coleção."
     }
   }
 }

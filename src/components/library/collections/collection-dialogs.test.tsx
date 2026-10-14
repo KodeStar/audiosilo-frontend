@@ -1,7 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
-import type { Collection, CollectionDetail } from '@/api/types';
+import type { Collection, CollectionDetail, HouseholdMember, HouseholdMembers } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 const mockToast = jest.fn();
@@ -13,6 +13,9 @@ let mockDetails: Record<number, CollectionDetail> = {};
 const mockAdd = jest.fn();
 const mockRemove = jest.fn();
 const mockCreate = jest.fn();
+let mockTargets: { id: number; username: string }[] = [];
+let mockMembers: HouseholdMembers | undefined;
+const mockSetShares = jest.fn();
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   const mutation = (fn: jest.Mock) => ({ mutateAsync: fn, isPending: false });
@@ -24,11 +27,15 @@ jest.mock('@/api/hooks', () => {
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
     useUpdateCollection: () => mutation(jest.fn()),
+    useShareTargets: () => ({ data: mockTargets, error: null }),
+    useSetCollectionShares: () => mutation(mockSetShares),
+    // A server without household_members hands back no data.
+    useHouseholdMembers: () => ({ data: mockMembers }),
   };
 });
 
 /* eslint-disable import/first */
-import { AddToCollectionDialog } from './collection-dialogs';
+import { AddToCollectionDialog, ShareCollectionDialog } from './collection-dialogs';
 /* eslint-enable import/first */
 
 const collection = (id: number, name: string, over: Partial<Collection> = {}): Collection => ({
@@ -111,5 +118,64 @@ describe('AddToCollectionDialog', () => {
     expect(mockCreate).toHaveBeenCalledWith({ name: 'Winter', description: '' });
     expect(mockAdd).toHaveBeenCalledWith({ id: 4, libraryId: 1, path: 'Author/Book/Disc 1' });
     expect(mockToast).toHaveBeenLastCalledWith({ title: 'Added to Winter' });
+  });
+});
+
+describe('ShareCollectionDialog: household members (8b-1)', () => {
+  const member = (
+    id: number,
+    name: string,
+    access: HouseholdMember['access'],
+  ): HouseholdMember => ({
+    id,
+    name,
+    username: name.toLowerCase(),
+    kind: 'kid',
+    access,
+    created_at: '',
+    devices: 0,
+    last_listened_at: null,
+  });
+  const mountShare = (c = collection(4, 'Bedtime')) =>
+    mountWithPortal(
+      <ShareCollectionDialog open onOpenChange={jest.fn()} connectionId="a.1" collection={c} />,
+    );
+
+  beforeEach(() => {
+    mockTargets = [
+      { id: 12, username: 'evie' },
+      { id: 13, username: 'ellis' },
+      { id: 20, username: 'sam' },
+    ];
+    mockMembers = {
+      allowed: true,
+      max: 6,
+      members: [member(12, 'Evie', 'collections'), member(13, 'Ellis', 'all')],
+    };
+  });
+
+  it('says a picked member on "Only collections I share" can listen to all of it', async () => {
+    await mountShare();
+    expect(screen.queryByTestId('share-member-note')).toBeNull();
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'evie' }));
+    expect(screen.getByText('Evie can listen to everything in this collection.')).toBeTruthy();
+  });
+
+  it('says nothing for a member on everything, or someone who is not a member', async () => {
+    await mountShare();
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'ellis' }));
+    await fireEvent.press(screen.getByRole('checkbox', { name: 'sam' }));
+    expect(screen.queryByTestId('share-member-note')).toBeNull();
+  });
+
+  it('says it for a member it is already shared with', async () => {
+    await mountShare(collection(4, 'Bedtime', { shared_with: [{ id: 12, username: 'evie' }] }));
+    expect(screen.getByText('Evie can listen to everything in this collection.')).toBeTruthy();
+  });
+
+  it('says nothing on a server without household members', async () => {
+    mockMembers = undefined;
+    await mountShare(collection(4, 'Bedtime', { shared_with: [{ id: 12, username: 'evie' }] }));
+    expect(screen.queryByTestId('share-member-note')).toBeNull();
   });
 });

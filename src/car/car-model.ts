@@ -308,10 +308,14 @@ export type CarSnapshotInput = {
   generatedAt: string;
   labels: CarLabels;
   signedIn: boolean;
-  /** Each tab's books in order. `upnext` null: the server whose queue the app shows
-   * (`queueConnectionId`: the loaded book's, else the default, else the first) has no `queue`,
-   * so the tab is left out. */
-  books: Record<Exclude<CarTabId, 'upnext'>, CarBook[]> & { upnext: CarBook[] | null };
+  /** Each tab's books in order; null leaves the tab out: `upnext` when the server whose
+   * queue the app shows (`queueConnectionId`: the loaded book's, else the default, else the
+   * first) has no `queue`, and every tab but the kids shelf's for a kids profile
+   * (`kidsCarBooks`). */
+  books: Record<CarTabId, CarBook[] | null>;
+  /** A tab's title in place of its usual one (the kids shelf's Library tab is "Your
+   * stories"). */
+  titles?: Partial<Record<CarTabId, string>>;
 };
 
 /** Each tab's title (namespace `car`). */
@@ -322,9 +326,9 @@ const TAB_TITLE = {
   library: 'car.library',
 } as const satisfies Record<CarTabId, string>;
 
-/** The snapshot: the four tabs in order (Up next only where the queue exists), each
- * deduplicated by book and trimmed to its limit. Signed out, every tab is empty (native
- * shows `labels.signedOut`). */
+/** The snapshot: the four tabs in order (each one whose books are null left out: Up next
+ * where there is no queue, a kids profile's other tabs), each deduplicated by book and
+ * trimmed to its limit. Signed out, every tab is empty (native shows `labels.signedOut`). */
 export function buildCarSnapshot(input: CarSnapshotInput, ctx: CarItemContext): CarSnapshot {
   const tabs: CarTab[] = [];
   for (const id of TAB_ORDER) {
@@ -341,7 +345,7 @@ export function buildCarSnapshot(input: CarSnapshotInput, ctx: CarItemContext): 
         if (items.length >= CAR_TAB_LIMITS[id]) break;
       }
     }
-    tabs.push({ id, title: ctx.t(TAB_TITLE[id]), items });
+    tabs.push({ id, title: input.titles?.[id] ?? ctx.t(TAB_TITLE[id]), items });
   }
   return {
     version: 1,
@@ -349,5 +353,51 @@ export function buildCarSnapshot(input: CarSnapshotInput, ctx: CarItemContext): 
     labels: input.labels,
     signedIn: input.signedIn,
     tabs,
+  };
+}
+
+// --- Kids mode ------------------------------------------------------------------------
+
+/**
+ * A kids profile's car (Phase 8b-1): the kids shelf only, as kids mode shows it
+ * (`useKidsStories`: the owner's shared collections, else one library). Two tabs: Continue
+ * listening, the shelf's stories in progress (the loaded one first, `continueRefs`; left
+ * out when there are none), and the Library tab holding the shelf itself, in its order.
+ * No Up next and no Downloads tab: everything else the account could reach stays off the
+ * car, as it stays off kids mode's screen. `shelf` is the shelf's books on `connectionId`
+ * (the kids profile's connection); `rows` that connection's progress rows. The Library tab
+ * is trimmed to its limit here (each book once), not only when the snapshot is built: the
+ * controller fetches a cover for every book a tab holds, and a shelf of shared collections
+ * can hold a thousand stories. Continue listening still finds any story on the shelf.
+ */
+export function kidsCarBooks(
+  connectionId: string,
+  shelf: readonly Book[],
+  rows: readonly SourcedProgress[],
+  loaded: BookRef | null,
+  progressOf: (ref: BookRef) => Progress | null,
+): CarSnapshotInput['books'] {
+  const onShelf = new Map<string, CarBook>();
+  const library: CarBook[] = [];
+  for (const book of shelf) {
+    const ref = { connectionId, libraryId: book.library_id, path: book.rel_path };
+    const key = contentKeyOf(ref);
+    if (onShelf.has(key)) continue;
+    const item: CarBook = { ref, book, progress: progressOf(ref) };
+    onShelf.set(key, item);
+    if (library.length < CAR_TAB_LIMITS.library) library.push(item);
+  }
+  // Only the shelf's (before `continueRefs` trims to its limit).
+  const shelfRows = rows.filter((r) => onShelf.has(contentKeyOf(progressAt(r))));
+  const live = loaded && onShelf.has(contentKeyOf(loaded)) ? loaded : null;
+  const continuing = continueRefs(shelfRows, live).map(({ ref, progress }): CarBook => ({
+    ...onShelf.get(contentKeyOf(ref))!,
+    progress,
+  }));
+  return {
+    continue: continuing.length > 0 ? continuing : null,
+    upnext: null,
+    downloads: null,
+    library,
   };
 }

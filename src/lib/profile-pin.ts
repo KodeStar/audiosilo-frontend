@@ -145,6 +145,22 @@ export async function readPin(profileId: string): Promise<StoredPin | null> {
   return parseRecord(await getSecureStrict(pinKey(profileId)));
 }
 
+/**
+ * The PIN the secure store holds for `profile` (`readPin`), the profile's mirror
+ * (`hasPin`) repaired to match on the way: the store says whether there is a PIN, never
+ * the mirror alone (it is written best effort with the whole profiles document, which a
+ * failed write or a second web tab holding an older document can leave wrong). Rejects,
+ * changing nothing, when the store can't be read: never act on the mirror's word then.
+ */
+export async function readPinMirrored(profile: {
+  id: string;
+  hasPin?: boolean;
+}): Promise<StoredPin | null> {
+  const stored = await readPin(profile.id);
+  if (!!stored !== !!profile.hasPin) setProfileHasPin(profile.id, !!stored);
+  return stored;
+}
+
 /** Remove a profile's PIN. */
 export async function clearPin(profileId: string): Promise<void> {
   await deleteSecureStrict(pinKey(profileId));

@@ -5,7 +5,6 @@ import {
   httpFallback,
   bookTotal,
   isFirstConnection,
-  joinList,
   knownToOffer,
   latestPlace,
   looksLikeHomeAddress,
@@ -328,14 +327,6 @@ describe('latestPlace', () => {
     expect(latestPlace(undefined)).toBeUndefined();
     expect(latestPlace([p('a', 'x', { finished: true })])).toBeUndefined();
   });
-});
-
-it('joinList joins with commas and the locale joiner', () => {
-  const and = (rest: string, last: string) => `${rest} and ${last}`;
-  expect(joinList([], and)).toBe('');
-  expect(joinList(['Fiction'], and)).toBe('Fiction');
-  expect(joinList(['Fiction', 'Kids'], and)).toBe('Fiction and Kids');
-  expect(joinList(['Fiction', 'Kids', 'Podcasts'], and)).toBe('Fiction, Kids and Podcasts');
 });
 
 describe('readyLine', () => {

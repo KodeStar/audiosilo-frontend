@@ -18,9 +18,11 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 
 import { byPosition } from '@/lib/by-position';
+import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
+import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
@@ -33,6 +35,7 @@ import { resolveClient } from './connection-clients';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteError } from './reachability';
 import type {
+  AddMemberBody,
   Book,
   Bookmark,
   BookmarkLabel,
@@ -45,6 +48,8 @@ import type {
   CollectionPatch,
   Favourite,
   HistoryEntry,
+  HouseholdMember,
+  HouseholdMembers,
   HouseListening,
   Library,
   ListeningGoalStatus,
@@ -60,6 +65,7 @@ import type {
   RatingValue,
   ServerInfo,
   StatsRange,
+  UpdateMemberBody,
 } from './types';
 
 /** Centralized query keys so mutations can invalidate precisely. Every key leads with
@@ -118,6 +124,8 @@ export const qk = {
   queue: (cid: string) => ['queue', cid] as const,
   collections: (cid: string) => ['collections', cid] as const,
   collection: (cid: string, id: number) => ['collection', cid, id] as const,
+  /** Prefix matching every collection detail of a connection (invalidation). */
+  collectionAll: (cid: string) => ['collection', cid] as const,
   shareTargets: (cid: string) => ['shareTargets', cid] as const,
   rating: (cid: string, lib: number, path: string) => ['rating', cid, lib, path] as const,
   myRatings: (cid: string) => ['myRatings', cid] as const,
@@ -135,6 +143,11 @@ export const qk = {
   // Listening in the house, capability `household` (player redesign Phase 8).
   household: (cid: string) => ['household', cid] as const,
   houseListening: (cid: string) => ['houseListening', cid] as const,
+  // Household members, capability `household_members` (player redesign Phase 8b-1).
+  householdMembers: (cid: string) => ['householdMembers', cid] as const,
+  memberDevices: (cid: string, id: number) => ['memberDevices', cid, id] as const,
+  /** Prefix matching every member's devices on a connection (invalidation). */
+  memberDevicesAll: (cid: string) => ['memberDevices', cid] as const,
   /** Prefix matching every connection's progress list (refetch on Home). */
   allProgressAll: () => ['progress', 'all'] as const,
   /** Prefix matching every connection's recently added list. */
@@ -258,6 +271,23 @@ export function librariesQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.libraries(cid),
     queryFn: client ? () => client.libraries() : skipToken,
+  });
+}
+
+/** The caller's collections (their own and those shared with them). Ask only a server
+ * with `collections`. */
+export function collectionsQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.collections(cid),
+    queryFn: client ? ({ signal }) => client.collections(signal) : skipToken,
+  });
+}
+
+/** One collection with its items. Ask only a server with `collections`. */
+export function collectionQuery(cid: string, client: MaybeClient, id: number) {
+  return queryOptions({
+    queryKey: qk.collection(cid, id),
+    queryFn: client ? ({ signal }) => client.collection(id, signal) : skipToken,
   });
 }
 
@@ -566,12 +596,16 @@ function useCapabilityQuery<T>(
  * - `mutationKey` names the connection: a pending (or queued) mutation takes each
  *   re-render's options, so a hook switched to another connection would send a queued
  *   write there. A changed key detaches the pending mutations instead, and they keep
- *   their own client and cache. */
+ *   their own client and cache.
+ * - `settled` runs once the request was sent, whatever the answer (`error` undefined when
+ *   it succeeded, after `store`): for the reads a refusal can leave stale too (a 404 for
+ *   something already gone, a cap that moved). */
 function useCapabilityMutation<V, T>(
   flag: keyof Capabilities,
   connectionId: string | undefined,
   request: (api: ApiClient, vars: V) => Promise<T>,
   store?: (cache: { qc: QueryClient; cid: string }, answer: T, vars: V) => unknown,
+  settled?: (cache: { qc: QueryClient; cid: string }, vars: V, error: unknown) => void,
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
@@ -582,8 +616,15 @@ function useCapabilityMutation<V, T>(
     mutationFn: async (vars: V) => {
       if (!api) throw new Error('no connection');
       if (supported !== true) throw new CapabilityError(flag, supported === undefined);
-      const answer = await request(api, vars);
+      let answer: T;
+      try {
+        answer = await request(api, vars);
+      } catch (e) {
+        settled?.({ qc, cid }, vars, e);
+        throw e;
+      }
       await store?.({ qc, cid }, answer, vars);
+      settled?.({ qc, cid }, vars, undefined);
       return answer;
     },
   });
@@ -1580,7 +1621,14 @@ export function useDeleteCollection(connectionId?: string) {
     (api, id: number) => api.deleteCollection(id),
     ({ qc, cid }, _none, id) => {
       dropCollectionDetail(qc, cid, id);
+      // Gone from the list at once: a form that picks collections must never offer (or
+      // keep) one deleted a moment ago while the list is read again.
+      qc.setQueryData<Collection[]>(qk.collections(cid), (list) =>
+        list?.filter((c) => c.id !== id),
+      );
       void qc.invalidateQueries({ queryKey: qk.collections(cid) });
+      // The household members list names the collections shared with each member.
+      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
     },
   );
 }
@@ -1630,7 +1678,12 @@ export function useSetCollectionShares(connectionId?: string) {
     'collections',
     connectionId,
     (api, v: { id: number; userIds: number[] }) => api.setCollectionShares(v.id, v.userIds),
-    ({ qc, cid }, collection) => storeCollection(qc, cid, collection),
+    async ({ qc, cid }, collection) => {
+      await storeCollection(qc, cid, collection);
+      // The household members list names the collections shared with each member: a
+      // member card's "What can they listen to?" saves that set back whole.
+      void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+    },
   );
 }
 
@@ -1806,13 +1859,15 @@ export function useClearListeningGoal(connectionId?: string) {
 }
 
 /** The caller's own signed-in devices, most recently seen first (capability
- * `my_devices`). */
-export function useMyDevices(connectionId?: string) {
+ * `my_devices`). `enabled: false` asks nothing (its `data` may still be a cached answer:
+ * ignore it then). */
+export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } = {}) {
   return useCapabilityQuery(
     'my_devices',
     qk.myDevices,
     (api, signal) => api.myDevices(signal),
     connectionId,
+    { ready: opts.enabled !== false },
   );
 }
 
@@ -1831,17 +1886,29 @@ export function useMyDevices(connectionId?: string) {
  * only 401 and raise the reconnect banner instead. Otherwise it refreshes the device
  * list and the API keys (a device can be an API key). */
 export function useRevokeMyDevice(connectionId?: string) {
+  const members = useCapability('household_members', connectionId) === true;
   return useCapabilityMutation(
     'my_devices',
     connectionId,
-    (api, id: number) => api.revokeMyDevice(id),
+    // Only a server with `household_members` knows the parameter.
+    (api, { id, alsoMembers }: RevokeMyDeviceVars) =>
+      alsoMembers && members
+        ? api.revokeMyDevice(id, { alsoMembers: true })
+        : api.revokeMyDevice(id),
     ({ qc, cid }, res) => {
       if (res.current) return;
-      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
       void qc.invalidateQueries({ queryKey: qk.apiKeys(cid) });
+      if (res.members_signed_out) invalidateHousehold(qc, cid);
+      else void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
     },
   );
 }
+
+/** What `useRevokeMyDevice` takes: the device's id, and `alsoMembers` to also sign out the
+ * caller's household members signed in on that device (its `member_sign_ins`).
+ * `alsoMembers` is sent only to a server with `household_members`; elsewhere the device
+ * alone is signed out. */
+export type RevokeMyDeviceVars = { id: number; alsoMembers?: boolean };
 
 /** Whether the caller shares what they are listening to with the house (capability
  * `household`; `{ share_listening }`, off by default). Fresh until the app restarts:
@@ -1897,6 +1964,191 @@ export function useHouseListening(connectionId?: string, opts: { enabled?: boole
     (api, signal) => api.houseListening(signal),
     connectionId,
     { ready: opts.enabled !== false, refetchInterval: housePollInterval },
+  );
+}
+
+// --- Household members (capability `household_members`, Phase 8b-1) -----------------
+// The queries ask only a server that advertises the flag (`skipToken` elsewhere); the
+// writes reject with a `CapabilityError`, sending nothing, while it is off or not known
+// yet (never hand that to `noteError`). An owner can rename, sign out and delete their
+// members whatever `allowed` says; only adding is gated by it.
+
+/** The caller's household members, whether they may add more (`allowed`, else a
+ * `reason`) and the most they may have (`max`). */
+export function useHouseholdMembers(connectionId?: string) {
+  return useCapabilityQuery(
+    'household_members',
+    qk.householdMembers,
+    (api, signal) => api.members(signal),
+    connectionId,
+  );
+}
+
+/** One member's signed-in devices. `enabled: false` asks nothing (a member signed in
+ * nowhere: their card says so from the list's count). */
+export function useMemberDevices(
+  id: number,
+  connectionId?: string,
+  opts: { enabled?: boolean } = {},
+) {
+  return useCapabilityQuery(
+    'household_members',
+    (cid) => qk.memberDevices(cid, id),
+    (api, signal) => api.memberDevices(id, signal),
+    connectionId,
+    { ready: opts.enabled !== false },
+  );
+}
+
+/**
+ * Read again what shows a connection's household members signed in somewhere: the
+ * members list (its device counts), the caller's devices (their `member_sign_ins`), and
+ * one member's devices (`memberId`), else every member's.
+ */
+export function invalidateHousehold(qc: QueryClient, cid: string, memberId?: number) {
+  void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+  void qc.invalidateQueries({
+    queryKey: memberId === undefined ? qk.memberDevicesAll(cid) : qk.memberDevices(cid, memberId),
+  });
+  void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+}
+
+// Whoever is removed from this device (signed out, their person removed, a member's
+// profile removed from the Household page: any path through `removeConnection`), every
+// other connection here on the same server reads again what showed them signed in here
+// (`invalidateHousehold`: the members' devices and counts, the owner's `member_sign_ins`).
+// The removed connection's own answers are dropped by the provider.
+onConnectionRemoved((id) => {
+  const server = parseConnectionId(id).serverId;
+  for (const c of useSession.getState().connections) {
+    if (serverIdOf(c) === server) invalidateHousehold(queryClient, c.id);
+  }
+});
+
+/** Read again the collections a member write changed the sharing of: the list and every
+ * detail (each lists the people it is shared with, `shared_with`, which the share sheet
+ * saves back as the full set: a stale one would unshare the member). */
+function invalidateSharing(qc: QueryClient, cid: string) {
+  void qc.invalidateQueries({ queryKey: qk.collections(cid) });
+  void qc.invalidateQueries({ queryKey: qk.collectionAll(cid) });
+}
+
+/** A member write the server refused: read the members list again (a 404 means the member
+ * is gone, elsewhere; the list on screen is the stale one). */
+function rereadMembersOnRefusal(
+  { qc, cid }: { qc: QueryClient; cid: string },
+  _vars: unknown,
+  error: unknown,
+) {
+  if (error !== undefined) void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+}
+
+/** Add a household member ({@link AddMemberBody}); resolves to `{ member, session? }`
+ * (`session` when the body asked for `sign_in_here`: the member's session on this
+ * device, to place as a connection). Reads the members list again whatever the answer (a
+ * refusal can mean the cap or the admin's switch moved under the page); on success also
+ * the caller's devices when a session was made here (their `member_sign_ins`) and the
+ * collections when some were shared (each lists the people it is shared with). */
+export function useAddMember(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, body: AddMemberBody) => api.addMember(body),
+    ({ qc, cid }, res, body) => {
+      if (res.session) void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+      if (body.collection_ids) invalidateSharing(qc, cid);
+    },
+    ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) }),
+  );
+}
+
+/** Sign one of the caller's members in on this device (takes the member's id); resolves
+ * to their session. Refreshes the members list, that member's devices and the caller's
+ * devices (their `member_sign_ins`); refused, reads the list again. */
+export function useMemberSession(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, id: number) => api.memberSession(id),
+    ({ qc, cid }, _session, id) => invalidateHousehold(qc, cid, id),
+    rereadMembersOnRefusal,
+  );
+}
+
+/** A single-use pairing (QR) for one of the caller's members to sign in on their own
+ * device (takes the member's id). Changes nothing cached: the device appears once it
+ * signs in. Refused, reads the members list again. */
+export function useMemberPairing(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, id: number) => api.memberPairing(id),
+    undefined,
+    rereadMembersOnRefusal,
+  );
+}
+
+/** Sign a member out of one of their devices (`{ id, deviceId }`, `id` the member's).
+ * Refreshes that member's devices, the members list (its device count) and the caller's
+ * devices (their `member_sign_ins`) whatever the answer: a 404 means the device was
+ * signed out already (elsewhere), so the list on screen is the stale one. */
+export function useRevokeMemberDevice(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, { id, deviceId }: { id: number; deviceId: number }) =>
+      api.revokeMemberDevice(id, deviceId),
+    undefined,
+    ({ qc, cid }, { id }) => invalidateHousehold(qc, cid, id),
+  );
+}
+
+/** Change a member (`{ id, body }`, {@link UpdateMemberBody}); resolves to the member,
+ * which takes its place in the members list. Making them a kid also reads their devices
+ * and the list again (their API keys go); a change of what is shared with them reads the
+ * collections again (each lists the people it is shared with). Refused, reads the list
+ * again. */
+export function useUpdateMember(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, { id, body }: { id: number; body: UpdateMemberBody }) => api.updateMember(id, body),
+    async ({ qc, cid }, member: HouseholdMember, { body }) => {
+      await storeAnswer<HouseholdMembers>(qc, qk.householdMembers(cid), (list) =>
+        list?.members.some((m) => m.id === member.id)
+          ? { ...list, members: list.members.map((m) => (m.id === member.id ? member : m)) }
+          : undefined,
+      );
+      if (body.kind === 'kid') {
+        void qc.invalidateQueries({ queryKey: qk.householdMembers(cid) });
+        void qc.invalidateQueries({ queryKey: qk.memberDevices(cid, member.id) });
+      }
+      if (body.collection_ids) invalidateSharing(qc, cid);
+    },
+    rereadMembersOnRefusal,
+  );
+}
+
+/** Delete a member's account (takes the member's id). Takes them off the members list
+ * at once, forgets their devices and refreshes the caller's devices (their
+ * `member_sign_ins`) and the collections (the shares with them went with the account);
+ * refused (a 404: deleted already, elsewhere), reads the list again. */
+export function useDeleteMember(connectionId?: string) {
+  return useCapabilityMutation(
+    'household_members',
+    connectionId,
+    (api, id: number) => api.deleteMember(id),
+    async ({ qc, cid }, _answer, id) => {
+      qc.removeQueries({ queryKey: qk.memberDevices(cid, id), exact: true });
+      await storeAnswer<HouseholdMembers>(
+        qc,
+        qk.householdMembers(cid),
+        (list) => list && { ...list, members: list.members.filter((m) => m.id !== id) },
+      );
+      void qc.invalidateQueries({ queryKey: qk.myDevices(cid) });
+      invalidateSharing(qc, cid);
+    },
+    rereadMembersOnRefusal,
   );
 }
 

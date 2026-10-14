@@ -132,6 +132,7 @@ export type GoToRuns = {
   tab: (name: TabName) => void;
   you: (section: YouSection) => void;
   settings: () => void;
+  household: () => void;
 };
 
 /** The palette's glyph for each You hub section. */
@@ -140,13 +141,15 @@ const YOU_SECTION_ICON: Record<YouSection, IconName> = {
   year: 'sparkles',
   journal: 'history',
   settings: 'settings',
+  household: 'users',
   account: 'user',
 };
 
 /**
  * The palette's Go to: the top bar's destinations (`tabs`, already filtered to what this
  * browser can do) but You, which goes by the sections its sub-nav offers instead
- * (`youSectionsFor`: Your listening, Year in listening, the Journal); then Settings.
+ * (`youSectionsFor`: Your listening, Year in listening, the Journal); then Settings and
+ * the Household page.
  */
 export function buildGoToItems(
   tabs: readonly Pick<Destination, 'name' | 'labelKey' | 'icon'>[],
@@ -174,6 +177,13 @@ export function buildGoToItems(
       subtitle: t('palette.settingsHint'),
       icon: 'settings',
       run: run.settings,
+    },
+    {
+      id: 'go:household',
+      title: t('household.title'),
+      subtitle: t('household.paletteHint'),
+      icon: 'users',
+      run: run.household,
     },
   ];
 }

@@ -1,0 +1,724 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ScrollView, View } from 'react-native';
+
+import {
+  CapabilityError,
+  useDeleteMember,
+  useMemberDevices,
+  useMyDevices,
+  useRevokeMemberDevice,
+  useUpdateMember,
+} from '@/api/hooks';
+import type { HouseholdMember, MemberAccess, MyDevice } from '@/api/types';
+import { deviceGlyph } from '@/components/account/account-model';
+import { AccountListRow } from '@/components/account/account-list-row';
+import { deviceDetail, deviceName } from '@/components/account/devices-section';
+import { profileName } from '@/components/profiles/profiles-model';
+import { RenameDialog } from '@/components/profiles/rename-dialog';
+import { useRemovePerson } from '@/components/profiles/use-remove-person';
+import { SettingRow, SettingsCard } from '@/components/settings/settings-row';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogIcon,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { Text } from '@/components/ui/text';
+import { toast } from '@/components/ui/toast';
+import { useOpen } from '@/lib/open';
+import { useNow } from '@/lib/use-now';
+import { type Profile, profileOf, renameProfile } from '@/stores/profiles';
+import { type Connection, useSession } from '@/stores/session';
+
+import { AccessPicker, memberBooksName } from './access-picker';
+import { useBodyCap } from './add-member-dialog';
+import {
+  collectionIdsFor,
+  confirmsName,
+  createsBooks,
+  memberConnection,
+  validMemberName,
+  writeError,
+  writeErrorText,
+} from './household-model';
+import { MemberPairing } from './member-pairing';
+import { PersonHeader, RenameRow } from './person-rows';
+import { booksRunText, useMemberBooks } from './use-member-books';
+import { hereFailure, useSignInHere } from './use-sign-in-here';
+
+/** Which of the card's confirmations or dialogs is open. */
+type Open =
+  null | 'access' | 'kid' | 'qr' | 'rename' | 'delete' | 'deleteTyped' | { revoke: MyDevice };
+
+/**
+ * One household member the person listening manages (Phase 8b-1, the Household page): who
+ * they are, what they can listen to (everything the owner can, or the collections shared
+ * with them, each opening its page) with Change, the Kids switch (turning it on confirms
+ * that their password and API keys go), their devices (each with Sign out), "Set up their
+ * own device" (their pairing code), "Sign in on this device" when they aren't here yet,
+ * Rename, and "Delete their account" (confirmed twice, the second time by typing their
+ * name), kept apart from "Remove from this device" (this device's profile only).
+ */
+export function MemberCard({
+  connection,
+  member,
+}: {
+  connection: Connection;
+  member: HouseholdMember;
+}) {
+  const { t } = useTranslation();
+  const cid = connection.id;
+  const server = connection.name;
+  const name = member.name;
+  const update = useUpdateMember(cid);
+  const remove = useDeleteMember(cid);
+  const signIn = useSignInHere(connection);
+  const books = useMemberBooks(cid);
+  const [open, setOpen] = useState<Open>(null);
+  const close = () => setOpen(null);
+  // Signed in on this device (as a person of their own), by server and user id.
+  const here = useSession((s) => memberConnection(s.connections, connection, member.id));
+  const hereProfile = here ? profileOf(here.id) : null;
+  const kid = member.kind === 'kid';
+  // Which of their devices is this one: their own list, read with their token here, marks
+  // it `current` (the owner's list of their devices never does). Asked only while they are
+  // here and signed in somewhere; the answer of another connection is never read.
+  const theirs = useMyDevices(here?.id ?? cid, {
+    enabled: here !== undefined && member.devices > 0,
+  });
+  const thisDevice = here ? (theirs.data?.find((d) => d.current)?.id ?? null) : null;
+
+  /** Say a write was refused and changed nothing (a toast: "Couldn't change <Name>'s
+   * account" unless `title` says otherwise, then why), unless it was never sent. */
+  const refused = (e: unknown, say: { title?: string; description?: string } = {}) => {
+    if (e instanceof CapabilityError) return;
+    toast({
+      title: say.title ?? t('household.card.failed', { name }),
+      description: say.description ?? writeErrorText(e, server, t),
+    });
+  };
+
+  /** Change the member; false (and a toast saying nothing changed) when refused. A new
+   * kind reaches their account on this device too (when they are here), so its password
+   * card, kids mode and "Who's listening?" follow the Kids switch now, not at their next
+   * sign-in. */
+  const change = async (body: Parameters<typeof update.mutateAsync>[0]['body']) => {
+    try {
+      await update.mutateAsync({ id: member.id, body });
+      if (here && body.kind) {
+        void useSession
+          .getState()
+          .setConnectionUser(here.id, { ...here.user, member_kind: body.kind });
+      }
+      return true;
+    } catch (e) {
+      refused(e);
+      return false;
+    }
+  };
+
+  /** "What can they listen to?" saved: "<Name>'s books" first when it was chosen (its id
+   * joins the set), deleted again when the change is refused (`useMemberBooks`). */
+  const saveAccess = async (access: MemberAccess, ids: number[], newBooks: boolean) => {
+    const booksName = createsBooks(access, newBooks) ? memberBooksName(name, t) : null;
+    const run = await books.run(booksName, (newId) =>
+      update.mutateAsync({
+        id: member.id,
+        body: {
+          access,
+          collection_ids: collectionIdsFor(
+            access,
+            newId === null ? ids : [...ids, newId],
+            member.access,
+          ),
+        },
+      }),
+    );
+    if (run.ok) {
+      close();
+      return;
+    }
+    refused(run.error, { description: booksRunText(run, { server, booksName }, t) });
+  };
+
+  /** Renamed on the server: their profile on this device (when they are here) takes the
+   * new name too, so the owner's change shows everywhere they look. */
+  const rename = async (next: string) => {
+    if (!(await change({ name: next }))) return false;
+    if (hereProfile) renameProfile(hereProfile.id, next);
+    return true;
+  };
+
+  const makeKid = async () => {
+    close();
+    await change({ kind: 'kid' });
+  };
+
+  const deleteAccount = async () => {
+    try {
+      await remove.mutateAsync(member.id);
+      close();
+      toast({ title: t('household.delete.done', { name }) });
+    } catch (e) {
+      if (writeError(e) === 'gone') {
+        // Gone already (deleted from another device): the list catches up
+        // (`useDeleteMember`).
+        close();
+        return;
+      }
+      refused(e, { title: t('household.delete.failed', { name }) });
+    }
+  };
+
+  const signInHere = async () => {
+    const result = await signIn.run(member);
+    toast({
+      title:
+        result.status === 'done'
+          ? t('household.here.done', { name })
+          : hereFailure(result, name, t),
+    });
+  };
+
+  return (
+    <SettingsCard testID={`member-${member.id}`}>
+      <PersonHeader
+        name={name}
+        detail={t('household.card.who', {
+          kind: t(kid ? 'household.kind.kid' : 'household.kind.grownup'),
+          username: member.username,
+        })}
+      >
+        {here ? (
+          <Badge variant="secondary">
+            <Text>{t('household.card.onThisDevice')}</Text>
+          </Badge>
+        ) : null}
+      </PersonHeader>
+
+      <SettingRow
+        testID={`member-access-${member.id}`}
+        control="block"
+        label={t('household.card.access')}
+        description={<AccessSummary connectionId={cid} member={member} />}
+      >
+        <Button
+          title={t('household.card.change')}
+          accessibilityLabel={t('household.card.changeA11y', { name })}
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onPress={() => setOpen('access')}
+        />
+      </SettingRow>
+
+      <SettingRow label={t('household.card.kid')} description={t('household.card.kidBody')}>
+        <Switch
+          testID={`member-kid-${member.id}`}
+          checked={kid}
+          disabled={update.isPending}
+          onCheckedChange={(on) => (on ? setOpen('kid') : void change({ kind: 'grownup' }))}
+          accessibilityLabel={t('household.card.kidA11y', { name })}
+        />
+      </SettingRow>
+
+      <SettingRow control="block" label={t('household.card.devices')}>
+        <MemberDevices
+          connectionId={cid}
+          member={member}
+          thisDevice={thisDevice}
+          onRevoke={(d) => setOpen({ revoke: d })}
+        />
+        <View className="mt-2 flex-row flex-wrap gap-2">
+          <Button
+            testID={`member-setup-${member.id}`}
+            title={t('household.card.setUp')}
+            accessibilityLabel={t('household.card.setUpA11y', { name })}
+            variant="outline"
+            size="sm"
+            icon="qrcode"
+            onPress={() => setOpen('qr')}
+          />
+          {here ? null : (
+            <Button
+              testID={`member-here-${member.id}`}
+              title={t('household.card.signInHere')}
+              accessibilityLabel={t('household.card.signInHereA11y', { name })}
+              variant="ghost"
+              size="sm"
+              icon="plus"
+              loading={signIn.busy}
+              onPress={() => void signInHere()}
+            />
+          )}
+        </View>
+      </SettingRow>
+
+      <RenameRow name={name} onRename={() => setOpen('rename')} />
+
+      <SettingRow
+        control="block"
+        label={t('household.delete.label')}
+        description={t('household.delete.hint', { name, server })}
+      >
+        <View className="flex-row flex-wrap gap-2">
+          <Button
+            testID={`member-delete-${member.id}`}
+            title={t('household.delete.action')}
+            accessibilityLabel={t('household.delete.a11y', { name })}
+            variant="destructive-outline"
+            size="sm"
+            icon="trash"
+            onPress={() => setOpen('delete')}
+          />
+          {hereProfile ? <RemoveHereButton memberId={member.id} profile={hereProfile} /> : null}
+        </View>
+      </SettingRow>
+
+      <Dialog open={open === 'access'} onOpenChange={(o) => !o && close()}>
+        {open === 'access' ? (
+          <AccessBody
+            connectionId={cid}
+            serverName={server}
+            member={member}
+            onSave={saveAccess}
+            onClose={close}
+          />
+        ) : null}
+      </Dialog>
+      <ConfirmDialog
+        visible={open === 'kid'}
+        title={t('household.card.kidConfirm.title', { name })}
+        message={t('household.card.kidConfirm.body')}
+        confirmLabel={t('household.card.kidConfirm.confirm')}
+        confirmIcon="key"
+        onConfirm={() => void makeKid()}
+        onCancel={close}
+      />
+      <Dialog open={open === 'qr'} onOpenChange={(o) => !o && close()}>
+        {open === 'qr' ? (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('household.qr.title', { name })}</DialogTitle>
+              <DialogDescription>{t('household.qr.lead', { name, server })}</DialogDescription>
+            </DialogHeader>
+            <MemberPairing connectionId={cid} serverName={server} member={member} />
+            <DialogFooter>
+              <Button
+                testID={`member-qr-done-${member.id}`}
+                title={t('common.done')}
+                onPress={close}
+              />
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+      <RenameDialog
+        open={open === 'rename'}
+        name={name}
+        body={
+          hereProfile
+            ? t('household.card.renameBodyHere', { server })
+            : t('household.card.renameBody', { server })
+        }
+        validate={(next) => (validMemberName(next) ? undefined : t('household.add.nameError'))}
+        onSave={rename}
+        onClose={close}
+      />
+      <ConfirmDialog
+        visible={open === 'delete'}
+        title={t('household.delete.title', { name })}
+        message={t('household.delete.body', { name, server })}
+        confirmLabel={t('household.delete.continue')}
+        confirmIcon="trash"
+        destructive
+        onConfirm={() => setOpen('deleteTyped')}
+        onCancel={close}
+      />
+      <Dialog open={open === 'deleteTyped'} onOpenChange={(o) => !o && close()}>
+        {open === 'deleteTyped' ? (
+          <DeleteTypedBody
+            member={member}
+            onThisDevice={here !== undefined}
+            busy={remove.isPending}
+            onDelete={() => void deleteAccount()}
+            onClose={close}
+          />
+        ) : null}
+      </Dialog>
+      <RevokeMemberDevice
+        connectionId={cid}
+        member={member}
+        device={typeof open === 'object' && open ? open.revoke : null}
+        here={thisDevice !== null ? here : undefined}
+        thisDevice={thisDevice}
+        onClose={close}
+      />
+    </SettingsCard>
+  );
+}
+
+/** What a member can listen to: everything the owner can, or the collections shared with
+ * them, each opening its page (none yet: says so). */
+function AccessSummary({
+  connectionId,
+  member,
+}: {
+  connectionId: string;
+  member: HouseholdMember;
+}) {
+  const { t } = useTranslation();
+  const { openCollection } = useOpen();
+  if (member.access === 'all') {
+    return <Text variant="caption">{t('household.card.everything')}</Text>;
+  }
+  const collections = member.collections ?? [];
+  if (collections.length === 0) {
+    return <Text variant="caption">{t('household.card.noCollections')}</Text>;
+  }
+  return (
+    <View className="gap-1">
+      <Text variant="caption">{t('household.card.onlyCollections')}</Text>
+      <View className="flex-row flex-wrap gap-x-3" accessibilityRole="list">
+        {collections.map((c) => (
+          <Button
+            key={c.id}
+            testID={`member-collection-${c.id}`}
+            variant="link"
+            size="sm"
+            className="px-0"
+            title={t('household.card.collection', { name: c.name, count: c.items })}
+            accessibilityLabel={t('household.card.openCollection', { name: c.name })}
+            onPress={() => openCollection(connectionId, c.id)}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** "Remove from this device" for a member signed in here: their profile on this device
+ * only (`useRemovePerson`, mounted only on a card whose member is here). */
+function RemoveHereButton({ memberId, profile }: { memberId: number; profile: Profile }) {
+  const { t } = useTranslation();
+  const removal = useRemovePerson();
+  const name = profileName(profile, t);
+  return (
+    <>
+      <Button
+        testID={`member-remove-${memberId}`}
+        title={t('profiles.remove.action')}
+        accessibilityLabel={t('profiles.remove.a11y', { name })}
+        variant="ghost"
+        size="sm"
+        icon="logout"
+        onPress={() => void removal.request(profile, name)}
+      />
+      {removal.dialog}
+    </>
+  );
+}
+
+/** A member's signed-in devices (their sessions and API keys, as the list's count has
+ * them: the card is the only place the owner sees either), each with Sign out, their
+ * session on this device marked; loading, error and none states. None is said from the
+ * members list's count, without asking. */
+function MemberDevices({
+  connectionId,
+  member,
+  thisDevice,
+  onRevoke,
+}: {
+  connectionId: string;
+  member: HouseholdMember;
+  /** Their session on this device (its id), when they are signed in here. */
+  thisDevice: number | null;
+  onRevoke: (d: MyDevice) => void;
+}) {
+  const { t } = useTranslation();
+  const signedIn = member.devices > 0;
+  const devices = useMemberDevices(member.id, connectionId, { enabled: signedIn });
+  const rows = devices.data ?? [];
+  if (!signedIn) {
+    return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
+  }
+  if (devices.isError) {
+    return (
+      <View className="gap-2" testID={`member-devices-error-${member.id}`}>
+        <Text variant="caption">{t('household.card.devicesFailed', { name: member.name })}</Text>
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          title={t('common.retry')}
+          onPress={() => void devices.refetch()}
+        />
+      </View>
+    );
+  }
+  if (devices.isPending) {
+    return (
+      <View className="gap-2" testID={`member-devices-loading-${member.id}`}>
+        <Skeleton className="h-3.5 w-1/2 rounded-sm" />
+        <Skeleton className="h-3 w-2/3 rounded-sm" />
+      </View>
+    );
+  }
+  if (rows.length === 0) {
+    return <Text variant="caption">{t('household.card.noDevices', { name: member.name })}</Text>;
+  }
+  return (
+    <MemberDeviceRows member={member} rows={rows} thisDevice={thisDevice} onRevoke={onRevoke} />
+  );
+}
+
+/** The rows of `MemberDevices`, each with Sign out; the clock ticks only while they show
+ * ("last seen 5 minutes ago" moves by the minute). */
+function MemberDeviceRows({
+  member,
+  rows,
+  thisDevice,
+  onRevoke,
+}: {
+  member: HouseholdMember;
+  rows: MyDevice[];
+  thisDevice: number | null;
+  onRevoke: (d: MyDevice) => void;
+}) {
+  const { t } = useTranslation();
+  const now = useNow(60_000);
+  return (
+    <View className="overflow-hidden rounded-xl border border-border" accessibilityRole="list">
+      {rows.map((d, i) => {
+        const device = deviceName(d, t);
+        return (
+          <AccountListRow
+            key={d.id}
+            testID={`member-device-${d.id}`}
+            icon={deviceGlyph(d)}
+            title={device}
+            badge={
+              d.id === thisDevice ? (
+                <Badge variant="success">
+                  <Text>{t('account.devices.thisDevice')}</Text>
+                </Badge>
+              ) : null
+            }
+            detail={deviceDetail(d, t, now)}
+            first={i === 0}
+            action={{
+              title: t('account.devices.signOut'),
+              accessibilityLabel: t('household.devices.signOutA11y', {
+                name: member.name,
+                device,
+              }),
+              onPress: () => onRevoke(d),
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+/** "Sign Evie out of Kitchen iPad?", then the sign-out and a toast. Their session on this
+ * device (`thisDevice`, of their connection `here`) is dead once signed out: that
+ * connection takes the dead-token path at once (`markNeedsReconnect`, as a 401 would), so
+ * this device shows them signed out (with "Sign in again") instead of failing later. */
+function RevokeMemberDevice({
+  connectionId,
+  member,
+  device,
+  here,
+  thisDevice,
+  onClose,
+}: {
+  connectionId: string;
+  member: HouseholdMember;
+  device: MyDevice | null;
+  here: Connection | undefined;
+  thisDevice: number | null;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const revoke = useRevokeMemberDevice(connectionId);
+  const name = member.name;
+  const label = device ? deviceName(device, t) : '';
+  const confirm = async () => {
+    if (!device) return;
+    onClose();
+    const signedOutHere = () => {
+      if (here && device.id === thisDevice) {
+        useSession.getState().markNeedsReconnect(here.id, 'auth');
+      }
+    };
+    try {
+      await revoke.mutateAsync({ id: member.id, deviceId: device.id });
+      signedOutHere();
+      toast({ title: t('household.devices.done', { name, device: label }) });
+    } catch (e) {
+      if (e instanceof CapabilityError) return;
+      // Signed out already (404): the lists are read again whatever the answer
+      // (`useRevokeMemberDevice`).
+      const why = writeError(e);
+      if (why === 'gone') {
+        signedOutHere();
+        toast({ title: t('account.devices.gone', { name: label }) });
+        return;
+      }
+      toast({
+        title: t('account.devices.failed', { name: label }),
+        ...(why === 'tooMany' ? { description: t('common.tooManyTries') } : {}),
+      });
+    }
+  };
+  return (
+    <ConfirmDialog
+      visible={device !== null}
+      title={t('household.devices.confirmTitle', { name, device: label })}
+      message={t('household.devices.confirmBody', { name, device: label })}
+      confirmLabel={t('account.devices.confirm.confirm')}
+      confirmIcon="logout"
+      destructive
+      onConfirm={() => void confirm()}
+      onCancel={onClose}
+    />
+  );
+}
+
+/** "What can they listen to?" for an existing member: the same picker as the add form
+ * (without its own heading: the dialog's title asks the question), saved as one change
+ * (access and, for collections, the full set to share, "<Name>'s books" created first
+ * when chosen; switching to everything stops sharing those collections, and says so). */
+function AccessBody({
+  connectionId,
+  serverName,
+  member,
+  onSave,
+  onClose,
+}: {
+  connectionId: string;
+  serverName: string;
+  member: HouseholdMember;
+  onSave: (access: MemberAccess, ids: number[], newBooks: boolean) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [access, setAccess] = useState(member.access);
+  const [ids, setIds] = useState(() => (member.collections ?? []).map((c) => c.id));
+  const [newBooks, setNewBooks] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const cap = useBodyCap();
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(access, ids, newBooks);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <DialogContent testID="member-access-dialog">
+      <DialogHeader>
+        <DialogTitle>{t('household.card.accessTitle', { name: member.name })}</DialogTitle>
+      </DialogHeader>
+      <ScrollView style={{ maxHeight: cap, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
+        <AccessPicker
+          connectionId={connectionId}
+          serverName={serverName}
+          name={member.name}
+          access={access}
+          collectionIds={ids}
+          newBooks={newBooks}
+          saving={saving}
+          showTitle={false}
+          onAccess={setAccess}
+          onCollections={setIds}
+          onNewBooks={setNewBooks}
+        />
+        {member.access === 'collections' && access === 'all' ? (
+          <Text variant="caption" className="mt-2.5" testID="member-access-stops-sharing">
+            {t('household.card.stopsSharing', { name: member.name })}
+          </Text>
+        ) : null}
+      </ScrollView>
+      <DialogFooter>
+        <Button title={t('common.cancel')} variant="ghost" onPress={onClose} />
+        <Button
+          testID="member-access-save"
+          title={t('common.save')}
+          loading={saving}
+          onPress={() => void save()}
+        />
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+/** The second confirmation of "Delete their account": type their name. */
+function DeleteTypedBody({
+  member,
+  onThisDevice,
+  busy,
+  onDelete,
+  onClose,
+}: {
+  member: HouseholdMember;
+  onThisDevice: boolean;
+  busy: boolean;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [typed, setTyped] = useState('');
+  const name = member.name;
+  const ok = confirmsName(typed, member);
+  return (
+    <DialogContent testID="member-delete-typed">
+      <View className="flex-row items-start gap-3.5">
+        <DialogIcon name="trash" tone="destructive" />
+        <DialogHeader className="flex-1">
+          <DialogTitle>{t('household.delete.typedTitle', { name })}</DialogTitle>
+          <DialogDescription>{t('household.delete.typedBody', { name })}</DialogDescription>
+        </DialogHeader>
+      </View>
+      {onThisDevice ? (
+        <Text variant="muted">{t('household.delete.alsoHere', { name })}</Text>
+      ) : null}
+      <Input
+        testID="member-delete-field"
+        label={t('household.delete.field', { name })}
+        value={typed}
+        onChangeText={setTyped}
+        autoFocus
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="done"
+        onSubmitEditing={() => ok && onDelete()}
+      />
+      <DialogFooter>
+        <Button title={t('common.cancel')} variant="ghost" onPress={onClose} />
+        <Button
+          testID="member-delete-confirm"
+          title={t('household.delete.confirm')}
+          variant="destructive"
+          icon="trash"
+          disabled={!ok}
+          loading={busy}
+          onPress={onDelete}
+        />
+      </DialogFooter>
+    </DialogContent>
+  );
+}

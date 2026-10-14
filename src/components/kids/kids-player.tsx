@@ -13,6 +13,7 @@ import { chapterLabel } from '@/lib/chapter-label';
 import { cn } from '@/lib/utils';
 import { wallClockSeconds } from '@/playback/rate';
 import {
+  selectBookKey,
   selectBookPosition,
   selectCurrentChapter,
   selectIsPlaying,
@@ -117,6 +118,11 @@ export function KidsPlayer({ width }: { width: number }) {
   const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const state = usePlayer((s) => s.snapshot.state);
+  // The story is still loading into the engine (`loadingBook`): before its first engine
+  // event the snapshot is the previous book's settled state, which would show a play
+  // button over a story that is on its way (8b-1, D2).
+  const loadingIn = usePlayer((s) => s.loadingBook !== null && s.loadingBook === selectBookKey(s));
+  const busy = state === 'loading' || loadingIn;
   const playing = usePlayer(selectIsPlaying);
   const chapter = usePlayer(selectCurrentChapter);
   const bookPosition = usePlayer(selectBookPosition);
@@ -224,12 +230,12 @@ export function KidsPlayer({ width }: { width: number }) {
           <RoundButton
             size={d.play}
             label={playLabel}
-            busy={state === 'loading'}
+            busy={busy}
             onPress={() => void (isError ? store().retry() : store().toggle())}
             className="bg-primary shadow-overlay"
             testID="kids-play"
           >
-            {state === 'loading' ? (
+            {busy ? (
               <Spinner size="large" color={themed.primaryForeground} />
             ) : (
               <View style={playing || isError ? undefined : { marginLeft: d.playIcon * 0.12 }}>

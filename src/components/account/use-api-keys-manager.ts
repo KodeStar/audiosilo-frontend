@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 
-import { ApiError } from '@/api/client';
+import { ApiError, apiErrorKind } from '@/api/client';
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '@/api/hooks';
 import type { ApiKey, ApiKeyCreated } from '@/api/types';
 import i18n from '@/i18n';
@@ -49,7 +49,7 @@ export function useApiKeysManager(connectionId: string, enabled: boolean) {
       setLabelState('');
       return true;
     } catch (e) {
-      setCreateError(e instanceof ApiError ? e.message : i18n.t('settings.apiKeys.createError'));
+      setCreateError(createErrorText(e));
       return false;
     }
   }, [label, createMut]);
@@ -93,3 +93,11 @@ export function useApiKeysManager(connectionId: string, enabled: boolean) {
 }
 
 export type ApiKeysManager = ReturnType<typeof useApiKeysManager>;
+
+/** Why a key wasn't made: a kid's account can't have one (8b-1, a coded 403 the page
+ * never offers, `kid_account`), in the app's words; else the server's own line (the label
+ * rules it alone knows), or a generic one with no answer at all. */
+function createErrorText(e: unknown): string {
+  if (apiErrorKind(e) === 'kid_account') return i18n.t('settings.apiKeys.kidError');
+  return e instanceof ApiError ? e.message : i18n.t('settings.apiKeys.createError');
+}

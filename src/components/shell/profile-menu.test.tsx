@@ -102,6 +102,12 @@ describe('ProfileMenu', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/settings');
   });
 
+  it('opens the Household page on the current tab (8b-1)', async () => {
+    await open();
+    await fireEvent.press(screen.getByText('Household'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/household');
+  });
+
   it("opens a server's account screen", async () => {
     await open();
     await fireEvent.press(screen.getByText("Maya's Shelf"));

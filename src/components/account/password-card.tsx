@@ -1,6 +1,8 @@
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import type { User } from '@/api/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,21 +16,49 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
+import { isKidAccount } from '@/lib/account';
 import { cn } from '@/lib/utils';
+import { useManagerName } from '@/stores/profiles';
 
 import { PW_MIN, type PasswordEditor } from './use-password-editor';
 
+/** What the password card says about an account without a password (8b-1, D8): never
+ * how it signed in (a pairing link, a code or a household owner all leave none), only
+ * what is true. A kid's account can't have one (the server refuses it): its owner signs it
+ * in. A household member's was set up by its owner. */
+function noPasswordBody(
+  user: Pick<User, 'member_kind'> | null | undefined,
+  owner: string | null,
+  t: TFunction,
+): string {
+  if (isKidAccount(user)) {
+    return owner ? t('account.password.bodyKid', { owner }) : t('account.password.bodyKidNoOwner');
+  }
+  if (owner) return t('account.password.bodyMember', { owner });
+  return t('account.password.bodyNotSet');
+}
+
 /** The password card: whether this account has one, and the button that sets or changes
- * it (in {@link PasswordDialog}). Hidden for demo accounts by the page. */
+ * it (in {@link PasswordDialog}); none for a kid's account, which can't have one. Hidden
+ * for demo accounts by the page. */
 export function PasswordCard({
   editor,
+  user,
+  connectionId,
   className,
 }: {
   editor: PasswordEditor;
+  /** The account's connection: names a household member's owner as this device knows
+   * them (`useManagerName`). */
+  connectionId?: string;
+  /** The account's user (`managed_by`, `member_kind`: a household member's copy). */
+  user?: Pick<User, 'managed_by' | 'member_kind'> | null;
   className?: string;
 }) {
   const { t } = useTranslation();
+  const owner = useManagerName(connectionId, user ?? null);
   const set = editor.hasPassword;
+  const kid = isKidAccount(user) && !set;
   return (
     <Card className={cn('gap-3', className)}>
       <View className="flex-row flex-wrap items-center gap-2">
@@ -42,15 +72,19 @@ export function PasswordCard({
         </Badge>
       </View>
       <Text variant="muted">
-        {set ? t('account.password.bodySet') : t('account.password.bodyNotSet')}
+        {set ? t('account.password.bodySet') : noPasswordBody(user, owner, t)}
       </Text>
-      <Button
-        variant="outline"
-        icon="key"
-        className="self-start"
-        title={set ? t('settings.account.password.change') : t('settings.account.password.setNew')}
-        onPress={editor.openEditor}
-      />
+      {kid ? null : (
+        <Button
+          variant="outline"
+          icon="key"
+          className="self-start"
+          title={
+            set ? t('settings.account.password.change') : t('settings.account.password.setNew')
+          }
+          onPress={editor.openEditor}
+        />
+      )}
     </Card>
   );
 }

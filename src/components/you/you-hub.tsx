@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { AccountSection } from '@/components/account/account-section';
+import { HouseholdPage } from '@/components/household/household-page';
 import { JournalScreen } from '@/components/journal/journal-screen';
 import { ListeningAsCard } from '@/components/profiles/listening-as-card';
 import { SettingsContent } from '@/components/settings/settings-content';
@@ -33,16 +34,26 @@ const column = (body: ReactNode) => (
 
 /**
  * The hub's sections, each with its scroller. `phone`: the section sits under the hub's
- * large title and segmented control, so it leaves out a heading of its own. Stats, Year
- * and Account are plain columns the hub scrolls (`column`); the Journal and Settings
- * scroll themselves. Account without a `connectionId` shows the default server, with a
+ * large title and segmented control, so it leaves out a heading of its own. Stats, Year,
+ * Household and Account are plain columns the hub scrolls (`column`); the Journal and
+ * Settings scroll themselves. The phone's Settings opens Household as the hub's own
+ * segment (elsewhere it is the pushed page). Account without a `connectionId` shows the default server, with a
  * switcher when several are signed in.
  */
 const SECTIONS: Record<YouSection, (opts: { phone: boolean }) => ReactNode> = {
   stats: () => column(<StatsSection />),
   year: () => column(<YearSection />),
   journal: ({ phone }) => <JournalScreen embedded={phone} />,
-  settings: ({ phone }) => <SettingsContent embedded={phone} />,
+  settings: ({ phone }) =>
+    phone ? (
+      <SettingsContent
+        embedded
+        onOpenHousehold={() => router.setParams(youSectionParams('household'))}
+      />
+    ) : (
+      <SettingsContent />
+    ),
+  household: ({ phone }) => column(<HouseholdPage embedded={phone} />),
   // The phone has no profile menu: who is listening heads its Account segment (Phase 8).
   account: ({ phone }) =>
     column(
@@ -54,12 +65,12 @@ const SECTIONS: Record<YouSection, (opts: { phone: boolean }) => ReactNode> = {
 };
 
 /**
- * The You hub (`/you?section=stats|year|journal|settings|account`, the Me tab's root;
- * STYLEGUIDE section 2). A phone: the large title names the section ("Your listening"),
- * then a scrolling segmented control of all five sections, then the section. Tablet and
- * desktop: the top bar's You destination, its sub-nav offering Stats, Year in listening
- * and Journal (Settings is the gear, Account the profile menu; an old link to either
- * still renders here). The section is the route's `section` param (`parseYouSection`:
+ * The You hub (`/you?section=stats|year|journal|settings|household|account`, the Me tab's
+ * root; STYLEGUIDE section 2). A phone: the large title names the section ("Your
+ * listening"), then a scrolling segmented control of all six sections, then the section.
+ * Tablet and desktop: the top bar's You destination, its sub-nav offering Stats, Year in
+ * listening and Journal (Settings is the gear, Household and Account the profile menu; an
+ * old link to any of them still renders here). The section is the route's `section` param (`parseYouSection`:
  * absent or unknown is Stats), switched in place with `setParams`; the Journal keeps its
  * own `tab` param beside it.
  */

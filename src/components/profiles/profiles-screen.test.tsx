@@ -16,6 +16,11 @@ jest.mock('expo-router', () => ({
   },
 }));
 jest.mock('@/lib/root-stack', () => ({ popTabToRoot: jest.fn() }));
+const mockOpenHousehold = jest.fn();
+jest.mock('@/lib/open', () => ({
+  ...jest.requireActual('@/lib/open'),
+  openHousehold: () => mockOpenHousehold(),
+}));
 jest.mock('@/playback/store', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/testing/player-store-mock').createPlayerStoreMock(),
@@ -34,6 +39,7 @@ import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
 import { resetLaunchDecisionForTests, takeLaunchDecision } from './profiles-model';
+import { endConnectFlow, kidsConnectAllowed } from './connect-intent';
 import { ProfilesScreen } from './profiles-screen';
 import { forgetPickerOpener, openProfiles } from './use-choose-profile';
 /* eslint-enable import/first */
@@ -135,7 +141,7 @@ describe("Who's listening?", () => {
         .getState()
         .profiles.map((p) => (p.id === 'sam' ? { ...p, hasPin: undefined } : p)),
     });
-    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    const read = jest.spyOn(profilePin, 'readPinMirrored').mockRejectedValue(new Error('locked'));
     await mountWithPortal(<ProfilesScreen />);
     await fireEvent.press(screen.getByLabelText('Sam, Hearthside'));
     await waitFor(() =>
@@ -151,7 +157,7 @@ describe("Who's listening?", () => {
 
   it('an unreadable PIN store refuses a mirrored PIN the same way', async () => {
     await setPin('sam', '2468');
-    const read = jest.spyOn(profilePin, 'readPin').mockRejectedValue(new Error('locked'));
+    const read = jest.spyOn(profilePin, 'readPinMirrored').mockRejectedValue(new Error('locked'));
     await mountWithPortal(<ProfilesScreen />);
     await fireEvent.press(screen.getByLabelText('Sam, Hearthside, asks for a PIN'));
     await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
@@ -225,4 +231,47 @@ it('finding 7: kids cannot enter onboarding through Add someone', async () => {
   await fireEvent.press(screen.getByTestId('profiles-add'));
   expect(mockRouter.push).not.toHaveBeenCalled();
   expect(useProfiles.getState().activeProfileId).toBe('leo');
+});
+
+it("a kid-only device: a grown-up's Add someone opens the connect flow, which kids mode lets through (D1)", async () => {
+  useProfiles.setState({
+    profiles: [{ id: 'leo', name: 'Leo', connectionIds: ['a.2'], kids: { bedtime: '19:30' } }],
+    activeProfileId: 'leo',
+  });
+  try {
+    await mountWithPortal(<ProfilesScreen />);
+    await fireEvent.press(screen.getByTestId('profiles-add'));
+    expect(mockRouter.push).toHaveBeenCalledWith('/connect?add=1&profile=new');
+    expect(kidsConnectAllowed()).toBe(true);
+  } finally {
+    endConnectFlow();
+  }
+});
+
+it('says "This device is shared" only once two people are on it (D12)', async () => {
+  const { unmount } = await mountWithPortal(<ProfilesScreen />);
+  expect(screen.getByText('This device is shared')).toBeTruthy();
+  await unmount();
+  useProfiles.setState({ profiles: [{ id: 'chris', name: 'Chris', connectionIds: ['a.1'] }] });
+  await mountWithPortal(<ProfilesScreen />);
+  expect(screen.getByText("Who's listening?")).toBeTruthy();
+  expect(screen.queryByText('This device is shared')).toBeNull();
+});
+
+describe('Manage household (8b-1)', () => {
+  it('opens the Household page', async () => {
+    await mountWithPortal(<ProfilesScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Manage household' }));
+    expect(mockOpenHousehold).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not offered while someone must be chosen, nor to a kids profile', async () => {
+    useProfiles.setState({ activeProfileId: null });
+    const { unmount } = await mountWithPortal(<ProfilesScreen />);
+    expect(screen.queryByTestId('profiles-manage')).toBeNull();
+    await unmount();
+    useProfiles.setState({ activeProfileId: 'leo' });
+    await mountWithPortal(<ProfilesScreen />);
+    expect(screen.queryByTestId('profiles-manage')).toBeNull();
+  });
 });

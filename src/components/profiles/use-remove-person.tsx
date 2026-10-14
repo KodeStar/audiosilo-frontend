@@ -15,18 +15,24 @@ import {
 import { Button } from '@/components/ui/button';
 import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
-import { needsPasswordWarning } from '@/lib/account';
+import { managerName, needsPasswordWarning } from '@/lib/account';
 import { clearPin } from '@/lib/profile-pin';
-import { connectionsOfProfile, deleteProfile, type Profile } from '@/stores/profiles';
+import { connectionsOfProfile, deleteProfile, devicePeople, type Profile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
 /**
- * "Remove from this device" for a person (Settings > Household): signs this device out of
+ * "Remove from this device" for a person (the Household page): signs this device out of
  * each of their servers through the same sign-out as an account page (`signOutConnection`:
  * their book stops with its place saved, queued saves land, the token is revoked, their
  * downloads here go), then drops their PIN and profile. Before it, the same warning as
  * signing out (`needsPasswordWarning`, on the freshest flags `/me` gives): a server where
- * they have no password needs a new invite to get back in. The way out of a forgotten PIN.
+ * they have no password needs a new invite to get back in. A household member (Phase
+ * 8b-1, `user.managed_by`) needs none: the line says who manages their account and can
+ * sign them in here again or set up their own device. Once they are signed out, the
+ * other connections on each of their servers read their household again (the members'
+ * devices, the list's device counts, `member_sign_ins`; `removeConnection`'s hook in
+ * hooks.ts does it, for every way a connection leaves): the owner's page must not keep
+ * showing this device under the member. The way out of a forgotten PIN.
  */
 export function useRemovePerson(): {
   request: (profile: Profile, name: string) => Promise<void>;
@@ -40,19 +46,23 @@ export function useRemovePerson(): {
     name: string;
     servers: Connection[];
     warned: Connection[];
+    managed: { connection: Connection; owner: string }[];
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const request = async (profile: Profile, name: string) => {
     const servers = connectionsOfProfile(useSession.getState().connections, profile.connectionIds);
     const warned: Connection[] = [];
+    const managed: { connection: Connection; owner: string }[] = [];
     for (const c of servers) {
       const user = await freshAccountUser(c.user, clients.get(c.id), (fresh) => {
         void setConnectionUser(c.id, fresh);
       });
-      if (needsPasswordWarning(user)) warned.push(c);
+      const owner = managerName(user, { connection: c, people: devicePeople() });
+      if (owner) managed.push({ connection: c, owner });
+      else if (needsPasswordWarning(user)) warned.push(c);
     }
-    setPending({ profile, name, servers, warned });
+    setPending({ profile, name, servers, warned, managed });
   };
 
   const remove = async () => {
@@ -83,6 +93,11 @@ export function useRemovePerson(): {
             <AlertDialogDescription>
               {t('profiles.remove.body', { name: pending?.name ?? '', servers })}
             </AlertDialogDescription>
+            {pending?.managed.map(({ connection: c, owner }) => (
+              <Text key={c.id} variant="muted" testID={`remove-person-member-${c.id}`}>
+                {t('profiles.remove.member', { name: pending.name, server: c.name, owner })}
+              </Text>
+            ))}
             {pending?.warned.map((c) => (
               <Text key={c.id} variant="muted" className="text-destructive">
                 {t('profiles.remove.noPassword', { name: pending.name, server: c.name })}

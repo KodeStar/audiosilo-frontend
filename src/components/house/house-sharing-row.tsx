@@ -2,22 +2,25 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { ApiError } from '@/api/client';
+import { apiErrorKind } from '@/api/client';
 import { CapabilityError, useHousehold, useSetHousehold } from '@/api/hooks';
 import { SettingRow } from '@/components/settings/settings-row';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { useConnectionName } from '@/stores/session';
+import { isKidAccount } from '@/lib/account';
+import { useConnectionName, useSession } from '@/stores/session';
 
 /**
- * "Share what I'm listening to with the house" for ONE connection (Settings > Household;
- * the pane renders one per connection of the active profile whose server has
- * `household`, inside its `SettingsCard`). Hidden when the connection is gone. The switch moves at once (optimistic) and settles on the server's
- * answer; a refusal puts it back and says so in a toast (a demo account gets its own
- * words). While the setting loads, or a change is in flight, the switch waits disabled;
- * a load that failed offers Retry.
+ * "Share what I'm listening to with the house" for ONE connection (the Household page's
+ * "Listening in the house" renders one per connection of the active profile whose server
+ * has `household`, inside its `SettingsCard`). Hidden when the connection is gone. The
+ * switch moves at once (optimistic) and settles on the server's answer; a refusal puts it
+ * back and says so in a toast (a demo account and a kid's account get their own words).
+ * A kid's account (8b-1) can't share at all (the server refuses it): its row says so,
+ * switched off. While the setting loads, or a change is in flight, the switch waits
+ * disabled; a load that failed offers Retry.
  */
 export function HouseSharingRow({
   connectionId,
@@ -31,6 +34,9 @@ export function HouseSharingRow({
   const settings = useHousehold(connectionId);
   const set = useSetHousehold(connectionId);
   const [optimistic, setOptimistic] = useState<boolean | null>(null);
+  const kid = useSession((s) =>
+    isKidAccount(s.connections.find((c) => c.id === connectionId)?.user),
+  );
   if (!server) return null;
 
   const loaded = settings.data !== undefined;
@@ -46,13 +52,16 @@ export function HouseSharingRow({
     } catch (e) {
       // Never sent (the server lost the flag meanwhile): the pane drops the row.
       if (e instanceof CapabilityError) return;
+      const kind = apiErrorKind(e);
       toast(
-        e instanceof ApiError && e.status === 403
-          ? { title: t('house.share.demo') }
-          : {
-              title: t('house.share.failed', { server }),
-              description: t('house.share.failedBody'),
-            },
+        kind === 'kid_account'
+          ? { title: t('house.share.kid') }
+          : kind === 'demo_account' || kind === 'forbidden'
+            ? { title: t('house.share.demo') }
+            : {
+                title: t('house.share.failed', { server }),
+                description: t('house.share.failedBody'),
+              },
       );
     } finally {
       setOptimistic(null);
@@ -86,15 +95,17 @@ export function HouseSharingRow({
       label={t('house.share.label')}
       description={
         <>
-          <Text variant="caption">{t('house.share.body', { server })}</Text>
-          {status}
+          <Text variant="caption">
+            {kid ? t('house.share.kid') : t('house.share.body', { server })}
+          </Text>
+          {kid ? null : status}
         </>
       }
     >
       <Switch
-        checked={value}
+        checked={kid ? false : value}
         onCheckedChange={(share) => void change(share)}
-        disabled={!loaded || pending}
+        disabled={kid || !loaded || pending}
         accessibilityLabel={t('house.share.switchLabel', { server })}
       />
     </SettingRow>

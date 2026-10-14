@@ -26,6 +26,7 @@ import {
   readMirror,
   saveProgress,
 } from './progress-sync';
+import { listenerSettings } from './listener-settings';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
 import { bookSpeed } from './time-left';
@@ -819,7 +820,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
       let startAt = startBookPosition ?? 0;
       const askedSpeed = startSpeed !== undefined && startSpeed > 0;
-      const { defaultRate } = useSettings.getState();
+      // 1x for a kids profile, else the listener's setting (`listenerSettings`).
+      const { defaultRate } = listenerSettings();
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
       if (startBookPosition === undefined && startTrack === undefined) {
         const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
@@ -1199,7 +1201,13 @@ async function switchCurrentBookToLocal() {
     useSettings.getState().virtualChapterInterval,
   );
   const { index, positionInTrack } = locate(queue.offsets, bookPos);
-  const wasPlaying = snapshot.state === 'playing';
+  // Playing on means the listener's intent, not only an engine already at `playing`. A
+  // short book downloads in under a second, while its stream is still starting (the
+  // snapshot is `loading`, or the engine has just begun and its `playing` has not reached
+  // JS yet). iOS's `load` pauses the player (Android's keeps playWhenReady), so a swap that
+  // didn't play left the story stopped on a Play button after a single tap (8b-1, a kid's
+  // first story on an iPhone).
+  const wasPlaying = snapshot.state === 'playing' || wantsPlayback;
   const svc = await ensureService();
 
   if (svc.isCasting?.()) {

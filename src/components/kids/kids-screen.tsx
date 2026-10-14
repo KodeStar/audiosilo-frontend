@@ -7,22 +7,25 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Book } from '@/api/types';
-import { ReconnectBanner } from '@/components/layout/reconnect-banner';
 import type { PlayTarget } from '@/components/player/play-route';
+import { RECONNECT_STRIP_CLASS } from '@/components/layout/reconnect-banner';
 import { startBookInPlace } from '@/components/player/start-book';
 import { openProfiles } from '@/components/profiles/use-choose-profile';
 import { Screen } from '@/components/ui/screen';
+import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
 import { contentKey } from '@/lib/content-key';
+import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { selectBookKey, selectIsTransportLive, usePlayer } from '@/playback/store';
 import { DEFAULT_BEDTIME } from '@/stores/profiles';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { GrownUpsButton } from './grown-ups-button';
 import { KidsPlayer } from './kids-player';
-import { KidsStoriesList } from './kids-stories';
+import { askToSignIn, type KidsRow, KidsStoriesList } from './kids-stories';
 import { MoonCard } from './moon-card';
 import { useKidsProfile, useKidsStories } from './use-kids';
 
@@ -36,7 +39,8 @@ const MAX_WIDTH = 1200;
  * Play a story. Kids mode is its own player: a story starts in place
  * (`startBookInPlace`) on every layout and never opens the full player, which kids mode
  * doesn't allow; the story already loaded plays on (a tap never pauses it: the big play
- * button does that). Rejects when the story couldn't be fetched.
+ * button does that), and so does one still starting (`startBookInPlace` joins it). Rejects
+ * when the story couldn't be fetched.
  */
 async function playStory(target: PlayTarget): Promise<void> {
   const store = usePlayer.getState();
@@ -45,6 +49,29 @@ async function playStory(target: PlayTarget): Promise<void> {
     return;
   }
   await startBookInPlace(target);
+}
+
+/** The kid's sign-in ended (a revoked session, a deleted account, a reset server): a
+ * plain line, not a button. Signing in again is a grown-up's (8b-1, D1): through the
+ * Grown-ups hold, never the connect flow from here. */
+function SignedOutNotice({ name }: { name: string }) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  return (
+    <View
+      testID="kids-signed-out"
+      accessibilityRole="alert"
+      className={cn(
+        'mb-4 flex-row items-center gap-2.5 rounded-lg px-3.5 py-3',
+        RECONNECT_STRIP_CLASS,
+      )}
+    >
+      <Icon name="key" size={16} color={themed.brand} />
+      <Text className="flex-1 font-sans-semibold text-base text-brand-ink">
+        {askToSignIn(name, t)}
+      </Text>
+    </View>
+  );
 }
 
 /**
@@ -68,8 +95,11 @@ export function KidsScreen() {
   const reduced = useReducedMotion();
   const profile = useKidsProfile();
   const { stories, connectionId, retry, loadMore } = useKidsStories();
+  // The kid's sign-in ended, with stories still on screen (the downloaded ones, or what was
+  // read before): a line over them asks a grown-up (the list's own state says it otherwise).
+  const signedOut = stories.status === 'ready' && stories.signedOut;
   const loaded = usePlayer((s) => s.nowPlaying !== null);
-  const list = useRef<FlashListRef<Book[]>>(null);
+  const list = useRef<FlashListRef<KidsRow>>(null);
   const [outer, setOuter] = useState(0);
 
   useFocusEffect(
@@ -79,17 +109,20 @@ export function KidsScreen() {
     }, []),
   );
 
+  const name = profile?.name.trim() ?? '';
+
   // Stable, so a story tile (memoised) redraws only when its own props change.
-  const onPlay = useCallback(
-    (book: Book) => {
-      if (!connectionId) return;
-      list.current?.scrollToOffset({ offset: 0, animated: !reduced });
-      playStory({ connectionId, libraryId: book.library_id, path: book.rel_path }).catch(() => {
-        toast({ title: t('kids.startFailed.title'), description: t('kids.startFailed.body') });
+  const onPlay = useLatest((book: Book) => {
+    if (!connectionId) return;
+    list.current?.scrollToOffset({ offset: 0, animated: !reduced });
+    playStory({ connectionId, libraryId: book.library_id, path: book.rel_path }).catch(() => {
+      toast({
+        title: t('kids.startFailed.title'),
+        // Signed out, only a grown-up can help: never "try another one".
+        description: signedOut ? askToSignIn(name, t) : t('kids.startFailed.body'),
       });
-    },
-    [connectionId, reduced, t],
-  );
+    });
+  });
 
   // The content column: the page less its insets and gutters, at most MAX_WIDTH wide,
   // centred by padding the sides (the list's rows are laid out to its width).
@@ -98,13 +131,12 @@ export function KidsScreen() {
   const width = outer > 0 ? Math.min(MAX_WIDTH, room) : 0;
   const centring = (room - width) / 2;
 
-  const name = profile?.name.trim() ?? '';
-  // The kid's own sign-in needing renewal (a dead token, a server that was reset): the
-  // shell's reconnect banner is not on this screen, so it shows here. Signing in again
-  // keeps the child's profile and kids mode (`finishConnect`).
+  // The kid's own sign-in ended (a dead token, a server that was reset): said here, as a
+  // line asking a grown-up, never the shell's reconnect banner, which opens the connect
+  // flow (8b-1, D1).
   const header = (
     <View>
-      <ReconnectBanner className="mb-4 rounded-lg" />
+      {signedOut ? <SignedOutNotice name={name} /> : null}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <Text
           accessibilityRole="header"
@@ -153,6 +185,7 @@ export function KidsScreen() {
           onPlay={onPlay}
           onRetry={retry}
           onEndReached={loadMore}
+          name={name}
           contentContainerStyle={{
             paddingTop: insets.top + (phone ? 16 : 28),
             paddingBottom: insets.bottom + 40,

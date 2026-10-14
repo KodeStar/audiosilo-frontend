@@ -11,7 +11,7 @@ import { useSession } from '@/stores/session';
  * Sign this device out of one connection: stop playback through it and replay its queued
  * saves while its token still works (`teardownBeforeTokenRevoke`), revoke the token on the
  * server (best effort), then forget the connection here. The body of `useSignOut`'s
- * `signOut`, shared with removing a person from this device (Settings > Household), which
+ * `signOut`, shared with removing a person from this device (the Household page), which
  * signs out each of their servers after the same password warning.
  */
 export async function signOutConnection(

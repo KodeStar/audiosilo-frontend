@@ -12,6 +12,7 @@ import {
   carLabels,
   continueRefs,
   downloadedEntries,
+  kidsCarBooks,
   parseCarItemId,
   playSpec,
   type CarBook,
@@ -496,5 +497,80 @@ describe('buildCarSnapshot', () => {
     );
     const json = JSON.stringify(snap);
     expect(json).not.toMatch(/token|https?:/);
+  });
+});
+
+describe("kidsCarBooks (a kids profile's car, Phase 8b-1)", () => {
+  const shelf = [
+    makeBook({ library_id: 2, rel_path: 'moon', title: 'Moon' }),
+    makeBook({ library_id: 3, rel_path: 'fox', title: 'Fox' }),
+    makeBook({ library_id: 2, rel_path: 'owl', title: 'Owl' }),
+  ];
+  const at = (path: string, libraryId: number) => ({ connectionId: 'kid', libraryId, path });
+
+  it('the shelf is the Library tab, in its order; Continue holds only its stories in progress', () => {
+    const rows = [
+      row('kid', { library_id: 3, path: 'fox', position: 30, updated_at: '2026-10-02T00:00:00Z' }),
+      // In progress, but not on the shelf (out of the kid's collections): left out.
+      row('kid', { library_id: 2, path: 'grown-up book', position: 30 }),
+      // Another account's (never this connection's): left out.
+      row('dad', { library_id: 2, path: 'owl', position: 30 }),
+    ];
+    const progressOf = (r: { path: string }) => (r.path === 'fox' ? rows[0] : null);
+    const books = kidsCarBooks('kid', shelf, rows, at('owl', 2), progressOf);
+    expect(books.upnext).toBeNull();
+    expect(books.downloads).toBeNull();
+    expect(books.library?.map((b) => [b.ref, b.book?.title, !!b.progress])).toEqual([
+      [at('moon', 2), 'Moon', false],
+      [at('fox', 3), 'Fox', true],
+      [at('owl', 2), 'Owl', false],
+    ]);
+    // The loaded story first, then the shelf's in progress.
+    expect(books.continue?.map((b) => b.ref.path)).toEqual(['owl', 'fox']);
+
+    const snap = buildCarSnapshot(
+      {
+        generatedAt: 'x',
+        labels: carLabels(t),
+        signedIn: true,
+        books,
+        titles: { library: 'Your stories' },
+      },
+      ctx(),
+    );
+    expect(snap.tabs.map((tab) => [tab.id, tab.title, tab.items.map((i) => i.title)])).toEqual([
+      ['continue', 'Continue listening', ['Owl', 'Fox']],
+      ['library', 'Your stories', ['Moon', 'Fox', 'Owl']],
+    ]);
+  });
+
+  it('leaves Continue out when nothing on the shelf is in progress, and a loaded book off it', () => {
+    const books = kidsCarBooks('kid', shelf, [], at('elsewhere', 2), () => null);
+    expect(books.continue).toBeNull();
+    expect(books.library).toHaveLength(3);
+  });
+
+  it("trims a long shelf to the Library tab's limit before covers are fetched", () => {
+    // A thousand stories in the shared collections, one listed twice: the tab the
+    // controller fetches covers for holds the limit, each story once.
+    const long = Array.from({ length: 1000 }, (_, i) =>
+      makeBook({ library_id: 2, rel_path: `s${i}`, title: `S${i}` }),
+    );
+    long.splice(1, 0, long[0]);
+    const deep = row('kid', { library_id: 2, path: 's900', position: 30 });
+    const books = kidsCarBooks('kid', long, [deep], null, () => null);
+    expect(books.library).toHaveLength(CAR_TAB_LIMITS.library);
+    expect(books.library?.slice(0, 2).map((b) => b.ref.path)).toEqual(['s0', 's1']);
+    // A story in progress further down the shelf still continues.
+    expect(books.continue?.map((b) => b.ref.path)).toEqual(['s900']);
+  });
+
+  it('an empty shelf is an empty Library tab (the car says so), nothing else', () => {
+    const books = kidsCarBooks('kid', [], [], null, () => null);
+    const snap = buildCarSnapshot(
+      { generatedAt: 'x', labels: carLabels(t), signedIn: true, books },
+      ctx(),
+    );
+    expect(snap.tabs.map((tab) => [tab.id, tab.items.length])).toEqual([['library', 0]]);
   });
 });

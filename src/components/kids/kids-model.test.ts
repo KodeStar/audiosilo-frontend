@@ -1,15 +1,21 @@
-import type { Book, Library, Progress } from '@/api/types';
+import type { Book, Collection, CollectionDetail, Library, Progress, User } from '@/api/types';
 import type { DownloadEntry } from '@/downloads/types';
 
 import {
   kidsAllowsPath,
+  kidsCollections,
+  kidsCollectionSections,
   kidsConnectionId,
   kidsContinuePaths,
   kidsDownloads,
   kidsGrid,
   kidsLibrary,
-  kidsOfflineLibraryId,
+  kidsManager,
+  kidsOfflineScope,
+  kidsOrder,
+  kidsSectionBooks,
   kidsShelf,
+  kidsShelfMode,
 } from './kids-model';
 
 const lib = (id: number, name = `Lib ${id}`): Library => ({
@@ -170,10 +176,17 @@ describe('kidsDownloads', () => {
 });
 
 describe('kidsAllowsPath', () => {
-  it('allows kids mode, "Who\'s listening?" and the connect flow', () => {
-    for (const p of ['/kids', '/profiles', '/connect', '/connect/sign-in']) {
+  it('allows kids mode and "Who\'s listening?"', () => {
+    for (const p of ['/kids', '/profiles']) {
       expect(kidsAllowsPath(p)).toBe(true);
     }
+  });
+
+  it('leaves the connect flow to its own gate (D1: connect/_layout.tsx keeps kids mode out)', () => {
+    for (const p of ['/connect', '/connect/sign-in', '/connect/scan', '/connect/ready']) {
+      expect(kidsAllowsPath(p)).toBe(true);
+    }
+    expect(kidsAllowsPath('/connectx')).toBe(false);
   });
 
   it('refuses the tabs, settings, downloads, the player and the rest', () => {
@@ -209,12 +222,176 @@ describe('kidsGrid', () => {
   });
 });
 
-describe('kidsOfflineLibraryId', () => {
-  it('is the shown library, else the pick on this connection, else none', () => {
+describe('kidsOfflineScope', () => {
+  it('is the shown library, else the pick on this connection, else none (one library)', () => {
     const kids = { library: { connectionId: 'c', libraryId: 4 } };
-    expect(kidsOfflineLibraryId({ id: 9 }, 'c', kids)).toBe(9);
-    expect(kidsOfflineLibraryId(null, 'c', kids)).toBe(4);
-    expect(kidsOfflineLibraryId(null, 'd', kids)).toBeNull();
-    expect(kidsOfflineLibraryId(null, 'c', undefined)).toBeNull();
+    expect(kidsOfflineScope('library', { id: 9 }, 'c', kids)).toBe(9);
+    expect(kidsOfflineScope('library', null, 'c', kids)).toBe(4);
+    expect(kidsOfflineScope('library', null, 'd', kids)).toBeNull();
+    expect(kidsOfflineScope('library', null, 'c', undefined)).toBeNull();
+  });
+
+  it("is every story on the account for a member's collections, or a shelf not known yet", () => {
+    const kids = { library: { connectionId: 'c', libraryId: 4 } };
+    expect(kidsOfflineScope('collections', { id: 9 }, 'c', kids)).toBeNull();
+    expect(kidsOfflineScope('unknown', null, 'c', kids)).toBeNull();
+  });
+});
+
+describe("a household member's shelf (Phase 8b-1)", () => {
+  const ADAM = { id: 1, username: 'adam' };
+  const coll = (id: number, owner = ADAM, owned = false): Collection => ({
+    id,
+    name: `C${id}`,
+    description: '',
+    owner,
+    owned,
+    item_count: 0,
+    preview: [],
+    created_at: '',
+    updated_at: '',
+  });
+  const detail = (c: Collection, books: (Book | null)[]): CollectionDetail => ({
+    collection: c,
+    items: books.map((b, i) => ({
+      library_id: b?.library_id ?? 1,
+      path: b?.rel_path ?? `gone-${i}`,
+      added_at: '',
+      ...(b ? { book: b } : {}),
+    })),
+  });
+
+  it("kidsCollections: only those the account's owner shares, in the list's order", () => {
+    const list = [coll(1), coll(2, { id: 3, username: 'bob' }), coll(3, ADAM), coll(4, ADAM)];
+    expect(kidsCollections(list, { managed_by: ADAM }).map((c) => c.id)).toEqual([1, 3, 4]);
+    // Its own collections never (even were the owner's id its own).
+    expect(kidsCollections([coll(5, ADAM, true)], { managed_by: ADAM })).toEqual([]);
+    // Nobody manages it (an ordinary account, a Phase 8 kid, an older server): none.
+    expect(kidsCollections(list, { managed_by: null })).toEqual([]);
+    expect(kidsCollections(list, {})).toEqual([]);
+    expect(kidsCollections(list, undefined)).toEqual([]);
+  });
+
+  it('kidsOrder: in progress first (newest first, across libraries), then in order, once each', () => {
+    const books = [book('a', 1), book('b', 2), book('c', 1), book('a', 2), book('a', 1)];
+    const rows = [
+      progress('c', { updated_at: '2026-10-01T09:00:00.000Z' }),
+      progress('a', { library_id: 2, updated_at: '2026-10-01T11:00:00.000Z' }),
+      progress('b', { library_id: 2, finished: true }),
+      progress('zzz'),
+    ];
+    expect(kidsOrder(books, rows).map((b) => `${b.library_id}/${b.rel_path}`)).toEqual([
+      '2/a',
+      '1/c',
+      '1/a',
+      '2/b',
+    ]);
+  });
+
+  it('kidsCollectionSections: titled runs, stories in progress first; empty left out', () => {
+    const one = kidsCollectionSections(
+      [coll(1), coll(2)],
+      [detail(coll(1), [book('a'), null, book('b')]), detail(coll(2), [])],
+      [progress('b')],
+    );
+    expect(one.map((s) => [s.key, s.title, s.books.map((b) => b.rel_path)])).toEqual([
+      ['collection-1', 'C1', ['b', 'a']],
+    ]);
+    const two = kidsCollectionSections(
+      [coll(1), coll(2), coll(3)],
+      [detail(coll(1), [book('a')]), undefined, detail(coll(3), [book('c'), book('a')])],
+      [],
+    );
+    expect(two.map((s) => [s.title, s.books.map((b) => b.rel_path)])).toEqual([
+      ['C1', ['a']],
+      ['C3', ['c', 'a']],
+    ]);
+    expect(kidsSectionBooks(two).map((b) => b.rel_path)).toEqual(['a', 'c']);
+    expect(kidsCollectionSections([coll(1)], [detail(coll(1), [null])], [])).toEqual([]);
+  });
+
+  it('kidsShelfMode: the shared collections, else one library, unknown until both answers', () => {
+    const member = { managed_by: ADAM };
+    const shared = [coll(1)];
+    const others = [coll(2, { id: 3, username: 'bob' })];
+    expect(kidsShelfMode(member, true, shared)).toBe('collections');
+    expect(kidsShelfMode(member, true, others)).toBe('library');
+    expect(kidsShelfMode(member, true, [])).toBe('library');
+    // A server without collections, or an account nobody manages: one library at once.
+    expect(kidsShelfMode(member, false, undefined)).toBe('library');
+    expect(kidsShelfMode({ managed_by: null }, undefined, undefined)).toBe('library');
+    expect(kidsShelfMode(undefined, true, shared)).toBe('library');
+    // Not known yet: the capability, or the list.
+    expect(kidsShelfMode(member, undefined, shared)).toBe('unknown');
+    expect(kidsShelfMode(member, true, undefined)).toBe('unknown');
+  });
+});
+
+describe('kidsManager (8b-1)', () => {
+  const user = (id: number, owner?: string) =>
+    ({
+      id,
+      username: `u${id}`,
+      managed_by: owner ? { id: 1, username: owner } : null,
+    }) as unknown as User;
+  const connections = [
+    { id: 'a.1', user: user(1) },
+    { id: 'a.12', user: user(12, 'adam') },
+  ];
+  const people = { connections, profiles: [] };
+
+  it("names who manages the account kids mode shows, by the kids connection's user", () => {
+    expect(kidsManager({ connectionIds: ['a.12'], kids: { bedtime: '19:30' } }, people)).toBe(
+      'adam',
+    );
+    // The picked library's connection decides which account that is.
+    expect(
+      kidsManager(
+        {
+          connectionIds: ['a.12', 'a.1'],
+          kids: { bedtime: '19:30', library: { connectionId: 'a.1', libraryId: 2 } },
+        },
+        people,
+      ),
+    ).toBeNull();
+    expect(kidsManager({ connectionIds: [] }, people)).toBeNull();
+  });
+
+  it('names no one while the kids sign-in has ended: its stored managed_by is from before', () => {
+    const ended = {
+      connections: [{ id: 'a.12', user: user(12, 'adam'), needsReconnect: 'auth' }],
+      profiles: [],
+    };
+    expect(kidsManager({ connectionIds: ['a.12'] }, ended)).toBeNull();
+  });
+
+  it("with no pick, takes the first of the profile's connections in the session's order, as kids mode does", () => {
+    // The profile lists a.12 first (a sign-in again after a server reset keeps its slot),
+    // the session a.1: kids mode shows a.1, so it is a.1's account that counts.
+    expect(
+      kidsManager({ connectionIds: ['a.12', 'a.1'], kids: { bedtime: '19:30' } }, people),
+    ).toBeNull();
+    expect(
+      kidsManager(
+        { connectionIds: ['a.12', 'a.1'], kids: { bedtime: '19:30' } },
+        { connections: [connections[1], connections[0]], profiles: [] },
+      ),
+    ).toBe('adam');
+  });
+
+  it("names the owner as this device's profile holding their own sign-in, when there is one", () => {
+    // a.1 is adam's own sign-in on server a (managed_by.id 1): his profile is "Dad" here.
+    expect(
+      kidsManager(
+        { connectionIds: ['a.12'], kids: { bedtime: '19:30' } },
+        {
+          connections,
+          profiles: [
+            { name: 'Dad', connectionIds: ['a.1'] },
+            { name: 'Ellie', connectionIds: ['a.12'] },
+          ],
+        },
+      ),
+    ).toBe('Dad');
   });
 });

@@ -286,7 +286,8 @@ listening, nobody's for "Add someone"): its dead token and scoped state go throu
 `onConnectionRemoved` registry, and the new connection takes its place in that person's profile
 (`onConnectionReplaced`, so their PIN and kids settings stay). Every other person's stale
 identity stays, flagged `server-reset`, for them to sign in again: never delete another person
-from the device. A kids profile may sign in again to its own reset server. It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
+from the device. A kids profile never runs the connect flow (`connect/_layout.tsx` is the only
+gate, Phase 8b-1): a grown-up signs it in again. It surfaces as a slim accent bar (`src/components/layout/reconnect-banner.tsx`,
 rendered by the shell beside the offline banner - under the phone header, or under the top bar
 on tablet/desktop); tapping it pre-fills `pendingServerUrl`
 and routes into the EXISTING connect → sign-in screens to re-enter a code/password.
@@ -419,26 +420,63 @@ snapshot and the widget follow `activeProfileId`). The rules:
 (library, bedtime). The whole app for that profile is `/kids`: `KidsRouteGuard` (root layout)
 sends it back from anywhere but `/kids`, `/profiles` and `/connect` (`kidsAllowsPath`), and sends
 a grown-up off `/kids`; the auth gate never mounts the shell for it. The page is ONE `FlashList`
-(`KidsStoriesList`: the header, then the library as big cover tiles, stories in progress first,
-paged as it scrolls; offline, the picked library's downloads, `kidsOfflineLibraryId`); a story
+(`KidsStoriesList`: the header, then the shelf as big cover tiles, stories in progress first,
+paged as it scrolls; offline, the stories downloaded for that shelf, `kidsOfflineScope`); a story
 starts in place with `startBookInPlace` (never the full player), played by `KidsPlayer`. The
-Grown-ups button is a 2 s hold that opens "Who's listening?", where PINs apply; the shell's
-reconnect banner shows on the kids screen too. **Bedtime** is the auto sleep rule while a kids
-profile is active (`effectiveAutoSleepConfig` in `auto-sleep-controller.ts`: from its bedtime
-until `KIDS_BEDTIME_UNTIL`, a `KIDS_BEDTIME_MINUTES` timer on every story; never in the car).
-**The gate**: nobody new signs in while a kids profile listens and a grown-up is on the device
-(`mayAddPerson`: "Add someone", a new server and the demo are refused in `finishConnect`; signing
-in again as its own connection is not), and kids mode is never turned on for the last grown-up
-(`mayTurnOnKids`; a device already without one keeps "Add someone" as its way out).
+Grown-ups button is a 2 s hold that opens "Who's listening?", where PINs apply. The shell's
+reconnect banner never shows there (it opens the connect flow): a kid whose sign-in ended sees
+`SignedOutNotice` in the page header, a line asking a grown-up (who signs them in again from the
+Household page). **Bedtime** is the auto sleep rule while a kids
+profile is active (`listenerSettings()` in `src/playback/listener-settings.ts`, which also makes
+its default speed 1x: from its bedtime until `KIDS_BEDTIME_UNTIL`, a `KIDS_BEDTIME_MINUTES` timer on
+every story; never in the car). **The gate**: `connect/_layout.tsx` is the only gate between the
+connect flow and kids mode: while a kids profile listens it runs none of the flow (a link or the
+reconnect banner takes the child back to `/kids`, with a toast asking a grown-up), except a
+grown-up's "Add someone" on a device with no grown-up (`kidsConnectAllowed`). Nobody new joins
+while a kids profile listens and a grown-up is on the device (`mayAddPerson`, in `finishConnect`
+and `addMemberHere`), and kids mode is never turned on for the last grown-up (`mayTurnOnKids`; a
+device already without one keeps "Add someone" as its way out).
 
 **Listening in the house (Phase 8, capability `household`, `src/components/house/`).** A person
-who shares (`HouseSharingRow` in Settings > Household, `useSetHousehold`) sees what the others on
+who shares (`HouseSharingRow` on the Household page, `useSetHousehold`) sees what the others on
 that server who share are listening to: the Home row (`HouseRow`, after "Next in your series") and
 the book page aside's `InTheHouseCard`. `useHouseRows(cid, active)` asks `useHousehold` first and
 polls `useHouseListening` (`HOUSE_POLL_MS`, foreground only) only while the caller shares and the
 surface is on screen; loading, errors and "not sharing" all read as no rows. The pure rules
 (`house-model.ts`) compute the local calendar day by hand (Hermes has no
 `Intl.RelativeTimeFormat`). Strings under `house.*`.
+
+**Household members (Phase 8b-1, capability `household_members`, `src/components/household/`).**
+An owner adds and manages accounts of their own: a kid (no password or API keys; the owner signs
+them in) or a grown-up, each on "Everything I can listen to" or "Only collections I share".
+- **Wire**: `useHouseholdMembers` and the member hooks in `hooks.ts`; their mutations reject with
+  `CapabilityError` (never to `noteError`). `allowed` (else a `reason`) gates adding only: an owner
+  can always rename, sign out and delete their members. `useRevokeMyDevice({ id, alsoMembers })`
+  also signs out the members signed in on that device (its `member_sign_ins`; sent only to a
+  server with the flag). Switching a member to everything sends `collection_ids: []` (the owner's
+  shares to them stop). Removing any connection reads the household again on its server
+  (`removeConnection`'s hook in `hooks.ts`).
+- **Refusals**: `ApiError.code` with `apiErrorKind(e)` (`client.ts`): branch on the code, fall back
+  on the status for an older server, and say it in the app's words; never show `ApiError.message`.
+- **Naming the owner**: copy names a member's owner through `managerName(user, { connection,
+  people })` / `useManagerName`: the profile holding the owner's own sign-in on this device, else
+  `managed_by.display_name`, else the username; never `managed_by.username` directly.
+- **Signing a member in here**: `addMemberHere` (a new member, or "They'll also use this phone"),
+  `renewMemberHere` (their session here ended) and `signInMemberHere` (`use-sign-in-here.ts`).
+  They store the session with `setSession(..., { makeDefault: false })` and give the member a
+  profile with `placeConnection(id, { newProfile, keepActive, name })`: the owner stays the
+  person listening, so never `switchProfile`. A member's session on this device is marked "This
+  device" on their card; signed out from there it takes the dead-token path (`markNeedsReconnect`).
+- **Kids**: a kid's account starts in kids mode (`kidsOnForKidAccount`), even with no grown-up on
+  the device (the `mayTurnOnKids` exception, `isKidsAccount`). Its shelf is the collections its
+  owner shares with it (`kidsShelfMode`; none, or an older server: one library, as before), and
+  it plays at 1x by default (`listenerSettings`). The connect gate above keeps the flow out.
+- **The Household page**: the phone You hub's Household segment, and `/household` through
+  `openHousehold()` elsewhere; `/settings?section=household` redirects there. It holds the people
+  on this device, a card per member (access with Change, the Kids switch, their devices, "Set up
+  their own device", Rename, Delete twice confirmed, apart from "Remove from this device"), the
+  add dialog, then Listening in the house. My devices offers "Also sign out <names>" for a device
+  holding member sign-ins, and the collection share sheet notes which members can listen to it.
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
@@ -844,6 +882,12 @@ media GETs only.
   `persistedDocument('audiosilo.timeSaved')`, flushed on a halt, on leaving the foreground and
   every 30 s (an `engineTicker`), purged per connection; read through `useTimeSaved` /
   `useBookTimeSaved`.
+- **The download hot-swap plays on from intent, not from `playing`** (`switchCurrentBookToLocal`:
+  `wasPlaying` is `playing` or `wantsPlayback`). A short book's automatic download
+  (`autoDownloadNext`, default `'wifi'`) can land while its start is still `loading`, or just
+  after the engine began playing but before its `playing` reached JS; iOS's `load` pauses the
+  player (Android keeps `playWhenReady`), so a swap that didn't play left a kid's first story
+  stopped on Play, or on a watchdog error (8b-1).
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
@@ -1352,7 +1396,7 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   connect layout, whose `useGlobalSearchParams` misses a warm link's params on first render.
 - Regression net: `src/components/shell/route-tree*.test.tsx` drive expo-router's
   `renderRouter` over the REAL `src/app` file list (`src/testing/route-tree.tsx`).
-- **The You hub is the Me tab's ROOT** (`/you?section=stats|year|journal|settings|account`,
+- **The You hub is the Me tab's ROOT** (`/you?section=stats|year|journal|settings|household|account`,
   `src/components/you/you-hub.tsx`, rules in `you-model.ts`; `section` and the Journal's `tab` are
   its `rootParams`). Open it only through `openYou(section)` / `openJournal(tab)` (`src/lib/open.ts`,
   also on `useOpen`; never `pushInShell`): they close a root modal, pop the Me stack to its root
@@ -1360,9 +1404,9 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   looked for in another tab. Inside the hub, sections switch with `setParams` (`youSectionParams`).
   The phone hub sets its large title per section (`navigation.setOptions`; a section then leaves
   that name out of its own heading); the wide sub-nav keeps "You". Its sections are `StatsSection`,
-  `YearSection`, `JournalScreen`, `SettingsContent` and `AccountSection` (the `SECTIONS` map): the
-  first, second and last are plain columns the hub puts in a `TabPageScroll` (below); the Journal
-  and Settings scroll themselves. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
+  `YearSection`, `JournalScreen`, `SettingsContent`, `HouseholdPage` and `AccountSection` (the
+  `SECTIONS` map): Stats, Year, Household and Account are plain columns the hub puts in a
+  `TabPageScroll` (below); the Journal and Settings scroll themselves. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
   "You" with a chart (`wideLabelKey`, `wideIcon`).
 - **Settings is a page of the array group** (`/settings?section=`, `settingsHref`), pushed on the
   current tab by the top bar's gear, the profile menu and the palette through `openSettings(section)`

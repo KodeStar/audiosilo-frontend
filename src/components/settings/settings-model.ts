@@ -10,8 +10,9 @@ import { firstParam, type SettingsSection } from '@/lib/paths';
 
 /** One pane of settings: a nav item on a wide page, a titled card on a narrow one.
  * (Accessibility has no pane: the app has no setting of its own for it yet, and the guide
- * says not to show a switch that does nothing.) */
-export type SettingsPane = Exclude<SettingsSection, 'preferences'>;
+ * says not to show a switch that does nothing. Household is a page of its own since Phase
+ * 8b-1, linked from the App group: `HOUSEHOLD_LINK_GROUP`.) */
+export type SettingsPane = Exclude<SettingsSection, 'preferences' | 'household'>;
 
 export type SettingsGroupKey = 'listening' | 'app' | 'servers';
 
@@ -19,9 +20,13 @@ export type SettingsGroup = { key: SettingsGroupKey; panes: readonly SettingsPan
 
 const GROUPS: readonly SettingsGroup[] = [
   { key: 'listening', panes: ['playback', 'sleep', 'downloads'] },
-  { key: 'app', panes: ['appearance', 'language', 'household'] },
+  { key: 'app', panes: ['appearance', 'language'] },
   { key: 'servers', panes: ['accounts', 'support'] },
 ];
+
+/** The group whose panes end with the link to the Household page (`/household`, Phase
+ * 8b-1): where its pane used to be. */
+export const HOUSEHOLD_LINK_GROUP: SettingsGroupKey = 'app';
 
 /** The pane the bare page (and `preferences`) opens on. */
 export const FIRST_PANE: SettingsPane = 'playback';
@@ -35,7 +40,8 @@ export function settingsGroups(supportAvailable: boolean): readonly SettingsGrou
 }
 
 /** The pane a link asks for: `preferences` (and anything absent or unknown) is the first
- * pane, `accounts` the signed-in servers; a pane this build hides is the first pane too. */
+ * pane, `accounts` the signed-in servers; a pane this build hides is the first pane too.
+ * (`household` is the Household page now: the route redirects it, `isHouseholdSection`.) */
 export function parseSettingsSection(
   raw: string | string[] | undefined,
   supportAvailable: boolean,
@@ -43,6 +49,12 @@ export function parseSettingsSection(
   const v = firstParam(raw);
   const shown = settingsGroups(supportAvailable).flatMap((g) => g.panes);
   return (shown as readonly string[]).includes(v) ? (v as SettingsPane) : FIRST_PANE;
+}
+
+/** Whether a `/settings` link asks for the old Household pane, which is the Household
+ * page now (`/household`): the route replaces itself with the page. */
+export function isHouseholdSection(raw: string | string[] | undefined): boolean {
+  return firstParam(raw) === 'household';
 }
 
 /** The `section` param that names `pane` (the first pane is the bare page). */

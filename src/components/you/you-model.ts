@@ -2,7 +2,7 @@ import type { LayoutClass } from '@/lib/layout';
 import { firstParam, type YouSection } from '@/lib/paths';
 
 /**
- * The You hub's rules (`/you?section=stats|year|journal|settings|account`, the Me tab's
+ * The You hub's rules (`/you?section=stats|year|journal|settings|household|account`, the Me tab's
  * root): pure, so the section a link opens and what each form factor offers are tested
  * apart from the screen.
  */
@@ -12,11 +12,13 @@ export const YOU_SECTIONS: readonly YouSection[] = [
   'year',
   'journal',
   'settings',
+  'household',
   'account',
 ];
 
-/** The sections the top bar's You destination offers in the sub-nav. Settings and Account
- * are the gear and the profile menu there. */
+/** The sections the top bar's You destination offers in the sub-nav. Settings is the gear
+ * there, Household and Account the profile menu (decision 4 of Phase 8b-1: Household is
+ * the phone's sixth segment, a pushed page elsewhere). */
 const WIDE_SECTIONS: readonly YouSection[] = ['stats', 'year', 'journal'];
 
 /** The section a link asks for; anything else (absent, unknown, repeated) is Stats. */
@@ -25,9 +27,10 @@ export function parseYouSection(raw: string | string[] | undefined): YouSection 
   return (YOU_SECTIONS as readonly string[]).includes(v) ? (v as YouSection) : 'stats';
 }
 
-/** The sections the hub's segmented control offers on this form factor: all five on a
+/** The sections the hub's segmented control offers on this form factor: all six on a
  * phone (it has no top bar), Stats, Year and Journal on tablet and desktop. A link to
- * Settings or Account still renders there; the control then shows no segment chosen. */
+ * Settings, Household or Account still renders there; the control then shows no segment
+ * chosen. */
 export function youSectionsFor(layout: LayoutClass): readonly YouSection[] {
   return layout === 'phone' ? YOU_SECTIONS : WIDE_SECTIONS;
 }

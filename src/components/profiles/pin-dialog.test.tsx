@@ -99,7 +99,7 @@ describe('PinDialog, check', () => {
   it('asks for the PIN by name, with a labelled field and the way out of a forgotten one', () => {
     expect(screen.getByText("Enter Sam's PIN")).toBeTruthy();
     expect(screen.getByLabelText('PIN for Sam')).toBeTruthy();
-    expect(screen.getByText(/Remove Sam from this device in Settings/)).toBeTruthy();
+    expect(screen.getByText(/Remove Sam from this device on the Household page/)).toBeTruthy();
   });
 
   it('says a wrong PIN does not match, and clears the field', async () => {

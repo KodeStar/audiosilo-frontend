@@ -1010,3 +1010,60 @@ describe('setDefaultConnection (a profile switch)', () => {
     expect(useSession.getState().defaultConnectionId).toBe(a);
   });
 });
+
+describe('setSession with makeDefault: false (a household member signed in here)', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    reset();
+  });
+
+  const member = { ...mkUser('evie'), id: 12 };
+
+  it('adds the connection and leaves the default where it was, persisted', async () => {
+    const owner = await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://a', serverId: 'a', token: 't1', user: mkUser('adam') });
+    const id = await useSession
+      .getState()
+      .setSession(
+        { serverUrl: 'https://a', serverId: 'a', token: 't2', user: member },
+        { makeDefault: false },
+      );
+    expect(id).toBe('a.12');
+    expect(useSession.getState().connections.map((c) => c.id)).toEqual([owner, 'a.12']);
+    expect(useSession.getState().defaultConnectionId).toBe(owner);
+    expect(useSession.getState().user?.username).toBe('adam');
+    expect(JSON.parse((await AsyncStorage.getItem('audiosilo.activeConnection'))!)).toBe(owner);
+    // The default (true) still moves it, as before.
+    await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://b', serverId: 'b', token: 't3', user: mkUser('b') });
+    expect(useSession.getState().defaultConnectionId).toBe('b.1');
+  });
+
+  it('still makes it the default when there is none yet', async () => {
+    const id = await useSession
+      .getState()
+      .setSession(
+        { serverUrl: 'https://a', serverId: 'a', token: 't2', user: member },
+        { makeDefault: false },
+      );
+    expect(useSession.getState().defaultConnectionId).toBe(id);
+    expect(useSession.getState().status).toBe('authenticated');
+    expect(JSON.parse((await AsyncStorage.getItem('audiosilo.activeConnection'))!)).toBe(id);
+  });
+
+  it('takes the default when the default it had is retired by this sign-in', async () => {
+    const old = await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://a', serverId: 'old', token: 't1', user: member });
+    const id = await useSession
+      .getState()
+      .setSession(
+        { serverUrl: 'https://a', serverId: 'new', token: 't2', user: member, retire: [old] },
+        { makeDefault: false },
+      );
+    expect(useSession.getState().connections.map((c) => c.id)).toEqual([id]);
+    expect(useSession.getState().defaultConnectionId).toBe(id);
+  });
+});

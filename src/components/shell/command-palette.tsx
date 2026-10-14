@@ -31,7 +31,7 @@ import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useGlobalShortcut } from '@/lib/keyboard';
 import { useLayout } from '@/lib/layout';
-import { useOpen } from '@/lib/open';
+import { openHousehold, useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
@@ -126,14 +126,14 @@ function useActionItems(): PaletteItem[] {
 }
 
 /** Go to (`buildGoToItems`): the top bar's destinations (Downloads only where this
- * browser can keep books), You's sections, the Journal and Settings. */
+ * browser can keep books), You's sections, the Journal, Settings and Household. */
 function useGoToItems(): PaletteItem[] {
   const { t } = useTranslation();
   const { press } = useTabPress();
   const { openSettings, openYou } = useOpen();
   return buildGoToItems(
     TOP_BAR_TABS,
-    { tab: press, you: openYou, settings: () => openSettings() },
+    { tab: press, you: openYou, settings: () => openSettings(), household: openHousehold },
     t,
   );
 }

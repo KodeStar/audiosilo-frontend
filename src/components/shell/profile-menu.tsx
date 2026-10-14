@@ -17,7 +17,7 @@ import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
-import { openJournal, openSettings } from '@/lib/open';
+import { openHousehold, openJournal, openSettings } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useActiveProfile, useProfileConnections, useProfiles } from '@/stores/profiles';
@@ -30,8 +30,8 @@ import { useThemeColors } from '@/theme/use-theme-colors';
  * menu; tablet/desktop): who is listening (the active person, ringed) and the other people
  * on this device (choosing one switches, asking for a PIN where they set one), "Who's
  * listening?", then that person's servers with their reachability, each opening its
- * account screen; Add a server; the Journal (the You hub's Journal section); Settings; the
- * account on the default server; and a light/dark appearance switch. Phone keeps these in
+ * account screen; Add a server; the Journal (the You hub's Journal section); Household (the
+ * page, Phase 8b-1); Settings; the account on the default server; and a light/dark appearance switch. Phone keeps these in
  * the Me tab's You hub.
  */
 export function ProfileMenu({ showName }: { showName: boolean }) {
@@ -143,6 +143,9 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
           <DropdownMenuSeparator />
           <DropdownMenuItem icon="history" onPress={() => openJournal()}>
             <Text>{t('journal.title')}</Text>
+          </DropdownMenuItem>
+          <DropdownMenuItem testID="profile-menu-household" icon="users" onPress={openHousehold}>
+            <Text>{t('household.title')}</Text>
           </DropdownMenuItem>
           <DropdownMenuItem icon="settings" onPress={() => openSettings()}>
             <Text>{t('settings.title')}</Text>

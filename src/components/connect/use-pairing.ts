@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
@@ -59,10 +59,17 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       return true;
     } catch (e) {
       if (!live.current) return false;
+      // In words of our own, never the server's English: its limiter (429), a link it
+      // refused (expired, used up, unknown: 401; or malformed), it failing itself (5xx), or
+      // no answer at all.
       setError(
-        e instanceof ApiError
-          ? t('connect.server.pairingFailed', { message: e.message })
-          : t('connect.server.pairingReachError'),
+        apiErrorKind(e) === 'too_many'
+          ? t('common.tooManyTries')
+          : !(e instanceof ApiError)
+            ? t('connect.server.pairingReachError')
+            : e.status >= 500
+              ? t('connect.server.pairingServerError')
+              : t('connect.server.pairingRefused'),
       );
       setPairing(false);
       return false;

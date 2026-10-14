@@ -218,9 +218,10 @@ export function collectionHref(connectionId: string, id: number): Href {
 export type JournalTab = 'diary' | 'bookmarks' | 'notes';
 
 /** The You hub's sections (`/you?section=`, the Me tab's root; absent = `stats`). A phone
- * offers all five; tablet and desktop offer the first three and reach Settings and Account
- * from the top bar's gear and profile menu (an old link to them still renders). */
-export type YouSection = 'stats' | 'year' | 'journal' | 'settings' | 'account';
+ * offers all six; tablet and desktop offer the first three and reach Settings, Household
+ * and Account from the top bar's gear and profile menu (an old link to them still
+ * renders). */
+export type YouSection = 'stats' | 'year' | 'journal' | 'settings' | 'household' | 'account';
 
 /** The You hub's pathname: the Me tab's ROOT, opened with `openYou` / `openJournal`
  * (`src/lib/open.ts`), never pushed as a page on another tab. */
@@ -262,7 +263,8 @@ export function yearHref(params: YearStoryParams = {}): Href {
 
 /** The Settings panes (`/settings?section=`). `preferences` (the first pane, Playback) and
  * `accounts` (the signed-in servers) are the two the IA names; each pane can be linked to
- * directly too. Absent = `preferences`. */
+ * directly too. Absent = `preferences`. `household` is no pane any more (Phase 8b-1): the
+ * route sends an old link to the Household page (`householdHref`). */
 export type SettingsSection =
   | 'preferences'
   | 'playback'
@@ -279,6 +281,14 @@ export function settingsHref(section?: SettingsSection): Href {
   return section && section !== 'preferences'
     ? { pathname: '/settings', params: { section } }
     : '/settings';
+}
+
+/** The Household page (`/household`, Phase 8b-1): the people on this device, the
+ * caller's household members and house sharing. A page of the array group like Settings,
+ * pushed on the current tab (`openHousehold`); the phone's You hub also has it as a
+ * section. */
+export function householdHref(): Href {
+  return '/household';
 }
 
 /** A route's raw search params (Expo Router may hand back `string[]`). */

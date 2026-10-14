@@ -1,9 +1,10 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { useActiveAddress } from '@/api/address-route';
 import { useMyDevices, useServerAddresses, useServerInfo } from '@/api/hooks';
+import { useOptionalApi } from '@/api/provider';
 import type { Capabilities } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { isKidAccount } from '@/lib/account';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
@@ -108,6 +110,8 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const { data: server } = useServerInfo(cid);
   const caps = server?.capabilities;
   const demo = !!user?.is_demo;
+  // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
+  const kid = isKidAccount(user);
 
   // Side by side where the measured column fits both (assumed until it is measured, off
   // a phone, so a desktop doesn't flash a single column first).
@@ -120,15 +124,16 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const devices = useMyDevices(cid);
   const deviceCount = devices.data ? signedInSessions(devices.data).length : undefined;
 
+  useFreshUser(cid);
   const password = usePasswordEditor(cid);
   // The guarded sign-out, scoped to this connection: the only way this device signs out
   // (see `canRevoke`).
   const signOut = useSignOut(cid);
 
-  // API keys: only where the server advertises them, and never for demo accounts (the
-  // server refuses them). The manager runs unconditionally; `apiKeysEnabled` gates its
-  // list query and the section.
-  const apiKeysEnabled = caps?.api_keys === true && !demo;
+  // API keys: only where the server advertises them, and never for demo or kid accounts
+  // (the server refuses them). The manager runs unconditionally; `apiKeysEnabled` gates
+  // its list query and the section.
+  const apiKeysEnabled = caps?.api_keys === true && !demo && !kid;
   const apiKeys = useApiKeysManager(cid, apiKeysEnabled);
 
   return (
@@ -147,12 +152,23 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
       <View className={beside ? 'flex-row items-stretch gap-4' : 'gap-4'}>
         {/* Demo accounts can't set a password (the server refuses it). */}
-        {!demo ? <PasswordCard editor={password} className={cn(beside && 'flex-1')} /> : null}
-        <PairDeviceCard
-          connectionId={cid}
-          serverName={serverName}
-          className={cn(beside && 'flex-1')}
-        />
+        {!demo ? (
+          <PasswordCard
+            editor={password}
+            user={user}
+            connectionId={cid}
+            className={cn(beside && 'flex-1')}
+          />
+        ) : null}
+        {/* A kid's account can't pair a device (the server refuses it, 403 kid_account): its
+            owner signs it in, as the password card says. */}
+        {!kid ? (
+          <PairDeviceCard
+            connectionId={cid}
+            serverName={serverName}
+            className={cn(beside && 'flex-1')}
+          />
+        ) : null}
       </View>
 
       <AccountAddresses cid={cid} caps={caps} />
@@ -161,7 +177,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         <DevicesSection connectionId={cid} serverName={serverName} />
       ) : null}
 
-      {demo ? null : apiKeysEnabled ? (
+      {demo || kid ? null : apiKeysEnabled ? (
         <ApiKeysSection manager={apiKeys} />
       ) : caps?.api_keys === false ? (
         <ApiKeysUnavailable serverName={serverName} />
@@ -191,6 +207,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       <SignOutConfirm
         visible={signOut.confirmVisible}
         connectionId={cid}
+        user={user}
         onCancel={() => signOut.setConfirmVisible(false)}
         onSignOut={signOut.signOut}
         onSetPassword={() => {
@@ -243,4 +260,30 @@ function AccountAddresses({ cid, caps }: { cid: string; caps: Capabilities | und
       inUse={Platform.OS === 'web' ? undefined : inUse}
     />
   );
+}
+
+/** Read the account again (`/me`) once as its page opens, into the stored connection user
+ * (`setConnectionUser`, as a password change does): what this page says about it can have
+ * changed since sign-in, most of all a household member's `member_kind`, which their owner
+ * flips with the Kids switch (8b-1; the password card then says a kid's account can't have
+ * one). Best effort: offline, the stored user stands. */
+function useFreshUser(cid: string) {
+  const api = useOptionalApi(cid);
+  const setConnectionUser = useSession((s) => s.setConnectionUser);
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!api || asked.current) return;
+    asked.current = true;
+    // Kept after the page closes too: it is the session's user (`setConnectionUser` drops it
+    // when the connection has gone meanwhile).
+    void (async () => {
+      try {
+        const fresh = await api.me();
+        if (fresh) await setConnectionUser(cid, fresh);
+      } catch {
+        // Unreachable or signed out: the stored user stands (the dead-token path is the
+        // regular requests').
+      }
+    })();
+  }, [api, cid, setConnectionUser]);
 }

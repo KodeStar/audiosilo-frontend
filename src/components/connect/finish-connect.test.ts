@@ -359,6 +359,72 @@ describe('placing the new connection in a profile (Phase 8)', () => {
     });
   });
 
+  describe("a kid's account (household members, Phase 8b-1)", () => {
+    const evie: User = {
+      ...user,
+      id: 12,
+      username: 'evie',
+      has_password: false,
+      managed_by: { id: 1, username: 'chris' },
+      member_kind: 'kid',
+    };
+
+    it("starts in kids mode on the kid's own device, with no grown-up there, skipping the ready step", async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: evie }) });
+      const kid = profiles().activeProfile();
+      expect(kid?.connectionIds).toEqual(['srv-1.12']);
+      expect(kid?.kids).toEqual({ bedtime: profiles().DEFAULT_BEDTIME });
+      // Straight to kids mode (D9): never the grown-up "Your library is ready." step,
+      // which kids mode doesn't allow, nor Home on the way.
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(mockDismissTo.mock.calls).toEqual([['/kids']]);
+    });
+
+    it('starts in kids mode when a grown-up signs the kid in on their device', async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+      intent().setConnectForNewProfile(true);
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: evie }) });
+      expect(people()).toEqual([
+        ['chris', ['srv-1.1']],
+        ['evie', ['srv-1.12']],
+      ]);
+      expect(profiles().profileOf('srv-1.12')?.kids).toBeDefined();
+      expect(profiles().profileOf('srv-1.1')?.kids).toBeUndefined();
+    });
+
+    it('a re-pair keeps what its person had (kids mode turned off stays off)', async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+      intent().setConnectForNewProfile(true);
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: evie }) });
+      const kid = profiles().profileOf('srv-1.12')!.id;
+      profiles().setProfileKids(kid, undefined);
+      intent().setConnectForNewProfile(false);
+      await finishConnect({
+        serverUrl: AWAY,
+        session: session('srv-1', { user: evie, token: 'fresh' }),
+        reconnectId: 'srv-1.12',
+      });
+      expect(profiles().profileOf('srv-1.12')?.kids).toBeUndefined();
+    });
+
+    it("never puts a grown-up's profile in kids mode when a kid's sign-in joins it", async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+      // A kid's account on another server joins the person listening (their first there).
+      await finishConnect({ serverUrl: 'https://two', session: session('srv-2', { user: evie }) });
+      expect(people()).toEqual([['chris', ['srv-1.1', 'srv-2.12']]]);
+      expect(profiles().activeProfile()?.kids).toBeUndefined();
+    });
+
+    it('an ordinary account (or an older server: no member_kind) never starts in kids mode', async () => {
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+      const grown: User = { ...evie, id: 13, username: 'ellis', member_kind: 'grownup' };
+      await finishConnect({ serverUrl: AWAY, session: session('srv-1', { user: grown }) });
+      expect(profiles().activeProfile()?.name).toBe('ellis');
+      expect(profiles().activeProfile()?.kids).toBeUndefined();
+      expect(profiles().profileOf('srv-1.1')?.kids).toBeUndefined();
+    });
+  });
+
   it("a re-pair after the session's read failed stays with its own person, PIN and all", async () => {
     const bea: User = { ...user, id: 7, username: 'bea' };
     const a = { id: 'srvA.1', serverId: 'srvA', serverUrl: 'https://a', name: 'A', user };

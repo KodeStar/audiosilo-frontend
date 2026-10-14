@@ -21,6 +21,13 @@ export function pairingSecondsLeft(expiresAt: number, now: number): number {
   return Math.min(PAIRING_TTL_MS / 1000, Math.max(0, Math.ceil((expiresAt - now) / 1000)));
 }
 
+/** The household members a device's sign-out may take with it (its `member_sign_ins`,
+ * Phase 8b-1): only another device's, never this one's (which signs out only through the
+ * app's own sign-out). */
+export function memberSignIns(device: MyDevice): { id: number; name: string }[] {
+  return device.current ? [] : (device.member_sign_ins ?? []);
+}
+
 /**
  * The server an account page shows: the route's own connection when it names one,
  * else the one the listener picked in the switcher while it is still signed in, else

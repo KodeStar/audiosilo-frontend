@@ -10,9 +10,11 @@ import { useKidsActive } from './use-kids';
  * Keeps a kids profile in kids mode (Phase 8): whenever the active profile is in kids
  * mode and the route is anywhere it may not be (`kidsAllowsPath`: the tabs, search,
  * settings, downloads, the full player, the end credits, the year story, a deep link into
- * any of them), it goes to `/kids`. Mounted once, by the root layout, so it covers the
- * root routes too (the `(app)` gate only covers the shell, and renders nothing of it for
- * a kids profile).
+ * any of them), it goes to `/kids`. Mounted once, by the root layout, so it covers the root
+ * routes too (the `(app)` gate only covers the shell, and renders nothing of it for a kids
+ * profile). The connect flow keeps kids mode out itself (`connect/_layout.tsx`, 8b-1 D1:
+ * it runs none of the flow, says why and goes back to `/kids`, letting only a grown-up's
+ * "Add someone" through).
  *
  * `dismissTo`, not `replace`: when `/kids` is already in the root stack (the end credits
  * or the player pushed over it) it pops back to it rather than stacking a second one;

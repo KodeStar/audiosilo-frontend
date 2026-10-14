@@ -16,6 +16,7 @@ import {
   playerHref,
   segmentsToPath,
   seriesHref,
+  householdHref,
   settingsHref,
   yearHref,
   youHref,
@@ -234,6 +235,16 @@ describe('yearHref', () => {
       params: { year: '2025', connection: 'c2', card: '3' },
     });
     expect(yearHref({ card: 0 })).toEqual({ pathname: '/year', params: {} });
+  });
+});
+
+describe('householdHref', () => {
+  it('is the Household page (8b-1)', () => {
+    expect(householdHref()).toBe('/household');
+  });
+
+  it("is also the phone You hub's Household section", () => {
+    expect(youHref('household')).toEqual({ pathname: '/you', params: { section: 'household' } });
   });
 });
 

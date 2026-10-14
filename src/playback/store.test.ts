@@ -931,6 +931,50 @@ describe('the speed a book starts at', () => {
     expect(usePlayer.getState().rate).toBe(1.8);
   });
 
+  // Decision 7 regression (8b-1, D3): the one change here is the default a book with no
+  // speed of its own starts at (`listenerSettings`): 1x for a kids profile.
+  describe('in kids mode', () => {
+    beforeEach(() =>
+      useProfiles.setState({
+        hydrated: true,
+        activeProfileId: 'evie',
+        profiles: [{ id: 'evie', name: 'Evie', connectionIds: ['c1'], kids: { bedtime: '19:30' } }],
+      }),
+    );
+    afterEach(() => {
+      resetProfilesForTests();
+      useSettings.setState({ defaultRate: 1 });
+    });
+
+    it("starts a story at 1x, never the grown-up's default speed", async () => {
+      useSettings.setState({ defaultRate: 1.4 });
+      mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'empty' });
+      await usePlayer.getState().playBook('c1', 2, makeBook());
+      expect(usePlayer.getState().rate).toBe(1);
+      expect((mockSvc.setRate as jest.Mock).mock.calls).toEqual([[1]]);
+    });
+
+    it('keeps a speed saved for the kid on that story', async () => {
+      useSettings.setState({ defaultRate: 1.4 });
+      mockLoadInitialProgress.mockResolvedValueOnce({
+        kind: 'progress',
+        progress: makeProgress({ position: 30, playback_speed: 1.2 }),
+      });
+      await usePlayer.getState().playBook('c1', 2, makeBook());
+      expect(usePlayer.getState().rate).toBe(1.2);
+    });
+
+    it('a grown-up still starts at their default speed', async () => {
+      useProfiles.setState({
+        profiles: [{ id: 'evie', name: 'Evie', connectionIds: ['c1'] }],
+      });
+      useSettings.setState({ defaultRate: 1.4 });
+      mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'empty' });
+      await usePlayer.getState().playBook('c1', 2, makeBook());
+      expect(usePlayer.getState().rate).toBe(1.4);
+    });
+  });
+
   it('is the asked-for speed, set before the engine starts, over a saved one', async () => {
     mockReadMirror.mockResolvedValue(mirror(1.4, '2026-10-01T00:00:00Z'));
     mockLoadInitialProgress.mockResolvedValueOnce({
@@ -1222,6 +1266,82 @@ describe('connection scoping', () => {
     // Still streaming through c1, its queue untouched.
     expect(usePlayer.getState().nowPlaying?.connectionId).toBe('c1');
     expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).not.toBe('file:///c2/0.m4b');
+  });
+});
+
+describe('the download hot-swap', () => {
+  /** The playing book's own download landing (c1, the book `startBook` plays). */
+  function downloadLands() {
+    const book = makeBook();
+    const manifest: DownloadManifest = {
+      book,
+      chapters: null,
+      files: [{ relPath: book.rel_path, localUri: 'file:///dl/0.m4b' }],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    const entry: DownloadEntry = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: book.rel_path,
+      title: book.title,
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest,
+    };
+    useDownloads.setState({ entries: { [`c1:2:${book.rel_path}`]: entry } });
+  }
+  const loadedUrls = () =>
+    (mockSvc.load as jest.Mock).mock.calls.map((c) => (c[0] as { url: string }[])[0].url);
+
+  // Decision 7 regression (8b-1): a kid's first tap on a short story on an iPhone loaded it
+  // and stopped on Play. The story's automatic download landed while the start was still on
+  // its way (the snapshot `loading`; the engine had begun, its `playing` not yet in JS), and
+  // the swap played on only from `playing`: iOS's `load` pauses the player, so it stayed
+  // stopped, with no error (the engine's pause then read as the listener's own).
+  it('plays on when the download lands while the book is still starting', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('ready', 0)); // the load's own report, still starting
+    expect(usePlayer.getState().snapshot.state).toBe('loading');
+    (mockSvc.load as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+
+    downloadLands();
+    await flushMicrotasks();
+
+    expect(loadedUrls()).toEqual(['file:///dl/0.m4b']);
+    expect(mockSvc.play).toHaveBeenCalledTimes(1);
+    expect((mockSvc.play as jest.Mock).mock.invocationCallOrder[0]).toBeGreaterThan(
+      (mockSvc.load as jest.Mock).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('plays on when the download lands while the book plays', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 10));
+    (mockSvc.play as jest.Mock).mockClear();
+
+    downloadLands();
+    await flushMicrotasks();
+
+    expect(loadedUrls()).toEqual(['stream:2:A/Book.m4b', 'file:///dl/0.m4b']);
+    expect(mockSvc.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays paused when the download lands on a book the listener paused', async () => {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 10));
+    await usePlayer.getState().pause();
+    pushSnapshot(snap('paused', 10));
+    (mockSvc.play as jest.Mock).mockClear();
+
+    downloadLands();
+    await flushMicrotasks();
+
+    expect(loadedUrls()).toEqual(['stream:2:A/Book.m4b', 'file:///dl/0.m4b']);
+    expect(mockSvc.play).not.toHaveBeenCalled();
   });
 });
 

@@ -32,8 +32,9 @@ jest.mock('@/api/hooks', () => {
 });
 
 const mockLogout = jest.fn(async () => {});
+const mockMe = jest.fn();
 jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({ logout: mockLogout, me: jest.fn(), pair: jest.fn() }),
+  useOptionalApi: () => ({ logout: mockLogout, me: mockMe, pair: jest.fn() }),
 }));
 
 type Conn = {
@@ -65,6 +66,7 @@ import { Platform } from 'react-native';
 
 import { setAddressPick, useAddressRoute } from '@/api/address-route';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
+import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 
 import { AccountSection } from './account-section';
 import { IdentityCard } from './identity-card';
@@ -222,6 +224,37 @@ describe('AccountSection', () => {
     expect(screen.queryByText(/Not available/)).toBeNull();
   });
 
+  it("hides API keys and pairing from a kid's account, which can't have either", async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      has_password: false,
+      managed_by: { id: 2, username: 'adam' },
+      member_kind: 'kid',
+    });
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByText('Signed-in devices')).toBeTruthy();
+    // The server refuses a kid's pairing code (403 kid_account): the password card says
+    // who signs it in instead.
+    expect(screen.queryByText('Pair another device')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show a pairing code' })).toBeNull();
+    expect(
+      screen.getByText("A kid's account has no password. adam signs it in on a new device."),
+    ).toBeTruthy();
+    expect(screen.queryByText('Personal API keys')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create API key' })).toBeNull();
+    expect(screen.queryByText(/Not available/)).toBeNull();
+  });
+
+  it('offers a grown-up member pairing', async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      managed_by: { id: 2, username: 'adam' },
+      member_kind: 'grownup',
+    });
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    expect(screen.getByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
+  });
+
   it('switches between signed-in servers when no server is given', async () => {
     await mountWithPortal(<AccountSection />);
     expect(screen.getByRole('radio', { name: 'Hearthside' })).toBeChecked();
@@ -269,6 +302,112 @@ describe('AccountSection', () => {
     await fireEvent.press(setButtons[setButtons.length - 1]);
     expect(await screen.findByLabelText('New password')).toBeTruthy();
     expect(mockSession.removeConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountSection: signing a household member out', () => {
+  const adam = { id: 1, username: 'adam' };
+  const signOut = async () => {
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out of Hearthside' }));
+    expect(await screen.findByText('Sign out?')).toBeTruthy();
+  };
+
+  it('says their owner can sign them in again, never "a new invite"', async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      has_password: false,
+      managed_by: adam,
+      member_kind: 'grownup',
+    });
+    await signOut();
+    expect(
+      screen.getByText('Without a password, adam can sign you in again from their Household page.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/new invite/)).toBeNull();
+    // A grown-up member can still set one.
+    expect(screen.getAllByRole('button', { name: 'Set a password' })).toHaveLength(2);
+  });
+
+  it("offers a kid's account no password (it can't have one)", async () => {
+    mockSession.connections[0].user = user({
+      role: 'user',
+      has_password: false,
+      managed_by: adam,
+      member_kind: 'kid',
+    });
+    await signOut();
+    expect(
+      screen.getByText(
+        "A kid's account has no password. adam can sign it in again from their Household page.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Set a password' })).toBeNull();
+  });
+
+  it('names the owner as this device knows them when their own sign-in is here, not by username', async () => {
+    mockSession.connections = [
+      { id: 'srv.1', name: 'Hearthside', serverUrl: 'https://books.example', user: user() },
+      {
+        id: 'c1',
+        name: 'Hearthside',
+        serverUrl: 'https://books.example',
+        user: user({
+          id: 12,
+          username: 'ellie',
+          role: 'user',
+          has_password: false,
+          managed_by: adam,
+          member_kind: 'kid',
+        }),
+      },
+    ];
+    // adam (user 1) is signed in to the same server here, as the profile "Dad".
+    (mockSession.connections[0] as Conn & { serverId: string }).serverId = 'srv';
+    (mockSession.connections[1] as Conn & { serverId: string }).serverId = 'srv';
+    useProfiles.setState({
+      profiles: [
+        { id: 'p1', name: 'Dad', connectionIds: ['srv.1'] },
+        { id: 'p2', name: 'Ellie', connectionIds: ['c1'] },
+      ],
+      activeProfileId: 'p2',
+    });
+    try {
+      await signOut();
+      expect(
+        screen.getByText(
+          "A kid's account has no password. Dad can sign it in again from their Household page.",
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByText("A kid's account has no password. Dad signs it in on a new device."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/adam/)).toBeNull();
+    } finally {
+      resetProfilesForTests();
+    }
+  });
+});
+
+describe('AccountSection: the account read again', () => {
+  // The owner flipped the Kids switch after this account signed in here (8b-1): the stored
+  // user still says grown-up until /me is read again.
+  it('stores what /me says now as the page opens, once', async () => {
+    const kid = user({ role: 'user', has_password: false, member_kind: 'kid' });
+    mockMe.mockResolvedValue(kid);
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    await waitFor(() => expect(mockSession.setConnectionUser).toHaveBeenCalledWith('c1', kid));
+    // Re-rendered meanwhile (a new client object each render here): asked once.
+    await fireEvent.press(screen.getByRole('button', { name: 'Change password' }));
+    expect(mockMe).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the stored user when /me fails (offline)', async () => {
+    mockMe.mockRejectedValue(new Error('offline'));
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    await waitFor(() => expect(mockMe).toHaveBeenCalled());
+    expect(mockSession.setConnectionUser).not.toHaveBeenCalled();
+    expect(screen.getByText('Password')).toBeTruthy();
   });
 });
 

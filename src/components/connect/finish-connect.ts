@@ -1,16 +1,21 @@
 import { router } from 'expo-router';
 
 import type { AuthSession, ServerAddresses } from '@/api/types';
+import { KIDS_PATH } from '@/components/kids/kids-model';
 import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import i18n from '@/i18n';
+import { isKidAccount } from '@/lib/account';
 import { priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
+  DEFAULT_BEDTIME,
+  isKidsAccount,
   placeConnection,
   profileOf,
+  setProfileKids,
   staleToRetire,
   switchProfile,
   useProfiles,
@@ -27,7 +32,8 @@ export function readyHref(connectionId: string) {
 /**
  * The end of every way into a server (a pairing link or QR, an invite code, a password,
  * the demo): store the connection, then show "Your library is ready." when it is the
- * device's first, else go straight back to the app (`leaveOnboarding`).
+ * device's first (not for a kid's account, which goes straight to kids mode), else go
+ * straight back to the app (`leaveOnboarding`).
  *
  * `serverUrl` is the address signed in through; `repairPlan` decides what is stored (a
  * re-pair of a known connection keeps the address it was paired with). `linkAddresses`
@@ -102,7 +108,13 @@ export async function finishConnect(input: {
     retire,
   });
   await placeSignedIn(id, hadProfile?.id ?? null, newPerson);
-  if (first) router.replace(readyHref(id));
+  // A kid's account signed in for the first time on this device starts in kids mode (a
+  // re-pair, or a sign-in again after a server reset, keeps what its person had).
+  if (!existing && replaced === undefined) kidsOnForKidAccount(id);
+  // "Your library is ready." is a grown-up's first run (8b-1, D9): a kid's account (or
+  // anyone signing in while kids mode listens) goes straight to kids mode.
+  if (activeProfile()?.kids) router.dismissTo(KIDS_PATH);
+  else if (first) router.replace(readyHref(id));
   else leaveOnboarding();
   return id;
 }
@@ -128,4 +140,22 @@ async function placeSignedIn(
       : null
     : placeConnection(id, { newProfile: newPerson });
   if (target && target !== before) await switchProfile(target);
+}
+
+/**
+ * Kids mode on for a kid's account at its first placement on this device (Phase 8b-1: the
+ * server says `user.member_kind === 'kid'`, a household member): the profile holding
+ * `connectionId` turns kids mode on (the first library the account lists, the default
+ * bedtime) when it has no kids settings yet and every account it holds is a kid's
+ * (`isKidsAccount`: a grown-up's profile that a kid's sign-in joined is never put in kids
+ * mode). Allowed with no grown-up on the device (`mayTurnOnKids`' exception: a kid's own
+ * phone). A no-op for anyone else, and on a server without household members.
+ */
+export function kidsOnForKidAccount(connectionId: string): void {
+  const { connections } = useSession.getState();
+  const conn = connections.find((c) => c.id === connectionId);
+  if (!isKidAccount(conn?.user)) return;
+  const profile = profileOf(connectionId);
+  if (!profile || profile.kids || !isKidsAccount(profile, connections)) return;
+  setProfileKids(profile.id, { bedtime: DEFAULT_BEDTIME });
 }

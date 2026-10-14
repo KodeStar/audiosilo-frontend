@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useEffect } from 'react';
 import { BackHandler, Platform, ScrollView, View } from 'react-native';
@@ -12,13 +11,14 @@ import { SafeAreaView } from '@/components/ui/safe-area-view';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { openHousehold } from '@/lib/open';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
-import { type Profile, useMustChoose, useProfiles } from '@/stores/profiles';
+import { type Profile, useActiveProfile, useMustChoose, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { ADD_SOMEONE_HREF, mayAddPerson } from './connect-intent';
+import { mayAddPerson, openAddSomeone } from './connect-intent';
 import { profileName, profileStatus, takeLaunchDecision } from './profiles-model';
 import { forgetPickerOpener, leavePicker, useChooseProfile } from './use-choose-profile';
 
@@ -28,7 +28,8 @@ import { forgetPickerOpener, leavePicker, useChooseProfile } from './use-choose-
  * listening now ringed, and "Add someone" (the connect flow for a new person). Choosing
  * someone with a PIN asks for it; choosing someone else switches and goes Home. Shown at a
  * cold launch with two or more people and "Ask who's listening when the app opens" on,
- * and from the profile menu, the Me tab and Settings > Household.
+ * and from the profile menu, the Me tab and the Household page, which "Manage household"
+ * opens (not while someone must be chosen, nor for a kids profile, whose app is `/kids`).
  */
 export function ProfilesScreen() {
   const { t } = useTranslation();
@@ -45,6 +46,7 @@ export function ProfilesScreen() {
   const { choose, switching, dialog } = useChooseProfile();
   const size = phone ? 76 : 96;
   const canAdd = useProfiles(mayAddPerson);
+  const kids = !!useActiveProfile()?.kids;
 
   // On screen, it IS this launch's "Who's listening?" (a cold load of /profiles, a reload
   // while it was open): the auth gate must not ask again once it is closed.
@@ -95,13 +97,16 @@ export function ProfilesScreen() {
             action={{
               label: t('profiles.add.label'),
               icon: 'plus',
-              onPress: () => router.push(ADD_SOMEONE_HREF),
+              onPress: openAddSomeone,
             }}
           />
         ) : (
           <>
             <View className="max-w-[440px] items-center gap-2 pb-8 pt-4">
-              <Text variant="eyebrow">{t('profiles.picker.eyebrow')}</Text>
+              {/* "This device is shared" only once it is (8b-1, D12). */}
+              {profiles.length > 1 ? (
+                <Text variant="eyebrow">{t('profiles.picker.eyebrow')}</Text>
+              ) : null}
               <Text
                 variant={phone ? 'display' : 'display-xl'}
                 accessibilityRole="header"
@@ -134,7 +139,7 @@ export function ProfilesScreen() {
               ))}
               <AnimatedPressable
                 testID="profiles-add"
-                onPress={() => router.push(ADD_SOMEONE_HREF)}
+                onPress={openAddSomeone}
                 disabled={switching !== null || !canAdd}
                 accessibilityRole="button"
                 accessibilityLabel={t('profiles.add.a11y')}
@@ -158,6 +163,17 @@ export function ProfilesScreen() {
                 </Text>
               </AnimatedPressable>
             </View>
+            {required || kids ? null : (
+              <Button
+                testID="profiles-manage"
+                variant="outline"
+                icon="users"
+                className="mt-8"
+                title={t('household.manage')}
+                disabled={switching !== null}
+                onPress={openHousehold}
+              />
+            )}
           </>
         )}
       </ScrollView>

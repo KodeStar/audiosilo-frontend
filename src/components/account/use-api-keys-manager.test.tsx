@@ -117,6 +117,20 @@ describe('useApiKeysManager', () => {
     expect(hook().created).toBeNull();
   });
 
+  it("says a kid's account can't have keys in the app's words, never the server's", async () => {
+    mockCreate.mutateAsync.mockRejectedValue(
+      new ApiError(403, 'kid accounts cannot create api keys', 'kid_account'),
+    );
+    const hook = await mountHook(() => useApiKeysManager('c1', true));
+    await act(async () => {
+      hook().setLabel('Key');
+    });
+    await act(async () => {
+      await hook().create();
+    });
+    expect(hook().createError).toBe("A kid's account can't have API keys.");
+  });
+
   it('confirms before revoking, then revokes by id and clears the pending key', async () => {
     mockList.data = [madeKey({ id: 42, label: 'Cron' })];
     const hook = await mountHook(() => useApiKeysManager('c1', true));

@@ -1,6 +1,6 @@
 import type { User } from '@/api/types';
 
-import { accountFlagsKnown, needsPasswordWarning } from './account';
+import { accountFlagsKnown, isKidAccount, managerName, needsPasswordWarning } from './account';
 
 const base: User = {
   id: 1,
@@ -72,5 +72,70 @@ describe('accountFlagsKnown', () => {
   it('is false for a signed-out (null/undefined) user', () => {
     expect(accountFlagsKnown(null)).toBe(false);
     expect(accountFlagsKnown(undefined)).toBe(false);
+  });
+});
+
+describe('managerName and isKidAccount (8b-1)', () => {
+  const member = {
+    ...base,
+    managed_by: { id: 1, username: 'adam' },
+    member_kind: 'kid' as const,
+  };
+
+  it("names a household member's manager, and nobody for an ordinary account", () => {
+    expect(managerName(member)).toBe('adam');
+    expect(managerName({ ...base, managed_by: null })).toBeNull();
+    expect(managerName(base)).toBeNull();
+    expect(managerName(undefined)).toBeNull();
+  });
+
+  it('names the owner as this device knows them: their profile, else display_name, else username', () => {
+    const kid = { id: 'srv.12', serverId: 'srv' };
+    const people = (profiles: { name: string; connectionIds: string[] }[]) => ({
+      connections: [
+        { id: 'srv.1', serverId: 'srv', user: { id: 1, managed_by: null } },
+        // The same user id on ANOTHER server is someone else.
+        { id: 'other.1', serverId: 'other', user: { id: 1, managed_by: null } },
+        { ...kid, user: member },
+      ],
+      profiles,
+    });
+    // adam's own sign-in to the kid's server is on this device: his profile's name.
+    expect(
+      managerName(member, {
+        connection: kid,
+        people: people([
+          { name: 'Pip', connectionIds: ['other.1'] },
+          { name: ' Dad ', connectionIds: ['srv.1'] },
+        ]),
+      }),
+    ).toBe('Dad');
+    // Only the other server's user 1 has a profile here: not the owner.
+    expect(
+      managerName(member, {
+        connection: kid,
+        people: people([{ name: 'Pip', connectionIds: ['other.1'] }]),
+      }),
+    ).toBe('adam');
+    // An empty profile name stands for nothing.
+    expect(
+      managerName(member, {
+        connection: kid,
+        people: people([{ name: ' ', connectionIds: ['srv.1'] }]),
+      }),
+    ).toBe('adam');
+    // No owner sign-in here: a display_name the server sends wins over the username.
+    const named = { ...member, managed_by: { id: 1, username: 'adam', display_name: 'Adam W' } };
+    expect(managerName(named, { connection: kid, people: people([]) })).toBe('Adam W');
+    expect(managerName(named)).toBe('Adam W');
+    // An ordinary account names nobody, whoever is on the device.
+    expect(managerName(base, { connection: kid, people: people([]) })).toBeNull();
+  });
+
+  it("is a kid's account only when the server says so", () => {
+    expect(isKidAccount(member)).toBe(true);
+    expect(isKidAccount({ ...member, member_kind: 'grownup' })).toBe(false);
+    expect(isKidAccount({ ...base, member_kind: null })).toBe(false);
+    expect(isKidAccount(null)).toBe(false);
   });
 });

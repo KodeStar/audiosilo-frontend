@@ -9,7 +9,8 @@
     "on": "On",
     "off": "Off",
     "resumeChapter": "Resume chapter {{chapter}}",
-    "resumeTitled": "Resume {{title}}"
+    "resumeTitled": "Resume {{title}}",
+    "tooManyTries": "Too many tries. Wait a few minutes and try again."
   },
   "settings": {
     "title": "Settings",
@@ -107,6 +108,7 @@
       "revoke": "Revoke {{name}}",
       "createError": "Could not create the API key.",
       "revokeError": "Could not revoke the API key.",
+      "kidError": "A kid's account can't have API keys.",
       "createdModal": {
         "title": "Your new API key",
         "description": "Copy it now. You won't be able to see it again.",
@@ -142,7 +144,6 @@
       "downloads": "Up next and downloads",
       "appearance": "Appearance",
       "language": "Language",
-      "household": "Household and sharing",
       "accounts": "Accounts and devices",
       "support": "Support AudioSilo"
     },
@@ -169,6 +170,8 @@
     "signOut": {
       "title": "Sign out?",
       "warning": "You don’t have a password set. Without one you’ll need a new invite from your admin to sign back in on this server.",
+      "warningMember": "Without a password, {{owner}} can sign you in again from their Household page.",
+      "warningKid": "A kid's account has no password. {{owner}} can sign it in again from their Household page.",
       "setPassword": "Set a password",
       "confirm": "Sign out anyway",
       "downloadsWarning_one": "Signing out also deletes {{count}} book downloaded from this server on this device.",
@@ -186,12 +189,15 @@
     },
     "password": {
       "bodySet": "Sign in with it on a new device or in a browser.",
-      "bodyNotSet": "You signed in with an invite code and haven't set a password. Set one so you can sign in on a new device.",
+      "bodyNotSet": "You haven't set a password. Set one so you can sign in on a new device.",
       "dialogSet": "At least {{count}} characters. Your other devices stay signed in.",
       "dialogChange": "Enter your current password, then the new one. Your other devices stay signed in.",
       "doneSet": "Password set",
       "doneChanged": "Password changed",
-      "doneBody": "Your other devices stay signed in."
+      "doneBody": "Your other devices stay signed in.",
+      "bodyMember": "{{owner}} set up this account, so it has no password yet. Set one to sign in on a new device yourself.",
+      "bodyKid": "A kid's account has no password. {{owner}} signs it in on a new device.",
+      "bodyKidNoOwner": "A kid's account has no password. A grown-up signs it in on a new device."
     },
     "pair": {
       "title": "Pair another device",
@@ -202,7 +208,9 @@
       "renew": "Make a new code",
       "copy": "Copy link",
       "qr": "Pairing code for {{server}}",
-      "error": "Couldn't reach {{server}}. No code was made, so try again."
+      "error": "Couldn't reach {{server}}. No code was made, so try again.",
+      "kid": "A kid's account can't pair a device. The person who manages it sets up its devices from Household.",
+      "refused": "{{server}} didn't make a code. Try again later."
     },
     "devices": {
       "title": "Signed-in devices",
@@ -243,7 +251,12 @@
       "failedBody": "{{server}} didn't answer. Nothing changed, so try again.",
       "gone": "{{name}} was already signed out",
       "goneBody": "The list is up to date now.",
-      "loadError": "Couldn't load your devices from {{server}}."
+      "loadError": "Couldn't load your devices from {{server}}.",
+      "alsoSignOut": "Also sign out {{names}} on that device",
+      "alsoSignOutBody": "People in your household you signed in there",
+      "names": "{{first}} and {{second}}",
+      "doneMembers_one": "It needs to sign in again to reach {{server}}. {{count}} person in your household was signed out with it.",
+      "doneMembers_other": "It needs to sign in again to reach {{server}}. {{count}} people in your household were signed out with it."
     },
     "danger": {
       "title": "Sign out of {{server}}",
@@ -317,7 +330,8 @@
       "addressLabel": "Server address",
       "enterAddress": "Enter your server address",
       "missingAddress": "This pairing link is missing its server address. Enter it below.",
-      "pairingFailed": "Pairing failed: {{message}}. You can also connect by entering your invite code on the sign-in screen.",
+      "pairingRefused": "This pairing link has expired or was already used. Ask for a new one, or enter your invite code on the sign-in screen.",
+      "pairingServerError": "The server couldn't finish pairing. Try again, or enter your invite code on the sign-in screen.",
       "pairingReachError": "Could not reach the server to finish pairing.",
       "demoError": "Could not start the demo: {{message}}",
       "demoReachError": "Could not reach the demo server.",
@@ -367,7 +381,8 @@
       "label": "Pairing link",
       "connect": "Connect",
       "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?..."
-    }
+    },
+    "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment."
   },
   "onboarding": {
     "step": "Step {{step}} of {{count}}",
@@ -1455,14 +1470,16 @@
       "year": "Year",
       "journal": "Journal",
       "settings": "Settings",
-      "account": "Account"
+      "account": "Account",
+      "household": "Household"
     },
     "titles": {
       "stats": "Your listening",
       "year": "Year in listening",
       "journal": "Journal",
       "settings": "Settings",
-      "account": "Account"
+      "account": "Account",
+      "household": "Household"
     }
   },
   "ui": {
@@ -2080,7 +2097,8 @@
       "loadFailed": "Couldn't load this setting.",
       "failed": "Couldn't change sharing on {{server}}",
       "failedBody": "Nothing changed. Check the connection and try again.",
-      "demo": "Demo accounts can't share what they listen to."
+      "demo": "Demo accounts can't share what they listen to.",
+      "kid": "A kid's account can't share what it listens to."
     }
   },
   "kids": {
@@ -2124,11 +2142,22 @@
       "errorBody": "{{server}} isn't answering. Nothing is lost.",
       "offlineBody": "{{server}} can't be reached and there are no stories saved on this device.",
       "retry": "Try again",
-      "onDevice": "These stories are saved on this device."
+      "onDevice": "These stories are saved on this device.",
+      "askGrownUp": "Ask a grown-up to add stories.",
+      "moreFailed": "Some stories didn't load."
     },
     "startFailed": {
       "title": "That story won't start right now",
       "body": "Try another one, or ask a grown-up."
+    },
+    "link": {
+      "title": "Ask a grown-up to open this link",
+      "body": "A grown-up holds Grown-ups first, then opens the link again."
+    },
+    "signedOut": {
+      "ask": "Ask a grown-up to sign {{name}} in again.",
+      "askNoName": "Ask a grown-up to sign you in again.",
+      "title": "Signed out of {{server}}"
     }
   },
   "profiles": {
@@ -2190,7 +2219,7 @@
       "mismatch": "Those PINs don't match. Choose one again.",
       "wait_one": "Too many tries. Try again in {{count}} second.",
       "wait_other": "Too many tries. Try again in {{count}} seconds.",
-      "forgot": "Forgotten it? Remove {{name}} from this device in Settings and sign in again.",
+      "forgot": "Forgotten it? Remove {{name}} from this device on the Household page and sign in again.",
       "readFailed": "Couldn't check the PIN on this device. Try again.",
       "noneSet": "There's no PIN set for {{name}} on this device.",
       "saveFailed": "Couldn't save the PIN on this device. Nothing changed."
@@ -2215,16 +2244,21 @@
       "noLibraries": "This account sees no libraries. Ask the server's admin to share one.",
       "bedtime": "Bedtime",
       "bedtimeBody": "From then until {{until}}, playing starts a 20 minute sleep timer",
-      "needsGrownUp": "Someone on this device has to stay a grown-up, or nobody could leave kids mode. Add a grown-up first."
+      "needsGrownUp": "Someone on this device has to stay a grown-up, or nobody could leave kids mode. Add a grown-up first.",
+      "bodyMember": "The stories {{owner}} shares, as big covers, with a bedtime and no settings or search. Leaving needs a grown-up.",
+      "libraryBodyMember": "Shown when {{owner}} shares no collections",
+      "noLibrariesMember": "Nothing to pick. {{owner}} shares stories from the Household page."
     },
     "remove": {
       "label": "Remove from this device",
       "hint": "Signs {{name}} out of their servers here. Their place in every book stays on the server.",
       "action": "Remove from this device",
+      "a11y": "Remove {{name}} from this device",
       "title": "Remove {{name}} from this device?",
       "body": "This signs {{name}} out of {{servers}} on this device and deletes their downloads here. Their place in every book stays on the server.",
       "noPassword": "{{name}} has no password on {{server}}: without one they'll need a new invite to sign in again.",
-      "confirm": "Remove and sign out"
+      "confirm": "Remove and sign out",
+      "member": "{{name}}'s account on {{server}} stays. {{owner}} can sign {{name}} in here again from the Household page, or set up a device just for {{name}}."
     },
     "household": {
       "intro": "Everyone who listens on this device, each with their own servers, place in every book, queue and stats.",
@@ -2232,6 +2266,178 @@
       "askAtLaunch": "Ask who's listening when the app opens",
       "askAtLaunchBody": "With two or more people on this device",
       "noSharing": "None of your servers offers this yet."
+    },
+    "signIn": {
+      "label": "Signed out",
+      "body": "{{name}}'s sign-in to {{server}} has ended.",
+      "action": "Sign in again",
+      "a11y": "Sign {{name}} in again",
+      "done": "{{name}} is signed in again",
+      "failed": "Couldn't sign {{name}} in again. Try again."
+    }
+  },
+  "household": {
+    "title": "Household",
+    "manage": "Manage household",
+    "paletteHint": "People on this device and your household",
+    "settingsLink": {
+      "body": "People on this device, kids mode, the people you've added and sharing",
+      "hint": "Opens the Household page"
+    },
+    "device": {
+      "title": "On this device",
+      "signInExisting": "Sign in someone who already has an account"
+    },
+    "members": {
+      "title": "Your household",
+      "titleOn": "Your household on {{server}}",
+      "sub": "People you've added. You choose what each of them can listen to.",
+      "empty": "Add a kid or a grown-up. They get their own account and their own place in every book, with no email or invite.",
+      "loadFailed": "Couldn't load your household from {{server}}.",
+      "add": "Add someone to your household",
+      "count_one": "{{count}} of {{max}} added",
+      "count_other": "{{count}} of {{max}} added",
+      "reason": {
+        "feature_off": "Your server's admin has turned off adding people.",
+        "not_allowed": "Your server's admin hasn't let this account add people.",
+        "member": "Only the person who manages your account can add people.",
+        "demo": "Demo accounts can't add people.",
+        "at_cap": "You've added the most people this server allows ({{max}}).",
+        "other": "Adding people isn't available for this account.",
+        "memberNamed": "Only {{owner}} can add people or change what you can listen to."
+      },
+      "managedBy": "{{owner}} manages your account."
+    },
+    "kind": {
+      "kid": "Kid",
+      "grownup": "Grown-up"
+    },
+    "access": {
+      "title": "What can they listen to?",
+      "all": "Everything I can listen to",
+      "allBody": "Whatever you can listen to on {{server}}, now and later.",
+      "collections": "Only collections I share",
+      "collectionsBody": "Just the books in the collections you share with them.",
+      "pickLabel": "Your collections to share",
+      "none": "You have no collections yet. Create one for them here.",
+      "noneChosen": "Nothing ticked: they'll have nothing to listen to until you share a collection.",
+      "create": "Create {{name}}'s books",
+      "createUnnamed": "Create their books",
+      "booksName": "{{name}}'s books",
+      "collectionsOff": "This server doesn't offer collections, so there's nothing to share yet.",
+      "createFailed": "Couldn't create {{name}}, so nothing was saved. Try again.",
+      "leftBehind": "{{name}} was created and is still in your collections.",
+      "newDetail": "New collection, created when you save",
+      "createUnnamedName": "Their books",
+      "useExisting": "Share {{name}}"
+    },
+    "add": {
+      "title": "Add someone to your household",
+      "body": "They get their own account on {{server}}, with their own place in every book.",
+      "name": "Name",
+      "nameError": "Use a name of up to 40 characters.",
+      "kids": "Kids account",
+      "kidsBody": "No password. Signed in on this device straight away, in kids mode.",
+      "submitKid": "Add and sign in here",
+      "submitGrownUp": "Add and show their code"
+    },
+    "errors": {
+      "limit": "You've added the most people this server allows.",
+      "invalid": "{{server}} didn't accept that name or those collections. Check them and try again.",
+      "forbidden": "Your server's admin doesn't let this account add people.",
+      "failed": "{{server}} didn't answer, so nothing changed. Try again.",
+      "usernameTaken": "{{server}} couldn't make a username from that name. Try another name.",
+      "invalidName": "{{server}} didn't accept that name. Use up to 40 characters.",
+      "invalidCollections": "One of those collections can't be shared from this account any more. Check them and try again.",
+      "member": "Only the person who manages your account can do that.",
+      "disabled": "This account is turned off on {{server}}. Only the server's admin can turn it back on.",
+      "kid": "That isn't available for a kid's account.",
+      "demo": "Demo accounts can't do that.",
+      "gone": "That person isn't in your household on {{server}} any more."
+    },
+    "kid": {
+      "title": "{{name}} is added",
+      "body": "{{name}} is signed in on this device, in kids mode. Choose them in Who's listening? when it's their turn.",
+      "pinOffer": "Set a PIN for {{owner}}, so {{name}} can't switch to you without it.",
+      "notNow": "Not now"
+    },
+    "here": {
+      "done": "{{name}} is signed in on this device too.",
+      "already": "{{name}} is already signed in on this device.",
+      "failed": "{{name}}'s account is ready, but this device couldn't sign them in.",
+      "failedRetry": "Couldn't sign {{name}} in on this device. Try again.",
+      "failedCard": "Use Sign in on this device on their card.",
+      "disabled": "{{name}}'s account is turned off on this server. Only its admin can turn it back on.",
+      "gone": "{{name}} isn't in your household on this server any more."
+    },
+    "qr": {
+      "title": "Show {{name}} this code",
+      "lead": "{{name}} has an account on {{server}}. To listen on their own device, they scan this with the AudioSilo app.",
+      "body": "Scan it in the AudioSilo app, or open the link. It works once.",
+      "a11y": "Pairing code for {{name}} on {{server}}",
+      "failed": "Couldn't make a code. {{server}} didn't answer, so try again.",
+      "alsoHerePhone": "They'll also use this phone",
+      "alsoHereDevice": "They'll also use this device"
+    },
+    "card": {
+      "who": "{{kind}} · {{username}}",
+      "onThisDevice": "On this device",
+      "access": "What they can listen to",
+      "everything": "Everything you can listen to",
+      "onlyCollections": "Only the collections you share:",
+      "noCollections": "Only collections you share, and none is shared yet.",
+      "collection": "{{name}} ({{count}})",
+      "openCollection": "Open {{name}}",
+      "change": "Change",
+      "changeA11y": "Change what {{name}} can listen to",
+      "accessTitle": "What can {{name}} listen to?",
+      "stopsSharing": "Switching to everything stops sharing your collections with {{name}}.",
+      "kid": "Kids account",
+      "kidBody": "No password or API keys. You sign them in.",
+      "kidA11y": "Kids account for {{name}}",
+      "kidConfirm": {
+        "title": "Make {{name}} a kids account?",
+        "body": "Their password and API keys will be removed. Devices they're signed in on stay signed in.",
+        "confirm": "Make it a kids account"
+      },
+      "devices": "Their devices",
+      "devicesFailed": "Couldn't load {{name}}'s devices.",
+      "noDevices": "{{name}} isn't signed in anywhere yet.",
+      "setUp": "Set up their own device",
+      "setUpA11y": "Show a code to set up {{name}}'s own device",
+      "signInHere": "Sign in on this device",
+      "signInHereA11y": "Sign {{name}} in on this device",
+      "renameBody": "Their name on {{server}}. Their username stays the same.",
+      "failed": "Couldn't change {{name}}'s account",
+      "renameBodyHere": "Their name on {{server}} and on this device. Their username stays the same."
+    },
+    "devices": {
+      "signOutA11y": "Sign {{name}} out of {{device}}",
+      "confirmTitle": "Sign {{name}} out of {{device}}?",
+      "confirmBody": "{{name}} can't listen on {{device}} until you set it up again.",
+      "done": "Signed {{name}} out of {{device}}"
+    },
+    "delete": {
+      "label": "Delete their account",
+      "hint": "Deletes {{name}}'s account on {{server}}, with their listening history.",
+      "action": "Delete their account",
+      "a11y": "Delete {{name}}'s account",
+      "title": "Delete {{name}}'s account?",
+      "body": "This deletes {{name}}'s account on {{server}}, with their listening history, bookmarks and notes. It can't be undone.",
+      "continue": "Continue",
+      "typedTitle": "Type {{name}} to delete their account",
+      "typedBody": "Their listening history goes with it. This can't be undone.",
+      "alsoHere": "{{name}} stays on this device as a person until you remove them from it.",
+      "field": "Type {{name}}",
+      "confirm": "Delete account",
+      "done": "Deleted {{name}}'s account",
+      "failed": "Couldn't delete {{name}}'s account"
+    },
+    "pin": {
+      "already": "{{name}} already has a PIN on this device."
+    },
+    "share": {
+      "member": "{{name}} can listen to everything in this collection."
     }
   }
 }

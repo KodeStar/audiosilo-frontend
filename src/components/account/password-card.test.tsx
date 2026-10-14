@@ -28,7 +28,7 @@ function Harness() {
   const editor = usePasswordEditor('c');
   return (
     <>
-      <PasswordCard editor={editor} />
+      <PasswordCard editor={editor} user={mockUser} />
       <PasswordDialog editor={editor} />
     </>
   );
@@ -110,6 +110,43 @@ describe('password card and dialog', () => {
     expect(await screen.findByText('current password is incorrect')).toBeTruthy();
     expect(screen.getByLabelText('New password')).toBeTruthy();
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('says only what is true of an account without a password, never "an invite code" (D8)', async () => {
+    mockUser = user({ has_password: false });
+    const view = await mountWithPortal(<Harness />);
+    expect(
+      screen.getByText("You haven't set a password. Set one so you can sign in on a new device."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/invite code/)).toBeNull();
+    await view.unmount();
+
+    // A grown-up household member: their owner set the account up.
+    mockUser = user({
+      has_password: false,
+      managed_by: { id: 2, username: 'adam' },
+      member_kind: 'grownup',
+    });
+    await mountWithPortal(<Harness />);
+    expect(
+      screen.getByText(
+        'adam set up this account, so it has no password yet. Set one to sign in on a new device yourself.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set a password' })).toBeTruthy();
+  });
+
+  it("offers a kid's account no password (the server refuses one): its owner signs it in", async () => {
+    mockUser = user({
+      has_password: false,
+      managed_by: { id: 2, username: 'adam' },
+      member_kind: 'kid',
+    });
+    await mountWithPortal(<Harness />);
+    expect(
+      screen.getByText("A kid's account has no password. adam signs it in on a new device."),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Set a password' })).toBeNull();
   });
 
   it('cancelling clears what was typed', async () => {

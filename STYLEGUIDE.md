@@ -69,10 +69,13 @@ Desktop
 | Standalone | Onboarding / first run; kids mode replaces the whole app | `#connect` |
 
 - Phone **Me** tab is a hub (`/you?section=`): a large title naming the section ("Your listening") and a
-  scrolling segmented control (Stats · Year · Journal · Settings · Account). On tablet and desktop the same
-  root is the top bar's **You**; its sub-nav offers only Stats · Year in listening · Journal (Settings is the
-  gear, Account the profile menu; an old link to either still renders). The Journal is a section of the hub
-  (`/journal?tab=` still opens for older links).
+  scrolling segmented control (Stats · Year · Journal · Settings · Household · Account). On tablet and desktop
+  the same root is the top bar's **You**; its sub-nav offers only Stats · Year in listening · Journal
+  (Settings is the gear, Household and Account the profile menu; an old link to any of them still renders).
+  The Journal is a section of the hub (`/journal?tab=` still opens for older links).
+- **Household** is a page of its own (Phase 8b-1: `/household` through `openHousehold()`, the phone hub's
+  Household segment; `/settings?section=household` redirects to it): the people on this device, the
+  household members the listener manages (a card each), then Listening in the house.
 - **Settings** (`SettingsContent`, the `/settings` page and the phone hub's Settings segment) lays out by
   its measured width: from 720 a grouped section nav (Listening · App · Servers) beside one pane's card,
   narrower every pane stacked under its group's name.
@@ -80,8 +83,8 @@ Desktop
 - Hash routes are bare tokens; sub-state (tab, filters, selected series entry) lives in app state
   (Expo Router search params in the real build).
 - **Each setting lives in exactly one place**: Settings panes are Listening (Playback, Sleep, Up next and
-  downloads), App (Appearance, Language, Household and sharing: a quiet "arrives with profiles" notice until
-  profiles ship) and Servers (Accounts and devices: the signed-in servers, each opening its Account, and Add
+  downloads), App (Appearance, Language, and a link to the Household page, where the people, PINs, kids
+  mode and house sharing live) and Servers (Accounts and devices: the signed-in servers, each opening its Account, and Add
   a server; Support, hidden in Apple builds). Accessibility gets a pane only once the app has a setting of
   its own for it (motion and text size follow the system today). Download rules also show in Downloads and
   in the series page as *shortcuts to the same value*, never a second copy.
@@ -511,7 +514,7 @@ The owner's decision (Phase 8): a profile may have an optional 4-digit PIN, kept
 switching into that profile (a wrong PIN shakes the field and says "That PIN doesn't match"; five wrong tries wait
 30 s). In this codebase "Who's listening?" is a full-screen root route (`/profiles`, 76 px avatars on a phone),
 "Add someone" signs a new person in through the connect flow, and the picker opens at launch with two or more
-people when "Ask who's listening when the app opens" is on (Settings > Household).
+people when "Ask who's listening when the app opens" is on (the Household page).
 
 ### Year in listening *custom*
 9:16 story cards with progress bars, tap right/left to move, 6 s auto-advance. Built (Phase 5,

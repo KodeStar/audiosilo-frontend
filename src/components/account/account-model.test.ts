@@ -7,6 +7,7 @@ import {
   deviceGlyph,
   knownPlatform,
   lastSeen,
+  memberSignIns,
   PAIRING_TTL_MS,
   pairingSecondsLeft,
   resolveAccountCid,
@@ -178,5 +179,23 @@ describe('the Account page crumb', () => {
     expect(accountParentKey({ name: 'you' })).toBe('you.titles.stats');
     expect(accountParentKey({ name: 'book/[libraryId]' })).toBeNull();
     expect(accountParentKey(undefined)).toBeNull();
+  });
+});
+
+describe('memberSignIns', () => {
+  const d: Omit<MyDevice, 'current'> = {
+    id: 1,
+    kind: 'session',
+    name: '',
+    client: null,
+    created_at: '',
+    last_seen: null,
+    last_ip: '',
+  };
+  it("names another device's member sign-ins, never this device's", () => {
+    const m = [{ id: 12, name: 'Evie' }];
+    expect(memberSignIns({ ...d, current: false, member_sign_ins: m })).toEqual(m);
+    expect(memberSignIns({ ...d, current: true, member_sign_ins: m })).toEqual([]);
+    expect(memberSignIns({ ...d, current: false })).toEqual([]);
   });
 });

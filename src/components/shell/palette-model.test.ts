@@ -263,9 +263,14 @@ describe('buildGoToItems', () => {
     { name: '(offline)', labelKey: 'nav.downloads', icon: 'download' },
     { name: '(me)', labelKey: 'nav.me', icon: 'user' },
   ] as const;
-  const runs = () => ({ tab: jest.fn(), you: jest.fn(), settings: jest.fn() });
+  const runs = () => ({
+    tab: jest.fn(),
+    you: jest.fn(),
+    settings: jest.fn(),
+    household: jest.fn(),
+  });
 
-  it("lists the destinations, then You's sections, the Journal and Settings", () => {
+  it("lists the destinations, then You's sections, the Journal, Settings and Household", () => {
     const items = buildGoToItems(tabs, runs(), i18n.t);
     expect(items.map((i) => i.title)).toEqual([
       'Home',
@@ -275,6 +280,7 @@ describe('buildGoToItems', () => {
       'Year in listening',
       'Journal',
       'Settings',
+      'Household',
     ]);
   });
 
@@ -289,6 +295,8 @@ describe('buildGoToItems', () => {
     expect(r.you).toHaveBeenLastCalledWith('journal');
     byId['go:settings'].run();
     expect(r.settings).toHaveBeenCalledTimes(1);
+    byId['go:household'].run();
+    expect(r.household).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the destinations this browser lacks out (the caller filters them)', () => {
@@ -299,6 +307,7 @@ describe('buildGoToItems', () => {
       'go:year',
       'go:journal',
       'go:settings',
+      'go:household',
     ]);
   });
 });

@@ -7,6 +7,8 @@ import { cleanAddresses } from '@/lib/pairing';
 import { APP_VERSION } from '@/lib/version';
 
 import type {
+  AddMemberBody,
+  AddMemberResult,
   ApiKey,
   ApiKeyCreated,
   AuthSession,
@@ -30,6 +32,8 @@ import type {
   Favourite,
   History,
   HistoryEntry,
+  HouseholdMember,
+  HouseholdMembers,
   HouseholdSettings,
   HouseListening,
   Library,
@@ -62,6 +66,7 @@ import type {
   ServerInfo,
   ShareTarget,
   StatsRange,
+  UpdateMemberBody,
   User,
   UserStats,
 } from './types';
@@ -73,14 +78,66 @@ function withCleanAddresses<T extends { addresses?: ServerAddresses }>(answer: T
   return { ...answer, addresses: cleanAddresses(answer.addresses) };
 }
 
+/** The server answered with an error status. `message` is the body's `error` (the
+ * server's English, for logs: never shown as it is), `code` the body's machine-readable
+ * `code` when the route gives one (`member_limit`, `invalid_name`, ...); branch on the
+ * code, with the status as the fallback for an older server or a route without codes. */
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'
+ * (Phase 8b-1; `member_disabled` is a 409 for a member the admin disabled, on their
+ * session and their pairing), and `kid_account` on pairing too. One list, so the type and
+ * the set `apiErrorKind` checks can't drift apart. */
+const API_ERROR_CODES = [
+  'member_limit',
+  'username_taken',
+  'invalid_name',
+  'invalid_collections',
+  'feature_off',
+  'not_allowed',
+  'member_cannot_manage',
+  'member_disabled',
+  'kid_account',
+  'demo_account',
+] as const;
+
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+const KNOWN_CODES: ReadonlySet<string> = new Set<string>(API_ERROR_CODES);
+
+/**
+ * What kind of failure `e` is ({@link apiErrorKind}): the server's code when it is one the
+ * app knows, else the status's kind (an older server, a route without codes, a code the
+ * app doesn't know): `too_many` 429 (the server's limiter), `not_found` 404, `forbidden`
+ * 403, `invalid` 400, `conflict` 409, and `failed` for anything else, including no answer
+ * at all (not an `ApiError`).
+ */
+export type ApiErrorKind =
+  ApiErrorCode | 'too_many' | 'not_found' | 'forbidden' | 'invalid' | 'conflict' | 'failed';
+
+const BY_STATUS: Readonly<Record<number, ApiErrorKind>> = {
+  400: 'invalid',
+  403: 'forbidden',
+  404: 'not_found',
+  409: 'conflict',
+  429: 'too_many',
+};
+
+/** The kind of failure `e` is (see {@link ApiErrorKind}). Screens branch on it and say it
+ * in their own words: never the server's English (`message`). */
+export function apiErrorKind(e: unknown): ApiErrorKind {
+  if (!(e instanceof ApiError)) return 'failed';
+  if (e.code && KNOWN_CODES.has(e.code)) return e.code as ApiErrorCode;
+  return BY_STATUS[e.status] ?? 'failed';
 }
 
 /**
@@ -287,8 +344,10 @@ export class ApiClient {
         throw new ApiError(res.status, fallbackMsg);
       }
       if (!res.ok) {
-        const msg = (data as { error?: string } | undefined)?.error;
-        throw new ApiError(res.status, msg || fallbackMsg);
+        const body = data as { error?: unknown; code?: unknown } | undefined;
+        const msg = typeof body?.error === 'string' ? body.error : '';
+        const code = typeof body?.code === 'string' && body.code ? body.code : undefined;
+        throw new ApiError(res.status, msg || fallbackMsg, code);
       }
       return data as T;
     } catch (e) {
@@ -991,9 +1050,68 @@ export class ApiClient {
    * Someone else's, unknown or already revoked is a 404. Don't use it for the device
    * the caller is on (its row has `current: true`): the token would be dead before the
    * app's own sign-out could save the final position and the queued progress; sign out
-   * of the connection the usual way instead. */
-  revokeMyDevice(id: number) {
-    return this.request<MyDeviceRevoked>('DELETE', `/me/devices/${id}`);
+   * of the connection the usual way instead.
+   *
+   * `alsoMembers` (capability `household_members` only: an older server ignores it) also
+   * signs out the caller's household members signed in on that device (its
+   * `member_sign_ins`), counted in the answer's `members_signed_out`. */
+  revokeMyDevice(id: number, opts: { alsoMembers?: boolean } = {}) {
+    return this.request<MyDeviceRevoked>('DELETE', `/me/devices/${id}`, {
+      query: opts.alsoMembers ? { also_members: 1 } : undefined,
+    });
+  }
+
+  // --- Household members (capability `household_members`) --------------------
+  /** Whether the caller may add members, the most they may have, and the members they
+   * manage (oldest first). Never refused for a signed-in session: a member or demo caller
+   * reads `allowed: false` with a `reason` and no members. */
+  async members(signal?: AbortSignal): Promise<HouseholdMembers> {
+    const r = await this.request<HouseholdMembers>('GET', '/me/household/members', {
+      signal,
+    });
+    return { ...r, members: r.members ?? [] };
+  }
+  /** Add a member (201). With `sign_in_here` the answer carries their session on this
+   * device (addresses cleaned, as a sign-in's are). Refused with a coded 403 when adding
+   * is not allowed (`feature_off`, `not_allowed`, a member or demo caller) and a 409 at
+   * the cap (`member_limit`); a 400 for a bad name or a collection that isn't the
+   * caller's. */
+  async addMember(body: AddMemberBody): Promise<AddMemberResult> {
+    const r = await this.request<AddMemberResult>('POST', '/me/household/members', { body });
+    return r.session ? { ...r, session: withCleanAddresses(r.session) } : r;
+  }
+  /** Sign one of the caller's members in on this device (201): their session, named
+   * after this device. */
+  memberSession(id: number) {
+    return this.request<AuthSession>('POST', `/me/household/members/${id}/session`).then(
+      withCleanAddresses,
+    );
+  }
+  /** A single-use pairing (QR, 10 minutes) for one of the caller's members to sign in on
+   * their own device. */
+  memberPairing(id: number) {
+    return this.request<PairingPayload>('POST', `/me/household/members/${id}/pair`).then(
+      withCleanAddresses,
+    );
+  }
+  /** One member's signed-in devices (sessions and API keys); `current` is always false. */
+  async memberDevices(id: number, signal?: AbortSignal): Promise<MyDevice[]> {
+    const r = await this.request<MyDevice[] | null>('GET', `/me/household/members/${id}/devices`, {
+      signal,
+    });
+    return r ?? [];
+  }
+  /** Sign a member out of one device (204). A device that isn't theirs is a 404. */
+  revokeMemberDevice(id: number, deviceId: number) {
+    return this.request<void>('DELETE', `/me/household/members/${id}/devices/${deviceId}`);
+  }
+  /** Change a member's name, kind, access or shared collections; answers the member. */
+  updateMember(id: number, body: UpdateMemberBody) {
+    return this.request<HouseholdMember>('PATCH', `/me/household/members/${id}`, { body });
+  }
+  /** Delete a member's account and everything it keeps (204). */
+  deleteMember(id: number) {
+    return this.request<void>('DELETE', `/me/household/members/${id}`);
   }
 
   // --- Listening in the house (capability `household`) ---------------------

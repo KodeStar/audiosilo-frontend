@@ -149,9 +149,24 @@ describe('a pairing link', () => {
     mockApi.exchange.mockRejectedValue(new ApiError(410, 'token expired'));
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
-    expect(await screen.findByText(/token expired/)).toBeTruthy();
+    // In the app's words, never the server's English.
+    expect(
+      await screen.findByText(/This pairing link has expired or was already used/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/token expired/)).toBeNull();
     expect(screen.getByLabelText('Server address').props.value).toBe(AWAY);
     expect(useSession.getState().connections).toHaveLength(0);
+  });
+
+  it("says too many tries when the server's limiter refuses the exchange", async () => {
+    mockParams = { token: 'tok', server: AWAY };
+    mockApi.exchange.mockRejectedValue(new ApiError(429, 'too many attempts, try again later'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    expect(
+      await screen.findByText('Too many tries. Wait a few minutes and try again.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/too many attempts/)).toBeNull();
   });
 
   it('a native link with no server address asks for one', async () => {
