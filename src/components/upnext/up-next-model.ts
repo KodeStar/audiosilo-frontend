@@ -1,6 +1,7 @@
 import type { BookRef, NextBook, Progress, QueueEntry } from '@/api/types';
 import type { ShortcutKey } from '@/lib/keyboard';
 import { percentHeard } from '@/lib/progress-view';
+import { railPositionLabel } from '@/lib/series-position';
 
 /**
  * The pure rules behind Up next (the desktop drawer and the tablet/phone sheet): which
@@ -212,7 +213,7 @@ export function pickSuggestions({
       ? {
           kind: 'ghost',
           title: next.work.title,
-          position: next.work.position,
+          position: railPositionLabel(next.work.position),
           workId: next.work.id,
         }
       : null;

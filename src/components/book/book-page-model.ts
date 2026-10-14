@@ -11,6 +11,7 @@ import { formatBytes, formatDuration, formatRecordDate, formatSpeed } from '@/li
 import type { LayoutClass } from '@/lib/layout';
 import { type BookPlace, pathLeaf } from '@/lib/paths';
 import { yearOf } from '@/lib/published';
+import { seriesNumber } from '@/lib/series-position';
 import { synthesizeChapters } from '@/playback/book-queue';
 import { codecLabel } from '@/playback/transcode';
 import { seriesOf } from '@/components/series/series-model';
@@ -298,16 +299,19 @@ export type EyebrowItem = { text: string; series?: string };
  * first, each a link to its series page - else where the book lives. */
 export function heroEyebrow(
   t: TFunction,
-  book: Pick<Book, 'series' | 'series_index' | 'series_list'>,
+  book: Pick<Book, 'series' | 'series_index' | 'series_index_end' | 'series_list'>,
   libraryName: string,
   serverName: string,
 ): EyebrowItem[] {
   const series = seriesOf(book);
   if (series.length === 0) return [{ text: [libraryName, serverName].filter(Boolean).join(' · ') }];
-  return series.map(({ name, position }) => ({
-    text: position ? t('book.hero.seriesBook', { series: name, position }) : name,
-    series: name,
-  }));
+  return series.map(({ name, position, position_end }) => {
+    const number = seriesNumber(position, position_end);
+    return {
+      text: number ? t('book.hero.seriesBook', { series: name, position: number }) : name,
+      series: name,
+    };
+  });
 }
 
 export type Fact = { key: string; icon: IconName; text: string };

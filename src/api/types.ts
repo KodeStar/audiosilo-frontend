@@ -251,6 +251,8 @@ export type FsEntry = {
   author?: string;
   series?: string;
   series_index?: number;
+  /** The end of a range position (an omnibus of 1-3), as on a `Book`. */
+  series_index_end?: number;
   duration?: number;
   /** Per-folder detection override ("book" | "collection"); empty when auto-detected.
    * An admin-console concern - the player browses read-only - but mirrored for completeness. */
@@ -299,7 +301,12 @@ export type Book = {
   title: string;
   author: string;
   series: string;
+  /** Its position in `series` (0 = none); the START when that position is a range. */
   series_index: number;
+  /** The END of its position in `series` when that is a range (an omnibus of books 1-3:
+   * `series_index` 1, `series_index_end` 3); absent for a single position, and from
+   * older servers. */
+  series_index_end?: number;
   /** Every series the book is in, its main one (`series`) first, with its position in
    * each (0 = none) - present only for a book in more than one series (capability
    * `series_memberships`; absent from older servers and downloads saved from one). */
@@ -405,12 +412,16 @@ export type PersonCount = { name: string; books: number; duration: number };
  * only books inside the caller's share scope. */
 export type PeopleList = { people: PersonCount[]; unknown: number };
 
-/** One series a book is in, with its position there (0 = none). */
-export type SeriesMembership = { name: string; position: number };
+/** One series a book is in, with its position there (0 = none). A range (books 1-3)
+ * is `position` 1 with `position_end` 3; `position_end` is absent for a single
+ * position, and from older servers. */
+export type SeriesMembership = { name: string; position: number; position_end?: number };
 
 /** One distinct series in a library (GET /libraries/{id}/series, capability
  * `browse_people`): its book count, total `duration` (seconds), and the
- * `series_index` values the library holds (`positions`), so a UI can show gaps. */
+ * `series_index` values the library holds (`positions`), so a UI can show gaps. A book
+ * at a range holds every whole position in it (an omnibus 1-3 gives 1, 2 and 3), so
+ * `positions` can outnumber `books`. */
 export type SeriesCount = {
   name: string;
   author: string;
@@ -429,7 +440,8 @@ export type SeriesCount = {
  *   the caller's books, in ANY of their libraries, so `next.library_id` can differ
  *   from the library asked. `next`, `book` and `work` (with `local`) are all set.
  * - `series`: the next higher `series_index` of the same, exactly named, series in
- *   the same library; no `next` means the end of that numbered local series.
+ *   the same library (after a range, past its END); no `next` means the end of that
+ *   numbered local series.
  * - `folder`: the next item in the book's parent folder (`book` only when indexed).
  * - `none`: nothing found.
  * The community rail answers only when it places its next work: failing to place it
@@ -583,6 +595,8 @@ export type BookMetaRecording = {
 export type BookMetaSeriesWork = {
   id: string;
   title: string;
+  /** Its position on the rail as text ("3", "2.5"); "1-3" is a range (an omnibus
+   * holding books 1 to 3). Read it with `@/lib/series-position`. */
   position: string;
   authors: MetaPersonRef[];
   cover_url?: string;
@@ -762,6 +776,8 @@ export type Favourite = {
   author: string;
   series: string;
   series_index: number;
+  /** The end of a range position (an omnibus of 1-3), as on a `Book`. */
+  series_index_end?: number;
   duration: number;
   created_at: string;
 };

@@ -68,6 +68,7 @@ export function SeriesCard({
   const { books } = useSeriesBooks(libraryId, series.name, connectionId, { batch: true });
   const entries =
     books.length > 0 ? localEntries(books, { connectionId, connectionName, progressOf }) : null;
+  // The list's positions hold every slot a range covers (an omnibus 1-3 gives 1, 2, 3).
   const gaps = localGaps(series.positions).length;
   const average = series.books > 0 ? series.duration / series.books : undefined;
   const inProgress = entries?.filter((e) => e.started && !e.finished).length ?? 0;

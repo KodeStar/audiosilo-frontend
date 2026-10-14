@@ -180,6 +180,7 @@ export function BookListRow({
     author: book.author,
     series: book.series,
     seriesIndex: book.series_index,
+    seriesIndexEnd: book.series_index_end,
   });
   const status = bookStatus(progress);
   // Without columns the subtitle carries the length and the state.

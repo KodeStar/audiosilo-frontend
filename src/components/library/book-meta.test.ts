@@ -18,7 +18,7 @@ import {
   summaryIsVisible,
 } from './book-meta';
 import { recapDescriptor, sortRecaps } from './meta-gating';
-import { previousWorks, seriesPositionValue, seriesRails } from './series-rails';
+import { previousWorks, seriesRails } from './series-rails';
 /* eslint-enable import/first */
 
 function work(id: string, position: string) {
@@ -174,23 +174,6 @@ describe('sortRecaps', () => {
   });
 });
 
-describe('seriesPositionValue', () => {
-  it('reads the leading number, including a decimal position', () => {
-    expect(seriesPositionValue('1')).toBe(1);
-    expect(seriesPositionValue('2.5')).toBe(2.5);
-  });
-
-  it('takes the FIRST number of a span (an omnibus sorts at its start)', () => {
-    expect(seriesPositionValue('1-3.5')).toBe(1);
-  });
-
-  it('is undefined for an unparsable or missing position', () => {
-    expect(seriesPositionValue('')).toBeUndefined();
-    expect(seriesPositionValue('novella')).toBeUndefined();
-    expect(seriesPositionValue(undefined)).toBeUndefined();
-  });
-});
-
 // `previousWorks` reads the rails `seriesRails` built, exactly as the screen does.
 const prev = (series: BookMetaSeries[] | undefined, workId: string, picks?: OrderingPicks) =>
   previousWorks(seriesRails(series, workId, picks));
@@ -221,6 +204,14 @@ describe('previousWorks', () => {
     const s1 = series('s1', '2', [work('shared', '1')]);
     const s2 = series('s2', '5', [work('shared', '4'), work('other', '3')]);
     expect(prev([s1, s2], 'me').map((w) => w.id)).toEqual(['other', 'shared']);
+  });
+
+  it('takes an omnibus only when it ends before the current work', () => {
+    const s = series('s', '4', [work('omni', '1-3'), work('d', '4')]);
+    expect(prev([s], 'd').map((w) => w.id)).toEqual(['omni']);
+    // Book 2 is inside "1-3": catching up on the omnibus would spoil it.
+    const inside = series('s', '2', [work('omni', '1 - 3'), work('a', '1'), work('b', '2')]);
+    expect(prev([inside], 'b').map((w) => w.id)).toEqual(['a']);
   });
 
   it('excludes entries whose position does not parse', () => {

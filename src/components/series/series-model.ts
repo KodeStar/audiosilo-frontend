@@ -11,6 +11,18 @@ import { foldAccents } from '@/lib/names';
 import { bookTitle } from '@/lib/paths';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import { yearOf } from '@/lib/published';
+import {
+  bookSeriesNumber,
+  bookSeriesSpan,
+  parseSeriesPosition,
+  placedPositionLabel,
+  railPositionLabel,
+  type SeriesSpan,
+  seriesPositionValue,
+  seriesSpan,
+  spanCovers,
+  spanEnd,
+} from '@/lib/series-position';
 import type { SeriesView } from '@/lib/series-orderings';
 
 /**
@@ -26,6 +38,10 @@ import type { SeriesView } from '@/lib/series-orderings';
  * - `ghost`: on no server the listener can reach. A community ghost has its real title
  *   and a link out; a LOCAL gap (no community data: an integer missing between the
  *   owned books' `series_index`es) is only "Book 3".
+ *
+ * A position may be a range (an omnibus of books 1-3: a book's `series_index_end`, a
+ * rail entry's "1-3"). Its entry is placed once, at its start, shows "1-3", and holds
+ * every slot in it: no gap or ghost is drawn for the slots it covers.
  */
 
 /** Where an entry can be played or opened: a book on one connection. `book` is its list
@@ -41,7 +57,7 @@ export type SeriesCopy = {
 type EntryFields = {
   /** Stable across reading orders (the work id when there is one), for keys and moves. */
   key: string;
-  /** Its place in the shown order ("3", "2.5"), '' when it has none. */
+  /** Its place in the shown order ("3", "2.5", "1-3"), '' when it has none. */
   position: string;
   /** Absent only for a local gap, which has no title to show. */
   title?: string;
@@ -79,19 +95,6 @@ export type ProgressLookup = (
 /** A book on another connection, as search returns it tagged with its source. */
 export type ElsewhereBook = Book & { connectionId: string; connectionName: string };
 
-/** A series position as a number ("2.5" -> 2.5, "1-3" -> 1), or undefined when it does
- * not parse. (The same rule as the book page's `seriesPositionValue`; that module is a
- * screen, so this pure one keeps its own copy.) */
-function positionNumber(position: string | undefined): number | undefined {
-  const n = parseFloat(position ?? '');
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/** A local `series_index` as a position label ("3", "3.5"), '' when unset (0). */
-function indexLabel(index: number): string {
-  return index > 0 ? String(index) : '';
-}
-
 /** Titles and names compared loosely: case, accents, punctuation and spacing ignored. */
 export function looseKey(s: string | undefined): string {
   return foldAccents(s ?? '')
@@ -128,15 +131,17 @@ function bookCopy(book: Book, connectionId: string, connectionName: string): Ser
 
 /** Every series a book is in, its main one first (`series_list`, else its `series`). */
 export function seriesOf(
-  book: Pick<Book, 'series' | 'series_index' | 'series_list'>,
+  book: Pick<Book, 'series' | 'series_index' | 'series_index_end' | 'series_list'>,
 ): SeriesMembership[] {
   if (book.series_list?.length) return book.series_list;
-  return book.series ? [{ name: book.series, position: book.series_index }] : [];
+  if (!book.series) return [];
+  return [{ name: book.series, position: book.series_index, position_end: book.series_index_end }];
 }
 
 /**
- * The book as it stands in the series `name`: its `series` and `series_index` that
- * series' name and its position there, so a series page orders and numbers it by
+ * The book as it stands in the series `name`: its `series`, `series_index` and
+ * `series_index_end` that series' name and its position there (a range's end only when
+ * it is one there), so a series page orders and numbers it by
  * that series, not its main one (Guards! Guards! is book 1 of City Watch though
  * Discworld #8). The name matches exactly, else loosely (case and punctuation
  * aside); undefined when the book isn't in the series.
@@ -149,9 +154,14 @@ export function inSeries<T extends Book>(book: T, name: string): T | undefined {
     s = all.find((x) => looseKey(x.name) === key);
   }
   if (!s) return undefined;
-  return s.name === book.series && s.position === book.series_index
-    ? book
-    : { ...book, series: s.name, series_index: s.position };
+  if (
+    s.name === book.series &&
+    s.position === book.series_index &&
+    s.position_end === book.series_index_end
+  ) {
+    return book;
+  }
+  return { ...book, series: s.name, series_index: s.position, series_index_end: s.position_end };
 }
 
 /** Sort a series' own books: by `series_index` (or `positionOf`, a book's place in
@@ -176,13 +186,25 @@ export function sortSeriesBooks(
 const MAX_LOCAL_GAPS = 60;
 
 /** The whole numbers missing below the highest owned position: 1, 2 and 4 owned means
- * book 3 is missing. Fractional positions (3.5) never make gaps of their own. */
-export function localGaps(positions: readonly number[]): number[] {
-  const have = new Set(positions.filter((p) => p > 0 && Number.isInteger(p)));
-  const top = Math.floor(Math.max(0, ...positions));
+ * book 3 is missing. A range holds every whole number in it (1-3 and 4 owned: none
+ * missing); fractional positions (3.5) never make gaps of their own. */
+export function localGaps(positions: readonly (number | SeriesSpan)[]): number[] {
+  const held = new Set<number>();
+  let top = 0;
+  for (const p of positions) {
+    const span = typeof p === 'number' ? seriesSpan(p) : p;
+    if (!(span.start > 0)) continue;
+    const end = spanEnd(span);
+    for (let n = Math.ceil(span.start); n <= end; n++) held.add(n);
+    top = Math.max(top, Math.floor(end));
+  }
   const gaps: number[] = [];
-  for (let n = 1; n <= top; n++) if (!have.has(n)) gaps.push(n);
-  return gaps.length > MAX_LOCAL_GAPS ? [] : gaps;
+  for (let n = 1; n <= top; n++) {
+    if (held.has(n)) continue;
+    gaps.push(n);
+    if (gaps.length > MAX_LOCAL_GAPS) return [];
+  }
+  return gaps;
 }
 
 type Source = {
@@ -207,7 +229,7 @@ function copyEntry(
 /** Puts `entry` before the first entry numbered past `n` (an unnumbered one counts as
  * `unnumbered`), or at the end. */
 function insertByPosition(out: SeriesEntry[], entry: SeriesEntry, n: number, unnumbered: number) {
-  const at = out.findIndex((e) => (positionNumber(e.position) ?? unnumbered) > n);
+  const at = out.findIndex((e) => (seriesPositionValue(e.position) ?? unnumbered) > n);
   if (at === -1) out.push(entry);
   else out.splice(at, 0, entry);
 }
@@ -226,14 +248,14 @@ function elsewhereEntry(
   );
 }
 
-/** An owned book by its own `series_index`. */
+/** An owned book by its own `series_index` (and `series_index_end`). */
 function ownedBookEntry(b: Book, src: Source): SeriesEntry {
   const copy = bookCopy(b, src.connectionId, src.connectionName);
   return copyEntry(
     'owned',
     {
       key: `b:${contentKey(src.connectionId, b.library_id, b.rel_path)}`,
-      position: indexLabel(b.series_index),
+      position: bookSeriesNumber(b),
       title: bookTitle(b.title, b.rel_path),
     },
     copy,
@@ -243,20 +265,34 @@ function ownedBookEntry(b: Book, src: Source): SeriesEntry {
 
 /**
  * The page with no community rail: the owned books by `series_index`, with a dashed
- * "Book N" ghost for each whole-number gap (or, when another server has that number of
- * the same series, its copy there).
+ * "Book N" ghost for each whole-number gap (or, when another server has a book of the
+ * same series starting at that number, its copy there: a range there fills every gap
+ * it covers, once).
  */
 export function localEntries(books: readonly Book[], src: Source): SeriesEntry[] {
   const out = sortSeriesBooks(books).map((b) => ownedBookEntry(b, src));
-  for (const n of localGaps(books.map((b) => b.series_index))) {
+  let filled: SeriesSpan | undefined;
+  for (const n of localGaps(books.map(bookSeriesSpan))) {
+    if (filled && spanCovers(filled, n)) continue;
     const match = src.elsewhere?.find((b) => b.series_index === n);
-    const fields = { key: `g:${n}`, position: String(n) };
+    const fields = { key: `g:${n}`, position: match ? bookSeriesNumber(match) : String(n) };
+    if (match) filled = bookSeriesSpan(match);
     const entry: SeriesEntry = match
       ? elsewhereEntry(fields, match, src.progressOf)
       : { ...fields, kind: 'ghost', ...NOTHING };
     insertByPosition(out, entry, n, Infinity);
   }
   return out;
+}
+
+/** Whether a ghost's whole place on the rail is inside a range a copy holds (an owned
+ * or elsewhere omnibus "1-3" holds the ghosts at 1, 2, 3 and "1-3"). A copy at a single
+ * position never hides a ghost: the rail and the book may just disagree about it. */
+function heldByRange(ghost: SeriesEntry, copies: readonly SeriesSpan[]): boolean {
+  const own = parseSeriesPosition(ghost.position);
+  return (
+    own !== undefined && copies.some((c) => spanCovers(c, own.start) && spanCovers(c, spanEnd(own)))
+  );
 }
 
 const NOTHING = { fraction: 0, started: false, finished: false } as const;
@@ -275,7 +311,10 @@ function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
  * series' own books (a series named unlike the rail is not placed by the server) - then
  * to a copy on another server by title and author, else a ghost. Owned books the rail
  * doesn't list keep their place by `series_index` among the numbered entries (unnumbered
- * ones go last), so nothing the listener owns ever disappears from the page.
+ * ones go last), so nothing the listener owns ever disappears from the page. An omnibus
+ * the server placed at the single entry it starts at shows its range there
+ * (`placedPositionLabel`), and is one entry when the rail also lists its range. A ghost
+ * inside a range a copy holds (`heldByRange`) is left out: the omnibus is that book.
  * `extraBooks` are the rows of placed books from OTHER libraries.
  */
 export function railEntries(
@@ -283,37 +322,48 @@ export function railEntries(
   books: readonly Book[],
   src: Source & { extraBooks?: readonly Book[] },
 ): SeriesEntry[] {
-  const byKey = new Map<string, Book>();
-  for (const b of [...books, ...(src.extraBooks ?? [])]) {
-    byKey.set(contentKey(src.connectionId, b.library_id, b.rel_path), b);
-  }
+  const keyOf = (libraryId: number, path: string) => contentKey(src.connectionId, libraryId, path);
+  const bookKey = (b: Book) => keyOf(b.library_id, b.rel_path);
+  // The series' own books are numbered by this series; a placed book from another
+  // library by its own main series.
+  const own = new Map(books.map((b) => [bookKey(b), b]));
+  const byKey = new Map(own);
+  for (const b of src.extraBooks ?? []) byKey.set(bookKey(b), b);
+  const isRange = (w: BookMetaSeriesWork) => parseSeriesPosition(w.position)?.end !== undefined;
+  // The server places an omnibus at its range entry ("1-3") AND at the single entry it
+  // starts at ("1"): one entry, the range's (the single one is then a ghost it holds).
+  const atRange = new Set(
+    view.works.flatMap((w) =>
+      w.local && isRange(w) ? [keyOf(w.local.library_id, w.local.path)] : [],
+    ),
+  );
   const used = new Set<string>();
   const out: SeriesEntry[] = [];
   for (const w of view.works) {
     let copy: SeriesCopy | undefined;
+    let position = railPositionLabel(w.position);
     if (w.local) {
-      const k = contentKey(src.connectionId, w.local.library_id, w.local.path);
-      copy = {
-        connectionId: src.connectionId,
-        connectionName: src.connectionName,
-        libraryId: w.local.library_id,
-        path: w.local.path,
-        book: byKey.get(k),
-      };
-      used.add(k);
+      const k = keyOf(w.local.library_id, w.local.path);
+      if (isRange(w) || !atRange.has(k)) {
+        copy = {
+          connectionId: src.connectionId,
+          connectionName: src.connectionName,
+          libraryId: w.local.library_id,
+          path: w.local.path,
+          book: byKey.get(k),
+        };
+        used.add(k);
+        position = placedPositionLabel(w.position, own.get(k));
+      }
     } else {
       const title = looseKey(w.title);
-      const b = books.find(
-        (x) =>
-          !used.has(contentKey(src.connectionId, x.library_id, x.rel_path)) &&
-          looseKey(x.title) === title,
-      );
+      const b = books.find((x) => !used.has(bookKey(x)) && looseKey(x.title) === title);
       if (b) {
         copy = bookCopy(b, src.connectionId, src.connectionName);
-        used.add(contentKey(src.connectionId, b.library_id, b.rel_path));
+        used.add(bookKey(b));
       }
     }
-    const base = { key: `w:${w.id}`, position: w.position ?? '', workId: w.id, webUrl: w.web_url };
+    const base = { key: `w:${w.id}`, position, workId: w.id, webUrl: w.web_url };
     if (copy) {
       out.push(
         copyEntry('owned', { ...base, title: copy.book?.title || w.title }, copy, src.progressOf),
@@ -329,12 +379,16 @@ export function railEntries(
     }
   }
   for (const b of sortSeriesBooks(books)) {
-    if (used.has(contentKey(src.connectionId, b.library_id, b.rel_path))) continue;
+    if (used.has(bookKey(b))) continue;
     const entry = ownedBookEntry(b, src);
     if (b.series_index > 0) insertByPosition(out, entry, b.series_index, -Infinity);
     else out.push(entry);
   }
-  return out;
+  const ranges = out.flatMap((e) => {
+    const span = e.kind === 'ghost' ? undefined : parseSeriesPosition(e.position);
+    return span?.end !== undefined ? [span] : [];
+  });
+  return out.filter((e) => e.kind !== 'ghost' || !heldByRange(e, ranges));
 }
 
 /** The book the listener is on: the started, unfinished entry they played last. */

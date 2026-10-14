@@ -35,6 +35,7 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
+import { bookSeriesNumber } from '@/lib/series-position';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { timeLeft, timeLeftLabel } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -123,9 +124,10 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const hasStory = (work?.recaps?.length ?? 0) > 0;
 
   const title = bookTitle(book?.title, path);
+  const seriesPosition = book ? bookSeriesNumber(book) : '';
   const series = book?.series
-    ? book.series_index
-      ? t('home.now.seriesBook', { series: book.series, position: book.series_index })
+    ? seriesPosition
+      ? t('home.now.seriesBook', { series: book.series, position: seriesPosition })
       : book.series
     : '';
   const eyebrow = compact

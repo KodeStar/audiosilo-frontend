@@ -14,6 +14,7 @@ import { formatDuration, formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { yearOf } from '@/lib/published';
+import { bookSeriesNumber } from '@/lib/series-position';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -247,7 +248,7 @@ function SeriesShelf({
         accessibilityLabel={series}
         renderItem={(b, width) => {
           // Numbered by this shelf's series (a book in several is on each).
-          const position = inSeries(b, series)?.series_index ?? b.series_index;
+          const position = bookSeriesNumber(inSeries(b, series) ?? b);
           return (
             <CoverTile
               connectionId={cid}
@@ -255,7 +256,7 @@ function SeriesShelf({
               path={b.rel_path}
               title={b.title}
               book={b}
-              caption={[position > 0 ? t('series.bookN', { position }) : '', yearOf(b.published)]
+              caption={[position ? t('series.bookN', { position }) : '', yearOf(b.published)]
                 .filter(Boolean)
                 .join(' · ')}
               author={b.author}

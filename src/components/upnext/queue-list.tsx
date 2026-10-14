@@ -22,6 +22,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
+import { bookSeriesNumber } from '@/lib/series-position';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -47,11 +48,8 @@ export function entryTitle(e: QueueEntry): string {
  * ("55%", "Finished") or, before they start, the book's length. */
 export function entryCaption(e: QueueEntry, progress: ProgressIndex, t: TFunction): string {
   const b = e.book;
-  const where = b?.series
-    ? b.series_index > 0
-      ? `${b.series} · ${b.series_index}`
-      : b.series
-    : (b?.author ?? '');
+  const number = b ? bookSeriesNumber(b) : '';
+  const where = b?.series ? (number ? `${b.series} · ${number}` : b.series) : (b?.author ?? '');
   const state = entryState(progress.get(entryKey(e)));
   const status =
     state.kind === 'finished'

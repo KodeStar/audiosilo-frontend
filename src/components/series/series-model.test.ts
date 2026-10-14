@@ -280,3 +280,151 @@ describe('looseKey', () => {
     expect(looseKey('Émile')).toBe('emile');
   });
 });
+
+describe('a range (an omnibus of books 1-3)', () => {
+  const omnibus = book('The First Trilogy', 1, { series_index_end: 3 });
+
+  it('fills every whole number in it, so no gap is drawn for them', () => {
+    expect(localGaps([{ start: 1, end: 3 }, 5])).toEqual([4]);
+    expect(localGaps([{ start: 1, end: 3 }, 4])).toEqual([]);
+    expect(localGaps([{ start: 2, end: 4 }])).toEqual([1]);
+    expect(localGaps([{ start: 1.5, end: 3 }, 5])).toEqual([1, 4]);
+  });
+
+  it('is one entry, at its start, numbered "1-3"', () => {
+    const entries = localEntries([book('Six', 6), omnibus, book('Four', 4)], src);
+    expect(entries.map((e) => [e.kind, e.position, e.title])).toEqual([
+      ['owned', '1-3', 'The First Trilogy'],
+      ['owned', '4', 'Four'],
+      ['ghost', '5', undefined],
+      ['owned', '6', 'Six'],
+    ]);
+  });
+
+  it('fills every gap it covers once, from another server', () => {
+    const maya: ElsewhereBook = {
+      ...book('The Second Trilogy', 4, { series_index_end: 6 }),
+      connectionId: 'maya',
+      connectionName: "Maya's Shelf",
+    };
+    const entries = localEntries([omnibus, book('Eight', 8)], { ...src, elsewhere: [maya] });
+    expect(entries.map((e) => [e.kind, e.position])).toEqual([
+      ['owned', '1-3'],
+      ['elsewhere', '4-6'],
+      ['ghost', '7'],
+      ['owned', '8'],
+    ]);
+  });
+
+  it('carries its range into each series it is in, and only there', () => {
+    const both = book('Tales', 2, {
+      series: 'Anthologies',
+      series_list: [
+        { name: 'Anthologies', position: 2 },
+        { name: 'The Expanse', position: 1, position_end: 3 },
+      ],
+    });
+    expect(inSeries(both, 'The Expanse')).toMatchObject({ series_index: 1, series_index_end: 3 });
+    expect(inSeries(both, 'Anthologies')?.series_index_end).toBeUndefined();
+    const main = book('Main', 1, { series_index_end: 3 });
+    expect(seriesOf(main)).toEqual([{ name: 'The Expanse', position: 1, position_end: 3 }]);
+    expect(inSeries(main, 'The Expanse')).toBe(main);
+  });
+
+  describe('on a rail', () => {
+    const view = seriesViews({
+      id: 'the-expanse',
+      name: 'The Expanse',
+      position: '1',
+      works: [
+        work('w1', 'Leviathan Wakes', '1'),
+        work('w2', "Caliban's War", '2'),
+        work('w3', "Abaddon's Gate", '3'),
+        work('w4', 'Cibola Burn', '4'),
+      ],
+    })[0];
+
+    it('holds the ghosts in its range: an owned omnibus the rail does not list', () => {
+      const entries = railEntries(view, [omnibus], src);
+      expect(entries.map((e) => [e.kind, e.position, e.title])).toEqual([
+        ['owned', '1-3', 'The First Trilogy'],
+        ['ghost', '4', 'Cibola Burn'],
+      ]);
+      expect(seriesStats(entries)).toMatchObject({ entries: 2, owned: 1, missing: 1 });
+    });
+
+    it('shows an omnibus the server placed at the entry it starts at by its range', () => {
+      const placed = {
+        ...view,
+        works: [work('w1', 'Leviathan Wakes', '1', omnibus), ...view.works.slice(1)],
+      };
+      const entries = railEntries(placed, [omnibus], src);
+      expect(entries.map((e) => [e.kind, e.position, e.title])).toEqual([
+        ['owned', '1-3', 'The First Trilogy'],
+        ['ghost', '4', 'Cibola Burn'],
+      ]);
+    });
+
+    it('lists an omnibus the server placed at its range and at its start once', () => {
+      const placed = {
+        ...view,
+        // As the server places it: on its start ("1") and on its range.
+        works: [
+          work('w1', 'Leviathan Wakes', '1', omnibus),
+          ...view.works.slice(1, 3),
+          work('o', 'The First Trilogy', '1-3', omnibus),
+          view.works[3],
+        ],
+      };
+      const entries = railEntries(placed, [omnibus], src);
+      expect(entries.map((e) => [e.kind, e.position, e.key])).toEqual([
+        ['owned', '1-3', 'w:o'],
+        ['ghost', '4', 'w:w4'],
+      ]);
+      expect(seriesStats(entries)).toMatchObject({ owned: 1, missing: 1 });
+    });
+
+    it('holds them from a rail entry whose position is a range', () => {
+      const placed = book('Omnibus', 1, { rel_path: 'Corey/Expanse/Omnibus' });
+      const withOmnibus = {
+        ...view,
+        works: [work('o', 'Omnibus', '1 - 3', placed), ...view.works],
+      };
+      const entries = railEntries(withOmnibus, [placed], src);
+      expect(entries.map((e) => [e.kind, e.position])).toEqual([
+        ['owned', '1-3'],
+        ['ghost', '4'],
+      ]);
+    });
+
+    it('never hides an owned book, nor a ghost beside a single position', () => {
+      const two = book('Two (Local Title)', 2);
+      const entries = railEntries(view, [omnibus, two], src);
+      expect(entries.map((e) => [e.kind, e.position])).toEqual([
+        ['owned', '1-3'],
+        ['owned', '2'],
+        ['ghost', '4'],
+      ]);
+      // A single position holds nothing but itself, as before ranges.
+      expect(railEntries(view, [two], src).map((e) => [e.kind, e.position])).toEqual([
+        ['ghost', '1'],
+        ['ghost', '2'],
+        ['owned', '2'],
+        ['ghost', '3'],
+        ['ghost', '4'],
+      ]);
+    });
+
+    it('keeps a ghost omnibus, which separate books never hide', () => {
+      const withOmnibus = { ...view, works: [...view.works, work('o', 'Omnibus', '1-3')] };
+      const entries = railEntries(withOmnibus, [book('Leviathan Wakes', 1)], src);
+      expect(entries.map((e) => [e.kind, e.position])).toEqual([
+        ['owned', '1'],
+        ['ghost', '2'],
+        ['ghost', '3'],
+        ['ghost', '4'],
+        ['ghost', '1-3'],
+      ]);
+    });
+  });
+});

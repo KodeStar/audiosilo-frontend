@@ -12,6 +12,7 @@ import { Text } from '@/components/ui/text';
 import { formatDayMonth } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
+import { bookSeriesNumber, railPositionLabel } from '@/lib/series-position';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { useBookTitle } from './book-title';
@@ -89,7 +90,7 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
           title={bookTitle(b.title, item.path)}
           book={b}
           author={b.author}
-          caption={b.series ? seriesCaption(b.series, b.series_index) : b.author}
+          caption={b.series ? seriesCaption(b.series, bookSeriesNumber(b)) : b.author}
           coverVersion={b.cover_version}
           server={server}
           width={width}
@@ -108,7 +109,7 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
         accessibilityLabel={[w.title, t('covers.notInLibrary'), reason].join(', ')}
         className="gap-2.5 rounded-cover"
       >
-        <GhostCover title={w.title} position={w.position} width={width} />
+        <GhostCover title={w.title} position={railPositionLabel(w.position)} width={width} />
         <TileCaption title={w.title} caption={authors} />
       </AnimatedPressable>
       {tag}
@@ -116,9 +117,9 @@ function NextCard({ item, width, server }: { item: NextItem; width: number; serv
   );
 }
 
-/** "The Expanse · 3" (no number when it has none). */
-function seriesCaption(series: string, index: number): string {
-  return index ? `${series} · ${index}` : series;
+/** "The Expanse · 3", "The Expanse · 1-3" (no number when it has none). */
+function seriesCaption(series: string, position: string): string {
+  return position ? `${series} · ${position}` : series;
 }
 
 const SKELETON_TILES = [0, 1, 2, 3, 4, 5];

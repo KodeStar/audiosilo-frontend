@@ -301,6 +301,27 @@ describe('heroEyebrow', () => {
     ]);
   });
 
+  it('numbers a range in each series it is in', () => {
+    expect(
+      heroEyebrow(t, { series: 'Mistborn', series_index: 1, series_index_end: 3 }, 'F', 'H'),
+    ).toEqual([{ text: 'Mistborn · Book 1-3', series: 'Mistborn' }]);
+    expect(
+      heroEyebrow(
+        t,
+        {
+          series: 'Cosmere',
+          series_index: 4,
+          series_list: [
+            { name: 'Cosmere', position: 4 },
+            { name: 'Mistborn', position: 1, position_end: 3 },
+          ],
+        },
+        'F',
+        'H',
+      ).map((e) => e.text),
+    ).toEqual(['Cosmere · Book 4', 'Mistborn · Book 1-3']);
+  });
+
   it('else says where the book lives', () => {
     expect(heroEyebrow(t, { series: '', series_index: 0 }, 'Fiction', 'Home')).toEqual([
       { text: 'Fiction · Home' },

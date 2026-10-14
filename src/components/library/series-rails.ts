@@ -1,4 +1,5 @@
 import type { BookMetaSeries, BookMetaSeriesWork } from '@/api/types';
+import { parseSeriesPosition, seriesPositionValue, spanEnd } from '@/lib/series-position';
 import {
   familyKey,
   type OrderingPicks,
@@ -52,15 +53,6 @@ export function seriesRails(
     .filter((r) => r.views.some((v) => others(v.works).length > 0));
 }
 
-/** A series position ("1", "2.5", "1-3.5") as a number, or undefined when it does
- * not parse. Only the FIRST number counts, so an omnibus spanning "1-3.5" sorts at
- * its start (1). Unparsable positions are never guessed at - the caller drops them,
- * because mis-ordering a series is worse than omitting an entry. */
-export function seriesPositionValue(position: string | undefined): number | undefined {
-  const n = parseFloat(position ?? '');
-  return Number.isFinite(n) ? n : undefined;
-}
-
 /**
  * The earlier books of every series this work belongs to: the works positioned
  * BEFORE the current work, deduplicated by work id (two series can list the same
@@ -77,7 +69,9 @@ export function seriesPositionValue(position: string | undefined): number | unde
  *
  * Entries whose position does not parse are excluded, as is a whole series whose
  * *own* current position does not parse (there is then nothing to compare against).
- * A duplicate keeps the first series' entry, so ordering is deterministic.
+ * An omnibus ("1-3") is previous only when it ENDS before the current work starts: one
+ * that holds the current book (book 2 of "1-3") would spoil it. A duplicate keeps the
+ * first series' entry, so ordering is deterministic.
  */
 export function previousWorks(rails: readonly SeriesRail[]): BookMetaSeriesWork[] {
   const found = new Map<string, { work: BookMetaSeriesWork; pos: number }>();
@@ -87,9 +81,9 @@ export function previousWorks(rails: readonly SeriesRail[]): BookMetaSeriesWork[
     // `works` is the shown order minus the current work.
     for (const w of works) {
       if (found.has(w.id)) continue;
-      const pos = seriesPositionValue(w.position);
-      if (pos === undefined || pos >= current) continue;
-      found.set(w.id, { work: w, pos });
+      const span = parseSeriesPosition(w.position);
+      if (span === undefined || spanEnd(span) >= current) continue;
+      found.set(w.id, { work: w, pos: span.start });
     }
   }
   return [...found.values()].sort((a, b) => b.pos - a.pos).map((e) => e.work);
