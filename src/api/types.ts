@@ -298,7 +298,12 @@ export type Book = {
   title: string;
   author: string;
   series: string;
+  /** Its position in `series` (0 = none); the START when that position is a range. */
   series_index: number;
+  /** The END of its position in `series` when that is a range (an omnibus of books 1-3:
+   * `series_index` 1, `series_index_end` 3); absent for a single position, and from
+   * older servers. */
+  series_index_end?: number;
   /** Every series the book is in, its main one (`series`) first, with its position in
    * each (0 = none) - present only for a book in more than one series (capability
    * `series_memberships`; absent from older servers and downloads saved from one). */
@@ -404,8 +409,10 @@ export type PersonCount = { name: string; books: number; duration: number };
  * only books inside the caller's share scope. */
 export type PeopleList = { people: PersonCount[]; unknown: number };
 
-/** One series a book is in, with its position there (0 = none). */
-export type SeriesMembership = { name: string; position: number };
+/** One series a book is in, with its position there (0 = none). A range (books 1-3)
+ * is `position` 1 with `position_end` 3; `position_end` is absent for a single
+ * position, and from older servers. */
+export type SeriesMembership = { name: string; position: number; position_end?: number };
 
 /** One distinct series in a library (GET /libraries/{id}/series, capability
  * `browse_people`): its book count, total `duration` (seconds), and the
@@ -582,6 +589,8 @@ export type BookMetaRecording = {
 export type BookMetaSeriesWork = {
   id: string;
   title: string;
+  /** Its position on the rail as text ("3", "2.5"); "1-3" is a range (an omnibus
+   * holding books 1 to 3). Read it with `@/lib/series-position`. */
   position: string;
   authors: MetaPersonRef[];
   cover_url?: string;

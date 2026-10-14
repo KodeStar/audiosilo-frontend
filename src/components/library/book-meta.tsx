@@ -25,6 +25,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { familyName, orderingLabelKey } from '@/lib/series-orderings';
+import { railPositionLabel } from '@/lib/series-position';
 import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -443,7 +444,7 @@ function PreviousBookRow({
           <View className="flex-1">
             {entry.position ? (
               <Text variant="caption">
-                {t('book.meta.seriesPosition', { position: entry.position })}
+                {t('book.meta.seriesPosition', { position: railPositionLabel(entry.position) })}
               </Text>
             ) : null}
             <Text variant="label" numberOfLines={2}>
@@ -785,7 +786,7 @@ export function BookMetaSeriesTab({
                 </CoverFrame>
                 {w.position ? (
                   <Text variant="caption" className="mt-1.5">
-                    {t('book.meta.seriesPosition', { position: w.position })}
+                    {t('book.meta.seriesPosition', { position: railPositionLabel(w.position) })}
                   </Text>
                 ) : null}
                 <Text variant="label" numberOfLines={2} className="mt-0.5">

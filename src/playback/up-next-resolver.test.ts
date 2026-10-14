@@ -201,6 +201,37 @@ describe('resolveUpNext', () => {
     expect(unplaced).toBeUndefined();
   });
 
+  it('(b) numbers a next book that is a range, from its book or its rail entry', async () => {
+    const omnibus = book('Series/Books 4-6', { series: 'The Saga', series_index: 4 });
+    const local = sources({
+      nextBook: jest.fn(async (): Promise<NextBook> => ({
+        source: 'series',
+        next: { library_id: 1, path: 'Series/Books 4-6' },
+        book: { ...omnibus, series_index_end: 6 },
+      })),
+    });
+    expect((await resolveUpNext(local, FINISHED)).next?.series).toEqual({
+      name: 'The Saga',
+      position: '4-6',
+    });
+    const community = sources({
+      nextBook: jest.fn(async (): Promise<NextBook> => ({
+        source: 'community',
+        next: { library_id: 1, path: 'Series/Books 4-6' },
+        book: omnibus,
+        work: {
+          id: 'w4',
+          title: 'Books 4-6',
+          position: '4 \u2013 6',
+          authors: [],
+          web_url: 'https://meta/w4',
+          local: { library_id: 1, path: 'Series/Books 4-6' },
+        },
+      })),
+    });
+    expect((await resolveUpNext(community, FINISHED)).next?.series?.position).toBe('4-6');
+  });
+
   it('(b) a server folder answer is labelled folder', async () => {
     const s = sources({
       nextBook: jest.fn(async (): Promise<NextBook> => ({

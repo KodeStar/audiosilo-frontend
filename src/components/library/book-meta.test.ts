@@ -223,6 +223,14 @@ describe('previousWorks', () => {
     expect(prev([s1, s2], 'me').map((w) => w.id)).toEqual(['other', 'shared']);
   });
 
+  it('takes an omnibus only when it ends before the current work', () => {
+    const s = series('s', '4', [work('omni', '1-3'), work('d', '4')]);
+    expect(prev([s], 'd').map((w) => w.id)).toEqual(['omni']);
+    // Book 2 is inside "1-3": catching up on the omnibus would spoil it.
+    const inside = series('s', '2', [work('omni', '1 - 3'), work('a', '1'), work('b', '2')]);
+    expect(prev([inside], 'b').map((w) => w.id)).toEqual(['a']);
+  });
+
   it('excludes entries whose position does not parse', () => {
     const s = series('s', '3', [work('a', '1'), work('bonus', 'novella')]);
     expect(prev([s], 'zzz').map((w) => w.id)).toEqual(['a']);

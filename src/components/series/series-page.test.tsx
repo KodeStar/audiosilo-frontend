@@ -153,6 +153,16 @@ describe('SeriesPage, local series', () => {
     expect(mockQueue).toHaveBeenCalledWith(1, lw.rel_path);
   });
 
+  it('numbers an omnibus "1-3" and draws no ghosts for the books it holds', async () => {
+    const omnibus = book('The First Trilogy', 1, { series_index_end: 3 });
+    mockBooks = loaded([ng, omnibus]);
+    await render(<SeriesPage libraryId={1} name="The Expanse" />);
+    expect(screen.getAllByText('1-3').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Book 2, Not in your library' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Book 3, Not in your library' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Book 4, Not in your library' })).toBeTruthy();
+  });
+
   // HORIZONTAL_SCROLLER: on native a growing row would swallow the column under it.
   it('keeps the bookcase to its own height (no native flex-grow)', async () => {
     mockBooks = loaded([lw, cw, ng]);

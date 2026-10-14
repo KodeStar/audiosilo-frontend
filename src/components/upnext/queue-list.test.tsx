@@ -53,6 +53,11 @@ describe('entryCaption', () => {
     expect(entryCaption(entry('D', { series: 'S' }), index, t)).toBe('S · Finished');
     expect(entryCaption(entry('E'), none, t)).toBe('');
   });
+
+  it('numbers an omnibus by its range', () => {
+    const omnibus = entry('O', { series: 'The Expanse', series_index: 1, series_index_end: 3 });
+    expect(entryCaption(omnibus, progressIndex([]), t)).toBe('The Expanse · 1-3');
+  });
 });
 
 describe('QueueList', () => {

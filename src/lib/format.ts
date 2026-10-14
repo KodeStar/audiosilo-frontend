@@ -1,5 +1,6 @@
 import { getLocale } from '@/i18n/locale';
 import { parseHhMm } from '@/lib/hhmm';
+import { seriesNumber } from '@/lib/series-position';
 
 /** "12h 30m" / "45m" / "30s" - compact total-duration label. */
 export function formatDuration(seconds?: number): string {
@@ -295,11 +296,14 @@ export function bookSubtitle(opts: {
   author?: string;
   series?: string;
   seriesIndex?: number;
+  /** The end of a range position ("#1-3"). */
+  seriesIndexEnd?: number;
 }): string {
   const parts: string[] = [];
   if (opts.author) parts.push(opts.author);
   if (opts.series) {
-    parts.push(opts.seriesIndex ? `${opts.series} #${opts.seriesIndex}` : opts.series);
+    const number = seriesNumber(opts.seriesIndex, opts.seriesIndexEnd);
+    parts.push(number ? `${opts.series} #${number}` : opts.series);
   }
   return parts.join(' · ');
 }

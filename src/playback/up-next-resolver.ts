@@ -1,6 +1,7 @@
 import type { Book, BookRef, Capabilities, FsEntry, NextBook, QueueEntry } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
+import { bookSeriesNumber, railPositionLabel } from '@/lib/series-position';
 
 // What plays after a finished book: ONE answer for every end-of-book surface (the end
 // credits' Play now and countdown, the background auto-play in `BookEndedListener`).
@@ -72,9 +73,11 @@ export function entryHolds(entry: BookRef, libraryId: number, path: string): boo
   );
 }
 
-/** A series position as shown ("3", "2.5"), or undefined when the book has none. */
-function seriesPosition(index: number | undefined): string | undefined {
-  return index && index > 0 ? String(index) : undefined;
+/** A book's series position as shown ("3", "2.5", "1-3"), or undefined when it has none. */
+function seriesPosition(
+  book: { series_index?: number; series_index_end?: number } | undefined,
+): string | undefined {
+  return (book && bookSeriesNumber(book)) || undefined;
 }
 
 function seriesOf(name: string | undefined, position: string | undefined) {
@@ -107,7 +110,7 @@ function fromQueue(connectionId: string, entry: QueueEntry): UpNextBook {
     duration: book?.duration ?? 0,
     book,
     source: 'queue',
-    series: seriesOf(book?.series, seriesPosition(book?.series_index)),
+    series: seriesOf(book?.series, seriesPosition(book)),
     queueEntry: { library_id: entry.library_id, path: entry.path },
   };
 }
@@ -116,7 +119,7 @@ function fromServer(connectionId: string, answer: NextBook): UpNextAnswer {
   const work = answer.work;
   const unplaced =
     work && !work.local
-      ? { title: work.title, position: work.position, webUrl: work.web_url }
+      ? { title: work.title, position: railPositionLabel(work.position), webUrl: work.web_url }
       : undefined;
   const next = answer.next;
   if (!next) return { next: null, unplaced };
@@ -124,8 +127,8 @@ function fromServer(connectionId: string, answer: NextBook): UpNextAnswer {
   // A community answer names its place on the rail; a local series one its index.
   const position =
     answer.source === 'community' && work?.local
-      ? work.position || seriesPosition(book?.series_index)
-      : seriesPosition(book?.series_index);
+      ? railPositionLabel(work.position) || seriesPosition(book)
+      : seriesPosition(book);
   return {
     next: {
       connectionId,
@@ -151,7 +154,7 @@ function fromFolder(connectionId: string, libraryId: number, entry: FsEntry): Up
     author: entry.author ?? '',
     duration: entry.duration ?? 0,
     source: 'folder',
-    series: seriesOf(entry.series, seriesPosition(entry.series_index)),
+    series: seriesOf(entry.series, seriesPosition(entry)),
   };
 }
 

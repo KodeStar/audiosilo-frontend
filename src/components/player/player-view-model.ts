@@ -1,5 +1,6 @@
 import type { CoverColor } from '@/api/types';
 import { layoutFor, type LayoutClass } from '@/lib/layout';
+import { bookSeriesNumber } from '@/lib/series-position';
 
 /**
  * The full player's pure rules (STYLEGUIDE section 8, "Full player"): which layout a
@@ -44,17 +45,17 @@ export function phoneCoverSize(width: number, slotHeight: number): number {
 /** The line under "Playing from <server>": the book's place in its series, else its
  * library, else nothing. */
 export type PlayerContext =
-  { kind: 'series'; series: string; position?: number } | { kind: 'library'; name: string } | null;
+  { kind: 'series'; series: string; position?: string } | { kind: 'library'; name: string } | null;
 
 export function playerContext(
-  book: { series?: string; series_index?: number } | undefined,
+  book: { series?: string; series_index?: number; series_index_end?: number } | undefined,
   libraryName: string | undefined,
 ): PlayerContext {
   if (book?.series) {
     return {
       kind: 'series',
       series: book.series,
-      position: book.series_index && book.series_index > 0 ? book.series_index : undefined,
+      position: bookSeriesNumber(book) || undefined,
     };
   }
   return libraryName ? { kind: 'library', name: libraryName } : null;

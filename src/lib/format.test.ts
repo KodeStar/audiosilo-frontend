@@ -270,6 +270,12 @@ describe('bookSubtitle', () => {
     expect(bookSubtitle({ author: 'Brandon Sanderson' })).toBe('Brandon Sanderson');
   });
 
+  it('shows a range as "Series #<start>-<end>"', () => {
+    expect(bookSubtitle({ series: 'Cradle', seriesIndex: 1, seriesIndexEnd: 3 })).toBe(
+      'Cradle #1-3',
+    );
+  });
+
   it('inlines the series index as "Series #<index>"', () => {
     expect(bookSubtitle({ series: 'Cradle', seriesIndex: 2 })).toBe('Cradle #2');
   });
