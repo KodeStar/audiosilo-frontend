@@ -108,6 +108,34 @@ describe('parsePairingScan with home and away addresses', () => {
   });
 });
 
+describe("parsePairingScan with the server's id", () => {
+  it('reads sid= from both link carriers', () => {
+    expect(parsePairingScan('https://h:8080/web/connect?token=t&sid=Ab_9-x')).toEqual({
+      base: 'https://h:8080',
+      token: 't',
+      serverId: 'Ab_9-x',
+    });
+    expect(
+      parsePairingScan('audiosilo://connect?server=https%3A%2F%2Fh%3A8080&token=t&sid=Ab_9-x')
+        ?.serverId,
+    ).toBe('Ab_9-x');
+  });
+
+  it('drops a blank or malformed sid, and the link pairs without it', () => {
+    expect(parsePairingScan('https://h/web/connect?token=t&sid=')).toEqual({
+      base: 'https://h',
+      token: 't',
+    });
+    expect(parsePairingScan('https://h/web/connect?token=t&sid=%20%20')).not.toHaveProperty(
+      'serverId',
+    );
+    expect(parsePairingScan('https://h/web/connect?token=t&sid=%E0%A4%A')).toEqual({
+      base: 'https://h',
+      token: 't',
+    });
+  });
+});
+
 describe('hostOf', () => {
   it('is the host and port, without the scheme or a path', () => {
     expect(hostOf('https://books.example.com:8443/base')).toBe('books.example.com:8443');

@@ -333,6 +333,7 @@
       "pairingRefused": "Este enlace de vinculación ha caducado o ya se usó. Pide uno nuevo o introduce tu código de invitación en la pantalla de inicio de sesión.",
       "pairingServerError": "El servidor no pudo completar la vinculación. Inténtalo de nuevo o introduce tu código de invitación en la pantalla de inicio de sesión.",
       "pairingReachError": "No se pudo contactar con el servidor para completar la vinculación.",
+      "pairingReachSelfSigned": "No se pudo contactar con el servidor. Si usa su propio certificado (autofirmado), actualiza el servidor o conéctate desde la red de casa.",
       "demoError": "No se pudo iniciar la demostración: {{message}}",
       "demoReachError": "No se pudo contactar con el servidor de demostración.",
       "tryDemo": "Probar la demostración",
@@ -373,6 +374,7 @@
       "unreachable": "No se pudo conectar con {{address}}",
       "hint": "Revisa cómo está escrito y que el servidor esté en línea. Una dirección de casa como 192.168.1.20:8080 solo funciona en la misma red que el servidor.",
       "homeHint": "Es una dirección de la red de casa, así que solo responde en la misma red que el servidor. Comprueba que este dispositivo está en esa red, y cómo está escrita.",
+      "selfSignedHint": "Si el servidor usa su propio certificado (autofirmado), actualízalo o, en la red de casa, escribe su dirección sin https://.",
       "errorTitle": "El servidor respondió con un error",
       "errorBody": "Mensaje: {{message}}"
     },

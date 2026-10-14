@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 
+import { setAddressPick } from '@/api/address-route';
 import type { AuthSession, ServerAddresses } from '@/api/types';
 import { KIDS_PATH } from '@/components/kids/kids-model';
 import { connectForNewProfile, mayAddPerson } from '@/components/profiles/connect-intent';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import i18n from '@/i18n';
 import { isKidAccount } from '@/lib/account';
-import { priorConnection } from '@/lib/connection-id';
+import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
 import { mergeAddresses } from '@/lib/server-address';
 import {
@@ -43,7 +44,12 @@ export function readyHref(connectionId: string) {
  * Both arrive cleaned (the pairing parser, the client). `name` is the server's own
  * name when the flow knows it (the probe, the redeem payload), so a connection made by a
  * link is not named after its host. `reconnectId` is the connection the reconnect banner
- * started this for.
+ * started this for. `answeredAt` is one of the connection's own addresses that answered
+ * for this sign-in when it isn't `serverUrl` (a pairing link's plain-http home, after its
+ * https base could not connect): it becomes the connection's address pick before anything
+ * else is sent, so the first requests go where the server answers; the address runner
+ * checks it as for any home pick (and leaves it on another network). It is never stored as
+ * the connection's `serverUrl`, the address used when home is not an option.
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -51,6 +57,7 @@ export async function finishConnect(input: {
   linkAddresses?: ServerAddresses;
   name?: string;
   reconnectId?: string;
+  answeredAt?: string;
 }): Promise<string> {
   const serverId = input.session.server_id;
   // The connections first, when they never loaded (a failed session read leaves the
@@ -98,6 +105,11 @@ export async function finishConnect(input: {
   if ((newPerson || (!existing && replaced === undefined)) && !mayAddPerson()) {
     throw new Error(i18n.t('profiles.add.chooseAdult'));
   }
+  // The address that answered is the pick BEFORE the session is stored: storing it tells
+  // every store at once (and the screens render), so nothing goes to `serverUrl` first.
+  // Under the id `setSession` gives the connection (the prior one's, else `connectionIdOf`).
+  const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
+  if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,
     serverId,
@@ -106,6 +118,10 @@ export async function finishConnect(input: {
     ...(input.name ? { name: input.name } : {}),
     addresses: plan.addresses,
     retire,
+  }).catch((e: unknown) => {
+    // Nothing was stored: a new connection's pick goes with it.
+    if (input.answeredAt && !existing) setAddressPick(pickId, null);
+    throw e;
   });
   await placeSignedIn(id, hadProfile?.id ?? null, newPerson);
   // A kid's account signed in for the first time on this device starts in kids mode (a

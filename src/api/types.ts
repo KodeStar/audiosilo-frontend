@@ -200,7 +200,8 @@ export type PairingPayload = {
   uses_remaining?: number;
   /** The server's home and away addresses (capability `addresses`; omitted when it has
    * neither, and by older servers). The `uri` and `web_url` links carry them too, as
-   * `home=` and `away=` params (`parsePairingScan`). */
+   * `home=` and `away=` params, and the server's `server_id` as `sid=` (newer servers;
+   * `parsePairingScan` reads all three). */
   addresses?: ServerAddresses;
 };
 

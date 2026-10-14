@@ -1,5 +1,7 @@
+import { ApiError, TimeoutError } from '@/api/client';
 import type { PeopleList, Progress } from '@/api/types';
 import { serverIdOf } from '@/lib/connection-id';
+import type { PairingScan } from '@/lib/pairing';
 
 import {
   httpFallback,
@@ -8,12 +10,15 @@ import {
   knownToOffer,
   latestPlace,
   looksLikeHomeAddress,
+  pairingFallback,
   readyLine,
   reconnectAddress,
   repairPlan,
   revealOffset,
   revealSpan,
   scanParams,
+  selfSignedMayBeWhy,
+  withFallback,
 } from './connect-model';
 
 const HOME = 'http://192.168.1.20:8080';
@@ -200,10 +205,152 @@ describe('revealSpan', () => {
   });
 });
 
+describe('pairingFallback', () => {
+  const BASE = 'https://192.168.1.205:8080';
+  const SAME_HOST = 'http://192.168.1.205:8080';
+  const SID = 'srv-home';
+  const link = (home?: string, base = BASE, serverId = SID): PairingScan => ({
+    base,
+    token: 'tok',
+    ...(home ? { addresses: { home } } : {}),
+    ...(serverId ? { serverId } : {}),
+  });
+  const down = new TypeError('Network request failed');
+  // Home answers as `answers` (null: no answer); records what was asked.
+  const probeAs = (answers: string | null) => {
+    const asked: string[] = [];
+    const probe = async (url: string) => {
+      asked.push(url);
+      return answers;
+    };
+    return { asked, probe };
+  };
+  const fallback = (scan: PairingScan, error: unknown = down) =>
+    pairingFallback(scan, error, probeAs(SID).probe);
+
+  it("falls back to the link's plain-http home on the base's own host and port, as its server", async () => {
+    const { asked, probe } = probeAs(SID);
+    await expect(pairingFallback(link(SAME_HOST), down, probe)).resolves.toBe(SAME_HOST);
+    expect(asked).toEqual([SAME_HOST]);
+    await expect(fallback(link('http://NAS.local:8080', 'https://nas.local:8080'))).resolves.toBe(
+      'http://NAS.local:8080',
+    );
+    await expect(fallback(link('http://[fd00::5]:8080', 'https://[fd00::5]:8080'))).resolves.toBe(
+      'http://[fd00::5]:8080',
+    );
+  });
+
+  it('never when home answers as another server, or not at all', async () => {
+    const other = probeAs('srv-other');
+    await expect(pairingFallback(link(SAME_HOST), down, other.probe)).resolves.toBeNull();
+    expect(other.asked).toEqual([SAME_HOST]);
+    await expect(pairingFallback(link(SAME_HOST), down, probeAs(null).probe)).resolves.toBeNull();
+  });
+
+  it("never without the server's id in the link (an older server), and then asks nothing", async () => {
+    const { asked, probe } = probeAs(SID);
+    await expect(pairingFallback(link(SAME_HOST, BASE, ''), down, probe)).resolves.toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  it('never sends the token to a host or port the base did not name, and asks it nothing', async () => {
+    const { asked, probe } = probeAs(SID);
+    for (const scan of [
+      link('http://192.168.1.99:8080'),
+      link('http://192.168.1.205:8081'),
+      link('http://evil.example:8080'),
+      // No port named: https means 443 and http means 80, two different ports.
+      link('http://nas.local', 'https://nas.local'),
+    ]) {
+      await expect(pairingFallback(scan, down, probe)).resolves.toBeNull();
+    }
+    expect(asked).toEqual([]);
+  });
+
+  it('only from an https base to a plain-http home', async () => {
+    await expect(fallback(link('https://192.168.1.205:8080'))).resolves.toBeNull();
+    await expect(fallback(link(SAME_HOST, SAME_HOST))).resolves.toBeNull();
+  });
+
+  it('not without a home address', async () => {
+    await expect(fallback(link())).resolves.toBeNull();
+    await expect(
+      fallback({ ...link(), addresses: { away: 'https://books.example' } }),
+    ).resolves.toBeNull();
+  });
+
+  it('not after a timeout: a host that never answered would only time out again', async () => {
+    await expect(fallback(link(SAME_HOST), new TimeoutError(15000))).resolves.toBeNull();
+  });
+});
+
+describe('withFallback', () => {
+  const ask = (answers: Record<string, unknown>) => {
+    const asked: string[] = [];
+    const attempt = async (base: string) => {
+      asked.push(base);
+      const a = answers[base];
+      if (a instanceof Error) throw a;
+      return a;
+    };
+    return { asked, attempt };
+  };
+  const down = new TypeError('Network request failed');
+
+  it('answers from the primary when it answers, without asking the fallback', async () => {
+    const { asked, attempt } = ask({ a: 1 });
+    await expect(withFallback('a', attempt, () => 'b')).resolves.toEqual({ answer: 1, base: 'a' });
+    expect(asked).toEqual(['a']);
+  });
+
+  it('asks the fallback once when the primary could not connect', async () => {
+    const { asked, attempt } = ask({ a: down, b: 2 });
+    await expect(withFallback('a', attempt, () => 'b')).resolves.toEqual({ answer: 2, base: 'b' });
+    expect(asked).toEqual(['a', 'b']);
+  });
+
+  it("never falls back after a server's own answer", async () => {
+    const refused = new ApiError(401, 'expired');
+    const { asked, attempt } = ask({ a: refused, b: 2 });
+    await expect(withFallback('a', attempt, () => 'b')).rejects.toBe(refused);
+    expect(asked).toEqual(['a']);
+  });
+
+  it("reports the fallback's server answer, else the primary's error", async () => {
+    const boom = new ApiError(500, 'boom');
+    await expect(withFallback('a', ask({ a: down, b: boom }).attempt, () => 'b')).rejects.toBe(
+      boom,
+    );
+    await expect(
+      withFallback('a', ask({ a: down, b: new TypeError('also down') }).attempt, () => 'b'),
+    ).rejects.toBe(down);
+    await expect(withFallback('a', ask({ a: down }).attempt, () => null)).rejects.toBe(down);
+  });
+});
+
+describe('selfSignedMayBeWhy', () => {
+  const down = new TypeError('Network request failed');
+
+  it('for an https address on native that could not connect', () => {
+    expect(selfSignedMayBeWhy('https://192.168.1.205:8080', down, false)).toBe(true);
+    expect(selfSignedMayBeWhy('HTTPS://nas.local', down, false)).toBe(true);
+  });
+
+  it('never for plain http, the web, a timeout or a server that answered', () => {
+    expect(selfSignedMayBeWhy('http://192.168.1.205:8080', down, false)).toBe(false);
+    expect(selfSignedMayBeWhy('https://books.example', down, true)).toBe(false);
+    expect(selfSignedMayBeWhy('https://books.example', new TimeoutError(15000), false)).toBe(false);
+    expect(selfSignedMayBeWhy('https://books.example', new ApiError(500, 'boom'), false)).toBe(
+      false,
+    );
+  });
+});
+
 describe('httpFallback', () => {
   it('offers plain http for an address typed without a scheme', () => {
     expect(httpFallback('mac-studio-3.local:18571')).toBe('http://mac-studio-3.local:18571');
     expect(httpFallback(' 192.168.1.20:8080/ ')).toBe('http://192.168.1.20:8080');
+    expect(httpFallback('192.168.1.205:8080')).toBe('http://192.168.1.205:8080');
     expect(httpFallback('books.example.com/audiosilo')).toBe('http://books.example.com/audiosilo');
   });
 
@@ -369,12 +516,20 @@ describe('readyLine', () => {
   });
 });
 
-it('scanParams carries the addresses only when the code has them', () => {
+it("scanParams carries the addresses and the server's id only when the code has them", () => {
   expect(scanParams({ base: AWAY, token: 't' })).toEqual({ server: AWAY, token: 't' });
-  expect(scanParams({ base: AWAY, token: 't', addresses: { home: HOME, away: AWAY } })).toEqual({
+  expect(
+    scanParams({
+      base: AWAY,
+      token: 't',
+      addresses: { home: HOME, away: AWAY },
+      serverId: 'srv-1',
+    }),
+  ).toEqual({
     server: AWAY,
     token: 't',
     home: HOME,
     away: AWAY,
+    sid: 'srv-1',
   });
 });

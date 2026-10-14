@@ -333,6 +333,7 @@
       "pairingRefused": "Ce lien d'association a expiré ou a déjà été utilisé. Demandez-en un nouveau, ou saisissez votre code d'invitation sur l'écran de connexion.",
       "pairingServerError": "Le serveur n'a pas pu terminer l'association. Réessayez, ou saisissez votre code d'invitation sur l'écran de connexion.",
       "pairingReachError": "Impossible de joindre le serveur pour terminer l'association.",
+      "pairingReachSelfSigned": "Impossible de joindre le serveur. S'il utilise son propre certificat (auto-signé), mettez le serveur à jour ou connectez-vous depuis le réseau de la maison.",
       "demoError": "Impossible de démarrer la démo : {{message}}",
       "demoReachError": "Impossible de joindre le serveur de démonstration.",
       "tryDemo": "Essayer la démo",
@@ -373,6 +374,7 @@
       "unreachable": "Impossible de joindre {{address}}",
       "hint": "Vérifiez l'orthographe et que le serveur est en ligne. Une adresse à la maison comme 192.168.1.20:8080 ne fonctionne que sur le même réseau que le serveur.",
       "homeHint": "C'est une adresse du réseau de la maison : elle ne répond que sur le même réseau que le serveur. Vérifiez que cet appareil est sur ce réseau, et l'orthographe.",
+      "selfSignedHint": "Si le serveur utilise son propre certificat (auto-signé), mettez-le à jour ou, sur le réseau de la maison, saisissez son adresse sans https://.",
       "errorTitle": "Le serveur a répondu par une erreur",
       "errorBody": "Message : {{message}}"
     },

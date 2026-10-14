@@ -333,6 +333,7 @@
       "pairingRefused": "Esta ligação de emparelhamento expirou ou já foi usada. Pede uma nova, ou introduz o teu código de convite no ecrã de início de sessão.",
       "pairingServerError": "O servidor não conseguiu concluir o emparelhamento. Tenta de novo, ou introduz o teu código de convite no ecrã de início de sessão.",
       "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",
+      "pairingReachSelfSigned": "Não foi possível contactar o servidor. Se usar o seu próprio certificado (autoassinado), atualiza o servidor ou liga-te a partir da rede de casa.",
       "demoError": "Não foi possível iniciar a demonstração: {{message}}",
       "demoReachError": "Não foi possível contactar o servidor de demonstração.",
       "tryDemo": "Experimentar a demonstração",
@@ -373,6 +374,7 @@
       "unreachable": "Não foi possível chegar a {{address}}",
       "hint": "Confirma a escrita e que o servidor está online. Um endereço de casa como 192.168.1.20:8080 só funciona na mesma rede que o servidor.",
       "homeHint": "É um endereço da rede de casa, por isso só responde na mesma rede que o servidor. Confirma que este dispositivo está nessa rede, e a escrita.",
+      "selfSignedHint": "Se o servidor usar o seu próprio certificado (autoassinado), atualiza-o ou, na rede de casa, escreve o endereço sem https://.",
       "errorTitle": "O servidor respondeu com um erro",
       "errorBody": "Mensagem: {{message}}"
     },

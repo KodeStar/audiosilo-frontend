@@ -333,6 +333,7 @@
       "pairingRefused": "This pairing link has expired or was already used. Ask for a new one, or enter your invite code on the sign-in screen.",
       "pairingServerError": "The server couldn't finish pairing. Try again, or enter your invite code on the sign-in screen.",
       "pairingReachError": "Could not reach the server to finish pairing.",
+      "pairingReachSelfSigned": "Couldn't reach the server. If it uses its own (self-signed) certificate, update the server, or connect on your home network.",
       "demoError": "Could not start the demo: {{message}}",
       "demoReachError": "Could not reach the demo server.",
       "tryDemo": "Try the demo",
@@ -373,6 +374,7 @@
       "unreachable": "Couldn't reach {{address}}",
       "hint": "Check the spelling and that the server is online. A home address like 192.168.1.20:8080 only works on the same network as the server.",
       "homeHint": "This is a home-network address, so it only answers on the same network as the server. Check that this device is on that network, and the spelling.",
+      "selfSignedHint": "If the server uses its own (self-signed) certificate, update it, or on your home network enter its address without https://.",
       "errorTitle": "The server answered with an error",
       "errorBody": "It said: {{message}}"
     },

@@ -21,6 +21,7 @@ import {
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
 import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import { firstParam } from '@/lib/paths';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -30,6 +31,7 @@ import {
   knownToOffer,
   looksLikeHomeAddress,
   reconnectAddress,
+  selfSignedMayBeWhy,
 } from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
@@ -46,7 +48,7 @@ import { useLinkPairing } from './use-pairing';
  * link (web), and one-tap "Reconnect to <server>" rows for remembered servers.
  *
  * A pairing link or QR opens this screen with its `token` (and on native the `server` it
- * belongs to, and the server's `home` / `away` addresses when it has them): the token is
+ * belongs to, the server's `home` / `away` addresses when it has them, and its id `sid`): the token is
  * exchanged at once, with nothing to type.
  *
  * The player the server serves at `/web` (`servedOrigin`) asks nothing: it asks its own origin
@@ -57,11 +59,12 @@ import { useLinkPairing } from './use-pairing';
 export function ConnectStart() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away, profile } = useLocalSearchParams<{
+  const { token, server, home, away, sid, profile } = useLocalSearchParams<{
     token?: string;
     server?: string;
     home?: string;
     away?: string;
+    sid?: string;
     profile?: string;
   }>();
   // "Add someone" (Phase 8): a new person signs in, maybe on a server this device knows.
@@ -102,11 +105,18 @@ export function ConnectStart() {
       fail(t('connect.server.missingAddress'));
       return;
     }
-    void pair({ base, token, addresses: cleanAddresses({ home, away }) }).then((ok) => {
+    // Expo Router hands back a repeated param as a list (`firstParam`).
+    const serverId = firstParam(sid).trim();
+    void pair({
+      base,
+      token,
+      addresses: cleanAddresses({ home, away }),
+      ...(serverId ? { serverId } : {}),
+    }).then((ok) => {
       if (!ok) setUrl((u) => u || base);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, server, home, away, pair, fail]);
+  }, [token, server, home, away, sid, pair, fail]);
 
   // The served player: ask its own server who it is, once.
   useEffect(() => {
@@ -150,16 +160,16 @@ export function ConnectStart() {
       return false;
     }
     setBusy(tag);
+    // Typed without a scheme: plain http, tried once when https could not connect (not a
+    // server's error), as a server at home often serves only that.
+    const http = tag === 'manual' ? httpFallback(target) : null;
     try {
       let base = normalized;
       let info: ServerInfo;
       try {
         info = await new ApiClient(base).serverInfo();
       } catch (e) {
-        // Typed without a scheme, and https could not connect (not a server's error):
-        // try plain http once, as a server at home often serves only that.
-        const http = tag === 'manual' && !(e instanceof ApiError) ? httpFallback(target) : null;
-        if (!http) throw e;
+        if (!http || e instanceof ApiError) throw e;
         info = await new ApiClient(http).serverInfo().catch((e2: unknown) => {
           throw e2 instanceof ApiError ? e2 : e;
         });
@@ -186,6 +196,9 @@ export function ConnectStart() {
               kind: 'unreachable',
               address: hostOf(normalized),
               home: looksLikeHomeAddress(normalized),
+              // Only https was tried (no http retry) and a certificate the device can't
+              // trust may be why (`selfSignedMayBeWhy`).
+              tls: !http && selfSignedMayBeWhy(normalized, e, Platform.OS === 'web'),
             },
       );
       return false;

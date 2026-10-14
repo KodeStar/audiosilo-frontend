@@ -1,3 +1,4 @@
+import { ApiError, TimeoutError } from '@/api/client';
 import type { PeopleList, Progress, ServerAddresses } from '@/api/types';
 import { priorConnection, serverIdOf } from '@/lib/connection-id';
 import type { KnownServer } from '@/lib/known-servers';
@@ -10,7 +11,7 @@ import {
   type ServerIdProbe,
 } from '@/lib/server-address';
 import { isInProgress } from '@/lib/progress-view';
-import { isLoopbackHost } from '@/lib/url-host';
+import { isLoopbackHost, urlEndpoint } from '@/lib/url-host';
 
 /**
  * The connect flow's rules (onboarding: connect, sign in, "Your library is ready."),
@@ -158,6 +159,73 @@ export function httpFallback(typed: string): string | null {
   return normalizeUrl(`http://${raw}`) || null;
 }
 
+/**
+ * Ask `attempt` at `primary`; when that fails without a server answering (not an
+ * `ApiError`) and `fallback(error)` names another address, ask there once. Resolves the
+ * answer and the address that gave it. A failure at the fallback that isn't its server's
+ * own answer reports the primary's error, which says what the listener asked for.
+ */
+export async function withFallback<T>(
+  primary: string,
+  attempt: (base: string) => Promise<T>,
+  fallback: (error: unknown) => string | null | Promise<string | null>,
+): Promise<{ answer: T; base: string }> {
+  try {
+    return { answer: await attempt(primary), base: primary };
+  } catch (e) {
+    const alt = e instanceof ApiError ? null : await fallback(e);
+    if (!alt) throw e;
+    try {
+      return { answer: await attempt(alt), base: alt };
+    } catch (e2) {
+      throw e2 instanceof ApiError ? e2 : e;
+    }
+  }
+}
+
+/**
+ * Where to exchange a pairing link's token when its base could not connect (`withFallback`
+ * keeps a server's own answer from getting here): its `home` address, or null to give up.
+ * A server on its own (self-signed) certificate, which the device can't trust, also
+ * answers plain http to home-network devices on the same port, and its links carry that
+ * as `home=http://<host:port>` with its `sid=<server_id>`. The token would cross the
+ * network in the clear, so only to that server:
+ * - the base is https and the home address plain http on the base's own host and port
+ *   (no host the link's base didn't name);
+ * - the link names the server (`serverId`; an older server's link doesn't, and such a
+ *   server serves no home http anyway), and home, asked with no token (`probe`), answers
+ *   as exactly that server (another box can sit at the same address on another network);
+ * - not after a timeout: a host that never answered would only time out again on http.
+ */
+export async function pairingFallback(
+  scan: PairingScan,
+  error: unknown,
+  probe: ServerIdProbe,
+): Promise<string | null> {
+  const home = scan.addresses?.home;
+  if (!home || !scan.serverId || error instanceof TimeoutError) return null;
+  const base = urlEndpoint(scan.base);
+  const at = urlEndpoint(home);
+  if (base?.scheme !== 'https' || at?.scheme !== 'http') return null;
+  if (at.host !== base.host || at.port !== base.port) return null;
+  return (await probe(home)) === scan.serverId ? home : null;
+}
+
+/**
+ * Whether a certificate the device can't trust (a server on its own, self-signed one) may
+ * be why `base` could not connect: an https address that failed without its server
+ * answering and without timing out, on native. Not on the web (`web`), where the browser
+ * judges the certificate and an https page can't call http.
+ */
+export function selfSignedMayBeWhy(base: string, error: unknown, web: boolean): boolean {
+  return (
+    !web &&
+    /^https:\/\//i.test(base) &&
+    !(error instanceof ApiError) &&
+    !(error instanceof TimeoutError)
+  );
+}
+
 /** The remembered servers the connect screen offers to reconnect to: those this device
  * is not signed in to now. `serverIds` are the signed-in connections' servers
  * (`serverIdOf`), never their connection ids. */
@@ -291,12 +359,13 @@ export function readyLine(input: {
 }
 
 /** A scanned pairing code as `/connect` route params: its server, token, and the
- * server's home and away addresses when the code carries them. */
+ * server's home and away addresses and its id (`sid`) when the code carries them. */
 export function scanParams(scan: PairingScan): Record<string, string> {
   return {
     server: scan.base,
     token: scan.token,
     ...(scan.addresses?.home ? { home: scan.addresses.home } : {}),
     ...(scan.addresses?.away ? { away: scan.addresses.away } : {}),
+    ...(scan.serverId ? { sid: scan.serverId } : {}),
   };
 }

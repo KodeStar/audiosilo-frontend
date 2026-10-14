@@ -333,6 +333,7 @@
       "pairingRefused": "Dieser Kopplungslink ist abgelaufen oder wurde schon benutzt. Bitte um einen neuen oder gib deinen Einladungscode auf dem Anmeldebildschirm ein.",
       "pairingServerError": "Der Server konnte die Kopplung nicht abschließen. Versuch es noch einmal oder gib deinen Einladungscode auf dem Anmeldebildschirm ein.",
       "pairingReachError": "Der Server konnte nicht erreicht werden, um die Kopplung abzuschließen.",
+      "pairingReachSelfSigned": "Der Server konnte nicht erreicht werden. Wenn er ein eigenes (selbstsigniertes) Zertifikat nutzt, aktualisiere den Server oder verbinde dich im Heimnetz.",
       "demoError": "Die Demo konnte nicht gestartet werden: {{message}}",
       "demoReachError": "Der Demo-Server konnte nicht erreicht werden.",
       "tryDemo": "Demo ausprobieren",
@@ -373,6 +374,7 @@
       "unreachable": "{{address}} ist nicht erreichbar",
       "hint": "Prüfe die Schreibweise und ob der Server läuft. Eine Heimadresse wie 192.168.1.20:8080 funktioniert nur im selben Netzwerk wie der Server.",
       "homeHint": "Das ist eine Adresse im Heimnetz, sie antwortet nur im selben Netzwerk wie der Server. Prüfe, ob dieses Gerät in diesem Netzwerk ist, und die Schreibweise.",
+      "selfSignedHint": "Wenn der Server ein eigenes (selbstsigniertes) Zertifikat nutzt, aktualisiere ihn oder gib im Heimnetz seine Adresse ohne https:// ein.",
       "errorTitle": "Der Server hat mit einem Fehler geantwortet",
       "errorBody": "Meldung: {{message}}"
     },
