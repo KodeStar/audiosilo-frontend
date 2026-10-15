@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 import type { ReactElement, ReactNode } from 'react';
 import { Platform } from 'react-native';
 
@@ -138,6 +138,7 @@ jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 
 /* eslint-disable import/first */
+import { ADMIN, bridgeJob } from '@/testing/bridge-fixtures';
 import { playerStoreMock } from '@/testing/player-store-mock';
 import { useSession } from '@/stores/session';
 
@@ -503,14 +504,6 @@ describe('book page states', () => {
 });
 
 describe('book page Bridge (generated characters and recaps)', () => {
-  const ADMIN: User = {
-    id: 1,
-    username: 'admin',
-    role: 'admin',
-    disabled: false,
-    has_password: true,
-    has_recovery: false,
-  };
   const signIn = (user: User) =>
     useSession.setState({
       connections: [{ id: 'home', name: 'Hearthside', serverUrl: 'https://h', token: 't', user }],
@@ -622,35 +615,67 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByTestId('generate-action')).toBeNull();
   });
 
+  // Its Generate could send nothing once the person may not generate (the Bridge went
+  // offline: the flag is off), and it must not come back by itself afterwards.
+  it('closes the confirmation with the permission, and keeps it closed', async () => {
+    signIn(ADMIN);
+    bridgeOn();
+    mockMeta = { matched: false };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('generate-action'));
+    const lead = 'The Bridge reads The Way of Kings';
+    expect(screen.getByText(lead, { exact: false })).toBeTruthy();
+    await act(async () => {
+      signIn({ ...ADMIN, role: 'user' });
+    });
+    expect(screen.queryByText(lead, { exact: false })).toBeNull();
+    await act(async () => {
+      signIn(ADMIN);
+    });
+    expect(screen.queryByText(lead, { exact: false })).toBeNull();
+  });
+
   it('shows the running job where the action was', async () => {
     signIn(ADMIN);
     bridgeOn();
     mockMeta = { matched: false };
-    mockJobs = [
-      {
-        id: 4,
-        kind: 'sidecars.generate',
-        library_id: 1,
-        path: 'Author/Book',
-        params: {},
-        state: 'running',
-        progress: { step: 'fact_pass' },
-        result: null,
-        error: '',
-        requested_by: null,
-        priority: 0,
-        attempts: 1,
-        lease_until: null,
-        cancel_requested: false,
-        created_at: '2026-10-15T09:00:00Z',
-        updated_at: '2026-10-15T10:00:00Z',
-        claimed_at: null,
-        finished_at: null,
-      },
-    ];
+    mockJobs = [bridgeJob({ id: 4, progress: { step: 'fact_pass' } })];
     await mountAt('desktop');
     expect(screen.getByTestId('generate-status')).toBeTruthy();
     expect(screen.getByText('Reading for facts')).toBeTruthy();
     expect(screen.queryByTestId('generate-action')).toBeNull();
+  });
+
+  // A matched work keeps its community credit for what the community wrote (here its
+  // characters); the recaps generated on this server carry none of it.
+  it('credits the community under its own dimension only', async () => {
+    mockCaps = { metadata: true };
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = {
+      matched: true,
+      work: {
+        id: 'w',
+        title: 'The Way of Kings',
+        authors: [],
+        language: 'en',
+        characters,
+        recaps,
+        generated: { recaps: true },
+        attribution: {
+          credit: 'AudioSilo Meta community contributors',
+          license: 'CC BY-SA 4.0',
+          license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+          source_url: 'https://meta.audiosilo.app/work?id=w',
+        },
+      },
+      web_url: 'https://meta.audiosilo.app/work?id=w',
+    };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('book-tab-recaps'));
+    expect(screen.getByTestId('generated-mark')).toBeTruthy();
+    expect(screen.queryByText(/Community notes from/)).toBeNull();
+    await fireEvent.press(screen.getByTestId('book-tab-characters'));
+    expect(screen.queryByTestId('generated-mark')).toBeNull();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
   });
 });

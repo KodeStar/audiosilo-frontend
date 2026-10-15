@@ -13,23 +13,25 @@ import {
   DialogIcon,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ErrorNote } from '@/components/ui/query-state';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatUsd } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
 
-import { blockedReason, bridgeRefusalKey, queueOrder } from './bridge-model';
+import { blockedReason, bridgeRefusalKey, queueOrder, runEstimate } from './bridge-model';
 import type { GenerateModel } from './use-generate';
 
 /**
  * The confirmation before generating (Bridge Phase 1a): what the Bridge will read (the
- * ebook beside the audio, else the audio), the transcription time, the expected agent cost
- * (or "no estimate yet"; a subscription's note), where the results appear (always on this
- * server: the player never offers to contribute them), and, when earlier books of the
- * series have no recaps, a switch to queue those first (on by default). Generate is held
- * back, with the reason, while the Bridge can't write the library or its agent isn't
- * ready. The estimate is read afresh each time it opens.
+ * ebook beside the audio, else the audio), the transcription time and the expected agent
+ * cost of every run the button queues (or "no estimate yet"; a subscription's note), where
+ * the results appear (always on this server: the player never offers to contribute them),
+ * and, when earlier books of the series have no recaps, a switch to queue those first (on
+ * by default). Generate is held back, with the reason, while the Bridge can't write the
+ * library or its agent is known not to be ready. The estimate is read afresh each time it
+ * opens, and again on Retry after a failure.
  */
 export function GenerateDialog({ model, title }: { model: GenerateModel; title?: string }) {
   return (
@@ -48,6 +50,15 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
   const earlier = data?.earlier ?? [];
   const blocked = data ? blockedReason(data) : null;
   const books = queueOrder({ library_id: libraryId, path }, earlier, withEarlier);
+  // The figures quote every run the button queues (this book and the earlier ones).
+  const run = data ? runEstimate(data, withEarlier) : undefined;
+  const about = (value: string) =>
+    run && run.books > 1
+      ? t('bridge.generate.forBooks', {
+          count: run.books,
+          value: t('bridge.generate.about', { value }),
+        })
+      : t('bridge.generate.about', { value });
 
   const confirm = async () => {
     if (await model.queue(books)) model.setConfirming(false);
@@ -78,16 +89,18 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
           <Fact
             label={t('bridge.generate.transcription')}
             value={
-              data.source === 'ebook' || !(data.asr_hours > 0)
+              run?.asrHours === 0
                 ? t('bridge.generate.noTranscription')
-                : t('bridge.generate.about', { value: formatDuration(data.asr_hours * 3600) })
+                : typeof run?.asrHours === 'number'
+                  ? about(formatDuration(run.asrHours * 3600))
+                  : t('bridge.generate.noEstimate')
             }
           />
           <Fact
             label={t('bridge.generate.cost')}
             value={
-              typeof data.agent_cost_usd === 'number'
-                ? t('bridge.generate.about', { value: formatUsd(data.agent_cost_usd) })
+              typeof run?.costUsd === 'number'
+                ? about(formatUsd(run.costUsd))
                 : t('bridge.generate.noEstimate')
             }
             note={data.subscription ? t('bridge.generate.subscription') : undefined}
@@ -118,9 +131,13 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
           ) : null}
         </View>
       ) : estimate.isError ? (
-        <Text testID="generate-estimate-failed" variant="muted">
-          {t(bridgeRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
-        </Text>
+        // No automatic retry (`useBridgeEstimate`): the admin asks again from here.
+        <View testID="generate-estimate-failed">
+          <ErrorNote
+            message={t(bridgeRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
+            onRetry={() => void estimate.refetch()}
+          />
+        </View>
       ) : (
         <SkeletonText lines={4} className="py-1" />
       )}

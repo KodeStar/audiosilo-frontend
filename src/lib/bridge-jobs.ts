@@ -62,39 +62,3 @@ export function latestDone(jobs: readonly BridgeJob[] | undefined): BridgeJob | 
     SIDECARS_GENERATE,
   );
 }
-
-/** When a job finished, as the server says (`finished_at`, else its last update). */
-export function finishedAt(job: Pick<BridgeJob, 'finished_at' | 'updated_at'>): string {
-  return job.finished_at ?? job.updated_at;
-}
-
-/**
- * Whether a book's cached answers (its `/meta` and its item) are read again for the
- * finish of `job` (done): when this answer saw it turn done (`turned`, which needs no
- * clock), or when one of them was fetched before it finished (`fetchedAt`, each answer's
- * fetch time on the device clock, 0 for none yet). That is how the tabs appear when a job
- * ends, whether it ended while the page watched it or while it was closed (the metadata
- * is otherwise trusted for an hour). A device clock behind the server's makes every
- * answer look older than the finish, so the caller acts on each finish once.
- */
-export function staleAfterFinish(
-  job: Pick<BridgeJob, 'finished_at' | 'updated_at'>,
-  fetchedAt: readonly number[],
-  turned: boolean,
-): boolean {
-  if (turned) return true;
-  const at = Date.parse(finishedAt(job));
-  return Number.isFinite(at) && fetchedAt.some((t) => t > 0 && t < at);
-}
-
-/** Whether a `sidecars.generate` job open in `before` is `done` in `after` (two answers
- * of the same list): the transition seen as it happens. */
-export function turnedDone(
-  before: readonly BridgeJob[] | undefined,
-  after: readonly BridgeJob[],
-): boolean {
-  const open = new Set(
-    (before ?? []).filter((j) => j.kind === SIDECARS_GENERATE && isOpenJob(j)).map((j) => j.id),
-  );
-  return after.some((j) => j.state === 'done' && open.has(j.id));
-}

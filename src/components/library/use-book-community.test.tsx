@@ -93,4 +93,21 @@ describe('useBookCommunity', () => {
     const { result } = await renderHook(() => useBookCommunity(target));
     expect(result.current.loading).toBe(true);
   });
+
+  // The generate offer waits on this: a failed lookup (no answer, not loading) says
+  // nothing about what the community has, unlike a book /meta is never asked for.
+  it('knows what /meta says only once it answered, or when it is not asked', async () => {
+    mockMetadata = true;
+    mockBook = { asin: 'B0' };
+    mockMeta = undefined;
+    const failed = await renderHook(() => useBookCommunity(target));
+    expect(failed.result.current.loading).toBe(false);
+    expect(failed.result.current.metaKnown).toBe(false);
+    mockMeta = { matched: false };
+    const answered = await renderHook(() => useBookCommunity(target));
+    expect(answered.result.current.metaKnown).toBe(true);
+    mockBook = {};
+    const notAsked = await renderHook(() => useBookCommunity(target));
+    expect(notAsked.result.current.metaKnown).toBe(true);
+  });
 });

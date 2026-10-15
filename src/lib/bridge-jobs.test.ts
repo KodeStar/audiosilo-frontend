@@ -8,8 +8,6 @@ import {
   latestDone,
   latestJob,
   SIDECARS_GENERATE,
-  staleAfterFinish,
-  turnedDone,
 } from './bridge-jobs';
 
 const job = bridgeJob;
@@ -71,44 +69,5 @@ describe('latestDone', () => {
     expect(latestDone(jobs)?.id).toBe(3);
     expect(latestDone([job()])).toBeUndefined();
     expect(latestDone(undefined)).toBeUndefined();
-  });
-});
-
-describe('staleAfterFinish', () => {
-  const done = job({ state: 'done', finished_at: '2026-10-15T10:05:00Z' });
-  const before = Date.parse('2026-10-15T10:00:00Z');
-  const after = Date.parse('2026-10-15T11:00:00Z');
-
-  it('says an answer fetched before the job finished is stale', () => {
-    expect(staleAfterFinish(done, [before], false)).toBe(true);
-    expect(staleAfterFinish(done, [after, before], false)).toBe(true);
-  });
-
-  it('keeps answers fetched after the finish, and ignores ones never fetched', () => {
-    expect(staleAfterFinish(done, [after], false)).toBe(false);
-    expect(staleAfterFinish(done, [0], false)).toBe(false);
-    expect(staleAfterFinish(done, [], false)).toBe(false);
-  });
-
-  it('trusts a job seen turning done over the clocks', () => {
-    expect(staleAfterFinish(done, [after], true)).toBe(true);
-  });
-
-  it('falls back to updated_at without a finish time', () => {
-    const updated = job({ state: 'done', updated_at: '2026-10-15T10:30:00Z' });
-    expect(staleAfterFinish(updated, [before], false)).toBe(true);
-  });
-});
-
-describe('turnedDone', () => {
-  it('sees a generate job go from open to done between two answers', () => {
-    expect(turnedDone([job({ state: 'running' })], [job({ state: 'done' })])).toBe(true);
-  });
-
-  it('is false for a job already done, a new done job, a failure and no earlier answer', () => {
-    expect(turnedDone([job({ state: 'done' })], [job({ state: 'done' })])).toBe(false);
-    expect(turnedDone([], [job({ state: 'done' })])).toBe(false);
-    expect(turnedDone([job({ state: 'running' })], [job({ state: 'failed' })])).toBe(false);
-    expect(turnedDone(undefined, [job({ state: 'done' })])).toBe(false);
   });
 });

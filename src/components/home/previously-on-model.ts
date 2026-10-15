@@ -38,7 +38,8 @@ export type PreviouslyOnInput = {
   dismissed: boolean;
   /** The server's `metadata` capability (undefined while unknown). */
   metadata: boolean | undefined;
-  /** The work's community recaps (empty: unmatched, or none written). */
+  /** The work's recaps (`bookMetaWork`: the community's, or generated on this server;
+   * empty when there are none). */
   recaps: readonly BookMetaRecap[];
   /** The book's corrected chapter starts (`chapterStartsOf`), for the gate. */
   chapterStarts: readonly number[];

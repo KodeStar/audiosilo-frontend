@@ -1232,11 +1232,14 @@
       "confirm": "Générer",
       "confirmMany_one": "Générer {{count}} livre",
       "confirmMany_other": "Générer {{count}} livres",
+      "forBooks_one": "{{value}} pour {{count}} livre",
+      "forBooks_other": "{{value}} pour {{count}} livres",
       "queued": "En file d'attente. Les personnages et les résumés apparaîtront ici une fois terminé.",
       "queuedMany_one": "{{count}} livre en file d'attente, le plus ancien d'abord.",
       "queuedMany_other": "{{count}} livres en file d'attente, le plus ancien d'abord.",
       "queuedSome_one": "{{count}} livre sur {{total}} en file d'attente. Les autres n'ont pas pu l'être.",
       "queuedSome_other": "{{count}} livres sur {{total}} en file d'attente. Les autres n'ont pas pu l'être.",
+      "queuedRestFailed": "Ce livre n'est pas encore en file d'attente. Appuyez de nouveau sur Générer pour y mettre les autres.",
       "queueFailed": "Impossible de le mettre en file d'attente. Rien n'a été lancé."
     },
     "status": {
@@ -1250,6 +1253,7 @@
       "failedGeneric": "Le Bridge s'est arrêté sur une erreur.",
       "openConsole": "Ouvrez la console pour régler le problème.",
       "retryAt": "Il réessaiera tout seul à {{time}}.",
+      "retryOn": "Il réessaiera tout seul le {{day}} à {{time}}.",
       "tryAgain": "Réessayer",
       "cancelFailed": "Impossible d'annuler. Réessayez dans un instant."
     },
@@ -1269,7 +1273,8 @@
       "auditing": "Recherche d'erreurs et de spoilers",
       "fixing": "Correction de ce que la vérification a trouvé",
       "validating": "Validation des résultats",
-      "contributing": "Contribution à AudioSilo Meta",
+      "ready": "Prêt à enregistrer",
+      "contributing": "Enregistrement des personnages et des résumés",
       "extracting": "Lecture du livre numérique",
       "chapter_mapping": "Association des chapitres du livre numérique",
       "waiting": "En attente de son tour",

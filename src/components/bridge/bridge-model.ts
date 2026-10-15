@@ -143,6 +143,8 @@ const STAGES = [
   'auditing',
   'fixing',
   'validating',
+  'ready',
+  // Every run passes it (a local one only saves its results): worded as saving.
   'contributing',
   'extracting',
   'chapter_mapping',
@@ -166,9 +168,12 @@ export function stageOf(progress: { step?: string; stage?: string } | null | und
 /** The park codes the player names, grouped by what the admin would do about them. */
 const PARK_REASON: Readonly<Record<string, ParkReason>> = {
   agent_unavailable: 'agent',
+  agent_credential_refused: 'agent',
   agent_rate_limited: 'rateLimited',
   budget_exceeded: 'budget',
   book_not_writable: 'notWritable',
+  // The Bridge's own park when the library's mapping stops being writable mid-job.
+  library_not_writable: 'notWritable',
   asr_unavailable: 'asr',
   asr_decode_timeout: 'asr',
   media_tools_unavailable: 'mediaTools',
@@ -271,9 +276,58 @@ export function bridgeRefusalKey<F extends string>(error: unknown, fallback: F) 
 }
 
 /** Why Generate is held back, when it is: the Bridge can't write the library (its
- * results would have nowhere to go), or its agent isn't signed in. */
-export function blockedReason(e: Pick<BridgeEstimate, 'writable' | 'agent_ready'>) {
+ * results would have nowhere to go), or its agent is known not to be signed in. Without
+ * the Bridge's figures (`figures`) `agent_ready` is only a default, and the server queues
+ * the job anyway (it waits for the agent), so an unknown readiness holds nothing back. */
+export function blockedReason(e: Pick<BridgeEstimate, 'writable' | 'agent_ready' | 'figures'>) {
   if (!e.writable) return REFUSAL_KEY.library_not_writable;
-  if (!e.agent_ready) return 'bridge.generate.agentNotReady' as const;
+  if (e.figures === true && !e.agent_ready) return 'bridge.generate.agentNotReady' as const;
   return null;
+}
+
+/** A figure the estimate quotes, or null for none (null, missing or not a number). */
+function figure(v: number | null | undefined): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** What the confirmation quotes for a run (see `runEstimate`). */
+export type RunEstimate = {
+  /** How many books the run queues (this one and the earlier ones it takes first). */
+  books: number;
+  /** Transcription hours in all: 0 when none is needed (an ebook), null when not known. */
+  asrHours: number | null;
+  /** The agent cost in all; null when any book has no estimate. */
+  costUsd: number | null;
+};
+
+/**
+ * What generating would take in all: this book's figures plus each earlier book's that
+ * the confirmation queues first (`includeEarlier`, the books `queueOrder` adds), so the
+ * quote covers every run the button starts. An audio book's 0 transcription hours means
+ * "not known" (no figures, or the audio's length unknown), never "none"; an earlier book
+ * is always read from its audio.
+ */
+export function runEstimate(
+  e: Pick<
+    BridgeEstimate,
+    'library_id' | 'path' | 'source' | 'asr_hours' | 'agent_cost_usd' | 'earlier'
+  >,
+  includeEarlier: boolean,
+): RunEstimate {
+  const hoursOf = (v: number | undefined) => {
+    const h = figure(v);
+    return h !== null && h > 0 ? h : null;
+  };
+  let asrHours = e.source === 'ebook' ? 0 : hoursOf(e.asr_hours);
+  let costUsd = figure(e.agent_cost_usd);
+  const earlier = includeEarlier
+    ? e.earlier.filter((b) => !(b.library_id === e.library_id && b.path === e.path))
+    : [];
+  for (const b of earlier) {
+    const hours = hoursOf(b.asr_hours);
+    asrHours = asrHours === null || hours === null ? null : asrHours + hours;
+    const cost = figure(b.agent_cost_usd);
+    costUsd = costUsd === null || cost === null ? null : costUsd + cost;
+  }
+  return { books: earlier.length + 1, asrHours, costUsd };
 }

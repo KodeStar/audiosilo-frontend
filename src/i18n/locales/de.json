@@ -1232,11 +1232,14 @@
       "confirm": "Erstellen",
       "confirmMany_one": "{{count}} Buch erstellen",
       "confirmMany_other": "{{count}} Bücher erstellen",
+      "forBooks_one": "{{value}} für {{count}} Buch",
+      "forBooks_other": "{{value}} für {{count}} Bücher",
       "queued": "Eingereiht. Figuren und Rückblicke erscheinen hier, wenn es fertig ist.",
       "queuedMany_one": "{{count}} Buch eingereiht, das früheste zuerst.",
       "queuedMany_other": "{{count}} Bücher eingereiht, das früheste zuerst.",
       "queuedSome_one": "{{count}} von {{total}} Büchern eingereiht. Der Rest ließ sich nicht einreihen.",
       "queuedSome_other": "{{count}} von {{total}} Büchern eingereiht. Der Rest ließ sich nicht einreihen.",
+      "queuedRestFailed": "Dieses Buch ist noch nicht eingereiht. Tippe noch einmal auf Erstellen, um den Rest einzureihen.",
       "queueFailed": "Konnte nicht eingereiht werden. Es wurde nichts gestartet."
     },
     "status": {
@@ -1250,6 +1253,7 @@
       "failedGeneric": "Die Bridge hat mit einem Fehler aufgehört.",
       "openConsole": "Öffne die Konsole, um es zu beheben.",
       "retryAt": "Es versucht es um {{time}} von selbst erneut.",
+      "retryOn": "Es versucht es am {{day}} um {{time}} von selbst erneut.",
       "tryAgain": "Erneut versuchen",
       "cancelFailed": "Konnte nicht abgebrochen werden. Versuch es gleich noch einmal."
     },
@@ -1269,7 +1273,8 @@
       "auditing": "Prüft auf Fehler und Spoiler",
       "fixing": "Behebt, was die Prüfung fand",
       "validating": "Prüft die Ergebnisse",
-      "contributing": "Trägt zu AudioSilo Meta bei",
+      "ready": "Bereit zum Speichern",
+      "contributing": "Speichert Figuren und Rückblicke",
       "extracting": "Liest das E-Book",
       "chapter_mapping": "Ordnet die Kapitel des E-Books zu",
       "waiting": "Wartet, bis es an der Reihe ist",

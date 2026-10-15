@@ -18,14 +18,7 @@ import {
 import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 
-import {
-  bridgePollInterval,
-  finishedAt,
-  latestDone,
-  SIDECARS_GENERATE,
-  staleAfterFinish,
-  turnedDone,
-} from '@/lib/bridge-jobs';
+import { bridgePollInterval, latestDone, SIDECARS_GENERATE } from '@/lib/bridge-jobs';
 import { byPosition } from '@/lib/by-position';
 import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -46,6 +39,7 @@ import { noteError } from './reachability';
 import type {
   AddMemberBody,
   Book,
+  BookMeta,
   Bookmark,
   BookmarkLabel,
   BookmarkPatch,
@@ -362,10 +356,24 @@ export function chaptersQuery(cid: string, client: MaybeClient, libraryId: numbe
 /** How long community metadata stays fresh (the server caches it too). */
 export const META_STALE_MS = 60 * 60_000;
 
+/** How long an unmatched answer that carries a work (characters or recaps generated on
+ * this server) stays fresh. The server answers the same way when the community lookup
+ * FAILED for a book it would otherwise match (instead of a 502), and keeps that failure
+ * for 2 minutes: trusted for an hour, it would hide the book's community work that long. */
+export const META_GENERATED_ONLY_STALE_MS = 2 * 60_000;
+
+/** `bookMetaQuery`'s `staleTime`: the long one, but the short one for a generated-only
+ * answer (see `META_GENERATED_ONLY_STALE_MS`). */
+function metaStaleTime(query: { state: { data: BookMeta | undefined } }): number {
+  const meta = query.state.data;
+  return meta && !meta.matched && meta.work ? META_GENERATED_ONLY_STALE_MS : META_STALE_MS;
+}
+
 /** A book's community metadata envelope (capability `metadata`; `opts`, capability
- * `meta_bundle`, pick the request variant, each its own entry). Long `staleTime`, except
- * a `hideSpoilers` envelope, which is cut at the saved progress when it is fetched; no
- * retry (a 502 from a down meta service should render nothing, not spin). */
+ * `meta_bundle`, pick the request variant, each its own entry). Long `staleTime` (short
+ * for a generated-only answer, `metaStaleTime`), except a `hideSpoilers` envelope, which
+ * is cut at the saved progress when it is fetched; no retry (a 502 from a down meta
+ * service should render nothing, not spin). */
 export function bookMetaQuery(
   cid: string,
   client: MaybeClient,
@@ -379,7 +387,7 @@ export function bookMetaQuery(
       client && path.length > 0
         ? ({ signal }) => client.bookMeta(libraryId, path, signal, opts)
         : skipToken,
-    ...(opts?.hideSpoilers ? {} : { staleTime: META_STALE_MS }),
+    ...(opts?.hideSpoilers ? {} : { staleTime: metaStaleTime }),
     retry: false,
   });
 }
@@ -1995,37 +2003,42 @@ export function useHouseListening(connectionId?: string, opts: { enabled?: boole
 // an admin, the `sidecars` feature, `metadata`); a non-admin would get a 403. The writes
 // reject with a `CapabilityError`, sending nothing, without the flag.
 
-/** The job finishes each cache has read a book's answers again for (`refreshAfterFinish`),
- * so a device clock behind the server's can't make every later answer look stale. */
+/** The finished jobs each cache has read a book's answers again for
+ * (`refreshAfterFinish`): once per finish, not on every read of the jobs. */
 const finishesActedOn = new WeakMap<QueryClient, Set<string>>();
 
-/** After a book's jobs were read: when its newest generate job is done and the book's
- * cached `/meta` (every variant, under the job's own path) or item predates that finish,
- * read them again: the generated tabs appear, and the item's `generated` flag turns on
- * (the Generate offer then goes by itself). Once per finish. */
-function refreshAfterFinish(
-  qc: QueryClient,
-  cid: string,
-  before: readonly BridgeJob[] | undefined,
-  jobs: readonly BridgeJob[],
-) {
+/** Whether a cached item answer is the book at `path` (its own path): under that path,
+ * or under a part of it that the server answered with the book (the book page keys its
+ * item by the route's path, which can be a disc folder or a file of the book). */
+function isItemOf(query: Query, cid: string, libraryId: number, path: string): boolean {
+  const [kind, c, lib, p] = query.queryKey;
+  return (
+    kind === 'item' &&
+    c === cid &&
+    lib === libraryId &&
+    (p === path || (query.state.data as Book | undefined)?.rel_path === path)
+  );
+}
+
+/** After a book's jobs were read: the first time this cache sees its newest generate job
+ * done, read the book's `/meta` (every variant, under the job's own path) and its item
+ * (under any path that names it) again, and wait for them, so the generated tabs are in
+ * and the item's `generated` flag is on before the job's status goes (no Generate offer
+ * flashes back in between). Once per finish, and whatever the clocks say: nothing compares
+ * the device's fetch times with the server's finish, which need not agree. */
+async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly BridgeJob[]) {
   const job = latestDone(jobs);
   if (!job || job.library_id === null || job.path === null) return;
   let acted = finishesActedOn.get(qc);
   if (!acted) finishesActedOn.set(qc, (acted = new Set()));
-  const mark = `${cid}:${job.id}:${finishedAt(job)}`;
+  const mark = `${cid}:${job.id}`;
   if (acted.has(mark)) return;
   acted.add(mark);
-  const metaKey = qk.bookMeta(cid, job.library_id, job.path);
-  const itemKey = qk.item(cid, job.library_id, job.path);
-  const cache = qc.getQueryCache();
-  const fetchedAt = [
-    ...cache.findAll({ queryKey: metaKey }),
-    ...cache.findAll({ queryKey: itemKey, exact: true }),
-  ].map((q) => q.state.dataUpdatedAt);
-  if (!staleAfterFinish(job, fetchedAt, turnedDone(before, jobs))) return;
-  void qc.invalidateQueries({ queryKey: metaKey });
-  void qc.invalidateQueries({ queryKey: itemKey, exact: true });
+  const { library_id: libraryId, path } = job;
+  await Promise.all([
+    qc.invalidateQueries({ queryKey: qk.bookMeta(cid, libraryId, path) }),
+    qc.invalidateQueries({ predicate: (q) => isItemOf(q, cid, libraryId, path) }),
+  ]);
 }
 
 /**
@@ -2033,8 +2046,9 @@ function refreshAfterFinish(
  * carry), asked only while `enabled`. Polled (`bridgePollInterval`) only while a
  * `sidecars.generate` job of it is open and `active` (the surface on screen) with the app
  * in the foreground; the answer that sees the job end stops it. A finished job has the
- * book's `/meta` and item read again (`refreshAfterFinish`). `select` narrows what the
- * caller re-renders for (a poll that changes only the progress leaves it alone).
+ * book's `/meta` and item read again before its answer lands (`refreshAfterFinish`).
+ * `select` narrows what the caller re-renders for (a poll that changes only the progress
+ * leaves it alone).
  */
 export function useBridgeJobs<S = BridgeJob[]>(
   libraryId: number,
@@ -2048,9 +2062,8 @@ export function useBridgeJobs<S = BridgeJob[]>(
     'bridge',
     (c) => qk.bridgeJobs(c, libraryId, path),
     async (api, signal) => {
-      const before = qc.getQueryData<BridgeJob[]>(qk.bridgeJobs(cid, libraryId, path));
       const jobs = await api.bridgeJobs(libraryId, path, signal);
-      refreshAfterFinish(qc, cid, before, jobs);
+      await refreshAfterFinish(qc, cid, jobs);
       return jobs;
     },
     connectionId,
@@ -2076,12 +2089,14 @@ export function useBridgeEstimate(libraryId: number, path: string, connectionId?
   );
 }
 
-/** Put a job's answer into its book's job list (newest first), in place of the copy the
- * list holds, if any. */
+/** Put a job's answer into its book's job list (newest first): in place of the copy the
+ * list holds, else (a new job) at its head. */
 function storeJob(qc: QueryClient, cid: string, job: BridgeJob) {
   if (job.library_id === null || job.path === null) return;
-  return storeAnswer<BridgeJob[]>(qc, qk.bridgeJobs(cid, job.library_id, job.path), (cached) =>
-    cached ? [job, ...cached.filter((j) => j.id !== job.id)] : undefined,
+  return storeAnswer<BridgeJob[]>(
+    qc,
+    qk.bridgeJobs(cid, job.library_id, job.path),
+    (cached) => cached && (replaceRow(cached, job) ?? [job, ...cached]),
   );
 }
 

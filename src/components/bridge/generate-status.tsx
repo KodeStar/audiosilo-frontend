@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
-import { formatDuration, formatWallClock } from '@/lib/format';
+import { formatDuration, formatShortDay, formatWallClock, localIsoDay } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -41,23 +42,37 @@ function statusLine(t: TFunction, view: JobStatusView): string {
   }
 }
 
+/** When a parked job tries again by itself: the time when that is today, the day and the
+ * time when it is later (a monthly budget waits for the month to turn). A time already
+ * past promises nothing (the Bridge may be away): the console then. */
+function retryLine(t: TFunction, at: Date, now = new Date()): string {
+  if (at.getTime() <= now.getTime()) return t('bridge.status.openConsole');
+  const time = formatWallClock(at);
+  return localIsoDay(at) === localIsoDay(now)
+    ? t('bridge.status.retryAt', { time })
+    : t('bridge.status.retryOn', { day: formatShortDay(at), time });
+}
+
 /**
  * A book's generate job, compactly (where the action was: under the book page's actions,
  * or in the companion's empty Who's who and Story so far): the stage, "12 of 40", the time
  * left and Cancel while it runs; a short reason and "Open the console to fix it" while it
  * is parked (or when it tries again by itself); the error and Try again once it failed.
- * Nothing without such a job (`statusJob`). It reads the book's job list itself, polling
- * while `model.active`, so a poll re-renders only this.
+ * Nothing without such a job (`statusJob`), nor for someone who may not generate here
+ * (`model.allowed`: the Bridge offline included, when the cached job could no longer move
+ * and its buttons could send nothing). It reads the book's job list itself, polling while
+ * its screen is focused (read here, so a poll or a blur re-renders only this).
  */
 export function GenerateStatus({ model, className }: { model: GenerateModel; className?: string }) {
   const { connectionId, libraryId, path } = model.target;
+  const focused = useIsFocused();
   const { data: job } = useBridgeJobs(
     libraryId,
     path,
-    { enabled: model.allowed, active: model.active, select: statusJob },
+    { enabled: model.allowed, active: focused, select: statusJob },
     connectionId,
   );
-  return job ? <JobStatus job={job} model={model} className={className} /> : null;
+  return job && model.allowed ? <JobStatus job={job} model={model} className={className} /> : null;
 }
 
 /** One job's status (see `GenerateStatus`). Status is the words and the icon, never
@@ -126,9 +141,7 @@ function JobStatus({
       ) : null}
       {parked ? (
         <Text variant="caption">
-          {view.retryAt
-            ? t('bridge.status.retryAt', { time: formatWallClock(view.retryAt) })
-            : t('bridge.status.openConsole')}
+          {view.retryAt ? retryLine(t, view.retryAt) : t('bridge.status.openConsole')}
         </Text>
       ) : null}
     </View>

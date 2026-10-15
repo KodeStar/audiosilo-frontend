@@ -94,12 +94,13 @@ function Panel({
   onChapter?: () => void;
 }) {
   // An admin's "Generate characters and recaps" under the empty Who's who and Story so
-  // far (mounted only when the panel is empty).
+  // far (mounted only when the panel is empty). It waits for a real answer: an empty panel
+  // after a failed lookup says nothing about what the community has.
   const generate = (
     <GenerateOffer
       target={data.target}
       content={data}
-      metaKnown={data.status === 'ready' || data.status === 'none'}
+      metaKnown={data.metaKnown}
       title={data.title}
     />
   );

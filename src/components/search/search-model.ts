@@ -195,12 +195,14 @@ export function listeningIn(input: {
   });
 }
 
-/** A started book's community characters and how far the listener is in it. */
+/** A started book's characters (the community's, or generated on its server) and how far
+ * the listener is in it. */
 export type CharacterBook = {
   connectionId: string;
   libraryId: number;
   path: string;
-  /** The community work's title (what the character "is from"). */
+  /** The work's title (what the character "is from"): the community work's, or for
+   * characters generated for an unmatched book, the book's own. */
   title: string;
   listening: ListeningProgress;
   characters: readonly BookMetaCharacter[];

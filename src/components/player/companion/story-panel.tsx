@@ -11,6 +11,7 @@ import {
   SpoilerChip,
   summaryIsVisible,
 } from '@/components/library/book-meta';
+import { communityCredit } from '@/components/library/meta-gating';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text } from '@/components/ui/text';
 
@@ -117,7 +118,7 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
             <StoryPart key={`h-${r.scope ?? 'book'}-${r.through.chapter}`} recap={r} spoiler />
           ))
         : null}
-      <Attribution attribution={data.attribution} className="mt-1" />
+      <Attribution attribution={communityCredit(data, 'recaps')} className="mt-1" />
     </View>
   );
 }

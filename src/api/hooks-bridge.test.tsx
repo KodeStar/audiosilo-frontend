@@ -2,18 +2,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import type { ServerInfo } from '@/api/types';
+import type { BookMeta, ServerInfo } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // The Bridge hooks (Phase 1a): a book's jobs are asked only of a server with `bridge` and
-// only when the screen's gate lets them (`enabled`); a job that finished after the book's
-// /meta answer was fetched, or is seen turning done, has that answer read again (how the
-// generated tabs appear); a write without the flag sends nothing.
+// only when the screen's gate lets them (`enabled`); the first sight of a finished job
+// has the book's /meta and item read again, once (how the generated tabs appear); a write
+// without the flag sends nothing.
 function makeClient() {
   return {
     serverInfo: jest.fn<Promise<ServerInfo>, []>(),
     bridgeJobs: jest.fn(),
     queueBridgeJob: jest.fn(),
+    bookMeta: jest.fn<Promise<BookMeta>, []>(),
   };
 }
 const mockClients: Record<string, ReturnType<typeof makeClient>> = {};
@@ -31,7 +32,7 @@ jest.mock('@/playback/progress-sync', () => ({
 }));
 
 /* eslint-disable import/first */
-import { CapabilityError, qk, useBridgeJobs, useQueueBridgeJob } from '@/api/hooks';
+import { CapabilityError, qk, useBookMeta, useBridgeJobs, useQueueBridgeJob } from '@/api/hooks';
 import { bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
 /* eslint-enable import/first */
 
@@ -96,7 +97,10 @@ describe('useBridgeJobs', () => {
     expect(qc.getQueryState(META_KEY)?.isInvalidated).toBe(true);
   });
 
-  it('keeps a /meta answer fetched after the job finished', async () => {
+  // A device clock ahead of the server's makes an answer fetched just before the finish
+  // look newer than it: the first sight of a finished job reads it again whatever the
+  // clocks say.
+  it('reads /meta again on the first sight of a finished job, whatever the clocks say', async () => {
     const { qc } = await mount(bridgeServer(), () => null);
     qc.setQueryData(
       META_KEY,
@@ -110,7 +114,27 @@ describe('useBridgeJobs', () => {
       wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(qc.getQueryState(META_KEY)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(META_KEY)?.isInvalidated).toBe(true);
+  });
+
+  // The book page keys its item by the route's path, which can be a disc folder or a file
+  // of the book (the server answers it with the book): that item's `generated` flag is
+  // what asks /meta for a book with no ASIN or ISBN, so it is read again too.
+  it("reads the book's item again under a part path, and no other book's", async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const PART_KEY = qk.item('c1', 1, 'Author/Book/Disc 1');
+    const OTHER_KEY = qk.item('c1', 1, 'Author/Other');
+    qc.setQueryData(PART_KEY, { rel_path: 'Author/Book' });
+    qc.setQueryData(OTHER_KEY, { rel_path: 'Author/Other' });
+    mockClients.c1.bridgeJobs.mockResolvedValue([
+      bridgeJob({ state: 'done', finished_at: '2026-10-15T10:05:00Z' }),
+    ]);
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryState(PART_KEY)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(OTHER_KEY)?.isInvalidated).toBe(false);
   });
 
   it('reads /meta again when it sees the job turn done, whatever the clocks say', async () => {
@@ -160,8 +184,55 @@ describe('useBridgeJobs after a finish', () => {
     expect(qc.getQueryState(ITEM_KEY)?.isInvalidated).toBe(true);
   });
 
-  // A device clock behind the server's makes every later answer look older than the
-  // finish: it is acted on once, not on every read of the jobs.
+  // The status goes with the answer that has the job done: the book's /meta must be in by
+  // then, or the page would offer Generate again for a moment (nothing to show yet).
+  it("lands the finished answer only once the book's /meta was read again", async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    mockClients.c1.bookMeta.mockResolvedValueOnce({ matched: false });
+    mockClients.c1.bridgeJobs.mockResolvedValueOnce([bridgeJob({ state: 'running' })]);
+    const { result } = await renderHook(
+      () => ({ meta: useBookMeta(1, 'Author/Book', true), jobs: useJobsOf() }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+        ),
+      },
+    );
+    await waitFor(() => expect(result.current.meta.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.jobs.isSuccess).toBe(true));
+    const generated: BookMeta = {
+      matched: false,
+      work: {
+        id: '',
+        title: 'Book',
+        authors: [],
+        language: '',
+        recaps: [{ through: { chapter: 1 }, text: 'So far.' }],
+        generated: { recaps: true },
+      },
+    };
+    let answer: (meta: BookMeta) => void = () => {};
+    mockClients.c1.bookMeta.mockImplementationOnce(
+      () => new Promise<BookMeta>((resolve) => (answer = resolve)),
+    );
+    mockClients.c1.bridgeJobs.mockResolvedValueOnce(finished());
+    let refetch: Promise<unknown> = Promise.resolve();
+    await act(async () => {
+      refetch = result.current.jobs.refetch();
+    });
+    expect(mockClients.c1.bookMeta).toHaveBeenCalledTimes(2);
+    // /meta is still being read: the jobs keep their running answer meanwhile.
+    expect(result.current.jobs.data?.[0]?.state).toBe('running');
+    await act(async () => {
+      answer(generated);
+      await refetch;
+    });
+    expect(result.current.meta.data).toEqual(generated);
+    expect(result.current.jobs.data?.[0]?.state).toBe('done');
+  });
+
+  // Once per finish: every later read of the jobs still has the job done, and must not
+  // read the book's answers again each time.
   it('reads them again once per finish, whatever the clocks say', async () => {
     const { qc } = await mount(bridgeServer(), () => null);
     const early = { updatedAt: Date.parse('2026-10-15T10:00:00Z') };

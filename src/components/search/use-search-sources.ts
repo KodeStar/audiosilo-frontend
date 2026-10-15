@@ -12,7 +12,7 @@ import {
 } from '@/api/hooks';
 import { useApiRegistry } from '@/api/provider';
 import type { BookMeta, PeopleList, SeriesCount } from '@/api/types';
-import { LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
+import { communityCredit, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
 import { useLivePosition } from '@/components/player/use-listening-position';
 import { contentKey } from '@/lib/content-key';
 
@@ -134,12 +134,13 @@ export type CharacterSources = {
 };
 
 /**
- * The community characters of the listener's started books (`characterBooksToLoad`:
- * in progress and finished, newest first, capped), each with where the listener is in
- * that book (`listeningIn`: the saved place, the live one for the loaded book, over the
- * book's own chapters, which are only fetched for unfinished books that have
- * characters). `enabled` false fetches nothing. `refetchProgress` false reads the saved
- * places as cached (the palette: opening it must not refetch every server's progress).
+ * The characters (the community's, or generated on their server) of the listener's
+ * started books (`characterBooksToLoad`: in progress and finished, newest first, capped),
+ * each with where the listener is in that book (`listeningIn`: the saved place, the live
+ * one for the loaded book, over the book's own chapters, which are only fetched for
+ * unfinished books that have characters). `enabled` false fetches nothing.
+ * `refetchProgress` false reads the saved places as cached (the palette: opening it must
+ * not refetch every server's progress).
  */
 export function useCharacterSources(
   enabled: boolean,
@@ -163,8 +164,9 @@ export function useCharacterSources(
       return { ...bookMetaQuery(p.connectionId, client, p.library_id, p.path), enabled };
     }),
   });
-  const withCharacters = (meta: BookMeta | undefined) =>
-    !!meta?.matched && (meta.work.characters?.length ?? 0) > 0;
+  // The work every character surface reads (`bookMetaWork`): the matched one, or an
+  // unmatched book's characters generated on this server.
+  const withCharacters = (meta: BookMeta | undefined) => (meta?.work?.characters?.length ?? 0) > 0;
 
   const chapters = useQueries({
     queries: picks.map((p, i) => {
@@ -191,7 +193,8 @@ export function useCharacterSources(
       if (enabled && !meta.isError) pending = true;
       return;
     }
-    if (!meta.data.matched || !withCharacters(meta.data)) return;
+    const work = meta.data.work;
+    if (!work || !withCharacters(meta.data)) return;
     const ch = chapters[i];
     if (!p.finished && !ch.data && !ch.isError) pending = true;
     const loaded = live?.key === contentKey(p.connectionId, p.library_id, p.path);
@@ -199,14 +202,15 @@ export function useCharacterSources(
       connectionId: p.connectionId,
       libraryId: p.library_id,
       path: p.path,
-      title: meta.data.work.title,
+      title: work.title,
       listening: listeningIn({
         progress: p,
         chapters: ch.data,
         livePosition: loaded ? live?.position : undefined,
       }),
-      characters: meta.data.work.characters ?? [],
-      attribution: meta.data.work.attribution,
+      characters: work.characters ?? [],
+      // No community credit for characters generated on this server.
+      attribution: communityCredit(work, 'characters'),
     });
   });
 

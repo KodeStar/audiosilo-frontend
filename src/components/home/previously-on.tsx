@@ -9,6 +9,7 @@ import { ConnectionScope } from '@/api/provider';
 import { BookCover } from '@/components/library/book-cover';
 import { GeneratedMark } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
+import { communityCredit } from '@/components/library/meta-gating';
 import { useBookCommunity } from '@/components/library/use-book-community';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { selectIsLoaded } from '@/components/player/playing-target';
@@ -237,7 +238,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
                 : t('home.previouslyOn.spoilerSafeStart')}
             </Text>
             <GeneratedMark generated={work?.generated} dimension="recaps" />
-            <Attribution attribution={work?.attribution} tone="inverse" />
+            <Attribution attribution={communityCredit(work, 'recaps')} tone="inverse" />
           </View>
         </View>
       </View>

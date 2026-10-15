@@ -11,7 +11,7 @@ import {
 } from '@/components/library/book-meta';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
-import type { ListeningProgress } from '@/components/library/meta-gating';
+import { communityCredit, type ListeningProgress } from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import type { SeriesRail } from '@/components/library/series-rails';
 import { useCommunityCover } from '@/components/library/use-community-cover';
@@ -95,7 +95,7 @@ export function BookTabPanel({
             coverFor={coverFor}
           />
           {recaps.length > 0 || community.summaryVisible ? (
-            <Attribution attribution={work?.attribution} />
+            <Attribution attribution={communityCredit(work, 'recaps')} />
           ) : null}
         </View>
       );
@@ -113,7 +113,9 @@ export function BookTabPanel({
             previousBooks={community.previousBooks}
             coverFor={coverFor}
           />
-          {characters.length > 0 ? <Attribution attribution={work?.attribution} /> : null}
+          {characters.length > 0 ? (
+            <Attribution attribution={communityCredit(work, 'characters')} />
+          ) : null}
         </View>
       );
     }

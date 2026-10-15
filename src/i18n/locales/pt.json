@@ -1232,11 +1232,14 @@
       "confirm": "Gerar",
       "confirmMany_one": "Gerar {{count}} livro",
       "confirmMany_other": "Gerar {{count}} livros",
+      "forBooks_one": "{{value}} para {{count}} livro",
+      "forBooks_other": "{{value}} para {{count}} livros",
       "queued": "Na fila. Os personagens e resumos aparecem aqui quando terminar.",
       "queuedMany_one": "{{count}} livro na fila, o mais antigo primeiro.",
       "queuedMany_other": "{{count}} livros na fila, o mais antigo primeiro.",
       "queuedSome_one": "{{count}} de {{total}} livros na fila. Os outros não puderam entrar na fila.",
       "queuedSome_other": "{{count}} de {{total}} livros na fila. Os outros não puderam entrar na fila.",
+      "queuedRestFailed": "Este livro ainda não está na fila. Toque em Gerar de novo para colocar os outros na fila.",
       "queueFailed": "Não foi possível colocar na fila. Nada foi iniciado."
     },
     "status": {
@@ -1250,6 +1253,7 @@
       "failedGeneric": "O Bridge parou com um erro.",
       "openConsole": "Abra o console para resolver.",
       "retryAt": "Ele tenta de novo sozinho às {{time}}.",
+      "retryOn": "Ele tenta de novo sozinho em {{day}} às {{time}}.",
       "tryAgain": "Tentar novamente",
       "cancelFailed": "Não foi possível cancelar. Tente de novo daqui a pouco."
     },
@@ -1269,7 +1273,8 @@
       "auditing": "Procurando erros e spoilers",
       "fixing": "Corrigindo o que a verificação encontrou",
       "validating": "Validando os resultados",
-      "contributing": "Contribuindo com o AudioSilo Meta",
+      "ready": "Pronto para salvar",
+      "contributing": "Salvando personagens e resumos",
       "extracting": "Lendo o e-book",
       "chapter_mapping": "Associando os capítulos do e-book",
       "waiting": "Esperando a vez",

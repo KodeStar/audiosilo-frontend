@@ -1,6 +1,6 @@
 import { ApiError } from '@/api/client';
 import en from '@/i18n/locales/en.json';
-import { ADMIN, bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
+import { ADMIN, bridgeEstimate, bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
 
 import {
   blockedReason,
@@ -12,6 +12,7 @@ import {
   parkReason,
   queueInOrder,
   queueOrder,
+  runEstimate,
   stageOf,
   statusJob,
 } from './bridge-model';
@@ -82,6 +83,7 @@ describe('stage labels', () => {
     'auditing',
     'fixing',
     'validating',
+    'ready',
     'contributing',
     'extracting',
     'chapter_mapping',
@@ -97,6 +99,12 @@ describe('stage labels', () => {
     }
   });
 
+  // Every run passes the engine's contributing stage, a local one (all the player asks
+  // for) only saving its results: never worded as offering them to the community.
+  it('words the contributing stage as saving, not as contributing', () => {
+    expect(en.bridge.stage.contributing).not.toMatch(/AudioSilo Meta|contribut/i);
+  });
+
   it('reads the step first, then the engine stage, and an unknown one as Working', () => {
     expect(stageOf({ step: 'writing', stage: 'validating' })).toBe('writing');
     expect(stageOf({ stage: 'auditing' })).toBe('auditing');
@@ -110,7 +118,10 @@ describe('parkReason', () => {
   it('groups the park codes into reasons the player can say, and the rest as other', () => {
     expect(parkReason('agent_unavailable')).toBe('agent');
     expect(parkReason('budget_exceeded')).toBe('budget');
+    expect(parkReason('agent_credential_refused')).toBe('agent');
     expect(parkReason('book_not_writable')).toBe('notWritable');
+    // The Bridge's own park when the library stops being writable mid-job.
+    expect(parkReason('library_not_writable')).toBe('notWritable');
     expect(parkReason('ebook_no_chapters')).toBe('chapters');
     expect(parkReason('qa_no_converge')).toBe('review');
     expect(parkReason('core_needed')).toBe('core');
@@ -220,8 +231,22 @@ describe('statusJob and generateOffer', () => {
 describe('queueOrder and queueInOrder', () => {
   const current = { library_id: 1, path: 'Saga/Book 3' };
   const earlier = [
-    { library_id: 1, path: 'Saga/Book 1', title: 'Book 1', series_index: '1' },
-    { library_id: 1, path: 'Saga/Book 2', title: 'Book 2', series_index: '2' },
+    {
+      library_id: 1,
+      path: 'Saga/Book 1',
+      title: 'Book 1',
+      series_index: '1',
+      asr_hours: 1.5,
+      agent_cost_usd: 10,
+    },
+    {
+      library_id: 1,
+      path: 'Saga/Book 2',
+      title: 'Book 2',
+      series_index: '2',
+      asr_hours: 1.5,
+      agent_cost_usd: 10,
+    },
   ];
 
   it('queues the earlier books first, in reading order, then this one', () => {
@@ -280,13 +305,73 @@ describe('bridgeRefusalKey and blockedReason', () => {
     expect(bridgeRefusalKey(new Error('offline'), 'x.fallback')).toBe('x.fallback');
   });
 
-  it('holds Generate back for an unwritable library, then an agent not ready', () => {
+  it('holds Generate back for an unwritable library, then an agent known not ready', () => {
+    expect(blockedReason({ writable: false, agent_ready: false, figures: true })).toBe(
+      'bridge.generate.notWritable',
+    );
+    expect(blockedReason({ writable: true, agent_ready: false, figures: true })).toBe(
+      'bridge.generate.agentNotReady',
+    );
+    expect(blockedReason({ writable: true, agent_ready: true, figures: true })).toBeNull();
+  });
+
+  // Without the Bridge's figures agent_ready is only a default: the server queues the job
+  // anyway (it waits for the agent), so nothing is held back on a guess.
+  it('holds nothing back on an agent readiness that is not known', () => {
+    expect(blockedReason({ writable: true, agent_ready: false, figures: false })).toBeNull();
+    expect(blockedReason({ writable: true, agent_ready: false })).toBeNull();
     expect(blockedReason({ writable: false, agent_ready: false })).toBe(
       'bridge.generate.notWritable',
     );
-    expect(blockedReason({ writable: true, agent_ready: false })).toBe(
-      'bridge.generate.agentNotReady',
-    );
-    expect(blockedReason({ writable: true, agent_ready: true })).toBeNull();
+  });
+});
+
+describe('runEstimate (what the confirmation quotes)', () => {
+  const earlier = [
+    {
+      library_id: 1,
+      path: 'Saga/Book 1',
+      title: 'Book 1',
+      series_index: '1',
+      asr_hours: 1.5,
+      agent_cost_usd: 10,
+    },
+    {
+      library_id: 1,
+      path: 'Saga/Book 2',
+      title: 'Book 2',
+      series_index: '2',
+      asr_hours: 1.25,
+      agent_cost_usd: 8.5,
+    },
+  ];
+  const estimate = bridgeEstimate({ path: 'Saga/Book 3', earlier });
+
+  it('quotes every run the button queues: this book and the earlier ones', () => {
+    expect(runEstimate(estimate, true)).toEqual({ books: 3, asrHours: 5.25, costUsd: 34.5 });
+  });
+
+  it('quotes this book alone with the switch off, and never counts it twice', () => {
+    expect(runEstimate(estimate, false)).toEqual({ books: 1, asrHours: 2.5, costUsd: 16 });
+    const self = { ...earlier[0], path: 'Saga/Book 3' };
+    expect(runEstimate({ ...estimate, earlier: [self] }, true)).toEqual({
+      books: 1,
+      asrHours: 2.5,
+      costUsd: 16,
+    });
+  });
+
+  it('reads an audio book with no transcription figure as not known, never as none', () => {
+    expect(runEstimate(bridgeEstimate({ asr_hours: 0 }), false).asrHours).toBeNull();
+    expect(runEstimate(bridgeEstimate({ source: 'ebook', asr_hours: 0 }), false).asrHours).toBe(0);
+    // An earlier book is read from its audio: one without a figure makes the whole unknown.
+    const unknown = [{ ...earlier[0], asr_hours: 0 }];
+    expect(runEstimate({ ...estimate, earlier: unknown }, true).asrHours).toBeNull();
+  });
+
+  it('has no cost estimate when any book has none', () => {
+    expect(runEstimate(bridgeEstimate({ agent_cost_usd: null }), false).costUsd).toBeNull();
+    const unknown = [{ ...earlier[0], agent_cost_usd: null }];
+    expect(runEstimate({ ...estimate, earlier: unknown }, true).costUsd).toBeNull();
   });
 });

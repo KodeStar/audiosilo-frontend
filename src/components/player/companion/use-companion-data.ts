@@ -35,6 +35,9 @@ export type CompanionData = {
   generated?: BookMetaGenerated;
   /** The book's title, once its item is in (the generate confirmation names it). */
   title?: string;
+  /** What `/meta` says is in hand (`metaAnswered`): unlike `status`, whose `none` also
+   * covers a failed lookup, this is what the generate offer waits for. */
+  metaKnown: boolean;
   /** Where the listener is, for the gate: ONE whole-book position (the live one while
    * this book is loaded, never below the saved one) on the corrected chapter starts. */
   listening: ListeningProgress;
@@ -52,7 +55,8 @@ const NO_RECAPS: BookMetaRecap[] = [];
  */
 export function useCompanionData(target: PlayTarget): CompanionData {
   const { connectionId, libraryId, path } = target;
-  const { metadata, book, enabled, chapterStarts, work, loading } = useBookCommunity(target);
+  const { metadata, book, enabled, chapterStarts, work, metaKnown, loading } =
+    useBookCommunity(target);
   const { data: progress } = useBookProgress(libraryId, path, enabled, connectionId);
   const chapter = useListeningChapter(target, progress?.position, chapterStarts);
   const finished = !!progress?.finished;
@@ -74,6 +78,7 @@ export function useCompanionData(target: PlayTarget): CompanionData {
     attribution: work?.attribution,
     generated: work?.generated,
     title: book?.title,
+    metaKnown,
     listening,
   };
 }

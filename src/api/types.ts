@@ -510,9 +510,10 @@ export type ChaptersResponse = {
 // --- Enriched metadata (community meta service, via /libraries/{id}/meta) -----
 // The server resolves a book's asin/isbn against the community metadata API,
 // composes the envelope below, and caches it. Capability-gated (`metadata`), so a
-// client only ever asks a server that advertises it. `matched:false` (no ids or no
-// upstream match) and any transport failure both render nothing (progressive
-// enhancement). Hand-mirrored from the server's `internal/api` meta handler.
+// client only ever asks a server that advertises it. `matched:false` without a `work`
+// (no ids or no upstream match, and nothing generated on the server) and any transport
+// failure both render nothing (progressive enhancement). Hand-mirrored from the
+// server's `internal/api` meta handler.
 
 /** A person referenced by the metadata service (author or narrator). */
 export type MetaPersonRef = { id: string; name: string };
@@ -1203,8 +1204,8 @@ export type BridgeJob = {
   kind: string;
   /** Null for a job about no library. */
   library_id: number | null;
-  /** The book's own path (the server resolves a part path to it); null for a job about a
-   * whole library or none. */
+  /** The book's own path (`rel_path`: the admin routes take exactly that, and a part path
+   * is a 404); null for a job about a whole library or none. */
   path: string | null;
   params: SidecarsGenerateParams | Record<string, unknown> | null;
   state: BridgeJobState | (string & {});
@@ -1285,12 +1286,17 @@ export type SidecarsGenerateResult = {
 };
 
 /** An earlier book of the same series, in the same library, with no recaps yet (the
- * estimate's `earlier`, in reading order). */
+ * estimate's `earlier`, in reading order), with what generating it is expected to take
+ * (costed from its audio), so the confirmation can quote the whole run it queues. */
 export type BridgeEstimateBook = {
   library_id: number;
   path: string;
   title: string;
   series_index: string;
+  /** Transcription time; 0 when not known (no figures, or the audio's length unknown). */
+  asr_hours: number;
+  /** The expected agent cost; null when there is no estimate. */
+  agent_cost_usd: number | null;
 };
 
 /** What a book already has, per source (the estimate's `has`). */
@@ -1306,7 +1312,8 @@ export type BridgeEstimate = {
   /** The ebook's path, for an ebook run. */
   ebook?: string;
   duration_seconds: number;
-  /** Transcription time (0 for an ebook). */
+  /** Transcription time: 0 for an ebook, and for audio when it is not known (the Bridge
+   * sent no figures, or the audio's length is unknown). */
   asr_hours: number;
   /** The expected agent cost; null while the Bridge has no history to go on. */
   agent_cost_usd: number | null;
@@ -1314,9 +1321,15 @@ export type BridgeEstimate = {
   subscription: boolean;
   /** The agent container answers and has a credential. */
   agent_ready: boolean;
+  /** The Bridge has sent its figures: without them `agent_ready`, `subscription` and the
+   * costs are only defaults, so a false `agent_ready` means "not known", not "not ready".
+   * Absent on servers before it (read as not known). */
+  figures?: boolean;
   /** The library is mapped on the Bridge and writable there. */
   writable: boolean;
-  has: { community: BridgeContentFlags; local: BridgeContentFlags };
+  /** `community_unknown`: the community couldn't be asked just now, so `community` is no
+   * answer (never "none"); omitted otherwise. */
+  has: { community: BridgeContentFlags; local: BridgeContentFlags; community_unknown?: boolean };
   /** At most 10, reading order. */
   earlier: BridgeEstimateBook[];
   /** The open `sidecars.generate` job for this book, if there is one. */

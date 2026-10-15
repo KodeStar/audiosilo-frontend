@@ -1232,11 +1232,14 @@
       "confirm": "Generar",
       "confirmMany_one": "Generar {{count}} libro",
       "confirmMany_other": "Generar {{count}} libros",
+      "forBooks_one": "{{value}} para {{count}} libro",
+      "forBooks_other": "{{value}} para {{count}} libros",
       "queued": "En cola. Los personajes y resúmenes aparecerán aquí cuando termine.",
       "queuedMany_one": "{{count}} libro en cola, el más antiguo primero.",
       "queuedMany_other": "{{count}} libros en cola, el más antiguo primero.",
       "queuedSome_one": "{{count}} de {{total}} libros en cola. El resto no se pudo poner en cola.",
       "queuedSome_other": "{{count}} de {{total}} libros en cola. El resto no se pudo poner en cola.",
+      "queuedRestFailed": "Este libro aún no está en cola. Pulsa Generar de nuevo para poner en cola el resto.",
       "queueFailed": "No se pudo poner en cola. No se inició nada."
     },
     "status": {
@@ -1250,6 +1253,7 @@
       "failedGeneric": "El Bridge se detuvo con un error.",
       "openConsole": "Abre la consola para arreglarlo.",
       "retryAt": "Lo volverá a intentar solo a las {{time}}.",
+      "retryOn": "Lo volverá a intentar solo el {{day}} a las {{time}}.",
       "tryAgain": "Reintentar",
       "cancelFailed": "No se pudo cancelar. Inténtalo de nuevo en un momento."
     },
@@ -1269,7 +1273,8 @@
       "auditing": "Buscando errores y spoilers",
       "fixing": "Arreglando lo que encontró la revisión",
       "validating": "Validando los resultados",
-      "contributing": "Contribuyendo a AudioSilo Meta",
+      "ready": "Listo para guardar",
+      "contributing": "Guardando personajes y resúmenes",
       "extracting": "Leyendo el libro electrónico",
       "chapter_mapping": "Emparejando los capítulos del libro electrónico",
       "waiting": "Esperando su turno",

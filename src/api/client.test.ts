@@ -668,6 +668,8 @@ describe('ApiClient', () => {
         settle('next', c.nextBook(2, 'Saga/Book 2')),
         settle('previous', c.bookMeta(2, 'Saga/Book 2', undefined, { includePrevious: true })),
         settle('plain', c.bookMeta(2, 'Saga/Book 2')),
+        // The Bridge's estimate asks the community what the book and its series have.
+        settle('estimate', c.bridgeEstimate(2, 'Saga/Book 2', 'sidecars.generate')),
       ];
       await jest.advanceTimersByTimeAsync(15_000);
       expect(Object.keys(outcomes)).toEqual(['plain']);
@@ -675,6 +677,7 @@ describe('ApiClient', () => {
       await Promise.all(pending);
       expect(outcomes.next).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.previous).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
+      expect(outcomes.estimate).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.plain).toMatchObject({ name: 'TimeoutError', timeoutMs: 15_000 });
     } finally {
       jest.useRealTimers();
@@ -2045,13 +2048,22 @@ describe('ApiClient Bridge (admin, Phase 1a)', () => {
       agent_cost_usd: null,
       subscription: true,
       agent_ready: true,
+      figures: true,
       writable: true,
       has: {
         community: { characters: false, recaps: false },
         local: { characters: false, recaps: false },
+        community_unknown: true,
       },
       earlier: [
-        { library_id: 1, path: 'Author/Series/Book 1', title: 'Book 1', series_index: '1' },
+        {
+          library_id: 1,
+          path: 'Author/Series/Book 1',
+          title: 'Book 1',
+          series_index: '1',
+          asr_hours: 2.25,
+          agent_cost_usd: null,
+        },
       ],
       open_job: job,
     };

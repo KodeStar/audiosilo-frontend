@@ -1232,11 +1232,14 @@
       "confirm": "Generate",
       "confirmMany_one": "Generate {{count}} book",
       "confirmMany_other": "Generate {{count}} books",
+      "forBooks_one": "{{value}} for {{count}} book",
+      "forBooks_other": "{{value}} for {{count}} books",
       "queued": "Queued. Characters and recaps appear here when it's done.",
       "queuedMany_one": "Queued {{count}} book, earliest first.",
       "queuedMany_other": "Queued {{count}} books, earliest first.",
       "queuedSome_one": "Queued {{count}} of {{total}} books. The rest couldn't be queued.",
       "queuedSome_other": "Queued {{count}} of {{total}} books. The rest couldn't be queued.",
+      "queuedRestFailed": "This book isn't queued yet. Press Generate again to queue the rest.",
       "queueFailed": "Couldn't queue it. Nothing was started."
     },
     "status": {
@@ -1250,6 +1253,7 @@
       "failedGeneric": "The Bridge stopped with an error.",
       "openConsole": "Open the console to fix it.",
       "retryAt": "It tries again by itself at {{time}}.",
+      "retryOn": "It tries again by itself on {{day}} at {{time}}.",
       "tryAgain": "Try again",
       "cancelFailed": "Couldn't cancel it. Try again in a moment."
     },
@@ -1269,7 +1273,8 @@
       "auditing": "Checking for mistakes and spoilers",
       "fixing": "Fixing what the check found",
       "validating": "Validating the results",
-      "contributing": "Contributing to AudioSilo Meta",
+      "ready": "Ready to save",
+      "contributing": "Saving the characters and recaps",
       "extracting": "Reading the ebook",
       "chapter_mapping": "Matching the ebook's chapters",
       "waiting": "Waiting for its turn",

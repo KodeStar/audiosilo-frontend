@@ -26,7 +26,8 @@ export function bridgeJob(over: Partial<BridgeJob> = {}): BridgeJob {
   };
 }
 
-/** The estimate for a book with nothing yet, read from its audio. */
+/** The estimate for a book with nothing yet, read from its audio, from a Bridge that has
+ * sent its figures. */
 export function bridgeEstimate(over: Partial<BridgeEstimate> = {}): BridgeEstimate {
   return {
     kind: 'sidecars.generate',
@@ -38,6 +39,7 @@ export function bridgeEstimate(over: Partial<BridgeEstimate> = {}): BridgeEstima
     agent_cost_usd: 16,
     subscription: false,
     agent_ready: true,
+    figures: true,
     writable: true,
     has: {
       community: { characters: false, recaps: false },

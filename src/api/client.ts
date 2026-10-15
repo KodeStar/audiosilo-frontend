@@ -623,8 +623,10 @@ export class ApiClient {
   /** Enriched metadata for a book (description, series rail, meta links) resolved
    * server-side from its asin/isbn against the community metadata service. Only call
    * this when the server advertises the `metadata` capability. Returns
-   * `{ matched: false }` when the book has no ids or no upstream match; throws an
-   * `ApiError` (502) when the meta service is unreachable, so the caller can render
+   * `{ matched: false }` when the book has no ids or no upstream match, with a `work`
+   * when the book has characters or recaps generated on this server (then it is asked
+   * for a book with no ids too, `metaEnabledFor`); throws an `ApiError` (502) when the
+   * meta service is unreachable and nothing was generated, so the caller can render
    * nothing rather than block the page.
    *
    * `opts` needs the `meta_bundle` capability (an older server ignores both and
@@ -1176,11 +1178,14 @@ export class ApiClient {
   /** What generating `kind` for a book would take (the confirmation): its source, the
    * transcription hours, the expected agent cost, what the book already has, the earlier
    * books of its series without recaps and any open job. A 404 for no such book, a 409
-   * `kind_unavailable` when the Bridge doesn't offer the kind. */
+   * `kind_unavailable` when the Bridge doesn't offer the kind. What the book and the
+   * earlier ones have is asked of the community metadata service, so it gets the
+   * server's budget (`UPSTREAM_TIMEOUT_MS`). */
   bridgeEstimate(libraryId: number, path: string, kind: string, signal?: AbortSignal) {
     return this.request<BridgeEstimate>('GET', '/admin/bridge/estimate', {
       query: { library_id: libraryId, path, kind },
       signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
 

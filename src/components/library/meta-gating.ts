@@ -1,4 +1,13 @@
-import type { Book, BookFile, BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
+import type {
+  Book,
+  BookFile,
+  BookMeta,
+  BookMetaAttribution,
+  BookMetaCharacter,
+  BookMetaGenerated,
+  BookMetaRecap,
+  Chapter,
+} from '@/api/types';
 import { chapterBookOffset } from '@/playback/book-queue';
 
 /**
@@ -37,6 +46,32 @@ export function metaEnabledFor(
   book: Pick<Book, 'asin' | 'isbn' | 'generated'> | undefined,
 ): boolean {
   return metadata === true && !!(book?.asin || book?.isbn || book?.generated);
+}
+
+/**
+ * Whether what a book's `/meta` says is in hand, for a decision that depends on it (the
+ * Generate offer): the book is known and either `/meta` isn't asked for it (`enabled`,
+ * `metaEnabledFor`, false: nothing to wait for) or its answer has arrived. A failed
+ * lookup is no answer: the community may well have content the book just couldn't load.
+ */
+export function metaAnswered(
+  enabled: boolean,
+  book: object | undefined,
+  meta: BookMeta | undefined,
+): boolean {
+  return enabled ? meta !== undefined : book !== undefined;
+}
+
+/** The community's CC BY-SA credit for one of a work's dimensions: the work's
+ * `attribution`, unless that dimension was generated on this server (`work.generated`).
+ * A matched work keeps the credit for its community content while generated characters
+ * or recaps fill what it lacks, and generated content never carries the community's
+ * credit. */
+export function communityCredit(
+  work: { attribution?: BookMetaAttribution; generated?: BookMetaGenerated } | undefined,
+  dimension: 'characters' | 'recaps',
+): BookMetaAttribution | undefined {
+  return work?.generated?.[dimension] ? undefined : work?.attribution;
 }
 
 /** Nothing known about the listener's position (no saved progress). */

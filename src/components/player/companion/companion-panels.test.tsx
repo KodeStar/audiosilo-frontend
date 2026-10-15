@@ -57,6 +57,7 @@ const data = (over: Partial<CompanionData> = {}): CompanionData => ({
   recaps,
   summary: { in_short: 'The whole book, ending included.' },
   attribution,
+  metaKnown: true,
   listening: { chapter: 7, finished: false },
   ...over,
 });
@@ -191,6 +192,17 @@ describe('generated content in the companion', () => {
   it('never marks community content', async () => {
     await mount(<WhoPanel data={data()} />);
     expect(screen.queryByText('Generated on this server')).toBeNull();
+  });
+
+  // A matched work keeps its community credit for what the community wrote; the
+  // dimension generated here carries none of it.
+  it('credits the community only under its own content', async () => {
+    await mount(<WhoPanel data={data({ generated: { characters: true } })} />);
+    expect(screen.queryByText(/Community notes from/)).toBeNull();
+    await mount(<StoryPanel data={data({ generated: { characters: true } })} />);
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
+    await mount(<StoryPanel data={data({ generated: { recaps: true } })} />);
+    expect(screen.queryByText(/Community notes from/)).toBeNull();
   });
 
   it('puts the generate slot under an empty panel only', async () => {

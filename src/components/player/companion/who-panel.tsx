@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import Animated, { FadeInUp, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
 
 import { CharacterCard, GeneratedMark } from '@/components/library/book-meta';
-import { splitCharacters } from '@/components/library/meta-gating';
+import { communityCredit, splitCharacters } from '@/components/library/meta-gating';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text } from '@/components/ui/text';
 
@@ -73,7 +73,7 @@ export function WhoPanel({ data, generate }: { data: CompanionData; generate?: R
         onToggle={() => setRevealed(data.key, !shown)}
       />
       {shown ? hidden.map((c) => <CharacterCard key={c.id} character={c} spoiler />) : null}
-      <Attribution attribution={data.attribution} className="mt-2" />
+      <Attribution attribution={communityCredit(data, 'characters')} className="mt-2" />
     </View>
   );
 }

@@ -26,7 +26,7 @@ export function GenerateOffer({
   title?: string;
 }) {
   const { t } = useTranslation();
-  const model = useGenerate({ target, content, metaKnown, active: true });
+  const model = useGenerate({ target, content, metaKnown });
   if (!model.allowed) return null;
   return (
     <View className="items-center px-6">

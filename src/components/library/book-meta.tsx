@@ -57,8 +57,9 @@ export type MatchedBookMeta = Extract<BookMeta, { matched: true }>;
 
 /** The usable half of the meta envelope: the matched payload, or undefined when
  * the capability is off, the response has not arrived, or the service found no
- * match. One place decides "is there enriched metadata to show", so the screen's
- * About block and the metadata tabs can never disagree. */
+ * match. One place decides "is there a community work to show": About, the series
+ * rails and the AudioSilo Meta links read it (the Characters and Recaps tabs read
+ * `bookMetaWork`, which also takes an unmatched book's generated work). */
 export function matchedMeta(
   meta: BookMeta | undefined,
   enabled: boolean,

@@ -4,7 +4,7 @@ import { useBook, useBookMeta, useCapability, useChapters } from '@/api/hooks';
 import type { Book, BookMetaWork, ChaptersResponse } from '@/api/types';
 
 import { bookMetaWork } from './book-meta';
-import { chapterStartsOf, metaEnabledFor } from './meta-gating';
+import { chapterStartsOf, metaAnswered, metaEnabledFor } from './meta-gating';
 
 /** A book's community metadata and what the spoiler gate needs to place the listener. */
 export type BookCommunity = {
@@ -20,6 +20,10 @@ export type BookCommunity = {
   /** The work to render (`bookMetaWork`): the matched community work, or an unmatched
    * book's generated one, when there is one. */
   work: BookMetaWork | undefined;
+  /** What `/meta` says is in hand (`metaAnswered`): the book is known and `/meta` isn't
+   * asked for it, or its answer arrived. False while it loads and after a failed lookup
+   * (then `work` is undefined without meaning the book has none). */
+  metaKnown: boolean;
   /** Something the answer depends on is still on its way. */
   loading: boolean;
 };
@@ -63,6 +67,7 @@ export function useBookCommunity(target: {
     chapterData,
     chapterStarts,
     work: bookMetaWork(meta.data, enabled),
+    metaKnown: metaAnswered(enabled, book, meta.data),
     // The chapters place the listener: without them everyone past chapter 1 would
     // flash hidden, then appear.
     loading: metadata === undefined || bookLoading || chaptersLoading || meta.isLoading,

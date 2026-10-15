@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
@@ -26,6 +26,7 @@ import {
   chapterStartsOf,
   LIVE_POSITION_BUCKET_S,
   listeningProgressFor,
+  metaAnswered,
   metaEnabledFor,
   splitCharacters,
 } from '@/components/library/meta-gating';
@@ -150,15 +151,14 @@ function BookPage() {
   const serverName = useConnectionName(cid);
   const interval = useSettings((s) => s.virtualChapterInterval);
   // An admin's "Generate characters and recaps" (Bridge Phase 1a): offered for a book with
-  // neither, by the server's Bridge; its job's status shows under the actions meanwhile.
-  const focused = useIsFocused();
+  // neither, by the server's Bridge; its job's status shows under the actions meanwhile
+  // (and reads the screen's focus itself, so a blur re-renders it alone, not the page).
   const generate = useGenerate({
     // The jobs carry the book's own path: nothing is asked until the book is in.
     target: { connectionId: cid, libraryId, path: book?.rel_path ?? '' },
     content: metaWork,
-    // A book /meta isn't asked for has nothing to wait for.
-    metaKnown: bookMetaEnabled ? meta !== undefined : book !== undefined,
-    active: focused,
+    // A book /meta isn't asked for has nothing to wait for; a failed lookup is no answer.
+    metaKnown: metaAnswered(bookMetaEnabled, book, meta),
   });
   const target = useMemo(
     () => ({ connectionId: cid, libraryId, path: relPath }),

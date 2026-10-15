@@ -1,7 +1,7 @@
 import { focusManager, onlineManager, QueryObserver, skipToken } from '@tanstack/react-query';
 
 import { ApiError, TimeoutError, type ApiClient } from '@/api/client';
-import type { Capabilities, Progress, ServerInfo } from '@/api/types';
+import type { BookMeta, Capabilities, Progress, ServerInfo } from '@/api/types';
 
 // The fetch helper is deliberately framework-free, so the two collaborators it can reach
 // (the reachability layer and the durable progress mirror) are mocked and asserted on.
@@ -55,6 +55,7 @@ import {
   isQueueKey,
   isSearchKey,
   librariesQuery,
+  META_GENERATED_ONLY_STALE_MS,
   META_STALE_MS,
   metaWorkQuery,
   qk,
@@ -336,7 +337,20 @@ describe('read specs', () => {
   it('reads community metadata on its key, long-lived but for the spoiler-cut variant', () => {
     const plain = bookMetaQuery('c', client, 2, 'A/Book');
     expect(plain.queryKey).toEqual(qk.bookMeta('c', 2, 'A/Book'));
-    expect(plain).toMatchObject({ staleTime: META_STALE_MS, retry: false });
+    expect(plain.retry).toBe(false);
+    const staleFor = (data: BookMeta | undefined) =>
+      (plain.staleTime as (query: { state: { data: BookMeta | undefined } }) => number)({
+        state: { data },
+      });
+    const work = { id: 'w', title: 'W', authors: [], language: 'en' };
+    expect(staleFor({ matched: true, work, web_url: 'https://m/work?id=w' })).toBe(META_STALE_MS);
+    expect(staleFor({ matched: false })).toBe(META_STALE_MS);
+    expect(staleFor(undefined)).toBe(META_STALE_MS);
+    // The server's answer for a book with generated content is the same whether the
+    // community has no match or its lookup failed (then only briefly): kept briefly.
+    expect(staleFor({ matched: false, work: { ...work, id: '', language: '' } })).toBe(
+      META_GENERATED_ONLY_STALE_MS,
+    );
     const hidden = bookMetaQuery('c', client, 2, 'A/Book', { hideSpoilers: true });
     expect(hidden.queryKey).toEqual(qk.bookMeta('c', 2, 'A/Book', { hideSpoilers: true }));
     expect(hidden.staleTime).toBeUndefined();
