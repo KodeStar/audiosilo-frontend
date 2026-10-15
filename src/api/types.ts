@@ -373,6 +373,10 @@ export type Book = {
    * GET /libraries/{id}/item sends it; absent means the files' own chapters, and on
    * older servers. */
   chapters_source?: 'community';
+  /** True when the book's `.audiosilo/` folder holds characters or recaps a Bridge
+   * generated on this server (Bridge Phase 1a; list, search, item, recent and the next
+   * book's `book` send it). Absent otherwise, and on older servers. */
+  generated?: boolean;
 };
 
 /** Colours derived from a book's cover art, all lowercase "#rrggbb". `bg` is the
@@ -670,9 +674,8 @@ export type BookMetaSeries = {
 /** Response of GET /libraries/{id}/meta. A discriminated union on `matched`:
  * `matched:false` when the book has no asin/isbn or the service found no match. An
  * unmatched book whose characters or recaps were generated on this server (Bridge Phase
- * 1a) carries them in `work`: `id` empty, `title` the book's own, and only `characters`,
- * `recaps`, `recap_summary` and `generated` (no `authors` or `language`, whatever the
- * type says: read it through `bookMetaWork`). Older servers never send it. */
+ * 1a) carries them in `work` (`id` empty, `title` the book's own, `authors` empty,
+ * `language` empty, and its `generated`). Older servers never send it. */
 export type BookMeta =
   | { matched: false; work?: BookMetaWork }
   | {

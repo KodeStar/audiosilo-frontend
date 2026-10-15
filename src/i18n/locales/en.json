@@ -1250,7 +1250,6 @@
       "failedGeneric": "The Bridge stopped with an error.",
       "openConsole": "Open the console to fix it.",
       "retryAt": "It tries again by itself at {{time}}.",
-      "cancel": "Cancel",
       "tryAgain": "Try again",
       "cancelFailed": "Couldn't cancel it. Try again in a moment."
     },

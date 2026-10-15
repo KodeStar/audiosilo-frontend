@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react-native';
 
 let mockMetadata: boolean | undefined;
-let mockBook: { asin?: string; isbn?: string } | undefined;
+let mockBook: { asin?: string; isbn?: string; generated?: boolean } | undefined;
 const mockBookOpts = jest.fn();
 const mockChapterOpts = jest.fn();
 const mockMetaEnabled = jest.fn();
@@ -50,9 +50,9 @@ describe('useBookCommunity', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('waits for the book before asking for its chapters or /meta', async () => {
+  it('reads the book but not its chapters or /meta when it has no ASIN or ISBN', async () => {
     mockMetadata = true;
-    mockBook = undefined;
+    mockBook = {};
     const { result } = await renderHook(() => useBookCommunity(target));
     expect(mockBookOpts).toHaveBeenLastCalledWith({ enabled: true });
     expect(mockChapterOpts).toHaveBeenLastCalledWith({ enabled: false });
@@ -60,20 +60,23 @@ describe('useBookCommunity', () => {
     expect(result.current.enabled).toBe(false);
   });
 
-  // No ASIN or ISBN can't match the community, but the server answers it with what its
-  // Bridge generated (matched:false with a work), which the companion shows.
-  it("asks a book with no ASIN or ISBN too, and reads an unmatched book's generated work", async () => {
+  // No ASIN or ISBN can't match the community, but a generated book's /meta answers
+  // with what its Bridge generated (matched:false with a work), which the companion shows.
+  it('asks a generated book with no ASIN or ISBN, and reads its generated work', async () => {
     mockMetadata = true;
-    mockBook = {};
-    mockMeta = {
-      matched: false,
-      work: { id: '', title: 'Home', characters: [{ id: 'a', name: 'A', reveal: { chapter: 1 } }] },
+    mockBook = { generated: true };
+    const generated = {
+      id: '',
+      title: 'Home',
+      authors: [],
+      language: '',
+      characters: [{ id: 'a', name: 'A', reveal: { chapter: 1 } }],
     };
+    mockMeta = { matched: false, work: generated };
     const { result } = await renderHook(() => useBookCommunity(target));
     expect(mockChapterOpts).toHaveBeenLastCalledWith({ enabled: true });
     expect(mockMetaEnabled).toHaveBeenLastCalledWith(true);
-    expect(result.current.work?.characters).toHaveLength(1);
-    expect(result.current.work?.authors).toEqual([]);
+    expect(result.current.work).toBe(generated);
   });
 
   it('follows the chain to the matched work', async () => {

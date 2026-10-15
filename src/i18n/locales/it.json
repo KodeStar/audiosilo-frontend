@@ -1250,7 +1250,6 @@
       "failedGeneric": "Il Bridge si è fermato con un errore.",
       "openConsole": "Apri la console per sistemarlo.",
       "retryAt": "Riproverà da solo alle {{time}}.",
-      "cancel": "Annulla",
       "tryAgain": "Riprova",
       "cancelFailed": "Impossibile annullare. Riprova tra un attimo."
     },

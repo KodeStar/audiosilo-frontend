@@ -41,12 +41,10 @@ export type HeroActionsProps = {
   onPrimary: () => void;
   /** Two rows on a phone: the primary, then the download and the icon buttons. */
   stacked: boolean;
-  /** "Generate characters and recaps" (an admin, a book with neither; Bridge Phase 1a):
-   * a button after the others (its own row on a phone). */
-  onGenerate?: () => void;
-  /** "Regenerate characters and recaps" (a book with generated ones): quieter, in the
-   * book menu. */
-  onRegenerate?: () => void;
+  /** An admin's Bridge action (Phase 1a), when the page offers one: `generate` (a book
+   * with no characters or recaps) is a button after the others (its own row on a phone),
+   * `regenerate` (a book with generated ones) quieter, in the book menu. */
+  generate?: { offer: 'generate' | 'regenerate'; onPress: () => void };
 };
 
 /**
@@ -67,35 +65,36 @@ export function HeroActions({
   primary,
   onPrimary,
   stacked,
-  onGenerate,
-  onRegenerate,
+  generate,
 }: HeroActionsProps) {
   const { t } = useTranslation();
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
-  const menuExtra: BookAction[] = onRegenerate
-    ? [
-        {
-          key: 'regenerate',
-          icon: 'sparkles',
-          label: t('bridge.generate.regenerate'),
-          onPress: onRegenerate,
-          group: true,
-        },
-      ]
-    : [];
-  const generateButton = onGenerate ? (
-    <Button
-      testID="generate-action"
-      variant="outline"
-      size="lg"
-      icon="sparkles"
-      title={t('bridge.generate.action')}
-      onPress={onGenerate}
-    />
-  ) : null;
+  const menuExtra: BookAction[] =
+    generate?.offer === 'regenerate'
+      ? [
+          {
+            key: 'regenerate',
+            icon: 'sparkles',
+            label: t('bridge.generate.regenerate'),
+            onPress: generate.onPress,
+            group: true,
+          },
+        ]
+      : [];
+  const generateButton =
+    generate?.offer === 'generate' ? (
+      <Button
+        testID="generate-action"
+        variant="outline"
+        size="lg"
+        icon="sparkles"
+        title={t('bridge.generate.action')}
+        onPress={generate.onPress}
+      />
+    ) : null;
 
   const primaryButton = (
     <Button

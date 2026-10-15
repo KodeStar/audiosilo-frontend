@@ -137,6 +137,51 @@ describe('useBridgeJobs', () => {
   });
 });
 
+describe('useBridgeJobs after a finish', () => {
+  const PREVIOUS_KEY = qk.bookMeta('c1', 1, 'Author/Book', { includePrevious: true });
+  const ITEM_KEY = qk.item('c1', 1, 'Author/Book');
+  const finished = () => [bridgeJob({ state: 'done', finished_at: '2026-10-15T10:05:00Z' })];
+
+  it("reads every /meta variant and the book's item again when it sees the job turn done", async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const later = { updatedAt: Date.parse('2030-01-01T00:00:00Z') };
+    qc.setQueryData(PREVIOUS_KEY, { matched: false }, later);
+    qc.setQueryData(ITEM_KEY, { rel_path: 'Author/Book' }, later);
+    mockClients.c1.bridgeJobs.mockResolvedValueOnce([bridgeJob({ state: 'running' })]);
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    mockClients.c1.bridgeJobs.mockResolvedValueOnce(finished());
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(qc.getQueryState(PREVIOUS_KEY)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(ITEM_KEY)?.isInvalidated).toBe(true);
+  });
+
+  // A device clock behind the server's makes every later answer look older than the
+  // finish: it is acted on once, not on every read of the jobs.
+  it('reads them again once per finish, whatever the clocks say', async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const early = { updatedAt: Date.parse('2026-10-15T10:00:00Z') };
+    qc.setQueryData(META_KEY, { matched: false }, early);
+    mockClients.c1.bridgeJobs.mockResolvedValue(finished());
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryState(META_KEY)?.isInvalidated).toBe(true);
+    // The answer read again, still stamped before the finish by the slow clock.
+    qc.setQueryData(META_KEY, { matched: false }, early);
+    expect(qc.getQueryState(META_KEY)?.isInvalidated).toBe(false);
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(qc.getQueryState(META_KEY)?.isInvalidated).toBe(false);
+  });
+});
+
 describe('useQueueBridgeJob', () => {
   it('sends nothing to a server without bridge', async () => {
     const old = bridgeServer({ bridge: undefined });

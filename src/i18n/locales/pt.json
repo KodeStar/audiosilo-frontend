@@ -1250,7 +1250,6 @@
       "failedGeneric": "O Bridge parou com um erro.",
       "openConsole": "Abra o console para resolver.",
       "retryAt": "Ele tenta de novo sozinho às {{time}}.",
-      "cancel": "Cancelar",
       "tryAgain": "Tentar novamente",
       "cancelFailed": "Não foi possível cancelar. Tente de novo daqui a pouco."
     },

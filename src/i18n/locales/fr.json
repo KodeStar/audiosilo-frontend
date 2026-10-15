@@ -1250,7 +1250,6 @@
       "failedGeneric": "Le Bridge s'est arrêté sur une erreur.",
       "openConsole": "Ouvrez la console pour régler le problème.",
       "retryAt": "Il réessaiera tout seul à {{time}}.",
-      "cancel": "Annuler",
       "tryAgain": "Réessayer",
       "cancelFailed": "Impossible d'annuler. Réessayez dans un instant."
     },

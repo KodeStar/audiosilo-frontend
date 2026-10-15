@@ -15,6 +15,8 @@ jest.mock('@/playback/store', () => ({
   usePlayer: (sel: (s: object) => unknown) => sel({ nowPlaying: null }),
 }));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
+// book-meta (the generated mark) pulls in CoverFrame, whose shadow hook reads the theme.
+jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 const mockClient = { name: 'the book’s own client' };
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (id: string) => (id === 'c' ? mockClient : null),
@@ -35,6 +37,7 @@ const mockStarts = Array.from({ length: 10 }, (_, i) => i * 360);
 const mockRecaps: BookMetaRecap[] = [
   { through: { chapter: 8 }, scope: 'book', text: 'Up to 8: the shroud is stolen.' },
 ];
+let mockGenerated: { recaps?: boolean } | undefined;
 jest.mock('@/components/library/use-book-community', () => ({
   useBookCommunity: () => ({
     metadata: true,
@@ -45,7 +48,7 @@ jest.mock('@/components/library/use-book-community', () => ({
       files: [],
     },
     chapterStarts: mockStarts,
-    work: { recaps: mockRecaps },
+    work: { recaps: mockRecaps, generated: mockGenerated },
     loading: false,
   }),
 }));
@@ -78,6 +81,7 @@ const found = (over: Partial<Progress>) => ({
 });
 
 beforeEach(() => {
+  mockGenerated = undefined;
   mockLookup.mockReset();
   mockStart.mockReset().mockResolvedValue(true);
   mockPush.mockReset();
@@ -156,5 +160,16 @@ describe('PreviouslyOnCard', () => {
     expect(spinner?.props.color).toBe(colors.dark.primaryForeground);
     expect(colors.dark.primaryForeground).not.toBe(colors.light.primaryForeground);
     await act(async () => finish({ kind: 'empty' }));
+  });
+
+  // Recaps a Bridge generated on this server (Phase 1a) say so where the credit goes.
+  it('marks recaps generated on this server, and only those', async () => {
+    const other = { ...at, path: 'Sanderson/Warbreaker' };
+    await render(<PreviouslyOnCard at={other} saved={{ ...saved, path: other.path }} />);
+    expect(screen.queryByText('Generated on this server')).toBeNull();
+    mockGenerated = { recaps: true };
+    const generated = { ...at, path: 'Sanderson/Skyward' };
+    await render(<PreviouslyOnCard at={generated} saved={{ ...saved, path: generated.path }} />);
+    expect(screen.getByText('Generated on this server')).toBeTruthy();
   });
 });

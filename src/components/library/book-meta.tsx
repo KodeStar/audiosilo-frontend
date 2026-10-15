@@ -8,6 +8,7 @@ import { useMetaWork } from '@/api/hooks';
 import type {
   BookMeta,
   BookMetaCharacter,
+  BookMetaGenerated,
   BookMetaPosition,
   BookMetaRecap,
   BookMetaRecapSummary,
@@ -74,26 +75,12 @@ export function matchedMeta(
  * ONE predicate behind the Characters and Recaps tabs, their counts and the companion's
  * Who's who and Story so far, beside `matchedMeta` (which stays the matched half only:
  * About, the series rails and the links to AudioSilo Meta need a real community work).
- * An unmatched work carries only the generated fields, so it is filled out here
- * (`authors: []`, `language: ''`) and every list is checked to be one.
  */
 export function bookMetaWork(
   meta: BookMeta | undefined,
   enabled: boolean,
 ): BookMetaWork | undefined {
-  if (!enabled || !meta) return undefined;
-  if (meta.matched) return meta.work;
-  const work = meta.work;
-  if (!work || typeof work !== 'object') return undefined;
-  return {
-    ...work,
-    id: typeof work.id === 'string' ? work.id : '',
-    title: typeof work.title === 'string' ? work.title : '',
-    authors: Array.isArray(work.authors) ? work.authors : [],
-    language: typeof work.language === 'string' ? work.language : '',
-    characters: Array.isArray(work.characters) ? work.characters : undefined,
-    recaps: Array.isArray(work.recaps) ? work.recaps : undefined,
-  };
+  return enabled ? meta?.work : undefined;
 }
 
 /** Whether a description is long enough to warrant the collapse toggle. */
@@ -165,9 +152,16 @@ function Chip({ label }: { label: string }) {
 
 /** "Generated on this server": the quiet chip at the head of a Characters or Recaps
  * panel whose entries came from files the Bridge wrote for this server, not from the
- * community (`work.generated`). Never on community content. */
-export function GeneratedMark() {
+ * community (`work.generated`'s `dimension`). Nothing for community content. */
+export function GeneratedMark({
+  generated,
+  dimension,
+}: {
+  generated: BookMetaGenerated | undefined;
+  dimension: 'characters' | 'recaps';
+}) {
   const { t } = useTranslation();
+  if (!generated?.[dimension]) return null;
   return (
     <View testID="generated-mark" className="flex-row">
       <Chip label={t('bridge.generate.mark')} />

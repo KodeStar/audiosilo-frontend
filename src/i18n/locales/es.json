@@ -1250,7 +1250,6 @@
       "failedGeneric": "El Bridge se detuvo con un error.",
       "openConsole": "Abre la consola para arreglarlo.",
       "retryAt": "Lo volverá a intentar solo a las {{time}}.",
-      "cancel": "Cancelar",
       "tryAgain": "Reintentar",
       "cancelFailed": "No se pudo cancelar. Inténtalo de nuevo en un momento."
     },

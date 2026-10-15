@@ -7,6 +7,7 @@ import { resolveClient } from '@/api/connection-clients';
 import type { SourcedProgress } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
 import { BookCover } from '@/components/library/book-cover';
+import { GeneratedMark } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
 import { useBookCommunity } from '@/components/library/use-book-community';
 import { Attribution } from '@/components/player/companion/companion-pieces';
@@ -104,8 +105,10 @@ function useResumeWithOverlap() {
  * to the book they are on after 12 or more days, on a dark card tinted with its cover:
  * where they left it (the chapter they are in), the furthest community recap they are
  * past (gated exactly like Story so far), "Resume, with 30 seconds of overlap", "Read
- * the full recap" (the book page's Recaps) and the licence line. Dismissible for the
- * session. Nothing without `metadata`, a matched work or a recap that reaches them.
+ * the full recap" (the book page's Recaps) and the licence line (or, for recaps
+ * generated on this server, their mark). Dismissible for the session. Nothing without
+ * `metadata`, a work with recaps (the community's, or generated here) or a recap that
+ * reaches them.
  */
 export function PreviouslyOnCard({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   return (
@@ -233,6 +236,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
                 ? t('home.previouslyOn.spoilerSafe', { chapter: card.recap.through.chapter })
                 : t('home.previouslyOn.spoilerSafeStart')}
             </Text>
+            <GeneratedMark generated={work?.generated} dimension="recaps" />
             <Attribution attribution={work?.attribution} tone="inverse" />
           </View>
         </View>

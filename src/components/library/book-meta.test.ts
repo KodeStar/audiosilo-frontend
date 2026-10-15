@@ -1,4 +1,4 @@
-import type { BookMeta, BookMetaRecap, BookMetaSeries } from '@/api/types';
+import type { BookMeta, BookMetaRecap, BookMetaSeries, BookMetaWork } from '@/api/types';
 import type { OrderingPicks } from '@/lib/series-orderings';
 
 // book-meta pulls in CoverFrame, whose iOS shadow hook reads the theme provider (its
@@ -322,15 +322,17 @@ describe('matchedMeta', () => {
   });
 });
 
-// The server's unmatched answer with content its Bridge generated (Bridge Phase 1a): only
-// the generated fields, no authors or language.
-const generatedWork = {
+// The server's unmatched answer with content its Bridge generated (Bridge Phase 1a): a
+// whole work, with an empty id, no authors and no language.
+const generatedWork: BookMetaWork = {
   id: '',
   title: 'Home Recording',
+  authors: [],
+  language: '',
   characters: [{ id: 'ada', name: 'Ada', reveal: { chapter: 1 } }],
   recaps: [{ through: { chapter: 2 }, text: 'So far.' }],
   generated: { characters: true, recaps: true },
-} as unknown as NonNullable<Extract<BookMeta, { matched: false }>['work']>;
+};
 
 describe('bookMetaWork', () => {
   const matched: BookMeta = {
@@ -343,28 +345,17 @@ describe('bookMetaWork', () => {
     expect(bookMetaWork(matched, true)).toBe(matched.work);
   });
 
-  it("is an unmatched book's generated work, filled out to the work shape", () => {
-    const work = bookMetaWork({ matched: false, work: generatedWork }, true);
-    expect(work).toMatchObject({
-      id: '',
-      title: 'Home Recording',
-      authors: [],
-      language: '',
-      generated: { characters: true, recaps: true },
-    });
-    expect(work?.characters).toHaveLength(1);
-    expect(work?.recaps).toHaveLength(1);
+  it("is an unmatched book's generated work", () => {
+    expect(bookMetaWork({ matched: false, work: generatedWork }, true)).toBe(generatedWork);
   });
 
   it('is undefined for an unmatched book with nothing generated, as before', () => {
     expect(bookMetaWork({ matched: false }, true)).toBeUndefined();
   });
 
-  it('is undefined while off or not arrived, and drops lists that are not lists', () => {
+  it('is undefined while off or not arrived', () => {
     expect(bookMetaWork({ matched: false, work: generatedWork }, false)).toBeUndefined();
     expect(bookMetaWork(undefined, true)).toBeUndefined();
-    const odd = { ...generatedWork, characters: 'nope' } as unknown as typeof generatedWork;
-    expect(bookMetaWork({ matched: false, work: odd }, true)?.characters).toBeUndefined();
   });
 });
 

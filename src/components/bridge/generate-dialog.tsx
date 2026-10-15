@@ -2,9 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { apiErrorKind } from '@/api/client';
 import { useBridgeEstimate } from '@/api/hooks';
-import type { BridgeEstimate } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,10 +16,10 @@ import {
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
-import { SIDECARS_GENERATE } from '@/lib/bridge-jobs';
-import { formatDuration } from '@/lib/format';
+import { formatDuration, formatUsd } from '@/lib/format';
+import { pathLeaf } from '@/lib/paths';
 
-import { formatUsd, queueOrder } from './bridge-model';
+import { blockedReason, bridgeRefusalKey, queueOrder } from './bridge-model';
 import type { GenerateModel } from './use-generate';
 
 /**
@@ -44,7 +42,7 @@ export function GenerateDialog({ model, title }: { model: GenerateModel; title?:
 function GenerateBody({ model, title }: { model: GenerateModel; title?: string }) {
   const { t } = useTranslation();
   const { connectionId, libraryId, path } = model.target;
-  const estimate = useBridgeEstimate(libraryId, path, SIDECARS_GENERATE, true, connectionId);
+  const estimate = useBridgeEstimate(libraryId, path, connectionId);
   const [withEarlier, setWithEarlier] = useState(true);
   const data = estimate.data;
   const earlier = data?.earlier ?? [];
@@ -73,7 +71,7 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
             label={t('bridge.generate.source')}
             value={
               data.source === 'ebook'
-                ? t('bridge.generate.sourceEbook', { file: fileName(data.ebook) })
+                ? t('bridge.generate.sourceEbook', { file: pathLeaf(data.ebook ?? '') })
                 : t('bridge.generate.sourceAudio')
             }
           />
@@ -121,9 +119,7 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
         </View>
       ) : estimate.isError ? (
         <Text testID="generate-estimate-failed" variant="muted">
-          {apiErrorKind(estimate.error) === 'kind_unavailable'
-            ? t('bridge.generate.unavailable')
-            : t('bridge.generate.estimateFailed')}
+          {t(bridgeRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
         </Text>
       ) : (
         <SkeletonText lines={4} className="py-1" />
@@ -150,19 +146,6 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
       </DialogFooter>
     </DialogContent>
   );
-}
-
-/** Why Generate is held back, when it is: the Bridge can't write the library (its
- * results would have nowhere to go), or its agent isn't signed in. */
-function blockedReason(e: BridgeEstimate) {
-  if (!e.writable) return 'bridge.generate.notWritable' as const;
-  if (!e.agent_ready) return 'bridge.generate.agentNotReady' as const;
-  return null;
-}
-
-/** The last segment of a path ("Book.epub"). */
-function fileName(path: string | undefined): string {
-  return path?.split('/').pop() ?? '';
 }
 
 /** One line of the estimate: what, then its value and an optional quiet note. */

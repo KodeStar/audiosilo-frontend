@@ -15,6 +15,7 @@ import {
   formatBitrate,
   formatBytes,
   formatCount,
+  formatUsd,
   formatClock,
   formatCountdown,
   formatDuration,
@@ -293,6 +294,13 @@ describe('bookSubtitle', () => {
   it('is empty when nothing is provided', () => {
     expect(bookSubtitle({})).toBe('');
     expect(bookSubtitle({ author: '', series: '' })).toBe('');
+  });
+});
+
+describe('formatUsd', () => {
+  it('formats dollars in the given locale', () => {
+    expect(formatUsd(16, 'en')).toBe('$16.00');
+    expect(formatUsd(3.4, 'en-US')).toBe('$3.40');
   });
 });
 

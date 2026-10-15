@@ -3,9 +3,14 @@ import type { BridgeJob } from '@/api/types';
 /** The Bridge job kind that generates a book's characters and recaps. */
 export const SIDECARS_GENERATE = 'sidecars.generate';
 
-/** How often a book's jobs are asked again while one of them is open and its surface is
- * on screen: the jobs take minutes to hours, and the server has no realtime channel. */
+/** How often a book's jobs are asked again while one of them is being worked on
+ * (claimed or running) and its surface is on screen: the jobs take minutes to hours, and
+ * the server has no realtime channel. */
 export const BRIDGE_POLL_MS = 10_000;
+
+/** How often while its job only waits (queued, or parked until someone looks or its
+ * retry time comes): nothing moves quickly then. */
+export const BRIDGE_IDLE_POLL_MS = 60_000;
 
 /** The states a job is still the Bridge's business in (the server's `OpenStatesSQL`). */
 const OPEN_STATES: ReadonlySet<string> = new Set([
@@ -29,39 +34,61 @@ export function latestJob(jobs: readonly BridgeJob[] | undefined, kind: string) 
 }
 
 /**
- * How often a book's job list polls (React Query's `refetchInterval`): every
- * `BRIDGE_POLL_MS` while a `sidecars.generate` job of it is open and the surface is
- * `active` (on screen, the app in the foreground), else never. The last answer, the one
- * that saw the job end, stops it.
+ * How often a book's job list polls (React Query's `refetchInterval`) while the surface is
+ * `active` (on screen, the app in the foreground): every `BRIDGE_POLL_MS` while a
+ * `sidecars.generate` job of it is claimed or running, every `BRIDGE_IDLE_POLL_MS` while
+ * one only waits (queued or parked), else never. The last answer, the one that saw the
+ * job end, stops it.
  */
 export function bridgePollInterval(
   jobs: readonly BridgeJob[] | undefined,
   active: boolean,
 ): number | false {
   if (!active) return false;
-  return (jobs ?? []).some((j) => j.kind === SIDECARS_GENERATE && isOpenJob(j))
-    ? BRIDGE_POLL_MS
-    : false;
+  let interval: number | false = false;
+  for (const j of jobs ?? []) {
+    if (j.kind !== SIDECARS_GENERATE) continue;
+    if (j.state === 'claimed' || j.state === 'running') return BRIDGE_POLL_MS;
+    if (isOpenJob(j)) interval = BRIDGE_IDLE_POLL_MS;
+  }
+  return interval;
+}
+
+/** A book's newest `sidecars.generate` job that is `done`: its files were written and
+ * the book rescanned, so what the book's answers say about it may be stale. */
+export function latestDone(jobs: readonly BridgeJob[] | undefined): BridgeJob | undefined {
+  return latestJob(
+    jobs?.filter((j) => j.state === 'done'),
+    SIDECARS_GENERATE,
+  );
+}
+
+/** When a job finished, as the server says (`finished_at`, else its last update). */
+export function finishedAt(job: Pick<BridgeJob, 'finished_at' | 'updated_at'>): string {
+  return job.finished_at ?? job.updated_at;
 }
 
 /**
- * Whether a `sidecars.generate` job finished (`done`) after `sinceMs`: the moment the
- * book's `/meta` answer in hand was fetched (0 for none). Its files were written and the
- * book rescanned after that answer, so the answer is stale and is read again: that is
- * how the tabs appear when a job ends, whether it ended while the page watched it or
- * while it was closed (the metadata is otherwise trusted for an hour).
+ * Whether a book's cached answers (its `/meta` and its item) are read again for the
+ * finish of `job` (done): when this answer saw it turn done (`turned`, which needs no
+ * clock), or when one of them was fetched before it finished (`fetchedAt`, each answer's
+ * fetch time on the device clock, 0 for none yet). That is how the tabs appear when a job
+ * ends, whether it ended while the page watched it or while it was closed (the metadata
+ * is otherwise trusted for an hour). A device clock behind the server's makes every
+ * answer look older than the finish, so the caller acts on each finish once.
  */
-export function finishedSince(jobs: readonly BridgeJob[] | undefined, sinceMs: number): boolean {
-  return (jobs ?? []).some((j) => {
-    if (j.kind !== SIDECARS_GENERATE || j.state !== 'done') return false;
-    const at = Date.parse(j.finished_at ?? j.updated_at);
-    return Number.isFinite(at) && at > sinceMs;
-  });
+export function staleAfterFinish(
+  job: Pick<BridgeJob, 'finished_at' | 'updated_at'>,
+  fetchedAt: readonly number[],
+  turned: boolean,
+): boolean {
+  if (turned) return true;
+  const at = Date.parse(finishedAt(job));
+  return Number.isFinite(at) && fetchedAt.some((t) => t > 0 && t < at);
 }
 
 /** Whether a `sidecars.generate` job open in `before` is `done` in `after` (two answers
- * of the same list): the transition seen as it happens, which needs no clock (a device
- * clock ahead of the server's could hide it from `finishedSince`). */
+ * of the same list): the transition seen as it happens. */
 export function turnedDone(
   before: readonly BridgeJob[] | undefined,
   after: readonly BridgeJob[],

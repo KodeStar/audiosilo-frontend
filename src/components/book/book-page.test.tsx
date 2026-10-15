@@ -37,6 +37,7 @@ let mockMeta: BookMeta | undefined;
 let mockCaps: Record<string, boolean> = {};
 let mockBridge: { version: string; features: string[] } | undefined;
 let mockJobs: BridgeJob[] = [];
+const mockMetaArgs = jest.fn();
 const mockRefetch = jest.fn();
 jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
@@ -45,9 +46,18 @@ jest.mock('@/api/hooks', () => ({
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
   useCapability: (flag: string) => mockCaps[flag] ?? false,
   useServerInfo: () => ({ data: { capabilities: mockCaps, bridge: mockBridge }, isError: false }),
-  useBridgeJobs: (_l: number, _p: string, opts: { enabled: boolean }) =>
-    opts.enabled ? { data: mockJobs, isSuccess: true } : { data: undefined, isSuccess: false },
-  useBookMeta: () => ({ data: mockMeta }),
+  useBridgeJobs: (
+    _l: number,
+    _p: string,
+    opts: { enabled: boolean; select?: (jobs: BridgeJob[]) => unknown },
+  ) =>
+    opts.enabled
+      ? { data: opts.select ? opts.select(mockJobs) : mockJobs, isSuccess: true }
+      : { data: undefined, isSuccess: false },
+  useBookMeta: (...args: unknown[]) => {
+    mockMetaArgs(...args);
+    return { data: mockMeta };
+  },
   useBookProgress: () => ({ data: mockProgress, isPending: false }),
   useFavourites: () => ({ data: [] }),
   useToggleFavourite: () => ({ mutate: jest.fn() }),
@@ -221,6 +231,7 @@ beforeEach(() => {
   mockCaps = {};
   mockBridge = undefined;
   mockJobs = [];
+  mockMetaArgs.mockClear();
   mockBookmarks = [];
   mockPush.mockClear();
   mockStartBook.mockClear();
@@ -515,15 +526,19 @@ describe('book page Bridge (generated characters and recaps)', () => {
   // generated on this server: the server answers matched:false with a work.
   it("shows an unmatched book's generated characters and recaps, marked as generated", async () => {
     mockCaps = { metadata: true };
+    // No ASIN or ISBN: the server's `generated` flag is what asks for its /meta.
+    mockBook = { ...BOOK, generated: true };
     mockMeta = {
       matched: false,
       work: {
         id: '',
         title: 'The Way of Kings',
+        authors: [],
+        language: '',
         characters,
         recaps,
         generated: { characters: true, recaps: true },
-      } as never,
+      },
     };
     await mountAt('desktop');
     expect(screen.getByTestId('book-tab-characters')).toBeTruthy();
@@ -538,6 +553,7 @@ describe('book page Bridge (generated characters and recaps)', () => {
 
   it('marks only the dimension that was generated', async () => {
     mockCaps = { metadata: true };
+    mockBook = { ...BOOK, asin: 'B0' };
     mockMeta = {
       matched: true,
       work: {
@@ -558,8 +574,25 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByTestId('generated-mark')).toBeNull();
   });
 
+  // /meta is keyed by the book's own path, as every other surface (and a finished
+  // Bridge job's refresh) keys it, whatever path the route was opened with.
+  it("asks /meta by the book's own path, not the route's", async () => {
+    mockCaps = { metadata: true };
+    mockParams = { libraryId: '1', path: ['Author', 'Book', 'Disc 1'] };
+    mockBook = { ...BOOK, asin: 'B0' };
+    await mountAt('desktop');
+    expect(mockMetaArgs).toHaveBeenLastCalledWith(1, 'Author/Book', true);
+  });
+
+  it('never asks /meta for a book with no ASIN or ISBN and nothing generated', async () => {
+    mockCaps = { metadata: true };
+    await mountAt('desktop');
+    expect(mockMetaArgs).toHaveBeenLastCalledWith(1, 'Author/Book', false);
+  });
+
   it('keeps an unmatched book with nothing generated as before: no community tabs', async () => {
     mockCaps = { metadata: true };
+    mockBook = { ...BOOK, asin: 'B0' };
     mockMeta = { matched: false };
     await mountAt('desktop');
     expect(screen.queryByTestId('book-tab-characters')).toBeNull();

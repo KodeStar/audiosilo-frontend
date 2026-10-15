@@ -51,7 +51,7 @@ export function WhoPanel({ data, generate }: { data: CompanionData; generate?: R
   const met = whoOrder(visible);
   return (
     <View className="gap-2.5">
-      {data.generated?.characters ? <GeneratedMark /> : null}
+      <GeneratedMark generated={data.generated} dimension="characters" />
       <Text variant="caption">{t('player.companion.metCount', { count: met.length })}</Text>
       {/* Skips the entrance of everyone already here when the panel mounts: only a
           character who arrives while it is open springs in. */}

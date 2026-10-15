@@ -168,14 +168,19 @@ describe('chapterStartsOf', () => {
 });
 
 describe('metaEnabledFor', () => {
-  // A book with neither an ASIN nor an ISBN is asked too: it can't match the community,
-  // but characters and recaps generated on its server come through /meta (Bridge 1a).
-  it('asks only a server with metadata, for any known book', () => {
+  it('asks only a server with metadata, for a book with an ASIN or ISBN', () => {
     expect(metaEnabledFor(true, { asin: 'B0', isbn: undefined })).toBe(true);
     expect(metaEnabledFor(true, { asin: undefined, isbn: '978' })).toBe(true);
-    expect(metaEnabledFor(true, { asin: '', isbn: '' })).toBe(true);
+    expect(metaEnabledFor(true, { asin: '', isbn: '' })).toBe(false);
     expect(metaEnabledFor(true, undefined)).toBe(false);
     expect(metaEnabledFor(false, { asin: 'B0', isbn: undefined })).toBe(false);
     expect(metaEnabledFor(undefined, { asin: 'B0', isbn: undefined })).toBe(false);
+  });
+
+  // No ASIN or ISBN can't match the community, but characters and recaps a Bridge
+  // generated on the server come through /meta (Bridge Phase 1a).
+  it('asks for a book with neither that has generated characters or recaps', () => {
+    expect(metaEnabledFor(true, { asin: '', isbn: '', generated: true })).toBe(true);
+    expect(metaEnabledFor(false, { generated: true })).toBe(false);
   });
 });

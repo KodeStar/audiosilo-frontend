@@ -1250,7 +1250,6 @@
       "failedGeneric": "Die Bridge hat mit einem Fehler aufgehört.",
       "openConsole": "Öffne die Konsole, um es zu beheben.",
       "retryAt": "Es versucht es um {{time}} von selbst erneut.",
-      "cancel": "Abbrechen",
       "tryAgain": "Erneut versuchen",
       "cancelFailed": "Konnte nicht abgebrochen werden. Versuch es gleich noch einmal."
     },

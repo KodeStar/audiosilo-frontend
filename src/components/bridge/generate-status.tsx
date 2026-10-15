@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useBridgeJobs } from '@/api/hooks';
 import type { BridgeJob } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -12,11 +13,12 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { type JobStatusView, jobStatusView, stageLabelKey } from './bridge-model';
+import { type JobStatusView, jobStatusView, statusJob } from './bridge-model';
+import type { GenerateModel } from './use-generate';
 
 /** The status's one line under its title: the stage, the counts and the time left while
  * it runs; why it stopped while parked; the Bridge's error once it failed. */
-export function statusLine(t: TFunction, view: JobStatusView): string {
+function statusLine(t: TFunction, view: JobStatusView): string {
   switch (view.phase) {
     case 'waiting':
       return t('bridge.status.waiting');
@@ -24,7 +26,7 @@ export function statusLine(t: TFunction, view: JobStatusView): string {
       return t('bridge.status.stopping');
     case 'running':
       return [
-        t(stageLabelKey(view.stage)),
+        t(`bridge.stage.${view.stage}`),
         view.done !== undefined && view.total !== undefined
           ? t('bridge.status.count', { done: view.done, total: view.total })
           : '',
@@ -44,21 +46,29 @@ export function statusLine(t: TFunction, view: JobStatusView): string {
  * or in the companion's empty Who's who and Story so far): the stage, "12 of 40", the time
  * left and Cancel while it runs; a short reason and "Open the console to fix it" while it
  * is parked (or when it tries again by itself); the error and Try again once it failed.
- * Status is the words and the icon, never colour alone.
+ * Nothing without such a job (`statusJob`). It reads the book's job list itself, polling
+ * while `model.active`, so a poll re-renders only this.
  */
-export function GenerateStatus({
+export function GenerateStatus({ model, className }: { model: GenerateModel; className?: string }) {
+  const { connectionId, libraryId, path } = model.target;
+  const { data: job } = useBridgeJobs(
+    libraryId,
+    path,
+    { enabled: model.allowed, active: model.active, select: statusJob },
+    connectionId,
+  );
+  return job ? <JobStatus job={job} model={model} className={className} /> : null;
+}
+
+/** One job's status (see `GenerateStatus`). Status is the words and the icon, never
+ * colour alone. */
+function JobStatus({
   job,
-  onCancel,
-  cancelling,
-  onRetry,
-  retrying,
+  model,
   className,
 }: {
   job: BridgeJob;
-  onCancel: () => void;
-  cancelling: boolean;
-  onRetry: () => void;
-  retrying: boolean;
+  model: GenerateModel;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -93,18 +103,18 @@ export function GenerateStatus({
             variant="outline"
             icon="rotate"
             title={t('bridge.status.tryAgain')}
-            loading={retrying}
-            onPress={onRetry}
+            loading={model.queueing}
+            onPress={model.retry}
           />
         ) : (
           <Button
             testID="generate-cancel"
             size="sm"
             variant="ghost"
-            title={t('bridge.status.cancel')}
+            title={t('common.cancel')}
             disabled={view.phase === 'stopping'}
-            loading={cancelling}
-            onPress={onCancel}
+            loading={model.cancelling}
+            onPress={() => model.cancel(job)}
           />
         )}
       </View>

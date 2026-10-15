@@ -134,10 +134,13 @@ function BookPage() {
   const { data: libraries } = useLibraries();
   const ratings = useCapability('ratings', cid) === true;
   const browsePeople = useCapability('browse_people', cid);
-  // Community metadata is progressive enhancement: only a server advertising it is asked
-  // (a book with no ASIN or ISBN too: it can carry characters and recaps generated here).
+  const relPath = book?.rel_path ?? path;
+  // Community metadata is progressive enhancement: only a server advertising it is asked,
+  // and only for a book with an ASIN or ISBN (one without can never match) or with
+  // characters and recaps generated on this server. Asked by the book's own path, as every
+  // other surface asks (and as a finished Bridge job reads it again).
   const bookMetaEnabled = metaEnabledFor(useCapability('metadata', cid), book);
-  const { data: meta } = useBookMeta(libraryId, path, bookMetaEnabled);
+  const { data: meta } = useBookMeta(libraryId, relPath, bookMetaEnabled);
   // What the Characters and Recaps tabs render: the matched work, or an unmatched book's
   // characters and recaps generated on this server (About and the rails stay matched-only).
   const metaWork = bookMetaWork(meta, bookMetaEnabled);
@@ -146,7 +149,6 @@ function BookPage() {
   const progress = progressQuery.data ?? undefined;
   const serverName = useConnectionName(cid);
   const interval = useSettings((s) => s.virtualChapterInterval);
-  const relPath = book?.rel_path ?? path;
   // An admin's "Generate characters and recaps" (Bridge Phase 1a): offered for a book with
   // neither, by the server's Bridge; its job's status shows under the actions meanwhile.
   const focused = useIsFocused();
@@ -154,9 +156,9 @@ function BookPage() {
     // The jobs carry the book's own path: nothing is asked until the book is in.
     target: { connectionId: cid, libraryId, path: book?.rel_path ?? '' },
     content: metaWork,
-    metaKnown: meta !== undefined,
+    // A book /meta isn't asked for has nothing to wait for.
+    metaKnown: bookMetaEnabled ? meta !== undefined : book !== undefined,
     active: focused,
-    metaPaths: [path, relPath],
   });
   const target = useMemo(
     () => ({ connectionId: cid, libraryId, path: relPath }),
@@ -445,26 +447,17 @@ function BookPage() {
             })}
             onPrimary={() => play({ toggle: true })}
             stacked={!layout.heroSide}
-            onGenerate={
-              generate.offer === 'generate' ? () => generate.setConfirming(true) : undefined
-            }
-            onRegenerate={
-              generate.offer === 'regenerate' ? () => generate.setConfirming(true) : undefined
+            generate={
+              generate.offer
+                ? { offer: generate.offer, onPress: () => generate.setConfirming(true) }
+                : undefined
             }
           />
         }
         footer={
           <>
             <DownloadProgress libraryId={libraryId} path={path} />
-            {generate.job ? (
-              <GenerateStatus
-                job={generate.job}
-                onCancel={generate.cancel}
-                cancelling={generate.cancelling}
-                onRetry={generate.retry}
-                retrying={generate.queueing}
-              />
-            ) : null}
+            <GenerateStatus model={generate} />
             <TranscodeNote
               book={book}
               chapterData={chapterData}

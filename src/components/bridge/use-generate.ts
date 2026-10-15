@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { apiErrorKind } from '@/api/client';
 import {
   CapabilityError,
   useBridgeJobs,
@@ -15,6 +14,7 @@ import { SIDECARS_GENERATE } from '@/lib/bridge-jobs';
 import { useSession } from '@/stores/session';
 
 import {
+  bridgeRefusalKey,
   GENERATE_PARAMS,
   type GenerateContent,
   generateOffer,
@@ -31,60 +31,63 @@ export type GenerateTarget = {
 };
 
 /** Everything a surface needs to offer "Generate characters and recaps" for one book (see
- * `useGenerate`). */
+ * `useGenerate`). The job's status is `GenerateStatus`'s own read of the job list. */
 export type GenerateModel = {
   target: GenerateTarget;
   /** This person may generate here (`mayGenerate`). Nothing renders without it. */
   allowed: boolean;
+  /** The surface is on screen: the status's job list polls only then. */
+  active: boolean;
   /** What the book offers now (`generateOffer`). */
   offer: 'generate' | 'regenerate' | null;
-  /** The job the status shows (`statusJob`): open, or failed. */
-  job: BridgeJob | undefined;
   /** The confirmation is open. */
   confirming: boolean;
   setConfirming: (open: boolean) => void;
   /** Queue `books` in order (the confirmation's choice); false when nothing could be. */
   queue: (books: readonly BookRef[]) => Promise<boolean>;
   queueing: boolean;
-  cancel: () => void;
+  cancel: (job: BridgeJob) => void;
   cancelling: boolean;
   /** Queue this book again after a failure. */
   retry: () => void;
 };
 
+/** Whether a book's job list has a job whose status shows (`statusJob`): all the offer
+ * reads of it, so a poll that only moves a job's progress re-renders nobody but the
+ * status. */
+const showsJob = (jobs: BridgeJob[]) => statusJob(jobs) !== undefined;
+
 /**
  * The player's "Generate characters and recaps" for one book (Bridge Phase 1a): who may
- * (`mayGenerate`: an admin, the Bridge online with `sidecars`, `metadata` on), the book's
- * jobs (polled while one is open and `active`), what it offers, and the writes. `content`
- * is the book's characters and recaps as the surface renders them (community or
- * generated); `metaKnown` says its `/meta` answer is in, so nothing is offered for a book
- * whose metadata is still on its way. The jobs are never asked for someone who may not
- * generate (a non-admin would get a 403).
+ * (`mayGenerate`: an admin, the Bridge online with `sidecars`, `metadata` on), what the
+ * book offers, and the writes. `content` is the book's characters and recaps as the
+ * surface renders them (community or generated); `metaKnown` says its `/meta` answer is
+ * in (or that none is asked for), so nothing is offered for a book whose metadata is
+ * still on its way. The jobs are never asked for someone who may not generate (a
+ * non-admin would get a 403); the job's status renders from `GenerateStatus`.
  */
 export function useGenerate({
   target,
   content,
   metaKnown,
   active,
-  metaPaths,
 }: {
   target: GenerateTarget;
   content: GenerateContent | undefined;
   metaKnown: boolean;
   /** The surface is on screen: only then do the jobs poll. */
   active: boolean;
-  /** The paths the surface reads `/meta` under (see `useBridgeJobs`). */
-  metaPaths?: readonly string[];
 }): GenerateModel {
   const { t } = useTranslation();
   const { connectionId, libraryId, path } = target;
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const allowed = mayGenerate(user, server);
+  // The status's own read polls; this one only says whether a job shows.
   const jobs = useBridgeJobs(
     libraryId,
     path,
-    { enabled: allowed, active, metaPaths },
+    { enabled: allowed, active: false, select: showsJob },
     connectionId,
   );
   const queueJob = useQueueBridgeJob(connectionId);
@@ -92,12 +95,11 @@ export function useGenerate({
   const [confirming, setConfirming] = useState(false);
   const [queueing, setQueueing] = useState(false);
 
-  const job = statusJob(jobs.data);
   const offer = generateOffer({
     allowed,
     metaKnown,
     jobsKnown: jobs.isSuccess,
-    job,
+    showsJob: jobs.data === true,
     content,
   });
 
@@ -110,7 +112,9 @@ export function useGenerate({
     if (queued.length === 0) {
       // A CapabilityError was never sent (the Bridge went offline meanwhile): the button
       // goes with the flag, so there is nothing to say.
-      if (!(error instanceof CapabilityError)) toast({ title: t(queueFailedKey(error)) });
+      if (!(error instanceof CapabilityError)) {
+        toast({ title: t(bridgeRefusalKey(error, 'bridge.generate.queueFailed')) });
+      }
       return false;
     }
     toast({
@@ -127,33 +131,19 @@ export function useGenerate({
   return {
     target,
     allowed,
+    active,
     offer,
-    job,
     confirming,
     setConfirming,
     queue,
     queueing,
-    cancel: () => {
-      if (!job) return;
+    cancel: (job) =>
       cancelJob.mutate(job, {
         onError: (e) => {
           if (!(e instanceof CapabilityError)) toast({ title: t('bridge.status.cancelFailed') });
         },
-      });
-    },
+      }),
     cancelling: cancelJob.isPending,
     retry: () => void queue([{ library_id: libraryId, path }]),
   };
-}
-
-/** A refusal to queue, in the app's words (never the server's). */
-function queueFailedKey(e: unknown) {
-  switch (apiErrorKind(e)) {
-    case 'library_not_writable':
-      return 'bridge.generate.notWritable' as const;
-    case 'kind_unavailable':
-      return 'bridge.generate.unavailable' as const;
-    default:
-      return 'bridge.generate.queueFailed' as const;
-  }
 }

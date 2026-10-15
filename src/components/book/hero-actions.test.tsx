@@ -58,16 +58,13 @@ jest.mock('@/components/ui/toast', () => ({
 }));
 
 /* eslint-disable import/first */
-import { HeroActions } from './hero-actions';
+import { HeroActions, type HeroActionsProps } from './hero-actions';
 /* eslint-enable import/first */
 
 const BOOK = { title: 'The Book', rel_path: 'A/Book', series: 'S' } as Book;
 const entry = (path: string): QueueEntry => ({ library_id: 1, path }) as QueueEntry;
 
-async function mount(
-  stacked = false,
-  generate: { onGenerate?: () => void; onRegenerate?: () => void } = {},
-) {
+async function mount(stacked = false, generate?: HeroActionsProps['generate']) {
   await mountWithPortal(
     <HeroActions
       connectionId="home"
@@ -77,7 +74,7 @@ async function mount(
       primary={{ kind: 'start' }}
       onPrimary={jest.fn()}
       stacked={stacked}
-      {...generate}
+      generate={generate}
     />,
   );
 }
@@ -155,20 +152,20 @@ describe('HeroActions', () => {
 // shows Generate as a button, Regenerate quietly in the book menu, and nothing otherwise.
 describe('HeroActions generate', () => {
   it('shows Generate as a button when the page offers it', async () => {
-    const onGenerate = jest.fn();
-    await mount(false, { onGenerate });
+    const onPress = jest.fn();
+    await mount(false, { offer: 'generate', onPress });
     await fireEvent.press(screen.getByRole('button', { name: 'Generate characters and recaps' }));
-    expect(onGenerate).toHaveBeenCalled();
+    expect(onPress).toHaveBeenCalled();
     expect(mockExtra).toEqual([]);
   });
 
   it('puts Regenerate in the book menu, not the row', async () => {
-    const onRegenerate = jest.fn();
-    await mount(true, { onRegenerate });
+    const onPress = jest.fn();
+    await mount(true, { offer: 'regenerate', onPress });
     expect(screen.queryByTestId('generate-action')).toBeNull();
     expect(mockExtra.map((a) => a.label)).toEqual(['Regenerate characters and recaps']);
     mockExtra[0].onPress();
-    expect(onRegenerate).toHaveBeenCalled();
+    expect(onPress).toHaveBeenCalled();
   });
 
   it('offers neither when the page offers nothing', async () => {

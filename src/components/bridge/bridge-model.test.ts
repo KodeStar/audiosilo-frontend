@@ -1,9 +1,10 @@
-import type { BridgeJob } from '@/api/types';
+import { ApiError } from '@/api/client';
 import en from '@/i18n/locales/en.json';
 import { ADMIN, bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
 
 import {
-  formatUsd,
+  blockedReason,
+  bridgeRefusalKey,
   generateOffer,
   hasCharactersOrRecaps,
   jobStatusView,
@@ -11,7 +12,6 @@ import {
   parkReason,
   queueInOrder,
   queueOrder,
-  stageLabelKey,
   stageOf,
   statusJob,
 } from './bridge-model';
@@ -93,8 +93,7 @@ describe('stage labels', () => {
   it('names every engine stage and Bridge step, each with English words', () => {
     for (const s of STAGES) {
       expect(stageOf({ step: s })).toBe(s);
-      const [, , leaf] = stageLabelKey(stageOf({ step: s })).split('.');
-      expect((en.bridge.stage as Record<string, string>)[leaf]).toBeTruthy();
+      expect((en.bridge.stage as Record<string, string>)[stageOf({ step: s })]).toBeTruthy();
     }
   });
 
@@ -103,7 +102,6 @@ describe('stage labels', () => {
     expect(stageOf({ stage: 'auditing' })).toBe('auditing');
     expect(stageOf({ step: 'teleporting' })).toBe('working');
     expect(stageOf(null)).toBe('working');
-    expect(stageLabelKey('working')).toBe('bridge.stage.working');
     expect(en.bridge.stage.working).toBe('Working');
   });
 });
@@ -189,7 +187,7 @@ describe('statusJob and generateOffer', () => {
     allowed: true,
     metaKnown: true,
     jobsKnown: true,
-    job: undefined as BridgeJob | undefined,
+    showsJob: false,
   };
 
   it('offers Generate for a book with no characters or recaps at all', () => {
@@ -208,7 +206,7 @@ describe('statusJob and generateOffer', () => {
   it('offers nothing before the metadata and jobs are known, while a job shows, or when not allowed', () => {
     expect(generateOffer({ ...base, metaKnown: false, content: undefined })).toBeNull();
     expect(generateOffer({ ...base, jobsKnown: false, content: undefined })).toBeNull();
-    expect(generateOffer({ ...base, job: open, content: undefined })).toBeNull();
+    expect(generateOffer({ ...base, showsJob: true, content: undefined })).toBeNull();
     expect(generateOffer({ ...base, allowed: false, content: undefined })).toBeNull();
   });
 
@@ -269,9 +267,26 @@ describe('queueOrder and queueInOrder', () => {
   });
 });
 
-describe('formatUsd', () => {
-  it('formats dollars in the given locale', () => {
-    expect(formatUsd(16, 'en')).toBe('$16.00');
-    expect(formatUsd(3.4, 'en-US')).toBe('$3.40');
+describe('bridgeRefusalKey and blockedReason', () => {
+  const refusal = (code: string) => new ApiError(409, 'refused', code);
+
+  it("names the Bridge's refusals in the app's words, else the fallback", () => {
+    expect(bridgeRefusalKey(refusal('library_not_writable'), 'x.fallback')).toBe(
+      'bridge.generate.notWritable',
+    );
+    expect(bridgeRefusalKey(refusal('kind_unavailable'), 'x.fallback')).toBe(
+      'bridge.generate.unavailable',
+    );
+    expect(bridgeRefusalKey(new Error('offline'), 'x.fallback')).toBe('x.fallback');
+  });
+
+  it('holds Generate back for an unwritable library, then an agent not ready', () => {
+    expect(blockedReason({ writable: false, agent_ready: false })).toBe(
+      'bridge.generate.notWritable',
+    );
+    expect(blockedReason({ writable: true, agent_ready: false })).toBe(
+      'bridge.generate.agentNotReady',
+    );
+    expect(blockedReason({ writable: true, agent_ready: true })).toBeNull();
   });
 });

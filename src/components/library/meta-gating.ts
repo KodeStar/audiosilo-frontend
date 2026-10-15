@@ -25,20 +25,18 @@ export const LIVE_POSITION_BUCKET_S = 15;
 
 /**
  * Whether a book's `/meta` is worth asking for: its server advertises `metadata` (an
- * older server omits it, and is never asked) and the book is known. Every book is asked,
- * not only one with an ASIN or ISBN: a book with neither can't match the community, but
- * the characters and recaps a Bridge generated on this server come through `/meta` too
- * (`matched:false` with a `work`; Bridge Phase 1a), and nothing on the book says it has
- * them. The server answers a book with no ids at once, without an upstream lookup. The
- * one predicate for every surface that reads `/meta` (the book page, the player's
- * companion and reveal toast, Home's Now card and Previously on, the end credits, the
- * offline copy).
+ * older server omits it, and is never asked) and the book carries an ASIN or ISBN (a
+ * book with neither can never match the community) or is `generated` (characters or
+ * recaps a Bridge generated on this server, which `/meta` serves: `matched:false` with a
+ * `work`, Bridge Phase 1a). The one predicate for every surface that reads `/meta` (the
+ * book page, the player's companion and reveal toast, Home's Now card and Previously on,
+ * the end credits, the offline copy).
  */
 export function metaEnabledFor(
   metadata: boolean | undefined,
-  book: Pick<Book, 'asin' | 'isbn'> | undefined,
+  book: Pick<Book, 'asin' | 'isbn' | 'generated'> | undefined,
 ): boolean {
-  return metadata === true && !!book;
+  return metadata === true && !!(book?.asin || book?.isbn || book?.generated);
 }
 
 /** Nothing known about the listener's position (no saved progress). */

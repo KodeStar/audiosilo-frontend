@@ -30,16 +30,8 @@ export function GenerateOffer({
   if (!model.allowed) return null;
   return (
     <View className="items-center px-6">
-      {model.job ? (
-        <GenerateStatus
-          job={model.job}
-          onCancel={model.cancel}
-          cancelling={model.cancelling}
-          onRetry={model.retry}
-          retrying={model.queueing}
-          className="w-full"
-        />
-      ) : model.offer === 'generate' ? (
+      <GenerateStatus model={model} className="w-full" />
+      {model.offer === 'generate' ? (
         <Button
           testID="generate-action"
           variant="secondary"

@@ -83,7 +83,7 @@ export function BookTabPanel({
       const recaps = work?.recaps ?? [];
       return (
         <View className="gap-4">
-          {work?.generated?.recaps ? <GeneratedMark /> : null}
+          <GeneratedMark generated={work?.generated} dimension="recaps" />
           <BookMetaRecapsTab
             recaps={recaps}
             progress={community.gate}
@@ -104,7 +104,7 @@ export function BookTabPanel({
       const characters = work?.characters ?? [];
       return (
         <View className="gap-4">
-          {work?.generated?.characters ? <GeneratedMark /> : null}
+          <GeneratedMark generated={work?.generated} dimension="characters" />
           <BookMetaCharactersTab
             characters={characters}
             progress={community.gate}

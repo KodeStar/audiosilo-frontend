@@ -1,12 +1,14 @@
 import { bridgeJob } from '@/testing/bridge-fixtures';
 
 import {
+  BRIDGE_IDLE_POLL_MS,
   BRIDGE_POLL_MS,
   bridgePollInterval,
-  finishedSince,
   isOpenJob,
+  latestDone,
   latestJob,
   SIDECARS_GENERATE,
+  staleAfterFinish,
   turnedDone,
 } from './bridge-jobs';
 
@@ -31,10 +33,20 @@ describe('latestJob', () => {
 });
 
 describe('bridgePollInterval', () => {
-  it('polls every 10 s while a generate job of the book is open and the surface is active', () => {
+  it('polls every 10 s while a generate job of the book is claimed or running', () => {
     expect(BRIDGE_POLL_MS).toBe(10_000);
-    for (const state of ['queued', 'claimed', 'running', 'needs_attention'])
+    for (const state of ['claimed', 'running'])
       expect(bridgePollInterval([job({ state })], true)).toBe(BRIDGE_POLL_MS);
+  });
+
+  it('polls every minute while it only waits, queued or parked', () => {
+    expect(BRIDGE_IDLE_POLL_MS).toBe(60_000);
+    for (const state of ['queued', 'needs_attention'])
+      expect(bridgePollInterval([job({ state })], true)).toBe(BRIDGE_IDLE_POLL_MS);
+    // A running job anywhere in the list wins.
+    expect(
+      bridgePollInterval([job({ id: 2, state: 'queued' }), job({ id: 1, state: 'running' })], true),
+    ).toBe(BRIDGE_POLL_MS);
   });
 
   it('stops once the job ended, off screen, for another kind and with nothing known', () => {
@@ -47,35 +59,44 @@ describe('bridgePollInterval', () => {
   });
 });
 
-describe('finishedSince', () => {
-  const fetched = Date.parse('2026-10-15T10:00:00Z');
+describe('latestDone', () => {
+  it('picks the newest done generate job, ignoring open, failed and other kinds', () => {
+    const jobs = [
+      job({ id: 2, state: 'done' }),
+      job({ id: 5, state: 'running' }),
+      job({ id: 4, state: 'failed' }),
+      job({ id: 3, state: 'done' }),
+      job({ id: 9, kind: 'bridge.verify', state: 'done' }),
+    ];
+    expect(latestDone(jobs)?.id).toBe(3);
+    expect(latestDone([job()])).toBeUndefined();
+    expect(latestDone(undefined)).toBeUndefined();
+  });
+});
 
-  it('says the metadata is stale when a generate job finished after it was fetched', () => {
-    expect(
-      finishedSince([job({ state: 'done', finished_at: '2026-10-15T10:05:00Z' })], fetched),
-    ).toBe(true);
+describe('staleAfterFinish', () => {
+  const done = job({ state: 'done', finished_at: '2026-10-15T10:05:00Z' });
+  const before = Date.parse('2026-10-15T10:00:00Z');
+  const after = Date.parse('2026-10-15T11:00:00Z');
+
+  it('says an answer fetched before the job finished is stale', () => {
+    expect(staleAfterFinish(done, [before], false)).toBe(true);
+    expect(staleAfterFinish(done, [after, before], false)).toBe(true);
   });
 
-  it('keeps metadata fetched after the finish, and ignores open, failed and other jobs', () => {
-    expect(
-      finishedSince([job({ state: 'done', finished_at: '2026-10-15T09:55:00Z' })], fetched),
-    ).toBe(false);
-    expect(finishedSince([job({ state: 'running' })], 0)).toBe(false);
-    expect(finishedSince([job({ state: 'failed', finished_at: '2026-10-15T11:00:00Z' })], 0)).toBe(
-      false,
-    );
-    expect(
-      finishedSince(
-        [job({ kind: 'bridge.verify', state: 'done', finished_at: '2026-10-15T11:00:00Z' })],
-        0,
-      ),
-    ).toBe(false);
+  it('keeps answers fetched after the finish, and ignores ones never fetched', () => {
+    expect(staleAfterFinish(done, [after], false)).toBe(false);
+    expect(staleAfterFinish(done, [0], false)).toBe(false);
+    expect(staleAfterFinish(done, [], false)).toBe(false);
+  });
+
+  it('trusts a job seen turning done over the clocks', () => {
+    expect(staleAfterFinish(done, [after], true)).toBe(true);
   });
 
   it('falls back to updated_at without a finish time', () => {
-    expect(
-      finishedSince([job({ state: 'done', updated_at: '2026-10-15T10:30:00Z' })], fetched),
-    ).toBe(true);
+    const updated = job({ state: 'done', updated_at: '2026-10-15T10:30:00Z' });
+    expect(staleAfterFinish(updated, [before], false)).toBe(true);
   });
 });
 

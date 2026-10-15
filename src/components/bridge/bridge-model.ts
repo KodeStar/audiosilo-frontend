@@ -1,13 +1,14 @@
+import { apiErrorKind } from '@/api/client';
 import type {
   BookMetaGenerated,
   BookRef,
+  BridgeEstimate,
   BridgeEstimateBook,
   BridgeJob,
   ServerInfo,
   SidecarsGenerateParams,
   User,
 } from '@/api/types';
-import { getLocale } from '@/i18n/locale';
 import { isOpenJob, latestJob, SIDECARS_GENERATE } from '@/lib/bridge-jobs';
 
 // The rules behind the player's one Bridge action, "Generate characters and recaps"
@@ -15,7 +16,7 @@ import { isOpenJob, latestJob, SIDECARS_GENERATE } from '@/lib/bridge-jobs';
 // order books are queued in. Pure, so each is tested on its own.
 
 /** The Bridge feature (`ServerInfo.bridge.features`) that offers `sidecars.generate`. */
-export const SIDECARS_FEATURE = 'sidecars';
+const SIDECARS_FEATURE = 'sidecars';
 
 /** What the player always asks for: the source the Bridge picks (the ebook beside the
  * audio when there is one) and results kept on this server. The player never offers to
@@ -57,7 +58,7 @@ export function hasCharactersOrRecaps(content: GenerateContent | undefined): boo
 }
 
 /** Whether any of the book's characters or recaps came from this server's own files. */
-export function hasGenerated(content: GenerateContent | undefined): boolean {
+function hasGenerated(content: GenerateContent | undefined): boolean {
   return !!(content?.generated?.characters || content?.generated?.recaps);
 }
 
@@ -79,11 +80,12 @@ export function generateOffer(opts: {
   allowed: boolean;
   metaKnown: boolean;
   jobsKnown: boolean;
-  job: BridgeJob | undefined;
+  /** A job's status shows (`statusJob` has one). */
+  showsJob: boolean;
   content: GenerateContent | undefined;
 }): 'generate' | 'regenerate' | null {
-  const { allowed, metaKnown, jobsKnown, job, content } = opts;
-  if (!allowed || !metaKnown || !jobsKnown || job) return null;
+  const { allowed, metaKnown, jobsKnown, showsJob, content } = opts;
+  if (!allowed || !metaKnown || !jobsKnown || showsJob) return null;
   if (!hasCharactersOrRecaps(content)) return 'generate';
   return hasGenerated(content) ? 'regenerate' : null;
 }
@@ -159,11 +161,6 @@ const KNOWN_STAGES: ReadonlySet<string> = new Set(STAGES);
 export function stageOf(progress: { step?: string; stage?: string } | null | undefined) {
   const name = progress?.step || progress?.stage || '';
   return (KNOWN_STAGES.has(name) ? name : 'working') as GenerateStage;
-}
-
-/** The translation key of a stage's label. */
-export function stageLabelKey(stage: GenerateStage) {
-  return `bridge.stage.${stage}` as const;
 }
 
 /** The park codes the player names, grouped by what the admin would do about them. */
@@ -256,11 +253,27 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
   };
 }
 
-/** A cost in US dollars ("$16.00"), in the listener's number format. */
-export function formatUsd(amount: number, locale: string = getLocale()): string {
-  try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(amount);
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
+// --- Refusals -----------------------------------------------------------------------
+
+/** The Bridge's refusals the player names, by the server's error code. */
+const REFUSAL_KEY = {
+  library_not_writable: 'bridge.generate.notWritable',
+  kind_unavailable: 'bridge.generate.unavailable',
+} as const;
+
+/** A Bridge refusal in the app's words (never the server's): the library it can't write,
+ * the kind it doesn't offer, else `fallback`. */
+export function bridgeRefusalKey<F extends string>(error: unknown, fallback: F) {
+  const kind = apiErrorKind(error);
+  return kind === 'library_not_writable' || kind === 'kind_unavailable'
+    ? REFUSAL_KEY[kind]
+    : fallback;
+}
+
+/** Why Generate is held back, when it is: the Bridge can't write the library (its
+ * results would have nowhere to go), or its agent isn't signed in. */
+export function blockedReason(e: Pick<BridgeEstimate, 'writable' | 'agent_ready'>) {
+  if (!e.writable) return REFUSAL_KEY.library_not_writable;
+  if (!e.agent_ready) return 'bridge.generate.agentNotReady' as const;
+  return null;
 }

@@ -47,6 +47,15 @@ export function formatBytes(bytes?: number, locale: string = getLocale()): strin
   return `${n} ${units[i]}`;
 }
 
+/** "$16.00" - a cost in US dollars, in the reader's number format. */
+export function formatUsd(amount: number, locale: string = getLocale()): string {
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(amount);
+  } catch {
+    return `$${amount.toFixed(2)}`;
+  }
+}
+
 /** "3,249" - a whole count in the reader's locale ("3.249" in de). */
 export function formatCount(n: number, locale: string = getLocale()): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n);

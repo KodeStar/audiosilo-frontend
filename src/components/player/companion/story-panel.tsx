@@ -78,7 +78,7 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
   const story = storySoFar(data.recaps, data.listening);
   return (
     <View className="gap-4">
-      {data.generated?.recaps ? <GeneratedMark /> : null}
+      <GeneratedMark generated={data.generated} dimension="recaps" />
       {data.recaps.length > 0 ? (
         <View className="gap-0.5">
           <Text variant="eyebrow">{t('book.meta.storySoFar')}</Text>
