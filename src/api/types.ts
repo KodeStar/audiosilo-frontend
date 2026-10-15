@@ -108,6 +108,11 @@ export type Capabilities = {
    * servers: treat missing as false, never call the routes and never send
    * `also_members`. */
   household_members?: boolean;
+  /** Whether an AudioSilo Bridge is paired and online (its heartbeat is under two minutes
+   * old); what it can do is {@link ServerInfo.bridge}'s `features`. Absent on older servers
+   * and false while the Bridge is offline: treat missing as false and show no Bridge
+   * action (the admin console covers it). */
+  bridge?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -129,7 +134,14 @@ export type ServerInfo = {
   auth: { methods: string[] };
   /** Present when the server runs in public demo mode (instant throwaway accounts). */
   demo?: { enabled: boolean };
+  /** The online Bridge's version and the job families it offers (`sidecars`: generating
+   * characters and recaps, `sidecars.generate`). Present only while
+   * `capabilities.bridge` is true; absent on older servers. */
+  bridge?: ServerBridge;
 };
+
+/** The Bridge block of GET /server (see {@link ServerInfo.bridge}). */
+export type ServerBridge = { version: string; features: string[] };
 
 export type Role = 'admin' | 'user';
 
@@ -559,7 +571,17 @@ export type BookMetaWork = {
    * `community_description`); the UI must show it beside that content. The server
    * writes the legal text - render it, never compose it. Absent on older servers. */
   attribution?: BookMetaAttribution;
+  /** Which of `characters` and `recaps` came from files the Bridge generated on this
+   * server (the book's `.audiosilo/` folder) rather than the community: community content
+   * wins per dimension, so a dimension is generated only where the community has none.
+   * Omitted when nothing did (and on older servers). Generated content carries no
+   * `attribution` of its own. */
+  generated?: BookMetaGenerated;
 };
+
+/** What of a work came from this server's own generated files (see
+ * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. */
+export type BookMetaGenerated = { characters?: boolean; recaps?: boolean; generated_at?: string };
 
 /** A community-written work description (CC BY-SA). `license` names the licence
  * when the entry states one. */
@@ -646,9 +668,13 @@ export type BookMetaSeries = {
 };
 
 /** Response of GET /libraries/{id}/meta. A discriminated union on `matched`:
- * `matched:false` when the book has no asin/isbn or the service found no match. */
+ * `matched:false` when the book has no asin/isbn or the service found no match. An
+ * unmatched book whose characters or recaps were generated on this server (Bridge Phase
+ * 1a) carries them in `work`: `id` empty, `title` the book's own, and only `characters`,
+ * `recaps`, `recap_summary` and `generated` (no `authors` or `language`, whatever the
+ * type says: read it through `bookMetaWork`). Older servers never send it. */
 export type BookMeta =
-  | { matched: false }
+  | { matched: false; work?: BookMetaWork }
   | {
       matched: true;
       work: BookMetaWork;
@@ -1150,4 +1176,146 @@ export type UpdateMemberBody = {
   kind?: MemberKind;
   access?: MemberAccess;
   collection_ids?: number[];
+};
+
+// --- AudioSilo Bridge (capability `bridge`, admin only) ------------------------------
+// The server queues jobs; the paired Bridge claims and runs them and reports back. The
+// player is an admin's window onto one kind, `sidecars.generate` (characters and recaps
+// for a book), through the admin routes `/admin/bridge/**` (a non-admin gets a 403).
+// Hand-mirrored from the server's `internal/bridge` (Job) and `internal/api`.
+
+/** Where a Bridge job stands. `queued`, `claimed`, `running` and `needs_attention`
+ * (parked: a person has to look at it in the Bridge, or it resumes by itself at
+ * `progress.park.retry_at`) are open; the other three are final. */
+export type BridgeJobState =
+  'queued' | 'claimed' | 'running' | 'needs_attention' | 'done' | 'failed' | 'cancelled';
+
+/** One Bridge job (GET/POST /admin/bridge/jobs, GET /admin/bridge/jobs/{id}, the
+ * estimate's `open_job`). `params`, `progress` and `result` are the kind's own objects
+ * (for `sidecars.generate`: {@link SidecarsGenerateParams},
+ * {@link SidecarsGenerateProgress}, {@link SidecarsGenerateResult}); `null` until set.
+ * Timestamps are RFC 3339 UTC. */
+export type BridgeJob = {
+  id: number;
+  kind: string;
+  /** Null for a job about no library. */
+  library_id: number | null;
+  /** The book's own path (the server resolves a part path to it); null for a job about a
+   * whole library or none. */
+  path: string | null;
+  params: SidecarsGenerateParams | Record<string, unknown> | null;
+  state: BridgeJobState | (string & {});
+  progress: SidecarsGenerateProgress | null;
+  result: SidecarsGenerateResult | Record<string, unknown> | null;
+  /** Empty unless the job failed, or is parked (the park message). */
+  error: string;
+  /** The admin who queued it; null once that account is deleted. */
+  requested_by: UserRef | null;
+  priority: number;
+  attempts: number;
+  lease_until: string | null;
+  cancel_requested: boolean;
+  created_at: string;
+  updated_at: string;
+  claimed_at: string | null;
+  finished_at: string | null;
+};
+
+/** Response of GET /admin/bridge/jobs: newest first, `next_before` for the next page. */
+export type BridgeJobList = { jobs: BridgeJob[]; next_before?: number };
+
+/** Body of POST /admin/bridge/jobs. */
+export type BridgeJobRequest = {
+  kind: string;
+  library_id: number;
+  path: string;
+  params?: SidecarsGenerateParams;
+};
+
+/** `sidecars.generate`'s params (the server refuses unknown fields). `source` defaults to
+ * `auto` (the ebook when an `.epub` sits in the book's folder, else the audio);
+ * `contribute` to `local` (the results stay on this server; `issue` also offers them to
+ * the community, which the player never asks for); `work_id` names the community work
+ * when known (at most 200 bytes). */
+export type SidecarsGenerateParams = {
+  source?: 'auto' | 'audio' | 'ebook';
+  contribute?: 'local' | 'issue';
+  work_id?: string;
+};
+
+/** Why a parked job stopped, while it is parked (`needs_attention`). `code` is the
+ * engine's park code (`agent_unavailable`, `budget_exceeded`, `book_not_writable`...),
+ * `hint` the Bridge's English (for the console; the player says the code in its own
+ * words), `retry_at` when an availability park resumes by itself. */
+export type BridgeJobPark = { code: string; hint?: string; retry_at?: string };
+
+/** `sidecars.generate`'s progress (the Bridge's PATCH; stored opaquely, so every field
+ * is optional here). `step` is always set by the Bridge: an engine stage name or
+ * `waiting` / `writing` / `rescanning`; `stage` the engine state when known. */
+export type SidecarsGenerateProgress = {
+  step?: string;
+  message?: string;
+  done?: number;
+  total?: number;
+  stage?: string;
+  /** The engine's whole-book estimate of the time left. */
+  eta_seconds?: number;
+  /** Agent spend so far. */
+  cost_usd?: number;
+  source?: 'audio' | 'ebook';
+  park?: BridgeJobPark;
+};
+
+/** `sidecars.generate`'s result on `done`. */
+export type SidecarsGenerateResult = {
+  library_id: number;
+  path: string;
+  source: 'audio' | 'ebook';
+  /** The file names written into the book's `.audiosilo/`. */
+  files: string[];
+  characters: number;
+  recaps: number;
+  cost_usd?: number;
+  work_id?: string;
+  /** Only with `contribute: issue`: where each dimension was offered. */
+  contributed?: { characters?: string; recaps?: string };
+};
+
+/** An earlier book of the same series, in the same library, with no recaps yet (the
+ * estimate's `earlier`, in reading order). */
+export type BridgeEstimateBook = {
+  library_id: number;
+  path: string;
+  title: string;
+  series_index: string;
+};
+
+/** What a book already has, per source (the estimate's `has`). */
+export type BridgeContentFlags = { characters: boolean; recaps: boolean };
+
+/** Response of GET /admin/bridge/estimate (the confirmation before generating). */
+export type BridgeEstimate = {
+  kind: string;
+  library_id: number;
+  path: string;
+  /** What the run reads: the ebook when an `.epub` sits directly in the book's folder. */
+  source: 'audio' | 'ebook';
+  /** The ebook's path, for an ebook run. */
+  ebook?: string;
+  duration_seconds: number;
+  /** Transcription time (0 for an ebook). */
+  asr_hours: number;
+  /** The expected agent cost; null while the Bridge has no history to go on. */
+  agent_cost_usd: number | null;
+  /** The agent runs on a subscription login, so the cost is notional. */
+  subscription: boolean;
+  /** The agent container answers and has a credential. */
+  agent_ready: boolean;
+  /** The library is mapped on the Bridge and writable there. */
+  writable: boolean;
+  has: { community: BridgeContentFlags; local: BridgeContentFlags };
+  /** At most 10, reading order. */
+  earlier: BridgeEstimateBook[];
+  /** The open `sidecars.generate` job for this book, if there is one. */
+  open_job?: BridgeJob;
 };

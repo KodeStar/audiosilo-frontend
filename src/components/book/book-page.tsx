@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
@@ -14,8 +14,11 @@ import {
   useLibraries,
 } from '@/api/hooks';
 import { useOptionalApi, useScopedCid } from '@/api/provider';
+import { GenerateDialog } from '@/components/bridge/generate-dialog';
+import { GenerateStatus } from '@/components/bridge/generate-status';
+import { useGenerate } from '@/components/bridge/use-generate';
 import { ContentScope } from '@/components/layout/content-scope';
-import { matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
+import { bookMetaWork, matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { bookStatus } from '@/components/library/books/books-view';
 import { DownloadProgress } from '@/components/library/download-control';
@@ -131,16 +134,30 @@ function BookPage() {
   const { data: libraries } = useLibraries();
   const ratings = useCapability('ratings', cid) === true;
   const browsePeople = useCapability('browse_people', cid);
-  // Community metadata is progressive enhancement: only a server advertising it is asked,
-  // and only for a book with an ASIN or ISBN (one without can never match).
+  // Community metadata is progressive enhancement: only a server advertising it is asked
+  // (a book with no ASIN or ISBN too: it can carry characters and recaps generated here).
   const bookMetaEnabled = metaEnabledFor(useCapability('metadata', cid), book);
   const { data: meta } = useBookMeta(libraryId, path, bookMetaEnabled);
+  // What the Characters and Recaps tabs render: the matched work, or an unmatched book's
+  // characters and recaps generated on this server (About and the rails stay matched-only).
+  const metaWork = bookMetaWork(meta, bookMetaEnabled);
   // Where the listener is: the hero's place, the primary action, the spoiler gate.
   const progressQuery = useBookProgress(libraryId, path, true);
   const progress = progressQuery.data ?? undefined;
   const serverName = useConnectionName(cid);
   const interval = useSettings((s) => s.virtualChapterInterval);
   const relPath = book?.rel_path ?? path;
+  // An admin's "Generate characters and recaps" (Bridge Phase 1a): offered for a book with
+  // neither, by the server's Bridge; its job's status shows under the actions meanwhile.
+  const focused = useIsFocused();
+  const generate = useGenerate({
+    // The jobs carry the book's own path: nothing is asked until the book is in.
+    target: { connectionId: cid, libraryId, path: book?.rel_path ?? '' },
+    content: metaWork,
+    metaKnown: meta !== undefined,
+    active: focused,
+    metaPaths: [path, relPath],
+  });
   const target = useMemo(
     () => ({ connectionId: cid, libraryId, path: relPath }),
     [cid, libraryId, relPath],
@@ -259,7 +276,7 @@ function BookPage() {
   );
 
   // --- Community metadata and the spoiler gate -----------------------------------------
-  const metaCharacters = metaMatched?.work.characters ?? [];
+  const metaCharacters = metaWork?.characters ?? [];
   // ONE whole-book position mapped onto the REAL chapters (never the parts: they are
   // wall-clock slices, not the work's chapters).
   const gate = listeningProgressFor({
@@ -267,12 +284,12 @@ function BookPage() {
     position: listeningPosition,
     finished: !!progress?.finished,
   });
-  const summaryVisible = summaryIsVisible(metaMatched?.work.recap_summary, gate.finished);
+  const summaryVisible = summaryIsVisible(metaWork?.recap_summary, gate.finished);
   const tabs = bookTabs({
     // Chapters arrive on their own request; the tab counts as present while it is in
     // flight, so the row doesn't start on Bookmarks and snap over.
     hasList: list.rows.length > 0 || chaptersLoading,
-    hasRecaps: (metaMatched?.work.recaps ?? []).length > 0,
+    hasRecaps: (metaWork?.recaps ?? []).length > 0,
     hasCharacters: metaCharacters.length > 0,
     hasSeries: rails.length > 0,
     hasPreviousBooks: previousBooks.length > 0,
@@ -338,7 +355,7 @@ function BookPage() {
             onJump,
           }}
           community={{
-            meta: metaMatched,
+            work: metaWork,
             gate,
             summaryVisible,
             showSpoilers,
@@ -428,11 +445,26 @@ function BookPage() {
             })}
             onPrimary={() => play({ toggle: true })}
             stacked={!layout.heroSide}
+            onGenerate={
+              generate.offer === 'generate' ? () => generate.setConfirming(true) : undefined
+            }
+            onRegenerate={
+              generate.offer === 'regenerate' ? () => generate.setConfirming(true) : undefined
+            }
           />
         }
         footer={
           <>
             <DownloadProgress libraryId={libraryId} path={path} />
+            {generate.job ? (
+              <GenerateStatus
+                job={generate.job}
+                onCancel={generate.cancel}
+                cancelling={generate.cancelling}
+                onRetry={generate.retry}
+                retrying={generate.queueing}
+              />
+            ) : null}
             <TranscodeNote
               book={book}
               chapterData={chapterData}
@@ -455,6 +487,7 @@ function BookPage() {
         <View className="min-w-0 flex-1">{tabSection}</View>
         {layout.columns === 2 ? <View style={{ width: layout.aside }}>{aside}</View> : null}
       </View>
+      <GenerateDialog model={generate} title={book.title} />
     </ScrollView>
   );
 }

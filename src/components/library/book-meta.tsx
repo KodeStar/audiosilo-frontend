@@ -66,6 +66,36 @@ export function matchedMeta(
   return meta;
 }
 
+/**
+ * The work whose characters, recaps and summary the book renders: the matched work, or,
+ * for an UNMATCHED book, the work the server builds from what its Bridge generated on
+ * this server (`matched:false` with `work`; Bridge Phase 1a). Undefined when the
+ * capability is off, nothing has arrived, or an unmatched book has nothing generated. The
+ * ONE predicate behind the Characters and Recaps tabs, their counts and the companion's
+ * Who's who and Story so far, beside `matchedMeta` (which stays the matched half only:
+ * About, the series rails and the links to AudioSilo Meta need a real community work).
+ * An unmatched work carries only the generated fields, so it is filled out here
+ * (`authors: []`, `language: ''`) and every list is checked to be one.
+ */
+export function bookMetaWork(
+  meta: BookMeta | undefined,
+  enabled: boolean,
+): BookMetaWork | undefined {
+  if (!enabled || !meta) return undefined;
+  if (meta.matched) return meta.work;
+  const work = meta.work;
+  if (!work || typeof work !== 'object') return undefined;
+  return {
+    ...work,
+    id: typeof work.id === 'string' ? work.id : '',
+    title: typeof work.title === 'string' ? work.title : '',
+    authors: Array.isArray(work.authors) ? work.authors : [],
+    language: typeof work.language === 'string' ? work.language : '',
+    characters: Array.isArray(work.characters) ? work.characters : undefined,
+    recaps: Array.isArray(work.recaps) ? work.recaps : undefined,
+  };
+}
+
 /** Whether a description is long enough to warrant the collapse toggle. */
 export function descriptionIsLong(text: string | undefined): boolean {
   return (text?.length ?? 0) > LONG_DESCRIPTION_CHARS;
@@ -129,6 +159,18 @@ function Chip({ label }: { label: string }) {
   return (
     <View className="rounded-full bg-muted px-2 py-0.5">
       <Text className="font-sans-medium text-[10px] uppercase text-muted-foreground">{label}</Text>
+    </View>
+  );
+}
+
+/** "Generated on this server": the quiet chip at the head of a Characters or Recaps
+ * panel whose entries came from files the Bridge wrote for this server, not from the
+ * community (`work.generated`). Never on community content. */
+export function GeneratedMark() {
+  const { t } = useTranslation();
+  return (
+    <View testID="generated-mark" className="flex-row">
+      <Chip label={t('bridge.generate.mark')} />
     </View>
   );
 }

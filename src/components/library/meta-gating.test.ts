@@ -168,10 +168,12 @@ describe('chapterStartsOf', () => {
 });
 
 describe('metaEnabledFor', () => {
-  it('asks only a server with metadata, for a book with an ASIN or ISBN', () => {
+  // A book with neither an ASIN nor an ISBN is asked too: it can't match the community,
+  // but characters and recaps generated on its server come through /meta (Bridge 1a).
+  it('asks only a server with metadata, for any known book', () => {
     expect(metaEnabledFor(true, { asin: 'B0', isbn: undefined })).toBe(true);
     expect(metaEnabledFor(true, { asin: undefined, isbn: '978' })).toBe(true);
-    expect(metaEnabledFor(true, { asin: '', isbn: '' })).toBe(false);
+    expect(metaEnabledFor(true, { asin: '', isbn: '' })).toBe(true);
     expect(metaEnabledFor(true, undefined)).toBe(false);
     expect(metaEnabledFor(false, { asin: 'B0', isbn: undefined })).toBe(false);
     expect(metaEnabledFor(undefined, { asin: 'B0', isbn: undefined })).toBe(false);

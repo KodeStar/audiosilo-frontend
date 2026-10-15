@@ -34,9 +34,19 @@ jest.mock('@/components/library/use-queue-actions', () => ({
 }));
 
 let mockOmit: readonly string[] = [];
+let mockExtra: { key: string; label: string; onPress: () => void }[] = [];
 jest.mock('@/components/library/books/book-actions', () => ({
-  BookActionsMenu: ({ trigger, omit }: { trigger: ReactElement; omit: readonly string[] }) => {
+  BookActionsMenu: ({
+    trigger,
+    omit,
+    extra,
+  }: {
+    trigger: ReactElement;
+    omit: readonly string[];
+    extra?: { key: string; label: string; onPress: () => void }[];
+  }) => {
     mockOmit = omit;
+    mockExtra = extra ?? [];
     return trigger;
   },
 }));
@@ -54,7 +64,10 @@ import { HeroActions } from './hero-actions';
 const BOOK = { title: 'The Book', rel_path: 'A/Book', series: 'S' } as Book;
 const entry = (path: string): QueueEntry => ({ library_id: 1, path }) as QueueEntry;
 
-async function mount(stacked = false) {
+async function mount(
+  stacked = false,
+  generate: { onGenerate?: () => void; onRegenerate?: () => void } = {},
+) {
   await mountWithPortal(
     <HeroActions
       connectionId="home"
@@ -64,6 +77,7 @@ async function mount(stacked = false) {
       primary={{ kind: 'start' }}
       onPrimary={jest.fn()}
       stacked={stacked}
+      {...generate}
     />,
   );
 }
@@ -134,5 +148,32 @@ describe('HeroActions', () => {
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'Remove from favourites' }));
     expect(mockToggleFavourite).toHaveBeenCalledWith({ libraryId: 1, path: 'A/Book', on: false });
+  });
+});
+
+// An admin's Bridge action (Phase 1a): the page decides what the book offers; the row
+// shows Generate as a button, Regenerate quietly in the book menu, and nothing otherwise.
+describe('HeroActions generate', () => {
+  it('shows Generate as a button when the page offers it', async () => {
+    const onGenerate = jest.fn();
+    await mount(false, { onGenerate });
+    await fireEvent.press(screen.getByRole('button', { name: 'Generate characters and recaps' }));
+    expect(onGenerate).toHaveBeenCalled();
+    expect(mockExtra).toEqual([]);
+  });
+
+  it('puts Regenerate in the book menu, not the row', async () => {
+    const onRegenerate = jest.fn();
+    await mount(true, { onRegenerate });
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+    expect(mockExtra.map((a) => a.label)).toEqual(['Regenerate characters and recaps']);
+    mockExtra[0].onPress();
+    expect(onRegenerate).toHaveBeenCalled();
+  });
+
+  it('offers neither when the page offers nothing', async () => {
+    await mount();
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+    expect(mockExtra).toEqual([]);
   });
 });

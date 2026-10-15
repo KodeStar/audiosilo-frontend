@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Animated, { FadeInUp, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
 
-import { CharacterCard } from '@/components/library/book-meta';
+import { CharacterCard, GeneratedMark } from '@/components/library/book-meta';
 import { splitCharacters } from '@/components/library/meta-gating';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text } from '@/components/ui/text';
@@ -22,9 +23,11 @@ const REVEAL = FadeInUp.springify().damping(16).reduceMotion(ReduceMotion.System
  * (`meta-gating.ts`); the rest counted, never named, behind Show anyway (one reveal for
  * this book, shared with Story so far). Someone a natural chapter crossing just revealed
  * springs in at the top with a pink outline and "Just met". Nothing while the community
- * data loads; a kind note when there is none.
+ * data loads; a kind note when there is none, with `generate` under it (an admin's
+ * "Generate characters and recaps"). Generated people are marked "Generated on this
+ * server".
  */
-export function WhoPanel({ data }: { data: CompanionData }) {
+export function WhoPanel({ data, generate }: { data: CompanionData; generate?: ReactNode }) {
   const { t } = useTranslation();
   const shown = useCompanion(selectRevealed(data.key));
   const justMet = useCompanion(selectJustMet(data.key));
@@ -33,11 +36,14 @@ export function WhoPanel({ data }: { data: CompanionData }) {
   if (data.status === 'loading' || data.status === 'off') return null;
   if (data.status === 'none' || data.characters.length === 0) {
     return (
-      <EmptyState
-        icon="users"
-        title={t('player.companion.whoEmptyTitle')}
-        hint={t('player.companion.whoEmptyHint')}
-      />
+      <View>
+        <EmptyState
+          icon="users"
+          title={t('player.companion.whoEmptyTitle')}
+          hint={t('player.companion.whoEmptyHint')}
+        />
+        {generate}
+      </View>
     );
   }
 
@@ -45,6 +51,7 @@ export function WhoPanel({ data }: { data: CompanionData }) {
   const met = whoOrder(visible);
   return (
     <View className="gap-2.5">
+      {data.generated?.characters ? <GeneratedMark /> : null}
       <Text variant="caption">{t('player.companion.metCount', { count: met.length })}</Text>
       {/* Skips the entrance of everyone already here when the panel mounts: only a
           character who arrives while it is open springs in. */}

@@ -293,6 +293,31 @@ describe('ApiClient', () => {
     });
   });
 
+  it('passes through an unmatched book with generated content in work (Bridge 1a)', async () => {
+    // The server's answer for a book its Bridge generated characters and recaps for, with
+    // no community match: the work carries only the generated dimensions.
+    const envelope = {
+      matched: false,
+      work: {
+        id: '',
+        title: 'The Home Recording',
+        characters: [{ id: 'ada', name: 'Ada', reveal: { chapter: 1 } }],
+        recaps: [{ through: { chapter: 3 }, text: 'So far.' }],
+        recap_summary: { in_short: 'All of it.' },
+        generated: { characters: true, recaps: true, generated_at: '2026-10-15T09:00:00Z' },
+      },
+    };
+    installFetch(() => ({ status: 200, body: envelope }));
+    const meta = await new ApiClient('https://h', 'tok').bookMeta(1, 'x');
+    expect(meta).toEqual(envelope);
+    expect(meta.matched).toBe(false);
+    expect(meta.work?.generated).toEqual({
+      characters: true,
+      recaps: true,
+      generated_at: '2026-10-15T09:00:00Z',
+    });
+  });
+
   it('surfaces an ApiError when the meta service is unavailable (502)', async () => {
     installFetch(() => ({ status: 502, body: { error: 'metadata service unavailable' } }));
     await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).rejects.toMatchObject({
@@ -1915,5 +1940,133 @@ describe('ApiClient household members (Phase 8b-1)', () => {
     const row = { ...device, current: true, member_sign_ins: [{ id: 12, name: 'Evie' }] };
     installFetch(() => ({ status: 200, body: { devices: [row] } }));
     await expect(c().myDevices()).resolves.toEqual([row]);
+  });
+});
+
+describe('ApiClient Bridge (admin, Phase 1a)', () => {
+  const c = () => new ApiClient('https://h', 'tok');
+  // The server's Job JSON (audiosilo-server internal/bridge jobs.go), every field.
+  const job = {
+    id: 12,
+    kind: 'sidecars.generate',
+    library_id: 1,
+    path: 'Author/Series/Book 2',
+    params: { source: 'auto', contribute: 'local' },
+    state: 'running',
+    progress: {
+      step: 'asr',
+      message: 'Transcribing chapter 12 of 40',
+      done: 12,
+      total: 40,
+      stage: 'asr',
+      eta_seconds: 5400,
+      cost_usd: 3.42,
+      source: 'audio',
+    },
+    result: null,
+    error: '',
+    requested_by: { id: 1, username: 'admin' },
+    priority: 0,
+    attempts: 1,
+    lease_until: '2026-10-15T10:02:00Z',
+    cancel_requested: false,
+    created_at: '2026-10-15T09:00:00Z',
+    updated_at: '2026-10-15T10:00:00Z',
+    claimed_at: '2026-10-15T09:00:05Z',
+    finished_at: null,
+  };
+
+  it("lists a book's jobs with GET /admin/bridge/jobs?library_id=&path=, unwrapping jobs", async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { jobs: [job], next_before: 3 } }));
+    await expect(c().bridgeJobs(1, 'Author/Series/Book 2')).resolves.toEqual([job]);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/admin/bridge/jobs?library_id=1&path=Author%2FSeries%2FBook+2',
+      method: 'GET',
+      body: undefined,
+    });
+  });
+
+  it('reads a list without jobs as []', async () => {
+    installFetch(() => ({ status: 200, body: { jobs: null } }));
+    await expect(c().bridgeJobs(1, 'x')).resolves.toEqual([]);
+  });
+
+  it('queues with POST /admin/bridge/jobs { kind, library_id, path, params }', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: { ...job, state: 'queued' } }));
+    const body = {
+      kind: 'sidecars.generate',
+      library_id: 1,
+      path: 'Author/Series/Book 2',
+      params: { source: 'auto' as const, contribute: 'local' as const },
+    };
+    await expect(c().queueBridgeJob(body)).resolves.toMatchObject({ id: 12, state: 'queued' });
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/admin/bridge/jobs',
+      method: 'POST',
+      body,
+      contentType: 'application/json',
+    });
+  });
+
+  it('reads a refusal to queue by its code', async () => {
+    installFetch(() => ({
+      status: 409,
+      body: { error: 'the bridge cannot write this library', code: 'library_not_writable' },
+    }));
+    const e = await c()
+      .queueBridgeJob({ kind: 'sidecars.generate', library_id: 1, path: 'x' })
+      .catch((err: unknown) => err);
+    expect(e).toMatchObject({ name: 'ApiError', status: 409, code: 'library_not_writable' });
+    expect(apiErrorKind(e)).toBe('library_not_writable');
+  });
+
+  it('cancels with POST /admin/bridge/jobs/{id}/cancel and answers the job', async () => {
+    const fetchMock = installFetch(() => ({
+      status: 200,
+      body: { ...job, cancel_requested: true },
+    }));
+    await expect(c().cancelBridgeJob(12)).resolves.toMatchObject({ cancel_requested: true });
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/admin/bridge/jobs/12/cancel',
+      method: 'POST',
+      body: undefined,
+      contentType: undefined,
+    });
+  });
+
+  it('asks for the estimate with GET /admin/bridge/estimate?library_id=&path=&kind=', async () => {
+    const estimate = {
+      kind: 'sidecars.generate',
+      library_id: 1,
+      path: 'Author/Series/Book 2',
+      source: 'audio',
+      duration_seconds: 36000,
+      asr_hours: 2.5,
+      agent_cost_usd: null,
+      subscription: true,
+      agent_ready: true,
+      writable: true,
+      has: {
+        community: { characters: false, recaps: false },
+        local: { characters: false, recaps: false },
+      },
+      earlier: [
+        { library_id: 1, path: 'Author/Series/Book 1', title: 'Book 1', series_index: '1' },
+      ],
+      open_job: job,
+    };
+    const fetchMock = installFetch(() => ({ status: 200, body: estimate }));
+    await expect(
+      c().bridgeEstimate(1, 'Author/Series/Book 2', 'sidecars.generate'),
+    ).resolves.toEqual(estimate);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/admin/bridge/estimate?library_id=1&path=Author%2FSeries%2FBook+2&kind=sidecars.generate',
+      method: 'GET',
+    });
+  });
+
+  it("surfaces a non-admin's 403 as an ApiError", async () => {
+    installFetch(() => ({ status: 403, body: { error: 'admin only' } }));
+    await expect(c().bridgeJobs(1, 'x')).rejects.toMatchObject({ name: 'ApiError', status: 403 });
   });
 });

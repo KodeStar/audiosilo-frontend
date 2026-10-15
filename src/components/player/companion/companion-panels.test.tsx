@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
+import { Text } from 'react-native';
 
 import type { BookMetaCharacter, BookMetaRecap } from '@/api/types';
 
@@ -169,5 +170,36 @@ describe('Story so far', () => {
   it('says so kindly when there is no recap', async () => {
     await mount(<StoryPanel data={data({ recaps: [], summary: undefined })} />);
     expect(screen.getByText('No recap for this book yet')).toBeTruthy();
+  });
+});
+
+// Characters and recaps generated on this server (Bridge Phase 1a): each panel marks its
+// own dimension only, and an empty panel carries the admin's generate slot under its note.
+describe('generated content in the companion', () => {
+  it("marks Who's who only when the characters were generated here", async () => {
+    await mount(<WhoPanel data={data({ generated: { characters: true } })} />);
+    expect(screen.getByText('Generated on this server')).toBeTruthy();
+  });
+
+  it('marks Story so far only when the recaps were generated here', async () => {
+    await mount(<StoryPanel data={data({ generated: { characters: true } })} />);
+    expect(screen.queryByText('Generated on this server')).toBeNull();
+    await mount(<StoryPanel data={data({ generated: { recaps: true } })} />);
+    expect(screen.getByText('Generated on this server')).toBeTruthy();
+  });
+
+  it('never marks community content', async () => {
+    await mount(<WhoPanel data={data()} />);
+    expect(screen.queryByText('Generated on this server')).toBeNull();
+  });
+
+  it('puts the generate slot under an empty panel only', async () => {
+    const slot = <Text>generate slot</Text>;
+    await mount(<WhoPanel data={data({ status: 'none' })} generate={slot} />);
+    expect(screen.getByText('generate slot')).toBeTruthy();
+    await mount(<StoryPanel data={data({ status: 'none' })} generate={slot} />);
+    expect(screen.getByText('generate slot')).toBeTruthy();
+    await mount(<WhoPanel data={data()} generate={slot} />);
+    expect(screen.queryByText('generate slot')).toBeNull();
   });
 });

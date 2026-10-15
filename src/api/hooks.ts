@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 
+import { bridgePollInterval, finishedSince, turnedDone } from '@/lib/bridge-jobs';
 import { byPosition } from '@/lib/by-position';
 import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -41,6 +42,9 @@ import type {
   BookmarkLabel,
   BookmarkPatch,
   BookRef,
+  BridgeEstimate,
+  BridgeJob,
+  BridgeJobRequest,
   Capabilities,
   Collection,
   CollectionDetail,
@@ -154,6 +158,14 @@ export const qk = {
   recentAll: () => ['books', 'recent'] as const,
   /** The car's Library tab: a library's newest books, one page (`src/car`). */
   carLibrary: (cid: string, lib: number) => ['car', 'library', cid, lib] as const,
+  // The Bridge, capability `bridge` (admin only; Bridge Phase 1a).
+  /** A book's Bridge jobs, by its own path (`rel_path`). */
+  bridgeJobs: (cid: string, lib: number, path: string) => ['bridgeJobs', cid, lib, path] as const,
+  /** What generating a kind for a book would take. */
+  bridgeEstimate: (cid: string, lib: number, path: string, kind: string) =>
+    ['bridgeEstimate', cid, lib, path, kind] as const,
+  /** Prefix matching every estimate of a connection (invalidation). */
+  bridgeEstimateAll: (cid: string) => ['bridgeEstimate', cid] as const,
 };
 
 /** Whether a query key is a connection's Up next queue (`qk.queue`). */
@@ -1964,6 +1976,127 @@ export function useHouseListening(connectionId?: string, opts: { enabled?: boole
     (api, signal) => api.houseListening(signal),
     connectionId,
     { ready: opts.enabled !== false, refetchInterval: housePollInterval },
+  );
+}
+
+// --- The Bridge (capability `bridge`, admin only; Bridge Phase 1a) -------------------
+// The player's one Bridge kind is `sidecars.generate` (characters and recaps). The reads
+// ask only a server with the flag, and only when the caller passes `enabled` (the screen's
+// gate: an admin, the `sidecars` feature, `metadata`); a non-admin would get a 403. The
+// writes reject with a `CapabilityError`, sending nothing, without the flag.
+
+/**
+ * A book's Bridge jobs, newest first (`path`: the book's own `rel_path`, which the jobs
+ * carry). Polled every `BRIDGE_POLL_MS` only while a `sidecars.generate` job of it is open
+ * and `active` (the surface on screen) with the app in the foreground; the answer that
+ * sees the job end stops it. When a job has finished since the book's `/meta` answer in
+ * hand was fetched (or is seen turning `done`), the `/meta` entries of `metaPaths` (the
+ * paths the screen reads `/meta` under, every variant) are read again, so the generated
+ * tabs appear by themselves.
+ */
+export function useBridgeJobs(
+  libraryId: number,
+  path: string,
+  opts: { enabled: boolean; active: boolean; metaPaths?: readonly string[] },
+  connectionId?: string,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability('bridge', connectionId) === true;
+  const qc = useQueryClient();
+  const queryKey = qk.bridgeJobs(cid, libraryId, path);
+  const metaPaths = opts.metaPaths ?? [path];
+  return useQuery({
+    queryKey,
+    queryFn:
+      supported && api && opts.enabled && path.length > 0
+        ? async ({ signal }) => {
+            const before = qc.getQueryData<BridgeJob[]>(queryKey);
+            const jobs = await api.bridgeJobs(libraryId, path, signal);
+            const turned = turnedDone(before, jobs);
+            for (const p of new Set(metaPaths)) {
+              // Every variant of the book's /meta under that path, each by its own age.
+              for (const q of qc
+                .getQueryCache()
+                .findAll({ queryKey: qk.bookMeta(cid, libraryId, p) })) {
+                const fetchedAt = q.state.dataUpdatedAt;
+                if (fetchedAt > 0 && (turned || finishedSince(jobs, fetchedAt))) {
+                  void qc.invalidateQueries({ queryKey: q.queryKey, exact: true });
+                }
+              }
+            }
+            if (turned) void qc.invalidateQueries({ queryKey: qk.bridgeEstimateAll(cid) });
+            return jobs;
+          }
+        : skipToken,
+    refetchInterval: (query) =>
+      bridgePollInterval(query.state.data, opts.active && AppState.currentState === 'active'),
+    retry: false,
+  });
+}
+
+/** What generating `kind` for a book would take (`GET /admin/bridge/estimate`), asked
+ * only while `enabled` (the confirmation is open); always read afresh when it opens. */
+export function useBridgeEstimate(
+  libraryId: number,
+  path: string,
+  kind: string,
+  enabled: boolean,
+  connectionId?: string,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability('bridge', connectionId) === true;
+  return useQuery<BridgeEstimate>({
+    queryKey: qk.bridgeEstimate(cid, libraryId, path, kind),
+    queryFn:
+      supported && api && enabled && path.length > 0
+        ? ({ signal }) => api.bridgeEstimate(libraryId, path, kind, signal)
+        : skipToken,
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+/** Put a job's answer into its book's job list (newest first), in place of the copy the
+ * list holds, if any. */
+function storeJob(qc: QueryClient, cid: string, job: BridgeJob, asked: BridgeBookRef) {
+  const libraryId = job.library_id ?? asked.library_id;
+  const path = job.path ?? asked.path;
+  void qc.invalidateQueries({ queryKey: qk.bridgeEstimateAll(cid) });
+  if (libraryId === null || path === null) return;
+  return storeAnswer<BridgeJob[]>(qc, qk.bridgeJobs(cid, libraryId, path), (cached) =>
+    cached ? [job, ...cached.filter((j) => j.id !== job.id)] : undefined,
+  );
+}
+
+/** The book a job is about, as a request or a job names it. */
+type BridgeBookRef = { library_id: number | null; path: string | null };
+
+/** Queue a Bridge job (`POST /admin/bridge/jobs`); the answer (a new job, or the open one
+ * already queued for that kind and book) goes into the book's job list, which then polls. */
+export function useQueueBridgeJob(connectionId?: string) {
+  return useCapabilityMutation(
+    'bridge',
+    connectionId,
+    (api, job: BridgeJobRequest) => api.queueBridgeJob(job),
+    ({ qc, cid }, answer, job) => storeJob(qc, cid, answer, job),
+  );
+}
+
+/** Cancel a Bridge job; its answer replaces it in its book's job list. A refusal (it
+ * already ended: a 409) reads the list again. */
+export function useCancelBridgeJob(connectionId?: string) {
+  return useCapabilityMutation(
+    'bridge',
+    connectionId,
+    (api, job: Pick<BridgeJob, 'id' | 'library_id' | 'path'>) => api.cancelBridgeJob(job.id),
+    ({ qc, cid }, answer, job) => storeJob(qc, cid, answer, job),
+    ({ qc, cid }, job, error) => {
+      if (error && job.library_id !== null && job.path !== null) {
+        void qc.invalidateQueries({ queryKey: qk.bridgeJobs(cid, job.library_id, job.path) });
+      }
+    },
   );
 }
 

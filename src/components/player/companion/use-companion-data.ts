@@ -4,6 +4,7 @@ import { useBookProgress } from '@/api/hooks';
 import type {
   BookMetaAttribution,
   BookMetaCharacter,
+  BookMetaGenerated,
   BookMetaRecap,
   BookMetaRecapSummary,
 } from '@/api/types';
@@ -15,8 +16,8 @@ import { useListeningChapter } from '../use-listening-position';
 import type { PlayTarget } from '../use-play-book';
 
 /** Where the companion's community data stands: `off` (the server has no `metadata`, or
- * has not said yet), `loading` (nothing renders yet), `none` (unmatched, or the lookup
- * failed: the panels say so kindly) or `ready`. */
+ * has not said yet), `loading` (nothing renders yet), `none` (unmatched with nothing
+ * generated, or the lookup failed: the panels say so kindly) or `ready`. */
 export type CompanionStatus = 'off' | 'loading' | 'none' | 'ready';
 
 export type CompanionData = {
@@ -29,6 +30,11 @@ export type CompanionData = {
   summary?: BookMetaRecapSummary;
   /** The server's CC BY-SA credit for this work's community content. */
   attribution?: BookMetaAttribution;
+  /** Which of `characters` and `recaps` were generated on this server, not the
+   * community's (Bridge Phase 1a): their panels say so. */
+  generated?: BookMetaGenerated;
+  /** The book's title, once its item is in (the generate confirmation names it). */
+  title?: string;
   /** Where the listener is, for the gate: ONE whole-book position (the live one while
    * this book is loaded, never below the saved one) on the corrected chapter starts. */
   listening: ListeningProgress;
@@ -46,7 +52,7 @@ const NO_RECAPS: BookMetaRecap[] = [];
  */
 export function useCompanionData(target: PlayTarget): CompanionData {
   const { connectionId, libraryId, path } = target;
-  const { metadata, enabled, chapterStarts, work, loading } = useBookCommunity(target);
+  const { metadata, book, enabled, chapterStarts, work, loading } = useBookCommunity(target);
   const { data: progress } = useBookProgress(libraryId, path, enabled, connectionId);
   const chapter = useListeningChapter(target, progress?.position, chapterStarts);
   const finished = !!progress?.finished;
@@ -66,6 +72,8 @@ export function useCompanionData(target: PlayTarget): CompanionData {
     recaps: work?.recaps ?? NO_RECAPS,
     summary: work?.recap_summary,
     attribution: work?.attribution,
+    generated: work?.generated,
+    title: book?.title,
     listening,
   };
 }

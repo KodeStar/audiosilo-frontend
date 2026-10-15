@@ -50,14 +50,30 @@ describe('useBookCommunity', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('reads the book but not its chapters or /meta when it has no ASIN or ISBN', async () => {
+  it('waits for the book before asking for its chapters or /meta', async () => {
     mockMetadata = true;
-    mockBook = {};
+    mockBook = undefined;
     const { result } = await renderHook(() => useBookCommunity(target));
     expect(mockBookOpts).toHaveBeenLastCalledWith({ enabled: true });
     expect(mockChapterOpts).toHaveBeenLastCalledWith({ enabled: false });
     expect(mockMetaEnabled).toHaveBeenLastCalledWith(false);
     expect(result.current.enabled).toBe(false);
+  });
+
+  // No ASIN or ISBN can't match the community, but the server answers it with what its
+  // Bridge generated (matched:false with a work), which the companion shows.
+  it("asks a book with no ASIN or ISBN too, and reads an unmatched book's generated work", async () => {
+    mockMetadata = true;
+    mockBook = {};
+    mockMeta = {
+      matched: false,
+      work: { id: '', title: 'Home', characters: [{ id: 'a', name: 'A', reveal: { chapter: 1 } }] },
+    };
+    const { result } = await renderHook(() => useBookCommunity(target));
+    expect(mockChapterOpts).toHaveBeenLastCalledWith({ enabled: true });
+    expect(mockMetaEnabled).toHaveBeenLastCalledWith(true);
+    expect(result.current.work?.characters).toHaveLength(1);
+    expect(result.current.work?.authors).toEqual([]);
   });
 
   it('follows the chain to the matched work', async () => {

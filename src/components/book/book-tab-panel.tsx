@@ -2,12 +2,12 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useScopedCid } from '@/api/provider';
-import type { Book, BookMetaSeriesWork, ChaptersResponse } from '@/api/types';
+import type { Book, BookMetaSeriesWork, BookMetaWork, ChaptersResponse } from '@/api/types';
 import {
   BookMetaCharactersTab,
   BookMetaRecapsTab,
   BookMetaSeriesTab,
-  type MatchedBookMeta,
+  GeneratedMark,
 } from '@/components/library/book-meta';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
@@ -34,10 +34,11 @@ export type BookTabPanelProps = {
   roomy: boolean;
   /** The Chapters tab (its rows' skeleton while the list is still empty). */
   chapters: Omit<BookChaptersTabProps, 'roomy'>;
-  /** The community tabs: the matched work, the spoiler gate (one position on the real
-   * chapters) and the page's shared reveal, the series rails and the previous books. */
+  /** The community tabs: the work (`bookMetaWork`: the matched one, or an unmatched
+   * book's generated one), the spoiler gate (one position on the real chapters) and the
+   * page's shared reveal, the series rails and the previous books. */
   community: {
-    meta?: MatchedBookMeta;
+    work?: BookMetaWork;
     gate: ListeningProgress;
     summaryVisible: boolean;
     showSpoilers: boolean;
@@ -63,7 +64,7 @@ export function BookTabPanel({
   details,
 }: BookTabPanelProps) {
   const { t } = useTranslation();
-  const work = community.meta?.work;
+  const work = community.work;
   // The envelope's covers, from this server when it serves them (`meta_covers`).
   const coverFor = useCommunityCover(useScopedCid(), libraryId, path);
   switch (tab) {
@@ -82,6 +83,7 @@ export function BookTabPanel({
       const recaps = work?.recaps ?? [];
       return (
         <View className="gap-4">
+          {work?.generated?.recaps ? <GeneratedMark /> : null}
           <BookMetaRecapsTab
             recaps={recaps}
             progress={community.gate}
@@ -102,6 +104,7 @@ export function BookTabPanel({
       const characters = work?.characters ?? [];
       return (
         <View className="gap-4">
+          {work?.generated?.characters ? <GeneratedMark /> : null}
           <BookMetaCharactersTab
             characters={characters}
             progress={community.gate}

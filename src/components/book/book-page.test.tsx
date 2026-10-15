@@ -3,7 +3,15 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import type { ReactElement, ReactNode } from 'react';
 import { Platform } from 'react-native';
 
-import type { Book, BookMeta, Bookmark, ChaptersResponse, Progress } from '@/api/types';
+import type {
+  Book,
+  BookMeta,
+  Bookmark,
+  BridgeJob,
+  ChaptersResponse,
+  Progress,
+  User,
+} from '@/api/types';
 import type { LayoutClass } from '@/lib/layout';
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -17,6 +25,7 @@ const mockPush = jest.fn();
 let mockParams: Record<string, unknown> = { libraryId: '1', path: ['Author', 'Book'] };
 jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h) },
+  useIsFocused: () => true,
   useLocalSearchParams: () => mockParams,
 }));
 
@@ -26,6 +35,8 @@ let mockChapters: ChaptersResponse | undefined;
 let mockProgress: Progress | null = null;
 let mockMeta: BookMeta | undefined;
 let mockCaps: Record<string, boolean> = {};
+let mockBridge: { version: string; features: string[] } | undefined;
+let mockJobs: BridgeJob[] = [];
 const mockRefetch = jest.fn();
 jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
@@ -33,7 +44,9 @@ jest.mock('@/api/hooks', () => ({
   useChapters: () => ({ data: mockChapters, isLoading: false }),
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
   useCapability: (flag: string) => mockCaps[flag] ?? false,
-  useServerInfo: () => ({ data: { capabilities: mockCaps }, isError: false }),
+  useServerInfo: () => ({ data: { capabilities: mockCaps, bridge: mockBridge }, isError: false }),
+  useBridgeJobs: (_l: number, _p: string, opts: { enabled: boolean }) =>
+    opts.enabled ? { data: mockJobs, isSuccess: true } : { data: undefined, isSuccess: false },
   useBookMeta: () => ({ data: mockMeta }),
   useBookProgress: () => ({ data: mockProgress, isPending: false }),
   useFavourites: () => ({ data: [] }),
@@ -45,6 +58,7 @@ jest.mock('@/api/hooks', () => ({
 }));
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => null,
+  useCid: () => 'home',
   useScopedCid: () => 'home',
 }));
 jest.mock('@/components/layout/content-scope', () => ({
@@ -205,6 +219,8 @@ beforeEach(() => {
   mockProgress = null;
   mockMeta = undefined;
   mockCaps = {};
+  mockBridge = undefined;
+  mockJobs = [];
   mockBookmarks = [];
   mockPush.mockClear();
   mockStartBook.mockClear();
@@ -472,5 +488,136 @@ describe('book page states', () => {
     mockBook = { ...BOOK, title: '三体'.repeat(40), series: '' };
     await mountAt('phone', 400);
     expect(screen.getByRole('header')).toHaveTextContent('三体'.repeat(40));
+  });
+});
+
+describe('book page Bridge (generated characters and recaps)', () => {
+  const ADMIN: User = {
+    id: 1,
+    username: 'admin',
+    role: 'admin',
+    disabled: false,
+    has_password: true,
+    has_recovery: false,
+  };
+  const signIn = (user: User) =>
+    useSession.setState({
+      connections: [{ id: 'home', name: 'Hearthside', serverUrl: 'https://h', token: 't', user }],
+    } as never);
+  const bridgeOn = () => {
+    mockCaps = { metadata: true, bridge: true };
+    mockBridge = { version: '0.2.0', features: ['sidecars'] };
+  };
+  const characters = [{ id: 'ada', name: 'Ada Quill', reveal: { chapter: 1 } }];
+  const recaps = [{ through: { chapter: 0 }, text: 'Before the book begins.' }];
+
+  // A book the community doesn't know (no match), whose characters and recaps the Bridge
+  // generated on this server: the server answers matched:false with a work.
+  it("shows an unmatched book's generated characters and recaps, marked as generated", async () => {
+    mockCaps = { metadata: true };
+    mockMeta = {
+      matched: false,
+      work: {
+        id: '',
+        title: 'The Way of Kings',
+        characters,
+        recaps,
+        generated: { characters: true, recaps: true },
+      } as never,
+    };
+    await mountAt('desktop');
+    expect(screen.getByTestId('book-tab-characters')).toBeTruthy();
+    expect(screen.getByTestId('book-tab-recaps')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('book-tab-characters'));
+    expect(screen.getByText('Ada Quill')).toBeTruthy();
+    expect(screen.getByText('Generated on this server')).toBeTruthy();
+    // No community credit for generated content, and no AudioSilo Meta link.
+    expect(screen.queryByText(/CC BY-SA/)).toBeNull();
+    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
+  });
+
+  it('marks only the dimension that was generated', async () => {
+    mockCaps = { metadata: true };
+    mockMeta = {
+      matched: true,
+      work: {
+        id: 'w',
+        title: 'The Way of Kings',
+        authors: [],
+        language: 'en',
+        characters,
+        recaps,
+        generated: { characters: true },
+      },
+      web_url: 'https://meta.audiosilo.app/work?id=w',
+    };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('book-tab-characters'));
+    expect(screen.getByTestId('generated-mark')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('book-tab-recaps'));
+    expect(screen.queryByTestId('generated-mark')).toBeNull();
+  });
+
+  it('keeps an unmatched book with nothing generated as before: no community tabs', async () => {
+    mockCaps = { metadata: true };
+    mockMeta = { matched: false };
+    await mountAt('desktop');
+    expect(screen.queryByTestId('book-tab-characters')).toBeNull();
+    expect(screen.queryByTestId('book-tab-recaps')).toBeNull();
+  });
+
+  it('offers an admin "Generate characters and recaps" for a book with neither', async () => {
+    signIn(ADMIN);
+    bridgeOn();
+    mockMeta = { matched: false };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('generate-action'));
+    // The confirmation opens (its estimate is the Bridge suite's business).
+    expect(screen.getByText('The Bridge reads The Way of Kings', { exact: false })).toBeTruthy();
+  });
+
+  it('never offers it to a non-admin, nor on a server whose Bridge lacks sidecars', async () => {
+    signIn({ ...ADMIN, role: 'user' });
+    bridgeOn();
+    mockMeta = { matched: false };
+    await mountAt('desktop');
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+
+    signIn(ADMIN);
+    mockBridge = { version: '0.1.0', features: ['verify'] };
+    await mountAt('desktop');
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+  });
+
+  it('shows the running job where the action was', async () => {
+    signIn(ADMIN);
+    bridgeOn();
+    mockMeta = { matched: false };
+    mockJobs = [
+      {
+        id: 4,
+        kind: 'sidecars.generate',
+        library_id: 1,
+        path: 'Author/Book',
+        params: {},
+        state: 'running',
+        progress: { step: 'fact_pass' },
+        result: null,
+        error: '',
+        requested_by: null,
+        priority: 0,
+        attempts: 1,
+        lease_until: null,
+        cancel_requested: false,
+        created_at: '2026-10-15T09:00:00Z',
+        updated_at: '2026-10-15T10:00:00Z',
+        claimed_at: null,
+        finished_at: null,
+      },
+    ];
+    await mountAt('desktop');
+    expect(screen.getByTestId('generate-status')).toBeTruthy();
+    expect(screen.getByText('Reading for facts')).toBeTruthy();
+    expect(screen.queryByTestId('generate-action')).toBeNull();
   });
 });

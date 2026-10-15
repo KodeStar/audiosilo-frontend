@@ -10,6 +10,7 @@ jest.mock('@/theme/theme-provider', () => ({
 
 /* eslint-disable import/first */
 import {
+  bookMetaWork,
   descriptionIsLong,
   lastBookRecap,
   matchedMeta,
@@ -314,6 +315,56 @@ describe('matchedMeta', () => {
 
   it('is undefined when the service found no match', () => {
     expect(matchedMeta({ matched: false }, true)).toBeUndefined();
+  });
+
+  it("stays matched-only for an unmatched book's generated work (About and rails need a real one)", () => {
+    expect(matchedMeta({ matched: false, work: generatedWork }, true)).toBeUndefined();
+  });
+});
+
+// The server's unmatched answer with content its Bridge generated (Bridge Phase 1a): only
+// the generated fields, no authors or language.
+const generatedWork = {
+  id: '',
+  title: 'Home Recording',
+  characters: [{ id: 'ada', name: 'Ada', reveal: { chapter: 1 } }],
+  recaps: [{ through: { chapter: 2 }, text: 'So far.' }],
+  generated: { characters: true, recaps: true },
+} as unknown as NonNullable<Extract<BookMeta, { matched: false }>['work']>;
+
+describe('bookMetaWork', () => {
+  const matched: BookMeta = {
+    matched: true,
+    work: { id: 'w', title: 'W', authors: [], language: 'en', characters: [] },
+    web_url: 'https://m/work?id=w',
+  };
+
+  it('is the matched work when the book matched', () => {
+    expect(bookMetaWork(matched, true)).toBe(matched.work);
+  });
+
+  it("is an unmatched book's generated work, filled out to the work shape", () => {
+    const work = bookMetaWork({ matched: false, work: generatedWork }, true);
+    expect(work).toMatchObject({
+      id: '',
+      title: 'Home Recording',
+      authors: [],
+      language: '',
+      generated: { characters: true, recaps: true },
+    });
+    expect(work?.characters).toHaveLength(1);
+    expect(work?.recaps).toHaveLength(1);
+  });
+
+  it('is undefined for an unmatched book with nothing generated, as before', () => {
+    expect(bookMetaWork({ matched: false }, true)).toBeUndefined();
+  });
+
+  it('is undefined while off or not arrived, and drops lists that are not lists', () => {
+    expect(bookMetaWork({ matched: false, work: generatedWork }, false)).toBeUndefined();
+    expect(bookMetaWork(undefined, true)).toBeUndefined();
+    const odd = { ...generatedWork, characters: 'nope' } as unknown as typeof generatedWork;
+    expect(bookMetaWork({ matched: false, work: odd }, true)?.characters).toBeUndefined();
   });
 });
 

@@ -246,9 +246,10 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
   }
 }
 
-/** Whether a downloaded book can have community metadata at all (an ASIN or ISBN, which
- * the server matches by; `metaEnabledFor`): the readers never ask for one without. The
- * download's book can be the list shape, so the full item is asked first. */
+/** Whether a downloaded book's `/meta` is worth keeping (`metaEnabledFor`, the rule the
+ * readers ask by: every known book, since one with no ASIN or ISBN can still carry
+ * characters and recaps generated on its server). The download's book can be the list
+ * shape, so the full item is asked first. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;
   const item = queryClient.getQueryData<Book>(qk.item(connectionId, libraryId, path));
@@ -257,7 +258,7 @@ export function canMatch(entry: DownloadEntry): boolean {
 
 /**
  * Read a downloaded book's community metadata from its server, for keeping: nothing (null)
- * when the book can't match (no ASIN or ISBN), its server has no `metadata`, or anything
+ * when `canMatch` says no, its server has no `metadata`, or anything
  * fails. With `meta_bundle` one request brings the previous works too (`include=previous`);
  * the nearest earlier book by the listener's reading order is read on its own when that
  * didn't bring it. Never throws, never retries; a fresh answer the screens already hold

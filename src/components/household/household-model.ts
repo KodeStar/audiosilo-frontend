@@ -163,6 +163,9 @@ const BY_KIND: Readonly<Record<ApiErrorKind, WriteError>> = {
   member_disabled: 'disabled',
   kid_account: 'kid',
   demo_account: 'demo',
+  // The Bridge's codes never come from the household routes.
+  library_not_writable: 'failed',
+  kind_unavailable: 'failed',
   too_many: 'tooMany',
   conflict: 'limit',
   invalid: 'invalid',

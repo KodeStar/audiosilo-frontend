@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
 import { ConnectionScope, useOptionalApi } from '@/api/provider';
+import { GenerateOffer } from '@/components/bridge/generate-offer';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
 import { NotesSection } from '@/components/library/notes-section';
@@ -92,11 +93,21 @@ function Panel({
   data: CompanionData;
   onChapter?: () => void;
 }) {
+  // An admin's "Generate characters and recaps" under the empty Who's who and Story so
+  // far (mounted only when the panel is empty).
+  const generate = (
+    <GenerateOffer
+      target={data.target}
+      content={data}
+      metaKnown={data.status === 'ready' || data.status === 'none'}
+      title={data.title}
+    />
+  );
   switch (tab) {
     case 'who':
-      return <WhoPanel data={data} />;
+      return <WhoPanel data={data} generate={generate} />;
     case 'story':
-      return <StoryPanel data={data} />;
+      return <StoryPanel data={data} generate={generate} />;
     case 'chapters':
       return <ChaptersPanel onSelected={onChapter} />;
     default:
