@@ -404,7 +404,7 @@ function BookPage() {
           interval,
           fileCount: files.length,
           codec: chapterData?.codec,
-          publisher: metaMatched?.recording?.publisher,
+          publisher: book.publisher?.trim() || metaMatched?.recording?.publisher,
           serverName,
           libraryName,
         })}

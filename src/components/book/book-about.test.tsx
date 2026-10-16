@@ -7,6 +7,10 @@ const mockOpenExternal = jest.fn();
 jest.mock('@/lib/support', () => ({
   openExternalUrl: (url: string) => mockOpenExternal(url),
 }));
+const mockOpenLibraryRoot = jest.fn();
+jest.mock('@/lib/open', () => ({
+  openLibraryRoot: (href: unknown) => mockOpenLibraryRoot(href),
+}));
 // CoverFrame's iOS shadow hook (book-meta's) reads the theme provider, whose module
 // side-effect-imports global.css (unparseable in Node); stub the hook.
 jest.mock('@/theme/theme-provider', () => ({
@@ -14,7 +18,9 @@ jest.mock('@/theme/theme-provider', () => ({
 }));
 
 /* eslint-disable import/first */
-import { BookAbout } from './book-about';
+import { useLibrarySelection } from '@/stores/library-selection';
+
+import { BookAbout, openLabelBooks } from './book-about';
 /* eslint-enable import/first */
 
 const book = (over: Partial<Book> = {}) =>
@@ -46,7 +52,10 @@ async function press(label: string) {
   });
 }
 
-beforeEach(() => mockOpenExternal.mockReset());
+beforeEach(() => {
+  mockOpenExternal.mockReset();
+  mockOpenLibraryRoot.mockReset();
+});
 
 describe('BookAbout', () => {
   it('renders the description, production details and the meta link', async () => {
@@ -93,5 +102,44 @@ describe('BookAbout', () => {
     expect(screen.getByText(/^The Hobbit .*J\. R\. R\. Tolkien/)).toBeTruthy();
     expect(screen.getByText('2010-08-31')).toBeTruthy();
     expect(screen.queryByText('Publisher')).toBeNull();
+  });
+
+  it("shows the book's genres and tags as chips, each opening the Library on it", async () => {
+    const onOpenLabel = jest.fn();
+    await mount(
+      <BookAbout
+        book={book({ genres: ['Fantasy', 'fantasy'], tags: ['Book club'], language: 'English' })}
+        onOpenLabel={onOpenLabel}
+      />,
+    );
+    expect(screen.getByText('Genres')).toBeTruthy();
+    expect(screen.getByText('Tags')).toBeTruthy();
+    expect(screen.getAllByText('Fantasy')).toHaveLength(1);
+    expect(screen.getByText('English')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Books in the genre Fantasy'));
+    });
+    expect(onOpenLabel).toHaveBeenCalledWith('genre', 'Fantasy');
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Books tagged Book club'));
+    });
+    expect(onOpenLabel).toHaveBeenLastCalledWith('tag', 'Book club');
+  });
+
+  it('shows no labels for a book without them (an older server)', async () => {
+    await mount(<BookAbout book={book()} onOpenLabel={jest.fn()} />);
+    expect(screen.queryByText('Genres')).toBeNull();
+    expect(screen.queryByText('Tags')).toBeNull();
+  });
+});
+
+describe('openLabelBooks', () => {
+  it("selects the book's library, then opens its Books mode on the label", () => {
+    openLabelBooks('c2', 7, 'tag', 'Book club');
+    expect(useLibrarySelection.getState().selection).toEqual({ connectionId: 'c2', libraryId: 7 });
+    expect(mockOpenLibraryRoot).toHaveBeenCalledWith({
+      pathname: '/library',
+      params: { mode: 'books', tag: 'Book club' },
+    });
   });
 });

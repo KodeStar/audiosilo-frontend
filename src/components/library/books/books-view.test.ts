@@ -3,13 +3,18 @@ import { sectionLetter } from '@/lib/alpha-sections';
 
 import {
   type BookFacts,
+  type BooksView,
   bookStatus,
   booksViewKey,
   booksViewParams,
   filterBooks,
   hasFilters,
+  hasLabels,
+  labelKey,
+  labelOptions,
   lengthBucket,
   letterGrid,
+  libraryBooksHref,
   parseBooksView,
   progressByPath,
   sortBooks,
@@ -60,7 +65,25 @@ describe('parseBooksView / booksViewParams', () => {
     });
     expect(
       parseBooksView({ sort: 'rating', status: 'nope', dl: 'yes', len: ['mid', 'x'] }),
-    ).toEqual({ sort: 'recent', status: undefined, dl: false, len: 'mid' });
+    ).toEqual({
+      sort: 'recent',
+      status: undefined,
+      dl: false,
+      len: 'mid',
+      genre: undefined,
+      tag: undefined,
+    });
+  });
+
+  it('reads a genre and a tag as given, trimmed, a blank one as none', () => {
+    expect(parseBooksView({ genre: ' Science Fiction ', tag: ['to-read', 'x'] })).toMatchObject({
+      genre: 'Science Fiction',
+      tag: 'to-read',
+    });
+    expect(parseBooksView({ genre: '  ', tag: '' })).toMatchObject({
+      genre: undefined,
+      tag: undefined,
+    });
   });
 
   it('writes defaults as absent params, so the plain link stays /library', () => {
@@ -69,18 +92,53 @@ describe('parseBooksView / booksViewParams', () => {
       status: undefined,
       dl: undefined,
       len: undefined,
+      genre: undefined,
+      tag: undefined,
     });
-    expect(booksViewParams({ sort: 'length', status: 'new', dl: true, len: 'short' })).toEqual({
+    expect(
+      booksViewParams({
+        sort: 'length',
+        status: 'new',
+        dl: true,
+        len: 'short',
+        genre: 'Fantasy',
+        tag: 'Book club',
+      }),
+    ).toEqual({
       sort: 'length',
       status: 'new',
       dl: '1',
       len: 'short',
+      genre: 'Fantasy',
+      tag: 'Book club',
     });
   });
 
   it('round-trips', () => {
-    const view = { sort: 'author', status: 'finished', dl: true, len: 'mid' } as const;
+    const view = {
+      sort: 'author',
+      status: 'finished',
+      dl: true,
+      len: 'mid',
+      genre: 'Fantasy',
+      tag: 'Book club',
+    } as const;
     expect(parseBooksView(booksViewParams(view))).toEqual(view);
+  });
+
+  it('links to the Books mode on a genre or a tag (a book page chip)', () => {
+    expect(libraryBooksHref({ genre: 'Science Fiction & Fantasy' })).toEqual({
+      pathname: '/library',
+      params: { mode: 'books', genre: 'Science Fiction & Fantasy' },
+    });
+    expect(libraryBooksHref({ tag: ' to-read ' })).toEqual({
+      pathname: '/library',
+      params: { mode: 'books', tag: 'to-read' },
+    });
+    expect(libraryBooksHref({ genre: '  ' })).toEqual({
+      pathname: '/library',
+      params: { mode: 'books' },
+    });
   });
 
   it('names a view by its sort and every filter', () => {
@@ -91,14 +149,20 @@ describe('parseBooksView / booksViewParams', () => {
       booksViewKey({ sort: 'recent', status: 'new', dl: false }),
       booksViewKey({ sort: 'recent', dl: true }),
       booksViewKey({ sort: 'recent', dl: false, len: 'short' }),
+      booksViewKey({ sort: 'recent', dl: false, genre: 'Fantasy' }),
+      booksViewKey({ sort: 'recent', dl: false, tag: 'Fantasy' }),
     ];
-    expect(new Set([key, ...others]).size).toBe(5);
+    expect(new Set([key, ...others]).size).toBe(7);
+    // One label in any spelling is one view.
+    expect(booksViewKey({ sort: 'recent', dl: false, genre: 'fantasy' })).toBe(others[4]);
   });
 
   it('knows when a filter narrows the list (sort alone does not)', () => {
     expect(hasFilters({ sort: 'title', dl: false })).toBe(false);
     expect(hasFilters({ sort: 'recent', dl: true })).toBe(true);
     expect(hasFilters({ sort: 'recent', dl: false, len: 'long' })).toBe(true);
+    expect(hasFilters({ sort: 'recent', dl: false, genre: 'Fantasy' })).toBe(true);
+    expect(hasFilters({ sort: 'recent', dl: false, tag: 'to-read' })).toBe(true);
   });
 });
 
@@ -158,6 +222,92 @@ describe('filterBooks / statusCounts', () => {
       new: 0,
       progress: 0,
       finished: 1,
+    });
+  });
+});
+
+describe('genre and tag filters', () => {
+  const dune = book('Dune', { genres: ['Science Fiction'], tags: ['Book club', 'to-read'] });
+  const hobbit = book('The Hobbit', { genres: ['Fantasy', 'Classics'], tags: ['TO-READ'] });
+  const mistborn = book('Mistborn', { genres: ['fantasy', 'FANTASY'], duration: 20 * H });
+  // An older server sends neither list.
+  const plain = book('Plain');
+  const books = [dune, hobbit, mistborn, plain];
+  const facts: Record<string, BookFacts> = {
+    [dune.rel_path]: { status: 'finished', downloaded: false },
+    [hobbit.rel_path]: { status: 'progress', downloaded: false },
+    [mistborn.rel_path]: { status: 'progress', downloaded: false },
+    [plain.rel_path]: { status: 'new', downloaded: false },
+  };
+  const factsOf = (b: Book) => facts[b.rel_path];
+  const view = (over: Partial<BooksView> = {}): BooksView => ({
+    sort: 'recent',
+    dl: false,
+    ...over,
+  });
+
+  it('compares labels by trimmed, collapsed, lower-cased name', () => {
+    expect(labelKey('  Science   Fiction ')).toBe('science fiction');
+    expect(labelKey('FANTASY')).toBe(labelKey('fantasy'));
+  });
+
+  it('keeps the books with the label, in any spelling', () => {
+    expect(filterBooks(books, view({ genre: 'FANTASY' }), factsOf)).toEqual([hobbit, mistborn]);
+    expect(filterBooks(books, view({ genre: ' science  fiction ' }), factsOf)).toEqual([dune]);
+    expect(filterBooks(books, view({ tag: 'To-Read' }), factsOf)).toEqual([dune, hobbit]);
+    expect(filterBooks(books, view({ tag: 'to-read', genre: 'fantasy' }), factsOf)).toEqual([
+      hobbit,
+    ]);
+    expect(filterBooks(books, view({ genre: 'Fantasy', len: 'long' }), factsOf)).toEqual([
+      mistborn,
+    ]);
+    // A label no book has (another library's, or an older server's books) keeps none.
+    expect(filterBooks(books, view({ genre: 'Horror' }), factsOf)).toEqual([]);
+    expect(filterBooks([plain], view({ tag: 'to-read' }), factsOf)).toEqual([]);
+  });
+
+  it('is offered only for a library with that kind of label', () => {
+    expect(hasLabels(books, 'genre')).toBe(true);
+    expect(hasLabels([mistborn, plain], 'tag')).toBe(false);
+    expect(hasLabels([plain], 'genre')).toBe(false);
+    expect(hasLabels([book('Empty', { genres: [], tags: [] })], 'tag')).toBe(false);
+  });
+
+  it('lists each label once, first spelling, by name, counted among the other filters', () => {
+    expect(labelOptions(books, view(), factsOf, 'genre')).toEqual([
+      { key: 'classics', name: 'Classics', count: 1 },
+      // Mistborn spells it twice and counts once; The Hobbit's spelling came first.
+      { key: 'fantasy', name: 'Fantasy', count: 2 },
+      { key: 'science fiction', name: 'Science Fiction', count: 1 },
+    ]);
+    expect(labelOptions(books, view(), factsOf, 'tag')).toEqual([
+      { key: 'book club', name: 'Book club', count: 1 },
+      { key: 'to-read', name: 'to-read', count: 2 },
+    ]);
+    // The counts follow the other filters (not its own), and a label they leave with
+    // nothing drops out.
+    expect(labelOptions(books, view({ status: 'progress' }), factsOf, 'genre')).toEqual([
+      { key: 'classics', name: 'Classics', count: 1 },
+      { key: 'fantasy', name: 'Fantasy', count: 2 },
+    ]);
+    expect(labelOptions(books, view({ genre: 'fantasy' }), factsOf, 'genre')).toHaveLength(3);
+    expect(labelOptions(books, view({ genre: 'fantasy' }), factsOf, 'tag')).toEqual([
+      { key: 'to-read', name: 'to-read', count: 1 },
+    ]);
+  });
+
+  it('keeps the chosen label listed when nothing has it', () => {
+    expect(labelOptions([plain], view({ tag: ' Horror ' }), factsOf, 'tag')).toEqual([
+      { key: 'horror', name: 'Horror', count: 0 },
+    ]);
+    expect(labelOptions([plain], view(), factsOf, 'tag')).toEqual([]);
+  });
+
+  it('leaves the status counts to the label filters too', () => {
+    expect(statusCounts(books, view({ genre: 'fantasy' }), factsOf)).toEqual({
+      new: 0,
+      progress: 2,
+      finished: 0,
     });
   });
 });

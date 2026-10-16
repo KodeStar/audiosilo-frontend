@@ -14,7 +14,9 @@ import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
  * A Stacks filter chip (STYLEGUIDE section 8, "Chip"): 32 tall, a pill with a strong
  * hairline on `card`, an optional leading glyph and count (subtle tabular figures); on,
  * it fills with ink (`primary`). It toggles a filter, so it is a checkbox to assistive
- * tech (checked = on). The slop makes the touch target 44.
+ * tech (checked = on). A `picker` chip opens a choice instead (a genre or tag filter): a
+ * button with a trailing chevron, selected while its filter is on. The slop makes the
+ * touch target 44.
  */
 export function FilterChip({
   label,
@@ -22,20 +24,27 @@ export function FilterChip({
   onPress,
   count,
   icon,
+  picker = false,
+  accessibilityLabel,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   count?: number;
   icon?: IconName;
+  picker?: boolean;
+  /** What a screen reader says instead of the label (the count still follows). */
+  accessibilityLabel?: string;
 }) {
   const themed = useThemeColors();
+  const spoken = accessibilityLabel ?? label;
+  const fg = selected ? themed.primaryForeground : themed.foreground;
   return (
     <Pressable
-      role="checkbox"
-      aria-checked={selected}
-      accessibilityState={{ checked: selected }}
-      accessibilityLabel={count === undefined ? label : `${label}, ${count}`}
+      role={picker ? 'button' : 'checkbox'}
+      aria-checked={picker ? undefined : selected}
+      accessibilityState={picker ? { selected } : { checked: selected }}
+      accessibilityLabel={count === undefined ? spoken : `${spoken}, ${count}`}
       onPress={onPress}
       hitSlop={{ top: 6, bottom: 6 }}
       className={cn(
@@ -48,13 +57,7 @@ export function FilterChip({
         }),
       )}
     >
-      {icon ? (
-        <Icon
-          name={icon}
-          size={14}
-          color={selected ? themed.primaryForeground : themed.foreground}
-        />
-      ) : null}
+      {icon ? <Icon name={icon} size={14} color={fg} /> : null}
       <Text
         className={cn(
           'font-sans-semibold text-[13px]',
@@ -75,6 +78,7 @@ export function FilterChip({
           {formatCount(count)}
         </Text>
       )}
+      {picker ? <Icon name="chevron-down" size={12} color={fg} /> : null}
     </Pressable>
   );
 }

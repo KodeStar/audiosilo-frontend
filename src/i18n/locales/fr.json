@@ -778,6 +778,12 @@
         "short": "Moins de 5 h",
         "mid": "5 à 15 h",
         "long": "Plus de 15 h",
+        "genre": "Genre",
+        "genreChosen": "Genre : {{name}}",
+        "anyGenre": "Tous les genres",
+        "tag": "Étiquette",
+        "tagChosen": "Étiquette : {{name}}",
+        "anyTag": "Toutes les étiquettes",
         "clear": "Effacer"
       },
       "columns": {
@@ -1073,6 +1079,7 @@
       "publisher": "Éditeur",
       "released": "Sortie",
       "firstPublished": "Première publication",
+      "language": "Langue",
       "abridged": "Abrégé",
       "moreInNamedSeries": "Plus dans {{series}}",
       "seriesPosition": "Tome {{position}}",
@@ -1189,6 +1196,10 @@
       "improve": "Améliorer",
       "yes": "Oui",
       "no": "Non",
+      "genres": "Genres",
+      "tags": "Étiquettes",
+      "openGenre": "Livres du genre {{name}}",
+      "openTag": "Livres avec l'étiquette {{name}}",
       "fallbackBoth": "{{title}} de {{author}}, lu par {{narrator}}.",
       "fallbackAuthor": "{{title}} de {{author}}.",
       "none": "Pas encore de description."

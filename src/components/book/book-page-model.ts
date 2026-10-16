@@ -103,6 +103,14 @@ export function titleScale(scale: TitleScale, title: string): TitleScale {
   return scale === 'lg' ? 'md' : scale === 'md' ? 'sm' : 'xs';
 }
 
+/** The subtitle the hero shows under the title: the book's, trimmed, unless the title
+ * already says it ("Dune: The Desert Planet" over "The Desert Planet"); '' for none. */
+export function heroSubtitle(title: string, subtitle: string | undefined): string {
+  const sub = subtitle?.trim() ?? '';
+  if (!sub) return '';
+  return title.toLocaleLowerCase().includes(sub.toLocaleLowerCase()) ? '' : sub;
+}
+
 // --- Primary action --------------------------------------------------------------
 
 export type PrimaryAction =

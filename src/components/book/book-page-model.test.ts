@@ -9,6 +9,7 @@ import {
   chapterList,
   fileName,
   heroEyebrow,
+  heroSubtitle,
   listeningFigures,
   placeLine,
   primaryAction,
@@ -91,6 +92,15 @@ describe('titleScale', () => {
     expect(titleScale('lg', long)).toBe('md');
     expect(titleScale('sm', long)).toBe('xs');
     expect(titleScale('md', '三体')).toBe('md');
+  });
+});
+
+describe('heroSubtitle', () => {
+  it("shows the server's subtitle unless the title already says it", () => {
+    expect(heroSubtitle('Dune', '  The Desert Planet ')).toBe('The Desert Planet');
+    expect(heroSubtitle('Dune: The Desert Planet', 'the desert planet')).toBe('');
+    expect(heroSubtitle('Dune', '   ')).toBe('');
+    expect(heroSubtitle('Dune', undefined)).toBe('');
   });
 });
 

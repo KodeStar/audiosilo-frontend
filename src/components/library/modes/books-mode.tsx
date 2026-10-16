@@ -40,6 +40,9 @@ import {
   bookStatus,
   filterBooks,
   hasFilters,
+  hasLabels,
+  LABEL_KINDS,
+  labelOptions,
   LENGTH_BUCKETS,
   letterGrid,
   parseBooksView,
@@ -47,6 +50,7 @@ import {
   sortBooks,
   statusCounts,
 } from '../books/books-view';
+import { LabelFilter } from '../books/label-filter';
 import { useWholeLibrary } from '../books/use-whole-library';
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { pageGutter } from '../cover-layout';
@@ -70,10 +74,10 @@ const itemKey = (item: BooksGridItem) =>
 
 /**
  * The Library tab's Books mode for the selected library: the whole list loaded page by
- * page, then filtered (status, downloaded, length) and sorted on the device, as a cover
- * grid or a list. The sort and filters live in the URL (the shared deep-link contract:
- * `sort`, `status`, `dl`, `len`), the grid/list choice on the device. Title order adds
- * letter heads and an A-Z rail.
+ * page, then filtered (status, downloaded, length, genre, tag) and sorted on the device,
+ * as a cover grid or a list. The sort and filters live in the URL (the shared deep-link
+ * contract: `sort`, `status`, `dl`, `len`, `genre`, `tag`), the grid/list choice on the
+ * device. Title order adds letter heads and an A-Z rail.
  */
 export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const { t } = useTranslation();
@@ -85,15 +89,25 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
     status?: string;
     dl?: string;
     len?: string;
+    genre?: string;
+    tag?: string;
   }>();
   const view = useMemo(
     () =>
-      parseBooksView({ sort: params.sort, status: params.status, dl: params.dl, len: params.len }),
-    [params.sort, params.status, params.dl, params.len],
+      parseBooksView({
+        sort: params.sort,
+        status: params.status,
+        dl: params.dl,
+        len: params.len,
+        genre: params.genre,
+        tag: params.tag,
+      }),
+    [params.sort, params.status, params.dl, params.len, params.genre, params.tag],
   );
   const setView = (next: Partial<BooksView>) =>
     router.setParams(booksViewParams({ ...view, ...next }));
-  const clearFilters = () => setView({ status: undefined, dl: false, len: undefined });
+  const clearFilters = () =>
+    setView({ status: undefined, dl: false, len: undefined, genre: undefined, tag: undefined });
   const [booksLayout, setBooksLayout] = useBooksLayout();
   const libraryName = useSelectedLibrary().library?.name ?? '';
 
@@ -127,6 +141,16 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   );
   const counts = useMemo(
     () => statusCounts(whole.books, view, factsOf),
+    [whole.books, view, factsOf],
+  );
+  // The genre and tag filters, each offered only when a book in the library has one
+  // (an older server sends none) or a link chose one (so it can be seen and dropped).
+  const labelFilters = useMemo(
+    () =>
+      LABEL_KINDS.filter((kind) => !!view[kind] || hasLabels(whole.books, kind)).map((kind) => ({
+        kind,
+        options: labelOptions(whole.books, view, factsOf, kind),
+      })),
     [whole.books, view, factsOf],
   );
   const az = view.sort === 'title';
@@ -213,6 +237,17 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
             label={t(LENGTH_KEY[l])}
             selected={view.len === l}
             onPress={() => setView({ len: view.len === l ? undefined : l })}
+          />
+        ))}
+        {labelFilters.length > 0 ? <ChipSeparator /> : null}
+        {labelFilters.map(({ kind, options }) => (
+          <LabelFilter
+            key={kind}
+            kind={kind}
+            value={view[kind]}
+            options={options}
+            loading={whole.isLoading}
+            onChange={(label) => setView({ [kind]: label })}
           />
         ))}
         {filtered ? (

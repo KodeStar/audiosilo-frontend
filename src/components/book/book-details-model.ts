@@ -2,6 +2,13 @@ import type { TFunction } from 'i18next';
 
 import type { Book, BookFile, ChaptersResponse } from '@/api/types';
 import type { MatchedBookMeta } from '@/components/library/book-meta';
+import {
+  bookLabels,
+  LABEL_KINDS,
+  type LabelKind,
+  labelKey,
+} from '@/components/library/books/books-view';
+import { getLocale } from '@/i18n/locale';
 import { bitrateKbps } from '@/lib/format';
 import { codecLabel } from '@/playback/transcode';
 
@@ -71,6 +78,9 @@ export function playbackMode(input: { downloaded: boolean; transcoded: boolean }
   return input.transcoded ? 'converted' : 'direct';
 }
 
+/** A book's genres or tags as the About card shows them: the names, one per label. */
+export type LabelGroup = { kind: LabelKind; names: string[] };
+
 /** What the About card says (`aboutContent`). */
 export type AboutContent = {
   /** Never empty: an undescribed book still reads complete. */
@@ -79,16 +89,68 @@ export type AboutContent = {
   community: boolean;
   /** The production facts the community or the server knows, in words. */
   details: { label: string; value: string }[];
+  /** The book's genres, then its tags, each kind only when it has some (an older
+   * server sends neither). */
+  labels: LabelGroup[];
 };
+
+/**
+ * A language as the sources give it, in words: a code ("en", "eng", "pt-BR") named in
+ * the app's language where the platform can (`Intl.DisplayNames`, which Hermes may
+ * lack), else the value as it is (a name, "English", or a code there is no name for).
+ */
+export function languageName(value: string, locale: string = getLocale()): string {
+  const v = value.trim();
+  const Names = (Intl as { DisplayNames?: typeof Intl.DisplayNames }).DisplayNames;
+  if (!Names || !/^[a-z]{2,3}([-_][a-z0-9]{2,8})*$/i.test(v)) return v;
+  try {
+    const name = new Names([locale], { type: 'language' }).of(v.replace(/_/g, '-'));
+    return name && name.toLowerCase() !== v.toLowerCase()
+      ? name.charAt(0).toLocaleUpperCase(locale) + name.slice(1)
+      : v;
+  } catch {
+    return v;
+  }
+}
+
+/** The book's genres and tags for its chips: each label once (by `labelKey`, the first
+ * spelling kept), blanks dropped. */
+export function labelGroups(book: Pick<Book, 'genres' | 'tags'>): LabelGroup[] {
+  return LABEL_KINDS.map((kind) => {
+    const seen = new Set<string>();
+    const names = bookLabels(book, kind)
+      .map((n) => n.trim())
+      .filter((n) => {
+        const key = labelKey(n);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    return { kind, names };
+  }).filter((g) => g.names.length > 0);
+}
 
 /**
  * The About card's content: the community's description, else the server's own (the
  * admin-edited value), else the work's core description, else a sentence naming who
  * wrote and reads the book; then the production facts (publisher, release, first
- * published, abridged), each only when known.
+ * published, language, abridged), each only when known, the server's own value before
+ * the community's; then the book's genres and tags.
  */
 export function aboutContent(
-  book: Pick<Book, 'title' | 'author' | 'narrator' | 'description' | 'published'>,
+  book: Pick<
+    Book,
+    | 'title'
+    | 'author'
+    | 'narrator'
+    | 'description'
+    | 'published'
+    | 'publisher'
+    | 'language'
+    | 'abridged'
+    | 'genres'
+    | 'tags'
+  >,
   meta: MatchedBookMeta | undefined,
   t: TFunction,
 ): AboutContent {
@@ -108,16 +170,20 @@ export function aboutContent(
         : t('book.about.none'));
   const recording = meta?.recording;
   const details: AboutContent['details'] = [];
-  if (recording?.publisher)
-    details.push({ label: t('book.meta.publisher'), value: recording.publisher });
+  const publisher = book.publisher?.trim() || recording?.publisher;
+  if (publisher) details.push({ label: t('book.meta.publisher'), value: publisher });
   const released = recording?.release_date || book.published;
   if (released) details.push({ label: t('book.meta.released'), value: released });
   if (meta?.work.first_published)
     details.push({ label: t('book.meta.firstPublished'), value: meta.work.first_published });
-  if (typeof recording?.abridged === 'boolean')
+  const language = book.language?.trim();
+  if (language) details.push({ label: t('book.meta.language'), value: languageName(language) });
+  // Absent is unknown, never "No": only a value someone gave says either way.
+  const abridged = typeof book.abridged === 'boolean' ? book.abridged : recording?.abridged;
+  if (typeof abridged === 'boolean')
     details.push({
       label: t('book.meta.abridged'),
-      value: recording.abridged ? t('book.about.yes') : t('book.about.no'),
+      value: abridged ? t('book.about.yes') : t('book.about.no'),
     });
-  return { text, community: !!shared, details };
+  return { text, community: !!shared, details, labels: labelGroups(book) };
 }

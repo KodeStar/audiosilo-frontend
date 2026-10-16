@@ -5,6 +5,8 @@ import {
   aboutContent,
   fileRows,
   FILES_SHOWN,
+  labelGroups,
+  languageName,
   playbackMode,
   visibleFiles,
 } from './book-details-model';
@@ -120,5 +122,73 @@ describe('aboutContent', () => {
       { label: 'Released', value: '2010' },
     ]);
     expect(aboutContent(book, undefined, t).details).toEqual([]);
+  });
+
+  it("lists the server's publisher, language and abridged, before the community's", () => {
+    const community = {
+      ...meta,
+      recording: { id: 'r', narrators: [], publisher: 'Community P', abridged: true },
+    } as MatchedBookMeta;
+    const own = { ...book, publisher: ' Server P ', language: 'English', abridged: false };
+    expect(aboutContent(own, community, t).details).toEqual([
+      { label: 'Publisher', value: 'Server P' },
+      { label: 'Language', value: 'English' },
+      { label: 'Abridged', value: 'No' },
+    ]);
+    // Abridged is three-state: true, false, and absent (unknown, so no row at all).
+    expect(aboutContent({ ...book, abridged: true }, undefined, t).details).toEqual([
+      { label: 'Abridged', value: 'Yes' },
+    ]);
+    expect(aboutContent({ ...book, abridged: false }, undefined, t).details).toEqual([
+      { label: 'Abridged', value: 'No' },
+    ]);
+    expect(aboutContent({ ...book, abridged: undefined }, undefined, t).details).toEqual([]);
+    // Unknown on the server: the community's answer stands.
+    expect(aboutContent({ ...book, publisher: '  ' }, community, t).details).toEqual([
+      { label: 'Publisher', value: 'Community P' },
+      { label: 'Abridged', value: 'Yes' },
+    ]);
+  });
+
+  it("carries the book's genres, then its tags, only the kinds it has", () => {
+    expect(aboutContent(book, undefined, t).labels).toEqual([]);
+    expect(
+      aboutContent({ ...book, genres: ['Fantasy'], tags: ['to-read'] }, undefined, t).labels,
+    ).toEqual([
+      { kind: 'genre', names: ['Fantasy'] },
+      { kind: 'tag', names: ['to-read'] },
+    ]);
+  });
+});
+
+describe('labelGroups', () => {
+  it('names each label once (first spelling), trimmed, no blanks', () => {
+    expect(
+      labelGroups({ genres: [' Fantasy ', 'fantasy', '', 'Epic  Fantasy'], tags: [] }),
+    ).toEqual([{ kind: 'genre', names: ['Fantasy', 'Epic  Fantasy'] }]);
+    expect(labelGroups({ tags: ['a'] })).toEqual([{ kind: 'tag', names: ['a'] }]);
+    expect(labelGroups({})).toEqual([]);
+  });
+});
+
+describe('languageName', () => {
+  it('names a language code where the platform can, else keeps the value', () => {
+    expect(languageName('English', 'en')).toBe('English');
+    expect(languageName(' fr ', 'en')).toBe('French');
+    expect(languageName('eng', 'en')).toBe('English');
+    // Capitalised as a row value ("allemand" in running French text).
+    expect(languageName('de', 'fr')).toBe('Allemand');
+    expect(languageName('zz-not-a-code!', 'en')).toBe('zz-not-a-code!');
+  });
+
+  it('keeps the value without Intl.DisplayNames (Hermes may lack it)', () => {
+    const intl = Intl as { DisplayNames?: unknown };
+    const saved = intl.DisplayNames;
+    intl.DisplayNames = undefined;
+    try {
+      expect(languageName('en', 'en')).toBe('en');
+    } finally {
+      intl.DisplayNames = saved;
+    }
   });
 });

@@ -54,6 +54,8 @@ export function pushInShell(href: Href, state: NavState | undefined = currentNav
 
 /** The Me tab's group: its root is the You hub. */
 const ME_TAB = '(me)';
+/** The Library tab's group: its root is the browse modes. */
+const LIBRARY_TAB = '(library)';
 
 /**
  * Open `href`, a tab's ROOT with its params (the You hub on a section), as THAT tab's root:
@@ -77,6 +79,14 @@ export function openYou(
   state: NavState | undefined = currentNavState(),
 ) {
   openTabRoot(youHref(section, journalTab), ME_TAB, state);
+}
+
+/**
+ * The Library tab's root at `href` (a browse mode, or the Books mode's sort and filters:
+ * `libraryBooksHref`), as that tab's root, from anywhere (a book page in any tab).
+ */
+export function openLibraryRoot(href: Href, state: NavState | undefined = currentNavState()) {
+  openTabRoot(href, LIBRARY_TAB, state);
 }
 
 /** The Journal (across every server): the You hub's Journal section, on `tab`. */

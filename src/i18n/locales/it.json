@@ -778,6 +778,12 @@
         "short": "Meno di 5 h",
         "mid": "Da 5 a 15 h",
         "long": "Oltre 15 h",
+        "genre": "Genere",
+        "genreChosen": "Genere: {{name}}",
+        "anyGenre": "Qualsiasi genere",
+        "tag": "Tag",
+        "tagChosen": "Tag: {{name}}",
+        "anyTag": "Qualsiasi tag",
         "clear": "Cancella"
       },
       "columns": {
@@ -1073,6 +1079,7 @@
       "publisher": "Editore",
       "released": "Uscita",
       "firstPublished": "Prima pubblicazione",
+      "language": "Lingua",
       "abridged": "Ridotto",
       "moreInNamedSeries": "Altro in {{series}}",
       "seriesPosition": "Libro {{position}}",
@@ -1189,6 +1196,10 @@
       "improve": "Miglioralo",
       "yes": "Sì",
       "no": "No",
+      "genres": "Generi",
+      "tags": "Tag",
+      "openGenre": "Libri del genere {{name}}",
+      "openTag": "Libri con il tag {{name}}",
       "fallbackBoth": "{{title}} di {{author}}, letto da {{narrator}}.",
       "fallbackAuthor": "{{title}} di {{author}}.",
       "none": "Ancora nessuna descrizione."

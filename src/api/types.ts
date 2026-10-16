@@ -352,6 +352,22 @@ export type Book = {
    * community value). Sent on every book response; absent when unknown or on an
    * older server. */
   published?: string;
+  /** The book's subtitle (tags, metadata.json, a community match or an admin edit).
+   * Sent on every book response; absent when unknown or on an older server. */
+  subtitle?: string;
+  /** The publisher, as `subtitle`. */
+  publisher?: string;
+  /** The language as the sources give it (a code like "en", or a name), as `subtitle`. */
+  language?: string;
+  /** Whether the recording is abridged: absent is UNKNOWN (never read as unabridged),
+   * as on an older server. */
+  abridged?: boolean;
+  /** The book's genres (the files' genre tags, metadata.json or an admin edit),
+   * deduplicated case-insensitively. Sent on list and search pages too (the Library's
+   * filters read them on the device); absent when there are none or on an older server. */
+  genres?: string[];
+  /** Freeform tags (metadata.json or an admin edit), as `genres`. */
+  tags?: string[];
   /** The admin-edited/community description. Only GET /libraries/{id}/item sends
    * it - list, search, recent and next responses leave it out to keep pages small.
    * Not the CC BY-SA `community_description` on {@link BookMetaWork}. Absent on

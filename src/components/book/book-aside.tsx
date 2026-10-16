@@ -10,7 +10,7 @@ import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
-import { BookAbout } from './book-about';
+import { BookAbout, openLabelBooks } from './book-about';
 import type { ListeningFigures } from './book-page-model';
 
 /**
@@ -33,7 +33,11 @@ export function BookAside({
 }) {
   return (
     <View testID="book-aside" className={cn('gap-4', className)}>
-      <BookAbout book={book} meta={meta} />
+      <BookAbout
+        book={book}
+        meta={meta}
+        onOpenLabel={(kind, name) => openLabelBooks(connectionId, book.library_id, kind, name)}
+      />
       <BookVersions book={book} connectionId={connectionId} />
       {listening ? <YourListening figures={listening} /> : null}
       <InTheHouseCard

@@ -167,12 +167,17 @@ type Query = Record<string, QueryValue | readonly QueryValue[]>;
 /** Options of `bookMeta` (capability `meta_bundle`; an older server ignores both). */
 export type BookMetaOptions = { includePrevious?: boolean; hideSpoilers?: boolean };
 
-/** Exact-match filters and sort of GET /libraries/{id}/books (`listBooks`). An empty
- * value is no filter. */
+/** Filters and sort of GET /libraries/{id}/books (`listBooks`): exact-match names, and
+ * a genre or tag matched case-insensitively. An empty value is no filter. */
 export type BookListQuery = {
   author?: string;
   series?: string;
   narrator?: string;
+  /** The books with this genre (one name, case-insensitive). An older server ignores
+   * it and returns the unfiltered list. */
+  genre?: string;
+  /** The books with this tag, as `genre`. */
+  tag?: string;
   sort?: BookSort;
   /** With `series`: every book in it, those in it beyond their main series too
    * (capability `series_memberships`; an older server matches main series only). */
@@ -484,7 +489,8 @@ export class ApiClient {
     return r.books ?? [];
   }
   /** One page of a library's indexed books (the computed view), optionally filtered
-   * by an exact `author`, `series` or `narrator` value (see {@link BookListQuery}).
+   * by an exact `author`, `series` or `narrator` value, or a `genre` or `tag` (see
+   * {@link BookListQuery}).
    * Pass the previous page's `next_cursor` as `cursor`, with the same filters and
    * sort, to continue. `limit` is 1-200: the server sends 50 for anything else
    * (including more than 200). `narrator` needs the `browse_people` capability: an

@@ -778,6 +778,12 @@
         "short": "Under 5 h",
         "mid": "5 to 15 h",
         "long": "Over 15 h",
+        "genre": "Genre",
+        "genreChosen": "Genre: {{name}}",
+        "anyGenre": "Any genre",
+        "tag": "Tag",
+        "tagChosen": "Tag: {{name}}",
+        "anyTag": "Any tag",
         "clear": "Clear"
       },
       "columns": {
@@ -1073,6 +1079,7 @@
       "publisher": "Publisher",
       "released": "Released",
       "firstPublished": "First published",
+      "language": "Language",
       "abridged": "Abridged",
       "moreInNamedSeries": "More in {{series}}",
       "seriesPosition": "Book {{position}}",
@@ -1189,6 +1196,10 @@
       "improve": "Improve this",
       "yes": "Yes",
       "no": "No",
+      "genres": "Genres",
+      "tags": "Tags",
+      "openGenre": "Books in the genre {{name}}",
+      "openTag": "Books tagged {{name}}",
       "fallbackBoth": "{{title}} by {{author}}, read by {{narrator}}.",
       "fallbackAuthor": "{{title}} by {{author}}.",
       "none": "No description yet."

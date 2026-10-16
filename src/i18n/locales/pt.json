@@ -778,6 +778,12 @@
         "short": "Menos de 5 h",
         "mid": "5 a 15 h",
         "long": "Mais de 15 h",
+        "genre": "Género",
+        "genreChosen": "Género: {{name}}",
+        "anyGenre": "Qualquer género",
+        "tag": "Etiqueta",
+        "tagChosen": "Etiqueta: {{name}}",
+        "anyTag": "Qualquer etiqueta",
         "clear": "Limpar"
       },
       "columns": {
@@ -1073,6 +1079,7 @@
       "publisher": "Editora",
       "released": "Lançamento",
       "firstPublished": "Primeira publicação",
+      "language": "Idioma",
       "abridged": "Resumido",
       "moreInNamedSeries": "Mais de {{series}}",
       "seriesPosition": "Livro {{position}}",
@@ -1189,6 +1196,10 @@
       "improve": "Melhorar isto",
       "yes": "Sim",
       "no": "Não",
+      "genres": "Géneros",
+      "tags": "Etiquetas",
+      "openGenre": "Livros do género {{name}}",
+      "openTag": "Livros com a etiqueta {{name}}",
       "fallbackBoth": "{{title}} de {{author}}, lido por {{narrator}}.",
       "fallbackAuthor": "{{title}} de {{author}}.",
       "none": "Ainda sem descrição."
