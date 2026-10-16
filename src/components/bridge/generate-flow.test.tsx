@@ -305,6 +305,20 @@ describe('the status while a job runs', () => {
     expect(screen.getByText('Open the console to fix it.')).toBeTruthy();
   });
 
+  // The Bridge takes a book waiting for a worker on once one connects: nothing to fix.
+  it('says a job waiting for a worker carries on by itself', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: { step: 'asr', park: { code: 'asr_worker_waiting' } },
+      }),
+    ]);
+    await mount();
+    expect(await screen.findByText('Waiting for a transcription worker to connect.')).toBeTruthy();
+    expect(screen.getByText('It carries on by itself.')).toBeTruthy();
+    expect(screen.queryByText('Open the console to fix it.')).toBeNull();
+  });
+
   // A spent monthly budget resumes when the month turns: a bare time would read as today.
   it('names the day a park resumes by itself when that is not today', async () => {
     const later = new Date(Date.now() + 3 * 24 * 3600_000);

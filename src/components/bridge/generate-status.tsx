@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { type JobStatusView, jobStatusView, statusJob } from './bridge-model';
+import { type JobStatusView, jobStatusView, parkEndsByItself, statusJob } from './bridge-model';
 import type { GenerateModel } from './use-generate';
 
 /** The status's one line under its title: the stage, the counts and the time left while
@@ -57,7 +57,8 @@ function retryLine(t: TFunction, at: Date, now = new Date()): string {
  * A book's generate job, compactly (where the action was: under the book page's actions,
  * or in the companion's empty Who's who and Story so far): the stage, "12 of 40", the time
  * left and Cancel while it runs; a short reason and "Open the console to fix it" while it
- * is parked (or when it tries again by itself); the error and Try again once it failed.
+ * is parked (or when it tries again by itself, or that it carries on by itself: waiting
+ * for a worker); the error and Try again once it failed.
  * Nothing without such a job (`statusJob`), nor for someone who may not generate here
  * (`model.allowed`: the Bridge offline included, when the cached job could no longer move
  * and its buttons could send nothing). It reads the book's job list itself, polling while
@@ -141,7 +142,13 @@ function JobStatus({
       ) : null}
       {parked ? (
         <Text variant="caption">
-          {view.retryAt ? retryLine(t, view.retryAt) : t('bridge.status.openConsole')}
+          {view.retryAt
+            ? retryLine(t, view.retryAt)
+            : t(
+                parkEndsByItself(view.reason)
+                  ? 'bridge.status.byItself'
+                  : 'bridge.status.openConsole',
+              )}
         </Text>
       ) : null}
     </View>
