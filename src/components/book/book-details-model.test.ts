@@ -3,6 +3,7 @@ import i18n from '@/i18n';
 
 import {
   aboutContent,
+  bookPublisher,
   fileRows,
   FILES_SHOWN,
   labelGroups,
@@ -112,11 +113,11 @@ describe('aboutContent', () => {
       work: { ...meta.work, first_published: '1937' },
       recording: { id: 'r', narrators: [], publisher: 'P', release_date: '2012', abridged: false },
     } as MatchedBookMeta;
+    // The community's abridged false is also its "not recorded": no row.
     expect(aboutContent({ ...book, published: '2010' }, full, t).details).toEqual([
       { label: 'Publisher', value: 'P' },
       { label: 'Released', value: '2012' },
       { label: 'First published', value: '1937' },
-      { label: 'Abridged', value: 'No' },
     ]);
     expect(aboutContent({ ...book, published: '2010' }, undefined, t).details).toEqual([
       { label: 'Released', value: '2010' },
@@ -162,12 +163,21 @@ describe('aboutContent', () => {
 });
 
 describe('labelGroups', () => {
-  it('names each label once (first spelling), trimmed, no blanks', () => {
-    expect(
-      labelGroups({ genres: [' Fantasy ', 'fantasy', '', 'Epic  Fantasy'], tags: [] }),
-    ).toEqual([{ kind: 'genre', names: ['Fantasy', 'Epic  Fantasy'] }]);
+  it("groups the server's lists as they come, each kind only when it has some", () => {
+    expect(labelGroups({ genres: ['Fantasy', 'Epic Fantasy'], tags: [] })).toEqual([
+      { kind: 'genre', names: ['Fantasy', 'Epic Fantasy'] },
+    ]);
     expect(labelGroups({ tags: ['a'] })).toEqual([{ kind: 'tag', names: ['a'] }]);
     expect(labelGroups({})).toEqual([]);
+  });
+});
+
+describe('bookPublisher', () => {
+  const recording = { publisher: 'Community P' };
+  it("is the server's own publisher, else the community recording's", () => {
+    expect(bookPublisher({ publisher: ' Server P ' }, recording)).toBe('Server P');
+    expect(bookPublisher({ publisher: '  ' }, recording)).toBe('Community P');
+    expect(bookPublisher({}, undefined)).toBeUndefined();
   });
 });
 

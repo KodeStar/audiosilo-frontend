@@ -11,6 +11,26 @@ import { Icon, type IconName } from './icon';
 import { FOCUS_RING_OFFSET_CLASS, Text } from './text';
 
 /**
+ * The Stacks 32px pill (STYLEGUIDE section 8, "Chip"): a strong hairline on `card`,
+ * `accent` under a press or hover, filled with ink (`primary`) when `selected`. A
+ * `FilterChip`'s box, and the pills that act or link rather than toggle (a book's genres
+ * and tags, a recent search); the caller adds the width rule (`shrink-0` in a scrolling
+ * row, `max-w-full` where they wrap) and its own slop (`hitSlop` 6 above and below makes
+ * the touch target 44).
+ */
+export function chipClass(selected = false): string {
+  return cn(
+    'h-8 flex-row items-center gap-1.5 rounded-full border px-3',
+    selected
+      ? 'border-primary bg-primary'
+      : 'border-border-strong bg-card active:bg-accent hover:bg-accent',
+    Platform.select({
+      web: `cursor-pointer select-none transition-colors ${FOCUS_RING_OFFSET_CLASS}`,
+    }),
+  );
+}
+
+/**
  * A Stacks filter chip (STYLEGUIDE section 8, "Chip"): 32 tall, a pill with a strong
  * hairline on `card`, an optional leading glyph and count (subtle tabular figures); on,
  * it fills with ink (`primary`). It toggles a filter, so it is a checkbox to assistive
@@ -47,15 +67,7 @@ export function FilterChip({
       accessibilityLabel={count === undefined ? spoken : `${spoken}, ${count}`}
       onPress={onPress}
       hitSlop={{ top: 6, bottom: 6 }}
-      className={cn(
-        'h-8 shrink-0 flex-row items-center gap-1.5 rounded-full border px-3',
-        selected
-          ? 'border-primary bg-primary'
-          : 'border-border-strong bg-card active:bg-accent hover:bg-accent',
-        Platform.select({
-          web: `cursor-pointer select-none transition-colors ${FOCUS_RING_OFFSET_CLASS}`,
-        }),
-      )}
+      className={cn(chipClass(selected), 'shrink-0')}
     >
       {icon ? <Icon name={icon} size={14} color={fg} /> : null}
       <Text

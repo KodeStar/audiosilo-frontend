@@ -342,7 +342,8 @@ counts in subtle tabular text. Book tabs and the companion use underline tabs (i
 ### Chip (Toggle) and Badge
 Filter chips 32 tall with counts; pressed = ink fill. A picker chip (the Library's Genre and Tag filters) has a
 trailing chevron and names its filter, or the chosen value with its count once on, and opens a dialog (a sheet
-on a phone) of the choices with counts. A book's genres and tags are the same 32-tall pills, unfilled, under
+on a phone) of the choices with counts. A book's genres and tags (and a recent search) are the same 32-tall pills (`chipClass` in
+`ui/filter-chip.tsx`), unfilled, under
 their names in the About card, each a link to the Library filtered by it. Badges 22: secondary, outline, ink, success, warning,
 destructive, info, brand, community. A dashed `flag-chip` marks anything that needs new server work
 ("Live needs server work").

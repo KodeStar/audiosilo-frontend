@@ -593,8 +593,9 @@ from the pure `aboutContent` in `book-details-model.ts`: `community_description`
 attribution and "Improve this", else the server's `description`, else the work's core
 description, else a sentence naming the author and narrator; then the production facts known, the
 server's own `publisher` / `language` (named via `Intl.DisplayNames` where the platform has it) /
-`abridged` (absent = unknown, no row) before the community's; then the book's `genres` and `tags`
-as chips, each opening the Library's Books mode on it in the book's library, `openLabelBooks`),
+`abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
+as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
+book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts),
 Other versions
 (`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
 listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
@@ -1555,7 +1556,9 @@ sub-nav can't fit all six).
 (`useAllLibraryBooks`, one cache entry per library) pages through the selected library 200 books
 at a time until `next_cursor` runs out, then filters
 (status from the listener's progress, Downloaded from the registry, length buckets, and a genre
-and a tag matched case-insensitively by `labelKey`) and sorts on the device. The genre and tag
+and a tag matched case-insensitively by `labelKey`, which mirrors the server's `catalog.labelKey`;
+it, `bookLabels` and `LABEL_KINDS` live in `src/lib/labels.ts`, shared with the book page, and the
+server sends each list already clean, so nothing re-cleans it) and sorts on the device. The genre and tag
 filters (`books/label-filter.tsx`: a picker chip opening a dialog of `labelOptions`, each counted
 among what the other filters keep) show only when a loaded book has one or the URL names one, so
 an older server, which sends neither list, shows no new control. The URL is the contract other

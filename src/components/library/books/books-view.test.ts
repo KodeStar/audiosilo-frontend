@@ -10,7 +10,6 @@ import {
   filterBooks,
   hasFilters,
   hasLabels,
-  labelKey,
   labelOptions,
   lengthBucket,
   letterGrid,
@@ -229,7 +228,7 @@ describe('filterBooks / statusCounts', () => {
 describe('genre and tag filters', () => {
   const dune = book('Dune', { genres: ['Science Fiction'], tags: ['Book club', 'to-read'] });
   const hobbit = book('The Hobbit', { genres: ['Fantasy', 'Classics'], tags: ['TO-READ'] });
-  const mistborn = book('Mistborn', { genres: ['fantasy', 'FANTASY'], duration: 20 * H });
+  const mistborn = book('Mistborn', { genres: ['fantasy'], duration: 20 * H });
   // An older server sends neither list.
   const plain = book('Plain');
   const books = [dune, hobbit, mistborn, plain];
@@ -244,11 +243,6 @@ describe('genre and tag filters', () => {
     sort: 'recent',
     dl: false,
     ...over,
-  });
-
-  it('compares labels by trimmed, collapsed, lower-cased name', () => {
-    expect(labelKey('  Science   Fiction ')).toBe('science fiction');
-    expect(labelKey('FANTASY')).toBe(labelKey('fantasy'));
   });
 
   it('keeps the books with the label, in any spelling', () => {
@@ -276,7 +270,7 @@ describe('genre and tag filters', () => {
   it('lists each label once, first spelling, by name, counted among the other filters', () => {
     expect(labelOptions(books, view(), factsOf, 'genre')).toEqual([
       { key: 'classics', name: 'Classics', count: 1 },
-      // Mistborn spells it twice and counts once; The Hobbit's spelling came first.
+      // Mistborn spells it in lower case; The Hobbit's spelling came first.
       { key: 'fantasy', name: 'Fantasy', count: 2 },
       { key: 'science fiction', name: 'Science Fiction', count: 1 },
     ]);

@@ -1,15 +1,10 @@
 import type { TFunction } from 'i18next';
 
-import type { Book, BookFile, ChaptersResponse } from '@/api/types';
+import type { Book, BookFile, BookMetaRecording, ChaptersResponse } from '@/api/types';
 import type { MatchedBookMeta } from '@/components/library/book-meta';
-import {
-  bookLabels,
-  LABEL_KINDS,
-  type LabelKind,
-  labelKey,
-} from '@/components/library/books/books-view';
 import { getLocale } from '@/i18n/locale';
 import { bitrateKbps } from '@/lib/format';
+import { bookLabels, LABEL_KINDS, type LabelKind } from '@/lib/labels';
 import { codecLabel } from '@/playback/transcode';
 
 import { fileName } from './book-page-model';
@@ -113,21 +108,21 @@ export function languageName(value: string, locale: string = getLocale()): strin
   }
 }
 
-/** The book's genres and tags for its chips: each label once (by `labelKey`, the first
- * spelling kept), blanks dropped. */
+/** The book's genres and tags for its chips, as the server sends them (already clean:
+ * each label once, no blanks), each kind only when it has some. */
 export function labelGroups(book: Pick<Book, 'genres' | 'tags'>): LabelGroup[] {
-  return LABEL_KINDS.map((kind) => {
-    const seen = new Set<string>();
-    const names = bookLabels(book, kind)
-      .map((n) => n.trim())
-      .filter((n) => {
-        const key = labelKey(n);
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    return { kind, names };
-  }).filter((g) => g.names.length > 0);
+  return LABEL_KINDS.map((kind) => ({ kind, names: bookLabels(book, kind) })).filter(
+    (g) => g.names.length > 0,
+  );
+}
+
+/** The book's publisher: the server's own, else the community recording's (the About
+ * card and the hero's facts). */
+export function bookPublisher(
+  book: Pick<Book, 'publisher'>,
+  recording: Pick<BookMetaRecording, 'publisher'> | undefined,
+): string | undefined {
+  return book.publisher?.trim() || recording?.publisher;
 }
 
 /**
@@ -170,7 +165,7 @@ export function aboutContent(
         : t('book.about.none'));
   const recording = meta?.recording;
   const details: AboutContent['details'] = [];
-  const publisher = book.publisher?.trim() || recording?.publisher;
+  const publisher = bookPublisher(book, recording);
   if (publisher) details.push({ label: t('book.meta.publisher'), value: publisher });
   const released = recording?.release_date || book.published;
   if (released) details.push({ label: t('book.meta.released'), value: released });
@@ -178,8 +173,15 @@ export function aboutContent(
     details.push({ label: t('book.meta.firstPublished'), value: meta.work.first_published });
   const language = book.language?.trim();
   if (language) details.push({ label: t('book.meta.language'), value: languageName(language) });
-  // Absent is unknown, never "No": only a value someone gave says either way.
-  const abridged = typeof book.abridged === 'boolean' ? book.abridged : recording?.abridged;
+  // Absent is unknown, never "No": only a value someone gave says either way. The
+  // community only ever claims true (its false is also "not recorded"), as the server
+  // reads it.
+  const abridged =
+    typeof book.abridged === 'boolean'
+      ? book.abridged
+      : recording?.abridged === true
+        ? true
+        : undefined;
   if (typeof abridged === 'boolean')
     details.push({
       label: t('book.meta.abridged'),

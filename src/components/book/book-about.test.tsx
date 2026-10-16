@@ -59,7 +59,7 @@ beforeEach(() => {
 
 describe('BookAbout', () => {
   it('renders the description, production details and the meta link', async () => {
-    await mount(<BookAbout book={book()} meta={HOBBIT} />);
+    await mount(<BookAbout book={book()} meta={HOBBIT} onOpenLabel={jest.fn()} />);
     expect(screen.getByText('About')).toBeTruthy();
     expect(screen.getByText('In a hole in the ground there lived a hobbit.')).toBeTruthy();
     expect(screen.getByText('Recorded Books')).toBeTruthy();
@@ -86,7 +86,13 @@ describe('BookAbout', () => {
         },
       },
     };
-    await mount(<BookAbout book={book({ description: 'Server text.' })} meta={community} />);
+    await mount(
+      <BookAbout
+        book={book({ description: 'Server text.' })}
+        meta={community}
+        onOpenLabel={jest.fn()}
+      />,
+    );
     expect(screen.getByText('A hobbit goes there and back again.')).toBeTruthy();
     expect(screen.queryByText('Server text.')).toBeNull();
     expect(screen.getByText('CC BY-SA 4.0')).toBeTruthy();
@@ -95,10 +101,15 @@ describe('BookAbout', () => {
   });
 
   it('reads complete for an unmatched book: the server text, else who wrote it', async () => {
-    await mount(<BookAbout book={book({ description: "  The server's own words.  " })} />);
+    await mount(
+      <BookAbout
+        book={book({ description: "  The server's own words.  " })}
+        onOpenLabel={jest.fn()}
+      />,
+    );
     expect(screen.getByText("The server's own words.")).toBeTruthy();
     expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
-    await mount(<BookAbout book={book({ published: '2010-08-31' })} />);
+    await mount(<BookAbout book={book({ published: '2010-08-31' })} onOpenLabel={jest.fn()} />);
     expect(screen.getByText(/^The Hobbit .*J\. R\. R\. Tolkien/)).toBeTruthy();
     expect(screen.getByText('2010-08-31')).toBeTruthy();
     expect(screen.queryByText('Publisher')).toBeNull();
@@ -108,13 +119,13 @@ describe('BookAbout', () => {
     const onOpenLabel = jest.fn();
     await mount(
       <BookAbout
-        book={book({ genres: ['Fantasy', 'fantasy'], tags: ['Book club'], language: 'English' })}
+        book={book({ genres: ['Fantasy', 'Classics'], tags: ['Book club'], language: 'English' })}
         onOpenLabel={onOpenLabel}
       />,
     );
     expect(screen.getByText('Genres')).toBeTruthy();
     expect(screen.getByText('Tags')).toBeTruthy();
-    expect(screen.getAllByText('Fantasy')).toHaveLength(1);
+    expect(screen.getByText('Classics')).toBeTruthy();
     expect(screen.getByText('English')).toBeTruthy();
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Books in the genre Fantasy'));

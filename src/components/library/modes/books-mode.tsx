@@ -21,6 +21,7 @@ import { downloadedPaths } from '@/downloads/downloads-view';
 import { useDownloads } from '@/downloads/store';
 import { headIndexForLetter, presentLetters } from '@/lib/alpha-sections';
 import { formatCount } from '@/lib/format';
+import { LABEL_KINDS } from '@/lib/labels';
 import { useLayout } from '@/lib/layout';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -41,7 +42,6 @@ import {
   filterBooks,
   hasFilters,
   hasLabels,
-  LABEL_KINDS,
   labelOptions,
   LENGTH_BUCKETS,
   letterGrid,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import type { Book } from '@/api/types';
 import {
@@ -8,12 +8,14 @@ import {
   DisclosureChevron,
   type MatchedBookMeta,
 } from '@/components/library/book-meta';
-import { type LabelKind, libraryBooksHref } from '@/components/library/books/books-view';
+import { libraryBooksHref } from '@/components/library/books/books-view';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
+import { chipClass } from '@/components/ui/filter-chip';
 import { Icon } from '@/components/ui/icon';
-import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
+import { Text } from '@/components/ui/text';
+import type { LabelKind } from '@/lib/labels';
 import { openLibraryRoot } from '@/lib/open';
 import { openExternalUrl } from '@/lib/support';
 import { cn } from '@/lib/utils';
@@ -54,7 +56,7 @@ export function openLabelBooks(
  * line with "Improve this" (the work's page, opened in the browser). A matched book
  * without community text keeps the quiet "View on AudioSilo Meta" link. Then the book's
  * genres and tags as chips under their names, each opening the Library on it
- * (`onOpenLabel`; without it they are plain). Nothing in it is pink.
+ * (`onOpenLabel`). Nothing in it is pink.
  */
 export function BookAbout({
   book,
@@ -63,7 +65,7 @@ export function BookAbout({
 }: {
   book: Book;
   meta?: MatchedBookMeta;
-  onOpenLabel?: (kind: LabelKind, name: string) => void;
+  onOpenLabel: (kind: LabelKind, name: string) => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
@@ -146,7 +148,7 @@ function Labels({
   onOpen,
 }: {
   group: LabelGroup;
-  onOpen?: (kind: LabelKind, name: string) => void;
+  onOpen: (kind: LabelKind, name: string) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -158,7 +160,7 @@ function Labels({
             key={name}
             name={name}
             label={t(OPEN_KEY[group.kind], { name })}
-            onPress={onOpen ? () => onOpen(group.kind, name) : undefined}
+            onPress={() => onOpen(group.kind, name)}
           />
         ))}
       </View>
@@ -166,8 +168,7 @@ function Labels({
   );
 }
 
-/** A genre or tag as a pill (the filter chips' look, 32 tall, the slop makes the touch
- * target 44), opening the Library on it; without `onPress`, a plain label. */
+/** A genre or tag as a pill (`chipClass`, unselected), opening the Library on it. */
 function LabelChip({
   name,
   label,
@@ -176,31 +177,19 @@ function LabelChip({
   name: string;
   /** What a press does, for a screen reader ("Books in the genre Fantasy"). */
   label: string;
-  onPress?: () => void;
+  onPress: () => void;
 }) {
-  const box =
-    'h-8 max-w-full flex-row items-center rounded-full border border-border-strong bg-card px-3';
-  const words = (
-    <Text className="font-sans-semibold text-[13px] text-foreground" numberOfLines={1}>
-      {name}
-    </Text>
-  );
-  if (!onPress) return <View className={box}>{words}</View>;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="link"
       accessibilityLabel={label}
       hitSlop={{ top: 6, bottom: 6 }}
-      className={cn(
-        box,
-        'active:bg-accent',
-        Platform.select({
-          web: `cursor-pointer select-none transition-colors hover:bg-accent ${FOCUS_RING_OFFSET_CLASS}`,
-        }),
-      )}
+      className={cn(chipClass(), 'max-w-full')}
     >
-      {words}
+      <Text className="font-sans-semibold text-[13px] text-foreground" numberOfLines={1}>
+        {name}
+      </Text>
     </Pressable>
   );
 }

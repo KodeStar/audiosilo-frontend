@@ -6,7 +6,9 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-const checkRowClass = cn(
+/** A choice row's box: 48 tall, `accent` under a press or hover (a `CheckRow`, and the
+ * radio rows of a picker dialog, which `cn` a shorter `min-h-*` over it). */
+export const checkRowClass = cn(
   'min-h-[48px] flex-row items-center gap-3 rounded-xl px-3 active:bg-accent hover:bg-accent',
   Platform.select({
     web: `cursor-pointer ${FOCUS_RING_CLASS}`,

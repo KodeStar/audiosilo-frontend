@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
+import { checkRowClass } from '@/components/ui/check-row';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FilterChip } from '@/components/ui/filter-chip';
 import { Icon } from '@/components/ui/icon';
-import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
+import { Text } from '@/components/ui/text';
 import { formatCount } from '@/lib/format';
+import { type LabelKind, labelKey } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { type LabelKind, labelKey, type LabelOption } from './books-view';
+import type { LabelOption } from './books-view';
 
 const KEYS = {
   genre: {
@@ -114,10 +116,7 @@ function ChoiceRow({
       accessibilityState={{ checked }}
       accessibilityLabel={count === undefined ? label : `${label}, ${count}`}
       onPress={onPress}
-      className={cn(
-        'min-h-[44px] flex-row items-center gap-3 rounded-xl px-3 active:bg-accent hover:bg-accent',
-        Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
-      )}
+      className={cn(checkRowClass, 'min-h-[44px]')}
     >
       <Text variant="label" className="flex-1" numberOfLines={1}>
         {label}

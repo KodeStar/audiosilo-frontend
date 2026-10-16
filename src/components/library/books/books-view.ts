@@ -2,6 +2,7 @@ import type { Href } from 'expo-router';
 
 import type { Book, Progress } from '@/api/types';
 import { type LetterItem, letterItems } from '@/lib/alpha-sections';
+import { bookLabels, LABEL_KINDS, type LabelKind, labelKey } from '@/lib/labels';
 import { foldAccents } from '@/lib/names';
 import { bookTitle, firstParam, type RawParams } from '@/lib/paths';
 import { isInProgress } from '@/lib/progress-view';
@@ -24,10 +25,6 @@ export const LENGTH_BUCKETS = ['short', 'mid', 'long'] as const;
 /** Under 5 h, 5 to 15 h, over 15 h. */
 export type LengthBucket = (typeof LENGTH_BUCKETS)[number];
 
-/** The book's label lists the Books mode filters by: its genres and its tags. */
-export const LABEL_KINDS = ['genre', 'tag'] as const;
-export type LabelKind = (typeof LABEL_KINDS)[number];
-
 /** What the Books mode shows: its sort and filters (all in the URL). */
 export type BooksView = {
   sort: BooksSort;
@@ -47,18 +44,6 @@ const oneOf = <T extends string>(all: readonly T[], v: string): T | undefined =>
 /** A label param as given, trimmed; blank is none. */
 const labelParam = (v: string | string[] | undefined): string | undefined =>
   firstParam(v).trim() || undefined;
-
-/** A genre or tag as it compares: trimmed, inner whitespace collapsed, lower-cased, so
- * "Science  Fiction" and "science fiction" are one label (the server matches `?genre=`
- * and `?tag=` case-insensitively too). */
-export function labelKey(label: string): string {
-  return label.trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-/** A book's genres or tags (none from an older server). */
-export function bookLabels(book: Pick<Book, 'genres' | 'tags'>, kind: LabelKind): string[] {
-  return (kind === 'genre' ? book.genres : book.tags) ?? [];
-}
 
 /** The view a link asks for. Unknown values are ignored (the default stands). */
 export function parseBooksView(params: RawParams): BooksView {
@@ -143,25 +128,39 @@ export function lengthBucket(seconds: number): LengthBucket {
 /** What the filters need to know about a book besides its own fields. */
 export type BookFacts = { status: BookStatus; downloaded: boolean };
 
-/** Whether `book` carries the label whose key is `key` among its `kind` labels. */
-function hasLabel(book: Book, kind: LabelKind, key: string): boolean {
-  return bookLabels(book, kind).some((l) => labelKey(l) === key);
+/** Each book's `labelKey`s, in its lists' order, worked out once per book: books are
+ * immutable query data, and a library's whole list is filtered and counted on every
+ * change of view. */
+const labelKeyCache = new WeakMap<Book, Record<LabelKind, string[]>>();
+
+function bookLabelKeys(book: Book, kind: LabelKind): string[] {
+  let keys = labelKeyCache.get(book);
+  if (!keys) {
+    keys = {
+      genre: bookLabels(book, 'genre').map(labelKey),
+      tag: bookLabels(book, 'tag').map(labelKey),
+    };
+    labelKeyCache.set(book, keys);
+  }
+  return keys[kind];
 }
 
-function matches(
-  book: Book,
-  facts: BookFacts,
+/** Whether a book passes the view's filters (all but `skip`), with the view's labels
+ * keyed once for the whole pass rather than once a book. */
+function matcher(
   view: BooksView,
   skip?: 'status' | 'dl' | 'len' | LabelKind,
-): boolean {
-  if (skip !== 'status' && view.status && facts.status !== view.status) return false;
-  if (skip !== 'dl' && view.dl && !facts.downloaded) return false;
-  if (skip !== 'len' && view.len && lengthBucket(book.duration) !== view.len) return false;
-  for (const kind of LABEL_KINDS) {
+): (book: Book, facts: BookFacts) => boolean {
+  const labels = LABEL_KINDS.flatMap((kind) => {
     const want = view[kind];
-    if (skip !== kind && want && !hasLabel(book, kind, labelKey(want))) return false;
-  }
-  return true;
+    return skip !== kind && want ? [{ kind, key: labelKey(want) }] : [];
+  });
+  return (book, facts) => {
+    if (skip !== 'status' && view.status && facts.status !== view.status) return false;
+    if (skip !== 'dl' && view.dl && !facts.downloaded) return false;
+    if (skip !== 'len' && view.len && lengthBucket(book.duration) !== view.len) return false;
+    return labels.every(({ kind, key }) => bookLabelKeys(book, kind).includes(key));
+  };
 }
 
 export function filterBooks(
@@ -169,7 +168,8 @@ export function filterBooks(
   view: BooksView,
   factsOf: (book: Book) => BookFacts,
 ): Book[] {
-  return books.filter((b) => matches(b, factsOf(b), view));
+  const keep = matcher(view);
+  return books.filter((b) => keep(b, factsOf(b)));
 }
 
 /** Each status chip's count: the books in that status among those the OTHER filters
@@ -180,9 +180,10 @@ export function statusCounts(
   factsOf: (book: Book) => BookFacts,
 ): Record<BookStatus, number> {
   const out: Record<BookStatus, number> = { new: 0, progress: 0, finished: 0 };
+  const keep = matcher(view, 'status');
   for (const b of books) {
     const facts = factsOf(b);
-    if (matches(b, facts, view, 'status')) out[facts.status] += 1;
+    if (keep(b, facts)) out[facts.status] += 1;
   }
   return out;
 }
@@ -219,20 +220,18 @@ export function labelOptions(
   kind: LabelKind,
 ): LabelOption[] {
   const byKey = new Map<string, LabelOption>();
+  const keep = matcher(view, kind);
   for (const b of books) {
-    const labels = bookLabels(b, kind);
-    if (labels.length === 0) continue;
-    const kept = matches(b, factsOf(b), view, kind);
-    // A book spelling one label twice counts once.
-    const seen = new Set<string>();
-    for (const name of labels) {
-      const key = labelKey(name);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const option = byKey.get(key);
+    const names = bookLabels(b, kind);
+    if (names.length === 0) continue;
+    const keys = bookLabelKeys(b, kind);
+    const kept = keep(b, factsOf(b));
+    // The server sends each label once a book, so a book counts once for each.
+    names.forEach((name, i) => {
+      const option = byKey.get(keys[i]);
       if (option) option.count += kept ? 1 : 0;
-      else byKey.set(key, { key, name: name.trim(), count: kept ? 1 : 0 });
-    }
+      else byKey.set(keys[i], { key: keys[i], name, count: kept ? 1 : 0 });
+    });
   }
   const chosen = view[kind]?.trim() ?? '';
   const chosenKey = labelKey(chosen);
