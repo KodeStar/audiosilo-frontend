@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
 import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
+import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
+import { connectForNewProfile } from '@/components/profiles/connect-intent';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
@@ -25,6 +27,25 @@ export type LinkPairing = {
 };
 
 /**
+ * Whether the server still takes the stored token of `connectionId` (`GET /me` through the
+ * connection's own client, which flags a refused one for reconnect). `needsReconnect` is
+ * in memory only, so a fresh tab (the console's "Listen in player" always opens one) can't
+ * tell a revoked token from a good one without asking. Only a 401 says no: a server that
+ * doesn't answer leaves the book to open as it would offline. Never through the link's
+ * base: a link can name any address, and the stored token goes only where it always has.
+ */
+async function stillSignedIn(connectionId: string): Promise<boolean> {
+  const client = resolveClient(connectionId);
+  if (!client) return false;
+  try {
+    await client.me();
+    return true;
+  } catch (e) {
+    return !(e instanceof ApiError && e.status === 401);
+  }
+}
+
+/**
  * Pairing by link (a pairing QR, an invite link, a pasted link, a deep link): exchange
  * the link's token on the link's server for a session, with the server's own name (read
  * alongside, so the connection isn't named after its host), then `finishConnect` (which
@@ -35,7 +56,8 @@ export type LinkPairing = {
  * server too. The connection is still stored with the https base (which fails safely by
  * TLS on another network, where a plain-http address could be another box), with home as
  * its first address pick (`answeredAt`). A link naming a book ends on it, and skips the
- * exchange when the device is already signed in as the link's user there. Resolves whether
+ * exchange when the device is already signed in as the link's user there (its token still
+ * taken, `stillSignedIn`). Resolves whether
  * it paired. Bare client: a failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
@@ -53,21 +75,24 @@ export function useLinkPairing(startPairing = false): LinkPairing {
   // Stable (`useLatest`): the deep link's effect lists it, and a language switch must not
   // run the exchange again.
   const pair = useLatest(async (scan: PairingScan): Promise<boolean> => {
+    setError(null);
+    setPairing(true);
     // A link naming a book, for a user this device is already signed in as on its server
-    // (the console's "Listen in player": `signedInAs`): the book opens with no exchange, and
-    // the unused token expires by itself (no second session, no "new device" notice).
-    if (scan.book && scan.userId && scan.serverId) {
+    // (the console's "Listen in player": `signedInAs`) with a token the server still takes
+    // (`stillSignedIn`): the book opens with no exchange, and the unused token expires by
+    // itself (no second session, no "new device" notice). Not for "Add someone": the
+    // exchange's `finishConnect` switches to that person.
+    if (scan.book && scan.userId && scan.serverId && !connectForNewProfile()) {
       // The connections first, when they never loaded (as `finishConnect` reads them).
       if (sessionHydrateFailed()) await useSession.getState().hydrate();
       const signedIn = signedInAs(useSession.getState().connections, scan.serverId, scan.userId);
-      if (signedIn) {
+      if (signedIn && (await stillSignedIn(signedIn.id))) {
         if (!live.current) return false;
         endConnect(signedIn.id, scan.book);
         return true;
       }
+      if (!live.current) return false;
     }
-    setError(null);
-    setPairing(true);
     // The token's exchange at `base`, with the server's name read alongside.
     const exchangeAt = (base: string) => {
       const client = new ApiClient(base);

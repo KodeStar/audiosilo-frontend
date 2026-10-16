@@ -49,6 +49,7 @@ const mockApi = {
   serverInfo: jest.fn(),
   exchange: jest.fn(),
   demoSession: jest.fn(),
+  me: jest.fn(),
 };
 const mockBases: string[] = [];
 jest.mock('@/api/client', () => {
@@ -652,6 +653,13 @@ describe('the player the server serves', () => {
         async () => {
           await signIn();
           useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
+        },
+      ],
+      [
+        'the server refuses its stored token (a fresh tab never knows)',
+        async () => {
+          await signIn();
+          mockApi.me.mockRejectedValueOnce(new ApiError(401, 'invalid or expired token'));
         },
       ],
     ])('pairs when %s', async (_, before) => {

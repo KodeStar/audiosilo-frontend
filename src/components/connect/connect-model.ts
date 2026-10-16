@@ -101,9 +101,12 @@ export function repairPlan(input: {
 
 /**
  * The connection already signed in as `userId` on the server `serverId`, its token not
- * refused (no `needsReconnect`), or undefined. A link that names both (the console's
- * "Listen in player": `sid` + `uid`) then needs no exchange: its unused token expires by
- * itself, and no second session (or "new device" notice) is made at each press.
+ * refused in this runtime (no `needsReconnect`, which is never stored: `useLinkPairing`
+ * also asks the server), or undefined. A link that names both (the console's "Listen in
+ * player": `sid` + `uid`) then needs no exchange: its unused token expires by itself, and
+ * no second session (or "new device" notice) is made at each press. Only one saved with
+ * this user's id: one saved before user ids were kept (`priorConnection`'s fallback) can't
+ * be told to be theirs.
  */
 export function signedInAs<
   C extends {
@@ -113,10 +116,9 @@ export function signedInAs<
     needsReconnect?: unknown;
   },
 >(connections: readonly C[], serverId: string, userId: number): C | undefined {
-  // `priorConnection`'s match, but only one saved with this user's id: one saved before
-  // user ids were kept can't be told to be theirs.
-  const c = priorConnection(connections, serverId, userId);
-  return c && c.user?.id === userId && !c.needsReconnect ? c : undefined;
+  return connections.find(
+    (c) => serverIdOf(c) === serverId && c.user?.id === userId && !c.needsReconnect,
+  );
 }
 
 /** Whether a sign-in is the device's first: no connection before it. Only then does the

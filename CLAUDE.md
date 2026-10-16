@@ -335,7 +335,10 @@ link naming a book (`book=<library_id>&path=<rel_path>` + `uid`, the admin conso
 player": `parseConnectBook`, carried on `PairingScan` as `book` + `userId` by the route and a pasted
 link alike) ends on that book instead (`endConnect`, the one ending `finishConnect` shares: a
 `dismissTo` of `bookHref`, never a URL from the link), and `useLinkPairing.pair` skips the exchange
-when the device is already signed in as `uid` on `sid` (`signedInAs`); an invalid `book` is ignored. A
+when the device is already signed in as `uid` on `sid` (`signedInAs`) and the server still takes
+that stored token (`stillSignedIn`: `GET /me` through the connection's own client, never the
+link's base; `needsReconnect` is never stored, so a fresh tab can't tell otherwise), never for
+"Add someone"; an invalid `book` is ignored. A
 pairing link whose https base can't connect (a server on its own self-signed certificate) exchanges
 once at the link's `home` instead (native only): only when that is plain http on the base's own
 host and port, never after an `ApiError` or a timeout, and only when the link names the server
