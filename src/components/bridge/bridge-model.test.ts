@@ -9,6 +9,7 @@ import {
   hasCharactersOrRecaps,
   jobStatusView,
   mayGenerate,
+  parkEndsByItself,
   parkReason,
   queueInOrder,
   queueOrder,
@@ -117,6 +118,7 @@ describe('stage labels', () => {
 describe('parkReason', () => {
   it('groups the park codes into reasons the player can say, and the rest as other', () => {
     expect(parkReason('agent_unavailable')).toBe('agent');
+    expect(parkReason('asr_worker_waiting')).toBe('worker');
     expect(parkReason('budget_exceeded')).toBe('budget');
     expect(parkReason('agent_credential_refused')).toBe('agent');
     expect(parkReason('book_not_writable')).toBe('notWritable');
@@ -127,6 +129,16 @@ describe('parkReason', () => {
     expect(parkReason('core_needed')).toBe('core');
     expect(parkReason('a_new_code')).toBe('other');
     expect(parkReason(undefined)).toBe('other');
+    // A code that names an Object member is no reason either.
+    expect(parkReason('constructor')).toBe('other');
+    expect(parkReason('toString')).toBe('other');
+  });
+
+  // A book waiting for a worker goes on once one connects, with no time to name.
+  it('says which parks end by themselves', () => {
+    expect(parkEndsByItself('worker')).toBe(true);
+    expect(parkEndsByItself('asr')).toBe(false);
+    expect(parkEndsByItself('other')).toBe(false);
   });
 });
 

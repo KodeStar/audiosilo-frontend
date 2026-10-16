@@ -176,6 +176,8 @@ const PARK_REASON: Readonly<Record<string, ParkReason>> = {
   library_not_writable: 'notWritable',
   asr_unavailable: 'asr',
   asr_decode_timeout: 'asr',
+  // No ASR worker is connected, and the Bridge waits for one.
+  asr_worker_waiting: 'worker',
   media_tools_unavailable: 'mediaTools',
   markers_not_confident: 'chapters',
   ebook_chapters_not_confident: 'chapters',
@@ -199,6 +201,7 @@ export type ParkReason =
   | 'budget'
   | 'notWritable'
   | 'asr'
+  | 'worker'
   | 'mediaTools'
   | 'chapters'
   | 'ebook'
@@ -210,7 +213,13 @@ export type ParkReason =
 
 /** A park code as a short reason the player can say; an unknown code is `other`. */
 export function parkReason(code: string | undefined): ParkReason {
-  return (code && PARK_REASON[code]) || 'other';
+  return code && Object.hasOwn(PARK_REASON, code) ? PARK_REASON[code] : 'other';
+}
+
+/** Whether a park ends by itself with no time to name, so there is nothing to fix in
+ * the console: the Bridge takes a book waiting for a worker on once one connects. */
+export function parkEndsByItself(reason: ParkReason): boolean {
+  return reason === 'worker';
 }
 
 /** How a job's status reads: its phase, the stage, the counts and ETA when known, the
