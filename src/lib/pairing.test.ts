@@ -134,6 +134,27 @@ describe("parsePairingScan with the server's id", () => {
       token: 't',
     });
   });
+
+  it("reads the book a link ends on and the user it was made for (the console's link)", () => {
+    const path = 'Brandon Sanderson/Mistborn & Co/01 #1?';
+    const q = new URLSearchParams({ token: 't', sid: 'srv-1', uid: '1', book: '2', path });
+    expect(parsePairingScan(`https://h/web/connect?${q.toString()}`)).toEqual({
+      base: 'https://h',
+      token: 't',
+      serverId: 'srv-1',
+      userId: 1,
+      book: { libraryId: 2, path },
+    });
+    // One it can't name is no book, and no user: the link pairs as any other.
+    expect(parsePairingScan('https://h/web/connect?token=t&uid=x&book=2x&path=A')).toEqual({
+      base: 'https://h',
+      token: 't',
+    });
+    expect(parsePairingScan('https://h/web/connect?token=t&book=2&path=%E0%A4%A')).toEqual({
+      base: 'https://h',
+      token: 't',
+    });
+  });
 });
 
 describe('hostOf', () => {

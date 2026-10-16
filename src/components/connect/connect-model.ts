@@ -99,6 +99,28 @@ export function repairPlan(input: {
   return { serverUrl: pending, addresses: answer };
 }
 
+/**
+ * The connection already signed in as `userId` on the server `serverId`, its token not
+ * refused in this runtime (no `needsReconnect`, which is never stored: `useLinkPairing`
+ * also asks the server), or undefined. A link that names both (the console's "Listen in
+ * player": `sid` + `uid`) then needs no exchange: its unused token expires by itself, and
+ * no second session (or "new device" notice) is made at each press. Only one saved with
+ * this user's id: one saved before user ids were kept (`priorConnection`'s fallback) can't
+ * be told to be theirs.
+ */
+export function signedInAs<
+  C extends {
+    id: string;
+    serverId?: string;
+    user?: { id?: unknown } | null;
+    needsReconnect?: unknown;
+  },
+>(connections: readonly C[], serverId: string, userId: number): C | undefined {
+  return connections.find(
+    (c) => serverIdOf(c) === serverId && c.user?.id === userId && !c.needsReconnect,
+  );
+}
+
 /** Whether a sign-in is the device's first: no connection before it. Only then does the
  * flow end on "Your library is ready."; an added server goes straight back. */
 export function isFirstConnection(connections: readonly unknown[]): boolean {
@@ -359,7 +381,8 @@ export function readyLine(input: {
 }
 
 /** A scanned pairing code as `/connect` route params: its server, token, and the
- * server's home and away addresses and its id (`sid`) when the code carries them. */
+ * server's home and away addresses, its id (`sid`), the user (`uid`) and the book (`book`,
+ * `path`) when the code carries them. */
 export function scanParams(scan: PairingScan): Record<string, string> {
   return {
     server: scan.base,
@@ -367,5 +390,7 @@ export function scanParams(scan: PairingScan): Record<string, string> {
     ...(scan.addresses?.home ? { home: scan.addresses.home } : {}),
     ...(scan.addresses?.away ? { away: scan.addresses.away } : {}),
     ...(scan.serverId ? { sid: scan.serverId } : {}),
+    ...(scan.userId ? { uid: String(scan.userId) } : {}),
+    ...(scan.book ? { book: String(scan.book.libraryId), path: scan.book.path } : {}),
   };
 }

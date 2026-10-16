@@ -49,6 +49,7 @@ const mockApi = {
   serverInfo: jest.fn(),
   exchange: jest.fn(),
   demoSession: jest.fn(),
+  me: jest.fn(),
 };
 const mockBases: string[] = [];
 jest.mock('@/api/client', () => {
@@ -579,6 +580,107 @@ describe('the player the server serves', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
     expect(screen.queryByText('Found Hearthside')).toBeNull();
+  });
+
+  describe('a link that names a book (the console\'s "Listen in player")', () => {
+    const BOOK = 'Brandon Sanderson/Mistborn & Co/01 #1?';
+    const bookAt = (connection: string) => ({
+      pathname: '/book/[libraryId]',
+      params: { libraryId: '2', connection, path: BOOK },
+    });
+    /** The console's link, as route params. */
+    const linkParams = (over: Record<string, string> = {}) => ({
+      token: 'tok',
+      sid: 'srv-1',
+      uid: '1',
+      book: '2',
+      path: BOOK,
+      ...over,
+    });
+    const signIn = (as: User = user) =>
+      useSession.getState().setSession({
+        serverUrl: ORIGIN,
+        serverId: 'srv-1',
+        token: 't',
+        user: as,
+        name: 'Hearthside',
+      });
+
+    beforeEach(() => {
+      mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+      mockApi.serverInfo.mockResolvedValue(info());
+    });
+
+    it('pairs and ends on the book, not "Your library is ready."', async () => {
+      mockParams = linkParams();
+      await render(<ConnectStart />);
+      await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
+      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(conn()).toMatchObject({ id: 'srv-1.1', token: 's' });
+    });
+
+    it('opens the book without spending the token when already signed in as that user', async () => {
+      await signIn();
+      mockParams = linkParams();
+      await render(<ConnectStart />);
+      await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
+      expect(mockApi.exchange).not.toHaveBeenCalled();
+      expect(useSession.getState().connections).toHaveLength(1);
+      expect(conn().token).toBe('t');
+    });
+
+    it('does the same for the link pasted', async () => {
+      await signIn();
+      const q = new URLSearchParams(linkParams());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+      await fireEvent.press(screen.getByText('I have a pairing link'));
+      await fireEvent.changeText(
+        screen.getByLabelText('Pairing link'),
+        `${ORIGIN}/web/connect?${q.toString()}`,
+      );
+      await fireEvent.press(screen.getByText('Connect'));
+      await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
+      expect(mockApi.exchange).not.toHaveBeenCalled();
+      expect(conn().token).toBe('t');
+    });
+
+    it.each([
+      ['someone else is signed in there', () => signIn({ ...user, id: 2, username: 'sam' })],
+      [
+        'the server refused its token',
+        async () => {
+          await signIn();
+          useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
+        },
+      ],
+      [
+        'the server refuses its stored token (a fresh tab never knows)',
+        async () => {
+          await signIn();
+          mockApi.me.mockRejectedValueOnce(new ApiError(401, 'invalid or expired token'));
+        },
+      ],
+    ])('pairs when %s', async (_, before) => {
+      await before();
+      mockParams = linkParams();
+      await render(<ConnectStart />);
+      await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
+      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+    });
+
+    it('ignores a book it cannot name, and ends as any pairing link does', async () => {
+      mockParams = linkParams({ book: '2x' });
+      await render(<ConnectStart />);
+      await waitFor(() =>
+        expect(mockReplace).toHaveBeenCalledWith({
+          pathname: '/connect/ready',
+          params: { connection: 'srv-1.1' },
+        }),
+      );
+      expect(mockDismissTo).not.toHaveBeenCalled();
+    });
   });
 });
 

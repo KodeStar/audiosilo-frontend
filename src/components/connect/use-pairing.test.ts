@@ -4,25 +4,40 @@ import { Platform } from 'react-native';
 const mockExchange = jest.fn();
 // The base URL of each exchange, in order.
 const mockExchangedAt: string[] = [];
+// `GET /me` with a stored token: (base, token) of each.
+const mockMe = jest.fn();
 jest.mock('@/api/client', () => {
   const actual = jest.requireActual('@/api/client');
   return {
     ...actual,
     ApiClient: class {
       base: string;
-      constructor(base: string) {
+      token: string | null;
+      constructor(base: string, token: string | null = null) {
         this.base = base;
+        this.token = token;
       }
       exchange = (...a: unknown[]) => {
         mockExchangedAt.push(this.base);
         return mockExchange(...a);
       };
       serverInfo = async () => ({ name: 'Hearthside' });
+      me = () => mockMe(this.base, this.token);
     },
   };
 });
 const mockFinish = jest.fn();
-jest.mock('./finish-connect', () => ({ finishConnect: (...a: unknown[]) => mockFinish(...a) }));
+const mockEnd = jest.fn();
+jest.mock('./finish-connect', () => ({
+  finishConnect: (...a: unknown[]) => mockFinish(...a),
+  endConnect: (...a: unknown[]) => mockEnd(...a),
+}));
+// Whether the session read failed at launch (its connections never loaded).
+let mockHydrateFailed = false;
+jest.mock('@/stores/session', () => ({
+  ...jest.requireActual('@/stores/session'),
+  sessionHydrateFailed: () => mockHydrateFailed,
+}));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Kitchen iPad' }));
 // The tokenless `GET /server` probe of the home address: the server_id it answers.
 const mockProbe = jest.fn();
@@ -32,6 +47,10 @@ jest.mock('@/api/server-id-probe', () => ({
 
 /* eslint-disable import/first */
 import { ApiError, TimeoutError } from '@/api/client';
+import type { User } from '@/api/types';
+import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
+import type { PairingScan } from '@/lib/pairing';
+import { type Connection, useSession } from '@/stores/session';
 
 import { useLinkPairing } from './use-pairing';
 /* eslint-enable import/first */
@@ -54,6 +73,8 @@ async function errorFor(e: unknown, link: typeof scan = scan): Promise<string | 
 beforeEach(() => {
   jest.clearAllMocks();
   mockExchangedAt.length = 0;
+  mockHydrateFailed = false;
+  useSession.setState({ connections: [] });
 });
 
 describe('useLinkPairing', () => {
@@ -215,5 +236,105 @@ describe('useLinkPairing: the home http fallback', () => {
     mockExchange.mockRejectedValueOnce(down()).mockRejectedValueOnce(new ApiError(500, 'boom'));
     expect((await pairWith(homeScan)).error).toMatch(/^The server couldn't finish pairing/);
     expect(mockFinish).not.toHaveBeenCalled();
+  });
+});
+
+describe('useLinkPairing: a link that names a book', () => {
+  const book = { libraryId: 2, path: 'Author/Book' };
+  const bookScan = { ...scan, serverId: 'srv-1', userId: 1, book };
+  const chris: Connection = {
+    id: 'srv-1.1',
+    serverId: 'srv-1',
+    serverUrl: scan.base,
+    name: 'Hearthside',
+    token: 't',
+    user: { id: 1, username: 'chris' } as User,
+  };
+  const session = { token: 's', user: { id: 1, username: 'chris' }, server_id: 'srv-1' };
+  // A test swaps the store's hydrate: the next one gets the real one back.
+  const realHydrate = useSession.getState().hydrate;
+  afterEach(() => {
+    useSession.setState({ hydrate: realHydrate });
+    setConnectForNewProfile(false);
+  });
+
+  async function pairWith(s: PairingScan) {
+    const { result } = await renderHook(() => useLinkPairing());
+    let paired: boolean | undefined;
+    await act(async () => {
+      paired = await result.current.pair(s);
+    });
+    return paired;
+  }
+
+  it('opens the book without the exchange when already signed in as its user there', async () => {
+    useSession.setState({ connections: [chris] });
+    expect(await pairWith(bookScan)).toBe(true);
+    expect(mockEnd).toHaveBeenCalledWith('srv-1.1', book);
+    expect(mockExchange).not.toHaveBeenCalled();
+    expect(mockFinish).not.toHaveBeenCalled();
+  });
+
+  it("asks with the stored token at the connection's own address, never the link's", async () => {
+    useSession.setState({ connections: [chris] });
+    expect(await pairWith({ ...bookScan, base: 'https://elsewhere.example' })).toBe(true);
+    expect(mockMe).toHaveBeenCalledWith(scan.base, 't');
+    expect(mockMe).not.toHaveBeenCalledWith('https://elsewhere.example', expect.anything());
+  });
+
+  it('exchanges when the server refuses the stored token (a fresh tab never knows)', async () => {
+    useSession.setState({ connections: [chris] });
+    mockMe.mockRejectedValueOnce(new ApiError(401, 'invalid or expired token'));
+    mockExchange.mockResolvedValue(session);
+    expect(await pairWith(bookScan)).toBe(true);
+    expect(mockExchange).toHaveBeenCalledWith('tok', 'Kitchen iPad');
+    expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ book }));
+    expect(mockEnd).not.toHaveBeenCalled();
+  });
+
+  it('opens the book when the server could not be asked', async () => {
+    useSession.setState({ connections: [chris] });
+    mockMe.mockRejectedValueOnce(new TimeoutError(15000));
+    expect(await pairWith(bookScan)).toBe(true);
+    expect(mockEnd).toHaveBeenCalledWith('srv-1.1', book);
+    expect(mockExchange).not.toHaveBeenCalled();
+  });
+
+  it('exchanges for "Add someone", which switches to that person', async () => {
+    useSession.setState({ connections: [chris] });
+    setConnectForNewProfile(true);
+    mockExchange.mockResolvedValue(session);
+    expect(await pairWith(bookScan)).toBe(true);
+    expect(mockMe).not.toHaveBeenCalled();
+    expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ book }));
+    expect(mockEnd).not.toHaveBeenCalled();
+  });
+
+  it('reads the connections again first when they never loaded', async () => {
+    mockHydrateFailed = true;
+    const hydrate = jest.fn(async () => useSession.setState({ connections: [chris] }));
+    useSession.setState({ hydrate });
+    expect(await pairWith(bookScan)).toBe(true);
+    expect(hydrate).toHaveBeenCalled();
+    expect(mockEnd).toHaveBeenCalledWith('srv-1.1', book);
+    expect(mockExchange).not.toHaveBeenCalled();
+  });
+
+  it('exchanges and ends on the book for anyone else, or a link without its user', async () => {
+    useSession.setState({ connections: [chris] });
+    mockExchange.mockResolvedValue(session);
+    for (const s of [
+      { ...bookScan, userId: 2 },
+      { ...bookScan, serverId: 'srv-2' },
+    ]) {
+      expect(await pairWith(s)).toBe(true);
+      expect(mockFinish).toHaveBeenLastCalledWith(expect.objectContaining({ book }));
+    }
+    const { userId: _drop, ...noUser } = bookScan;
+    expect(await pairWith(noUser)).toBe(true);
+    // A plain pairing link never skips, even for a user signed in there.
+    expect(await pairWith({ ...scan, serverId: 'srv-1', userId: 1 })).toBe(true);
+    expect(mockExchange).toHaveBeenCalledTimes(4);
+    expect(mockEnd).not.toHaveBeenCalled();
   });
 });

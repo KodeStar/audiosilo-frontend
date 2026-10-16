@@ -18,6 +18,7 @@ import {
   revealSpan,
   scanParams,
   selfSignedMayBeWhy,
+  signedInAs,
   withFallback,
 } from './connect-model';
 
@@ -150,6 +151,27 @@ describe('repairPlan', () => {
 it('isFirstConnection: only with no connection before', () => {
   expect(isFirstConnection([])).toBe(true);
   expect(isFirstConnection([{}])).toBe(false);
+});
+
+describe('signedInAs', () => {
+  const sam = { id: 'srv-1.2', serverId: 'srv-1', user: { id: 2 } };
+  const chris = { id: 'srv-1.1', serverId: 'srv-1', user: { id: 1 } };
+  const elsewhere = { id: 'srv-2.1', serverId: 'srv-2', user: { id: 1 } };
+
+  it("is the user's own connection on that server", () => {
+    expect(signedInAs([sam, elsewhere, chris], 'srv-1', 1)).toBe(chris);
+    // A legacy id names the server too.
+    const legacy = { id: 'srv-1', user: { id: 1 } };
+    expect(signedInAs([legacy], 'srv-1', 1)).toBe(legacy);
+  });
+
+  it('is none for another user, another server, or a token the server refused', () => {
+    expect(signedInAs([sam, elsewhere], 'srv-1', 1)).toBeUndefined();
+    expect(signedInAs([chris], 'srv-2', 1)).toBeUndefined();
+    expect(signedInAs([{ ...chris, needsReconnect: 'auth' }], 'srv-1', 1)).toBeUndefined();
+    // Saved before user ids were kept: whose it is can't be told, so the link pairs.
+    expect(signedInAs([{ id: 'srv-1', user: {} }], 'srv-1', 1)).toBeUndefined();
+  });
 });
 
 describe('reconnectAddress', () => {
@@ -516,7 +538,7 @@ describe('readyLine', () => {
   });
 });
 
-it("scanParams carries the addresses and the server's id only when the code has them", () => {
+it("scanParams carries the addresses, the server's id, the user and the book only when the code has them", () => {
   expect(scanParams({ base: AWAY, token: 't' })).toEqual({ server: AWAY, token: 't' });
   expect(
     scanParams({
@@ -524,6 +546,8 @@ it("scanParams carries the addresses and the server's id only when the code has 
       token: 't',
       addresses: { home: HOME, away: AWAY },
       serverId: 'srv-1',
+      userId: 1,
+      book: { libraryId: 2, path: 'A/B & C' },
     }),
   ).toEqual({
     server: AWAY,
@@ -531,5 +555,8 @@ it("scanParams carries the addresses and the server's id only when the code has 
     home: HOME,
     away: AWAY,
     sid: 'srv-1',
+    uid: '1',
+    book: '2',
+    path: 'A/B & C',
   });
 });
