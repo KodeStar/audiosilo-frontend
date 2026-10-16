@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import type { Book } from '@/api/types';
+import type { Book, BookMetaWork } from '@/api/types';
 import { InTheHouseCard } from '@/components/house/in-the-house-card';
 import type { MatchedBookMeta } from '@/components/library/book-meta';
 import { BookVersions } from '@/components/library/book-versions';
@@ -22,12 +22,15 @@ export function BookAside({
   book,
   connectionId,
   meta,
+  work,
   listening,
   className,
 }: {
   book: Book;
   connectionId: string;
   meta?: MatchedBookMeta;
+  /** The `bookMetaWork` value, for a description generated on this server. */
+  work?: BookMetaWork;
   listening: ListeningFigures | null;
   className?: string;
 }) {
@@ -36,6 +39,7 @@ export function BookAside({
       <BookAbout
         book={book}
         meta={meta}
+        work={work}
         onOpenLabel={(kind, name) => openLabelBooks(connectionId, book.library_id, kind, name)}
       />
       <BookVersions book={book} connectionId={connectionId} />

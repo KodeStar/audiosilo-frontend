@@ -1,6 +1,12 @@
 import type { TFunction } from 'i18next';
 
-import type { Book, BookFile, BookMetaRecording, ChaptersResponse } from '@/api/types';
+import type {
+  Book,
+  BookFile,
+  BookMetaRecording,
+  BookMetaWork,
+  ChaptersResponse,
+} from '@/api/types';
 import type { MatchedBookMeta } from '@/components/library/book-meta';
 import { getLocale } from '@/i18n/locale';
 import { bitrateKbps } from '@/lib/format';
@@ -82,6 +88,9 @@ export type AboutContent = {
   text: string;
   /** The text is the community's (CC BY-SA), which needs the attribution beside it. */
   community: boolean;
+  /** The text is the description a Bridge generated on this server (Bridge Phase 1c),
+   * which wears the "Generated on this server" mark and never the community's credit. */
+  generated: boolean;
   /** The production facts the community or the server knows, in words. */
   details: { label: string; value: string }[];
   /** The book's genres, then its tags, each kind only when it has some (an older
@@ -127,10 +136,12 @@ export function bookPublisher(
 
 /**
  * The About card's content: the community's description, else the server's own (the
- * admin-edited value), else the work's core description, else a sentence naming who
- * wrote and reads the book; then the production facts (publisher, release, first
- * published, language, abridged), each only when known, the server's own value before
- * the community's; then the book's genres and tags.
+ * admin-edited value), else the work's core description, else the description a Bridge
+ * generated on this server (`work`, the `bookMetaWork` value: the matched work or an
+ * unmatched book's generated one), else a sentence naming who wrote and reads the book;
+ * then the production facts (publisher, release, first published, language, abridged),
+ * each only when known, the server's own value before the community's; then the book's
+ * genres and tags.
  */
 export function aboutContent(
   book: Pick<
@@ -148,12 +159,17 @@ export function aboutContent(
   >,
   meta: MatchedBookMeta | undefined,
   t: TFunction,
+  work?: Pick<BookMetaWork, 'generated' | 'generated_description'>,
 ): AboutContent {
   const shared = meta?.work.community_description?.text?.trim();
   const own = book.description?.trim() || meta?.work.description?.trim();
+  const generated = work?.generated?.description
+    ? work.generated_description?.text?.trim()
+    : undefined;
   const text =
     shared ||
     own ||
+    generated ||
     (book.author && book.narrator
       ? t('book.about.fallbackBoth', {
           title: book.title,
@@ -187,5 +203,11 @@ export function aboutContent(
       label: t('book.meta.abridged'),
       value: abridged ? t('book.about.yes') : t('book.about.no'),
     });
-  return { text, community: !!shared, details, labels: labelGroups(book) };
+  return {
+    text,
+    community: !!shared,
+    generated: !shared && !own && !!generated,
+    details,
+    labels: labelGroups(book),
+  };
 }

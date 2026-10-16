@@ -199,6 +199,24 @@ describe('parseOfflineMeta', () => {
     });
   });
 
+  it('keeps a description generated on the server (Bridge 1c), matched or not', () => {
+    const generated = {
+      generated: { description: true },
+      generated_description: { text: 'Written here.' },
+    };
+    const matched = { ...valid, meta: envelope({ work: { ...work('w0'), ...generated } }) };
+    expect(parseOfflineMeta(JSON.parse(JSON.stringify(matched)))).toEqual(matched);
+    const unmatched = {
+      v: 1,
+      savedAt: 1,
+      meta: {
+        matched: false,
+        work: { id: '', title: 'T', authors: [], language: '', ...generated },
+      },
+    };
+    expect(parseOfflineMeta(JSON.parse(JSON.stringify(unmatched)))?.meta).toEqual(unmatched.meta);
+  });
+
   it.each([
     ['not an object', 'nope'],
     ['an array', []],

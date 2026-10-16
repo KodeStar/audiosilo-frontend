@@ -115,6 +115,62 @@ describe('BookAbout', () => {
     expect(screen.queryByText('Publisher')).toBeNull();
   });
 
+  describe('a description generated on this server (Bridge 1c)', () => {
+    const WRITTEN = 'Written on this server in its own words.';
+    const generated = {
+      generated: { description: true },
+      generated_description: { text: WRITTEN },
+    };
+
+    it('marks it, with no credit or Improve this, and keeps the meta link', async () => {
+      const bare: MatchedBookMeta = {
+        ...HOBBIT,
+        // An attribution for other community content must not ride on generated text.
+        work: {
+          ...HOBBIT.work,
+          description: undefined,
+          ...generated,
+          attribution: {
+            credit: 'AudioSilo Meta contributors',
+            license: 'CC BY-SA 4.0',
+            license_url: 'https://cc/by-sa',
+            source_url: 'https://m/work?id=the-hobbit&edit',
+          },
+        },
+      };
+      await mount(<BookAbout book={book()} meta={bare} work={bare.work} onOpenLabel={jest.fn()} />);
+      expect(screen.getByText(WRITTEN)).toBeTruthy();
+      expect(screen.getByTestId('generated-mark')).toBeTruthy();
+      expect(screen.getByText('Generated on this server')).toBeTruthy();
+      expect(screen.queryByText('CC BY-SA 4.0')).toBeNull();
+      expect(screen.queryByText('Improve this')).toBeNull();
+      await press('View on AudioSilo Meta');
+      expect(mockOpenExternal).toHaveBeenCalledWith('https://m/work?id=the-hobbit');
+    });
+
+    it('shows it for an unmatched book, with no link to AudioSilo Meta', async () => {
+      const work = { id: '', title: 'The Hobbit', authors: [], language: '', ...generated };
+      await mount(<BookAbout book={book()} work={work} onOpenLabel={jest.fn()} />);
+      expect(screen.getByText(WRITTEN)).toBeTruthy();
+      expect(screen.getByTestId('generated-mark')).toBeTruthy();
+      expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
+    });
+
+    it("gives way to the book's own description, unmarked", async () => {
+      const work = { id: '', title: 'The Hobbit', authors: [], language: '', ...generated };
+      await mount(
+        <BookAbout
+          book={book({ description: 'Server text.' })}
+          work={work}
+          onOpenLabel={jest.fn()}
+        />,
+      );
+      expect(screen.getByText('Server text.')).toBeTruthy();
+      expect(screen.queryByText(WRITTEN)).toBeNull();
+      expect(screen.queryByTestId('generated-mark')).toBeNull();
+    });
+  });
+
   it("shows the book's genres and tags as chips, each opening the Library on it", async () => {
     const onOpenLabel = jest.fn();
     await mount(

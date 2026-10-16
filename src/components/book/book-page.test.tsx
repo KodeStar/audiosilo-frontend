@@ -544,6 +544,30 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
   });
 
+  // Bridge 1c: an unmatched book whose only generated content is its description.
+  it("shows an unmatched book's generated description in About, marked", async () => {
+    mockCaps = { metadata: true };
+    mockBook = { ...BOOK, generated: true, description: undefined };
+    mockMeta = {
+      matched: false,
+      work: {
+        id: '',
+        title: 'The Way of Kings',
+        authors: [],
+        language: '',
+        generated_description: { text: 'A storm-wracked world, told from its opening.' },
+        generated: { description: true },
+      },
+    };
+    await mountAt('desktop');
+    expect(screen.getByText('A storm-wracked world, told from its opening.')).toBeTruthy();
+    expect(screen.getByTestId('generated-mark')).toBeTruthy();
+    // A description alone opens no Characters or Recaps tab.
+    expect(screen.queryByTestId('book-tab-characters')).toBeNull();
+    expect(screen.queryByTestId('book-tab-recaps')).toBeNull();
+    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
+  });
+
   it('marks only the dimension that was generated', async () => {
     mockCaps = { metadata: true };
     mockBook = { ...BOOK, asin: 'B0' };

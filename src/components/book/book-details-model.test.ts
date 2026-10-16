@@ -99,6 +99,63 @@ describe('aboutContent', () => {
     expect(aboutContent({ ...book, description: '  ' }, meta, t).text).toBe('The work.');
   });
 
+  describe('a description generated on this server (Bridge 1c)', () => {
+    const generated = {
+      generated: { description: true },
+      generated_description: { text: ' Written here. ' },
+    };
+    const bare = { ...meta, work: { ...meta.work, description: undefined } };
+
+    it('comes after the community, the server and the work', () => {
+      const shared = {
+        ...meta,
+        work: { ...meta.work, community_description: { text: 'Community.' } },
+      };
+      expect(aboutContent(book, shared, t, { ...shared.work, ...generated })).toMatchObject({
+        text: 'Community.',
+        community: true,
+        generated: false,
+      });
+      expect(
+        aboutContent({ ...book, description: 'Server.' }, meta, t, { ...meta.work, ...generated }),
+      ).toMatchObject({ text: 'Server.', community: false, generated: false });
+      expect(aboutContent(book, meta, t, { ...meta.work, ...generated })).toMatchObject({
+        text: 'The work.',
+        generated: false,
+      });
+    });
+
+    it('leads when nothing else describes the book, matched or not', () => {
+      expect(aboutContent(book, bare, t, { ...bare.work, ...generated })).toMatchObject({
+        text: 'Written here.',
+        community: false,
+        generated: true,
+      });
+      // An unmatched book: no matched meta, only the generated work.
+      const unmatched = { id: '', title: 'W', authors: [], language: '', ...generated };
+      expect(aboutContent(book, undefined, t, unmatched)).toMatchObject({
+        text: 'Written here.',
+        generated: true,
+      });
+    });
+
+    it('needs the generated flag and a non-blank text, else the fallback sentence', () => {
+      const noFlag = { generated: { characters: true }, generated_description: { text: 'X.' } };
+      expect(aboutContent(book, undefined, t, noFlag)).toMatchObject({
+        text: 'W by A, read by N.',
+        generated: false,
+      });
+      const blank = { generated: { description: true }, generated_description: { text: '  ' } };
+      expect(aboutContent(book, undefined, t, blank)).toMatchObject({
+        text: 'W by A, read by N.',
+        generated: false,
+      });
+      const missing = { generated: { description: true } };
+      expect(aboutContent(book, undefined, t, missing).generated).toBe(false);
+      expect(aboutContent(book, undefined, t).generated).toBe(false);
+    });
+  });
+
   it('names who wrote and reads an undescribed book, so it still reads complete', () => {
     expect(aboutContent(book, undefined, t).text).toBe('W by A, read by N.');
     expect(aboutContent({ ...book, narrator: '' }, undefined, t).text).toBe('W by A.');

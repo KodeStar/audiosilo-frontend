@@ -318,6 +318,44 @@ describe('ApiClient', () => {
     });
   });
 
+  it('passes through a generated description, matched or not (Bridge 1c)', async () => {
+    // A matched work without a community description carries the description the Bridge
+    // wrote on this server; an unmatched book with only a description carries it in work.
+    const matched = {
+      matched: true,
+      work: {
+        id: 'the-martian',
+        title: 'The Martian',
+        authors: [{ id: 'andy-weir', name: 'Andy Weir' }],
+        language: 'en',
+        generated_description: { text: 'Written here.' },
+        generated: { description: true, generated_at: '2026-10-16T09:00:00Z' },
+      },
+      web_url: 'https://meta.audiosilo.app/work?id=the-martian',
+    };
+    const unmatched = {
+      matched: false,
+      work: {
+        id: '',
+        title: 'The Home Recording',
+        authors: [],
+        language: '',
+        generated_description: { text: 'Written here too.' },
+        generated: { description: true, generated_at: '2026-10-16T09:00:00Z' },
+      },
+    };
+    installFetch(() => ({ status: 200, body: matched }));
+    const m = await new ApiClient('https://h', 'tok').bookMeta(1, 'x');
+    expect(m).toEqual(matched);
+    expect(m.work?.generated_description).toEqual({ text: 'Written here.' });
+    expect(m.work?.generated?.description).toBe(true);
+    installFetch(() => ({ status: 200, body: unmatched }));
+    const u = await new ApiClient('https://h', 'tok').bookMeta(1, 'x');
+    expect(u).toEqual(unmatched);
+    expect(u.matched).toBe(false);
+    expect(u.work?.generated_description?.text).toBe('Written here too.');
+  });
+
   it('surfaces an ApiError when the meta service is unavailable (502)', async () => {
     installFetch(() => ({ status: 502, body: { error: 'metadata service unavailable' } }));
     await expect(new ApiClient('https://h', 'tok').bookMeta(1, 'x')).rejects.toMatchObject({

@@ -152,14 +152,15 @@ function Chip({ label }: { label: string }) {
 }
 
 /** "Generated on this server": the quiet chip at the head of a Characters or Recaps
- * panel whose entries came from files the Bridge wrote for this server, not from the
- * community (`work.generated`'s `dimension`). Nothing for community content. */
+ * panel (or under the About card's eyebrow, for a description) whose content came from
+ * files the Bridge wrote for this server, not from the community (`work.generated`'s
+ * `dimension`). Nothing for community content. */
 export function GeneratedMark({
   generated,
   dimension,
 }: {
   generated: BookMetaGenerated | undefined;
-  dimension: 'characters' | 'recaps';
+  dimension: 'characters' | 'recaps' | 'description';
 }) {
   const { t } = useTranslation();
   if (!generated?.[dimension]) return null;

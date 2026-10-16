@@ -380,6 +380,7 @@ function BookPage() {
       book={book}
       connectionId={cid}
       meta={metaMatched}
+      work={metaWork}
       listening={listening}
       className={layout.columns === 1 ? 'mb-7' : undefined}
     />

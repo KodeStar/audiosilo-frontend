@@ -599,7 +599,10 @@ play / converted for this browser (web, `useNeedsWebTranscode`) / plays from thi
 and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookAbout`, its words
 from the pure `aboutContent` in `book-details-model.ts`: `community_description` with the server's
 attribution and "Improve this", else the server's `description`, else the work's core
-description, else a sentence naming the author and narrator; then the production facts known, the
+description, else the description a Bridge generated on this server (`aboutContent`'s `work`, the
+`bookMetaWork` value, so an unmatched book has it too; `generated` says it is shown, and the card
+then wears `GeneratedMark` with `dimension="description"` under the eyebrow, never the credit or
+"Improve this"), else a sentence naming the author and narrator; then the production facts known, the
 server's own `publisher` / `language` (named via `Intl.DisplayNames` where the platform has it) /
 `abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
 as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
@@ -678,8 +681,14 @@ characters or recaps a Bridge generated on its server carries `Book.generated: t
 search, item, recent and the next book's `book`), and `/meta` serves them: for an UNMATCHED book
 as `{ matched: false, work }` (`work.id`, `authors` and `language` empty, `title` the book's
 own), for a matched one in the dimension the community lacks (community content wins per
-dimension); `work.generated` (`BookMetaGenerated {characters?, recaps?, generated_at?}`) says
-which. **The `/meta` gate is ONE predicate, `metaEnabledFor(metadata, book)`
+dimension); `work.generated` (`BookMetaGenerated {characters?, recaps?, description?,
+generated_at?}`) says which. **A generated description (Bridge Phase 1c)** rides in its own
+additive field, `work.generated_description` (`{ text }`), never in `community_description` (the
+shipped 2.0 app shows that one first, as CC BY-SA): the server fills it only when the community
+work has no `community_description`, and the player orders it below the book's own description
+and the work's core one in About (above). It is spoiler-free by contract, so `spoilers=hide`
+keeps it; the player has no action for it (the console's "Write a description" queues
+`sidecars.describe`). **The `/meta` gate is ONE predicate, `metaEnabledFor(metadata, book)`
 (`meta-gating.ts`)**: the server's `metadata` flag and an ASIN, an ISBN **or `generated`**;
 every surface that reads `/meta` goes through it (the book page, the companion and reveal
 toast, Home's Now card and Previously on, the end credits, the character search, the offline

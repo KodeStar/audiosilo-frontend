@@ -603,11 +603,26 @@ export type BookMetaWork = {
    * Omitted when nothing did (and on older servers). Generated content carries no
    * `attribution` of its own. */
   generated?: BookMetaGenerated;
+  /** A description the Bridge wrote on this server in its own words (the book's
+   * `.audiosilo/description.json`; Bridge Phase 1c), spoiler-free by contract. Only sent
+   * when the community work has no `community_description`, and never CC BY-SA: it
+   * carries no `attribution`. `generated.description` says it is there. Absent on older
+   * servers. */
+  generated_description?: BookMetaGeneratedDescription;
 };
 
 /** What of a work came from this server's own generated files (see
- * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. */
-export type BookMetaGenerated = { characters?: boolean; recaps?: boolean; generated_at?: string };
+ * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. `description` is Bridge
+ * Phase 1c's (absent on a 1a/1b server). */
+export type BookMetaGenerated = {
+  characters?: boolean;
+  recaps?: boolean;
+  description?: boolean;
+  generated_at?: string;
+};
+
+/** A description generated on this server (see {@link BookMetaWork.generated_description}). */
+export type BookMetaGeneratedDescription = { text: string };
 
 /** A community-written work description (CC BY-SA). `license` names the licence
  * when the entry states one. */
@@ -695,9 +710,9 @@ export type BookMetaSeries = {
 
 /** Response of GET /libraries/{id}/meta. A discriminated union on `matched`:
  * `matched:false` when the book has no asin/isbn or the service found no match. An
- * unmatched book whose characters or recaps were generated on this server (Bridge Phase
- * 1a) carries them in `work` (`id` empty, `title` the book's own, `authors` empty,
- * `language` empty, and its `generated`). Older servers never send it. */
+ * unmatched book whose characters, recaps or description were generated on this server
+ * (Bridge Phases 1a and 1c) carries them in `work` (`id` empty, `title` the book's own,
+ * `authors` empty, `language` empty, and its `generated`). Older servers never send it. */
 export type BookMeta =
   | { matched: false; work?: BookMetaWork }
   | {

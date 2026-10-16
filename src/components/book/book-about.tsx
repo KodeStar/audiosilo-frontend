@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import type { Book } from '@/api/types';
+import type { Book, BookMetaWork } from '@/api/types';
 import {
   descriptionIsLong,
   DisclosureChevron,
+  GeneratedMark,
   type MatchedBookMeta,
 } from '@/components/library/book-meta';
 import { libraryBooksHref } from '@/components/library/books/books-view';
@@ -53,24 +54,30 @@ export function openLabelBooks(
  * The book page's About card (in the aside): the description (`aboutContent`, collapsed
  * past six lines; an undescribed book still reads complete), the production facts the
  * community or the server knows, and, beside community text, the server's attribution
- * line with "Improve this" (the work's page, opened in the browser). A matched book
- * without community text keeps the quiet "View on AudioSilo Meta" link. Then the book's
- * genres and tags as chips under their names, each opening the Library on it
- * (`onOpenLabel`). Nothing in it is pink.
+ * line with "Improve this" (the work's page, opened in the browser). A description a
+ * Bridge generated on this server (`work`, the `bookMetaWork` value) wears the
+ * "Generated on this server" mark under the eyebrow and never the credit or "Improve
+ * this". A matched book without community text keeps the quiet "View on AudioSilo Meta"
+ * link. Then the book's genres and tags as chips under their names, each opening the
+ * Library on it (`onOpenLabel`). Nothing in it is pink.
  */
 export function BookAbout({
   book,
   meta,
+  work,
   onOpenLabel,
 }: {
   book: Book;
   meta?: MatchedBookMeta;
+  /** The work generated content rides on: the matched work, or an unmatched book's
+   * generated one (`bookMetaWork`). */
+  work?: BookMetaWork;
   onOpenLabel: (kind: LabelKind, name: string) => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const [expanded, setExpanded] = useState(false);
-  const { text, community, details, labels } = aboutContent(book, meta, t);
+  const { text, community, generated, details, labels } = aboutContent(book, meta, t, work);
   const canCollapse = descriptionIsLong(text);
   const attribution = community ? meta?.work.attribution : undefined;
   const improveUrl = attribution?.source_url || meta?.web_url;
@@ -78,6 +85,7 @@ export function BookAbout({
   return (
     <Card className="gap-2.5">
       <Text variant="eyebrow">{t('book.meta.about')}</Text>
+      {generated ? <GeneratedMark generated={work?.generated} dimension="description" /> : null}
       <View className="gap-1">
         <Text
           className="text-[15px] leading-6 text-foreground"
