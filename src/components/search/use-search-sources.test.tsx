@@ -161,4 +161,36 @@ describe('useCharacterSources', () => {
     expect(mockA.allProgress).not.toHaveBeenCalled();
     expect(mockA.bookMeta).not.toHaveBeenCalled();
   });
+
+  // Characters generated on the server for a book the community doesn't know come back
+  // unmatched with a work (Bridge Phase 1a): found like the community's, with no credit.
+  it('finds the characters generated for an unmatched book, crediting no one', async () => {
+    const community = mockA.bookMeta.getMockImplementation();
+    mockA.bookMeta.mockImplementation(async (_lib: number, path: string) => ({
+      matched: false,
+      work: {
+        id: '',
+        title: `Book ${path}`,
+        authors: [],
+        language: '',
+        characters: [{ id: 'ada', name: 'Ada Quill', reveal: { chapter: 1 } }],
+        generated: { characters: true },
+      },
+    }));
+    try {
+      const { result } = await mount(() => useCharacterSources(true));
+      await waitFor(() => expect(result.current.books).toHaveLength(2));
+      expect(result.current.books[0]).toMatchObject({
+        path: 'in-progress',
+        title: 'Book in-progress',
+      });
+      expect(result.current.books[0].attribution).toBeUndefined();
+      expect(mockA.chapters.mock.calls.map((c) => c[1])).toEqual(['in-progress']);
+      expect(matchCharacters(result.current.books, 'ada').hits).toEqual([
+        expect.objectContaining({ name: 'Ada Quill', bookTitle: 'Book in-progress' }),
+      ]);
+    } finally {
+      mockA.bookMeta.mockImplementation(community);
+    }
+  });
 });

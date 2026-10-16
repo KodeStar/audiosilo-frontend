@@ -439,6 +439,28 @@ describe('captureOfflineMeta', () => {
     expect(canMatch(e)).toBe(true);
   });
 
+  // No ASIN or ISBN can't match the community, but a book with characters and recaps
+  // generated on its server (Bridge Phase 1a) has them served through /meta: kept too.
+  it('keeps a generated book without an ASIN or ISBN, with its generated work', async () => {
+    const e = entry();
+    delete e.manifest.book.asin;
+    e.manifest.book.generated = true;
+    expect(canMatch(e)).toBe(true);
+    const generated = {
+      matched: false as const,
+      work: {
+        id: '',
+        title: 'Home',
+        authors: [],
+        language: '',
+        recaps: [{ through: { chapter: 1 }, text: 'So far.' }],
+        generated: { recaps: true },
+      },
+    };
+    mockClient.bookMeta.mockResolvedValue(generated);
+    await expect(captureOfflineMeta(e)).resolves.toMatchObject({ meta: generated, works: [] });
+  });
+
   it('asks a server without metadata for nothing more', async () => {
     mockClient.serverInfo.mockResolvedValue(server({ meta_bundle: true }));
     await expect(captureOfflineMeta(entry())).resolves.toBeNull();

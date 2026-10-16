@@ -152,7 +152,9 @@ export type WriteError =
   | 'tooMany'
   | 'failed';
 
-const BY_KIND: Readonly<Record<ApiErrorKind, WriteError>> = {
+/** The refusals the household routes send, in their words; any other kind (another
+ * feature's code) reads as a plain failure. */
+const BY_KIND: Readonly<Partial<Record<ApiErrorKind, WriteError>>> = {
   member_limit: 'limit',
   username_taken: 'usernameTaken',
   invalid_name: 'invalidName',
@@ -175,7 +177,7 @@ export function writeError(e: unknown): WriteError {
   const kind = apiErrorKind(e);
   // A coded 409 that is not the cap (a collection's share cap): the change was refused.
   if (kind === 'conflict' && e instanceof ApiError && e.code) return 'invalid';
-  return BY_KIND[kind];
+  return BY_KIND[kind] ?? 'failed';
 }
 
 /** What a refused write `e` says, in words (`writeError`). The admin's switches read as

@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react-native';
 
 let mockMetadata: boolean | undefined;
-let mockBook: { asin?: string; isbn?: string } | undefined;
+let mockBook: { asin?: string; isbn?: string; generated?: boolean } | undefined;
 const mockBookOpts = jest.fn();
 const mockChapterOpts = jest.fn();
 const mockMetaEnabled = jest.fn();
@@ -60,6 +60,25 @@ describe('useBookCommunity', () => {
     expect(result.current.enabled).toBe(false);
   });
 
+  // No ASIN or ISBN can't match the community, but a generated book's /meta answers
+  // with what its Bridge generated (matched:false with a work), which the companion shows.
+  it('asks a generated book with no ASIN or ISBN, and reads its generated work', async () => {
+    mockMetadata = true;
+    mockBook = { generated: true };
+    const generated = {
+      id: '',
+      title: 'Home',
+      authors: [],
+      language: '',
+      characters: [{ id: 'a', name: 'A', reveal: { chapter: 1 } }],
+    };
+    mockMeta = { matched: false, work: generated };
+    const { result } = await renderHook(() => useBookCommunity(target));
+    expect(mockChapterOpts).toHaveBeenLastCalledWith({ enabled: true });
+    expect(mockMetaEnabled).toHaveBeenLastCalledWith(true);
+    expect(result.current.work).toBe(generated);
+  });
+
   it('follows the chain to the matched work', async () => {
     mockMetadata = true;
     mockBook = { isbn: '978' };
@@ -73,5 +92,22 @@ describe('useBookCommunity', () => {
     mockMetadata = undefined;
     const { result } = await renderHook(() => useBookCommunity(target));
     expect(result.current.loading).toBe(true);
+  });
+
+  // The generate offer waits on this: a failed lookup (no answer, not loading) says
+  // nothing about what the community has, unlike a book /meta is never asked for.
+  it('knows what /meta says only once it answered, or when it is not asked', async () => {
+    mockMetadata = true;
+    mockBook = { asin: 'B0' };
+    mockMeta = undefined;
+    const failed = await renderHook(() => useBookCommunity(target));
+    expect(failed.result.current.loading).toBe(false);
+    expect(failed.result.current.metaKnown).toBe(false);
+    mockMeta = { matched: false };
+    const answered = await renderHook(() => useBookCommunity(target));
+    expect(answered.result.current.metaKnown).toBe(true);
+    mockBook = {};
+    const notAsked = await renderHook(() => useBookCommunity(target));
+    expect(notAsked.result.current.metaKnown).toBe(true);
   });
 });

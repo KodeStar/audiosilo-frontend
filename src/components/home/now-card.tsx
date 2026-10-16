@@ -13,7 +13,7 @@ import {
 } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
 import { BookCover } from '@/components/library/book-cover';
-import { matchedMeta } from '@/components/library/book-meta';
+import { bookMetaWork } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
 import {
   chapterStartsOf,
@@ -114,7 +114,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const finishOn =
     pace && left > 0 ? formatDayMonth(estimatedFinish(left, pace, new Date())) : null;
 
-  const work = matchedMeta(meta, metaEnabled)?.work;
+  const work = bookMetaWork(meta, metaEnabled);
   const characters = work?.characters ?? [];
   // Characters met so far, gated exactly like the book page's Characters tab.
   const met = splitCharacters(

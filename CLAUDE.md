@@ -492,6 +492,61 @@ them in) or a grown-up, each on "Everything I can listen to" or "Only collection
   add dialog, then Listening in the house. My devices offers "Also sign out <names>" for a device
   holding member sign-ins, and the collection share sheet notes which members can listen to it.
 
+**The Bridge (Bridge Phase 1a, capability `bridge`, admin only, `src/components/bridge/`).** The
+player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidecars.generate`
+("Generate characters and recaps"); the console covers everything else.
+- **Wire** (`types.ts`): `Capabilities.bridge` (a Bridge paired and online) and
+  `ServerInfo.bridge {version, features}`; `BridgeJob` (state `queued | claimed | running |
+  needs_attention | done | failed | cancelled`; `path` is the book's own `rel_path`; `error` is a
+  failure or, while parked, the park message), `BridgeJobList`, `BridgeJobRequest`,
+  `SidecarsGenerateParams` (`source` auto/audio/ebook, `contribute` local/issue, `work_id`),
+  `SidecarsGenerateProgress` (step, message, done/total, stage, `eta_seconds`, `cost_usd`,
+  source, `park {code, hint, retry_at}`), `SidecarsGenerateResult`, `BridgeEstimate` (source,
+  ebook, duration, `asr_hours` (0 = not known for audio), `agent_cost_usd` (null = no history),
+  `subscription`, `agent_ready`, `figures` (without them readiness and costs are only
+  defaults), `writable`, `has {community, local, community_unknown?}`, `earlier` (up to 10
+  earlier series books without recaps, each costed), `open_job`). `client.ts`:
+  `bridgeJobs(lib, path)` (`GET /admin/bridge/jobs`, first page), `queueBridgeJob` (201 new, 200
+  the open one already queued), `cancelBridgeJob`, `bridgeEstimate` (the upstream budget,
+  `UPSTREAM_TIMEOUT_MS`); refusals `library_not_writable` and `kind_unavailable` are
+  `API_ERROR_CODES` (`bridgeRefusalKey` words them; never `ApiError.message`).
+- **Hooks** (`hooks.ts`, `qk.bridgeJobs` / `qk.bridgeEstimate`): `useBridgeJobs(lib, path,
+  {enabled, active, select})` asks only a server with the flag and only while `enabled` (a
+  non-admin would get a 403), `retry: false`; it POLLS (`bridgePollInterval`,
+  `src/lib/bridge-jobs.ts`) only while a `sidecars.generate` job of the book is open and the
+  surface is `active` with the app foregrounded: `BRIDGE_POLL_MS` (10 s) while claimed or
+  running, `BRIDGE_IDLE_POLL_MS` (60 s) while queued or parked, never otherwise (the answer
+  that sees the job end stops it). When a read first sees the newest generate job `done`,
+  `refreshAfterFinish` invalidates the book's `/meta` (every variant) and its item (under any
+  path that names it) and WAITS for them before the answer lands, once per finish per cache
+  (`finishesActedOn`), so the tabs and `generated` are in before the status goes and the offer
+  never flashes back. `useBridgeEstimate` (`staleTime: 0`, read afresh each time the
+  confirmation opens), `useQueueBridgeJob` / `useCancelBridgeJob` (`CapabilityError` without
+  the flag; the answer goes into the book's job list, a cancel's 409 reads it again).
+  `useCapabilityQuery` gained `retry`, `select` and a query-aware `refetchInterval` for them.
+- **The gate** (`bridge-model.ts`, pure and tested): `mayGenerate(user, server)` = an admin
+  (never a household member, a kid's or a demo account, whatever the role says), the `bridge`
+  flag, `features` including `sidecars`, AND `metadata` (generated content is served through
+  `/meta`). Nothing renders, and no job is asked for, without it. `generateOffer`: `generate`
+  for a book with no characters or recaps at all (community or generated), `regenerate` (the
+  book menu) when some were generated here, nothing until the book's `/meta` answer
+  (`metaAnswered`) and its jobs are known, or while a job shows its status (`statusJob`: the
+  newest generate job while open or once failed). The player always sends `GENERATE_PARAMS`
+  (`source: auto`, `contribute: local`): it never offers to contribute.
+- **Surfaces**: `useGenerate` (one book's model: allowed, offer, the confirmation, the queue
+  and cancel writes; its own job read is `active: false` with a `select`, so progress polls
+  re-render only the status), `GenerateDialog` (the confirmation: source, transcription time
+  and agent cost of every run it queues, `runEstimate`, a subscription's note, where the
+  results appear, and a switch, on by default, to queue the series' earlier books without
+  recaps first, `queueOrder` / `queueInOrder`, stopping at the first refusal; Generate held
+  back with `blockedReason` while the library isn't writable or the agent is KNOWN not ready),
+  `GenerateStatus` (polls while its screen is focused: phase, stage words `bridge.stage.*`
+  from `stageOf`, counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
+  Cancel, or "Try again", re-queueing, once it failed) and `GenerateOffer` (button or status under the companion's empty Who's
+  who / Story so far). The book page wires `useGenerate` into `HeroActions` with
+  `GenerateStatus` under the actions. Costs format with `formatUsd` (`src/lib/format.ts`).
+  Strings under `bridge.*` in all 6 locales; fixtures in `src/testing/bridge-fixtures.ts`.
+
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
 Stacks book page, laid out by its MEASURED width (`bookPageLayout`: the cover beside the text
@@ -508,7 +563,9 @@ keeps the note). **Actions** (`hero-actions.tsx`): the primary (`primaryAction`:
 this book plays, Resume chapter N, Start listening, Listen again; through `usePlayBook` with
 `toggle`, so it never restarts the loaded book), `DownloadControl` (`short` on a stacked hero), Up next (Play
 next / Add to the end, `queue`), favourite (ink, never pink), Add to collection
-(`collections`) and `BookActionsMenu` with `omit` (the items the hero already has).
+(`collections`) and `BookActionsMenu` with `omit` (the items the hero already has), and for an
+admin the Bridge's `generate` (below: "Generate characters and recaps" as an outline button
+after the others, its own row on a phone; "Regenerate" quieter, in the book menu's `extra`).
 Labels that count a chapter by its place ("Resume chapter N" here, on Home and the series page,
 "Ch. N of M") go through `contradictedTitle` / `resumeChapterLabel` (`src/lib/chapter-label.ts`):
 when the chapter's title carries another number (a book that opens with a Prologue), the label
@@ -537,9 +594,9 @@ description, else a sentence naming the author and narrator; then the production
 Other versions
 (`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
 listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
-vertical scroller). Which tabs exist: chapters when there's a list, the three community-metadata
-tabs only when that data is non-empty (so nothing regresses on an older server or an unmatched
-book), bookmarks/history/notes always (they're user-creatable, so they must be reachable from
+vertical scroller). Which tabs exist: chapters when there's a list, the three metadata
+tabs only when that data is non-empty (so nothing regresses on an older server; an unmatched
+book shows Characters and Recaps only for what a Bridge generated on its server, `bookMetaWork`), bookmarks/history/notes always (they're user-creatable, so they must be reachable from
 empty - hence the `emptyLabel`), Details always. `tab` is held as an *intent* (`?tab=`); render
 falls back to the first existing tab when data changes under it. Labels come from
 `TAB_LABEL_KEY` (same module), which deliberately **reuses** the existing strings
@@ -603,6 +660,28 @@ loading/error/`matched:false`. `client.bookMeta` hits `/libraries/{id}/meta`;
 a 502 from a down meta service doesn't spin). Strings under `book.meta.*` (plus the
 two `book.tabs.*` keys) in all 6 locales. The wire envelope (`BookMeta` discriminated
 union in `types.ts`) is hand-mirrored from the server.
+**Generated characters and recaps (Bridge Phase 1a).** A book whose `.audiosilo/` holds
+characters or recaps a Bridge generated on its server carries `Book.generated: true` (list,
+search, item, recent and the next book's `book`), and `/meta` serves them: for an UNMATCHED book
+as `{ matched: false, work }` (`work.id`, `authors` and `language` empty, `title` the book's
+own), for a matched one in the dimension the community lacks (community content wins per
+dimension); `work.generated` (`BookMetaGenerated {characters?, recaps?, generated_at?}`) says
+which. **The `/meta` gate is ONE predicate, `metaEnabledFor(metadata, book)`
+(`meta-gating.ts`)**: the server's `metadata` flag and an ASIN, an ISBN **or `generated`**;
+every surface that reads `/meta` goes through it (the book page, the companion and reveal
+toast, Home's Now card and Previously on, the end credits, the character search, the offline
+copy). Two readers of the envelope, never mixed: `matchedMeta` (the matched half only: About,
+the series rails, the AudioSilo Meta links need a real community work) and `bookMetaWork`
+(the matched work or an unmatched book's generated one: the Characters and Recaps tabs and
+their counts, the companion's Who's who and Story so far, Home's Now card and Previously on,
+the search's characters; the end credits stay on `matchedMeta`). `metaAnswered(enabled, book, meta)` is "the answer is in" for the Generate offer
+(a failed lookup is no answer). An unmatched answer WITH a `work` is fresh for only
+`META_GENERATED_ONLY_STALE_MS` (2 min, `metaStaleTime`), because the server answers the same
+way when the community lookup failed for a book it would otherwise match. Generated content
+wears `GeneratedMark` ("Generated on this server", a quiet chip at the head of a Characters or
+Recaps panel, `bridge.generate.mark`) and never the community's CC BY-SA credit:
+**`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
+generated, and every `Attribution` beside characters or recaps reads through it.
 
 **Player-redesign data API (Phase 1a, the wire).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on
@@ -1656,7 +1735,7 @@ are asked, at most 10,000 rows.
   The audio is never touched, and a queue already playing keeps its chapters until the book is
   next started.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `metaEnabledFor`, so a book with generated characters and recaps too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
   prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope
@@ -1746,7 +1825,9 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover
   slot takes what the rest leaves, `phoneCoverSize`, so the player fits without scrolling);
   gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal
-  per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every block.
+  per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every community
+block (`communityCredit`; generated panels wear `GeneratedMark`, and Who's who / Story so far
+offer an admin `GenerateOffer` under their empty state).
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
   only (`watchReveal` + `revealOnCrossing`: a pause, a buffer or a file change reported in two
   writes on the way still counts; a seek never does), reading the chapter at Who's who's own

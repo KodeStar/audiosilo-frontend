@@ -1,4 +1,13 @@
-import type { Book, BookFile, BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
+import type {
+  Book,
+  BookFile,
+  BookMeta,
+  BookMetaAttribution,
+  BookMetaCharacter,
+  BookMetaGenerated,
+  BookMetaRecap,
+  Chapter,
+} from '@/api/types';
 import { chapterBookOffset } from '@/playback/book-queue';
 
 /**
@@ -24,17 +33,45 @@ export type ListeningProgress = { chapter: number; finished: boolean };
 export const LIVE_POSITION_BUCKET_S = 15;
 
 /**
- * Whether a book's community metadata is worth asking for: its server advertises
- * `metadata` (an older server omits it, and is never asked) and the book carries an
- * ASIN or ISBN (a book with neither can never match). The one predicate for every
- * surface that reads `/meta` (the book page, the player's companion and reveal toast,
- * Home's Now card and Previously on, the end credits).
+ * Whether a book's `/meta` is worth asking for: its server advertises `metadata` (an
+ * older server omits it, and is never asked) and the book carries an ASIN or ISBN (a
+ * book with neither can never match the community) or is `generated` (characters or
+ * recaps a Bridge generated on this server, which `/meta` serves: `matched:false` with a
+ * `work`, Bridge Phase 1a). The one predicate for every surface that reads `/meta` (the
+ * book page, the player's companion and reveal toast, Home's Now card and Previously on,
+ * the end credits, the offline copy).
  */
 export function metaEnabledFor(
   metadata: boolean | undefined,
-  book: Pick<Book, 'asin' | 'isbn'> | undefined,
+  book: Pick<Book, 'asin' | 'isbn' | 'generated'> | undefined,
 ): boolean {
-  return metadata === true && !!(book?.asin || book?.isbn);
+  return metadata === true && !!(book?.asin || book?.isbn || book?.generated);
+}
+
+/**
+ * Whether what a book's `/meta` says is in hand, for a decision that depends on it (the
+ * Generate offer): the book is known and either `/meta` isn't asked for it (`enabled`,
+ * `metaEnabledFor`, false: nothing to wait for) or its answer has arrived. A failed
+ * lookup is no answer: the community may well have content the book just couldn't load.
+ */
+export function metaAnswered(
+  enabled: boolean,
+  book: object | undefined,
+  meta: BookMeta | undefined,
+): boolean {
+  return enabled ? meta !== undefined : book !== undefined;
+}
+
+/** The community's CC BY-SA credit for one of a work's dimensions: the work's
+ * `attribution`, unless that dimension was generated on this server (`work.generated`).
+ * A matched work keeps the credit for its community content while generated characters
+ * or recaps fill what it lacks, and generated content never carries the community's
+ * credit. */
+export function communityCredit(
+  work: { attribution?: BookMetaAttribution; generated?: BookMetaGenerated } | undefined,
+  dimension: 'characters' | 'recaps',
+): BookMetaAttribution | undefined {
+  return work?.generated?.[dimension] ? undefined : work?.attribution;
 }
 
 /** Nothing known about the listener's position (no saved progress). */

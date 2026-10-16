@@ -8,6 +8,7 @@ import { useMetaWork } from '@/api/hooks';
 import type {
   BookMeta,
   BookMetaCharacter,
+  BookMetaGenerated,
   BookMetaPosition,
   BookMetaRecap,
   BookMetaRecapSummary,
@@ -56,14 +57,31 @@ export type MatchedBookMeta = Extract<BookMeta, { matched: true }>;
 
 /** The usable half of the meta envelope: the matched payload, or undefined when
  * the capability is off, the response has not arrived, or the service found no
- * match. One place decides "is there enriched metadata to show", so the screen's
- * About block and the metadata tabs can never disagree. */
+ * match. One place decides "is there a community work to show": About, the series
+ * rails and the AudioSilo Meta links read it (the Characters and Recaps tabs read
+ * `bookMetaWork`, which also takes an unmatched book's generated work). */
 export function matchedMeta(
   meta: BookMeta | undefined,
   enabled: boolean,
 ): MatchedBookMeta | undefined {
   if (!enabled || !meta || !meta.matched) return undefined;
   return meta;
+}
+
+/**
+ * The work whose characters, recaps and summary the book renders: the matched work, or,
+ * for an UNMATCHED book, the work the server builds from what its Bridge generated on
+ * this server (`matched:false` with `work`; Bridge Phase 1a). Undefined when the
+ * capability is off, nothing has arrived, or an unmatched book has nothing generated. The
+ * ONE predicate behind the Characters and Recaps tabs, their counts and the companion's
+ * Who's who and Story so far, beside `matchedMeta` (which stays the matched half only:
+ * About, the series rails and the links to AudioSilo Meta need a real community work).
+ */
+export function bookMetaWork(
+  meta: BookMeta | undefined,
+  enabled: boolean,
+): BookMetaWork | undefined {
+  return enabled ? meta?.work : undefined;
 }
 
 /** Whether a description is long enough to warrant the collapse toggle. */
@@ -129,6 +147,25 @@ function Chip({ label }: { label: string }) {
   return (
     <View className="rounded-full bg-muted px-2 py-0.5">
       <Text className="font-sans-medium text-[10px] uppercase text-muted-foreground">{label}</Text>
+    </View>
+  );
+}
+
+/** "Generated on this server": the quiet chip at the head of a Characters or Recaps
+ * panel whose entries came from files the Bridge wrote for this server, not from the
+ * community (`work.generated`'s `dimension`). Nothing for community content. */
+export function GeneratedMark({
+  generated,
+  dimension,
+}: {
+  generated: BookMetaGenerated | undefined;
+  dimension: 'characters' | 'recaps';
+}) {
+  const { t } = useTranslation();
+  if (!generated?.[dimension]) return null;
+  return (
+    <View testID="generated-mark" className="flex-row">
+      <Chip label={t('bridge.generate.mark')} />
     </View>
   );
 }

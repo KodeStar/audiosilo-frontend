@@ -1,4 +1,4 @@
-import type { BookMeta, BookMetaRecap, BookMetaSeries } from '@/api/types';
+import type { BookMeta, BookMetaRecap, BookMetaSeries, BookMetaWork } from '@/api/types';
 import type { OrderingPicks } from '@/lib/series-orderings';
 
 // book-meta pulls in CoverFrame, whose iOS shadow hook reads the theme provider (its
@@ -10,6 +10,7 @@ jest.mock('@/theme/theme-provider', () => ({
 
 /* eslint-disable import/first */
 import {
+  bookMetaWork,
   descriptionIsLong,
   lastBookRecap,
   matchedMeta,
@@ -314,6 +315,47 @@ describe('matchedMeta', () => {
 
   it('is undefined when the service found no match', () => {
     expect(matchedMeta({ matched: false }, true)).toBeUndefined();
+  });
+
+  it("stays matched-only for an unmatched book's generated work (About and rails need a real one)", () => {
+    expect(matchedMeta({ matched: false, work: generatedWork }, true)).toBeUndefined();
+  });
+});
+
+// The server's unmatched answer with content its Bridge generated (Bridge Phase 1a): a
+// whole work, with an empty id, no authors and no language.
+const generatedWork: BookMetaWork = {
+  id: '',
+  title: 'Home Recording',
+  authors: [],
+  language: '',
+  characters: [{ id: 'ada', name: 'Ada', reveal: { chapter: 1 } }],
+  recaps: [{ through: { chapter: 2 }, text: 'So far.' }],
+  generated: { characters: true, recaps: true },
+};
+
+describe('bookMetaWork', () => {
+  const matched: BookMeta = {
+    matched: true,
+    work: { id: 'w', title: 'W', authors: [], language: 'en', characters: [] },
+    web_url: 'https://m/work?id=w',
+  };
+
+  it('is the matched work when the book matched', () => {
+    expect(bookMetaWork(matched, true)).toBe(matched.work);
+  });
+
+  it("is an unmatched book's generated work", () => {
+    expect(bookMetaWork({ matched: false, work: generatedWork }, true)).toBe(generatedWork);
+  });
+
+  it('is undefined for an unmatched book with nothing generated, as before', () => {
+    expect(bookMetaWork({ matched: false }, true)).toBeUndefined();
+  });
+
+  it('is undefined while off or not arrived', () => {
+    expect(bookMetaWork({ matched: false, work: generatedWork }, false)).toBeUndefined();
+    expect(bookMetaWork(undefined, true)).toBeUndefined();
   });
 });
 

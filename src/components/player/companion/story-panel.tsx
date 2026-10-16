@@ -1,14 +1,17 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
 
 import type { BookMetaRecap } from '@/api/types';
 import {
+  GeneratedMark,
   RecapSummaryBlock,
   recapHeading,
   SpoilerChip,
   summaryIsVisible,
 } from '@/components/library/book-meta';
+import { communityCredit } from '@/components/library/meta-gating';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text } from '@/components/ui/text';
 
@@ -49,9 +52,11 @@ function StoryPart({ recap, spoiler }: { recap: BookMetaRecap; spoiler?: boolean
  * Recaps tab (a recap is shown once its last chapter is behind the listener). The
  * whole-book summary includes the ending, so for a book still in progress it sits behind
  * the shared spoiler accordion (`RecapSummaryBlock`). The rest is counted behind Show
- * anyway, the one reveal shared with Who's who.
+ * anyway, the one reveal shared with Who's who. Recaps generated on this server are
+ * marked so; an empty panel offers `generate` (an admin's "Generate characters and
+ * recaps") under its note.
  */
-export function StoryPanel({ data }: { data: CompanionData }) {
+export function StoryPanel({ data, generate }: { data: CompanionData; generate?: ReactNode }) {
   const { t } = useTranslation();
   const shown = useCompanion(selectRevealed(data.key));
   const setRevealed = useCompanion((s) => s.setRevealed);
@@ -60,17 +65,21 @@ export function StoryPanel({ data }: { data: CompanionData }) {
   const summaryVisible = summaryIsVisible(data.summary, data.listening.finished);
   if (data.status === 'none' || (data.recaps.length === 0 && !summaryVisible)) {
     return (
-      <EmptyState
-        icon="book-open"
-        title={t('player.companion.storyEmptyTitle')}
-        hint={t('player.companion.storyEmptyHint')}
-      />
+      <View>
+        <EmptyState
+          icon="book-open"
+          title={t('player.companion.storyEmptyTitle')}
+          hint={t('player.companion.storyEmptyHint')}
+        />
+        {generate}
+      </View>
     );
   }
 
   const story = storySoFar(data.recaps, data.listening);
   return (
     <View className="gap-4">
+      <GeneratedMark generated={data.generated} dimension="recaps" />
       {data.recaps.length > 0 ? (
         <View className="gap-0.5">
           <Text variant="eyebrow">{t('book.meta.storySoFar')}</Text>
@@ -109,7 +118,7 @@ export function StoryPanel({ data }: { data: CompanionData }) {
             <StoryPart key={`h-${r.scope ?? 'book'}-${r.through.chapter}`} recap={r} spoiler />
           ))
         : null}
-      <Attribution attribution={data.attribution} className="mt-1" />
+      <Attribution attribution={communityCredit(data, 'recaps')} className="mt-1" />
     </View>
   );
 }

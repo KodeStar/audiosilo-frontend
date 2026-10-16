@@ -4,7 +4,11 @@ import { View } from 'react-native';
 
 import { useCapability, useFavourites, useQueue, useToggleFavourite } from '@/api/hooks';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
-import { type BookActionKey, BookActionsMenu } from '@/components/library/books/book-actions';
+import {
+  type BookAction,
+  type BookActionKey,
+  BookActionsMenu,
+} from '@/components/library/books/book-actions';
 import { AddToCollectionDialog } from '@/components/library/collections/collection-dialogs';
 import { DownloadControl } from '@/components/library/download-control';
 import { findQueued, useQueueActions } from '@/components/library/use-queue-actions';
@@ -37,14 +41,19 @@ export type HeroActionsProps = {
   onPrimary: () => void;
   /** Two rows on a phone: the primary, then the download and the icon buttons. */
   stacked: boolean;
+  /** An admin's Bridge action (Phase 1a), when the page offers one: `generate` (a book
+   * with no characters or recaps) is a button after the others (its own row on a phone),
+   * `regenerate` (a book with generated ones) quieter, in the book menu. */
+  generate?: { offer: 'generate' | 'regenerate'; onPress: () => void };
 };
 
 /**
  * The hero's actions (the prototype's `hero-actions`): the primary (ink: Resume chapter
  * N, Start listening, Listen again, Pause), the download, Up next (Play next / Add to the
  * end, capability `queue`), favourite, Add to collection (capability `collections`) and
- * the book menu (mark finished or not, more in this series). Nothing here is pink: the
- * hero's one pink thing is the progress bar.
+ * the book menu (mark finished or not, more in this series), and for an admin "Generate
+ * characters and recaps" (or Regenerate in the menu) where the page offers it. Nothing
+ * here is pink: the hero's one pink thing is the progress bar.
  */
 export function HeroActions({
   connectionId,
@@ -56,12 +65,36 @@ export function HeroActions({
   primary,
   onPrimary,
   stacked,
+  generate,
 }: HeroActionsProps) {
   const { t } = useTranslation();
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const menuExtra: BookAction[] =
+    generate?.offer === 'regenerate'
+      ? [
+          {
+            key: 'regenerate',
+            icon: 'sparkles',
+            label: t('bridge.generate.regenerate'),
+            onPress: generate.onPress,
+            group: true,
+          },
+        ]
+      : [];
+  const generateButton =
+    generate?.offer === 'generate' ? (
+      <Button
+        testID="generate-action"
+        variant="outline"
+        size="lg"
+        icon="sparkles"
+        title={t('bridge.generate.action')}
+        onPress={generate.onPress}
+      />
+    ) : null;
 
   const primaryButton = (
     <Button
@@ -102,6 +135,7 @@ export function HeroActions({
         book={book}
         progress={progress ?? undefined}
         omit={MENU_OMIT}
+        extra={menuExtra}
         sheetOpen={sheet}
         onSheetOpenChange={setSheet}
         trigger={
@@ -132,12 +166,14 @@ export function HeroActions({
             </View>
             {icons}
           </View>
+          {generateButton}
         </View>
       ) : (
         <View className="flex-row flex-wrap items-center gap-2">
           {primaryButton}
           {download}
           {icons}
+          {generateButton}
         </View>
       )}
       {collect ? (

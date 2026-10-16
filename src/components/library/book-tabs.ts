@@ -24,9 +24,11 @@ export type BookTabInput = {
    * on Bookmarks (firing its GET) only to snap to Chapters a moment later is worse
    * than a briefly-empty Chapters panel. */
   hasList: boolean;
-  /** The work has community recaps (false when meta is disabled/unmatched). */
+  /** The work has recaps (`bookMetaWork`: the community's, or generated on this server);
+   * false when meta is disabled, or the book is unmatched with nothing generated. */
   hasRecaps: boolean;
-  /** The work has community characters (false when meta is disabled/unmatched). */
+  /** The work has characters (`bookMetaWork`: the community's, or generated on this
+   * server); false when meta is disabled, or the book is unmatched with nothing generated. */
   hasCharacters: boolean;
   /** There is at least one non-empty "more in this series" rail. */
   hasSeries: boolean;

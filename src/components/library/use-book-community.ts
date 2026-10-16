@@ -3,22 +3,27 @@ import { useMemo } from 'react';
 import { useBook, useBookMeta, useCapability, useChapters } from '@/api/hooks';
 import type { Book, BookMetaWork, ChaptersResponse } from '@/api/types';
 
-import { matchedMeta } from './book-meta';
-import { chapterStartsOf, metaEnabledFor } from './meta-gating';
+import { bookMetaWork } from './book-meta';
+import { chapterStartsOf, metaAnswered, metaEnabledFor } from './meta-gating';
 
 /** A book's community metadata and what the spoiler gate needs to place the listener. */
 export type BookCommunity = {
   /** The server's `metadata` capability (undefined while unknown). */
   metadata: boolean | undefined;
   book: Book | undefined;
-  /** The book can have community metadata (`metaEnabledFor`): only then is `/meta`
-   * (and the chapters, for the gate) asked for. */
+  /** The book's `/meta` is worth asking for (`metaEnabledFor`): only then is it (and
+   * the chapters, for the gate) asked for. */
   enabled: boolean;
   chapterData: ChaptersResponse | undefined;
   /** The corrected whole-book start of every chapter (`chapterStartsOf`), for the gate. */
   chapterStarts: number[];
-  /** The matched community work, when there is one. */
+  /** The work to render (`bookMetaWork`): the matched community work, or an unmatched
+   * book's generated one, when there is one. */
   work: BookMetaWork | undefined;
+  /** What `/meta` says is in hand (`metaAnswered`): the book is known and `/meta` isn't
+   * asked for it, or its answer arrived. False while it loads and after a failed lookup
+   * (then `work` is undefined without meaning the book has none). */
+  metaKnown: boolean;
   /** Something the answer depends on is still on its way. */
   loading: boolean;
 };
@@ -26,11 +31,12 @@ export type BookCommunity = {
 /**
  * The community-metadata chain every spoiler-gated surface beside the book page reads
  * (the player's companion, its reveal toast, Home's Previously on): the server's
- * `metadata` flag, then the book (for its ASIN or ISBN), then `/meta` and the chapters,
- * then the corrected chapter starts and the matched work. Each step waits on the one
- * before, so nothing is asked of a server without `metadata` or for a book that can't
- * match. Call it inside a `ConnectionScope` for the book's own connection (the `/meta`
- * query reads the route scope).
+ * `metadata` flag, then the book (for its ASIN or ISBN, or its `generated` flag), then
+ * `/meta` and the chapters, then the corrected chapter starts and the work
+ * (`bookMetaWork`: the matched one, or an unmatched book's generated one). Each step
+ * waits on the one before, so nothing is asked of a server without `metadata` or for a
+ * book that can have none. Call it inside a `ConnectionScope` for the book's own
+ * connection (the `/meta` query reads the route scope).
  */
 export function useBookCommunity(target: {
   connectionId: string;
@@ -60,7 +66,8 @@ export function useBookCommunity(target: {
     enabled,
     chapterData,
     chapterStarts,
-    work: matchedMeta(meta.data, enabled)?.work,
+    work: bookMetaWork(meta.data, enabled),
+    metaKnown: metaAnswered(enabled, book, meta.data),
     // The chapters place the listener: without them everyone past chapter 1 would
     // flash hidden, then appear.
     loading: metadata === undefined || bookLoading || chaptersLoading || meta.isLoading,

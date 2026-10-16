@@ -21,6 +21,10 @@ import type {
   BookPage,
   BookRef,
   BookSort,
+  BridgeEstimate,
+  BridgeJob,
+  BridgeJobList,
+  BridgeJobRequest,
   CastToken,
   ChaptersResponse,
   Collection,
@@ -108,6 +112,10 @@ const API_ERROR_CODES = [
   'member_disabled',
   'kid_account',
   'demo_account',
+  // The Bridge's admin routes: queueing for a library the Bridge can't write (409), and a
+  // kind the paired Bridge doesn't offer (409).
+  'library_not_writable',
+  'kind_unavailable',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -615,8 +623,10 @@ export class ApiClient {
   /** Enriched metadata for a book (description, series rail, meta links) resolved
    * server-side from its asin/isbn against the community metadata service. Only call
    * this when the server advertises the `metadata` capability. Returns
-   * `{ matched: false }` when the book has no ids or no upstream match; throws an
-   * `ApiError` (502) when the meta service is unreachable, so the caller can render
+   * `{ matched: false }` when the book has no ids or no upstream match, with a `work`
+   * when the book has characters or recaps generated on this server (then it is asked
+   * for a book with no ids too, `metaEnabledFor`); throws an `ApiError` (502) when the
+   * meta service is unreachable and nothing was generated, so the caller can render
    * nothing rather than block the page.
    *
    * `opts` needs the `meta_bundle` capability (an older server ignores both and
@@ -1140,6 +1150,42 @@ export class ApiClient {
   castToken(libraryId: number, path: string) {
     return this.request<CastToken>('POST', '/cast/token', {
       body: { library_id: libraryId, path },
+    });
+  }
+
+  // --- The Bridge (capability `bridge`; admin only: a non-admin gets a 403) -------------
+  /** A book's Bridge jobs, every kind, newest first (the first page: up to 50). `path` is
+   * matched exactly against the job's, which is the book's own path (`rel_path`). */
+  async bridgeJobs(libraryId: number, path: string, signal?: AbortSignal): Promise<BridgeJob[]> {
+    const r = await this.request<BridgeJobList>('GET', '/admin/bridge/jobs', {
+      query: { library_id: libraryId, path },
+      signal,
+    });
+    return r.jobs ?? [];
+  }
+  /** Queue a job (201), or get the open one already queued for that kind and book (200):
+   * the answer is the job either way. Refused with a 409 `library_not_writable` when the
+   * Bridge can't write the library, a 409 `kind_unavailable` when it doesn't offer the
+   * kind, a 404 for no such book and a 400 for params the kind refuses. */
+  queueBridgeJob(job: BridgeJobRequest) {
+    return this.request<BridgeJob>('POST', '/admin/bridge/jobs', { body: job });
+  }
+  /** Cancel a job: at once while it is queued or parked, else the Bridge is asked to stop
+   * (`cancel_requested`). Answers the job; a 409 when it already ended. */
+  cancelBridgeJob(id: number) {
+    return this.request<BridgeJob>('POST', `/admin/bridge/jobs/${id}/cancel`);
+  }
+  /** What generating `kind` for a book would take (the confirmation): its source, the
+   * transcription hours, the expected agent cost, what the book already has, the earlier
+   * books of its series without recaps and any open job. A 404 for no such book, a 409
+   * `kind_unavailable` when the Bridge doesn't offer the kind. What the book and the
+   * earlier ones have is asked of the community metadata service, so it gets the
+   * server's budget (`UPSTREAM_TIMEOUT_MS`). */
+  bridgeEstimate(libraryId: number, path: string, kind: string, signal?: AbortSignal) {
+    return this.request<BridgeEstimate>('GET', '/admin/bridge/estimate', {
+      query: { library_id: libraryId, path, kind },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
 

@@ -4,7 +4,9 @@ import {
   chapterNumberAt,
   chapterStartsOf,
   characterIsVisible,
+  communityCredit,
   listeningProgressFor,
+  metaAnswered,
   metaEnabledFor,
   recapIsVisible,
   splitCharacters,
@@ -175,5 +177,38 @@ describe('metaEnabledFor', () => {
     expect(metaEnabledFor(true, undefined)).toBe(false);
     expect(metaEnabledFor(false, { asin: 'B0', isbn: undefined })).toBe(false);
     expect(metaEnabledFor(undefined, { asin: 'B0', isbn: undefined })).toBe(false);
+  });
+
+  // No ASIN or ISBN can't match the community, but characters and recaps a Bridge
+  // generated on the server come through /meta (Bridge Phase 1a).
+  it('asks for a book with neither that has generated characters or recaps', () => {
+    expect(metaEnabledFor(true, { asin: '', isbn: '', generated: true })).toBe(true);
+    expect(metaEnabledFor(false, { generated: true })).toBe(false);
+  });
+});
+
+describe('metaAnswered', () => {
+  it('waits for the book, then for the /meta answer when one is asked for', () => {
+    expect(metaAnswered(false, undefined, undefined)).toBe(false);
+    expect(metaAnswered(false, { asin: '' }, undefined)).toBe(true);
+    expect(metaAnswered(true, { asin: 'B0' }, undefined)).toBe(false);
+    expect(metaAnswered(true, { asin: 'B0' }, { matched: false })).toBe(true);
+  });
+});
+
+describe('communityCredit', () => {
+  const attribution = {
+    credit: 'AudioSilo Meta community contributors',
+    license: 'CC BY-SA 4.0',
+    license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+    source_url: 'https://meta.audiosilo.app/work?id=w',
+  };
+
+  it('credits the community under its own content, never under content generated here', () => {
+    expect(communityCredit({ attribution }, 'recaps')).toBe(attribution);
+    const mixed = { attribution, generated: { recaps: true } };
+    expect(communityCredit(mixed, 'recaps')).toBeUndefined();
+    expect(communityCredit(mixed, 'characters')).toBe(attribution);
+    expect(communityCredit(undefined, 'characters')).toBeUndefined();
   });
 });
