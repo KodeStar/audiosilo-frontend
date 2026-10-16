@@ -1,6 +1,7 @@
 // Pairing helpers shared by the connect screen and the QR scanner.
 
 import type { ServerAddresses } from '@/api/types';
+import { type ConnectBook, idParam, parseConnectBook } from '@/lib/paths';
 
 /**
  * Trim, add a default https:// scheme, validate, and strip trailing slashes from
@@ -57,12 +58,17 @@ export function cleanAddresses(
 /** The `{ base, token }` of a pairing link, plus the server's addresses when the link
  * carries them (`home=` / `away=`, capability `addresses`), and the server's `server_id`
  * when it names it (`sid=`: what `GET /server` answers there, so the app can tell it is
- * talking to that server before the token goes anywhere but the link's base). */
+ * talking to that server before the token goes anywhere but the link's base). A link can
+ * also name a book to end on (`book=` + `path=`, the admin console's "Listen in player":
+ * `parseConnectBook`) and the user it was made for (`uid=`): a device already signed in as
+ * that user there opens the book without the exchange. */
 export type PairingScan = {
   base: string;
   token: string;
   addresses?: ServerAddresses;
   serverId?: string;
+  userId?: number;
+  book?: ConnectBook;
 };
 
 function queryParam(query: string, key: string): string | null {
@@ -94,7 +100,9 @@ function optionalParam(query: string, key: string): string | null {
 // Both may also carry the server's `home=` and `away=` addresses (capability
 // `addresses`), returned as `addresses` (cleaned by `cleanAddresses`; absent when the
 // link has none, so an older server's link parses exactly as before), and its
-// `sid=<server_id>`, returned as `serverId` (absent when blank or malformed).
+// `sid=<server_id>`, returned as `serverId` (absent when blank or malformed), and a
+// book to end on with the user the link was made for (`book=`, `path=`, `uid=`: `book`
+// and `userId`, each absent when the link names none).
 // Returns null when the text is not a recognizable pairing payload.
 export function parsePairingScan(raw: string): PairingScan | null {
   const text = raw.trim();
@@ -106,6 +114,11 @@ export function parsePairingScan(raw: string): PairingScan | null {
     away: optionalParam(query, 'away'),
   });
   const serverId = optionalParam(query, 'sid')?.trim();
+  const userId = idParam(optionalParam(query, 'uid') ?? undefined);
+  const book = parseConnectBook({
+    book: optionalParam(query, 'book') ?? undefined,
+    path: optionalParam(query, 'path') ?? undefined,
+  });
   const scan = (base: string): PairingScan | null =>
     base
       ? {
@@ -113,6 +126,8 @@ export function parsePairingScan(raw: string): PairingScan | null {
           token,
           ...(addresses ? { addresses } : {}),
           ...(serverId ? { serverId } : {}),
+          ...(userId ? { userId } : {}),
+          ...(book ? { book } : {}),
         }
       : null;
 

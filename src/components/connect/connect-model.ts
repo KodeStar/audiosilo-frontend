@@ -113,9 +113,10 @@ export function signedInAs<
     needsReconnect?: unknown;
   },
 >(connections: readonly C[], serverId: string, userId: number): C | undefined {
-  return connections.find(
-    (c) => serverIdOf(c) === serverId && c.user?.id === userId && !c.needsReconnect,
-  );
+  // `priorConnection`'s match, but only one saved with this user's id: one saved before
+  // user ids were kept can't be told to be theirs.
+  const c = priorConnection(connections, serverId, userId);
+  return c && c.user?.id === userId && !c.needsReconnect ? c : undefined;
 }
 
 /** Whether a sign-in is the device's first: no connection before it. Only then does the
@@ -378,7 +379,8 @@ export function readyLine(input: {
 }
 
 /** A scanned pairing code as `/connect` route params: its server, token, and the
- * server's home and away addresses and its id (`sid`) when the code carries them. */
+ * server's home and away addresses, its id (`sid`), the user (`uid`) and the book (`book`,
+ * `path`) when the code carries them. */
 export function scanParams(scan: PairingScan): Record<string, string> {
   return {
     server: scan.base,
@@ -386,5 +388,7 @@ export function scanParams(scan: PairingScan): Record<string, string> {
     ...(scan.addresses?.home ? { home: scan.addresses.home } : {}),
     ...(scan.addresses?.away ? { away: scan.addresses.away } : {}),
     ...(scan.serverId ? { sid: scan.serverId } : {}),
+    ...(scan.userId ? { uid: String(scan.userId) } : {}),
+    ...(scan.book ? { book: String(scan.book.libraryId), path: scan.book.path } : {}),
   };
 }

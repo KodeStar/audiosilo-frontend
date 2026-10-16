@@ -9,7 +9,7 @@ import i18n from '@/i18n';
 import { isKidAccount } from '@/lib/account';
 import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
-import { bookHref } from '@/lib/paths';
+import { bookHref, type ConnectBook } from '@/lib/paths';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -25,9 +25,6 @@ import {
 import { sessionHydrateFailed, staleIdentities, useSession } from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
-
-/** The book a connect link asked to open (`parseConnectBook`). */
-export type ConnectBook = { libraryId: number; path: string };
 
 /** The "Your library is ready." route for a connection. */
 export function readyHref(connectionId: string) {
@@ -134,13 +131,23 @@ export async function finishConnect(input: {
   // A kid's account signed in for the first time on this device starts in kids mode (a
   // re-pair, or a sign-in again after a server reset, keeps what its person had).
   if (!existing && replaced === undefined) kidsOnForKidAccount(id);
-  // "Your library is ready." is a grown-up's first run (8b-1, D9): a kid's account (or
-  // anyone signing in while kids mode listens) goes straight to kids mode.
-  if (activeProfile()?.kids) router.dismissTo(KIDS_PATH);
-  else if (input.book) router.dismissTo(bookHref(id, input.book.libraryId, input.book.path));
-  else if (first) router.replace(readyHref(id));
-  else leaveOnboarding();
+  endConnect(id, input.book, first);
   return id;
+}
+
+/**
+ * Where the connect flow ends for the connection `connectionId` (`finishConnect`, and a
+ * link whose user is already signed in here, `useLinkPairing`): the book a link named
+ * (`book`, a `dismissTo` of `bookHref`), else "Your library is ready." for the device's
+ * `first` connection, else straight back to the app. "Your library is ready." is a
+ * grown-up's first run (8b-1, D9): a kid's account (or anyone signing in while kids mode
+ * listens) goes straight to kids mode, before any of them.
+ */
+export function endConnect(connectionId: string, book?: ConnectBook, first = false): void {
+  if (activeProfile()?.kids) router.dismissTo(KIDS_PATH);
+  else if (book) router.dismissTo(bookHref(connectionId, book.libraryId, book.path));
+  else if (first) router.replace(readyHref(connectionId));
+  else leaveOnboarding();
 }
 
 /**

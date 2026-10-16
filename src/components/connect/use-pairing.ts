@@ -7,9 +7,10 @@ import { probeServerId } from '@/api/server-id-probe';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 
-import { pairingFallback, selfSignedMayBeWhy, withFallback } from './connect-model';
-import { type ConnectBook, finishConnect } from './finish-connect';
+import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
+import { endConnect, finishConnect } from './finish-connect';
 
 export type LinkPairing = {
   /** A pairing token is being exchanged. */
@@ -18,9 +19,9 @@ export type LinkPairing = {
   error: string | null;
   /** Say why a link can't pair (a link with no server address). */
   fail: (message: string) => void;
-  /** Exchange a pairing link's token on its server and finish the connect flow (on `book`'s
-   * page, when the link named one). */
-  pair: (scan: PairingScan, book?: ConnectBook) => Promise<boolean>;
+  /** Exchange a pairing link's token on its server and finish the connect flow (on the
+   * link's book, when it names one). */
+  pair: (scan: PairingScan) => Promise<boolean>;
 };
 
 /**
@@ -33,8 +34,9 @@ export type LinkPairing = {
  * the server the link names (`pairingFallback`), and the session must come from that
  * server too. The connection is still stored with the https base (which fails safely by
  * TLS on another network, where a plain-http address could be another box), with home as
- * its first address pick (`answeredAt`). Resolves whether it paired. Bare client: a
- * failed exchange must never flag a reconnect.
+ * its first address pick (`answeredAt`). A link naming a book ends on it, and skips the
+ * exchange when the device is already signed in as the link's user there. Resolves whether
+ * it paired. Bare client: a failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
@@ -50,7 +52,20 @@ export function useLinkPairing(startPairing = false): LinkPairing {
 
   // Stable (`useLatest`): the deep link's effect lists it, and a language switch must not
   // run the exchange again.
-  const pair = useLatest(async (scan: PairingScan, book?: ConnectBook): Promise<boolean> => {
+  const pair = useLatest(async (scan: PairingScan): Promise<boolean> => {
+    // A link naming a book, for a user this device is already signed in as on its server
+    // (the console's "Listen in player": `signedInAs`): the book opens with no exchange, and
+    // the unused token expires by itself (no second session, no "new device" notice).
+    if (scan.book && scan.userId && scan.serverId) {
+      // The connections first, when they never loaded (as `finishConnect` reads them).
+      if (sessionHydrateFailed()) await useSession.getState().hydrate();
+      const signedIn = signedInAs(useSession.getState().connections, scan.serverId, scan.userId);
+      if (signedIn) {
+        if (!live.current) return false;
+        endConnect(signedIn.id, scan.book);
+        return true;
+      }
+    }
     setError(null);
     setPairing(true);
     // The token's exchange at `base`, with the server's name read alongside.
@@ -97,7 +112,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         linkAddresses: scan.addresses,
         name: info?.name,
         ...(answeredAt !== scan.base ? { answeredAt } : {}),
-        ...(book ? { book } : {}),
+        book: scan.book,
       });
       return true;
     } catch (e) {

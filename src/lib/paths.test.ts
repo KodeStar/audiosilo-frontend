@@ -299,16 +299,12 @@ describe('browse detail params', () => {
     expect(parseCollectionParams({ connection: 'c' })).toBeNull();
   });
 
-  it("parses a connect link's book, and the user it was made for", () => {
+  it("parses a connect link's book", () => {
     expect(parseConnectBook({ book: '2', path: 'A/B & C?', uid: '5' })).toEqual({
-      book: { libraryId: 2, path: 'A/B & C?' },
-      userId: 5,
+      libraryId: 2,
+      path: 'A/B & C?',
     });
-    expect(parseConnectBook({ book: ['2', '3'], path: 'A' })).toEqual({
-      book: { libraryId: 2, path: 'A' },
-      userId: null,
-    });
-    expect(parseConnectBook({ book: '2', path: 'A', uid: 'x' })?.userId).toBeNull();
+    expect(parseConnectBook({ book: ['2', '3'], path: 'A' })).toEqual({ libraryId: 2, path: 'A' });
     // No book to end on: the flow ends as it always does.
     for (const book of ['', '0', '-1', '2x', '1e3', '9007199254740993', undefined]) {
       expect(parseConnectBook({ book, path: 'A', uid: '5' })).toBeNull();

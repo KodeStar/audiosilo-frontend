@@ -538,7 +538,7 @@ describe('readyLine', () => {
   });
 });
 
-it("scanParams carries the addresses and the server's id only when the code has them", () => {
+it("scanParams carries the addresses, the server's id, the user and the book only when the code has them", () => {
   expect(scanParams({ base: AWAY, token: 't' })).toEqual({ server: AWAY, token: 't' });
   expect(
     scanParams({
@@ -546,6 +546,8 @@ it("scanParams carries the addresses and the server's id only when the code has 
       token: 't',
       addresses: { home: HOME, away: AWAY },
       serverId: 'srv-1',
+      userId: 1,
+      book: { libraryId: 2, path: 'A/B & C' },
     }),
   ).toEqual({
     server: AWAY,
@@ -553,5 +555,8 @@ it("scanParams carries the addresses and the server's id only when the code has 
     home: HOME,
     away: AWAY,
     sid: 'srv-1',
+    uid: '1',
+    book: '2',
+    path: 'A/B & C',
   });
 });
