@@ -64,13 +64,13 @@ export function openLabelBooks(
 export function BookAbout({
   book,
   meta,
-  work,
+  work = meta?.work,
   onOpenLabel,
 }: {
   book: Book;
   meta?: MatchedBookMeta;
-  /** The work generated content rides on: the matched work, or an unmatched book's
-   * generated one (`bookMetaWork`). */
+  /** The work the text comes from: the matched work, or an unmatched book's generated
+   * one (`bookMetaWork`); `meta`'s work by default. */
   work?: BookMetaWork;
   onOpenLabel: (kind: LabelKind, name: string) => void;
 }) {

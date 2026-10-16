@@ -137,11 +137,12 @@ export function bookPublisher(
 /**
  * The About card's content: the community's description, else the server's own (the
  * admin-edited value), else the work's core description, else the description a Bridge
- * generated on this server (`work`, the `bookMetaWork` value: the matched work or an
- * unmatched book's generated one), else a sentence naming who wrote and reads the book;
+ * generated on this server, else a sentence naming who wrote and reads the book;
  * then the production facts (publisher, release, first published, language, abridged),
  * each only when known, the server's own value before the community's; then the book's
- * genres and tags.
+ * genres and tags. Every work-level field is read from `work` (the `bookMetaWork` value:
+ * the matched work, or an unmatched book's generated one; `meta`'s work by default);
+ * `meta` gives only what needs a match (the recording).
  */
 export function aboutContent(
   book: Pick<
@@ -159,10 +160,19 @@ export function aboutContent(
   >,
   meta: MatchedBookMeta | undefined,
   t: TFunction,
-  work?: Pick<BookMetaWork, 'generated' | 'generated_description'>,
+  work:
+    | Pick<
+        BookMetaWork,
+        | 'community_description'
+        | 'description'
+        | 'first_published'
+        | 'generated'
+        | 'generated_description'
+      >
+    | undefined = meta?.work,
 ): AboutContent {
-  const shared = meta?.work.community_description?.text?.trim();
-  const own = book.description?.trim() || meta?.work.description?.trim();
+  const shared = work?.community_description?.text?.trim();
+  const own = book.description?.trim() || work?.description?.trim();
   const generated = work?.generated?.description
     ? work.generated_description?.text?.trim()
     : undefined;
@@ -185,8 +195,8 @@ export function aboutContent(
   if (publisher) details.push({ label: t('book.meta.publisher'), value: publisher });
   const released = recording?.release_date || book.published;
   if (released) details.push({ label: t('book.meta.released'), value: released });
-  if (meta?.work.first_published)
-    details.push({ label: t('book.meta.firstPublished'), value: meta.work.first_published });
+  if (work?.first_published)
+    details.push({ label: t('book.meta.firstPublished'), value: work.first_published });
   const language = book.language?.trim();
   if (language) details.push({ label: t('book.meta.language'), value: languageName(language) });
   // Absent is unknown, never "No": only a value someone gave says either way. The
