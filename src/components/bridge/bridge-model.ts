@@ -149,6 +149,8 @@ const STAGES = [
   'extracting',
   'chapter_mapping',
   'waiting',
+  // Bridge Phase 1c: every run writes the book's description as it saves its results.
+  'describing',
   'writing',
   'rescanning',
 ] as const;

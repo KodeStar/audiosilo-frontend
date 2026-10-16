@@ -89,6 +89,7 @@ describe('stage labels', () => {
     'extracting',
     'chapter_mapping',
     'waiting',
+    'describing',
     'writing',
     'rescanning',
   ];

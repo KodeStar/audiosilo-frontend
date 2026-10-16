@@ -57,9 +57,10 @@ export type MatchedBookMeta = Extract<BookMeta, { matched: true }>;
 
 /** The usable half of the meta envelope: the matched payload, or undefined when
  * the capability is off, the response has not arrived, or the service found no
- * match. One place decides "is there a community work to show": About, the series
- * rails and the AudioSilo Meta links read it (the Characters and Recaps tabs read
- * `bookMetaWork`, which also takes an unmatched book's generated work). */
+ * match. One place decides "is there a community match": the series rails, the
+ * AudioSilo Meta links and About's recording facts read it (About's text and the
+ * Characters and Recaps tabs read `bookMetaWork`, which also takes an unmatched book's
+ * generated work). */
 export function matchedMeta(
   meta: BookMeta | undefined,
   enabled: boolean,
@@ -69,13 +70,14 @@ export function matchedMeta(
 }
 
 /**
- * The work whose characters, recaps and summary the book renders: the matched work, or,
- * for an UNMATCHED book, the work the server builds from what its Bridge generated on
- * this server (`matched:false` with `work`; Bridge Phase 1a). Undefined when the
- * capability is off, nothing has arrived, or an unmatched book has nothing generated. The
- * ONE predicate behind the Characters and Recaps tabs, their counts and the companion's
- * Who's who and Story so far, beside `matchedMeta` (which stays the matched half only:
- * About, the series rails and the links to AudioSilo Meta need a real community work).
+ * The work whose characters, recaps, summary and description the book renders: the
+ * matched work, or, for an UNMATCHED book, the work the server builds from what its
+ * Bridge generated on this server (`matched:false` with `work`; Bridge Phases 1a and 1c).
+ * Undefined when the capability is off, nothing has arrived, or an unmatched book has
+ * nothing generated. The ONE predicate behind About's text, the Characters and Recaps
+ * tabs, their counts and the companion's Who's who and Story so far, beside `matchedMeta`
+ * (which stays the matched half only: the series rails, the links to AudioSilo Meta and
+ * About's recording facts need a real community match).
  */
 export function bookMetaWork(
   meta: BookMeta | undefined,
@@ -151,8 +153,21 @@ function Chip({ label }: { label: string }) {
   );
 }
 
-/** "Generated on this server": the quiet chip at the head of a Characters or Recaps
- * panel (or under the About card's eyebrow, for a description) whose content came from
+/** "Generated on this server": the quiet chip on content the Bridge wrote for this
+ * server, never the community's. `GeneratedMark` puts it at the head of a Characters or
+ * Recaps panel; the book page's About card wears it under its eyebrow when its text is a
+ * description generated here (`aboutContent`'s `source`), with its own `testID`, since
+ * both can show on one page. */
+export function GeneratedChip({ testID = 'generated-mark' }: { testID?: string }) {
+  const { t } = useTranslation();
+  return (
+    <View testID={testID} className="flex-row">
+      <Chip label={t('bridge.generate.mark')} />
+    </View>
+  );
+}
+
+/** The `GeneratedChip` at the head of a Characters or Recaps panel whose entries came from
  * files the Bridge wrote for this server, not from the community (`work.generated`'s
  * `dimension`). Nothing for community content. */
 export function GeneratedMark({
@@ -160,15 +175,10 @@ export function GeneratedMark({
   dimension,
 }: {
   generated: BookMetaGenerated | undefined;
-  dimension: 'characters' | 'recaps' | 'description';
+  dimension: 'characters' | 'recaps';
 }) {
-  const { t } = useTranslation();
   if (!generated?.[dimension]) return null;
-  return (
-    <View testID="generated-mark" className="flex-row">
-      <Chip label={t('bridge.generate.mark')} />
-    </View>
-  );
+  return <GeneratedChip />;
 }
 
 /** A small "spoiler" chip marking an entry the listener has not reached yet

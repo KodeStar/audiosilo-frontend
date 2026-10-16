@@ -449,7 +449,8 @@ includes the ending) is blurred behind "Show the whole-book summary". Every comm
 attribution "Community notes from AudioSilo Meta contributors · CC BY-SA 4.0". Characters or recaps a Bridge
 generated on the listener's server (an unmatched book's, or the half the community lacks) never carry that
 credit: their panel opens with a quiet "Generated on this server" chip instead (`GeneratedMark`; the book page's
-About card wears the same chip under its eyebrow when its text is a description generated on the server). With neither,
+About card wears the same chip, `GeneratedChip`, under its eyebrow when its text is a description generated on the
+server). With neither,
 the kind empty state shows, and under it, for an admin only, "Generate characters and recaps" (below).
 
 ### Previously on *custom*
@@ -774,8 +775,8 @@ and drop zone (`src/components/upnext/`), the Downloads page's storage bar, rule
 (`src/components/search/`).
 
 Bridge Phase 1a's pieces (`src/components/bridge/`, rules in the tested `bridge-model.ts`): `GenerateDialog`,
-`GenerateStatus`, `GenerateOffer` (the companion's) and the `useGenerate` model; `GeneratedMark` sits in
-`library/book-meta.tsx` beside the Characters and Recaps blocks.
+`GenerateStatus`, `GenerateOffer` (the companion's) and the `useGenerate` model; `GeneratedMark` and the chip it
+draws, `GeneratedChip` (also the About card's), sit in `library/book-meta.tsx` beside the Characters and Recaps blocks.
 
 Phase 4's pieces: the book page (`src/components/book/`: `BookScreen`, the washed `BookHero` and its
 `HeroActions`, `BookTabPanel` with the Chapters and Details tabs, the aside with `BookAbout`), the bookmark and

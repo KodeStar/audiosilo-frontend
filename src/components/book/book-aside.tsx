@@ -29,8 +29,9 @@ export function BookAside({
   book: Book;
   connectionId: string;
   meta?: MatchedBookMeta;
-  /** The `bookMetaWork` value, for a description generated on this server. */
-  work?: BookMetaWork;
+  /** The `bookMetaWork` value, About's every work-level field (the matched work, or an
+   * unmatched book's generated one). */
+  work: BookMetaWork | undefined;
   listening: ListeningFigures | null;
   className?: string;
 }) {

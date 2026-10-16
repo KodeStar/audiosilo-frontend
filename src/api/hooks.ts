@@ -356,8 +356,8 @@ export function chaptersQuery(cid: string, client: MaybeClient, libraryId: numbe
 /** How long community metadata stays fresh (the server caches it too). */
 export const META_STALE_MS = 60 * 60_000;
 
-/** How long an unmatched answer that carries a work (characters or recaps generated on
- * this server) stays fresh. The server answers the same way when the community lookup
+/** How long an unmatched answer that carries a work (characters, recaps or a description
+ * generated on this server) stays fresh. The server answers the same way when the community lookup
  * FAILED for a book it would otherwise match (instead of a 502), and keeps that failure
  * for 2 minutes: trusted for an hour, it would hide the book's community work that long. */
 export const META_GENERATED_ONLY_STALE_MS = 2 * 60_000;
@@ -2020,12 +2020,14 @@ function isItemOf(query: Query, cid: string, libraryId: number, path: string): b
   );
 }
 
-/** After a book's jobs were read: the first time this cache sees its newest generate job
- * done, read the book's `/meta` (every variant, under the job's own path) and its item
- * (under any path that names it) again, and wait for them, so the generated tabs are in
- * and the item's `generated` flag is on before the job's status goes (no Generate offer
- * flashes back in between). Once per finish, and whatever the clocks say: nothing compares
- * the device's fetch times with the server's finish, which need not agree. */
+/** After a book's jobs were read: the first time this cache sees its newest job that wrote
+ * the book's files done (`latestDone`: a generate job, or a description the console
+ * queued), read the book's `/meta` (every variant, under the job's own path) and its item
+ * (under any path that names it) again, and wait for them, so the generated tabs and
+ * description are in and the item's `generated` flag is on before the job's status goes
+ * (no Generate offer flashes back in between). Once per finish, and whatever the clocks
+ * say: nothing compares the device's fetch times with the server's finish, which need not
+ * agree. */
 async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly BridgeJob[]) {
   const job = latestDone(jobs);
   if (!job || job.library_id === null || job.path === null) return;

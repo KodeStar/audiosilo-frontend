@@ -75,7 +75,7 @@ jest.mock('@/api/reachability', () => ({
 import { useBook, useBookMeta, useMetaWork, useServerInfo } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { BookAbout } from '@/components/book/book-about';
-import { BookMetaCharactersTab, matchedMeta } from '@/components/library/book-meta';
+import { BookMetaCharactersTab, bookMetaWork, matchedMeta } from '@/components/library/book-meta';
 import { metaEnabledFor } from '@/components/library/meta-gating';
 import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { useBookCommunity } from '@/components/library/use-book-community';
@@ -193,7 +193,7 @@ function downloaded(): DownloadEntry {
 
 /** A cold launch with no network: the registry, the kept payload and the server's kept
  * `/server` answer come back from storage, the cache starts empty. */
-async function launchOffline() {
+async function launchOffline(kept: BookMeta = meta, entry: DownloadEntry = downloaded()) {
   const savedAt = Date.parse('2026-05-01T10:00:00Z');
   mockFiles.set(
     `c1|2|${PATH}|meta.json`,
@@ -201,7 +201,7 @@ async function launchOffline() {
       v: 1,
       savedAt,
       previous: true,
-      meta,
+      meta: kept,
       works: [],
     }),
   );
@@ -211,7 +211,7 @@ async function launchOffline() {
   );
   await AsyncStorage.setItem(
     'audiosilo.downloads',
-    JSON.stringify({ [downloadKey('c1', 2, PATH)]: downloaded() }),
+    JSON.stringify({ [downloadKey('c1', 2, PATH)]: entry }),
   );
   await useDownloads.getState().hydrate();
   // The payload is read and seeded once the launch is idle, after the registry.
@@ -232,24 +232,28 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 /** The book page's own chain (`components/book/book-page.tsx`): `/server`, the book, the
  * gate, the one `useBookMeta`, then the blocks it places (the aside's About card, as
- * `BookAside` places it, and the Characters tab). */
+ * `BookAside` places it: the matched half beside the work, which can be an unmatched
+ * book's generated one; and, for a matched book, the Characters tab). */
 function BookPageCommunity() {
   const { data: book } = useBook(2, PATH);
   const { data: info } = useServerInfo();
   const enabled = metaEnabledFor(!!info?.capabilities.metadata, book);
   const { data } = useBookMeta(2, PATH, enabled);
   const matched = matchedMeta(data, enabled);
-  if (!book || !matched) return null;
+  const work = bookMetaWork(data, enabled);
+  if (!book || !work) return null;
   return (
     <>
-      <BookAbout book={book} meta={matched} onOpenLabel={() => {}} />
-      <BookMetaCharactersTab
-        characters={matched.work.characters ?? []}
-        progress={{ chapter: 0, finished: false }}
-        showSpoilers={false}
-        onToggleSpoilers={() => {}}
-        previousBooks={previousWorks(seriesRails(matched.series, matched.work.id))}
-      />
+      <BookAbout book={book} meta={matched} work={work} onOpenLabel={() => {}} />
+      {matched ? (
+        <BookMetaCharactersTab
+          characters={matched.work.characters ?? []}
+          progress={{ chapter: 0, finished: false }}
+          showSpoilers={false}
+          onToggleSpoilers={() => {}}
+          previousBooks={previousWorks(seriesRails(matched.series, matched.work.id))}
+        />
+      ) : null}
     </>
   );
 }
@@ -286,6 +290,33 @@ describe('a downloaded book opened offline', () => {
     // The screens did ask the network (the seeds are dated when they were saved, so they
     // are stale): every request failed, and the kept data stayed on screen.
     expect(mockCalls).toEqual(expect.arrayContaining(['serverInfo', 'bookMeta', 'metaWork']));
+  });
+
+  // Bridge 1c: an unmatched book whose kept answer is only what its server generated.
+  it("an unmatched book's kept generated description shows in About, marked", async () => {
+    const generatedOnly: BookMeta = {
+      matched: false,
+      work: {
+        id: '',
+        title: "Abaddon's Gate",
+        authors: [],
+        language: '',
+        generated: { characters: false, recaps: false, description: true },
+        generated_description: { text: 'Written on this server.' },
+      },
+    };
+    const entry = downloaded();
+    // No ASIN or ISBN: the server's `generated` flag is what asked for (and kept) its /meta.
+    entry.manifest.book = { ...entry.manifest.book, asin: undefined, generated: true };
+    await launchOffline(generatedOnly, entry);
+    await act(async () => {
+      render(<BookPageCommunity />, { wrapper });
+    });
+    await settle();
+    expect(screen.getByText('Written on this server.')).toBeTruthy();
+    expect(screen.getByTestId('about-generated-mark')).toBeTruthy();
+    expect(screen.queryByText('Improve this')).toBeNull();
+    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
   });
 
   it("the companion's Who's who reads the kept data", async () => {

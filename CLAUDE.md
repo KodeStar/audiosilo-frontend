@@ -509,11 +509,14 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   failure or, while parked, the park message), `BridgeJobList`, `BridgeJobRequest`,
   `SidecarsGenerateParams` (`source` auto/audio/ebook, `contribute` local/issue, `work_id`),
   `SidecarsGenerateProgress` (step, message, done/total, stage, `eta_seconds`, `cost_usd`,
-  source, `park {code, hint, retry_at}`), `SidecarsGenerateResult`, `BridgeEstimate` (source,
-  ebook, duration, `asr_hours` (0 = not known for audio), `agent_cost_usd` (null = no history),
-  `subscription`, `agent_ready`, `figures` (without them readiness and costs are only
-  defaults), `writable`, `has {community, local, community_unknown?}`, `earlier` (up to 10
-  earlier series books without recaps, each costed), `open_job`). `client.ts`:
+  source, `park {code, hint, retry_at}`), `SidecarsGenerateResult` (with Phase 1c's
+  `description` and `description_error?`), `BridgeEstimate` (source, ebook, duration,
+  `asr_hours` (0 = not known for audio), `agent_cost_usd` (null = no history),
+  `subscription`, `agent_ready`, `can_contribute?`, `figures` (without them readiness and
+  costs are only defaults), `writable`, `can_describe?` (Phase 1c; the player queues no
+  description), `has {community, local, community_unknown?}` (each `{characters, recaps,
+  description?}`), `earlier` (up to 10 earlier series books without recaps, each costed),
+  `open_job`). `client.ts`:
   `bridgeJobs(lib, path)` (`GET /admin/bridge/jobs`, first page), `queueBridgeJob` (201 new, 200
   the open one already queued), `cancelBridgeJob`, `bridgeEstimate` (the upstream budget,
   `UPSTREAM_TIMEOUT_MS`); refusals `library_not_writable` and `kind_unavailable` are
@@ -600,10 +603,12 @@ and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookAbo
 from the pure `aboutContent` in `book-details-model.ts`: `community_description` with the server's
 attribution and "Improve this", else the server's `description`, else the work's core
 description, else the description a Bridge generated on this server (`aboutContent`'s `work`, the
-`bookMetaWork` value, so an unmatched book has it too; `generated` says it is shown, and the card
-then wears `GeneratedMark` with `dimension="description"` under the eyebrow, never the credit or
-"Improve this"), else a sentence naming the author and narrator; then the production facts known, the
-server's own `publisher` / `language` (named via `Intl.DisplayNames` where the platform has it) /
+`bookMetaWork` value, so an unmatched book has it too, and the one source of every work-level
+field, the credit included; `BookAbout` takes it as a required prop; the order is picked once,
+into `source`, and a `generated` text wears `GeneratedChip` (`testID` `about-generated-mark`)
+under the eyebrow, never the credit or "Improve this"), else a sentence naming the author and
+narrator; then the production facts known, the server's own `publisher` / `language` (named via
+`Intl.DisplayNames` where the platform has it) /
 `abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
 as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
 book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts),
@@ -677,8 +682,9 @@ a 502 from a down meta service doesn't spin). Strings under `book.meta.*` (plus 
 two `book.tabs.*` keys) in all 6 locales. The wire envelope (`BookMeta` discriminated
 union in `types.ts`) is hand-mirrored from the server.
 **Generated characters and recaps (Bridge Phase 1a).** A book whose `.audiosilo/` holds
-characters or recaps a Bridge generated on its server carries `Book.generated: true` (list,
-search, item, recent and the next book's `book`), and `/meta` serves them: for an UNMATCHED book
+characters, recaps or (Phase 1c) a description a Bridge generated on its server carries
+`Book.generated: true` (list, search, item, recent and the next book's `book`), and `/meta`
+serves them: for an UNMATCHED book
 as `{ matched: false, work }` (`work.id`, `authors` and `language` empty, `title` the book's
 own), for a matched one in the dimension the community lacks (community content wins per
 dimension); `work.generated` (`BookMetaGenerated {characters?, recaps?, description?,
@@ -687,21 +693,27 @@ additive field, `work.generated_description` (`{ text }`), never in `community_d
 shipped 2.0 app shows that one first, as CC BY-SA): the server fills it only when the community
 work has no `community_description`, and the player orders it below the book's own description
 and the work's core one in About (above). It is spoiler-free by contract, so `spoilers=hide`
-keeps it; the player has no action for it (the console's "Write a description" queues
-`sidecars.describe`). **The `/meta` gate is ONE predicate, `metaEnabledFor(metadata, book)`
+keeps it. Every `sidecars.generate` run writes one as it saves (its progress step
+`describing`, its result `description` / `description_error?`), the player's Generate
+included; the player has no description-only action (the console's "Write a description"
+queues `sidecars.describe`, whose finish `latestDone` also counts, so the book's `/meta` is
+read again). **The `/meta` gate is ONE predicate, `metaEnabledFor(metadata, book)`
 (`meta-gating.ts`)**: the server's `metadata` flag and an ASIN, an ISBN **or `generated`**;
 every surface that reads `/meta` goes through it (the book page, the companion and reveal
 toast, Home's Now card and Previously on, the end credits, the character search, the offline
-copy). Two readers of the envelope, never mixed: `matchedMeta` (the matched half only: About,
-the series rails, the AudioSilo Meta links need a real community work) and `bookMetaWork`
-(the matched work or an unmatched book's generated one: the Characters and Recaps tabs and
-their counts, the companion's Who's who and Story so far, Home's Now card and Previously on,
-the search's characters; the end credits stay on `matchedMeta`). `metaAnswered(enabled, book, meta)` is "the answer is in" for the Generate offer
+copy). Two readers of the envelope, and each field is read through one of them, never both:
+`matchedMeta` (the matched half only: the series rails, the AudioSilo Meta links, the end
+credits and About's recording facts need a real community match) and `bookMetaWork` (the
+matched work or an unmatched book's generated one: About's text and every work-level field,
+the Characters and Recaps tabs and their counts, the companion's Who's who and Story so far,
+Home's Now card and Previously on, the search's characters). `metaAnswered(enabled, book, meta)` is "the answer is in" for the Generate offer
 (a failed lookup is no answer). An unmatched answer WITH a `work` is fresh for only
 `META_GENERATED_ONLY_STALE_MS` (2 min, `metaStaleTime`), because the server answers the same
 way when the community lookup failed for a book it would otherwise match. Generated content
-wears `GeneratedMark` ("Generated on this server", a quiet chip at the head of a Characters or
-Recaps panel, `bridge.generate.mark`) and never the community's CC BY-SA credit:
+wears the quiet "Generated on this server" chip (`GeneratedChip`, `bridge.generate.mark`:
+`GeneratedMark` puts it at the head of a Characters or Recaps panel, by `work.generated`'s
+dimension, and the About card under its eyebrow for a generated description) and never the
+community's CC BY-SA credit:
 **`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
 generated, and every `Attribution` beside characters or recaps reads through it.
 
@@ -1763,7 +1775,7 @@ are asked, at most 10,000 rows.
   The audio is never touched, and a queue already playing keeps its chapters until the book is
   next started.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
-  metadata (asked by `metaEnabledFor`, so a book with generated characters and recaps too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
+  metadata (asked by `metaEnabledFor`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API
   prefix on web), so it is scoped by connection and deleted with the files. **Not in the registry**:
   that is ONE JSON document rewritten every couple of seconds while a download runs, an envelope

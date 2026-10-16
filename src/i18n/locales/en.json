@@ -1290,6 +1290,7 @@
       "extracting": "Reading the ebook",
       "chapter_mapping": "Matching the ebook's chapters",
       "waiting": "Waiting for its turn",
+      "describing": "Writing the description",
       "writing": "Saving the results",
       "rescanning": "Updating the library",
       "working": "Working"

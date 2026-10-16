@@ -139,12 +139,14 @@ function BookPage() {
   const relPath = book?.rel_path ?? path;
   // Community metadata is progressive enhancement: only a server advertising it is asked,
   // and only for a book with an ASIN or ISBN (one without can never match) or with
-  // characters and recaps generated on this server. Asked by the book's own path, as every
-  // other surface asks (and as a finished Bridge job reads it again).
+  // content generated on this server (characters, recaps or a description). Asked by the
+  // book's own path, as every other surface asks (and as a finished Bridge job reads it
+  // again).
   const bookMetaEnabled = metaEnabledFor(useCapability('metadata', cid), book);
   const { data: meta } = useBookMeta(libraryId, relPath, bookMetaEnabled);
-  // What the Characters and Recaps tabs render: the matched work, or an unmatched book's
-  // characters and recaps generated on this server (About and the rails stay matched-only).
+  // What About's text and the Characters and Recaps tabs render: the matched work, or an
+  // unmatched book's content generated on this server (the rails, the AudioSilo Meta links
+  // and About's recording facts stay matched-only).
   const metaWork = bookMetaWork(meta, bookMetaEnabled);
   // Where the listener is: the hero's place, the primary action, the spoiler gate.
   const progressQuery = useBookProgress(libraryId, path, true);

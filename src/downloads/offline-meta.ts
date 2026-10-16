@@ -247,8 +247,8 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
 }
 
 /** Whether a downloaded book can have metadata at all (`metaEnabledFor`, the rule the
- * readers ask by: an ASIN or ISBN, which the server matches by, or characters and recaps
- * generated on its server): the readers never ask for one without. The download's book
+ * readers ask by: an ASIN or ISBN, which the server matches by, or content generated on
+ * its server): the readers never ask for one without. The download's book
  * can be the list shape, so the full item is asked first. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;

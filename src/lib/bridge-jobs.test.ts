@@ -7,6 +7,7 @@ import {
   isOpenJob,
   latestDone,
   latestJob,
+  SIDECARS_DESCRIBE,
   SIDECARS_GENERATE,
 } from './bridge-jobs';
 
@@ -69,5 +70,16 @@ describe('latestDone', () => {
     expect(latestDone(jobs)?.id).toBe(3);
     expect(latestDone([job()])).toBeUndefined();
     expect(latestDone(undefined)).toBeUndefined();
+  });
+
+  // Bridge 1c: a description the console queued also rewrote the book's files.
+  it('counts a done describe job too, the newest of the two kinds', () => {
+    const jobs = [
+      job({ id: 3, state: 'done' }),
+      job({ id: 6, kind: SIDECARS_DESCRIBE, state: 'done' }),
+      job({ id: 8, kind: SIDECARS_DESCRIBE, state: 'running' }),
+    ];
+    expect(latestDone(jobs)?.id).toBe(6);
+    expect(latestDone([job({ id: 7, state: 'done' }), ...jobs])?.id).toBe(7);
   });
 });

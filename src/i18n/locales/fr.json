@@ -1290,6 +1290,7 @@
       "extracting": "Lecture du livre numérique",
       "chapter_mapping": "Association des chapitres du livre numérique",
       "waiting": "En attente de son tour",
+      "describing": "Rédaction de la description",
       "writing": "Enregistrement des résultats",
       "rescanning": "Mise à jour de la bibliothèque",
       "working": "En cours"

@@ -8,7 +8,7 @@ import {
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
 } from '@/api/client';
-import type { AddMemberBody } from '@/api/types';
+import type { AddMemberBody, BridgeEstimate, SidecarsGenerateResult } from '@/api/types';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -2126,6 +2126,58 @@ describe('ApiClient Bridge (admin, Phase 1a)', () => {
       url: 'https://h/api/v1/admin/bridge/estimate?library_id=1&path=Author%2FSeries%2FBook+2&kind=sidecars.generate',
       method: 'GET',
     });
+  });
+
+  // Bridge 1c: a run says whether it wrote the book's description (or why not), and the
+  // estimate says whether the Bridge can describe and who has a description. The player
+  // queues no description of its own, but mirrors every field.
+  it('passes through what Bridge 1c adds to a result and to the estimate', async () => {
+    const result: SidecarsGenerateResult = {
+      library_id: 1,
+      path: 'Author/Series/Book 2',
+      source: 'audio',
+      files: ['characters.json', 'recaps.json', 'bridge.json'],
+      characters: 12,
+      recaps: 30,
+      cost_usd: 4.2,
+      work_id: '',
+      description: false,
+      description_error: 'the agent wrote too little',
+    };
+    installFetch(() => ({ status: 200, body: { jobs: [{ ...job, state: 'done', result }] } }));
+    const [done] = await c().bridgeJobs(1, 'Author/Series/Book 2');
+    expect(done.result).toEqual(result);
+    expect((done.result as SidecarsGenerateResult).description).toBe(false);
+    expect((done.result as SidecarsGenerateResult).description_error).toBe(
+      'the agent wrote too little',
+    );
+
+    const estimate: BridgeEstimate = {
+      kind: 'sidecars.generate',
+      library_id: 1,
+      path: 'Author/Series/Book 2',
+      source: 'audio',
+      duration_seconds: 36000,
+      asr_hours: 2.5,
+      agent_cost_usd: 16,
+      subscription: false,
+      agent_ready: true,
+      can_contribute: false,
+      figures: true,
+      writable: true,
+      can_describe: true,
+      has: {
+        community: { characters: false, recaps: false, description: true },
+        local: { characters: true, recaps: true, description: false },
+      },
+      earlier: [],
+    };
+    installFetch(() => ({ status: 200, body: estimate }));
+    const got = await c().bridgeEstimate(1, 'Author/Series/Book 2', 'sidecars.generate');
+    expect(got).toEqual(estimate);
+    expect(got.can_describe).toBe(true);
+    expect(got.has.community.description).toBe(true);
+    expect(got.has.local.description).toBe(false);
   });
 
   it("surfaces a non-admin's 403 as an ApiError", async () => {
