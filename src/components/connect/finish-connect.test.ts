@@ -87,6 +87,19 @@ it('goes straight back to the app for an added server', async () => {
   expect(mockDismissTo).toHaveBeenCalledWith('/');
 });
 
+it('ends on the book a link named, for the first connection and an added one', async () => {
+  const book = { libraryId: 2, path: 'Author/Book' };
+  const at = (connection: string) => ({
+    pathname: '/book/[libraryId]',
+    params: { libraryId: '2', connection, path: 'Author/Book' },
+  });
+  await finishConnect({ serverUrl: AWAY, session: session('srv-1'), book });
+  expect(mockDismissTo).toHaveBeenCalledWith(at('srv-1.1'));
+  await finishConnect({ serverUrl: 'https://other.example.com', session: session('srv-2'), book });
+  expect(mockDismissTo).toHaveBeenLastCalledWith(at('srv-2.1'));
+  expect(mockReplace).not.toHaveBeenCalled();
+});
+
 it('makes the address that answered the first pick, never the stored serverUrl', async () => {
   // A pairing link's https base could not connect; its plain-http home answered.
   const base = 'https://192.168.1.205:8080';

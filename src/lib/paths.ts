@@ -302,7 +302,7 @@ export function firstParam(v: string | string[] | undefined): string {
 }
 
 /** A positive integer id param, or null. */
-function idParam(v: string | string[] | undefined): number | null {
+export function idParam(v: string | string[] | undefined): number | null {
   const s = firstParam(v).trim();
   if (!/^\d+$/.test(s)) return null;
   const n = Number(s);
@@ -334,6 +334,19 @@ export function parsePersonParams(
   const name = firstParam(p.name);
   if (libraryId === null || !name) return null;
   return { connectionId: connectionParam(p.connection), libraryId, name };
+}
+
+/** The book a connect link ends on (`parseConnectBook`). */
+export type ConnectBook = { libraryId: number; path: string };
+
+/** The book a connect link ends on (`/connect?book=<library_id>&path=<rel_path>`, the admin
+ * console's "Listen in player"), or null when it names none (no positive library id, or no
+ * path). Only these leave the flow, rebuilt into `bookHref`: never a URL the link carried. */
+export function parseConnectBook(p: RawParams): ConnectBook | null {
+  const libraryId = idParam(p.book);
+  const path = firstParam(p.path);
+  if (libraryId === null || !path) return null;
+  return { libraryId, path };
 }
 
 /** The collection page's params, or null without a valid id. */

@@ -3,13 +3,16 @@ import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
 import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
+import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
+import { connectForNewProfile } from '@/components/profiles/connect-intent';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
+import { sessionHydrateFailed, useSession } from '@/stores/session';
 
-import { pairingFallback, selfSignedMayBeWhy, withFallback } from './connect-model';
-import { finishConnect } from './finish-connect';
+import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
+import { endConnect, finishConnect } from './finish-connect';
 
 export type LinkPairing = {
   /** A pairing token is being exchanged. */
@@ -18,9 +21,29 @@ export type LinkPairing = {
   error: string | null;
   /** Say why a link can't pair (a link with no server address). */
   fail: (message: string) => void;
-  /** Exchange a pairing link's token on its server and finish the connect flow. */
+  /** Exchange a pairing link's token on its server and finish the connect flow (on the
+   * link's book, when it names one). */
   pair: (scan: PairingScan) => Promise<boolean>;
 };
+
+/**
+ * Whether the server still takes the stored token of `connectionId` (`GET /me` through the
+ * connection's own client, which flags a refused one for reconnect). `needsReconnect` is
+ * in memory only, so a fresh tab (the console's "Listen in player" always opens one) can't
+ * tell a revoked token from a good one without asking. Only a 401 says no: a server that
+ * doesn't answer leaves the book to open as it would offline. Never through the link's
+ * base: a link can name any address, and the stored token goes only where it always has.
+ */
+async function stillSignedIn(connectionId: string): Promise<boolean> {
+  const client = resolveClient(connectionId);
+  if (!client) return false;
+  try {
+    await client.me();
+    return true;
+  } catch (e) {
+    return !(e instanceof ApiError && e.status === 401);
+  }
+}
 
 /**
  * Pairing by link (a pairing QR, an invite link, a pasted link, a deep link): exchange
@@ -32,8 +55,10 @@ export type LinkPairing = {
  * the server the link names (`pairingFallback`), and the session must come from that
  * server too. The connection is still stored with the https base (which fails safely by
  * TLS on another network, where a plain-http address could be another box), with home as
- * its first address pick (`answeredAt`). Resolves whether it paired. Bare client: a
- * failed exchange must never flag a reconnect.
+ * its first address pick (`answeredAt`). A link naming a book ends on it, and skips the
+ * exchange when the device is already signed in as the link's user there (its token still
+ * taken, `stillSignedIn`). Resolves whether
+ * it paired. Bare client: a failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
@@ -52,6 +77,22 @@ export function useLinkPairing(startPairing = false): LinkPairing {
   const pair = useLatest(async (scan: PairingScan): Promise<boolean> => {
     setError(null);
     setPairing(true);
+    // A link naming a book, for a user this device is already signed in as on its server
+    // (the console's "Listen in player": `signedInAs`) with a token the server still takes
+    // (`stillSignedIn`): the book opens with no exchange, and the unused token expires by
+    // itself (no second session, no "new device" notice). Not for "Add someone": the
+    // exchange's `finishConnect` switches to that person.
+    if (scan.book && scan.userId && scan.serverId && !connectForNewProfile()) {
+      // The connections first, when they never loaded (as `finishConnect` reads them).
+      if (sessionHydrateFailed()) await useSession.getState().hydrate();
+      const signedIn = signedInAs(useSession.getState().connections, scan.serverId, scan.userId);
+      if (signedIn && (await stillSignedIn(signedIn.id))) {
+        if (!live.current) return false;
+        endConnect(signedIn.id, scan.book);
+        return true;
+      }
+      if (!live.current) return false;
+    }
     // The token's exchange at `base`, with the server's name read alongside.
     const exchangeAt = (base: string) => {
       const client = new ApiClient(base);
@@ -96,6 +137,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         linkAddresses: scan.addresses,
         name: info?.name,
         ...(answeredAt !== scan.base ? { answeredAt } : {}),
+        book: scan.book,
       });
       return true;
     } catch (e) {
