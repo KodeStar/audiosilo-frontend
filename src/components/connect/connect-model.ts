@@ -99,6 +99,25 @@ export function repairPlan(input: {
   return { serverUrl: pending, addresses: answer };
 }
 
+/**
+ * The connection already signed in as `userId` on the server `serverId`, its token not
+ * refused (no `needsReconnect`), or undefined. A link that names both (the console's
+ * "Listen in player": `sid` + `uid`) then needs no exchange: its unused token expires by
+ * itself, and no second session (or "new device" notice) is made at each press.
+ */
+export function signedInAs<
+  C extends {
+    id: string;
+    serverId?: string;
+    user?: { id?: unknown } | null;
+    needsReconnect?: unknown;
+  },
+>(connections: readonly C[], serverId: string, userId: number): C | undefined {
+  return connections.find(
+    (c) => serverIdOf(c) === serverId && c.user?.id === userId && !c.needsReconnect,
+  );
+}
+
 /** Whether a sign-in is the device's first: no connection before it. Only then does the
  * flow end on "Your library is ready."; an added server goes straight back. */
 export function isFirstConnection(connections: readonly unknown[]): boolean {

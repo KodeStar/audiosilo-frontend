@@ -1,6 +1,7 @@
 import { renderRouter } from 'expo-router/testing-library';
 import { store } from 'expo-router/build/global-state/router-store';
 
+import { bookHref } from '@/lib/paths';
 import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
 
 import { LeaveOnboarding } from './leave-onboarding';
@@ -25,4 +26,12 @@ it('leaves ONE (app) when a screen exits onboarding at render time (LeaveOnboard
   await nav(() => {});
   expect(rootRoutes()).toEqual(['(app)']);
   expect(routeInfo().pathname).toBe('/');
+});
+
+it("leaves ONE (app) when connecting ends on a link's book (dismissTo the book)", async () => {
+  await (renderRouter(realRouteTree(), { initialUrl: '/connect' }) as unknown as Promise<unknown>);
+  await nav(() => router.dismissTo(bookHref('c', 2, 'A/B & C')));
+  expect(rootRoutes()).toEqual(['(app)']);
+  expect(routeInfo().pathname).toBe('/book/2');
+  expect(routeInfo().params).toMatchObject({ connection: 'c', path: 'A/B & C', libraryId: '2' });
 });

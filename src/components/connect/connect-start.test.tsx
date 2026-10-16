@@ -580,6 +580,76 @@ describe('the player the server serves', () => {
     expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
     expect(screen.queryByText('Found Hearthside')).toBeNull();
   });
+
+  describe('a link that names a book (the console\'s "Listen in player")', () => {
+    const BOOK = 'Brandon Sanderson/Mistborn & Co/01 #1?';
+    const bookAt = (connection: string) => ({
+      pathname: '/book/[libraryId]',
+      params: { libraryId: '2', connection, path: BOOK },
+    });
+    const signIn = (as: User = user) =>
+      useSession.getState().setSession({
+        serverUrl: ORIGIN,
+        serverId: 'srv-1',
+        token: 't',
+        user: as,
+        name: 'Hearthside',
+      });
+
+    it('pairs and ends on the book, not "Your library is ready."', async () => {
+      mockParams = { token: 'tok', sid: 'srv-1', uid: '1', book: '2', path: BOOK };
+      mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
+      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(conn()).toMatchObject({ id: 'srv-1.1', token: 's' });
+    });
+
+    it('opens the book without spending the token when already signed in as that user', async () => {
+      await signIn();
+      mockParams = { token: 'tok', sid: 'srv-1', uid: '1', book: '2', path: BOOK };
+      await render(<ConnectStart />);
+      await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
+      expect(mockApi.exchange).not.toHaveBeenCalled();
+      expect(useSession.getState().connections).toHaveLength(1);
+      expect(conn().token).toBe('t');
+    });
+
+    it.each([
+      ['someone else is signed in there', () => signIn({ ...user, id: 2, username: 'sam' })],
+      [
+        'the server refused its token',
+        async () => {
+          await signIn();
+          useSession.getState().markNeedsReconnect('srv-1.1', 'auth');
+        },
+      ],
+    ])('pairs when %s', async (_, before) => {
+      await before();
+      mockParams = { token: 'tok', sid: 'srv-1', uid: '1', book: '2', path: BOOK };
+      mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
+      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+    });
+
+    it('ignores a book it cannot name, and ends as any pairing link does', async () => {
+      mockParams = { token: 'tok', sid: 'srv-1', uid: '1', book: '2x', path: BOOK };
+      mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() =>
+        expect(mockReplace).toHaveBeenCalledWith({
+          pathname: '/connect/ready',
+          params: { connection: 'srv-1.1' },
+        }),
+      );
+      expect(mockDismissTo).not.toHaveBeenCalled();
+    });
+  });
 });
 
 it('asks for the address under the Metro dev server', async () => {

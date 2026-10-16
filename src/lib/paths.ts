@@ -336,6 +336,19 @@ export function parsePersonParams(
   return { connectionId: connectionParam(p.connection), libraryId, name };
 }
 
+/** The book a connect link ends on (`/connect?book=<library_id>&path=<rel_path>`, the admin
+ * console's "Listen in player"), with the user the link was made for (`uid`, null when it
+ * names none), or null when it names no book (no positive library id, or no path). Only
+ * these leave the flow, rebuilt into `bookHref`: never a URL the link carried. */
+export function parseConnectBook(
+  p: RawParams,
+): { book: { libraryId: number; path: string }; userId: number | null } | null {
+  const libraryId = idParam(p.book);
+  const path = firstParam(p.path);
+  if (libraryId === null || !path) return null;
+  return { book: { libraryId, path }, userId: idParam(p.uid) };
+}
+
 /** The collection page's params, or null without a valid id. */
 export function parseCollectionParams(p: RawParams): { connectionId: string; id: number } | null {
   const id = idParam(p.id);

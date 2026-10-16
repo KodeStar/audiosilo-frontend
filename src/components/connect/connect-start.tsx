@@ -21,7 +21,7 @@ import {
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
 import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
-import { firstParam } from '@/lib/paths';
+import { bookHref, firstParam, parseConnectBook } from '@/lib/paths';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -32,6 +32,7 @@ import {
   looksLikeHomeAddress,
   reconnectAddress,
   selfSignedMayBeWhy,
+  signedInAs,
 } from './connect-model';
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
@@ -49,7 +50,10 @@ import { useLinkPairing } from './use-pairing';
  *
  * A pairing link or QR opens this screen with its `token` (and on native the `server` it
  * belongs to, the server's `home` / `away` addresses when it has them, and its id `sid`): the token is
- * exchanged at once, with nothing to type.
+ * exchanged at once, with nothing to type. A link can also name a book to end on (`book` +
+ * `path`, the admin console's "Listen in player", with the `uid` it was made for): rebuilt
+ * with `bookHref`, never followed as a URL, and when this device is already signed in as
+ * that user there (`signedInAs`) the token is left to expire and the book opens at once.
  *
  * The player the server serves at `/web` (`servedOrigin`) asks nothing: it asks its own origin
  * who it is on open and shows what it found, with Sign in, and no address field or remembered
@@ -59,13 +63,16 @@ import { useLinkPairing } from './use-pairing';
 export function ConnectStart() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away, sid, profile } = useLocalSearchParams<{
+  const { token, server, home, away, sid, profile, book, path, uid } = useLocalSearchParams<{
     token?: string;
     server?: string;
     home?: string;
     away?: string;
     sid?: string;
     profile?: string;
+    book?: string;
+    path?: string;
+    uid?: string;
   }>();
   // "Add someone" (Phase 8): a new person signs in, maybe on a server this device knows.
   const newPerson = profile === 'new';
@@ -107,16 +114,29 @@ export function ConnectStart() {
     }
     // Expo Router hands back a repeated param as a list (`firstParam`).
     const serverId = firstParam(sid).trim();
-    void pair({
-      base,
-      token,
-      addresses: cleanAddresses({ home, away }),
-      ...(serverId ? { serverId } : {}),
-    }).then((ok) => {
+    // A book to end on: an invalid one is no book, and the flow ends as it always does.
+    const linked = parseConnectBook({ book, path, uid });
+    const signedIn =
+      linked?.userId && serverId
+        ? signedInAs(useSession.getState().connections, serverId, linked.userId)
+        : undefined;
+    if (linked && signedIn) {
+      router.dismissTo(bookHref(signedIn.id, linked.book.libraryId, linked.book.path));
+      return;
+    }
+    void pair(
+      {
+        base,
+        token,
+        addresses: cleanAddresses({ home, away }),
+        ...(serverId ? { serverId } : {}),
+      },
+      linked?.book,
+    ).then((ok) => {
       if (!ok) setUrl((u) => u || base);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, server, home, away, sid, pair, fail]);
+  }, [token, server, home, away, sid, book, path, uid, pair, fail]);
 
   // The served player: ask its own server who it is, once.
   useEffect(() => {

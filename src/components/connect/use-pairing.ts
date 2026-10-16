@@ -9,7 +9,7 @@ import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
 
 import { pairingFallback, selfSignedMayBeWhy, withFallback } from './connect-model';
-import { finishConnect } from './finish-connect';
+import { type ConnectBook, finishConnect } from './finish-connect';
 
 export type LinkPairing = {
   /** A pairing token is being exchanged. */
@@ -18,8 +18,9 @@ export type LinkPairing = {
   error: string | null;
   /** Say why a link can't pair (a link with no server address). */
   fail: (message: string) => void;
-  /** Exchange a pairing link's token on its server and finish the connect flow. */
-  pair: (scan: PairingScan) => Promise<boolean>;
+  /** Exchange a pairing link's token on its server and finish the connect flow (on `book`'s
+   * page, when the link named one). */
+  pair: (scan: PairingScan, book?: ConnectBook) => Promise<boolean>;
 };
 
 /**
@@ -49,7 +50,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
 
   // Stable (`useLatest`): the deep link's effect lists it, and a language switch must not
   // run the exchange again.
-  const pair = useLatest(async (scan: PairingScan): Promise<boolean> => {
+  const pair = useLatest(async (scan: PairingScan, book?: ConnectBook): Promise<boolean> => {
     setError(null);
     setPairing(true);
     // The token's exchange at `base`, with the server's name read alongside.
@@ -96,6 +97,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         linkAddresses: scan.addresses,
         name: info?.name,
         ...(answeredAt !== scan.base ? { answeredAt } : {}),
+        ...(book ? { book } : {}),
       });
       return true;
     } catch (e) {

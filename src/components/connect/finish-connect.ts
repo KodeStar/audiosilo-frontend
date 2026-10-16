@@ -9,6 +9,7 @@ import i18n from '@/i18n';
 import { isKidAccount } from '@/lib/account';
 import { connectionIdOf, priorConnection } from '@/lib/connection-id';
 import { list as listKnownServers } from '@/lib/known-servers';
+import { bookHref } from '@/lib/paths';
 import { mergeAddresses } from '@/lib/server-address';
 import {
   activeProfile,
@@ -24,6 +25,9 @@ import {
 import { sessionHydrateFailed, staleIdentities, useSession } from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
+
+/** The book a connect link asked to open (`parseConnectBook`). */
+export type ConnectBook = { libraryId: number; path: string };
 
 /** The "Your library is ready." route for a connection. */
 export function readyHref(connectionId: string) {
@@ -49,7 +53,9 @@ export function readyHref(connectionId: string) {
  * https base could not connect): it becomes the connection's address pick before anything
  * else is sent, so the first requests go where the server answers; the address runner
  * checks it as for any home pick (and leaves it on another network). It is never stored as
- * the connection's `serverUrl`, the address used when home is not an option.
+ * the connection's `serverUrl`, the address used when home is not an option. `book` is the
+ * book the link asked to open (the admin console's "Listen in player"): the flow ends on its
+ * page instead, first connection or not.
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -58,6 +64,7 @@ export async function finishConnect(input: {
   name?: string;
   reconnectId?: string;
   answeredAt?: string;
+  book?: ConnectBook;
 }): Promise<string> {
   const serverId = input.session.server_id;
   // The connections first, when they never loaded (a failed session read leaves the
@@ -130,6 +137,7 @@ export async function finishConnect(input: {
   // "Your library is ready." is a grown-up's first run (8b-1, D9): a kid's account (or
   // anyone signing in while kids mode listens) goes straight to kids mode.
   if (activeProfile()?.kids) router.dismissTo(KIDS_PATH);
+  else if (input.book) router.dismissTo(bookHref(id, input.book.libraryId, input.book.path));
   else if (first) router.replace(readyHref(id));
   else leaveOnboarding();
   return id;
