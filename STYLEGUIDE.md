@@ -441,13 +441,31 @@ appears in 5. City of Bells". A character whose chapter you just crossed animate
 "Just met", plus a toast; that is the card's only pink (the role chip and "From chapter N" stay muted). Hidden entries are counted, never named: "7 characters you haven't met yet are hidden"
 with **Show anyway** (then a warning badge and "Hide them again"). Story so far: "Up to chapter 22", written to
 stop exactly there; the next paragraph fades in when you finish a chapter. The whole-book summary (`in_short`
-includes the ending) is blurred behind "Show the whole-book summary". Every block ends with the attribution
-"Community notes from AudioSilo Meta contributors · CC BY-SA 4.0".
+includes the ending) is blurred behind "Show the whole-book summary". Every community block ends with the
+attribution "Community notes from AudioSilo Meta contributors · CC BY-SA 4.0". Characters or recaps a Bridge
+generated on the listener's server (an unmatched book's, or the half the community lacks) never carry that
+credit: their panel opens with a quiet "Generated on this server" chip instead (`GeneratedMark`). With neither,
+the kind empty state shows, and under it, for an admin only, "Generate characters and recaps" (below).
 
 ### Previously on *custom*
 Shown on Home when resuming after a long gap (12+ days): dark cover-tinted card, "You left Kaladin in Bridge Four,
 deciding to stop waiting to die.", one recap paragraph, "Resume, with 30 seconds of overlap", "Read the full
-recap", and the spoiler-safe attribution.
+recap", and the spoiler-safe attribution (for recaps generated on the server, the "Generated on this server"
+chip instead).
+
+### Generate characters and recaps (admin, Bridge) *custom*
+The player's one admin-only action, for a book with no characters or recaps when the server's Bridge is online:
+an `outline` button with the sparkles icon after the book page's hero actions (its own row on a phone), or under
+the companion's empty Who's who and Story so far; "Regenerate characters and recaps" (a book with generated ones)
+is quieter, in the book menu. Never pink, and nothing at all for anyone else. The confirmation is a Dialog with a
+sparkles icon badge: what the Bridge will read, the transcription time, the expected agent cost (a subscription
+says it is notional; no history says "no estimate yet"), that the results appear on this server, and a switch
+(on by default) to queue the series' earlier books without recaps first; while the library isn't writable or the
+agent is known not to be ready, Generate is held back with the reason in warning text. While a job runs, a
+compact status takes the button's place: sparkles (circle-exclamation in warning or destructive when parked or
+failed), the title, one caption line (the stage in plain words, the counts, the time left; why it stopped; the
+error), a neutral ink progress bar (not pink: the hero's progress bar is the page's one pink thing) and Cancel,
+or "Try again" once it failed; a park says when it resumes by itself, else to open the admin console.
 
 ### Sheets (speed, sleep, bookmark, output, chapters, Up next, companion)
 Desktop: an anchored popover above the dock (or centred over the player column). Tablet: centred floating sheet.
@@ -749,6 +767,10 @@ scale, This week card and smart shelves (`src/components/home/`), the Up next dr
 and drop zone (`src/components/upnext/`), the Downloads page's storage bar, rules card and rows
 (`src/components/downloads/`, with `RemoveDownloadConfirm`) and the Search screen's grouped results
 (`src/components/search/`).
+
+Bridge Phase 1a's pieces (`src/components/bridge/`, rules in the tested `bridge-model.ts`): `GenerateDialog`,
+`GenerateStatus`, `GenerateOffer` (the companion's) and the `useGenerate` model; `GeneratedMark` sits in
+`library/book-meta.tsx` beside the Characters and Recaps blocks.
 
 Phase 4's pieces: the book page (`src/components/book/`: `BookScreen`, the washed `BookHero` and its
 `HeroActions`, `BookTabPanel` with the Chapters and Details tabs, the aside with `BookAbout`), the bookmark and
