@@ -61,6 +61,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 
 import { BookAside } from './book-aside';
 import { BookCrumbs } from './book-crumbs';
+import { bookPublisher } from './book-details-model';
 import { BookHero } from './book-hero';
 import {
   bookFacts,
@@ -404,7 +405,7 @@ function BookPage() {
           interval,
           fileCount: files.length,
           codec: chapterData?.codec,
-          publisher: metaMatched?.recording?.publisher,
+          publisher: bookPublisher(book, metaMatched?.recording),
           serverName,
           libraryName,
         })}

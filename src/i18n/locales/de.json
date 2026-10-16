@@ -778,6 +778,12 @@
         "short": "Unter 5 Std.",
         "mid": "5 bis 15 Std.",
         "long": "Über 15 Std.",
+        "genre": "Genre",
+        "genreChosen": "Genre: {{name}}",
+        "anyGenre": "Alle Genres",
+        "tag": "Schlagwort",
+        "tagChosen": "Schlagwort: {{name}}",
+        "anyTag": "Alle Schlagwörter",
         "clear": "Zurücksetzen"
       },
       "columns": {
@@ -1073,6 +1079,7 @@
       "publisher": "Verlag",
       "released": "Veröffentlicht",
       "firstPublished": "Erstveröffentlichung",
+      "language": "Sprache",
       "abridged": "Gekürzt",
       "moreInNamedSeries": "Mehr aus {{series}}",
       "seriesPosition": "Band {{position}}",
@@ -1189,6 +1196,10 @@
       "improve": "Verbessern",
       "yes": "Ja",
       "no": "Nein",
+      "genres": "Genres",
+      "tags": "Schlagwörter",
+      "openGenre": "Bücher im Genre {{name}}",
+      "openTag": "Bücher mit dem Schlagwort {{name}}",
       "fallbackBoth": "{{title}} von {{author}}, gelesen von {{narrator}}.",
       "fallbackAuthor": "{{title}} von {{author}}.",
       "none": "Noch keine Beschreibung."

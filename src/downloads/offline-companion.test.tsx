@@ -242,7 +242,7 @@ function BookPageCommunity() {
   if (!book || !matched) return null;
   return (
     <>
-      <BookAbout book={book} meta={matched} />
+      <BookAbout book={book} meta={matched} onOpenLabel={() => {}} />
       <BookMetaCharactersTab
         characters={matched.work.characters ?? []}
         progress={{ chapter: 0, finished: false }}

@@ -352,6 +352,27 @@ export type Book = {
    * community value). Sent on every book response; absent when unknown or on an
    * older server. */
   published?: string;
+  /** The book's subtitle (an Audiobookshelf metadata.json, a community match or an
+   * admin edit; never an audio tag). Sent on every book response; absent when unknown
+   * or on an older server. */
+  subtitle?: string;
+  /** The publisher, from the same sources as `subtitle`. */
+  publisher?: string;
+  /** The language as the sources give it (a code like "en", or a name), from the same
+   * sources as `subtitle`. */
+  language?: string;
+  /** Whether the recording is abridged, from the same sources as `subtitle` (a
+   * metadata.json or a match only ever says true): absent is UNKNOWN (never read as
+   * unabridged), as on an older server. */
+  abridged?: boolean;
+  /** The book's genres (the files' genre tag, a metadata.json or an admin edit; no
+   * community genres yet), each trimmed with its inner spacing collapsed and once by
+   * `labelKey` (src/lib/labels.ts). Sent on list and search pages too (the Library's
+   * filters read them on the device); absent when there are none or on an older server. */
+  genres?: string[];
+  /** Freeform tags (a metadata.json or an admin edit; no audio tag carries them), as
+   * `genres`. */
+  tags?: string[];
   /** The admin-edited/community description. Only GET /libraries/{id}/item sends
    * it - list, search, recent and next responses leave it out to keep pages small.
    * Not the CC BY-SA `community_description` on {@link BookMetaWork}. Absent on

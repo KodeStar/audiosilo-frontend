@@ -567,6 +567,19 @@ describe('ApiClient', () => {
     expect(page).toEqual({ books: [{ id: 1, title: 'X' }], next_cursor: 'c2' });
   });
 
+  it('lists books by a genre or a tag, encoded', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { books: [] } }));
+    const c = new ApiClient('https://h', 'tok');
+    await c.listBooks(2, { genre: 'Science Fiction & Fantasy', limit: 200 });
+    await c.listBooks(2, { tag: 'to-read', sort: 'recent' });
+    await c.listBooks(2, { genre: undefined, tag: undefined });
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+      'https://h/api/v1/libraries/2/books?genre=Science+Fiction+%26+Fantasy&limit=200',
+      'https://h/api/v1/libraries/2/books?tag=to-read&sort=recent',
+      'https://h/api/v1/libraries/2/books',
+    ]);
+  });
+
   it('lists books with no filters and tolerates a null books array', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { books: null } }));
     await expect(new ApiClient('https://h', 'tok').listBooks(2)).resolves.toEqual({ books: [] });

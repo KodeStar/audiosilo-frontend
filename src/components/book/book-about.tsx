@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import type { Book } from '@/api/types';
 import {
@@ -8,29 +8,69 @@ import {
   DisclosureChevron,
   type MatchedBookMeta,
 } from '@/components/library/book-meta';
+import { libraryBooksHref } from '@/components/library/books/books-view';
 import { Attribution } from '@/components/player/companion/companion-pieces';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
+import { chipClass } from '@/components/ui/filter-chip';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import type { LabelKind } from '@/lib/labels';
+import { openLibraryRoot } from '@/lib/open';
 import { openExternalUrl } from '@/lib/support';
+import { cn } from '@/lib/utils';
+import { useLibrarySelection } from '@/stores/library-selection';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { aboutContent } from './book-details-model';
+import { aboutContent, type LabelGroup } from './book-details-model';
+
+const GROUP_KEY = {
+  genre: 'book.about.genres',
+  tag: 'book.about.tags',
+} as const satisfies Record<LabelKind, string>;
+
+const OPEN_KEY = {
+  genre: 'book.about.openGenre',
+  tag: 'book.about.openTag',
+} as const satisfies Record<LabelKind, string>;
+
+/**
+ * The Library's Books mode on one genre or tag of the book's library (a chip's press):
+ * that library becomes the browse modes' pick, since Books mode shows the selected one,
+ * then the Library tab's root opens on the filter (`libraryBooksHref`).
+ */
+export function openLabelBooks(
+  connectionId: string,
+  libraryId: number,
+  kind: LabelKind,
+  name: string,
+) {
+  useLibrarySelection.getState().select({ connectionId, libraryId });
+  openLibraryRoot(libraryBooksHref({ [kind]: name }));
+}
 
 /**
  * The book page's About card (in the aside): the description (`aboutContent`, collapsed
  * past six lines; an undescribed book still reads complete), the production facts the
  * community or the server knows, and, beside community text, the server's attribution
  * line with "Improve this" (the work's page, opened in the browser). A matched book
- * without community text keeps the quiet "View on AudioSilo Meta" link. Nothing in it is
- * pink.
+ * without community text keeps the quiet "View on AudioSilo Meta" link. Then the book's
+ * genres and tags as chips under their names, each opening the Library on it
+ * (`onOpenLabel`). Nothing in it is pink.
  */
-export function BookAbout({ book, meta }: { book: Book; meta?: MatchedBookMeta }) {
+export function BookAbout({
+  book,
+  meta,
+  onOpenLabel,
+}: {
+  book: Book;
+  meta?: MatchedBookMeta;
+  onOpenLabel: (kind: LabelKind, name: string) => void;
+}) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const [expanded, setExpanded] = useState(false);
-  const { text, community, details } = aboutContent(book, meta, t);
+  const { text, community, details, labels } = aboutContent(book, meta, t);
   const canCollapse = descriptionIsLong(text);
   const attribution = community ? meta?.work.attribution : undefined;
   const improveUrl = attribution?.source_url || meta?.web_url;
@@ -73,6 +113,13 @@ export function BookAbout({ book, meta }: { book: Book; meta?: MatchedBookMeta }
           ))}
         </View>
       ) : null}
+      {labels.length > 0 ? (
+        <View className="mt-1 gap-2.5">
+          {labels.map((g) => (
+            <Labels key={g.kind} group={g} onOpen={onOpenLabel} />
+          ))}
+        </View>
+      ) : null}
       {attribution ? (
         <View className="mt-1 gap-1">
           <Attribution attribution={attribution} />
@@ -92,6 +139,58 @@ export function BookAbout({ book, meta }: { book: Book; meta?: MatchedBookMeta }
         />
       ) : null}
     </Card>
+  );
+}
+
+/** One kind of label under its name ("Genres"): a wrapping row of chips. */
+function Labels({
+  group,
+  onOpen,
+}: {
+  group: LabelGroup;
+  onOpen: (kind: LabelKind, name: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View className="gap-1.5" role="group" accessibilityLabel={t(GROUP_KEY[group.kind])}>
+      <Text variant="muted">{t(GROUP_KEY[group.kind])}</Text>
+      <View className="flex-row flex-wrap gap-2">
+        {group.names.map((name) => (
+          <LabelChip
+            key={name}
+            name={name}
+            label={t(OPEN_KEY[group.kind], { name })}
+            onPress={() => onOpen(group.kind, name)}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** A genre or tag as a pill (`chipClass`, unselected), opening the Library on it. */
+function LabelChip({
+  name,
+  label,
+  onPress,
+}: {
+  name: string;
+  /** What a press does, for a screen reader ("Books in the genre Fantasy"). */
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={label}
+      hitSlop={{ top: 6, bottom: 6 }}
+      className={cn(chipClass(), 'max-w-full')}
+    >
+      <Text className="font-sans-semibold text-[13px] text-foreground" numberOfLines={1}>
+        {name}
+      </Text>
+    </Pressable>
   );
 }
 

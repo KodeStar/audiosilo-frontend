@@ -563,7 +563,8 @@ the Up next drawer can leave a desktop page phone-narrow). **Hero** (`book-hero.
 `CoverWash` from `cover_color` (a neutral wash without one), quiet folder crumbs, the eyebrow
 (series + "Book N", opening the series page - every series in `series_list` for a book in
 several, apart by " / "; else library and server), the title (one size
-smaller past 48 characters), the byline (author and narrator pages; the narrator is plain text
+smaller past 48 characters), the server's `subtitle` under it unless the title already says it
+(`heroSubtitle`), the byline (author and narrator pages; the narrator is plain text
 where `browse_people` is off), the facts (`bookFacts`), then the place of a book in progress
 (percent, "Chapter N of M", time left at the book's own speed, the progress bar: the page's one
 pink thing) or the finished badge (`finished_at`) and the stars (`ratings`, `useBookRating`
@@ -598,7 +599,11 @@ play / converted for this browser (web, `useNeedsWebTranscode`) / plays from thi
 and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookAbout`, its words
 from the pure `aboutContent` in `book-details-model.ts`: `community_description` with the server's
 attribution and "Improve this", else the server's `description`, else the work's core
-description, else a sentence naming the author and narrator; then the production facts known),
+description, else a sentence naming the author and narrator; then the production facts known, the
+server's own `publisher` / `language` (named via `Intl.DisplayNames` where the platform has it) /
+`abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
+as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
+book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts),
 Other versions
 (`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
 listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
@@ -1558,9 +1563,15 @@ sub-nav can't fit all six).
 **Library Books mode** (`modes/books-mode.tsx`, rules in `books/books-view.ts`): `useWholeLibrary`
 (`useAllLibraryBooks`, one cache entry per library) pages through the selected library 200 books
 at a time until `next_cursor` runs out, then filters
-(status from the listener's progress, Downloaded from the registry, length buckets) and sorts on
-the device. The URL is the contract other screens link to (`libraryBooksHref`): `/library?mode=books&sort=&status=&dl=1&len=`
-(`libraryModeHref`). Grid or list is remembered per device (`books-layout-store.ts`,
+(status from the listener's progress, Downloaded from the registry, length buckets, and a genre
+and a tag matched case-insensitively by `labelKey`, which mirrors the server's `catalog.labelKey`;
+it, `bookLabels` and `LABEL_KINDS` live in `src/lib/labels.ts`, shared with the book page, and the
+server sends each list already clean, so nothing re-cleans it) and sorts on the device. The genre and tag
+filters (`books/label-filter.tsx`: a picker chip opening a dialog of `labelOptions`, each counted
+among what the other filters keep) show only when a loaded book has one or the URL names one, so
+an older server, which sends neither list, shows no new control. The URL is the contract other
+screens link to (`libraryBooksHref`): `/library?mode=books&sort=&status=&dl=1&len=&genre=&tag=`
+(`libraryModeHref`; a book page's genre and tag chips open it through `openLibraryRoot`). Grid or list is remembered per device (`books-layout-store.ts`,
 `audiosilo.booksLayout`); Title sort adds letter heads and an A-Z rail. **Book actions**
 (`books/book-actions.tsx`): `useBookActions` (Play/Resume, Up next, Add to collection, download,
 Mark as finished / not finished with Undo where `progress_edit` allows, More in this series) is

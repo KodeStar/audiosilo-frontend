@@ -18,7 +18,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { BookPageLayout, EyebrowItem, Fact, TitleScale } from './book-page-model';
-import { titleScale } from './book-page-model';
+import { heroSubtitle, titleScale } from './book-page-model';
 
 /** The title's display size per step (STYLEGUIDE section 4, Display XL: 52 desktop, 40
  * tablet, 30 phone; one step down for a long title). */
@@ -62,7 +62,8 @@ export type BookHeroProps = {
 /**
  * The book page's hero (the prototype's `Book()` hero): the cover washed into the
  * background from its `cover_color` (a neutral wash without one; text never sits on raw
- * cover colour), the eyebrow, the title in display type, the byline, the facts row, the
+ * cover colour), the eyebrow, the title in display type and the subtitle (when the
+ * server has one the title doesn't already say) under it, the byline, the facts row, the
  * listener's place (the view's one pink thing, the progress bar) or the finished badge
  * and rating, then the actions. Cover beside the text on tablet and desktop, above it on
  * a phone.
@@ -86,6 +87,7 @@ export function BookHero({
 }: BookHeroProps) {
   const themed = useThemeColors();
   const title = bookTitle(book.title, book.rel_path);
+  const subtitle = heroSubtitle(title, book.subtitle);
   const wash = book.cover_color?.bg
     ? book.cover_color
     : { bg: themed.mutedForeground, accent: themed.mutedForeground };
@@ -131,6 +133,15 @@ export function BookHero({
             >
               {title}
             </Text>
+            {subtitle ? (
+              <Text
+                variant="heading"
+                testID="book-subtitle"
+                className="-mt-1.5 text-muted-foreground lg:text-[22px] lg:leading-[28px]"
+              >
+                {subtitle}
+              </Text>
+            ) : null}
             <Byline book={book} onOpenAuthor={onOpenAuthor} onOpenNarrator={onOpenNarrator} />
             <Facts facts={facts} />
             {place ? <Place place={place} /> : null}

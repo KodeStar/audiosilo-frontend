@@ -3,8 +3,11 @@ import i18n from '@/i18n';
 
 import {
   aboutContent,
+  bookPublisher,
   fileRows,
   FILES_SHOWN,
+  labelGroups,
+  languageName,
   playbackMode,
   visibleFiles,
 } from './book-details-model';
@@ -110,15 +113,92 @@ describe('aboutContent', () => {
       work: { ...meta.work, first_published: '1937' },
       recording: { id: 'r', narrators: [], publisher: 'P', release_date: '2012', abridged: false },
     } as MatchedBookMeta;
+    // The community's abridged false is also its "not recorded": no row.
     expect(aboutContent({ ...book, published: '2010' }, full, t).details).toEqual([
       { label: 'Publisher', value: 'P' },
       { label: 'Released', value: '2012' },
       { label: 'First published', value: '1937' },
-      { label: 'Abridged', value: 'No' },
     ]);
     expect(aboutContent({ ...book, published: '2010' }, undefined, t).details).toEqual([
       { label: 'Released', value: '2010' },
     ]);
     expect(aboutContent(book, undefined, t).details).toEqual([]);
+  });
+
+  it("lists the server's publisher, language and abridged, before the community's", () => {
+    const community = {
+      ...meta,
+      recording: { id: 'r', narrators: [], publisher: 'Community P', abridged: true },
+    } as MatchedBookMeta;
+    const own = { ...book, publisher: ' Server P ', language: 'English', abridged: false };
+    expect(aboutContent(own, community, t).details).toEqual([
+      { label: 'Publisher', value: 'Server P' },
+      { label: 'Language', value: 'English' },
+      { label: 'Abridged', value: 'No' },
+    ]);
+    // Abridged is three-state: true, false, and absent (unknown, so no row at all).
+    expect(aboutContent({ ...book, abridged: true }, undefined, t).details).toEqual([
+      { label: 'Abridged', value: 'Yes' },
+    ]);
+    expect(aboutContent({ ...book, abridged: false }, undefined, t).details).toEqual([
+      { label: 'Abridged', value: 'No' },
+    ]);
+    expect(aboutContent({ ...book, abridged: undefined }, undefined, t).details).toEqual([]);
+    // Unknown on the server: the community's answer stands.
+    expect(aboutContent({ ...book, publisher: '  ' }, community, t).details).toEqual([
+      { label: 'Publisher', value: 'Community P' },
+      { label: 'Abridged', value: 'Yes' },
+    ]);
+  });
+
+  it("carries the book's genres, then its tags, only the kinds it has", () => {
+    expect(aboutContent(book, undefined, t).labels).toEqual([]);
+    expect(
+      aboutContent({ ...book, genres: ['Fantasy'], tags: ['to-read'] }, undefined, t).labels,
+    ).toEqual([
+      { kind: 'genre', names: ['Fantasy'] },
+      { kind: 'tag', names: ['to-read'] },
+    ]);
+  });
+});
+
+describe('labelGroups', () => {
+  it("groups the server's lists as they come, each kind only when it has some", () => {
+    expect(labelGroups({ genres: ['Fantasy', 'Epic Fantasy'], tags: [] })).toEqual([
+      { kind: 'genre', names: ['Fantasy', 'Epic Fantasy'] },
+    ]);
+    expect(labelGroups({ tags: ['a'] })).toEqual([{ kind: 'tag', names: ['a'] }]);
+    expect(labelGroups({})).toEqual([]);
+  });
+});
+
+describe('bookPublisher', () => {
+  const recording = { publisher: 'Community P' };
+  it("is the server's own publisher, else the community recording's", () => {
+    expect(bookPublisher({ publisher: ' Server P ' }, recording)).toBe('Server P');
+    expect(bookPublisher({ publisher: '  ' }, recording)).toBe('Community P');
+    expect(bookPublisher({}, undefined)).toBeUndefined();
+  });
+});
+
+describe('languageName', () => {
+  it('names a language code where the platform can, else keeps the value', () => {
+    expect(languageName('English', 'en')).toBe('English');
+    expect(languageName(' fr ', 'en')).toBe('French');
+    expect(languageName('eng', 'en')).toBe('English');
+    // Capitalised as a row value ("allemand" in running French text).
+    expect(languageName('de', 'fr')).toBe('Allemand');
+    expect(languageName('zz-not-a-code!', 'en')).toBe('zz-not-a-code!');
+  });
+
+  it('keeps the value without Intl.DisplayNames (Hermes may lack it)', () => {
+    const intl = Intl as { DisplayNames?: unknown };
+    const saved = intl.DisplayNames;
+    intl.DisplayNames = undefined;
+    try {
+      expect(languageName('en', 'en')).toBe('en');
+    } finally {
+      intl.DisplayNames = saved;
+    }
   });
 });
