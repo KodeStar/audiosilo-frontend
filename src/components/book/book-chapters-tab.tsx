@@ -135,18 +135,12 @@ export function BookChaptersTab({
           />
         ))}
       </View>
-      {source === 'community' ? (
+      {source ? (
         <SourceLine
-          testID="book-chapters-community"
-          label={t('book.chapters.community')}
+          testID={`book-chapters-${source}`}
+          label={t(`book.chapters.${source}`)}
           className="px-2.5"
-        />
-      ) : source === 'generated' ? (
-        <SourceLine
-          testID="book-chapters-generated"
-          label={t('book.chapters.generated')}
-          className="px-2.5"
-          server
+          server={source === 'generated'}
         />
       ) : null}
     </View>
