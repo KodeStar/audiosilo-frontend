@@ -1171,7 +1171,8 @@
       "heard": "escuchado",
       "hasBookmark": "tiene un marcador",
       "startsAt": "empieza en {{time}}",
-      "community": "Capítulos de la base de datos de la comunidad de AudioSilo"
+      "community": "Capítulos de la base de datos de la comunidad de AudioSilo",
+      "generated": "Capítulos encontrados en la narración en este servidor"
     },
     "details": {
       "title": "Detalles",
@@ -1273,6 +1274,7 @@
       "inspecting": "Revisando los archivos",
       "splitting": "Preparando el audio",
       "asr": "Transcribiendo",
+      "chapter_detecting": "Buscando los capítulos en la narración",
       "sanitizing": "Limpiando la transcripción",
       "qa_sweep": "Revisando la transcripción",
       "qa_adjudicating": "Revisando pasajes dudosos",
@@ -1304,6 +1306,7 @@
       "worker": "Esperando a que se conecte un worker de transcripción.",
       "mediaTools": "Al Bridge le faltan sus herramientas de audio.",
       "chapters": "No se pudieron emparejar los capítulos con seguridad.",
+      "chaptersNotDetected": "El Bridge no pudo encontrar los capítulos en la narración.",
       "ebook": "No se pudo leer el libro electrónico.",
       "core": "El libro necesita antes una ficha en AudioSilo Meta.",
       "contrib": "Contribuir no está configurado en el Bridge.",

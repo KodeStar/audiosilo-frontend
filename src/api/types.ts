@@ -305,6 +305,10 @@ export type Chapter = {
   book_offset: number;
 };
 
+/** Where a book's chapters come from when they are not the files' own (see
+ * Book.chapters_source): a community recording's list, or a Bridge's detection. */
+export type ChaptersSource = 'community' | 'generated';
+
 export type Book = {
   id: number;
   library_id: number;
@@ -390,10 +394,11 @@ export type Book = {
    * Absent on older servers. */
   cover_version?: string;
   /** `"community"` when the book's chapters are a community recording's list (from
-   * the metadata service) fitted onto its audio, rather than the files' own. Only
-   * GET /libraries/{id}/item sends it; absent means the files' own chapters, and on
-   * older servers. */
-  chapters_source?: 'community';
+   * the metadata service) fitted onto its audio, rather than the files' own;
+   * `"generated"` when a Bridge on this server found them in the narration of a book
+   * with no chapters of its own (Bridge Phase 1d). Only GET /libraries/{id}/item sends
+   * it; absent means the files' own chapters, and on older servers. */
+  chapters_source?: ChaptersSource;
   /** True when the book's `.audiosilo/` folder holds characters, recaps or a description a
    * Bridge generated on this server (Bridge Phases 1a and 1c; list, search, item, recent
    * and the next book's `book` send it). Absent otherwise, and on older servers. */
@@ -523,9 +528,10 @@ export type ChaptersResponse = {
   /** Whether the codec plays natively in browsers (see Book.direct_playable). */
   direct_playable?: boolean;
   /** `"community"` when `chapters` are a community recording's list fitted onto the
-   * book's audio (see Book.chapters_source); absent means the files' own chapters,
-   * and on older servers. The chapters themselves have the same shape either way. */
-  chapters_source?: 'community';
+   * book's audio, `"generated"` when a Bridge on this server found them in the
+   * narration (see Book.chapters_source); absent means the files' own chapters, and on
+   * older servers. The chapters themselves have the same shape either way. */
+  chapters_source?: ChaptersSource;
 };
 
 // --- Enriched metadata (community meta service, via /libraries/{id}/meta) -----

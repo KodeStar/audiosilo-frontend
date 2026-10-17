@@ -8,7 +8,12 @@ import {
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
 } from '@/api/client';
-import type { AddMemberBody, BridgeEstimate, SidecarsGenerateResult } from '@/api/types';
+import type {
+  AddMemberBody,
+  BridgeEstimate,
+  ChaptersSource,
+  SidecarsGenerateResult,
+} from '@/api/types';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -577,6 +582,22 @@ describe('ApiClient', () => {
     expect(data.chapters[0].title).toBe('Chaos');
     const book = await c.item(2, 'Myths/Mythos');
     expect(book.chapters_source).toBe('community');
+  });
+
+  // Bridge Phase 1d: chapters a Bridge found in the narration of a chapterless book.
+  it('passes chapters_source "generated" through on the chapters and item envelopes', async () => {
+    installFetch((url) => ({
+      status: 200,
+      body: url.includes('/chapters')
+        ? { ...chaptersBody, chapters_source: 'generated' }
+        : { id: 9, rel_path: 'Myths/Mythos', chapters_source: 'generated' },
+    }));
+    const c = new ApiClient('https://h', 'tok');
+    const data = await c.chapters(2, 'Myths/Mythos');
+    const source: ChaptersSource | undefined = data.chapters_source;
+    expect(source).toBe('generated');
+    const book = await c.item(2, 'Myths/Mythos');
+    expect(book.chapters_source).toBe('generated');
   });
 
   it('leaves chapters_source undefined when the server sends none (files or older server)', async () => {

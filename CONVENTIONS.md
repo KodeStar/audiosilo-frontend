@@ -417,7 +417,7 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   recaps first, `queueOrder` / `queueInOrder`, stopping at the first refusal; Generate held
   back with `blockedReason` while the library isn't writable or the agent is KNOWN not ready),
   `GenerateStatus` (polls while its screen is focused: phase, stage words `bridge.stage.*`
-  from `stageOf`, counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
+  from `stageOf` (Phase 1d adds `chapter_detecting` and the park `chapters_not_detected`), counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
   Cancel, or "Try again", re-queueing, once it failed) and `GenerateOffer` (button or status under the companion's empty Who's
   who / Story so far). The book page wires `useGenerate` into `HeroActions` with
   `GenerateStatus` under the actions. Costs format with `formatUsd` (`src/lib/format.ts`).
@@ -460,7 +460,10 @@ the playing book; the rows' place is `rowAt`, previous/next for a book not playi
 own `nextSegmentStart`/`previousSegmentStart`) then the rows (`chapterList`: the real chapters at their corrected starts, a
 long chapterless file's 30-minute parts as the player makes them, else the files), ending with a
 quiet globe caption ("Chapters from the AudioSilo community database") only when the chapters
-answer says `chapters_source: "community"` and the rows are those chapters (not parts or files). Bookmarks and
+answer says `chapters_source: "community"` and the rows are those chapters (not parts or files),
+or a server-glyph caption ("Chapters found in the narration on this server") for
+`chapters_source: "generated"` (Bridge Phase 1d: a Bridge found them in a chapterless book's
+narration; same rule). Bookmarks and
 Notes are the shared `AnnotationSection` (below), History is `HistorySection` over the shared
 listening sessions. Details (`book-details-tab.tsx`): a `Notice` (`ui/notice.tsx`) saying direct
 play / converted for this browser (web, `useNeedsWebTranscode`) / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),

@@ -131,6 +131,9 @@ const STAGES = [
   'inspecting',
   'splitting',
   'asr',
+  // Bridge Phase 1d: a book with no chapter markers, transcribed in windows, gets its
+  // chapters from the narration before the transcript is cleaned up.
+  'chapter_detecting',
   'sanitizing',
   'qa_sweep',
   'qa_adjudicating',
@@ -184,6 +187,8 @@ const PARK_REASON: Readonly<Record<string, ParkReason>> = {
   markers_not_confident: 'chapters',
   ebook_chapters_not_confident: 'chapters',
   ebook_no_chapters: 'chapters',
+  // Bridge Phase 1d: no chapter headings were heard with confidence in the narration.
+  chapters_not_detected: 'chaptersNotDetected',
   ebook_unreadable: 'ebook',
   core_needed: 'core',
   core_pending: 'core',
@@ -206,6 +211,7 @@ export type ParkReason =
   | 'worker'
   | 'mediaTools'
   | 'chapters'
+  | 'chaptersNotDetected'
   | 'ebook'
   | 'core'
   | 'contrib'

@@ -72,6 +72,7 @@ describe('stage labels', () => {
     'inspecting',
     'splitting',
     'asr',
+    'chapter_detecting',
     'sanitizing',
     'qa_sweep',
     'qa_adjudicating',
@@ -126,6 +127,7 @@ describe('parkReason', () => {
     // The Bridge's own park when the library stops being writable mid-job.
     expect(parkReason('library_not_writable')).toBe('notWritable');
     expect(parkReason('ebook_no_chapters')).toBe('chapters');
+    expect(parkReason('chapters_not_detected')).toBe('chaptersNotDetected');
     expect(parkReason('qa_no_converge')).toBe('review');
     expect(parkReason('core_needed')).toBe('core');
     expect(parkReason('a_new_code')).toBe('other');

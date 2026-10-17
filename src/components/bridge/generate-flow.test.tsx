@@ -305,6 +305,29 @@ describe('the status while a job runs', () => {
     expect(screen.getByText('Open the console to fix it.')).toBeTruthy();
   });
 
+  // Bridge Phase 1d: a book with no chapter markers gets its chapters from the narration.
+  it('words the chapter detection stage', async () => {
+    mockBridgeJobs.mockResolvedValue([bridgeJob({ progress: { stage: 'chapter_detecting' } })]);
+    await mount();
+    expect(await screen.findByText('Finding the chapters in the narration')).toBeTruthy();
+  });
+
+  // No chapter headings were heard with confidence: a person decides what to do.
+  it('says the Bridge could not find the chapters, and to open the console', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: { stage: 'chapter_detecting', park: { code: 'chapters_not_detected' } },
+      }),
+    ]);
+    await mount();
+    expect(await screen.findByText('Generating is paused')).toBeTruthy();
+    expect(
+      screen.getByText("The Bridge couldn't find the chapters in the narration."),
+    ).toBeTruthy();
+    expect(screen.getByText('Open the console to fix it.')).toBeTruthy();
+  });
+
   // The Bridge takes a book waiting for a worker on once one connects: nothing to fix.
   it('says a job waiting for a worker carries on by itself', async () => {
     mockBridgeJobs.mockResolvedValue([
