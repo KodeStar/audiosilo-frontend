@@ -544,6 +544,54 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
   });
 
+  // Bridge 1c: an unmatched book whose only generated content is its description.
+  it("shows an unmatched book's generated description in About, marked", async () => {
+    mockCaps = { metadata: true };
+    mockBook = { ...BOOK, generated: true, description: undefined };
+    mockMeta = {
+      matched: false,
+      work: {
+        id: '',
+        title: 'The Way of Kings',
+        authors: [],
+        language: '',
+        generated_description: { text: 'A storm-wracked world, told from its opening.' },
+        generated: { description: true },
+      },
+    };
+    await mountAt('desktop');
+    expect(screen.getByText('A storm-wracked world, told from its opening.')).toBeTruthy();
+    expect(screen.getByTestId('about-generated-mark')).toBeTruthy();
+    // A description alone opens no Characters or Recaps tab.
+    expect(screen.queryByTestId('book-tab-characters')).toBeNull();
+    expect(screen.queryByTestId('book-tab-recaps')).toBeNull();
+    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
+  });
+
+  // One Bridge run writes all three: About's chip and the open panel's are told apart.
+  it("marks About's generated description and the generated panel each on its own", async () => {
+    mockCaps = { metadata: true };
+    mockBook = { ...BOOK, generated: true, description: undefined };
+    mockMeta = {
+      matched: false,
+      work: {
+        id: '',
+        title: 'The Way of Kings',
+        authors: [],
+        language: '',
+        characters,
+        recaps,
+        generated_description: { text: 'A storm-wracked world, told from its opening.' },
+        generated: { characters: true, recaps: true, description: true },
+      },
+    };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('book-tab-characters'));
+    expect(screen.getByTestId('about-generated-mark')).toBeTruthy();
+    expect(screen.getByTestId('generated-mark')).toBeTruthy();
+    expect(screen.getAllByText('Generated on this server')).toHaveLength(2);
+  });
+
   it('marks only the dimension that was generated', async () => {
     mockCaps = { metadata: true };
     mockBook = { ...BOOK, asin: 'B0' };

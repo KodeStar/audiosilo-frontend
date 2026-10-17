@@ -1,4 +1,3 @@
-import type { MatchedBookMeta } from '@/components/library/book-meta';
 import i18n from '@/i18n';
 
 import {
@@ -76,85 +75,118 @@ describe('playbackMode', () => {
 
 describe('aboutContent', () => {
   const t = i18n.t.bind(i18n);
-  const meta = {
-    matched: true,
-    work: { id: 'w', title: 'W', authors: [], language: 'en', description: ' The work. ' },
-    web_url: 'https://m/w',
-  } as MatchedBookMeta;
+  const work = { id: 'w', title: 'W', authors: [], language: 'en', description: ' The work. ' };
   const book = { title: 'W', author: 'A', narrator: 'N' };
+  // A description generated on this server (Bridge 1c), as the server sends it.
+  const generated = {
+    generated: { description: true },
+    generated_description: { text: ' Written here. ' },
+  };
 
-  it('prefers the community text, then the server, then the work', () => {
-    const shared = {
-      ...meta,
-      work: { ...meta.work, community_description: { text: ' Community. ' } },
-    };
-    expect(aboutContent({ ...book, description: 'Server.' }, shared, t)).toMatchObject({
+  // Each work carries a generated description too: it never outranks the others.
+  it('prefers the community text, then the server, then the work, then the generated one', () => {
+    const shared = { ...work, ...generated, community_description: { text: ' Community. ' } };
+    expect(aboutContent({ ...book, description: 'Server.' }, shared, undefined, t)).toMatchObject({
       text: 'Community.',
-      community: true,
+      source: 'community',
     });
-    expect(aboutContent({ ...book, description: 'Server.' }, meta, t)).toMatchObject({
-      text: 'Server.',
-      community: false,
+    // Also where nothing else would have stood in the generated text's way.
+    expect(aboutContent(book, { ...shared, description: undefined }, undefined, t)).toMatchObject({
+      text: 'Community.',
+      source: 'community',
     });
-    expect(aboutContent({ ...book, description: '  ' }, meta, t).text).toBe('The work.');
+    expect(
+      aboutContent({ ...book, description: 'Server.' }, { ...work, ...generated }, undefined, t),
+    ).toMatchObject({ text: 'Server.', source: 'own' });
+    expect(
+      aboutContent({ ...book, description: '  ' }, { ...work, ...generated }, undefined, t),
+    ).toMatchObject({ text: 'The work.', source: 'own' });
+  });
+
+  describe('a description generated on this server (Bridge 1c)', () => {
+    it('leads when nothing else describes the book, matched or not', () => {
+      expect(
+        aboutContent(book, { ...work, ...generated, description: undefined }, undefined, t),
+      ).toMatchObject({ text: 'Written here.', source: 'generated' });
+      // An unmatched book: only the work its server generated.
+      const unmatched = { id: '', title: 'W', authors: [], language: '', ...generated };
+      expect(aboutContent(book, unmatched, undefined, t)).toMatchObject({
+        text: 'Written here.',
+        source: 'generated',
+      });
+    });
+
+    it('needs the generated flag and a non-blank text, else the fallback sentence', () => {
+      const fallback = { text: 'W by A, read by N.', source: 'fallback' };
+      const noFlag = { generated: { characters: true }, generated_description: { text: 'X.' } };
+      expect(aboutContent(book, noFlag, undefined, t)).toMatchObject(fallback);
+      const blank = { generated: { description: true }, generated_description: { text: '  ' } };
+      expect(aboutContent(book, blank, undefined, t)).toMatchObject(fallback);
+      const missing = { generated: { description: true } };
+      expect(aboutContent(book, missing, undefined, t)).toMatchObject(fallback);
+      expect(aboutContent(book, undefined, undefined, t)).toMatchObject(fallback);
+    });
   });
 
   it('names who wrote and reads an undescribed book, so it still reads complete', () => {
-    expect(aboutContent(book, undefined, t).text).toBe('W by A, read by N.');
-    expect(aboutContent({ ...book, narrator: '' }, undefined, t).text).toBe('W by A.');
-    expect(aboutContent({ title: 'W', author: '', narrator: '' }, undefined, t).text).toBe(
-      'No description yet.',
-    );
+    expect(aboutContent(book, undefined, undefined, t).text).toBe('W by A, read by N.');
+    expect(aboutContent({ ...book, narrator: '' }, undefined, undefined, t).text).toBe('W by A.');
+    expect(
+      aboutContent({ title: 'W', author: '', narrator: '' }, undefined, undefined, t).text,
+    ).toBe('No description yet.');
   });
 
   it('lists only the production facts it knows', () => {
-    const full = {
-      ...meta,
-      work: { ...meta.work, first_published: '1937' },
-      recording: { id: 'r', narrators: [], publisher: 'P', release_date: '2012', abridged: false },
-    } as MatchedBookMeta;
+    const recording = { publisher: 'P', release_date: '2012', abridged: false };
     // The community's abridged false is also its "not recorded": no row.
-    expect(aboutContent({ ...book, published: '2010' }, full, t).details).toEqual([
+    expect(
+      aboutContent(
+        { ...book, published: '2010' },
+        { ...work, first_published: '1937' },
+        recording,
+        t,
+      ).details,
+    ).toEqual([
       { label: 'Publisher', value: 'P' },
       { label: 'Released', value: '2012' },
       { label: 'First published', value: '1937' },
     ]);
-    expect(aboutContent({ ...book, published: '2010' }, undefined, t).details).toEqual([
+    expect(aboutContent({ ...book, published: '2010' }, undefined, undefined, t).details).toEqual([
       { label: 'Released', value: '2010' },
     ]);
-    expect(aboutContent(book, undefined, t).details).toEqual([]);
+    expect(aboutContent(book, undefined, undefined, t).details).toEqual([]);
   });
 
   it("lists the server's publisher, language and abridged, before the community's", () => {
-    const community = {
-      ...meta,
-      recording: { id: 'r', narrators: [], publisher: 'Community P', abridged: true },
-    } as MatchedBookMeta;
+    const recording = { publisher: 'Community P', abridged: true };
     const own = { ...book, publisher: ' Server P ', language: 'English', abridged: false };
-    expect(aboutContent(own, community, t).details).toEqual([
+    expect(aboutContent(own, work, recording, t).details).toEqual([
       { label: 'Publisher', value: 'Server P' },
       { label: 'Language', value: 'English' },
       { label: 'Abridged', value: 'No' },
     ]);
     // Abridged is three-state: true, false, and absent (unknown, so no row at all).
-    expect(aboutContent({ ...book, abridged: true }, undefined, t).details).toEqual([
+    expect(aboutContent({ ...book, abridged: true }, undefined, undefined, t).details).toEqual([
       { label: 'Abridged', value: 'Yes' },
     ]);
-    expect(aboutContent({ ...book, abridged: false }, undefined, t).details).toEqual([
+    expect(aboutContent({ ...book, abridged: false }, undefined, undefined, t).details).toEqual([
       { label: 'Abridged', value: 'No' },
     ]);
-    expect(aboutContent({ ...book, abridged: undefined }, undefined, t).details).toEqual([]);
+    expect(aboutContent({ ...book, abridged: undefined }, undefined, undefined, t).details).toEqual(
+      [],
+    );
     // Unknown on the server: the community's answer stands.
-    expect(aboutContent({ ...book, publisher: '  ' }, community, t).details).toEqual([
+    expect(aboutContent({ ...book, publisher: '  ' }, work, recording, t).details).toEqual([
       { label: 'Publisher', value: 'Community P' },
       { label: 'Abridged', value: 'Yes' },
     ]);
   });
 
   it("carries the book's genres, then its tags, only the kinds it has", () => {
-    expect(aboutContent(book, undefined, t).labels).toEqual([]);
+    expect(aboutContent(book, undefined, undefined, t).labels).toEqual([]);
     expect(
-      aboutContent({ ...book, genres: ['Fantasy'], tags: ['to-read'] }, undefined, t).labels,
+      aboutContent({ ...book, genres: ['Fantasy'], tags: ['to-read'] }, undefined, undefined, t)
+        .labels,
     ).toEqual([
       { kind: 'genre', names: ['Fantasy'] },
       { kind: 'tag', names: ['to-read'] },

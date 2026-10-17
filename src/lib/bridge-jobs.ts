@@ -1,7 +1,12 @@
 import type { BridgeJob } from '@/api/types';
 
-/** The Bridge job kind that generates a book's characters and recaps. */
+/** The Bridge job kind that generates a book's characters and recaps (and, from Bridge
+ * Phase 1c, its description). */
 export const SIDECARS_GENERATE = 'sidecars.generate';
+
+/** The Bridge job kind that writes a book's description alone, from the notes a generate
+ * run kept (Bridge Phase 1c). The console queues it, never the player. */
+export const SIDECARS_DESCRIBE = 'sidecars.describe';
 
 /** How often a book's jobs are asked again while one of them is being worked on
  * (claimed or running) and its surface is on screen: the jobs take minutes to hours, and
@@ -54,11 +59,15 @@ export function bridgePollInterval(
   return interval;
 }
 
-/** A book's newest `sidecars.generate` job that is `done`: its files were written and
- * the book rescanned, so what the book's answers say about it may be stale. */
+/** A book's newest `done` job that wrote its `.audiosilo/` files (`sidecars.generate`, or
+ * the console's `sidecars.describe`): the book was rescanned, so what the book's answers
+ * say about it may be stale. */
 export function latestDone(jobs: readonly BridgeJob[] | undefined): BridgeJob | undefined {
-  return latestJob(
-    jobs?.filter((j) => j.state === 'done'),
-    SIDECARS_GENERATE,
-  );
+  let latest: BridgeJob | undefined;
+  for (const j of jobs ?? []) {
+    if (j.state !== 'done' || (j.kind !== SIDECARS_GENERATE && j.kind !== SIDECARS_DESCRIBE))
+      continue;
+    if (!latest || j.id > latest.id) latest = j;
+  }
+  return latest;
 }

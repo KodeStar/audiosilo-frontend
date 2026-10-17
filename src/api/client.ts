@@ -630,10 +630,10 @@ export class ApiClient {
    * server-side from its asin/isbn against the community metadata service. Only call
    * this when the server advertises the `metadata` capability. Returns
    * `{ matched: false }` when the book has no ids or no upstream match, with a `work`
-   * when the book has characters or recaps generated on this server (then it is asked
-   * for a book with no ids too, `metaEnabledFor`); throws an `ApiError` (502) when the
-   * meta service is unreachable and nothing was generated, so the caller can render
-   * nothing rather than block the page.
+   * when the book has characters, recaps or a description generated on this server
+   * (then it is asked for a book with no ids too, `metaEnabledFor`); throws an
+   * `ApiError` (502) when the meta service is unreachable and nothing was generated, so
+   * the caller can render nothing rather than block the page.
    *
    * `opts` needs the `meta_bundle` capability (an older server ignores both and
    * sends the full envelope, without saying so): `includePrevious` adds `previous`

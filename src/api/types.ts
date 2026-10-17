@@ -394,9 +394,9 @@ export type Book = {
    * GET /libraries/{id}/item sends it; absent means the files' own chapters, and on
    * older servers. */
   chapters_source?: 'community';
-  /** True when the book's `.audiosilo/` folder holds characters or recaps a Bridge
-   * generated on this server (Bridge Phase 1a; list, search, item, recent and the next
-   * book's `book` send it). Absent otherwise, and on older servers. */
+  /** True when the book's `.audiosilo/` folder holds characters, recaps or a description a
+   * Bridge generated on this server (Bridge Phases 1a and 1c; list, search, item, recent
+   * and the next book's `book` send it). Absent otherwise, and on older servers. */
   generated?: boolean;
 };
 
@@ -597,17 +597,32 @@ export type BookMetaWork = {
    * `community_description`); the UI must show it beside that content. The server
    * writes the legal text - render it, never compose it. Absent on older servers. */
   attribution?: BookMetaAttribution;
-  /** Which of `characters` and `recaps` came from files the Bridge generated on this
-   * server (the book's `.audiosilo/` folder) rather than the community: community content
-   * wins per dimension, so a dimension is generated only where the community has none.
-   * Omitted when nothing did (and on older servers). Generated content carries no
-   * `attribution` of its own. */
+  /** Which of `characters`, `recaps` and the description (`generated_description`) came
+   * from files the Bridge generated on this server (the book's `.audiosilo/` folder) rather
+   * than the community: community content wins per dimension, so a dimension is generated
+   * only where the community has none. Omitted when nothing did (and on older servers).
+   * Generated content carries no `attribution` of its own. */
   generated?: BookMetaGenerated;
+  /** A description the Bridge wrote on this server in its own words (the book's
+   * `.audiosilo/description.json`; Bridge Phase 1c), spoiler-free by contract. Only sent
+   * when the community work has no `community_description`, and never CC BY-SA: it
+   * carries no `attribution`. `generated.description` says it is there. Absent on older
+   * servers. */
+  generated_description?: BookMetaGeneratedDescription;
 };
 
 /** What of a work came from this server's own generated files (see
- * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. */
-export type BookMetaGenerated = { characters?: boolean; recaps?: boolean; generated_at?: string };
+ * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. `description` is Bridge
+ * Phase 1c's (absent on a 1a/1b server). */
+export type BookMetaGenerated = {
+  characters?: boolean;
+  recaps?: boolean;
+  description?: boolean;
+  generated_at?: string;
+};
+
+/** A description generated on this server (see {@link BookMetaWork.generated_description}). */
+export type BookMetaGeneratedDescription = { text: string };
 
 /** A community-written work description (CC BY-SA). `license` names the licence
  * when the entry states one. */
@@ -695,9 +710,9 @@ export type BookMetaSeries = {
 
 /** Response of GET /libraries/{id}/meta. A discriminated union on `matched`:
  * `matched:false` when the book has no asin/isbn or the service found no match. An
- * unmatched book whose characters or recaps were generated on this server (Bridge Phase
- * 1a) carries them in `work` (`id` empty, `title` the book's own, `authors` empty,
- * `language` empty, and its `generated`). Older servers never send it. */
+ * unmatched book whose characters, recaps or description were generated on this server
+ * (Bridge Phases 1a and 1c) carries them in `work` (`id` empty, `title` the book's own,
+ * `authors` empty, `language` empty, and its `generated`). Older servers never send it. */
 export type BookMeta =
   | { matched: false; work?: BookMetaWork }
   | {
@@ -1304,6 +1319,12 @@ export type SidecarsGenerateResult = {
   work_id?: string;
   /** Only with `contribute: issue`: where each dimension was offered. */
   contributed?: { characters?: string; recaps?: string };
+  /** Whether the run also wrote the book's `description.json` (Bridge Phase 1c). Absent
+   * from an older Bridge. */
+  description?: boolean;
+  /** Why no description was written, in a few plain words; only when `description` is
+   * false. */
+  description_error?: string;
 };
 
 /** An earlier book of the same series, in the same library, with no recaps yet (the
@@ -1320,8 +1341,10 @@ export type BridgeEstimateBook = {
   agent_cost_usd: number | null;
 };
 
-/** What a book already has, per source (the estimate's `has`). */
-export type BridgeContentFlags = { characters: boolean; recaps: boolean };
+/** What a book already has, per source (the estimate's `has`). `description` (Bridge
+ * Phase 1c): the community's `community_description`, or one generated here; absent on
+ * older servers. */
+export type BridgeContentFlags = { characters: boolean; recaps: boolean; description?: boolean };
 
 /** Response of GET /admin/bridge/estimate (the confirmation before generating). */
 export type BridgeEstimate = {
@@ -1342,12 +1365,18 @@ export type BridgeEstimate = {
   subscription: boolean;
   /** The agent container answers and has a credential. */
   agent_ready: boolean;
+  /** The Bridge can offer the results to the community (a job may ask for `contribute:
+   * issue`); the player never does. Absent on older servers. */
+  can_contribute?: boolean;
   /** The Bridge has sent its figures: without them `agent_ready`, `subscription` and the
    * costs are only defaults, so a false `agent_ready` means "not known", not "not ready".
    * Absent on servers before it (read as not known). */
   figures?: boolean;
   /** The library is mapped on the Bridge and writable there. */
   writable: boolean;
+  /** The Bridge is online and runs `sidecars.describe` (a description from the notes it
+   * kept, Bridge Phase 1c); the player queues none. Absent on older servers. */
+  can_describe?: boolean;
   /** `community_unknown`: the community couldn't be asked just now, so `community` is no
    * answer (never "none"); omitted otherwise. */
   has: { community: BridgeContentFlags; local: BridgeContentFlags; community_unknown?: boolean };

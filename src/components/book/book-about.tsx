@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
-import type { Book } from '@/api/types';
+import type { Book, BookMetaWork } from '@/api/types';
 import {
   descriptionIsLong,
   DisclosureChevron,
+  GeneratedChip,
   type MatchedBookMeta,
 } from '@/components/library/book-meta';
 import { libraryBooksHref } from '@/components/library/books/books-view';
@@ -53,31 +54,43 @@ export function openLabelBooks(
  * The book page's About card (in the aside): the description (`aboutContent`, collapsed
  * past six lines; an undescribed book still reads complete), the production facts the
  * community or the server knows, and, beside community text, the server's attribution
- * line with "Improve this" (the work's page, opened in the browser). A matched book
- * without community text keeps the quiet "View on AudioSilo Meta" link. Then the book's
- * genres and tags as chips under their names, each opening the Library on it
- * (`onOpenLabel`). Nothing in it is pink.
+ * line with "Improve this" (the work's page, opened in the browser). A description a
+ * Bridge generated on this server wears the "Generated on this server" chip under the
+ * eyebrow and never the credit or "Improve this". A matched book without community text
+ * keeps the quiet "View on AudioSilo Meta" link. Then the book's genres and tags as
+ * chips under their names, each opening the Library on it (`onOpenLabel`). Nothing in it
+ * is pink.
  */
 export function BookAbout({
   book,
   meta,
+  work,
   onOpenLabel,
 }: {
   book: Book;
+  /** The matched envelope (`matchedMeta`): the recording's facts and the link to
+   * AudioSilo Meta need a real community match. */
   meta?: MatchedBookMeta;
+  /** The work every work-level field comes from (`bookMetaWork`): the matched work, or an
+   * unmatched book's generated one. Required, with no fallback to `meta`'s work: a host
+   * that left it out would drop an unmatched book's generated description, and a default
+   * here made the React Compiler skip this component. */
+  work: BookMetaWork | undefined;
   onOpenLabel: (kind: LabelKind, name: string) => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const [expanded, setExpanded] = useState(false);
-  const { text, community, details, labels } = aboutContent(book, meta, t);
+  const { text, source, details, labels } = aboutContent(book, work, meta?.recording, t);
   const canCollapse = descriptionIsLong(text);
-  const attribution = community ? meta?.work.attribution : undefined;
+  // The credit comes from the same work as the text it credits.
+  const attribution = source === 'community' ? work?.attribution : undefined;
   const improveUrl = attribution?.source_url || meta?.web_url;
 
   return (
     <Card className="gap-2.5">
       <Text variant="eyebrow">{t('book.meta.about')}</Text>
+      {source === 'generated' ? <GeneratedChip testID="about-generated-mark" /> : null}
       <View className="gap-1">
         <Text
           className="text-[15px] leading-6 text-foreground"

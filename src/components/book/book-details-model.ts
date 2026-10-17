@@ -1,7 +1,12 @@
 import type { TFunction } from 'i18next';
 
-import type { Book, BookFile, BookMetaRecording, ChaptersResponse } from '@/api/types';
-import type { MatchedBookMeta } from '@/components/library/book-meta';
+import type {
+  Book,
+  BookFile,
+  BookMetaRecording,
+  BookMetaWork,
+  ChaptersResponse,
+} from '@/api/types';
 import { getLocale } from '@/i18n/locale';
 import { bitrateKbps } from '@/lib/format';
 import { bookLabels, LABEL_KINDS, type LabelKind } from '@/lib/labels';
@@ -76,12 +81,19 @@ export function playbackMode(input: { downloaded: boolean; transcoded: boolean }
 /** A book's genres or tags as the About card shows them: the names, one per label. */
 export type LabelGroup = { kind: LabelKind; names: string[] };
 
+/** Where the About card's text came from (`aboutContent`), in the order it is picked: the
+ * community's description (CC BY-SA, which needs the attribution beside it), the book's
+ * own or its work's core description, the description a Bridge generated on this server
+ * (Bridge Phase 1c: the "Generated on this server" chip, never the community's credit),
+ * else the sentence naming who wrote and reads the book. */
+export type AboutSource = 'community' | 'own' | 'generated' | 'fallback';
+
 /** What the About card says (`aboutContent`). */
 export type AboutContent = {
   /** Never empty: an undescribed book still reads complete. */
   text: string;
-  /** The text is the community's (CC BY-SA), which needs the attribution beside it. */
-  community: boolean;
+  /** Where `text` came from. */
+  source: AboutSource;
   /** The production facts the community or the server knows, in words. */
   details: { label: string; value: string }[];
   /** The book's genres, then its tags, each kind only when it has some (an older
@@ -125,12 +137,29 @@ export function bookPublisher(
   return book.publisher?.trim() || recording?.publisher;
 }
 
+/** The About text of a book nothing describes: who wrote it and who reads it, so it
+ * still reads complete. */
+function undescribed(book: Pick<Book, 'title' | 'author' | 'narrator'>, t: TFunction): string {
+  if (book.author && book.narrator)
+    return t('book.about.fallbackBoth', {
+      title: book.title,
+      author: book.author,
+      narrator: book.narrator,
+    });
+  if (book.author)
+    return t('book.about.fallbackAuthor', { title: book.title, author: book.author });
+  return t('book.about.none');
+}
+
 /**
  * The About card's content: the community's description, else the server's own (the
- * admin-edited value), else the work's core description, else a sentence naming who
- * wrote and reads the book; then the production facts (publisher, release, first
- * published, language, abridged), each only when known, the server's own value before
- * the community's; then the book's genres and tags.
+ * admin-edited value), else the work's core description, else the description a Bridge
+ * generated on this server, else a sentence naming who wrote and reads the book (the
+ * order is `AboutSource`'s, picked once); then the production facts (publisher, release,
+ * first published, language, abridged), each only when known, the server's own value
+ * before the community's; then the book's genres and tags. Every work-level field is
+ * read from `work` (the `bookMetaWork` value: the matched work, or an unmatched book's
+ * generated one); `recording`, the match's, gives the rest.
  */
 export function aboutContent(
   book: Pick<
@@ -146,31 +175,38 @@ export function aboutContent(
     | 'genres'
     | 'tags'
   >,
-  meta: MatchedBookMeta | undefined,
+  work:
+    | Pick<
+        BookMetaWork,
+        | 'community_description'
+        | 'description'
+        | 'first_published'
+        | 'generated'
+        | 'generated_description'
+      >
+    | undefined,
+  recording: Pick<BookMetaRecording, 'release_date' | 'publisher' | 'abridged'> | undefined,
   t: TFunction,
 ): AboutContent {
-  const shared = meta?.work.community_description?.text?.trim();
-  const own = book.description?.trim() || meta?.work.description?.trim();
-  const text =
-    shared ||
-    own ||
-    (book.author && book.narrator
-      ? t('book.about.fallbackBoth', {
-          title: book.title,
-          author: book.author,
-          narrator: book.narrator,
-        })
-      : book.author
-        ? t('book.about.fallbackAuthor', { title: book.title, author: book.author })
-        : t('book.about.none'));
-  const recording = meta?.recording;
+  const shared = work?.community_description?.text?.trim();
+  const own = book.description?.trim() || work?.description?.trim();
+  const generated = work?.generated?.description
+    ? work.generated_description?.text?.trim()
+    : undefined;
+  const [source, text]: [AboutSource, string] = shared
+    ? ['community', shared]
+    : own
+      ? ['own', own]
+      : generated
+        ? ['generated', generated]
+        : ['fallback', undescribed(book, t)];
   const details: AboutContent['details'] = [];
   const publisher = bookPublisher(book, recording);
   if (publisher) details.push({ label: t('book.meta.publisher'), value: publisher });
   const released = recording?.release_date || book.published;
   if (released) details.push({ label: t('book.meta.released'), value: released });
-  if (meta?.work.first_published)
-    details.push({ label: t('book.meta.firstPublished'), value: meta.work.first_published });
+  if (work?.first_published)
+    details.push({ label: t('book.meta.firstPublished'), value: work.first_published });
   const language = book.language?.trim();
   if (language) details.push({ label: t('book.meta.language'), value: languageName(language) });
   // Absent is unknown, never "No": only a value someone gave says either way. The
@@ -187,5 +223,10 @@ export function aboutContent(
       label: t('book.meta.abridged'),
       value: abridged ? t('book.about.yes') : t('book.about.no'),
     });
-  return { text, community: !!shared, details, labels: labelGroups(book) };
+  return {
+    text,
+    source,
+    details,
+    labels: labelGroups(book),
+  };
 }

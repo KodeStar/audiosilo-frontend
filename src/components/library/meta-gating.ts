@@ -35,11 +35,11 @@ export const LIVE_POSITION_BUCKET_S = 15;
 /**
  * Whether a book's `/meta` is worth asking for: its server advertises `metadata` (an
  * older server omits it, and is never asked) and the book carries an ASIN or ISBN (a
- * book with neither can never match the community) or is `generated` (characters or
- * recaps a Bridge generated on this server, which `/meta` serves: `matched:false` with a
- * `work`, Bridge Phase 1a). The one predicate for every surface that reads `/meta` (the
- * book page, the player's companion and reveal toast, Home's Now card and Previously on,
- * the end credits, the offline copy).
+ * book with neither can never match the community) or is `generated` (characters, recaps
+ * or a description a Bridge generated on this server, which `/meta` serves:
+ * `matched:false` with a `work`, Bridge Phases 1a and 1c). The one predicate for every
+ * surface that reads `/meta` (the book page, the player's companion and reveal toast,
+ * Home's Now card and Previously on, the end credits, the offline copy).
  */
 export function metaEnabledFor(
   metadata: boolean | undefined,

@@ -1290,6 +1290,7 @@
       "extracting": "Liest das E-Book",
       "chapter_mapping": "Ordnet die Kapitel des E-Books zu",
       "waiting": "Wartet, bis es an der Reihe ist",
+      "describing": "Schreibt die Beschreibung",
       "writing": "Speichert die Ergebnisse",
       "rescanning": "Aktualisiert die Bibliothek",
       "working": "Arbeitet"

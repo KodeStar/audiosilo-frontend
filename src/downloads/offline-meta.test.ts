@@ -199,6 +199,21 @@ describe('parseOfflineMeta', () => {
     });
   });
 
+  it('keeps a description generated on the server (Bridge 1c), matched or not', () => {
+    const generated = {
+      generated: { description: true },
+      generated_description: { text: 'Written here.' },
+    };
+    const matched = { ...valid, meta: envelope({ work: work('w0', generated) }) };
+    expect(parseOfflineMeta(JSON.parse(JSON.stringify(matched)))).toEqual(matched);
+    const unmatched = {
+      v: 1,
+      savedAt: 1,
+      meta: { matched: false, work: work('', { title: 'T', language: '', ...generated }) },
+    };
+    expect(parseOfflineMeta(JSON.parse(JSON.stringify(unmatched)))?.meta).toEqual(unmatched.meta);
+  });
+
   it.each([
     ['not an object', 'nope'],
     ['an array', []],
@@ -304,6 +319,21 @@ describe('seedOfflineMeta', () => {
     });
     expect(qc.getQueryData(qk.bookMeta('c1', 2, 'P'))).toEqual({ matched: false });
     expect(qc.getQueryData(qk.bookMeta('c1', 2, 'P', { includePrevious: true }))).toBeUndefined();
+  });
+
+  // Bridge 1a and 1c: what the book's server generated rides in an unmatched answer's work.
+  it('answers an unmatched book with its generated work, as it was kept', () => {
+    const kept: BookMeta = {
+      matched: false,
+      work: work('', {
+        title: 'T',
+        language: '',
+        generated: { characters: false, recaps: false, description: true },
+        generated_description: { text: 'Written here.' },
+      }),
+    };
+    seedOfflineMeta('c1', 2, 'P', { v: 1, savedAt: 1, previous: false, meta: kept, works: [] });
+    expect(qc.getQueryData(qk.bookMeta('c1', 2, 'P'))).toEqual(kept);
   });
 });
 

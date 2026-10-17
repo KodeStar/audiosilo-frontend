@@ -317,7 +317,7 @@ describe('matchedMeta', () => {
     expect(matchedMeta({ matched: false }, true)).toBeUndefined();
   });
 
-  it("stays matched-only for an unmatched book's generated work (About and rails need a real one)", () => {
+  it("stays matched-only for an unmatched book's generated work (the rails and links need a real one)", () => {
     expect(matchedMeta({ matched: false, work: generatedWork }, true)).toBeUndefined();
   });
 });
