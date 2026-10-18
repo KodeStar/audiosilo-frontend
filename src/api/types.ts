@@ -1389,6 +1389,10 @@ export type BridgeEstimate = {
   has: { community: BridgeContentFlags; local: BridgeContentFlags; community_unknown?: boolean };
   /** At most 10, reading order. */
   earlier: BridgeEstimateBook[];
-  /** The open `sidecars.generate` job for this book, if there is one. */
+  /** The open `sidecars.generate` job for this book, else (Bridge Phase 1d) the open job of
+   * another kind that refuses a new one now: a `chapters.detect` job queued or working (the
+   * server answers a generate job for the book 409 `detect_open` until it ends; the
+   * player's `blockedReason` holds Generate back for it). Its `kind` says which; absent
+   * for neither. */
   open_job?: BridgeJob;
 };

@@ -453,6 +453,7 @@ describe('book page chapters tab', () => {
     mockBook = { ...BOOK, duration: 2 * 3600 };
     mockChapters = { ...CHAPTERS, duration: 2 * 3600, chapters: [], chapters_source: 'generated' };
     await mountAt('desktop');
+    expect(screen.getByText('This book has no chapter marks')).toBeTruthy();
     expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
   });
 

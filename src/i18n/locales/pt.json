@@ -1241,6 +1241,7 @@
       "agentNotReady": "O agente de IA do Bridge não está pronto. Entre com ele pelo console do Bridge.",
       "estimateFailed": "Não foi possível obter uma estimativa do Bridge. Tente de novo daqui a pouco.",
       "unavailable": "O Bridge não oferece isto no momento.",
+      "detectOpen": "Os capítulos do livro ainda estão sendo procurados. Toque em Gerar quando terminar: a transcrição é reutilizada.",
       "confirm": "Gerar",
       "confirmMany_one": "Gerar {{count}} livro",
       "confirmMany_other": "Gerar {{count}} livros",

@@ -1241,6 +1241,7 @@
       "agentNotReady": "Der KI-Agent der Bridge ist nicht bereit. Melde ihn in der Bridge-Konsole an.",
       "estimateFailed": "Die Bridge konnte keine Schätzung liefern. Versuch es gleich noch einmal.",
       "unavailable": "Die Bridge bietet das gerade nicht an.",
+      "detectOpen": "Die Kapitel des Buchs werden noch gesucht. Tippe auf Erstellen, sobald das fertig ist: Die Transkription wird wiederverwendet.",
       "confirm": "Erstellen",
       "confirmMany_one": "{{count}} Buch erstellen",
       "confirmMany_other": "{{count}} Bücher erstellen",

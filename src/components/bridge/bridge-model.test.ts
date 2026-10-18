@@ -108,8 +108,20 @@ describe('stage labels', () => {
     expect(en.bridge.stage.contributing).not.toMatch(/AudioSilo Meta|contribut/i);
   });
 
+  // Bridge Phase 1d: a generate run saves the chapters it found long before its end; that
+  // save's steps come with an engine stage before ready and read as that stage.
+  it('words a save mid-run by the engine stage, never as saving the results', () => {
+    expect(stageOf({ step: 'writing', stage: 'chapter_detecting' })).toBe('chapter_detecting');
+    expect(stageOf({ step: 'rescanning', stage: 'sanitizing' })).toBe('sanitizing');
+    expect(stageOf({ step: 'writing', stage: 'validating' })).toBe('validating');
+    // An unknown engine stage with the step still reads as the step.
+    expect(stageOf({ step: 'writing', stage: 'teleporting' })).toBe('writing');
+  });
+
   it('reads the step first, then the engine stage, and an unknown one as Working', () => {
-    expect(stageOf({ step: 'writing', stage: 'validating' })).toBe('writing');
+    expect(stageOf({ step: 'describing', stage: 'validating' })).toBe('describing');
+    expect(stageOf({ step: 'writing', stage: 'contributing' })).toBe('writing');
+    expect(stageOf({ step: 'rescanning', stage: 'done' })).toBe('rescanning');
     expect(stageOf({ stage: 'auditing' })).toBe('auditing');
     expect(stageOf({ step: 'teleporting' })).toBe('working');
     expect(stageOf(null)).toBe('working');
@@ -317,7 +329,27 @@ describe('bridgeRefusalKey and blockedReason', () => {
     expect(bridgeRefusalKey(refusal('kind_unavailable'), 'x.fallback')).toBe(
       'bridge.generate.unavailable',
     );
+    expect(bridgeRefusalKey(refusal('detect_open'), 'x.fallback')).toBe(
+      'bridge.generate.detectOpen',
+    );
     expect(bridgeRefusalKey(new Error('offline'), 'x.fallback')).toBe('x.fallback');
+  });
+
+  // Bridge Phase 1d: while a chapters.detect job is queued or working the server refuses a
+  // generate job (409 detect_open), and its estimate names that job as `open_job`.
+  it("holds Generate back while the book's chapters are still being found", () => {
+    const detect = bridgeJob({ kind: 'chapters.detect', state: 'running' });
+    expect(
+      blockedReason({ writable: true, agent_ready: true, figures: true, open_job: detect }),
+    ).toBe('bridge.generate.detectOpen');
+    // The book's own open generate job holds nothing back here (its status shows instead).
+    expect(
+      blockedReason({ writable: true, agent_ready: true, figures: true, open_job: bridgeJob() }),
+    ).toBeNull();
+    // A library it can't write is still the first reason.
+    expect(
+      blockedReason({ writable: false, agent_ready: true, figures: true, open_job: detect }),
+    ).toBe('bridge.generate.notWritable');
   });
 
   it('holds Generate back for an unwritable library, then an agent known not ready', () => {

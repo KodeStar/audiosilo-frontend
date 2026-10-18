@@ -247,6 +247,36 @@ describe('the confirmation', () => {
     expect(await screen.findByText(/AI agent isn't ready/)).toBeTruthy();
   });
 
+  // Bridge Phase 1d: while a chapters.detect job is queued or working for the book the
+  // server refuses a generate job (409 detect_open), and the estimate names it as open_job.
+  it("holds it back while the book's chapters are still being found", async () => {
+    mockEstimate.mockResolvedValue(
+      bridgeEstimate({ open_job: bridgeJob({ kind: 'chapters.detect', state: 'running' }) }),
+    );
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-blocked')).toBeTruthy();
+    expect(screen.getByText(/chapters are still being found/)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    expect(mockQueue).not.toHaveBeenCalled();
+  });
+
+  // A detection queued after the estimate was read: the server's refusal says why.
+  it('says why when the server refuses it for a detection still open', async () => {
+    mockEstimate.mockResolvedValue(bridgeEstimate({ path: TARGET.path }));
+    mockQueue.mockRejectedValue(new ApiError(409, 'refused', 'detect_open'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-estimate')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenLastCalledWith({
+        title:
+          "The book's chapters are still being found. Generate once that has finished: it reuses the transcription.",
+      }),
+    );
+  });
+
   // A Bridge that sent no figures: its agent_ready is only a default, its transcription
   // time unknown (never "none" for the audio), and the server would queue the job.
   it('holds nothing back, and claims nothing, when the Bridge sent no figures', async () => {

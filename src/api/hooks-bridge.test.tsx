@@ -137,6 +137,47 @@ describe('useBridgeJobs', () => {
     expect(qc.getQueryState(OTHER_KEY)?.isInvalidated).toBe(false);
   });
 
+  // Bridge Phase 1d: a finished run on a chapterless book wrote the chapters it found in the
+  // narration, so the book's chapters answer (under its path, or a part path the server
+  // answered with the book) is read again, and no other book's.
+  it("reads the book's chapters again under its path and a part path, and no other book's", async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const OWN_KEY = qk.chapters('c1', 1, 'Author/Book');
+    const PART_KEY = qk.chapters('c1', 1, 'Author/Book/Disc 1');
+    const OTHER_KEY = qk.chapters('c1', 1, 'Author/Other');
+    qc.setQueryData(OWN_KEY, { path: 'Author/Book', chapters: [] });
+    qc.setQueryData(PART_KEY, { path: 'Author/Book', chapters: [] });
+    qc.setQueryData(OTHER_KEY, { path: 'Author/Other', chapters: [] });
+    mockClients.c1.bridgeJobs.mockResolvedValue([
+      bridgeJob({ state: 'done', finished_at: '2026-10-15T10:05:00Z' }),
+    ]);
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryState(OWN_KEY)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(PART_KEY)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(OTHER_KEY)?.isInvalidated).toBe(false);
+  });
+
+  // The console's chapter detection (Bridge Phase 1d) writes the book's chapters too.
+  it("reads the book's chapters and item again once a chapters.detect job is done", async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const CHAPTERS_KEY = qk.chapters('c1', 1, 'Author/Book');
+    const ITEM_KEY = qk.item('c1', 1, 'Author/Book');
+    qc.setQueryData(CHAPTERS_KEY, { path: 'Author/Book', chapters: [] });
+    qc.setQueryData(ITEM_KEY, { rel_path: 'Author/Book' });
+    mockClients.c1.bridgeJobs.mockResolvedValue([
+      bridgeJob({ kind: 'chapters.detect', state: 'done', finished_at: '2026-10-15T10:05:00Z' }),
+    ]);
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryState(CHAPTERS_KEY)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(ITEM_KEY)?.isInvalidated).toBe(true);
+  });
+
   it('reads /meta again when it sees the job turn done, whatever the clocks say', async () => {
     const { qc } = await mount(bridgeServer(), () => null);
     // The device clock runs ahead: the answer looks newer than the finish.

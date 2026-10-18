@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import type { Book, BookFile, Chapter, History, Progress } from '@/api/types';
+import type { Book, BookFile, Chapter, ChaptersSource, History, Progress } from '@/api/types';
 import { chapterIndexAt } from '@/components/home/now-card-model';
 import type { BookStatus } from '@/components/library/books/books-view';
 import { hasSaved } from '@/components/player/effects-model';
@@ -182,6 +182,22 @@ export type ListRow = {
 };
 
 export type ChapterList = { kind: ListKind; rows: ListRow[] };
+
+/** The chapter sources this build has words for, each listed once (a `Record`, so a source
+ * added to `ChaptersSource` fails to compile until it is listed here). */
+const KNOWN_CHAPTERS_SOURCES: Readonly<Record<ChaptersSource, true>> = {
+  community: true,
+  generated: true,
+};
+
+/** The chapters answer's `chapters_source` as a source this build knows, else undefined:
+ * absent (the files' own chapters, or an older server), or one a newer server names that
+ * this build has no words for (never an Object member such as `constructor`). */
+export function knownChaptersSource(source: string | undefined): ChaptersSource | undefined {
+  return source !== undefined && Object.hasOwn(KNOWN_CHAPTERS_SOURCES, source)
+    ? (source as ChaptersSource)
+    : undefined;
+}
 
 /** A file's name as the book shows it: its path inside the book's folder (a disc
  * folder stays), else its leaf. */

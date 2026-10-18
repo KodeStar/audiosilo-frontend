@@ -111,6 +111,8 @@ describe('ApiClient', () => {
     expect(apiErrorKind(new ApiError(403, 'x', 'kid_account'))).toBe('kid_account');
     // A member the admin disabled (their session or pairing): not the generic 409.
     expect(apiErrorKind(new ApiError(409, 'x', 'member_disabled'))).toBe('member_disabled');
+    // A generate job for a book whose chapters are still being found (Bridge Phase 1d).
+    expect(apiErrorKind(new ApiError(409, 'x', 'detect_open'))).toBe('detect_open');
     // A code the app doesn't know reads by its status.
     expect(apiErrorKind(new ApiError(409, 'x', 'collection_full'))).toBe('conflict');
     expect(apiErrorKind(new ApiError(429, 'too many attempts'))).toBe('too_many');

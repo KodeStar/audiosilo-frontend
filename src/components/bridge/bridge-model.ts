@@ -9,7 +9,7 @@ import type {
   SidecarsGenerateParams,
   User,
 } from '@/api/types';
-import { isOpenJob, latestJob, SIDECARS_GENERATE } from '@/lib/bridge-jobs';
+import { CHAPTERS_DETECT, isOpenJob, latestJob, SIDECARS_GENERATE } from '@/lib/bridge-jobs';
 
 // The rules behind the player's one Bridge action, "Generate characters and recaps"
 // (Bridge Phase 1a): who may see it, when it is offered, how a job's state reads and the
@@ -162,11 +162,22 @@ export type GenerateStage = (typeof STAGES)[number] | 'working';
 
 const KNOWN_STAGES: ReadonlySet<string> = new Set(STAGES);
 
+/** The Bridge's own saving steps, and the engine stages before `ready`. A generate run
+ * saves the chapters it found in the narration long before its end (Bridge Phase 1d),
+ * sending these steps with the engine's stage at the time; the save at the end sends
+ * them with the stage `done`. */
+const SAVE_STEPS: ReadonlySet<string> = new Set(['writing', 'rescanning']);
+const BEFORE_READY: ReadonlySet<string> = new Set(STAGES.slice(0, STAGES.indexOf('ready')));
+
 /** The stage a job's progress names (its `step`, always set by the Bridge, else the
  * engine's `stage`), as one the player has words for: an unknown one (a newer Bridge)
- * reads as a generic "Working". */
+ * reads as a generic "Working". A save step sent mid-run (the early chapters save) reads
+ * as the engine's stage, never as "Saving the results" hours before the end. */
 export function stageOf(progress: { step?: string; stage?: string } | null | undefined) {
-  const name = progress?.step || progress?.stage || '';
+  const step = progress?.step;
+  const stage = progress?.stage;
+  const name =
+    step && SAVE_STEPS.has(step) && stage && BEFORE_READY.has(stage) ? stage : step || stage || '';
   return (KNOWN_STAGES.has(name) ? name : 'working') as GenerateStage;
 }
 
@@ -281,23 +292,33 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
 const REFUSAL_KEY = {
   library_not_writable: 'bridge.generate.notWritable',
   kind_unavailable: 'bridge.generate.unavailable',
+  // Bridge Phase 1d: the book's chapters are still being found (a `chapters.detect` job
+  // queued or working); a generate job queued after it reuses its transcription.
+  detect_open: 'bridge.generate.detectOpen',
 } as const;
 
 /** A Bridge refusal in the app's words (never the server's): the library it can't write,
- * the kind it doesn't offer, else `fallback`. */
+ * the kind it doesn't offer, a book whose chapters are still being found, else
+ * `fallback`. */
 export function bridgeRefusalKey<F extends string>(error: unknown, fallback: F) {
   const kind = apiErrorKind(error);
-  return kind === 'library_not_writable' || kind === 'kind_unavailable'
+  return kind === 'library_not_writable' || kind === 'kind_unavailable' || kind === 'detect_open'
     ? REFUSAL_KEY[kind]
     : fallback;
 }
 
 /** Why Generate is held back, when it is: the Bridge can't write the library (its
- * results would have nowhere to go), or its agent is known not to be signed in. Without
- * the Bridge's figures (`figures`) `agent_ready` is only a default, and the server queues
- * the job anyway (it waits for the agent), so an unknown readiness holds nothing back. */
-export function blockedReason(e: Pick<BridgeEstimate, 'writable' | 'agent_ready' | 'figures'>) {
+ * results would have nowhere to go), the book's chapters are still being found (Bridge
+ * Phase 1d: the estimate's `open_job` is then the `chapters.detect` job the server would
+ * refuse a generate job for, 409 `detect_open`), or its agent is known not to be signed
+ * in. Without the Bridge's figures (`figures`) `agent_ready` is only a default, and the
+ * server queues the job anyway (it waits for the agent), so an unknown readiness holds
+ * nothing back. */
+export function blockedReason(
+  e: Pick<BridgeEstimate, 'writable' | 'agent_ready' | 'figures' | 'open_job'>,
+) {
   if (!e.writable) return REFUSAL_KEY.library_not_writable;
+  if (e.open_job?.kind === CHAPTERS_DETECT) return REFUSAL_KEY.detect_open;
   if (e.figures === true && !e.agent_ready) return 'bridge.generate.agentNotReady' as const;
   return null;
 }

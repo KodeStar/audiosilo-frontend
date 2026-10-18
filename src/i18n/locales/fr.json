@@ -1241,6 +1241,7 @@
       "agentNotReady": "L'agent IA du Bridge n'est pas prêt. Connectez-le depuis la console du Bridge.",
       "estimateFailed": "Impossible d'obtenir une estimation du Bridge. Réessayez dans un instant.",
       "unavailable": "Le Bridge ne propose pas cela pour le moment.",
+      "detectOpen": "Les chapitres du livre sont encore en cours de recherche. Appuyez sur Générer une fois que c'est fini : la transcription est réutilisée.",
       "confirm": "Générer",
       "confirmMany_one": "Générer {{count}} livre",
       "confirmMany_other": "Générer {{count}} livres",

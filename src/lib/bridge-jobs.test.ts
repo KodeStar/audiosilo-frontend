@@ -4,6 +4,7 @@ import {
   BRIDGE_IDLE_POLL_MS,
   BRIDGE_POLL_MS,
   bridgePollInterval,
+  CHAPTERS_DETECT,
   isOpenJob,
   latestDone,
   latestJob,
@@ -81,5 +82,15 @@ describe('latestDone', () => {
     ];
     expect(latestDone(jobs)?.id).toBe(6);
     expect(latestDone([job({ id: 7, state: 'done' }), ...jobs])?.id).toBe(7);
+  });
+
+  // Bridge 1d: the console's chapter detection wrote the book's chapters.json.
+  it('counts a done chapters.detect job too', () => {
+    const jobs = [
+      job({ id: 3, state: 'done' }),
+      job({ id: 5, kind: CHAPTERS_DETECT, state: 'done' }),
+      job({ id: 9, kind: CHAPTERS_DETECT, state: 'running' }),
+    ];
+    expect(latestDone(jobs)?.id).toBe(5);
   });
 });

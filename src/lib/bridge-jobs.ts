@@ -8,6 +8,19 @@ export const SIDECARS_GENERATE = 'sidecars.generate';
  * run kept (Bridge Phase 1c). The console queues it, never the player. */
 export const SIDECARS_DESCRIBE = 'sidecars.describe';
 
+/** The Bridge job kind that finds a chapterless book's chapters in its narration and writes
+ * them as the book's `.audiosilo/chapters.json` (Bridge Phase 1d). The console queues it,
+ * never the player; while one is queued or working the server refuses a generate job for
+ * the book (409 `detect_open`). */
+export const CHAPTERS_DETECT = 'chapters.detect';
+
+/** The kinds whose `done` job wrote the book's `.audiosilo/` files (see `latestDone`). */
+const WRITES_BOOK: ReadonlySet<string> = new Set([
+  SIDECARS_GENERATE,
+  SIDECARS_DESCRIBE,
+  CHAPTERS_DETECT,
+]);
+
 /** How often a book's jobs are asked again while one of them is being worked on
  * (claimed or running) and its surface is on screen: the jobs take minutes to hours, and
  * the server has no realtime channel. */
@@ -59,14 +72,13 @@ export function bridgePollInterval(
   return interval;
 }
 
-/** A book's newest `done` job that wrote its `.audiosilo/` files (`sidecars.generate`, or
- * the console's `sidecars.describe`): the book was rescanned, so what the book's answers
- * say about it may be stale. */
+/** A book's newest `done` job that wrote its `.audiosilo/` files (`sidecars.generate`, the
+ * console's `sidecars.describe`, or its `chapters.detect`): the book was rescanned, so what
+ * the book's answers say about it (its chapters included) may be stale. */
 export function latestDone(jobs: readonly BridgeJob[] | undefined): BridgeJob | undefined {
   let latest: BridgeJob | undefined;
   for (const j of jobs ?? []) {
-    if (j.state !== 'done' || (j.kind !== SIDECARS_GENERATE && j.kind !== SIDECARS_DESCRIBE))
-      continue;
+    if (j.state !== 'done' || !WRITES_BOOK.has(j.kind)) continue;
     if (!latest || j.id > latest.id) latest = j;
   }
   return latest;

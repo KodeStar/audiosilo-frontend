@@ -38,17 +38,7 @@ import {
 } from './book-page-model';
 
 /** The caption under the rows for each chapters source the player knows. */
-const SOURCE_CAPTION: Readonly<
-  Record<
-    ChaptersSource,
-    {
-      testID: string;
-      labelKey: 'book.chapters.community' | 'book.chapters.generated';
-      icon: IconName;
-      iconColor: keyof ThemeColors;
-    }
-  >
-> = {
+const SOURCE_CAPTION = {
   community: {
     testID: 'book-chapters-community',
     labelKey: 'book.chapters.community',
@@ -61,7 +51,10 @@ const SOURCE_CAPTION: Readonly<
     icon: 'server',
     iconColor: 'subtleForeground',
   },
-};
+} as const satisfies Record<
+  ChaptersSource,
+  { testID: string; labelKey: string; icon: IconName; iconColor: keyof ThemeColors }
+>;
 
 export type BookChaptersTabProps = {
   list: ChapterList;
@@ -79,11 +72,12 @@ export type BookChaptersTabProps = {
   roomy: boolean;
   /** The part length, seconds (the parts notice says it). */
   interval: number;
-  /** Where the rows come from when they are not the files' own chapters
-   * (`chapters_source`, as the server sent it): a community recording's list fitted onto
-   * this audio, or the chapters a Bridge found in the narration. A quiet line under the
-   * rows says so; a source this build does not know shows none. */
-  source: string | undefined;
+  /** Where the chapters come from when they are not the files' own (the answer's
+   * `chapters_source` as `knownChaptersSource` reads it: a source this build does not know
+   * is none): a community recording's list fitted onto this audio, or the chapters a Bridge
+   * found in the narration. A quiet line under the rows says so while they are those
+   * chapters (never under the player's parts or the files). */
+  source: ChaptersSource | undefined;
   onJump: (jump: Jump) => void;
 };
 
@@ -110,10 +104,7 @@ export function BookChaptersTab({
   onJump,
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
-  const caption =
-    source && Object.hasOwn(SOURCE_CAPTION, source)
-      ? SOURCE_CAPTION[source as ChaptersSource]
-      : undefined;
+  const caption = list.kind === 'chapters' && source ? SOURCE_CAPTION[source] : undefined;
   const starts = useMemo(() => timelineStarts(list.rows), [list.rows]);
   const labels = useMemo(
     () => list.rows.map((r) => rowLabel(r, list.kind, t)),
