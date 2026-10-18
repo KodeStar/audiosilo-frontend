@@ -18,21 +18,10 @@ remaining track.
 
 ## Model routing (every session follows this)
 
-Sessions in this repo run a fixed division of labour between models:
-
-- **Fable (the main session) is the orchestrator only.** It owns task
-  decomposition, orchestration, design taste/direction, and final QA of every
-  delegated piece. It **never writes feature code directly** - it reviews diffs,
-  runs the gate, and sends work back when it falls short. Runs at **high**
-  effort (do not escalate to xhigh/max).
-- **Opus subagents do the implementation.** Spin up one subagent per task
-  (`model: "opus"`); run them in parallel when tasks are independent, in
-  sequence when one depends on another's output. Each subagent gets a
-  self-contained brief (files, constraints, acceptance criteria) and must leave
-  the gate green for the code it touched.
-- **Token-hungry chores go to cheaper models** (Sonnet/Haiku): bulk codebase
-  analysis/inventories, computer use, screenshot sweeps, log triage. They
-  report findings back; they don't make design decisions.
+Work runs through the workspace `/ship` skill (`~/dev/audiosilo/.claude/skills/ship/`):
+the main session plans, decides and checks; fresh Opus agents (`ship-implementer`,
+`ship-reviewer`, `ship-verifier`) do the reading, writing, reviewing and live
+verification, so the large main context is never what reviews or edits code.
 
 ## Stack
 - **Expo SDK 56**, **React Native 0.85** (new architecture), **React 19**, **Expo Router** (file-based, in `src/app`).
