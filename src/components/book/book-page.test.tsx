@@ -456,6 +456,17 @@ describe('book page chapters tab', () => {
     expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
   });
 
+  // A newer server may name a source this build does not know: no caption, never a raw
+  // translation key.
+  it('shows no source caption for a chapters source it does not know', async () => {
+    mockChapters = { ...CHAPTERS, chapters_source: 'edited' };
+    await mountAt('desktop');
+    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+    expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
+    expect(screen.queryByText(/book\.chapters\./)).toBeNull();
+    expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
+  });
+
   it('lists a long chapterless file in parts, and says why', async () => {
     mockBook = { ...BOOK, duration: 2 * 3600 };
     mockChapters = { ...CHAPTERS, duration: 2 * 3600, chapters: [] };

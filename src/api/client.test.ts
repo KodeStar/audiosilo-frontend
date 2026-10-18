@@ -8,12 +8,7 @@ import {
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
 } from '@/api/client';
-import type {
-  AddMemberBody,
-  BridgeEstimate,
-  ChaptersSource,
-  SidecarsGenerateResult,
-} from '@/api/types';
+import type { AddMemberBody, BridgeEstimate, SidecarsGenerateResult } from '@/api/types';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -565,40 +560,29 @@ describe('ApiClient', () => {
     ],
   };
 
-  it('passes chapters_source through on the chapters and item envelopes', async () => {
-    const fetchMock = installFetch((url) => ({
-      status: 200,
-      body: url.includes('/chapters')
-        ? { ...chaptersBody, chapters_source: 'community' }
-        : { id: 9, rel_path: 'Myths/Mythos', chapters_source: 'community' },
-    }));
-    const c = new ApiClient('https://h', 'tok');
-    const data = await c.chapters(2, 'Myths/Mythos');
-    expect(String(fetchMock.mock.calls[0][0])).toContain(
-      '/libraries/2/chapters?path=Myths%2FMythos',
-    );
-    // Typed reads, so a misnamed mirror field fails the type check, not only a match.
-    expect(data.chapters_source).toBe('community');
-    expect(data.chapters[0].title).toBe('Chaos');
-    const book = await c.item(2, 'Myths/Mythos');
-    expect(book.chapters_source).toBe('community');
-  });
-
-  // Bridge Phase 1d: chapters a Bridge found in the narration of a chapterless book.
-  it('passes chapters_source "generated" through on the chapters and item envelopes', async () => {
-    installFetch((url) => ({
-      status: 200,
-      body: url.includes('/chapters')
-        ? { ...chaptersBody, chapters_source: 'generated' }
-        : { id: 9, rel_path: 'Myths/Mythos', chapters_source: 'generated' },
-    }));
-    const c = new ApiClient('https://h', 'tok');
-    const data = await c.chapters(2, 'Myths/Mythos');
-    const source: ChaptersSource | undefined = data.chapters_source;
-    expect(source).toBe('generated');
-    const book = await c.item(2, 'Myths/Mythos');
-    expect(book.chapters_source).toBe('generated');
-  });
+  // "community": a community recording's list; "generated" (Bridge Phase 1d): chapters a
+  // Bridge found in the narration of a chapterless book.
+  it.each(['community', 'generated'] as const)(
+    'passes chapters_source %s through on the chapters and item envelopes',
+    async (source) => {
+      const fetchMock = installFetch((url) => ({
+        status: 200,
+        body: url.includes('/chapters')
+          ? { ...chaptersBody, chapters_source: source }
+          : { id: 9, rel_path: 'Myths/Mythos', chapters_source: source },
+      }));
+      const c = new ApiClient('https://h', 'tok');
+      const data = await c.chapters(2, 'Myths/Mythos');
+      expect(String(fetchMock.mock.calls[0][0])).toContain(
+        '/libraries/2/chapters?path=Myths%2FMythos',
+      );
+      // Typed reads, so a misnamed mirror field fails the type check, not only a match.
+      expect(data.chapters_source).toBe(source);
+      expect(data.chapters[0].title).toBe('Chaos');
+      const book = await c.item(2, 'Myths/Mythos');
+      expect(book.chapters_source).toBe(source);
+    },
+  );
 
   it('leaves chapters_source undefined when the server sends none (files or older server)', async () => {
     installFetch(() => ({ status: 200, body: chaptersBody }));

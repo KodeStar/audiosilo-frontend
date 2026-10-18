@@ -16,7 +16,7 @@ import {
 import type { BookPins } from '@/components/player/use-playing-pins';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
-import { Icon } from '@/components/ui/icon';
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
+import type { ThemeColors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
@@ -35,6 +36,32 @@ import {
   rowAt,
   timelineStarts,
 } from './book-page-model';
+
+/** The caption under the rows for each chapters source the player knows. */
+const SOURCE_CAPTION: Readonly<
+  Record<
+    ChaptersSource,
+    {
+      testID: string;
+      labelKey: 'book.chapters.community' | 'book.chapters.generated';
+      icon: IconName;
+      iconColor: keyof ThemeColors;
+    }
+  >
+> = {
+  community: {
+    testID: 'book-chapters-community',
+    labelKey: 'book.chapters.community',
+    icon: 'globe',
+    iconColor: 'community',
+  },
+  generated: {
+    testID: 'book-chapters-generated',
+    labelKey: 'book.chapters.generated',
+    icon: 'server',
+    iconColor: 'subtleForeground',
+  },
+};
 
 export type BookChaptersTabProps = {
   list: ChapterList;
@@ -53,9 +80,10 @@ export type BookChaptersTabProps = {
   /** The part length, seconds (the parts notice says it). */
   interval: number;
   /** Where the rows come from when they are not the files' own chapters
-   * (`chapters_source`): a community recording's list fitted onto this audio, or the
-   * chapters a Bridge found in the narration. A quiet line under the rows says so. */
-  source: ChaptersSource | undefined;
+   * (`chapters_source`, as the server sent it): a community recording's list fitted onto
+   * this audio, or the chapters a Bridge found in the narration. A quiet line under the
+   * rows says so; a source this build does not know shows none. */
+  source: string | undefined;
   onJump: (jump: Jump) => void;
 };
 
@@ -82,6 +110,10 @@ export function BookChaptersTab({
   onJump,
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
+  const caption =
+    source && Object.hasOwn(SOURCE_CAPTION, source)
+      ? SOURCE_CAPTION[source as ChaptersSource]
+      : undefined;
   const starts = useMemo(() => timelineStarts(list.rows), [list.rows]);
   const labels = useMemo(
     () => list.rows.map((r) => rowLabel(r, list.kind, t)),
@@ -135,12 +167,13 @@ export function BookChaptersTab({
           />
         ))}
       </View>
-      {source ? (
+      {caption ? (
         <SourceLine
-          testID={`book-chapters-${source}`}
-          label={t(`book.chapters.${source}`)}
+          testID={caption.testID}
+          label={t(caption.labelKey)}
           className="px-2.5"
-          server={source === 'generated'}
+          icon={caption.icon}
+          iconColor={caption.iconColor}
         />
       ) : null}
     </View>

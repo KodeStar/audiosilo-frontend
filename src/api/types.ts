@@ -306,7 +306,8 @@ export type Chapter = {
 };
 
 /** Where a book's chapters come from when they are not the files' own (see
- * Book.chapters_source): a community recording's list, or a Bridge's detection. */
+ * Book.chapters_source): a community recording's list, or a Bridge's detection. The wire
+ * field stays open: a newer server may send a source this build does not know. */
 export type ChaptersSource = 'community' | 'generated';
 
 export type Book = {
@@ -398,7 +399,7 @@ export type Book = {
    * `"generated"` when a Bridge on this server found them in the narration of a book
    * with no chapters of its own (Bridge Phase 1d). Only GET /libraries/{id}/item sends
    * it; absent means the files' own chapters, and on older servers. */
-  chapters_source?: ChaptersSource;
+  chapters_source?: ChaptersSource | (string & {});
   /** True when the book's `.audiosilo/` folder holds characters, recaps or a description a
    * Bridge generated on this server (Bridge Phases 1a and 1c; list, search, item, recent
    * and the next book's `book` send it). Absent otherwise, and on older servers. */
@@ -531,7 +532,7 @@ export type ChaptersResponse = {
    * book's audio, `"generated"` when a Bridge on this server found them in the
    * narration (see Book.chapters_source); absent means the files' own chapters, and on
    * older servers. The chapters themselves have the same shape either way. */
-  chapters_source?: ChaptersSource;
+  chapters_source?: ChaptersSource | (string & {});
 };
 
 // --- Enriched metadata (community meta service, via /libraries/{id}/meta) -----

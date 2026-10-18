@@ -417,7 +417,8 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   recaps first, `queueOrder` / `queueInOrder`, stopping at the first refusal; Generate held
   back with `blockedReason` while the library isn't writable or the agent is KNOWN not ready),
   `GenerateStatus` (polls while its screen is focused: phase, stage words `bridge.stage.*`
-  from `stageOf` (Phase 1d adds `chapter_detecting` and the park `chapters_not_detected`), counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
+  from `stageOf` (Phase 1d adds `chapter_detecting` and the park `chapters_not_detected`),
+  counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
   Cancel, or "Try again", re-queueing, once it failed) and `GenerateOffer` (button or status under the companion's empty Who's
   who / Story so far). The book page wires `useGenerate` into `HeroActions` with
   `GenerateStatus` under the actions. Costs format with `formatUsd` (`src/lib/format.ts`).
@@ -463,8 +464,8 @@ quiet globe caption ("Chapters from the AudioSilo community database") only when
 answer says `chapters_source: "community"` and the rows are those chapters (not parts or files),
 or a server-glyph caption ("Chapters found in the narration on this server") for
 `chapters_source: "generated"` (Bridge Phase 1d: a Bridge found them in a chapterless book's
-narration; same rule). Bookmarks and
-Notes are the shared `AnnotationSection` (below), History is `HistorySection` over the shared
+narration; same rule). One `SOURCE_CAPTION` table picks the words and glyph; a source this
+build does not know shows no caption. Bookmarks and Notes are the shared `AnnotationSection` (below), History is `HistorySection` over the shared
 listening sessions. Details (`book-details-tab.tsx`): a `Notice` (`ui/notice.tsx`) saying direct
 play / converted for this browser (web, `useNeedsWebTranscode`) / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
 and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookAbout`, its words
