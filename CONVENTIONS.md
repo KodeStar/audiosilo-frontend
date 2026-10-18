@@ -390,8 +390,8 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
 - **Hooks** (`hooks.ts`, `qk.bridgeJobs` / `qk.bridgeEstimate`): `useBridgeJobs(lib, path,
   {enabled, active, select})` asks only a server with the flag and only while `enabled` (a
   non-admin would get a 403), `retry: false`; it POLLS (`bridgePollInterval`,
-  `src/lib/bridge-jobs.ts`) only while a `sidecars.generate` job of the book is open and the
-  surface is `active` with the app foregrounded: `BRIDGE_POLL_MS` (10 s) while claimed or
+  `src/lib/bridge-jobs.ts`) only while a `sidecars.generate` or (Phase 1d) `chapters.detect`
+  job of the book is open and the surface is `active` with the app foregrounded: `BRIDGE_POLL_MS` (10 s) while claimed or
   running, `BRIDGE_IDLE_POLL_MS` (60 s) while queued or parked, never otherwise (the answer
   that sees the job end stops it). When a read first sees the newest job that wrote the book
   `done` (`latestDone`: a generate job, or the console's `sidecars.describe` or
@@ -399,6 +399,10 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   item and its chapters (under any path that names them) and WAITS for them before the answer
   lands, once per finish per cache (`finishesActedOn`), so the tabs, `generated` and the
   chapters a Bridge found are in before the status goes and the offer never flashes back.
+  Mid-run (Phase 1d: a generate run saves the chapters it found long before its end),
+  `refreshMidRun` reads the book's chapters again once per step a running generate job
+  reports past chapter detection (`midRunCheckpoint`), only while the cached answer has no
+  chapters of its own (at most one, no `chapters_source`).
   `useBridgeEstimate` (`staleTime: 0`, read afresh each time the
   confirmation opens), `useQueueBridgeJob` / `useCancelBridgeJob` (`CapabilityError` without
   the flag; the answer goes into the book's job list, a cancel's 409 reads it again).

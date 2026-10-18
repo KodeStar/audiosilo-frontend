@@ -178,6 +178,70 @@ describe('useBridgeJobs', () => {
     expect(qc.getQueryState(ITEM_KEY)?.isInvalidated).toBe(true);
   });
 
+  // Bridge Phase 1d: a generate run saves the chapters it found long before its end, so a
+  // book still without chapters of its own has them read again mid-run, once per step.
+  it("reads a chapterless book's chapters again mid-run, once per step past detection", async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const OWN_KEY = qk.chapters('c1', 1, 'Author/Book');
+    const empty = { path: 'Author/Book', chapters: [] };
+    qc.setQueryData(OWN_KEY, empty);
+    const running = (progress: { step?: string; stage?: string }) => [
+      bridgeJob({ state: 'running', progress }),
+    ];
+    // Still detecting: nothing can have been saved yet.
+    mockClients.c1.bridgeJobs.mockResolvedValue(
+      running({ step: 'chapter_detecting', stage: 'chapter_detecting' }),
+    );
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryState(OWN_KEY)?.isInvalidated).toBe(false);
+
+    // Past it: read again.
+    mockClients.c1.bridgeJobs.mockResolvedValue(
+      running({ step: 'sanitizing', stage: 'sanitizing' }),
+    );
+    await result.current.refetch();
+    await waitFor(() => expect(qc.getQueryState(OWN_KEY)?.isInvalidated).toBe(true));
+
+    // The same step again: not again.
+    qc.setQueryData(OWN_KEY, empty);
+    await result.current.refetch();
+    expect(qc.getQueryState(OWN_KEY)?.isInvalidated).toBe(false);
+
+    // The early save's own step (a read just before it is followed by one after).
+    mockClients.c1.bridgeJobs.mockResolvedValue(
+      running({ step: 'rescanning', stage: 'sanitizing' }),
+    );
+    await result.current.refetch();
+    await waitFor(() => expect(qc.getQueryState(OWN_KEY)?.isInvalidated).toBe(true));
+  });
+
+  it('leaves a book with chapters of its own, or found ones, alone mid-run', async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const OWN_KEY = qk.chapters('c1', 1, 'Author/Book');
+    const PART_KEY = qk.chapters('c1', 1, 'Author/Book/Disc 1');
+    const chapter = { title: 'One', file_index: 0, file_path: 'a.m4b', start: 0, end: 60 };
+    qc.setQueryData(OWN_KEY, {
+      path: 'Author/Book',
+      chapters: [
+        { ...chapter, book_offset: 0 },
+        { ...chapter, title: 'Two', book_offset: 60 },
+      ],
+    });
+    qc.setQueryData(PART_KEY, { path: 'Author/Book', chapters: [], chapters_source: 'generated' });
+    mockClients.c1.bridgeJobs.mockResolvedValue([
+      bridgeJob({ state: 'running', progress: { step: 'qa_sweep', stage: 'qa_sweep' } }),
+    ]);
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryState(OWN_KEY)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(PART_KEY)?.isInvalidated).toBe(false);
+  });
+
   it('reads /meta again when it sees the job turn done, whatever the clocks say', async () => {
     const { qc } = await mount(bridgeServer(), () => null);
     // The device clock runs ahead: the answer looks newer than the finish.

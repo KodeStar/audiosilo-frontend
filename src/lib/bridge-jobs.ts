@@ -21,6 +21,11 @@ const WRITES_BOOK: ReadonlySet<string> = new Set([
   CHAPTERS_DETECT,
 ]);
 
+/** The kinds a book's job list polls for while one of them is open: the player's generate
+ * job, and the console's chapter detection (Bridge Phase 1d), so a page open meanwhile sees
+ * it end and reads the book's chapters again (`latestDone`). */
+const POLLED: ReadonlySet<string> = new Set([SIDECARS_GENERATE, CHAPTERS_DETECT]);
+
 /** How often a book's jobs are asked again while one of them is being worked on
  * (claimed or running) and its surface is on screen: the jobs take minutes to hours, and
  * the server has no realtime channel. */
@@ -54,9 +59,9 @@ export function latestJob(jobs: readonly BridgeJob[] | undefined, kind: string) 
 /**
  * How often a book's job list polls (React Query's `refetchInterval`) while the surface is
  * `active` (on screen, the app in the foreground): every `BRIDGE_POLL_MS` while a
- * `sidecars.generate` job of it is claimed or running, every `BRIDGE_IDLE_POLL_MS` while
- * one only waits (queued or parked), else never. The last answer, the one that saw the
- * job end, stops it.
+ * `sidecars.generate` or `chapters.detect` job of it is claimed or running, every
+ * `BRIDGE_IDLE_POLL_MS` while one only waits (queued or parked), else never. The last
+ * answer, the one that saw the job end, stops it.
  */
 export function bridgePollInterval(
   jobs: readonly BridgeJob[] | undefined,
@@ -65,7 +70,7 @@ export function bridgePollInterval(
   if (!active) return false;
   let interval: number | false = false;
   for (const j of jobs ?? []) {
-    if (j.kind !== SIDECARS_GENERATE) continue;
+    if (!POLLED.has(j.kind)) continue;
     if (j.state === 'claimed' || j.state === 'running') return BRIDGE_POLL_MS;
     if (isOpenJob(j)) interval = BRIDGE_IDLE_POLL_MS;
   }
@@ -82,4 +87,27 @@ export function latestDone(jobs: readonly BridgeJob[] | undefined): BridgeJob | 
     if (!latest || j.id > latest.id) latest = j;
   }
   return latest;
+}
+
+/** The engine stages a generate run passes before it can have found a markerless book's
+ * chapters in the narration (Bridge Phase 1d). */
+const BEFORE_CHAPTERS: ReadonlySet<string> = new Set([
+  'inspecting',
+  'splitting',
+  'asr',
+  'chapter_detecting',
+]);
+
+/** A book's running generate job once it is past chapter detection, with a mark for what
+ * it reports now (its step, else its stage), which changes as the run moves on. The run
+ * saves the chapters it found long before its end (Bridge Phase 1d), between two such
+ * reports: the book's chapters are read again once per mark (`refreshMidRun`), so a read
+ * that came just before the save is followed by one after it. Undefined otherwise. */
+export function midRunCheckpoint(
+  jobs: readonly BridgeJob[] | undefined,
+): { job: BridgeJob; mark: string } | undefined {
+  const job = latestJob(jobs, SIDECARS_GENERATE);
+  const stage = job?.progress?.stage;
+  if (!job || job.state !== 'running' || !stage || BEFORE_CHAPTERS.has(stage)) return undefined;
+  return { job, mark: `${job.id}:${job.progress?.step || stage}` };
 }
