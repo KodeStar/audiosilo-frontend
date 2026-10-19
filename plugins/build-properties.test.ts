@@ -20,6 +20,17 @@ describe('expo-build-properties', () => {
     expect(buildProperties().android).toMatchObject({ usesCleartextTraffic: true });
   });
 
+  // R8 (minify + resource shrinking) on Android release builds: without it Play Console
+  // flags the release for DEX code optimisation/obfuscation below its threshold. A class
+  // R8 strips that something needs at runtime gets a keep rule in
+  // `android.extraProguardRules`; never turn minify off (see CLAUDE.md).
+  it('minifies and shrinks Android release builds with R8', () => {
+    expect(buildProperties().android).toMatchObject({
+      enableMinifyInReleaseBuilds: true,
+      enableShrinkResourcesInReleaseBuilds: true,
+    });
+  });
+
   // Load-bearing for the iOS link (see CLAUDE.md, "iOS build needs TWO workarounds").
   it('builds React Native from source on iOS', () => {
     expect(buildProperties().ios).toMatchObject({ buildReactNativeFromSource: true });

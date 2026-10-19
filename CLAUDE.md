@@ -81,6 +81,10 @@ verification, so the large main context is never what reviews or edits code.
      also builds Expo modules from source (precompiled modules require the prebuilt core), so
      builds are slower but correct. Do not re-enable the prebuilt core without confirming the
      Fabric symbols are exported.
+- **Android release builds run R8** (`expo-build-properties` `android.enableMinifyInReleaseBuilds`
+  + `enableShrinkResourcesInReleaseBuilds`; Play flags unoptimised DEX). A release-only
+  ClassNotFound/NoSuchMethod crash gets a keep rule in `android.extraProguardRules` (one comment
+  per rule saying what it keeps); never turn minify off. The mapping file ships in the AAB.
 - **The Android window does not resize for the keyboard** (edge to edge, SDK 56): an overlay or a
   bottom-anchored panel must lift itself (`useKeyboardAvoidance`, Styling below), and only a device
   run shows it; neither jest nor the web build has a software keyboard.
