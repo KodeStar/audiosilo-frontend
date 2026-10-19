@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { Fragment, type ReactNode, useLayoutEffect } from 'react';
+import { Fragment, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -13,10 +13,13 @@ import { SubNavSections } from '@/components/shell/tab-root-nav';
 import { StatsSection } from '@/components/you/stats/stats-section';
 import { YearSection } from '@/components/you/year/year-section';
 import { useLayout } from '@/lib/layout';
-import type { YouSection } from '@/lib/paths';
+import type { CoreYouSection } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
+import { WithActiveModules } from '@/modules/active-modules';
+import type { PlayerModule, YouModuleSection } from '@/modules/registry';
 
 import {
+  isCoreYouSection,
   parseYouSection,
   youSectionLabelKey,
   youSectionParams,
@@ -40,7 +43,7 @@ const column = (body: ReactNode) => (
  * segment (elsewhere it is the pushed page). Account without a `connectionId` shows the default server, with a
  * switcher when several are signed in.
  */
-const SECTIONS: Record<YouSection, (opts: { phone: boolean }) => ReactNode> = {
+const SECTIONS: Record<CoreYouSection, (opts: { phone: boolean }) => ReactNode> = {
   stats: () => column(<StatsSection />),
   year: () => column(<YearSection />),
   journal: ({ phone }) => <JournalScreen embedded={phone} />,
@@ -72,16 +75,40 @@ const SECTIONS: Record<YouSection, (opts: { phone: boolean }) => ReactNode> = {
  * listening and Journal (Settings is the gear, Household and Account the profile menu; an
  * old link to any of them still renders here). The section is the route's `section` param (`parseYouSection`:
  * absent or unknown is Stats), switched in place with `setParams`; the Journal keeps its
- * own `tab` param beside it.
+ * own `tab` param beside it. An active module's sections (`youSections`,
+ * `src/modules/registry.ts`, none yet) follow the hub's own; `modules` is the list to
+ * choose from (the registry; tests pass a fake).
  */
-export function YouHub() {
+export function YouHub({ modules }: { modules?: readonly PlayerModule[] } = {}) {
+  return (
+    <WithActiveModules modules={modules}>{(active) => <Hub active={active} />}</WithActiveModules>
+  );
+}
+
+/** The active modules' sections by key, in registry order: the first of a key wins and a
+ * key of the hub's own is ignored. */
+function moduleSectionsOf(active: readonly PlayerModule[]): Map<string, YouModuleSection> {
+  const out = new Map<string, YouModuleSection>();
+  for (const m of active) {
+    for (const s of m.youSections ?? []) {
+      if (s.key && !isCoreYouSection(s.key) && !out.has(s.key)) out.set(s.key, s);
+    }
+  }
+  return out;
+}
+
+function Hub({ active }: { active: readonly PlayerModule[] }) {
   const { t } = useTranslation();
   const navigation = useNavigation();
   const layout = useLayout();
   const phone = layout === 'phone';
   const params = useLocalSearchParams<{ section?: string }>();
-  const section = parseYouSection(params.section);
-  const title = t(youTitleKey(section));
+  const moduleSections = useMemo(() => moduleSectionsOf(active), [active]);
+  const moduleKeys = [...moduleSections.keys()];
+  const section = parseYouSection(params.section, moduleKeys);
+  const ownSection = isCoreYouSection(section) ? section : null;
+  const moduleSection = ownSection ? undefined : moduleSections.get(section);
+  const title = ownSection ? t(youTitleKey(ownSection)) : (moduleSection?.label ?? '');
 
   // The phone's large title (the tab stack's header) follows the section; the wide
   // sub-nav keeps the destination's own title, "You".
@@ -91,9 +118,11 @@ export function YouHub() {
   // The browser tab names the section at every width.
   usePageTitle(title);
 
-  const options = youSectionsFor(layout).map((value) => ({
+  const options = youSectionsFor(layout, moduleKeys).map((value) => ({
     value,
-    label: t(youSectionLabelKey(value, layout)),
+    label: isCoreYouSection(value)
+      ? t(youSectionLabelKey(value, layout))
+      : (moduleSections.get(value)?.label ?? value),
   }));
 
   return (
@@ -110,7 +139,13 @@ export function YouHub() {
       </View>
       {/* Keyed: a new section starts at its top, not at the offset the last one was left
           at (one shared scroller would keep it). */}
-      <Fragment key={section}>{SECTIONS[section]({ phone })}</Fragment>
+      <Fragment key={section}>
+        {ownSection
+          ? SECTIONS[ownSection]({ phone })
+          : moduleSection
+            ? column(moduleSection.render({ phone }))
+            : null}
+      </Fragment>
     </View>
   );
 }

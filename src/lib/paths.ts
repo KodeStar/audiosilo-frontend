@@ -69,7 +69,9 @@ export function libraryHref(connectionId: string, libraryId: number, relPath = '
   };
 }
 
-/** The book screen's tabs, in display order (the rules are `book-tabs.ts`). */
+/** The book screen's tabs, in display order (the rules are `book-tabs.ts`). Closed on
+ * purpose: a module (`src/modules/registry.ts`) adds no tab until one needs it (Bridge
+ * Phase 2d). */
 export type BookTab =
   'chapters' | 'recaps' | 'characters' | 'bookmarks' | 'history' | 'notes' | 'series' | 'details';
 
@@ -217,11 +219,15 @@ export function collectionHref(connectionId: string, id: number): Href {
 /** The Journal's tabs (`?tab=diary|bookmarks|notes`, on the You hub or `/journal`). */
 export type JournalTab = 'diary' | 'bookmarks' | 'notes';
 
-/** The You hub's sections (`/you?section=`, the Me tab's root; absent = `stats`). A phone
- * offers all six; tablet and desktop offer the first three and reach Settings, Household
- * and Account from the top bar's gear and profile menu (an old link to them still
- * renders). */
-export type YouSection = 'stats' | 'year' | 'journal' | 'settings' | 'household' | 'account';
+/** The You hub's own sections (`/you?section=`, the Me tab's root; absent = `stats`). A
+ * phone offers all six; tablet and desktop offer the first three and reach Settings,
+ * Household and Account from the top bar's gear and profile menu (an old link to them
+ * still renders). */
+export type CoreYouSection = 'stats' | 'year' | 'journal' | 'settings' | 'household' | 'account';
+
+/** A You hub section: one of its own, or an active module's (`youSections` in
+ * `src/modules/registry.ts`, Bridge Phase 2a). */
+export type YouSection = CoreYouSection | (string & {});
 
 /** The You hub's pathname: the Me tab's ROOT, opened with `openYou` / `openJournal`
  * (`src/lib/open.ts`), never pushed as a page on another tab. */
@@ -264,7 +270,8 @@ export function yearHref(params: YearStoryParams = {}): Href {
 /** The Settings panes (`/settings?section=`). `preferences` (the first pane, Playback) and
  * `accounts` (the signed-in servers) are the two the IA names; each pane can be linked to
  * directly too. Absent = `preferences`. `household` is no pane any more (Phase 8b-1): the
- * route sends an old link to the Household page (`householdHref`). */
+ * route sends an old link to the Household page (`householdHref`). Closed on purpose: a
+ * module (`src/modules/registry.ts`) adds no pane until one needs it (Bridge Phase 2d). */
 export type SettingsSection =
   | 'preferences'
   | 'playback'

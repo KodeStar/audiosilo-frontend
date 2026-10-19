@@ -26,6 +26,7 @@ import type { MergedBook } from '@/lib/dedup';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
+import type { PlayerModule } from '@/modules/registry';
 import { flushQueue } from '@/playback/progress-sync';
 import { usePlayer } from '@/playback/store';
 import { useActiveProfile, useProfileConnections } from '@/stores/profiles';
@@ -44,6 +45,7 @@ import {
   splitProgress,
 } from './home-model';
 import { HomeSection } from './home-section';
+import { ModuleRails } from './module-rails';
 import { NowEmpty, NowError } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
@@ -65,9 +67,11 @@ const favouriteKey = (f: SourcedFavourite) => contentKey(f.connectionId, f.libra
  * Home (STYLEGUIDE section 2, the Stacks Home): the greeting, the Now card (with This
  * week beside it on a desktop), Continue listening, Next in your series, This week
  * (tablet and phone), smart shelves, then Recently added, Favourites and Recently
- * finished. Aggregated across every signed-in server; each book keeps its own.
+ * finished. Aggregated across every signed-in server; each book keeps its own. An active
+ * module's rails (`src/modules/registry.ts`, none yet) follow Next in your series;
+ * `modules` is the list to choose from (the registry; tests pass a fake).
  */
-export function HomeScreen() {
+export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = {}) {
   const { t } = useTranslation();
   const layout = useLayout();
   const desktop = layout === 'desktop';
@@ -221,6 +225,8 @@ export function HomeScreen() {
             )}
           </HomeSection>
         ) : null}
+
+        <ModuleRails connections={connections} modules={modules} />
 
         {/* Listening in the house: one section per server where the listener shares and
             someone else does too (renders nothing otherwise). The connections are the

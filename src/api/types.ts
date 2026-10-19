@@ -113,6 +113,13 @@ export type Capabilities = {
    * and false while the Bridge is offline: treat missing as false and show no Bridge
    * action (the admin console covers it). */
   bridge?: boolean;
+  /** Whether the Contributions module (Bridge Phase 2a, a server module an admin turns on
+   * in the console's Settings > Modules) is on AND its Bridge requirement is met (an online
+   * Bridge offering `contribute` in {@link ServerInfo.bridge}'s `features`). Sent by every
+   * server that has modules, false while off; absent on older servers: treat missing as
+   * false. The player has no Contributions UI yet (`src/modules/registry.ts` is empty); a
+   * module's flag is its id there. */
+  contributions?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -141,6 +148,9 @@ export type ServerInfo = {
 };
 
 /** The Bridge block of GET /server (see {@link ServerInfo.bridge}). */
+/** `features`: the job families the Bridge offers (`sidecars`, `chapters`) and what it
+ * can do besides (`contribute`: it can file contributions, Phase 2a). Test with
+ * `includes`; more values arrive over time. */
 export type ServerBridge = { version: string; features: string[] };
 
 export type Role = 'admin' | 'user';

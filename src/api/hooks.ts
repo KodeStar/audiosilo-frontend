@@ -238,6 +238,16 @@ export async function fetchFailFast<
   return queryClient.fetchQuery({ ...options, networkMode: 'always', retry: false });
 }
 
+/** A capability flag's name: one the player knows ({@link Capabilities}), or a module's
+ * (`src/modules/registry.ts`: a module's id is its flag, so the player's module list can
+ * name flags this file doesn't). A flag a server doesn't send reads false. */
+export type CapabilityKey = keyof Capabilities | (string & {});
+
+/** Whether `caps` has `flag` on (absent reads false). */
+export function hasCapability(caps: Capabilities, flag: CapabilityKey): boolean {
+  return !!(caps as Partial<Record<string, unknown>>)[flag];
+}
+
 /** A connection's server flags through the shared `/server` entry (normally cached, so
  * no request): for the framework-free readers (the end-of-book flow, keep-ahead, the
  * transcode decision). Read with `fetchFailFast`; when the server can't be read, the
@@ -255,9 +265,9 @@ export async function fetchCapabilities(cid: string, client: ApiClient): Promise
 
 /** One flag of a connection's server as the cache holds it, without asking: `undefined`
  * while its `/server` has not been read (like `useCapability`). */
-export function cachedCapability(cid: string, flag: keyof Capabilities): boolean | undefined {
+export function cachedCapability(cid: string, flag: CapabilityKey): boolean | undefined {
   const caps = queryClient.getQueryData<ServerInfo>(qk.server(cid))?.capabilities;
-  return caps ? !!caps[flag] : undefined;
+  return caps ? hasCapability(caps, flag) : undefined;
 }
 
 /** How long a `/next` answer stays fresh where it is only a suggestion (Home's Next in
@@ -540,12 +550,9 @@ export function useServerInfo(connectionId?: string) {
  * ever ask a server whose flag is `true`; elsewhere their query never runs and stays
  * pending. So a screen chooses its fallback (or hides the feature) on `false`, and on
  * `undefined` waits or decides for itself. */
-export function useCapability(
-  flag: keyof Capabilities,
-  connectionId?: string,
-): boolean | undefined {
+export function useCapability(flag: CapabilityKey, connectionId?: string): boolean | undefined {
   const caps = useServerInfo(connectionId).data?.capabilities;
-  return caps ? !!caps[flag] : undefined;
+  return caps ? hasCapability(caps, flag) : undefined;
 }
 
 /** Every connection's advertised capabilities, `undefined` while its `/server` is not
@@ -564,10 +571,10 @@ export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
  * is known to lack it, undefined while that is still open. */
 export function anyCapability(
   caps: Record<string, Capabilities | undefined>,
-  flag: keyof Capabilities,
+  flag: CapabilityKey,
 ): boolean | undefined {
   const values = Object.values(caps);
-  if (values.some((c) => c?.[flag])) return true;
+  if (values.some((c) => c !== undefined && hasCapability(c, flag))) return true;
   return values.length > 0 && values.every((c) => c !== undefined) ? false : undefined;
 }
 
@@ -578,7 +585,7 @@ export function anyCapability(
  * reachability reads any error that is not an `ApiError` as an unreachable server. */
 export class CapabilityError extends Error {
   constructor(
-    public capability: keyof Capabilities,
+    public capability: CapabilityKey,
     public unknown = false,
   ) {
     super(
@@ -596,7 +603,7 @@ export class CapabilityError extends Error {
  * same strength (an `enabled` flag, a valid id); `enabled` is React Query's own, which
  * only stops automatic fetching (a manual `refetch` still runs). */
 function useCapabilityQuery<T, S = T>(
-  flag: keyof Capabilities,
+  flag: CapabilityKey,
   queryKey: (cid: string) => readonly unknown[],
   load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
   connectionId?: string,
@@ -639,7 +646,7 @@ function useCapabilityQuery<T, S = T>(
  *   it succeeded, after `store`): for the reads a refusal can leave stale too (a 404 for
  *   something already gone, a cap that moved). */
 function useCapabilityMutation<V, T>(
-  flag: keyof Capabilities,
+  flag: CapabilityKey,
   connectionId: string | undefined,
   request: (api: ApiClient, vars: V) => Promise<T>,
   store?: (cache: { qc: QueryClient; cid: string }, answer: T, vars: V) => unknown,
@@ -670,7 +677,7 @@ function useCapabilityMutation<V, T>(
 
 /** A capability's writes on ONE connection: their key and their one-at-a-time scope
  * (see `useCapabilityMutation`). */
-function mutationScope(flag: keyof Capabilities, cid: string) {
+function mutationScope(flag: CapabilityKey, cid: string) {
   return { mutationKey: [flag, cid], scope: { id: `${flag}:${cid}` } };
 }
 

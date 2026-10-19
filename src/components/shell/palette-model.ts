@@ -3,7 +3,7 @@ import type { TFunction } from 'i18next';
 import type { IconName } from '@/components/ui/icon';
 import { youSectionsFor, youTitleKey } from '@/components/you/you-model';
 import type { ShortcutKey } from '@/lib/keyboard';
-import type { YouSection } from '@/lib/paths';
+import type { CoreYouSection, YouSection } from '@/lib/paths';
 
 import type { Destination, TabName } from './destinations';
 
@@ -136,7 +136,7 @@ export type GoToRuns = {
 };
 
 /** The palette's glyph for each You hub section. */
-const YOU_SECTION_ICON: Record<YouSection, IconName> = {
+const YOU_SECTION_ICON: Record<CoreYouSection, IconName> = {
   stats: 'chart',
   year: 'sparkles',
   journal: 'history',

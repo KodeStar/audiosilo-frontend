@@ -102,7 +102,22 @@ jest.mock('@/components/house/house-row', () => ({
   },
 }));
 
+// Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite.
+let mockModulesOn: Record<string, boolean> = {};
+const mockUseActiveModules = jest.fn();
+jest.mock('@/modules/registry', () => ({
+  ...jest.requireActual('@/modules/registry'),
+  useActiveModules: (list: readonly { id: string }[]) => {
+    mockUseActiveModules();
+    return list.filter((m) => mockModulesOn[m.id]);
+  },
+}));
+
 /* eslint-disable import/first */
+import { Text } from 'react-native';
+
+import type { PlayerModule } from '@/modules/registry';
+
 import { HomeScreen } from './home-screen';
 /* eslint-enable import/first */
 
@@ -127,6 +142,8 @@ const started = (path: string, updated: string): Progress => ({
 });
 
 beforeEach(() => {
+  mockModulesOn = {};
+  mockUseActiveModules.mockClear();
   mockCaps = {};
   mockProgress = { progress: [], isLoading: false, error: null };
   mockNext = { answers: [], supported: undefined, isLoading: false };
@@ -232,5 +249,53 @@ describe('HomeScreen', () => {
         name: "Book Two, Not in your library, After the book you're on",
       }),
     ).toBeTruthy();
+  });
+});
+
+describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
+  const FAKE: PlayerModule = {
+    id: 'contributions',
+    homeRails: ({ connections }) => (
+      <Text>{`Module rail: ${connections.map((c) => c.id).join(',')}`}</Text>
+    ),
+  };
+  const mountWith = async (modules: readonly PlayerModule[]) => {
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <HomeScreen modules={modules} />
+      </QueryClientProvider>,
+    );
+    await settleFlashList();
+  };
+  const order = (...texts: string[]) => {
+    const tree = JSON.stringify(screen.toJSON());
+    return texts.map((t) => tree.indexOf(t));
+  };
+
+  it('renders as before with the empty registry, asking nothing', async () => {
+    await mountHome();
+    expect(screen.queryByText(/Module rail/)).toBeNull();
+    expect(mockUseActiveModules).not.toHaveBeenCalled();
+  });
+
+  it("places an active module's rails after Next in your series, with the person's servers", async () => {
+    mockModulesOn = { contributions: true };
+    mockNext = {
+      supported: true,
+      isLoading: true,
+      answers: [],
+    };
+    await mountWith([FAKE]);
+    expect(screen.getByText('Module rail: a')).toBeTruthy();
+    const [next, rail, house] = order('Next in your series', 'Module rail: a', 'House: a');
+    expect(next).toBeGreaterThan(-1);
+    expect(rail).toBeGreaterThan(next);
+    expect(house).toBeGreaterThan(rail);
+  });
+
+  it('leaves a module that is off out', async () => {
+    await mountWith([FAKE]);
+    expect(screen.queryByText(/Module rail/)).toBeNull();
+    expect(mockUseActiveModules).toHaveBeenCalled();
   });
 });

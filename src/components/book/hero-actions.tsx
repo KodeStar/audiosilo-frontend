@@ -21,6 +21,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { WithActiveModules } from '@/modules/active-modules';
+import type { PlayerModule } from '@/modules/registry';
 
 import { type PrimaryAction, primaryLabel } from './book-page-model';
 
@@ -46,6 +48,9 @@ export type HeroActionsProps = {
    * button after the others (its own row on a phone),
    * `regenerate` (a book with generated ones) quieter, in the book menu. */
   generate?: { offer: 'generate' | 'regenerate'; onPress: () => void };
+  /** The modules to choose from (`src/modules/registry.ts`, the default; tests pass a
+   * fake): the `bookActions` of each one the book's server has on go in the book menu. */
+  modules?: readonly PlayerModule[];
 };
 
 /**
@@ -54,9 +59,18 @@ export type HeroActionsProps = {
  * end, capability `queue`), favourite, Add to collection (capability `collections`) and
  * the book menu (mark finished or not, more in this series), and for an admin "Generate
  * characters and recaps" (or Regenerate in the menu) where the page offers it. Nothing
- * here is pink: the hero's one pink thing is the progress bar.
+ * here is pink: the hero's one pink thing is the progress bar. An active module's
+ * `bookActions` (none yet) follow in the book menu.
  */
-export function HeroActions({
+export function HeroActions(props: HeroActionsProps) {
+  return (
+    <WithActiveModules modules={props.modules} connectionId={props.connectionId}>
+      {(active) => <HeroActionsView {...props} active={active} />}
+    </WithActiveModules>
+  );
+}
+
+function HeroActionsView({
   connectionId,
   libraryId,
   book,
@@ -67,24 +81,27 @@ export function HeroActions({
   onPrimary,
   stacked,
   generate,
-}: HeroActionsProps) {
+  active,
+}: HeroActionsProps & { active: readonly PlayerModule[] }) {
   const { t } = useTranslation();
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
-  const menuExtra: BookAction[] =
-    generate?.offer === 'regenerate'
+  const menuExtra: BookAction[] = [
+    ...(generate?.offer === 'regenerate'
       ? [
           {
             key: 'regenerate',
-            icon: 'sparkles',
+            icon: 'sparkles' as const,
             label: t('bridge.generate.regenerate'),
             onPress: generate.onPress,
             group: true,
           },
         ]
-      : [];
+      : []),
+    ...active.flatMap((m) => m.bookActions?.({ connectionId, book }) ?? []),
+  ];
   const generateButton =
     generate?.offer === 'generate' ? (
       <Button

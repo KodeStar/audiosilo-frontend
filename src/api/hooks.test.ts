@@ -44,6 +44,7 @@ import {
   addBookmark,
   addNote,
   anyCapability,
+  hasCapability,
   bookMetaQuery,
   chaptersQuery,
   fetchBookProgress,
@@ -197,6 +198,20 @@ describe('anyCapability', () => {
     expect(anyCapability({ a: {} as never, b: undefined }, 'queue')).toBeUndefined();
     expect(anyCapability({ a: {} as never, b: {} as never }, 'queue')).toBe(false);
     expect(anyCapability({}, 'queue')).toBeUndefined();
+  });
+
+  it("takes a module's flag, one the player's type may not list (Bridge Phase 2a)", () => {
+    expect(anyCapability({ a: { contributions: true } as never }, 'contributions')).toBe(true);
+    expect(anyCapability({ a: { some_module: true } as never }, 'some_module')).toBe(true);
+    expect(anyCapability({ a: {} as never }, 'some_module')).toBe(false);
+  });
+});
+
+describe('hasCapability', () => {
+  it('reads a flag on, and an absent or false one off', () => {
+    expect(hasCapability({ contributions: true } as Capabilities, 'contributions')).toBe(true);
+    expect(hasCapability({ contributions: false } as Capabilities, 'contributions')).toBe(false);
+    expect(hasCapability({} as Capabilities, 'not_a_flag')).toBe(false);
   });
 });
 

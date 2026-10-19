@@ -440,6 +440,30 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   `GenerateStatus` under the actions. Costs format with `formatUsd` (`src/lib/format.ts`).
   Strings under `bridge.*` in all 6 locales; fixtures in `src/testing/bridge-fixtures.ts`.
 
+**Player modules (Bridge Phase 2a, `src/modules/`; NOT the repo-root `modules/`, the native
+Expo modules).** A server module (off by default, turned on in the console's Settings >
+Modules) brings an optional player feature; its capability flag is its id and reads true only
+while it is on AND its Bridge requirement is met (`contributions` is the first,
+`Capabilities.contributions`, sent false while off).
+- **Player modules registry**: `PLAYER_MODULES` (`registry.ts`) is EMPTY in 2a: the slots
+  are open and exercised only by tests, so nothing in the player changes. A `PlayerModule` is
+  `{id, homeRails?, youSections?, bookActions?}`. `useActiveModules(list)` keeps the modules
+  some server of the person listening has on (`anyCapability` over `useCapabilitiesAll`);
+  `useModulesOn(cid, list)` one server's (a book's actions go to its own server).
+- **Capability keys are open**: `CapabilityKey = keyof Capabilities | (string & {})` for
+  `useCapability`, `anyCapability`, `cachedCapability`, the gated query/mutation helpers and
+  `CapabilityError`; read a flag with `hasCapability(caps, flag)`, never `caps[flag]`.
+- **Slots** take an optional `modules` prop (default the registry; tests pass a fake) and
+  read flags through `WithActiveModules` (`active-modules.tsx`), which asks nothing with an
+  empty list, so a slot renders exactly as before: Home's `ModuleRails` (after Next in your
+  series), the You hub (`youSections` after Account on a phone, after Journal in the wide
+  sub-nav; `parseYouSection(raw, moduleKeys)` opens an active module's key, a key of the
+  hub's own is ignored, an off module's link opens Stats; a module section is a column the
+  hub scrolls) and `HeroActions` (`bookActions` after Regenerate in the book menu). A
+  slot returns elements (its hooks live in the components it returns); `bookActions` is a
+  plain function, never a hook. `BookTab`, `BookActionKey` and `SettingsSection` stay
+  closed until a module needs them (Phase 2d).
+
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
 Stacks book page, laid out by its MEASURED width (`bookPageLayout`: the cover beside the text
@@ -1430,7 +1454,7 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   that name out of its own heading); the wide sub-nav keeps "You". Its sections are `StatsSection`,
   `YearSection`, `JournalScreen`, `SettingsContent`, `HouseholdPage` and `AccountSection` (the
   `SECTIONS` map): Stats, Year, Household and Account are plain columns the hub puts in a
-  `TabPageScroll` (below); the Journal and Settings scroll themselves. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
+  `TabPageScroll` (below); the Journal and Settings scroll themselves. An active module's sections follow the hub's own (Slots, under Player modules). The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
   "You" with a chart (`wideLabelKey`, `wideIcon`).
 - **Settings is a page of the array group** (`/settings?section=`, `settingsHref`), pushed on the
   current tab by the top bar's gear, the profile menu and the palette through `openSettings(section)`

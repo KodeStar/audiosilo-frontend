@@ -36,7 +36,9 @@ import { AddToCollectionDialog } from '../collections/collection-dialogs';
 import { useQueueActions } from '../use-queue-actions';
 import { bookStatus, unfinishedPosition } from './books-view';
 
-/** The keys of `useBookActions`' own items (a screen's `extra` brings its own). */
+/** The keys of `useBookActions`' own items (a screen's `extra` brings its own, as a
+ * module's `bookActions` do through the book page's `extra`). Closed on purpose: it stays so
+ * until a module needs one of its own here (Bridge Phase 2d). */
 export type BookActionKey = 'play' | 'queue' | 'collect' | 'download' | 'finish' | 'series';
 
 /** One entry of a book's actions menu. `group` starts a new section (a separator). */
