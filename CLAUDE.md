@@ -153,6 +153,9 @@ keep this index in step (one line per topic).
   - Hooks
   - The gate
   - Surfaces
+  - Player modules registry
+  - Module flags are mirrored
+  - Slots
   - The module's surface
   - Remote moves vs the resume floor
   - The iOS engine is split into files
@@ -227,6 +230,7 @@ src/car/            CarPlay + Android Auto JS: snapshot model, car sync controll
 src/cast/           Chromecast: the routed service, the cast engine, cast tokens, native + web drivers
 src/widgets/        iOS widget + sleep timer Live Activity ('widget' functions, model, sync)
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
+src/modules/        player modules (Bridge Phase 2a): the registry (empty) + the slot wrapper; NOT the root modules/
 src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, you/ (the You hub: stats/, year/), settings/ (Settings panes), account/ (the account page), connect/ (onboarding), library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/, profiles/ (people, PIN, Household), kids/ (kids mode), house/ (listening in the house)
 src/stores/         Zustand: session, profiles, search, settings, series-orderings, library-selection
 src/i18n/           i18next setup, language provider, locale JSONs (locales/)

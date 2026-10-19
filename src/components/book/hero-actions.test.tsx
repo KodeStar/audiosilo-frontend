@@ -57,7 +57,21 @@ jest.mock('@/components/ui/toast', () => ({
   toast: (t: unknown) => mockToast(t),
 }));
 
+// Which modules the book's server has on (Bridge Phase 2a): `useModulesOn` has its own
+// suite; here a module is on for the connection `mockModulesOn` names it under.
+let mockModulesOn: Record<string, string[]> = {};
+const mockUseModulesOn = jest.fn();
+jest.mock('@/modules/registry', () => ({
+  ...jest.requireActual('@/modules/registry'),
+  useModulesOn: (cid: string, list: readonly { id: string }[]) => {
+    mockUseModulesOn(cid);
+    return list.filter((m) => mockModulesOn[cid]?.includes(m.id));
+  },
+}));
+
 /* eslint-disable import/first */
+import type { PlayerModule } from '@/modules/registry';
+
 import { HeroActions, type HeroActionsProps } from './hero-actions';
 /* eslint-enable import/first */
 
@@ -80,6 +94,8 @@ async function mount(stacked = false, generate?: HeroActionsProps['generate']) {
 }
 
 beforeEach(() => {
+  mockModulesOn = {};
+  mockUseModulesOn.mockClear();
   mockCaps = { queue: true, progress_edit: true };
   mockQueue = [entry('Other/One'), entry('Other/Two')];
   mockAdd.mockReset();
@@ -171,6 +187,65 @@ describe('HeroActions generate', () => {
   it('offers neither when the page offers nothing', async () => {
     await mount();
     expect(screen.queryByTestId('generate-action')).toBeNull();
+    expect(mockExtra).toEqual([]);
+  });
+});
+
+// A module's book actions (Bridge Phase 2a): in the book menu, after the page's own, for a
+// book on a server that has the module on.
+describe('HeroActions module actions', () => {
+  const onContribute = jest.fn();
+  const FAKE: PlayerModule = {
+    id: 'contributions',
+    bookActions: ({ connectionId, book }) => [
+      {
+        key: 'contribute',
+        icon: 'sparkles',
+        label: `Contribute ${book.title} on ${connectionId}`,
+        onPress: onContribute,
+        group: true,
+      },
+    ],
+  };
+  const mountWith = async (generate?: HeroActionsProps['generate']) => {
+    await mountWithPortal(
+      <HeroActions
+        connectionId="home"
+        libraryId={1}
+        book={BOOK}
+        chaptersLoading={false}
+        primary={{ kind: 'start' }}
+        onPrimary={jest.fn()}
+        stacked={false}
+        generate={generate}
+        modules={[FAKE]}
+      />,
+    );
+  };
+
+  it('renders as before with the empty registry, asking nothing', async () => {
+    await mount();
+    expect(mockExtra).toEqual([]);
+    expect(mockUseModulesOn).not.toHaveBeenCalled();
+  });
+
+  it("follows Regenerate in the book menu while the book's server has the module on", async () => {
+    mockModulesOn = { home: ['contributions'] };
+    await mountWith({ offer: 'regenerate', onPress: jest.fn() });
+    expect(mockUseModulesOn).toHaveBeenCalledWith('home');
+    expect(mockExtra.map((a) => a.label)).toEqual([
+      'Regenerate characters and recaps',
+      'Contribute The Book on home',
+    ]);
+    // Keyed by the module, so its keys never meet the menu's own.
+    expect(mockExtra.map((a) => a.key)).toEqual(['regenerate', 'contributions:contribute']);
+    mockExtra[1].onPress();
+    expect(onContribute).toHaveBeenCalled();
+  });
+
+  it('offers nothing while only another server has the module on', async () => {
+    mockModulesOn = { other: ['contributions'] };
+    await mountWith();
     expect(mockExtra).toEqual([]);
   });
 });

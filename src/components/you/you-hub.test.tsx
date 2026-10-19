@@ -68,8 +68,23 @@ jest.mock('@/components/account/account-section', () => {
   };
 });
 
+// Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite; here a
+// module's flag is on when `mockModulesOn` says so.
+let mockModulesOn: Record<string, boolean> = {};
+const mockUseActiveModules = jest.fn();
+jest.mock('@/modules/registry', () => ({
+  ...jest.requireActual('@/modules/registry'),
+  useActiveModules: (list: readonly { id: string }[]) => {
+    mockUseActiveModules();
+    return list.filter((m) => mockModulesOn[m.id]);
+  },
+}));
+
 /* eslint-disable import/first */
+import { Text } from 'react-native';
+
 import { useSubNav } from '@/components/shell/sub-nav-store';
+import type { PlayerModule } from '@/modules/registry';
 
 import { YouHub } from './you-hub';
 /* eslint-enable import/first */
@@ -82,6 +97,7 @@ const mount = async (params: Record<string, string> = {}) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockModulesOn = {};
   mockLayout = 'phone';
   useSubNav.setState({ slots: {} });
 });
@@ -200,5 +216,71 @@ describe('YouHub on tablet and desktop', () => {
     await mount({ section: 'settings' });
     expect(screen.getByText('settings-section embedded=false')).toBeTruthy();
     expect(useSubNav.getState().slots['(me)']?.sections?.value).toBe('settings');
+  });
+});
+
+describe("YouHub with a module's section (Bridge Phase 2a)", () => {
+  const SIX = ['Stats', 'Year', 'Journal', 'Settings', 'Household', 'Account'];
+  const FAKE: PlayerModule = {
+    id: 'contributions',
+    youSections: [
+      {
+        key: 'contribute',
+        label: () => 'Contribute',
+        render: ({ phone }) => <Text>{`contribute-section phone=${String(phone)}`}</Text>,
+      },
+      // A module can't take over one of the hub's own sections.
+      { key: 'stats', label: () => 'Not stats', render: () => <Text>not-stats</Text> },
+    ],
+  };
+  const mountWith = async (params: Record<string, string> = {}) => {
+    mockParams = params;
+    await render(<YouHub modules={[FAKE]} />);
+  };
+  const segments = () => screen.getAllByRole('radio').map((r) => r.props.accessibilityLabel);
+
+  it('renders as before with the empty registry, asking nothing', async () => {
+    await mount({ section: 'contribute' });
+    expect(segments()).toEqual(SIX);
+    expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
+    await render(<YouHub modules={[]} />);
+    expect(segments()).toEqual(SIX);
+    expect(mockUseActiveModules).not.toHaveBeenCalled();
+  });
+
+  it('follows Account on a phone while the module is on, a column the hub scrolls', async () => {
+    mockModulesOn = { contributions: true };
+    await mountWith({ section: 'contribute' });
+    expect(segments()).toEqual([...SIX, 'Contribute']);
+    expect(screen.getByLabelText('Contribute')).toBeChecked();
+    expect(screen.getByTestId('you-hub-contribute')).toBeTruthy();
+    expect(screen.getByText('contribute-section phone=true')).toBeTruthy();
+    expect(screen.getByTestId('you-hub-scroll')).toBeTruthy();
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'Contribute' });
+    expect(screen.queryByText('not-stats')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('Stats'));
+    expect(mockSetParams).toHaveBeenLastCalledWith({ section: undefined, tab: undefined });
+  });
+
+  it('is gone while the module is off, and a link to it opens Stats', async () => {
+    await mountWith({ section: 'contribute' });
+    expect(segments()).toEqual(SIX);
+    expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
+    expect(screen.queryByText(/contribute-section/)).toBeNull();
+  });
+
+  it('follows Journal in the wide sub-nav', async () => {
+    mockModulesOn = { contributions: true };
+    mockLayout = 'desktop';
+    await mountWith({ section: 'contribute' });
+    const sections = useSubNav.getState().slots['(me)']?.sections;
+    expect(sections?.options.map((o) => o.label)).toEqual([
+      'Stats',
+      'Year in listening',
+      'Journal',
+      'Contribute',
+    ]);
+    expect(sections?.value).toBe('contribute');
+    expect(screen.getByText('contribute-section phone=false')).toBeTruthy();
   });
 });
