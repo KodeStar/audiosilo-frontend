@@ -606,10 +606,13 @@ CC BY-SA credit:
 **`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
 generated, and every `Attribution` beside characters (or a lone list recap) reads through it.
 A Recaps panel reads
-**`recapMarks(generated, shown)`** instead (Bridge 1e): the list's source is `generated.recaps`,
-the whole-book summary's `generated.recap_summary` (absent on an older server, whose `recaps`
-covers both), so a community summary beside a generated list keeps its credit and each part
-wears its own chip when they differ (one chip heads the panel when every shown part was generated).
+**`recapMarks(generated, shown)`** instead (Bridge 1e): the whole-book summary's source is
+`generated.recap_summary` (absent on an older server, whose `recaps` then stands for both),
+the list's `generated.recaps` (the wire sets it for either part, but the server takes a generated
+summary only with its generated list, so a shown list it flags is generated), so a community
+summary beside a generated list keeps its credit and each part wears its own chip when they
+differ (one chip heads the panel when every shown part was generated; a part's chip sits under
+the list's heading or above the summary).
 
 **Player-redesign data API (Phase 1a, the wire).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on

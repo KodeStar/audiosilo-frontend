@@ -198,10 +198,22 @@ describe('generated content in the companion', () => {
     expect(screen.queryByTestId('generated-mark')).toBeNull();
     expect(screen.getByText(/Community notes from/)).toBeTruthy();
 
+    // Not a shape a 1e server sends (it takes a generated summary only with its list),
+    // but the panel still marks each part by its own flag.
     await mount(<StoryPanel data={data({ generated: { recaps: false, recap_summary: true } })} />);
     expect(screen.getByTestId('summary-generated-mark')).toBeTruthy();
     expect(screen.queryByTestId('recaps-generated-mark')).toBeNull();
     expect(screen.getByText(/Community notes from/)).toBeTruthy();
+  });
+
+  it('marks revealed recaps of a generated list below a community summary', async () => {
+    const mixed = data({ generated: { recaps: true, recap_summary: false } });
+    await mount(<StoryPanel data={mixed} />);
+    expect(screen.queryByTestId('hidden-recaps-generated-mark')).toBeNull();
+    useCompanion.getState().setRevealed(mixed.key, true);
+    await mount(<StoryPanel data={mixed} />);
+    expect(screen.getByText('The dragon wakes.')).toBeTruthy();
+    expect(screen.getByTestId('hidden-recaps-generated-mark')).toBeTruthy();
   });
 
   it('heads a summary-only panel with the generated mark only when the summary was generated', async () => {
@@ -210,7 +222,10 @@ describe('generated content in the companion', () => {
     );
     expect(screen.queryByText('Generated on this server')).toBeNull();
     expect(screen.getByText(/Community notes from/)).toBeTruthy();
-    await mount(<StoryPanel data={data({ recaps: [], generated: { recap_summary: true } })} />);
+    // The wire's shape for a generated summary: `recaps` is set for it too.
+    await mount(
+      <StoryPanel data={data({ recaps: [], generated: { recaps: true, recap_summary: true } })} />,
+    );
     expect(screen.getByTestId('generated-mark')).toBeTruthy();
     expect(screen.queryByText(/Community notes from/)).toBeNull();
   });

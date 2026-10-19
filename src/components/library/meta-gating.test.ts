@@ -242,6 +242,8 @@ describe('recapMarks', () => {
     });
   });
 
+  // Not a shape a 1e server sends (it takes a generated summary only with its list), but
+  // each part still reads its own flag.
   it('marks a generated summary beside a community list', () => {
     expect(recapMarks({ recaps: false, recap_summary: true }, both)).toEqual({
       panel: false,
@@ -264,5 +266,9 @@ describe('recapMarks', () => {
   it('only counts the parts the panel shows', () => {
     // A generated summary the panel withholds does not mark a community list.
     expect(recapMarks({ recap_summary: true }, { list: true, summary: false })).toEqual(none);
+    // The wire's shape for a generated summary with no list: only the summary shows.
+    expect(
+      recapMarks({ recaps: true, recap_summary: true }, { list: false, summary: true }),
+    ).toEqual({ panel: true, list: false, summary: false, credit: false });
   });
 });

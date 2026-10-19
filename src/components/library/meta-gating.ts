@@ -88,11 +88,13 @@ export type RecapMarks = {
 
 /**
  * How a Recaps panel marks its two parts, the recap list and the whole-book summary, by
- * where each came from: the list is generated when `generated.recaps`, the summary when
- * `generated.recap_summary` (Bridge Phase 1e). An older server sends no `recap_summary`
- * and generated both together, so its `recaps` stands for the summary too. A community
- * summary beside a generated list keeps its credit. `shown` says which parts the panel
- * renders.
+ * where each came from: the summary is generated when `generated.recap_summary` (Bridge
+ * Phase 1e), the list when `generated.recaps` (which the server also sets for a generated
+ * summary, but it takes one only with its generated list, so a shown list it flags is
+ * generated). A community summary beside a generated list keeps its credit. An older
+ * server sends no `recap_summary`, so its `recaps` stands for the summary too: there a
+ * community summary beside a generated list goes uncredited, as before 1e. `shown` says
+ * which parts the panel renders.
  */
 export function recapMarks(
   generated: BookMetaGenerated | undefined,

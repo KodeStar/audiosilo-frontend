@@ -85,7 +85,6 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
   return (
     <View className="gap-4">
       {marks.panel ? <GeneratedChip /> : null}
-      {marks.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
       {data.recaps.length > 0 ? (
         <View className="gap-0.5">
           <Text variant="eyebrow">{t('book.meta.storySoFar')}</Text>
@@ -101,6 +100,9 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
           </Text>
         </View>
       ) : null}
+      {/* Under the list's own heading, as the book page's Recaps tab has it: the panel's
+          head is the all-generated chip's place. */}
+      {marks.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
       <LayoutAnimationConfig skipEntering>
         {story.parts.map((r) => (
           <Animated.View key={`${r.scope ?? 'book'}-${r.through.chapter}`} entering={ARRIVE}>
@@ -120,6 +122,11 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
         shown={shown}
         onToggle={() => setRevealed(data.key, !shown)}
       />
+      {/* Revealed recaps sit below the summary: a generated list's chip goes with them too,
+          so they never read as the community summary's. */}
+      {shown && marks.list && story.hidden.length > 0 ? (
+        <GeneratedChip testID="hidden-recaps-generated-mark" />
+      ) : null}
       {shown
         ? story.hidden.map((r) => (
             <StoryPart key={`h-${r.scope ?? 'book'}-${r.through.chapter}`} recap={r} spoiler />
