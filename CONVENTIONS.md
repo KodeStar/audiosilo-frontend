@@ -599,11 +599,13 @@ Home's Now card and Previously on, the search's characters). `metaAnswered(enabl
 `META_GENERATED_ONLY_STALE_MS` (2 min, `metaStaleTime`), because the server answers the same
 way when the community lookup failed for a book it would otherwise match. Generated content
 wears the quiet "Generated on this server" chip (`GeneratedChip`, `bridge.generate.mark`:
-`GeneratedMark` puts it at the head of a Characters or Recaps panel, by `work.generated`'s
-dimension, and the About card under its eyebrow for a generated description) and never the
-community's CC BY-SA credit:
+`GeneratedMark` puts it at the head of a Characters panel and the Previously On card's list
+recap, by `work.generated`'s dimension, a Recaps panel places it per part (`recapMarks`, below),
+and the About card under its eyebrow for a generated description) and never the community's
+CC BY-SA credit:
 **`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
-generated, and every `Attribution` beside characters reads through it. A Recaps panel reads
+generated, and every `Attribution` beside characters (or a lone list recap) reads through it.
+A Recaps panel reads
 **`recapMarks(generated, shown)`** instead (Bridge 1e): the list's source is `generated.recaps`,
 the whole-book summary's `generated.recap_summary` (absent on an older server, whose `recaps`
 covers both), so a community summary beside a generated list keeps its credit and each part
@@ -1758,8 +1760,9 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   slot takes what the rest leaves, `phoneCoverSize`, so the player fits without scrolling);
   gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal
   per book and the "Just met" marks in `useCompanion`, the server's `attribution` on every community
-block (`communityCredit`; generated panels wear `GeneratedMark`, and Who's who / Story so far
-offer an admin `GenerateOffer` under their empty state).
+block (`communityCredit`, Story so far's `recapMarks`; generated panels wear `GeneratedMark`,
+Story so far its `recapMarks` chips, and Who's who / Story so far offer an admin `GenerateOffer`
+under their empty state).
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
   only (`watchReveal` + `revealOnCrossing`: a pause, a buffer or a file change reported in two
   writes on the way still counts; a seek never does), reading the chapter at Who's who's own
