@@ -279,17 +279,19 @@ function BookPage() {
     now: new Date(),
   });
 
+  // The skeleton and the page share these: the skeleton mounts the scroller the loaded page
+  // then updates, and react-native-web's ScrollView hands its node to a forwarded ref only
+  // at mount, so a ref first passed on an update would stay null on the web.
+  const scrollerProps = {
+    ref: scrollRef,
+    className: 'flex-1',
+    onLayout: measure,
+    contentContainerStyle: { paddingBottom },
+  };
+
   if (isLoading) {
-    // The skeleton's scroller is the same instance the loaded page updates, so it takes
-    // `scrollRef` too: react-native-web's ScrollView hands its node to a forwarded ref
-    // only at mount, so a ref first passed on an update would stay null on the web.
     return (
-      <ScrollView
-        ref={scrollRef}
-        className="flex-1"
-        onLayout={measure}
-        contentContainerStyle={{ paddingBottom }}
-      >
+      <ScrollView {...scrollerProps}>
         <BookSkeleton layout={layout} />
       </ScrollView>
     );
@@ -419,13 +421,7 @@ function BookPage() {
   );
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      testID="book-page"
-      className="flex-1"
-      onLayout={measure}
-      contentContainerStyle={{ paddingBottom }}
-    >
+    <ScrollView testID="book-page" {...scrollerProps}>
       {/* The content the covered line's "See characters" measures the tabs against. */}
       <View ref={contentRef}>
         <BookHero

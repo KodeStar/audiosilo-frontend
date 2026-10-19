@@ -750,35 +750,37 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.getByText('Ada Quill')).toBeTruthy();
   });
 
-  // The scroller first renders the skeleton, then the page: the ref must hold the same
-  // instance (on the web a ref first passed on that update would stay null).
+  // The skeleton mounts the scroller, so the ref must already ride on it (see the mock above).
   it('scrolls the Characters tab into view from the covered line after the book loads', async () => {
-    const { default: ScrollViewMock } = jest.requireActual<{
-      default: { prototype: { scrollTo: jest.Mock } };
-    }>('@react-native/jest-preset/jest/mocks/ScrollView');
+    const scrollTo = jest.mocked(
+      jest.requireActual<typeof import('react-native')>('react-native').ScrollView.prototype
+        .scrollTo,
+    );
     const { default: nativeMethods } = jest.requireActual<{
       default: { measureLayout: jest.Mock };
     }>('@react-native/jest-preset/jest/MockNativeMethods');
+    scrollTo.mockClear();
     nativeMethods.measureLayout.mockImplementation(
       (_to: unknown, success: (x: number, y: number) => void) => success(0, 640),
     );
-    signIn(ADMIN);
-    bridgeOn();
-    mockBook = { ...BOOK, asin: 'B0' };
-    mockMeta = covered();
-    mockBookLoading = true;
-    await mountAt('desktop');
-    expect(screen.getByTestId('book-skeleton')).toBeTruthy();
-    mockBookLoading = false;
-    // A new user object re-renders the page (its Generate model reads the session).
-    await act(async () => signIn({ ...ADMIN }));
-    await fireEvent.press(screen.getByTestId('generate-covered-open'));
-    await waitFor(() =>
-      expect(ScrollViewMock.prototype.scrollTo).toHaveBeenCalledWith(
-        expect.objectContaining({ y: 640 }),
-      ),
-    );
-    nativeMethods.measureLayout.mockReset();
+    try {
+      signIn(ADMIN);
+      bridgeOn();
+      mockBook = { ...BOOK, asin: 'B0' };
+      mockMeta = covered();
+      mockBookLoading = true;
+      await mountAt('desktop');
+      expect(screen.getByTestId('book-skeleton')).toBeTruthy();
+      mockBookLoading = false;
+      // A new user object re-renders the page (its Generate model reads the session).
+      await act(async () => signIn({ ...ADMIN }));
+      await fireEvent.press(screen.getByTestId('generate-covered-open'));
+      await waitFor(() =>
+        expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 640 })),
+      );
+    } finally {
+      nativeMethods.measureLayout.mockReset();
+    }
   });
 
   it('never shows a listener the covered line', async () => {
