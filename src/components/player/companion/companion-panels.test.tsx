@@ -189,6 +189,32 @@ describe('generated content in the companion', () => {
     expect(screen.getByText('Generated on this server')).toBeTruthy();
   });
 
+  // Bridge Phase 1e: a community summary beside a generated list keeps its credit, and
+  // each part wears its own source.
+  it('marks the summary and the list on their own when they came from different places', async () => {
+    await mount(<StoryPanel data={data({ generated: { recaps: true, recap_summary: false } })} />);
+    expect(screen.getByTestId('recaps-generated-mark')).toBeTruthy();
+    expect(screen.queryByTestId('summary-generated-mark')).toBeNull();
+    expect(screen.queryByTestId('generated-mark')).toBeNull();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
+
+    await mount(<StoryPanel data={data({ generated: { recaps: false, recap_summary: true } })} />);
+    expect(screen.getByTestId('summary-generated-mark')).toBeTruthy();
+    expect(screen.queryByTestId('recaps-generated-mark')).toBeNull();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
+  });
+
+  it('heads a summary-only panel with the generated mark only when the summary was generated', async () => {
+    await mount(
+      <StoryPanel data={data({ recaps: [], generated: { recaps: true, recap_summary: false } })} />,
+    );
+    expect(screen.queryByText('Generated on this server')).toBeNull();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
+    await mount(<StoryPanel data={data({ recaps: [], generated: { recap_summary: true } })} />);
+    expect(screen.getByTestId('generated-mark')).toBeTruthy();
+    expect(screen.queryByText(/Community notes from/)).toBeNull();
+  });
+
   it('never marks community content', async () => {
     await mount(<WhoPanel data={data()} />);
     expect(screen.queryByText('Generated on this server')).toBeNull();

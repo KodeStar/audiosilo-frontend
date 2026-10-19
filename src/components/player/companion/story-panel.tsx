@@ -5,13 +5,13 @@ import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-nat
 
 import type { BookMetaRecap } from '@/api/types';
 import {
-  GeneratedMark,
+  GeneratedChip,
   RecapSummaryBlock,
   recapHeading,
   SpoilerChip,
   summaryIsVisible,
 } from '@/components/library/book-meta';
-import { communityCredit } from '@/components/library/meta-gating';
+import { recapMarks } from '@/components/library/meta-gating';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text } from '@/components/ui/text';
 
@@ -77,9 +77,15 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
   }
 
   const story = storySoFar(data.recaps, data.listening);
+  // The list and the whole-book summary each carry their own source (Bridge 1e).
+  const marks = recapMarks(data.generated, {
+    list: data.recaps.length > 0,
+    summary: summaryVisible,
+  });
   return (
     <View className="gap-4">
-      <GeneratedMark generated={data.generated} dimension="recaps" />
+      {marks.panel ? <GeneratedChip /> : null}
+      {marks.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
       {data.recaps.length > 0 ? (
         <View className="gap-0.5">
           <Text variant="eyebrow">{t('book.meta.storySoFar')}</Text>
@@ -102,6 +108,7 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
           </Animated.View>
         ))}
       </LayoutAnimationConfig>
+      {marks.summary ? <GeneratedChip testID="summary-generated-mark" /> : null}
       {summaryVisible ? (
         <RecapSummaryBlock summary={data.summary} finished={data.listening.finished} />
       ) : null}
@@ -118,7 +125,7 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
             <StoryPart key={`h-${r.scope ?? 'book'}-${r.through.chapter}`} recap={r} spoiler />
           ))
         : null}
-      <Attribution attribution={communityCredit(data, 'recaps')} className="mt-1" />
+      {marks.credit ? <Attribution attribution={data.attribution} className="mt-1" /> : null}
     </View>
   );
 }

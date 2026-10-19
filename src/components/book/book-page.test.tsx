@@ -769,6 +769,38 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByTestId('generate-action')).toBeNull();
   });
 
+  // Bridge Phase 1e: a community whole-book summary beside a recap list generated here
+  // keeps its credit, and only the list wears the generated mark.
+  it('keeps a community summary credited beside generated recaps', async () => {
+    mockCaps = { metadata: true };
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = {
+      matched: true,
+      work: {
+        id: 'w',
+        title: 'The Way of Kings',
+        authors: [],
+        language: 'en',
+        recaps,
+        recap_summary: { in_short: 'The whole book, ending included.' },
+        generated: { recaps: true, recap_summary: false },
+        attribution: {
+          credit: 'AudioSilo Meta community contributors',
+          license: 'CC BY-SA 4.0',
+          license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+          source_url: 'https://meta.audiosilo.app/work?id=w',
+        },
+      },
+      web_url: 'https://meta.audiosilo.app/work?id=w',
+    };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('book-tab-recaps'));
+    expect(screen.getByTestId('recaps-generated-mark')).toBeTruthy();
+    expect(screen.queryByTestId('summary-generated-mark')).toBeNull();
+    expect(screen.queryByTestId('generated-mark')).toBeNull();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
+  });
+
   // A matched work keeps its community credit for what the community wrote (here its
   // characters); the recaps generated on this server carry none of it.
   it('credits the community under its own dimension only', async () => {

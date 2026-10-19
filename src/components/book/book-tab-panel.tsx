@@ -7,11 +7,16 @@ import {
   BookMetaCharactersTab,
   BookMetaRecapsTab,
   BookMetaSeriesTab,
+  GeneratedChip,
   GeneratedMark,
 } from '@/components/library/book-meta';
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
-import { communityCredit, type ListeningProgress } from '@/components/library/meta-gating';
+import {
+  communityCredit,
+  type ListeningProgress,
+  recapMarks,
+} from '@/components/library/meta-gating';
 import { NotesSection } from '@/components/library/notes-section';
 import type { SeriesRail } from '@/components/library/series-rails';
 import { useCommunityCover } from '@/components/library/use-community-cover';
@@ -81,9 +86,14 @@ export function BookTabPanel({
       return <BookChaptersTab {...chapters} roomy={roomy} />;
     case 'recaps': {
       const recaps = work?.recaps ?? [];
+      // The list and the whole-book summary each carry their own source (Bridge 1e).
+      const marks = recapMarks(work?.generated, {
+        list: recaps.length > 0,
+        summary: community.summaryVisible,
+      });
       return (
         <View className="gap-4">
-          <GeneratedMark generated={work?.generated} dimension="recaps" />
+          {marks.panel ? <GeneratedChip /> : null}
           <BookMetaRecapsTab
             recaps={recaps}
             progress={community.gate}
@@ -93,10 +103,9 @@ export function BookTabPanel({
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}
             coverFor={coverFor}
+            generatedParts={marks}
           />
-          {recaps.length > 0 || community.summaryVisible ? (
-            <Attribution attribution={communityCredit(work, 'recaps')} />
-          ) : null}
+          {marks.credit ? <Attribution attribution={work?.attribution} /> : null}
         </View>
       );
     }

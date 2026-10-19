@@ -448,7 +448,9 @@ stop exactly there; the next paragraph fades in when you finish a chapter. The w
 includes the ending) is blurred behind "Show the whole-book summary". Every community block ends with the
 attribution "Community notes from AudioSilo Meta contributors · CC BY-SA 4.0". Characters or recaps a Bridge
 generated on the listener's server (an unmatched book's, or the half the community lacks) never carry that
-credit: their panel opens with a quiet "Generated on this server" chip instead (`GeneratedMark`; the book page's
+credit: their panel opens with a quiet "Generated on this server" chip instead (when a recap list and the
+whole-book summary came from different places, the chip sits on the generated part and the community's credit
+stays for the other: `recapMarks`, `generated.recap_summary`; `GeneratedMark`; the book page's
 About card wears the same chip, `GeneratedChip`, under its eyebrow when its text is a description generated on the
 server). With neither (or the half shown missing),
 the kind empty state shows, and under it, for an admin only, "Generate characters and recaps" (below).

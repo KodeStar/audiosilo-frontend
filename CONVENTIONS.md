@@ -603,7 +603,11 @@ wears the quiet "Generated on this server" chip (`GeneratedChip`, `bridge.genera
 dimension, and the About card under its eyebrow for a generated description) and never the
 community's CC BY-SA credit:
 **`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
-generated, and every `Attribution` beside characters or recaps reads through it.
+generated, and every `Attribution` beside characters reads through it. A Recaps panel reads
+**`recapMarks(generated, shown)`** instead (Bridge 1e): the list's source is `generated.recaps`,
+the whole-book summary's `generated.recap_summary` (absent on an older server, whose `recaps`
+covers both), so a community summary beside a generated list keeps its credit and each part
+wears its own chip when they differ (one chip heads the panel when every shown part was generated).
 
 **Player-redesign data API (Phase 1a, the wire).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on

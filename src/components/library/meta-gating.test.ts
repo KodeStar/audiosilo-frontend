@@ -9,6 +9,7 @@ import {
   metaAnswered,
   metaEnabledFor,
   recapIsVisible,
+  recapMarks,
   splitCharacters,
   splitRecaps,
 } from './meta-gating';
@@ -210,5 +211,58 @@ describe('communityCredit', () => {
     expect(communityCredit(mixed, 'recaps')).toBeUndefined();
     expect(communityCredit(mixed, 'characters')).toBe(attribution);
     expect(communityCredit(undefined, 'characters')).toBeUndefined();
+  });
+});
+
+// Bridge Phase 1e: the recap list and the whole-book summary each carry their own source.
+describe('recapMarks', () => {
+  const both = { list: true, summary: true };
+  const none = { panel: false, list: false, summary: false, credit: true };
+
+  it('credits community content and marks nothing', () => {
+    expect(recapMarks(undefined, both)).toEqual(none);
+    expect(recapMarks({ characters: true }, both)).toEqual(none);
+  });
+
+  it('heads the panel with one chip when every part shown was generated', () => {
+    const all = { panel: true, list: false, summary: false, credit: false };
+    expect(recapMarks({ recaps: true, recap_summary: true }, both)).toEqual(all);
+    // A generated list alone, no summary shown.
+    expect(
+      recapMarks({ recaps: true, recap_summary: false }, { list: true, summary: false }),
+    ).toEqual(all);
+  });
+
+  it('keeps a community summary credited beside a generated list', () => {
+    expect(recapMarks({ recaps: true, recap_summary: false }, both)).toEqual({
+      panel: false,
+      list: true,
+      summary: false,
+      credit: true,
+    });
+  });
+
+  it('marks a generated summary beside a community list', () => {
+    expect(recapMarks({ recaps: false, recap_summary: true }, both)).toEqual({
+      panel: false,
+      list: false,
+      summary: true,
+      credit: true,
+    });
+  });
+
+  it("reads an older server's recaps flag as covering the summary too", () => {
+    expect(recapMarks({ recaps: true }, both)).toEqual({
+      panel: true,
+      list: false,
+      summary: false,
+      credit: false,
+    });
+    expect(recapMarks({ recaps: false }, both)).toEqual(none);
+  });
+
+  it('only counts the parts the panel shows', () => {
+    // A generated summary the panel withholds does not mark a community list.
+    expect(recapMarks({ recap_summary: true }, { list: true, summary: false })).toEqual(none);
   });
 });

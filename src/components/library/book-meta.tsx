@@ -34,6 +34,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import {
   type ListeningProgress,
   recapDescriptor,
+  type RecapMarks,
   sortRecaps,
   type Split,
   splitCharacters,
@@ -711,6 +712,7 @@ export function BookMetaRecapsTab({
   onToggleSpoilers,
   previousBooks = [],
   coverFor = noCommunityCover,
+  generatedParts,
 }: SpoilerReveal & {
   recaps: BookMetaRecap[];
   progress: ListeningProgress;
@@ -728,16 +730,24 @@ export function BookMetaRecapsTab({
   /** Where their community covers load from (`useCommunityCover`); without it each
    * shows its placeholder. */
   coverFor?: CommunityCoverFor;
+  /** Which part wears its own "Generated on this server" chip when the summary and the
+   * list came from different places (`recapMarks`); one heading the panel is the
+   * caller's. */
+  generatedParts?: Pick<RecapMarks, 'list' | 'summary'>;
 }) {
   const { t } = useTranslation();
   const split = splitRecaps(sortRecaps(recaps), progress);
   const rows = spoilerRows(split, showSpoilers);
   return (
     <View className="gap-3">
+      {summaryVisible && generatedParts?.summary ? (
+        <GeneratedChip testID="summary-generated-mark" />
+      ) : null}
       {summaryVisible ? <RecapSummaryBlock summary={summary} finished={progress.finished} /> : null}
       {rows.length > 0 ? (
         <View className="gap-2">
           {summaryVisible ? <SectionHeader title={t('book.meta.storySoFar')} /> : null}
+          {generatedParts?.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
           <View className="overflow-hidden rounded-xl border border-border">
             {rows.map(({ item, spoiler }, i) => (
               <RecapRow

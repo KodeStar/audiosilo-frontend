@@ -620,10 +620,14 @@ export type BookMetaWork = {
 
 /** What of a work came from this server's own generated files (see
  * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. `description` is Bridge
- * Phase 1c's (absent on a 1a/1b server). */
+ * Phase 1c's (absent on a 1a/1b server). `recaps` is the recap list; `recap_summary`
+ * (Bridge Phase 1e) the whole-book summary on its own, since a community summary can sit
+ * beside a generated list. An older server sends no `recap_summary`, and its `recaps`
+ * covers both (see `recapMarks`). */
 export type BookMetaGenerated = {
   characters?: boolean;
   recaps?: boolean;
+  recap_summary?: boolean;
   description?: boolean;
   generated_at?: string;
 };
