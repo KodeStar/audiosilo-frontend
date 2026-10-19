@@ -3,7 +3,7 @@ import type { TFunction } from 'i18next';
 import type { IconName } from '@/components/ui/icon';
 import { youSectionsFor, youTitleKey } from '@/components/you/you-model';
 import type { ShortcutKey } from '@/lib/keyboard';
-import type { CoreYouSection, YouSection } from '@/lib/paths';
+import type { CoreYouSection } from '@/lib/paths';
 
 import type { Destination, TabName } from './destinations';
 
@@ -130,7 +130,7 @@ export function buildActionItems(s: ActionState, run: ActionRuns, t: TFunction):
 /** What each Go to item does (the component wires the router). */
 export type GoToRuns = {
   tab: (name: TabName) => void;
-  you: (section: YouSection) => void;
+  you: (section: CoreYouSection) => void;
   settings: () => void;
   household: () => void;
 };

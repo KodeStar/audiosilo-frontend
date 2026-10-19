@@ -16,7 +16,7 @@ import { useLayout } from '@/lib/layout';
 import type { CoreYouSection } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
 import { WithActiveModules } from '@/modules/active-modules';
-import type { PlayerModule } from '@/modules/registry';
+import type { PlayerModule, YouModuleSection } from '@/modules/registry';
 
 import {
   isCoreYouSection,
@@ -97,7 +97,7 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   const section = parseYouSection(params.section, moduleKeys);
   const ownSection = isCoreYouSection(section) ? section : null;
   const moduleSection = ownSection ? undefined : moduleSections.get(section);
-  const title = ownSection ? t(youTitleKey(ownSection)) : (moduleSection?.label ?? '');
+  const title = ownSection ? t(youTitleKey(ownSection)) : (moduleSection?.label(t) ?? '');
 
   // The phone's large title (the tab stack's header) follows the section; the wide
   // sub-nav keeps the destination's own title, "You".
@@ -111,7 +111,7 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
     value,
     label: isCoreYouSection(value)
       ? t(youSectionLabelKey(value, layout))
-      : (moduleSections.get(value)?.label ?? value),
+      : (moduleSections.get(value)?.label(t) ?? value),
   }));
 
   return (
@@ -132,9 +132,15 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
         {ownSection
           ? SECTIONS[ownSection]({ phone })
           : moduleSection
-            ? column(moduleSection.render({ phone }))
+            ? column(<ModuleSectionBody section={moduleSection} phone={phone} />)
             : null}
       </Fragment>
     </View>
   );
+}
+
+/** A module's section behind a component of its own, so a hook its `render` reaches stays
+ * out of the hub's own. */
+function ModuleSectionBody({ section, phone }: { section: YouModuleSection; phone: boolean }) {
+  return section.render({ phone });
 }

@@ -28,16 +28,16 @@ export function isCoreYouSection(section: string): section is CoreYouSection {
   return (YOU_SECTIONS as readonly string[]).includes(section);
 }
 
-/** The active modules' sections by key, in registry order: the first of a key wins, and
- * an empty key or one of the hub's own is ignored. Its keys are the `moduleKeys` the rules
- * below take. */
+/** The active modules' sections by key, in registry order: the first of a key wins, and a
+ * blank key (a link can't name it) or one of the hub's own is ignored. Its keys are the
+ * `moduleKeys` the rules below take. */
 export function youModuleSections(
   active: readonly PlayerModule[],
 ): ReadonlyMap<string, YouModuleSection> {
   const out = new Map<string, YouModuleSection>();
   for (const m of active) {
     for (const s of m.youSections ?? []) {
-      if (s.key && !isCoreYouSection(s.key) && !out.has(s.key)) out.set(s.key, s);
+      if (s.key.trim() && !isCoreYouSection(s.key) && !out.has(s.key)) out.set(s.key, s);
     }
   }
   return out;

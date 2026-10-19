@@ -1,5 +1,3 @@
-import { Fragment } from 'react';
-
 import { WithActiveModules } from '@/modules/active-modules';
 import type { PlayerModule } from '@/modules/registry';
 import type { Connection } from '@/stores/session';
@@ -20,9 +18,21 @@ export function ModuleRails({
     <WithActiveModules modules={modules}>
       {(active) =>
         active.map((m) =>
-          m.homeRails ? <Fragment key={m.id}>{m.homeRails({ connections })}</Fragment> : null,
+          m.homeRails ? <Rails key={m.id} rails={m.homeRails} connections={connections} /> : null,
         )
       }
     </WithActiveModules>
   );
+}
+
+/** One module's rails behind a component of their own, so a hook reached through them
+ * stays theirs as the active list changes. */
+function Rails({
+  rails,
+  connections,
+}: {
+  rails: NonNullable<PlayerModule['homeRails']>;
+  connections: Connection[];
+}) {
+  return rails({ connections });
 }

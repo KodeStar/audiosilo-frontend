@@ -6,6 +6,7 @@ import {
   type BookPlace,
   type BookTab,
   collectionHref,
+  type CoreYouSection,
   householdHref,
   type JournalTab,
   libraryHref,
@@ -16,7 +17,6 @@ import {
   settingsHref,
   type SettingsSection,
   youHref,
-  type YouSection,
 } from '@/lib/paths';
 import {
   currentNavState,
@@ -74,7 +74,7 @@ function openTabRoot(href: Href, tab: string, state: NavState | undefined) {
 
 /** The You hub (the Me tab's root) on `section`, with the Journal's `tab`. */
 export function openYou(
-  section?: YouSection,
+  section?: CoreYouSection,
   journalTab?: JournalTab,
   state: NavState | undefined = currentNavState(),
 ) {
@@ -157,7 +157,7 @@ export function useOpen() {
     /** The Journal (across every server; the You hub's Journal), on `tab` when given. */
     openJournal: (tab?: JournalTab) => openJournal(tab),
     /** The You hub (the Me tab's root) on `section`. */
-    openYou: (section?: YouSection) => openYou(section),
+    openYou: (section?: CoreYouSection) => openYou(section),
     /** Settings, on `section` when given. */
     openSettings: (section?: SettingsSection) => openSettings(section),
   };

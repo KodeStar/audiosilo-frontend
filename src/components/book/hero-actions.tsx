@@ -100,7 +100,13 @@ function HeroActionsView({
           },
         ]
       : []),
-    ...active.flatMap((m) => m.bookActions?.({ connectionId, book }) ?? []),
+    // A module's keys are its own (`<id>:<key>`): never one of the menu's, nor another's.
+    ...active.flatMap((m) =>
+      (m.bookActions?.({ connectionId, book }) ?? []).map((a) => ({
+        ...a,
+        key: `${m.id}:${a.key}`,
+      })),
+    ),
   ];
   const generateButton =
     generate?.offer === 'generate' ? (

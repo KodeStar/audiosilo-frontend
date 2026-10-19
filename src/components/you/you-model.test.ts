@@ -75,11 +75,15 @@ describe("a module's sections (Bridge Phase 2a)", () => {
   });
 
   it("never lets a module's key stand for one of the hub's own", () => {
-    const section = (key: string, label = key) => ({ key, label, render: () => null });
+    const section = (key: string, label = key) => ({
+      key,
+      label: () => label,
+      render: () => null,
+    });
     const first = section('contribute', 'First');
     const sections = youModuleSections([
-      { id: 'contributions', youSections: [section('stats'), first, section('')] },
-      { id: 'bridge', youSections: [section('contribute', 'Second')] },
+      { id: 'contributions', youSections: [section('stats'), first, section(''), section(' ')] },
+      { id: 'contributions', youSections: [section('contribute', 'Second')] },
     ]);
     expect([...sections.keys()]).toEqual(['contribute']);
     expect(sections.get('contribute')).toBe(first);

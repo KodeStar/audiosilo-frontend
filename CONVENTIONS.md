@@ -450,18 +450,23 @@ while it is on AND its Bridge requirement is met (`contributions` is the first,
   `{id, homeRails?, youSections?, bookActions?}`. `useActiveModules(list)` keeps the modules
   some server of the person listening has on (`anyCapability` over `useCapabilitiesAll`);
   `useModulesOn(cid, list)` one server's (a book's actions go to its own server).
-- **Module flags are mirrored**: a module's `id` is `keyof Capabilities`, so its flag is
-  added to `Capabilities` (`types.ts`) like any other and the capability hooks keep their
-  closed key (a typo in a flag name stays a type error).
+- **Module flags are mirrored**: a module's `id` is a `ModuleFlag` (`registry.ts`), a flag
+  added to `Capabilities` (`types.ts`) like any other and named in `ModuleFlag` too, never a
+  core flag such as `queue` (the server refuses a module named after one); the capability
+  hooks keep their closed key (a typo in a flag name stays a type error).
 - **Slots** take an optional `modules` prop (default the registry; tests pass a fake) and
   read flags through `WithActiveModules` (`active-modules.tsx`), which asks nothing with an
   empty list, so a slot renders exactly as before: Home's `ModuleRails` (after Next in your
   series), the You hub (`youSections` after Account on a phone, after Journal in the wide
   sub-nav; `parseYouSection(raw, moduleKeys)` opens an active module's key, a key of the
   hub's own is ignored, an off module's link opens Stats; a module section is a column the
-  hub scrolls) and `HeroActions` (`bookActions` after Regenerate in the book menu). A
-  slot returns elements (its hooks live in the components it returns); `bookActions` is a
-  plain function, never a hook. `BookTab`, `BookActionKey` and `SettingsSection` stay
+  hub scrolls; a section's `label` is a function of `t`, so it follows the language) and
+  `HeroActions` (`bookActions` after Regenerate in the book menu, keyed `<id>:<key>` so they
+  never meet the menu's own keys). A slot returns elements (its hooks live in the components
+  it returns; the slots still call `homeRails` and `render` behind a component of their own,
+  so a hook reached through one never joins the slot's as the active list changes);
+  `bookActions` is a plain function, never a hook. A link (`youHref`, `openYou`) takes the
+  hub's own sections only (`CoreYouSection`). `BookTab`, `BookActionKey` and `SettingsSection` stay
   closed until a module needs them (Phase 2d).
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names

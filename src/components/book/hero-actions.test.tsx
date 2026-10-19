@@ -237,6 +237,8 @@ describe('HeroActions module actions', () => {
       'Regenerate characters and recaps',
       'Contribute The Book on home',
     ]);
+    // Keyed by the module, so its keys never meet the menu's own.
+    expect(mockExtra.map((a) => a.key)).toEqual(['regenerate', 'contributions:contribute']);
     mockExtra[1].onPress();
     expect(onContribute).toHaveBeenCalled();
   });

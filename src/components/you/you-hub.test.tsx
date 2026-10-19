@@ -226,11 +226,11 @@ describe("YouHub with a module's section (Bridge Phase 2a)", () => {
     youSections: [
       {
         key: 'contribute',
-        label: 'Contribute',
+        label: () => 'Contribute',
         render: ({ phone }) => <Text>{`contribute-section phone=${String(phone)}`}</Text>,
       },
       // A module can't take over one of the hub's own sections.
-      { key: 'stats', label: 'Not stats', render: () => <Text>not-stats</Text> },
+      { key: 'stats', label: () => 'Not stats', render: () => <Text>not-stats</Text> },
     ],
   };
   const mountWith = async (params: Record<string, string> = {}) => {

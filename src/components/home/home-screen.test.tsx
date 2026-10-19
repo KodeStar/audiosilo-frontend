@@ -114,6 +114,7 @@ jest.mock('@/modules/registry', () => ({
 }));
 
 /* eslint-disable import/first */
+import { useState } from 'react';
 import { Text } from 'react-native';
 
 import type { PlayerModule } from '@/modules/registry';
@@ -297,5 +298,34 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
     await mountWith([FAKE]);
     expect(screen.queryByText(/Module rail/)).toBeNull();
     expect(mockUseActiveModules).toHaveBeenCalled();
+  });
+
+  it("keeps each module's hooks its own as another turns on", async () => {
+    // Rails that call their component as a plain function: its hooks must stay out of the
+    // slot's, or a module turning on would change the slot's hook count.
+    function HookedRail({ name }: { name: string }) {
+      const [label] = useState(`Hooked rail ${name}`);
+      return <Text>{label}</Text>;
+    }
+    const one: PlayerModule = { id: 'contributions', homeRails: () => HookedRail({ name: '1' }) };
+    const two = {
+      id: 'other',
+      homeRails: () => HookedRail({ name: '2' }),
+    } as unknown as PlayerModule;
+    const modules = [one, two];
+    const client = new QueryClient();
+    const tree = () => (
+      <QueryClientProvider client={client}>
+        <HomeScreen modules={modules} />
+      </QueryClientProvider>
+    );
+    mockModulesOn = { contributions: true };
+    await render(tree());
+    await settleFlashList();
+    expect(screen.getByText('Hooked rail 1')).toBeTruthy();
+    expect(screen.queryByText('Hooked rail 2')).toBeNull();
+    mockModulesOn = { contributions: true, other: true };
+    await screen.rerender(tree());
+    expect(screen.getByText('Hooked rail 2')).toBeTruthy();
   });
 });

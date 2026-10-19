@@ -147,10 +147,10 @@ export type ServerInfo = {
   bridge?: ServerBridge;
 };
 
-/** The Bridge block of GET /server (see {@link ServerInfo.bridge}). */
-/** `features`: the job families the Bridge offers (`sidecars`, `chapters`) and what it
- * can do besides (`contribute`: it can file contributions, Phase 2a). Test with
- * `includes`; more values arrive over time. */
+/** The Bridge block of GET /server (see {@link ServerInfo.bridge}). `features`: the job
+ * families the Bridge offers (`sidecars`, `chapters`) and what it can do besides
+ * (`contribute`: it can file contributions, Phase 2a). Test with `includes`; more values
+ * arrive over time. */
 export type ServerBridge = { version: string; features: string[] };
 
 export type Role = 'admin' | 'user';

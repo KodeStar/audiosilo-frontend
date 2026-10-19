@@ -32,7 +32,8 @@ import {
 
 const caps = (flags: Record<string, boolean>) => flags as unknown as Capabilities;
 const CONTRIB: PlayerModule = { id: 'contributions' };
-const OTHER: PlayerModule = { id: 'bridge' };
+// A second module: only `contributions` is a module's flag so far.
+const OTHER = { id: 'other' } as unknown as PlayerModule;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -48,7 +49,7 @@ describe('PLAYER_MODULES', () => {
 describe('activeModules', () => {
   it('is on when ANY server has the flag, in registry order', () => {
     const all = {
-      a: caps({ contributions: false, bridge: true }),
+      a: caps({ contributions: false, other: true }),
       b: caps({ contributions: true }),
     };
     expect(activeModules([CONTRIB, OTHER], all)).toEqual([CONTRIB, OTHER]);

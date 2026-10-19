@@ -226,16 +226,19 @@ export type JournalTab = 'diary' | 'bookmarks' | 'notes';
 export type CoreYouSection = 'stats' | 'year' | 'journal' | 'settings' | 'household' | 'account';
 
 /** A You hub section: one of its own, or an active module's (`youSections` in
- * `src/modules/registry.ts`, Bridge Phase 2a). */
+ * `src/modules/registry.ts`, Bridge Phase 2a). Only the hub's own rules take it; a link
+ * (`youHref`, `openYou`) names one of its own (`CoreYouSection`). */
 export type YouSection = CoreYouSection | (string & {});
 
 /** The You hub's pathname: the Me tab's ROOT, opened with `openYou` / `openJournal`
  * (`src/lib/open.ts`), never pushed as a page on another tab. */
 const YOU_PATHNAME = '/you';
 
-/** The You hub on `section` (Stats is the plain `/you`), with the Journal's `tab` when
- * the section is the Journal and the tab isn't the Diary. */
-export function youHref(section?: YouSection, journalTab?: JournalTab): Href {
+/** The You hub on `section`, one of its own (Stats is the plain `/you`), with the Journal's
+ * `tab` when the section is the Journal and the tab isn't the Diary. Closed on purpose, so
+ * a misspelt section stays a type error: a module's key is no link target until one needs
+ * it. */
+export function youHref(section?: CoreYouSection, journalTab?: JournalTab): Href {
   if (!section || section === 'stats') return YOU_PATHNAME;
   const tab = section === 'journal' && journalTab && journalTab !== 'diary' ? journalTab : null;
   return { pathname: YOU_PATHNAME, params: tab ? { section, tab } : { section } };
