@@ -1221,6 +1221,8 @@
       "action": "Generar personajes y resúmenes",
       "regenerate": "Volver a generar personajes y resúmenes",
       "mark": "Generado en este servidor",
+      "covered": "La comunidad ya tiene personajes y resúmenes de este libro",
+      "seeCharacters": "Ver personajes",
       "title": "Generar personajes y resúmenes",
       "lead": "El Bridge lee {{title}} y escribe sus personajes y resúmenes para este servidor. Puede tardar unas horas, y puedes salir de la página mientras tanto.",
       "leadUntitled": "El Bridge lee el libro y escribe sus personajes y resúmenes para este servidor. Puede tardar unas horas, y puedes salir de la página mientras tanto.",

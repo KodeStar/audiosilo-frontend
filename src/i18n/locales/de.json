@@ -1221,6 +1221,8 @@
       "action": "Figuren und Rückblicke erstellen",
       "regenerate": "Figuren und Rückblicke neu erstellen",
       "mark": "Auf diesem Server erstellt",
+      "covered": "Die Community hat bereits Figuren und Rückblicke für dieses Buch",
+      "seeCharacters": "Figuren ansehen",
       "title": "Figuren und Rückblicke erstellen",
       "lead": "Die Bridge liest {{title}} und schreibt die Figuren und Rückblicke für diesen Server. Das kann einige Stunden dauern, du kannst die Seite inzwischen verlassen.",
       "leadUntitled": "Die Bridge liest das Buch und schreibt die Figuren und Rückblicke für diesen Server. Das kann einige Stunden dauern, du kannst die Seite inzwischen verlassen.",

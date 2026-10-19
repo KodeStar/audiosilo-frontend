@@ -410,9 +410,13 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
 - **The gate** (`bridge-model.ts`, pure and tested): `mayGenerate(user, server)` = an admin
   (never a household member, a kid's or a demo account, whatever the role says), the `bridge`
   flag, `features` including `sidecars`, AND `metadata` (generated content is served through
-  `/meta`). Nothing renders, and no job is asked for, without it. `generateOffer`: `generate`
-  for a book with no characters or recaps at all (community or generated), `regenerate` (the
-  book menu) when some were generated here, nothing until the book's `/meta` answer
+  `/meta`). Nothing renders, and no job is asked for, without it. `generateOffer` (Phase 1e,
+  one rule with the console's `generate-model.ts`): a dimension is the community's when it is
+  present and not `work.generated[dim]` (`communityCoverage`; the server's merge is fill-only).
+  The community has both: `covered` (no action; `GenerateCovered` says so, admin-only, with
+  "See characters" opening the book page's Characters tab, no link in the companion). Else
+  `regenerate` (the book menu) when some were generated here, else `generate`. Nothing until
+  the book's `/meta` answer
   (`metaAnswered`) and its jobs are known, or while a job shows its status (`statusJob`: the
   newest generate job while open or once failed). The player always sends `GENERATE_PARAMS`
   (`source: auto`, `contribute: local`): it never offers to contribute.

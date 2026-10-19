@@ -713,6 +713,51 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByText(lead, { exact: false })).toBeNull();
   });
 
+  // Bridge Phase 1e: one offer rule with the console. A matched work the community gives
+  // both characters and recaps offers no Generate; an admin is told why, with a link to
+  // the Characters tab.
+  const covered = (): BookMeta => ({
+    matched: true,
+    work: { id: 'w', title: 'The Way of Kings', authors: [], language: 'en', characters, recaps },
+    web_url: 'https://meta.audiosilo.app/work?id=w',
+  });
+
+  it('tells an admin the community covers a book, and opens its Characters tab', async () => {
+    signIn(ADMIN);
+    bridgeOn();
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = covered();
+    await mountAt('desktop');
+    expect(
+      screen.getByText('The community already has characters and recaps for this book'),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+    expect(screen.queryByText('Ada Quill')).toBeNull();
+    await fireEvent.press(screen.getByTestId('generate-covered-open'));
+    expect(screen.getByText('Ada Quill')).toBeTruthy();
+  });
+
+  it('never shows a listener the covered line', async () => {
+    signIn({ ...ADMIN, role: 'user' });
+    bridgeOn();
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = covered();
+    await mountAt('desktop');
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+  });
+
+  it('offers Generate for a book the community has characters but no recaps for', async () => {
+    signIn(ADMIN);
+    bridgeOn();
+    mockBook = { ...BOOK, asin: 'B0' };
+    const meta = covered();
+    mockMeta = { ...meta, work: { ...meta.work!, recaps: [] } };
+    await mountAt('desktop');
+    expect(screen.getByTestId('generate-action')).toBeTruthy();
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+  });
+
   it('shows the running job where the action was', async () => {
     signIn(ADMIN);
     bridgeOn();

@@ -43,6 +43,7 @@ import { notifyQueriesSynchronously } from '@/testing/query-notify';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 import type { GenerateContent } from './bridge-model';
+import { GenerateCovered } from './generate-covered';
 import { GenerateOffer } from './generate-offer';
 import { GenerateStatus } from './generate-status';
 import type { GenerateModel } from './use-generate';
@@ -140,10 +141,51 @@ describe('who sees "Generate characters and recaps"', () => {
     expect(mockBridgeJobs).not.toHaveBeenCalled();
   });
 
-  it('offers nothing for a book that has characters or recaps already', async () => {
+  // Bridge Phase 1e: Generate is offered while the community lacks either half.
+  it('offers it for a book the community has only recaps for', async () => {
     await mount({ recaps: [{}] });
-    await waitFor(() => expect(mockBridgeJobs).toHaveBeenCalled());
+    expect(await screen.findByTestId('generate-action')).toBeTruthy();
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+  });
+
+  it('tells an admin the community covers a book with both, instead of offering it', async () => {
+    await mount({ characters: [{}], recaps: [{}] });
+    expect(await screen.findByTestId('generate-covered')).toBeTruthy();
+    expect(
+      screen.getByText('The community already has characters and recaps for this book'),
+    ).toBeTruthy();
     expect(screen.queryByTestId('generate-action')).toBeNull();
+    // The companion is already where the characters are: no link there.
+    expect(screen.queryByTestId('generate-covered-open')).toBeNull();
+  });
+
+  it('never shows a listener the covered line', async () => {
+    signIn({ ...ADMIN, role: 'user' });
+    await mount({ characters: [{}], recaps: [{}] });
+    await waitFor(() => expect(mockServerInfo).toHaveBeenCalled());
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+  });
+});
+
+describe('the covered line', () => {
+  it('opens the characters from its link where the surface gives one', async () => {
+    const onOpen = jest.fn();
+    await mountWithPortal(
+      <GenerateCovered model={{ allowed: true, offer: 'covered' }} onOpen={onOpen} />,
+    );
+    await fireEvent.press(screen.getByTestId('generate-covered-open'));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders nothing without the permission or for another offer', async () => {
+    await mountWithPortal(
+      <>
+        <GenerateCovered model={{ allowed: false, offer: 'covered' }} onOpen={jest.fn()} />
+        <GenerateCovered model={{ allowed: true, offer: 'generate' }} onOpen={jest.fn()} />
+      </>,
+    );
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
   });
 });
 

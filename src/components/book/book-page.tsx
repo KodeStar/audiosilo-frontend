@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 
@@ -14,6 +14,7 @@ import {
   useLibraries,
 } from '@/api/hooks';
 import { useOptionalApi, useScopedCid } from '@/api/provider';
+import { GenerateCovered } from '@/components/bridge/generate-covered';
 import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
@@ -154,9 +155,10 @@ function BookPage() {
   const progress = progressQuery.data ?? undefined;
   const serverName = useConnectionName(cid);
   const interval = useSettings((s) => s.virtualChapterInterval);
-  // An admin's "Generate characters and recaps" (Bridge Phase 1a): offered for a book with
-  // neither, by the server's Bridge; its job's status shows under the actions meanwhile
-  // (and reads the screen's focus itself, so a blur re-renders it alone, not the page).
+  // An admin's "Generate characters and recaps" (Bridge Phase 1a): offered while the
+  // community lacks either (Phase 1e), by the server's Bridge; its job's status shows under
+  // the actions meanwhile (and reads the screen's focus itself, so a blur re-renders it
+  // alone, not the page). A book the community covers says so instead.
   const generate = useGenerate({
     // The jobs carry the book's own path: nothing is asked until the book is in.
     target: { connectionId: cid, libraryId, path: book?.rel_path ?? '' },
@@ -204,6 +206,14 @@ function BookPage() {
   // The spoiler reveal is held HERE, not per tab: revealing in Characters and switching
   // to Recaps must not re-hide everything the reader just chose to see.
   const [showSpoilers, setShowSpoilers] = useState(false);
+  // Where the tabs sit in the page's scroller (the body's top plus the tabs' top in it),
+  // so the covered line's "See characters" can bring them into view.
+  const scrollRef = useRef<ScrollView>(null);
+  const tabsY = useRef({ body: 0, tabs: 0 });
+  const openCharacters = () => {
+    setTab('characters');
+    scrollRef.current?.scrollTo({ y: tabsY.current.body + tabsY.current.tabs, animated: true });
+  };
   // The reader's reading order per series family, remembered on the device. It drives
   // BOTH the Series rail and "previous books".
   const orderingPicks = useSeriesOrderings((s) => s.picks);
@@ -391,6 +401,7 @@ function BookPage() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       testID="book-page"
       className="flex-1"
       onLayout={measure}
@@ -453,7 +464,7 @@ function BookPage() {
             onPrimary={() => play({ toggle: true })}
             stacked={!layout.heroSide}
             generate={
-              generate.offer
+              generate.offer === 'generate' || generate.offer === 'regenerate'
                 ? { offer: generate.offer, onPress: () => generate.setConfirming(true) }
                 : undefined
             }
@@ -463,6 +474,7 @@ function BookPage() {
           <>
             <DownloadProgress libraryId={libraryId} path={path} />
             <GenerateStatus model={generate} />
+            <GenerateCovered model={generate} onOpen={openCharacters} />
             <TranscodeNote
               book={book}
               chapterData={chapterData}
@@ -480,9 +492,19 @@ function BookPage() {
           layout.heroSide ? 'px-6 lg:px-8' : 'px-4',
           layout.columns === 2 && 'flex-row items-start gap-10',
         )}
+        onLayout={(e) => {
+          tabsY.current.body = e.nativeEvent.layout.y;
+        }}
       >
         {layout.columns === 1 ? aside : null}
-        <View className="min-w-0 flex-1">{tabSection}</View>
+        <View
+          className="min-w-0 flex-1"
+          onLayout={(e) => {
+            tabsY.current.tabs = e.nativeEvent.layout.y;
+          }}
+        >
+          {tabSection}
+        </View>
         {layout.columns === 2 ? <View style={{ width: layout.aside }}>{aside}</View> : null}
       </View>
       <GenerateDialog model={generate} title={book.title} />

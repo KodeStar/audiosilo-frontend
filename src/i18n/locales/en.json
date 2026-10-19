@@ -1221,6 +1221,8 @@
       "action": "Generate characters and recaps",
       "regenerate": "Regenerate characters and recaps",
       "mark": "Generated on this server",
+      "covered": "The community already has characters and recaps for this book",
+      "seeCharacters": "See characters",
       "title": "Generate characters and recaps",
       "lead": "The Bridge reads {{title}} and writes its characters and recaps for this server. It can take a few hours, and you can leave the page meanwhile.",
       "leadUntitled": "The Bridge reads the book and writes its characters and recaps for this server. It can take a few hours, and you can leave the page meanwhile.",

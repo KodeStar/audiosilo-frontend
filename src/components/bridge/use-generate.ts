@@ -19,6 +19,7 @@ import {
   GENERATE_PARAMS,
   type GenerateContent,
   generateOffer,
+  type GenerateOfferKind,
   mayGenerate,
   queueInOrder,
   statusJob,
@@ -37,8 +38,9 @@ export type GenerateModel = {
   target: GenerateTarget;
   /** This person may generate here (`mayGenerate`). Nothing renders without it. */
   allowed: boolean;
-  /** What the book offers now (`generateOffer`). */
-  offer: 'generate' | 'regenerate' | null;
+  /** What the book offers now (`generateOffer`): `covered` is no action, only the line
+   * that says the community has both (`GenerateCovered`). */
+  offer: GenerateOfferKind | null;
   /** The confirmation is open (never while `allowed` is off: it closes with it). */
   confirming: boolean;
   setConfirming: (open: boolean) => void;

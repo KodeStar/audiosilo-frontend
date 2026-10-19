@@ -5,8 +5,8 @@ import { ADMIN, bridgeEstimate, bridgeJob, bridgeServer } from '@/testing/bridge
 import {
   blockedReason,
   bridgeRefusalKey,
+  communityCoverage,
   generateOffer,
-  hasCharactersOrRecaps,
   jobStatusView,
   mayGenerate,
   parkEndsByItself,
@@ -233,12 +233,38 @@ describe('statusJob and generateOffer', () => {
     expect(generateOffer({ ...base, content: { characters: [], recaps: [] } })).toBe('generate');
   });
 
-  it('offers nothing for community content, and Regenerate for generated content', () => {
-    expect(generateOffer({ ...base, content: { characters: [{}] } })).toBeNull();
-    expect(generateOffer({ ...base, content: { recaps: [{}] } })).toBeNull();
-    expect(generateOffer({ ...base, content: { recaps: [{}], generated: { recaps: true } } })).toBe(
+  // The one offer rule (Bridge Phase 1e, shared with the console): a dimension is the
+  // community's when it is there and was not generated here.
+  const C = [{}];
+  it.each([
+    // [case, content, offer]
+    ['community both', { characters: C, recaps: C }, 'covered'],
+    [
+      'community both, old generated flags masked',
+      { characters: C, recaps: C, generated: { description: true } },
+      'covered',
+    ],
+    ['community characters only', { characters: C }, 'generate'],
+    ['community recaps only', { recaps: C }, 'generate'],
+    [
+      'community characters, generated recaps',
+      { characters: C, recaps: C, generated: { recaps: true } },
       'regenerate',
-    );
+    ],
+    [
+      'generated characters, community recaps',
+      { characters: C, recaps: C, generated: { characters: true } },
+      'regenerate',
+    ],
+    ['generated recaps only', { recaps: C, generated: { recaps: true } }, 'regenerate'],
+    [
+      'generated both',
+      { characters: C, recaps: C, generated: { characters: true, recaps: true } },
+      'regenerate',
+    ],
+    ['neither', {}, 'generate'],
+  ] as const)('%s', (_label, content, offer) => {
+    expect(generateOffer({ ...base, content })).toBe(offer);
   });
 
   it('offers nothing before the metadata and jobs are known, while a job shows, or when not allowed', () => {
@@ -248,10 +274,15 @@ describe('statusJob and generateOffer', () => {
     expect(generateOffer({ ...base, allowed: false, content: undefined })).toBeNull();
   });
 
-  it('counts characters or recaps, community or generated', () => {
-    expect(hasCharactersOrRecaps({ characters: [{}] })).toBe(true);
-    expect(hasCharactersOrRecaps({ recaps: [{}] })).toBe(true);
-    expect(hasCharactersOrRecaps({})).toBe(false);
+  it('reads community coverage per dimension, never from generated lists', () => {
+    expect(communityCoverage(undefined)).toEqual({ characters: false, recaps: false });
+    expect(communityCoverage({ characters: [{}], recaps: [] })).toEqual({
+      characters: true,
+      recaps: false,
+    });
+    expect(
+      communityCoverage({ characters: [{}], recaps: [{}], generated: { characters: true } }),
+    ).toEqual({ characters: false, recaps: true });
   });
 });
 
