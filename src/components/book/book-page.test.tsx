@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import type { ReactElement, ReactNode } from 'react';
 import { Platform } from 'react-native';
 
@@ -20,6 +20,19 @@ import { mountWithPortal } from '@/testing/render-overlay';
 // (and that it never restarts the loaded book), the layout by the MEASURED width, the
 // hero's place, the Chapters tab's whole-book timeline for a book that is NOT playing,
 // the Details tab, an unmatched book reading complete, and the load and error states.
+
+// react-native-web's ScrollView gives a forwarded ref its node only at mount (its host
+// ref callback is a stable instance method), unlike the native mock: emulated here, so a
+// ref the page first passes on an update stays null as it does on the web.
+jest.mock('react-native', () => {
+  const RN = jest.requireActual('react-native');
+  const React = jest.requireActual('react');
+  function MountRefScrollView({ ref, ...props }: { ref?: unknown }) {
+    const [mountRef] = React.useState(() => ref);
+    return React.createElement(RN.ScrollView, { ...props, ref: mountRef });
+  }
+  return Object.setPrototypeOf({ ScrollView: MountRefScrollView }, RN);
+});
 
 const mockPush = jest.fn();
 let mockParams: Record<string, unknown> = { libraryId: '1', path: ['Author', 'Book'] };
@@ -735,6 +748,37 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByText('Ada Quill')).toBeNull();
     await fireEvent.press(screen.getByTestId('generate-covered-open'));
     expect(screen.getByText('Ada Quill')).toBeTruthy();
+  });
+
+  // The scroller first renders the skeleton, then the page: the ref must hold the same
+  // instance (on the web a ref first passed on that update would stay null).
+  it('scrolls the Characters tab into view from the covered line after the book loads', async () => {
+    const { default: ScrollViewMock } = jest.requireActual<{
+      default: { prototype: { scrollTo: jest.Mock } };
+    }>('@react-native/jest-preset/jest/mocks/ScrollView');
+    const { default: nativeMethods } = jest.requireActual<{
+      default: { measureLayout: jest.Mock };
+    }>('@react-native/jest-preset/jest/MockNativeMethods');
+    nativeMethods.measureLayout.mockImplementation(
+      (_to: unknown, success: (x: number, y: number) => void) => success(0, 640),
+    );
+    signIn(ADMIN);
+    bridgeOn();
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = covered();
+    mockBookLoading = true;
+    await mountAt('desktop');
+    expect(screen.getByTestId('book-skeleton')).toBeTruthy();
+    mockBookLoading = false;
+    // A new user object re-renders the page (its Generate model reads the session).
+    await act(async () => signIn({ ...ADMIN }));
+    await fireEvent.press(screen.getByTestId('generate-covered-open'));
+    await waitFor(() =>
+      expect(ScrollViewMock.prototype.scrollTo).toHaveBeenCalledWith(
+        expect.objectContaining({ y: 640 }),
+      ),
+    );
+    nativeMethods.measureLayout.mockReset();
   });
 
   it('never shows a listener the covered line', async () => {

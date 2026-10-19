@@ -280,8 +280,16 @@ function BookPage() {
   });
 
   if (isLoading) {
+    // The skeleton's scroller is the same instance the loaded page updates, so it takes
+    // `scrollRef` too: react-native-web's ScrollView hands its node to a forwarded ref
+    // only at mount, so a ref first passed on an update would stay null on the web.
     return (
-      <ScrollView className="flex-1" onLayout={measure} contentContainerStyle={{ paddingBottom }}>
+      <ScrollView
+        ref={scrollRef}
+        className="flex-1"
+        onLayout={measure}
+        contentContainerStyle={{ paddingBottom }}
+      >
         <BookSkeleton layout={layout} />
       </ScrollView>
     );
