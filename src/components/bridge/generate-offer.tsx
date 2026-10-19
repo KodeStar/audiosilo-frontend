@@ -10,9 +10,10 @@ import { type GenerateTarget, useGenerate } from './use-generate';
 
 /**
  * "Generate characters and recaps" under an empty state (the companion's Who's who and
- * Story so far, for a book with neither): the button for an admin who may (`mayGenerate`),
- * the job's status in its place while one runs or after it failed, nothing for anyone
- * else. Mounted only while the empty state shows, so its jobs poll only then.
+ * Story so far, for a book missing either): the button for an admin who may
+ * (`mayGenerate`), the job's status in its place while one runs or after it failed,
+ * nothing for anyone else. Mounted only while the empty state shows, so its jobs poll only
+ * then. Never the covered line: an empty panel means the community lacks that half.
  */
 export function GenerateOffer({
   target,

@@ -42,7 +42,8 @@ export type HeroActionsProps = {
   /** Two rows on a phone: the primary, then the download and the icon buttons. */
   stacked: boolean;
   /** An admin's Bridge action (Phase 1a), when the page offers one: `generate` (a book
-   * with no characters or recaps) is a button after the others (its own row on a phone),
+   * the community lacks characters or recaps for, none generated here yet, Phase 1e) is a
+   * button after the others (its own row on a phone),
    * `regenerate` (a book with generated ones) quieter, in the book menu. */
   generate?: { offer: 'generate' | 'regenerate'; onPress: () => void };
 };

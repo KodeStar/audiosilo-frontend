@@ -1221,6 +1221,8 @@
       "action": "Gerar personagens e resumos",
       "regenerate": "Gerar personagens e resumos de novo",
       "mark": "Gerado neste servidor",
+      "covered": "A comunidade já tem personagens e resumos deste livro",
+      "seeCharacters": "Ver personagens",
       "title": "Gerar personagens e resumos",
       "lead": "O Bridge lê {{title}} e escreve os seus personagens e resumos para este servidor. Pode demorar algumas horas, e você pode sair da página enquanto isso.",
       "leadUntitled": "O Bridge lê o livro e escreve os seus personagens e resumos para este servidor. Pode demorar algumas horas, e você pode sair da página enquanto isso.",

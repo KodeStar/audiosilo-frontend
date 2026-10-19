@@ -5,13 +5,13 @@ import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-nat
 
 import type { BookMetaRecap } from '@/api/types';
 import {
-  GeneratedMark,
+  GeneratedChip,
   RecapSummaryBlock,
   recapHeading,
   SpoilerChip,
   summaryIsVisible,
 } from '@/components/library/book-meta';
-import { communityCredit } from '@/components/library/meta-gating';
+import { recapMarks } from '@/components/library/meta-gating';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Text } from '@/components/ui/text';
 
@@ -77,9 +77,14 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
   }
 
   const story = storySoFar(data.recaps, data.listening);
+  // The list and the whole-book summary each carry their own source (Bridge 1e).
+  const marks = recapMarks(data.generated, {
+    list: data.recaps.length > 0,
+    summary: summaryVisible,
+  });
   return (
     <View className="gap-4">
-      <GeneratedMark generated={data.generated} dimension="recaps" />
+      {marks.panel ? <GeneratedChip /> : null}
       {data.recaps.length > 0 ? (
         <View className="gap-0.5">
           <Text variant="eyebrow">{t('book.meta.storySoFar')}</Text>
@@ -95,6 +100,9 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
           </Text>
         </View>
       ) : null}
+      {/* Under the list's own heading, as the book page's Recaps tab has it: the panel's
+          head is the all-generated chip's place. */}
+      {marks.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
       <LayoutAnimationConfig skipEntering>
         {story.parts.map((r) => (
           <Animated.View key={`${r.scope ?? 'book'}-${r.through.chapter}`} entering={ARRIVE}>
@@ -102,6 +110,7 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
           </Animated.View>
         ))}
       </LayoutAnimationConfig>
+      {marks.summary ? <GeneratedChip testID="summary-generated-mark" /> : null}
       {summaryVisible ? (
         <RecapSummaryBlock summary={data.summary} finished={data.listening.finished} />
       ) : null}
@@ -113,12 +122,17 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
         shown={shown}
         onToggle={() => setRevealed(data.key, !shown)}
       />
+      {/* Revealed recaps sit below the summary: a generated list's chip goes with them too,
+          so they never read as the community summary's. */}
+      {shown && marks.list && story.hidden.length > 0 ? (
+        <GeneratedChip testID="hidden-recaps-generated-mark" />
+      ) : null}
       {shown
         ? story.hidden.map((r) => (
             <StoryPart key={`h-${r.scope ?? 'book'}-${r.through.chapter}`} recap={r} spoiler />
           ))
         : null}
-      <Attribution attribution={communityCredit(data, 'recaps')} className="mt-1" />
+      {marks.credit ? <Attribution attribution={data.attribution} className="mt-1" /> : null}
     </View>
   );
 }

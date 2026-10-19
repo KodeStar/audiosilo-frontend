@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import {
   historyQuery,
@@ -14,6 +15,7 @@ import {
   useLibraries,
 } from '@/api/hooks';
 import { useOptionalApi, useScopedCid } from '@/api/provider';
+import { GenerateCovered } from '@/components/bridge/generate-covered';
 import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
@@ -154,9 +156,10 @@ function BookPage() {
   const progress = progressQuery.data ?? undefined;
   const serverName = useConnectionName(cid);
   const interval = useSettings((s) => s.virtualChapterInterval);
-  // An admin's "Generate characters and recaps" (Bridge Phase 1a): offered for a book with
-  // neither, by the server's Bridge; its job's status shows under the actions meanwhile
-  // (and reads the screen's focus itself, so a blur re-renders it alone, not the page).
+  // An admin's "Generate characters and recaps" (Bridge Phase 1a): offered while the
+  // community lacks either (Phase 1e), by the server's Bridge; its job's status shows under
+  // the actions meanwhile (and reads the screen's focus itself, so a blur re-renders it
+  // alone, not the page). A book the community covers says so instead.
   const generate = useGenerate({
     // The jobs carry the book's own path: nothing is asked until the book is in.
     target: { connectionId: cid, libraryId, path: book?.rel_path ?? '' },
@@ -204,6 +207,24 @@ function BookPage() {
   // The spoiler reveal is held HERE, not per tab: revealing in Characters and switching
   // to Recaps must not re-hide everything the reader just chose to see.
   const [showSpoilers, setShowSpoilers] = useState(false);
+  // The covered line's "See characters": the Characters tab, brought into view. The tabs
+  // are measured against the scroller's content on press, once the tab switch has
+  // committed (a frame later): a position cached from onLayout goes stale on the web,
+  // which reports a layout only when a view's size changes, never when it just moves.
+  const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
+  const tabsRef = useRef<View>(null);
+  const reduced = useReducedMotion();
+  const openCharacters = () => {
+    setTab('characters');
+    requestAnimationFrame(() => {
+      const content = contentRef.current;
+      if (!content) return;
+      tabsRef.current?.measureLayout(content, (_x, y) =>
+        scrollRef.current?.scrollTo({ y, animated: !reduced }),
+      );
+    });
+  };
   // The reader's reading order per series family, remembered on the device. It drives
   // BOTH the Series rail and "previous books".
   const orderingPicks = useSeriesOrderings((s) => s.picks);
@@ -258,9 +279,19 @@ function BookPage() {
     now: new Date(),
   });
 
+  // The skeleton and the page share these: the skeleton mounts the scroller the loaded page
+  // then updates, and react-native-web's ScrollView hands its node to a forwarded ref only
+  // at mount, so a ref first passed on an update would stay null on the web.
+  const scrollerProps = {
+    ref: scrollRef,
+    className: 'flex-1',
+    onLayout: measure,
+    contentContainerStyle: { paddingBottom },
+  };
+
   if (isLoading) {
     return (
-      <ScrollView className="flex-1" onLayout={measure} contentContainerStyle={{ paddingBottom }}>
+      <ScrollView {...scrollerProps}>
         <BookSkeleton layout={layout} />
       </ScrollView>
     );
@@ -390,100 +421,107 @@ function BookPage() {
   );
 
   return (
-    <ScrollView
-      testID="book-page"
-      className="flex-1"
-      onLayout={measure}
-      contentContainerStyle={{ paddingBottom }}
-    >
-      <BookHero
-        connectionId={cid}
-        libraryId={libraryId}
-        book={book}
-        layout={layout}
-        crumbs={<BookCrumbs crumbs={crumbs} />}
-        eyebrow={heroEyebrow(t, book, libraryName, serverName)}
-        facts={bookFacts(t, {
-          book,
-          list,
-          interval,
-          fileCount: files.length,
-          codec: chapterData?.codec,
-          publisher: bookPublisher(book, metaMatched?.recording),
-          serverName,
-          libraryName,
-        })}
-        place={
-          showPlace
-            ? {
-                percent,
-                fraction: progressFractionRemaining(position, total).fraction,
-                line: placeLine(t, list.kind, current, list.rows.length, list.rows[current]?.title),
-                timeLeft,
-              }
-            : null
-        }
-        finished={finished ? { date: listening?.finished } : null}
-        ratings={ratings}
-        onOpenSeries={(name) => openSeries(cid, libraryId, { name })}
-        onOpenAuthor={book.author ? () => openAuthor(cid, libraryId, book.author) : undefined}
-        onOpenNarrator={
-          book.narrator && browsePeople !== false
-            ? () => openNarrator(cid, libraryId, book.narrator)
-            : undefined
-        }
-        actions={
-          <HeroActions
-            connectionId={cid}
-            libraryId={libraryId}
-            book={book}
-            chapterData={chapterData}
-            chaptersLoading={chaptersLoading}
-            progress={progress}
-            primary={primaryAction({
-              status,
-              loaded,
-              live,
-              chapter:
-                list.kind === 'chapters' && list.rows.length > 1 && current >= 0
-                  ? current + 1
-                  : undefined,
-              chapterTitle: list.rows[current]?.title,
-            })}
-            onPrimary={() => play({ toggle: true })}
-            stacked={!layout.heroSide}
-            generate={
-              generate.offer
-                ? { offer: generate.offer, onPress: () => generate.setConfirming(true) }
-                : undefined
-            }
-          />
-        }
-        footer={
-          <>
-            <DownloadProgress libraryId={libraryId} path={path} />
-            <GenerateStatus model={generate} />
-            <TranscodeNote
+    <ScrollView testID="book-page" {...scrollerProps}>
+      {/* The content the covered line's "See characters" measures the tabs against. */}
+      <View ref={contentRef}>
+        <BookHero
+          connectionId={cid}
+          libraryId={libraryId}
+          book={book}
+          layout={layout}
+          crumbs={<BookCrumbs crumbs={crumbs} />}
+          eyebrow={heroEyebrow(t, book, libraryName, serverName)}
+          facts={bookFacts(t, {
+            book,
+            list,
+            interval,
+            fileCount: files.length,
+            codec: chapterData?.codec,
+            publisher: bookPublisher(book, metaMatched?.recording),
+            serverName,
+            libraryName,
+          })}
+          place={
+            showPlace
+              ? {
+                  percent,
+                  fraction: progressFractionRemaining(position, total).fraction,
+                  line: placeLine(
+                    t,
+                    list.kind,
+                    current,
+                    list.rows.length,
+                    list.rows[current]?.title,
+                  ),
+                  timeLeft,
+                }
+              : null
+          }
+          finished={finished ? { date: listening?.finished } : null}
+          ratings={ratings}
+          onOpenSeries={(name) => openSeries(cid, libraryId, { name })}
+          onOpenAuthor={book.author ? () => openAuthor(cid, libraryId, book.author) : undefined}
+          onOpenNarrator={
+            book.narrator && browsePeople !== false
+              ? () => openNarrator(cid, libraryId, book.narrator)
+              : undefined
+          }
+          actions={
+            <HeroActions
+              connectionId={cid}
+              libraryId={libraryId}
               book={book}
               chapterData={chapterData}
-              transcoded={transcoded}
-              downloaded={downloaded}
+              chaptersLoading={chaptersLoading}
+              progress={progress}
+              primary={primaryAction({
+                status,
+                loaded,
+                live,
+                chapter:
+                  list.kind === 'chapters' && list.rows.length > 1 && current >= 0
+                    ? current + 1
+                    : undefined,
+                chapterTitle: list.rows[current]?.title,
+              })}
+              onPrimary={() => play({ toggle: true })}
+              stacked={!layout.heroSide}
+              generate={
+                generate.offer
+                  ? { offer: generate.offer, onPress: () => generate.setConfirming(true) }
+                  : undefined
+              }
             />
-          </>
-        }
-      />
-      <View
-        testID={`book-body-${layout.columns}`}
-        className={cn(
-          CONTENT_WIDTH,
-          'self-center pt-6',
-          layout.heroSide ? 'px-6 lg:px-8' : 'px-4',
-          layout.columns === 2 && 'flex-row items-start gap-10',
-        )}
-      >
-        {layout.columns === 1 ? aside : null}
-        <View className="min-w-0 flex-1">{tabSection}</View>
-        {layout.columns === 2 ? <View style={{ width: layout.aside }}>{aside}</View> : null}
+          }
+          footer={
+            <>
+              <DownloadProgress libraryId={libraryId} path={path} />
+              <GenerateStatus model={generate} />
+              {generate.covered ? <GenerateCovered onOpen={openCharacters} /> : null}
+              <TranscodeNote
+                book={book}
+                chapterData={chapterData}
+                transcoded={transcoded}
+                downloaded={downloaded}
+              />
+            </>
+          }
+        />
+        <View
+          testID={`book-body-${layout.columns}`}
+          className={cn(
+            CONTENT_WIDTH,
+            'self-center pt-6',
+            layout.heroSide ? 'px-6 lg:px-8' : 'px-4',
+            layout.columns === 2 && 'flex-row items-start gap-10',
+          )}
+        >
+          {layout.columns === 1 ? aside : null}
+          <View ref={tabsRef} className="min-w-0 flex-1">
+            {tabSection}
+          </View>
+          {layout.columns === 2 ? <View style={{ width: layout.aside }}>{aside}</View> : null}
+        </View>
       </View>
       <GenerateDialog model={generate} title={book.title} />
     </ScrollView>

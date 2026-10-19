@@ -620,10 +620,16 @@ export type BookMetaWork = {
 
 /** What of a work came from this server's own generated files (see
  * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. `description` is Bridge
- * Phase 1c's (absent on a 1a/1b server). */
+ * Phase 1c's (absent on a 1a/1b server). `recaps` is set when the recap list OR the
+ * whole-book summary was generated (as older clients read it); `recap_summary` (Bridge
+ * Phase 1e) when the summary itself was, since a community summary can sit beside a
+ * generated list. The server takes a generated summary only with the generated list, never
+ * beside a community one, so a shown list `recaps` flags is generated. An older server
+ * sends no `recap_summary` (see `recapMarks`). */
 export type BookMetaGenerated = {
   characters?: boolean;
   recaps?: boolean;
+  recap_summary?: boolean;
   description?: boolean;
   generated_at?: string;
 };

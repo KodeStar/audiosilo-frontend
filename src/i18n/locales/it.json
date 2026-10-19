@@ -1221,6 +1221,8 @@
       "action": "Genera personaggi e riassunti",
       "regenerate": "Rigenera personaggi e riassunti",
       "mark": "Generato su questo server",
+      "covered": "La community ha già personaggi e riassunti per questo libro",
+      "seeCharacters": "Vedi i personaggi",
       "title": "Genera personaggi e riassunti",
       "lead": "Il Bridge legge {{title}} e scrive i suoi personaggi e riassunti per questo server. Può richiedere qualche ora, e intanto puoi lasciare la pagina.",
       "leadUntitled": "Il Bridge legge il libro e scrive i suoi personaggi e riassunti per questo server. Può richiedere qualche ora, e intanto puoi lasciare la pagina.",

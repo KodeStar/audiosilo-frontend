@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen } from '@testing-library/react-native';
-import type { ReactElement, ReactNode } from 'react';
-import { Platform } from 'react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { type ReactElement, type ReactNode, type Ref, useState } from 'react';
+import { Platform, type ScrollView, type ScrollViewProps } from 'react-native';
 
 import type {
   Book,
@@ -713,6 +713,95 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByText(lead, { exact: false })).toBeNull();
   });
 
+  // Bridge Phase 1e: one offer rule with the console. A matched work the community gives
+  // both characters and recaps offers no Generate; an admin is told why, with a link to
+  // the Characters tab.
+  const covered = (): BookMeta => ({
+    matched: true,
+    work: { id: 'w', title: 'The Way of Kings', authors: [], language: 'en', characters, recaps },
+    web_url: 'https://meta.audiosilo.app/work?id=w',
+  });
+
+  it('tells an admin the community covers a book, and opens its Characters tab', async () => {
+    signIn(ADMIN);
+    bridgeOn();
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = covered();
+    await mountAt('desktop');
+    expect(
+      screen.getByText('The community already has characters and recaps for this book'),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+    expect(screen.queryByText('Ada Quill')).toBeNull();
+    await fireEvent.press(screen.getByTestId('generate-covered-open'));
+    expect(screen.getByText('Ada Quill')).toBeTruthy();
+  });
+
+  // react-native-web's ScrollView gives a forwarded ref its node only at mount (its host
+  // ref callback is a stable instance method), unlike the native mock: emulated for this
+  // test alone, so a ref the page first passes on an update stays null as it does on the
+  // web. The skeleton mounts the scroller, so the ref must already ride on it.
+  it('scrolls the Characters tab into view from the covered line after the book loads', async () => {
+    const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    const NativeScrollView = RN.ScrollView;
+    function MountRefScrollView({ ref, ...props }: ScrollViewProps & { ref?: Ref<ScrollView> }) {
+      const [mountRef] = useState(() => ref);
+      return <NativeScrollView {...props} ref={mountRef} />;
+    }
+    const scrollView = jest
+      .spyOn(RN, 'ScrollView', 'get')
+      .mockReturnValue(MountRefScrollView as unknown as typeof NativeScrollView);
+    const scrollTo = jest.mocked(NativeScrollView.prototype.scrollTo);
+    const { default: nativeMethods } = jest.requireActual<{
+      default: { measureLayout: jest.Mock };
+    }>('@react-native/jest-preset/jest/MockNativeMethods');
+    scrollTo.mockClear();
+    nativeMethods.measureLayout.mockImplementation(
+      (_to: unknown, success: (x: number, y: number) => void) => success(0, 640),
+    );
+    try {
+      signIn(ADMIN);
+      bridgeOn();
+      mockMeta = covered();
+      mockBook = undefined;
+      mockBookLoading = true;
+      await mountAt('desktop');
+      expect(screen.getByTestId('book-skeleton')).toBeTruthy();
+      mockBook = { ...BOOK, asin: 'B0' };
+      mockBookLoading = false;
+      // A new user object re-renders the page (its Generate model reads the session).
+      await act(async () => signIn({ ...ADMIN }));
+      await fireEvent.press(screen.getByTestId('generate-covered-open'));
+      await waitFor(() =>
+        expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 640 })),
+      );
+    } finally {
+      scrollView.mockRestore();
+      nativeMethods.measureLayout.mockReset();
+    }
+  });
+
+  it('never shows a listener the covered line', async () => {
+    signIn({ ...ADMIN, role: 'user' });
+    bridgeOn();
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = covered();
+    await mountAt('desktop');
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+    expect(screen.queryByTestId('generate-action')).toBeNull();
+  });
+
+  it('offers Generate for a book the community has characters but no recaps for', async () => {
+    signIn(ADMIN);
+    bridgeOn();
+    mockBook = { ...BOOK, asin: 'B0' };
+    const meta = covered();
+    mockMeta = { ...meta, work: { ...meta.work!, recaps: [] } };
+    await mountAt('desktop');
+    expect(screen.getByTestId('generate-action')).toBeTruthy();
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+  });
+
   it('shows the running job where the action was', async () => {
     signIn(ADMIN);
     bridgeOn();
@@ -722,6 +811,38 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.getByTestId('generate-status')).toBeTruthy();
     expect(screen.getByText('Reading for facts')).toBeTruthy();
     expect(screen.queryByTestId('generate-action')).toBeNull();
+  });
+
+  // Bridge Phase 1e: a community whole-book summary beside a recap list generated here
+  // keeps its credit, and only the list wears the generated mark.
+  it('keeps a community summary credited beside generated recaps', async () => {
+    mockCaps = { metadata: true };
+    mockBook = { ...BOOK, asin: 'B0' };
+    mockMeta = {
+      matched: true,
+      work: {
+        id: 'w',
+        title: 'The Way of Kings',
+        authors: [],
+        language: 'en',
+        recaps,
+        recap_summary: { in_short: 'The whole book, ending included.' },
+        generated: { recaps: true, recap_summary: false },
+        attribution: {
+          credit: 'AudioSilo Meta community contributors',
+          license: 'CC BY-SA 4.0',
+          license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+          source_url: 'https://meta.audiosilo.app/work?id=w',
+        },
+      },
+      web_url: 'https://meta.audiosilo.app/work?id=w',
+    };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('book-tab-recaps'));
+    expect(screen.getByTestId('recaps-generated-mark')).toBeTruthy();
+    expect(screen.queryByTestId('summary-generated-mark')).toBeNull();
+    expect(screen.queryByTestId('generated-mark')).toBeNull();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
   });
 
   // A matched work keeps its community credit for what the community wrote (here its

@@ -34,6 +34,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import {
   type ListeningProgress,
   recapDescriptor,
+  type RecapMarks,
   sortRecaps,
   type Split,
   splitCharacters,
@@ -154,8 +155,9 @@ function Chip({ label }: { label: string }) {
 }
 
 /** "Generated on this server": the quiet chip on content the Bridge wrote for this
- * server, never the community's. `GeneratedMark` puts it at the head of a Characters or
- * Recaps panel; the book page's About card wears it under its eyebrow when its text is a
+ * server, never the community's. `GeneratedMark` puts it at the head of a Characters
+ * panel (and the Previously On card's list recap); a Recaps panel places it per part by
+ * `recapMarks`; the book page's About card wears it under its eyebrow when its text is a
  * description generated here (`aboutContent`'s `source`), with its own `testID`, since
  * both can show on one page. */
 export function GeneratedChip({ testID = 'generated-mark' }: { testID?: string }) {
@@ -167,9 +169,9 @@ export function GeneratedChip({ testID = 'generated-mark' }: { testID?: string }
   );
 }
 
-/** The `GeneratedChip` at the head of a Characters or Recaps panel whose entries came from
- * files the Bridge wrote for this server, not from the community (`work.generated`'s
- * `dimension`). Nothing for community content. */
+/** The `GeneratedChip` at the head of a Characters panel (or a lone list recap) whose
+ * entries came from files the Bridge wrote for this server, not from the community
+ * (`work.generated`'s `dimension`). Nothing for community content. */
 export function GeneratedMark({
   generated,
   dimension,
@@ -711,6 +713,7 @@ export function BookMetaRecapsTab({
   onToggleSpoilers,
   previousBooks = [],
   coverFor = noCommunityCover,
+  generatedParts,
 }: SpoilerReveal & {
   recaps: BookMetaRecap[];
   progress: ListeningProgress;
@@ -728,16 +731,22 @@ export function BookMetaRecapsTab({
   /** Where their community covers load from (`useCommunityCover`); without it each
    * shows its placeholder. */
   coverFor?: CommunityCoverFor;
+  /** Which part wears its own "Generated on this server" chip when the summary and the
+   * list came from different places (`recapMarks`, whose `summary` already implies
+   * `summaryVisible`); one heading the panel is the caller's. */
+  generatedParts?: Pick<RecapMarks, 'list' | 'summary'>;
 }) {
   const { t } = useTranslation();
   const split = splitRecaps(sortRecaps(recaps), progress);
   const rows = spoilerRows(split, showSpoilers);
   return (
     <View className="gap-3">
+      {generatedParts?.summary ? <GeneratedChip testID="summary-generated-mark" /> : null}
       {summaryVisible ? <RecapSummaryBlock summary={summary} finished={progress.finished} /> : null}
       {rows.length > 0 ? (
         <View className="gap-2">
           {summaryVisible ? <SectionHeader title={t('book.meta.storySoFar')} /> : null}
+          {generatedParts?.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
           <View className="overflow-hidden rounded-xl border border-border">
             {rows.map(({ item, spoiler }, i) => (
               <RecapRow

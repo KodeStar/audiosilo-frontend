@@ -74,6 +74,45 @@ export function communityCredit(
   return work?.generated?.[dimension] ? undefined : work?.attribution;
 }
 
+/** Where a Recaps panel's "Generated on this server" chips go and whether it carries the
+ * community's credit (see `recapMarks`). */
+export type RecapMarks = {
+  /** Every part shown was generated here: one chip heads the panel. */
+  panel: boolean;
+  /** The parts disagree: a chip on the generated list, or on the generated summary. */
+  list: boolean;
+  summary: boolean;
+  /** Some part shown is the community's: the panel ends with its CC BY-SA credit. */
+  credit: boolean;
+};
+
+/**
+ * How a Recaps panel marks its two parts, the recap list and the whole-book summary, by
+ * where each came from: the summary is generated when `generated.recap_summary` (Bridge
+ * Phase 1e), the list when `generated.recaps` (which the server also sets for a generated
+ * summary, but it takes one only with its generated list, so a shown list it flags is
+ * generated). A community summary beside a generated list keeps its credit. An older
+ * server sends no `recap_summary`, so its `recaps` stands for the summary too: there a
+ * community summary beside a generated list goes uncredited, as before 1e. `shown` says
+ * which parts the panel renders.
+ */
+export function recapMarks(
+  generated: BookMetaGenerated | undefined,
+  shown: { list: boolean; summary: boolean },
+): RecapMarks {
+  const list = !!generated?.recaps;
+  const summary = generated?.recap_summary ?? list;
+  const generatedShown = (shown.list && list) || (shown.summary && summary);
+  const communityShown = (shown.list && !list) || (shown.summary && !summary);
+  const mixed = generatedShown && communityShown;
+  return {
+    panel: generatedShown && !communityShown,
+    list: mixed && shown.list && list,
+    summary: mixed && shown.summary && summary,
+    credit: communityShown,
+  };
+}
+
 /** Nothing known about the listener's position (no saved progress). */
 const NO_PROGRESS: ListeningProgress = { chapter: 0, finished: false };
 

@@ -52,9 +52,18 @@ export type GenerateContent = {
   generated?: BookMetaGenerated;
 };
 
-/** Whether the book has any characters or recaps at all, community or generated. */
-export function hasCharactersOrRecaps(content: GenerateContent | undefined): boolean {
-  return (content?.characters?.length ?? 0) > 0 || (content?.recaps?.length ?? 0) > 0;
+/** Whether the community (not this server's own files) has the book's characters and
+ * recaps, per dimension: a list is the community's when it is there and was not generated
+ * here. The server layers generated content only into a dimension the community lacks
+ * (fill-only), so a generated list never stands for the community's. */
+export function communityCoverage(content: GenerateContent | undefined): {
+  characters: boolean;
+  recaps: boolean;
+} {
+  return {
+    characters: (content?.characters?.length ?? 0) > 0 && !content?.generated?.characters,
+    recaps: (content?.recaps?.length ?? 0) > 0 && !content?.generated?.recaps,
+  };
 }
 
 /** Whether any of the book's characters or recaps came from this server's own files. */
@@ -71,10 +80,12 @@ export function statusJob(jobs: readonly BridgeJob[] | undefined): BridgeJob | u
 }
 
 /**
- * What a book offers an admin: `generate` when it has no characters or recaps at all
- * (community or generated), `regenerate` (quieter, the overflow menu) when some were
- * generated here, else nothing. Nothing either until the book's metadata and its jobs
- * are known (no button that vanishes a moment later), or while a job shows its status.
+ * What a book offers an admin (Bridge Phase 1e, the one rule the console shares): while
+ * the community lacks either characters or recaps, `regenerate` (quieter, the overflow
+ * menu) when some were generated here, else `generate`. When the community has both,
+ * `covered`: no Generate, a line that says so instead (old generated files are masked by
+ * the community's anyway). Nothing until the book's metadata and its jobs are known (no
+ * button that vanishes a moment later), or while a job shows its status.
  */
 export function generateOffer(opts: {
   allowed: boolean;
@@ -83,11 +94,12 @@ export function generateOffer(opts: {
   /** A job's status shows (`statusJob` has one). */
   showsJob: boolean;
   content: GenerateContent | undefined;
-}): 'generate' | 'regenerate' | null {
+}): 'generate' | 'regenerate' | 'covered' | null {
   const { allowed, metaKnown, jobsKnown, showsJob, content } = opts;
   if (!allowed || !metaKnown || !jobsKnown || showsJob) return null;
-  if (!hasCharactersOrRecaps(content)) return 'generate';
-  return hasGenerated(content) ? 'regenerate' : null;
+  const community = communityCoverage(content);
+  if (community.characters && community.recaps) return 'covered';
+  return hasGenerated(content) ? 'regenerate' : 'generate';
 }
 
 /** The order books are queued in: the earlier books of the series first, in reading

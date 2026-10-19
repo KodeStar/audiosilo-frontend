@@ -43,6 +43,7 @@ import { notifyQueriesSynchronously } from '@/testing/query-notify';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 import type { GenerateContent } from './bridge-model';
+import { GenerateCovered } from './generate-covered';
 import { GenerateOffer } from './generate-offer';
 import { GenerateStatus } from './generate-status';
 import type { GenerateModel } from './use-generate';
@@ -140,10 +141,32 @@ describe('who sees "Generate characters and recaps"', () => {
     expect(mockBridgeJobs).not.toHaveBeenCalled();
   });
 
-  it('offers nothing for a book that has characters or recaps already', async () => {
+  // Bridge Phase 1e: Generate is offered while the community lacks either half.
+  it('offers it for a book the community has only recaps for', async () => {
     await mount({ recaps: [{}] });
-    await waitFor(() => expect(mockBridgeJobs).toHaveBeenCalled());
+    expect(await screen.findByTestId('generate-action')).toBeTruthy();
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+  });
+
+  // The companion never shows the covered line (an empty panel means the community lacks
+  // that half); the book page does.
+  it('offers nothing for a book the community has both for', async () => {
+    const qc = await mount({ characters: [{}], recaps: [{}] });
+    // Once the jobs have answered (until then nothing is offered anyway).
+    await waitFor(() =>
+      expect(qc.getQueryState(qk.bridgeJobs('c1', 1, TARGET.path))?.status).toBe('success'),
+    );
     expect(screen.queryByTestId('generate-action')).toBeNull();
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+  });
+});
+
+describe('the covered line', () => {
+  it('opens the characters from its link', async () => {
+    const onOpen = jest.fn();
+    await mountWithPortal(<GenerateCovered onOpen={onOpen} />);
+    await fireEvent.press(screen.getByTestId('generate-covered-open'));
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -399,6 +422,7 @@ describe('the status while a job runs', () => {
       target: TARGET,
       allowed: false,
       offer: null,
+      covered: false,
       confirming: false,
       setConfirming: jest.fn(),
       queue: jest.fn(async () => false),

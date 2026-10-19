@@ -1221,6 +1221,8 @@
       "action": "Générer les personnages et les résumés",
       "regenerate": "Régénérer les personnages et les résumés",
       "mark": "Généré sur ce serveur",
+      "covered": "La communauté a déjà les personnages et les résumés de ce livre",
+      "seeCharacters": "Voir les personnages",
       "title": "Générer les personnages et les résumés",
       "lead": "Le Bridge lit {{title}} et écrit ses personnages et ses résumés pour ce serveur. Cela peut prendre quelques heures, et vous pouvez quitter la page entre-temps.",
       "leadUntitled": "Le Bridge lit le livre et écrit ses personnages et ses résumés pour ce serveur. Cela peut prendre quelques heures, et vous pouvez quitter la page entre-temps.",

@@ -450,7 +450,9 @@ attribution "Community notes from AudioSilo Meta contributors · CC BY-SA 4.0". 
 generated on the listener's server (an unmatched book's, or the half the community lacks) never carry that
 credit: their panel opens with a quiet "Generated on this server" chip instead (`GeneratedMark`; the book page's
 About card wears the same chip, `GeneratedChip`, under its eyebrow when its text is a description generated on the
-server). With neither,
+server). When a recap list and the whole-book summary came from different places, the chip sits on the generated
+part and the community's credit stays for the other (`recapMarks`, `generated.recap_summary`). With neither (or
+the half shown missing),
 the kind empty state shows, and under it, for an admin only, "Generate characters and recaps" (below).
 
 ### Previously on *custom*
@@ -460,10 +462,13 @@ recap", and the spoiler-safe attribution (for recaps generated on the server, th
 chip instead).
 
 ### Generate characters and recaps (admin, Bridge) *custom*
-The player's one admin-only action, for a book with no characters or recaps when the server's Bridge is online:
-an `outline` button with the sparkles icon after the book page's hero actions (its own row on a phone), or under
-the companion's empty Who's who and Story so far; "Regenerate characters and recaps" (a book with generated ones)
-is quieter, in the book menu. Never pink, and nothing at all for anyone else. The confirmation is a Dialog with a
+The player's one admin-only action, for a book the community lacks characters or recaps for when the server's
+Bridge is online (Phase 1e: one rule with the console, `generateOffer`): an `outline` button with the sparkles
+icon after the book page's hero actions (its own row on a phone), or under the companion's empty Who's who and
+Story so far; "Regenerate characters and recaps" (a book with generated ones) is quieter, in the book menu. When
+the community has both, a quiet caption line takes its place under the hero's actions (`GenerateCovered`: the
+users icon, "The community already has characters and recaps for this book" and a `link` "See characters" that
+opens the Characters tab; book page only). Never pink, and nothing at all for anyone else. The confirmation is a Dialog with a
 sparkles icon badge: what the Bridge will read, the transcription time, the expected agent cost (a subscription
 says it is notional; no history says "no estimate yet"), that the results appear on this server, and a switch
 (on by default) to queue the series' earlier books without recaps first; while the library isn't writable or the
@@ -775,7 +780,7 @@ and drop zone (`src/components/upnext/`), the Downloads page's storage bar, rule
 (`src/components/search/`).
 
 Bridge Phase 1a's pieces (`src/components/bridge/`, rules in the tested `bridge-model.ts`): `GenerateDialog`,
-`GenerateStatus`, `GenerateOffer` (the companion's) and the `useGenerate` model; `GeneratedMark` and the chip it
+`GenerateStatus`, `GenerateCovered`, `GenerateOffer` (the companion's) and the `useGenerate` model; `GeneratedMark` and the chip it
 draws, `GeneratedChip` (also the About card's), sit in `library/book-meta.tsx` beside the Characters and Recaps blocks.
 
 Phase 4's pieces: the book page (`src/components/book/`: `BookScreen`, the washed `BookHero` and its
