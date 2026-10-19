@@ -54,8 +54,8 @@ export type BookHeroProps = {
   onOpenNarrator?: () => void;
   /** The action row (primary, download, Up next, favourite, collection, more). */
   actions: ReactNode;
-  /** Under the actions: the download's progress and the "converted for this browser"
-   * note. */
+  /** Under the actions: the download's progress, a Bridge job's status or the "community
+   * already has" line (admins only), and the "converted for this browser" note. */
   footer?: ReactNode;
 };
 

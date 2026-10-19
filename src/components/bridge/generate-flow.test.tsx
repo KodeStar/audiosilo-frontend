@@ -151,8 +151,11 @@ describe('who sees "Generate characters and recaps"', () => {
   // The companion never shows the covered line (an empty panel means the community lacks
   // that half); the book page does.
   it('offers nothing for a book the community has both for', async () => {
-    await mount({ characters: [{}], recaps: [{}] });
-    await waitFor(() => expect(mockBridgeJobs).toHaveBeenCalled());
+    const qc = await mount({ characters: [{}], recaps: [{}] });
+    // Once the jobs have answered (until then nothing is offered anyway).
+    await waitFor(() =>
+      expect(qc.getQueryState(qk.bridgeJobs('c1', 1, TARGET.path))?.status).toBe('success'),
+    );
     expect(screen.queryByTestId('generate-action')).toBeNull();
     expect(screen.queryByTestId('generate-covered')).toBeNull();
   });
