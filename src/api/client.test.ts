@@ -111,6 +111,8 @@ describe('ApiClient', () => {
     expect(apiErrorKind(new ApiError(403, 'x', 'kid_account'))).toBe('kid_account');
     // A member the admin disabled (their session or pairing): not the generic 409.
     expect(apiErrorKind(new ApiError(409, 'x', 'member_disabled'))).toBe('member_disabled');
+    // A generate job for a book whose chapters are still being found (Bridge Phase 1d).
+    expect(apiErrorKind(new ApiError(409, 'x', 'detect_open'))).toBe('detect_open');
     // A code the app doesn't know reads by its status.
     expect(apiErrorKind(new ApiError(409, 'x', 'collection_full'))).toBe('conflict');
     expect(apiErrorKind(new ApiError(429, 'too many attempts'))).toBe('too_many');
@@ -560,24 +562,29 @@ describe('ApiClient', () => {
     ],
   };
 
-  it('passes chapters_source through on the chapters and item envelopes', async () => {
-    const fetchMock = installFetch((url) => ({
-      status: 200,
-      body: url.includes('/chapters')
-        ? { ...chaptersBody, chapters_source: 'community' }
-        : { id: 9, rel_path: 'Myths/Mythos', chapters_source: 'community' },
-    }));
-    const c = new ApiClient('https://h', 'tok');
-    const data = await c.chapters(2, 'Myths/Mythos');
-    expect(String(fetchMock.mock.calls[0][0])).toContain(
-      '/libraries/2/chapters?path=Myths%2FMythos',
-    );
-    // Typed reads, so a misnamed mirror field fails the type check, not only a match.
-    expect(data.chapters_source).toBe('community');
-    expect(data.chapters[0].title).toBe('Chaos');
-    const book = await c.item(2, 'Myths/Mythos');
-    expect(book.chapters_source).toBe('community');
-  });
+  // "community": a community recording's list; "generated" (Bridge Phase 1d): chapters a
+  // Bridge found in the narration of a chapterless book.
+  it.each(['community', 'generated'] as const)(
+    'passes chapters_source %s through on the chapters and item envelopes',
+    async (source) => {
+      const fetchMock = installFetch((url) => ({
+        status: 200,
+        body: url.includes('/chapters')
+          ? { ...chaptersBody, chapters_source: source }
+          : { id: 9, rel_path: 'Myths/Mythos', chapters_source: source },
+      }));
+      const c = new ApiClient('https://h', 'tok');
+      const data = await c.chapters(2, 'Myths/Mythos');
+      expect(String(fetchMock.mock.calls[0][0])).toContain(
+        '/libraries/2/chapters?path=Myths%2FMythos',
+      );
+      // Typed reads, so a misnamed mirror field fails the type check, not only a match.
+      expect(data.chapters_source).toBe(source);
+      expect(data.chapters[0].title).toBe('Chaos');
+      const book = await c.item(2, 'Myths/Mythos');
+      expect(book.chapters_source).toBe(source);
+    },
+  );
 
   it('leaves chapters_source undefined when the server sends none (files or older server)', async () => {
     installFetch(() => ({ status: 200, body: chaptersBody }));

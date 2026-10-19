@@ -1171,7 +1171,8 @@
       "heard": "gehört",
       "hasBookmark": "mit Lesezeichen",
       "startsAt": "beginnt bei {{time}}",
-      "community": "Kapitel aus der Community-Datenbank von AudioSilo"
+      "community": "Kapitel aus der Community-Datenbank von AudioSilo",
+      "generated": "Kapitel in der Erzählung auf diesem Server gefunden"
     },
     "details": {
       "title": "Details",
@@ -1240,6 +1241,7 @@
       "agentNotReady": "Der KI-Agent der Bridge ist nicht bereit. Melde ihn in der Bridge-Konsole an.",
       "estimateFailed": "Die Bridge konnte keine Schätzung liefern. Versuch es gleich noch einmal.",
       "unavailable": "Die Bridge bietet das gerade nicht an.",
+      "detectOpen": "Die Kapitel des Buchs werden noch gesucht. Tippe auf Erstellen, sobald das fertig ist: Die Transkription wird wiederverwendet.",
       "confirm": "Erstellen",
       "confirmMany_one": "{{count}} Buch erstellen",
       "confirmMany_other": "{{count}} Bücher erstellen",
@@ -1273,6 +1275,7 @@
       "inspecting": "Prüft die Dateien",
       "splitting": "Bereitet das Audio vor",
       "asr": "Transkribiert",
+      "chapter_detecting": "Sucht die Kapitel in der Erzählung",
       "sanitizing": "Bereinigt das Transkript",
       "qa_sweep": "Prüft das Transkript",
       "qa_adjudicating": "Prüft zweifelhafte Stellen",
@@ -1304,6 +1307,7 @@
       "worker": "Wartet darauf, dass sich ein Transkriptions-Worker verbindet.",
       "mediaTools": "Der Bridge fehlen ihre Audio-Werkzeuge.",
       "chapters": "Die Kapitel ließen sich nicht sicher zuordnen.",
+      "chaptersNotDetected": "Die Bridge konnte die Kapitel in der Erzählung nicht finden.",
       "ebook": "Das E-Book konnte nicht gelesen werden.",
       "core": "Das Buch braucht zuerst einen Eintrag auf AudioSilo Meta.",
       "contrib": "Beitragen ist in der Bridge nicht eingerichtet.",

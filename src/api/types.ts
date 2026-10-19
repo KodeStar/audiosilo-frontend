@@ -305,6 +305,11 @@ export type Chapter = {
   book_offset: number;
 };
 
+/** Where a book's chapters come from when they are not the files' own (see
+ * Book.chapters_source): a community recording's list, or a Bridge's detection. The wire
+ * field stays open: a newer server may send a source this build does not know. */
+export type ChaptersSource = 'community' | 'generated';
+
 export type Book = {
   id: number;
   library_id: number;
@@ -390,10 +395,11 @@ export type Book = {
    * Absent on older servers. */
   cover_version?: string;
   /** `"community"` when the book's chapters are a community recording's list (from
-   * the metadata service) fitted onto its audio, rather than the files' own. Only
-   * GET /libraries/{id}/item sends it; absent means the files' own chapters, and on
-   * older servers. */
-  chapters_source?: 'community';
+   * the metadata service) fitted onto its audio, rather than the files' own;
+   * `"generated"` when a Bridge on this server found them in the narration of a book
+   * with no chapters of its own (Bridge Phase 1d). Only GET /libraries/{id}/item sends
+   * it; absent means the files' own chapters, and on older servers. */
+  chapters_source?: ChaptersSource | (string & {});
   /** True when the book's `.audiosilo/` folder holds characters, recaps or a description a
    * Bridge generated on this server (Bridge Phases 1a and 1c; list, search, item, recent
    * and the next book's `book` send it). Absent otherwise, and on older servers. */
@@ -523,9 +529,10 @@ export type ChaptersResponse = {
   /** Whether the codec plays natively in browsers (see Book.direct_playable). */
   direct_playable?: boolean;
   /** `"community"` when `chapters` are a community recording's list fitted onto the
-   * book's audio (see Book.chapters_source); absent means the files' own chapters,
-   * and on older servers. The chapters themselves have the same shape either way. */
-  chapters_source?: 'community';
+   * book's audio, `"generated"` when a Bridge on this server found them in the
+   * narration (see Book.chapters_source); absent means the files' own chapters, and on
+   * older servers. The chapters themselves have the same shape either way. */
+  chapters_source?: ChaptersSource | (string & {});
 };
 
 // --- Enriched metadata (community meta service, via /libraries/{id}/meta) -----
@@ -1382,6 +1389,10 @@ export type BridgeEstimate = {
   has: { community: BridgeContentFlags; local: BridgeContentFlags; community_unknown?: boolean };
   /** At most 10, reading order. */
   earlier: BridgeEstimateBook[];
-  /** The open `sidecars.generate` job for this book, if there is one. */
+  /** The open `sidecars.generate` job for this book, else (Bridge Phase 1d) the open job of
+   * another kind that refuses a new one now: a `chapters.detect` job queued or working (the
+   * server answers a generate job for the book 409 `detect_open` until it ends; the
+   * player's `blockedReason` holds Generate back for it). Its `kind` says which; absent
+   * for neither. */
   open_job?: BridgeJob;
 };

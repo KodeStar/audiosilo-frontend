@@ -1171,7 +1171,8 @@
       "heard": "listened",
       "hasBookmark": "has a bookmark",
       "startsAt": "starts at {{time}}",
-      "community": "Chapters from the AudioSilo community database"
+      "community": "Chapters from the AudioSilo community database",
+      "generated": "Chapters found in the narration on this server"
     },
     "details": {
       "title": "Details",
@@ -1240,6 +1241,7 @@
       "agentNotReady": "The Bridge's AI agent isn't ready. Sign it in from the Bridge console.",
       "estimateFailed": "Couldn't get an estimate from the Bridge. Try again in a moment.",
       "unavailable": "The Bridge doesn't offer this right now.",
+      "detectOpen": "The book's chapters are still being found. Generate once that has finished: it reuses the transcription.",
       "confirm": "Generate",
       "confirmMany_one": "Generate {{count}} book",
       "confirmMany_other": "Generate {{count}} books",
@@ -1273,6 +1275,7 @@
       "inspecting": "Checking the files",
       "splitting": "Preparing the audio",
       "asr": "Transcribing",
+      "chapter_detecting": "Finding the chapters in the narration",
       "sanitizing": "Cleaning up the transcript",
       "qa_sweep": "Checking the transcript",
       "qa_adjudicating": "Reviewing doubtful passages",
@@ -1304,6 +1307,7 @@
       "worker": "Waiting for a transcription worker to connect.",
       "mediaTools": "The Bridge is missing its audio tools.",
       "chapters": "The chapters couldn't be matched with confidence.",
+      "chaptersNotDetected": "The Bridge couldn't find the chapters in the narration.",
       "ebook": "The ebook couldn't be read.",
       "core": "The book needs a record on AudioSilo Meta first.",
       "contrib": "Contributing isn't set up in the Bridge.",

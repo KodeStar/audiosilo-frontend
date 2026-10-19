@@ -381,22 +381,29 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   costs are only defaults), `writable`, `can_describe?` (Phase 1c; the player queues no
   description), `has {community, local, community_unknown?}` (each `{characters, recaps,
   description?}`), `earlier` (up to 10 earlier series books without recaps, each costed),
-  `open_job`). `client.ts`:
+  `open_job`: the book's open generate job, else (Phase 1d) the open job of another kind that
+  refuses one now, a queued or working `chapters.detect`; its `kind` says which). `client.ts`:
   `bridgeJobs(lib, path)` (`GET /admin/bridge/jobs`, first page), `queueBridgeJob` (201 new, 200
   the open one already queued), `cancelBridgeJob`, `bridgeEstimate` (the upstream budget,
-  `UPSTREAM_TIMEOUT_MS`); refusals `library_not_writable` and `kind_unavailable` are
-  `API_ERROR_CODES` (`bridgeRefusalKey` words them; never `ApiError.message`).
+  `UPSTREAM_TIMEOUT_MS`); refusals `library_not_writable`, `kind_unavailable` and (Phase 1d)
+  `detect_open` are `API_ERROR_CODES` (`bridgeRefusalKey` words them; never `ApiError.message`).
 - **Hooks** (`hooks.ts`, `qk.bridgeJobs` / `qk.bridgeEstimate`): `useBridgeJobs(lib, path,
   {enabled, active, select})` asks only a server with the flag and only while `enabled` (a
   non-admin would get a 403), `retry: false`; it POLLS (`bridgePollInterval`,
-  `src/lib/bridge-jobs.ts`) only while a `sidecars.generate` job of the book is open and the
-  surface is `active` with the app foregrounded: `BRIDGE_POLL_MS` (10 s) while claimed or
+  `src/lib/bridge-jobs.ts`) only while a `sidecars.generate` or (Phase 1d) `chapters.detect`
+  job of the book is open and the surface is `active` with the app foregrounded: `BRIDGE_POLL_MS` (10 s) while claimed or
   running, `BRIDGE_IDLE_POLL_MS` (60 s) while queued or parked, never otherwise (the answer
-  that sees the job end stops it). When a read first sees the newest generate job `done`,
-  `refreshAfterFinish` invalidates the book's `/meta` (every variant) and its item (under any
-  path that names it) and WAITS for them before the answer lands, once per finish per cache
-  (`finishesActedOn`), so the tabs and `generated` are in before the status goes and the offer
-  never flashes back. `useBridgeEstimate` (`staleTime: 0`, read afresh each time the
+  that sees the job end stops it). When a read first sees the newest job that wrote the book
+  `done` (`latestDone`: a generate job, or the console's `sidecars.describe` or
+  `chapters.detect`), `refreshAfterFinish` invalidates the book's `/meta` (every variant), its
+  item and its chapters (under any path that names them) and WAITS for them before the answer
+  lands, once per finish per cache (`finishesActedOn`), so the tabs, `generated` and the
+  chapters a Bridge found are in before the status goes and the offer never flashes back.
+  Mid-run (Phase 1d: a generate run saves the chapters it found long before its end),
+  `refreshMidRun` reads the book's chapters again once per step a running generate job
+  reports past chapter detection (`midRunCheckpoint`), only while the cached answer has no
+  chapters of its own (at most one, no `chapters_source`).
+  `useBridgeEstimate` (`staleTime: 0`, read afresh each time the
   confirmation opens), `useQueueBridgeJob` / `useCancelBridgeJob` (`CapabilityError` without
   the flag; the answer goes into the book's job list, a cancel's 409 reads it again).
   `useCapabilityQuery` gained `retry`, `select` and a query-aware `refetchInterval` for them.
@@ -415,9 +422,14 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   and agent cost of every run it queues, `runEstimate`, a subscription's note, where the
   results appear, and a switch, on by default, to queue the series' earlier books without
   recaps first, `queueOrder` / `queueInOrder`, stopping at the first refusal; Generate held
-  back with `blockedReason` while the library isn't writable or the agent is KNOWN not ready),
+  back with `blockedReason` while the library isn't writable, the estimate's `open_job` is a
+  `chapters.detect` (Phase 1d: the server would answer 409 `detect_open`) or the agent is
+  KNOWN not ready),
   `GenerateStatus` (polls while its screen is focused: phase, stage words `bridge.stage.*`
-  from `stageOf`, counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
+  from `stageOf` (Phase 1d adds `chapter_detecting` and the park `chapters_not_detected`;
+  a `writing`/`rescanning` step sent with an engine stage before `ready`, the early chapters
+  save, reads as that stage),
+  counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
   Cancel, or "Try again", re-queueing, once it failed) and `GenerateOffer` (button or status under the companion's empty Who's
   who / Story so far). The book page wires `useGenerate` into `HeroActions` with
   `GenerateStatus` under the actions. Costs format with `formatUsd` (`src/lib/format.ts`).
@@ -460,8 +472,14 @@ the playing book; the rows' place is `rowAt`, previous/next for a book not playi
 own `nextSegmentStart`/`previousSegmentStart`) then the rows (`chapterList`: the real chapters at their corrected starts, a
 long chapterless file's 30-minute parts as the player makes them, else the files), ending with a
 quiet globe caption ("Chapters from the AudioSilo community database") only when the chapters
-answer says `chapters_source: "community"` and the rows are those chapters (not parts or files). Bookmarks and
-Notes are the shared `AnnotationSection` (below), History is `HistorySection` over the shared
+answer says `chapters_source: "community"` and the rows are those chapters (not parts or files),
+or a server-glyph caption ("Chapters found in the narration on this server") for
+`chapters_source: "generated"` (Bridge Phase 1d: a Bridge found them in a chapterless book's
+narration; same rule). `knownChaptersSource` (`book-page-model.ts`) reads the answer's open
+`chapters_source` (an own-key lookup: a source this build does not know is none, so no
+caption); the tab keeps the rule that a caption goes only under real chapters, and one
+`SOURCE_CAPTION` table (`satisfies Record<ChaptersSource, ...>`) picks the words and glyph.
+Bookmarks and Notes are the shared `AnnotationSection` (below), History is `HistorySection` over the shared
 listening sessions. Details (`book-details-tab.tsx`): a `Notice` (`ui/notice.tsx`) saying direct
 play / converted for this browser (web, `useNeedsWebTranscode`) / plays from this device, the files table ("about N kbps" = size * 8 / duration, folded past 6),
 and the path progress keys on. The **aside** (`book-aside.tsx`): About (`BookAbout`, its words

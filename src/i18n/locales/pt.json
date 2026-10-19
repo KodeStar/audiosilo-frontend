@@ -1171,7 +1171,8 @@
       "heard": "ouvido",
       "hasBookmark": "tem um marcador",
       "startsAt": "começa em {{time}}",
-      "community": "Capítulos da base de dados da comunidade AudioSilo"
+      "community": "Capítulos da base de dados da comunidade AudioSilo",
+      "generated": "Capítulos encontrados na narração neste servidor"
     },
     "details": {
       "title": "Detalhes",
@@ -1240,6 +1241,7 @@
       "agentNotReady": "O agente de IA do Bridge não está pronto. Entre com ele pelo console do Bridge.",
       "estimateFailed": "Não foi possível obter uma estimativa do Bridge. Tente de novo daqui a pouco.",
       "unavailable": "O Bridge não oferece isto no momento.",
+      "detectOpen": "Os capítulos do livro ainda estão sendo procurados. Toque em Gerar quando terminar: a transcrição é reutilizada.",
       "confirm": "Gerar",
       "confirmMany_one": "Gerar {{count}} livro",
       "confirmMany_other": "Gerar {{count}} livros",
@@ -1273,6 +1275,7 @@
       "inspecting": "Verificando os arquivos",
       "splitting": "Preparando o áudio",
       "asr": "Transcrevendo",
+      "chapter_detecting": "Encontrando os capítulos na narração",
       "sanitizing": "Limpando a transcrição",
       "qa_sweep": "Verificando a transcrição",
       "qa_adjudicating": "Revisando trechos duvidosos",
@@ -1304,6 +1307,7 @@
       "worker": "À espera de que um worker de transcrição se ligue.",
       "mediaTools": "Faltam ao Bridge as ferramentas de áudio.",
       "chapters": "Não foi possível associar os capítulos com segurança.",
+      "chaptersNotDetected": "O Bridge não conseguiu encontrar os capítulos na narração.",
       "ebook": "Não foi possível ler o e-book.",
       "core": "O livro precisa antes de um registro no AudioSilo Meta.",
       "contrib": "Contribuir não está configurado no Bridge.",

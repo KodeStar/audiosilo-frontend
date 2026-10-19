@@ -10,6 +10,7 @@ import {
   fileName,
   heroEyebrow,
   heroSubtitle,
+  knownChaptersSource,
   listeningFigures,
   placeLine,
   primaryAction,
@@ -223,6 +224,16 @@ describe('chapterList', () => {
       ],
     });
     expect(timelineStarts(list.rows)).toEqual([]);
+  });
+});
+
+describe('knownChaptersSource', () => {
+  it('reads the sources this build knows, and nothing else (no inherited keys)', () => {
+    expect(knownChaptersSource('community')).toBe('community');
+    expect(knownChaptersSource('generated')).toBe('generated');
+    for (const source of [undefined, '', 'edited', 'constructor', 'toString', '__proto__']) {
+      expect(knownChaptersSource(source)).toBeUndefined();
+    }
   });
 });
 

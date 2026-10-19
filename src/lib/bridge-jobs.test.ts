@@ -4,9 +4,11 @@ import {
   BRIDGE_IDLE_POLL_MS,
   BRIDGE_POLL_MS,
   bridgePollInterval,
+  CHAPTERS_DETECT,
   isOpenJob,
   latestDone,
   latestJob,
+  midRunCheckpoint,
   SIDECARS_DESCRIBE,
   SIDECARS_GENERATE,
 } from './bridge-jobs';
@@ -48,6 +50,17 @@ describe('bridgePollInterval', () => {
     ).toBe(BRIDGE_POLL_MS);
   });
 
+  // Bridge Phase 1d: the console's chapter detection, so the page sees it end.
+  it('polls for an open chapters.detect job too', () => {
+    expect(bridgePollInterval([job({ kind: CHAPTERS_DETECT, state: 'running' })], true)).toBe(
+      BRIDGE_POLL_MS,
+    );
+    expect(bridgePollInterval([job({ kind: CHAPTERS_DETECT, state: 'queued' })], true)).toBe(
+      BRIDGE_IDLE_POLL_MS,
+    );
+    expect(bridgePollInterval([job({ kind: CHAPTERS_DETECT, state: 'done' })], true)).toBe(false);
+  });
+
   it('stops once the job ended, off screen, for another kind and with nothing known', () => {
     for (const state of ['done', 'failed', 'cancelled'])
       expect(bridgePollInterval([job({ state })], true)).toBe(false);
@@ -81,5 +94,32 @@ describe('latestDone', () => {
     ];
     expect(latestDone(jobs)?.id).toBe(6);
     expect(latestDone([job({ id: 7, state: 'done' }), ...jobs])?.id).toBe(7);
+  });
+
+  // Bridge 1d: the console's chapter detection wrote the book's chapters.json.
+  it('counts a done chapters.detect job too', () => {
+    const jobs = [
+      job({ id: 3, state: 'done' }),
+      job({ id: 5, kind: CHAPTERS_DETECT, state: 'done' }),
+      job({ id: 9, kind: CHAPTERS_DETECT, state: 'running' }),
+    ];
+    expect(latestDone(jobs)?.id).toBe(5);
+  });
+});
+
+describe('midRunCheckpoint', () => {
+  it('marks a running generate job past chapter detection by its step, else its stage', () => {
+    const at = (progress: { step?: string; stage?: string }, over = {}) =>
+      midRunCheckpoint([job({ id: 4, state: 'running', progress, ...over })])?.mark;
+    expect(at({ step: 'sanitizing', stage: 'sanitizing' })).toBe('4:sanitizing');
+    expect(at({ step: 'writing', stage: 'sanitizing' })).toBe('4:writing');
+    expect(at({ stage: 'qa_sweep' })).toBe('4:qa_sweep');
+    // Not past detection yet, not running, no stage, or another kind: none.
+    for (const stage of ['inspecting', 'splitting', 'asr', 'chapter_detecting'])
+      expect(at({ step: stage, stage })).toBeUndefined();
+    expect(at({ stage: 'sanitizing' }, { state: 'needs_attention' })).toBeUndefined();
+    expect(at({ step: 'writing' })).toBeUndefined();
+    expect(at({ stage: 'sanitizing' }, { kind: CHAPTERS_DETECT })).toBeUndefined();
+    expect(midRunCheckpoint(undefined)).toBeUndefined();
   });
 });

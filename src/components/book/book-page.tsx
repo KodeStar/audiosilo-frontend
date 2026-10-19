@@ -70,6 +70,7 @@ import {
   chapterList,
   heroEyebrow,
   type Jump,
+  knownChaptersSource,
   listeningFigures,
   placeLine,
   primaryAction,
@@ -356,7 +357,7 @@ function BookPage() {
             loaded,
             pins: annotations.pins,
             interval,
-            fromCommunity: chapterData?.chapters_source === 'community' && list.kind === 'chapters',
+            source: knownChaptersSource(chapterData?.chapters_source),
             onJump,
           }}
           community={{

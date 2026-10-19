@@ -427,6 +427,7 @@ describe('book page chapters tab', () => {
     mockChapters = { ...CHAPTERS, chapters_source: 'community' };
     await mountAt('desktop');
     expect(screen.getByText('Chapters from the AudioSilo community database')).toBeTruthy();
+    expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
     // The rows are the chapters as ever.
     expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
 
@@ -436,6 +437,35 @@ describe('book page chapters tab', () => {
     await mountAt('desktop');
     expect(screen.getByText('This book has no chapter marks')).toBeTruthy();
     expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+  });
+
+  // Bridge Phase 1d: chapters a Bridge found in the narration say so, never as the
+  // community's.
+  it('says the chapters were found in the narration when the server says generated', async () => {
+    mockChapters = { ...CHAPTERS, chapters_source: 'generated' };
+    await mountAt('desktop');
+    expect(screen.getByTestId('book-chapters-generated')).toBeTruthy();
+    expect(screen.getByText('Chapters found in the narration on this server')).toBeTruthy();
+    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+    expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
+
+    // Parts the player makes are not the detected list: no caption under them.
+    mockBook = { ...BOOK, duration: 2 * 3600 };
+    mockChapters = { ...CHAPTERS, duration: 2 * 3600, chapters: [], chapters_source: 'generated' };
+    await mountAt('desktop');
+    expect(screen.getByText('This book has no chapter marks')).toBeTruthy();
+    expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
+  });
+
+  // A newer server may name a source this build does not know: no caption, never a raw
+  // translation key.
+  it('shows no source caption for a chapters source it does not know', async () => {
+    mockChapters = { ...CHAPTERS, chapters_source: 'edited' };
+    await mountAt('desktop');
+    expect(screen.queryByTestId('book-chapters-community')).toBeNull();
+    expect(screen.queryByTestId('book-chapters-generated')).toBeNull();
+    expect(screen.queryByText(/book\.chapters\./)).toBeNull();
+    expect(screen.getByRole('button', { name: /^Stormblessed/ })).toBeTruthy();
   });
 
   it('lists a long chapterless file in parts, and says why', async () => {

@@ -1171,7 +1171,8 @@
       "heard": "ascoltato",
       "hasBookmark": "ha un segnalibro",
       "startsAt": "inizia a {{time}}",
-      "community": "Capitoli dal database della community di AudioSilo"
+      "community": "Capitoli dal database della community di AudioSilo",
+      "generated": "Capitoli trovati nella narrazione su questo server"
     },
     "details": {
       "title": "Dettagli",
@@ -1240,6 +1241,7 @@
       "agentNotReady": "L'agente IA del Bridge non è pronto. Fai l'accesso dalla console del Bridge.",
       "estimateFailed": "Impossibile ottenere una stima dal Bridge. Riprova tra un attimo.",
       "unavailable": "Il Bridge non offre questa funzione al momento.",
+      "detectOpen": "I capitoli del libro sono ancora in ricerca. Premi Genera quando ha finito: la trascrizione viene riutilizzata.",
       "confirm": "Genera",
       "confirmMany_one": "Genera {{count}} libro",
       "confirmMany_other": "Genera {{count}} libri",
@@ -1273,6 +1275,7 @@
       "inspecting": "Controllo dei file",
       "splitting": "Preparazione dell'audio",
       "asr": "Trascrizione",
+      "chapter_detecting": "Ricerca dei capitoli nella narrazione",
       "sanitizing": "Pulizia della trascrizione",
       "qa_sweep": "Controllo della trascrizione",
       "qa_adjudicating": "Revisione dei passaggi dubbi",
@@ -1304,6 +1307,7 @@
       "worker": "In attesa che si colleghi un worker di trascrizione.",
       "mediaTools": "Al Bridge mancano i suoi strumenti audio.",
       "chapters": "Non è stato possibile abbinare i capitoli con sicurezza.",
+      "chaptersNotDetected": "Il Bridge non è riuscito a trovare i capitoli nella narrazione.",
       "ebook": "Non è stato possibile leggere l'ebook.",
       "core": "Il libro ha prima bisogno di una scheda su AudioSilo Meta.",
       "contrib": "Il contributo non è configurato nel Bridge.",

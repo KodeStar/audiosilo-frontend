@@ -18,7 +18,12 @@ import {
 import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 
-import { bridgePollInterval, latestDone, SIDECARS_GENERATE } from '@/lib/bridge-jobs';
+import {
+  bridgePollInterval,
+  latestDone,
+  midRunCheckpoint,
+  SIDECARS_GENERATE,
+} from '@/lib/bridge-jobs';
 import { byPosition } from '@/lib/by-position';
 import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -48,6 +53,7 @@ import type {
   BridgeJob,
   BridgeJobRequest,
   Capabilities,
+  ChaptersResponse,
   Collection,
   CollectionDetail,
   CollectionInput,
@@ -338,7 +344,9 @@ export function itemQuery(cid: string, client: MaybeClient, libraryId: number, p
 }
 
 /** How long a book's chapters stay fresh: they change only when a rescan re-reads the
- * book. The play and download paths ask for a fresher answer of their own (30 s). */
+ * book (a Bridge job that wrote the book's files has them read again at its finish:
+ * `refreshAfterFinish`). The play and download paths ask for a fresher answer of their
+ * own (30 s). */
 const CHAPTERS_STALE_MS = 30 * 60_000;
 
 /** A book's chapters and files. */
@@ -2004,51 +2012,78 @@ export function useHouseListening(connectionId?: string, opts: { enabled?: boole
 // reject with a `CapabilityError`, sending nothing, without the flag.
 
 /** The finished jobs each cache has read a book's answers again for
- * (`refreshAfterFinish`): once per finish, not on every read of the jobs. */
+ * (`refreshAfterFinish`), and the running jobs' checkpoints it has read the chapters again
+ * at (`refreshMidRun`): once each, not on every read of the jobs. */
 const finishesActedOn = new WeakMap<QueryClient, Set<string>>();
 
-/** Whether a cached item answer is the book at `path` (its own path): under that path,
- * or under a part of it that the server answered with the book (the book page keys its
- * item by the route's path, which can be a disc folder or a file of the book). */
-function isItemOf(query: Query, cid: string, libraryId: number, path: string): boolean {
+/** Whether this cache meets `mark` for the first time (and remembers it). */
+function firstTime(qc: QueryClient, mark: string): boolean {
+  let acted = finishesActedOn.get(qc);
+  if (!acted) finishesActedOn.set(qc, (acted = new Set()));
+  if (acted.has(mark)) return false;
+  acted.add(mark);
+  return true;
+}
+
+/** Whether a cached item or chapters answer is the book at `path` (its own path): under
+ * that path, or under a part of it that the server answered with the book (the book page
+ * keys both by the route's path, which can be a disc folder or a file of the book; the
+ * item names the book by `rel_path`, the chapters answer by `path`). */
+function isBookAnswerOf(query: Query, cid: string, libraryId: number, path: string): boolean {
   const [kind, c, lib, p] = query.queryKey;
-  return (
-    kind === 'item' &&
-    c === cid &&
-    lib === libraryId &&
-    (p === path || (query.state.data as Book | undefined)?.rel_path === path)
-  );
+  if ((kind !== 'item' && kind !== 'chapters') || c !== cid || lib !== libraryId) return false;
+  const data = query.state.data as { rel_path?: string; path?: string } | undefined;
+  return p === path || (kind === 'item' ? data?.rel_path : data?.path) === path;
 }
 
 /** After a book's jobs were read: the first time this cache sees its newest job that wrote
- * the book's files done (`latestDone`: a generate job, or a description the console
- * queued), read the book's `/meta` (every variant, under the job's own path) and its item
- * (under any path that names it) again, and wait for them, so the generated tabs and
- * description are in and the item's `generated` flag is on before the job's status goes
- * (no Generate offer flashes back in between). Once per finish, and whatever the clocks
- * say: nothing compares the device's fetch times with the server's finish, which need not
- * agree. */
+ * the book's files done (`latestDone`: a generate job, a description the console queued, or
+ * its chapter detection), read the book's `/meta` (every variant, under the job's own
+ * path), its item and its chapters (under any path that names them) again, and wait for
+ * them, so the generated tabs and description are in, the item's `generated` flag is on and
+ * the chapters a Bridge found in the narration (Phase 1d: their rows, their caption and the
+ * spoiler gate's chapter starts) are listed before the job's status goes (no Generate offer
+ * flashes back in between). Once per finish, and whatever the clocks say: nothing compares
+ * the device's fetch times with the server's finish, which need not agree. */
 async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly BridgeJob[]) {
   const job = latestDone(jobs);
   if (!job || job.library_id === null || job.path === null) return;
-  let acted = finishesActedOn.get(qc);
-  if (!acted) finishesActedOn.set(qc, (acted = new Set()));
-  const mark = `${cid}:${job.id}`;
-  if (acted.has(mark)) return;
-  acted.add(mark);
+  if (!firstTime(qc, `${cid}:${job.id}`)) return;
   const { library_id: libraryId, path } = job;
   await Promise.all([
     qc.invalidateQueries({ queryKey: qk.bookMeta(cid, libraryId, path) }),
-    qc.invalidateQueries({ predicate: (q) => isItemOf(q, cid, libraryId, path) }),
+    qc.invalidateQueries({ predicate: (q) => isBookAnswerOf(q, cid, libraryId, path) }),
   ]);
+}
+
+/** While a generate run is past chapter detection (`midRunCheckpoint`): read the book's
+ * chapters again once per step it reports, so the chapters it saves early (Bridge Phase 1d,
+ * hours before its end) replace the player's parts with their caption mid-run. Only an
+ * answer still without chapters of its own (at most one, no `chapters_source`): a book with
+ * chapters gets nothing from the early save, and is never read again for it. Not waited
+ * for: the job's status does not depend on it. */
+function refreshMidRun(qc: QueryClient, cid: string, jobs: readonly BridgeJob[]) {
+  const at = midRunCheckpoint(jobs);
+  if (!at || at.job.library_id === null || at.job.path === null) return;
+  if (!firstTime(qc, `${cid}:mid:${at.mark}`)) return;
+  const { library_id: libraryId, path } = at.job;
+  void qc.invalidateQueries({
+    predicate: (q) => {
+      if (q.queryKey[0] !== 'chapters' || !isBookAnswerOf(q, cid, libraryId, path)) return false;
+      const data = q.state.data as ChaptersResponse | undefined;
+      return !data || (data.chapters.length <= 1 && !data.chapters_source);
+    },
+  });
 }
 
 /**
  * A book's Bridge jobs, newest first (`path`: the book's own `rel_path`, which the jobs
  * carry), asked only while `enabled`. Polled (`bridgePollInterval`) only while a
- * `sidecars.generate` job of it is open and `active` (the surface on screen) with the app
- * in the foreground; the answer that sees the job end stops it. A finished job has the
- * book's `/meta` and item read again before its answer lands (`refreshAfterFinish`).
+ * `sidecars.generate` or `chapters.detect` job of it is open and `active` (the surface on
+ * screen) with the app in the foreground; the answer that sees the job end stops it. A
+ * finished job has the book's `/meta`, item and chapters read again before its answer lands
+ * (`refreshAfterFinish`); a running generate job past chapter detection, its chapters
+ * (`refreshMidRun`).
  * `select` narrows what the caller re-renders for (a poll that changes only the progress
  * leaves it alone).
  */
@@ -2065,6 +2100,7 @@ export function useBridgeJobs<S = BridgeJob[]>(
     (c) => qk.bridgeJobs(c, libraryId, path),
     async (api, signal) => {
       const jobs = await api.bridgeJobs(libraryId, path, signal);
+      refreshMidRun(qc, cid, jobs);
       await refreshAfterFinish(qc, cid, jobs);
       return jobs;
     },

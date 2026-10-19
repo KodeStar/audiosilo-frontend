@@ -112,10 +112,12 @@ const API_ERROR_CODES = [
   'member_disabled',
   'kid_account',
   'demo_account',
-  // The Bridge's admin routes: queueing for a library the Bridge can't write (409), and a
-  // kind the paired Bridge doesn't offer (409).
+  // The Bridge's admin routes: queueing for a library the Bridge can't write (409), a kind
+  // the paired Bridge doesn't offer (409), and (Bridge Phase 1d) a generate job for a book
+  // whose chapters a `chapters.detect` job is still finding (409).
   'library_not_writable',
   'kind_unavailable',
+  'detect_open',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -1172,7 +1174,9 @@ export class ApiClient {
   /** Queue a job (201), or get the open one already queued for that kind and book (200):
    * the answer is the job either way. Refused with a 409 `library_not_writable` when the
    * Bridge can't write the library, a 409 `kind_unavailable` when it doesn't offer the
-   * kind, a 404 for no such book and a 400 for params the kind refuses. */
+   * kind, a 409 `detect_open` for a generate job while a `chapters.detect` job is queued or
+   * working for the book (Bridge Phase 1d), a 404 for no such book and a 400 for params the
+   * kind refuses. */
   queueBridgeJob(job: BridgeJobRequest) {
     return this.request<BridgeJob>('POST', '/admin/bridge/jobs', { body: job });
   }

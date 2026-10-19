@@ -247,6 +247,36 @@ describe('the confirmation', () => {
     expect(await screen.findByText(/AI agent isn't ready/)).toBeTruthy();
   });
 
+  // Bridge Phase 1d: while a chapters.detect job is queued or working for the book the
+  // server refuses a generate job (409 detect_open), and the estimate names it as open_job.
+  it("holds it back while the book's chapters are still being found", async () => {
+    mockEstimate.mockResolvedValue(
+      bridgeEstimate({ open_job: bridgeJob({ kind: 'chapters.detect', state: 'running' }) }),
+    );
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-blocked')).toBeTruthy();
+    expect(screen.getByText(/chapters are still being found/)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    expect(mockQueue).not.toHaveBeenCalled();
+  });
+
+  // A detection queued after the estimate was read: the server's refusal says why.
+  it('says why when the server refuses it for a detection still open', async () => {
+    mockEstimate.mockResolvedValue(bridgeEstimate({ path: TARGET.path }));
+    mockQueue.mockRejectedValue(new ApiError(409, 'refused', 'detect_open'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-estimate')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenLastCalledWith({
+        title:
+          "The book's chapters are still being found. Generate once that has finished: it reuses the transcription.",
+      }),
+    );
+  });
+
   // A Bridge that sent no figures: its agent_ready is only a default, its transcription
   // time unknown (never "none" for the audio), and the server would queue the job.
   it('holds nothing back, and claims nothing, when the Bridge sent no figures', async () => {
@@ -302,6 +332,29 @@ describe('the status while a job runs', () => {
     await mount();
     expect(await screen.findByText('Generating is paused')).toBeTruthy();
     expect(screen.getByText('The Bridge reached its spending limit.')).toBeTruthy();
+    expect(screen.getByText('Open the console to fix it.')).toBeTruthy();
+  });
+
+  // Bridge Phase 1d: a book with no chapter markers gets its chapters from the narration.
+  it('words the chapter detection stage', async () => {
+    mockBridgeJobs.mockResolvedValue([bridgeJob({ progress: { stage: 'chapter_detecting' } })]);
+    await mount();
+    expect(await screen.findByText('Finding the chapters in the narration')).toBeTruthy();
+  });
+
+  // No chapter headings were heard with confidence: a person decides what to do.
+  it('says the Bridge could not find the chapters, and to open the console', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({
+        state: 'needs_attention',
+        progress: { stage: 'chapter_detecting', park: { code: 'chapters_not_detected' } },
+      }),
+    ]);
+    await mount();
+    expect(await screen.findByText('Generating is paused')).toBeTruthy();
+    expect(
+      screen.getByText("The Bridge couldn't find the chapters in the narration."),
+    ).toBeTruthy();
     expect(screen.getByText('Open the console to fix it.')).toBeTruthy();
   });
 

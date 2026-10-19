@@ -3,6 +3,7 @@ import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import type { ChaptersSource } from '@/api/types';
 import { SourceLine } from '@/components/library/source-line';
 import { BookTimeline } from '@/components/player/book-timeline';
 import { timelinePosition } from '@/components/player/book-timeline-model';
@@ -15,7 +16,7 @@ import {
 import type { BookPins } from '@/components/player/use-playing-pins';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card } from '@/components/ui/card';
-import { Icon } from '@/components/ui/icon';
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
@@ -25,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
+import type { ThemeColors } from '@/theme/tokens';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
@@ -34,6 +36,25 @@ import {
   rowAt,
   timelineStarts,
 } from './book-page-model';
+
+/** The caption under the rows for each chapters source the player knows. */
+const SOURCE_CAPTION = {
+  community: {
+    testID: 'book-chapters-community',
+    labelKey: 'book.chapters.community',
+    icon: 'globe',
+    iconColor: 'community',
+  },
+  generated: {
+    testID: 'book-chapters-generated',
+    labelKey: 'book.chapters.generated',
+    icon: 'server',
+    iconColor: 'subtleForeground',
+  },
+} as const satisfies Record<
+  ChaptersSource,
+  { testID: string; labelKey: string; icon: IconName; iconColor: keyof ThemeColors }
+>;
 
 export type BookChaptersTabProps = {
   list: ChapterList;
@@ -51,9 +72,12 @@ export type BookChaptersTabProps = {
   roomy: boolean;
   /** The part length, seconds (the parts notice says it). */
   interval: number;
-  /** The chapters are a community recording's list fitted onto this audio
-   * (`chapters_source`), not the files' own: a quiet line under the rows says so. */
-  fromCommunity: boolean;
+  /** Where the chapters come from when they are not the files' own (the answer's
+   * `chapters_source` as `knownChaptersSource` reads it: a source this build does not know
+   * is none): a community recording's list fitted onto this audio, or the chapters a Bridge
+   * found in the narration. A quiet line under the rows says so while they are those
+   * chapters (never under the player's parts or the files). */
+  source: ChaptersSource | undefined;
   onJump: (jump: Jump) => void;
 };
 
@@ -63,7 +87,8 @@ export type BookChaptersTabProps = {
  * a tap on a book that isn't playing starts it there), then the rows: the current one
  * marked, the ones behind ticked, a bookmark glyph on a chapter holding one, the start
  * time on wide layouts. A chapterless file lists the player's parts, with a notice
- * saying why; community chapters end with a line saying where they came from.
+ * saying why; community chapters, and chapters a Bridge found in the narration, end with a
+ * line saying where they came from.
  */
 export function BookChaptersTab({
   list,
@@ -75,10 +100,11 @@ export function BookChaptersTab({
   pins,
   roomy,
   interval,
-  fromCommunity,
+  source,
   onJump,
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
+  const caption = list.kind === 'chapters' && source ? SOURCE_CAPTION[source] : undefined;
   const starts = useMemo(() => timelineStarts(list.rows), [list.rows]);
   const labels = useMemo(
     () => list.rows.map((r) => rowLabel(r, list.kind, t)),
@@ -132,11 +158,13 @@ export function BookChaptersTab({
           />
         ))}
       </View>
-      {fromCommunity ? (
+      {caption ? (
         <SourceLine
-          testID="book-chapters-community"
-          label={t('book.chapters.community')}
+          testID={caption.testID}
+          label={t(caption.labelKey)}
           className="px-2.5"
+          icon={caption.icon}
+          iconColor={caption.iconColor}
         />
       ) : null}
     </View>
