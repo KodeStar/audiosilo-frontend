@@ -19,7 +19,6 @@ import {
   GENERATE_PARAMS,
   type GenerateContent,
   generateOffer,
-  type GenerateOfferKind,
   mayGenerate,
   queueInOrder,
   statusJob,
@@ -38,9 +37,11 @@ export type GenerateModel = {
   target: GenerateTarget;
   /** This person may generate here (`mayGenerate`). Nothing renders without it. */
   allowed: boolean;
-  /** What the book offers now (`generateOffer`): `covered` is no action, only the line
-   * that says the community has both (`GenerateCovered`). */
-  offer: GenerateOfferKind | null;
+  /** The action the book offers now (`generateOffer`'s `generate` or `regenerate`). */
+  offer: 'generate' | 'regenerate' | null;
+  /** The community has both characters and recaps (`generateOffer`'s `covered`): no
+   * action, only the line that says so (`GenerateCovered`). */
+  covered: boolean;
   /** The confirmation is open (never while `allowed` is off: it closes with it). */
   confirming: boolean;
   setConfirming: (open: boolean) => void;
@@ -98,7 +99,7 @@ export function useGenerate({
   // its Generate could send nothing, and it must not open again by itself later.
   if (confirming && !allowed) setConfirming(false);
 
-  const offer = generateOffer({
+  const kind = generateOffer({
     allowed,
     metaKnown,
     // An answer is in (a later read that failed keeps it: the list has `retry: false`, and
@@ -107,6 +108,7 @@ export function useGenerate({
     showsJob: jobs.data === true,
     content,
   });
+  const offer = kind === 'covered' ? null : kind;
 
   const queue = async (books: readonly BookRef[]) => {
     setQueueing(true);
@@ -145,6 +147,7 @@ export function useGenerate({
     target,
     allowed,
     offer,
+    covered: kind === 'covered',
     confirming: confirming && allowed,
     setConfirming,
     queue,

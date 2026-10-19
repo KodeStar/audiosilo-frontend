@@ -148,44 +148,22 @@ describe('who sees "Generate characters and recaps"', () => {
     expect(screen.queryByTestId('generate-covered')).toBeNull();
   });
 
-  it('tells an admin the community covers a book with both, instead of offering it', async () => {
+  // The companion never shows the covered line (an empty panel means the community lacks
+  // that half); the book page does.
+  it('offers nothing for a book the community has both for', async () => {
     await mount({ characters: [{}], recaps: [{}] });
-    expect(await screen.findByTestId('generate-covered')).toBeTruthy();
-    expect(
-      screen.getByText('The community already has characters and recaps for this book'),
-    ).toBeTruthy();
+    await waitFor(() => expect(mockBridgeJobs).toHaveBeenCalled());
     expect(screen.queryByTestId('generate-action')).toBeNull();
-    // The companion is already where the characters are: no link there.
-    expect(screen.queryByTestId('generate-covered-open')).toBeNull();
-  });
-
-  it('never shows a listener the covered line', async () => {
-    signIn({ ...ADMIN, role: 'user' });
-    await mount({ characters: [{}], recaps: [{}] });
-    await waitFor(() => expect(mockServerInfo).toHaveBeenCalled());
     expect(screen.queryByTestId('generate-covered')).toBeNull();
-    expect(screen.queryByTestId('generate-action')).toBeNull();
   });
 });
 
 describe('the covered line', () => {
-  it('opens the characters from its link where the surface gives one', async () => {
+  it('opens the characters from its link', async () => {
     const onOpen = jest.fn();
-    await mountWithPortal(
-      <GenerateCovered model={{ allowed: true, offer: 'covered' }} onOpen={onOpen} />,
-    );
+    await mountWithPortal(<GenerateCovered onOpen={onOpen} />);
     await fireEvent.press(screen.getByTestId('generate-covered-open'));
     expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders nothing without the permission or for another offer', async () => {
-    await mountWithPortal(
-      <>
-        <GenerateCovered model={{ allowed: false, offer: 'covered' }} onOpen={jest.fn()} />
-        <GenerateCovered model={{ allowed: true, offer: 'generate' }} onOpen={jest.fn()} />
-      </>,
-    );
-    expect(screen.queryByTestId('generate-covered')).toBeNull();
   });
 });
 
@@ -441,6 +419,7 @@ describe('the status while a job runs', () => {
       target: TARGET,
       allowed: false,
       offer: null,
+      covered: false,
       confirming: false,
       setConfirming: jest.fn(),
       queue: jest.fn(async () => false),

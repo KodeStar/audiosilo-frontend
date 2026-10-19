@@ -413,8 +413,9 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   `/meta`). Nothing renders, and no job is asked for, without it. `generateOffer` (Phase 1e,
   one rule with the console's `generate-model.ts`): a dimension is the community's when it is
   present and not `work.generated[dim]` (`communityCoverage`; the server's merge is fill-only).
-  The community has both: `covered` (no action; `GenerateCovered` says so, admin-only, with
-  "See characters" opening the book page's Characters tab, no link in the companion). Else
+  The community has both: `covered` (no action; `useGenerate` splits it out as `covered`, and
+  the book page's `GenerateCovered` says so, admin-only, with "See characters" opening the
+  Characters tab; the companion never shows it). Else
   `regenerate` (the book menu) when some were generated here, else `generate`. Nothing until
   the book's `/meta` answer
   (`metaAnswered`) and its jobs are known, or while a job shows its status (`statusJob`: the

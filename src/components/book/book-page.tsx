@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import {
   historyQuery,
@@ -210,9 +211,13 @@ function BookPage() {
   // so the covered line's "See characters" can bring them into view.
   const scrollRef = useRef<ScrollView>(null);
   const tabsY = useRef({ body: 0, tabs: 0 });
+  const reduced = useReducedMotion();
   const openCharacters = () => {
     setTab('characters');
-    scrollRef.current?.scrollTo({ y: tabsY.current.body + tabsY.current.tabs, animated: true });
+    scrollRef.current?.scrollTo({
+      y: tabsY.current.body + tabsY.current.tabs,
+      animated: !reduced,
+    });
   };
   // The reader's reading order per series family, remembered on the device. It drives
   // BOTH the Series rail and "previous books".
@@ -464,7 +469,7 @@ function BookPage() {
             onPrimary={() => play({ toggle: true })}
             stacked={!layout.heroSide}
             generate={
-              generate.offer === 'generate' || generate.offer === 'regenerate'
+              generate.offer
                 ? { offer: generate.offer, onPress: () => generate.setConfirming(true) }
                 : undefined
             }
@@ -474,7 +479,7 @@ function BookPage() {
           <>
             <DownloadProgress libraryId={libraryId} path={path} />
             <GenerateStatus model={generate} />
-            <GenerateCovered model={generate} onOpen={openCharacters} />
+            {generate.covered ? <GenerateCovered onOpen={openCharacters} /> : null}
             <TranscodeNote
               book={book}
               chapterData={chapterData}

@@ -79,9 +79,6 @@ export function statusJob(jobs: readonly BridgeJob[] | undefined): BridgeJob | u
   return job && (isOpenJob(job) || job.state === 'failed') ? job : undefined;
 }
 
-/** What a book offers an admin (see `generateOffer`). */
-export type GenerateOfferKind = 'generate' | 'regenerate' | 'covered';
-
 /**
  * What a book offers an admin (Bridge Phase 1e, the one rule the console shares): while
  * the community lacks either characters or recaps, `regenerate` (quieter, the overflow
@@ -97,7 +94,7 @@ export function generateOffer(opts: {
   /** A job's status shows (`statusJob` has one). */
   showsJob: boolean;
   content: GenerateContent | undefined;
-}): GenerateOfferKind | null {
+}): 'generate' | 'regenerate' | 'covered' | null {
   const { allowed, metaKnown, jobsKnown, showsJob, content } = opts;
   if (!allowed || !metaKnown || !jobsKnown || showsJob) return null;
   const community = communityCoverage(content);

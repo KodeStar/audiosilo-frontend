@@ -466,7 +466,7 @@ icon after the book page's hero actions (its own row on a phone), or under the c
 Story so far; "Regenerate characters and recaps" (a book with generated ones) is quieter, in the book menu. When
 the community has both, a quiet caption line takes its place under the hero's actions (`GenerateCovered`: the
 users icon, "The community already has characters and recaps for this book" and a `link` "See characters" that
-opens the Characters tab; the companion's has no link). Never pink, and nothing at all for anyone else. The confirmation is a Dialog with a
+opens the Characters tab; book page only). Never pink, and nothing at all for anyone else. The confirmation is a Dialog with a
 sparkles icon badge: what the Bridge will read, the transcription time, the expected agent cost (a subscription
 says it is notional; no history says "no estimate yet"), that the results appear on this server, and a switch
 (on by default) to queue the series' earlier books without recaps first; while the library isn't writable or the
