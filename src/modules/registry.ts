@@ -1,12 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 
-import {
-  anyCapability,
-  type CapabilityKey,
-  hasCapability,
-  useCapabilitiesAll,
-  useServerInfo,
-} from '@/api/hooks';
+import { anyCapability, useCapabilitiesAll, useServerInfo } from '@/api/hooks';
 import type { Book, Capabilities } from '@/api/types';
 import type { BookAction } from '@/components/library/books/book-actions';
 import type { Connection } from '@/stores/session';
@@ -32,8 +26,9 @@ import type { Connection } from '@/stores/session';
  * sections (`SettingsSection`) stay closed until a module needs them (Phase 2d).
  */
 export type PlayerModule = {
-  /** The module's id: its capability flag on `GET /server` (`capabilities.<id>`). */
-  id: CapabilityKey;
+  /** The module's id: its capability flag on `GET /server` (`capabilities.<id>`), mirrored
+   * in {@link Capabilities} like every other flag. */
+  id: keyof Capabilities;
   homeRails?: (p: { connections: Connection[] }) => ReactNode;
   youSections?: readonly YouModuleSection[];
   bookActions?: (p: { connectionId: string; book: Book }) => BookAction[];
@@ -68,7 +63,7 @@ export function modulesOn(
   list: readonly PlayerModule[],
   caps: Capabilities | undefined,
 ): readonly PlayerModule[] {
-  const on = caps ? list.filter((m) => hasCapability(caps, m.id)) : NO_MODULES;
+  const on = caps ? list.filter((m) => !!caps[m.id]) : NO_MODULES;
   return on.length > 0 ? on : NO_MODULES;
 }
 

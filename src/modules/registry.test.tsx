@@ -18,8 +18,6 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useCapability } from '@/api/hooks';
-
 import { WithActiveModules } from './active-modules';
 import {
   activeModules,
@@ -34,7 +32,7 @@ import {
 
 const caps = (flags: Record<string, boolean>) => flags as unknown as Capabilities;
 const CONTRIB: PlayerModule = { id: 'contributions' };
-const OTHER: PlayerModule = { id: 'other_module' };
+const OTHER: PlayerModule = { id: 'bridge' };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -45,19 +43,12 @@ describe('PLAYER_MODULES', () => {
   it('is empty in Phase 2a: no module reaches the player yet', () => {
     expect(PLAYER_MODULES).toEqual([]);
   });
-
-  it("names a module's flag through useCapability (an open key)", () => {
-    // Type-level: `contributions` is a known flag and a module's own id is accepted too.
-    const known: Parameters<typeof useCapability>[0] = 'contributions';
-    const open: Parameters<typeof useCapability>[0] = OTHER.id;
-    expect([known, open]).toEqual(['contributions', 'other_module']);
-  });
 });
 
 describe('activeModules', () => {
   it('is on when ANY server has the flag, in registry order', () => {
     const all = {
-      a: caps({ contributions: false, other_module: true }),
+      a: caps({ contributions: false, bridge: true }),
       b: caps({ contributions: true }),
     };
     expect(activeModules([CONTRIB, OTHER], all)).toEqual([CONTRIB, OTHER]);

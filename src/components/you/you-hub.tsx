@@ -16,11 +16,12 @@ import { useLayout } from '@/lib/layout';
 import type { CoreYouSection } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
 import { WithActiveModules } from '@/modules/active-modules';
-import type { PlayerModule, YouModuleSection } from '@/modules/registry';
+import type { PlayerModule } from '@/modules/registry';
 
 import {
   isCoreYouSection,
   parseYouSection,
+  youModuleSections,
   youSectionLabelKey,
   youSectionParams,
   youSectionsFor,
@@ -85,26 +86,14 @@ export function YouHub({ modules }: { modules?: readonly PlayerModule[] } = {}) 
   );
 }
 
-/** The active modules' sections by key, in registry order: the first of a key wins and a
- * key of the hub's own is ignored. */
-function moduleSectionsOf(active: readonly PlayerModule[]): Map<string, YouModuleSection> {
-  const out = new Map<string, YouModuleSection>();
-  for (const m of active) {
-    for (const s of m.youSections ?? []) {
-      if (s.key && !isCoreYouSection(s.key) && !out.has(s.key)) out.set(s.key, s);
-    }
-  }
-  return out;
-}
-
 function Hub({ active }: { active: readonly PlayerModule[] }) {
   const { t } = useTranslation();
   const navigation = useNavigation();
   const layout = useLayout();
   const phone = layout === 'phone';
   const params = useLocalSearchParams<{ section?: string }>();
-  const moduleSections = useMemo(() => moduleSectionsOf(active), [active]);
-  const moduleKeys = [...moduleSections.keys()];
+  const moduleSections = useMemo(() => youModuleSections(active), [active]);
+  const moduleKeys = useMemo(() => [...moduleSections.keys()], [moduleSections]);
   const section = parseYouSection(params.section, moduleKeys);
   const ownSection = isCoreYouSection(section) ? section : null;
   const moduleSection = ownSection ? undefined : moduleSections.get(section);

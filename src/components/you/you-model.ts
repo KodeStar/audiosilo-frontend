@@ -1,11 +1,12 @@
 import type { LayoutClass } from '@/lib/layout';
 import { type CoreYouSection, firstParam, type YouSection } from '@/lib/paths';
+import type { PlayerModule, YouModuleSection } from '@/modules/registry';
 
 /**
  * The You hub's rules (`/you?section=stats|year|journal|settings|household|account`, the Me tab's
  * root): pure, so the section a link opens and what each form factor offers are tested
- * apart from the screen. An active module's sections (`moduleKeys`, Bridge Phase 2a) come
- * after the hub's own on every form factor.
+ * apart from the screen. An active module's sections (`youModuleSections`, Bridge Phase 2a)
+ * come after the hub's own on every form factor.
  */
 
 export const YOU_SECTIONS: readonly CoreYouSection[] = [
@@ -27,14 +28,24 @@ export function isCoreYouSection(section: string): section is CoreYouSection {
   return (YOU_SECTIONS as readonly string[]).includes(section);
 }
 
-/** The keys of `moduleKeys` that can be sections: not one of the hub's own, each once. */
-function moduleSectionKeys(moduleKeys: readonly string[]): string[] {
-  return [...new Set(moduleKeys)].filter((k) => k !== '' && !isCoreYouSection(k));
+/** The active modules' sections by key, in registry order: the first of a key wins, and
+ * an empty key or one of the hub's own is ignored. Its keys are the `moduleKeys` the rules
+ * below take. */
+export function youModuleSections(
+  active: readonly PlayerModule[],
+): ReadonlyMap<string, YouModuleSection> {
+  const out = new Map<string, YouModuleSection>();
+  for (const m of active) {
+    for (const s of m.youSections ?? []) {
+      if (s.key && !isCoreYouSection(s.key) && !out.has(s.key)) out.set(s.key, s);
+    }
+  }
+  return out;
 }
 
 /** The section a link asks for: one of the hub's own, or the key of an active module's
- * section (`moduleKeys`); anything else (absent, unknown, repeated, a module that is off)
- * is Stats. */
+ * section (`moduleKeys`, from `youModuleSections`); anything else (absent, unknown,
+ * repeated, a module that is off) is Stats. */
 export function parseYouSection(raw: string | string[] | undefined): CoreYouSection;
 export function parseYouSection(
   raw: string | string[] | undefined,
@@ -46,7 +57,7 @@ export function parseYouSection(
 ): YouSection {
   const v = firstParam(raw);
   if (isCoreYouSection(v)) return v;
-  return moduleSectionKeys(moduleKeys).includes(v) ? v : 'stats';
+  return v !== '' && moduleKeys.includes(v) ? v : 'stats';
 }
 
 /** The sections the hub's segmented control offers on this form factor: all six on a
@@ -63,8 +74,7 @@ export function youSectionsFor(
   moduleKeys: readonly string[] = [],
 ): readonly YouSection[] {
   const own = layout === 'phone' ? YOU_SECTIONS : WIDE_SECTIONS;
-  const keys = moduleSectionKeys(moduleKeys);
-  return keys.length > 0 ? [...own, ...keys] : own;
+  return moduleKeys.length > 0 ? [...own, ...moduleKeys] : own;
 }
 
 /** A section's segment label: short on a phone ("Year"), the destination's own words in

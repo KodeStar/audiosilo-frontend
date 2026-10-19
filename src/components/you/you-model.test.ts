@@ -1,6 +1,7 @@
 import {
   isCoreYouSection,
   parseYouSection,
+  youModuleSections,
   youSectionLabelKey,
   youSectionParams,
   youSectionsFor,
@@ -68,12 +69,21 @@ describe("a module's sections (Bridge Phase 2a)", () => {
     expect(parseYouSection('contribute', ['contribute'])).toBe('contribute');
     expect(parseYouSection('contribute', [])).toBe('stats');
     expect(parseYouSection('contribute')).toBe('stats');
+    expect(parseYouSection(undefined, ['contribute'])).toBe('stats');
     // The hub's own still open with modules about.
     expect(parseYouSection('journal', ['contribute'])).toBe('journal');
   });
 
   it("never lets a module's key stand for one of the hub's own", () => {
-    expect(youSectionsFor('phone', ['stats', 'contribute', 'contribute', ''])).toEqual([
+    const section = (key: string, label = key) => ({ key, label, render: () => null });
+    const first = section('contribute', 'First');
+    const sections = youModuleSections([
+      { id: 'contributions', youSections: [section('stats'), first, section('')] },
+      { id: 'bridge', youSections: [section('contribute', 'Second')] },
+    ]);
+    expect([...sections.keys()]).toEqual(['contribute']);
+    expect(sections.get('contribute')).toBe(first);
+    expect(youSectionsFor('phone', [...sections.keys()])).toEqual([
       'stats',
       'year',
       'journal',
@@ -82,6 +92,7 @@ describe("a module's sections (Bridge Phase 2a)", () => {
       'account',
       'contribute',
     ]);
+    expect(youModuleSections([])).toEqual(new Map());
   });
 
   it("follows the hub's own sections on every form factor", () => {

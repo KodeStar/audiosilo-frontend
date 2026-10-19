@@ -154,7 +154,7 @@ keep this index in step (one line per topic).
   - The gate
   - Surfaces
   - Player modules registry
-  - Capability keys are open
+  - Module flags are mirrored
   - Slots
   - The module's surface
   - Remote moves vs the resume floor

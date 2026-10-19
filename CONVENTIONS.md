@@ -450,9 +450,9 @@ while it is on AND its Bridge requirement is met (`contributions` is the first,
   `{id, homeRails?, youSections?, bookActions?}`. `useActiveModules(list)` keeps the modules
   some server of the person listening has on (`anyCapability` over `useCapabilitiesAll`);
   `useModulesOn(cid, list)` one server's (a book's actions go to its own server).
-- **Capability keys are open**: `CapabilityKey = keyof Capabilities | (string & {})` for
-  `useCapability`, `anyCapability`, `cachedCapability`, the gated query/mutation helpers and
-  `CapabilityError`; read a flag with `hasCapability(caps, flag)`, never `caps[flag]`.
+- **Module flags are mirrored**: a module's `id` is `keyof Capabilities`, so its flag is
+  added to `Capabilities` (`types.ts`) like any other and the capability hooks keep their
+  closed key (a typo in a flag name stays a type error).
 - **Slots** take an optional `modules` prop (default the registry; tests pass a fake) and
   read flags through `WithActiveModules` (`active-modules.tsx`), which asks nothing with an
   empty list, so a slot renders exactly as before: Home's `ModuleRails` (after Next in your
