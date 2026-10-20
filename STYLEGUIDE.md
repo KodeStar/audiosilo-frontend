@@ -471,8 +471,9 @@ users icon, "The community already has characters and recaps for this book" and 
 opens the Characters tab; book page only). Never pink, and nothing at all for anyone else. The confirmation is a Dialog with a
 sparkles icon badge: what the Bridge will read, the transcription time, the expected agent cost (a subscription
 says it is notional; no history says "no estimate yet"), that the results appear on this server, and a switch
-(on by default) to queue the series' earlier books without recaps first; while the library isn't writable or the
-agent is known not to be ready, Generate is held back with the reason in warning text. While a job runs, a
+(on by default) to queue the series' earlier books without recaps first; while the library isn't writable, the
+book's chapters are still being found or its characters and recaps are being shared (the estimate's `open_job`),
+or the agent is known not to be ready, Generate is held back with the reason in warning text. While a job runs, a
 compact status takes the button's place: sparkles (circle-exclamation in warning or destructive when parked or
 failed), the title, one caption line (the stage in plain words, the counts, the time left; why it stopped; the
 error), a neutral ink progress bar (not pink: the hero's progress bar is the page's one pink thing) and Cancel,

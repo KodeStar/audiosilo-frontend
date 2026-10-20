@@ -371,6 +371,20 @@ describe('bridgeRefusalKey and blockedReason', () => {
     expect(bridgeRefusalKey(new Error('offline'), 'x.fallback')).toBe('x.fallback');
   });
 
+  // An earlier book of the series, queued first, refused for an open job of its own: those
+  // words name the book refused, and the one on screen isn't it.
+  it("never words another book's open-job refusal as this book's", () => {
+    for (const code of ['detect_open', 'contribute_open'])
+      expect(bridgeRefusalKey(refusal(code), 'x.fallback', true)).toBe('x.fallback');
+    // The library's and the Bridge's refusals are the same for every book.
+    expect(bridgeRefusalKey(refusal('library_not_writable'), 'x.fallback', true)).toBe(
+      'bridge.generate.notWritable',
+    );
+    expect(bridgeRefusalKey(refusal('kind_unavailable'), 'x.fallback', true)).toBe(
+      'bridge.generate.unavailable',
+    );
+  });
+
   // Bridge Phase 1d: while a chapters.detect job is queued or working the server refuses a
   // generate job (409 detect_open), and its estimate names that job as `open_job`.
   it("holds Generate back while the book's chapters are still being found", () => {

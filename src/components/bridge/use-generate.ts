@@ -116,11 +116,16 @@ export function useGenerate({
       queueJob.mutateAsync({ kind: SIDECARS_GENERATE, ...book, params: GENERATE_PARAMS }),
     );
     setQueueing(false);
+    // The refusal stopped the run at books[queued.length]: an earlier book of the series
+    // (queued first) isn't this one, so a refusal about its own open job is never worded
+    // as this book's (`bridgeRefusalKey`'s `otherBook`).
+    const refused = books[queued.length];
+    const otherBook = !!refused && (refused.library_id !== libraryId || refused.path !== path);
     if (queued.length === 0) {
       // A CapabilityError was never sent (the Bridge went offline meanwhile): the button
       // goes with the flag, so there is nothing to say.
       if (!(error instanceof CapabilityError)) {
-        toast({ title: t(bridgeRefusalKey(error, 'bridge.generate.queueFailed')) });
+        toast({ title: t(bridgeRefusalKey(error, 'bridge.generate.queueFailed', otherBook)) });
       }
       return false;
     }
@@ -130,7 +135,7 @@ export function useGenerate({
       // press again: the books already queued answer with their open job.
       toast({
         title: t('bridge.generate.queuedSome', { count: queued.length, total: books.length }),
-        description: t(bridgeRefusalKey(error, 'bridge.generate.queuedRestFailed')),
+        description: t(bridgeRefusalKey(error, 'bridge.generate.queuedRestFailed', otherBook)),
       });
       return false;
     }

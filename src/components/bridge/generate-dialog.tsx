@@ -29,9 +29,12 @@ import type { GenerateModel } from './use-generate';
  * cost of every run the button queues (or "no estimate yet"; a subscription's note), where
  * the results appear (always on this server: the player never offers to contribute them),
  * and, when earlier books of the series have no recaps, a switch to queue those first (on
- * by default). Generate is held back, with the reason, while the Bridge can't write the
- * library or its agent is known not to be ready. The estimate is read afresh each time it
- * opens, and again on Retry after a failure.
+ * by default). Generate is held back, with the reason (`blockedReason`), while the Bridge
+ * can't write the library, the book's chapters are still being found or its characters and
+ * recaps are being shared (the estimate's `open_job`), or its agent is known not to be
+ * ready. The estimate is read afresh each time it opens, again on Retry after a failure,
+ * while a share holds Generate back (so the hold lifts once it ends) and after a refused
+ * queue (`useBridgeEstimate`).
  */
 export function GenerateDialog({ model, title }: { model: GenerateModel; title?: string }) {
   return (

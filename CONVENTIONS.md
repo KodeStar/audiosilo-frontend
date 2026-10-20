@@ -382,11 +382,15 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   description), `has {community, local, community_unknown?}` (each `{characters, recaps,
   description?}`), `earlier` (up to 10 earlier series books without recaps, each costed),
   `open_job`: the book's open generate job, else (Phase 1d) the open job of another kind that
-  refuses one now, a queued or working `chapters.detect`; its `kind` says which). `client.ts`:
+  refuses one now, a queued or working `chapters.detect` or (Phase 2b) `sidecars.contribute`;
+  its `kind` says which). `client.ts`:
   `bridgeJobs(lib, path)` (`GET /admin/bridge/jobs`, first page), `queueBridgeJob` (201 new, 200
   the open one already queued), `cancelBridgeJob`, `bridgeEstimate` (the upstream budget,
-  `UPSTREAM_TIMEOUT_MS`); refusals `library_not_writable`, `kind_unavailable` and (Phase 1d)
-  `detect_open` are `API_ERROR_CODES` (`bridgeRefusalKey` words them; never `ApiError.message`).
+  `UPSTREAM_TIMEOUT_MS`); refusals `library_not_writable`, `kind_unavailable`, (Phase 1d)
+  `detect_open` and (Phase 2b) `contribute_open` are `API_ERROR_CODES` (`bridgeRefusalKey`
+  words them, its `REFUSAL_KEY` checked against `ApiErrorCode`; never `ApiError.message`; an
+  open-job refusal for an earlier book of the series, queued first, reads as the plain
+  failure, never as this book's).
 - **Hooks** (`hooks.ts`, `qk.bridgeJobs` / `qk.bridgeEstimate`): `useBridgeJobs(lib, path,
   {enabled, active, select})` asks only a server with the flag and only while `enabled` (a
   non-admin would get a 403), `retry: false`; it POLLS (`bridgePollInterval`,
@@ -404,8 +408,11 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   reports past chapter detection (`midRunCheckpoint`), only while the cached answer has no
   chapters of its own (at most one, no `chapters_source`).
   `useBridgeEstimate` (`staleTime: 0`, read afresh each time the
-  confirmation opens), `useQueueBridgeJob` / `useCancelBridgeJob` (`CapabilityError` without
-  the flag; the answer goes into the book's job list, a cancel's 409 reads it again).
+  confirmation opens; Phase 2b: polled while its `open_job` is a share holding Generate back,
+  `estimatePollInterval`, 10 s while claimed or running, 60 s while queued, so the hold lifts
+  once it ends; a detection is not waited for), `useQueueBridgeJob` / `useCancelBridgeJob`
+  (`CapabilityError` without the flag; the answer goes into the book's job list, a cancel's 409
+  reads it again, a refused queue reads the book's estimate again).
   `useCapabilityQuery` gained `retry`, `select` and a query-aware `refetchInterval` for them.
 - **The gate** (`bridge-model.ts`, pure and tested): `mayGenerate(user, server)` = an admin
   (never a household member, a kid's or a demo account, whatever the role says), the `bridge`

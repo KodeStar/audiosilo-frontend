@@ -20,6 +20,7 @@ import { AppState } from 'react-native';
 
 import {
   bridgePollInterval,
+  estimatePollInterval,
   latestDone,
   midRunCheckpoint,
   SIDECARS_GENERATE,
@@ -2116,14 +2117,22 @@ export function useBridgeJobs<S = BridgeJob[]>(
 }
 
 /** What generating characters and recaps for a book would take (`GET
- * /admin/bridge/estimate`), read afresh each time it mounts (the confirmation opens). */
+ * /admin/bridge/estimate`), read afresh each time it mounts (the confirmation opens), again
+ * while a share holds Generate back (`estimatePollInterval`), and after a refused queue
+ * (`useQueueBridgeJob`). */
 export function useBridgeEstimate(libraryId: number, path: string, connectionId?: string) {
   return useCapabilityQuery<BridgeEstimate>(
     'bridge',
     (cid) => qk.bridgeEstimate(cid, libraryId, path),
     (api, signal) => api.bridgeEstimate(libraryId, path, SIDECARS_GENERATE, signal),
     connectionId,
-    { ready: path.length > 0, staleTime: 0, retry: false },
+    {
+      ready: path.length > 0,
+      staleTime: 0,
+      retry: false,
+      refetchInterval: (query) =>
+        estimatePollInterval(query.state.data?.open_job, AppState.currentState === 'active'),
+    },
   );
 }
 
@@ -2139,13 +2148,20 @@ function storeJob(qc: QueryClient, cid: string, job: BridgeJob) {
 }
 
 /** Queue a Bridge job (`POST /admin/bridge/jobs`); the answer (a new job, or the open one
- * already queued for that kind and book) goes into the book's job list, which then polls. */
+ * already queued for that kind and book) goes into the book's job list, which then polls.
+ * A refusal (a job of another kind opened for the book meanwhile, say) reads the book's
+ * estimate again, so an open confirmation holds Generate back with the reason. */
 export function useQueueBridgeJob(connectionId?: string) {
   return useCapabilityMutation(
     'bridge',
     connectionId,
     (api, job: BridgeJobRequest) => api.queueBridgeJob(job),
     ({ qc, cid }, answer) => storeJob(qc, cid, answer),
+    ({ qc, cid }, job, error) => {
+      if (error) {
+        void qc.invalidateQueries({ queryKey: qk.bridgeEstimate(cid, job.library_id, job.path) });
+      }
+    },
   );
 }
 
