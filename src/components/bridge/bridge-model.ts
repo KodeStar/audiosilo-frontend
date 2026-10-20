@@ -315,8 +315,8 @@ const REFUSAL_KEY = {
   // queued or working); a generate job queued after it reuses its transcription.
   detect_open: 'bridge.generate.detectOpen',
   // Bridge Phase 2b: the book's characters and recaps are being shared with the community
-  // (a `sidecars.contribute` job queued or working, queued from the console); a generate run
-  // would replace what is being filed.
+  // (a `sidecars.contribute` job queued or working, queued from the console; a queued one
+  // held while the module is off never refuses); a generate run would replace what is filed.
   contribute_open: 'bridge.generate.contributeOpen',
 } as const satisfies Partial<Record<ApiErrorCode, string>>;
 

@@ -1410,6 +1410,7 @@ export type BridgeEstimate = {
    * server answers a generate job for the book 409 `detect_open` until it ends; the
    * player's `blockedReason` holds Generate back for it), or (Phase 2b) a
    * `sidecars.contribute` job queued or working (409 `contribute_open`, held back the same
-   * way). Its `kind` says which; absent for none. */
+   * way; a queued one held while the Contributions module is off is not reported). Its `kind`
+   * says which; absent for none. */
   open_job?: BridgeJob;
 };

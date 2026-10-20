@@ -16,7 +16,8 @@ export const CHAPTERS_DETECT = 'chapters.detect';
 
 /** The Bridge job kind that shares a book's generated characters and recaps with the
  * community (Bridge Phase 2b). The console queues it, never the player; while one is queued
- * or working the server refuses a generate job for the book (409 `contribute_open`). */
+ * or working the server refuses a generate job for the book (409 `contribute_open`), except a
+ * queued one held while the Contributions module is off, which a new generate cancels. */
 export const SIDECARS_CONTRIBUTE = 'sidecars.contribute';
 
 /** The kinds whose `done` job wrote the book's `.audiosilo/` files (see `latestDone`). */
