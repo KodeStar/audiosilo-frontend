@@ -1178,7 +1178,8 @@ export class ApiClient {
    * Bridge can't write the library, a 409 `kind_unavailable` when it doesn't offer the
    * kind, a 409 `detect_open` for a generate job while a `chapters.detect` job is queued or
    * working for the book (Bridge Phase 1d), a 409 `contribute_open` for one while a
-   * `sidecars.contribute` job is queued or working for it (Phase 2b), a 404 for no such book
+   * `sidecars.contribute` job is queued or working for it (Phase 2b; a queued one held while
+   * the Contributions module is off gives way and is cancelled), a 404 for no such book
    * and a 400 for params the kind refuses. */
   queueBridgeJob(job: BridgeJobRequest) {
     return this.request<BridgeJob>('POST', '/admin/bridge/jobs', { body: job });
