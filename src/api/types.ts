@@ -1408,7 +1408,9 @@ export type BridgeEstimate = {
   /** The open `sidecars.generate` job for this book, else (Bridge Phase 1d) the open job of
    * another kind that refuses a new one now: a `chapters.detect` job queued or working (the
    * server answers a generate job for the book 409 `detect_open` until it ends; the
-   * player's `blockedReason` holds Generate back for it). Its `kind` says which; absent
-   * for neither. */
+   * player's `blockedReason` holds Generate back for it), or (Phase 2b) a
+   * `sidecars.contribute` job queued or working (409 `contribute_open`, held back the same
+   * way; a queued one held while the Contributions module is off is not reported). Its `kind`
+   * says which; absent for none. */
   open_job?: BridgeJob;
 };

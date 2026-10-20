@@ -5,10 +5,12 @@ import {
   BRIDGE_POLL_MS,
   bridgePollInterval,
   CHAPTERS_DETECT,
+  estimatePollInterval,
   isOpenJob,
   latestDone,
   latestJob,
   midRunCheckpoint,
+  SIDECARS_CONTRIBUTE,
   SIDECARS_DESCRIBE,
   SIDECARS_GENERATE,
 } from './bridge-jobs';
@@ -68,6 +70,28 @@ describe('bridgePollInterval', () => {
     expect(bridgePollInterval([job({ kind: 'bridge.verify' })], true)).toBe(false);
     expect(bridgePollInterval(undefined, true)).toBe(false);
     expect(bridgePollInterval([], true)).toBe(false);
+  });
+});
+
+// Bridge Phase 2b: a share holding Generate back ends in seconds, so the confirmation's
+// estimate is read again until it has.
+describe('estimatePollInterval', () => {
+  const share = (state: string) => job({ kind: SIDECARS_CONTRIBUTE, state });
+
+  it('polls while a share holds Generate back: every 10 s while it works, a minute while it waits', () => {
+    for (const state of ['claimed', 'running'])
+      expect(estimatePollInterval(share(state), true)).toBe(BRIDGE_POLL_MS);
+    expect(estimatePollInterval(share('queued'), true)).toBe(BRIDGE_IDLE_POLL_MS);
+  });
+
+  it("never for a detection, the book's own generate job, an ended share, none, or off screen", () => {
+    expect(estimatePollInterval(job({ kind: CHAPTERS_DETECT, state: 'running' }), true)).toBe(
+      false,
+    );
+    expect(estimatePollInterval(job({ state: 'running' }), true)).toBe(false);
+    expect(estimatePollInterval(share('done'), true)).toBe(false);
+    expect(estimatePollInterval(undefined, true)).toBe(false);
+    expect(estimatePollInterval(share('running'), false)).toBe(false);
   });
 });
 

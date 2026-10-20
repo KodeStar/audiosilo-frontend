@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { AppState } from 'react-native';
 
 import type { BridgeEstimate, BridgeJob, BridgeJobRequest, ServerInfo, User } from '@/api/types';
 
@@ -37,6 +38,7 @@ jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 import { qk } from '@/api/hooks';
+import { BRIDGE_POLL_MS } from '@/lib/bridge-jobs';
 import { useSession } from '@/stores/session';
 import { ADMIN, bridgeEstimate, bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
@@ -298,6 +300,101 @@ describe('the confirmation', () => {
           "The book's chapters are still being found. Generate once that has finished: it reuses the transcription.",
       }),
     );
+  });
+
+  // Bridge Phase 2b: while the console shares the book's characters and recaps (a
+  // sidecars.contribute job queued or working) the server refuses a generate job (409
+  // contribute_open), and the estimate names it as open_job.
+  it("holds it back while the book's characters and recaps are being shared", async () => {
+    mockEstimate.mockResolvedValue(
+      bridgeEstimate({ open_job: bridgeJob({ kind: 'sidecars.contribute', state: 'running' }) }),
+    );
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-blocked')).toBeTruthy();
+    expect(screen.getByText(/being shared with the community/)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    expect(mockQueue).not.toHaveBeenCalled();
+  });
+
+  // A share queued after the estimate was read: the server's refusal says why, and the
+  // estimate is read again, so the confirmation holds Generate back with the reason.
+  it('says why when the server refuses it for a share still open', async () => {
+    const share = bridgeJob({ kind: 'sidecars.contribute', state: 'running' });
+    mockEstimate
+      .mockResolvedValueOnce(bridgeEstimate({ path: TARGET.path }))
+      .mockResolvedValue(bridgeEstimate({ path: TARGET.path, open_job: share }));
+    mockQueue.mockRejectedValue(new ApiError(409, 'refused', 'contribute_open'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-estimate')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenLastCalledWith({
+        title:
+          "This book's characters and recaps are being shared with the community. Generate once that has finished.",
+      }),
+    );
+    expect(await screen.findByTestId('generate-blocked')).toBeTruthy();
+    expect(screen.getByTestId('generate-confirm')).toBeDisabled();
+  });
+
+  // A share ends in seconds: while one holds Generate back the confirmation reads the
+  // estimate again (every 10 s while it runs), and the hold lifts once it has ended.
+  it('reads the estimate again while a share holds it back, and lifts the hold', async () => {
+    // The app in the foreground (the poll stops in the background).
+    const was = Object.getOwnPropertyDescriptor(AppState, 'currentState');
+    Object.defineProperty(AppState, 'currentState', { get: () => 'active', configurable: true });
+    try {
+      const share = bridgeJob({ kind: 'sidecars.contribute', state: 'running' });
+      mockEstimate.mockResolvedValue(bridgeEstimate({ path: TARGET.path, open_job: share }));
+      const qc = await mount();
+      await fireEvent.press(await screen.findByTestId('generate-action'));
+      expect(await screen.findByTestId('generate-blocked')).toBeTruthy();
+      const key = qk.bridgeEstimate('c1', TARGET.libraryId, TARGET.path);
+      const query = qc.getQueryCache().find<BridgeEstimate>({ queryKey: key });
+      const every = query?.observers[0]?.options.refetchInterval;
+      const interval = () => (typeof every === 'function' && query ? every(query) : every);
+      expect(interval()).toBe(BRIDGE_POLL_MS);
+
+      // The share has ended: the next read holds nothing back, and stops the poll.
+      mockEstimate.mockResolvedValue(bridgeEstimate({ path: TARGET.path }));
+      await act(() => qc.refetchQueries({ queryKey: key }));
+      await waitFor(() => expect(screen.queryByTestId('generate-blocked')).toBeNull());
+      expect(screen.getByTestId('generate-confirm')).toBeEnabled();
+      expect(interval()).toBe(false);
+    } finally {
+      if (was) Object.defineProperty(AppState, 'currentState', was);
+    }
+  });
+
+  // An earlier book, queued first, refused for an open job of its own: those words name the
+  // book refused, and this one isn't it, so the plain failure is said instead.
+  it.each([
+    ['Saga/Book 1', 'contribute_open', { title: "Couldn't queue it. Nothing was started." }],
+    [
+      'Saga/Book 2',
+      'detect_open',
+      {
+        title: "Queued 1 of 3 books. The rest couldn't be queued.",
+        description: "This book isn't queued yet. Press Generate again to queue the rest.",
+      },
+    ],
+  ])("never words %s's %s refusal as this book's", async (refusedPath, code, said) => {
+    mockQueue.mockImplementation(async (job) => {
+      if (job.path === refusedPath) throw new ApiError(409, 'refused', code);
+      return bridgeJob({
+        id: nextId++,
+        state: 'queued',
+        library_id: job.library_id,
+        path: job.path,
+      });
+    });
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-estimate')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    await waitFor(() => expect(mockToast).toHaveBeenLastCalledWith(said));
   });
 
   // A Bridge that sent no figures: its agent_ready is only a default, its transcription

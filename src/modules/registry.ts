@@ -50,8 +50,8 @@ export type YouModuleSection = {
   render: (o: { phone: boolean }) => ReactNode;
 };
 
-/** The player's modules, in the order their slots show them. Empty in Phase 2a: the
- * Contributions module's player part arrives with Phase 2b. */
+/** The player's modules, in the order their slots show them. Empty: the Contributions
+ * module (Bridge Phase 2b) has no player part, as sharing and corrections are console only. */
 export const PLAYER_MODULES: readonly PlayerModule[] = [];
 
 /** No modules: one shared empty list, so an unchanged answer keeps its identity. */

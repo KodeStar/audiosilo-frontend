@@ -113,6 +113,8 @@ describe('ApiClient', () => {
     expect(apiErrorKind(new ApiError(409, 'x', 'member_disabled'))).toBe('member_disabled');
     // A generate job for a book whose chapters are still being found (Bridge Phase 1d).
     expect(apiErrorKind(new ApiError(409, 'x', 'detect_open'))).toBe('detect_open');
+    // One for a book whose characters and recaps are being shared (Bridge Phase 2b).
+    expect(apiErrorKind(new ApiError(409, 'x', 'contribute_open'))).toBe('contribute_open');
     // A code the app doesn't know reads by its status.
     expect(apiErrorKind(new ApiError(409, 'x', 'collection_full'))).toBe('conflict');
     expect(apiErrorKind(new ApiError(429, 'too many attempts'))).toBe('too_many');

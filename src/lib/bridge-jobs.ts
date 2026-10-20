@@ -14,6 +14,12 @@ export const SIDECARS_DESCRIBE = 'sidecars.describe';
  * the book (409 `detect_open`). */
 export const CHAPTERS_DETECT = 'chapters.detect';
 
+/** The Bridge job kind that shares a book's generated characters and recaps with the
+ * community (Bridge Phase 2b). The console queues it, never the player; while one is queued
+ * or working the server refuses a generate job for the book (409 `contribute_open`), except a
+ * queued one held while the Contributions module is off, which a new generate cancels. */
+export const SIDECARS_CONTRIBUTE = 'sidecars.contribute';
+
 /** The kinds whose `done` job wrote the book's `.audiosilo/` files (see `latestDone`). */
 const WRITES_BOOK: ReadonlySet<string> = new Set([
   SIDECARS_GENERATE,
@@ -75,6 +81,24 @@ export function bridgePollInterval(
     if (isOpenJob(j)) interval = BRIDGE_IDLE_POLL_MS;
   }
   return interval;
+}
+
+/**
+ * How often the confirmation's estimate is read again while it is open and `active` (the
+ * app in the foreground): while its `open_job` is a share holding Generate back (an open
+ * `sidecars.contribute`, Bridge Phase 2b: it files issues, no agent, so it ends in seconds),
+ * every `BRIDGE_POLL_MS` once it is claimed or running and every `BRIDGE_IDLE_POLL_MS` while
+ * it waits, so the hold lifts once it ends. A chapter detection (hours) is not waited for in
+ * the dialog. Else never.
+ */
+export function estimatePollInterval(
+  openJob: BridgeJob | undefined,
+  active: boolean,
+): number | false {
+  if (!active || openJob?.kind !== SIDECARS_CONTRIBUTE || !isOpenJob(openJob)) return false;
+  return openJob.state === 'claimed' || openJob.state === 'running'
+    ? BRIDGE_POLL_MS
+    : BRIDGE_IDLE_POLL_MS;
 }
 
 /** A book's newest `done` job that wrote its `.audiosilo/` files (`sidecars.generate`, the
