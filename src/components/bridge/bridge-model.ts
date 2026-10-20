@@ -329,20 +329,28 @@ export function bridgeRefusalKey<F extends string>(error: unknown, fallback: F) 
     : fallback;
 }
 
+/** The open job kinds the server refuses a generate job for, by the refusal it answers
+ * (the server's `refusedWhileOpen` for `sidecars.generate`): a `chapters.detect` job (Bridge
+ * Phase 1d, 409 `detect_open`) and a `sidecars.contribute` job (Phase 2b, 409
+ * `contribute_open`). A kind not named here holds nothing back. */
+const OPEN_JOB_REFUSAL: Readonly<Record<string, keyof typeof REFUSAL_KEY>> = {
+  [CHAPTERS_DETECT]: 'detect_open',
+  [SIDECARS_CONTRIBUTE]: 'contribute_open',
+};
+
 /** Why Generate is held back, when it is: the Bridge can't write the library (its
- * results would have nowhere to go), the book's chapters are still being found (Bridge
- * Phase 1d: the estimate's `open_job` is then the `chapters.detect` job the server would
- * refuse a generate job for, 409 `detect_open`), its characters and recaps are being shared
- * with the community (Phase 2b: a `sidecars.contribute` `open_job`, 409 `contribute_open`),
- * or its agent is known not to be signed in. Without the Bridge's figures (`figures`) `agent_ready` is only a default, and the
- * server queues the job anyway (it waits for the agent), so an unknown readiness holds
- * nothing back. */
+ * results would have nowhere to go), the estimate's `open_job` is a kind the server would
+ * refuse a generate job for (`OPEN_JOB_REFUSAL`: the book's chapters are still being found,
+ * or its characters and recaps are being shared with the community), or its agent is known
+ * not to be signed in. Without the Bridge's figures (`figures`) `agent_ready` is only a
+ * default, and the server queues the job anyway (it waits for the agent), so an unknown
+ * readiness holds nothing back. */
 export function blockedReason(
   e: Pick<BridgeEstimate, 'writable' | 'agent_ready' | 'figures' | 'open_job'>,
 ) {
   if (!e.writable) return REFUSAL_KEY.library_not_writable;
-  if (e.open_job?.kind === CHAPTERS_DETECT) return REFUSAL_KEY.detect_open;
-  if (e.open_job?.kind === SIDECARS_CONTRIBUTE) return REFUSAL_KEY.contribute_open;
+  const kind = e.open_job?.kind;
+  if (kind && Object.hasOwn(OPEN_JOB_REFUSAL, kind)) return REFUSAL_KEY[OPEN_JOB_REFUSAL[kind]];
   if (e.figures === true && !e.agent_ready) return 'bridge.generate.agentNotReady' as const;
   return null;
 }
