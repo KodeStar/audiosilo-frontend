@@ -1244,6 +1244,7 @@
       "estimateFailed": "No se pudo obtener una estimación del Bridge. Inténtalo de nuevo en un momento.",
       "unavailable": "El Bridge no ofrece esto ahora mismo.",
       "detectOpen": "Todavía se están buscando los capítulos del libro. Pulsa Generar cuando termine: se reutiliza la transcripción.",
+      "contributeOpen": "Los personajes y resúmenes de este libro se están compartiendo con la comunidad. Pulsa Generar cuando termine.",
       "confirm": "Generar",
       "confirmMany_one": "Generar {{count}} libro",
       "confirmMany_other": "Generar {{count}} libros",

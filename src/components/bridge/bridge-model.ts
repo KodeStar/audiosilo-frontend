@@ -9,7 +9,13 @@ import type {
   SidecarsGenerateParams,
   User,
 } from '@/api/types';
-import { CHAPTERS_DETECT, isOpenJob, latestJob, SIDECARS_GENERATE } from '@/lib/bridge-jobs';
+import {
+  CHAPTERS_DETECT,
+  isOpenJob,
+  latestJob,
+  SIDECARS_CONTRIBUTE,
+  SIDECARS_GENERATE,
+} from '@/lib/bridge-jobs';
 
 // The rules behind the player's one Bridge action, "Generate characters and recaps"
 // (Bridge Phase 1a): who may see it, when it is offered, how a job's state reads and the
@@ -307,23 +313,28 @@ const REFUSAL_KEY = {
   // Bridge Phase 1d: the book's chapters are still being found (a `chapters.detect` job
   // queued or working); a generate job queued after it reuses its transcription.
   detect_open: 'bridge.generate.detectOpen',
+  // Bridge Phase 2b: the book's characters and recaps are being shared with the community
+  // (a `sidecars.contribute` job queued or working, queued from the console); a generate run
+  // would replace what is being filed.
+  contribute_open: 'bridge.generate.contributeOpen',
 } as const;
 
 /** A Bridge refusal in the app's words (never the server's): the library it can't write,
- * the kind it doesn't offer, a book whose chapters are still being found, else
- * `fallback`. */
+ * the kind it doesn't offer, a book whose chapters are still being found or whose
+ * characters and recaps are being shared, else `fallback`. */
 export function bridgeRefusalKey<F extends string>(error: unknown, fallback: F) {
   const kind = apiErrorKind(error);
-  return kind === 'library_not_writable' || kind === 'kind_unavailable' || kind === 'detect_open'
-    ? REFUSAL_KEY[kind]
+  return Object.hasOwn(REFUSAL_KEY, kind)
+    ? REFUSAL_KEY[kind as keyof typeof REFUSAL_KEY]
     : fallback;
 }
 
 /** Why Generate is held back, when it is: the Bridge can't write the library (its
  * results would have nowhere to go), the book's chapters are still being found (Bridge
  * Phase 1d: the estimate's `open_job` is then the `chapters.detect` job the server would
- * refuse a generate job for, 409 `detect_open`), or its agent is known not to be signed
- * in. Without the Bridge's figures (`figures`) `agent_ready` is only a default, and the
+ * refuse a generate job for, 409 `detect_open`), its characters and recaps are being shared
+ * with the community (Phase 2b: a `sidecars.contribute` `open_job`, 409 `contribute_open`),
+ * or its agent is known not to be signed in. Without the Bridge's figures (`figures`) `agent_ready` is only a default, and the
  * server queues the job anyway (it waits for the agent), so an unknown readiness holds
  * nothing back. */
 export function blockedReason(
@@ -331,6 +342,7 @@ export function blockedReason(
 ) {
   if (!e.writable) return REFUSAL_KEY.library_not_writable;
   if (e.open_job?.kind === CHAPTERS_DETECT) return REFUSAL_KEY.detect_open;
+  if (e.open_job?.kind === SIDECARS_CONTRIBUTE) return REFUSAL_KEY.contribute_open;
   if (e.figures === true && !e.agent_ready) return 'bridge.generate.agentNotReady' as const;
   return null;
 }

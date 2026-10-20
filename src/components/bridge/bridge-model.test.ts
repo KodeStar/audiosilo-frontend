@@ -363,6 +363,11 @@ describe('bridgeRefusalKey and blockedReason', () => {
     expect(bridgeRefusalKey(refusal('detect_open'), 'x.fallback')).toBe(
       'bridge.generate.detectOpen',
     );
+    expect(bridgeRefusalKey(refusal('contribute_open'), 'x.fallback')).toBe(
+      'bridge.generate.contributeOpen',
+    );
+    // A code the app doesn't name (a newer server's) falls back, never a missing key.
+    expect(bridgeRefusalKey(refusal('generate_open'), 'x.fallback')).toBe('x.fallback');
     expect(bridgeRefusalKey(new Error('offline'), 'x.fallback')).toBe('x.fallback');
   });
 
@@ -381,6 +386,28 @@ describe('bridgeRefusalKey and blockedReason', () => {
     expect(
       blockedReason({ writable: false, agent_ready: true, figures: true, open_job: detect }),
     ).toBe('bridge.generate.notWritable');
+  });
+
+  // Bridge Phase 2b: while a sidecars.contribute job (queued from the console) is queued or
+  // working the server refuses a generate job (409 contribute_open), and the estimate names
+  // it as `open_job`.
+  it("holds Generate back while the book's characters and recaps are being shared", () => {
+    const contribute = bridgeJob({ kind: 'sidecars.contribute', state: 'queued' });
+    expect(
+      blockedReason({ writable: true, agent_ready: true, figures: true, open_job: contribute }),
+    ).toBe('bridge.generate.contributeOpen');
+    expect(
+      blockedReason({ writable: false, agent_ready: true, figures: true, open_job: contribute }),
+    ).toBe('bridge.generate.notWritable');
+    // An open job of a kind the player doesn't know holds nothing back (the server decides).
+    expect(
+      blockedReason({
+        writable: true,
+        agent_ready: true,
+        figures: true,
+        open_job: bridgeJob({ kind: 'some.future_kind', state: 'queued' }),
+      }),
+    ).toBeNull();
   });
 
   it('holds Generate back for an unwritable library, then an agent known not ready', () => {

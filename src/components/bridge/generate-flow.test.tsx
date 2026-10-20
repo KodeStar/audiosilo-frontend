@@ -300,6 +300,37 @@ describe('the confirmation', () => {
     );
   });
 
+  // Bridge Phase 2b: while the console shares the book's characters and recaps (a
+  // sidecars.contribute job queued or working) the server refuses a generate job (409
+  // contribute_open), and the estimate names it as open_job.
+  it("holds it back while the book's characters and recaps are being shared", async () => {
+    mockEstimate.mockResolvedValue(
+      bridgeEstimate({ open_job: bridgeJob({ kind: 'sidecars.contribute', state: 'running' }) }),
+    );
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-blocked')).toBeTruthy();
+    expect(screen.getByText(/being shared with the community/)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    expect(mockQueue).not.toHaveBeenCalled();
+  });
+
+  // A share queued after the estimate was read: the server's refusal says why.
+  it('says why when the server refuses it for a share still open', async () => {
+    mockEstimate.mockResolvedValue(bridgeEstimate({ path: TARGET.path }));
+    mockQueue.mockRejectedValue(new ApiError(409, 'refused', 'contribute_open'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByTestId('generate-estimate')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('generate-confirm'));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenLastCalledWith({
+        title:
+          "This book's characters and recaps are being shared with the community. Generate once that has finished.",
+      }),
+    );
+  });
+
   // A Bridge that sent no figures: its agent_ready is only a default, its transcription
   // time unknown (never "none" for the audio), and the server would queue the job.
   it('holds nothing back, and claims nothing, when the Bridge sent no figures', async () => {

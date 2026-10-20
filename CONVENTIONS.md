@@ -428,7 +428,8 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   results appear, and a switch, on by default, to queue the series' earlier books without
   recaps first, `queueOrder` / `queueInOrder`, stopping at the first refusal; Generate held
   back with `blockedReason` while the library isn't writable, the estimate's `open_job` is a
-  `chapters.detect` (Phase 1d: the server would answer 409 `detect_open`) or the agent is
+  `chapters.detect` (Phase 1d: the server would answer 409 `detect_open`) or a
+  `sidecars.contribute` (Phase 2b, a console share: 409 `contribute_open`), or the agent is
   KNOWN not ready),
   `GenerateStatus` (polls while its screen is focused: phase, stage words `bridge.stage.*`
   from `stageOf` (Phase 1d adds `chapter_detecting` and the park `chapters_not_detected`;
