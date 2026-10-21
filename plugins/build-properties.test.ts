@@ -20,6 +20,14 @@ describe('expo-build-properties', () => {
     expect(buildProperties().android).toMatchObject({ usesCleartextTraffic: true });
   });
 
+  // Play flags unoptimised DEX without R8 (see CLAUDE.md, "Android release builds run R8").
+  it('minifies and shrinks Android release builds with R8', () => {
+    expect(buildProperties().android).toMatchObject({
+      enableMinifyInReleaseBuilds: true,
+      enableShrinkResourcesInReleaseBuilds: true,
+    });
+  });
+
   // Load-bearing for the iOS link (see CLAUDE.md, "iOS build needs TWO workarounds").
   it('builds React Native from source on iOS', () => {
     expect(buildProperties().ios).toMatchObject({ buildReactNativeFromSource: true });
