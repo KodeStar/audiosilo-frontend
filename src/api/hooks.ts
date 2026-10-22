@@ -2384,20 +2384,6 @@ export function usePodcastFetchStatus(
   );
 }
 
-/** Ask for an episode again (`POST .../podcasts/fetch`, capability `podcast_fetch`):
- * resolves the new status, which goes into the episode's fetch entry. */
-export function useRetryPodcastFetch(connectionId?: string) {
-  return useCapabilityMutation(
-    'podcast_fetch',
-    connectionId,
-    async (api, v: { libraryId: number; path: string }) =>
-      (await api.retryPodcastFetch(v.libraryId, v.path)).fetch,
-    ({ qc, cid }, status, v) => {
-      qc.setQueryData(qk.podcastFetch(cid, v.libraryId, v.path), status);
-    },
-  );
-}
-
 // --- Household members (capability `household_members`, Phase 8b-1) -----------------
 // The queries ask only a server that advertises the flag (`skipToken` elsewhere); the
 // writes reject with a `CapabilityError`, sending nothing, while it is off or not known

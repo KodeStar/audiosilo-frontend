@@ -118,10 +118,36 @@ export function cancelEpisodeFetch() {
   if (useEpisodeFetch.getState().pending) useEpisodeFetch.setState({ pending: null });
 }
 
-/** Stop the fetch in flight unless it is for `key` (a start of something else). */
+/** The content key of the start asked for last (`cancelEpisodeFetchUnless`,
+ * `requestEpisodeFetch`; see `isLatestStart`). */
+let lastStart: string | null = null;
+
+/** A start of `key` (`startBookInPlace`, the player route): stop the fetch in flight unless
+ * it is for `key` (the last tap wins), and remember `key` as the start asked for last. */
 export function cancelEpisodeFetchUnless(key: string) {
+  lastStart = key;
   const pending = useEpisodeFetch.getState().pending;
   if (pending && pending.key !== key) cancelEpisodeFetch();
+}
+
+/** A start that plays `key` itself (on its server now, or on a server that does not fetch):
+ * a fetch of `key` still on its way ends too, or it would start the episode again once
+ * ready. */
+export function cancelEpisodeFetchOf(key: string) {
+  if (useEpisodeFetch.getState().pending?.key === key) cancelEpisodeFetch();
+}
+
+/** Whether `key` is still the start asked for last: a start that looked its episode up
+ * first hands it to the fetch only then (a tap on another book meanwhile took over). */
+export function isLatestStart(key: string): boolean {
+  return lastStart === key;
+}
+
+/** Whether the fetch of `key` is ready and starting (`start`): its start checks it right
+ * before it plays, so a Cancel or another start since then wins. */
+export function isEpisodeFetchStarting(key: string): boolean {
+  const pending = useEpisodeFetch.getState().pending;
+  return pending?.key === key && pending.phase === 'starting';
 }
 
 /** The show's title from the cached show list, else its folder. */
@@ -135,9 +161,10 @@ function showTitleOf(target: PlayTarget, book: Book): string {
 
 /**
  * Wait for `book` (an episode, `needsEpisodeFetch`) to be on its server, then start it in
- * place. The same episode asked for again while it is on its way joins it (a second tap);
- * another one replaces it. `retry` asks the server to fetch again (Try again), else the
- * stream is asked once, which starts a fetch when none is on its way.
+ * place. The same episode asked for again while it is on its way joins it (a second tap),
+ * starting where the last tap asked; another one replaces it. `retry` asks the server to
+ * fetch again (Try again), else the stream is asked once, which starts a fetch when none is
+ * on its way.
  */
 export function requestEpisodeFetch(
   target: PlayTarget,
@@ -146,8 +173,19 @@ export function requestEpisodeFetch(
   { retry = false }: { retry?: boolean } = {},
 ) {
   const key = contentKeyOf(target);
+  lastStart = key;
   const pending = useEpisodeFetch.getState().pending;
-  if (!retry && pending?.key === key && run && !isStopped(pending.phase)) return;
+  if (!retry && pending?.key === key && run && !isStopped(pending.phase)) {
+    const moved =
+      pending.opts.position !== opts.position ||
+      pending.opts.track !== opts.track ||
+      pending.opts.speed !== opts.speed;
+    // Not once it is starting: the start already took its place.
+    if (moved && pending.phase !== 'starting') {
+      useEpisodeFetch.setState({ pending: { ...pending, opts } });
+    }
+    return;
+  }
   begin(
     {
       key,
@@ -245,8 +283,9 @@ async function step(r: Run, action: 'probe' | 'retry' | 'poll') {
       settle(r, client, e.fetch, e.retryAfterSeconds);
       return;
     }
-    // A blip while waiting (offline a moment, a timeout): ask again at the next turn.
-    if (action === 'poll' && !(e instanceof ApiError)) {
+    // A blip while waiting (offline a moment, a timeout, a proxy's 502/503 while the server
+    // restarts, the rate limiter): ask again at the next turn.
+    if (action === 'poll' && (!(e instanceof ApiError) || e.status === 429 || e.status >= 500)) {
       schedule(r, MIN_POLL_S);
       return;
     }
@@ -330,8 +369,9 @@ function refused(r: Run, e: unknown) {
   }
 }
 
-/** Ready: read the item and chapters again (the file's own), mark the show's episode
- * lists stale, then start it in place. */
+/** Ready: read the item and chapters again (the file's own), read the show's episode
+ * lists again (a show page or Home's rail on screen shows it on the server), then start it
+ * in place. */
 async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient>>) {
   const pending = pendingOf(r);
   if (!pending) return;
@@ -350,7 +390,6 @@ async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient
   if (show !== undefined) {
     void queryClient.invalidateQueries({
       queryKey: qk.podcastEpisodesOfShow(cid, libraryId, show),
-      refetchType: 'none',
     });
   }
   const started = await startBookInPlace(target, opts, { fetched: true }).catch(() => false);

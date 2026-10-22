@@ -19,11 +19,21 @@ jest.mock('@/playback/store', () => ({
 
 const mockRequestFetch = jest.fn();
 const mockCancelUnless = jest.fn();
+const mockCancelOf = jest.fn();
+let mockLatestStart: string | null = null;
+let mockFetchStarting = true;
 jest.mock('@/playback/episode-fetch', () => ({
   isAbsentEpisode: jest.requireActual('@/playback/episode-fetch').isAbsentEpisode,
   needsEpisodeFetch: jest.requireActual('@/playback/episode-fetch').needsEpisodeFetch,
   requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
-  cancelEpisodeFetchUnless: (key: string) => mockCancelUnless(key),
+  // The real bookkeeping of the start asked for last, observed.
+  cancelEpisodeFetchUnless: (key: string) => {
+    mockLatestStart = key;
+    mockCancelUnless(key);
+  },
+  cancelEpisodeFetchOf: (key: string) => mockCancelOf(key),
+  isLatestStart: (key: string) => mockLatestStart === key,
+  isEpisodeFetchStarting: () => mockFetchStarting,
 }));
 
 /* eslint-disable import/first */
@@ -70,6 +80,9 @@ beforeEach(() => {
   mockSetRate.mockReset();
   mockRequestFetch.mockReset();
   mockCancelUnless.mockReset();
+  mockCancelOf.mockReset();
+  mockLatestStart = null;
+  mockFetchStarting = true;
 });
 
 /** Until `fn` has been called (a start reaches its reads after a few awaits). */
@@ -317,5 +330,38 @@ describe('startBookInPlace, a podcast episode', () => {
   it('ends a fetch on its way for anything else it starts', async () => {
     await startBookInPlace(target);
     expect(mockCancelUnless).toHaveBeenCalledWith(`c1:2:${target.path}`);
+  });
+
+  it('ends a fetch of the same episode when it plays it itself (on its server now)', async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(true));
+    await startBookInPlace(target);
+    expect(mockCancelOf).toHaveBeenCalledWith(`c1:2:${target.path}`);
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands nothing to the fetch once a start of another book took over', async () => {
+    serverFetches(true);
+    let release: (b: unknown) => void = () => {};
+    mockItem.mockReturnValueOnce(new Promise((r) => (release = r)));
+    const first = startBookInPlace(target);
+    await asked(mockItem);
+    // A tap on another book while the episode is looked up.
+    const other = { ...target, path: 'Weir/Artemis' };
+    mockItem.mockResolvedValue({ rel_path: other.path });
+    await startBookInPlace(other);
+    release(episode(false));
+    await expect(first).resolves.toBe(false);
+    expect(mockRequestFetch).not.toHaveBeenCalled();
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    expect(mockPlayBook.mock.calls[0][2]).toEqual({ rel_path: other.path });
+  });
+
+  it("plays the fetch's own start only while it stands (no Cancel or other start since)", async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(false));
+    mockFetchStarting = false;
+    await expect(startBookInPlace(target, {}, { fetched: true })).resolves.toBe(false);
+    expect(mockPlayBook).not.toHaveBeenCalled();
   });
 });

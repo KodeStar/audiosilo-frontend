@@ -108,9 +108,9 @@ export function BookScreen() {
 }
 
 /**
- * An item that is a podcast episode (`book.episode`, or any item of a podcast library)
- * gets its own page (`EpisodePage`, Bridge Phase 2d-1) at the same link; a book the book
- * page.
+ * An item that is a podcast episode (`book.episode`; while the item is not in yet, any
+ * item of a podcast library) gets its own page (`EpisodePage`, Bridge Phase 2d-1) at the
+ * same link; a book the book page.
  */
 function BookOrEpisode() {
   const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
@@ -122,7 +122,9 @@ function BookOrEpisode() {
   const cid = useScopedCid();
   const podcastLibrary = useIsPodcastLibrary(libraryId, cid);
   const { data: book } = useBook(libraryId, path);
-  return podcastLibrary || book?.episode ? (
+  // The item's own shape once it is in (an item of a podcast library that is no episode
+  // gets the book page, never a blank one).
+  return (book ? book.episode : podcastLibrary) ? (
     <EpisodePage libraryId={libraryId} path={path} />
   ) : (
     <BookPage />

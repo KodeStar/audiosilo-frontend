@@ -12,10 +12,12 @@ import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { contentKey } from '@/lib/content-key';
 import { useOpen } from '@/lib/open';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { type PendingEpisodeFetch, requestEpisodeFetch } from '@/playback/episode-fetch';
+import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
+import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
@@ -57,7 +59,6 @@ export function EpisodeRow({
   show,
   episode,
   progress,
-  pending,
   canFetch,
   now,
 }: {
@@ -65,8 +66,6 @@ export function EpisodeRow({
   show: PodcastShow;
   episode: PodcastEpisode;
   progress?: Progress;
-  /** The player's fetch of this episode, when it is the one on its way. */
-  pending: PendingEpisodeFetch | null;
   canFetch: boolean | undefined;
   now: Date;
 }) {
@@ -77,6 +76,10 @@ export function EpisodeRow({
   const libraryId = show.library_id;
   const target = { connectionId, libraryId, path: episode.path };
   const book = episodeAsBook(episode, show);
+  // The player's fetch of this episode, when it is the one on its way (only this row
+  // follows its progress).
+  const key = contentKey(connectionId, libraryId, episode.path);
+  const pending = useEpisodeFetch((s) => (s.pending?.key === key ? s.pending : null));
   const state = episodeRowState(episode, pending, canFetch);
   const finished = !!progress?.finished;
   const started = !!progress && isInProgress(progress);
@@ -134,6 +137,7 @@ export function EpisodeRow({
             <Text
               variant="caption"
               testID="episode-state"
+              style={tabularNums}
               className={state.kind === 'failed' ? 'text-destructive' : undefined}
             >
               {stateText(state, t)}

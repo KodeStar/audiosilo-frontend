@@ -495,7 +495,10 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   `GET .../podcasts/fetch` every `max(2, Retry-After)` s (paused in the background, asked at once
   on the way back), and at `ready` reads the item and chapters again and starts it in place with
   `{fetched: true}`. It never POSTs by itself: only Try again does (`retryEpisodeFetch`). Any
-  other start, a profile switch or a removed connection ends it; there is no client time cap.
+  other start (and one that plays the episode itself, on its server by then), a profile switch
+  or a removed connection ends it; there is no client time cap. A start overtaken while it
+  looked its episode up hands nothing on (`isLatestStart`), and the `fetched` start plays only
+  while the fetch is still `starting` (`isEpisodeFetchStarting`: a Cancel or another start wins).
   While it is on its way the full player shows `EpisodeFetchPanel` and the dock / mini player an
   `EpisodeFetchStrip`; the book playing meanwhile plays on (decision 6.4).
 - **What episodes never do**: open the end credits (`BookEndedListener` leaves Up next and, with

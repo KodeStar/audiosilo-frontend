@@ -17,11 +17,9 @@ import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { parsePodcastParams } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
-import { useEpisodeFetch } from '@/playback/episode-fetch';
 
 import { EpisodeRow } from './episode-row';
 import { FollowButton } from './follow-button';
@@ -104,7 +102,6 @@ function ShowPage({
   const paddingBottom = useMiniPlayerInset();
   const episodes = usePodcastEpisodes(show.library_id, show.path, order, connectionId);
   const { progressOf } = useProgressLookup();
-  const pending = useEpisodeFetch((s) => s.pending);
   const canFetch = useCapability('podcast_fetch', connectionId);
   const rows = useMemo(
     () => visibleEpisodes(episodes.data?.pages.flatMap((p) => p.episodes) ?? []),
@@ -133,9 +130,6 @@ function ShowPage({
           show={show}
           episode={item}
           progress={progressOf(connectionId, show.library_id, item.path)}
-          pending={
-            pending?.key === contentKey(connectionId, show.library_id, item.path) ? pending : null
-          }
           canFetch={canFetch}
           now={now}
         />

@@ -36,6 +36,7 @@ jest.mock('@/playback/episode-fetch', () => {
     needsEpisodeFetch: actual.needsEpisodeFetch,
     requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
     cancelEpisodeFetchUnless: jest.fn(),
+    cancelEpisodeFetchOf: jest.fn(),
   };
 });
 jest.mock('@/components/podcasts/episode-fetch-panel', () => {
@@ -210,6 +211,31 @@ describe('the player route', () => {
       routeTo({});
       await render(<PlayerScreen />);
       expect(mockRequestFetch).not.toHaveBeenCalled();
+      expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the next episode's fetch once its own episode ended, nothing loaded", async () => {
+      mockBook = { ...episodeBook, episode: { show_path: 'Author', downloaded: true } };
+      mockPodcastFetch = true;
+      setNowPlaying(THIS_BOOK);
+      routeTo({});
+      const r = await render(<PlayerScreen />);
+      // Up next's head, an episode still to fetch, while this one plays.
+      await act(async () =>
+        useEpisodeFetch.setState({ pending: { key: 'c:1:Show/Next', phase: 'waiting' } as never }),
+      );
+      expect(r.queryByTestId('episode-fetch-panel')).toBeNull();
+      // It ends: nothing is loaded, and the fetch shows in its place.
+      await act(async () => setNowPlaying(null));
+      expect(r.getByTestId('episode-fetch-panel')).toBeTruthy();
+      expect(mockPlayBook).not.toHaveBeenCalled();
+    });
+
+    it("never shows another episode's fetch before its own book starts", async () => {
+      useEpisodeFetch.setState({ pending: { key: 'c:1:Show/Other', phase: 'waiting' } as never });
+      routeTo({});
+      const r = await render(<PlayerScreen />);
+      expect(r.queryByTestId('episode-fetch-panel')).toBeNull();
       expect(mockPlayBook).toHaveBeenCalledTimes(1);
     });
 

@@ -5,8 +5,11 @@ jest.mock('@/lib/open', () => ({ useOpen: () => ({ openBook: mockOpenBook }) }))
 const mockPlay = jest.fn();
 jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
 const mockRequest = jest.fn();
+let mockPending: object | null = null;
 jest.mock('@/playback/episode-fetch', () => ({
   requestEpisodeFetch: (...a: unknown[]) => mockRequest(...a),
+  useEpisodeFetch: (select: (s: { pending: object | null }) => unknown) =>
+    select({ pending: mockPending }),
 }));
 const mockActions = jest.fn();
 jest.mock('@/components/library/books/book-actions', () => ({
@@ -26,7 +29,7 @@ import { EpisodeRow } from './episode-row';
 const now = new Date('2026-10-22T12:00:00Z');
 const renderRow = (
   episode: PodcastEpisode,
-  extra: { progress?: Progress; canFetch?: boolean; pending?: object | null } = {},
+  extra: { progress?: Progress; canFetch?: boolean } = {},
 ) =>
   render(
     <EpisodeRow
@@ -34,7 +37,6 @@ const renderRow = (
       show={podcastShow()}
       episode={episode}
       progress={extra.progress}
-      pending={(extra.pending ?? null) as never}
       canFetch={extra.canFetch ?? true}
       now={now}
     />,
@@ -45,6 +47,7 @@ beforeEach(() => {
   mockPlay.mockReset().mockResolvedValue(undefined);
   mockRequest.mockReset();
   mockActions.mockReset();
+  mockPending = null;
 });
 
 describe('EpisodeRow', () => {
@@ -64,6 +67,20 @@ describe('EpisodeRow', () => {
     expect(screen.getByTestId('episode-state').props.children).toBe('Getting it');
     await renderRow(podcastEpisode({ downloaded: false }), { canFetch: false });
     expect(screen.getByTestId('episode-state').props.children).toBe('Not available now');
+  });
+
+  it("follows the player's fetch of this episode, never another's", async () => {
+    const ep = podcastEpisode({ downloaded: false });
+    mockPending = {
+      key: `c1:5:${ep.path}`,
+      phase: 'waiting',
+      status: fetchStatus({ state: 'fetching', bytes_received: 40, bytes_total: 100 }),
+    };
+    await renderRow(ep);
+    expect(screen.getByTestId('episode-state').props.children).toBe('Getting it 40%');
+    mockPending = { key: 'c1:5:Daily News/Other.mp3', phase: 'failed', status: null };
+    await renderRow(ep);
+    expect(screen.getByTestId('episode-state').props.children).toBe('Plays on demand');
   });
 
   it('plays through the normal start, and opens the episode page', async () => {

@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,6 +13,7 @@ import { contentKey } from '@/lib/content-key';
 import { bookTitle, segmentsToPath } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
 import {
+  cancelEpisodeFetchOf,
   cancelEpisodeFetchUnless,
   isAbsentEpisode,
   needsEpisodeFetch,
@@ -65,11 +66,7 @@ export default function PlayerScreen() {
   );
   const chaptersQuery = useChapters(libraryId, path, connectionId);
   const chapterData = chaptersQuery.data;
-  // An episode not on its server yet starts through the fetch (`episode-fetch.ts`), and
-  // the fetch shows here in place of the player until it starts (Bridge Phase 2d-1).
   const podcastFetch = useCapability('podcast_fetch', cid);
-  const routeKey = book ? contentKey(cid, libraryId, book.rel_path) : null;
-  const fetchingHere = useEpisodeFetch((s) => s.pending !== null && s.pending.key === routeKey);
 
   // Auto-start playback AT MOST ONCE per target book. A mount-scoped latch keyed by
   // `${cid}|${libraryId}|<rel_path>` remembers the target we already resolved, so we never
@@ -90,6 +87,25 @@ export default function PlayerScreen() {
   // tapped place and saved that older place over the real one. A navigation with other
   // params is a new jump.
   const jumpedKeyRef = useRef<string | null>(null);
+  // An episode not on its server yet starts through the fetch (`episode-fetch.ts`), and
+  // the fetch shows here in place of the player until it starts (Bridge Phase 2d-1): the
+  // route's own, or any while nothing is loaded and the route has no target of its own
+  // still to start (opened bare, or its book played here and ended: an episode whose Up
+  // next head is an episode still to fetch).
+  const routeKey = book ? contentKey(cid, libraryId, book.rel_path) : null;
+  const routePlaying =
+    routeKey !== null &&
+    nowPlaying?.connectionId === cid &&
+    nowPlaying.libraryId === libraryId &&
+    nowPlaying.path === book?.rel_path;
+  // The route's book once it has played here (set during render, React's pattern for state
+  // that follows a prop).
+  const [playedKey, setPlayedKey] = useState<string | null>(null);
+  if (routePlaying && playedKey !== routeKey) setPlayedKey(routeKey);
+  const routeDone = !libParam || (routeKey !== null && playedKey === routeKey);
+  const fetchingHere = useEpisodeFetch(
+    (s) => s.pending !== null && (s.pending.key === routeKey || (nowPlaying === null && routeDone)),
+  );
   // Start playback once the book AND its chapters/files have loaded - otherwise
   // multi-file/folder books would fall back to streaming the folder path and
   // chapters would be missing. Start point priority: explicit position (bookmark
@@ -142,7 +158,11 @@ export default function PlayerScreen() {
       });
       return;
     }
-    cancelEpisodeFetchUnless(contentKey(cid, libraryId, book.rel_path));
+    // Played here: a fetch of anything else ends (the last tap wins), and so does one of
+    // this episode still on its way (on its server now), or it would start it again.
+    const here = contentKey(cid, libraryId, book.rel_path);
+    cancelEpisodeFetchUnless(here);
+    cancelEpisodeFetchOf(here);
     void usePlayer
       .getState()
       .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
@@ -164,6 +184,14 @@ export default function PlayerScreen() {
 
   if (gate) return gate;
 
+  if (fetchingHere) {
+    return (
+      <View className="flex-1 bg-background">
+        <EpisodeFetchPanel onClose={() => router.back()} />
+      </View>
+    );
+  }
+
   if (!book && !nowPlaying) {
     return (
       <View
@@ -171,14 +199,6 @@ export default function PlayerScreen() {
         className="flex-1 bg-background"
       >
         <Spinner center />
-      </View>
-    );
-  }
-
-  if (fetchingHere) {
-    return (
-      <View className="flex-1 bg-background">
-        <EpisodeFetchPanel onClose={() => router.back()} />
       </View>
     );
   }

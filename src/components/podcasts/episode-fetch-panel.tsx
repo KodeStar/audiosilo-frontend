@@ -17,6 +17,7 @@ import {
   retryEpisodeFetch,
   useEpisodeFetch,
 } from '@/playback/episode-fetch';
+import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { fetchProgress, fetchReasonKey } from './podcast-model';
@@ -113,7 +114,12 @@ function Panel({ pending, onClose }: { pending: PendingEpisodeFetch; onClose: ()
           <Text variant="label" className="text-center">
             {copy.heading}
           </Text>
-          <Text variant="muted" className="text-center" testID="episode-fetch-line">
+          <Text
+            variant="muted"
+            className="text-center"
+            style={tabularNums}
+            testID="episode-fetch-line"
+          >
             {copy.line}
           </Text>
           {copy.fraction !== null ? (
@@ -179,7 +185,7 @@ function Strip({ pending, className }: { pending: PendingEpisodeFetch; className
         <Text variant="label" numberOfLines={1}>
           {pending.title}
         </Text>
-        <Text variant="caption" numberOfLines={1} aria-live="polite">
+        <Text variant="caption" numberOfLines={1} style={tabularNums} aria-live="polite">
           {isStopped(pending.phase) ? copy.heading : copy.line}
         </Text>
         {copy.fraction !== null ? (

@@ -22,6 +22,10 @@ import { episodeBook, fetchStatus, wire2b } from '@/testing/podcast-fixtures';
 
 import {
   cancelEpisodeFetch,
+  cancelEpisodeFetchOf,
+  cancelEpisodeFetchUnless,
+  isEpisodeFetchStarting,
+  isLatestStart,
   needsEpisodeFetch,
   requestEpisodeFetch,
   retryEpisodeFetch,
@@ -119,9 +123,9 @@ describe('requestEpisodeFetch', () => {
     await jest.advanceTimersByTimeAsync(2000);
     expect(mockClient!.item).toHaveBeenCalledTimes(1);
     expect(mockClient!.chapters).toHaveBeenCalledTimes(1);
+    // Read again: a show page or Home's rail on screen shows it on the server.
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: qk.podcastEpisodesOfShow('c1', 5, 'Daily News'),
-      refetchType: 'none',
     });
     expect(mockStart).toHaveBeenCalledTimes(1);
     expect(mockStart).toHaveBeenCalledWith(target, {}, { fetched: true });
@@ -227,6 +231,62 @@ describe('requestEpisodeFetch', () => {
     requestEpisodeFetch(target, book);
     await flush();
     expect(mockClient!.prepareEpisodeStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts where the last tap on it asked, once it is ready', async () => {
+    requestEpisodeFetch(target, book);
+    await flush();
+    requestEpisodeFetch(target, book, { position: 600 });
+    expect(mockClient!.prepareEpisodeStream).toHaveBeenCalledTimes(1);
+    mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockStart.mock.calls).toEqual([[target, { position: 600 }, { fetched: true }]]);
+  });
+
+  it('keeps waiting through a proxy 502 or the rate limiter while it follows the fetch', async () => {
+    mockClient!.podcastFetchStatus
+      .mockRejectedValueOnce(new ApiError(502, 'Bad Gateway'))
+      .mockRejectedValueOnce(new ApiError(429, 'Too many requests'));
+    requestEpisodeFetch(target, book);
+    await flush();
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(phase()).toBe('waiting');
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(phase()).toBe('waiting');
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockClient!.podcastFetchStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it('is starting only while its start may still play', async () => {
+    let started: () => void = () => {};
+    mockStart.mockImplementation(() => new Promise((r) => (started = () => r(true))));
+    mockClient!.prepareEpisodeStream.mockResolvedValue(undefined);
+    requestEpisodeFetch(target, book);
+    await flush();
+    const key = `c1:5:${target.path}`;
+    expect(isEpisodeFetchStarting(key)).toBe(true);
+    // A Cancel while it starts: its start finds it gone and plays nothing.
+    cancelEpisodeFetch();
+    expect(isEpisodeFetchStarting(key)).toBe(false);
+    started();
+    await flush();
+    expect(useEpisodeFetch.getState().pending).toBeNull();
+  });
+
+  it('knows the start asked for last, and a start of the episode itself ends its fetch', async () => {
+    const key = `c1:5:${target.path}`;
+    requestEpisodeFetch(target, book);
+    expect(isLatestStart(key)).toBe(true);
+    cancelEpisodeFetchUnless(key);
+    expect(useEpisodeFetch.getState().pending?.key).toBe(key);
+    cancelEpisodeFetchUnless('c1:2:Weir/Artemis');
+    expect(isLatestStart(key)).toBe(false);
+    expect(useEpisodeFetch.getState().pending).toBeNull();
+    requestEpisodeFetch(target, book);
+    cancelEpisodeFetchOf('c1:2:Weir/Artemis');
+    expect(useEpisodeFetch.getState().pending?.key).toBe(key);
+    cancelEpisodeFetchOf(key);
+    expect(useEpisodeFetch.getState().pending).toBeNull();
   });
 
   it('ends on a profile switch', async () => {
