@@ -101,6 +101,23 @@ jest.mock('@/components/house/house-row', () => ({
     return <Text>{`House: ${connections.map((c) => c.id).join(',')}`}</Text>;
   },
 }));
+// New episodes has its own tests; Home places it with the servers and what to skip.
+jest.mock('./new-episodes-rail', () => ({
+  NewEpisodesRail: ({
+    connections,
+    skip,
+    limit,
+  }: {
+    connections: { id: string }[];
+    skip: Set<string>;
+    limit: number;
+  }) => {
+    const { Text } = jest.requireActual('react-native');
+    return (
+      <Text>{`New episodes: ${connections.map((c) => c.id).join(',')} skip ${[...skip].join('|')} limit ${limit}`}</Text>
+    );
+  },
+}));
 
 // Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite.
 let mockModulesOn: Record<string, boolean> = {};
@@ -292,6 +309,21 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
     expect(next).toBeGreaterThan(-1);
     expect(rail).toBeGreaterThan(next);
     expect(house).toBeGreaterThan(rail);
+  });
+
+  it('places New episodes between Next in your series and the module rails, skipping started ones', async () => {
+    mockModulesOn = { contributions: true };
+    mockNext = { supported: true, isLoading: true, answers: [] };
+    mockProgress.progress = [
+      started('Now', '2026-10-05T00:00:00Z'),
+      started('Pod/Ep 1.mp3', '2026-10-04T00:00:00Z'),
+    ];
+    await mountWith([FAKE]);
+    const label = 'New episodes: a skip a:1:Now|a:1:Pod/Ep 1.mp3 limit 15';
+    expect(screen.getByText(label)).toBeTruthy();
+    const [next, episodes, rail] = order('Next in your series', label, 'Module rail: a');
+    expect(episodes).toBeGreaterThan(next);
+    expect(rail).toBeGreaterThan(episodes);
   });
 
   it('leaves a module that is off out', async () => {

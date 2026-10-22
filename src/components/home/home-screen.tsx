@@ -46,6 +46,7 @@ import {
 } from './home-model';
 import { HomeSection } from './home-section';
 import { ModuleRails } from './module-rails';
+import { NewEpisodesRail } from './new-episodes-rail';
 import { NowEmpty, NowError } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
@@ -66,7 +67,7 @@ const favouriteKey = (f: SourcedFavourite) => contentKey(f.connectionId, f.libra
 /**
  * Home (STYLEGUIDE section 2, the Stacks Home): the greeting, the Now card (with This
  * week beside it on a desktop), Continue listening, Next in your series, This week
- * (tablet and phone), smart shelves, then Recently added, Favourites and Recently
+ * (tablet and phone), New episodes, smart shelves, then Recently added, Favourites and Recently
  * finished. Aggregated across every signed-in server; each book keeps its own. An active
  * module's rails (`src/modules/registry.ts`, none yet) follow Next in your series;
  * `modules` is the list to choose from (the registry; tests pass a fake).
@@ -225,6 +226,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
             )}
           </HomeSection>
         ) : null}
+
+        {/* The latest episodes of the shows followed, not yet started (Bridge 2d-1). */}
+        <NewEpisodesRail connections={connections} skip={skipNext} limit={SHELF_LIMIT} />
 
         <ModuleRails connections={connections} modules={modules} />
 
