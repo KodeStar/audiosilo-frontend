@@ -28,6 +28,7 @@ export function useCastButton(): CastButtonModel {
     : undefined;
   return castButtonModel({
     loaded: !!np,
+    episode: !!np?.episode,
     supported,
     canCast: cid ? canCast : undefined,
     canTranscode,

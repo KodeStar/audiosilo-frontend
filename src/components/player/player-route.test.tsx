@@ -13,15 +13,34 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 // Stable objects, as React Query hands them out: a refetch alone never re-runs the effect.
-const mockBook = { rel_path: 'Author/Book', title: 'The Book' };
+let mockBook: object = { rel_path: 'Author/Book', title: 'The Book' };
+const plainBook = mockBook;
+let mockPodcastFetch: boolean | undefined = false;
 const mockChapters = {
   chapters: [],
   files: [{ rel_path: 'Author/Book/a.m4b', duration: 3600 }],
 };
 jest.mock('@/api/hooks', () => ({
   useBook: () => ({ data: mockBook }),
+  useCapability: () => mockPodcastFetch,
   useChapters: () => ({ data: mockChapters, isLoading: false }),
 }));
+// The episode fetch (Bridge Phase 2d-1): its store is real, its requests are not.
+const mockRequestFetch = jest.fn();
+jest.mock('@/playback/episode-fetch', () => {
+  const { create } = jest.requireActual('zustand');
+  const actual = jest.requireActual('@/playback/episode-fetch');
+  return {
+    useEpisodeFetch: create(() => ({ pending: null })),
+    needsEpisodeFetch: actual.needsEpisodeFetch,
+    requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
+    cancelEpisodeFetchUnless: jest.fn(),
+  };
+});
+jest.mock('@/components/podcasts/episode-fetch-panel', () => {
+  const { View } = jest.requireActual('react-native');
+  return { EpisodeFetchPanel: () => <View testID="episode-fetch-panel" /> };
+});
 jest.mock('@/api/provider', () => ({ useCid: (id?: string) => id ?? 'c' }));
 jest.mock('@/components/player/player-view', () => ({ PlayerView: () => null }));
 const mockSeekBook = jest.fn();
@@ -41,6 +60,7 @@ jest.mock('@/playback/store', () => {
 
 /* eslint-disable import/first */
 import PlayerScreen from '@/app/player';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -68,6 +88,10 @@ beforeEach(() => {
   mockSeekBook.mockReset();
   mockGoToTrack.mockReset();
   mockPlayBook.mockReset();
+  mockRequestFetch.mockReset();
+  mockBook = plainBook;
+  mockPodcastFetch = false;
+  useEpisodeFetch.setState({ pending: null });
 });
 
 describe('the player route', () => {
@@ -134,5 +158,67 @@ describe('the player route', () => {
     } finally {
       resetProfilesForTests();
     }
+  });
+
+  describe('an episode not on its server yet (Bridge Phase 2d-1)', () => {
+    const episodeBook = {
+      rel_path: 'Author/Book',
+      title: 'Monday',
+      episode: { show_path: 'Author', downloaded: false },
+    };
+
+    it('hands it to the fetch, never to playBook, and shows the fetch in its place', async () => {
+      mockBook = episodeBook;
+      mockPodcastFetch = true;
+      routeTo({ position: '30' });
+      const r = await render(<PlayerScreen />);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      expect(mockRequestFetch.mock.calls).toEqual([
+        [
+          { connectionId: 'c', libraryId: 1, path: 'Author/Book' },
+          episodeBook,
+          { position: 30, track: undefined },
+        ],
+      ]);
+      await act(async () =>
+        useEpisodeFetch.setState({
+          pending: { key: 'c:1:Author/Book', phase: 'waiting' } as never,
+        }),
+      );
+      expect(r.getByTestId('episode-fetch-panel')).toBeTruthy();
+      // Asked once: a re-render (the fetch's progress) does not ask again.
+      await r.rerender(<PlayerScreen />);
+      expect(mockRequestFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for the server's flags before choosing how to start it", async () => {
+      mockBook = episodeBook;
+      mockPodcastFetch = undefined;
+      routeTo({});
+      const r = await render(<PlayerScreen />);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      expect(mockRequestFetch).not.toHaveBeenCalled();
+      mockPodcastFetch = true;
+      await r.rerender(<PlayerScreen />);
+      expect(mockRequestFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('plays it as before on a server that does not fetch on demand', async () => {
+      mockBook = episodeBook;
+      mockPodcastFetch = false;
+      routeTo({});
+      await render(<PlayerScreen />);
+      expect(mockRequestFetch).not.toHaveBeenCalled();
+      expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    });
+
+    it('plays a downloaded episode at once', async () => {
+      mockBook = { ...episodeBook, episode: { show_path: 'Author', downloaded: true } };
+      mockPodcastFetch = true;
+      routeTo({});
+      await render(<PlayerScreen />);
+      expect(mockRequestFetch).not.toHaveBeenCalled();
+      expect(mockPlayBook).toHaveBeenCalledTimes(1);
+    });
   });
 });

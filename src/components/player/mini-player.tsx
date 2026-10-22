@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BookCover } from '@/components/library/book-cover';
+import { EpisodeFetchStrip } from '@/components/podcasts/episode-fetch-panel';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
 import { usePlayerOnTop } from '@/components/player/player-sheets';
 import { pillClass, slopTo44 } from '@/components/player/control-pill';
@@ -26,6 +27,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectCurrentChapter, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -39,6 +41,9 @@ export const MINI_PLAYER_GAP = 6;
 const BASE_CONTENT_PADDING = 16;
 /** The cover's side. */
 const COVER = 42;
+/** The episode fetch strip's card above the mini card (Bridge Phase 2d-1), with its gap:
+ * what a scroll screen reserves for it beside the mini player's own height. */
+export const FETCH_STRIP_HEIGHT = 58;
 
 /**
  * Bottom padding a scrollable screen should give its scroll content so the last row
@@ -50,9 +55,14 @@ const COVER = 42;
  */
 export function useMiniPlayerInset(): number {
   const loaded = usePlayer((s) => s.nowPlaying != null);
+  const fetching = useEpisodeFetch((s) => s.pending !== null);
   const phone = useLayout() === 'phone';
-  const floating = loaded && phone && !ACCESSORY_SUPPORTED;
-  return BASE_CONTENT_PADDING + (floating ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0);
+  const floating = phone && !ACCESSORY_SUPPORTED;
+  return (
+    BASE_CONTENT_PADDING +
+    (floating && loaded ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0) +
+    (floating && fetching ? FETCH_STRIP_HEIGHT : 0)
+  );
 }
 
 /** The native phone's floating mini player (Android, iOS before 26): ONE card for the
@@ -129,6 +139,9 @@ export function useMiniHeading(): { heading: string; isChapter: boolean } {
  * the measured bar edge; web: `100%` of the wrapper around our tab bar). Content scrolls
  * behind it; screens reserve room with `useMiniPlayerInset()`. It publishes its top edge
  * (the bar's, plus the gap and its own height) for the root toasts.
+ *
+ * While an episode is fetched (Bridge Phase 2d-1) its strip floats in a card of its own
+ * above the mini card (or alone, when nothing is loaded).
  */
 export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue }) {
   const themed = useThemeColors();
@@ -144,7 +157,8 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
   // to mount would leave `enter` already at 1 by the time the card actually appears
   // mid-session. Instead reset to 0 and animate to 1 only when `nowPlaying` goes from
   // falsy to truthy - not on track/progress changes.
-  const visible = nowPlaying != null;
+  const fetching = useEpisodeFetch((s) => s.pending !== null);
+  const visible = nowPlaying != null || fetching;
   const onTop = usePlayerOnTop();
   const bar = useShellMetrics((s) => s.edges.bar);
   const [height, setHeight] = useState<number>();
@@ -170,7 +184,37 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
 
   // Nothing under the full player (its per-tick leaves would only redraw behind it). The
   // card itself stays mounted, so coming back does not replay the entrance.
-  if (!nowPlaying || onTop) return null;
+  if (!visible || onTop) return null;
+
+  const strip = fetching ? (
+    <EpisodeFetchStrip
+      className={cn(
+        'rounded-card border border-border bg-card shadow-overlay',
+        nowPlaying && 'mb-1.5',
+      )}
+    />
+  ) : null;
+
+  if (!nowPlaying) {
+    return (
+      <Animated.View
+        testID="mini-player"
+        onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
+        style={[
+          {
+            position: 'absolute',
+            left: 8,
+            right: 8,
+            bottom: bottomOffset,
+            marginBottom: MINI_PLAYER_GAP,
+          },
+          entranceStyle,
+        ]}
+      >
+        {strip}
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View
@@ -183,16 +227,17 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
           right: 8,
           bottom: bottomOffset,
           marginBottom: MINI_PLAYER_GAP,
-          height: MINI_PLAYER_HEIGHT,
         },
         entranceStyle,
       ]}
     >
+      {strip}
       {/* Opaque (scrolling covers never bleed through), a hairline and the overlay
           shadow (Android: elevation, which keeps it lifted on the porcelain page). */}
       <View
         testID="mini-player-card"
-        className="flex-1 flex-row items-center gap-1 rounded-card border border-border bg-card pl-[7px] pr-1.5 shadow-overlay"
+        style={{ height: MINI_PLAYER_HEIGHT }}
+        className="flex-row items-center gap-1 rounded-card border border-border bg-card pl-[7px] pr-1.5 shadow-overlay"
       >
         <AnimatedPressable
           onPress={() => router.push('/player')}

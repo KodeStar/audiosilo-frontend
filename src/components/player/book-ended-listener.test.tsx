@@ -20,8 +20,14 @@ jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 let mockPathname = '/library';
+const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
-  router: { push: (h: unknown) => mockPush(h), replace: (h: unknown) => mockReplace(h) },
+  router: {
+    push: (h: unknown) => mockPush(h),
+    replace: (h: unknown) => mockReplace(h),
+    back: () => mockBack(),
+    canGoBack: () => true,
+  },
   usePathname: () => mockPathname,
 }));
 const mockResolve = jest.fn();
@@ -29,7 +35,12 @@ jest.mock('@/playback/up-next-resolver', () => ({
   ...jest.requireActual('@/playback/up-next-resolver'),
   resolveUpNext: (...a: unknown[]) => mockResolve(...a),
 }));
-jest.mock('@/playback/up-next-sources', () => ({ upNextSources: () => ({}) }));
+jest.mock('@/playback/up-next-sources', () => ({
+  upNextSources: () => ({
+    capabilities: async () => ({ queue: true, next_book: true }),
+    folderNext: async () => ({ path: 'Series/Book 2' }),
+  }),
+}));
 const mockStart = jest.fn();
 jest.mock('./start-book', () => ({ startBookInPlace: (t: unknown) => mockStart(t) }));
 const mockFinishBook = jest.fn();
@@ -141,6 +152,7 @@ beforeEach(() => {
   mockQueueRead.mockReset().mockResolvedValue([entry(FINISHED.path)]);
   mockPush.mockReset();
   mockReplace.mockReset();
+  mockBack.mockReset();
   mockResolve.mockReset().mockResolvedValue(headAnswer);
   mockFinishBook.mockReset().mockReturnValue(FINISHED);
   mockPathname = '/library';
@@ -199,7 +211,7 @@ describe('BookEndedListener', () => {
     appState = 'background';
     mockPathname = '/player';
     await playThenEnd();
-    expect(mockResolve).toHaveBeenCalledWith({}, FINISHED);
+    expect(mockResolve).toHaveBeenCalledWith(expect.anything(), FINISHED);
     await waitFor(() => expect(mockStart).toHaveBeenCalledWith(headAnswer.next));
     // Presenting the player modal from the background left iOS on a black screen.
     expect(mockReplace).not.toHaveBeenCalled();
@@ -319,5 +331,50 @@ describe('BookEndedListener', () => {
     await waitFor(() =>
       expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: FINISHED.path }]]),
     );
+  });
+});
+
+// Bridge Phase 2d-1: an episode has no end credits.
+describe('BookEndedListener, a podcast episode', () => {
+  beforeEach(() => {
+    mockFinishBook.mockReturnValue({ ...FINISHED, episode: true });
+  });
+
+  it('never opens the credits; it leaves Up next and plays its next item in place', async () => {
+    await playThenEnd();
+    await waitFor(() => expect(mockStart).toHaveBeenCalledWith(headAnswer.next));
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: FINISHED.path });
+    // Up next only: neither the series nor the folder follow an episode.
+    const sources = mockResolve.mock.calls[0][0];
+    await expect(sources.capabilities()).resolves.toEqual({ queue: true, next_book: false });
+    await expect(sources.folderNext(1, FINISHED.path)).resolves.toBeNull();
+  });
+
+  it('stops with nothing next, closing a full player left open on it', async () => {
+    mockResolve.mockResolvedValue({ next: null });
+    // The real store's finishBook clears nowPlaying at once.
+    mockFinishBook.mockImplementation(() => {
+      setPlayer({ nowPlaying: null });
+      return { ...FINISHED, episode: true };
+    });
+    mockPathname = '/player';
+    await playThenEnd();
+    await waitFor(() => expect(mockBack).toHaveBeenCalledTimes(1));
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('plays nothing on with auto-play off, or under the sleep timer', async () => {
+    useSettings.setState({ autoPlayNext: false });
+    await playThenEnd();
+    await waitFor(() =>
+      expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: FINISHED.path }),
+    );
+    expect(mockResolve).not.toHaveBeenCalled();
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

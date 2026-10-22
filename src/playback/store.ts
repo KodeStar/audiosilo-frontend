@@ -198,6 +198,9 @@ export type NowPlaying = {
   author: string;
   cover: string;
   queue: BookQueue;
+  /** A podcast episode (Bridge Phase 2d-1; set only then): no end credits, no cast, no
+   * downloads. A view field only. */
+  episode?: true;
 };
 
 /** The loaded book as the player shows it, built the same way by every path that loads one
@@ -217,6 +220,7 @@ function nowPlayingOf(
     author: book.author || book.narrator || '',
     cover: local?.artwork ?? api?.coverUrl(ref.libraryId, ref.path) ?? '',
     queue,
+    ...(book.episode ? { episode: true as const } : {}),
   };
 }
 
@@ -230,6 +234,8 @@ export type FinishedBook = {
   title: string;
   author: string;
   cover: string;
+  /** A podcast episode (`NowPlaying.episode`): it never opens the end credits. */
+  episode?: true;
 };
 
 type PlayerState = {
@@ -397,6 +403,8 @@ async function maybeAutoDownloadCurrent(
   chapterData?: ChaptersResponse,
 ): Promise<void> {
   try {
+    // Episodes are never downloaded (Bridge Phase 2d-1, decision 6.1).
+    if (book.episode) return;
     const mode = useSettings.getState().autoDownloadNext;
     if (mode === 'never') return;
     // Already downloaded/queued/downloading? Nothing to do (only re-attempt an errored one).
@@ -1066,6 +1074,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       title: np.title,
       author: np.author,
       cover: np.cover,
+      ...(np.episode ? { episode: true as const } : {}),
     };
     // Mirror stop()'s teardown, but the forced-finished save must be the LAST write for
     // this book (the server is last-write-wins), so we do NOT call stop()'s ordinary

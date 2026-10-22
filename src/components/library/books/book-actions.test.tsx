@@ -11,6 +11,7 @@ const mockEdit = jest.fn();
 const mockMarkFinished = jest.fn();
 // The full item a list-shape book is looked up as (`useBook`; an empty path = not asked).
 let mockFull: Book | undefined;
+let mockPodcastLibrary = false;
 const mockUseBook = jest.fn();
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
@@ -21,6 +22,7 @@ jest.mock('@/api/hooks', () => {
       return { data: path ? mockFull : undefined };
     },
     useCapability: (flag: string) => mockCaps[flag],
+    useIsPodcastLibrary: () => mockPodcastLibrary,
     useEditProgress: () => ({ mutateAsync: mockEdit }),
     useMarkFinished: () => ({ mutate: mockMarkFinished }),
   };
@@ -219,6 +221,39 @@ describe('useBookActions', () => {
     expect(mockDownload).toHaveBeenCalledWith('c', 1, b, undefined);
     find('series')!.onPress();
     expect(mockOpenSeries).toHaveBeenCalledWith('c', 1, { name: 'Series' });
+  });
+});
+
+// Bridge Phase 2d-1: episodes are never kept offline (decision 6.1).
+describe('useBookActions, a podcast episode', () => {
+  afterEach(() => {
+    mockPodcastLibrary = false;
+  });
+
+  it('offers no Download for an item that is an episode', async () => {
+    const b = book({
+      episode: {
+        show_path: 'Show',
+        published: null,
+        season: null,
+        episode: null,
+        episode_type: 'full',
+        explicit: false,
+        downloaded: true,
+        duration_source: 'file',
+        removed: false,
+      },
+    });
+    const { find } = await actions(b);
+    expect(find('download')).toBeUndefined();
+    expect(find('play')).toBeDefined();
+  });
+
+  it('offers no Download for a list-shape book of a podcast library', async () => {
+    mockPodcastLibrary = true;
+    const { find } = await actions(book());
+    expect(find('download')).toBeUndefined();
+    expect(find('queue')).toBeDefined();
   });
 });
 

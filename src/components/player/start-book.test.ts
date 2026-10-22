@@ -17,6 +17,14 @@ jest.mock('@/playback/store', () => ({
   },
 }));
 
+const mockRequestFetch = jest.fn();
+const mockCancelUnless = jest.fn();
+jest.mock('@/playback/episode-fetch', () => ({
+  needsEpisodeFetch: jest.requireActual('@/playback/episode-fetch').needsEpisodeFetch,
+  requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
+  cancelEpisodeFetchUnless: (key: string) => mockCancelUnless(key),
+}));
+
 /* eslint-disable import/first */
 import { queryClient } from '@/api/provider';
 import { useDownloads } from '@/downloads/store';
@@ -59,6 +67,8 @@ beforeEach(() => {
   mockChapters.mockReset().mockResolvedValue({ chapters: [], files: [] });
   mockPlayBook.mockReset().mockResolvedValue(undefined);
   mockSetRate.mockReset();
+  mockRequestFetch.mockReset();
+  mockCancelUnless.mockReset();
 });
 
 /** Until `fn` has been called (a start reaches its reads after a few awaits). */
@@ -258,5 +268,53 @@ describe('startBookInPlace', () => {
     mockChapters.mockRejectedValue(new Error('offline'));
     await expect(startBookInPlace(target)).rejects.toThrow('offline');
     expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+});
+
+// Bridge Phase 2d-1: an episode its server has not fetched yet waits for the fetch.
+describe('startBookInPlace, a podcast episode', () => {
+  const episode = (downloaded: boolean) => ({
+    rel_path: target.path,
+    title: 'Monday',
+    episode: { show_path: 'Weir', downloaded },
+  });
+  const serverFetches = (podcast_fetch: boolean) =>
+    queryClient.setQueryData(['server', 'c1'], { capabilities: { podcast_fetch } });
+
+  it('hands an episode not on its server to the fetch, never to playBook', async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(false));
+    await expect(startBookInPlace(target, { position: 30 })).resolves.toBe(true);
+    expect(mockPlayBook).not.toHaveBeenCalled();
+    expect(mockRequestFetch).toHaveBeenCalledWith(target, episode(false), { position: 30 });
+  });
+
+  it('plays a downloaded episode at once', async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(true));
+    await expect(startBookInPlace(target)).resolves.toBe(true);
+    expect(mockRequestFetch).not.toHaveBeenCalled();
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('plays it as before on a server that does not fetch on demand', async () => {
+    serverFetches(false);
+    mockItem.mockResolvedValue(episode(false));
+    await startBookInPlace(target);
+    expect(mockRequestFetch).not.toHaveBeenCalled();
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts it once the fetch is done (`fetched`), never handing it back', async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(false));
+    await expect(startBookInPlace(target, {}, { fetched: true })).resolves.toBe(true);
+    expect(mockRequestFetch).not.toHaveBeenCalled();
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends a fetch on its way for anything else it starts', async () => {
+    await startBookInPlace(target);
+    expect(mockCancelUnless).toHaveBeenCalledWith(`c1:2:${target.path}`);
   });
 });

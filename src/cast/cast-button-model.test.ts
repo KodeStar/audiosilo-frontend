@@ -53,4 +53,10 @@ describe('castButtonModel', () => {
     );
     expect(castButtonModel({ ...base, book: { codec: 'alac' } }).blocked).toBeNull();
   });
+
+  // Bridge Phase 2d-1: a cast token never covers a podcast episode.
+  it('hides it for a podcast episode, unless a session runs', () => {
+    expect(castButtonModel({ ...base, episode: true }).show).toBe(false);
+    expect(castButtonModel({ ...base, episode: true, status: 'connected' }).show).toBe(true);
+  });
 });

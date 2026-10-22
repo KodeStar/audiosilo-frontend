@@ -2222,6 +2222,18 @@ export function cachedPodcastLibrary(cid: string, libraryId: number): boolean {
     ?.some((l) => l.id === libraryId && l.kind === 'podcasts');
 }
 
+/** Whether `libraryId` is a podcast library on the connection, from its library list (a
+ * list-shape book there is an episode: the lists carry no `episode`). */
+export function useIsPodcastLibrary(libraryId: number, connectionId?: string): boolean {
+  const cid = useCid(connectionId);
+  const client = useOptionalApi(connectionId);
+  const { data } = useQuery({
+    ...librariesQuery(cid, client),
+    select: (libs: Library[]) => libs.some((l) => l.id === libraryId && l.kind === 'podcasts'),
+  });
+  return data === true;
+}
+
 /** A podcast library's shows (`GET /libraries/{id}/podcasts`). */
 export function podcastShowsQuery(cid: string, client: MaybeClient, libraryId: number) {
   return queryOptions({

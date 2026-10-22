@@ -3,13 +3,21 @@ import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useBook, useChapters } from '@/api/hooks';
+import { useBook, useCapability, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { PlayerView } from '@/components/player/player-view';
+import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
+import { contentKey } from '@/lib/content-key';
 import { bookTitle, segmentsToPath } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
+import {
+  cancelEpisodeFetchUnless,
+  needsEpisodeFetch,
+  requestEpisodeFetch,
+  useEpisodeFetch,
+} from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
@@ -56,6 +64,11 @@ export default function PlayerScreen() {
   );
   const chaptersQuery = useChapters(libraryId, path, connectionId);
   const chapterData = chaptersQuery.data;
+  // An episode not on its server yet starts through the fetch (`episode-fetch.ts`), and
+  // the fetch shows here in place of the player until it starts (Bridge Phase 2d-1).
+  const podcastFetch = useCapability('podcast_fetch', cid);
+  const pendingFetch = useEpisodeFetch((s) => s.pending);
+  const routeKey = book ? contentKey(cid, libraryId, book.rel_path) : null;
 
   // Auto-start playback AT MOST ONCE per target book. A mount-scoped latch keyed by
   // `${cid}|${libraryId}|<rel_path>` remembers the target we already resolved, so we never
@@ -113,11 +126,23 @@ export default function PlayerScreen() {
     // the finishBook teardown) - do NOT restart it just because the guard above no longer
     // matches. A new target (different key) falls through and starts.
     if (startedKeyRef.current === key) return;
+    // An episode not on its server: wait for the server's flags before choosing a start,
+    // so it never streams a file that isn't there yet.
+    const absentEpisode = !!book.episode && !book.episode.downloaded;
+    if (absentEpisode && podcastFetch === undefined) return;
     startedKeyRef.current = key;
     // The start below lands on the jump itself, so the book showing up as `nowPlaying`
     // must not jump there a second time.
     jumpedKeyRef.current = jumpKey;
     const startAt = hasPos ? posParam : undefined;
+    if (needsEpisodeFetch(book, podcastFetch)) {
+      requestEpisodeFetch({ connectionId: cid, libraryId, path: book.rel_path }, book, {
+        position: startAt,
+        track: hasTrack ? trackParam : undefined,
+      });
+      return;
+    }
+    cancelEpisodeFetchUnless(contentKey(cid, libraryId, book.rel_path));
     void usePlayer
       .getState()
       .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
@@ -134,6 +159,7 @@ export default function PlayerScreen() {
     seekBook,
     goToTrack,
     gated,
+    podcastFetch,
   ]);
 
   if (gate) return gate;
@@ -145,6 +171,14 @@ export default function PlayerScreen() {
         className="flex-1 bg-background"
       >
         <Spinner center />
+      </View>
+    );
+  }
+
+  if (pendingFetch && pendingFetch.key === routeKey) {
+    return (
+      <View className="flex-1 bg-background">
+        <EpisodeFetchPanel onClose={() => router.back()} />
       </View>
     );
   }

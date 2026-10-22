@@ -43,6 +43,7 @@ jest.mock('@/components/player/player-shortcuts', () => ({
 import { expectNativeTarget } from '@/testing/touch-target';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { useReachability } from '@/api/reachability';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { UNDO_WINDOW_MS, useJumpUndo } from '@/playback/jump-undo';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { useSession } from '@/stores/session';
@@ -310,5 +311,40 @@ describe('DockedPlayer', () => {
     expect(useShellMetrics.getState().edges.dock).toBe(105);
     await screen.unmount();
     expect(useShellMetrics.getState().edges.dock).toBeUndefined();
+  });
+
+  // Bridge Phase 2d-1: an episode fetched while another book plays on (decision 6.4).
+  describe('while an episode is fetched', () => {
+    const PENDING = {
+      key: 'c1:5:Show/Ep.mp3',
+      target: { connectionId: 'c1', libraryId: 5, path: 'Show/Ep.mp3' },
+      title: 'Monday',
+      show: 'Daily News',
+      opts: {},
+      phase: 'waiting' as const,
+      status: null,
+      code: null,
+    };
+    afterEach(async () => {
+      await act(async () => useEpisodeFetch.setState({ pending: null }));
+    });
+
+    it('shows the fetch strip over the playing book', async () => {
+      useEpisodeFetch.setState({ pending: PENDING });
+      await renderAt(1280);
+      expect(screen.getByTestId('episode-fetch-strip')).toBeTruthy();
+      expect(screen.getByText('Monday')).toBeTruthy();
+      expect(screen.getByLabelText('Previous chapter')).toBeTruthy();
+    });
+
+    it('is the whole bar when nothing is loaded, and gone once it ends', async () => {
+      player.usePlayer.setState({ nowPlaying: null } as never);
+      useEpisodeFetch.setState({ pending: PENDING });
+      await render(<DockedPlayer />);
+      expect(screen.getByTestId('episode-fetch-strip')).toBeTruthy();
+      expect(screen.queryByLabelText('Previous chapter')).toBeNull();
+      await act(async () => useEpisodeFetch.setState({ pending: null }));
+      expect(screen.queryByTestId('shell-docked-player')).toBeNull();
+    });
   });
 });

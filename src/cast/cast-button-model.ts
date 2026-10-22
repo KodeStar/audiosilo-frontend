@@ -17,10 +17,14 @@ export type CastButtonModel = {
  * secure context) and when the book's server has `cast` (an older server, or one whose
  * flags aren't known yet: no button). Shown while a session is connected whatever the book,
  * so it can always be stopped. Blocked (it explains instead of casting) when the address in
- * use is this device, or the book needs a transcoder the server lacks.
+ * use is this device, or the book needs a transcoder the server lacks. Never offered for a
+ * podcast episode (`episode`: a cast token never covers one, Bridge Phase 2d-1), unless a
+ * session is connected (so it can be stopped).
  */
 export function castButtonModel(input: {
   loaded: boolean;
+  /** The loaded item is a podcast episode. */
+  episode?: boolean;
   supported: boolean | null;
   canCast: boolean | undefined;
   canTranscode: boolean | undefined;
@@ -32,7 +36,9 @@ export function castButtonModel(input: {
 }): CastButtonModel {
   const { status, deviceName } = input;
   const connected = status !== 'off';
-  const show = input.supported === true && (connected || (input.loaded && input.canCast === true));
+  const show =
+    input.supported === true &&
+    (connected || (input.loaded && !input.episode && input.canCast === true));
   const blocked =
     show && !connected
       ? castBlockReason({

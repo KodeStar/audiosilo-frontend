@@ -32,6 +32,7 @@ jest.mock('@/downloads/store', () => ({
 
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
+import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { engine } from '@/downloads/engine';
 import {
@@ -286,6 +287,30 @@ describe('runKeepAhead', () => {
     (usePlayer.getState as jest.Mock).mockReturnValue({ nowPlaying: null });
     await runKeepAhead();
     expect(useKeepAhead.getState().status).toBe('idle');
+  });
+
+  // Bridge Phase 2d-1: podcast episodes are never kept offline.
+  it('is idle while an episode plays', async () => {
+    (usePlayer.getState as jest.Mock).mockReturnValue({
+      nowPlaying: { connectionId: 'c1', libraryId: 1, path: 'B3', episode: true },
+    });
+    await runKeepAhead();
+    expect(useKeepAhead.getState().status).toBe('idle');
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("skips Up next's episodes, told by their library's kind", async () => {
+    queryClient.setQueryData(qk.libraries('c1'), [
+      { id: 1, name: 'Books', kind: 'books' },
+      { id: 7, name: 'Podcasts', kind: 'podcasts' },
+    ]);
+    queue = [
+      { library_id: 7, path: 'Show/Ep', added_at: '', book: book('Show/Ep') },
+      { library_id: 1, path: 'Q8', added_at: '', book: book('Q8') },
+    ];
+    await runKeepAhead();
+    expect(queued()).toContain('Q8:keep-ahead');
+    expect(queued()).not.toContain('Show/Ep:keep-ahead');
   });
 });
 

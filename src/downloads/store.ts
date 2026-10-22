@@ -159,6 +159,9 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
     if (!engine.supported) return Promise.resolve<DownloadOutcome>('unsupported');
+    // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1): one not on
+    // its server yet answers 503 to the download engines, and nothing would clean them up.
+    if (book.episode) return Promise.resolve<DownloadOutcome>('unsupported');
     // On web, a list-shape book (`/books`, `/fs`, shelves, tiles, the queue) carries no
     // `direct_playable`, so the transcode refusal below would read it as playable and
     // download raw files this browser cannot play. Such a book is decided on its full
