@@ -162,6 +162,7 @@ keep this index in step (one line per topic).
   - Player modules registry
   - Module flags are mirrored
   - Slots
+  - Podcasts
   - The module's surface
   - Remote moves vs the resume floor
   - The iOS engine is split into files
