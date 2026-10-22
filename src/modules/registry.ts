@@ -8,8 +8,11 @@ import type { Connection } from '@/stores/session';
 
 /** The capability flags that are modules' (each mirrored in {@link Capabilities} like every
  * other flag): never a core flag such as `queue` or `bridge`, as the server refuses a module
- * named after one. A new module's flag is added here too. */
-export type ModuleFlag = Extract<keyof Capabilities, 'contributions'>;
+ * named after one. A new module's flag is added here too. `podcasts` (Bridge Phase 2d-1)
+ * has no `PLAYER_MODULES` entry: reading podcasts is core, so its surfaces (the Library's
+ * Shows, Home's New episodes) follow the podcast libraries a server lists; the flag gates
+ * only Follow. */
+export type ModuleFlag = Extract<keyof Capabilities, 'contributions' | 'podcasts'>;
 
 /**
  * The player's modules (Bridge Phase 2a): optional features a server module brings, each

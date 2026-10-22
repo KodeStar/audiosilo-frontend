@@ -72,6 +72,10 @@ import type {
   NotePatch,
   Page,
   PageQuery,
+  PodcastEpisodeOrder,
+  PodcastEpisodePage,
+  PodcastFetchStatus,
+  PodcastShow,
   Progress,
   ProgressEdit,
   Rating,
@@ -173,6 +177,25 @@ export const qk = {
   /** What generating characters and recaps for a book would take. */
   bridgeEstimate: (cid: string, lib: number, path: string) =>
     ['bridgeEstimate', cid, lib, path] as const,
+  // Podcasts (Bridge Phase 2d-1): reads are core, Follow is capability `podcasts`, the
+  // fetch status `podcast_fetch`.
+  /** A podcast library's shows. */
+  podcastShows: (cid: string, lib: number) => ['podcastShows', cid, lib] as const,
+  /** A show's episodes in one order (`usePodcastEpisodes`, an infinite query). */
+  podcastEpisodes: (cid: string, lib: number, show: string, order: PodcastEpisodeOrder) =>
+    ['podcastEpisodes', cid, lib, show, order] as const,
+  /** Prefix matching every episode list of a show (both orders, Home's latest). */
+  podcastEpisodesOfShow: (cid: string, lib: number, show: string) =>
+    ['podcastEpisodes', cid, lib, show] as const,
+  /** A show's newest `limit` episodes, one page (Home's New episodes), under the show's
+   * prefix ('latest' never matches an order's key). */
+  latestEpisodes: (cid: string, lib: number, show: string, limit: number) =>
+    ['podcastEpisodes', cid, lib, show, 'latest', limit] as const,
+  /** The shows the caller follows across the server's podcast libraries. */
+  myPodcasts: (cid: string) => ['myPodcasts', cid] as const,
+  /** An episode's on-demand fetch status (the episode-fetch controller seeds it). */
+  podcastFetch: (cid: string, lib: number, path: string) =>
+    ['podcastFetch', cid, lib, path] as const,
 };
 
 /** Whether a query key is a connection's Up next queue (`qk.queue`). */
@@ -2177,6 +2200,212 @@ export function useCancelBridgeJob(connectionId?: string) {
       if (error && job.library_id !== null && job.path !== null) {
         void qc.invalidateQueries({ queryKey: qk.bridgeJobs(cid, job.library_id, job.path) });
       }
+    },
+  );
+}
+
+// --- Podcasts (Bridge Phase 2d-1) ----------------------------------------------------
+// Reading shows and episodes is core: never gated on `podcasts` (a podcast library is
+// listed, or not, by `GET /libraries`), so ask only for a library of the podcasts kind.
+// Follow and Unfollow are the Podcasts module's writes (`podcasts`, a `CapabilityError`
+// while it is off or not known); the fetch status is `podcast_fetch`'s.
+
+/** How long a show list and an episode page stay fresh: a feed is checked every few
+ * hours at most, and following or a finished fetch refresh them. */
+const PODCAST_STALE_MS = 5 * 60_000;
+
+/** Whether a connection's cached library list holds `libraryId` as a podcast library,
+ * without asking: for the framework-free readers (keep-ahead, the downloads rules). */
+export function cachedPodcastLibrary(cid: string, libraryId: number): boolean {
+  return !!queryClient
+    .getQueryData<Library[]>(qk.libraries(cid))
+    ?.some((l) => l.id === libraryId && l.kind === 'podcasts');
+}
+
+/** A podcast library's shows (`GET /libraries/{id}/podcasts`). */
+export function podcastShowsQuery(cid: string, client: MaybeClient, libraryId: number) {
+  return queryOptions({
+    queryKey: qk.podcastShows(cid, libraryId),
+    queryFn:
+      client && libraryId > 0 ? ({ signal }) => client.podcastShows(libraryId, signal) : skipToken,
+    staleTime: PODCAST_STALE_MS,
+  });
+}
+
+/** A podcast library's shows; `enabled` false (a books library, nothing selected) asks
+ * nothing. */
+export function usePodcastShows(
+  libraryId: number,
+  connectionId?: string,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    ...podcastShowsQuery(useCid(connectionId), useOptionalApi(connectionId), libraryId),
+    enabled,
+  });
+}
+
+/** Page size of a show's episode list (the server takes 1-200). */
+const EPISODES_PAGE_SIZE = 50;
+
+/** A show's episodes in `order`, page by page on the server's cursor. The server orders
+ * them (published, then path); the pages are never re-sorted here. */
+export function usePodcastEpisodes(
+  libraryId: number,
+  show: string,
+  order: PodcastEpisodeOrder,
+  connectionId?: string,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  return useInfiniteQuery({
+    queryKey: qk.podcastEpisodes(cid, libraryId, show, order),
+    queryFn:
+      api && libraryId > 0 && show
+        ? ({ pageParam, signal }) =>
+            api.podcastEpisodes(
+              libraryId,
+              { show, order, limit: EPISODES_PAGE_SIZE, cursor: pageParam },
+              signal,
+            )
+        : skipToken,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (p: PodcastEpisodePage) => p.next_cursor ?? undefined,
+    staleTime: PODCAST_STALE_MS,
+  });
+}
+
+/** A show's newest `limit` episodes (one page, newest first): Home's New episodes. */
+export function latestEpisodesQuery(
+  cid: string,
+  client: MaybeClient,
+  libraryId: number,
+  show: string,
+  limit: number,
+) {
+  return queryOptions({
+    queryKey: qk.latestEpisodes(cid, libraryId, show, limit),
+    queryFn: client
+      ? ({ signal }) => client.podcastEpisodes(libraryId, { show, order: 'newest', limit }, signal)
+      : skipToken,
+    staleTime: PODCAST_STALE_MS,
+  });
+}
+
+/** The shows the caller follows (`GET /me/podcasts`). */
+export function myPodcastsQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.myPodcasts(cid),
+    queryFn: client ? ({ signal }) => client.myPodcasts(signal) : skipToken,
+    staleTime: PODCAST_STALE_MS,
+  });
+}
+
+/** The shows the caller follows; ask only a connection that lists a podcast library
+ * (`enabled`). */
+export function useMyPodcasts(
+  connectionId?: string,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    ...myPodcastsQuery(useCid(connectionId), useOptionalApi(connectionId)),
+    enabled,
+  });
+}
+
+/** Mark a show followed or not in the cached show list, or drop it (a private show a
+ * listener stops following leaves their lists), and read the followed shows again. */
+function storeFollowing(
+  qc: QueryClient,
+  cid: string,
+  libraryId: number,
+  path: string,
+  following: boolean,
+  show?: PodcastShow,
+) {
+  qc.setQueryData<PodcastShow[]>(qk.podcastShows(cid, libraryId), (list) =>
+    list
+      ?.filter((s) => following || s.path !== path || !s.private)
+      .map((s) => (s.path === path ? { ...s, ...show, following } : s)),
+  );
+  void qc.invalidateQueries({ queryKey: qk.myPodcasts(cid) });
+}
+
+/** Follow a show by its path (capability `podcasts`). The cached show list takes the
+ * answer and the followed shows are read again. */
+export function useFollowPodcast(connectionId?: string) {
+  return useCapabilityMutation(
+    'podcasts',
+    connectionId,
+    (api, v: { libraryId: number; path: string }) => api.followPodcast(v.libraryId, v.path),
+    ({ qc, cid }, answer, v) =>
+      storeFollowing(
+        qc,
+        cid,
+        v.libraryId,
+        v.path,
+        true,
+        answer.state === 'following' ? answer.show : undefined,
+      ),
+  );
+}
+
+/** Stop following a show (capability `podcasts`): the cached show list drops the mark (a
+ * private show, the show itself) and the followed shows are read again. */
+export function useUnfollowPodcast(connectionId?: string) {
+  return useCapabilityMutation(
+    'podcasts',
+    connectionId,
+    (api, v: { libraryId: number; path: string }) => api.unfollowPodcast(v.libraryId, v.path),
+    ({ qc, cid }, _answer, v) => storeFollowing(qc, cid, v.libraryId, v.path, false),
+  );
+}
+
+/** An episode's fetch status (`GET .../podcasts/fetch`), the entry the episode-fetch
+ * controller seeds and polls. */
+export function podcastFetchQuery(
+  cid: string,
+  client: MaybeClient,
+  libraryId: number,
+  path: string,
+) {
+  return queryOptions({
+    queryKey: qk.podcastFetch(cid, libraryId, path),
+    queryFn:
+      client && path.length > 0
+        ? async ({ signal }) => (await client.podcastFetchStatus(libraryId, path, signal)).fetch
+        : skipToken,
+  });
+}
+
+/** An episode's fetch status, read once (capability `podcast_fetch`; never polled here:
+ * the episode-fetch controller, `src/playback/episode-fetch.ts`, is the one poller and
+ * keeps this entry up to date while it watches). `enabled` false asks nothing. */
+export function usePodcastFetchStatus(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useCapabilityQuery<PodcastFetchStatus>(
+    'podcast_fetch',
+    (cid) => qk.podcastFetch(cid, libraryId, path),
+    async (api, signal) => (await api.podcastFetchStatus(libraryId, path, signal)).fetch,
+    connectionId,
+    { ready: path.length > 0 && enabled, retry: false },
+  );
+}
+
+/** Ask for an episode again (`POST .../podcasts/fetch`, capability `podcast_fetch`):
+ * resolves the new status, which goes into the episode's fetch entry. */
+export function useRetryPodcastFetch(connectionId?: string) {
+  return useCapabilityMutation(
+    'podcast_fetch',
+    connectionId,
+    async (api, v: { libraryId: number; path: string }) =>
+      (await api.retryPodcastFetch(v.libraryId, v.path)).fetch,
+    ({ qc, cid }, status, v) => {
+      qc.setQueryData(qk.podcastFetch(cid, v.libraryId, v.path), status);
     },
   );
 }

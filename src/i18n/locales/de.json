@@ -541,6 +541,12 @@
       "dismiss": "Schließen",
       "spoilerSafe": "Spoilerfrei: geschrieben bis Kapitel {{chapter}}.",
       "spoilerSafeStart": "Spoilerfrei: geschrieben vor Beginn dieses Buchs."
+    },
+    "newEpisodes": {
+      "title": "Neue Episoden",
+      "sub": "Aus Sendungen, denen du folgst",
+      "allShows": "Alle Sendungen",
+      "caption": "{{show}} · {{when}}"
     }
   },
   "stats": {
@@ -735,7 +741,8 @@
       "series": "Reihen",
       "narrators": "Sprecher",
       "collections": "Sammlungen",
-      "folders": "Ordner"
+      "folders": "Ordner",
+      "shows": "Sendungen"
     },
     "picker": {
       "label": "Bibliothek",
@@ -1172,7 +1179,8 @@
       "hasBookmark": "mit Lesezeichen",
       "startsAt": "beginnt bei {{time}}",
       "community": "Kapitel aus der Community-Datenbank von AudioSilo",
-      "generated": "Kapitel in der Erzählung auf diesem Server gefunden"
+      "generated": "Kapitel in der Erzählung auf diesem Server gefunden",
+      "id3Chap": "Kapitel aus der Episodendatei"
     },
     "details": {
       "title": "Details",
@@ -2555,6 +2563,88 @@
     },
     "share": {
       "member": "{{name}} kann alles in dieser Sammlung hören."
+    }
+  },
+  "podcasts": {
+    "shows": {
+      "empty": "Noch keine Sendungen",
+      "emptyHint": "Sendungen erscheinen hier, sobald jemand ihnen auf deinem Server folgt.",
+      "filterLabel": "Welche Sendungen",
+      "all": "Alle",
+      "following": "Gefolgt",
+      "newEpisode": "Neue Episode {{when}}",
+      "privateBadge": "Privater Feed",
+      "loadError": "Die Sendungen konnten nicht geladen werden."
+    },
+    "show": {
+      "episodes_one": "{{count}} Episode",
+      "episodes_other": "{{count}} Episoden",
+      "orderLabel": "Reihenfolge der Episoden",
+      "newestFirst": "Neueste zuerst",
+      "oldestFirst": "Älteste zuerst",
+      "lastCheckFailed": "Letzte Prüfung fehlgeschlagen",
+      "removed": "Nicht mehr im Feed",
+      "noEpisodes": "Noch keine Episoden",
+      "loadError": "Diese Sendung konnte nicht geladen werden.",
+      "notFound": "Diese Sendung ist nicht verfügbar",
+      "notFoundHint": "Vielleicht folgt ihr niemand mehr, oder sie ist nicht mit dir geteilt.",
+      "loadingMore": "Weitere Episoden werden geladen..."
+    },
+    "episode": {
+      "trailer": "Trailer",
+      "bonus": "Bonus",
+      "explicit": "Explizit",
+      "label": "S{{season}} E{{episode}}",
+      "labelEpisodeOnly": "E{{episode}}",
+      "ready": "Bereit auf deinem Server",
+      "onDemand": "Wird bei Bedarf geholt",
+      "getting": "Wird geholt",
+      "gettingPercent": "Wird geholt {{percent}} %",
+      "failed": "Konnte nicht geholt werden",
+      "unavailable": "Gerade nicht verfügbar",
+      "play": "Abspielen",
+      "resume": "Fortsetzen",
+      "tryAgain": "Erneut versuchen",
+      "playLabel": "{{title}} abspielen",
+      "tryAgainLabel": "{{title}} erneut holen",
+      "finished": "Beendet",
+      "timelineChangedTitle": "Der Ton hat sich geändert",
+      "timelineChanged": "Der Ton dieser Episode hat sich geändert, seit du angefangen hast (Werbung kann sich unterscheiden). Deine Stelle bleibt, wie sie war."
+    },
+    "follow": {
+      "follow": "Folgen",
+      "following": "Gefolgt",
+      "unfollow": "Nicht mehr folgen",
+      "confirmPrivateTitle": "Diesem privaten Feed nicht mehr folgen?",
+      "confirmPrivateBody": "Um ihm wieder zu folgen, brauchst du die Adresse des Feeds.",
+      "errorModuleOff": "Sendungen folgen ist auf diesem Server ausgeschaltet.",
+      "errorKid": "Bitte einen Erwachsenen, Sendungen zu folgen.",
+      "errorDemo": "In der Demo kann man Sendungen nicht folgen.",
+      "errorGone": "Diese Sendung ist nicht mehr verfügbar.",
+      "errorFailed": "Das hat nicht geklappt. Versuch es noch einmal."
+    },
+    "fetch": {
+      "title": "Diese Episode wird geholt",
+      "body": "Dein Server lädt sie herunter. Sie startet, sobald sie bereit ist.",
+      "queued": "Wartet, bis sie dran ist",
+      "progress": "{{received}} von {{total}}",
+      "progressUnknown": "{{received}} bisher",
+      "failedTitle": "Diese Episode konnte nicht geholt werden",
+      "unavailableTitle": "Diese Episode kann gerade nicht geholt werden",
+      "cancel": "Abbrechen",
+      "cancelLabel": "{{title}} nicht mehr holen",
+      "tryAgain": "Erneut versuchen",
+      "stripLabel": "{{title}} wird geholt",
+      "reason": {
+        "module_off": "Podcasts sind auf diesem Server ausgeschaltet.",
+        "bridge_unavailable": "Dein Server kann gerade keine Episoden herunterladen.",
+        "library_not_writable": "Dein Server kann in dieser Bibliothek keine Episoden speichern.",
+        "fetch_limit": "Fünf Episoden sind schon unterwegs. Versuch es noch einmal, sobald eine bereit ist.",
+        "demo_account": "Die Demo spielt nur Episoden, die schon auf dem Server sind.",
+        "too_large": "Diese Episode ist zu groß für deinen Server.",
+        "identity_changed": "Diese Episode hat sich in ihrem Feed geändert. Öffne die Sendung, um sie wiederzufinden.",
+        "other": "Beim Holen ist etwas schiefgegangen. Versuch es später noch einmal."
+      }
     }
   }
 }

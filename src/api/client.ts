@@ -56,6 +56,14 @@ import type {
   PairingPayload,
   PeopleList,
   PersonCount,
+  PodcastEpisodeOrder,
+  PodcastEpisodePage,
+  PodcastFetchPendingCode,
+  PodcastFetchResponse,
+  PodcastFetchStatus,
+  PodcastFollowResult,
+  PodcastShow,
+  MyPodcasts,
   Progress,
   ProgressEdit,
   ProgressInput,
@@ -120,6 +128,14 @@ const API_ERROR_CODES = [
   'kind_unavailable',
   'detect_open',
   'contribute_open',
+  // Podcasts (Bridge Phase 2d-1): the module is off (404 on its writes), no online Bridge
+  // can act (409), a listener already has five episodes on their way (409 on a Retry), the
+  // episode's identity moved under a fetch (409), and a show that is gone or hidden (404).
+  'module_off',
+  'bridge_unavailable',
+  'fetch_limit',
+  'identity_changed',
+  'show_not_found',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -150,6 +166,89 @@ export function apiErrorKind(e: unknown): ApiErrorKind {
   if (!(e instanceof ApiError)) return 'failed';
   if (e.code && KNOWN_CODES.has(e.code)) return e.code as ApiErrorCode;
   return BY_STATUS[e.status] ?? 'failed';
+}
+
+const FETCH_PENDING_CODES: ReadonlySet<string> = new Set<PodcastFetchPendingCode>([
+  'podcast_fetching',
+  'podcast_fetch_unavailable',
+  'podcast_fetch_failed',
+]);
+
+/**
+ * A podcast episode that is not on the server yet (Bridge Phase 2c-2b): `/stream` (and any
+ * route that would read its file) held the request up to 2 s, then answered `503 {error,
+ * code, fetch}`. `code` says which (`podcast_fetching`: on its way; `podcast_fetch_failed`;
+ * `podcast_fetch_unavailable`: it can't be fetched now, `fetch.error` says why), `fetch` is
+ * the status as the server saw it, and `retryAfterSeconds` how long to wait before asking
+ * again (the `Retry-After` header, else the status's own, else 2).
+ */
+export class PodcastFetchPendingError extends ApiError {
+  constructor(
+    message: string,
+    public code: PodcastFetchPendingCode,
+    public fetch: PodcastFetchStatus,
+    public retryAfterSeconds: number,
+  ) {
+    super(503, message, code);
+    this.name = 'PodcastFetchPendingError';
+  }
+}
+
+/** The seconds a 503 asks the caller to wait: `Retry-After` (seconds) when it reads as a
+ * number, else the status's `retry_after_seconds`, else 2. A header the browser can't
+ * expose cross-origin reads as absent. */
+function retryAfterOf(res: Response, fetch: PodcastFetchStatus): number {
+  const header = res.headers?.get?.('Retry-After');
+  if (header != null && header.trim() !== '') {
+    const n = Number(header);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  const body = fetch.retry_after_seconds;
+  return typeof body === 'number' && Number.isFinite(body) && body >= 0 ? body : 2;
+}
+
+/** The error a non-2xx answer with a JSON (or empty) body `data` is: its `error` and
+ * `code`, or for a 503 about an episode still on its way, a `PodcastFetchPendingError`
+ * keeping its `fetch`. */
+function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError {
+  const body = data as { error?: unknown; code?: unknown; fetch?: unknown } | undefined;
+  const msg = typeof body?.error === 'string' ? body.error : '';
+  const code = typeof body?.code === 'string' && body.code ? body.code : undefined;
+  if (
+    res.status === 503 &&
+    code !== undefined &&
+    FETCH_PENDING_CODES.has(code) &&
+    typeof body?.fetch === 'object' &&
+    body.fetch !== null
+  ) {
+    const fetch = body.fetch as PodcastFetchStatus;
+    return new PodcastFetchPendingError(
+      msg || fallbackMsg,
+      code as PodcastFetchPendingCode,
+      fetch,
+      retryAfterOf(res, fetch),
+    );
+  }
+  return new ApiError(res.status, msg || fallbackMsg, code);
+}
+
+/** A JSON answer: its body (undefined for a 204 or an empty one), or the `ApiError` a
+ * non-2xx one is. A body that isn't JSON (an HTML 502/503 from a reverse proxy) is a plain
+ * `ApiError` with the status, never a SyntaxError: callers branch on ApiError and its
+ * status (isUnrecoverable, sign-in, reachability). */
+async function readJson<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  // statusText is '' (not null) under HTTP/2, so use || to reach the fallback.
+  const fallbackMsg = res.statusText || 'Request failed';
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    throw new ApiError(res.status, fallbackMsg);
+  }
+  if (!res.ok) throw apiErrorOf(res, data, fallbackMsg);
+  return data as T;
 }
 
 /**
@@ -312,14 +411,24 @@ export class ApiClient {
     return this.token ? { Authorization: `Bearer ${this.token}` } : {};
   }
 
-  private async request<T>(
+  private request<T>(
     method: string,
     path: string,
     opts: { query?: Query; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+    return this.send(method, this.apiUrl(path, opts.query), headers, opts, readJson<T>);
+  }
 
+  /** One request to `url`, its answer read by `read` (inside the timeout). */
+  private async send<T>(
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    opts: { body?: unknown; signal?: AbortSignal; timeoutMs?: number },
+    read: (res: Response) => Promise<T>,
+  ): Promise<T> {
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
     // frozen/unreachable server can't hang the caller (and the 15s save loop)
     // indefinitely; still honour a caller-supplied signal.
@@ -340,39 +449,19 @@ export class ApiClient {
     }
 
     try {
-      const res = await fetch(this.apiUrl(path, opts.query), {
+      const res = await fetch(url, {
         method,
         headers,
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         signal: controller.signal,
       });
-
-      if (res.status === 204) return undefined as T;
-      const text = await res.text();
-      // statusText is '' (not null) under HTTP/2, so use || to reach the fallback.
-      const fallbackMsg = res.statusText || 'Request failed';
-      let data: unknown;
-      try {
-        data = text ? JSON.parse(text) : undefined;
-      } catch {
-        // A non-JSON body (e.g. an HTML 502/503 from a reverse proxy) must not surface
-        // as a SyntaxError - callers branch on ApiError/its status (isUnrecoverable,
-        // sign-in, reachability), so preserve the HTTP status instead.
-        throw new ApiError(res.status, fallbackMsg);
-      }
-      if (!res.ok) {
-        const body = data as { error?: unknown; code?: unknown } | undefined;
-        const msg = typeof body?.error === 'string' ? body.error : '';
-        const code = typeof body?.code === 'string' && body.code ? body.code : undefined;
-        throw new ApiError(res.status, msg || fallbackMsg, code);
-      }
-      return data as T;
+      return await read(res);
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
       // the same tick): report it as a timeout so it's classified as unreachable.
       if (timedOut && !(e instanceof ApiError)) throw new TimeoutError(timeoutMs);
       // A 401 ApiError means the server answered and rejected our token - fire the
-      // dead-token callback (both ApiError throw sites above land here). 403 is a scope
+      // dead-token callback (every ApiError the readers throw lands here). 403 is a scope
       // denial (valid token, forbidden) and a network/timeout failure has no status, so
       // neither is a dead token - the full rationale is on the constructor doc above.
       if (e instanceof ApiError && e.status === 401) this.onAuthError?.();
@@ -672,6 +761,103 @@ export class ApiClient {
       signal,
     });
     return res.work;
+  }
+
+  // --- Podcasts (Bridge Phase 2d-1) ------------------------------------------
+  // Reading shows and episodes is core (not gated on the `podcasts` flag): a podcast library
+  // (`Library.kind`) is listed only to a client the server knows can show it. Follow and
+  // Unfollow are the Podcasts module's (`podcasts`); the fetch routes `podcast_fetch`'s.
+
+  /** A podcast library's shows (title order; the caller's scope applies, and a private
+   * show only reaches the people who follow it). */
+  async podcastShows(libraryId: number, signal?: AbortSignal): Promise<PodcastShow[]> {
+    const r = await this.request<{ shows: PodcastShow[] | null }>(
+      'GET',
+      `/libraries/${libraryId}/podcasts`,
+      { signal },
+    );
+    return r.shows ?? [];
+  }
+  /** One page of a show's episodes in `order` (the server orders: by published, then
+   * path). `limit` is 1-200 (the server's default 50); pass the last page's `next_cursor`
+   * as `cursor`, with the same show and order, to continue. Each row has its `fetch`
+   * status while it is not on the server. A show that is gone or hidden is a 404
+   * `show_not_found`. */
+  async podcastEpisodes(
+    libraryId: number,
+    q: { show: string; order: PodcastEpisodeOrder; limit?: number; cursor?: string },
+    signal?: AbortSignal,
+  ): Promise<PodcastEpisodePage> {
+    const r = await this.request<PodcastEpisodePage>(
+      'GET',
+      `/libraries/${libraryId}/podcasts/episodes`,
+      { query: { show: q.show, order: q.order, limit: q.limit, cursor: q.cursor }, signal },
+    );
+    return { episodes: r.episodes ?? [], next_cursor: r.next_cursor ?? null };
+  }
+  /** The shows the caller follows across their podcast libraries, and (Bridge Phase 2d-2)
+   * their follow requests still in flight. */
+  async myPodcasts(signal?: AbortSignal): Promise<MyPodcasts> {
+    const r = await this.request<Partial<MyPodcasts>>('GET', '/me/podcasts', { signal });
+    return { shows: r.shows ?? [], requests: r.requests ?? [] };
+  }
+  /** Follow a show by its path (`200 {state: 'following', show}`). The body is exactly
+   * `{library_id, path}`: the server refuses `private` beside a path (400), and a kid's or
+   * demo account is refused (403 `kid_account` / `demo_account`), so is a module that is off
+   * (404 `module_off`) and a show the caller can't see (404 `show_not_found`). */
+  followPodcast(libraryId: number, path: string) {
+    return this.request<PodcastFollowResult>('POST', '/podcasts/follow', {
+      body: { library_id: libraryId, path },
+    });
+  }
+  /** Stop following a show (204). A private show then leaves the caller's lists: only its
+   * feed's address can follow it again. */
+  unfollowPodcast(libraryId: number, path: string) {
+    return this.request<void>('DELETE', '/podcasts/follow', {
+      query: { library_id: libraryId, path },
+    });
+  }
+  /** An episode's fetch status (observation only: it starts nothing). */
+  podcastFetchStatus(libraryId: number, path: string, signal?: AbortSignal) {
+    return this.request<PodcastFetchResponse>('GET', `/libraries/${libraryId}/podcasts/fetch`, {
+      query: { path },
+      signal,
+    });
+  }
+  /** Ask for an episode again after it failed: 202 with the new status (a 200 when it is
+   * on the server already). This POST skips the failure cooldown a play respects, so it
+   * is only ever the listener's own Try again. The body is exactly `{path}`. A listener
+   * with five episodes on their way is refused (409 `fetch_limit`), so is a server with
+   * no Bridge to fetch it (409 `bridge_unavailable`). */
+  retryPodcastFetch(libraryId: number, path: string, signal?: AbortSignal) {
+    return this.request<PodcastFetchResponse>('POST', `/libraries/${libraryId}/podcasts/fetch`, {
+      body: { path },
+      signal,
+    });
+  }
+  /**
+   * The play trigger for an episode that is not on the server: one byte of its stream
+   * (`Range: bytes=0-0`, the session token in the header, never `?token=`). The server
+   * starts fetching an absent episode (respecting a failed one's cooldown), holds the
+   * request up to 2 s, then answers. Resolves once the file streams (a 2xx: the episode is
+   * ready); rejects with a `PodcastFetchPendingError` while it is on its way, failed or
+   * can't be fetched, and an `ApiError` otherwise (a proxy's HTML 503 too).
+   */
+  prepareEpisodeStream(libraryId: number, path: string, signal?: AbortSignal): Promise<void> {
+    const headers: Record<string, string> = {
+      ...this.clientHeaders,
+      ...this.authHeaders(),
+      Range: 'bytes=0-0',
+    };
+    return this.send(
+      'GET',
+      this.apiUrl(`/libraries/${libraryId}/stream`, { path }),
+      headers,
+      { signal },
+      async (res) => {
+        if (!res.ok) await readJson<void>(res);
+      },
+    );
   }
 
   // --- Media URLs ----------------------------------------------------------

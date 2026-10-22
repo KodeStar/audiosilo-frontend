@@ -51,6 +51,13 @@ const SOURCE_CAPTION = {
     icon: 'server',
     iconColor: 'subtleForeground',
   },
+  // A podcast episode's own chapter marks (its file's ID3 CHAP frames, Bridge Phase 2c-2).
+  id3_chap: {
+    testID: 'book-chapters-id3-chap',
+    labelKey: 'book.chapters.id3Chap',
+    icon: 'list',
+    iconColor: 'subtleForeground',
+  },
 } as const satisfies Record<
   ChaptersSource,
   { testID: string; labelKey: string; icon: IconName; iconColor: keyof ThemeColors }

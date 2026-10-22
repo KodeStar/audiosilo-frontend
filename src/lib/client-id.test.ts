@@ -36,3 +36,30 @@ describe('shouldIdentify', () => {
     expect(shouldIdentify('https://h.test', 'web', null)).toBe(false);
   });
 });
+
+describe('shouldIdentify, the cross-origin dev opt-in', () => {
+  const env = process.env.EXPO_PUBLIC_IDENTIFY_CROSS_ORIGIN;
+  const dev = (globalThis as { __DEV__?: boolean }).__DEV__;
+  afterEach(() => {
+    if (env === undefined) delete process.env.EXPO_PUBLIC_IDENTIFY_CROSS_ORIGIN;
+    else process.env.EXPO_PUBLIC_IDENTIFY_CROSS_ORIGIN = env;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = dev;
+  });
+
+  it('is off by default', () => {
+    delete process.env.EXPO_PUBLIC_IDENTIFY_CROSS_ORIGIN;
+    expect(shouldIdentify('https://api.test', 'web', 'http://localhost:8081')).toBe(false);
+  });
+
+  it('identifies cross-origin in a development build that opts in', () => {
+    process.env.EXPO_PUBLIC_IDENTIFY_CROSS_ORIGIN = '1';
+    (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+    expect(shouldIdentify('https://api.test', 'web', 'http://localhost:8081')).toBe(true);
+  });
+
+  it('never identifies cross-origin in a production build, whatever the environment says', () => {
+    process.env.EXPO_PUBLIC_IDENTIFY_CROSS_ORIGIN = '1';
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+    expect(shouldIdentify('https://api.test', 'web', 'http://localhost:8081')).toBe(false);
+  });
+});

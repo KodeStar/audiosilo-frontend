@@ -188,6 +188,7 @@ export type ChapterList = { kind: ListKind; rows: ListRow[] };
 const KNOWN_CHAPTERS_SOURCES: Readonly<Record<ChaptersSource, true>> = {
   community: true,
   generated: true,
+  id3_chap: true,
 };
 
 /** The chapters answer's `chapters_source` as a source this build knows, else undefined:
