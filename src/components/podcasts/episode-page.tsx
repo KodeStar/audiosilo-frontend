@@ -46,7 +46,7 @@ import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { episodeMetaLine, episodeRowState } from './podcast-model';
+import { episodeMarks, episodeMetaLine, episodeRowState } from './podcast-model';
 
 const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 
@@ -172,11 +172,7 @@ function EpisodeBody({
     t,
     new Date(),
   );
-  const marks = [
-    episode.episode_type === 'trailer' ? t('podcasts.episode.trailer') : null,
-    episode.episode_type === 'bonus' ? t('podcasts.episode.bonus') : null,
-    episode.explicit ? t('podcasts.episode.explicit') : null,
-  ].filter((m): m is string => m !== null);
+  const marks = episodeMarks(episode, t);
 
   const primary =
     state.kind === 'failed' && !loaded ? (

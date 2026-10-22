@@ -13,13 +13,14 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { useOpen } from '@/lib/open';
-import { progressFractionRemaining } from '@/lib/progress-view';
+import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { type PendingEpisodeFetch, requestEpisodeFetch } from '@/playback/episode-fetch';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
   episodeAsBook,
+  episodeMarks,
   episodeMetaLine,
   type EpisodeRowState,
   episodeRowState,
@@ -78,17 +79,13 @@ export function EpisodeRow({
   const book = episodeAsBook(episode, show);
   const state = episodeRowState(episode, pending, canFetch);
   const finished = !!progress?.finished;
-  const started = !finished && (progress?.position ?? 0) > 0;
+  const started = !!progress && isInProgress(progress);
   const fraction =
     progress && !finished && progress.position > 0
       ? progressFractionRemaining(progress.position, progress.duration || episode.duration).fraction
       : 0;
   const meta = episodeMetaLine(episode, t, now);
-  const marks = [
-    episode.episode_type === 'trailer' ? t('podcasts.episode.trailer') : null,
-    episode.episode_type === 'bonus' ? t('podcasts.episode.bonus') : null,
-    episode.explicit ? t('podcasts.episode.explicit') : null,
-  ].filter((m): m is string => m !== null);
+  const marks = episodeMarks(episode, t);
 
   const play = () =>
     void playBook(target).catch(() => toast({ title: t('library.bookActions.playFailed') }));
@@ -174,7 +171,7 @@ export function EpisodeRow({
         libraryId={libraryId}
         book={book}
         progress={progress}
-        omit={['play', 'collect', 'download', 'series']}
+        omit={['play', 'collect', 'series']}
       />
     </View>
   );

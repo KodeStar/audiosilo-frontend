@@ -14,6 +14,7 @@ import { bookTitle, segmentsToPath } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
 import {
   cancelEpisodeFetchUnless,
+  isAbsentEpisode,
   needsEpisodeFetch,
   requestEpisodeFetch,
   useEpisodeFetch,
@@ -67,8 +68,8 @@ export default function PlayerScreen() {
   // An episode not on its server yet starts through the fetch (`episode-fetch.ts`), and
   // the fetch shows here in place of the player until it starts (Bridge Phase 2d-1).
   const podcastFetch = useCapability('podcast_fetch', cid);
-  const pendingFetch = useEpisodeFetch((s) => s.pending);
   const routeKey = book ? contentKey(cid, libraryId, book.rel_path) : null;
+  const fetchingHere = useEpisodeFetch((s) => s.pending !== null && s.pending.key === routeKey);
 
   // Auto-start playback AT MOST ONCE per target book. A mount-scoped latch keyed by
   // `${cid}|${libraryId}|<rel_path>` remembers the target we already resolved, so we never
@@ -128,8 +129,7 @@ export default function PlayerScreen() {
     if (startedKeyRef.current === key) return;
     // An episode not on its server: wait for the server's flags before choosing a start,
     // so it never streams a file that isn't there yet.
-    const absentEpisode = !!book.episode && !book.episode.downloaded;
-    if (absentEpisode && podcastFetch === undefined) return;
+    if (isAbsentEpisode(book) && podcastFetch === undefined) return;
     startedKeyRef.current = key;
     // The start below lands on the jump itself, so the book showing up as `nowPlaying`
     // must not jump there a second time.
@@ -175,7 +175,7 @@ export default function PlayerScreen() {
     );
   }
 
-  if (pendingFetch && pendingFetch.key === routeKey) {
+  if (fetchingHere) {
     return (
       <View className="flex-1 bg-background">
         <EpisodeFetchPanel onClose={() => router.back()} />

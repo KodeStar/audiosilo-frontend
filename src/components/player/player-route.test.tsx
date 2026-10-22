@@ -32,6 +32,7 @@ jest.mock('@/playback/episode-fetch', () => {
   const actual = jest.requireActual('@/playback/episode-fetch');
   return {
     useEpisodeFetch: create(() => ({ pending: null })),
+    isAbsentEpisode: actual.isAbsentEpisode,
     needsEpisodeFetch: actual.needsEpisodeFetch,
     requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
     cancelEpisodeFetchUnless: jest.fn(),

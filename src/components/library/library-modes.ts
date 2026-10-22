@@ -51,10 +51,6 @@ export function parseLibraryMode(param?: string | string[]): LibraryMode {
  * info is known (`useCapability`). */
 export type ModeCapabilities = { browsePeople?: boolean; collections?: boolean };
 
-/** Whether the selected library is a podcast library (`Library.kind`), `undefined` while
- * the library is not known yet. */
-export type LibraryKindKnown = boolean | undefined;
-
 /** The modes of a podcast library: its shows, and the folders of every library. */
 const PODCAST_MODES: ReadonlySet<LibraryMode> = new Set(['shows', 'folders']);
 
@@ -64,7 +60,7 @@ const PODCAST_MODES: ReadonlySet<LibraryMode> = new Set(['shows', 'folders']);
 function needs(
   mode: LibraryMode,
   caps: ModeCapabilities,
-  podcasts: LibraryKindKnown,
+  podcasts: boolean | undefined,
 ): boolean | undefined {
   if (podcasts) return PODCAST_MODES.has(mode);
   if (mode === 'shows') return podcasts === false ? false : undefined;
@@ -76,10 +72,7 @@ function needs(
 /** The modes to offer: the ones whose capability is known to be on (books and folders
  * work on every server; a podcast library offers Shows and Folders). A mode waiting on
  * its flag is left out rather than shown and then taken away. */
-export function availableLibraryModes(
-  caps: ModeCapabilities,
-  podcasts?: LibraryKindKnown,
-): LibraryMode[] {
+export function availableLibraryModes(caps: ModeCapabilities, podcasts?: boolean): LibraryMode[] {
   return LIBRARY_MODES.filter((m) => needs(m, caps, podcasts) === true);
 }
 
@@ -90,7 +83,7 @@ export function availableLibraryModes(
 export function resolveLibraryMode(
   requested: LibraryMode,
   caps: ModeCapabilities,
-  podcasts?: LibraryKindKnown,
+  podcasts?: boolean,
 ): LibraryMode {
   if (needs(requested, caps, podcasts) !== false) return requested;
   return podcasts ? 'shows' : DEFAULT_LIBRARY_MODE;

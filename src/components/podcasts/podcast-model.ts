@@ -77,12 +77,6 @@ export function defaultEpisodeOrder(
   return show?.type === 'serial' ? 'oldest' : 'newest';
 }
 
-/** The `?order=` a link asks for, or null (the show's default then). */
-export function parseEpisodeOrder(v: string | string[] | undefined): PodcastEpisodeOrder | null {
-  const s = Array.isArray(v) ? v[0] : v;
-  return s === 'newest' || s === 'oldest' ? s : null;
-}
-
 /** "S2 E5", "E5", or null when the feed numbers neither. */
 export function episodeLabel(
   ep: { season: number | null; episode: number | null },
@@ -109,6 +103,18 @@ export function episodeMetaLine(
   ]
     .filter(Boolean)
     .join(' · ');
+}
+
+/** An episode's badges, in order: Trailer or Bonus, then Explicit. */
+export function episodeMarks(
+  ep: Pick<PodcastEpisode, 'episode_type' | 'explicit'>,
+  t: TFunction,
+): string[] {
+  const marks: string[] = [];
+  if (ep.episode_type === 'trailer') marks.push(t('podcasts.episode.trailer'));
+  if (ep.episode_type === 'bonus') marks.push(t('podcasts.episode.bonus'));
+  if (ep.explicit) marks.push(t('podcasts.episode.explicit'));
+  return marks;
 }
 
 /** The rows a show lists: an episode gone from the feed only while its file is kept. */

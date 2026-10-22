@@ -3,8 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 
 import type { Library, MyPodcasts, PodcastEpisodePage } from '@/api/types';
 
-const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+const mockOpenLibraryRoot = jest.fn();
+jest.mock('@/lib/open', () => ({
+  ...jest.requireActual('@/lib/open'),
+  openLibraryRoot: (h: unknown) => mockOpenLibraryRoot(h),
+}));
 // The tile has its own tests: here, what each says and where it goes.
 jest.mock('@/components/library/cover-tile', () => ({
   useServerFlag: () => () => undefined,
@@ -74,7 +77,7 @@ beforeEach(() => {
   for (const k of Object.keys(mockMine)) delete mockMine[k];
   mockEpisodes.mockReset().mockResolvedValue(page([]));
   mockMy.mockReset();
-  mockPush.mockReset();
+  mockOpenLibraryRoot.mockReset();
   useLibrarySelection.setState({ selection: null });
 });
 
@@ -105,7 +108,10 @@ describe('NewEpisodesRail', () => {
 
     await fireEvent.press(screen.getByRole('link', { name: 'All shows' }));
     expect(useLibrarySelection.getState().selection).toEqual({ connectionId: 'a', libraryId: 5 });
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/library', params: { mode: 'shows' } });
+    expect(mockOpenLibraryRoot).toHaveBeenCalledWith({
+      pathname: '/library',
+      params: { mode: 'shows' },
+    });
   });
 
   it('asks only the servers with a podcast library, and only shows that published lately', async () => {

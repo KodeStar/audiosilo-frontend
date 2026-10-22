@@ -15,6 +15,7 @@ import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { useLayout } from '@/lib/layout';
+import { isPodcastLibrary } from '@/lib/library-kind';
 
 import {
   availableLibraryModes,
@@ -63,7 +64,7 @@ export function LibraryScreen() {
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
   // Unknown until the selected library is listed (`resolveLibraryMode` keeps a request).
-  const podcasts = library ? library.kind === 'podcasts' : selection ? undefined : false;
+  const podcasts = library ? isPodcastLibrary(library) : selection ? undefined : false;
   // An empty id (nothing selected yet) resolves to no client: nothing is asked.
   const caps = {
     browsePeople: useCapability('browse_people', cid),

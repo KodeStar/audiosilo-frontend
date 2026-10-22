@@ -236,7 +236,7 @@ export function DockedPlayer() {
         style={edges}
         className="border-t border-border bg-card"
       >
-        {fetching ? <EpisodeFetchStrip className="border-b border-border pl-3.5 pr-4" /> : null}
+        <EpisodeFetchStrip className="border-b border-border pl-3.5 pr-4" />
         {/* The 3px whole-book progress line along the bar's top edge (a leaf). */}
         <BookProgressLine total={queue.total} className="absolute left-0 right-0 top-0 h-[3px]" />
         <View

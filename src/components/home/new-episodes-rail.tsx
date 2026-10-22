@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
@@ -6,6 +5,7 @@ import { libraryModeHref } from '@/components/library/library-modes';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { episodeAsBook } from '@/components/podcasts/podcast-model';
 import { formatRelative } from '@/lib/format';
+import { openLibraryRoot } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { useLibrarySelection } from '@/stores/library-selection';
 import type { Connection } from '@/stores/session';
@@ -39,7 +39,7 @@ export function NewEpisodesRail({
   const allShows = () => {
     const libraryId = podcastLibraries.get(first.connectionId) ?? first.show.library_id;
     useLibrarySelection.getState().select({ connectionId: first.connectionId, libraryId });
-    router.push(libraryModeHref('shows'));
+    openLibraryRoot(libraryModeHref('shows'));
   };
   return (
     <HomeSection

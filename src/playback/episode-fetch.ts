@@ -1,4 +1,4 @@
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState } from 'react-native';
 import { create } from 'zustand';
 
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
@@ -9,6 +9,7 @@ import type { Book, PodcastFetchStatus, PodcastShow } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { startBookInPlace, type StartOptions } from '@/components/player/start-book';
 import { contentKeyOf } from '@/lib/content-key';
+import { onForeground } from '@/lib/when-active';
 import { mayActFor, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -52,11 +53,16 @@ export const useEpisodeFetch = create<{ pending: PendingEpisodeFetch | null }>((
   pending: null,
 }));
 
+/** Whether `book` is an episode whose file is not on its server (yet). */
+export function isAbsentEpisode(book: Book): boolean {
+  return !!book.episode && !book.episode.downloaded;
+}
+
 /** Whether starting `book` must go through a fetch first: an episode not on its server,
  * on a server that fetches on demand (`podcast_fetch`). Otherwise it plays (or fails) as
  * it always did. */
 export function needsEpisodeFetch(book: Book, podcastFetch: boolean | undefined): boolean {
-  return !!book.episode && !book.episode.downloaded && podcastFetch === true;
+  return isAbsentEpisode(book) && podcastFetch === true;
 }
 
 /** The poll interval floor, seconds (the server's `Retry-After`). */
@@ -73,10 +79,28 @@ type Run = {
 /** The one run in flight (`pending`'s). */
 let run: Run | null = null;
 
+/** Whether two statuses would show the same (a poll that moved nothing). */
+function sameStatus(a: PodcastFetchStatus | null, b: PodcastFetchStatus | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.state === b.state &&
+    a.bytes_received === b.bytes_received &&
+    a.bytes_total === b.bytes_total &&
+    a.error?.code === b.error?.code
+  );
+}
+
 function patch(r: Run, next: Partial<PendingEpisodeFetch>) {
   if (run !== r) return;
   const pending = useEpisodeFetch.getState().pending;
-  if (pending) useEpisodeFetch.setState({ pending: { ...pending, ...next } });
+  if (!pending) return;
+  const unchanged =
+    (next.phase === undefined || next.phase === pending.phase) &&
+    (next.code === undefined || next.code === pending.code) &&
+    (next.status === undefined || sameStatus(next.status, pending.status));
+  // A poll that moved nothing leaves the store as it is (no re-render of its readers).
+  if (!unchanged) useEpisodeFetch.setState({ pending: { ...pending, ...next } });
 }
 
 function end(r: Run) {
@@ -144,7 +168,8 @@ export function retryEpisodeFetch() {
   begin(pending, true);
 }
 
-function isStopped(phase: EpisodeFetchPhase): boolean {
+/** Whether a fetch stopped and only Try again moves it on. */
+export function isStopped(phase: EpisodeFetchPhase): boolean {
   return phase === 'failed' || phase === 'unavailable' || phase === 'refused';
 }
 
@@ -168,25 +193,23 @@ function begin(
   };
   const unProfiles = useProfiles.subscribe(onChange);
   const unSession = useSession.subscribe(onChange);
-  const appState = AppState.addEventListener('change', (s: AppStateStatus) => {
-    if (run !== r) return;
-    if (s === 'active') {
-      if (r.paused || r.timer) {
-        if (r.timer) clearTimeout(r.timer);
-        r.timer = null;
-        r.paused = false;
-        void step(r, 'poll');
-      }
-    } else if (s === 'background' && r.timer) {
+  const unAppState = onForeground(
+    () => {
+      if (run !== r || !r.paused) return;
+      r.paused = false;
+      void step(r, 'poll');
+    },
+    () => {
+      if (run !== r || !r.timer) return;
       clearTimeout(r.timer);
       r.timer = null;
       r.paused = true;
-    }
-  });
+    },
+  );
   r.stop = () => {
     unProfiles();
     unSession();
-    appState.remove();
+    unAppState();
   };
   void step(r, retry ? 'retry' : 'probe');
 }
@@ -298,7 +321,7 @@ function refused(r: Run, e: unknown) {
       // The feed gave the episode another identity: what the cache holds of it is stale.
       const { connectionId: cid, libraryId, path } = pending.target;
       void queryClient.invalidateQueries({ queryKey: qk.item(cid, libraryId, path) });
-      void queryClient.invalidateQueries({ queryKey: ['podcastEpisodes', cid, libraryId] });
+      void queryClient.invalidateQueries({ queryKey: qk.podcastEpisodesOfLibrary(cid, libraryId) });
       patch(r, { phase: 'failed', code });
       return;
     }
@@ -333,9 +356,7 @@ async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient
   const started = await startBookInPlace(target, opts, { fetched: true }).catch(() => false);
   if (run !== r) return;
   if (started) {
-    end(r);
-    run = null;
-    useEpisodeFetch.setState({ pending: null });
+    cancelEpisodeFetch();
   } else {
     patch(r, { phase: 'failed', code: null });
   }

@@ -5,12 +5,12 @@ import {
   defaultEpisodeOrder,
   episodeAsBook,
   episodeLabel,
+  episodeMarks,
   episodeMetaLine,
   episodeRowState,
   fetchProgress,
   fetchReasonKey,
   isRecent,
-  parseEpisodeOrder,
   visibleEpisodes,
 } from './podcast-model';
 
@@ -63,12 +63,16 @@ describe('defaultEpisodeOrder', () => {
     expect(defaultEpisodeOrder({ type: 'mini-series' })).toBe('newest');
     expect(defaultEpisodeOrder(undefined)).toBe('newest');
   });
+});
 
-  it("reads a link's order, else none", () => {
-    expect(parseEpisodeOrder('oldest')).toBe('oldest');
-    expect(parseEpisodeOrder(['newest'])).toBe('newest');
-    expect(parseEpisodeOrder('random')).toBeNull();
-    expect(parseEpisodeOrder(undefined)).toBeNull();
+describe('episodeMarks', () => {
+  it('lists Trailer or Bonus, then Explicit', () => {
+    expect(episodeMarks({ episode_type: 'trailer', explicit: true }, t)).toEqual([
+      'Trailer',
+      'Explicit',
+    ]);
+    expect(episodeMarks({ episode_type: 'bonus', explicit: false }, t)).toEqual(['Bonus']);
+    expect(episodeMarks({ episode_type: 'full', explicit: false }, t)).toEqual([]);
   });
 });
 

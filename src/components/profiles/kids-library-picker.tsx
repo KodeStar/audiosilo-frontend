@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { kidsLibraries } from '@/lib/library-kind';
 import { connectionsOfProfile, type Profile, setProfileKids } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -52,16 +53,13 @@ export function KidsLibraryPicker({
   });
   const loading = results.some((r) => r.isPending && r.fetchStatus !== 'idle');
   const failed = results.filter((r) => r.isError);
-  // Kids mode shows no podcasts (Bridge Phase 2d-1, decision 6.2).
   const options: KidsLibraryOption[] = own.flatMap((c, i) =>
-    (results[i]?.data ?? [])
-      .filter((l) => l.kind !== 'podcasts')
-      .map((l) => ({
-        connectionId: c.id,
-        libraryId: l.id,
-        label:
-          own.length > 1 ? t('profiles.kids.libraryOn', { name: l.name, server: c.name }) : l.name,
-      })),
+    kidsLibraries(results[i]?.data ?? []).map((l) => ({
+      connectionId: c.id,
+      libraryId: l.id,
+      label:
+        own.length > 1 ? t('profiles.kids.libraryOn', { name: l.name, server: c.name }) : l.name,
+    })),
   );
 
   if (loading && options.length === 0) {

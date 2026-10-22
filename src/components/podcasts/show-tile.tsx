@@ -8,19 +8,8 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Badge } from '@/components/ui/badge';
 import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
-import { cn } from '@/lib/utils';
 
 import { isRecent } from './podcast-model';
-
-/** A show tile's caption: "New episode 2 days ago" while its latest is recent, else the
- * show's author. */
-export function useShowCaption(): (show: PodcastShow) => string {
-  const { t } = useTranslation();
-  return (show) =>
-    isRecent(show.latest_published, new Date())
-      ? t('podcasts.shows.newEpisode', { when: formatRelative(show.latest_published ?? '') })
-      : show.author;
-}
 
 /**
  * A show as a cover tile (Bridge Phase 2d-1): its artwork (the show folder's cover), its
@@ -33,16 +22,17 @@ export function ShowTile({
   show,
   width,
   onPress,
-  className,
 }: {
   connectionId: string;
   show: PodcastShow;
   width: number;
   onPress: () => void;
-  className?: string;
 }) {
   const { t } = useTranslation();
-  const caption = useShowCaption()(show);
+  // "New episode 2 days ago" while its latest is recent, else the show's author.
+  const caption = isRecent(show.latest_published, new Date())
+    ? t('podcasts.shows.newEpisode', { when: formatRelative(show.latest_published ?? '') })
+    : show.author;
   const label = [show.title, caption, show.private ? t('podcasts.shows.privateBadge') : '']
     .filter(Boolean)
     .join(', ');
@@ -52,7 +42,7 @@ export function ShowTile({
       accessibilityRole="button"
       accessibilityLabel={label}
       style={{ width }}
-      className={cn('gap-2.5 rounded-cover', className)}
+      className="gap-2.5 rounded-cover"
       testID="show-tile"
     >
       <View>

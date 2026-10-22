@@ -20,6 +20,7 @@ jest.mock('@/playback/store', () => ({
 const mockRequestFetch = jest.fn();
 const mockCancelUnless = jest.fn();
 jest.mock('@/playback/episode-fetch', () => ({
+  isAbsentEpisode: jest.requireActual('@/playback/episode-fetch').isAbsentEpisode,
   needsEpisodeFetch: jest.requireActual('@/playback/episode-fetch').needsEpisodeFetch,
   requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
   cancelEpisodeFetchUnless: (key: string) => mockCancelUnless(key),

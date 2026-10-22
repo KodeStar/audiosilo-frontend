@@ -12,6 +12,7 @@ import { formatBytes } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   cancelEpisodeFetch,
+  isStopped,
   type PendingEpisodeFetch,
   retryEpisodeFetch,
   useEpisodeFetch,
@@ -20,17 +21,12 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { fetchProgress, fetchReasonKey } from './podcast-model';
 
-/** Whether the fetch stopped and only Try again moves it on. */
-function stopped(p: PendingEpisodeFetch): boolean {
-  return p.phase === 'failed' || p.phase === 'unavailable' || p.phase === 'refused';
-}
-
 /** The fetch's lines, shared by the panel and the strip: a heading, then what it is doing
  * (how far, waiting its turn) or why it stopped, and the bar's share when known. */
 function useFetchCopy(p: PendingEpisodeFetch) {
   const { t } = useTranslation();
   const { received, total, percent } = fetchProgress(p.status);
-  if (stopped(p)) {
+  if (isStopped(p.phase)) {
     return {
       heading: t(
         p.phase === 'failed' ? 'podcasts.fetch.failedTitle' : 'podcasts.fetch.unavailableTitle',
@@ -122,12 +118,12 @@ function Panel({ pending, onClose }: { pending: PendingEpisodeFetch; onClose: ()
           </Text>
           {copy.fraction !== null ? (
             <ProgressBar fraction={copy.fraction} minPercent={2} className="mt-1 w-full" />
-          ) : !stopped(pending) ? (
+          ) : !isStopped(pending.phase) ? (
             <Spinner />
           ) : null}
         </View>
         <View className="flex-row gap-3">
-          {stopped(pending) ? (
+          {isStopped(pending.phase) ? (
             <Button
               icon="rotate"
               title={t('podcasts.fetch.tryAgain')}
@@ -184,13 +180,13 @@ function Strip({ pending, className }: { pending: PendingEpisodeFetch; className
           {pending.title}
         </Text>
         <Text variant="caption" numberOfLines={1} aria-live="polite">
-          {stopped(pending) ? copy.heading : copy.line}
+          {isStopped(pending.phase) ? copy.heading : copy.line}
         </Text>
         {copy.fraction !== null ? (
           <ProgressBar fraction={copy.fraction} minPercent={2} className="mt-0.5" />
         ) : null}
       </View>
-      {stopped(pending) ? (
+      {isStopped(pending.phase) ? (
         <Button
           variant="ghost"
           size="sm"

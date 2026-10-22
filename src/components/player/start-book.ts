@@ -6,6 +6,7 @@ import { contentKeyOf } from '@/lib/content-key';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
 import {
   cancelEpisodeFetchUnless,
+  isAbsentEpisode,
   needsEpisodeFetch,
   requestEpisodeFetch,
 } from '@/playback/episode-fetch';
@@ -121,7 +122,7 @@ export type StartHow = {
 /** Whether `book` is an episode its server must fetch before it plays (`podcast_fetch`
  * from the cached flags, read once when the cache holds none). */
 async function needsFetch(target: PlayTarget, book: Book): Promise<boolean> {
-  if (!book.episode || book.episode.downloaded) return false;
+  if (!isAbsentEpisode(book)) return false;
   const client = resolveClient(target.connectionId);
   if (!client) return false;
   const caps = await fetchCapabilities(target.connectionId, client).catch(() => null);

@@ -140,6 +140,16 @@ describe('resolveUpNext', () => {
     expect(s.folderNext).not.toHaveBeenCalled();
   });
 
+  it('queueOnly stops after the queue: no series, no folder', async () => {
+    const s = sources({
+      queue: jest.fn(async () => [entry('Series/Book 1')]),
+      nextBook: jest.fn(async () => seriesNext),
+    });
+    expect((await resolveUpNext(s, FINISHED, { queueOnly: true })).next).toBeNull();
+    expect(s.nextBook).not.toHaveBeenCalled();
+    expect(s.folderNext).not.toHaveBeenCalled();
+  });
+
   it('(b) falls to the series when the queue has nothing playable', async () => {
     const s = sources({
       queue: jest.fn(async () => [entry('Series/Book 1'), entry('X/Gone', { book: undefined })]),

@@ -10,6 +10,8 @@ jest.mock('@/playback/episode-fetch', () => {
   const { create } = jest.requireActual('zustand');
   return {
     useEpisodeFetch: create(() => ({ pending: null })),
+    // The controller's rule (its module pulls in the player store).
+    isStopped: (phase: string) => ['failed', 'unavailable', 'refused'].includes(phase),
     retryEpisodeFetch: () => mockRetry(),
     cancelEpisodeFetch: () => mockCancel(),
   };

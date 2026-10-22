@@ -138,20 +138,9 @@ function endEpisode(
 async function playNextInPlace(info: FinishedBook, queueOnly = false): Promise<boolean> {
   const client = resolveClient(info.connectionId);
   if (!client) return false;
-  const sources = upNextSources(client, info.connectionId);
-  const { next } = await resolveUpNext(
-    queueOnly
-      ? {
-          ...sources,
-          capabilities: async () => {
-            const caps = await sources.capabilities();
-            return caps && { ...caps, next_book: false };
-          },
-          folderNext: async () => null,
-        }
-      : sources,
-    info,
-  );
+  const { next } = await resolveUpNext(upNextSources(client, info.connectionId), info, {
+    queueOnly,
+  });
   return !!next && (await advanceTo(next));
 }
 

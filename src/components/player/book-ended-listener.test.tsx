@@ -211,7 +211,7 @@ describe('BookEndedListener', () => {
     appState = 'background';
     mockPathname = '/player';
     await playThenEnd();
-    expect(mockResolve).toHaveBeenCalledWith(expect.anything(), FINISHED);
+    expect(mockResolve).toHaveBeenCalledWith(expect.anything(), FINISHED, { queueOnly: false });
     await waitFor(() => expect(mockStart).toHaveBeenCalledWith(headAnswer.next));
     // Presenting the player modal from the background left iOS on a black screen.
     expect(mockReplace).not.toHaveBeenCalled();
@@ -347,9 +347,11 @@ describe('BookEndedListener, a podcast episode', () => {
     expect(mockReplace).not.toHaveBeenCalled();
     expect(mockRemove).toHaveBeenCalledWith({ libraryId: 1, path: FINISHED.path });
     // Up next only: neither the series nor the folder follow an episode.
-    const sources = mockResolve.mock.calls[0][0];
-    await expect(sources.capabilities()).resolves.toEqual({ queue: true, next_book: false });
-    await expect(sources.folderNext(1, FINISHED.path)).resolves.toBeNull();
+    expect(mockResolve).toHaveBeenCalledWith(
+      expect.anything(),
+      { ...FINISHED, episode: true },
+      { queueOnly: true },
+    );
   });
 
   it('stops with nothing next, closing a full player left open on it', async () => {

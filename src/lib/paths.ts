@@ -1,5 +1,6 @@
 import type { Href } from 'expo-router';
 
+import type { PodcastEpisodeOrder } from '@/api/types';
 import { resolveConnectionId } from '@/lib/connection-id';
 
 /** Reconstruct a rel_path from an Expo Router catch-all param. */
@@ -209,7 +210,7 @@ export function podcastShowHref(
   connectionId: string,
   libraryId: number,
   show: string,
-  order?: 'newest' | 'oldest',
+  order?: PodcastEpisodeOrder,
 ): Href {
   return {
     pathname: '/podcast',
@@ -345,7 +346,7 @@ export function parsePodcastParams(p: RawParams): {
   connectionId: string;
   libraryId: number;
   show: string;
-  order: 'newest' | 'oldest' | null;
+  order: PodcastEpisodeOrder | null;
 } | null {
   const libraryId = idParam(p.library);
   const show = firstParam(p.show);

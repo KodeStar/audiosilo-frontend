@@ -1,9 +1,9 @@
-import { skipToken, useQueries } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { latestEpisodesQuery, myPodcastsQuery, useLibrariesAll } from '@/api/hooks';
 import { useApiRegistry } from '@/api/provider';
-import type { PodcastEpisodePage } from '@/api/types';
+import { isPodcastLibrary } from '@/lib/library-kind';
 import type { Connection } from '@/stores/session';
 
 import {
@@ -31,7 +31,7 @@ export function useNewEpisodes(
   const podcastLibraries = new Map<string, number>();
   for (const g of groups) {
     if (!ids.has(g.connectionId)) continue;
-    const lib = g.libraries.find((l) => l.kind === 'podcasts');
+    const lib = g.libraries.find(isPodcastLibrary);
     if (lib) podcastLibraries.set(g.connectionId, lib.id);
   }
   const cids = [...podcastLibraries.keys()];
@@ -45,30 +45,24 @@ export function useNewEpisodes(
   );
   const shows = recentShows(followed, now);
   const latest = useQueries({
-    queries: shows.map(({ connectionId, show }) => {
-      const spec = latestEpisodesQuery(
+    queries: shows.map(({ connectionId, show }) =>
+      latestEpisodesQuery(
         connectionId,
         clients.get(connectionId),
         show.library_id,
         show.path,
         NEW_EPISODES_PER_SHOW,
-      );
-      return show.library_id > 0 ? spec : { ...spec, queryFn: skipToken };
-    }),
+      ),
+    ),
   });
   const items = newEpisodes(
     shows.map((s, i) => ({
       ...s,
-      episodes: (latest[i]?.data as PodcastEpisodePage | undefined)?.episodes ?? [],
+      episodes: latest[i]?.data?.episodes ?? [],
     })),
     skip,
     now,
     limit,
   );
-  return {
-    items,
-    podcastLibraries,
-    isLoading:
-      mine.some((r) => r.isLoading) || (shows.length > 0 && latest.some((r) => r.isLoading)),
-  };
+  return { items, podcastLibraries };
 }

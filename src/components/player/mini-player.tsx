@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type DimensionValue, Platform, View } from 'react-native';
+import { type DimensionValue, type LayoutChangeEvent, Platform, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -186,51 +186,33 @@ export function MiniPlayer({ bottomOffset = 0 }: { bottomOffset?: DimensionValue
   // card itself stays mounted, so coming back does not replay the entrance.
   if (!visible || onTop) return null;
 
-  const strip = fetching ? (
+  const strip = (
     <EpisodeFetchStrip
       className={cn(
         'rounded-card border border-border bg-card shadow-overlay',
         nowPlaying && 'mb-1.5',
       )}
     />
-  ) : null;
+  );
+  const shell = {
+    testID: 'mini-player',
+    onLayout: (e: LayoutChangeEvent) => setHeight(e.nativeEvent.layout.height),
+    style: [
+      {
+        position: 'absolute' as const,
+        left: 8,
+        right: 8,
+        bottom: bottomOffset,
+        marginBottom: MINI_PLAYER_GAP,
+      },
+      entranceStyle,
+    ],
+  };
 
-  if (!nowPlaying) {
-    return (
-      <Animated.View
-        testID="mini-player"
-        onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
-        style={[
-          {
-            position: 'absolute',
-            left: 8,
-            right: 8,
-            bottom: bottomOffset,
-            marginBottom: MINI_PLAYER_GAP,
-          },
-          entranceStyle,
-        ]}
-      >
-        {strip}
-      </Animated.View>
-    );
-  }
+  if (!nowPlaying) return <Animated.View {...shell}>{strip}</Animated.View>;
 
   return (
-    <Animated.View
-      testID="mini-player"
-      onLayout={(e) => setHeight(e.nativeEvent.layout.height)}
-      style={[
-        {
-          position: 'absolute',
-          left: 8,
-          right: 8,
-          bottom: bottomOffset,
-          marginBottom: MINI_PLAYER_GAP,
-        },
-        entranceStyle,
-      ]}
-    >
+    <Animated.View {...shell}>
       {strip}
       {/* Opaque (scrolling covers never bleed through), a hairline and the overlay
           shadow (Android: elevation, which keeps it lifted on the porcelain page). */}

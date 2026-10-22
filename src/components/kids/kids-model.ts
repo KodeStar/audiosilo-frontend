@@ -3,6 +3,7 @@ import { type GridSpec, gridMetrics } from '@/components/library/cover-layout';
 import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
 import type { LayoutClass } from '@/lib/layout';
+import { kidsLibraries } from '@/lib/library-kind';
 import { isInProgress } from '@/lib/progress-view';
 import { type DevicePeople, managerName } from '@/lib/account';
 import type { KidsSettings, Profile } from '@/stores/profiles';
@@ -80,8 +81,7 @@ export function kidsLibrary(
   connectionId: string,
   kids: Pick<KidsSettings, 'library'> | undefined,
 ): Library | null {
-  // Kids mode shows no podcasts (Bridge Phase 2d-1, decision 6.2).
-  const books = libraries.filter((l) => l.kind !== 'podcasts');
+  const books = kidsLibraries(libraries);
   const pick = kids?.library;
   if (pick && pick.connectionId === connectionId) {
     const found = books.find((l) => l.id === pick.libraryId);

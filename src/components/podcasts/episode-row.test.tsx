@@ -109,8 +109,12 @@ describe('EpisodeRow', () => {
 
   it('offers Up next and Mark as finished, never a download', async () => {
     await renderRow(podcastEpisode());
+    // The actions drop Download for any book with `episode` set (`useBookActions`).
     expect(mockActions).toHaveBeenCalledWith(
-      expect.objectContaining({ omit: ['play', 'collect', 'download', 'series'] }),
+      expect.objectContaining({
+        omit: ['play', 'collect', 'series'],
+        book: expect.objectContaining({ episode: expect.anything() }),
+      }),
     );
   });
 });

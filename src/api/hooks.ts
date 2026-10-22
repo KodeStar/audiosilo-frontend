@@ -29,6 +29,7 @@ import { byPosition } from '@/lib/by-position';
 import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
+import { isPodcastLibrary } from '@/lib/library-kind';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
@@ -184,6 +185,8 @@ export const qk = {
   /** A show's episodes in one order (`usePodcastEpisodes`, an infinite query). */
   podcastEpisodes: (cid: string, lib: number, show: string, order: PodcastEpisodeOrder) =>
     ['podcastEpisodes', cid, lib, show, order] as const,
+  /** Prefix matching every episode list in a podcast library (every show's). */
+  podcastEpisodesOfLibrary: (cid: string, lib: number) => ['podcastEpisodes', cid, lib] as const,
   /** Prefix matching every episode list of a show (both orders, Home's latest). */
   podcastEpisodesOfShow: (cid: string, lib: number, show: string) =>
     ['podcastEpisodes', cid, lib, show] as const,
@@ -2219,7 +2222,7 @@ const PODCAST_STALE_MS = 5 * 60_000;
 export function cachedPodcastLibrary(cid: string, libraryId: number): boolean {
   return !!queryClient
     .getQueryData<Library[]>(qk.libraries(cid))
-    ?.some((l) => l.id === libraryId && l.kind === 'podcasts');
+    ?.some((l) => l.id === libraryId && isPodcastLibrary(l));
 }
 
 /** Whether `libraryId` is a podcast library on the connection, from its library list (a
@@ -2229,7 +2232,7 @@ export function useIsPodcastLibrary(libraryId: number, connectionId?: string): b
   const client = useOptionalApi(connectionId);
   const { data } = useQuery({
     ...librariesQuery(cid, client),
-    select: (libs: Library[]) => libs.some((l) => l.id === libraryId && l.kind === 'podcasts'),
+    select: (libs: Library[]) => libs.some((l) => l.id === libraryId && isPodcastLibrary(l)),
   });
   return data === true;
 }
@@ -2297,9 +2300,11 @@ export function latestEpisodesQuery(
 ) {
   return queryOptions({
     queryKey: qk.latestEpisodes(cid, libraryId, show, limit),
-    queryFn: client
-      ? ({ signal }) => client.podcastEpisodes(libraryId, { show, order: 'newest', limit }, signal)
-      : skipToken,
+    queryFn:
+      client && libraryId > 0
+        ? ({ signal }) =>
+            client.podcastEpisodes(libraryId, { show, order: 'newest', limit }, signal)
+        : skipToken,
     staleTime: PODCAST_STALE_MS,
   });
 }
@@ -2310,18 +2315,6 @@ export function myPodcastsQuery(cid: string, client: MaybeClient) {
     queryKey: qk.myPodcasts(cid),
     queryFn: client ? ({ signal }) => client.myPodcasts(signal) : skipToken,
     staleTime: PODCAST_STALE_MS,
-  });
-}
-
-/** The shows the caller follows; ask only a connection that lists a podcast library
- * (`enabled`). */
-export function useMyPodcasts(
-  connectionId?: string,
-  { enabled = true }: { enabled?: boolean } = {},
-) {
-  return useQuery({
-    ...myPodcastsQuery(useCid(connectionId), useOptionalApi(connectionId)),
-    enabled,
   });
 }
 
@@ -2371,23 +2364,6 @@ export function useUnfollowPodcast(connectionId?: string) {
     (api, v: { libraryId: number; path: string }) => api.unfollowPodcast(v.libraryId, v.path),
     ({ qc, cid }, _answer, v) => storeFollowing(qc, cid, v.libraryId, v.path, false),
   );
-}
-
-/** An episode's fetch status (`GET .../podcasts/fetch`), the entry the episode-fetch
- * controller seeds and polls. */
-export function podcastFetchQuery(
-  cid: string,
-  client: MaybeClient,
-  libraryId: number,
-  path: string,
-) {
-  return queryOptions({
-    queryKey: qk.podcastFetch(cid, libraryId, path),
-    queryFn:
-      client && path.length > 0
-        ? async ({ signal }) => (await client.podcastFetchStatus(libraryId, path, signal)).fetch
-        : skipToken,
-  });
 }
 
 /** An episode's fetch status, read once (capability `podcast_fetch`; never polled here:
