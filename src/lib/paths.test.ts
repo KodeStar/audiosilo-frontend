@@ -12,8 +12,10 @@ import {
   parseCollectionParams,
   parseConnectBook,
   parsePersonParams,
+  parsePodcastParams,
   parseSeriesParams,
   pathLeaf,
+  podcastShowHref,
   playerHref,
   segmentsToPath,
   seriesHref,
@@ -311,5 +313,40 @@ describe('browse detail params', () => {
     }
     expect(parseConnectBook({ book: '2', path: '  ', uid: '5' })).toBeNull();
     expect(parseConnectBook({ book: '2', uid: '5' })).toBeNull();
+  });
+});
+
+// Bridge Phase 2d-1.
+describe('podcastShowHref / parsePodcastParams', () => {
+  it('links a show by its folder, with its order when given', () => {
+    expect(podcastShowHref('c', 5, 'Daily News')).toEqual({
+      pathname: '/podcast',
+      params: { connection: 'c', library: '5', show: 'Daily News' },
+    });
+    expect(podcastShowHref('c', 5, 'Daily News', 'oldest')).toEqual({
+      pathname: '/podcast',
+      params: { connection: 'c', library: '5', show: 'Daily News', order: 'oldest' },
+    });
+  });
+
+  it('reads a show link back, the order only when it is one', () => {
+    expect(parsePodcastParams({ connection: 'c', library: '5', show: 'Daily News' })).toEqual({
+      connectionId: 'c',
+      libraryId: 5,
+      show: 'Daily News',
+      order: null,
+    });
+    expect(
+      parsePodcastParams({ connection: 'c', library: '5', show: 'S', order: 'oldest' })?.order,
+    ).toBe('oldest');
+    expect(
+      parsePodcastParams({ connection: 'c', library: '5', show: 'S', order: 'shuffle' })?.order,
+    ).toBeNull();
+  });
+
+  it('rejects a show link without a library or a show', () => {
+    expect(parsePodcastParams({ connection: 'c', show: 'S' })).toBeNull();
+    expect(parsePodcastParams({ connection: 'c', library: '5' })).toBeNull();
+    expect(parsePodcastParams({ connection: 'c', library: '0', show: 'S' })).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import {
   libraryHref,
   narratorHref,
   playerHref,
+  podcastShowHref,
   seriesHref,
   type SeriesRef,
   settingsHref,
@@ -154,6 +155,9 @@ export function useOpen() {
     openNarrator: (connectionId: string, libraryId: number, name: string) =>
       go(narratorHref(connectionId, libraryId, name)),
     openCollection: (connectionId: string, id: number) => go(collectionHref(connectionId, id)),
+    /** A podcast show page (Bridge Phase 2d-1), by the show's folder path. */
+    openPodcastShow: (connectionId: string, libraryId: number, show: string) =>
+      go(podcastShowHref(connectionId, libraryId, show)),
     /** The Journal (across every server; the You hub's Journal), on `tab` when given. */
     openJournal: (tab?: JournalTab) => openJournal(tab),
     /** The You hub (the Me tab's root) on `section`. */

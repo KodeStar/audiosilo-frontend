@@ -65,6 +65,17 @@ describe('kidsConnectionId', () => {
 describe('kidsLibrary', () => {
   const libs = [lib(1), lib(2), lib(3)];
 
+  // Bridge Phase 2d-1, decision 6.2: kids mode shows no podcasts.
+  it('never picks a podcast library, even when it was the pick or is listed first', () => {
+    const podcasts = { ...lib(7, 'Podcasts'), kind: 'podcasts' as const };
+    expect(kidsLibrary([podcasts, ...libs], 'a.1', undefined)?.id).toBe(1);
+    expect(
+      kidsLibrary([podcasts, ...libs], 'a.1', { library: { connectionId: 'a.1', libraryId: 7 } })
+        ?.id,
+    ).toBe(1);
+    expect(kidsLibrary([podcasts], 'a.1', undefined)).toBeNull();
+  });
+
   it('uses the pick when it is still listed on this connection', () => {
     expect(kidsLibrary(libs, 'a.1', { library: { connectionId: 'a.1', libraryId: 2 } })?.id).toBe(
       2,

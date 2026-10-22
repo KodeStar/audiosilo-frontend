@@ -376,10 +376,14 @@ export function BookActionsMenu({
 }
 
 /**
- * A book's "..." button and its actions (`BookActionsMenu`). Sits beside (never inside)
- * the row's own press target.
+ * A book's "..." button and its actions (`BookActionsMenu`, `omit` leaving items out).
+ * Sits beside (never inside) the row's own press target.
  */
-export function BookActionsButton({ extra, ...target }: Target & { extra?: BookAction[] }) {
+export function BookActionsButton({
+  extra,
+  omit,
+  ...target
+}: Target & { extra?: BookAction[]; omit?: readonly BookActionKey[] }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const [sheet, setSheet] = useState(false);
@@ -387,6 +391,7 @@ export function BookActionsButton({ extra, ...target }: Target & { extra?: BookA
     <BookActionsMenu
       {...target}
       extra={extra}
+      omit={omit}
       sheetOpen={sheet}
       onSheetOpenChange={setSheet}
       trigger={

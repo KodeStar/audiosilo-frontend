@@ -52,13 +52,16 @@ export function KidsLibraryPicker({
   });
   const loading = results.some((r) => r.isPending && r.fetchStatus !== 'idle');
   const failed = results.filter((r) => r.isError);
+  // Kids mode shows no podcasts (Bridge Phase 2d-1, decision 6.2).
   const options: KidsLibraryOption[] = own.flatMap((c, i) =>
-    (results[i]?.data ?? []).map((l) => ({
-      connectionId: c.id,
-      libraryId: l.id,
-      label:
-        own.length > 1 ? t('profiles.kids.libraryOn', { name: l.name, server: c.name }) : l.name,
-    })),
+    (results[i]?.data ?? [])
+      .filter((l) => l.kind !== 'podcasts')
+      .map((l) => ({
+        connectionId: c.id,
+        libraryId: l.id,
+        label:
+          own.length > 1 ? t('profiles.kids.libraryOn', { name: l.name, server: c.name }) : l.name,
+      })),
   );
 
   if (loading && options.length === 0) {

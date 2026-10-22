@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { Icon } from './icon';
+import type { IconName } from './icon-data';
 import {
   FullWindowOverlay,
   NativeOnlyAnimatedView,
@@ -134,8 +135,13 @@ export function SelectContent({
 
 export function SelectItem({
   className,
+  icon,
   ...props
-}: Omit<React.ComponentProps<typeof SelectPrimitive.Item>, 'children'> & { className?: string }) {
+}: Omit<React.ComponentProps<typeof SelectPrimitive.Item>, 'children'> & {
+  className?: string;
+  /** A leading glyph (a podcast library's microphone), muted beside the label. */
+  icon?: IconName;
+}) {
   const themed = useThemeColors();
   return (
     <SelectPrimitive.Item
@@ -154,6 +160,7 @@ export function SelectItem({
           <Icon name="check" size={14} color={themed.brandInk} />
         </SelectPrimitive.ItemIndicator>
       </View>
+      {icon ? <Icon name={icon} size={14} color={themed.mutedForeground} /> : null}
       <SelectPrimitive.ItemText className="select-none font-sans text-sm text-popover-foreground" />
     </SelectPrimitive.Item>
   );

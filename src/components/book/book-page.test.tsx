@@ -39,8 +39,16 @@ let mockBridge: { version: string; features: string[] } | undefined;
 let mockJobs: BridgeJob[] = [];
 const mockMetaArgs = jest.fn();
 const mockRefetch = jest.fn();
+let mockPodcastLibrary = false;
+jest.mock('@/components/podcasts/episode-page', () => ({
+  EpisodePage: ({ path }: { path: string }) => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text>{`Episode page for ${path}`}</Text>;
+  },
+}));
 jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
+  useIsPodcastLibrary: () => mockPodcastLibrary,
   useBook: () => ({ data: mockBook, isLoading: mockBookLoading, refetch: mockRefetch }),
   useChapters: () => ({ data: mockChapters, isLoading: false }),
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
@@ -225,6 +233,7 @@ async function mountAt(layout: LayoutClass, width?: number) {
 beforeEach(() => {
   mockParams = { libraryId: '1', path: ['Author', 'Book'] };
   mockBook = BOOK;
+  mockPodcastLibrary = false;
   mockBookLoading = false;
   mockChapters = CHAPTERS;
   mockProgress = null;
@@ -243,6 +252,43 @@ beforeEach(() => {
   useSession.setState({
     connections: [{ id: 'home', name: 'Hearthside', serverUrl: 'https://h', token: 't' }],
   } as never);
+});
+
+// Bridge Phase 2d-1: an episode gets its own page at the same link.
+describe('book page, a podcast episode', () => {
+  it('renders the episode page for an item that is an episode', async () => {
+    mockBook = {
+      ...BOOK,
+      episode: {
+        show_path: 'Author',
+        published: null,
+        season: null,
+        episode: null,
+        episode_type: 'full',
+        explicit: false,
+        downloaded: true,
+        duration_source: 'file',
+        removed: false,
+      },
+    };
+    await mountAt('desktop');
+    expect(screen.getByText('Episode page for Author/Book')).toBeTruthy();
+    expect(screen.queryByTestId('book-page')).toBeNull();
+  });
+
+  it('renders it for any item of a podcast library, before the item is in', async () => {
+    mockPodcastLibrary = true;
+    mockBook = undefined;
+    mockBookLoading = true;
+    await mountAt('desktop');
+    expect(screen.getByText('Episode page for Author/Book')).toBeTruthy();
+  });
+
+  it('keeps the book page for a book', async () => {
+    await mountAt('desktop');
+    expect(screen.queryByText(/Episode page/)).toBeNull();
+    expect(screen.getByTestId('book-page')).toBeTruthy();
+  });
 });
 
 describe('book page primary action', () => {

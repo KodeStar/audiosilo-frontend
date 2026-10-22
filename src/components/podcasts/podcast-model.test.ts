@@ -1,6 +1,20 @@
-import { fetchStatus, wire2b } from '@/testing/podcast-fixtures';
+import i18n from '@/i18n';
+import { fetchStatus, podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
 
-import { fetchProgress, fetchReasonKey } from './podcast-model';
+import {
+  defaultEpisodeOrder,
+  episodeAsBook,
+  episodeLabel,
+  episodeMetaLine,
+  episodeRowState,
+  fetchProgress,
+  fetchReasonKey,
+  isRecent,
+  parseEpisodeOrder,
+  visibleEpisodes,
+} from './podcast-model';
+
+const t = i18n.t.bind(i18n);
 
 describe('fetchReasonKey', () => {
   it("names a listener's sentence for each known code, else the generic one", () => {
@@ -39,5 +53,123 @@ describe('fetchProgress', () => {
     });
     expect(fetchProgress(fetchStatus({ bytes_total: 0 }))).toMatchObject({ percent: null });
     expect(fetchProgress(null)).toEqual({ received: 0, total: null, percent: null });
+  });
+});
+
+describe('defaultEpisodeOrder', () => {
+  it('reads a serial show from its first episode, any other newest first', () => {
+    expect(defaultEpisodeOrder({ type: 'serial' })).toBe('oldest');
+    expect(defaultEpisodeOrder({ type: 'episodic' })).toBe('newest');
+    expect(defaultEpisodeOrder({ type: 'mini-series' })).toBe('newest');
+    expect(defaultEpisodeOrder(undefined)).toBe('newest');
+  });
+
+  it("reads a link's order, else none", () => {
+    expect(parseEpisodeOrder('oldest')).toBe('oldest');
+    expect(parseEpisodeOrder(['newest'])).toBe('newest');
+    expect(parseEpisodeOrder('random')).toBeNull();
+    expect(parseEpisodeOrder(undefined)).toBeNull();
+  });
+});
+
+describe('episodeLabel', () => {
+  it('numbers a season and episode, an episode alone, or nothing', () => {
+    expect(episodeLabel({ season: 2, episode: 5 }, t)).toBe('S2 E5');
+    expect(episodeLabel({ season: null, episode: 5 }, t)).toBe('E5');
+    expect(episodeLabel({ season: 2, episode: null }, t)).toBeNull();
+  });
+
+  it('builds the meta line from what the feed says', () => {
+    const now = new Date('2026-10-22T12:00:00Z');
+    expect(
+      episodeMetaLine(
+        podcastEpisode({ published: '2026-10-21T06:00:00Z', season: 1, episode: 3 }),
+        t,
+        now,
+      ),
+    ).toMatch(/^(21 Oct|Oct 21) · 30m · S1 E3$/);
+    // An unknown length is not "0m"; an undated episode has no date.
+    expect(
+      episodeMetaLine(
+        podcastEpisode({ published: null, duration: 0, duration_source: 'none', episode: null }),
+        t,
+        now,
+      ),
+    ).toBe('');
+  });
+});
+
+describe('visibleEpisodes', () => {
+  it('drops an episode gone from the feed unless its file is kept', () => {
+    const kept = podcastEpisode({ path: 'a', removed: true, downloaded: true });
+    const gone = podcastEpisode({ path: 'b', removed: true, downloaded: false });
+    const live = podcastEpisode({ path: 'c', downloaded: false });
+    expect(visibleEpisodes([kept, gone, live])).toEqual([kept, live]);
+  });
+});
+
+describe('isRecent', () => {
+  const now = new Date('2026-10-22T12:00:00Z');
+  it('is within the last two weeks', () => {
+    expect(isRecent('2026-10-21T06:00:00Z', now)).toBe(true);
+    expect(isRecent('2026-10-01T06:00:00Z', now)).toBe(false);
+    expect(isRecent(null, now)).toBe(false);
+    expect(isRecent('not a date', now)).toBe(false);
+  });
+});
+
+describe('episodeRowState', () => {
+  const absent = podcastEpisode({ downloaded: false });
+  it('reads the file on the server as ready, an absent one as on demand', () => {
+    expect(episodeRowState(podcastEpisode(), null, true)).toEqual({ kind: 'ready' });
+    expect(episodeRowState(absent, null, true)).toEqual({ kind: 'onDemand' });
+    // A server that cannot fetch it: not available.
+    expect(episodeRowState(absent, null, false)).toEqual({ kind: 'unavailable' });
+  });
+
+  it("follows the list's batched status", () => {
+    expect(episodeRowState({ ...absent, fetch: wire2b.status_response.fetch }, null, true)).toEqual(
+      {
+        kind: 'getting',
+        percent: 10,
+      },
+    );
+    expect(episodeRowState({ ...absent, fetch: wire2b.failed }, null, true)).toEqual({
+      kind: 'failed',
+    });
+    expect(
+      episodeRowState({ ...absent, fetch: fetchStatus({ state: 'unavailable' }) }, null, true),
+    ).toEqual({ kind: 'unavailable' });
+  });
+
+  it("prefers the player's own fetch of the episode", () => {
+    const waiting = { phase: 'waiting' as const, status: fetchStatus({ bytes_received: 500 }) };
+    expect(episodeRowState(absent, waiting, true)).toEqual({ kind: 'getting', percent: 50 });
+    expect(episodeRowState(absent, { phase: 'refused', status: null }, true)).toEqual({
+      kind: 'failed',
+    });
+    expect(episodeRowState(absent, { phase: 'unavailable', status: null }, true)).toEqual({
+      kind: 'unavailable',
+    });
+    expect(episodeRowState(absent, { phase: 'probing', status: null }, true)).toEqual({
+      kind: 'getting',
+      percent: null,
+    });
+  });
+});
+
+describe('episodeAsBook', () => {
+  it("is the episode as a start takes it, with the show's author and its facts", () => {
+    const b = episodeAsBook(
+      podcastEpisode({ downloaded: false, fetch: wire2b.failed }),
+      podcastShow(),
+    );
+    expect(b).toMatchObject({
+      library_id: 5,
+      rel_path: 'Daily News/2026-10-21 Monday.mp3',
+      title: 'Monday',
+      author: 'The Newsroom',
+      episode: { show_path: 'Daily News', downloaded: false, fetch: wire2b.failed },
+    });
   });
 });

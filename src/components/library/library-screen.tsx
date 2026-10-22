@@ -7,8 +7,10 @@ import {
   useCapability,
   useCollections,
   useNarrators,
+  usePodcastShows,
   useSeriesList,
 } from '@/api/hooks';
+import { PodcastShowsMode } from '@/components/podcasts/shows-mode';
 import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
@@ -37,6 +39,7 @@ const MODE_BODY: Record<
   Exclude<LibraryMode, 'folders'>,
   (p: LibraryModeProps) => React.ReactNode
 > = {
+  shows: PodcastShowsMode,
   books: BooksMode,
   authors: AuthorsMode,
   series: SeriesMode,
@@ -49,24 +52,27 @@ const MODE_BODY: Record<
  * on tablet/desktop, under the large title on a phone), the library picker as its
  * contextual action, and the current mode's body. Every mode but Folders shows the
  * selected library (`useSelectedLibrary`); a mode the library's server lacks is not
- * offered, and a link to one falls back to Books once that is known.
+ * offered, and a link to one falls back to Books once that is known. A podcast library
+ * (Bridge Phase 2d-1) offers Shows and Folders, and a book mode's link lands on Shows.
  */
 export function LibraryScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { mode: modeParam } = useLocalSearchParams<{ mode?: string | string[] }>();
-  const { selection, isLoading } = useSelectedLibrary();
+  const { selection, library, isLoading } = useSelectedLibrary();
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
+  // Unknown until the selected library is listed (`resolveLibraryMode` keeps a request).
+  const podcasts = library ? library.kind === 'podcasts' : selection ? undefined : false;
   // An empty id (nothing selected yet) resolves to no client: nothing is asked.
   const caps = {
     browsePeople: useCapability('browse_people', cid),
     collections: useCapability('collections', cid),
   };
-  const mode = resolveLibraryMode(parseLibraryMode(modeParam), caps);
-  const counts = useModeCounts(cid, libraryId);
+  const mode = resolveLibraryMode(parseLibraryMode(modeParam), caps, podcasts);
+  const counts = useModeCounts(cid, libraryId, podcasts);
 
-  const available = availableLibraryModes(caps);
+  const available = availableLibraryModes(caps, podcasts);
   // A deep-linked mode still waiting on its capability keeps its segment meanwhile.
   const options = LIBRARY_MODES.filter((m) => m === mode || available.includes(m)).map((m) => ({
     value: m,
@@ -126,13 +132,22 @@ export function LibraryScreen() {
 
 /** The segment counts the server can give for the selected library (each hook is
  * capability-gated, so an older server is never asked). Books has no total on the
- * wire (its list is paged), and Folders spans every library, so neither has one. */
-function useModeCounts(cid: string, libraryId: number): Partial<Record<LibraryMode, number>> {
-  const authors = useAuthors(libraryId, cid).data;
-  const narrators = useNarrators(libraryId, cid).data;
-  const series = useSeriesList(libraryId, cid).data;
-  const collections = useCollections(cid).data;
+ * wire (its list is paged), and Folders spans every library, so neither has one. A
+ * podcast library counts its shows; its book lists are never asked (no connection is
+ * no request), nor a books library's shows. */
+function useModeCounts(
+  cid: string,
+  libraryId: number,
+  podcasts: boolean | undefined,
+): Partial<Record<LibraryMode, number>> {
+  const bookCid = podcasts === false ? cid : '';
+  const authors = useAuthors(libraryId, bookCid).data;
+  const narrators = useNarrators(libraryId, bookCid).data;
+  const series = useSeriesList(libraryId, bookCid).data;
+  const collections = useCollections(bookCid).data;
+  const shows = usePodcastShows(libraryId, cid, { enabled: podcasts === true }).data;
   return {
+    shows: shows?.length,
     authors: authors?.people.length,
     narrators: narrators?.people.length,
     series: series?.length,

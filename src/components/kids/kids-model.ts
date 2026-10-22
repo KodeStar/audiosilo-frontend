@@ -80,12 +80,14 @@ export function kidsLibrary(
   connectionId: string,
   kids: Pick<KidsSettings, 'library'> | undefined,
 ): Library | null {
+  // Kids mode shows no podcasts (Bridge Phase 2d-1, decision 6.2).
+  const books = libraries.filter((l) => l.kind !== 'podcasts');
   const pick = kids?.library;
   if (pick && pick.connectionId === connectionId) {
-    const found = libraries.find((l) => l.id === pick.libraryId);
+    const found = books.find((l) => l.id === pick.libraryId);
     if (found) return found;
   }
-  return libraries[0] ?? null;
+  return books[0] ?? null;
 }
 
 /** The progress rows of stories partway through, most recently played first: the order
