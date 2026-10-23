@@ -26,7 +26,7 @@ import {
   episodeMetaLine,
   type EpisodeRowState,
   episodeRowState,
-  fetchReasonKey,
+  rowStateReasonKey,
 } from './podcast-model';
 
 /** The state line's words. */
@@ -83,6 +83,7 @@ export function EpisodeRow({
   const pending = useEpisodeFetch((s) => (s.pending?.key === key ? s.pending : null));
   const state = episodeRowState(episode, pending, canFetch);
   const finished = !!progress?.finished;
+  const reasonKey = finished ? null : rowStateReasonKey(state);
   const started = !!progress && isInProgress(progress);
   const fraction =
     progress && !finished && progress.position > 0
@@ -148,9 +149,9 @@ export function EpisodeRow({
             <ProgressBar fraction={fraction} minPercent={3} className="w-16" />
           ) : null}
         </View>
-        {!finished && (state.kind === 'unavailable' || state.kind === 'failed') ? (
+        {reasonKey ? (
           <Text variant="caption" numberOfLines={2} testID="episode-reason">
-            {t(fetchReasonKey(state.code))}
+            {t(reasonKey)}
           </Text>
         ) : null}
       </AnimatedPressable>

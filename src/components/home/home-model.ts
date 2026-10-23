@@ -1,11 +1,11 @@
 import type { Href } from 'expo-router';
 
-import type { SourcedProgress } from '@/api/hooks';
+import type { LibrariesOfServer, SourcedProgress } from '@/api/hooks';
 import type { Book, BookMetaSeriesWork, Library, NextBook } from '@/api/types';
 import { lengthBucket, libraryBooksHref } from '@/components/library/books/books-view';
 import { contentKeyOf } from '@/lib/content-key';
 import type { MergedBook } from '@/lib/dedup';
-import { isPodcastLibrary } from '@/lib/library-kind';
+import { podcastLibraryIds } from '@/lib/library-kind';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 
@@ -37,10 +37,8 @@ export const progressAt = (p: SourcedProgress): BookAt => ({
 });
 
 /** One server's library list as Home reads it (`useLibrariesAll`'s groups). */
-type LibraryGroupLike = {
-  connectionId: string;
+type LibraryGroupLike = Pick<LibrariesOfServer, 'connectionId' | 'status'> & {
   libraries: readonly Pick<Library, 'id' | 'kind'>[];
-  status: 'loading' | 'ready' | 'error';
 };
 
 /**
@@ -54,12 +52,7 @@ type LibraryGroupLike = {
 export function bookRowTest(groups: readonly LibraryGroupLike[]): (at: BookAt) => boolean {
   const podcasts = new Map<string, Set<number> | null>();
   for (const g of groups) {
-    podcasts.set(
-      g.connectionId,
-      g.status === 'loading'
-        ? null
-        : new Set(g.libraries.filter((l) => isPodcastLibrary(l)).map((l) => l.id)),
-    );
+    podcasts.set(g.connectionId, g.status === 'loading' ? null : podcastLibraryIds(g.libraries));
   }
   return (at) => {
     const libs = podcasts.get(at.connectionId);

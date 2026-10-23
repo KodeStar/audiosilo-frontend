@@ -40,6 +40,14 @@ export function fetchReasonKey(code: string | null | undefined): ParseKeys {
   return `podcasts.fetch.reason.${reason}`;
 }
 
+/** The sentence key for why an episode row's file is stopped (Couldn't get it, Not
+ * available now), or null in any other state. */
+export function rowStateReasonKey(state: EpisodeRowState): ParseKeys | null {
+  return state.kind === 'failed' || state.kind === 'unavailable'
+    ? fetchReasonKey(state.code)
+    : null;
+}
+
 /** How far a fetch has got: the bytes so far, the size when the server knows it, and the
  * share done (0..100, whole) when it does. */
 export function fetchProgress(status: PodcastFetchStatus | null): {

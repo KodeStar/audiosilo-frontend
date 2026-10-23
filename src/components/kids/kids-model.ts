@@ -3,7 +3,7 @@ import { type GridSpec, gridMetrics } from '@/components/library/cover-layout';
 import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
 import type { LayoutClass } from '@/lib/layout';
-import { isPodcastLibrary, kidsLibraries } from '@/lib/library-kind';
+import { kidsLibraries, podcastLibraryIds } from '@/lib/library-kind';
 import { isInProgress } from '@/lib/progress-view';
 import { type DevicePeople, managerName } from '@/lib/account';
 import type { KidsSettings, Profile } from '@/stores/profiles';
@@ -213,7 +213,7 @@ export function kidsCollectionSections(
   progress: readonly Progress[],
   libraries: readonly Pick<Library, 'id' | 'kind'>[] | undefined,
 ): KidsSection[] {
-  const podcasts = new Set((libraries ?? []).filter(isPodcastLibrary).map((l) => l.id));
+  const podcasts = podcastLibraryIds(libraries ?? []);
   const story = (b: Book) => !b.episode && !podcasts.has(b.library_id);
   return collections.flatMap((c, i): KidsSection[] => {
     const books = (details[i]?.items ?? []).flatMap((item) =>

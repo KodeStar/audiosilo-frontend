@@ -46,7 +46,7 @@ import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { episodeMarks, episodeMetaLine, episodeRowState, fetchReasonKey } from './podcast-model';
+import { episodeMarks, episodeMetaLine, episodeRowState, rowStateReasonKey } from './podcast-model';
 
 const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 
@@ -174,10 +174,8 @@ function EpisodeBody({
   );
   const marks = episodeMarks(episode, t);
   // Why it can't play (or wasn't fetched), beside the disabled Play or Try again.
-  const reason =
-    (state.kind === 'unavailable' || state.kind === 'failed') && !loaded
-      ? t(fetchReasonKey(state.code))
-      : null;
+  const reasonKey = loaded ? null : rowStateReasonKey(state);
+  const reason = reasonKey ? t(reasonKey) : null;
 
   const primary =
     state.kind === 'failed' && !loaded ? (

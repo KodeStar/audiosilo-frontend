@@ -26,7 +26,7 @@ export function BookScale({
   /** Bookmarks, 0..1 along the book. */
   pins: readonly number[];
   percent: number;
-  /** A podcast episode's (named "through the episode"). */
+  /** Name the scale for a podcast episode, not a book. */
   episode?: boolean;
 }) {
   const { t } = useTranslation();

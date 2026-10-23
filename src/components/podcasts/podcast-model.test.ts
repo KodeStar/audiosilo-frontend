@@ -11,6 +11,7 @@ import {
   fetchProgress,
   fetchReasonKey,
   isRecent,
+  rowStateReasonKey,
   visibleEpisodes,
 } from './podcast-model';
 
@@ -180,6 +181,17 @@ describe('episodeRowState', () => {
       kind: 'getting',
       percent: null,
     });
+  });
+});
+
+describe('rowStateReasonKey', () => {
+  it('names why only for a stopped row', () => {
+    expect(rowStateReasonKey({ kind: 'failed', code: null })).toBe(fetchReasonKey(null));
+    expect(rowStateReasonKey({ kind: 'unavailable', code: 'bridge_unavailable' })).toBe(
+      fetchReasonKey('bridge_unavailable'),
+    );
+    expect(rowStateReasonKey({ kind: 'ready' })).toBeNull();
+    expect(rowStateReasonKey({ kind: 'getting', percent: 10 })).toBeNull();
   });
 });
 
