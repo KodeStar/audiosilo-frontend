@@ -105,7 +105,32 @@ jest.mock('@/components/search/use-search', () => ({
 }));
 
 const mockProgressOptions = jest.fn();
+// Each Continue listening book's `/item`, by path (PLAYER-03: titled by it): none known
+// unless a test says so.
+let mockItemTitles: Record<string, string> = {};
+const mockItemReads = jest.fn();
+jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual('@tanstack/react-query'),
+  useQueries: ({
+    queries,
+    combine,
+  }: {
+    queries: { queryKey: unknown[]; enabled?: boolean }[];
+    combine: (r: { data?: { title: string } }[]) => unknown;
+  }) => {
+    mockItemReads(queries.map((q) => ({ path: q.queryKey[3], enabled: q.enabled })));
+    return combine(
+      queries.map((q) => {
+        const title = mockItemTitles[q.queryKey[3] as string];
+        return { data: title ? { title } : undefined };
+      }),
+    );
+  },
+}));
 jest.mock('@/api/hooks', () => ({
+  itemQuery: (cid: string, _client: unknown, libraryId: number, path: string) => ({
+    queryKey: ['item', cid, libraryId, path],
+  }),
   useSavedProgress: () => undefined,
   // One server, libraries unnamed: no source line (useSourceLabeller has its own tests).
   useSourceLabeller: () => () => undefined,
@@ -198,6 +223,7 @@ async function openWith(query = '') {
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  mockItemTitles = {};
   mockUpNext = { supported: undefined, count: 0 };
   usePalette.setState({ open: false, query: '' });
   useRecentSearches.setState({ recent: [] });
@@ -273,6 +299,18 @@ describe('CommandPalette', () => {
     expect(classes).toContain('text-brand-ink');
     expect(classes).toContain('text-sm');
     expect(classes).not.toContain('text-base');
+  });
+
+  it("titles Continue listening by each book's item, not its folder (PLAYER-03)", async () => {
+    mockItemTitles = { 'Carroll/Alice': "Alice's Adventures in Wonderland" };
+    await openWith();
+    expect(screen.getByText("Alice's Adventures in Wonderland")).toBeTruthy();
+    expect(screen.queryByText('Alice')).toBeNull();
+    expect(mockItemReads).toHaveBeenLastCalledWith([{ path: 'Carroll/Alice', enabled: true }]);
+    // Not while a query is typed.
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'holmes');
+    await act(async () => jest.runOnlyPendingTimers());
+    expect(mockItemReads).toHaveBeenLastCalledWith([{ path: 'Carroll/Alice', enabled: false }]);
   });
 
   it('reads Continue listening from the cache, and not at all while a query is typed', async () => {

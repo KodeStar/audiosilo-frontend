@@ -1,4 +1,10 @@
-import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import {
+  cleanAddresses,
+  hostOf,
+  normalizeUrl,
+  parseInviteScan,
+  parsePairingScan,
+} from '@/lib/pairing';
 
 describe('normalizeUrl', () => {
   it('adds a default https scheme when none is given', () => {
@@ -162,5 +168,60 @@ describe('hostOf', () => {
     expect(hostOf('https://books.example.com:8443/base')).toBe('books.example.com:8443');
     expect(hostOf('HTTP://192.168.1.20:8080')).toBe('192.168.1.20:8080');
     expect(hostOf('books.example.com')).toBe('books.example.com');
+  });
+});
+
+describe('parseInviteScan (an invite QR or link, #98)', () => {
+  it('reads the server and code of an invite link', () => {
+    expect(parseInviteScan('https://books.example.com/connect#code=ABCD-EFGH-JKMN-PQRS')).toEqual({
+      base: 'https://books.example.com',
+      code: 'ABCD-EFGH-JKMN-PQRS',
+    });
+  });
+
+  it('keeps a port and a base path', () => {
+    expect(parseInviteScan('http://192.168.1.5:8080/connect#code=ABCD-1234')).toEqual({
+      base: 'http://192.168.1.5:8080',
+      code: 'ABCD-1234',
+    });
+    expect(parseInviteScan(' https://example.com/audiobooks/connect/#code=ABCD-1234 ')).toEqual({
+      base: 'https://example.com/audiobooks',
+      code: 'ABCD-1234',
+    });
+  });
+
+  it('reads an encoded code among other fragment params', () => {
+    expect(parseInviteScan('https://example.com/connect#x=1&code=ABCD%2D1234')).toEqual({
+      base: 'https://example.com',
+      code: 'ABCD-1234',
+    });
+  });
+
+  it('refuses a malformed code, or none', () => {
+    for (const raw of [
+      'https://example.com/connect#code=',
+      'https://example.com/connect#code=AB CD',
+      'https://example.com/connect#code=-ABCD',
+      'https://example.com/connect#code=ABCD--1234',
+      'https://example.com/connect#code=%E0%A4%A',
+      'https://example.com/connect#code=<script>',
+      `https://example.com/connect#code=${'A'.repeat(65)}`,
+      'https://example.com/connect#token=ABCD',
+      'https://example.com/connect',
+    ]) {
+      expect(parseInviteScan(raw)).toBeNull();
+    }
+  });
+
+  it('refuses another page, a pairing link and a non-http link', () => {
+    expect(parseInviteScan('https://example.com/login#code=ABCD-1234')).toBeNull();
+    expect(parseInviteScan('https://example.com/web/connect#code=ABCD-1234')).toBeNull();
+    expect(parseInviteScan('https://example.com/web/connect?token=abc')).toBeNull();
+    expect(parseInviteScan('audiosilo://connect#code=ABCD-1234')).toBeNull();
+    expect(parseInviteScan('ftp://example.com/connect#code=ABCD-1234')).toBeNull();
+  });
+
+  it('is not a pairing link (the scanner tries both)', () => {
+    expect(parsePairingScan('https://example.com/connect#code=ABCD-1234')).toBeNull();
   });
 });

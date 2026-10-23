@@ -82,6 +82,32 @@ describe('FollowByUrl', () => {
     expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'Daily News');
   });
 
+  it('says a feed asked for as private joined the public show the library had (R-25)', async () => {
+    mockFollow.mockResolvedValue({
+      state: 'following',
+      show: podcastShow({ library_id: 7, path: 'Daily News', title: 'Daily News', private: false }),
+    } satisfies PodcastFollowResult);
+    await mount();
+    await fireEvent(screen.getByTestId('private-feed'), 'onCheckedChange', true);
+    await follow(FEED);
+    expect((await screen.findByTestId('follow-by-url-following')).props.children).toBe(
+      "You follow Daily News. It was already in this library as a public feed, so it isn't private.",
+    );
+  });
+
+  it('says nothing more when the private feed it asked for is private', async () => {
+    mockFollow.mockResolvedValue({
+      state: 'following',
+      show: podcastShow({ library_id: 7, path: 'Mine', title: 'Mine', private: true }),
+    } satisfies PodcastFollowResult);
+    await mount();
+    await fireEvent(screen.getByTestId('private-feed'), 'onCheckedChange', true);
+    await follow(FEED);
+    expect((await screen.findByTestId('follow-by-url-following')).props.children).toBe(
+      'You follow Mine.',
+    );
+  });
+
   it.each([
     ['invalid_feed_url', 400, "That feed address can't be used. Check it and try again."],
     [

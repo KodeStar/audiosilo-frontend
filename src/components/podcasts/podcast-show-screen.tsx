@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
+import { ApiError } from '@/api/client';
 import { useCapability, usePodcastEpisodes, usePodcastShows, useProgressLookup } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import type { PodcastEpisodeOrder, PodcastShow } from '@/api/types';
@@ -40,6 +41,9 @@ export function PodcastShowScreen() {
   );
 }
 
+/** The show list's refusals that mean the link points nowhere (PLAYER-07). */
+const BAD_LINK = new Set([403, 404, 409]);
+
 function ShowContent() {
   const { t } = useTranslation();
   const params = parsePodcastParams(useLocalSearchParams());
@@ -54,6 +58,11 @@ function ShowContent() {
         <RowSkeletonList />
       </View>
     );
+  }
+  // A link to a library that isn't a podcast library (409), or isn't there or isn't
+  // shared (403, 404): a stale or hand-edited link, which no Retry can mend.
+  if (!shows.data && shows.error instanceof ApiError && BAD_LINK.has(shows.error.status)) {
+    return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   }
   if (!shows.data) {
     return (

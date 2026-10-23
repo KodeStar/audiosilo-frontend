@@ -10,12 +10,13 @@ import { openExternalUrl } from '@/lib/support';
 import { DiscoveryArtwork } from './discovery-artwork';
 
 /** What following a result did: asked and not answered yet, on its way (its request), or
- * followed (the show), or its request ended without adding it. */
+ * followed (the show), or its request ended without adding it (failed, or cancelled). */
 export type ResultOutcome =
   | { kind: 'busy' }
   | { kind: 'adding'; requestId: number }
   | { kind: 'following'; libraryId: number; path: string }
-  | { kind: 'failed' };
+  | { kind: 'failed' }
+  | { kind: 'cancelled' };
 
 /**
  * One directory result (Bridge Phase 2d-2): its artwork (the server's proxy), title,
@@ -87,9 +88,13 @@ export function DiscoveryResultRow({
           </Text>
         ) : canFollow ? (
           <>
-            {outcome?.kind === 'failed' ? (
+            {outcome?.kind === 'failed' || outcome?.kind === 'cancelled' ? (
               <Text variant="caption" testID="discovery-result-failed">
-                {t('podcasts.requests.state.failed')}
+                {t(
+                  outcome.kind === 'cancelled'
+                    ? 'podcasts.requests.state.cancelled'
+                    : 'podcasts.requests.state.failed',
+                )}
               </Text>
             ) : null}
             <Button

@@ -79,14 +79,17 @@ export function DirectorySearch({
   const follow = useFollowPodcastByUrl(connectionId);
   const [outcomes, setOutcomes] = useState<Record<string, ResultOutcome>>({});
   // A result on its way reads its request live (the page's requests list polls it), so
-  // it turns Following or Couldn't add once the request ends.
+  // it turns Following, Cancelled or Couldn't add once the request ends, and offers Follow
+  // again once the list no longer holds it (its end unknown: following again answers).
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
   const liveOutcomes = useMemo(() => {
     const live: Record<string, ResultOutcome> = {};
-    for (const [feedUrl, outcome] of Object.entries(outcomes))
-      live[feedUrl] =
-        (outcome.kind === 'adding' && requestEnd(requests, outcome.requestId)) || outcome;
+    for (const [feedUrl, outcome] of Object.entries(outcomes)) {
+      const end = outcome.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
+      if (end?.kind === 'unknown') continue;
+      live[feedUrl] = end ?? outcome;
+    }
     return live;
   }, [outcomes, requests]);
 

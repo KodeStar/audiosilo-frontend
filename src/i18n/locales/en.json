@@ -10,7 +10,12 @@
     "off": "Off",
     "resumeChapter": "Resume chapter {{chapter}}",
     "resumeTitled": "Resume {{title}}",
-    "tooManyTries": "Too many tries. Wait a few minutes and try again."
+    "tooManyTries": "Too many tries. Wait a few minutes and try again.",
+    "notFound": {
+      "title": "Page not found",
+      "body": "This link doesn't go anywhere in AudioSilo. It may be old or mistyped.",
+      "home": "Go to Home"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -358,7 +363,7 @@
     },
     "scan": {
       "closeLabel": "Close scanner",
-      "invalidCode": "That QR code isn't an AudioSilo pairing code.",
+      "invalidCode": "That QR code isn't an AudioSilo pairing or invite code.",
       "permissionTitle": "Camera access needed",
       "permissionDenied": "AudioSilo needs camera access to scan your server's pairing QR code.",
       "tryAgain": "Try again",
@@ -382,7 +387,9 @@
       "open": "I have a pairing link",
       "label": "Pairing link",
       "connect": "Connect",
-      "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?..."
+      "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?...",
+      "otherServer": "This link is for another server, and this page can only connect to its own. Open the link to connect there.",
+      "openLink": "Open the link"
     },
     "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment."
   },
@@ -1182,7 +1189,9 @@
       "startsAt": "starts at {{time}}",
       "community": "Chapters from the AudioSilo community database",
       "generated": "Chapters found in the narration on this server",
-      "id3Chap": "Chapters from the episode file"
+      "id3Chap": "Chapters from the episode file",
+      "wholeEpisode": "The whole episode",
+      "partsTitleEpisode": "This episode has no chapter marks"
     },
     "details": {
       "title": "Details",
@@ -1774,7 +1783,10 @@
     "autoPlayHint": "Starts the first book in Up next, or the next in the series.",
     "buttonLabel_one": "Up next, {{count}} book",
     "buttonLabel_other": "Up next, {{count}} books",
-    "buttonLabelEmpty": "Up next"
+    "buttonLabelEmpty": "Up next",
+    "autoPlayEpisode": "Play Up next automatically",
+    "autoPlayEpisodeHint": "When this episode ends, the first item in Up next plays.",
+    "nextEpisode": "Next episode"
   },
   "series": {
     "eyebrow": "Series",
@@ -2186,7 +2198,9 @@
       "unsupported": "Its server doesn't support casting yet. Updating AudioSilo on the server adds it.",
       "local-address": "The app reaches your server at this device's own address (localhost), which a Cast device can't reach. Connect to the server by its network address instead.",
       "codec": "Its audio format doesn't play on Cast devices, and the server can't convert it.",
-      "no-connection": "Its server isn't signed in on this device. Sign in again to cast it."
+      "no-connection": "Its server isn't signed in on this device. Sign in again to cast it.",
+      "titleEpisode": "This episode can't be cast",
+      "episode": "Podcast episodes can't be cast yet, so this one stays on this device."
     },
     "failed": {
       "title": "Couldn't start casting",
@@ -2661,7 +2675,7 @@
         "import": "Import a list"
       },
       "unavailable": "Adding shows isn't available right now",
-      "unavailableHint": "Podcasts may be turned off on this server, or it can't add shows at the moment. Try again later.",
+      "unavailableHint": "Ask the person who runs your server: podcasts may be turned off there, or it can't add shows at the moment.",
       "kid": "Ask a grown-up to add shows.",
       "demo": "The demo can't add shows.",
       "search": {
@@ -2701,7 +2715,8 @@
         "off": "Searching for shows is turned off on this server.",
         "invalidQuery": "Use 2 to 200 letters or words.",
         "invalidCountry": "The directory doesn't know this device's region.",
-        "other": "Couldn't search. Try again."
+        "other": "Couldn't search. Try again.",
+        "noAccess": "This app can't use podcasts on this server. Update the app, then try again."
       },
       "refusal": {
         "moduleOff": "Podcasts are turned off on this server.",
@@ -2729,7 +2744,8 @@
         "notHttp": "Use an address starting with http:// or https://.",
         "tooLong": "That address is too long.",
         "following": "You follow {{title}}.",
-        "adding": "Adding the show. It appears in Shows once it's ready."
+        "adding": "Adding the show. It appears in Shows once it's ready.",
+        "followingPublic": "You follow {{title}}. It was already in this library as a public feed, so it isn't private."
       }
     },
     "requests": {
@@ -2749,7 +2765,12 @@
         "notAFeed": "That address isn't a podcast feed.",
         "gone": "The feed isn't there any more.",
         "followAgain": "Follow the feed again to finish adding it.",
-        "other": "Something went wrong adding it."
+        "other": "Something went wrong adding it.",
+        "notFound": "Nothing was found at that address.",
+        "denied": "The feed refused the request. It may need a login.",
+        "localAddress": "That address is on a local network. The person who runs your server can allow it.",
+        "tooLarge": "That feed is too large.",
+        "feedError": "The feed's server answered with an error. Try again later."
       }
     },
     "import": {
@@ -2775,7 +2796,10 @@
         "stalled": "The next batch couldn't start. Try again in a while.",
         "stoppedUser": "Stopped. Shows already added stay.",
         "stoppedBusy": "Your server stayed busy. Try again later.",
-        "stoppedCantAct": "Stopped, because someone else is listening on this device now."
+        "stoppedCantAct": "Stopped, because someone else is listening on this device now.",
+        "rateLimited": "Imports can run about once every 30 seconds. Trying again in {{seconds}} s.",
+        "doneFailed_one": "Done. {{count}} show couldn't be added. You can try it again below.",
+        "doneFailed_other": "Done. {{count}} shows couldn't be added. You can try each one again below."
       },
       "fail": {
         "notOpml": "That file isn't an OPML list.",
@@ -2790,8 +2814,13 @@
         "invalid": "No usable feed address",
         "limited": "Waiting for the next batch",
         "unavailable": "Can't be added right now",
-        "error": "Couldn't add"
-      }
+        "error": "Couldn't add",
+        "cancelled": "Cancelled"
+      },
+      "reason": {
+        "recentlyFailed": "It couldn't be added a short while ago."
+      },
+      "tryRowAgain": "Try entry {{index}} again"
     },
     "export": {
       "action": "Export my shows",

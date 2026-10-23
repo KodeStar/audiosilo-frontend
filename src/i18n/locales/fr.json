@@ -10,7 +10,12 @@
     "off": "Désactivé",
     "resumeChapter": "Reprendre le chapitre {{chapter}}",
     "resumeTitled": "Reprendre {{title}}",
-    "tooManyTries": "Trop de tentatives. Patientez quelques minutes, puis réessayez."
+    "tooManyTries": "Trop de tentatives. Patientez quelques minutes, puis réessayez.",
+    "notFound": {
+      "title": "Page introuvable",
+      "body": "Ce lien ne mène nulle part dans AudioSilo. Il est peut-être ancien ou mal saisi.",
+      "home": "Aller à l'accueil"
+    }
   },
   "settings": {
     "title": "Réglages",
@@ -358,7 +363,7 @@
     },
     "scan": {
       "closeLabel": "Fermer le scanner",
-      "invalidCode": "Ce code QR n'est pas un code d'association AudioSilo.",
+      "invalidCode": "Ce code QR n'est pas un code d'appairage ni d'invitation AudioSilo.",
       "permissionTitle": "Accès à la caméra requis",
       "permissionDenied": "AudioSilo a besoin d'accéder à la caméra pour scanner le code QR d'association de votre serveur.",
       "tryAgain": "Réessayer",
@@ -382,7 +387,9 @@
       "open": "J'ai un lien d'appairage",
       "label": "Lien d'appairage",
       "connect": "Se connecter",
-      "invalid": "Ce n'est pas un lien d'appairage AudioSilo. Ces liens ressemblent à https://<serveur>/web/connect?token=... ou audiosilo://connect?..."
+      "invalid": "Ce n'est pas un lien d'appairage AudioSilo. Ces liens ressemblent à https://<serveur>/web/connect?token=... ou audiosilo://connect?...",
+      "otherServer": "Ce lien concerne un autre serveur, et cette page ne peut se connecter qu’au sien. Ouvrez le lien pour vous y connecter.",
+      "openLink": "Ouvrir le lien"
     },
     "memberNotReady": "Cet appareil ne peut pas encore la connecter. Réessayez dans un instant."
   },
@@ -1182,7 +1189,9 @@
       "startsAt": "commence à {{time}}",
       "community": "Chapitres issus de la base de données communautaire d’AudioSilo",
       "generated": "Chapitres trouvés dans la narration sur ce serveur",
-      "id3Chap": "Chapitres du fichier de l'épisode"
+      "id3Chap": "Chapitres du fichier de l'épisode",
+      "wholeEpisode": "L'épisode entier",
+      "partsTitleEpisode": "Cet épisode n’a pas de marques de chapitre"
     },
     "details": {
       "title": "Détails",
@@ -1774,7 +1783,10 @@
     "autoPlayHint": "Démarre le premier livre de la file À suivre, ou le suivant de la série.",
     "buttonLabel_one": "À suivre, {{count}} livre",
     "buttonLabel_other": "À suivre, {{count}} livres",
-    "buttonLabelEmpty": "À suivre"
+    "buttonLabelEmpty": "À suivre",
+    "autoPlayEpisode": "Lire À suivre automatiquement",
+    "autoPlayEpisodeHint": "À la fin de cet épisode, le premier élément de À suivre démarre.",
+    "nextEpisode": "Épisode suivant"
   },
   "series": {
     "eyebrow": "Série",
@@ -2186,7 +2198,9 @@
       "unsupported": "Son serveur ne prend pas encore en charge Cast. Une mise à jour d’AudioSilo sur le serveur l’ajoute.",
       "local-address": "L’app joint votre serveur à l’adresse propre de cet appareil (localhost), qu’un appareil Cast ne peut pas atteindre. Connectez-vous plutôt au serveur par son adresse réseau.",
       "codec": "Son format audio ne se lit pas sur les appareils Cast, et le serveur ne peut pas le convertir.",
-      "no-connection": "Son serveur n’est pas connecté sur cet appareil. Reconnectez-vous pour le diffuser."
+      "no-connection": "Son serveur n’est pas connecté sur cet appareil. Reconnectez-vous pour le diffuser.",
+      "titleEpisode": "Cet épisode ne peut pas être diffusé",
+      "episode": "Les épisodes de podcast ne peuvent pas encore être diffusés : celui-ci reste sur cet appareil."
     },
     "failed": {
       "title": "Impossible de lancer la diffusion",
@@ -2661,7 +2675,7 @@
         "import": "Importer une liste"
       },
       "unavailable": "Impossible d'ajouter des émissions pour le moment",
-      "unavailableHint": "Les podcasts sont peut-être désactivés sur ce serveur, ou il ne peut pas ajouter d'émissions pour l'instant. Réessayez plus tard.",
+      "unavailableHint": "Demandez à la personne qui gère votre serveur : les podcasts y sont peut-être désactivés, ou il ne peut pas ajouter d'émissions pour l'instant.",
       "kid": "Demande à un adulte d'ajouter des émissions.",
       "demo": "La démo ne permet pas d'ajouter des émissions.",
       "search": {
@@ -2701,7 +2715,8 @@
         "off": "La recherche d'émissions est désactivée sur ce serveur.",
         "invalidQuery": "Utilisez entre 2 et 200 caractères.",
         "invalidCountry": "L'annuaire ne connaît pas la région de cet appareil.",
-        "other": "La recherche n'a pas abouti. Réessayez."
+        "other": "La recherche n'a pas abouti. Réessayez.",
+        "noAccess": "Cette app ne peut pas utiliser les podcasts sur ce serveur. Mettez l'app à jour, puis réessayez."
       },
       "refusal": {
         "moduleOff": "Les podcasts sont désactivés sur ce serveur.",
@@ -2729,7 +2744,8 @@
         "notHttp": "Utilisez une adresse qui commence par http:// ou https://.",
         "tooLong": "Cette adresse est trop longue.",
         "following": "Vous suivez {{title}}.",
-        "adding": "Ajout de l'émission en cours. Elle apparaîtra dans Émissions dès qu'elle sera prête."
+        "adding": "Ajout de l'émission en cours. Elle apparaîtra dans Émissions dès qu'elle sera prête.",
+        "followingPublic": "Vous suivez {{title}}. L'émission était déjà dans cette bibliothèque en tant que flux public, elle n'est donc pas privée."
       }
     },
     "requests": {
@@ -2749,7 +2765,12 @@
         "notAFeed": "Cette adresse n'est pas un flux de podcast.",
         "gone": "Le flux n'existe plus.",
         "followAgain": "Suivez à nouveau le flux pour terminer l'ajout.",
-        "other": "Un problème est survenu pendant l'ajout."
+        "other": "Un problème est survenu pendant l'ajout.",
+        "notFound": "Rien n'a été trouvé à cette adresse.",
+        "denied": "Le flux a refusé la demande. Il nécessite peut-être une connexion.",
+        "localAddress": "Cette adresse est sur un réseau local. La personne qui gère votre serveur peut l’autoriser.",
+        "tooLarge": "Ce flux est trop volumineux.",
+        "feedError": "Le serveur du flux a répondu par une erreur. Réessayez plus tard."
       }
     },
     "import": {
@@ -2775,7 +2796,10 @@
         "stalled": "Le groupe suivant n'a pas pu démarrer. Réessayez plus tard.",
         "stoppedUser": "Arrêté. Les émissions déjà ajoutées restent.",
         "stoppedBusy": "Votre serveur est resté occupé. Réessayez plus tard.",
-        "stoppedCantAct": "Arrêté, car quelqu'un d'autre écoute maintenant sur cet appareil."
+        "stoppedCantAct": "Arrêté, car quelqu'un d'autre écoute maintenant sur cet appareil.",
+        "rateLimited": "Une importation est possible environ toutes les 30 secondes. Nouvel essai dans {{seconds}} s.",
+        "doneFailed_one": "Terminé. {{count}} émission n'a pas pu être ajoutée. Vous pouvez réessayer ci-dessous.",
+        "doneFailed_other": "Terminé. {{count}} émissions n'ont pas pu être ajoutées. Vous pouvez réessayer chacune ci-dessous."
       },
       "fail": {
         "notOpml": "Ce fichier n'est pas une liste OPML.",
@@ -2790,8 +2814,13 @@
         "invalid": "Pas d'adresse de flux utilisable",
         "limited": "En attente du groupe suivant",
         "unavailable": "Impossible à ajouter pour le moment",
-        "error": "Ajout impossible"
-      }
+        "error": "Ajout impossible",
+        "cancelled": "Annulé"
+      },
+      "reason": {
+        "recentlyFailed": "Elle n'a pas pu être ajoutée il y a peu."
+      },
+      "tryRowAgain": "Réessayer l'entrée {{index}}"
     },
     "export": {
       "action": "Exporter mes émissions",

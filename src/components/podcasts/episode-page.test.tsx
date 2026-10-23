@@ -14,9 +14,11 @@ jest.mock('@/components/player/use-listening-position', () => ({
 }));
 // The chapter list has its own suite: here, only whether it shows.
 jest.mock('@/components/book/book-chapters-tab', () => ({
-  BookChaptersTab: ({ list }: { list: { rows: unknown[] } }) => {
+  BookChaptersTab: ({ list, episode }: { list: { rows: unknown[] }; episode?: boolean }) => {
     const { Text } = jest.requireActual('react-native');
-    return <Text testID="chapters">{`${list.rows.length} chapters`}</Text>;
+    return (
+      <Text testID="chapters">{`${list.rows.length} chapters${episode ? ', episode' : ''}`}</Text>
+    );
   },
 }));
 const mockOpenShow = jest.fn();
@@ -128,6 +130,17 @@ describe('EpisodePage', () => {
     );
   });
 
+  it('offers Try again when not available for a reason it cannot name (R-23)', async () => {
+    mockFetchStatus = {
+      ...wire2b.failed,
+      state: 'unavailable',
+      error: { code: 'something_new', message: 'x' },
+    };
+    await mount();
+    expect(screen.getByTestId('episode-page-retry')).toBeTruthy();
+    expect(screen.queryByTestId('episode-page-play')).toBeNull();
+  });
+
   it('gives no reason while it can play', async () => {
     await mount();
     expect(screen.queryByTestId('episode-page-reason')).toBeNull();
@@ -152,6 +165,7 @@ describe('EpisodePage', () => {
       ],
     };
     await mount();
-    expect(screen.getByTestId('chapters').props.children).toBe('2 chapters');
+    // Worded for an episode ("The whole episode", BRIDGE-12).
+    expect(screen.getByTestId('chapters').props.children).toBe('2 chapters, episode');
   });
 });

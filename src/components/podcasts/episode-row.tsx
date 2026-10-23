@@ -21,6 +21,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
+  canRetryFetch,
   episodeAsBook,
   episodeMarks,
   episodeMetaLine,
@@ -52,7 +53,7 @@ function stateText(state: EpisodeRowState, t: TFunction): string {
  * its Trailer / Bonus / Explicit marks, a line saying where its file is (on the server,
  * fetched when played, on its way, or why not), and the listener's place (a bar while in
  * progress, a tick once finished). One primary button: Play (Resume once started), or Try
- * again after a failed fetch. Its "..." offers Up next and Mark as finished (never a
+ * again after a failed fetch (or one not available for no reason it can name: `canRetryFetch`). Its "..." offers Up next and Mark as finished (never a
  * download: episodes are not kept offline). The row opens the episode page.
  */
 export function EpisodeRow({
@@ -83,7 +84,10 @@ export function EpisodeRow({
   const pending = useEpisodeFetch((s) => (s.pending?.key === key ? s.pending : null));
   const state = episodeRowState(episode, pending, canFetch);
   const finished = !!progress?.finished;
-  const reasonKey = finished ? null : rowStateReasonKey(state);
+  // Why it can't play or wasn't fetched, also on a finished episode (else a disabled Play
+  // there says nothing).
+  const reasonKey = rowStateReasonKey(state);
+  const retryable = canRetryFetch(state);
   const reason = reasonKey ? t(reasonKey) : null;
   const started = !!progress && isInProgress(progress);
   const fraction =
@@ -156,7 +160,7 @@ export function EpisodeRow({
           </Text>
         ) : null}
       </AnimatedPressable>
-      {state.kind === 'failed' ? (
+      {retryable ? (
         <Button
           variant="outline"
           size="sm"

@@ -41,6 +41,7 @@ jest.mock('./episode-row', () => ({
 }));
 
 let mockShows: PodcastShow[] | undefined;
+let mockShowsError: unknown = null;
 let mockCaps: Record<string, boolean | undefined> = {};
 const mockEpisodesAsked: string[] = [];
 const mockFollow = jest.fn();
@@ -53,7 +54,8 @@ jest.mock('@/api/hooks', () => {
     useCapability: (flag: string) => mockCaps[flag],
     usePodcastShows: () => ({
       data: mockShows,
-      isPending: mockShows === undefined,
+      error: mockShowsError,
+      isPending: mockShows === undefined && !mockShowsError,
       refetch: mockRefetch,
     }),
     usePodcastEpisodes: (_lib: number, _show: string, order: string) => {
@@ -96,6 +98,8 @@ const signIn = (user: object = {}) =>
 beforeEach(() => {
   mockParams = { connection: 'c1', library: '5', show: 'Daily News' };
   mockShows = [podcastShow()];
+  mockShowsError = null;
+  mockRefetch.mockReset();
   mockCaps = { podcasts: true };
   mockEpisodesAsked.length = 0;
   mockFollow.mockReset().mockResolvedValue({});
@@ -126,6 +130,27 @@ describe('PodcastShowScreen', () => {
     expect(mockEpisodesAsked.at(-1)).toBe('newest');
     await fireEvent.press(screen.getByRole('radio', { name: 'Oldest first' }));
     expect(mockSetParams).toHaveBeenCalledWith({ order: 'oldest' });
+  });
+
+  it("says a link to a library that isn't a podcast library (or isn't there) points nowhere, with no Retry (PLAYER-07)", async () => {
+    const { ApiError } = jest.requireActual('@/api/client');
+    mockShows = undefined;
+    for (const status of [409, 403, 404]) {
+      mockShowsError = new ApiError(status, 'nope');
+      await mountWithPortal(<PodcastShowScreen />);
+      expect(screen.getByText("This link doesn't point to anything here.")).toBeTruthy();
+      expect(screen.queryByText('Retry')).toBeNull();
+    }
+  });
+
+  it('offers Retry when the show list failed for another reason', async () => {
+    const { ApiError } = jest.requireActual('@/api/client');
+    mockShows = undefined;
+    mockShowsError = new ApiError(502, 'bad gateway');
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.getByText("Couldn't load this show.")).toBeTruthy();
+    await fireEvent.press(screen.getByText('Retry'));
+    expect(mockRefetch).toHaveBeenCalled();
   });
 
   it('says so when the show is not in its library', async () => {

@@ -19,11 +19,12 @@ jest.mock('./use-up-next', () => ({ usePlayNow: () => jest.fn() }));
 jest.mock('@/components/player/use-time-left', () => ({ usePlayingTimeLeft: () => '' }));
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+let mockChapter: object | null = null;
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
     usePlayer: create(() => ({ nowPlaying: null })),
-    selectCurrentChapter: () => null,
+    selectCurrentChapter: () => mockChapter,
     selectIsPlaying: () => false,
   };
 });
@@ -54,7 +55,6 @@ const data = (over: Partial<Data> = {}): Data => ({
   suggestions: [],
   move: jest.fn(),
   clear: jest.fn(),
-  dropPlayed: jest.fn(),
   actions: { queue: mockQueue, unqueue: mockUnqueue } as unknown as Data['actions'],
   busy: false,
   ...over,
@@ -67,6 +67,7 @@ beforeEach(() => {
   });
   mockPush.mockReset();
   mockQueue.mockReset();
+  mockChapter = null;
 });
 
 describe('UpNextPanel', () => {
@@ -139,6 +140,47 @@ describe('UpNextPanel', () => {
     const sw = screen.getByLabelText('Play the next book automatically');
     await fireEvent.press(sw);
     expect(useSettings.getState().autoPlayNext).toBe(true);
+  });
+
+  describe('with a podcast episode loaded (BRIDGE-12)', () => {
+    const episode = { connectionId: 'c', libraryId: 1, path: 'Show/ep.mp3', title: 'Monday' };
+    afterEach(() => usePlayer.setState({ nowPlaying: null } as never));
+
+    it("words the next and auto-play for an episode, and doesn't repeat its title", async () => {
+      usePlayer.setState({
+        nowPlaying: { ...episode, episode: { show_path: 'Show' } },
+      } as never);
+      // A file with no chapter marks: its one chapter is named after the episode.
+      mockChapter = { title: 'Monday', index: 0 };
+      await render(
+        <UpNextPanel
+          cid="c"
+          data={data({
+            suggestions: [
+              { kind: 'next', ref: { library_id: 1, path: 'Show/ep2.mp3' }, series: '' },
+            ],
+          })}
+        />,
+      );
+      expect(screen.getByText('Next episode')).toBeTruthy();
+      expect(screen.queryByText('Next after this book')).toBeNull();
+      expect(screen.getByLabelText('Play Up next automatically')).toBeTruthy();
+      expect(screen.getAllByText('Monday')).toHaveLength(1);
+    });
+
+    it('keeps the book wording for a book', async () => {
+      usePlayer.setState({ nowPlaying: episode } as never);
+      await render(
+        <UpNextPanel
+          cid="c"
+          data={data({
+            suggestions: [{ kind: 'next', ref: { library_id: 1, path: 'B/2' }, series: '' }],
+          })}
+        />,
+      );
+      expect(screen.getByText('Next after this book')).toBeTruthy();
+      expect(screen.getByLabelText('Play the next book automatically')).toBeTruthy();
+    });
   });
 
   // STYLEGUIDE section 14: rem-sized buttons (`h-11`, `h-9`) are 38.5 and 31.5 pt on native.

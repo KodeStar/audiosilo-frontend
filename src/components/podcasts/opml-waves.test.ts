@@ -49,6 +49,11 @@ const WAVE_1 = [1, 2, 3, 4, 5]
 const WAVE_2 = [1, 2, 3, 4, 5]
   .map((i) => row(i, 'already_following', { path: `Show ${i}` }))
   .concat([row(6, 'queued'), row(7, 'queued')]);
+/** The two merged: the five this import queued say followed, not "Already following"
+ * (R-26: the second wave answers `already_following` for the shows the first one added). */
+const MERGED = WAVE_2.map((r) =>
+  r.status === 'already_following' ? { ...r, status: 'followed' } : r,
+);
 
 function setup(uploads: (OpmlImportResult | Error)[], requests: () => PodcastRequest[] = () => []) {
   const states: WaveState[] = [];
@@ -80,9 +85,27 @@ const flush = () => jest.advanceTimersByTimeAsync(0);
 
 describe('mergeRows', () => {
   it('keeps every row by outline_index, the latest answer winning', () => {
-    expect(mergeRows(WAVE_1, WAVE_2)).toEqual(WAVE_2);
+    expect(mergeRows(WAVE_1, WAVE_2)).toEqual(MERGED);
     expect(mergeRows([row(3, 'limited')], [row(1, 'queued')]).map((r) => r.outline_index)).toEqual([
       1, 3,
+    ]);
+  });
+
+  it('says followed for a show this import added, and already following only for one it did not (R-26)', () => {
+    const first = [
+      row(1, 'followed', { path: 'A' }),
+      row(2, 'already_following'),
+      row(3, 'limited'),
+    ];
+    const second = [
+      row(1, 'already_following', { path: 'A' }),
+      row(2, 'already_following'),
+      row(3, 'already_following'),
+    ];
+    expect(mergeRows(first, second).map((r) => r.status)).toEqual([
+      'followed',
+      'already_following',
+      'already_following',
     ]);
   });
 
@@ -111,7 +134,7 @@ describe('OpmlWaves', () => {
     open = false;
     await jest.advanceTimersByTimeAsync(5_000);
     expect(t.upload).toHaveBeenCalledTimes(2);
-    expect(t.last()).toMatchObject({ status: { kind: 'done' }, rows: WAVE_2 });
+    expect(t.last()).toMatchObject({ status: { kind: 'done' }, rows: MERGED });
 
     // Done: nothing more is asked.
     const asked = t.listRequests.mock.calls.length;
@@ -219,15 +242,18 @@ describe('OpmlWaves', () => {
     ]);
     t.waves.start();
     await flush();
+    // Its own limit (BRIDGE-08): an import can run about once every half minute.
     expect(t.last().status).toEqual({
       kind: 'waitingTime',
       at: Date.now() + 12_000,
-      why: 'busy',
+      why: 'rateLimited',
     });
     await jest.advanceTimersByTimeAsync(11_999);
     expect(t.upload).toHaveBeenCalledTimes(1);
     await jest.advanceTimersByTimeAsync(1);
     expect(t.upload).toHaveBeenCalledTimes(2);
+    // The server's own load is busy, not the import's limit.
+    expect(t.last().status).toMatchObject({ kind: 'waitingTime', why: 'busy' });
     await jest.advanceTimersByTimeAsync(999);
     expect(t.upload).toHaveBeenCalledTimes(2);
     await jest.advanceTimersByTimeAsync(1);

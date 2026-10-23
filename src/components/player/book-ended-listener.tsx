@@ -13,7 +13,8 @@ import { resolveUpNext } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
 
-import { advanceTo, dropFromQueue, useAutoPlayHold } from './end-of-book';
+import { advanceTo, useAutoPlayHold } from './end-of-book';
+import { dropFromQueue } from './queue-drop';
 
 /**
  * Headless, mounted once at the root so it covers every layout (phone modal + wide

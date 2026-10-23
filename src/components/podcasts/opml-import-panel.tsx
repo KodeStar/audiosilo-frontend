@@ -1,5 +1,5 @@
 import { useIsFocused } from 'expo-router';
-import type { TFunction } from 'i18next';
+import type { ParseKeys, TFunction } from 'i18next';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -14,9 +14,11 @@ import { useNow } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import {
+  failedRows,
   importFailureKey,
   importProgress,
   importRowKey,
+  importRowReasonKey,
   liveImportRows,
   stillAdding,
 } from './find-shows-model';
@@ -28,10 +30,18 @@ import {
   type WaveState,
   type WaveStatus,
 } from './opml-waves';
-import type { OpmlImport } from './use-opml-import';
+import { type OpmlImport, withRetries } from './use-opml-import';
+
+/** A countdown's line, by why the waves wait. */
+const WAIT_KEY = {
+  busy: 'podcasts.import.status.busy',
+  rateLimited: 'podcasts.import.status.rateLimited',
+  spacing: 'podcasts.import.status.waitingTime',
+} as const;
 
 /** The status line of an import (`now` for a countdown). A done import is done only once
- * nothing is still being added; rows that could not be added are counted. */
+ * nothing is still being added; rows that could not be added are counted (those that need
+ * a person first, then those that failed, each with its own Try again). */
 function statusLine(
   status: WaveStatus,
   rows: readonly OpmlImportRow[],
@@ -45,16 +55,17 @@ function statusLine(
       return t('podcasts.import.status.waitingRequests');
     case 'waitingTime': {
       const seconds = Math.max(1, Math.ceil((status.at - now) / 1000));
-      return status.why === 'busy'
-        ? t('podcasts.import.status.busy', { seconds })
-        : t('podcasts.import.status.waitingTime', { seconds });
+      return t(WAIT_KEY[status.why], { seconds });
     }
     case 'done': {
       if (stillAdding(rows)) return t('podcasts.import.status.finishing');
       const unavailable = unavailableRows(rows);
+      const failed = failedRows(rows);
       return unavailable > 0
         ? t('podcasts.import.status.unavailable', { count: unavailable })
-        : t('podcasts.import.status.done');
+        : failed > 0
+          ? t('podcasts.import.status.doneFailed', { count: failed })
+          : t('podcasts.import.status.done');
     }
     case 'stalled':
       return t('podcasts.import.status.stalled');
@@ -118,10 +129,8 @@ export function OpmlImportPanel({
           connectionId={connectionId}
           libraryId={libraryId}
           state={state}
-          fileName={opml.fileName}
+          opml={opml}
           running={running}
-          onStop={opml.stop}
-          onRetry={opml.retry}
         />
       ) : null}
     </View>
@@ -132,23 +141,23 @@ function ImportProgress({
   connectionId,
   libraryId,
   state,
-  fileName,
+  opml,
   running,
-  onStop,
-  onRetry,
 }: {
   connectionId: string;
   libraryId: number;
   state: WaveState;
-  fileName: string | null;
+  opml: OpmlImport;
   running: boolean;
-  onStop: () => void;
-  onRetry: () => void;
 }) {
   const { t } = useTranslation();
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  const rows = useMemo(() => liveImportRows(state.rows, requests), [state.rows, requests]);
+  const { fileName, retries, canRetryRow, retryRow, stop: onStop, retry: onRetry } = opml;
+  const rows = useMemo(
+    () => liveImportRows(withRetries(state.rows, retries), requests),
+    [state.rows, retries, requests],
+  );
   const { settled, total } = importProgress(rows);
   const retryable = canRetryImport(state);
   return (
@@ -191,7 +200,13 @@ function ImportProgress({
       {rows.length > 0 ? (
         <View className="gap-2" accessibilityLabel={t('podcasts.import.rowsLabel')}>
           {rows.map((row) => (
-            <ImportRow key={row.outline_index} row={row} />
+            <ImportRow
+              key={row.outline_index}
+              row={row}
+              reasonKey={importRowReasonKey(row, requests)}
+              busy={retries[row.outline_index]?.kind === 'busy'}
+              onRetry={canRetryRow(row) ? retryRow : undefined}
+            />
           ))}
         </View>
       ) : null}
@@ -212,33 +227,68 @@ function StatusText({ status, rows }: { status: WaveStatus; rows: readonly OpmlI
   );
 }
 
-const ImportRow = memo(function ImportRow({ row }: { row: OpmlImportRow }) {
+const ImportRow = memo(function ImportRow({
+  row,
+  reasonKey,
+  busy,
+  onRetry,
+}: {
+  row: OpmlImportRow;
+  /** Why it could not be added (`importRowReasonKey`), read by the list so a requests
+   * poll redraws only the rows whose reason moved. */
+  reasonKey: ParseKeys | null;
+  busy: boolean;
+  /** Its own Try again (a single follow by its address), when it has one. */
+  onRetry?: (row: OpmlImportRow) => void;
+}) {
   const { t } = useTranslation();
   // The server marks a list's private feeds; a row with no usable feed has none to mark.
   const hasFeed = row.feed !== null && row.status !== 'invalid' && row.status !== 'duplicate';
   const label = row.path ?? row.feed;
   return (
-    <RowSurface testID={`opml-row-${row.outline_index}`} className="gap-0.5 px-3 py-2.5">
-      <View className="flex-row items-center gap-2">
-        <Text variant="caption" style={tabularNums}>
-          {t('podcasts.import.entry', { index: row.outline_index })}
+    <RowSurface
+      testID={`opml-row-${row.outline_index}`}
+      className="flex-row items-center gap-3 px-3 py-2.5"
+    >
+      <View className="min-w-0 flex-1 gap-0.5">
+        <View className="flex-row items-center gap-2">
+          <Text variant="caption" style={tabularNums}>
+            {t('podcasts.import.entry', { index: row.outline_index })}
+          </Text>
+          {row.private && hasFeed ? (
+            <Badge variant="outline">
+              <Text>{t('podcasts.shows.privateBadge')}</Text>
+            </Badge>
+          ) : null}
+        </View>
+        {label ? (
+          <Text variant="label" numberOfLines={1}>
+            {label}
+          </Text>
+        ) : null}
+        <Text variant="caption">
+          {row.status === 'duplicate' && row.duplicate_of !== null
+            ? `${t(importRowKey(row))} (${t('podcasts.import.entry', { index: row.duplicate_of })})`
+            : t(importRowKey(row))}
         </Text>
-        {row.private && hasFeed ? (
-          <Badge variant="outline">
-            <Text>{t('podcasts.shows.privateBadge')}</Text>
-          </Badge>
+        {reasonKey ? (
+          <Text variant="caption" testID={`opml-row-reason-${row.outline_index}`}>
+            {t(reasonKey)}
+          </Text>
         ) : null}
       </View>
-      {label ? (
-        <Text variant="label" numberOfLines={1}>
-          {label}
-        </Text>
+      {onRetry ? (
+        <Button
+          variant="outline"
+          size="sm"
+          icon="rotate"
+          title={t('podcasts.import.tryAgain')}
+          accessibilityLabel={t('podcasts.import.tryRowAgain', { index: row.outline_index })}
+          loading={busy}
+          onPress={() => onRetry(row)}
+          testID={`opml-row-retry-${row.outline_index}`}
+        />
       ) : null}
-      <Text variant="caption">
-        {row.status === 'duplicate' && row.duplicate_of !== null
-          ? `${t(importRowKey(row))} (${t('podcasts.import.entry', { index: row.duplicate_of })})`
-          : t(importRowKey(row))}
-      </Text>
     </RowSurface>
   );
 });

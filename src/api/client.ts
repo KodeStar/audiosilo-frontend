@@ -146,6 +146,9 @@ const API_ERROR_CODES = [
   'fetch_limit',
   'identity_changed',
   'show_not_found',
+  // Cast (server v2.4.0): `POST /cast/token` for a podcast episode or any other item that
+  // is not a book (403; older servers send the 403 without it).
+  'not_a_book',
   // Podcasts, finding shows (Bridge Phase 2d-2): follow by address (an open request of
   // the other privacy 409, five open requests 429, a bad address 400, no whole-library
   // grant 403, a books library 409), Check for new episodes within a minute (429).

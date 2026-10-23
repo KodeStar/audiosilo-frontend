@@ -1,6 +1,6 @@
-import { ApiClient } from '@/api/client';
+import { ApiClient, apiErrorKind } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { fetchCapabilities } from '@/api/hooks';
+import { cachedPodcastLibrary, fetchCapabilities } from '@/api/hooks';
 import type { Capabilities } from '@/api/types';
 import { bookSourceOf } from '@/playback/book-source';
 import type { BookRef, PlaybackTrack } from '@/playback/types';
@@ -36,8 +36,10 @@ export type PrepareCast = (tracks: PlaybackTrack[], book: BookRef) => Promise<Pr
  * `cast` and be reachable from another device, the book's codec must be one the receiver
  * plays or the server must transcode it, and the URLs carry a cast token for this book
  * (never the session token). A downloaded book casts from its server too: the receiver
- * can't read this device's files. Rejects with `CastBlockedError` when the book can't be
- * cast, and with the server's error when the token can't be minted.
+ * can't read this device's files. A podcast episode never casts (`episode`: its item says
+ * so, or its library is a podcast library, or the server refuses its token `not_a_book`).
+ * Rejects with `CastBlockedError` when the book can't be cast, and with the server's error
+ * when the token can't be minted.
  */
 export const prepareCast: PrepareCast = async (tracks, book) => {
   const client = resolveClient(book.connectionId);
@@ -51,6 +53,7 @@ export const prepareCast: PrepareCast = async (tracks, book) => {
   // The book's codec: the downloaded copy's item, else the server's (through the cache).
   const source = await bookSourceOf(book).catch(() => null);
   const reason = castBlockReason({
+    episode: !!source?.book.episode || cachedPodcastLibrary(book.connectionId, book.libraryId),
     // An unknown flag can't be trusted to mint a token: treat it as missing.
     canCast: caps?.cast === true,
     canTranscode: caps?.transcode,
@@ -61,7 +64,11 @@ export const prepareCast: PrepareCast = async (tracks, book) => {
   if (reason) throw new CastBlockedError(reason);
   const transcode =
     !!source && caps?.transcode === true && castNeedsTranscode(source.book, source.chapters);
-  const token = await castTokens.get(client, book.connectionId, book.libraryId, book.path);
+  const token = await castTokens
+    .get(client, book.connectionId, book.libraryId, book.path)
+    .catch((e: unknown) => {
+      throw apiErrorKind(e) === 'not_a_book' ? new CastBlockedError('episode') : e;
+    });
   // The existing URL builders, on the same address, with the cast token in place of the
   // session token.
   const castClient = new ApiClient(client.baseUrl, token);

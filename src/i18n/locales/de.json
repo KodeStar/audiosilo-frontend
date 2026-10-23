@@ -10,7 +10,12 @@
     "off": "Aus",
     "resumeChapter": "Kapitel {{chapter}} fortsetzen",
     "resumeTitled": "{{title}} fortsetzen",
-    "tooManyTries": "Zu viele Versuche. Warte ein paar Minuten und versuch es dann noch einmal."
+    "tooManyTries": "Zu viele Versuche. Warte ein paar Minuten und versuch es dann noch einmal.",
+    "notFound": {
+      "title": "Seite nicht gefunden",
+      "body": "Dieser Link führt in AudioSilo nirgendwohin. Vielleicht ist er alt oder falsch geschrieben.",
+      "home": "Zur Startseite"
+    }
   },
   "settings": {
     "title": "Einstellungen",
@@ -358,7 +363,7 @@
     },
     "scan": {
       "closeLabel": "Scanner schließen",
-      "invalidCode": "Dieser QR-Code ist kein AudioSilo-Kopplungscode.",
+      "invalidCode": "Dieser QR-Code ist kein Kopplungs- oder Einladungscode von AudioSilo.",
       "permissionTitle": "Kamerazugriff erforderlich",
       "permissionDenied": "AudioSilo benötigt Kamerazugriff, um den Kopplungs-QR-Code deines Servers zu scannen.",
       "tryAgain": "Erneut versuchen",
@@ -382,7 +387,9 @@
       "open": "Ich habe einen Kopplungslink",
       "label": "Kopplungslink",
       "connect": "Verbinden",
-      "invalid": "Das ist kein AudioSilo-Kopplungslink. Kopplungslinks sehen so aus: https://<server>/web/connect?token=... oder audiosilo://connect?..."
+      "invalid": "Das ist kein AudioSilo-Kopplungslink. Kopplungslinks sehen so aus: https://<server>/web/connect?token=... oder audiosilo://connect?...",
+      "otherServer": "Dieser Link gehört zu einem anderen Server, und diese Seite kann sich nur mit ihrem eigenen verbinden. Öffne den Link, um dich dort zu verbinden.",
+      "openLink": "Link öffnen"
     },
     "memberNotReady": "Dieses Gerät kann die Person noch nicht anmelden. Versuche es gleich noch einmal."
   },
@@ -1182,7 +1189,9 @@
       "startsAt": "beginnt bei {{time}}",
       "community": "Kapitel aus der Community-Datenbank von AudioSilo",
       "generated": "Kapitel in der Erzählung auf diesem Server gefunden",
-      "id3Chap": "Kapitel aus der Episodendatei"
+      "id3Chap": "Kapitel aus der Episodendatei",
+      "wholeEpisode": "Die ganze Folge",
+      "partsTitleEpisode": "Diese Folge hat keine Kapitelmarken"
     },
     "details": {
       "title": "Details",
@@ -1774,7 +1783,10 @@
     "autoPlayHint": "Startet das erste Buch in Als Nächstes oder das nächste der Reihe.",
     "buttonLabel_one": "Als Nächstes, {{count}} Buch",
     "buttonLabel_other": "Als Nächstes, {{count}} Bücher",
-    "buttonLabelEmpty": "Als Nächstes"
+    "buttonLabelEmpty": "Als Nächstes",
+    "autoPlayEpisode": "Als Nächstes automatisch abspielen",
+    "autoPlayEpisodeHint": "Wenn diese Folge endet, startet der erste Eintrag in Als Nächstes.",
+    "nextEpisode": "Nächste Folge"
   },
   "series": {
     "eyebrow": "Reihe",
@@ -2186,7 +2198,9 @@
       "unsupported": "Sein Server unterstützt Cast noch nicht. Ein Update von AudioSilo auf dem Server fügt es hinzu.",
       "local-address": "Die App erreicht deinen Server über die eigene Adresse dieses Geräts (localhost), die ein Cast-Gerät nicht erreichen kann. Verbinde dich stattdessen über die Netzwerkadresse des Servers.",
       "codec": "Sein Audioformat läuft nicht auf Cast-Geräten, und der Server kann es nicht umwandeln.",
-      "no-connection": "Sein Server ist auf diesem Gerät nicht angemeldet. Melde dich erneut an, um es zu streamen."
+      "no-connection": "Sein Server ist auf diesem Gerät nicht angemeldet. Melde dich erneut an, um es zu streamen.",
+      "titleEpisode": "Diese Folge kann nicht gestreamt werden",
+      "episode": "Podcastfolgen lassen sich noch nicht streamen, darum bleibt diese auf diesem Gerät."
     },
     "failed": {
       "title": "Streamen konnte nicht gestartet werden",
@@ -2661,7 +2675,7 @@
         "import": "Liste importieren"
       },
       "unavailable": "Sendungen hinzufügen ist gerade nicht möglich",
-      "unavailableHint": "Podcasts sind auf diesem Server vielleicht ausgeschaltet, oder er kann gerade keine Sendungen hinzufügen. Versuch es später noch einmal.",
+      "unavailableHint": "Frag die Person, die deinen Server betreibt: Podcasts sind dort vielleicht ausgeschaltet, oder er kann gerade keine Sendungen hinzufügen.",
       "kid": "Bitte einen Erwachsenen, Sendungen hinzuzufügen.",
       "demo": "In der Demo kann man keine Sendungen hinzufügen.",
       "search": {
@@ -2701,7 +2715,8 @@
         "off": "Die Suche nach Sendungen ist auf diesem Server ausgeschaltet.",
         "invalidQuery": "Verwende 2 bis 200 Zeichen.",
         "invalidCountry": "Das Verzeichnis kennt die Region dieses Geräts nicht.",
-        "other": "Die Suche hat nicht geklappt. Versuch es noch einmal."
+        "other": "Die Suche hat nicht geklappt. Versuch es noch einmal.",
+        "noAccess": "Diese App kann auf diesem Server keine Podcasts nutzen. Aktualisiere die App und versuch es dann noch einmal."
       },
       "refusal": {
         "moduleOff": "Podcasts sind auf diesem Server ausgeschaltet.",
@@ -2729,7 +2744,8 @@
         "notHttp": "Verwende eine Adresse, die mit http:// oder https:// beginnt.",
         "tooLong": "Diese Adresse ist zu lang.",
         "following": "Du folgst {{title}}.",
-        "adding": "Die Sendung wird hinzugefügt. Sie erscheint unter Sendungen, sobald sie bereit ist."
+        "adding": "Die Sendung wird hinzugefügt. Sie erscheint unter Sendungen, sobald sie bereit ist.",
+        "followingPublic": "Du folgst {{title}}. Die Sendung war schon als öffentlicher Feed in dieser Bibliothek, darum ist sie nicht privat."
       }
     },
     "requests": {
@@ -2749,7 +2765,12 @@
         "notAFeed": "Diese Adresse ist kein Podcast-Feed.",
         "gone": "Den Feed gibt es nicht mehr.",
         "followAgain": "Folge dem Feed noch einmal, um das Hinzufügen abzuschließen.",
-        "other": "Beim Hinzufügen ist etwas schiefgegangen."
+        "other": "Beim Hinzufügen ist etwas schiefgegangen.",
+        "notFound": "Unter dieser Adresse wurde nichts gefunden.",
+        "denied": "Der Feed hat die Anfrage abgelehnt. Vielleicht braucht er eine Anmeldung.",
+        "localAddress": "Diese Adresse liegt in einem lokalen Netzwerk. Die Person, die deinen Server betreibt, kann sie erlauben.",
+        "tooLarge": "Dieser Feed ist zu groß.",
+        "feedError": "Der Server des Feeds hat mit einem Fehler geantwortet. Versuch es später noch einmal."
       }
     },
     "import": {
@@ -2775,7 +2796,10 @@
         "stalled": "Die nächste Gruppe konnte nicht starten. Versuch es später noch einmal.",
         "stoppedUser": "Gestoppt. Schon hinzugefügte Sendungen bleiben.",
         "stoppedBusy": "Dein Server blieb ausgelastet. Versuch es später noch einmal.",
-        "stoppedCantAct": "Gestoppt, weil jetzt jemand anderes auf diesem Gerät hört."
+        "stoppedCantAct": "Gestoppt, weil jetzt jemand anderes auf diesem Gerät hört.",
+        "rateLimited": "Ein Import ist etwa alle 30 Sekunden möglich. Neuer Versuch in {{seconds}} s.",
+        "doneFailed_one": "Fertig. {{count}} Sendung konnte nicht hinzugefügt werden. Du kannst es unten noch einmal versuchen.",
+        "doneFailed_other": "Fertig. {{count}} Sendungen konnten nicht hinzugefügt werden. Du kannst es unten bei jeder noch einmal versuchen."
       },
       "fail": {
         "notOpml": "Diese Datei ist keine OPML-Liste.",
@@ -2790,8 +2814,13 @@
         "invalid": "Keine verwendbare Feed-Adresse",
         "limited": "Wartet auf die nächste Gruppe",
         "unavailable": "Kann gerade nicht hinzugefügt werden",
-        "error": "Nicht hinzugefügt"
-      }
+        "error": "Nicht hinzugefügt",
+        "cancelled": "Abgebrochen"
+      },
+      "reason": {
+        "recentlyFailed": "Sie konnte vor Kurzem nicht hinzugefügt werden."
+      },
+      "tryRowAgain": "Eintrag {{index}} noch einmal versuchen"
     },
     "export": {
       "action": "Meine Sendungen exportieren",

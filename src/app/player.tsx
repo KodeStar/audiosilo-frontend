@@ -7,6 +7,7 @@ import { useBook, useCapability, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { PlayerView } from '@/components/player/player-view';
+import { dropStartedBook } from '@/components/player/drop-started';
 import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
 import { contentKey } from '@/lib/content-key';
@@ -163,9 +164,12 @@ export default function PlayerScreen() {
     const here = contentKey(cid, libraryId, book.rel_path);
     cancelEpisodeFetchUnless(here);
     cancelEpisodeFetchOf(here);
+    // The book you're on is not up next any more, as a start in place (`startBookInPlace`):
+    // once it started, so a start that failed keeps its place in the queue.
     void usePlayer
       .getState()
-      .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
+      .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined)
+      .then(() => dropStartedBook(cid, libraryId, book.rel_path));
   }, [
     cid,
     book,

@@ -8,6 +8,7 @@ import {
   useBookmarks,
   useCapability,
   useChapters,
+  useIsPodcastLibrary,
   useMyStats,
   type SourcedProgress,
 } from '@/api/hooks';
@@ -72,6 +73,10 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const { libraryId, path } = at;
 
   const { data: book } = useBook(libraryId, path);
+  // An episode (Bridge 2d-1) is no book. Its library says so before its item has loaded
+  // (the progress list carries no `episode`), so no "Resume chapter 1" flashes first.
+  const podcastLibrary = useIsPodcastLibrary(libraryId, at.connectionId);
+  const episode = !!book?.episode || podcastLibrary;
   const { data: chapterData } = useChapters(libraryId, path);
   const { data: bookmarks } = useBookmarks(libraryId, path);
   const metaEnabled = metaEnabledFor(useCapability('metadata'), book);
@@ -105,6 +110,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const percent = percentHeard(position, total, finished);
   const left = timeLeft(position, total, speed)?.seconds ?? 0;
   const place = chapterPlace(titles, starts, position);
+  // No "Chapter 1 of 1" for an episode without chapters.
+  const shownPlace = place && (!episode || place.count > 1) ? place : null;
   const segments = bookScale(starts, total, position, compact ? 60 : undefined);
   const pins = bookmarkPins(
     (bookmarks ?? []).map((b) => b.position),
@@ -141,8 +148,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     });
   const resumeLabel = playing
     ? t('home.now.pause')
-    : place
-      ? resumeChapterLabel(t, place)
+    : shownPlace
+      ? resumeChapterLabel(t, shownPlace)
       : t('home.now.resume');
   // "Ch. 13 of 25" beside a title "Chapter 12" contradicts it: then the count alone.
   const placeCount = !place
@@ -172,21 +179,18 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     </AnimatedPressable>
   );
 
-  // An episode (Bridge 2d-1) is no book: no "Chapter 1 of 1" for one without chapters.
-  const episode = !!book?.episode;
-  const chapterLine =
-    place && (!episode || place.count > 1) ? (
-      <View className="flex-row items-center gap-2.5">
-        <View className="rounded-md bg-muted px-[7px] py-0.5">
-          <Text variant="mono" className="text-muted-foreground">
-            {placeCount}
-          </Text>
-        </View>
-        <Text variant="label" className="min-w-0 flex-1 text-[15px]" numberOfLines={1}>
-          {chapterLabel({ title: place.title, index: place.number - 1 }, t)}
+  const chapterLine = shownPlace ? (
+    <View className="flex-row items-center gap-2.5">
+      <View className="rounded-md bg-muted px-[7px] py-0.5">
+        <Text variant="mono" className="text-muted-foreground">
+          {placeCount}
         </Text>
       </View>
-    ) : null;
+      <Text variant="label" className="min-w-0 flex-1 text-[15px]" numberOfLines={1}>
+        {chapterLabel({ title: shownPlace.title, index: shownPlace.number - 1 }, t)}
+      </Text>
+    </View>
+  ) : null;
 
   const statsRow = (
     <View className="mt-1 flex-row flex-wrap gap-x-[22px] gap-y-2">

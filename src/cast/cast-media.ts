@@ -54,7 +54,11 @@ export type CastBlockReason =
   /** The book's codec needs the server's transcoder, and the server has none. */
   | 'codec'
   /** The book's server connection is gone (a downloaded book whose sign-in failed). */
-  | 'no-connection';
+  | 'no-connection'
+  /** A podcast episode (Bridge Phase 2d-1: a cast token never covers one; a v2.4.0 server
+   * says so with `not_a_book`). The Cast button is hidden for one, so this is a start of an
+   * episode while a book is cast. */
+  | 'episode';
 
 /**
  * Can a Cast receiver (another device on the network) fetch from this address? Not one
@@ -78,8 +82,11 @@ export function castBlockReason(input: {
   baseUrl: string | null;
   book?: Pick<Book, 'codec' | 'direct_playable'> | null;
   chapters?: Pick<ChaptersResponse, 'codec' | 'direct_playable'> | null;
+  /** A podcast episode, which never casts (the button hides on the same value). */
+  episode?: boolean;
 }): CastBlockReason | null {
   if (input.baseUrl === null) return 'no-connection';
+  if (input.episode) return 'episode';
   if (input.canCast === false) return 'unsupported';
   if (!isReachableByReceiver(input.baseUrl)) return 'local-address';
   if (

@@ -17,6 +17,8 @@ jest.mock('@/playback/store', () => ({
   },
 }));
 
+const mockDrop = jest.fn();
+jest.mock('./drop-started', () => ({ dropStartedBook: (...a: unknown[]) => mockDrop(...a) }));
 const mockRequestFetch = jest.fn();
 const mockCancelUnless = jest.fn();
 const mockCancelOf = jest.fn();
@@ -78,6 +80,7 @@ beforeEach(() => {
   mockChapters.mockReset().mockResolvedValue({ chapters: [], files: [] });
   mockPlayBook.mockReset().mockResolvedValue(undefined);
   mockSetRate.mockReset();
+  mockDrop.mockReset().mockResolvedValue(undefined);
   mockRequestFetch.mockReset();
   mockCancelUnless.mockReset();
   mockCancelOf.mockReset();
@@ -123,6 +126,19 @@ describe('startBookInPlace', () => {
     );
     // The resume lookup restores the saved speed itself.
     expect(mockSetRate).not.toHaveBeenCalled();
+  });
+
+  it('takes the book it starts off Up next, as Play now does (PLAYER-04)', async () => {
+    await expect(startBookInPlace(target)).resolves.toBe(true);
+    expect(mockDrop).toHaveBeenCalledWith('c1', 2, target.path);
+  });
+
+  it('leaves Up next alone when the book does not start', async () => {
+    mockClient = null;
+    await expect(startBookInPlace(target)).resolves.toBe(false);
+    mockClient = { item: () => Promise.reject(new Error('offline')), chapters: mockChapters };
+    await expect(startBookInPlace(target)).rejects.toThrow();
+    expect(mockDrop).not.toHaveBeenCalled();
   });
 
   it('starts at a given place, at the speed the caller passes, from the start', async () => {
@@ -301,6 +317,8 @@ describe('startBookInPlace, a podcast episode', () => {
     await expect(startBookInPlace(target, { position: 30 })).resolves.toBe(true);
     expect(mockPlayBook).not.toHaveBeenCalled();
     expect(mockRequestFetch).toHaveBeenCalledWith(target, episode(false), { position: 30 });
+    // It leaves Up next when the fetch starts it (`fetched`), not before.
+    expect(mockDrop).not.toHaveBeenCalled();
   });
 
   it('plays a downloaded episode at once', async () => {

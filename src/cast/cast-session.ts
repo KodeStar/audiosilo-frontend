@@ -20,7 +20,10 @@ import type { CastDriver, CastRemote, CastSessionEvent } from './types';
 function explain(err: unknown, deviceName: string | null) {
   const t = i18n.t.bind(i18n);
   if (err instanceof CastBlockedError) {
-    toast({ title: t('cast.blocked.title'), description: t(`cast.blocked.${err.reason}`) });
+    toast({
+      title: t(err.reason === 'episode' ? 'cast.blocked.titleEpisode' : 'cast.blocked.title'),
+      description: t(`cast.blocked.${err.reason}`),
+    });
     return;
   }
   toast({

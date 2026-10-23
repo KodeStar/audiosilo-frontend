@@ -1670,6 +1670,11 @@ export type OpmlImportRow = {
   request_id: number | null;
   /** A `duplicate`'s earlier `outline_index`. */
   duplicate_of: number | null;
+  /** Why a row was not followed. An `error` row whose feed this caller failed to follow in
+   * this library within the last hour has the code `recently_failed`
+   * and `request_id` = that failed request: it is not queued again and does not count
+   * against the upload's five (server v2.4.0; an older server queues it again). Only a
+   * single follow by address retries it. */
   error: PodcastError | null;
 };
 

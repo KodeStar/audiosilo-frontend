@@ -11,15 +11,18 @@ import { FOLLOW_REQUEST_POLL_MS, isOpenRequest } from '@/lib/podcast-requests';
  * Find shows page, which keeps the bytes for its own life only.
  *
  * The rules:
- * - Upload, then merge the rows by `outline_index` (the latest answer wins). No `limited`
- *   row: `done`. `unavailable` rows (no online Bridge, a library it can't write, the
- *   module off) need a person, never another wave.
+ * - Upload, then merge the rows by `outline_index` (the latest answer wins, except that a
+ *   row this import queued or followed stays followed when a later wave finds it
+ *   `already_following`). No `limited` row: `done`. `unavailable` rows (no online Bridge, a
+ *   library it can't write, the module off) need a person, never another wave; nor do
+ *   `error` rows (a feed whose follow failed within the hour answers `recently_failed`
+ *   and is not queued again): only a single follow by address retries one.
  * - Otherwise wait until every request this import queued is no longer open in the
  *   caller's follow requests (absent counts as ended; polled every 5 s), fewer than five
  *   of the caller's requests are open, and 30 s have passed since the last upload; then
  *   upload again. Nothing is polled once nothing it waits on is open.
  * - A wave that moves no row out of `limited` stops as `stalled` (the person can Try
- *   again).
+ *   again). A wave with no `limited` row sends no other: what is queued is followed live.
  * - `429 opml_rate_limited` / `503 opml_busy` wait their `Retry-After` (else 30 s / 2 s);
  *   five such answers in a row stop it (`stopped`, `busy`). Any other refusal is `failed`
  *   with its code; a network failure or a timeout is `failed` with none (re-uploading is
@@ -43,7 +46,7 @@ const BUSY_FALLBACK_S = 2;
 export type WaveStatus =
   | { kind: 'uploading' }
   | { kind: 'waitingRequests' }
-  | { kind: 'waitingTime'; at: number; why: 'spacing' | 'busy' }
+  | { kind: 'waitingTime'; at: number; why: 'spacing' | 'busy' | 'rateLimited' }
   | { kind: 'done' }
   | { kind: 'stalled' }
   | { kind: 'stopped'; why: 'user' | 'busy' | 'cantAct' }
@@ -96,13 +99,22 @@ export const unavailableRows = (rows: readonly Pick<OpmlImportRow, 'status'>[]) 
 export const canRetryImport = ({ status, rows }: WaveState) =>
   canRetry(status) || (status.kind === 'done' && unavailableRows(rows) > 0);
 
-/** The rows of `before` with `next`'s answers over them, by `outline_index`. */
+/** The rows of `before` with `next`'s answers over them, by `outline_index`. A row this
+ * import followed or queued earlier that a later wave answers `already_following` (its
+ * request ended done) stays `followed`: this import followed it. */
 export function mergeRows(
   before: readonly OpmlImportRow[],
   next: readonly OpmlImportRow[],
 ): OpmlImportRow[] {
   const byIndex = new Map(before.map((r) => [r.outline_index, r]));
-  for (const r of next) byIndex.set(r.outline_index, r);
+  for (const r of next) {
+    const was = byIndex.get(r.outline_index);
+    const ours = was && (was.status === 'followed' || isQueuedRow(was));
+    byIndex.set(
+      r.outline_index,
+      ours && r.status === 'already_following' ? { ...r, status: 'followed' } : r,
+    );
+  }
   return [...byIndex.values()].sort((a, b) => a.outline_index - b.outline_index);
 }
 
@@ -120,6 +132,8 @@ export class OpmlWaves {
   /** A look was due while paused: `resume` takes it at once. */
   private due = false;
   private busyStreak = 0;
+  /** What the last busy answer was (the wait's words). */
+  private busyWhy: 'busy' | 'rateLimited' = 'busy';
   /** No upload before this (epoch ms). */
   private notBefore = 0;
 
@@ -241,7 +255,7 @@ export class OpmlWaves {
           status: {
             kind: 'waitingTime',
             at: this.notBefore,
-            why: this.busyStreak > 0 ? 'busy' : 'spacing',
+            why: this.busyStreak > 0 ? this.busyWhy : 'spacing',
           },
         });
       }
@@ -301,6 +315,7 @@ export class OpmlWaves {
       return;
     }
     this.busyStreak++;
+    this.busyWhy = e instanceof ApiError && e.status === 429 ? 'rateLimited' : 'busy';
     if (this.busyStreak >= BUSY_STOP_AFTER) {
       this.set({ status: { kind: 'stopped', why: 'busy' } });
       return;
