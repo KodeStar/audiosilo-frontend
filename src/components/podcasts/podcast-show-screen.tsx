@@ -21,6 +21,7 @@ import { useLayout } from '@/lib/layout';
 import { parsePodcastParams } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
 
+import { CheckEpisodesButton } from './check-episodes-button';
 import { EpisodeRow } from './episode-row';
 import { FollowButton } from './follow-button';
 import { defaultEpisodeOrder, visibleEpisodes } from './podcast-model';
@@ -154,8 +155,9 @@ function ShowPage({
   );
 }
 
-/** The show's head: cover, title, author, the episode count, Private feed, Follow, a
- * failed last check, the description (collapsed past a few lines) and the order. */
+/** The show's head: cover, title, author, the episode count, Private feed, Follow and
+ * Check for new episodes, a failed last check, the description (collapsed past a few
+ * lines) and the order. */
 function ShowHero({
   connectionId,
   show,
@@ -204,8 +206,9 @@ function ShowHero({
               {t('podcasts.show.lastCheckFailed')}
             </Text>
           ) : null}
-          <View className="flex-row pt-1">
+          <View className="flex-row flex-wrap gap-2 pt-1">
             <FollowButton connectionId={connectionId} show={show} onGone={onGone} />
+            <CheckEpisodesButton connectionId={connectionId} show={show} />
           </View>
         </View>
       </View>
