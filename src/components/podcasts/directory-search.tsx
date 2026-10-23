@@ -16,6 +16,7 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
@@ -74,7 +75,6 @@ export function DirectorySearch({
   const search = usePodcastSearch(params, connectionId);
   const follow = useFollowPodcastByUrl(connectionId);
   const [outcomes, setOutcomes] = useState<Record<string, ResultOutcome>>({});
-  const [following, setFollowing] = useState<ReadonlySet<string>>(new Set());
 
   const submit = (using: PodcastDiscoveryProvider = provider) => {
     const q = cleanSearchText(text);
@@ -97,30 +97,24 @@ export function DirectorySearch({
     setParams(next);
   };
 
+  const setOutcome = (feedUrl: string, outcome: ResultOutcome | undefined) =>
+    setOutcomes(({ [feedUrl]: _, ...rest }) => (outcome ? { ...rest, [feedUrl]: outcome } : rest));
+
   const followResult = (r: PodcastDiscoveryResult) => {
-    setFollowing((s) => new Set(s).add(r.feed_url));
-    follow
-      .mutateAsync({ libraryId, feedUrl: r.feed_url })
-      .then(
-        (answer) =>
-          setOutcomes((o) => ({
-            ...o,
-            [r.feed_url]:
-              answer.state === 'following'
-                ? { kind: 'following', libraryId: answer.show.library_id, path: answer.show.path }
-                : { kind: 'adding' },
-          })),
-        (e: unknown) => {
-          if (!(e instanceof CapabilityError)) toast({ title: t(followByUrlErrorKey(e)) });
-        },
-      )
-      .finally(() =>
-        setFollowing((s) => {
-          const next = new Set(s);
-          next.delete(r.feed_url);
-          return next;
-        }),
-      );
+    setOutcome(r.feed_url, { kind: 'busy' });
+    follow.mutateAsync({ libraryId, feedUrl: r.feed_url }).then(
+      (answer) =>
+        setOutcome(
+          r.feed_url,
+          answer.state === 'following'
+            ? { kind: 'following', libraryId: answer.show.library_id, path: answer.show.path }
+            : { kind: 'adding' },
+        ),
+      (e: unknown) => {
+        setOutcome(r.feed_url, undefined);
+        if (!(e instanceof CapabilityError)) toast({ title: t(followByUrlErrorKey(e)) });
+      },
+    );
   };
 
   const answered = search.data;
@@ -169,13 +163,9 @@ export function DirectorySearch({
           className={tooShort ? 'mb-6' : undefined}
         />
       </View>
-      {answered && answered.results.length > 0 ? (
+      {(answered?.results.length ?? 0) > 0 || (!indexAvailable && !failure) ? (
         <Text variant="caption" testID="directory-attribution">
           {t('podcasts.find.search.resultsFrom', { provider: providerName })}
-        </Text>
-      ) : !indexAvailable && !failure ? (
-        <Text variant="caption" testID="directory-attribution">
-          {t('podcasts.find.search.resultsFrom', { provider: t('podcasts.find.provider.itunes') })}
         </Text>
       ) : null}
       {failure ? (
@@ -215,7 +205,7 @@ export function DirectorySearch({
       testID="directory-search"
       data={failure ? [] : (answered?.results ?? [])}
       keyExtractor={(r) => r.feed_url}
-      keyboardShouldPersistTaps="handled"
+      {...TAB_PAGE_SCROLL_PROPS}
       initialNumToRender={8}
       windowSize={5}
       renderItem={({ item }) => (
@@ -224,7 +214,6 @@ export function DirectorySearch({
           result={item}
           providerName={providerName}
           outcome={outcomes[item.feed_url]}
-          busy={following.has(item.feed_url)}
           canFollow={canFollow}
           onFollow={() => followResult(item)}
           onOpenShow={(lib, path) => openPodcastShow(connectionId, lib, path)}

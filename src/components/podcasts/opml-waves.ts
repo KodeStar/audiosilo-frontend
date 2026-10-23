@@ -1,6 +1,6 @@
 import { ApiError } from '@/api/client';
 import type { OpmlImportResult, OpmlImportRow, PodcastRequest } from '@/api/types';
-import { isOpenRequest } from '@/lib/podcast-requests';
+import { FOLLOW_REQUEST_POLL_MS, isOpenRequest } from '@/lib/podcast-requests';
 
 /**
  * An OPML import in automatic waves (Bridge Phase 2d-2). One upload creates at most five
@@ -31,12 +31,10 @@ import { isOpenRequest } from '@/lib/podcast-requests';
 
 /** The least time between two uploads (the server's import budget is 2 a minute). */
 export const WAVE_SPACING_MS = 30_000;
-/** How often the follow requests are read while the import waits on one. */
-export const WAVE_POLL_MS = 5_000;
 /** The most follow requests a listener can have open at once. */
-export const OPEN_REQUEST_CAP = 5;
+const OPEN_REQUEST_CAP = 5;
 /** Busy answers in a row (429 / 503) after which the import stops. */
-export const BUSY_STOP_AFTER = 5;
+const BUSY_STOP_AFTER = 5;
 /** The waits when a busy answer's `Retry-After` can't be read (cross-origin dev). */
 const RATE_LIMITED_FALLBACK_S = 30;
 const BUSY_FALLBACK_S = 2;
@@ -55,8 +53,6 @@ export type WaveState = {
   status: WaveStatus;
   /** Every subscription the server answered for, by `outline_index`. */
   rows: OpmlImportRow[];
-  /** Uploads the server answered. */
-  waves: number;
 };
 
 export type WaveDeps = {
@@ -73,7 +69,18 @@ export type WaveDeps = {
   now?: () => number;
 };
 
-const TERMINAL: ReadonlySet<WaveStatus['kind']> = new Set(['done', 'stalled', 'stopped', 'failed']);
+const RUNNING: ReadonlySet<WaveStatus['kind']> = new Set([
+  'uploading',
+  'waitingRequests',
+  'waitingTime',
+]);
+
+/** Whether the import is still going (uploading or waiting on its next wave). */
+export const isRunning = (status: WaveStatus) => RUNNING.has(status.kind);
+
+/** Whether Try again applies: it stopped, stalled or failed (a done import has nothing
+ * left to send). */
+export const canRetry = (status: WaveStatus) => !isRunning(status) && status.kind !== 'done';
 
 /** The rows of `before` with `next`'s answers over them, by `outline_index`. */
 export function mergeRows(
@@ -89,7 +96,7 @@ const limitedOf = (rows: readonly OpmlImportRow[]) =>
   new Set(rows.filter((r) => r.status === 'limited').map((r) => r.outline_index));
 
 export class OpmlWaves {
-  private state: WaveState = { status: { kind: 'uploading' }, rows: [], waves: 0 };
+  private state: WaveState = { status: { kind: 'uploading' }, rows: [] };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private abort: AbortController | null = null;
   /** Bumped by every stop, retry and dispose: a step of an older run lands nowhere. */
@@ -99,20 +106,13 @@ export class OpmlWaves {
   /** A look was due while paused: `resume` takes it at once. */
   private due = false;
   private busyStreak = 0;
-  private lastUpload = 0;
   /** No upload before this (epoch ms). */
   private notBefore = 0;
-  /** Waiting on the follow requests before the next upload. */
-  private waitRequests = false;
 
   constructor(private readonly deps: WaveDeps) {}
 
   private now() {
     return this.deps.now?.() ?? Date.now();
-  }
-
-  get current(): WaveState {
-    return this.state;
   }
 
   /** Upload the list (the first wave). */
@@ -122,16 +122,15 @@ export class OpmlWaves {
 
   /** Try again after it stopped, stalled or failed: upload now. */
   retry() {
-    if (this.disposed || !TERMINAL.has(this.state.status.kind)) return;
+    if (this.disposed || !canRetry(this.state.status)) return;
     this.cancel();
     this.busyStreak = 0;
-    this.waitRequests = false;
     void this.upload(++this.run);
   }
 
   /** Stop: nothing more is sent; the rows stay. */
   stop() {
-    if (this.disposed || TERMINAL.has(this.state.status.kind)) return;
+    if (this.disposed || !isRunning(this.state.status)) return;
     this.cancel();
     this.run++;
     this.set({ status: { kind: 'stopped', why: 'user' } });
@@ -199,13 +198,14 @@ export class OpmlWaves {
       this.due = true;
       return;
     }
-    if (this.waitRequests) {
+    // Waiting on the follow requests (the status says so until they let it go).
+    if (this.state.status.kind === 'waitingRequests') {
       let requests: readonly PodcastRequest[];
       try {
         requests = await this.deps.listRequests();
       } catch {
         // Not known: look again later.
-        if (this.live(run)) this.later(run, WAVE_POLL_MS);
+        if (this.live(run)) this.later(run, FOLLOW_REQUEST_POLL_MS);
         return;
       }
       if (!this.live(run)) return;
@@ -217,13 +217,9 @@ export class OpmlWaves {
           open.has(r.request_id),
       );
       if (mine || open.size >= OPEN_REQUEST_CAP) {
-        if (this.state.status.kind !== 'waitingRequests') {
-          this.set({ status: { kind: 'waitingRequests' } });
-        }
-        this.later(run, WAVE_POLL_MS);
+        this.later(run, FOLLOW_REQUEST_POLL_MS);
         return;
       }
-      this.waitRequests = false;
     }
     const left = this.notBefore - this.now();
     if (left > 0) {
@@ -252,7 +248,7 @@ export class OpmlWaves {
     const abort = new AbortController();
     this.abort = abort;
     this.set({ status: { kind: 'uploading' } });
-    this.lastUpload = this.now();
+    const startedAt = this.now();
     let result: OpmlImportResult;
     try {
       result = await this.deps.upload(abort.signal);
@@ -267,20 +263,16 @@ export class OpmlWaves {
     const before = limitedOf(this.state.rows);
     const rows = mergeRows(this.state.rows, result.rows);
     const after = limitedOf(rows);
-    const waves = this.state.waves + 1;
     this.deps.onWave?.(result);
-    if (after.size === 0) {
-      this.set({ rows, waves, status: { kind: 'done' } });
-      return;
-    }
-    if (before.size > 0 && [...before].every((i) => after.has(i))) {
-      this.set({ rows, waves, status: { kind: 'stalled' } });
-      return;
-    }
-    this.state = { ...this.state, rows, waves };
-    this.notBefore = this.lastUpload + WAVE_SPACING_MS;
-    this.waitRequests = true;
-    this.set({ status: { kind: 'waitingRequests' } });
+    const status: WaveStatus =
+      after.size === 0
+        ? { kind: 'done' }
+        : before.size > 0 && [...before].every((i) => after.has(i))
+          ? { kind: 'stalled' }
+          : { kind: 'waitingRequests' };
+    this.set({ rows, status });
+    if (status.kind !== 'waitingRequests') return;
+    this.notBefore = startedAt + WAVE_SPACING_MS;
     await this.evaluate(run);
   }
 
@@ -302,7 +294,6 @@ export class OpmlWaves {
       return;
     }
     this.notBefore = this.now() + busy * 1000;
-    this.waitRequests = false;
     void this.evaluate(run);
   }
 }

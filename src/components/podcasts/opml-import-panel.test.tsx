@@ -39,7 +39,6 @@ function importer(over: Partial<OpmlImport> = {}): OpmlImport {
 const state = (status: WaveState['status'], rows: OpmlImportRow[] = []): WaveState => ({
   status,
   rows,
-  waves: 1,
 });
 
 beforeEach(() => {

@@ -168,7 +168,7 @@ describe('directory search hooks', () => {
     await rerender({ params: { ...search, provider: 'podcast_index', country: null } });
     await waitFor(() => expect(mockClients.c1.searchPodcastDirectory).toHaveBeenCalledTimes(2));
     expect(mockClients.c1.searchPodcastDirectory).toHaveBeenLastCalledWith(
-      { q: 'fixture show', provider: 'podcast_index', country: undefined, limit: 20 },
+      { q: 'fixture show', provider: 'podcast_index', country: null, limit: 20 },
       expect.anything(),
     );
   });

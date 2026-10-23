@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -12,7 +13,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 
 import { importFailureKey, importProgress, importRowKey } from './find-shows-model';
 import { pickOpml } from './opml-pick';
-import type { WaveState, WaveStatus } from './opml-waves';
+import { canRetry, isRunning, type WaveState, type WaveStatus } from './opml-waves';
 import type { OpmlImport } from './use-opml-import';
 
 /** The status line of an import (`now` for a countdown). */
@@ -43,12 +44,6 @@ function statusLine(status: WaveStatus, now: number, t: TFunction): string {
   }
 }
 
-const RUNNING: ReadonlySet<WaveStatus['kind']> = new Set([
-  'uploading',
-  'waitingRequests',
-  'waitingTime',
-]);
-
 /**
  * Find shows' OPML import (Bridge Phase 2d-2, capability `podcast_opml`): choose a list
  * exported by another podcast app, and it is followed in automatic waves of five
@@ -60,7 +55,7 @@ const RUNNING: ReadonlySet<WaveStatus['kind']> = new Set([
 export function OpmlImportPanel({ opml }: { opml: OpmlImport }) {
   const { t } = useTranslation();
   const { state, problem } = opml;
-  const running = !!state && RUNNING.has(state.status.kind);
+  const running = !!state && isRunning(state.status);
   const choose = () =>
     void pickOpml().then(
       (file) => {
@@ -112,9 +107,8 @@ function ImportProgress({
   onRetry: () => void;
 }) {
   const { t } = useTranslation();
-  const now = useNow(1000, state.status.kind === 'waitingTime');
   const { settled, total } = importProgress(state.rows);
-  const retryable = ['stalled', 'stopped', 'failed'].includes(state.status.kind);
+  const retryable = canRetry(state.status);
   return (
     <View className="gap-3">
       <View className="gap-1" accessibilityLiveRegion="polite">
@@ -128,9 +122,7 @@ function ImportProgress({
             {t('podcasts.import.summary', { settled, total })}
           </Text>
         ) : null}
-        <Text variant="body" style={tabularNums} testID="opml-status">
-          {statusLine(state.status, now, t)}
-        </Text>
+        <StatusText status={state.status} />
       </View>
       <View className="flex-row flex-wrap gap-2">
         {running ? (
@@ -165,7 +157,18 @@ function ImportProgress({
   );
 }
 
-function ImportRow({ row }: { row: OpmlImportRow }) {
+/** The status line on its own, so the countdown's ticks redraw it alone. */
+function StatusText({ status }: { status: WaveStatus }) {
+  const { t } = useTranslation();
+  const now = useNow(1000, status.kind === 'waitingTime');
+  return (
+    <Text variant="body" style={tabularNums} testID="opml-status">
+      {statusLine(status, now, t)}
+    </Text>
+  );
+}
+
+const ImportRow = memo(function ImportRow({ row }: { row: OpmlImportRow }) {
   const { t } = useTranslation();
   return (
     <RowSurface testID={`opml-row-${row.outline_index}`} className="gap-0.5 px-3 py-2.5">
@@ -189,4 +192,4 @@ function ImportRow({ row }: { row: OpmlImportRow }) {
       </Text>
     </RowSurface>
   );
-}
+});

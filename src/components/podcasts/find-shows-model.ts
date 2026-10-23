@@ -2,7 +2,8 @@ import type { ParseKeys } from 'i18next';
 
 import { ApiError, apiErrorKind } from '@/api/client';
 import type { OpmlImportRow, PodcastRequest } from '@/api/types';
-import type { FindShowsSection } from '@/lib/paths';
+import { FIND_SHOWS_SECTIONS, type FindShowsSection } from '@/lib/paths';
+import { utf8 } from '@/lib/sha256';
 
 /**
  * Find shows' pure rules (Bridge Phase 2d-2): which sections a server offers, the search
@@ -10,23 +11,22 @@ import type { FindShowsSection } from '@/lib/paths';
  * listener's words (never the server's English, never "Bridge").
  */
 
-/** The page's sections, in order. */
-export const FIND_SECTIONS: readonly FindShowsSection[] = ['search', 'address', 'import'];
-export type FindSection = FindShowsSection;
-
 /** The sections a server offers: Search with `podcast_discovery`, Import with
  * `podcast_opml`, a feed address always (absent flags read as unsupported). */
 export function availableSections(caps: {
   discovery: boolean | undefined;
   opml: boolean | undefined;
-}): FindSection[] {
-  return FIND_SECTIONS.filter(
+}): FindShowsSection[] {
+  return FIND_SHOWS_SECTIONS.filter(
     (s) => s === 'address' || (s === 'search' ? caps.discovery === true : caps.opml === true),
   );
 }
 
 /** The section to show: the link's when the server offers it, else the first offered. */
-export function resolveSection(asked: FindSection | null, offered: FindSection[]): FindSection {
+export function resolveSection(
+  asked: FindShowsSection | null,
+  offered: FindShowsSection[],
+): FindShowsSection {
   return asked && offered.includes(asked) ? asked : (offered[0] ?? 'address');
 }
 
@@ -39,7 +39,7 @@ export function cleanSearchText(q: string): string {
 export const MIN_SEARCH_LENGTH = 2;
 
 /** The longest feed address the server takes, in bytes. */
-export const MAX_FEED_URL_BYTES = 2048;
+const MAX_FEED_URL_BYTES = 2048;
 
 /** What is wrong with a feed address before anything is sent, or null when it may go:
  * empty, not http(s) with a host, or over 2,048 bytes. The server checks it again. */
@@ -47,7 +47,7 @@ export function feedAddressProblem(raw: string): 'empty' | 'notHttp' | 'tooLong'
   const url = raw.trim();
   if (!url) return 'empty';
   if (!/^https?:\/\/[^\s/?#]+(?:[/?#]\S*)?$/i.test(url)) return 'notHttp';
-  if (new TextEncoder().encode(url).length > MAX_FEED_URL_BYTES) return 'tooLong';
+  if (utf8(url).length > MAX_FEED_URL_BYTES) return 'tooLong';
   return null;
 }
 
@@ -85,14 +85,15 @@ export function searchErrorCopy(e: unknown): { key: ParseKeys; seconds?: number 
     case 'invalid_country':
       return { key: 'podcasts.find.searchError.invalidCountry' };
     default:
-      return { key: accountRefusalKey(e) ?? 'podcasts.find.searchError.other' };
+      return { key: accountRefusalKey(apiErrorKind(e)) ?? 'podcasts.find.searchError.other' };
   }
 }
 
-/** The refusals any of these routes can give a caller who may not use them here: the
- * module off, a kid's or the demo account, no grant on the library. Null for others. */
-function accountRefusalKey(e: unknown): ParseKeys | null {
-  switch (apiErrorKind(e)) {
+/** The refusals any of these routes can give a caller who may not use them here (by
+ * error code): the module off, a kid's or the demo account, no grant on the library. Null
+ * for others. */
+function accountRefusalKey(code: string | null): ParseKeys | null {
+  switch (code) {
     case 'module_off':
       return 'podcasts.find.refusal.moduleOff';
     case 'kid_account':
@@ -122,7 +123,7 @@ export function followByUrlErrorKey(e: unknown): ParseKeys {
     case 'too_many_requests':
       return 'podcasts.find.followError.tooMany';
     default:
-      return accountRefusalKey(e) ?? 'podcasts.find.followError.other';
+      return accountRefusalKey(apiErrorKind(e)) ?? 'podcasts.find.followError.other';
   }
 }
 
@@ -135,9 +136,7 @@ export function importFailureKey(code: string | null): ParseKeys {
     case 'opml_limit':
       return 'podcasts.import.fail.tooLarge';
     default:
-      return (
-        accountRefusalKey(code ? new ApiError(0, '', code) : null) ?? 'podcasts.import.fail.other'
-      );
+      return accountRefusalKey(code) ?? 'podcasts.import.fail.other';
   }
 }
 
@@ -168,7 +167,7 @@ export function checkErrorKey(e: unknown): ParseKeys {
     case 'show_not_found':
       return 'podcasts.follow.errorGone';
     default:
-      return accountRefusalKey(e) ?? 'podcasts.check.failed';
+      return accountRefusalKey(apiErrorKind(e)) ?? 'podcasts.check.failed';
   }
 }
 

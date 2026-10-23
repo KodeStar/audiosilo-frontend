@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { myPodcastsQuery, qk } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
+import { FOLLOW_REQUEST_POLL_MS } from '@/lib/podcast-requests';
 import { onForeground } from '@/lib/when-active';
 import { mayActFor } from '@/stores/profiles';
 
@@ -32,6 +33,10 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   const [problem, setProblem] = useState<OpmlLocalProblem | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const waves = useRef<OpmlWaves | null>(null);
+  const drop = useCallback(() => {
+    waves.current?.dispose();
+    waves.current = null;
+  }, []);
 
   useEffect(() => {
     const stopWatching = onForeground(
@@ -40,15 +45,13 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     );
     return () => {
       stopWatching();
-      waves.current?.dispose();
-      waves.current = null;
+      drop();
     };
-  }, []);
+  }, [drop]);
 
   const start = useCallback(
     (file: PickedOpml) => {
-      waves.current?.dispose();
-      waves.current = null;
+      drop();
       setFileName(file.name);
       setState(null);
       if (file.size > OPML_MAX_BYTES) {
@@ -62,20 +65,33 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
       setProblem(null);
       const run = new OpmlWaves({
         upload: (signal) => client.importOpml(libraryId, file.body, signal),
+        // A read the page's own follow-request poll made a moment ago stands (a wave's
+        // invalidation below makes the next one fresh).
         listRequests: async () =>
-          (await qc.fetchQuery({ ...myPodcastsQuery(connectionId, client, qc), staleTime: 0 }))
-            .requests,
+          (
+            await qc.fetchQuery({
+              ...myPodcastsQuery(connectionId, client),
+              staleTime: FOLLOW_REQUEST_POLL_MS / 2,
+            })
+          ).requests,
         mayAct: () => mayActFor(connectionId),
         onChange: setState,
-        onWave: () => {
-          void qc.invalidateQueries({ queryKey: qk.podcastShows(connectionId, libraryId) });
-          void qc.invalidateQueries({ queryKey: qk.myPodcasts(connectionId) });
+        // A followed row is in the show list and the followed shows now; a queued one is a
+        // new follow request (the show list follows when it ends done: `myPodcastsQuery`).
+        onWave: ({ rows }) => {
+          const followed = rows.some((r) => r.status === 'followed');
+          if (followed) {
+            void qc.invalidateQueries({ queryKey: qk.podcastShows(connectionId, libraryId) });
+          }
+          if (followed || rows.some((r) => r.status === 'queued')) {
+            void qc.invalidateQueries({ queryKey: qk.myPodcasts(connectionId) });
+          }
         },
       });
       waves.current = run;
       run.start();
     },
-    [client, connectionId, libraryId, qc],
+    [client, connectionId, libraryId, qc, drop],
   );
 
   return {
@@ -85,11 +101,10 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     start,
     /** The file could not be picked or read. */
     unreadable: useCallback(() => {
-      waves.current?.dispose();
-      waves.current = null;
+      drop();
       setState(null);
       setProblem('unreadable');
-    }, []),
+    }, [drop]),
     stop: useCallback(() => waves.current?.stop(), []),
     retry: useCallback(() => waves.current?.retry(), []),
   };

@@ -1,7 +1,5 @@
 import type { PickedOpml } from './opml-pick';
 
-export type { PickedOpml };
-
 /** What the web picker offers: OPML and the XML types apps export it as. */
 export const OPML_ACCEPT = '.opml,.xml,text/x-opml,text/xml,application/xml';
 

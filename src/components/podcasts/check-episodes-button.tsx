@@ -2,14 +2,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { CapabilityError, qk, useCapability, useCheckPodcast } from '@/api/hooks';
+import { CapabilityError, qk, useCheckPodcast } from '@/api/hooks';
 import type { PodcastShow } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
-import { isKidAccount } from '@/lib/account';
-import { useSession } from '@/stores/session';
 
 import { checkErrorKey } from './find-shows-model';
+import { useAddShowsAccess } from './shows-actions';
 
 /** How long after a check the show and its episodes are read again (a check is not a
  * follow request, so nothing follows it: one look, a while later). */
@@ -31,8 +30,8 @@ export function CheckEpisodesButton({
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const can = useCapability('podcasts', connectionId) === true;
-  const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
+  // The same rule as adding shows: the module's, not a kid's account or the demo.
+  const access = useAddShowsAccess(connectionId);
   const check = useCheckPodcast(connectionId);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -41,7 +40,7 @@ export function CheckEpisodesButton({
     },
     [],
   );
-  if (!show.following || !can || isKidAccount(user) || user?.is_demo) return null;
+  if (!show.following || access !== 'allowed') return null;
   const press = () =>
     check.mutateAsync({ libraryId: show.library_id, path: show.path }).then(
       () => {

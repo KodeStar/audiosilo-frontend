@@ -111,7 +111,7 @@ describe('OpmlWaves', () => {
     open = false;
     await jest.advanceTimersByTimeAsync(5_000);
     expect(t.upload).toHaveBeenCalledTimes(2);
-    expect(t.last()).toMatchObject({ status: { kind: 'done' }, waves: 2, rows: WAVE_2 });
+    expect(t.last()).toMatchObject({ status: { kind: 'done' }, rows: WAVE_2 });
 
     // Done: nothing more is asked.
     const asked = t.listRequests.mock.calls.length;

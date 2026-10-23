@@ -1,19 +1,11 @@
 import type { PodcastRequest } from '@/api/types';
+import { isOpenJob } from '@/lib/bridge-jobs';
 
-/** The follow-request states still on their way (the server's open job states): queued,
- * claimed by the Bridge, running, or parked for a person. Any other (done, failed,
- * cancelled, a state this build does not know) has ended. */
-const OPEN_STATES: ReadonlySet<string> = new Set([
-  'queued',
-  'claimed',
-  'running',
-  'needs_attention',
-]);
-
-/** Whether a follow request (`GET /me/podcasts`'s `requests`) is still open. */
-export function isOpenRequest(r: Pick<PodcastRequest, 'state'>): boolean {
-  return OPEN_STATES.has(r.state);
-}
+/** Whether a follow request (`GET /me/podcasts`'s `requests`) is still open: a follow
+ * request is a Bridge job, so its open states are the jobs' (queued, claimed, running, or
+ * parked for a person). Any other (done, failed, cancelled, a state this build does not
+ * know) has ended. */
+export const isOpenRequest: (r: Pick<PodcastRequest, 'state'>) => boolean = isOpenJob;
 
 /** How often a screen showing follow requests reads them again while one is open. */
 export const FOLLOW_REQUEST_POLL_MS = 5_000;

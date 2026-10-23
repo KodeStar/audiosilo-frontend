@@ -935,7 +935,12 @@ export class ApiClient {
    * iTunes only: Podcast Index refuses it (400 `invalid_country`). There is no fallback to
    * the other directory: a refusal is the caller's to say. */
   searchPodcastDirectory(
-    q: { q: string; provider: PodcastDiscoveryProvider; country?: string; limit?: number },
+    q: {
+      q: string;
+      provider: PodcastDiscoveryProvider;
+      country?: string | null;
+      limit?: number;
+    },
     signal?: AbortSignal,
   ) {
     return this.request<PodcastDiscoverySearch>('GET', '/podcasts/discovery/search', {
@@ -943,7 +948,7 @@ export class ApiClient {
         q: q.q,
         provider: q.provider,
         limit: q.limit,
-        country: q.provider === 'itunes' ? q.country : undefined,
+        country: q.provider === 'itunes' ? (q.country ?? undefined) : undefined,
       },
       signal,
     });

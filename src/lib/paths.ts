@@ -226,7 +226,9 @@ export function podcastShowHref(
 
 /** Find shows' sections (Bridge Phase 2d-2): a directory search, a feed's address, an
  * OPML list. */
-export type FindShowsSection = 'search' | 'address' | 'import';
+/** The Find shows page's sections, in order. */
+export const FIND_SHOWS_SECTIONS = ['search', 'address', 'import'] as const;
+export type FindShowsSection = (typeof FIND_SHOWS_SECTIONS)[number];
 
 /** `/find-shows?connection=<cid>&library=<id>[&section=search|address|import]`: adding
  * shows to a podcast library (Bridge Phase 2d-2), on `section` when given. */
@@ -395,7 +397,9 @@ export function parseFindShowsParams(p: RawParams): {
   return {
     connectionId: connectionParam(p.connection),
     libraryId,
-    section: section === 'search' || section === 'address' || section === 'import' ? section : null,
+    section: (FIND_SHOWS_SECTIONS as readonly unknown[]).includes(section)
+      ? (section as FindShowsSection)
+      : null,
   };
 }
 

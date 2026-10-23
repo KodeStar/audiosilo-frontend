@@ -2330,19 +2330,20 @@ export function latestEpisodesQuery(
   });
 }
 
-/** The shows the caller follows and their follow requests (`GET /me/podcasts`). With
- * `qc`, a request this cache last saw open that has now ended `done` reads its library's
- * show list again (the show is there now; the followed shows came in this answer). */
-export function myPodcastsQuery(cid: string, client: MaybeClient, qc?: QueryClient) {
+/** The shows the caller follows and their follow requests (`GET /me/podcasts`). A
+ * request this cache last saw open that has now ended `done` reads its library's show
+ * list again (the show is there now; the followed shows came in this answer), whichever
+ * observer asked. */
+export function myPodcastsQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.myPodcasts(cid),
     queryFn: client
-      ? async ({ signal }) => {
-          const before = qc?.getQueryData<MyPodcasts>(qk.myPodcasts(cid))?.requests;
+      ? async ({ signal, client: qc }) => {
+          const before = qc.getQueryData<MyPodcasts>(qk.myPodcasts(cid))?.requests;
           const answer = await client.myPodcasts(signal);
           const libs = new Set(requestsDone(before, answer.requests).map((r) => r.library_id));
           for (const lib of libs) {
-            if (lib !== null) void qc?.invalidateQueries({ queryKey: qk.podcastShows(cid, lib) });
+            if (lib !== null) void qc.invalidateQueries({ queryKey: qk.podcastShows(cid, lib) });
           }
           return answer;
         }
@@ -2362,7 +2363,6 @@ export function useFollowRequests(
   { active }: { active: boolean },
   connectionId?: string,
 ) {
-  const qc = useQueryClient();
   const cid = useCid(connectionId);
   const client = useOptionalApi(connectionId);
   const select = useCallback(
@@ -2370,7 +2370,7 @@ export function useFollowRequests(
     [libraryId],
   );
   return useQuery({
-    ...myPodcastsQuery(cid, client, qc),
+    ...myPodcastsQuery(cid, client),
     select,
     refetchInterval: (query) =>
       active &&
@@ -2516,16 +2516,8 @@ export function usePodcastSearch(params: PodcastSearchParams | null, connectionI
         params?.country ?? null,
         params?.limit ?? 0,
       ),
-    (api, signal) =>
-      api.searchPodcastDirectory(
-        {
-          q: params!.q,
-          provider: params!.provider,
-          country: params!.country ?? undefined,
-          limit: params!.limit,
-        },
-        signal,
-      ),
+    // `ready` holds the query until there are params.
+    (api, signal) => api.searchPodcastDirectory(params!, signal),
     connectionId,
     { ready: params !== null, staleTime: DISCOVERY_STALE_MS, retry: false },
   );

@@ -38,8 +38,8 @@ export function FollowRequests({
   const focused = useIsFocused();
   const { data } = useFollowRequests(libraryId, { active: focused }, connectionId);
   if (!data?.length) return null;
-  const open = data.filter(isOpenRequest);
-  const shown = [...open, ...data.filter((r) => !isOpenRequest(r)).slice(0, ENDED_SHOWN)];
+  // `data` is open first: every open one, then the newest ended ones.
+  const shown = data.slice(0, data.filter(isOpenRequest).length + ENDED_SHOWN);
   return (
     <View testID="follow-requests" className="gap-2 pt-6">
       <SectionTitle title={t('podcasts.requests.title')} small />
@@ -56,7 +56,10 @@ function RequestRow({ connectionId, request }: { connectionId: string; request: 
   const { openPodcastShow } = useOpen();
   const open = isOpenRequest(request);
   const failed = !open && request.state !== 'done' && request.state !== 'cancelled';
-  const show = request.state === 'done' && request.library_id !== null ? request.show_path : null;
+  const show =
+    request.state === 'done' && request.library_id !== null && request.show_path
+      ? { libraryId: request.library_id, path: request.show_path }
+      : null;
   return (
     <RowSurface testID={`follow-request-${request.id}`} className="flex-row items-center gap-3 p-3">
       <Icon
@@ -87,7 +90,7 @@ function RequestRow({ connectionId, request }: { connectionId: string; request: 
           variant="outline"
           size="sm"
           title={t('podcasts.requests.openShow')}
-          onPress={() => openPodcastShow(connectionId, request.library_id!, show)}
+          onPress={() => openPodcastShow(connectionId, show.libraryId, show.path)}
         />
       ) : null}
     </RowSurface>

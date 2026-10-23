@@ -1,16 +1,18 @@
 import { useTranslation } from 'react-i18next';
-import { Linking, View } from 'react-native';
+import { View } from 'react-native';
 
 import type { PodcastDiscoveryResult } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
+import { openExternalUrl } from '@/lib/support';
 
 import { DiscoveryArtwork } from './discovery-artwork';
 
-/** What following a result did: on its way (a request), or followed (the show). */
+/** What following a result did: asked and not answered yet, on its way (a request), or
+ * followed (the show). */
 export type ResultOutcome =
-  { kind: 'adding' } | { kind: 'following'; libraryId: number; path: string };
+  { kind: 'busy' } | { kind: 'adding' } | { kind: 'following'; libraryId: number; path: string };
 
 /**
  * One directory result (Bridge Phase 2d-2): its artwork (the server's proxy), title,
@@ -23,7 +25,6 @@ export function DiscoveryResultRow({
   result,
   providerName,
   outcome,
-  busy,
   canFollow,
   onFollow,
   onOpenShow,
@@ -32,7 +33,6 @@ export function DiscoveryResultRow({
   result: PodcastDiscoveryResult;
   providerName: string;
   outcome: ResultOutcome | undefined;
-  busy: boolean;
   canFollow: boolean;
   onFollow: () => void;
   onOpenShow: (libraryId: number, path: string) => void;
@@ -62,7 +62,7 @@ export function DiscoveryResultRow({
             size="sm"
             icon="arrow-up-right"
             title={t('podcasts.find.search.viewOn', { provider: providerName })}
-            onPress={() => void Linking.openURL(providerUrl).catch(() => {})}
+            onPress={() => void openExternalUrl(providerUrl)}
             className="self-start px-0"
           />
         ) : null}
@@ -88,7 +88,7 @@ export function DiscoveryResultRow({
             icon="plus"
             title={t('podcasts.find.search.follow')}
             accessibilityLabel={t('podcasts.find.search.followLabel', { title: result.title })}
-            loading={busy}
+            loading={outcome?.kind === 'busy'}
             onPress={onFollow}
           />
         ) : null}

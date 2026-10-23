@@ -1,20 +1,24 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useCapability } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
+import { pageGutter } from '@/components/library/cover-layout';
 import { ContentScope } from '@/components/layout/content-scope';
+import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { parseFindShowsParams } from '@/lib/paths';
+import { useLayout } from '@/lib/layout';
+import { type FindShowsSection, parseFindShowsParams } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
 
 import { DirectorySearch } from './directory-search';
-import { availableSections, type FindSection, resolveSection } from './find-shows-model';
-import { FindShowsScroll } from './find-shows-page';
+import { availableSections, resolveSection } from './find-shows-model';
 import { FollowByUrl } from './follow-by-url';
 import { FollowRequests } from './follow-requests';
 import { OpmlImportPanel } from './opml-import-panel';
@@ -88,7 +92,7 @@ function FindShowsContent() {
         {t('podcasts.find.title')}
       </Text>
       {offered.length > 1 ? (
-        <SegmentedControl<FindSection>
+        <SegmentedControl<FindShowsSection>
           scrollable
           options={offered.map((s) => ({ value: s, label: t(SECTION_LABEL[s]) }))}
           value={section}
@@ -126,4 +130,30 @@ function FindShowsContent() {
         </FindShowsScroll>
       );
   }
+}
+
+/** The page's scroller for a section without a long list (a feed address, an import):
+ * the tab page scroller with the page head, then `children`, in the search list's
+ * gutters. */
+function FindShowsScroll({
+  header,
+  children,
+  testID,
+}: {
+  header: ReactNode;
+  children: ReactNode;
+  testID?: string;
+}) {
+  const gutter = pageGutter(useLayout());
+  const paddingBottom = useMiniPlayerInset();
+  return (
+    <TabPageScroll
+      testID={testID}
+      gutter={false}
+      contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: paddingBottom + 24 }}
+    >
+      {header}
+      {children}
+    </TabPageScroll>
+  );
 }
