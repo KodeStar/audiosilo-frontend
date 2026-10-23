@@ -1784,6 +1784,26 @@ describe('ApiClient household and cast (Phase 8)', () => {
     installFetch(() => ({ status: 403, body: { error: 'no access to this path' } }));
     await expect(c().castToken(2, 'Other/Book')).rejects.toMatchObject({ status: 403 });
   });
+
+  it("tells an episode's refusal apart by its code (server v2.4.0), and an older one by status", async () => {
+    installFetch(() => ({
+      status: 403,
+      body: { error: 'Only a book can be cast.', code: 'not_a_book' },
+    }));
+    const e = await c()
+      .castToken(3, 'Show/episode.mp3')
+      .catch((err: unknown) => err);
+    expect(e).toMatchObject({ name: 'ApiError', status: 403, code: 'not_a_book' });
+    expect(apiErrorKind(e)).toBe('not_a_book');
+    installFetch(() => ({ status: 403, body: { error: 'no access to this library' } }));
+    expect(
+      apiErrorKind(
+        await c()
+          .castToken(3, 'Show/episode.mp3')
+          .catch((err: unknown) => err),
+      ),
+    ).toBe('forbidden');
+  });
 });
 
 describe('ApiClient household members (Phase 8b-1)', () => {
@@ -2727,6 +2747,24 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
     await client().importOpml(7, blob);
     expect(call(m, 1).init.body).toBe(blob);
     expect(headerValue(call(m, 1).init, 'Content-Type')).toBe('text/x-opml');
+  });
+
+  it('keeps a recently failed row (server v2.4.0) as the server sent it', async () => {
+    const row = {
+      outline_index: 2,
+      status: 'error',
+      feed: 'https://dead.example/...',
+      private: false,
+      path: null,
+      request_id: 41,
+      duplicate_of: null,
+      error: { code: 'recently_failed', message: 'This feed could not be followed recently.' },
+    };
+    installAnswers(() => ({ status: 200, body: { library_id: 7, rows: [row] } }));
+    await expect(client().importOpml(7, new Uint8Array([1]))).resolves.toEqual({
+      library_id: 7,
+      rows: [row],
+    });
   });
 
   it('gives an OPML upload 45 s before it times out', async () => {
