@@ -224,9 +224,8 @@ export function podcastShowHref(
   };
 }
 
-/** Find shows' sections (Bridge Phase 2d-2): a directory search, a feed's address, an
- * OPML list. */
-/** The Find shows page's sections, in order. */
+/** Find shows' sections (Bridge Phase 2d-2), in order: a directory search, a feed's
+ * address, an OPML list. */
 export const FIND_SHOWS_SECTIONS = ['search', 'address', 'import'] as const;
 export type FindShowsSection = (typeof FIND_SHOWS_SECTIONS)[number];
 

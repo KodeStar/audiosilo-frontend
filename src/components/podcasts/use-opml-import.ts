@@ -49,6 +49,18 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     };
   }, [drop]);
 
+  // The page moved to another connection or library: the import was the other one's, so
+  // it ends and its rows go (the search and address sections are keyed the same way).
+  const scope = `${connectionId}:${libraryId}`;
+  const [lastScope, setLastScope] = useState(scope);
+  if (scope !== lastScope) {
+    setLastScope(scope);
+    setState(null);
+    setProblem(null);
+    setFileName(null);
+  }
+  useEffect(() => drop, [connectionId, libraryId, drop]);
+
   const start = useCallback(
     (file: PickedOpml) => {
       drop();

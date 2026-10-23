@@ -2423,8 +2423,9 @@ export function useFollowPodcast(connectionId?: string) {
 /** What following by address answered, into the cache: a show the library had (`200
  * following`) into its show list (the list read again when it lacks the show) and the
  * followed shows read again; a new feed's request (`202 subscribing`) at the head of the
- * cached follow requests, so a screen showing them starts following it. */
-function storeFollowByUrl(qc: QueryClient, cid: string, answer: PodcastFollowResult) {
+ * cached follow requests, so a screen showing them starts following it (`storeAnswer`: a
+ * read already in flight, the follow requests' own poll, can't land over it). */
+async function storeFollowByUrl(qc: QueryClient, cid: string, answer: PodcastFollowResult) {
   if (answer.state === 'following') {
     const { show } = answer;
     const list = qc.getQueryData<PodcastShow[]>(qk.podcastShows(cid, show.library_id));
@@ -2437,15 +2438,15 @@ function storeFollowByUrl(qc: QueryClient, cid: string, answer: PodcastFollowRes
     return;
   }
   const { request } = answer;
-  const cached = qc.getQueryData<MyPodcasts>(qk.myPodcasts(cid));
-  if (!cached) {
-    void qc.invalidateQueries({ queryKey: qk.myPodcasts(cid) });
-    return;
-  }
-  qc.setQueryData<MyPodcasts>(qk.myPodcasts(cid), {
-    ...cached,
-    requests: [request, ...cached.requests.filter((r) => r.id !== request.id)],
-  });
+  await storeAnswer<MyPodcasts>(
+    qc,
+    qk.myPodcasts(cid),
+    (cached) =>
+      cached && {
+        ...cached,
+        requests: [request, ...cached.requests.filter((r) => r.id !== request.id)],
+      },
+  );
 }
 
 /** Follow a feed by its address in a podcast library (capability `podcasts`): a

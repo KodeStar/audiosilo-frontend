@@ -157,10 +157,12 @@ function ImportProgress({
   );
 }
 
-/** The status line on its own, so the countdown's ticks redraw it alone. */
+/** The status line on its own, so the countdown's ticks redraw it alone. The clock ticks
+ * while the import runs, not only while it counts down: a clock stopped since the last
+ * countdown would start the next one seconds (or minutes) too long. */
 function StatusText({ status }: { status: WaveStatus }) {
   const { t } = useTranslation();
-  const now = useNow(1000, status.kind === 'waitingTime');
+  const now = useNow(1000, isRunning(status));
   return (
     <Text variant="body" style={tabularNums} testID="opml-status">
       {statusLine(status, now, t)}

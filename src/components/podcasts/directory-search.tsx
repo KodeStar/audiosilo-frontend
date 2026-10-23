@@ -78,7 +78,7 @@ export function DirectorySearch({
 
   const submit = (using: PodcastDiscoveryProvider = provider) => {
     const q = cleanSearchText(text);
-    if (q.length < MIN_SEARCH_LENGTH) {
+    if (Array.from(q).length < MIN_SEARCH_LENGTH) {
       setTooShort(true);
       return;
     }

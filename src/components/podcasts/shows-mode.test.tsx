@@ -42,11 +42,12 @@ jest.mock('@/components/series/empty-shelf', () => ({
     );
   },
 }));
-// The sub-nav row lives in the tab's chrome: here, only what is handed to it.
+// The sub-nav row lives in the tab's chrome: here, only what is handed to it, and (as the
+// real one does) the children right in place on a phone.
 jest.mock('@/components/shell/tab-root-nav', () => ({
   SubNavActions: ({ children, id }: { children: React.ReactNode; id: string }) => {
     const { View } = jest.requireActual('react-native');
-    return <View testID={`sub-nav-${id}`}>{children}</View>;
+    return mockLayout === 'phone' ? children : <View testID={`sub-nav-${id}`}>{children}</View>;
   },
 }));
 let mockAccess = 'allowed';

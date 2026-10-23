@@ -35,7 +35,8 @@ export function cleanSearchText(q: string): string {
   return q.trim().replace(/\s+/g, ' ');
 }
 
-/** The least search text the server takes. */
+/** The least search text the server takes, in code points (as the server counts it: one
+ * emoji is one, not two UTF-16 units). */
 export const MIN_SEARCH_LENGTH = 2;
 
 /** The longest feed address the server takes, in bytes. */

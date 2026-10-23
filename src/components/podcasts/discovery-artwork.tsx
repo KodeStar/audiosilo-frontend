@@ -28,9 +28,16 @@ export function DiscoveryArtwork({
   const themed = useThemeColors();
   const uri = useOptionalApi(connectionId)?.discoveryArtworkUrl(artworkUrl) ?? null;
   // Failed tries of this URL, and whether the latest try failed (the placeholder shows
-  // until the next try mounts).
+  // until the next try mounts). Another URL (a later search's row with the same key, a new
+  // media token) starts over.
   const [failures, setFailures] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [triedUri, setTriedUri] = useState(uri);
+  if (triedUri !== uri) {
+    setTriedUri(uri);
+    setFailures(0);
+    setFailed(false);
+  }
   useEffect(() => {
     if (!failed) return;
     const delay = artworkRetryDelay(failures);

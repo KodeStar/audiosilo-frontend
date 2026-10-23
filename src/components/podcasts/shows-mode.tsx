@@ -26,16 +26,13 @@ type ShowsFilter = 'all' | 'following';
  */
 export function PodcastShowsMode({ connectionId, libraryId }: LibraryModeProps) {
   const phone = useLayout() === 'phone';
-  const actions = <ShowsActions connectionId={connectionId} libraryId={libraryId} />;
   return (
     <View className="flex-1">
-      {phone ? null : (
-        <SubNavActions tab="(library)" id="shows-actions">
-          {actions}
-        </SubNavActions>
-      )}
       <View className={phone ? 'flex-row flex-wrap items-center gap-2 px-4' : 'px-4 lg:px-8'}>
-        {phone ? actions : null}
+        {/* Right here on a phone, the sub-nav row's end on tablet and desktop. */}
+        <SubNavActions tab="(library)" id="shows-actions">
+          <ShowsActions connectionId={connectionId} libraryId={libraryId} />
+        </SubNavActions>
         <FollowRequestsNotice connectionId={connectionId} libraryId={libraryId} />
       </View>
       <ShowsBody connectionId={connectionId} libraryId={libraryId} />
@@ -66,18 +63,20 @@ function ShowsBody({ connectionId, libraryId }: LibraryModeProps) {
     );
   }
   if (shows.data.length === 0) {
-    return canAdd ? (
+    return (
       <EmptyShelf
         title={t('podcasts.shows.empty')}
-        hint={t('podcasts.shows.addShowsHint')}
-        action={{
-          label: t('podcasts.shows.addShows'),
-          icon: 'plus',
-          onPress: () => openFindShows(connectionId, libraryId),
-        }}
+        hint={t(canAdd ? 'podcasts.shows.addShowsHint' : 'podcasts.shows.emptyHint')}
+        action={
+          canAdd
+            ? {
+                label: t('podcasts.shows.addShows'),
+                icon: 'plus',
+                onPress: () => openFindShows(connectionId, libraryId),
+              }
+            : undefined
+        }
       />
-    ) : (
-      <EmptyShelf title={t('podcasts.shows.empty')} hint={t('podcasts.shows.emptyHint')} />
     );
   }
   const following = shows.data.filter((s) => s.following);

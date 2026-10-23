@@ -27,7 +27,7 @@ export function libraryRequests(
     );
 }
 
-/** The ids of the requests in `before` that were open and have ended `done` in `after`
+/** The requests of `after` that were open in `before` and have ended `done`
  * (a request gone from `after` is not counted: nothing says how it ended). */
 export function requestsDone(
   before: readonly PodcastRequest[] | undefined,

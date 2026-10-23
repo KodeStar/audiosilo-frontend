@@ -37,6 +37,8 @@ export function FollowByUrl({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const submit = () => {
+    // The keyboard's Go submits too, so a follow on its way holds both.
+    if (follow.isPending) return;
     const problem = feedAddressProblem(address);
     if (problem) {
       setError(t(`podcasts.find.address.${problem}`));

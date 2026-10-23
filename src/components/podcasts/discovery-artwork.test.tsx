@@ -15,9 +15,9 @@ jest.mock('expo-image', () => {
     },
   };
 });
-const mockArtworkUrl = jest.fn((rel: string | null) =>
-  rel ? `https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m` : null,
-);
+const proxied = (rel: string | null): string | null =>
+  rel ? `https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m` : null;
+const mockArtworkUrl = jest.fn(proxied);
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ discoveryArtworkUrl: (rel: string | null) => mockArtworkUrl(rel) }),
 }));
@@ -39,7 +39,7 @@ async function fail() {
 
 beforeEach(() => {
   jest.useFakeTimers();
-  mockArtworkUrl.mockClear();
+  mockArtworkUrl.mockClear().mockImplementation(proxied);
   mockMounts = 0;
 });
 afterEach(() => {
@@ -76,6 +76,20 @@ describe('DiscoveryArtwork', () => {
     await fail();
     await act(async () => jest.advanceTimersByTime(10 * 60_000));
     expect(image()).toBeNull();
+  });
+
+  it('starts over for another URL once it gave up on one', async () => {
+    mockArtworkUrl.mockImplementation((rel) => (rel ? `https://s${rel}&token=m` : null));
+    const view = await render(<DiscoveryArtwork connectionId="c1" artworkUrl={REL} size={56} />);
+    for (const delay of ARTWORK_RETRY_DELAYS_MS) {
+      await fail();
+      await act(async () => jest.advanceTimersByTime(delay));
+    }
+    await fail();
+    expect(image()).toBeNull();
+    const other = '/api/v1/podcasts/discovery/artwork?id=def';
+    await view.rerender(<DiscoveryArtwork connectionId="c1" artworkUrl={other} size={56} />);
+    expect(image()!.props.source).toEqual({ uri: `https://s${other}&token=m` });
   });
 
   it('stops its timer when it goes away', async () => {

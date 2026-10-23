@@ -257,6 +257,31 @@ describe('follow by address', () => {
     });
     expect(qc.getQueryData(qk.myPodcasts('c1'))).toEqual({ shows: [], requests: [fresh, old] });
   });
+
+  it('keeps a 202 request when a read of the follow requests was already in flight', async () => {
+    const { result, qc } = await mount({ podcasts: true }, () => ({
+      m: useFollowPodcastByUrl(),
+      known: useCapability('podcasts'),
+    }));
+    await waitFor(() => expect(result.current.known).toBe(true));
+    const old = request({ id: 70, state: 'done' });
+    qc.setQueryData(qk.myPodcasts('c1'), { shows: [], requests: [old] });
+    // The poll asked before the follow and answers after it, without the new request.
+    let answerPoll: (v: MyPodcasts) => void = () => {};
+    void qc.prefetchQuery({
+      queryKey: qk.myPodcasts('c1'),
+      queryFn: () => new Promise<MyPodcasts>((resolve) => (answerPoll = resolve)),
+    });
+    const fresh = request({ id: 82 });
+    mockClients.c1.followPodcastByUrl.mockResolvedValue({ state: 'subscribing', request: fresh });
+    await act(async () => {
+      await result.current.m.mutateAsync({ libraryId: 5, feedUrl: 'https://f/x' });
+    });
+    await act(async () => answerPoll({ shows: [], requests: [old] }));
+    expect(qc.getQueryData(qk.myPodcasts('c1'))).toEqual({ shows: [], requests: [fresh, old] });
+    // Read again after the answer is in.
+    expect(qc.getQueryState(qk.myPodcasts('c1'))?.isInvalidated).toBe(true);
+  });
 });
 
 describe('check, export', () => {
