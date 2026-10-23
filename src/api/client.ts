@@ -64,6 +64,12 @@ import type {
   PodcastFollowResult,
   PodcastShow,
   MyPodcasts,
+  OpmlExport,
+  OpmlImportResult,
+  PodcastCheckResult,
+  PodcastDiscoveryProvider,
+  PodcastDiscoveryProviders,
+  PodcastDiscoverySearch,
   Progress,
   ProgressEdit,
   ProgressInput,
@@ -99,6 +105,10 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public code?: string,
+    /** The answer's `Retry-After` in seconds, when it reads as a non-negative number (any
+     * status; a date or a header the browser can't expose cross-origin reads as absent).
+     * Bridge Phase 2d-2: the discovery and OPML limits. */
+    public retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -136,6 +146,33 @@ const API_ERROR_CODES = [
   'fetch_limit',
   'identity_changed',
   'show_not_found',
+  // Podcasts, finding shows (Bridge Phase 2d-2): follow by address (an open request of
+  // the other privacy 409, five open requests 429, a bad address 400, no whole-library
+  // grant 403, a books library 409), Check for new episodes within a minute (429).
+  'privacy_conflict',
+  'too_many_requests',
+  'checked_recently',
+  'invalid_feed_url',
+  'no_library_access',
+  'not_podcast_library',
+  // Directory search (`/podcasts/discovery/*`).
+  'discovery_off',
+  'provider_unavailable',
+  'invalid_query',
+  'invalid_country',
+  'discovery_rate_limited',
+  'provider_rate_limited',
+  'discovery_busy',
+  'discovery_timeout',
+  'provider_rejected',
+  'discovery_unavailable',
+  // OPML import and export.
+  'opml_rate_limited',
+  'opml_busy',
+  'opml_limit',
+  'invalid_opml',
+  'unsupported_opml_type',
+  'opml_export_limit',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -194,15 +231,21 @@ export class PodcastFetchPendingError extends ApiError {
   }
 }
 
+/** An answer's `Retry-After` in seconds when it reads as a non-negative number, else
+ * undefined (absent, a date, or a header the browser can't expose cross-origin). */
+function retryAfterHeader(res: Response): number | undefined {
+  const header = res.headers?.get?.('Retry-After');
+  if (header == null || header.trim() === '') return undefined;
+  const n = Number(header);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 /** The seconds a 503 asks the caller to wait: `Retry-After` (seconds) when it reads as a
  * number, else the status's `retry_after_seconds`, else 2. A header the browser can't
  * expose cross-origin reads as absent. */
 function retryAfterOf(res: Response, fetch: PodcastFetchStatus): number {
-  const header = res.headers?.get?.('Retry-After');
-  if (header != null && header.trim() !== '') {
-    const n = Number(header);
-    if (Number.isFinite(n) && n >= 0) return n;
-  }
+  const header = retryAfterHeader(res);
+  if (header !== undefined) return header;
   const body = fetch.retry_after_seconds;
   return typeof body === 'number' && Number.isFinite(body) && body >= 0 ? body : 2;
 }
@@ -229,7 +272,7 @@ function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError
       retryAfterOf(res, fetch),
     );
   }
-  return new ApiError(res.status, msg || fallbackMsg, code);
+  return new ApiError(res.status, msg || fallbackMsg, code, retryAfterHeader(res));
 }
 
 /** A JSON answer: its body (undefined for a 204 or an empty one), or the `ApiError` a
@@ -245,7 +288,7 @@ async function readJson<T>(res: Response): Promise<T> {
   try {
     data = text ? JSON.parse(text) : undefined;
   } catch {
-    throw new ApiError(res.status, fallbackMsg);
+    throw new ApiError(res.status, fallbackMsg, undefined, retryAfterHeader(res));
   }
   if (!res.ok) throw apiErrorOf(res, data, fallbackMsg);
   return data as T;
@@ -293,6 +336,20 @@ export type BookListQuery = {
  * budget instead (30 s, api requestTimeout), by which it always answers (a 503 at
  * worst). */
 const UPSTREAM_TIMEOUT_MS = 30_000;
+
+/** The timeout of an OPML upload: past the server's own 30 s import budget, by which it
+ * always answers. */
+const OPML_IMPORT_TIMEOUT_MS = 45_000;
+
+/** A directory result's artwork link as the server writes it (relative, one 64-hex id). */
+const DISCOVERY_ARTWORK_RE = /^\/api\/v1\/podcasts\/discovery\/artwork\?id=([0-9a-f]{64})$/;
+
+/** A count header (`X-OPML-*`) as a non-negative integer, or null when absent or not a
+ * count (`Headers.get` is case-insensitive: Go writes `X-Opml-*`). */
+function countHeader(res: Response, name: string): number | null {
+  const v = res.headers?.get?.(name);
+  return v != null && /^\d+$/.test(v.trim()) ? Number(v.trim()) : null;
+}
 
 /** How long `seriesBooksPage` collects series names before it asks: every card
  * rendered in one commit (their queries start in the same task) lands in one request,
@@ -426,7 +483,7 @@ export class ApiClient {
     method: string,
     url: string,
     headers: Record<string, string>,
-    opts: { body?: unknown; signal?: AbortSignal; timeoutMs?: number },
+    opts: { body?: unknown; raw?: BodyInit; signal?: AbortSignal; timeoutMs?: number },
     read: (res: Response) => Promise<T>,
   ): Promise<T> {
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
@@ -452,7 +509,8 @@ export class ApiClient {
       const res = await fetch(url, {
         method,
         headers,
-        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        // A raw body (an OPML upload) goes as it is; anything else is JSON.
+        body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
         signal: controller.signal,
       });
       return await read(res);
@@ -860,6 +918,104 @@ export class ApiClient {
     );
   }
 
+  // --- Podcasts: finding shows (Bridge Phase 2d-2) ---------------------------------
+  // Directory search is capability `podcast_discovery`, the OPML routes `podcast_opml`
+  // (the import is also the module's), follow by address and Check `podcasts`. Every
+  // refusal is an `ApiError` with its `code` and, where the route sends one, its
+  // `retryAfterSeconds`.
+
+  /** The directories the server can search (`itunes` always; `podcast_index` only with
+   * its key pair). */
+  podcastDiscoveryProviders(signal?: AbortSignal) {
+    return this.request<PodcastDiscoveryProviders>('GET', '/podcasts/discovery/providers', {
+      signal,
+    });
+  }
+  /** Search one directory for shows by name. `country` (ISO 3166-1 alpha-2) goes to
+   * iTunes only: Podcast Index refuses it (400 `invalid_country`). There is no fallback to
+   * the other directory: a refusal is the caller's to say. */
+  searchPodcastDirectory(
+    q: { q: string; provider: PodcastDiscoveryProvider; country?: string; limit?: number },
+    signal?: AbortSignal,
+  ) {
+    return this.request<PodcastDiscoverySearch>('GET', '/podcasts/discovery/search', {
+      query: {
+        q: q.q,
+        provider: q.provider,
+        limit: q.limit,
+        country: q.provider === 'itunes' ? q.country : undefined,
+      },
+      signal,
+    });
+  }
+  /** Follow a feed by its address: `200 {state: 'following', show}` when the library has
+   * the show, `202 {state: 'subscribing', request}` otherwise (`GET /me/podcasts` follows
+   * it). The body is exactly `{library_id, feed_url}`, plus `private: true` only when the
+   * listener says so (`false` can't override the server's own detection). */
+  followPodcastByUrl(libraryId: number, feedUrl: string, opts: { private?: boolean } = {}) {
+    return this.request<PodcastFollowResult>('POST', '/podcasts/follow', {
+      body: {
+        library_id: libraryId,
+        feed_url: feedUrl,
+        ...(opts.private ? { private: true } : {}),
+      },
+    });
+  }
+  /** Ask a followed show to check its feed now (202, the poll; an open poll is returned
+   * as it is). Within a minute of the last check is 429 `checked_recently`; a show the
+   * caller does not follow is 404 `show_not_found`. The body is exactly `{library_id,
+   * path}`. */
+  checkPodcast(libraryId: number, path: string) {
+    return this.request<PodcastCheckResult>('POST', '/podcasts/check', {
+      body: { library_id: libraryId, path },
+    });
+  }
+  /** Upload an OPML list to follow its feeds in `libraryId`: the file's bytes as the raw
+   * body, always `Content-Type: text/x-opml`, no compression. The answer is one row per
+   * subscription (the decisions, not completion). Uploading the same bytes again is the
+   * retry (`src/components/podcasts/opml-waves.ts`). The server's import budget is 30 s,
+   * so this waits 45. */
+  importOpml(libraryId: number, body: Blob | Uint8Array, signal?: AbortSignal) {
+    const headers: Record<string, string> = {
+      ...this.clientHeaders,
+      ...this.authHeaders(),
+      'Content-Type': 'text/x-opml',
+    };
+    return this.send(
+      'POST',
+      this.apiUrl('/podcasts/opml/import', { library_id: libraryId }),
+      headers,
+      {
+        raw: body as BodyInit,
+        signal,
+        timeoutMs: Math.max(this.timeoutMs, OPML_IMPORT_TIMEOUT_MS),
+      },
+      readJson<OpmlImportResult>,
+    );
+  }
+  /** The caller's followed public shows as an OPML document, with the `X-OPML-*` counts
+   * (null when unreadable). Fetched with the `Authorization` header: there is no
+   * `?token=` link. Private feeds are never in it. Too many is 413 `opml_export_limit`. */
+  exportOpml(signal?: AbortSignal): Promise<OpmlExport> {
+    const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
+    return this.send(
+      'GET',
+      this.apiUrl('/podcasts/opml/export'),
+      headers,
+      { signal },
+      async (res) => {
+        if (!res.ok) await readJson<void>(res);
+        const count = (name: string) => countHeader(res, name);
+        return {
+          text: await res.text(),
+          exported: count('X-OPML-Exported'),
+          omittedPrivate: count('X-OPML-Omitted-Private'),
+          omittedUnavailable: count('X-OPML-Omitted-Unavailable'),
+        };
+      },
+    );
+  }
+
   // --- Media URLs ----------------------------------------------------------
   // The token rides in the media URL on every platform (the server accepts
   // `?token=` for media GETs). Web requires this - browsers can't set an
@@ -904,6 +1060,16 @@ export class ApiClient {
       size: opts?.size,
       ...this.mediaTokenQuery(),
     });
+  }
+  /** The URL of a directory result's artwork (`PodcastDiscoveryResult.artwork_url`,
+   * relative to this server), with the media token: rebuilt from its 64-hex `id` alone,
+   * since the route refuses any other parameter. Anything else (null, an absolute URL,
+   * another route, a bad id) is null: draw the placeholder. */
+  discoveryArtworkUrl(rel: string | null | undefined): string | null {
+    const id = rel ? DISCOVERY_ARTWORK_RE.exec(rel)?.[1] : undefined;
+    return id
+      ? this.apiUrl('/podcasts/discovery/artwork', { id, ...this.mediaTokenQuery() })
+      : null;
   }
   /** Build a stream URL. `transcode` requests an on-the-fly MP3 re-encode for
    * codecs the client can't decode natively (only useful when the server's
