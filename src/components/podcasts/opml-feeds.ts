@@ -1,4 +1,5 @@
 import type { OpmlImportRow } from '@/api/types';
+import { sameOrigin } from '@/lib/same-origin';
 
 /**
  * The feed address of each subscription in an OPML list, by the import rows'
@@ -47,17 +48,6 @@ function decodeEntities(s: string): string {
   });
 }
 
-/** `scheme://host[:port]` of an address, lower case and without a default port (as the
- * server's redacted label writes it), or null. */
-function originOf(url: string): string | null {
-  try {
-    const u = new URL(url);
-    return u.host ? `${u.protocol}//${u.host}`.toLowerCase() : null;
-  } catch {
-    return null;
-  }
-}
-
 /** The address a row's Try again follows: the list's address at its `outline_index`, only
  * when it is the feed the server's label names (the same scheme and host), else null. */
 export function rowFeedUrl(
@@ -67,7 +57,8 @@ export function rowFeedUrl(
   const url = feeds?.get(row.outline_index);
   if (!url || !row.feed) return null;
   const labelled = row.feed.replace(/\/\.\.\.$/, '').toLowerCase();
-  return originOf(url) === labelled ? url : null;
+  // `URL.origin` is lower case without a default port, as the server's label writes it.
+  return sameOrigin(url, { origin: labelled }) ? url : null;
 }
 
 /** The text of a picked list's bytes (UTF-8, as the server reads it; Expo's runtime

@@ -52,10 +52,8 @@ export const prepareCast: PrepareCast = async (tracks, book) => {
   }
   // The book's codec: the downloaded copy's item, else the server's (through the cache).
   const source = await bookSourceOf(book).catch(() => null);
-  if (source?.book.episode || cachedPodcastLibrary(book.connectionId, book.libraryId)) {
-    throw new CastBlockedError('episode');
-  }
   const reason = castBlockReason({
+    episode: !!source?.book.episode || cachedPodcastLibrary(book.connectionId, book.libraryId),
     // An unknown flag can't be trusted to mint a token: treat it as missing.
     canCast: caps?.cast === true,
     canTranscode: caps?.transcode,

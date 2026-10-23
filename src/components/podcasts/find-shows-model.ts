@@ -217,15 +217,14 @@ export function importRowReasonKey(
   const request =
     row.request_id === null ? undefined : requests?.find((r) => r.id === row.request_id);
   if (request?.error) return requestReasonKey(request.error.code);
-  switch (row.error?.code) {
+  if (!row.error) return null;
+  switch (row.error.code) {
     case 'recently_failed':
       return 'podcasts.import.reason.recentlyFailed';
     case 'privacy_conflict':
       return 'podcasts.find.followError.privacyConflict';
-    case 'no_library_access':
-      return 'podcasts.find.refusal.noAccess';
     default:
-      return row.error ? requestReasonKey(row.error.code) : null;
+      return accountRefusalKey(row.error.code) ?? requestReasonKey(row.error.code);
   }
 }
 

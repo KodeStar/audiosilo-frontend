@@ -12,9 +12,8 @@ import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { scanParams } from '@/components/connect/connect-model';
-import { holdInvite } from '@/components/connect/invite-handoff';
+import { beginInviteSignIn } from '@/components/connect/invite-handoff';
 import { parseInviteScan, parsePairingScan } from '@/lib/pairing';
-import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
 
@@ -75,11 +74,7 @@ export default function ScanScreen() {
     const invite = parsed ? null : parseInviteScan(data);
     if (invite) {
       setError(null);
-      holdInvite(invite);
-      void useSession
-        .getState()
-        .setPendingServerUrl(invite.base)
-        .then(() => router.replace('/connect/sign-in'));
+      beginInviteSignIn(invite, () => router.replace('/connect/sign-in'));
       return;
     }
     if (!parsed) {

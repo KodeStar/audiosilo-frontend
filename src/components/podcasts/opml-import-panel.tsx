@@ -1,11 +1,11 @@
 import { useIsFocused } from 'expo-router';
-import type { TFunction } from 'i18next';
+import type { ParseKeys, TFunction } from 'i18next';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useFollowRequests } from '@/api/hooks';
-import type { OpmlImportRow, PodcastRequest } from '@/api/types';
+import type { OpmlImportRow } from '@/api/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RowSurface } from '@/components/ui/row-surface';
@@ -32,6 +32,13 @@ import {
 } from './opml-waves';
 import { type OpmlImport, withRetries } from './use-opml-import';
 
+/** A countdown's line, by why the waves wait. */
+const WAIT_KEY = {
+  busy: 'podcasts.import.status.busy',
+  rateLimited: 'podcasts.import.status.rateLimited',
+  spacing: 'podcasts.import.status.waitingTime',
+} as const;
+
 /** The status line of an import (`now` for a countdown). A done import is done only once
  * nothing is still being added; rows that could not be added are counted (those that need
  * a person first, then those that failed, each with its own Try again). */
@@ -48,11 +55,7 @@ function statusLine(
       return t('podcasts.import.status.waitingRequests');
     case 'waitingTime': {
       const seconds = Math.max(1, Math.ceil((status.at - now) / 1000));
-      return status.why === 'busy'
-        ? t('podcasts.import.status.busy', { seconds })
-        : status.why === 'rateLimited'
-          ? t('podcasts.import.status.rateLimited', { seconds })
-          : t('podcasts.import.status.waitingTime', { seconds });
+      return t(WAIT_KEY[status.why], { seconds });
     }
     case 'done': {
       if (stillAdding(rows)) return t('podcasts.import.status.finishing');
@@ -200,7 +203,7 @@ function ImportProgress({
             <ImportRow
               key={row.outline_index}
               row={row}
-              requests={requests}
+              reasonKey={importRowReasonKey(row, requests)}
               busy={retries[row.outline_index]?.kind === 'busy'}
               onRetry={canRetryRow(row) ? retryRow : undefined}
             />
@@ -226,12 +229,14 @@ function StatusText({ status, rows }: { status: WaveStatus; rows: readonly OpmlI
 
 const ImportRow = memo(function ImportRow({
   row,
-  requests,
+  reasonKey,
   busy,
   onRetry,
 }: {
   row: OpmlImportRow;
-  requests: readonly PodcastRequest[] | undefined;
+  /** Why it could not be added (`importRowReasonKey`), read by the list so a requests
+   * poll redraws only the rows whose reason moved. */
+  reasonKey: ParseKeys | null;
   busy: boolean;
   /** Its own Try again (a single follow by its address), when it has one. */
   onRetry?: (row: OpmlImportRow) => void;
@@ -240,7 +245,6 @@ const ImportRow = memo(function ImportRow({
   // The server marks a list's private feeds; a row with no usable feed has none to mark.
   const hasFeed = row.feed !== null && row.status !== 'invalid' && row.status !== 'duplicate';
   const label = row.path ?? row.feed;
-  const reasonKey = importRowReasonKey(row, requests);
   return (
     <RowSurface
       testID={`opml-row-${row.outline_index}`}

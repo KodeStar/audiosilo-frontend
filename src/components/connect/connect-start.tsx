@@ -43,7 +43,7 @@ import {
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
-import { holdInvite } from './invite-handoff';
+import { beginInviteSignIn } from './invite-handoff';
 import { useLinkPairing } from './use-pairing';
 
 /**
@@ -284,13 +284,8 @@ export function ConnectStart() {
       setForeignLink(link.trim());
       return;
     }
-    if (scan) {
-      void pair(scan);
-      return;
-    }
-    if (!invite) return;
-    holdInvite(invite);
-    void setPendingServerUrl(invite.base).then(() => router.push('/connect/sign-in'));
+    if (scan) void pair(scan);
+    else if (invite) beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
   };
 
   if (served === 'pending' || pairing) {

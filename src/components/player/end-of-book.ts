@@ -5,8 +5,6 @@ import type { UpNextBook } from '@/playback/up-next-resolver';
 import { dropFromQueue } from './queue-drop';
 import { startBookInPlace } from './start-book';
 
-export { dropFromQueue } from './queue-drop';
-
 /**
  * The book that ended while the listener's sleep timer was running for it, by its
  * `contentKey` (memory only). The listener asked the timer to stop for the night, and the

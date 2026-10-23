@@ -52,7 +52,8 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   const { t } = useTranslation();
   const client = useOptionalApi(connectionId);
   const qc = useQueryClient();
-  const follow = useFollowPodcastByUrl(connectionId);
+  // The stable call alone: the mutation's result changes identity with its state.
+  const { mutateAsync: followByUrl } = useFollowPodcastByUrl(connectionId);
   const [state, setState] = useState<WaveState | null>(null);
   /** The list's feed addresses by `outline_index`, once its bytes are read. */
   const [feeds, setFeeds] = useState<ReadonlyMap<number, string> | null>(null);
@@ -76,27 +77,30 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     };
   }, [drop]);
 
+  // A new list (or none): its rows, held addresses and row retries start over.
+  const reset = useCallback((why: OpmlLocalProblem | null) => {
+    setState(null);
+    setProblem(why);
+    setFeeds(null);
+    setRetries({});
+  }, []);
+
   // The page moved to another connection or library: the import was the other one's, so
   // it ends and its rows go (the search and address sections are keyed the same way).
   const scope = `${connectionId}:${libraryId}`;
   const [lastScope, setLastScope] = useState(scope);
   if (scope !== lastScope) {
     setLastScope(scope);
-    setState(null);
-    setProblem(null);
+    reset(null);
     setFileName(null);
-    setFeeds(null);
-    setRetries({});
   }
   useEffect(() => drop, [connectionId, libraryId, drop]);
 
   const start = useCallback(
     (file: PickedOpml) => {
       drop();
+      reset(null);
       setFileName(file.name);
-      setState(null);
-      setFeeds(null);
-      setRetries({});
       if (file.size > OPML_MAX_BYTES) {
         setProblem('tooLarge');
         return;
@@ -143,7 +147,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
         () => undefined,
       );
     },
-    [client, connectionId, libraryId, qc, drop],
+    [client, connectionId, libraryId, qc, drop, reset],
   );
 
   const retryRow = useCallback(
@@ -154,7 +158,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
       const settle = (next: RowRetry | null) =>
         setRetries(({ [index]: _, ...rest }) => (next ? { ...rest, [index]: next } : rest));
       settle({ kind: 'busy' });
-      follow.mutateAsync({ libraryId, feedUrl }).then(
+      followByUrl({ libraryId, feedUrl }).then(
         (answer) =>
           settle({
             kind: 'answered',
@@ -175,7 +179,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
         },
       );
     },
-    [feeds, retries, follow, libraryId, t],
+    [feeds, retries, followByUrl, libraryId, t],
   );
 
   return {
@@ -186,9 +190,8 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     /** The file could not be picked or read. */
     unreadable: useCallback(() => {
       drop();
-      setState(null);
-      setProblem('unreadable');
-    }, [drop]),
+      reset('unreadable');
+    }, [drop, reset]),
     stop: useCallback(() => waves.current?.stop(), []),
     retry: useCallback(() => waves.current?.retry(), []),
     /** The rows followed again by hand, by `outline_index` (`withRetries`). */

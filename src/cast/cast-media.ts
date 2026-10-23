@@ -82,8 +82,11 @@ export function castBlockReason(input: {
   baseUrl: string | null;
   book?: Pick<Book, 'codec' | 'direct_playable'> | null;
   chapters?: Pick<ChaptersResponse, 'codec' | 'direct_playable'> | null;
+  /** A podcast episode, which never casts (the button hides on the same value). */
+  episode?: boolean;
 }): CastBlockReason | null {
   if (input.baseUrl === null) return 'no-connection';
+  if (input.episode) return 'episode';
   if (input.canCast === false) return 'unsupported';
   if (!isReachableByReceiver(input.baseUrl)) return 'local-address';
   if (

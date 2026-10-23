@@ -56,7 +56,8 @@ import { RatingStars } from './rating-stars';
 import { useBookRating } from './use-book-rating';
 import type { PlayTarget } from './use-play-book';
 import { useBookSpeed } from './use-time-left';
-import { advanceTo, dropFromQueue, useAutoPlayHold } from './end-of-book';
+import { advanceTo, useAutoPlayHold } from './end-of-book';
+import { dropFromQueue } from './queue-drop';
 import { selectIsLoaded } from './playing-target';
 
 /** Spines on the year shelf at most (the oldest go first when the row is narrower). */

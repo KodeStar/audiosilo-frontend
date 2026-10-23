@@ -18,7 +18,6 @@ import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
-import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -45,7 +44,6 @@ export function AccessoryPlayer() {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const fetching = useEpisodeFetch((s) => s.pending !== null);
   const fetchLine = useEpisodeFetchLine();
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const skipBackward = useSettings((s) => s.skipBackward);
@@ -55,7 +53,7 @@ export function AccessoryPlayer() {
   // the full player (a root modal over the tabs).
   const phone = useLayout() === 'phone';
   const onTop = usePlayerOnTop();
-  const shown = (nowPlaying != null || fetching) && phone && !onTop;
+  const shown = (nowPlaying != null || fetchLine !== null) && phone && !onTop;
   const regular = placement === 'regular';
 
   // The pill above the bar (`regular`) publishes its top edge for the root toasts. It is

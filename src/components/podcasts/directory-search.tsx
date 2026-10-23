@@ -88,14 +88,7 @@ export function DirectorySearch({
     for (const [feedUrl, outcome] of Object.entries(outcomes)) {
       const end = outcome.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
       if (end?.kind === 'unknown') continue;
-      live[feedUrl] =
-        end?.kind === 'following'
-          ? end
-          : end?.kind === 'cancelled'
-            ? { kind: 'cancelled' }
-            : end?.kind === 'failed'
-              ? { kind: 'failed' }
-              : outcome;
+      live[feedUrl] = end ?? outcome;
     }
     return live;
   }, [outcomes, requests]);

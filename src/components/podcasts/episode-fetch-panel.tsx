@@ -24,6 +24,10 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { fetchProgress, fetchReasonKey } from './podcast-model';
 
+/** A stopped fetch's heading: it failed, or the episode is not available. */
+const stoppedTitleKey = (phase: PendingEpisodeFetch['phase']) =>
+  phase === 'failed' ? 'podcasts.fetch.failedTitle' : 'podcasts.fetch.unavailableTitle';
+
 /** The fetch's lines, shared by the panel and the strip: a heading, then what it is doing
  * (how far, waiting its turn) or why it stopped, and the bar's share when known. */
 function useFetchCopy(p: PendingEpisodeFetch) {
@@ -31,9 +35,7 @@ function useFetchCopy(p: PendingEpisodeFetch) {
   const { received, total, percent } = fetchProgress(p.status);
   if (isStopped(p.phase)) {
     return {
-      heading: t(
-        p.phase === 'failed' ? 'podcasts.fetch.failedTitle' : 'podcasts.fetch.unavailableTitle',
-      ),
+      heading: t(stoppedTitleKey(p.phase)),
       line: t(fetchReasonKey(p.code)),
       fraction: null,
     };
@@ -227,16 +229,15 @@ function Strip({ pending, className }: { pending: PendingEpisodeFetch; className
  * (its second line): "Getting <title> · 40%", or why it stopped. */
 export function useEpisodeFetchLine(): string | null {
   const { t } = useTranslation();
-  const pending = useEpisodeFetch((s) => s.pending);
-  if (!pending) return null;
-  if (isStopped(pending.phase)) {
-    return t(
-      pending.phase === 'failed' ? 'podcasts.fetch.failedTitle' : 'podcasts.fetch.unavailableTitle',
-    );
-  }
-  const { percent } = fetchProgress(pending.status);
-  const getting = t('podcasts.fetch.stripLabel', { title: pending.title });
-  return percent === null ? getting : `${getting} · ${percent}%`;
+  // The line itself is selected (a string), so a poll that moves no visible percent does
+  // not re-render the accessory around it.
+  return useEpisodeFetch(({ pending }) => {
+    if (!pending) return null;
+    if (isStopped(pending.phase)) return t(stoppedTitleKey(pending.phase));
+    const { percent } = fetchProgress(pending.status);
+    const getting = t('podcasts.fetch.stripLabel', { title: pending.title });
+    return percent === null ? getting : `${getting} · ${percent}%`;
+  });
 }
 
 /**
