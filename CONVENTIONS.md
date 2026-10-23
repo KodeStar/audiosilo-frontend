@@ -1773,7 +1773,21 @@ are asked, at most 10,000 rows.
   is a new download). An answer that reached the cache before the book was downloaded (while its
   files did, or before launch's `hydrate`) is taken as it becomes downloaded (`withCachedChapters`).
   The audio is never touched, and a queue already playing keeps its chapters until the book is
-  next started.
+  next started. The same files in another order (server v2.4.0 plays them in natural order, "2-"
+  before "10-") are taken **only by a start that loads the engine in that order**
+  (`adoptStartedChapters`, from `playBook` once its load landed and it still owns the engine;
+  saved at once; a start given no chapters plays the download's own files and chapters), never
+  from a background answer, and a start's answer in the manifest's own order is left to the
+  background refresh: JS sees only what it loaded, not a book the Android service or a Cast
+  receiver holds before `adoptLoaded` / the receiver adoption, which map the engine's track index
+  through the manifest. So an offline start, Android's no-JS car start
+  and `adoptLoaded` keep the manifest's order until an online start plays the new one. The
+  chapters carry the order (every queue over a download orders its files by them and finds each by
+  path); `manifest.files` itself never moves, since a file's index there is its name on disk
+  (`fileName`, rebuilt by `relocateEntry` at every launch and by a retry). A place saved on the old
+  timeline reads as moved once the new order is taken (as the server's re-index moves any
+  whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
+  spec rebuilt (`car-controller.ts`).
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
   metadata (asked by `metaEnabledFor`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API

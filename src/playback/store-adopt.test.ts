@@ -54,8 +54,16 @@ jest.mock('./progress-sync', () => ({
 }));
 
 const mockFetchQuery = jest.fn(async (..._a: unknown[]): Promise<unknown> => ({}));
+// The query cache's listeners (`startChapterRefresh` subscribes one).
+const mockCacheListeners = new Set<(event: unknown) => void>();
 jest.mock('@/api/provider', () => ({
   queryClient: {
+    getQueryCache: () => ({
+      subscribe: (l: (event: unknown) => void) => {
+        mockCacheListeners.add(l);
+        return () => mockCacheListeners.delete(l);
+      },
+    }),
     invalidateQueries: jest.fn(),
     setQueryData: jest.fn(),
     setQueryDefaults: jest.fn(),
@@ -79,7 +87,8 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useDownloads } from '@/downloads/store';
+import { qk } from '@/api/hooks';
+import { startChapterRefresh, useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { setConnectionAliases } from '@/lib/connection-id';
 import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
@@ -321,6 +330,39 @@ describe('adoptLoaded', () => {
     expect(mockSvc.adoptPlace).toHaveBeenCalledWith(
       expect.objectContaining({ state: 'playing', trackIndex: 1, position: 30 }),
     );
+  });
+
+  // The service plays B in its download's order after a JS restart; the server has since
+  // re-ordered B's files (v2.4.0's natural order). Its answer landing before the adoption must
+  // not move the order the adoption maps the engine's track index through.
+  it('maps the engine onto the download order a re-ordered server answer left alone', async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    const stop = startChapterRefresh();
+    const reordered: ChaptersResponse = {
+      ...twoFileChapters,
+      files: [...twoFileChapters.files].reverse().map((f, seq) => ({ ...f, seq })),
+    };
+    for (const l of mockCacheListeners) {
+      l({
+        type: 'updated',
+        query: { queryKey: qk.chapters('c1', 2, 'B') },
+        action: { type: 'success', data: reordered },
+      });
+    }
+    stop();
+    expect(useDownloads.getState().entries['c1:2:B'].manifest.chapters).toBe(twoFileChapters);
+
+    await usePlayer.getState().adoptLoaded(loadedB({ trackIndex: 1, position: 30 }));
+    const { nowPlaying } = usePlayer.getState();
+    expect(nowPlaying!.queue.tracks.map((t) => t.url)).toEqual([
+      'file:///d/1.mp3',
+      'file:///d/2.mp3',
+    ]);
+    pushSnapshot(snap('playing', 1, 45));
+    jest.advanceTimersByTime(15_000); // one save tick
+    await flushMicrotasks();
+    // Track 1 is B/2.mp3, the second 100 s of the download's timeline.
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 145 });
   });
 
   it("saves the next time under the adopted book's path, at the engine's place", async () => {

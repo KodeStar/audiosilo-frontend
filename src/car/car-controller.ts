@@ -40,7 +40,7 @@ import { startBookInPlace } from '@/components/player/start-book';
 import { queueConnectionId } from '@/components/upnext/up-next-model';
 import { statusSignature } from '@/downloads/downloads-view';
 import { downloadedEntryOf, useDownloads } from '@/downloads/store';
-import type { DownloadManifest } from '@/downloads/types';
+import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import i18n from '@/i18n';
 import { bootstrapPlayback } from '@/lib/bootstrap';
 import { resolveConnectionId } from '@/lib/connection-id';
@@ -979,6 +979,24 @@ export function carSyncReady(): Promise<void> {
   return ready;
 }
 
+/** Whether a book downloaded in both registries has other chapters in `next` (a chapters
+ * refresh, `refreshedChapters`, or a start's, `adoptStartedChapters`, which can also give
+ * its files a new play order): its play spec is built from them (`playSpec`), and a
+ * refresh changes no download's status. */
+function chaptersChanged(
+  next: Record<string, DownloadEntry>,
+  prev: Record<string, DownloadEntry>,
+): boolean {
+  return Object.entries(next).some(([k, e]) => {
+    const was = prev[k];
+    return (
+      e.status === 'downloaded' &&
+      was?.status === 'downloaded' &&
+      e.manifest.chapters !== was.manifest.chapters
+    );
+  });
+}
+
 /**
  * Start the car sync (idempotent: callers share one; each returned stop releases one, and the
  * last releases everything). Native only; a no-op on the web and on a binary without the car
@@ -1016,7 +1034,7 @@ export function startCarSync(): () => void {
     useDownloads.subscribe((s, prev) => {
       if (s.entries === prev.entries) return;
       const sig = statusSignature(s.entries);
-      if (sig === downloadsSig) return;
+      if (sig === downloadsSig && !chaptersChanged(s.entries, prev.entries)) return;
       downloadsSig = sig;
       request(false);
     }),

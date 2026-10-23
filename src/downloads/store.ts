@@ -6,11 +6,12 @@ import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
-import { contentKey } from '@/lib/content-key';
+import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
+import type { BookRef } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { onConnectionRemoved } from '@/stores/session';
 
@@ -117,7 +118,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       const key = downloadKey(e.connectionId, e.libraryId, e.path);
       if (revived?.status === 'downloaded') {
         // A chapters answer can reach the cache before this read the registry.
-        const manifest = withCachedChapters(e.connectionId, e.libraryId, e.path, revived.manifest);
+        const manifest = withCachedChapters(e, revived.manifest);
         cleaned[key] = manifest === revived.manifest ? revived : { ...revived, manifest };
         seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
       } else if (revived) {
@@ -373,31 +374,76 @@ export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntr
  * it was downloaded (a rescan, a community chapter list fitted onto its audio, the admin
  * switching it back), and offline it plays and lists what the manifest holds. Only the
  * chapters move: when the fresh answer's audio files are not the ones on the device (the
- * same paths in the same order, `bookFileSpecs` as the download read them, and the same
+ * same paths in the order the manifest plays them now, `bookFileSpecs`, and the same
  * sizes where both answers know them: a file replaced in place keeps its path), the local
- * audio no longer matches and that is a new download, so nothing changes. Null too when
- * nothing differs.
+ * audio no longer matches and that is a new download, so nothing changes. The same files
+ * in another order are taken only by a start that plays them that way
+ * (`adoptStartedChapters`), never from a background answer. Null too when nothing differs.
  */
 export function refreshedChapters(
   manifest: DownloadManifest,
   fresh: ChaptersResponse,
 ): DownloadManifest | null {
+  const refresh = chaptersRefresh(manifest, fresh);
+  return refresh && !refresh.reordered ? refresh.manifest : null;
+}
+
+/** The manifest with `fresh` chapters when they name the device's own files (the same set
+ * of paths, the same sizes where both answers know them), and whether they play those
+ * files in another order than the manifest's chapters do (`reordered`); else null. */
+function chaptersRefresh(
+  manifest: DownloadManifest,
+  fresh: ChaptersResponse,
+): { manifest: DownloadManifest; reordered: boolean } | null {
   // An unchanged refetch hands back the same object (structural sharing): skip the compare.
   if (fresh === manifest.chapters) return null;
   const want = bookFileSpecs(manifest.book, fresh);
-  // The files as the download read them (sizes 0 when only the chapters named them).
+  if (want.length !== manifest.files.length) return null;
+  // The files in the order the manifest plays them now, with the sizes the download read
+  // (0 when only the chapters named the files).
   const read = bookFileSpecs(manifest.book, manifest.chapters ?? undefined);
-  const have = manifest.files;
-  const same =
-    want.length === have.length &&
-    want.every((s, i) => {
-      if (s.path !== have[i].relPath) return false;
-      const was = read[i];
-      return was?.path !== s.path || !(was.size > 0 && s.size > 0) || was.size === s.size;
-    });
-  if (!same) return null;
-  if (JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
-  return { ...manifest, chapters: fresh };
+  const readSize = new Map(read.map((s) => [s.path, s.size]));
+  // The device's files, each one named exactly once, in any order.
+  const onDisk = manifest.files.map((f) => f.relPath);
+  const onDiskSet = new Set(onDisk);
+  const onDevice = new Set(onDiskSet);
+  for (const s of want) {
+    if (!onDevice.delete(s.path)) return null;
+    const was = readSize.get(s.path) ?? 0;
+    if (was > 0 && s.size > 0 && was !== s.size) return null;
+  }
+  // The order the manifest plays them in now: its chapters', else (saved chapters that name
+  // no file list of their own) the order the download wrote them.
+  const playing =
+    read.length === onDisk.length && read.every((s) => onDiskSet.has(s.path))
+      ? read.map((s) => s.path)
+      : onDisk;
+  const reordered = want.some((s, i) => s.path !== playing[i]);
+  if (!reordered && JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
+  return { manifest: { ...manifest, chapters: fresh }, reordered };
+}
+
+/**
+ * A start of a downloaded book loaded the engine from `chapters` (`playBook`, once its
+ * load landed): the manifest takes them, so a later start, offline or from Android's
+ * service (`adoptLoaded`, which gets only a track index), plays the order the engine was
+ * given. This is the only way the same files take a new order (server v2.4.0 plays them
+ * in natural order, "2-" before "10-"): the chapters carry the order every queue over the
+ * download plays them in (`bookFileSpecs`, each file found by its path:
+ * `localFromManifest`), and `files` itself never moves, since a file's index there is its
+ * name on disk (`fileName`, which `relocateEntry` and a retry rebuild it from). A
+ * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
+ * service or a Cast receiver holds before it is adopted. Chapters naming other files
+ * change nothing.
+ */
+export function adoptStartedChapters(ref: BookRef, chapters: ChaptersResponse): void {
+  const entry = downloadedEntryOf(ref);
+  const refresh = entry && chaptersRefresh(entry.manifest, chapters);
+  // The same order is the background refresh's to take (`startChapterRefresh`): a start's
+  // answer can be older (cached) than one the manifest took while it loaded.
+  if (!refresh?.reordered) return;
+  patchEntry(contentKeyOf(ref), { manifest: refresh.manifest });
+  void persist();
 }
 
 /**
@@ -407,14 +453,9 @@ export function refreshedChapters(
  * the launch's `hydrate` read the registry. That answer is the one the download was given
  * or a newer one (the callers read it from the same cache entry).
  */
-function withCachedChapters(
-  connectionId: string,
-  libraryId: number,
-  path: string,
-  manifest: DownloadManifest,
-): DownloadManifest {
+function withCachedChapters(ref: BookRef, manifest: DownloadManifest): DownloadManifest {
   const cached = queryClient.getQueryData<ChaptersResponse>(
-    qk.chapters(connectionId, libraryId, path),
+    qk.chapters(ref.connectionId, ref.libraryId, ref.path),
   );
   return (cached && refreshedChapters(manifest, cached)) || manifest;
 }
@@ -433,12 +474,11 @@ export function startChapterRefresh(): () => void {
     const book = chaptersKeyParts(event.query.queryKey);
     const fresh = event.action.data as ChaptersResponse | undefined;
     if (!book || !fresh) return;
-    const key = downloadKey(book.cid, book.libraryId, book.path);
-    const entry = useDownloads.getState().entries[key];
-    if (entry?.status !== 'downloaded') return;
-    const manifest = refreshedChapters(entry.manifest, fresh);
+    const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
+    const entry = downloadedEntryOf(ref);
+    const manifest = entry && refreshedChapters(entry.manifest, fresh);
     if (!manifest) return;
-    patchEntry(key, { manifest });
+    patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out) saves the registry
     // once, not once per book.
     persistSoon();
@@ -786,7 +826,7 @@ async function runOne(key: string) {
     }
 
     // With the server's chapters answer when one landed while the files did.
-    const manifest = withCachedChapters(connectionId, libraryId, path, {
+    const manifest = withCachedChapters(entry, {
       ...entry.manifest,
       files,
       coverUri,

@@ -6,7 +6,12 @@ import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
-import { downloadedEntryOf, downloadKey, useDownloads } from '@/downloads/store';
+import {
+  adoptStartedChapters,
+  downloadedEntryOf,
+  downloadKey,
+  useDownloads,
+} from '@/downloads/store';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
@@ -814,11 +819,16 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         !local &&
         mayNeedWebTranscode(book, chapterData) &&
         (await resolveWebTranscode(connectionId, api, book, chapterData));
+      // A downloaded book given no chapters (its chapters read failed) plays its download's
+      // files and chapters, the order its manifest holds, so the engine never holds an order
+      // the manifest does not (`adoptStartedChapters`).
+      const own = dl && !chapterData ? dl.manifest : undefined;
+      const queueChapters = chapterData ?? own?.chapters ?? undefined;
       const queue = buildBookQueue(
         api,
         libraryId,
-        book,
-        chapterData,
+        own ? { ...book, files: own.book.files, chapters: own.book.chapters } : book,
+        queueChapters,
         local,
         useSettings.getState().virtualChapterInterval,
         transcode,
@@ -911,6 +921,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       // Another book was started while this one loaded (a second tap, Up next): that start
       // owns the engine now, so this one neither sets its speed nor plays.
       if (selectBookKey(get()) !== key) return;
+      // The engine holds the queue built from these chapters now: a download takes them,
+      // with a new file order when its server re-ordered the files (`adoptStartedChapters`).
+      if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
       await svc.setRate(speed);
       if (!current()) return;
       await startEngine(svc);
