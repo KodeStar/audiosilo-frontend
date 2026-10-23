@@ -1351,6 +1351,7 @@ describe('the download hot-swap', () => {
 describe('a downloaded book re-ordered on its server', () => {
   const folder = 'A/Folder';
   const paths = ['A/Folder/10.mp3', 'A/Folder/2.mp3'];
+  const serverOrder = ['A/Folder/2.mp3', 'A/Folder/10.mp3'];
   const chaptersIn = (order: string[]): ChaptersResponse => ({
     library_id: 2,
     path: folder,
@@ -1397,17 +1398,17 @@ describe('a downloaded book re-ordered on its server', () => {
     // The server's answer, in its new order, sits in the query cache.
     (queryClient.getQueryData as jest.Mock).mockImplementation((k: unknown) =>
       Array.isArray(k) && k[0] === 'chapters' && k[3] === folder
-        ? chaptersIn([...paths].reverse())
+        ? chaptersIn(serverOrder)
         : undefined,
     );
   });
   afterEach(() => (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined));
 
   it("takes the server's order once a start plays it", async () => {
-    await usePlayer.getState().playBook('c1', 2, book, chaptersIn([...paths].reverse()), 0);
+    await usePlayer.getState().playBook('c1', 2, book, chaptersIn(serverOrder), 0);
     const tracks = usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url);
     expect(tracks).toEqual(['file:///dl/1.mp3', 'file:///dl/0.mp3']);
-    expect(order()).toEqual(['A/Folder/2.mp3', 'A/Folder/10.mp3']);
+    expect(order()).toEqual(serverOrder);
   });
 
   it('keeps the old order while a queue plays it, and takes the new one once it is gone', async () => {
@@ -1415,7 +1416,7 @@ describe('a downloaded book re-ordered on its server', () => {
     await usePlayer.getState().playBook('c1', 2, book, chaptersIn(paths), 0);
     expect(order()).toEqual(paths);
     usePlayer.setState({ nowPlaying: null });
-    expect(order()).toEqual(['A/Folder/2.mp3', 'A/Folder/10.mp3']);
+    expect(order()).toEqual(serverOrder);
   });
 });
 

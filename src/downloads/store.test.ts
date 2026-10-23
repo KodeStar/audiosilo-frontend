@@ -685,6 +685,7 @@ describe("refreshing a downloaded book's chapters", () => {
 
     describe('a new file order', () => {
       const key = downloadKey('c1', 2, 'A/Book');
+      const ref = { connectionId: 'c1', libraryId: 2, path: 'A/Book' };
       const reordered = () => fresh(['A/Book/02.mp3', 'A/Book/01.mp3']);
       const order = () => useDownloads.getState().entries[key].manifest.files.map((f) => f.relPath);
       const loaded = jest.fn((..._a: unknown[]): string[] | null => null);
@@ -702,7 +703,7 @@ describe("refreshing a downloaded book's chapters", () => {
         answer(reordered());
         expect(order()).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
         expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(reordered());
-        expect(loaded).toHaveBeenCalledWith({ connectionId: 'c1', libraryId: 2, path: 'A/Book' });
+        expect(loaded).toHaveBeenCalledWith(ref);
       });
 
       it('is taken at once when the loaded queue already plays it', () => {
@@ -724,11 +725,11 @@ describe("refreshing a downloaded book's chapters", () => {
         mockGetQueryData.mockImplementation((k: unknown) =>
           Array.isArray(k) && k[0] === 'chapters' && k[3] === 'A/Book' ? reordered() : undefined,
         );
-        adoptCachedChapters({ connectionId: 'c1', libraryId: 2, path: 'A/Book' });
+        adoptCachedChapters(ref);
         expect(order()).toEqual(['A/Book/01.mp3', 'A/Book/02.mp3']);
         // The player let it go.
         loaded.mockReturnValue(null);
-        adoptCachedChapters({ connectionId: 'c1', libraryId: 2, path: 'A/Book' });
+        adoptCachedChapters(ref);
         expect(order()).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
         expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(reordered());
       });
@@ -740,7 +741,7 @@ describe("refreshing a downloaded book's chapters", () => {
         answer(fresh(['A/Book/02.mp3', 'A/Book/03.mp3']));
         expect(useDownloads.getState().entries[key]).toBe(e);
         // Nothing cached, or a book not downloaded: nothing to take.
-        adoptCachedChapters({ connectionId: 'c1', libraryId: 2, path: 'A/Book' });
+        adoptCachedChapters(ref);
         adoptCachedChapters({ connectionId: 'c1', libraryId: 2, path: 'B/Book' });
         expect(useDownloads.getState().entries[key]).toBe(e);
       });

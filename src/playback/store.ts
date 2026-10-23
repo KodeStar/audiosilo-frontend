@@ -6,6 +6,7 @@ import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
+import { trackFilePath } from '@/cast/cast-media';
 import {
   adoptCachedChapters,
   downloadedEntryOf,
@@ -14,7 +15,7 @@ import {
   useDownloads,
 } from '@/downloads/store';
 import { resolveConnectionId } from '@/lib/connection-id';
-import { contentKey } from '@/lib/content-key';
+import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
@@ -1388,11 +1389,9 @@ useDownloads.subscribe((state, prev) => {
 // does not hold it in another order (`refreshedFor` in the downloads store): this is the
 // order the loaded queue plays, by book-relative path (a track's id is `<library>:<path>`).
 setLoadedFileOrder((ref) => {
-  const np = usePlayer.getState().nowPlaying;
-  if (!np || np.connectionId !== ref.connectionId || np.libraryId !== ref.libraryId) return null;
-  if (np.path !== ref.path) return null;
-  const prefix = `${np.libraryId}:`;
-  return np.queue.tracks.map((t) => t.id.slice(prefix.length));
+  const s = usePlayer.getState();
+  if (!s.nowPlaying || selectBookKey(s) !== contentKeyOf(ref)) return null;
+  return s.nowPlaying.queue.tracks.map(trackFilePath);
 });
 
 // And once the loaded book changes, a new order held back for the book that was loaded,
@@ -1400,7 +1399,11 @@ setLoadedFileOrder((ref) => {
 usePlayer.subscribe((state, prev) => {
   if (state.nowPlaying === prev.nowPlaying) return;
   if (prev.nowPlaying) adoptCachedChapters(prev.nowPlaying);
-  if (state.nowPlaying) adoptCachedChapters(state.nowPlaying);
+  // The same book under a new object (the hot-swap, a restart): the call above covered it.
+  const now = state.nowPlaying;
+  if (now && (!prev.nowPlaying || contentKeyOf(now) !== contentKeyOf(prev.nowPlaying))) {
+    adoptCachedChapters(now);
+  }
 });
 
 // --- selectors -------------------------------------------------------------

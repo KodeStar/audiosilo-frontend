@@ -398,17 +398,19 @@ export function refreshedChapters(
   const onDevice = new Map(have.map((f) => [f.relPath, f]));
   // The device's files in the fresh answer's order: each one exactly once.
   const files: DownloadedFile[] = [];
+  let reordered = false;
   for (const s of want) {
     const f = onDevice.get(s.path);
     if (!f) return null;
     onDevice.delete(s.path);
     const was = readSize.get(s.path) ?? 0;
     if (was > 0 && s.size > 0 && was !== s.size) return null;
+    if (f !== have[files.length]) reordered = true;
     files.push(f);
   }
-  const reordered = files.some((f, i) => f !== have[i]);
   if (!reordered && JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
-  return reordered ? { ...manifest, chapters: fresh, files } : { ...manifest, chapters: fresh };
+  // Unchanged order keeps the very same `files` array (`refreshedFor` tells them apart by it).
+  return { ...manifest, chapters: fresh, files: reordered ? files : have };
 }
 
 /** The file order (book-relative paths) the player has a book loaded in, or null when it
@@ -437,10 +439,10 @@ function refreshedFor(
   const next = refreshedChapters(manifest, fresh);
   if (!next || next.files === manifest.files) return next;
   const loaded = loadedFileOrder(ref);
-  const inLoadedOrder =
-    !loaded ||
-    (loaded.length === next.files.length && loaded.every((p, i) => p === next.files[i].relPath));
-  return inLoadedOrder ? next : null;
+  if (!loaded) return next;
+  const same =
+    loaded.length === next.files.length && loaded.every((p, i) => p === next.files[i].relPath);
+  return same ? next : null;
 }
 
 /**
