@@ -9,10 +9,13 @@ import { openExternalUrl } from '@/lib/support';
 
 import { DiscoveryArtwork } from './discovery-artwork';
 
-/** What following a result did: asked and not answered yet, on its way (a request), or
- * followed (the show). */
+/** What following a result did: asked and not answered yet, on its way (its request), or
+ * followed (the show), or its request ended without adding it. */
 export type ResultOutcome =
-  { kind: 'busy' } | { kind: 'adding' } | { kind: 'following'; libraryId: number; path: string };
+  | { kind: 'busy' }
+  | { kind: 'adding'; requestId: number }
+  | { kind: 'following'; libraryId: number; path: string }
+  | { kind: 'failed' };
 
 /**
  * One directory result (Bridge Phase 2d-2): its artwork (the server's proxy), title,
@@ -83,14 +86,21 @@ export function DiscoveryResultRow({
             {t('podcasts.find.search.adding')}
           </Text>
         ) : canFollow ? (
-          <Button
-            size="sm"
-            icon="plus"
-            title={t('podcasts.find.search.follow')}
-            accessibilityLabel={t('podcasts.find.search.followLabel', { title: result.title })}
-            loading={outcome?.kind === 'busy'}
-            onPress={onFollow}
-          />
+          <>
+            {outcome?.kind === 'failed' ? (
+              <Text variant="caption" testID="discovery-result-failed">
+                {t('podcasts.requests.state.failed')}
+              </Text>
+            ) : null}
+            <Button
+              size="sm"
+              icon="plus"
+              title={t('podcasts.find.search.follow')}
+              accessibilityLabel={t('podcasts.find.search.followLabel', { title: result.title })}
+              loading={outcome?.kind === 'busy'}
+              onPress={onFollow}
+            />
+          </>
         ) : null}
       </View>
     </RowSurface>

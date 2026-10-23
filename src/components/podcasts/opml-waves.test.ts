@@ -179,6 +179,24 @@ describe('OpmlWaves', () => {
     expect(t.upload).toHaveBeenCalledTimes(2);
   });
 
+  it('lets Try again ask again for rows that could not be added, never a done one', async () => {
+    const t = setup([
+      answer([row(1, 'queued'), row(2, 'unavailable')]),
+      answer([row(1, 'already_queued'), row(2, 'queued')]),
+    ]);
+    t.waves.start();
+    await flush();
+    expect(t.last().status.kind).toBe('done');
+    t.waves.retry();
+    await flush();
+    expect(t.upload).toHaveBeenCalledTimes(2);
+    expect(t.last().rows.map((r) => r.status)).toEqual(['already_queued', 'queued']);
+    // Nothing is left that needs a person: Try again does nothing more.
+    t.waves.retry();
+    await flush();
+    expect(t.upload).toHaveBeenCalledTimes(2);
+  });
+
   it('stops as stalled when a wave moves no row out of limited, and Try again uploads', async () => {
     const t = setup([answer(WAVE_1), answer(WAVE_1), answer(WAVE_2)]);
     t.waves.start();

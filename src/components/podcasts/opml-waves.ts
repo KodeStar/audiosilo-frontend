@@ -80,7 +80,12 @@ export const isRunning = (status: WaveStatus) => RUNNING.has(status.kind);
 
 /** Whether Try again applies: it stopped, stalled or failed (a done import has nothing
  * left to send). */
-export const canRetry = (status: WaveStatus) => !isRunning(status) && status.kind !== 'done';
+const canRetry = (status: WaveStatus) => !isRunning(status) && status.kind !== 'done';
+
+/** Whether Try again applies to an import: as `canRetry`, or done with rows that could
+ * not be added right now (they need a person, so no automatic wave asks again). */
+export const canRetryImport = ({ status, rows }: WaveState) =>
+  canRetry(status) || (status.kind === 'done' && rows.some((r) => r.status === 'unavailable'));
 
 /** The rows of `before` with `next`'s answers over them, by `outline_index`. */
 export function mergeRows(
@@ -120,9 +125,10 @@ export class OpmlWaves {
     void this.upload(++this.run);
   }
 
-  /** Try again after it stopped, stalled or failed: upload now. */
+  /** Try again after it stopped, stalled or failed, or ended with rows that could not be
+   * added right now: upload now. */
   retry() {
-    if (this.disposed || !canRetry(this.state.status)) return;
+    if (this.disposed || !canRetryImport(this.state)) return;
     this.cancel();
     this.busyStreak = 0;
     void this.upload(++this.run);

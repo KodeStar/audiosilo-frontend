@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import type { PodcastSearchParams } from '@/api/hooks';
-import type { PodcastDiscoveryResult, PodcastFollowResult } from '@/api/types';
+import type { PodcastDiscoveryResult, PodcastFollowResult, PodcastRequest } from '@/api/types';
 import { podcastShow } from '@/testing/podcast-fixtures';
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -30,6 +30,8 @@ let mockSearch: SearchState = {};
 const mockAsked: (PodcastSearchParams | null)[] = [];
 const mockRefetch = jest.fn();
 const mockFollow = jest.fn();
+jest.mock('expo-router', () => ({ useIsFocused: () => true }));
+let mockRequests: Partial<PodcastRequest>[] = [];
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
@@ -56,6 +58,7 @@ jest.mock('@/api/hooks', () => {
         : { isPending: true, isFetching: false, isError: false, refetch: mockRefetch };
     },
     useFollowPodcastByUrl: () => ({ mutateAsync: mockFollow, isPending: false }),
+    useFollowRequests: () => ({ data: mockRequests }),
   };
 });
 
@@ -100,6 +103,7 @@ beforeEach(() => {
   mockFollow.mockReset();
   mockToast.mockReset();
   mockOpenShow.mockReset();
+  mockRequests = [];
 });
 
 describe('DirectorySearch', () => {
@@ -209,6 +213,39 @@ describe('DirectorySearch', () => {
       feedUrl: 'https://feeds.example.com/history.xml',
     });
     expect(await screen.findByTestId('discovery-result-adding')).toBeTruthy();
+  });
+
+  it('a result on its way turns Following once its request is done, or says it failed', async () => {
+    mockSearch = {
+      data: {
+        provider: 'itunes',
+        query: 'h',
+        country: 'GB',
+        results: [result(), result({ feed_url: 'https://b.example/feed', title: 'Other' })],
+      },
+    };
+    mockFollow
+      .mockResolvedValueOnce({ state: 'subscribing', request: { id: 3 } })
+      .mockResolvedValueOnce({ state: 'subscribing', request: { id: 4 } });
+    mockRequests = [];
+    await mount();
+    await search('history');
+    await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Follow Other' }));
+    expect(await screen.findAllByTestId('discovery-result-adding')).toHaveLength(2);
+
+    mockRequests = [
+      { id: 3, state: 'done', library_id: 7, show_path: 'History Hour' },
+      { id: 4, state: 'failed', library_id: 7, show_path: null },
+    ];
+    // The requests list polls them; any render reads them again (here, typing).
+    await fireEvent.changeText(screen.getByTestId('directory-search-input'), 'history ');
+    expect(screen.queryByTestId('discovery-result-adding')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Open show' }));
+    expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'History Hour');
+    expect(screen.getByTestId('discovery-result-failed').props.children).toBe("Couldn't add");
+    // A failed one can be followed again.
+    expect(screen.getByRole('button', { name: 'Follow Other' })).toBeTruthy();
   });
 
   it('a show the library had reads Following, with Open show', async () => {

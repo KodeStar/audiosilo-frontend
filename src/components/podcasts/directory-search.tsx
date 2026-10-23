@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router';
 import { type ReactElement, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
@@ -7,6 +8,7 @@ import {
   type PodcastSearchParams,
   useCapability,
   useFollowPodcastByUrl,
+  useFollowRequests,
   usePodcastDiscoveryProviders,
   usePodcastSearch,
 } from '@/api/hooks';
@@ -30,6 +32,7 @@ import {
   cleanSearchText,
   followByUrlErrorKey,
   MIN_SEARCH_LENGTH,
+  requestEnd,
   searchErrorCopy,
 } from './find-shows-model';
 
@@ -75,6 +78,20 @@ export function DirectorySearch({
   const search = usePodcastSearch(params, connectionId);
   const follow = useFollowPodcastByUrl(connectionId);
   const [outcomes, setOutcomes] = useState<Record<string, ResultOutcome>>({});
+  // A result on its way reads its request live (the page's requests list polls it), so
+  // it turns Following or Couldn't add once the request ends.
+  const focused = useIsFocused();
+  const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
+  const outcomeOf = (feedUrl: string): ResultOutcome | undefined => {
+    const outcome = outcomes[feedUrl];
+    if (outcome?.kind !== 'adding') return outcome;
+    const end = requestEnd(requests, outcome.requestId);
+    return !end
+      ? outcome
+      : end.kind === 'done'
+        ? { kind: 'following', libraryId: end.libraryId, path: end.path }
+        : { kind: 'failed' };
+  };
 
   const submit = (using: PodcastDiscoveryProvider = provider) => {
     const q = cleanSearchText(text);
@@ -108,7 +125,7 @@ export function DirectorySearch({
           r.feed_url,
           answer.state === 'following'
             ? { kind: 'following', libraryId: answer.show.library_id, path: answer.show.path }
-            : { kind: 'adding' },
+            : { kind: 'adding', requestId: answer.request.id },
         ),
       (e: unknown) => {
         setOutcome(r.feed_url, undefined);
@@ -205,6 +222,7 @@ export function DirectorySearch({
       testID="directory-search"
       data={failure ? [] : (answered?.results ?? [])}
       keyExtractor={(r) => r.feed_url}
+      extraData={{ outcomes, requests }}
       {...TAB_PAGE_SCROLL_PROPS}
       initialNumToRender={8}
       windowSize={5}
@@ -213,7 +231,7 @@ export function DirectorySearch({
           connectionId={connectionId}
           result={item}
           providerName={providerName}
-          outcome={outcomes[item.feed_url]}
+          outcome={outcomeOf(item.feed_url)}
           canFollow={canFollow}
           onFollow={() => followResult(item)}
           onOpenShow={(lib, path) => openPodcastShow(connectionId, lib, path)}

@@ -119,7 +119,7 @@ function FindShowsContent() {
     case 'import':
       return (
         <FindShowsScroll header={header} testID="find-shows-import">
-          <OpmlImportPanel opml={importer} />
+          <OpmlImportPanel opml={importer} connectionId={cid} libraryId={libraryId} />
         </FindShowsScroll>
       );
     default:

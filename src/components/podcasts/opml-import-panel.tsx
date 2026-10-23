@@ -1,8 +1,10 @@
+import { useIsFocused } from 'expo-router';
 import type { TFunction } from 'i18next';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useFollowRequests } from '@/api/hooks';
 import type { OpmlImportRow } from '@/api/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,13 +13,26 @@ import { Text } from '@/components/ui/text';
 import { useNow } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 
-import { importFailureKey, importProgress, importRowKey } from './find-shows-model';
+import {
+  importFailureKey,
+  importProgress,
+  importRowKey,
+  liveImportRows,
+  stillAdding,
+  unavailableRows,
+} from './find-shows-model';
 import { pickOpml } from './opml-pick';
-import { canRetry, isRunning, type WaveState, type WaveStatus } from './opml-waves';
+import { canRetryImport, isRunning, type WaveState, type WaveStatus } from './opml-waves';
 import type { OpmlImport } from './use-opml-import';
 
-/** The status line of an import (`now` for a countdown). */
-function statusLine(status: WaveStatus, now: number, t: TFunction): string {
+/** The status line of an import (`now` for a countdown). A done import is done only once
+ * nothing is still being added; rows that could not be added are counted. */
+function statusLine(
+  status: WaveStatus,
+  rows: readonly OpmlImportRow[],
+  now: number,
+  t: TFunction,
+): string {
   switch (status.kind) {
     case 'uploading':
       return t('podcasts.import.status.uploading');
@@ -29,8 +44,13 @@ function statusLine(status: WaveStatus, now: number, t: TFunction): string {
         ? t('podcasts.import.status.busy', { seconds })
         : t('podcasts.import.status.waitingTime', { seconds });
     }
-    case 'done':
-      return t('podcasts.import.status.done');
+    case 'done': {
+      if (stillAdding(rows)) return t('podcasts.import.status.finishing');
+      const unavailable = unavailableRows(rows);
+      return unavailable > 0
+        ? t('podcasts.import.status.unavailable', { count: unavailable })
+        : t('podcasts.import.status.done');
+    }
     case 'stalled':
       return t('podcasts.import.status.stalled');
     case 'stopped':
@@ -49,10 +69,18 @@ function statusLine(status: WaveStatus, now: number, t: TFunction): string {
  * exported by another podcast app, and it is followed in automatic waves of five
  * (`OpmlWaves`). The page shows the summary, what the import is doing (the next batch's
  * countdown), Stop while it runs and Try again once it stopped, and every subscription by
- * its place in the list. `opml` is the page's import (`useOpmlImport`), so it carries on
- * while another section shows.
+ * its place in the list, each queued one read live from the follow requests. `opml` is
+ * the page's import (`useOpmlImport`), so it carries on while another section shows.
  */
-export function OpmlImportPanel({ opml }: { opml: OpmlImport }) {
+export function OpmlImportPanel({
+  opml,
+  connectionId,
+  libraryId,
+}: {
+  opml: OpmlImport;
+  connectionId: string;
+  libraryId: number;
+}) {
   const { t } = useTranslation();
   const { state, problem } = opml;
   const running = !!state && isRunning(state.status);
@@ -82,6 +110,8 @@ export function OpmlImportPanel({ opml }: { opml: OpmlImport }) {
       ) : null}
       {state ? (
         <ImportProgress
+          connectionId={connectionId}
+          libraryId={libraryId}
           state={state}
           fileName={opml.fileName}
           running={running}
@@ -94,12 +124,16 @@ export function OpmlImportPanel({ opml }: { opml: OpmlImport }) {
 }
 
 function ImportProgress({
+  connectionId,
+  libraryId,
   state,
   fileName,
   running,
   onStop,
   onRetry,
 }: {
+  connectionId: string;
+  libraryId: number;
   state: WaveState;
   fileName: string | null;
   running: boolean;
@@ -107,8 +141,11 @@ function ImportProgress({
   onRetry: () => void;
 }) {
   const { t } = useTranslation();
-  const { settled, total } = importProgress(state.rows);
-  const retryable = canRetry(state.status);
+  const focused = useIsFocused();
+  const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
+  const rows = liveImportRows(state.rows, requests);
+  const { settled, total } = importProgress(rows);
+  const retryable = canRetryImport(state);
   return (
     <View className="gap-3">
       <View className="gap-1" accessibilityLiveRegion="polite">
@@ -117,12 +154,12 @@ function ImportProgress({
             {fileName}
           </Text>
         ) : null}
-        {state.rows.length > 0 ? (
+        {rows.length > 0 ? (
           <Text variant="label" style={tabularNums} testID="opml-summary">
             {t('podcasts.import.summary', { settled, total })}
           </Text>
         ) : null}
-        <StatusText status={state.status} />
+        <StatusText status={state.status} rows={rows} />
       </View>
       <View className="flex-row flex-wrap gap-2">
         {running ? (
@@ -146,9 +183,9 @@ function ImportProgress({
           />
         ) : null}
       </View>
-      {state.rows.length > 0 ? (
+      {rows.length > 0 ? (
         <View className="gap-2" accessibilityLabel={t('podcasts.import.rowsLabel')}>
-          {state.rows.map((row) => (
+          {rows.map((row) => (
             <ImportRow key={row.outline_index} row={row} />
           ))}
         </View>
@@ -160,33 +197,38 @@ function ImportProgress({
 /** The status line on its own, so the countdown's ticks redraw it alone. The clock ticks
  * while the import runs, not only while it counts down: a clock stopped since the last
  * countdown would start the next one seconds (or minutes) too long. */
-function StatusText({ status }: { status: WaveStatus }) {
+function StatusText({ status, rows }: { status: WaveStatus; rows: readonly OpmlImportRow[] }) {
   const { t } = useTranslation();
   const now = useNow(1000, isRunning(status));
   return (
     <Text variant="body" style={tabularNums} testID="opml-status">
-      {statusLine(status, now, t)}
+      {statusLine(status, rows, now, t)}
     </Text>
   );
 }
 
 const ImportRow = memo(function ImportRow({ row }: { row: OpmlImportRow }) {
   const { t } = useTranslation();
+  // The server marks a list's private feeds; a row with no usable feed has none to mark.
+  const hasFeed = row.feed !== null && row.status !== 'invalid' && row.status !== 'duplicate';
+  const label = row.path ?? row.feed;
   return (
     <RowSurface testID={`opml-row-${row.outline_index}`} className="gap-0.5 px-3 py-2.5">
       <View className="flex-row items-center gap-2">
         <Text variant="caption" style={tabularNums}>
           {t('podcasts.import.entry', { index: row.outline_index })}
         </Text>
-        {row.private ? (
+        {row.private && hasFeed ? (
           <Badge variant="outline">
             <Text>{t('podcasts.shows.privateBadge')}</Text>
           </Badge>
         ) : null}
       </View>
-      <Text variant="label" numberOfLines={1}>
-        {row.path ?? row.feed ?? t('podcasts.import.row.invalid')}
-      </Text>
+      {label ? (
+        <Text variant="label" numberOfLines={1}>
+          {label}
+        </Text>
+      ) : null}
       <Text variant="caption">
         {row.status === 'duplicate' && row.duplicate_of !== null
           ? `${t(importRowKey(row))} (${t('podcasts.import.entry', { index: row.duplicate_of })})`
