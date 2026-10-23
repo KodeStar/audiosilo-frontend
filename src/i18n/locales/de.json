@@ -2577,7 +2577,10 @@
       "following": "Gefolgt",
       "newEpisode": "Neue Episode {{when}}",
       "privateBadge": "Privater Feed",
-      "loadError": "Die Sendungen konnten nicht geladen werden."
+      "loadError": "Die Sendungen konnten nicht geladen werden.",
+      "addShows": "Sendungen hinzufügen",
+      "addShowsHint": "Durchsuche ein Verzeichnis, füge eine Feed-Adresse ein oder importiere eine Liste aus einer anderen App.",
+      "actionsMenu": "Weitere Aktionen für Sendungen"
     },
     "show": {
       "episodes_one": "{{count}} Episode",
@@ -2648,6 +2651,168 @@
         "identity_changed": "Diese Episode hat sich in ihrem Feed geändert. Öffne die Sendung, um sie wiederzufinden.",
         "other": "Beim Holen ist etwas schiefgegangen. Versuch es später noch einmal."
       }
+    },
+    "find": {
+      "title": "Sendungen hinzufügen",
+      "sectionsLabel": "Wie du Sendungen hinzufügst",
+      "sections": {
+        "search": "Suchen",
+        "address": "Feed-Adresse",
+        "import": "Liste importieren"
+      },
+      "unavailable": "Sendungen hinzufügen ist gerade nicht möglich",
+      "unavailableHint": "Podcasts sind auf diesem Server vielleicht ausgeschaltet, oder er kann gerade keine Sendungen hinzufügen. Versuch es später noch einmal.",
+      "kid": "Bitte einen Erwachsenen, Sendungen hinzuzufügen.",
+      "demo": "In der Demo kann man keine Sendungen hinzufügen.",
+      "search": {
+        "label": "Nach einer Sendung suchen",
+        "placeholder": "Name der Sendung",
+        "submit": "Suchen",
+        "tooShort": "Gib mindestens 2 Zeichen ein.",
+        "providerLabel": "Verzeichnis",
+        "resultsFrom": "Ergebnisse von {{provider}}",
+        "noResults": "Keine Sendungen gefunden",
+        "noResultsHint": "Versuch andere Wörter, oder folge der Sendung über ihre Feed-Adresse.",
+        "episodes_one": "{{count}} Episode",
+        "episodes_other": "{{count}} Episoden",
+        "viewOn": "Auf {{provider}} ansehen",
+        "follow": "Folgen",
+        "followLabel": "{{title}} folgen",
+        "adding": "Wird hinzugefügt",
+        "following": "Gefolgt",
+        "openShow": "Sendung öffnen",
+        "searchAgain": "Erneut suchen",
+        "loading": "Suche läuft..."
+      },
+      "provider": {
+        "itunes": "Apple Podcasts",
+        "podcast_index": "Podcast Index"
+      },
+      "searchError": {
+        "rateLimitedWait": "Du hast gerade sehr oft gesucht. Versuch es in {{seconds}} s noch einmal.",
+        "rateLimited": "Du hast gerade sehr oft gesucht. Versuch es in einer Minute noch einmal.",
+        "providerBusyWait": "Das Verzeichnis ist ausgelastet. Versuch es in {{seconds}} s noch einmal.",
+        "providerBusy": "Das Verzeichnis ist ausgelastet. Versuch es in einer Minute noch einmal.",
+        "busy": "Dein Server ist mit Suchen beschäftigt. Versuch es gleich noch einmal.",
+        "timeout": "Das Verzeichnis hat nicht rechtzeitig geantwortet. Versuch es noch einmal.",
+        "rejected": "Dein Server kann Podcast Index gerade nicht nutzen. Versuch Apple Podcasts.",
+        "unavailable": "Das Verzeichnis war nicht erreichbar. Versuch es später noch einmal.",
+        "providerUnavailable": "Podcast Index ist auf diesem Server nicht eingerichtet.",
+        "off": "Die Suche nach Sendungen ist auf diesem Server ausgeschaltet.",
+        "invalidQuery": "Verwende 2 bis 200 Zeichen.",
+        "invalidCountry": "Das Verzeichnis kennt die Region dieses Geräts nicht.",
+        "other": "Die Suche hat nicht geklappt. Versuch es noch einmal."
+      },
+      "refusal": {
+        "moduleOff": "Podcasts sind auf diesem Server ausgeschaltet.",
+        "kid": "Bitte einen Erwachsenen, Sendungen hinzuzufügen.",
+        "demo": "Das geht in der Demo nicht.",
+        "noAccess": "Du kannst Sendungen nur einer Bibliothek hinzufügen, die ganz mit dir geteilt ist.",
+        "notPodcastLibrary": "Diese Bibliothek ist nicht für Podcasts."
+      },
+      "followError": {
+        "invalidFeedUrl": "Diese Feed-Adresse ist nicht verwendbar. Prüf sie und versuch es noch einmal.",
+        "privacyConflict": "Dieser Feed wird schon mit der anderen Privatsphäre-Einstellung hinzugefügt. Warte, bis das fertig ist, und versuch es dann noch einmal.",
+        "cantAddNow": "Dein Server kann gerade keine neuen Sendungen hinzufügen. Versuch es später noch einmal.",
+        "notWritable": "Dein Server kann in dieser Bibliothek keine Sendungen speichern.",
+        "tooMany": "Es werden schon fünf Sendungen hinzugefügt. Versuch es noch einmal, sobald eine fertig ist.",
+        "other": "Dieser Sendung zu folgen hat nicht geklappt. Versuch es noch einmal."
+      },
+      "address": {
+        "label": "Feed-Adresse",
+        "placeholder": "https://example.com/feed.xml",
+        "hint": "Füge die RSS-Feed-Adresse der Sendung ein, von ihrer Website oder aus deiner Podcast-App.",
+        "private": "Privater Feed",
+        "privateHint": "Für einen Feed nur für dich, etwa einen bezahlten oder Mitglieder-Feed. Nur du siehst die Sendung, und sie wird nie exportiert.",
+        "submit": "Folgen",
+        "empty": "Füge eine Feed-Adresse ein.",
+        "notHttp": "Verwende eine Adresse, die mit http:// oder https:// beginnt.",
+        "tooLong": "Diese Adresse ist zu lang.",
+        "following": "Du folgst {{title}}.",
+        "adding": "Die Sendung wird hinzugefügt. Sie erscheint unter Sendungen, sobald sie bereit ist."
+      }
+    },
+    "requests": {
+      "title": "Sendungen, die hinzugefügt werden",
+      "notice_one": "{{count}} Sendung wird hinzugefügt",
+      "notice_other": "{{count}} Sendungen werden hinzugefügt",
+      "state": {
+        "waiting": "Wartet, bis sie dran ist",
+        "adding": "Wird hinzugefügt",
+        "done": "Hinzugefügt",
+        "failed": "Nicht hinzugefügt",
+        "cancelled": "Abgebrochen"
+      },
+      "openShow": "Sendung öffnen",
+      "reason": {
+        "unreachable": "Der Feed war nicht erreichbar.",
+        "notAFeed": "Diese Adresse ist kein Podcast-Feed.",
+        "gone": "Den Feed gibt es nicht mehr.",
+        "followAgain": "Folge dem Feed noch einmal, um das Hinzufügen abzuschließen.",
+        "other": "Beim Hinzufügen ist etwas schiefgegangen."
+      }
+    },
+    "import": {
+      "intro": "Hol dir die Sendungen, denen du in einer anderen Podcast-App folgst. Exportiere dort eine OPML-Datei und wähle sie hier aus. Lange Listen werden in Fünfergruppen hinzugefügt.",
+      "choose": "Datei auswählen",
+      "chooseAnother": "Andere Datei auswählen",
+      "tooLarge": "Diese Datei ist größer als 1 MB. Exportiere eine kürzere Liste.",
+      "unreadable": "Diese Datei konnte nicht gelesen werden.",
+      "summary": "{{settled}} von {{total}} Sendungen gefolgt oder im Kommen",
+      "rowsLabel": "Sendungen in der Liste",
+      "entry": "Eintrag {{index}}",
+      "stop": "Stoppen",
+      "tryAgain": "Noch einmal versuchen",
+      "status": {
+        "uploading": "Liste wird gesendet...",
+        "waitingRequests": "Wartet auf die Sendungen, die hinzugefügt werden, vor der nächsten Gruppe.",
+        "waitingTime": "Nächste Gruppe in {{seconds}} s.",
+        "busy": "Dein Server ist ausgelastet. Neuer Versuch in {{seconds}} s.",
+        "done": "Fertig.",
+        "stalled": "Die nächste Gruppe konnte nicht starten. Versuch es später noch einmal.",
+        "stoppedUser": "Gestoppt. Schon hinzugefügte Sendungen bleiben.",
+        "stoppedBusy": "Dein Server blieb ausgelastet. Versuch es später noch einmal.",
+        "stoppedCantAct": "Gestoppt, weil jetzt jemand anderes auf diesem Gerät hört."
+      },
+      "fail": {
+        "notOpml": "Diese Datei ist keine OPML-Liste.",
+        "tooLarge": "Diese Liste ist zu groß zum Importieren.",
+        "other": "Der Import hat nicht geklappt. Versuch es noch einmal."
+      },
+      "row": {
+        "followed": "Gefolgt",
+        "alreadyFollowing": "Schon gefolgt",
+        "queued": "Wird hinzugefügt",
+        "duplicate": "Doppelt in der Liste",
+        "invalid": "Keine verwendbare Feed-Adresse",
+        "limited": "Wartet auf die nächste Gruppe",
+        "unavailable": "Kann gerade nicht hinzugefügt werden",
+        "error": "Nicht hinzugefügt"
+      }
+    },
+    "export": {
+      "action": "Meine Sendungen exportieren",
+      "dialogTitle": "Deine Sendungen",
+      "done_one": "{{count}} Sendung exportiert",
+      "done_other": "{{count}} Sendungen exportiert",
+      "doneUnknown": "Deine Sendungen wurden exportiert",
+      "privateLeftOut_one": "{{count}} private Sendung ausgelassen. Private Feeds werden nie exportiert.",
+      "privateLeftOut_other": "{{count}} private Sendungen ausgelassen. Private Feeds werden nie exportiert.",
+      "privateNever": "Private Feeds werden nie exportiert.",
+      "unavailableLeftOut_one": "{{count}} Sendung ohne öffentliche Adresse ausgelassen.",
+      "unavailableLeftOut_other": "{{count}} Sendungen ohne öffentliche Adresse ausgelassen.",
+      "error": {
+        "tooMany": "Zu viele Sendungen für eine Datei.",
+        "busy": "Du hast gerade sehr oft exportiert. Versuch es in einer Minute noch einmal.",
+        "other": "Der Export hat nicht geklappt. Versuch es noch einmal."
+      }
+    },
+    "check": {
+      "action": "Nach neuen Episoden suchen",
+      "started": "Es wird nach neuen Episoden gesucht",
+      "recently": "Vor weniger als einer Minute geprüft. Versuch es gleich noch einmal.",
+      "cantNow": "Dein Server kann Feeds gerade nicht prüfen. Versuch es später noch einmal.",
+      "failed": "Diese Sendung konnte nicht geprüft werden. Versuch es noch einmal."
     }
   }
 }

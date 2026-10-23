@@ -1,0 +1,231 @@
+import { ApiError } from '@/api/client';
+import i18n from '@/i18n';
+import { golden2c3 } from '@/testing/podcast-fixtures-2c3';
+
+import { artworkRetryDelay } from './artwork-retry';
+import {
+  availableSections,
+  checkErrorKey,
+  cleanSearchText,
+  exportErrorKey,
+  feedAddressProblem,
+  followByUrlErrorKey,
+  importFailureKey,
+  importProgress,
+  importRowKey,
+  requestStateKey,
+  resolveSection,
+  searchErrorCopy,
+} from './find-shows-model';
+import { requestReasonKey } from './podcast-model';
+
+const refusal = (status: number, code?: string, retryAfter?: number) =>
+  new ApiError(status, 'Server English.', code, retryAfter);
+
+describe('sections', () => {
+  it('offers Search and Import only with their flags, a feed address always', () => {
+    expect(availableSections({ discovery: true, opml: true })).toEqual([
+      'search',
+      'address',
+      'import',
+    ]);
+    expect(availableSections({ discovery: undefined, opml: false })).toEqual(['address']);
+    expect(availableSections({ discovery: false, opml: true })).toEqual(['address', 'import']);
+  });
+
+  it("takes the link's section when offered, else the first", () => {
+    expect(resolveSection('import', ['search', 'address', 'import'])).toBe('import');
+    expect(resolveSection('import', ['address'])).toBe('address');
+    expect(resolveSection(null, ['search', 'address'])).toBe('search');
+  });
+});
+
+describe('search text and feed addresses', () => {
+  it('cleans the search text as the server does', () => {
+    expect(cleanSearchText('  fixture \n\t  show ')).toBe('fixture show');
+    expect(cleanSearchText('A  B')).toBe('A B');
+  });
+
+  it('checks a feed address locally', () => {
+    expect(feedAddressProblem('  ')).toBe('empty');
+    expect(feedAddressProblem('feeds.example.org/one.xml')).toBe('notHttp');
+    expect(feedAddressProblem('ftp://feeds.example.org/one.xml')).toBe('notHttp');
+    expect(feedAddressProblem('https://')).toBe('notHttp');
+    expect(feedAddressProblem('https://feeds.example.org/one xml')).toBe('notHttp');
+    expect(feedAddressProblem(` ${golden2c3.itunes.results[0].feed_url} `)).toBeNull();
+    expect(feedAddressProblem('HTTP://user:secret@feeds.example.org/p?token=1')).toBeNull();
+    const long = `https://f.example/${'a'.repeat(2048 - 18)}`;
+    expect(new TextEncoder().encode(long).length).toBe(2048);
+    expect(feedAddressProblem(long)).toBeNull();
+    expect(feedAddressProblem(`${long}a`)).toBe('tooLong');
+    // Bytes, not characters: 1,016 two-byte letters plus the 18 of the prefix.
+    expect(feedAddressProblem(`https://f.example/${'é'.repeat(1016)}`)).toBe('tooLong');
+  });
+});
+
+describe('refusals in the listener words', () => {
+  const t = i18n.t.bind(i18n);
+
+  it('says each search refusal, with the wait when the server gave one', () => {
+    expect(searchErrorCopy(refusal(429, 'discovery_rate_limited', 6))).toEqual({
+      key: 'podcasts.find.searchError.rateLimitedWait',
+      seconds: 6,
+    });
+    expect(searchErrorCopy(refusal(429, 'discovery_rate_limited'))).toEqual({
+      key: 'podcasts.find.searchError.rateLimited',
+    });
+    expect(searchErrorCopy(refusal(429, 'provider_rate_limited', 2.5))).toEqual({
+      key: 'podcasts.find.searchError.providerBusyWait',
+      seconds: 3,
+    });
+    const cases: [ApiError | Error, string][] = [
+      [refusal(503, 'discovery_busy', 1), 'busy'],
+      [refusal(504, 'discovery_timeout'), 'timeout'],
+      [refusal(502, 'provider_rejected'), 'rejected'],
+      [refusal(502, 'discovery_unavailable'), 'unavailable'],
+      [refusal(409, 'provider_unavailable'), 'providerUnavailable'],
+      [refusal(404, 'discovery_off'), 'off'],
+      [refusal(400, 'invalid_query'), 'invalidQuery'],
+      [refusal(400, 'invalid_country'), 'invalidCountry'],
+      [refusal(500), 'other'],
+      [new Error('offline'), 'other'],
+    ];
+    for (const [e, key] of cases) {
+      expect(searchErrorCopy(e).key).toBe(`podcasts.find.searchError.${key}`);
+    }
+    expect(searchErrorCopy(refusal(404, 'module_off')).key).toBe('podcasts.find.refusal.moduleOff');
+    expect(searchErrorCopy(refusal(403, 'kid_account')).key).toBe('podcasts.find.refusal.kid');
+    expect(searchErrorCopy(refusal(403, 'demo_account')).key).toBe('podcasts.find.refusal.demo');
+    expect(searchErrorCopy(refusal(403, 'no_library_access')).key).toBe(
+      'podcasts.find.refusal.noAccess',
+    );
+    expect(t('podcasts.find.searchError.rateLimitedWait', { seconds: 6 })).toBe(
+      "You've searched a lot just now. Try again in 6 s.",
+    );
+  });
+
+  it('says each follow-by-address refusal', () => {
+    const cases: [string, string][] = [
+      ['invalid_feed_url', 'followError.invalidFeedUrl'],
+      ['privacy_conflict', 'followError.privacyConflict'],
+      ['bridge_unavailable', 'followError.cantAddNow'],
+      ['library_not_writable', 'followError.notWritable'],
+      ['too_many_requests', 'followError.tooMany'],
+      ['no_library_access', 'refusal.noAccess'],
+      ['not_podcast_library', 'refusal.notPodcastLibrary'],
+      ['module_off', 'refusal.moduleOff'],
+      ['kid_account', 'refusal.kid'],
+      ['demo_account', 'refusal.demo'],
+      ['invalid_request', 'followError.other'],
+    ];
+    for (const [code, key] of cases) {
+      expect(followByUrlErrorKey(refusal(400, code))).toBe(`podcasts.find.${key}`);
+    }
+  });
+
+  it('says why an import failed', () => {
+    expect(importFailureKey('invalid_opml')).toBe('podcasts.import.fail.notOpml');
+    expect(importFailureKey('unsupported_opml_type')).toBe('podcasts.import.fail.notOpml');
+    expect(importFailureKey('opml_limit')).toBe('podcasts.import.fail.tooLarge');
+    expect(importFailureKey('module_off')).toBe('podcasts.find.refusal.moduleOff');
+    expect(importFailureKey('no_library_access')).toBe('podcasts.find.refusal.noAccess');
+    expect(importFailureKey(null)).toBe('podcasts.import.fail.other');
+    expect(importFailureKey('library_not_found')).toBe('podcasts.import.fail.other');
+  });
+
+  it('says a refused export and check', () => {
+    expect(exportErrorKey(refusal(413, 'opml_export_limit'))).toBe('podcasts.export.error.tooMany');
+    expect(exportErrorKey(refusal(429, 'opml_rate_limited', 9))).toBe('podcasts.export.error.busy');
+    expect(exportErrorKey(refusal(503, 'opml_busy', 1))).toBe('podcasts.export.error.busy');
+    expect(exportErrorKey(new Error('x'))).toBe('podcasts.export.error.other');
+    expect(checkErrorKey(refusal(429, 'checked_recently'))).toBe('podcasts.check.recently');
+    expect(checkErrorKey(refusal(409, 'bridge_unavailable'))).toBe('podcasts.check.cantNow');
+    expect(checkErrorKey(refusal(404, 'show_not_found'))).toBe('podcasts.follow.errorGone');
+    expect(checkErrorKey(refusal(404, 'module_off'))).toBe('podcasts.find.refusal.moduleOff');
+    expect(checkErrorKey(refusal(500))).toBe('podcasts.check.failed');
+  });
+
+  it('never shows the server English or names the Bridge', () => {
+    const copy = [
+      ...['discovery_busy', 'provider_rejected', 'bridge_unavailable', 'privacy_conflict'].map(
+        (code) => t(searchErrorCopy(refusal(409, code)).key),
+      ),
+      t(followByUrlErrorKey(refusal(409, 'bridge_unavailable'))),
+      t(checkErrorKey(refusal(409, 'bridge_unavailable'))),
+    ];
+    for (const s of copy) {
+      expect(s).not.toMatch(/Server English|bridge/i);
+    }
+  });
+});
+
+describe('import rows and requests', () => {
+  it('words each row of the import golden', () => {
+    expect(golden2c3.importRows.rows.map(importRowKey)).toEqual([
+      'podcasts.import.row.alreadyFollowing',
+      'podcasts.import.row.duplicate',
+      'podcasts.import.row.alreadyFollowing',
+      'podcasts.import.row.queued',
+      'podcasts.import.row.invalid',
+      'podcasts.import.row.invalid',
+    ]);
+    for (const [status, key] of [
+      ['followed', 'followed'],
+      ['already_queued', 'queued'],
+      ['limited', 'limited'],
+      ['unavailable', 'unavailable'],
+      ['error', 'error'],
+      ['something_new', 'error'],
+    ]) {
+      expect(importRowKey({ status })).toBe(`podcasts.import.row.${key}`);
+    }
+  });
+
+  it('counts the rows following or on their way, leaving out duplicates and invalid ones', () => {
+    expect(importProgress(golden2c3.importRows.rows)).toEqual({ settled: 3, total: 3 });
+    expect(
+      importProgress([
+        { ...golden2c3.importRows.rows[0], status: 'limited' },
+        golden2c3.importRows.rows[3],
+      ]),
+    ).toEqual({ settled: 1, total: 2 });
+  });
+
+  it('words a request state', () => {
+    expect(requestStateKey({ state: 'queued' })).toBe('podcasts.requests.state.waiting');
+    expect(requestStateKey({ state: 'needs_attention' })).toBe('podcasts.requests.state.waiting');
+    expect(requestStateKey({ state: 'running' })).toBe('podcasts.requests.state.adding');
+    expect(requestStateKey({ state: 'claimed' })).toBe('podcasts.requests.state.adding');
+    expect(requestStateKey({ state: 'done' })).toBe('podcasts.requests.state.done');
+    expect(requestStateKey({ state: 'cancelled' })).toBe('podcasts.requests.state.cancelled');
+    expect(requestStateKey({ state: 'failed' })).toBe('podcasts.requests.state.failed');
+  });
+
+  it('says why a request failed', () => {
+    for (const [code, key] of [
+      ['dns', 'unreachable'],
+      ['timeout', 'unreachable'],
+      ['tls', 'unreachable'],
+      ['network', 'unreachable'],
+      ['not_a_feed', 'notAFeed'],
+      ['not_a_podcast', 'notAFeed'],
+      ['gone', 'gone'],
+      ['http_404', 'gone'],
+      ['request_expired', 'followAgain'],
+      ['feed_secret_missing', 'followAgain'],
+      ['too_large', 'other'],
+      ['bridge_lost', 'other'],
+      [null, 'other'],
+    ] as const) {
+      expect(requestReasonKey(code)).toBe(`podcasts.requests.reason.${key}`);
+    }
+  });
+});
+
+describe('artworkRetryDelay', () => {
+  it('tries again after 3 s, 10 s and 30 s, then stops (four tries)', () => {
+    expect(artworkRetryDelay(0)).toBeNull();
+    expect([1, 2, 3].map(artworkRetryDelay)).toEqual([3_000, 10_000, 30_000]);
+    expect(artworkRetryDelay(4)).toBeNull();
+  });
+});

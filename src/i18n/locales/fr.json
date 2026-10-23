@@ -2577,7 +2577,10 @@
       "following": "Suivies",
       "newEpisode": "Nouvel épisode {{when}}",
       "privateBadge": "Flux privé",
-      "loadError": "Impossible de charger les émissions."
+      "loadError": "Impossible de charger les émissions.",
+      "addShows": "Ajouter des émissions",
+      "addShowsHint": "Cherchez dans un annuaire, collez l'adresse d'un flux ou importez une liste depuis une autre app.",
+      "actionsMenu": "Autres actions sur les émissions"
     },
     "show": {
       "episodes_one": "{{count}} épisode",
@@ -2648,6 +2651,168 @@
         "identity_changed": "Cet épisode a changé dans son flux. Ouvrez l'émission pour le retrouver.",
         "other": "Un problème est survenu pendant la récupération. Réessayez plus tard."
       }
+    },
+    "find": {
+      "title": "Ajouter des émissions",
+      "sectionsLabel": "Comment ajouter des émissions",
+      "sections": {
+        "search": "Rechercher",
+        "address": "Adresse du flux",
+        "import": "Importer une liste"
+      },
+      "unavailable": "Impossible d'ajouter des émissions pour le moment",
+      "unavailableHint": "Les podcasts sont peut-être désactivés sur ce serveur, ou il ne peut pas ajouter d'émissions pour l'instant. Réessayez plus tard.",
+      "kid": "Demande à un adulte d'ajouter des émissions.",
+      "demo": "La démo ne permet pas d'ajouter des émissions.",
+      "search": {
+        "label": "Rechercher une émission",
+        "placeholder": "Nom de l'émission",
+        "submit": "Rechercher",
+        "tooShort": "Saisissez au moins 2 caractères.",
+        "providerLabel": "Annuaire",
+        "resultsFrom": "Résultats de {{provider}}",
+        "noResults": "Aucune émission trouvée",
+        "noResultsHint": "Essayez d'autres mots, ou suivez l'émission par l'adresse de son flux.",
+        "episodes_one": "{{count}} épisode",
+        "episodes_other": "{{count}} épisodes",
+        "viewOn": "Voir sur {{provider}}",
+        "follow": "Suivre",
+        "followLabel": "Suivre {{title}}",
+        "adding": "Ajout en cours",
+        "following": "Suivie",
+        "openShow": "Ouvrir l'émission",
+        "searchAgain": "Rechercher à nouveau",
+        "loading": "Recherche..."
+      },
+      "provider": {
+        "itunes": "Apple Podcasts",
+        "podcast_index": "Podcast Index"
+      },
+      "searchError": {
+        "rateLimitedWait": "Vous avez beaucoup cherché à l'instant. Réessayez dans {{seconds}} s.",
+        "rateLimited": "Vous avez beaucoup cherché à l'instant. Réessayez dans une minute.",
+        "providerBusyWait": "L'annuaire est occupé. Réessayez dans {{seconds}} s.",
+        "providerBusy": "L'annuaire est occupé. Réessayez dans une minute.",
+        "busy": "Votre serveur est occupé à chercher. Réessayez dans un instant.",
+        "timeout": "L'annuaire n'a pas répondu à temps. Réessayez.",
+        "rejected": "Votre serveur ne peut pas utiliser Podcast Index pour le moment. Essayez Apple Podcasts.",
+        "unavailable": "Impossible de joindre l'annuaire. Réessayez plus tard.",
+        "providerUnavailable": "Podcast Index n'est pas configuré sur ce serveur.",
+        "off": "La recherche d'émissions est désactivée sur ce serveur.",
+        "invalidQuery": "Utilisez entre 2 et 200 caractères.",
+        "invalidCountry": "L'annuaire ne connaît pas la région de cet appareil.",
+        "other": "La recherche n'a pas abouti. Réessayez."
+      },
+      "refusal": {
+        "moduleOff": "Les podcasts sont désactivés sur ce serveur.",
+        "kid": "Demande à un adulte d'ajouter des émissions.",
+        "demo": "La démo ne permet pas de faire cela.",
+        "noAccess": "Vous ne pouvez ajouter des émissions qu'à une bibliothèque partagée entièrement avec vous.",
+        "notPodcastLibrary": "Cette bibliothèque n'est pas faite pour les podcasts."
+      },
+      "followError": {
+        "invalidFeedUrl": "Cette adresse de flux est inutilisable. Vérifiez-la et réessayez.",
+        "privacyConflict": "Ce flux est déjà en cours d'ajout avec l'autre réglage de confidentialité. Attendez la fin, puis réessayez.",
+        "cantAddNow": "Votre serveur ne peut pas ajouter de nouvelles émissions pour le moment. Réessayez plus tard.",
+        "notWritable": "Votre serveur ne peut pas enregistrer d'émissions dans cette bibliothèque.",
+        "tooMany": "Cinq émissions sont déjà en cours d'ajout. Réessayez dès que l'une est prête.",
+        "other": "Impossible de suivre cette émission. Réessayez."
+      },
+      "address": {
+        "label": "Adresse du flux",
+        "placeholder": "https://example.com/feed.xml",
+        "hint": "Collez l'adresse du flux RSS de l'émission, depuis son site ou votre app de podcasts.",
+        "private": "Flux privé",
+        "privateHint": "Pour un flux rien que pour vous, payant ou réservé aux membres. Vous seul verrez l'émission, et elle n'est jamais exportée.",
+        "submit": "Suivre",
+        "empty": "Collez l'adresse d'un flux.",
+        "notHttp": "Utilisez une adresse qui commence par http:// ou https://.",
+        "tooLong": "Cette adresse est trop longue.",
+        "following": "Vous suivez {{title}}.",
+        "adding": "Ajout de l'émission en cours. Elle apparaîtra dans Émissions dès qu'elle sera prête."
+      }
+    },
+    "requests": {
+      "title": "Émissions en cours d'ajout",
+      "notice_one": "Ajout de {{count}} émission",
+      "notice_other": "Ajout de {{count}} émissions",
+      "state": {
+        "waiting": "En attente de son tour",
+        "adding": "Ajout en cours",
+        "done": "Ajoutée",
+        "failed": "Ajout impossible",
+        "cancelled": "Annulé"
+      },
+      "openShow": "Ouvrir l'émission",
+      "reason": {
+        "unreachable": "Impossible de joindre le flux.",
+        "notAFeed": "Cette adresse n'est pas un flux de podcast.",
+        "gone": "Le flux n'existe plus.",
+        "followAgain": "Suivez à nouveau le flux pour terminer l'ajout.",
+        "other": "Un problème est survenu pendant l'ajout."
+      }
+    },
+    "import": {
+      "intro": "Récupérez les émissions que vous suivez dans une autre app de podcasts. Exportez-y un fichier OPML, puis choisissez-le ici. Les longues listes sont ajoutées par groupes de cinq.",
+      "choose": "Choisir un fichier",
+      "chooseAnother": "Choisir un autre fichier",
+      "tooLarge": "Ce fichier dépasse 1 Mo. Exportez une liste plus courte.",
+      "unreadable": "Impossible de lire ce fichier.",
+      "summary": "{{settled}} émissions sur {{total}} suivies ou en cours d'ajout",
+      "rowsLabel": "Émissions de la liste",
+      "entry": "Entrée {{index}}",
+      "stop": "Arrêter",
+      "tryAgain": "Réessayer",
+      "status": {
+        "uploading": "Envoi de la liste...",
+        "waitingRequests": "En attente des émissions en cours d'ajout avant le groupe suivant.",
+        "waitingTime": "Groupe suivant dans {{seconds}} s.",
+        "busy": "Votre serveur est occupé. Nouvel essai dans {{seconds}} s.",
+        "done": "Terminé.",
+        "stalled": "Le groupe suivant n'a pas pu démarrer. Réessayez plus tard.",
+        "stoppedUser": "Arrêté. Les émissions déjà ajoutées restent.",
+        "stoppedBusy": "Votre serveur est resté occupé. Réessayez plus tard.",
+        "stoppedCantAct": "Arrêté, car quelqu'un d'autre écoute maintenant sur cet appareil."
+      },
+      "fail": {
+        "notOpml": "Ce fichier n'est pas une liste OPML.",
+        "tooLarge": "Cette liste est trop grande pour être importée.",
+        "other": "L'import n'a pas abouti. Réessayez."
+      },
+      "row": {
+        "followed": "Suivie",
+        "alreadyFollowing": "Déjà suivie",
+        "queued": "Ajout en cours",
+        "duplicate": "En double dans la liste",
+        "invalid": "Pas d'adresse de flux utilisable",
+        "limited": "En attente du groupe suivant",
+        "unavailable": "Impossible à ajouter pour le moment",
+        "error": "Ajout impossible"
+      }
+    },
+    "export": {
+      "action": "Exporter mes émissions",
+      "dialogTitle": "Vos émissions",
+      "done_one": "{{count}} émission exportée",
+      "done_other": "{{count}} émissions exportées",
+      "doneUnknown": "Vos émissions ont été exportées",
+      "privateLeftOut_one": "{{count}} émission privée laissée de côté. Les flux privés ne sont jamais exportés.",
+      "privateLeftOut_other": "{{count}} émissions privées laissées de côté. Les flux privés ne sont jamais exportés.",
+      "privateNever": "Les flux privés ne sont jamais exportés.",
+      "unavailableLeftOut_one": "{{count}} émission sans adresse publique laissée de côté.",
+      "unavailableLeftOut_other": "{{count}} émissions sans adresse publique laissées de côté.",
+      "error": {
+        "tooMany": "Trop d'émissions pour un seul fichier.",
+        "busy": "Vous avez beaucoup exporté à l'instant. Réessayez dans une minute.",
+        "other": "L'export de vos émissions n'a pas abouti. Réessayez."
+      }
+    },
+    "check": {
+      "action": "Chercher de nouveaux épisodes",
+      "started": "Recherche de nouveaux épisodes",
+      "recently": "Vérifiée il y a moins d'une minute. Réessayez dans un instant.",
+      "cantNow": "Votre serveur ne peut pas vérifier les flux pour le moment. Réessayez plus tard.",
+      "failed": "Impossible de vérifier cette émission. Réessayez."
     }
   }
 }
