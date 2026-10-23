@@ -35,9 +35,19 @@ jest.mock('@/components/connect/connect-start', () => ({
   },
 }));
 jest.mock('@/components/connect/sign-in-step', () => ({
-  SignInStep: ({ server, reconnectId }: { server: string; reconnectId?: string }) => {
+  SignInStep: ({
+    server,
+    reconnectId,
+    initialCode,
+  }: {
+    server: string;
+    reconnectId?: string;
+    initialCode?: string;
+  }) => {
     const { Text: T } = jest.requireActual('react-native');
-    return <T>{`sign in ${server} ${reconnectId ?? ''}`}</T>;
+    return (
+      <T>{`sign in ${server} ${reconnectId ?? ''}${initialCode ? ` code ${initialCode}` : ''}`}</T>
+    );
   },
 }));
 jest.mock('@/components/connect/ready-screen', () => ({
@@ -54,6 +64,7 @@ jest.mock('@/api/provider', () => ({
 import ConnectRoute from '@/app/connect/index';
 import ReadyRoute from '@/app/connect/ready';
 import SignInRoute from '@/app/connect/sign-in';
+import { holdInvite } from '@/components/connect/invite-handoff';
 /* eslint-enable import/first */
 
 const user = { id: 1, username: 'u', role: 'user' } as User;
@@ -133,6 +144,13 @@ describe('/connect/sign-in', () => {
     expect(screen.getByText('sign in https://a c1')).toBeTruthy();
     await act(async () => signedIn(null));
     expect(screen.getByText('sign in https://a c1')).toBeTruthy();
+  });
+
+  it("hands a held invite's code to the step for its server (#98)", async () => {
+    signedOut('https://a');
+    holdInvite({ base: 'https://a', code: 'ABCD-1234' });
+    await render(<SignInRoute />);
+    expect(screen.getByText('sign in https://a  code ABCD-1234')).toBeTruthy();
   });
 
   it('goes back to the first step with no server to sign in to', async () => {

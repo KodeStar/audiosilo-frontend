@@ -98,6 +98,28 @@ it('an invite code: the redeem payload and the exchange answer teach the address
   });
 });
 
+describe("an invite link's code (a scanned or pasted invite, #98)", () => {
+  it('signs in with it at once, through the redeem and the exchange', async () => {
+    mockApi.redeemCode.mockResolvedValue({ server_name: 'Hearthside', pairing_token: 'pt' });
+    mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} initialCode="ABCD-1234" />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
+    expect(mockApi.redeemCode).toHaveBeenCalledWith('ABCD-1234');
+    expect(mockApi.exchange).toHaveBeenCalledWith('pt', 'Test device');
+    expect(conn('srv-1')?.name).toBe('Hearthside');
+  });
+
+  it('keeps a refused code in the field with the reason, and tries it once only', async () => {
+    mockApi.redeemCode.mockRejectedValue(new ApiError(401, 'invalid or expired code'));
+    await render(<SignInStep server={AWAY} initialCode="ABCD-1234" />);
+    expect(await screen.findByText('invalid or expired code')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Enter your invite code').props.value).toBe('ABCD-1234');
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+});
+
 it('a password: the login answer teaches the addresses', async () => {
   mockApi.login.mockResolvedValue({
     token: 's',

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
 import { effectiveUrl, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
@@ -516,6 +516,21 @@ describe('the web', () => {
     expect(conn().addresses).toEqual({ home: HOME });
   });
 
+  it('signs in with a pasted invite link on the sign-in step (#98)', async () => {
+    await render(<ConnectStart />);
+    await fireEvent.press(screen.getByText('I have a pairing link'));
+    await fireEvent.changeText(
+      screen.getByLabelText('Pairing link'),
+      `${AWAY}/connect#code=ABCD-EFGH-JKMN-PQRS`,
+    );
+    await fireEvent.press(screen.getByText('Connect'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/connect/sign-in'));
+    expect(useSession.getState().pendingServerUrl).toBe(AWAY);
+    // The code never goes in the route (it would stay in the browser's history).
+    expect(JSON.stringify(mockPush.mock.calls)).not.toContain('ABCD');
+    expect(mockApi.exchange).not.toHaveBeenCalled();
+  });
+
   it('says so when the pasted text is not a pairing link', async () => {
     await render(<ConnectStart />);
     await fireEvent.press(screen.getByText('I have a pairing link'));
@@ -570,6 +585,50 @@ describe('the player the server serves', () => {
     expect(screen.getByText("Couldn't reach books.example.com")).toBeTruthy();
     // It can reach no other server, so it offers none.
     expect(screen.queryByText(/Reconnect to/)).toBeNull();
+  });
+
+  describe('a pasted link for another server (CONNECT-03: this page reaches only its own)', () => {
+    const paste = async (text: string) => {
+      mockApi.serverInfo.mockResolvedValue(info());
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+      mockBases.length = 0;
+      await fireEvent.press(screen.getByText('I have a pairing link'));
+      await fireEvent.changeText(screen.getByLabelText('Pairing link'), text);
+      await fireEvent.press(screen.getByText('Connect'));
+    };
+
+    it('says so and opens the link, asking nothing of that server', async () => {
+      const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      try {
+        const link = `${HOME}/web/connect?token=abc`;
+        await paste(link);
+        expect(screen.getByText(/This link is for another server/)).toBeTruthy();
+        expect(screen.queryByText(/Could not reach/)).toBeNull();
+        expect(mockBases).toEqual([]);
+        expect(mockApi.exchange).not.toHaveBeenCalled();
+        await fireEvent.press(screen.getByText('Open the link'));
+        expect(open).toHaveBeenCalledWith(link);
+        // Editing the link takes the note away again.
+        await fireEvent.changeText(screen.getByLabelText('Pairing link'), 'x');
+        expect(screen.queryByText(/This link is for another server/)).toBeNull();
+      } finally {
+        open.mockRestore();
+      }
+    });
+
+    it("does the same for another server's invite link", async () => {
+      await paste(`${HOME}/connect#code=ABCD-1234`);
+      expect(screen.getByText(/This link is for another server/)).toBeTruthy();
+      expect(mockPush).not.toHaveBeenCalledWith('/connect/sign-in');
+    });
+
+    it("pairs a link for this page's own server as before", async () => {
+      mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+      await paste(`${ORIGIN}/web/connect?token=abc`);
+      await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledWith('abc', 'Test device'));
+      expect(screen.queryByText(/This link is for another server/)).toBeNull();
+    });
   });
 
   it('exchanges a pairing link at its origin without asking who it is first', async () => {

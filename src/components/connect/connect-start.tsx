@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 
 import { ApiClient, ApiError } from '@/api/client';
 import { probeServerId } from '@/api/server-id-probe';
@@ -20,8 +20,15 @@ import {
   type KnownServer,
 } from '@/lib/known-servers';
 import { useLayout } from '@/lib/layout';
-import { cleanAddresses, hostOf, normalizeUrl, parsePairingScan } from '@/lib/pairing';
+import {
+  cleanAddresses,
+  hostOf,
+  normalizeUrl,
+  parseInviteScan,
+  parsePairingScan,
+} from '@/lib/pairing';
 import { firstParam, idParam, parseConnectBook } from '@/lib/paths';
+import { sameOrigin } from '@/lib/same-origin';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -36,6 +43,7 @@ import {
 import { KnownServerRow, type Probe, ProbeNotice } from './connect-parts';
 import { CoverFan } from './cover-cascade';
 import { finishConnect } from './finish-connect';
+import { holdInvite } from './invite-handoff';
 import { useLinkPairing } from './use-pairing';
 
 /**
@@ -102,6 +110,8 @@ export function ConnectStart() {
   const [linkOpen, setLinkOpen] = useState(false);
   const [link, setLink] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
+  // A pasted link for another server, on a server's own player (`onPasteLink`).
+  const [foreignLink, setForeignLink] = useState<string | null>(null);
   const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
 
   // A pairing link's token: exchange it once (a language switch must not run it again).
@@ -254,14 +264,33 @@ export function ConnectStart() {
     }
   };
 
+  // A pasted pairing link, or an invite link (#98: its code signs in on the sign-in step at
+  // once). On the player a server serves, a link for another server goes nowhere: the
+  // page may call only its own origin (its CSP's `connect-src 'self'`), so the request
+  // would fail as "Could not reach the server" while that server is fine. It says so, and
+  // offers to open the link itself (CONNECT-03).
   const onPasteLink = () => {
     setLinkError(null);
+    setForeignLink(null);
     const scan = parsePairingScan(link);
-    if (!scan) {
+    const invite = scan ? null : parseInviteScan(link);
+    const base = scan?.base ?? invite?.base;
+    if (!base) {
       setLinkError(t('connect.link.invalid'));
       return;
     }
-    void pair(scan);
+    const own = servedOrigin();
+    if (served === 'found' && own && !sameOrigin(base, { origin: own })) {
+      setForeignLink(link.trim());
+      return;
+    }
+    if (scan) {
+      void pair(scan);
+      return;
+    }
+    if (!invite) return;
+    holdInvite(invite);
+    void setPendingServerUrl(invite.base).then(() => router.push('/connect/sign-in'));
   };
 
   if (served === 'pending' || pairing) {
@@ -405,6 +434,7 @@ export function ConnectStart() {
             onChangeText={(v) => {
               setLink(v);
               setLinkError(null);
+              setForeignLink(null);
             }}
             autoCapitalize="none"
             autoCorrect={false}
@@ -413,12 +443,27 @@ export function ConnectStart() {
             returnKeyType="go"
             onSubmitEditing={onPasteLink}
           />
-          <Button
-            className="self-start"
-            title={t('connect.link.connect')}
-            disabled={!link.trim()}
-            onPress={onPasteLink}
-          />
+          {foreignLink ? (
+            <View className="gap-2" testID="connect-link-other-server">
+              <Text variant="caption" role="alert">
+                {t('connect.link.otherServer')}
+              </Text>
+              <Button
+                className="self-start"
+                variant="secondary"
+                icon="arrow-up-right"
+                title={t('connect.link.openLink')}
+                onPress={() => void Linking.openURL(foreignLink)}
+              />
+            </View>
+          ) : (
+            <Button
+              className="self-start"
+              title={t('connect.link.connect')}
+              disabled={!link.trim()}
+              onPress={onPasteLink}
+            />
+          )}
         </View>
       ) : null}
       {offered.length > 0 ? (

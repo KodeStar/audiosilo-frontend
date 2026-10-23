@@ -144,3 +144,37 @@ export function parsePairingScan(raw: string): PairingScan | null {
   const before = text.split('?')[0];
   return scan(normalizeUrl(before.replace(/\/web\/connect\/?$/i, '')));
 }
+
+/** An invite link's server and code (`parseInviteScan`). */
+export type InviteScan = { base: string; code: string };
+
+/** An invite code as the server writes it (groups of letters and digits, hyphenated). */
+const INVITE_CODE = /^[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*$/;
+
+/**
+ * The server and invite code of an invite link, the admin console's "Invite ready" QR and
+ * copied link: `https://<base>/connect#code=XXXX-XXXX-XXXX-XXXX` (audiosilo-server
+ * `inviteURL` in internal/api/qr.go; its own `/connect` page reads the code the same way).
+ * The base keeps a host:port and a base-path prefix, as `parsePairingScan` does. Null for
+ * anything else: no `code=` in the fragment, a code that isn't one (`INVITE_CODE`), or the
+ * web player's `/web/connect` (a pairing link, never an invite's). The code is redeemed by
+ * the sign-in step (`redeemCode`, then the exchange), as a typed one is.
+ */
+export function parseInviteScan(raw: string): InviteScan | null {
+  const text = raw.trim();
+  const hash = text.indexOf('#');
+  if (hash === -1 || !/^https?:\/\//i.test(text)) return null;
+  const match = /(?:^|&)code=([^&]*)/.exec(text.slice(hash + 1));
+  if (!match) return null;
+  let code: string;
+  try {
+    code = decodeURIComponent(match[1]).trim();
+  } catch {
+    return null;
+  }
+  if (!code || code.length > 64 || !INVITE_CODE.test(code)) return null;
+  const page = text.slice(0, hash).split('?')[0];
+  if (!/\/connect\/?$/i.test(page) || /\/web\/connect\/?$/i.test(page)) return null;
+  const base = normalizeUrl(page.replace(/\/connect\/?$/i, ''));
+  return base ? { base, code } : null;
+}

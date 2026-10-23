@@ -12,7 +12,9 @@ import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { scanParams } from '@/components/connect/connect-model';
-import { parsePairingScan } from '@/lib/pairing';
+import { holdInvite } from '@/components/connect/invite-handoff';
+import { parseInviteScan, parsePairingScan } from '@/lib/pairing';
+import { useSession } from '@/stores/session';
 import { colors } from '@/theme/tokens';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
 
@@ -68,6 +70,18 @@ export default function ScanScreen() {
     if (handling.current) return;
     handling.current = true;
     const parsed = parsePairingScan(data);
+    // An invite QR (the console's "Invite ready", #98): its code signs in on the sign-in
+    // step at once, through the same redeem and exchange a typed code takes.
+    const invite = parsed ? null : parseInviteScan(data);
+    if (invite) {
+      setError(null);
+      holdInvite(invite);
+      void useSession
+        .getState()
+        .setPendingServerUrl(invite.base)
+        .then(() => router.replace('/connect/sign-in'));
+      return;
+    }
     if (!parsed) {
       setError(t('connect.scan.invalidCode'));
       // Let the user re-aim at a different code after a beat.

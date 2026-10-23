@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -32,15 +32,20 @@ const MODE_VALUES: Mode[] = ['code', 'password'];
  * them. An invite code says which addresses the server has only once it is redeemed, and
  * redeeming is the sign-in itself (a redeem can spend one of the invite's uses), so for
  * a new server the card appears on "Your library is ready." instead, never as a guess.
+ *
+ * `initialCode`: an invite link's code (a scanned or pasted invite, #98), filled in and
+ * signed in with once, as if typed; a refused one stays in the field with the reason.
  */
 export function SignInStep({
   server,
   serverName,
   reconnectId,
+  initialCode,
 }: {
   server: string;
   serverName?: string;
   reconnectId?: string;
+  initialCode?: string;
 }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
@@ -48,7 +53,7 @@ export function SignInStep({
     reconnectId ? s.connections.find((c) => c.id === reconnectId) : undefined,
   );
   const [mode, setMode] = useState<Mode>('code');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(initialCode ?? '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -88,6 +93,16 @@ export function SignInStep({
       setLoading(false);
     }
   };
+
+  // The invite link's code signs in at once, one time only.
+  const autoSubmitted = useRef(false);
+  useEffect(() => {
+    if (!initialCode || autoSubmitted.current) return;
+    autoSubmitted.current = true;
+    void onSubmit();
+    // Once, on open: `onSubmit` reads the state the code was filled into.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const name = serverName || reconnecting?.name;
   const host = hostOf(server);
