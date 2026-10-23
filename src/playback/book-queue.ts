@@ -33,9 +33,8 @@ export type FileSpec = { path: string; duration: number; size: number };
 /**
  * The distinct audio files that make up a book, in play order - the single
  * source of truth for both playback (`buildBookQueue`) and offline downloads, so
- * a download writes the files in play order (a later answer for the same files can
- * play them in another; the chapters say which: `refreshedChapters` in the downloads
- * store). Prefers an explicit file list; falls back to the files referenced by the
+ * a download writes the files in play order (a later start can play the same files
+ * in another; the chapters say which: `adoptStartedChapters` in the downloads store). Prefers an explicit file list; falls back to the files referenced by the
  * chapters; finally the book path itself. This must never resolve to a folder path.
  */
 export function bookFileSpecs(book: Book, chapterData?: ChaptersResponse): FileSpec[] {

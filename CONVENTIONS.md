@@ -1769,25 +1769,23 @@ are asked, at most 10,000 rows.
   rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (root
   layout) watches the query cache: a server answer for a downloaded book's chapters replaces
   `manifest.chapters` when its audio files are the ones on the device (`refreshedChapters`: same
-  paths, same sizes where both answers know them); otherwise the manifest stays (that is a new
-  download). The same files in another order (server v2.4.0 plays them in natural order, "2-"
-  before "10-") are the same audio: the manifest takes the server's chapters and with them its
-  play order (every queue over a download orders its files by the chapters and finds each by
-  path), nothing downloaded again, so the offline whole-book timeline is the server's from then
-  on. `manifest.files` itself never moves: a file's index there is its name on disk
-  (`fileName`, rebuilt by `relocateEntry` at every launch and by a retry). A new order is held
-  while the player has the book loaded, or a start is loading it, in another one (`refreshedFor`
-  asks the loaded order through the probe the playback store installs with the downloads store's
-  `setLoadedFileOrder`: the engine plays by track index, and Android's `adoptLoaded` gets only an
-  index), and taken from the cached answer once the loaded book changes or the start ends
-  (`adoptCachedChapters`). A session started in the old order keeps saving on that timeline until
-  the book is next started, so its place then reads as moved (as the server's re-index moves any
-  whole-book place: no remap). The probe knows only what JS loaded: a book the Android service or
-  a Cast receiver holds before `adoptLoaded` runs is not seen. An answer that reached the cache
-  before the book was downloaded (while its files did, or before launch's `hydrate`) is taken as
-  it becomes downloaded (`withCachedChapters`). The audio is never touched, and a queue already
-  playing keeps its chapters until the book is next started. A downloaded book whose chapters
-  change gets its Android car play spec rebuilt (`car-controller.ts`).
+  paths, same order, same sizes where both answers know them); otherwise the manifest stays (that
+  is a new download). An answer that reached the cache before the book was downloaded (while its
+  files did, or before launch's `hydrate`) is taken as it becomes downloaded (`withCachedChapters`).
+  The audio is never touched, and a queue already playing keeps its chapters until the book is
+  next started. The same files in another order (server v2.4.0 plays them in natural order, "2-"
+  before "10-") are taken **only by a start that loads the engine in that order**
+  (`adoptStartedChapters`, from `playBook` once its load landed and it still owns the engine;
+  saved at once), never from a background answer: JS sees only what it loaded, not a book the
+  Android service or a Cast receiver holds before `adoptLoaded` / the receiver adoption, which map
+  the engine's track index through the manifest. So an offline start, Android's no-JS car start
+  and `adoptLoaded` keep the manifest's order until an online start plays the new one. The
+  chapters carry the order (every queue over a download orders its files by them and finds each by
+  path); `manifest.files` itself never moves, since a file's index there is its name on disk
+  (`fileName`, rebuilt by `relocateEntry` at every launch and by a retry). A place saved on the old
+  timeline reads as moved once the new order is taken (as the server's re-index moves any
+  whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
+  spec rebuilt (`car-controller.ts`).
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
   metadata (asked by `metaEnabledFor`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API

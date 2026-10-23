@@ -46,7 +46,7 @@ export type DownloadOutcome =
  * chapters metadata, the local audio files, and a local cover. `files` is in the order
  * the download wrote them, each saved under its index there (`fileName` in store.ts), so
  * it never moves; the chapters give the play order (`bookFileSpecs`), which a later
- * server answer can change (`refreshedChapters`).
+ * start in the server's new order can change (`adoptStartedChapters`).
  */
 export type DownloadManifest = {
   book: Book;

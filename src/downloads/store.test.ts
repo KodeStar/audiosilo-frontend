@@ -137,11 +137,10 @@ import {
   downloadedCountFor,
   downloadedEntryOf,
   downloadKey,
-  adoptCachedChapters,
+  adoptStartedChapters,
   isDeclined,
   refreshedChapters,
   reviveEntry,
-  setLoadedFileOrder,
   startChapterRefresh,
   useDownloads,
 } from '@/downloads/store';
@@ -577,21 +576,10 @@ describe("refreshing a downloaded book's chapters", () => {
       ).toBeNull();
     });
 
-    it('takes the server order with its chapters when the same files come in another order', () => {
+    it('never takes the same files in another order (only a start that plays it does)', () => {
       const e = downloadedEntry();
       e.manifest.chapters = fresh(undefined, { chapters_source: undefined });
-      const reordered = fresh(['A/Book/02.mp3', 'A/Book/01.mp3'], { chapters_source: undefined });
-      const next = refreshedChapters(e.manifest, reordered);
-      // The chapters carry the server's order; the local files stay as the download wrote
-      // them (a file's index there is its name on disk), nothing downloaded again.
-      expect(next).toEqual({ ...e.manifest, chapters: reordered });
-      expect(next?.files).toBe(e.manifest.files);
-      expect(playOrder(next!)).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
-      // A file replaced in place on the way is still a new download.
-      reordered.files = reordered.files.map((f) =>
-        f.rel_path === 'A/Book/01.mp3' ? { ...f, size: 2 } : f,
-      );
-      expect(refreshedChapters(e.manifest, reordered)).toBeNull();
+      expect(refreshedChapters(e.manifest, fresh(['A/Book/02.mp3', 'A/Book/01.mp3']))).toBeNull();
     });
 
     it('keeps each file on its own audio across a launch once its book took a new order', async () => {
@@ -606,9 +594,13 @@ describe("refreshing a downloaded book's chapters", () => {
       ];
       const onDisk = new Set(e.manifest.files.map((f) => f.localUri));
       mockEngine.fileExists.mockImplementation(async (uri: string) => onDisk.has(uri));
-      const next = refreshedChapters(e.manifest, fresh([paths[1], paths[0]]));
       const key = downloadKey('c1', 2, 'A/Book');
-      await seed({ [key]: { ...e, manifest: next! } });
+      useDownloads.setState({ entries: { [key]: e } });
+      adoptStartedChapters(
+        { connectionId: 'c1', libraryId: 2, path: 'A/Book' },
+        fresh([paths[1], paths[0]]),
+      );
+      await seed({ [key]: useDownloads.getState().entries[key] });
 
       await useDownloads.getState().hydrate();
 
@@ -719,59 +711,46 @@ describe("refreshing a downloaded book's chapters", () => {
       const ref = { connectionId: 'c1', libraryId: 2, path: 'A/Book' };
       const reordered = () => fresh(['A/Book/02.mp3', 'A/Book/01.mp3']);
       const order = () => playOrder(useDownloads.getState().entries[key].manifest);
-      const loaded = jest.fn((..._a: unknown[]): string[] | null => null);
       beforeEach(() => {
-        loaded.mockReset().mockReturnValue(null);
-        setLoadedFileOrder((ref) => loaded(ref));
         // Downloaded from the server's old answer (its own chapters, in the old order).
         const e = downloadedEntry();
         e.manifest.chapters = fresh(undefined, { chapters_source: undefined });
         useDownloads.setState({ entries: { [key]: e } });
       });
-      afterEach(() => setLoadedFileOrder(() => null));
 
-      it('is taken at once when the player does not have the book loaded', () => {
-        answer(reordered());
-        expect(order()).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
-        expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(reordered());
-        expect(loaded).toHaveBeenCalledWith(ref);
-      });
-
-      it('is taken at once when the loaded queue already plays it', () => {
-        loaded.mockReturnValue(['A/Book/02.mp3', 'A/Book/01.mp3']);
-        answer(reordered());
-        expect(order()).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
-      });
-
-      it('waits while the book is loaded in its old order, then is taken from the cache', () => {
-        loaded.mockReturnValue(['A/Book/01.mp3', 'A/Book/02.mp3']);
+      it('never comes from a background answer: JS cannot see what a native engine holds', async () => {
         const e = useDownloads.getState().entries[key];
         answer(reordered());
         expect(useDownloads.getState().entries[key]).toBe(e);
-        // Chapters alone (the same order) still refresh while it plays, as before.
-        answer(fresh());
-        expect(order()).toEqual(['A/Book/01.mp3', 'A/Book/02.mp3']);
-        expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(fresh());
-        // Still loaded that way: the cached answer waits.
+        // Nor from one the cache held when launch read the registry.
+        await seed({ [key]: e });
         cacheHolds(reordered());
-        adoptCachedChapters(ref);
-        expect(order()).toEqual(['A/Book/01.mp3', 'A/Book/02.mp3']);
-        // The player let it go.
-        loaded.mockReturnValue(null);
-        adoptCachedChapters(ref);
-        expect(order()).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
-        expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(reordered());
+        await useDownloads.getState().hydrate();
+        expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(e.manifest.chapters);
       });
 
-      it('leaves a different set of files alone, loaded or not', () => {
+      it('is taken by a start that played it, with its chapters, nothing downloaded again', async () => {
         const e = useDownloads.getState().entries[key];
-        answer(fresh(['A/Book/02.mp3', 'A/Book/03.mp3']));
-        loaded.mockReturnValue(['A/Book/02.mp3', 'A/Book/03.mp3']);
-        answer(fresh(['A/Book/02.mp3', 'A/Book/03.mp3']));
-        expect(useDownloads.getState().entries[key]).toBe(e);
-        // Nothing cached, or a book not downloaded: nothing to take.
-        adoptCachedChapters(ref);
-        adoptCachedChapters({ connectionId: 'c1', libraryId: 2, path: 'B/Book' });
+        adoptStartedChapters(ref, reordered());
+        const now = useDownloads.getState().entries[key];
+        expect(now.manifest.chapters).toEqual(reordered());
+        expect(order()).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
+        // The local files stay as the download wrote them (a file's index is its name on disk).
+        expect(now.manifest.files).toBe(e.manifest.files);
+        // Saved at once: a JS restart right after the start must find the order it played.
+        expect((await readPersisted())[key]?.manifest.chapters).toEqual(reordered());
+      });
+
+      it('is not taken from a start whose chapters name other files, or another size', () => {
+        const e = useDownloads.getState().entries[key];
+        adoptStartedChapters(ref, fresh(['A/Book/02.mp3', 'A/Book/03.mp3']));
+        adoptStartedChapters(ref, fresh(['A/Book/02.mp3']));
+        const resized = reordered();
+        resized.files = resized.files.map((f) =>
+          f.rel_path === 'A/Book/01.mp3' ? { ...f, size: 2 } : f,
+        );
+        adoptStartedChapters(ref, resized);
+        adoptStartedChapters({ ...ref, path: 'B/Book' }, reordered());
         expect(useDownloads.getState().entries[key]).toBe(e);
       });
     });

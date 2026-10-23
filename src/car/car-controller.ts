@@ -980,7 +980,8 @@ export function carSyncReady(): Promise<void> {
 }
 
 /** Whether a book downloaded in both registries has other chapters in `next` (a chapters
- * refresh, `refreshedChapters`, which can also give its files a new play order): its play
+ * refresh, `refreshedChapters`, or a start's, `adoptStartedChapters`, which can also give
+ * its files a new play order): its play
  * spec is built from them (`playSpec`), and a refresh changes no download's status. */
 function chaptersChanged(
   next: Record<string, DownloadEntry>,

@@ -6,16 +6,14 @@ import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
-import { trackFilePath } from '@/cast/cast-media';
 import {
-  adoptCachedChapters,
+  adoptStartedChapters,
   downloadedEntryOf,
   downloadKey,
-  setLoadedFileOrder,
   useDownloads,
 } from '@/downloads/store';
 import { resolveConnectionId } from '@/lib/connection-id';
-import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
@@ -147,11 +145,6 @@ let localMoves = 0;
  * switches the book only after its own awaits, so an adoption landing between would take
  * the connection, the retry request and the save loop out from under it. */
 let startsInFlight = 0;
-
-/** The file order (book-relative paths) each `playBook` in flight loads its book in, by
- * book (`contentKey`), from its queue's build until it ends: what the engine is about to
- * hold before `nowPlaying` says so (`setLoadedFileOrder`, below). */
-const startingOrders = new Map<string, string[]>();
 
 /** Captured so `retry()` can re-run the resume path after a lookup failure. */
 let lastPlayRequest: {
@@ -791,10 +784,6 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // stops only a book that is already `nowPlaying`): a start still looking up its place
     // must not load, play or save someone else's book once they have gone.
     const current = () => mayActFor(connectionId);
-    const ref = { connectionId, libraryId, path: book.rel_path };
-    const key = contentKeyOf(ref);
-    /** The order this start loads the book in, once its queue is built (`startingOrders`). */
-    let starting: string[] | null = null;
     // In flight until it ends: an adoption reading meanwhile stands back (`startsInFlight`).
     startsInFlight++;
     try {
@@ -803,6 +792,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       const api = resolveClient(connectionId);
 
       // Play from local files when the book is downloaded (works fully offline).
+      const ref = { connectionId, libraryId, path: book.rel_path };
       const dl = downloadedEntryOf(ref);
       const local = dl ? localFromManifest(dl.manifest) : undefined;
 
@@ -839,9 +829,6 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         transcode,
       );
       const nowPlaying = nowPlayingOf(ref, book, queue, api, local);
-      // A download's new file order waits for this start while its place is looked up.
-      starting = queue.tracks.map(trackFilePath);
-      startingOrders.set(key, starting);
       const svc = await ensureService();
 
       let startAt = startBookPosition ?? 0;
@@ -901,6 +888,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       // the save guard won't let progress regress below it without a deliberate seek.
       resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
       // A different book's place is not known until its load lands (`loadingBook`).
+      const key = contentKey(connectionId, libraryId, book.rel_path);
       const prev = get();
       const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
       set({ rate: speed, nowPlaying, loadingBook });
@@ -928,6 +916,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       // Another book was started while this one loaded (a second tap, Up next): that start
       // owns the engine now, so this one neither sets its speed nor plays.
       if (selectBookKey(get()) !== key) return;
+      // The engine holds the queue built from these chapters now: a download takes them,
+      // with a new file order when its server re-ordered the files (`adoptStartedChapters`).
+      if (dl && chapterData) adoptStartedChapters(ref, chapterData);
       await svc.setRate(speed);
       if (!current()) return;
       await startEngine(svc);
@@ -938,12 +929,6 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       void maybeAutoDownloadCurrent(connectionId, libraryId, book, chapterData);
     } finally {
       startsInFlight--;
-      if (starting) {
-        if (startingOrders.get(key) === starting) startingOrders.delete(key);
-        // A new order held back for this start is taken now, unless the book plays on in
-        // another one.
-        adoptCachedChapters(ref);
-      }
     }
   },
 
@@ -1399,28 +1384,6 @@ useDownloads.subscribe((state, prev) => {
   if (state.entries[key]?.status === 'downloaded' && prev.entries[key]?.status !== 'downloaded') {
     void switchCurrentBookToLocal();
   }
-});
-
-// A downloaded book takes a new file order from its server only while the player does not
-// hold it in another order (`refreshedFor` in the downloads store): this is the order the
-// loaded queue plays (the engine holds it until a start's load replaces it), else the order
-// a start in flight is about to load, by book-relative path (a track's id is
-// `<library>:<path>`).
-setLoadedFileOrder((ref) => {
-  const s = usePlayer.getState();
-  const key = contentKeyOf(ref);
-  if (s.nowPlaying && selectBookKey(s) === key) return s.nowPlaying.queue.tracks.map(trackFilePath);
-  return startingOrders.get(key) ?? null;
-});
-
-// And once the loaded book changes, a new order held back for the book that was loaded,
-// or for the one now loaded in that order, is taken from the cached answer.
-usePlayer.subscribe((state, prev) => {
-  if (state.nowPlaying === prev.nowPlaying) return;
-  if (prev.nowPlaying) adoptCachedChapters(prev.nowPlaying);
-  // The same book under a new object (the hot-swap, a restart): the call above covered it.
-  const now = state.nowPlaying;
-  if (now && selectBookKey(prev) !== selectBookKey(state)) adoptCachedChapters(now);
 });
 
 // --- selectors -------------------------------------------------------------
