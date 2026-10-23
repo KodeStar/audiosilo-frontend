@@ -129,11 +129,12 @@ import { Platform } from 'react-native';
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { engine as downloadEngine } from '@/downloads/engine';
-import { isDeclined, useDownloads } from '@/downloads/store';
+import { adoptCachedChapters, isDeclined, useDownloads } from '@/downloads/store';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
+import { bookFileSpecs } from './book-queue';
 import { flushConnection } from './progress-sync';
 import { AutoplayBlockedError } from './types';
 import {
@@ -1370,7 +1371,11 @@ describe('a downloaded book re-ordered on its server', () => {
   });
   const book = makeBook({ rel_path: folder, is_folder: true, format: 'mp3' });
   const key = `c1:2:${folder}`;
-  const order = () => useDownloads.getState().entries[key].manifest.files.map((f) => f.relPath);
+  /** The order the download plays its files in (its chapters'; `files` never moves). */
+  const order = () => {
+    const { manifest } = useDownloads.getState().entries[key];
+    return bookFileSpecs(manifest.book, manifest.chapters ?? undefined).map((s) => s.path);
+  };
 
   beforeEach(() => {
     const manifest: DownloadManifest = {
@@ -1396,10 +1401,9 @@ describe('a downloaded book re-ordered on its server', () => {
       },
     });
     // The server's answer, in its new order, sits in the query cache.
+    const chaptersKey = JSON.stringify(qk.chapters('c1', 2, folder));
     (queryClient.getQueryData as jest.Mock).mockImplementation((k: unknown) =>
-      Array.isArray(k) && k[0] === 'chapters' && k[3] === folder
-        ? chaptersIn(serverOrder)
-        : undefined,
+      JSON.stringify(k) === chaptersKey ? chaptersIn(serverOrder) : undefined,
     );
   });
   afterEach(() => (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined));
@@ -1409,11 +1413,36 @@ describe('a downloaded book re-ordered on its server', () => {
     const tracks = usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url);
     expect(tracks).toEqual(['file:///dl/1.mp3', 'file:///dl/0.mp3']);
     expect(order()).toEqual(serverOrder);
+    // The files stay where the download wrote them.
+    expect(useDownloads.getState().entries[key].manifest.files.map((f) => f.relPath)).toEqual(
+      paths,
+    );
   });
 
   it('keeps the old order while a queue plays it, and takes the new one once it is gone', async () => {
     // Started from the download's own copy (offline): the old order.
     await usePlayer.getState().playBook('c1', 2, book, chaptersIn(paths), 0);
+    expect(order()).toEqual(paths);
+    usePlayer.setState({ nowPlaying: null });
+    expect(order()).toEqual(serverOrder);
+  });
+
+  it('keeps the old order for a start in it whose place is still being looked up', async () => {
+    let lookedUp: (r: ResumeLookup) => void = () => {};
+    mockLoadInitialProgress.mockImplementationOnce(
+      () => new Promise<ResumeLookup>((resolve) => (lookedUp = resolve)),
+    );
+    // From the download's own copy (the fresh read timed out), then the place lookup.
+    const start = usePlayer.getState().playBook('c1', 2, book, chaptersIn(paths));
+    await flushMicrotasks();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    // The server's answer lands meanwhile: the start is about to load the old order.
+    adoptCachedChapters({ connectionId: 'c1', libraryId: 2, path: folder });
+    expect(order()).toEqual(paths);
+    lookedUp({ kind: 'empty' });
+    await start;
+    const tracks = usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url);
+    expect(tracks).toEqual(['file:///dl/0.mp3', 'file:///dl/1.mp3']);
     expect(order()).toEqual(paths);
     usePlayer.setState({ nowPlaying: null });
     expect(order()).toEqual(serverOrder);

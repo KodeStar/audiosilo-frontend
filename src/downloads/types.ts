@@ -43,7 +43,10 @@ export type DownloadOutcome =
 /**
  * Offline source of truth for a downloaded book - everything the playback layer
  * needs to build the queue and render the player with no network: the book +
- * chapters metadata, the local audio files (in play order), and a local cover.
+ * chapters metadata, the local audio files, and a local cover. `files` is in the order
+ * the download wrote them, each saved under its index there (`fileName` in store.ts), so
+ * it never moves; the chapters give the play order (`bookFileSpecs`), which a later
+ * server answer can change (`refreshedChapters`).
  */
 export type DownloadManifest = {
   book: Book;

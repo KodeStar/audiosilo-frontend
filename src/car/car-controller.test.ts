@@ -515,6 +515,27 @@ describe('startCarSync', () => {
     expect(e.play).toMatchObject({ startIndex: 1, positionInTrack: 50, rate: 1.25 });
   });
 
+  it("rebuilds a downloaded book's spec when its chapters change (its files in a new order)", async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    useDownloads.setState({ entries: { 'c1:2:D': downloaded('c1', 'D') } });
+    stop = startCarSync();
+    await settle();
+    const played = () => tab(lastSnapshot(), 'downloads')!.items[0].play!.tracks.map((t) => t.url);
+    expect(played()).toEqual(['file:///d/1.mp3', 'file:///d/2.mp3']);
+
+    // The server now plays them the other way round (`refreshedChapters`): same status.
+    const reordered = downloaded('c1', 'D');
+    reordered.manifest.chapters = {
+      ...twoFileChapters,
+      files: twoFileChapters.files.map((f) => ({ ...f, seq: 1 - f.seq })),
+    };
+    useDownloads.setState({ entries: { 'c1:2:D': reordered } });
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    expect(played()).toEqual(['file:///d/2.mp3', 'file:///d/1.mp3']);
+  });
+
   it('leaves Up next out where the default server keeps no queue', async () => {
     connect(['c1']);
     mockClients.c1 = fakeClient({});

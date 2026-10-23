@@ -132,6 +132,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
+import { bookFileSpecs } from '@/playback/book-queue';
 import {
   downloadedCountFor,
   downloadedEntryOf,
@@ -546,6 +547,15 @@ describe("refreshing a downloaded book's chapters", () => {
     chapters_source: 'community',
     ...over,
   });
+  /** The order a downloaded book's queue plays its files in: its chapters'. */
+  const playOrder = (manifest: DownloadManifest) =>
+    bookFileSpecs(manifest.book, manifest.chapters ?? undefined).map((s) => s.path);
+  /** The query cache holds `data` as A/Book's chapters answer. */
+  const cacheHolds = (data: ChaptersResponse) =>
+    mockGetQueryData.mockImplementation((k: unknown) =>
+      Array.isArray(k) && k[0] === 'chapters' && k[3] === 'A/Book' ? data : undefined,
+    );
+  afterEach(() => mockGetQueryData.mockReset());
 
   describe('refreshedChapters', () => {
     it('takes the fresh chapters when the audio files are the same', () => {
@@ -572,20 +582,41 @@ describe("refreshing a downloaded book's chapters", () => {
       e.manifest.chapters = fresh(undefined, { chapters_source: undefined });
       const reordered = fresh(['A/Book/02.mp3', 'A/Book/01.mp3'], { chapters_source: undefined });
       const next = refreshedChapters(e.manifest, reordered);
-      expect(next?.chapters).toBe(reordered);
-      // The very same local files, nothing downloaded again: only their order moves.
-      expect(next?.files).toEqual([e.manifest.files[1], e.manifest.files[0]]);
-      expect(next?.files[0]).toBe(e.manifest.files[1]);
-      expect({ ...next, chapters: null, files: null }).toEqual({
-        ...e.manifest,
-        chapters: null,
-        files: null,
-      });
+      // The chapters carry the server's order; the local files stay as the download wrote
+      // them (a file's index there is its name on disk), nothing downloaded again.
+      expect(next).toEqual({ ...e.manifest, chapters: reordered });
+      expect(next?.files).toBe(e.manifest.files);
+      expect(playOrder(next!)).toEqual(['A/Book/02.mp3', 'A/Book/01.mp3']);
       // A file replaced in place on the way is still a new download.
       reordered.files = reordered.files.map((f) =>
         f.rel_path === 'A/Book/01.mp3' ? { ...f, size: 2 } : f,
       );
       expect(refreshedChapters(e.manifest, reordered)).toBeNull();
+    });
+
+    it('keeps each file on its own audio across a launch once its book took a new order', async () => {
+      // Two extensions: a file named for another one's index would be missing on disk, and
+      // the launch would drop the book and delete its folder.
+      const paths = ['A/Book/01.mp3', 'A/Book/02.m4a'];
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh(paths, { chapters_source: undefined });
+      e.manifest.files = [
+        { relPath: paths[0], localUri: 'live:c1:2:A/Book:0.mp3' },
+        { relPath: paths[1], localUri: 'live:c1:2:A/Book:1.m4a' },
+      ];
+      const onDisk = new Set(e.manifest.files.map((f) => f.localUri));
+      mockEngine.fileExists.mockImplementation(async (uri: string) => onDisk.has(uri));
+      const next = refreshedChapters(e.manifest, fresh([paths[1], paths[0]]));
+      const key = downloadKey('c1', 2, 'A/Book');
+      await seed({ [key]: { ...e, manifest: next! } });
+
+      await useDownloads.getState().hydrate();
+
+      const after = useDownloads.getState().entries[key];
+      expect(after?.status).toBe('downloaded');
+      expect(mockEngine.removeBook).not.toHaveBeenCalled();
+      expect(after.manifest.files).toEqual(e.manifest.files);
+      expect(playOrder(after.manifest)).toEqual([paths[1], paths[0]]);
     });
 
     it('leaves the manifest alone when a file at the same path changed size (replaced in place)', () => {
@@ -687,17 +718,17 @@ describe("refreshing a downloaded book's chapters", () => {
       const key = downloadKey('c1', 2, 'A/Book');
       const ref = { connectionId: 'c1', libraryId: 2, path: 'A/Book' };
       const reordered = () => fresh(['A/Book/02.mp3', 'A/Book/01.mp3']);
-      const order = () => useDownloads.getState().entries[key].manifest.files.map((f) => f.relPath);
+      const order = () => playOrder(useDownloads.getState().entries[key].manifest);
       const loaded = jest.fn((..._a: unknown[]): string[] | null => null);
       beforeEach(() => {
         loaded.mockReset().mockReturnValue(null);
         setLoadedFileOrder((ref) => loaded(ref));
-        useDownloads.setState({ entries: { [key]: downloadedEntry() } });
+        // Downloaded from the server's old answer (its own chapters, in the old order).
+        const e = downloadedEntry();
+        e.manifest.chapters = fresh(undefined, { chapters_source: undefined });
+        useDownloads.setState({ entries: { [key]: e } });
       });
-      afterEach(() => {
-        setLoadedFileOrder(() => null);
-        mockGetQueryData.mockReset();
-      });
+      afterEach(() => setLoadedFileOrder(() => null));
 
       it('is taken at once when the player does not have the book loaded', () => {
         answer(reordered());
@@ -722,9 +753,7 @@ describe("refreshing a downloaded book's chapters", () => {
         expect(order()).toEqual(['A/Book/01.mp3', 'A/Book/02.mp3']);
         expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(fresh());
         // Still loaded that way: the cached answer waits.
-        mockGetQueryData.mockImplementation((k: unknown) =>
-          Array.isArray(k) && k[0] === 'chapters' && k[3] === 'A/Book' ? reordered() : undefined,
-        );
+        cacheHolds(reordered());
         adoptCachedChapters(ref);
         expect(order()).toEqual(['A/Book/01.mp3', 'A/Book/02.mp3']);
         // The player let it go.
@@ -761,11 +790,6 @@ describe("refreshing a downloaded book's chapters", () => {
   // before (while the files did, or before launch read the registry) is taken from the cache.
   describe('an answer that landed before the book was downloaded', () => {
     const key = downloadKey('c1', 2, 'A/Book');
-    const cacheHolds = (data: ChaptersResponse) =>
-      mockGetQueryData.mockImplementation((k: unknown) =>
-        Array.isArray(k) && k[0] === 'chapters' && k[3] === 'A/Book' ? data : undefined,
-      );
-    afterEach(() => mockGetQueryData.mockReset());
 
     it('is taken when the download finishes', async () => {
       mockResolveClient.mockReturnValue({
