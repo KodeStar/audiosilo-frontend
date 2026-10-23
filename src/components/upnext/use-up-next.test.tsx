@@ -27,6 +27,10 @@ jest.mock('@/api/hooks', () => {
 });
 const mockItem = jest.fn();
 const mockChapters = jest.fn();
+const mockDrop = jest.fn();
+jest.mock('@/components/player/queue-drop', () => ({
+  dropFromQueue: (...a: unknown[]) => mockDrop(...a),
+}));
 jest.mock('@/api/provider', () =>
   // `require` (not an import) because a jest.mock factory is hoisted above every import.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -196,9 +200,10 @@ describe('useUpNextData', () => {
 });
 
 describe('usePlayNow', () => {
+  beforeEach(() => mockDrop.mockReset());
+
   it('starts the book under the dock on a desktop, then takes it off the queue', async () => {
-    const drop = jest.fn();
-    const { result } = await renderHook(() => usePlayNow('c', drop));
+    const { result } = await renderHook(() => usePlayNow('c'));
     await act(async () => {
       await result.current(entry('B'), 'Book B');
     });
@@ -212,14 +217,13 @@ describe('usePlayNow', () => {
       undefined,
       undefined,
     );
-    expect(drop).toHaveBeenCalledWith(entry('B'));
+    expect(mockDrop).toHaveBeenCalledWith('c', [entry('B')]);
   });
 
   it('opens the full player on a phone, closing the sheet first', async () => {
     mockLayout = 'phone';
     usePlayerSheets.setState({ open: 'upnext' });
-    const drop = jest.fn();
-    const { result } = await renderHook(() => usePlayNow('c', drop));
+    const { result } = await renderHook(() => usePlayNow('c'));
     await act(async () => {
       await result.current(entry('B'), 'Book B');
     });
@@ -229,17 +233,16 @@ describe('usePlayNow', () => {
       params: { connection: 'c', libraryId: '1', path: 'B' },
     });
     expect(mockPlayBook).not.toHaveBeenCalled();
-    expect(drop).toHaveBeenCalled();
+    expect(mockDrop).toHaveBeenCalledWith('c', [entry('B')]);
   });
 
   it('keeps the entry and says so when the book cannot start', async () => {
     mockItem.mockRejectedValueOnce(new Error('offline'));
-    const drop = jest.fn();
-    const { result } = await renderHook(() => usePlayNow('c', drop));
+    const { result } = await renderHook(() => usePlayNow('c'));
     await act(async () => {
       await result.current(entry('B'), 'Book B');
     });
-    expect(drop).not.toHaveBeenCalled();
+    expect(mockDrop).not.toHaveBeenCalled();
     expect(lastToast().title).toBe("Couldn't start Book B. Try again.");
   });
 });

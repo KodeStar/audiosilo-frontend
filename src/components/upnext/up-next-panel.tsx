@@ -66,7 +66,7 @@ export function UpNextPanel({
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const serverName = useConnectionName(cid);
   const { actions } = data;
-  const playNow = usePlayNow(cid, data.dropPlayed);
+  const playNow = usePlayNow(cid);
   const { entries } = data;
   const loaded = nowPlaying?.connectionId === cid ? nowPlaying : null;
 
@@ -143,6 +143,7 @@ export function UpNextPanel({
               cid={cid}
               serverName={serverName}
               libraryId={loaded?.libraryId}
+              episode={!!loaded?.episode}
               onQueue={(lib, path) => void actions.queue(lib, path)}
               onNavigate={onNavigate}
             />
@@ -150,7 +151,7 @@ export function UpNextPanel({
         </View>
       ) : null}
 
-      <AutoPlaySwitch />
+      <AutoPlaySwitch episode={!!loaded?.episode} />
     </View>
   );
 }
@@ -179,7 +180,12 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
   const isPlaying = usePlayer(selectIsPlaying);
   const toggle = usePlayer((s) => s.toggle);
   const left = usePlayingTimeLeft();
-  const where = [chapter ? chapterLabel(chapter, t) : '', left].filter(Boolean).join(' · ');
+  // A file with no chapter marks (an episode, often) names its one chapter after itself:
+  // the title once is enough.
+  const chapterName = chapter ? chapterLabel(chapter, t) : '';
+  const where = [chapterName === nowPlaying.title ? '' : chapterName, left]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <View className="mx-1.5 mb-3 flex-row items-center gap-3 rounded-2xl bg-muted p-3">
       <BookCover
@@ -226,6 +232,7 @@ function SuggestionRow({
   cid,
   serverName,
   libraryId,
+  episode,
   onQueue,
   onNavigate,
 }: {
@@ -233,6 +240,9 @@ function SuggestionRow({
   cid: string;
   serverName: string;
   libraryId: number | undefined;
+  /** The loaded item is a podcast episode: the server's next is the show's next episode
+   * (server v2.4.0), never "the book after". */
+  episode: boolean;
   onQueue: (libraryId: number, path: string) => void;
   onNavigate?: () => void;
 }) {
@@ -273,7 +283,7 @@ function SuggestionRow({
         s.kind === 'next'
           ? s.series
             ? t('upnext.nextInSeries', { series: s.series })
-            : t('upnext.nextAfter')
+            : t(episode ? 'upnext.nextEpisode' : 'upnext.nextAfter')
           : t('upnext.continueAt', { percent: s.percent })
       }
       onOpen={() => {
@@ -348,13 +358,14 @@ function SuggestedBook({
 }
 
 /** The auto-play setting: when a book ends, the first book in Up next plays, else the
- * next in the series (`resolveUpNext`). */
-function AutoPlaySwitch() {
+ * next in the series (`resolveUpNext`). Worded for an episode while one is loaded: after
+ * an episode only Up next's first item plays (`BookEndedListener`). */
+function AutoPlaySwitch({ episode }: { episode: boolean }) {
   const { t } = useTranslation();
   const on = useSettings((s) => s.autoPlayNext);
   const set = useSettings((s) => s.setAutoPlayNext);
-  const label = t('upnext.autoPlay');
-  const hint = t('upnext.autoPlayHint');
+  const label = t(episode ? 'upnext.autoPlayEpisode' : 'upnext.autoPlay');
+  const hint = t(episode ? 'upnext.autoPlayEpisodeHint' : 'upnext.autoPlayHint');
   return (
     <Pressable
       onPress={() => set(!on)}

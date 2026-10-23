@@ -13,7 +13,15 @@ import {
   View,
 } from 'react-native';
 
-import { type MergedBook, useAllProgressAll, useSourceLabeller } from '@/api/hooks';
+import { useQueries } from '@tanstack/react-query';
+
+import {
+  itemQuery,
+  type MergedBook,
+  type SourcedProgress,
+  useAllProgressAll,
+  useSourceLabeller,
+} from '@/api/hooks';
 import { useApi, useApis } from '@/api/provider';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { Highlighted } from '@/components/search/highlighted';
@@ -32,7 +40,7 @@ import { chapterLabel } from '@/lib/chapter-label';
 import { useGlobalShortcut } from '@/lib/keyboard';
 import { useLayout } from '@/lib/layout';
 import { openHousehold, useOpen } from '@/lib/open';
-import { bookTitle, pathLeaf } from '@/lib/paths';
+import { bookTitle } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { cn } from '@/lib/utils';
@@ -50,6 +58,7 @@ import {
   buildPaletteGroups,
   flattenGroups,
   isPaletteShortcut,
+  MAX_CONTINUE,
   moveSelection,
   type PaletteCover,
   type PaletteGroupKey,
@@ -138,10 +147,35 @@ function useGoToItems(): PaletteItem[] {
   );
 }
 
+/** How long a Continue listening title read for the palette stays fresh (Home's tiles
+ * read the same `/item` entries). */
+const TITLE_STALE_MS = 10 * 60_000;
+
+/** The titles of the books Continue listening offers: a progress row carries only a path,
+ * so each book's `/item` is read (the entry Home's tiles and the book page share, so it is
+ * usually cached already). Undefined while one is unknown (`bookTitle` falls back to the
+ * path's last part). */
+function useProgressTitles(items: readonly SourcedProgress[], enabled: boolean) {
+  const apis = useApis();
+  return useQueries({
+    queries: items.map((p) => ({
+      ...itemQuery(
+        p.connectionId,
+        apis.find((a) => a.connection.id === p.connectionId)?.client,
+        p.library_id,
+        p.path,
+      ),
+      staleTime: TITLE_STALE_MS,
+      enabled,
+    })),
+    combine: (results) => results.map((r) => r.data?.title),
+  });
+}
+
 /** Books for the query (the cross-server search, from `useSearch`) and, with no query,
  * Continue listening from the progress Home already loads: the cache as is (opening the
- * palette must not refetch every server's progress), and nothing at all while a query
- * is typed. */
+ * palette must not refetch every server's progress), titled by each book's item, and
+ * nothing at all while a query is typed. */
 function useBookItems(
   query: string,
   found: MergedBook[],
@@ -171,13 +205,19 @@ function useBookItems(
     [found, sourceOf, openBook],
   );
 
+  // Only the rows the palette shows (`MAX_CONTINUE`) ask for their titles.
+  const inProgress = useMemo(
+    () => progress.filter(isInProgress).slice(0, MAX_CONTINUE),
+    [progress],
+  );
+  const titles = useProgressTitles(inProgress, !query);
   const continueListening = useMemo(
     () =>
-      progress.filter(isInProgress).map((p): PaletteItem => {
+      inProgress.map((p, i): PaletteItem => {
         const percent = percentHeard(p.position, p.duration, false);
         return {
           id: `continue:${p.connectionId}:${p.library_id}:${p.path}`,
-          title: pathLeaf(p.path),
+          title: bookTitle(titles[i], p.path),
           subtitle: [
             t('palette.listened', { percent }),
             sourceOf(p.connectionId, p.library_id, p.connectionName),
@@ -188,7 +228,7 @@ function useBookItems(
           run: () => openBook(p.connectionId, p.library_id, p.path),
         };
       }),
-    [progress, sourceOf, t, openBook],
+    [inProgress, titles, sourceOf, t, openBook],
   );
 
   return { books, continueListening };

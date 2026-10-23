@@ -7,6 +7,7 @@ import { useBook, useCapability, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { PlayerView } from '@/components/player/player-view';
+import { dropFromQueue } from '@/components/player/queue-drop';
 import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
 import { contentKey } from '@/lib/content-key';
@@ -166,6 +167,8 @@ export default function PlayerScreen() {
     void usePlayer
       .getState()
       .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined);
+    // The book you're on is not up next any more, as a start in place (`startBookInPlace`).
+    void dropFromQueue(cid, [{ library_id: libraryId, path: book.rel_path }]);
   }, [
     cid,
     book,

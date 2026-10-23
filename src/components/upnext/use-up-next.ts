@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAllProgressAll, useCapability, useNextBook, useQueue } from '@/api/hooks';
-import type { BookRef, QueueEntry } from '@/api/types';
+import type { QueueEntry } from '@/api/types';
 import { useQueueActions } from '@/components/library/use-queue-actions';
+import { dropFromQueue } from '@/components/player/queue-drop';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
@@ -115,10 +116,6 @@ export function useUpNextData(cid: string | undefined) {
     });
   };
 
-  /** Drops the entry after it started playing: no toast (it moved to "Now playing"). */
-  const dropPlayed = (entry: BookRef) =>
-    remove.mutateAsync({ libraryId: entry.library_id, path: entry.path }).catch(fail);
-
   return {
     entries,
     isLoading: queue.isLoading,
@@ -129,7 +126,6 @@ export function useUpNextData(cid: string | undefined) {
     suggestions,
     move,
     clear,
-    dropPlayed,
     actions,
     busy: actions.pending,
   };
@@ -138,9 +134,10 @@ export function useUpNextData(cid: string | undefined) {
 /**
  * "Play now" for a queued book, through the one play path (`usePlayBook`): a phone
  * closes the sheet and opens the full player; a tablet or desktop starts it under the
- * docked bar. The entry leaves the queue once the book is on its way.
+ * docked bar. The entry leaves the queue once the book is on its way (`dropFromQueue`, as
+ * any start does: the one remove, never a second one beside the start's own).
  */
-export function usePlayNow(cid: string | undefined, dropPlayed: (e: BookRef) => unknown) {
+export function usePlayNow(cid: string | undefined) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const play = usePlayBook();
@@ -150,7 +147,7 @@ export function usePlayNow(cid: string | undefined, dropPlayed: (e: BookRef) => 
     if (phone) closeUpNext();
     try {
       await play({ connectionId: cid, libraryId: entry.library_id, path: entry.path });
-      void dropPlayed(entry);
+      void dropFromQueue(cid, [entry]);
     } catch {
       toast({ title: t('upnext.playFailed', { title }) });
     }

@@ -45,6 +45,10 @@ jest.mock('@/components/podcasts/episode-fetch-panel', () => {
 });
 jest.mock('@/api/provider', () => ({ useCid: (id?: string) => id ?? 'c' }));
 jest.mock('@/components/player/player-view', () => ({ PlayerView: () => null }));
+const mockDrop = jest.fn();
+jest.mock('@/components/player/queue-drop', () => ({
+  dropFromQueue: (...a: unknown[]) => mockDrop(...a),
+}));
 const mockSeekBook = jest.fn();
 const mockGoToTrack = jest.fn();
 const mockPlayBook = jest.fn();
@@ -90,6 +94,7 @@ beforeEach(() => {
   mockSeekBook.mockReset();
   mockGoToTrack.mockReset();
   mockPlayBook.mockReset();
+  mockDrop.mockReset();
   mockRequestFetch.mockReset();
   mockBook = plainBook;
   mockPodcastFetch = false;
@@ -133,6 +138,8 @@ describe('the player route', () => {
     routeTo({ position: '600' });
     await render(<PlayerScreen />);
     expect(mockPlayBook.mock.calls).toEqual([['c', 1, mockBook, mockChapters, 600, undefined]]);
+    // The book you're on leaves Up next (PLAYER-04), once.
+    expect(mockDrop.mock.calls).toEqual([['c', [{ library_id: 1, path: 'Author/Book' }]]]);
     // playBook loads the book (already at 600), then the hot-swap replaces it.
     await act(async () => setNowPlaying(THIS_BOOK));
     await act(async () => setNowPlaying(THIS_BOOK));
