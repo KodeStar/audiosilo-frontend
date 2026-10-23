@@ -6,7 +6,13 @@ import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteError } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
-import { downloadedEntryOf, downloadKey, useDownloads } from '@/downloads/store';
+import {
+  adoptCachedChapters,
+  downloadedEntryOf,
+  downloadKey,
+  setLoadedFileOrder,
+  useDownloads,
+} from '@/downloads/store';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
@@ -1376,6 +1382,25 @@ useDownloads.subscribe((state, prev) => {
   if (state.entries[key]?.status === 'downloaded' && prev.entries[key]?.status !== 'downloaded') {
     void switchCurrentBookToLocal();
   }
+});
+
+// A downloaded book's files take a new play order from its server only while the player
+// does not hold it in another order (`refreshedFor` in the downloads store): this is the
+// order the loaded queue plays, by book-relative path (a track's id is `<library>:<path>`).
+setLoadedFileOrder((ref) => {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np || np.connectionId !== ref.connectionId || np.libraryId !== ref.libraryId) return null;
+  if (np.path !== ref.path) return null;
+  const prefix = `${np.libraryId}:`;
+  return np.queue.tracks.map((t) => t.id.slice(prefix.length));
+});
+
+// And once the loaded book changes, a new order held back for the book that was loaded,
+// or for the one now loaded in that order, is taken from the cached answer.
+usePlayer.subscribe((state, prev) => {
+  if (state.nowPlaying === prev.nowPlaying) return;
+  if (prev.nowPlaying) adoptCachedChapters(prev.nowPlaying);
+  if (state.nowPlaying) adoptCachedChapters(state.nowPlaying);
 });
 
 // --- selectors -------------------------------------------------------------

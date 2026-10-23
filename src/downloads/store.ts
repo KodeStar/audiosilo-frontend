@@ -11,6 +11,7 @@ import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
+import type { BookRef } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { onConnectionRemoved } from '@/stores/session';
 
@@ -372,10 +373,13 @@ export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntr
  * ones, or null to leave it as it is. A book's chapters can change on the server after
  * it was downloaded (a rescan, a community chapter list fitted onto its audio, the admin
  * switching it back), and offline it plays and lists what the manifest holds. Only the
- * chapters move: when the fresh answer's audio files are not the ones on the device (the
- * same paths in the same order, `bookFileSpecs` as the download read them, and the same
- * sizes where both answers know them: a file replaced in place keeps its path), the local
- * audio no longer matches and that is a new download, so nothing changes. Null too when
+ * chapters move, and with them the files' play order: when the fresh answer's audio files
+ * are not the ones on the device (the same paths, `bookFileSpecs` as the download read
+ * them, and the same sizes where both answers know them: a file replaced in place keeps
+ * its path), the local audio no longer matches and that is a new download, so nothing
+ * changes. The same files in another order (a server that now sorts "2-" before "10-")
+ * are the same audio: the manifest takes the server's order with its chapters, so its
+ * whole-book timeline (and every place saved on it) is the server's. Null too when
  * nothing differs.
  */
 export function refreshedChapters(
@@ -385,19 +389,58 @@ export function refreshedChapters(
   // An unchanged refetch hands back the same object (structural sharing): skip the compare.
   if (fresh === manifest.chapters) return null;
   const want = bookFileSpecs(manifest.book, fresh);
-  // The files as the download read them (sizes 0 when only the chapters named them).
-  const read = bookFileSpecs(manifest.book, manifest.chapters ?? undefined);
   const have = manifest.files;
-  const same =
-    want.length === have.length &&
-    want.every((s, i) => {
-      if (s.path !== have[i].relPath) return false;
-      const was = read[i];
-      return was?.path !== s.path || !(was.size > 0 && s.size > 0) || was.size === s.size;
-    });
-  if (!same) return null;
-  if (JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
-  return { ...manifest, chapters: fresh };
+  if (want.length !== have.length) return null;
+  // The sizes as the download read them (0 when only the chapters named the files).
+  const readSize = new Map(
+    bookFileSpecs(manifest.book, manifest.chapters ?? undefined).map((s) => [s.path, s.size]),
+  );
+  const onDevice = new Map(have.map((f) => [f.relPath, f]));
+  // The device's files in the fresh answer's order: each one exactly once.
+  const files: DownloadedFile[] = [];
+  for (const s of want) {
+    const f = onDevice.get(s.path);
+    if (!f) return null;
+    onDevice.delete(s.path);
+    const was = readSize.get(s.path) ?? 0;
+    if (was > 0 && s.size > 0 && was !== s.size) return null;
+    files.push(f);
+  }
+  const reordered = files.some((f, i) => f !== have[i]);
+  if (!reordered && JSON.stringify(fresh) === JSON.stringify(manifest.chapters)) return null;
+  return reordered ? { ...manifest, chapters: fresh, files } : { ...manifest, chapters: fresh };
+}
+
+/** The file order (book-relative paths) the player has a book loaded in, or null when it
+ * is not the book loaded. The playback store sets it (`setLoadedFileOrder`): it imports
+ * this module, so this one cannot ask it directly. */
+let loadedFileOrder: (ref: BookRef) => string[] | null = () => null;
+
+/** Set by the playback store at import (see `loadedFileOrder`). */
+export function setLoadedFileOrder(probe: typeof loadedFileOrder): void {
+  loadedFileOrder = probe;
+}
+
+/**
+ * `refreshedChapters`, held back while the player has the book loaded in another order
+ * than the fresh one: the engine plays that queue's files by index (Android's service
+ * hands a JS restart only a track index, `adoptLoaded`), so the manifest must not move
+ * its files under it. A queue already in the fresh order (a start from the server's
+ * answer) takes it at once; a held one is taken once the book is no longer loaded that
+ * way (`adoptCachedChapters`, from the playback store).
+ */
+function refreshedFor(
+  ref: BookRef,
+  manifest: DownloadManifest,
+  fresh: ChaptersResponse,
+): DownloadManifest | null {
+  const next = refreshedChapters(manifest, fresh);
+  if (!next || next.files === manifest.files) return next;
+  const loaded = loadedFileOrder(ref);
+  const inLoadedOrder =
+    !loaded ||
+    (loaded.length === next.files.length && loaded.every((p, i) => p === next.files[i].relPath));
+  return inLoadedOrder ? next : null;
 }
 
 /**
@@ -416,7 +459,21 @@ function withCachedChapters(
   const cached = queryClient.getQueryData<ChaptersResponse>(
     qk.chapters(connectionId, libraryId, path),
   );
-  return (cached && refreshedChapters(manifest, cached)) || manifest;
+  return (cached && refreshedFor({ connectionId, libraryId, path }, manifest, cached)) || manifest;
+}
+
+/**
+ * A downloaded book takes the chapters answer the cache holds for it now, when
+ * `refreshedChapters` allows: for one `refreshedFor` held back while it was loaded in its
+ * old order (the playback store calls this when the loaded book changes).
+ */
+export function adoptCachedChapters(ref: BookRef): void {
+  const entry = downloadedEntryOf(ref);
+  if (!entry) return;
+  const manifest = withCachedChapters(ref.connectionId, ref.libraryId, ref.path, entry.manifest);
+  if (manifest === entry.manifest) return;
+  patchEntry(downloadKey(ref.connectionId, ref.libraryId, ref.path), { manifest });
+  persistSoon();
 }
 
 /**
@@ -424,7 +481,8 @@ function withCachedChapters(
  * server gives (any screen's fetch, the play and download paths) for a downloaded book
  * replaces its saved copy when `refreshedChapters` allows. The cache already holds that
  * answer, so there is nothing to seed. A queue already playing keeps its chapters until
- * the book is next started. Returns the unsubscribe (started once from the root layout).
+ * the book is next started, and a new file order waits until then (`refreshedFor`).
+ * Returns the unsubscribe (started once from the root layout).
  */
 export function startChapterRefresh(): () => void {
   return queryClient.getQueryCache().subscribe((event) => {
@@ -436,7 +494,8 @@ export function startChapterRefresh(): () => void {
     const key = downloadKey(book.cid, book.libraryId, book.path);
     const entry = useDownloads.getState().entries[key];
     if (entry?.status !== 'downloaded') return;
-    const manifest = refreshedChapters(entry.manifest, fresh);
+    const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
+    const manifest = refreshedFor(ref, entry.manifest, fresh);
     if (!manifest) return;
     patchEntry(key, { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out) saves the registry

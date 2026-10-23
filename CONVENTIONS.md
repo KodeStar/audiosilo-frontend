@@ -1769,8 +1769,14 @@ are asked, at most 10,000 rows.
   rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (root
   layout) watches the query cache: a server answer for a downloaded book's chapters replaces
   `manifest.chapters` when its audio files are the ones on the device (`refreshedChapters`: same
-  paths, same order, same sizes where both answers know them); otherwise the manifest stays (that
-  is a new download). An answer that reached the cache before the book was downloaded (while its
+  paths, same sizes where both answers know them); otherwise the manifest stays (that is a new
+  download). The same files in another order (server v2.4.0 plays them in natural order, "2-"
+  before "10-") are the same audio: the manifest takes the server's order (`manifest.files`
+  reordered, nothing downloaded again) with its chapters, so the offline whole-book timeline and
+  every place saved on it is the server's. A new order is held while the player has the book
+  loaded in another one (`refreshedFor`, probing the playback store's `setLoadedFileOrder`: the
+  engine plays by track index, and Android's `adoptLoaded` gets only an index), and taken from
+  the cached answer once the loaded book changes (`adoptCachedChapters`). An answer that reached the cache before the book was downloaded (while its
   files did, or before launch's `hydrate`) is taken as it becomes downloaded (`withCachedChapters`).
   The audio is never touched, and a queue already playing keeps its chapters until the book is
   next started.

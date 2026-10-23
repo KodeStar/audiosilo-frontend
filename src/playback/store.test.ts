@@ -1,4 +1,4 @@
-import type { Book, Progress } from '@/api/types';
+import type { Book, ChaptersResponse, Progress } from '@/api/types';
 
 import type { ResumeLookup } from './progress-sync';
 import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
@@ -1342,6 +1342,80 @@ describe('the download hot-swap', () => {
 
     expect(loadedUrls()).toEqual(['stream:2:A/Book.m4b', 'file:///dl/0.m4b']);
     expect(mockSvc.play).not.toHaveBeenCalled();
+  });
+});
+
+// --- a downloaded book whose server now plays its files in another order -----------
+// (server v2.4.0's natural order: "2-" before "10-"). The download takes the server's order
+// and chapters, but never under a queue the player holds in the old order.
+describe('a downloaded book re-ordered on its server', () => {
+  const folder = 'A/Folder';
+  const paths = ['A/Folder/10.mp3', 'A/Folder/2.mp3'];
+  const chaptersIn = (order: string[]): ChaptersResponse => ({
+    library_id: 2,
+    path: folder,
+    duration: 100,
+    is_folder: true,
+    files: order.map((rel_path, seq) => ({ rel_path, seq, duration: 50, format: 'mp3', size: 1 })),
+    chapters: order.map((file_path, index) => ({
+      index,
+      title: `Chapter ${index + 1}`,
+      file_index: index,
+      file_path,
+      start: 0,
+      end: 50,
+      book_offset: index * 50,
+    })),
+  });
+  const book = makeBook({ rel_path: folder, is_folder: true, format: 'mp3' });
+  const key = `c1:2:${folder}`;
+  const order = () => useDownloads.getState().entries[key].manifest.files.map((f) => f.relPath);
+
+  beforeEach(() => {
+    const manifest: DownloadManifest = {
+      book,
+      chapters: chaptersIn(paths),
+      files: paths.map((relPath, i) => ({ relPath, localUri: `file:///dl/${i}.mp3` })),
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    useDownloads.setState({
+      entries: {
+        [key]: {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: folder,
+          title: book.title,
+          status: 'downloaded',
+          progress: 1,
+          bytes: 0,
+          totalBytes: 0,
+          manifest,
+        },
+      },
+    });
+    // The server's answer, in its new order, sits in the query cache.
+    (queryClient.getQueryData as jest.Mock).mockImplementation((k: unknown) =>
+      Array.isArray(k) && k[0] === 'chapters' && k[3] === folder
+        ? chaptersIn([...paths].reverse())
+        : undefined,
+    );
+  });
+  afterEach(() => (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined));
+
+  it("takes the server's order once a start plays it", async () => {
+    await usePlayer.getState().playBook('c1', 2, book, chaptersIn([...paths].reverse()), 0);
+    const tracks = usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url);
+    expect(tracks).toEqual(['file:///dl/1.mp3', 'file:///dl/0.mp3']);
+    expect(order()).toEqual(['A/Folder/2.mp3', 'A/Folder/10.mp3']);
+  });
+
+  it('keeps the old order while a queue plays it, and takes the new one once it is gone', async () => {
+    // Started from the download's own copy (offline): the old order.
+    await usePlayer.getState().playBook('c1', 2, book, chaptersIn(paths), 0);
+    expect(order()).toEqual(paths);
+    usePlayer.setState({ nowPlaying: null });
+    expect(order()).toEqual(['A/Folder/2.mp3', 'A/Folder/10.mp3']);
   });
 });
 
