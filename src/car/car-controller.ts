@@ -347,7 +347,7 @@ async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<Kids
       mode,
       library: null,
       shelf: async (progress) =>
-        kidsSectionBooks(kidsCollectionSections(shared, details, progress)),
+        kidsSectionBooks(kidsCollectionSections(shared, details, progress, libraries)),
     };
   }
   if (!libraries) return { mode, library: null, shelf: unreadable };

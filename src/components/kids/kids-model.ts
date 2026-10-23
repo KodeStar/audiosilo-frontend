@@ -3,7 +3,7 @@ import { type GridSpec, gridMetrics } from '@/components/library/cover-layout';
 import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
 import type { LayoutClass } from '@/lib/layout';
-import { kidsLibraries } from '@/lib/library-kind';
+import { isPodcastLibrary, kidsLibraries } from '@/lib/library-kind';
 import { isInProgress } from '@/lib/progress-view';
 import { type DevicePeople, managerName } from '@/lib/account';
 import type { KidsSettings, Profile } from '@/stores/profiles';
@@ -203,15 +203,22 @@ export function kidsOrder(books: readonly Book[], progress: readonly Progress[])
  * one's GET /me/collections/{id} answer in `details`, undefined while unread): the indexed
  * books of each, stories in progress first (`kidsOrder`), titled with the collection's
  * name. A collection with no stories is left out. Empty when no collection has a story
- * yet.
+ * yet. Never a podcast episode (Bridge 2d-1, decision 6.2): an item of a podcast library
+ * in the account's `libraries` (GET /libraries; list shapes carry no `episode`), or one
+ * that says it is an episode, is left out.
  */
 export function kidsCollectionSections(
   collections: readonly Collection[],
   details: readonly (CollectionDetail | undefined)[],
   progress: readonly Progress[],
+  libraries: readonly Pick<Library, 'id' | 'kind'>[] | undefined,
 ): KidsSection[] {
+  const podcasts = new Set((libraries ?? []).filter(isPodcastLibrary).map((l) => l.id));
+  const story = (b: Book) => !b.episode && !podcasts.has(b.library_id);
   return collections.flatMap((c, i): KidsSection[] => {
-    const books = (details[i]?.items ?? []).flatMap((item) => (item.book ? [item.book] : []));
+    const books = (details[i]?.items ?? []).flatMap((item) =>
+      item.book && story(item.book) ? [item.book] : [],
+    );
     return books.length > 0
       ? [{ key: `collection-${c.id}`, title: c.name, books: kidsOrder(books, progress) }]
       : [];

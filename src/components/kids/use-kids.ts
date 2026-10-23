@@ -232,9 +232,9 @@ export function useKidsStories(): {
   const sections = useMemo(
     () =>
       mode === 'collections'
-        ? kidsCollectionSections(shared, details.details, progress.data ?? [])
+        ? kidsCollectionSections(shared, details.details, progress.data ?? [], libraries.data)
         : [],
-    [mode, shared, details.details, progress.data],
+    [mode, shared, details.details, progress.data, libraries.data],
   );
   const sectionBooks = useMemo(() => kidsSectionBooks(sections), [sections]);
 
@@ -294,9 +294,11 @@ export function useKidsStories(): {
         ? fallback()
         : { status: 'loading' };
   } else if (mode === 'collections') {
-    // Wait for every collection and the progress, so the grid doesn't reorder.
-    if (details.loading || progress.isLoading) stories = { status: 'loading' };
-    else if (sections.length === 0) {
+    // Wait for every collection and the progress, so the grid doesn't reorder, and for
+    // the libraries, which tell an episode (never shown here) from a story.
+    if (details.loading || progress.isLoading || libraries.isLoading) {
+      stories = { status: 'loading' };
+    } else if (sections.length === 0) {
       stories = details.failed ? fallback() : { status: 'empty', serverName, askGrownUp: true };
     } else {
       stories = ready(sectionBooks, {
