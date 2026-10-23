@@ -7,8 +7,9 @@ import {
 } from './library-modes';
 
 describe('library modes', () => {
-  it('lists the six sections in sub-nav order', () => {
+  it('lists the sections in sub-nav order', () => {
     expect(LIBRARY_MODES).toEqual([
+      'shows',
       'books',
       'authors',
       'series',
@@ -39,9 +40,36 @@ describe('library modes', () => {
       'narrators',
       'folders',
     ]);
-    expect(availableLibraryModes({ browsePeople: true, collections: true })).toEqual([
-      ...LIBRARY_MODES,
+    expect(availableLibraryModes({ browsePeople: true, collections: true })).toEqual(
+      LIBRARY_MODES.filter((m) => m !== 'shows'),
+    );
+  });
+
+  // Bridge Phase 2d-1.
+  it('offers a podcast library its shows and the folders only', () => {
+    expect(availableLibraryModes({ browsePeople: true, collections: true }, true)).toEqual([
+      'shows',
+      'folders',
     ]);
+    // Not known yet: no Shows offered, book modes as before.
+    expect(availableLibraryModes({ browsePeople: true }, undefined)).toEqual([
+      'books',
+      'authors',
+      'series',
+      'narrators',
+      'folders',
+    ]);
+  });
+
+  it('maps a book mode to Shows on a podcast library, and Shows to Books elsewhere', () => {
+    expect(resolveLibraryMode('books', {}, true)).toBe('shows');
+    expect(resolveLibraryMode('authors', { browsePeople: true }, true)).toBe('shows');
+    expect(resolveLibraryMode('folders', {}, true)).toBe('folders');
+    expect(resolveLibraryMode('shows', {}, true)).toBe('shows');
+    expect(resolveLibraryMode('shows', {}, false)).toBe('books');
+    // A link to Shows stands while the library is not known yet.
+    expect(resolveLibraryMode('shows', {}, undefined)).toBe('shows');
+    expect(parseLibraryMode('shows')).toBe('shows');
   });
 
   it('keeps a requested mode until its server is known to lack it', () => {

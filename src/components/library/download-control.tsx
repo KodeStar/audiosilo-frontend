@@ -82,6 +82,8 @@ export function DownloadControl({
       {text}
     </Text>
   );
+  // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1).
+  if (book?.episode) return null;
   if (!supported) {
     return (
       <Button

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { kidsLibraries } from '@/lib/library-kind';
 import { connectionsOfProfile, type Profile, setProfileKids } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -53,7 +54,7 @@ export function KidsLibraryPicker({
   const loading = results.some((r) => r.isPending && r.fetchStatus !== 'idle');
   const failed = results.filter((r) => r.isError);
   const options: KidsLibraryOption[] = own.flatMap((c, i) =>
-    (results[i]?.data ?? []).map((l) => ({
+    kidsLibraries(results[i]?.data ?? []).map((l) => ({
       connectionId: c.id,
       libraryId: l.id,
       label:

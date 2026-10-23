@@ -7,6 +7,13 @@ import pt from './locales/pt.json';
 
 const LOCALES = { en, de, es, fr, it: italian, pt };
 
+/** Every leaf of a strings tree, as `dotted.key: text`. */
+function leaves(tree: unknown, prefix = ''): [string, string][] {
+  if (typeof tree === 'string') return [[prefix, tree]];
+  if (!tree || typeof tree !== 'object') return [];
+  return Object.entries(tree).flatMap(([k, v]) => leaves(v, prefix ? `${prefix}.${k}` : k));
+}
+
 describe('locales', () => {
   // One setting, one name: Settings and the Downloads page's rules card both name the
   // auto-download mode with downloads.rules.mode (they once said "Automatically
@@ -30,5 +37,30 @@ describe('locales', () => {
     expect(l.account.devices.alsoSignOut).not.toMatch(
       /this device|diesem Gerät|cet appareil(?!-là)|este dispositivo|questo dispositivo|neste dispositivo/,
     );
+  });
+
+  // Podcasts (Bridge 2d-1): every string in every language, including each reason an
+  // episode could not be fetched (`fetchReasonKey`), and none names the Bridge or uses
+  // an em dash.
+  const podcastStrings = (l: typeof en) =>
+    leaves({ podcasts: l.podcasts, newEpisodes: l.home.newEpisodes, shows: l.library.modes.shows });
+  it.each(Object.entries(LOCALES))('%s has every podcast string', (_, l) => {
+    const keys = podcastStrings(l).map(([k]) => k);
+    expect(keys).toEqual(podcastStrings(en).map(([k]) => k));
+    for (const reason of [
+      'module_off',
+      'bridge_unavailable',
+      'library_not_writable',
+      'fetch_limit',
+      'demo_account',
+      'too_large',
+      'identity_changed',
+      'other',
+    ]) {
+      expect(keys).toContain(`podcasts.fetch.reason.${reason}`);
+    }
+    for (const [key, text] of podcastStrings(l)) {
+      expect([key, text]).toEqual([key, expect.not.stringMatching(/bridge|\u2014/i)]);
+    }
   });
 });

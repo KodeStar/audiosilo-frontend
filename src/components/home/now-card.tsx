@@ -172,22 +172,28 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     </AnimatedPressable>
   );
 
-  const chapterLine = place ? (
-    <View className="flex-row items-center gap-2.5">
-      <View className="rounded-md bg-muted px-[7px] py-0.5">
-        <Text variant="mono" className="text-muted-foreground">
-          {placeCount}
+  // An episode (Bridge 2d-1) is no book: no "Chapter 1 of 1" for one without chapters.
+  const episode = !!book?.episode;
+  const chapterLine =
+    place && (!episode || place.count > 1) ? (
+      <View className="flex-row items-center gap-2.5">
+        <View className="rounded-md bg-muted px-[7px] py-0.5">
+          <Text variant="mono" className="text-muted-foreground">
+            {placeCount}
+          </Text>
+        </View>
+        <Text variant="label" className="min-w-0 flex-1 text-[15px]" numberOfLines={1}>
+          {chapterLabel({ title: place.title, index: place.number - 1 }, t)}
         </Text>
       </View>
-      <Text variant="label" className="min-w-0 flex-1 text-[15px]" numberOfLines={1}>
-        {chapterLabel({ title: place.title, index: place.number - 1 }, t)}
-      </Text>
-    </View>
-  ) : null;
+    ) : null;
 
   const statsRow = (
     <View className="mt-1 flex-row flex-wrap gap-x-[22px] gap-y-2">
-      <Stat value={`${percent}%`} label={t('home.now.through')} />
+      <Stat
+        value={`${percent}%`}
+        label={t(episode ? 'home.now.throughEpisode' : 'home.now.through')}
+      />
       {left > 0 ? <Stat value={formatDuration(left)} label={timeLeftLabel(t, speed)} /> : null}
       {finishOn ? <Stat value={finishOn} label={t('home.now.finishPace')} /> : null}
     </View>
@@ -260,7 +266,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
             </View>
           </View>
           {chapterLine}
-          <BookScale segments={segments} pins={pins} percent={percent} />
+          <BookScale segments={segments} pins={pins} percent={percent} episode={episode} />
           {statsRow}
           <View className="gap-2">
             {resumeButton}
@@ -284,7 +290,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
               {title}
             </Text>
             {chapterLine}
-            <BookScale segments={segments} pins={pins} percent={percent} />
+            <BookScale segments={segments} pins={pins} percent={percent} episode={episode} />
             {statsRow}
             <View className="mt-auto flex-row flex-wrap gap-2 pt-2">
               {resumeButton}

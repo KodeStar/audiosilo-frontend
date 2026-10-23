@@ -798,6 +798,24 @@ describe('startCarSync', () => {
       expect(mockClients.c1.allProgress).not.toHaveBeenCalled();
     });
 
+    // Without the libraries a shared collection's episode can't be told from a story.
+    it("a member's shared collections while the libraries can't be read: none listed", async () => {
+      household({ id: 12, managed_by: ADAM, member_kind: 'kid' });
+      const evies = coll(4, "Evie's books");
+      mockClients.c2 = fakeClient({
+        collections: [evies],
+        details: { 4: detail(evies, ['moon', 'fox']) },
+      });
+      mockClients.c2.libraries.mockRejectedValue(new Error('down'));
+      stop = startCarSync();
+      await settle();
+      const snap = lastSnapshot();
+      expect(snap.tabs.map((t) => [t.id, t.items.map((i) => i.title)])).toEqual([
+        ['library', ['Downloaded Kept']],
+      ]);
+      expect(mockClients.c2.collection).not.toHaveBeenCalled();
+    });
+
     it('an account nobody manages (Phase 8): the one library, in its own order', async () => {
       household({ id: 12 });
       mockClients.c2 = fakeClient({

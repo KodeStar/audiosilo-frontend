@@ -8,6 +8,7 @@ import {
   useBook,
   useCapability,
   useEditProgress,
+  useIsPodcastLibrary,
   useMarkFinished,
 } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
@@ -101,6 +102,10 @@ export function useBookActions(
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
   const known = unknown ? full.data : book;
   const download = useDownloadControls(libraryId, path, known ?? book, undefined, connectionId);
+  // Podcast episodes are not kept offline (Bridge Phase 2d-1): by the item's `episode`, or
+  // for a list-shape book, by its library's kind.
+  const podcastLibrary = useIsPodcastLibrary(libraryId, connectionId);
+  const episode = podcastLibrary || !!(known ?? book).episode;
   const status = bookStatus(progress);
 
   const failed = (e: unknown) => {
@@ -183,7 +188,7 @@ export function useBookActions(
   }
   const s = download.status;
   // A download already there stays manageable; a new one waits for the verdict.
-  if (download.supported && (known || (s !== undefined && s !== 'error'))) {
+  if (!episode && download.supported && (known || (s !== undefined && s !== 'error'))) {
     const state =
       s === 'downloaded' ? 'remove' : s === 'downloading' || s === 'queued' ? 'cancel' : 'start';
     const run = {
@@ -371,10 +376,14 @@ export function BookActionsMenu({
 }
 
 /**
- * A book's "..." button and its actions (`BookActionsMenu`). Sits beside (never inside)
- * the row's own press target.
+ * A book's "..." button and its actions (`BookActionsMenu`, `omit` leaving items out).
+ * Sits beside (never inside) the row's own press target.
  */
-export function BookActionsButton({ extra, ...target }: Target & { extra?: BookAction[] }) {
+export function BookActionsButton({
+  extra,
+  omit,
+  ...target
+}: Target & { extra?: BookAction[]; omit?: readonly BookActionKey[] }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const [sheet, setSheet] = useState(false);
@@ -382,6 +391,7 @@ export function BookActionsButton({ extra, ...target }: Target & { extra?: BookA
     <BookActionsMenu
       {...target}
       extra={extra}
+      omit={omit}
       sheetOpen={sheet}
       onSheetOpenChange={setSheet}
       trigger={

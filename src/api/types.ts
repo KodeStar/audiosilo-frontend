@@ -120,6 +120,18 @@ export type Capabilities = {
    * false. The player has no Contributions UI yet (`src/modules/registry.ts` is empty); a
    * module's flag is its id there. */
   contributions?: boolean;
+  /** Whether the Podcasts module (Bridge Phase 2c) is on AND its Bridge requirement is met
+   * (an online Bridge that can subscribe and fetch). It gates only the module's writes in
+   * the player: Follow and Unfollow (Bridge Phase 2d-1). Reading shows and episodes is core
+   * and never waits on it (a podcast library is listed, or not, by `GET /libraries`). Sent
+   * by every server that has the module, false while off; absent on older servers: treat
+   * missing as false. */
+  podcasts?: boolean;
+  /** Whether the server fetches an absent episode on demand (Bridge Phase 2c-2b): the
+   * `503 {code, fetch}` answer of `/stream` for an episode still on its way, and
+   * `GET`/`POST /libraries/{id}/podcasts/fetch`. Absent on older servers: treat missing as
+   * false and play an episode like any book. */
+  podcast_fetch?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -249,7 +261,15 @@ export type ApiKeyCreated = {
 
 export type LibraryView = 'filesystem' | 'computed' | 'hybrid';
 
+/** What a library holds: books, or podcast shows (Bridge Phase 2c). The wire field stays
+ * open: a newer server may send a kind this build does not know (treat it as books). */
+export type LibraryKind = 'books' | 'podcasts';
+
 export type Library = {
+  /** What it holds (Bridge Phase 2c); absent on older servers, which hold only books. A
+   * podcast library is listed only to a client the server knows can show it (2.2.0 and
+   * later), so an older app never sees one. */
+  kind?: LibraryKind | (string & {});
   id: number;
   name: string;
   root: string;
@@ -316,9 +336,10 @@ export type Chapter = {
 };
 
 /** Where a book's chapters come from when they are not the files' own (see
- * Book.chapters_source): a community recording's list, or a Bridge's detection. The wire
- * field stays open: a newer server may send a source this build does not know. */
-export type ChaptersSource = 'community' | 'generated';
+ * Book.chapters_source): a community recording's list, a Bridge's detection, or (Bridge
+ * Phase 2c-2) a podcast episode file's own ID3 CHAP frames. The wire field stays open: a
+ * newer server may send a source this build does not know. */
+export type ChaptersSource = 'community' | 'generated' | 'id3_chap';
 
 export type Book = {
   id: number;
@@ -414,6 +435,11 @@ export type Book = {
    * Bridge generated on this server (Bridge Phases 1a and 1c; list, search, item, recent
    * and the next book's `book` send it). Absent otherwise, and on older servers. */
   generated?: boolean;
+  /** Set when the item is a podcast episode (Bridge Phase 2c): only GET
+   * /libraries/{id}/item sends it (list shapes leave it out). Its `fetch` is the episode's
+   * on-demand fetch status while it is not on the server. Absent for a book, and on older
+   * servers. */
+  episode?: PodcastEpisodeInfo;
 };
 
 /** Colours derived from a book's cover art, all lowercase "#rrggbb". `bg` is the
@@ -1414,3 +1440,155 @@ export type BridgeEstimate = {
    * says which; absent for none. */
   open_job?: BridgeJob;
 };
+
+// --- Podcasts (Bridge Phase 2c on the server; the player's views are Phase 2d-1) ---------
+// Hand-mirrored from the server's `internal/catalog/podcasts.go` and
+// `internal/bridge/podcast_demand.go`. Every key inside these objects is always sent (the
+// server's `omitempty` ones are optional here); dates are RFC3339.
+
+/** The on-demand fetch states of an absent episode. The wire field stays open. */
+export type PodcastFetchState =
+  'absent' | 'queued' | 'fetching' | 'ready' | 'failed' | 'unavailable';
+
+/** An episode's fetch status: what `GET /libraries/{id}/podcasts/fetch` answers, a
+ * `/stream` 503 carries, and an episode row's `fetch`. `error` is set when `failed` or
+ * `unavailable` (its `code` is one of the server's safe codes: `too_large`, `module_off`,
+ * `bridge_unavailable`, `fetch_limit`, `demo_account`, `http_404`, ...; its `message` is the
+ * server's English, never shown). */
+export type PodcastFetchStatus = {
+  state: PodcastFetchState | (string & {});
+  request_id: number | null;
+  bytes_received: number;
+  bytes_total: number | null;
+  /** How long to wait before asking again (0 once it is settled). */
+  retry_after_seconds: number;
+  error: { code: string; message: string } | null;
+};
+
+/** `{fetch}`: the answer of GET and POST `/libraries/{id}/podcasts/fetch`. */
+export type PodcastFetchResponse = { fetch: PodcastFetchStatus };
+
+/** The `code` of a `/stream` 503 for an episode not on the server yet
+ * (`PodcastFetchPendingError`). */
+export type PodcastFetchPendingCode =
+  'podcast_fetching' | 'podcast_fetch_unavailable' | 'podcast_fetch_failed';
+
+/** What an episode row and an item's `episode` say about the file on the server. */
+export type PodcastGeneration = {
+  /** The fetch status while the episode is not on the server (absent once it is, and on a
+   * server without a Bridge). */
+  fetch?: PodcastFetchStatus;
+  /** Which fetch of the episode the file is (1 the first; absent before one). */
+  generation?: number;
+  sha256?: string;
+  /** True when the file's audio changed since an earlier generation (a feed that serves
+   * different ads, say), so a saved place may not land on the same words. Absent before
+   * the first fetch; `false` is kept as sent. */
+  timeline_changed?: boolean;
+};
+
+export type PodcastEpisodeType = 'full' | 'trailer' | 'bonus';
+
+/** Where an episode's `duration` comes from: the file, the feed, or nowhere (0). */
+export type PodcastDurationSource = 'file' | 'feed' | 'none';
+
+/** {@link Book.episode}: the episode facts of an item that is one. */
+export type PodcastEpisodeInfo = PodcastGeneration & {
+  /** The show's folder (its `PodcastShow.path`). */
+  show_path: string;
+  published: string | null;
+  season: number | null;
+  episode: number | null;
+  episode_type: PodcastEpisodeType | (string & {});
+  explicit: boolean;
+  /** The file is on the server (no fetch needed to play it). */
+  downloaded: boolean;
+  duration_source: PodcastDurationSource | (string & {});
+  /** The feed no longer lists it (a kept file still plays). */
+  removed: boolean;
+};
+
+/** One row of `GET /libraries/{id}/podcasts/episodes`. */
+export type PodcastEpisode = PodcastGeneration & {
+  path: string;
+  title: string;
+  published: string | null;
+  /** Seconds; 0 when `duration_source` is `none`. */
+  duration: number;
+  duration_source: PodcastDurationSource | (string & {});
+  season: number | null;
+  episode: number | null;
+  episode_type: PodcastEpisodeType | (string & {});
+  explicit: boolean;
+  description: string;
+  downloaded: boolean;
+  /** Bytes of the file on the server (0 while absent). */
+  size: number;
+  removed: boolean;
+};
+
+/** A page of a show's episodes; `next_cursor` continues it (null on the last page). */
+export type PodcastEpisodePage = { episodes: PodcastEpisode[]; next_cursor: string | null };
+
+/** The episode list's order: by `published`, then path (undated episodes first when
+ * oldest first, last when newest first). The server orders; the player never re-sorts. */
+export type PodcastEpisodeOrder = 'newest' | 'oldest';
+
+export type PodcastError = { code: string; message: string };
+
+/** A show, from `GET /libraries/{id}/podcasts` (title order) and `GET /me/podcasts`. */
+export type PodcastShow = {
+  library_id: number;
+  /** The show's folder: its identity (`?show=` of the episode list, the cover's `path`). */
+  path: string;
+  title: string;
+  author: string;
+  description: string;
+  link: string;
+  language: string;
+  /** `serial` shows read oldest first. */
+  type: 'episodic' | 'serial' | (string & {});
+  explicit: boolean;
+  /** A private feed (its URL is a secret): visible only to the people who follow it. */
+  private: boolean;
+  /** The feed's address; null for a private feed. */
+  feed_url: string | null;
+  feed_host: string;
+  podcast_guid: string;
+  episode_count: number;
+  latest_published: string | null;
+  /** The artwork's cache buster (`coverUrl`'s `version`). */
+  cover_version: string;
+  /** The caller follows it. */
+  following: boolean;
+  status: {
+    last_checked: string | null;
+    last_success: string | null;
+    next_check: string | null;
+    /** The last check failed (the player says so, never the code). */
+    error: PodcastError | null;
+  };
+  /** How many episodes the server keeps (an admin setting; the player shows none). */
+  retention?: { mode: string; keep: number; days: number };
+};
+
+/** A follow-by-URL request in flight (Bridge Phase 2d-2 shows them; listed by
+ * `GET /me/podcasts` already). */
+export type PodcastRequest = {
+  id: number;
+  library_id: number | null;
+  state: string;
+  feed: string;
+  private: boolean;
+  show_path: string | null;
+  error: PodcastError | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** `GET /me/podcasts`: the shows the caller follows, across their podcast libraries. */
+export type MyPodcasts = { shows: PodcastShow[]; requests: PodcastRequest[] };
+
+/** `POST /podcasts/follow`: following at once (a path), or (by URL, 2d-2) a request. */
+export type PodcastFollowResult =
+  { state: 'following'; show: PodcastShow } | { state: 'subscribing'; request: PodcastRequest };

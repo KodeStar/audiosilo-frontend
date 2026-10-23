@@ -160,10 +160,12 @@ function fromFolder(connectionId: string, libraryId: number, entry: FsEntry): Up
 }
 
 /** What plays after the book at (libraryId, path) on `connectionId` (see the module
- * comment for the order). Never rejects: a source that fails is skipped. */
+ * comment for the order). Never rejects: a source that fails is skipped. `queueOnly`:
+ * only Up next's head (after a podcast episode, which has no series or folder to follow). */
 export async function resolveUpNext(
   sources: UpNextSources,
   finished: { connectionId: string; libraryId: number; path: string },
+  { queueOnly = false }: { queueOnly?: boolean } = {},
 ): Promise<UpNextAnswer> {
   const { connectionId, libraryId, path } = finished;
   const caps = await sources.capabilities().catch(() => undefined);
@@ -180,6 +182,7 @@ export async function resolveUpNext(
       // The queue could not be read: the series answers instead.
     }
   }
+  if (queueOnly) return { next: null };
 
   if (caps?.next_book) {
     try {

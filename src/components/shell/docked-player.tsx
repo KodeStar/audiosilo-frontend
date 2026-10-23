@@ -18,6 +18,7 @@ import { UndoChip, useUndoVisible } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
 import { SEGMENT_LABEL, usePlayingSegment } from '@/components/player/use-playing-segment';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
+import { EpisodeFetchStrip } from '@/components/podcasts/episode-fetch-panel';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { Slider } from '@/components/ui/slider';
@@ -26,6 +27,7 @@ import { UpNextButton } from '@/components/upnext/up-next-button';
 import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsPlaying, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -165,6 +167,10 @@ function SpeedPill() {
  * Speed and sleep open through `usePlayerSheets` (the web's keys open the same sheets),
  * rendered by the shell's one sheet host. Renders a fragment so that host can sit beside
  * the bar in the shell's root column and cover the whole app.
+ *
+ * While an episode is fetched (`EpisodeFetchStrip`, Bridge Phase 2d-1) its strip sits on
+ * top of the bar, over the book that plays on meanwhile, or is the whole bar when nothing
+ * is loaded.
  */
 export function DockedPlayer() {
   const { t } = useTranslation();
@@ -186,10 +192,31 @@ export function DockedPlayer() {
   // The bar sits on the window's bottom edge, so its height is its top edge (published
   // for the root toasts). Its width picks what fits.
   const [size, setSize] = useState<{ width: number; height: number }>();
-  useChromeEdge('dock', nowPlaying ? size?.height : undefined);
+  const fetching = useEpisodeFetch((s) => s.pending !== null);
+  useChromeEdge('dock', nowPlaying || fetching ? size?.height : undefined);
   // Nothing under the full player: the bar is hidden there, and its per-tick leaves
   // would only redraw behind it.
-  if (!nowPlaying || onTop) return null;
+  if (onTop || (!nowPlaying && !fetching)) return null;
+  const onLayout = (e: { nativeEvent: { layout: { width: number; height: number } } }) =>
+    setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height });
+  const edges = {
+    paddingBottom: insets.bottom,
+    paddingLeft: insets.left,
+    paddingRight: insets.right,
+  };
+  if (!nowPlaying) {
+    return (
+      <View
+        testID="shell-docked-player"
+        accessibilityLabel={t('shell.dock.label')}
+        onLayout={onLayout}
+        style={edges}
+        className="border-t border-border bg-card"
+      >
+        <EpisodeFetchStrip className="pl-3.5 pr-4" />
+      </View>
+    );
+  }
 
   // Before the first layout: the form factor's guess.
   const { allActions, scrubber } = dockLayout(
@@ -205,16 +232,11 @@ export function DockedPlayer() {
       <View
         testID="shell-docked-player"
         accessibilityLabel={t('shell.dock.label')}
-        onLayout={(e) =>
-          setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })
-        }
-        style={{
-          paddingBottom: insets.bottom,
-          paddingLeft: insets.left,
-          paddingRight: insets.right,
-        }}
+        onLayout={onLayout}
+        style={edges}
         className="border-t border-border bg-card"
       >
+        <EpisodeFetchStrip className="border-b border-border pl-3.5 pr-4" />
         {/* The 3px whole-book progress line along the bar's top edge (a leaf). */}
         <BookProgressLine total={queue.total} className="absolute left-0 right-0 top-0 h-[3px]" />
         <View

@@ -463,7 +463,9 @@
       "chapterOf": "Capítulo {{chapter}} de {{total}}",
       "chapterShort": "Cap. {{chapter}} de {{total}}",
       "scaleLabel": "{{percent}} % del libro escuchado",
+      "scaleLabelEpisode": "{{percent}} % del episodio escuchado",
       "through": "del libro escuchado",
+      "throughEpisode": "del episodio escuchado",
       "finishPace": "final a tu ritmo",
       "resume": "Reanudar",
       "pause": "Pausa",
@@ -541,6 +543,12 @@
       "dismiss": "Cerrar",
       "spoilerSafe": "Sin spoilers: escrito hasta el capítulo {{chapter}}.",
       "spoilerSafeStart": "Sin spoilers: escrito antes de que empiece este libro."
+    },
+    "newEpisodes": {
+      "title": "Episodios nuevos",
+      "sub": "De los programas que sigues",
+      "allShows": "Todos los programas",
+      "caption": "{{show}} · {{when}}"
     }
   },
   "stats": {
@@ -735,7 +743,8 @@
       "series": "Series",
       "narrators": "Narradores",
       "collections": "Colecciones",
-      "folders": "Carpetas"
+      "folders": "Carpetas",
+      "shows": "Programas"
     },
     "picker": {
       "label": "Biblioteca",
@@ -1172,7 +1181,8 @@
       "hasBookmark": "tiene un marcador",
       "startsAt": "empieza en {{time}}",
       "community": "Capítulos de la base de datos de la comunidad de AudioSilo",
-      "generated": "Capítulos encontrados en la narración en este servidor"
+      "generated": "Capítulos encontrados en la narración en este servidor",
+      "id3Chap": "Capítulos del archivo del episodio"
     },
     "details": {
       "title": "Detalles",
@@ -1509,6 +1519,7 @@
       "chapterButton": "{{chapter}}, ver capítulos",
       "synced": "Sincronizado",
       "percentOfBook": "{{percent}} % del libro",
+      "percentOfEpisode": "{{percent}} % del episodio",
       "speedLabel": "Velocidad de reproducción, {{speed}}",
       "sleep": "Dormir",
       "bookmark": "Marcador",
@@ -2555,6 +2566,88 @@
     },
     "share": {
       "member": "{{name}} puede escuchar todo lo que hay en esta colección."
+    }
+  },
+  "podcasts": {
+    "shows": {
+      "empty": "Aún no hay programas",
+      "emptyHint": "Los programas aparecen aquí cuando alguien los sigue en tu servidor.",
+      "filterLabel": "Qué programas",
+      "all": "Todos",
+      "following": "Siguiendo",
+      "newEpisode": "Episodio nuevo {{when}}",
+      "privateBadge": "Feed privado",
+      "loadError": "No se pudieron cargar los programas."
+    },
+    "show": {
+      "episodes_one": "{{count}} episodio",
+      "episodes_other": "{{count}} episodios",
+      "orderLabel": "Orden de los episodios",
+      "newestFirst": "Más recientes primero",
+      "oldestFirst": "Más antiguos primero",
+      "lastCheckFailed": "La última comprobación falló",
+      "removed": "Ya no está en el feed",
+      "noEpisodes": "Aún no hay episodios",
+      "loadError": "No se pudo cargar este programa.",
+      "notFound": "Este programa no está disponible",
+      "notFoundHint": "Puede que ya nadie lo siga o que no se haya compartido contigo.",
+      "loadingMore": "Cargando más episodios..."
+    },
+    "episode": {
+      "trailer": "Tráiler",
+      "bonus": "Extra",
+      "explicit": "Explícito",
+      "label": "T{{season}} E{{episode}}",
+      "labelEpisodeOnly": "E{{episode}}",
+      "ready": "Listo en tu servidor",
+      "onDemand": "Se descarga al reproducirlo",
+      "getting": "Descargando",
+      "gettingPercent": "Descargando {{percent}} %",
+      "failed": "No se pudo descargar",
+      "unavailable": "No disponible ahora",
+      "play": "Reproducir",
+      "resume": "Continuar",
+      "tryAgain": "Reintentar",
+      "playLabel": "Reproducir {{title}}",
+      "tryAgainLabel": "Volver a descargar {{title}}",
+      "finished": "Terminado",
+      "timelineChangedTitle": "El audio ha cambiado",
+      "timelineChanged": "El audio de este episodio ha cambiado desde que empezaste (los anuncios pueden variar). Tu punto se mantiene como estaba."
+    },
+    "follow": {
+      "follow": "Seguir",
+      "following": "Siguiendo",
+      "unfollow": "Dejar de seguir",
+      "confirmPrivateTitle": "¿Dejar de seguir este feed privado?",
+      "confirmPrivateBody": "Para volver a seguirlo necesitarás la dirección del feed.",
+      "errorModuleOff": "Seguir programas está desactivado en este servidor.",
+      "errorKid": "Pide a un adulto que siga programas.",
+      "errorDemo": "En la demo no se pueden seguir programas.",
+      "errorGone": "Este programa ya no está disponible.",
+      "errorFailed": "No se pudo cambiar. Inténtalo de nuevo."
+    },
+    "fetch": {
+      "title": "Descargando este episodio",
+      "body": "Tu servidor lo está descargando. Empezará en cuanto esté listo.",
+      "queued": "Esperando su turno",
+      "progress": "{{received}} de {{total}}",
+      "progressUnknown": "{{received}} por ahora",
+      "failedTitle": "No se pudo descargar este episodio",
+      "unavailableTitle": "Este episodio no se puede descargar ahora",
+      "cancel": "Cancelar",
+      "cancelLabel": "Dejar de descargar {{title}}",
+      "tryAgain": "Reintentar",
+      "stripLabel": "Descargando {{title}}",
+      "reason": {
+        "module_off": "Los pódcasts están desactivados en este servidor.",
+        "bridge_unavailable": "Tu servidor no puede descargar episodios ahora mismo.",
+        "library_not_writable": "Tu servidor no puede guardar episodios en esta biblioteca.",
+        "fetch_limit": "Ya hay cinco episodios en camino. Inténtalo de nuevo cuando uno esté listo.",
+        "demo_account": "La demo solo reproduce episodios que ya están en el servidor.",
+        "too_large": "Este episodio es demasiado grande para tu servidor.",
+        "identity_changed": "Este episodio ha cambiado en su feed. Abre el programa para encontrarlo de nuevo.",
+        "other": "Algo falló al descargarlo. Inténtalo de nuevo más tarde."
+      }
     }
   }
 }

@@ -52,6 +52,8 @@ let mockProgress: { progress: Progress[]; isLoading: boolean; error: Error | nul
   error: null,
 };
 const mockToday = new Date().toISOString().slice(0, 10);
+type Group = { connectionId: string; libraries: { id: number; kind?: string }[]; status: string };
+let mockGroups: Group[] = [];
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: (lib: number, path: string) =>
     mockProgress.progress.find((p) => p.library_id === lib && p.path === path),
@@ -59,6 +61,7 @@ jest.mock('@/api/hooks', () => ({
   useCapability: (flag: string) => mockCaps[flag],
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useAllProgressAll: () => mockProgress,
+  useLibrariesAll: () => ({ groups: mockGroups }),
   useRecentAll: () => ({ books: [], isLoading: false, error: null }),
   useFavouritesAll: () => ({ favourites: [] }),
   useBook: () => ({ data: undefined }),
@@ -89,7 +92,13 @@ let mockNext: { answers: unknown[]; supported: boolean | undefined; isLoading: b
   supported: undefined,
   isLoading: false,
 };
-jest.mock('./use-next-in-series', () => ({ useNextInSeries: () => mockNext }));
+const mockCandidates = jest.fn();
+jest.mock('./use-next-in-series', () => ({
+  useNextInSeries: (candidates: unknown) => {
+    mockCandidates(candidates);
+    return mockNext;
+  },
+}));
 // A tile's actions menu has its own tests.
 jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
 jest.mock('./use-narrator-shelf', () => ({ useNarratorShelf: () => undefined }));
@@ -99,6 +108,23 @@ jest.mock('@/components/house/house-row', () => ({
   HouseRow: ({ connections }: { connections: { id: string }[] }) => {
     const { Text } = jest.requireActual('react-native');
     return <Text>{`House: ${connections.map((c) => c.id).join(',')}`}</Text>;
+  },
+}));
+// New episodes has its own tests; Home places it with the servers and what to skip.
+jest.mock('./new-episodes-rail', () => ({
+  NewEpisodesRail: ({
+    connections,
+    skip,
+    limit,
+  }: {
+    connections: { id: string }[];
+    skip: Set<string>;
+    limit: number;
+  }) => {
+    const { Text } = jest.requireActual('react-native');
+    return (
+      <Text>{`New episodes: ${connections.map((c) => c.id).join(',')} skip ${[...skip].join('|')} limit ${limit}`}</Text>
+    );
   },
 }));
 
@@ -149,6 +175,17 @@ beforeEach(() => {
   mockProgress = { progress: [], isLoading: false, error: null };
   mockNext = { answers: [], supported: undefined, isLoading: false };
   mockLayout = 'desktop';
+  mockCandidates.mockClear();
+  mockGroups = [
+    {
+      connectionId: 'a',
+      libraries: [
+        { id: 1, kind: 'books' },
+        { id: 9, kind: 'podcasts' },
+      ],
+      status: 'ready',
+    },
+  ];
 });
 
 describe('HomeScreen', () => {
@@ -294,6 +331,21 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
     expect(house).toBeGreaterThan(rail);
   });
 
+  it('places New episodes between Next in your series and the module rails, skipping started ones', async () => {
+    mockModulesOn = { contributions: true };
+    mockNext = { supported: true, isLoading: true, answers: [] };
+    mockProgress.progress = [
+      started('Now', '2026-10-05T00:00:00Z'),
+      started('Pod/Ep 1.mp3', '2026-10-04T00:00:00Z'),
+    ];
+    await mountWith([FAKE]);
+    const label = 'New episodes: a skip a:1:Now|a:1:Pod/Ep 1.mp3 limit 15';
+    expect(screen.getByText(label)).toBeTruthy();
+    const [next, episodes, rail] = order('Next in your series', label, 'Module rail: a');
+    expect(episodes).toBeGreaterThan(next);
+    expect(rail).toBeGreaterThan(episodes);
+  });
+
   it('leaves a module that is off out', async () => {
     await mountWith([FAKE]);
     expect(screen.queryByText(/Module rail/)).toBeNull();
@@ -327,5 +379,64 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
     mockModulesOn = { contributions: true, other: true };
     await screen.rerender(tree());
     expect(screen.getByText('Hooked rail 2')).toBeTruthy();
+  });
+});
+
+// Bridge Phase 2d-1: episodes lead the Now card and Continue listening like any book,
+// but Home's book shelves hold books only, and `/next` is never asked about one.
+describe("HomeScreen's book shelves leave episodes out", () => {
+  const episode = (path: string, over: Partial<Progress> = {}): Progress => ({
+    ...started(path, '2026-10-06T00:00:00Z'),
+    library_id: 9,
+    ...over,
+  });
+  const askedPaths = () =>
+    (mockCandidates.mock.calls.at(-1)?.[0] as { path: string }[]).map((c) => c.path);
+
+  it('asks /next about books only, and keeps finished episodes out of Recently finished', async () => {
+    mockProgress.progress = [
+      episode('Serial/S1E2.mp3'),
+      episode('Daily/Weather.mp3', { finished: true, position: 1000 }),
+      started('Book', '2026-10-04T00:00:00Z'),
+      { ...started('Done', '2026-10-03T00:00:00Z'), finished: true, position: 1000 },
+    ];
+    await mountHome();
+    // The episode played last still leads the Now card.
+    expect(screen.getByText('Now card: Serial/S1E2.mp3')).toBeTruthy();
+    expect(askedPaths()).toEqual(['Book', 'Done']);
+    expect(screen.getByText('Recently finished')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Weather/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Done/ })).toBeTruthy();
+  });
+
+  it('asks nothing about a server whose libraries are still loading', async () => {
+    mockGroups = [{ connectionId: 'a', libraries: [], status: 'loading' }];
+    mockProgress.progress = [episode('Serial/S1E2.mp3'), started('Book', '2026-10-04T00:00:00Z')];
+    await mountHome();
+    expect(askedPaths()).toEqual([]);
+    // A server whose list failed is read as books (an older server has no podcasts).
+    mockGroups = [{ connectionId: 'a', libraries: [], status: 'error' }];
+    await mountHome();
+    expect(askedPaths()).toEqual(['Serial/S1E2.mp3', 'Book']);
+  });
+
+  it('never suggests an episode a /next answer leads to', async () => {
+    mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
+    mockNext = {
+      supported: true,
+      isLoading: false,
+      answers: [
+        {
+          candidate: { connectionId: 'a', libraryId: 1, path: 'Book', reason: { kind: 'current' } },
+          answer: {
+            source: 'folder',
+            next: { library_id: 9, path: 'Daily/Council.mp3' },
+            book: { library_id: 9, rel_path: 'Daily/Council.mp3', title: 'Council' },
+          },
+        },
+      ],
+    };
+    await mountHome();
+    expect(screen.queryByText('Next in your series')).toBeNull();
   });
 });

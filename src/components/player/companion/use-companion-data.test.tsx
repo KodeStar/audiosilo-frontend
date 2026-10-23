@@ -8,10 +8,14 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 // Six chapters of 100 s; Holden is there from the start, Prax from chapter 3,
 // Avasarala from chapter 5. The listener's saved place is 150 s (chapter 2).
 let mockMetadata: boolean | undefined = true;
+let mockEpisode = false;
 jest.mock('@/api/hooks', () => ({
   useCapability: () => mockMetadata,
   useMetaWork: () => ({ data: undefined, isError: false }),
-  useBook: () => ({ data: { asin: 'B0' }, isLoading: false }),
+  useBook: () => ({
+    data: { asin: 'B0', ...(mockEpisode ? { episode: { show_path: 'Show' } } : {}) },
+    isLoading: false,
+  }),
   useBookProgress: () => ({ data: { position: 150, finished: false } }),
   useChapters: () => ({
     data: {
@@ -58,6 +62,7 @@ function Who() {
 beforeEach(() => {
   playerStoreMock().reset();
   mockMetadata = true;
+  mockEpisode = false;
   useCompanion.setState({ tab: null, revealedKey: null, justMet: null });
 });
 
@@ -87,5 +92,12 @@ describe('useCompanionData', () => {
     mockMetadata = true;
     const known = await renderHook(() => useCompanionData(target));
     expect(known.result.current.status).toBe('ready');
+  });
+
+  // Bridge 2d-1: an episode has no community tabs (Who's who, Story so far).
+  it('is off for a podcast episode', async () => {
+    mockEpisode = true;
+    const { result } = await renderHook(() => useCompanionData(target));
+    expect(result.current.status).toBe('off');
   });
 });

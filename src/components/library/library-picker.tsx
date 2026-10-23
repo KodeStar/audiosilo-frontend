@@ -9,11 +9,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { isPodcastLibrary } from '@/lib/library-kind';
 import { cn } from '@/lib/utils';
 
 import { useSelectedLibrary } from './use-selected-library';
 
 const optionValue = (connectionId: string, libraryId: number) => `${connectionId}\n${libraryId}`;
+
+/** A podcast library's microphone beside its name (Bridge Phase 2d-1). */
+const kindIcon = (l: { kind?: string }) => (isPodcastLibrary(l) ? 'microphone' : undefined);
 
 /**
  * Picks the library the Library tab's browse modes show (`useSelectedLibrary`). Libraries
@@ -95,12 +99,18 @@ export function LibraryPicker({
                   key={l.id}
                   value={optionValue(g.connectionId, l.id)}
                   label={`${l.name} · ${g.connectionName}`}
+                  icon={kindIcon(l)}
                 />
               ))}
             </SelectGroup>
           ) : (
             g.libraries.map((l) => (
-              <SelectItem key={l.id} value={optionValue(g.connectionId, l.id)} label={l.name} />
+              <SelectItem
+                key={l.id}
+                value={optionValue(g.connectionId, l.id)}
+                label={l.name}
+                icon={kindIcon(l)}
+              />
             ))
           ),
         )}

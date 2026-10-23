@@ -463,7 +463,9 @@
       "chapterOf": "Chapter {{chapter}} of {{total}}",
       "chapterShort": "Ch. {{chapter}} of {{total}}",
       "scaleLabel": "{{percent}}% through the book",
+      "scaleLabelEpisode": "{{percent}}% through the episode",
       "through": "through the book",
+      "throughEpisode": "through the episode",
       "finishPace": "finish at your pace",
       "resume": "Resume",
       "pause": "Pause",
@@ -541,6 +543,12 @@
       "dismiss": "Dismiss",
       "spoilerSafe": "Spoiler-safe: written up to chapter {{chapter}}.",
       "spoilerSafeStart": "Spoiler-safe: written before this book begins."
+    },
+    "newEpisodes": {
+      "title": "New episodes",
+      "sub": "From shows you follow",
+      "allShows": "All shows",
+      "caption": "{{show}} · {{when}}"
     }
   },
   "stats": {
@@ -735,7 +743,8 @@
       "series": "Series",
       "narrators": "Narrators",
       "collections": "Collections",
-      "folders": "Folders"
+      "folders": "Folders",
+      "shows": "Shows"
     },
     "picker": {
       "label": "Library",
@@ -1172,7 +1181,8 @@
       "hasBookmark": "has a bookmark",
       "startsAt": "starts at {{time}}",
       "community": "Chapters from the AudioSilo community database",
-      "generated": "Chapters found in the narration on this server"
+      "generated": "Chapters found in the narration on this server",
+      "id3Chap": "Chapters from the episode file"
     },
     "details": {
       "title": "Details",
@@ -1509,6 +1519,7 @@
       "chapterButton": "{{chapter}}, show chapters",
       "synced": "Synced",
       "percentOfBook": "{{percent}}% of the book",
+      "percentOfEpisode": "{{percent}}% of the episode",
       "speedLabel": "Playback speed, {{speed}}",
       "sleep": "Sleep",
       "bookmark": "Bookmark",
@@ -2555,6 +2566,88 @@
     },
     "share": {
       "member": "{{name}} can listen to everything in this collection."
+    }
+  },
+  "podcasts": {
+    "shows": {
+      "empty": "No shows yet",
+      "emptyHint": "Shows appear here once someone follows them on your server.",
+      "filterLabel": "Which shows",
+      "all": "All",
+      "following": "Following",
+      "newEpisode": "New episode {{when}}",
+      "privateBadge": "Private feed",
+      "loadError": "Couldn't load the shows."
+    },
+    "show": {
+      "episodes_one": "{{count}} episode",
+      "episodes_other": "{{count}} episodes",
+      "orderLabel": "Episode order",
+      "newestFirst": "Newest first",
+      "oldestFirst": "Oldest first",
+      "lastCheckFailed": "Last check failed",
+      "removed": "No longer in the feed",
+      "noEpisodes": "No episodes yet",
+      "loadError": "Couldn't load this show.",
+      "notFound": "This show isn't available",
+      "notFoundHint": "It may have been unfollowed, or it isn't shared with you.",
+      "loadingMore": "Loading more episodes..."
+    },
+    "episode": {
+      "trailer": "Trailer",
+      "bonus": "Bonus",
+      "explicit": "Explicit",
+      "label": "S{{season}} E{{episode}}",
+      "labelEpisodeOnly": "E{{episode}}",
+      "ready": "Ready on your server",
+      "onDemand": "Plays on demand",
+      "getting": "Getting it",
+      "gettingPercent": "Getting it {{percent}}%",
+      "failed": "Couldn't get it",
+      "unavailable": "Not available now",
+      "play": "Play",
+      "resume": "Resume",
+      "tryAgain": "Try again",
+      "playLabel": "Play {{title}}",
+      "tryAgainLabel": "Try getting {{title}} again",
+      "finished": "Finished",
+      "timelineChangedTitle": "The audio changed",
+      "timelineChanged": "This episode's audio changed since you started (ads can differ). Your place is kept as it was."
+    },
+    "follow": {
+      "follow": "Follow",
+      "following": "Following",
+      "unfollow": "Unfollow",
+      "confirmPrivateTitle": "Unfollow this private feed?",
+      "confirmPrivateBody": "You'll need the feed's address to follow it again.",
+      "errorModuleOff": "Following shows is turned off on this server.",
+      "errorKid": "Ask a grown-up to follow shows.",
+      "errorDemo": "The demo can't follow shows.",
+      "errorGone": "This show isn't available any more.",
+      "errorFailed": "Couldn't change that. Try again."
+    },
+    "fetch": {
+      "title": "Getting this episode",
+      "body": "Your server is downloading it. It starts as soon as it's ready.",
+      "queued": "Waiting for its turn",
+      "progress": "{{received}} of {{total}}",
+      "progressUnknown": "{{received}} so far",
+      "failedTitle": "Couldn't get this episode",
+      "unavailableTitle": "This episode can't be fetched now",
+      "cancel": "Cancel",
+      "cancelLabel": "Stop getting {{title}}",
+      "tryAgain": "Try again",
+      "stripLabel": "Getting {{title}}",
+      "reason": {
+        "module_off": "Podcasts are turned off on this server.",
+        "bridge_unavailable": "Your server can't download episodes right now.",
+        "library_not_writable": "Your server can't save episodes to this library.",
+        "fetch_limit": "Five episodes are already on their way. Try again once one is ready.",
+        "demo_account": "The demo can only play episodes already on the server.",
+        "too_large": "This episode is too large for your server to keep.",
+        "identity_changed": "This episode changed in its feed. Open the show to find it again.",
+        "other": "Something went wrong getting it. Try again in a while."
+      }
     }
   }
 }

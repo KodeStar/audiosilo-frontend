@@ -477,6 +477,43 @@ while it is on AND its Bridge requirement is met (`contributions` is the first,
   hub's own sections only (`CoreYouSection`). `BookTab`, `BookActionKey` and `SettingsSection` stay
   closed until a module needs them (Phase 2d).
 
+**Podcasts (Bridge Phase 2d-1, `src/components/podcasts/`, `src/playback/episode-fetch.ts`).**
+The server lists a podcast library (`Library.kind === 'podcasts'`) only to a player of 2.2.0 or
+later (`X-AudioSilo-Client`; dev cross-origin needs `EXPO_PUBLIC_IDENTIFY_CROSS_ORIGIN=1`,
+`client-id.ts`). An episode is an ordinary item at `/book` with `Book.episode` set (only `GET
+/item` sends it; list shapes leave it out, so a framework-free reader tells an episode by its
+library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
+- **Reads are core, writes are the module's**: shows, episodes and `/me/podcasts` are never
+  gated on a flag; Follow and Unfollow are `useCapabilityMutation('podcasts', ...)` (the module
+  on AND its Bridge online), shown only to a listener who may (not a kid's account, not the
+  demo); otherwise a followed show is a read-only "Following" badge. The fetch status is
+  `podcast_fetch`'s.
+- **The fetch has one choke point**: `startBookInPlace` (and the player route's auto-start)
+  hand an episode not on its server (`needsEpisodeFetch`: `!episode.downloaded` and
+  `podcast_fetch === true`) to `requestEpisodeFetch`, never to `playBook`. The controller probes
+  `/stream` once (`prepareEpisodeStream`: `Range: bytes=0-0`, the token in the header), follows
+  `GET .../podcasts/fetch` every `max(2, Retry-After)` s (paused in the background, asked at once
+  on the way back), and at `ready` reads the item and chapters again and starts it in place with
+  `{fetched: true}`. It never POSTs by itself: only Try again does (`retryEpisodeFetch`). Any
+  other start (and one that plays the episode itself, on its server by then), a profile switch
+  or a removed connection ends it; there is no client time cap. A start overtaken while it
+  looked its episode up hands nothing on (`isLatestStart`), and the `fetched` start plays only
+  while the fetch is still `starting` (`isEpisodeFetchStarting`: a Cancel or another start wins).
+  While it is on its way the full player shows `EpisodeFetchPanel` and the dock / mini player an
+  `EpisodeFetchStrip`; the book playing meanwhile plays on (decision 6.4).
+- **What episodes never do**: open the end credits (`BookEndedListener` leaves Up next and, with
+  auto-play, starts Up next's head only, never the series or folder), cast (`castButtonModel`'s
+  `episode`), or download: the downloads store refuses `book.episode` as `unsupported`,
+  `DownloadControl` and the tile menu leave it out, auto-download and keep-ahead skip it
+  (decision 6.1). Kids mode shows no podcast library (decision 6.2).
+- **Surfaces**: the Library's `shows` mode (a podcast library offers Shows and Folders only, a
+  book mode's link lands on Shows, its book lists are never asked), the show page
+  `/podcast?connection=&library=&show=[&order=]` (the server orders the episodes; a serial show
+  defaults to oldest first), the episode page (`EpisodePage`, the book page's branch for an
+  episode or any item of a podcast library), and Home's "New episodes" rail (followed shows'
+  recent episodes with no progress, after Next in your series). Never "Bridge" in listener
+  copy, never the server's English: refusals read through `fetchReasonKey` and the follow errors.
+
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
 Stacks book page, laid out by its MEASURED width (`bookPageLayout`: the cover beside the text

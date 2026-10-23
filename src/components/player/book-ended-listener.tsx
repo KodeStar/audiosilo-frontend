@@ -66,6 +66,11 @@ function handleBookEnded(info: FinishedBook, pathname: () => string, sleptThroug
   // same way); the two paths that don't open them right away do it here, at once.
   const finished: BookRef = { library_id: info.libraryId, path: info.path };
 
+  if (info.episode) {
+    endEpisode(info, finished, pathname, sleptThrough);
+    return;
+  }
+
   // Already showing the end-credits screen: it drives its own countdown + Play now from
   // here (the countdown held after an end under the sleep timer), so don't navigate again
   // (that would stack a duplicate /finished).
@@ -104,12 +109,38 @@ function handleBookEnded(info: FinishedBook, pathname: () => string, sleptThroug
   goToFinished(info, pathname());
 }
 
+/**
+ * The end of a podcast episode (Bridge Phase 2d-1): never the end credits (an episode has
+ * no series, rating or next book). It leaves Up next, and with auto-play on (and not
+ * under the sleep timer) the next item of Up next starts in place; else playback stops,
+ * and a full player left open on it closes once the app is in the foreground.
+ */
+function endEpisode(
+  info: FinishedBook,
+  finished: BookRef,
+  pathname: () => string,
+  sleptThrough: boolean,
+): void {
+  void dropFromQueue(info.connectionId, [finished]);
+  void (async () => {
+    if (!sleptThrough && useSettings.getState().autoPlayNext && (await playNextInPlace(info, true)))
+      return;
+    whenActive(() => {
+      if (usePlayer.getState().nowPlaying || pathname() !== '/player') return;
+      if (router.canGoBack()) router.back();
+    });
+  })();
+}
+
 /** Resolve the next book and start it without opening the player (`advanceTo`). True
- * once it is on its way (and off Up next). */
-async function playNextInPlace(info: FinishedBook): Promise<boolean> {
+ * once it is on its way (and off Up next). `queueOnly`: only Up next's head (after an
+ * episode, which has no series or folder to follow). */
+async function playNextInPlace(info: FinishedBook, queueOnly = false): Promise<boolean> {
   const client = resolveClient(info.connectionId);
   if (!client) return false;
-  const { next } = await resolveUpNext(upNextSources(client, info.connectionId), info);
+  const { next } = await resolveUpNext(upNextSources(client, info.connectionId), info, {
+    queueOnly,
+  });
   return !!next && (await advanceTo(next));
 }
 

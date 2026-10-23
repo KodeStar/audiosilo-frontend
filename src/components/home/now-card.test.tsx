@@ -29,6 +29,8 @@ jest.mock('@/api/provider', () => ({
 let mockSecondTitle = 'Holden';
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockDays: { date: string; listened: number }[] | null = null;
+let mockEpisode = false;
+let mockChapterCount = 3;
 const mockChar = (name: string, chapter: number) => ({
   id: name,
   name,
@@ -46,6 +48,7 @@ jest.mock('@/api/hooks', () => ({
       series: 'The Expanse',
       series_index: 2,
       asin: 'B008XKUPQ8',
+      ...(mockEpisode ? { episode: { show_path: 'Daily News' } } : {}),
     },
   }),
   useChapters: () => ({
@@ -70,7 +73,7 @@ jest.mock('@/api/hooks', () => ({
           start: 2000,
           end: 3000,
         },
-      ],
+      ].slice(0, mockChapterCount),
     },
   }),
   useBookmarks: () => ({ data: [{ position: 500 }] }),
@@ -115,6 +118,8 @@ beforeEach(() => {
   mockCaps = {};
   mockDays = null;
   mockSecondTitle = 'Holden';
+  mockEpisode = false;
+  mockChapterCount = 3;
   mockPush.mockClear();
 });
 
@@ -130,6 +135,20 @@ describe('NowCard', () => {
     expect(screen.getByText('16m')).toBeTruthy();
     expect(screen.getByText('left at 1.5×')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Resume chapter 2' })).toBeTruthy();
+  });
+
+  // Bridge 2d-1: an episode is no book.
+  it('says "through the episode", and no "Chapter 1 of 1", for a podcast episode', async () => {
+    mockEpisode = true;
+    mockChapterCount = 1;
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByText('through the episode')).toBeTruthy();
+    expect(screen.queryByText('Chapter 1 of 1')).toBeNull();
+    // An episode with chapters of its own still says where it is.
+    mockChapterCount = 3;
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
+    expect(screen.getByRole('image', { name: '50% through the episode' })).toBeTruthy();
   });
 
   it('names the chapter like the players do: a file name prettified, an untitled one by number', async () => {

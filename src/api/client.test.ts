@@ -5,10 +5,12 @@ import {
   ApiError,
   apiErrorKind,
   isPlainSeriesQuery,
+  PodcastFetchPendingError,
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
 } from '@/api/client';
 import type { AddMemberBody, BridgeEstimate, SidecarsGenerateResult } from '@/api/types';
+import { podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -2192,5 +2194,274 @@ describe('ApiClient Bridge (admin, Phase 1a)', () => {
   it("surfaces a non-admin's 403 as an ApiError", async () => {
     installFetch(() => ({ status: 403, body: { error: 'admin only' } }));
     await expect(c().bridgeJobs(1, 'x')).rejects.toMatchObject({ name: 'ApiError', status: 403 });
+  });
+});
+
+describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
+  type Answer = { status: number; body?: unknown; text?: string; headers?: Record<string, string> };
+
+  /** A fake fetch with response headers and raw bodies (an HTML 503, a 1-byte 206). */
+  function installAnswers(impl: (url: string, init: RequestInit) => Answer): jest.Mock {
+    const mock = jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const { status, body, text, headers = {} } = impl(String(input), init ?? {});
+      const raw = text ?? (body === undefined ? '' : JSON.stringify(body));
+      const lower = new Map(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+      return Promise.resolve({
+        ok: status >= 200 && status < 300,
+        status,
+        statusText: `status ${status}`,
+        headers: { get: (name: string) => lower.get(name.toLowerCase()) ?? null },
+        text: () => Promise.resolve(raw),
+      } as unknown as Response);
+    });
+    globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+    return mock;
+  }
+
+  const client = () => new ApiClient('https://h', 'tok');
+  const call = (m: jest.Mock, i = 0) => ({
+    url: String(m.mock.calls[i][0]),
+    init: m.mock.calls[i][1] as RequestInit,
+  });
+
+  it('unwraps the shows of a podcast library', async () => {
+    const show = podcastShow();
+    const m = installAnswers(() => ({ status: 200, body: { shows: [show] } }));
+    await expect(client().podcastShows(5)).resolves.toEqual([show]);
+    expect(call(m).url).toBe('https://h/api/v1/libraries/5/podcasts');
+    installAnswers(() => ({ status: 200, body: { shows: null } }));
+    await expect(client().podcastShows(5)).resolves.toEqual([]);
+  });
+
+  it("asks for a show's episodes by show, order, limit and cursor", async () => {
+    const page = { episodes: [podcastEpisode()], next_cursor: 'abc' };
+    const m = installAnswers(() => ({ status: 200, body: page }));
+    await expect(
+      client().podcastEpisodes(5, {
+        show: 'The Daily Show',
+        order: 'oldest',
+        limit: 50,
+        cursor: 'xyz',
+      }),
+    ).resolves.toEqual(page);
+    const url = new URL(call(m).url);
+    expect(url.pathname).toBe('/api/v1/libraries/5/podcasts/episodes');
+    expect(url.searchParams.get('show')).toBe('The Daily Show');
+    expect(url.search).toContain('show=The+Daily+Show');
+    expect(url.searchParams.get('order')).toBe('oldest');
+    expect(url.searchParams.get('limit')).toBe('50');
+    expect(url.searchParams.get('cursor')).toBe('xyz');
+    // The first page sends no cursor; a last page's null cursor stays null.
+    installAnswers(() => ({ status: 200, body: { episodes: null, next_cursor: null } }));
+    await expect(client().podcastEpisodes(5, { show: 'S', order: 'newest' })).resolves.toEqual({
+      episodes: [],
+      next_cursor: null,
+    });
+  });
+
+  it('reads the followed shows and requests', async () => {
+    const m = installAnswers(() => ({
+      status: 200,
+      body: { shows: [podcastShow()], requests: [] },
+    }));
+    await expect(client().myPodcasts()).resolves.toEqual({ shows: [podcastShow()], requests: [] });
+    expect(call(m).url).toBe('https://h/api/v1/me/podcasts');
+  });
+
+  it('follows by path with exactly {library_id, path}, both answer shapes', async () => {
+    const m = installAnswers(() => ({
+      status: 200,
+      body: { state: 'following', show: podcastShow() },
+    }));
+    await expect(client().followPodcast(5, 'Daily News')).resolves.toEqual({
+      state: 'following',
+      show: podcastShow(),
+    });
+    const { url, init } = call(m);
+    expect(url).toBe('https://h/api/v1/podcasts/follow');
+    expect(init.method).toBe('POST');
+    // Never `private` beside a path: the server refuses it.
+    expect(JSON.parse(String(init.body))).toEqual({ library_id: 5, path: 'Daily News' });
+
+    const request = {
+      id: 3,
+      library_id: 5,
+      state: 'queued',
+      feed: 'https://news.example/...',
+      private: false,
+      show_path: null,
+      error: null,
+      created_at: '2026-10-22T10:00:00Z',
+      updated_at: '2026-10-22T10:00:00Z',
+    };
+    installAnswers(() => ({ status: 202, body: { state: 'subscribing', request } }));
+    await expect(client().followPodcast(5, 'Daily News')).resolves.toEqual({
+      state: 'subscribing',
+      request,
+    });
+  });
+
+  it('unfollows with a DELETE query and resolves undefined on 204', async () => {
+    const m = installAnswers(() => ({ status: 204 }));
+    await expect(client().unfollowPodcast(5, 'Daily News')).resolves.toBeUndefined();
+    const { url, init } = call(m);
+    expect(init.method).toBe('DELETE');
+    expect(url).toBe('https://h/api/v1/podcasts/follow?library_id=5&path=Daily+News');
+    expect(init.body).toBeUndefined();
+  });
+
+  it('reads the fetch status by an encoded path', async () => {
+    const m = installAnswers(() => ({ status: 200, body: wire2b.status_response }));
+    await expect(client().podcastFetchStatus(5, 'Daily News/Ep 1 & 2.mp3')).resolves.toEqual(
+      wire2b.status_response,
+    );
+    const { url, init } = call(m);
+    expect(init.method).toBe('GET');
+    expect(url).toBe(
+      'https://h/api/v1/libraries/5/podcasts/fetch?path=Daily+News%2FEp+1+%26+2.mp3',
+    );
+  });
+
+  it('retries with a POST whose body is exactly {path}', async () => {
+    const m = installAnswers(() => ({ status: 202, body: wire2b.status_response }));
+    await expect(client().retryPodcastFetch(5, 'Daily News/E1.mp3')).resolves.toEqual(
+      wire2b.status_response,
+    );
+    const { url, init } = call(m);
+    expect(url).toBe('https://h/api/v1/libraries/5/podcasts/fetch');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ path: 'Daily News/E1.mp3' });
+  });
+
+  it('probes the stream with one byte, the token in the header and no token= in the URL', async () => {
+    const m = installAnswers(() => ({
+      status: 206,
+      text: 'I',
+      headers: { 'Content-Range': 'bytes 0-0/16493' },
+    }));
+    await expect(client().prepareEpisodeStream(5, 'Daily News/E1.mp3')).resolves.toBeUndefined();
+    const { url, init } = call(m);
+    expect(url).toBe('https://h/api/v1/libraries/5/stream?path=Daily+News%2FE1.mp3');
+    expect(url).not.toContain('token=');
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Range')).toBe('bytes=0-0');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it("decodes a 503 podcast_fetching into PodcastFetchPendingError, from the header and the body's wait", async () => {
+    installAnswers(() => ({
+      status: 503,
+      body: wire2b.stream_response,
+      headers: { 'Retry-After': '2' },
+    }));
+    const fromHeader = await client()
+      .prepareEpisodeStream(5, 'Daily News/E1.mp3')
+      .catch((e: unknown) => e);
+    expect(fromHeader).toBeInstanceOf(PodcastFetchPendingError);
+    expect(fromHeader).toBeInstanceOf(ApiError);
+    expect(fromHeader).toMatchObject({
+      status: 503,
+      code: 'podcast_fetching',
+      fetch: wire2b.stream_response.fetch,
+      retryAfterSeconds: 2,
+    });
+
+    // No header (a browser that can't read it cross-origin): the status's own wait.
+    installAnswers(() => ({
+      status: 503,
+      body: { ...wire2b.stream_response, fetch: { ...wire2b.stream_response.fetch } },
+    }));
+    const fromBody = await client()
+      .prepareEpisodeStream(5, 'Daily News/E1.mp3')
+      .catch((e: unknown) => e);
+    expect(fromBody).toMatchObject({
+      code: 'podcast_fetching',
+      fetch: wire2b.stream_response.fetch,
+      retryAfterSeconds: 2,
+    });
+
+    // Neither: two seconds.
+    installAnswers(() => ({
+      status: 503,
+      body: {
+        ...wire2b.stream_response,
+        fetch: { ...wire2b.stream_response.fetch, retry_after_seconds: 'soon' },
+      },
+      headers: { 'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT' },
+    }));
+    await expect(client().prepareEpisodeStream(5, 'E')).rejects.toMatchObject({
+      retryAfterSeconds: 2,
+    });
+  });
+
+  it('keeps a proxy HTML 503 a plain ApiError', async () => {
+    installAnswers(() => ({ status: 503, text: '<html>Service Unavailable</html>' }));
+    const e = await client()
+      .prepareEpisodeStream(5, 'Daily News/E1.mp3')
+      .catch((err: unknown) => err);
+    expect(e).toBeInstanceOf(ApiError);
+    expect(e).not.toBeInstanceOf(PodcastFetchPendingError);
+    expect((e as ApiError).status).toBe(503);
+  });
+
+  it('keeps a JSON 503 without a fetch, or with another code, a plain ApiError', async () => {
+    installAnswers(() => ({ status: 503, body: { error: 'down', code: 'podcast_fetching' } }));
+    await expect(client().prepareEpisodeStream(5, 'E')).rejects.not.toBeInstanceOf(
+      PodcastFetchPendingError,
+    );
+    installAnswers(() => ({
+      status: 503,
+      body: { error: 'down', code: 'meta_unavailable', fetch: wire2b.ready },
+    }));
+    await expect(client().prepareEpisodeStream(5, 'E')).rejects.not.toBeInstanceOf(
+      PodcastFetchPendingError,
+    );
+  });
+
+  it('decodes a JSON route answering 503 with a fetch the same way', async () => {
+    installAnswers(() => ({
+      status: 503,
+      body: {
+        error: 'The episode could not be fetched.',
+        code: 'podcast_fetch_failed',
+        fetch: wire2b.failed,
+      },
+      headers: { 'Retry-After': '2' },
+    }));
+    const e = await client()
+      .chapters(5, 'Daily News/E1.mp3')
+      .catch((err: unknown) => err);
+    expect(e).toBeInstanceOf(PodcastFetchPendingError);
+    expect(e).toMatchObject({ code: 'podcast_fetch_failed', fetch: wire2b.failed });
+  });
+
+  it('tells the podcast refusals apart by code', async () => {
+    installAnswers(() => ({
+      status: 409,
+      body: { error: 'Too many episodes are being fetched.', code: 'fetch_limit' },
+    }));
+    const e = await client()
+      .retryPodcastFetch(5, 'E')
+      .catch((err: unknown) => err);
+    expect(apiErrorKind(e)).toBe('fetch_limit');
+    for (const code of [
+      'module_off',
+      'bridge_unavailable',
+      'identity_changed',
+      'show_not_found',
+      'kid_account',
+      'demo_account',
+    ]) {
+      expect(apiErrorKind(new ApiError(409, 'x', code))).toBe(code);
+    }
+  });
+
+  it('flags a dead token on a 401 probe', async () => {
+    const onAuthError = jest.fn();
+    installAnswers(() => ({ status: 401, body: { error: 'invalid or expired token' } }));
+    await expect(
+      new ApiClient('https://h', 'tok', 15000, onAuthError).prepareEpisodeStream(5, 'E'),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(onAuthError).toHaveBeenCalledTimes(1);
   });
 });

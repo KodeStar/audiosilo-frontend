@@ -65,6 +65,17 @@ describe('kidsConnectionId', () => {
 describe('kidsLibrary', () => {
   const libs = [lib(1), lib(2), lib(3)];
 
+  // Bridge Phase 2d-1, decision 6.2: kids mode shows no podcasts.
+  it('never picks a podcast library, even when it was the pick or is listed first', () => {
+    const podcasts = { ...lib(7, 'Podcasts'), kind: 'podcasts' as const };
+    expect(kidsLibrary([podcasts, ...libs], 'a.1', undefined)?.id).toBe(1);
+    expect(
+      kidsLibrary([podcasts, ...libs], 'a.1', { library: { connectionId: 'a.1', libraryId: 7 } })
+        ?.id,
+    ).toBe(1);
+    expect(kidsLibrary([podcasts], 'a.1', undefined)).toBeNull();
+  });
+
   it('uses the pick when it is still listed on this connection', () => {
     expect(kidsLibrary(libs, 'a.1', { library: { connectionId: 'a.1', libraryId: 2 } })?.id).toBe(
       2,
@@ -293,6 +304,7 @@ describe("a household member's shelf (Phase 8b-1)", () => {
       [coll(1), coll(2)],
       [detail(coll(1), [book('a'), null, book('b')]), detail(coll(2), [])],
       [progress('b')],
+      undefined,
     );
     expect(one.map((s) => [s.key, s.title, s.books.map((b) => b.rel_path)])).toEqual([
       ['collection-1', 'C1', ['b', 'a']],
@@ -301,13 +313,45 @@ describe("a household member's shelf (Phase 8b-1)", () => {
       [coll(1), coll(2), coll(3)],
       [detail(coll(1), [book('a')]), undefined, detail(coll(3), [book('c'), book('a')])],
       [],
+      undefined,
     );
     expect(two.map((s) => [s.title, s.books.map((b) => b.rel_path)])).toEqual([
       ['C1', ['a']],
       ['C3', ['c', 'a']],
     ]);
     expect(kidsSectionBooks(two).map((b) => b.rel_path)).toEqual(['a', 'c']);
-    expect(kidsCollectionSections([coll(1)], [detail(coll(1), [null])], [])).toEqual([]);
+    expect(kidsCollectionSections([coll(1)], [detail(coll(1), [null])], [], undefined)).toEqual([]);
+  });
+
+  // Bridge 2d-1, decision 6.2: a collection shared with a kid can hold an episode; kids
+  // mode never lists one.
+  it('kidsCollectionSections: never a podcast episode', () => {
+    const libraries = [
+      { id: 1, kind: 'books' as const },
+      { id: 9, kind: 'podcasts' as const },
+    ];
+    const sections = kidsCollectionSections(
+      [coll(1), coll(2)],
+      [
+        detail(coll(1), [book('story', 1), book('Daily/Monday.mp3', 9)]),
+        detail(coll(2), [book('Daily/Tuesday.mp3', 9)]),
+      ],
+      [],
+      libraries,
+    );
+    expect(sections.map((s) => [s.title, s.books.map((b) => b.rel_path)])).toEqual([
+      ['C1', ['story']],
+    ]);
+    // One that says it is an episode, even in a library the list doesn't name.
+    const said = { ...book('Elsewhere/ep.mp3', 4), episode: {} as never };
+    expect(
+      kidsCollectionSections(
+        [coll(1)],
+        [detail(coll(1), [said, book('b', 4)])],
+        [],
+        libraries,
+      )[0].books.map((b) => b.rel_path),
+    ).toEqual(['b']);
   });
 
   it('kidsShelfMode: the shared collections, else one library, unknown until both answers', () => {

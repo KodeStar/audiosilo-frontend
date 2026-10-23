@@ -12,6 +12,7 @@ import {
   useBookProgress,
   useCapability,
   useChapters,
+  useIsPodcastLibrary,
   useLibraries,
 } from '@/api/hooks';
 import { useOptionalApi, useScopedCid } from '@/api/provider';
@@ -35,6 +36,7 @@ import {
 import { previousWorks, seriesRails } from '@/components/library/series-rails';
 import { TranscodeNote } from '@/components/library/transcode-note';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
+import { EpisodePage } from '@/components/podcasts/episode-page';
 import { selectIsLoaded } from '@/components/player/playing-target';
 import { useBookPlace } from '@/components/player/use-listening-position';
 import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
@@ -100,8 +102,32 @@ const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 export function BookScreen() {
   return (
     <ContentScope>
-      <BookPage />
+      <BookOrEpisode />
     </ContentScope>
+  );
+}
+
+/**
+ * An item that is a podcast episode (`book.episode`; while the item is not in yet, any
+ * item of a podcast library) gets its own page (`EpisodePage`, Bridge Phase 2d-1) at the
+ * same link; a book the book page.
+ */
+function BookOrEpisode() {
+  const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
+    libraryId: string;
+    path?: string | string[];
+  }>();
+  const libraryId = Number(libraryIdParam);
+  const path = segmentsToPath(pathParam);
+  const cid = useScopedCid();
+  const podcastLibrary = useIsPodcastLibrary(libraryId, cid);
+  const { data: book } = useBook(libraryId, path);
+  // The item's own shape once it is in (an item of a podcast library that is no episode
+  // gets the book page, never a blank one).
+  return (book ? book.episode : podcastLibrary) ? (
+    <EpisodePage libraryId={libraryId} path={path} />
+  ) : (
+    <BookPage />
   );
 }
 

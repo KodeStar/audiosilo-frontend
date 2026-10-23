@@ -10,6 +10,7 @@ import {
   type SourcedProgress,
   useAllProgressAll,
   useFavouritesAll,
+  useLibrariesAll,
   useRecentAll,
 } from '@/api/hooks';
 import { profileName } from '@/components/profiles/profiles-model';
@@ -36,6 +37,7 @@ import { ProgressTile } from './book-title';
 import { Greeting } from './greeting';
 import {
   type BookAt,
+  bookRowTest,
   heroBeside,
   nextCandidates,
   nextInSeriesItems,
@@ -46,6 +48,7 @@ import {
 } from './home-model';
 import { HomeSection } from './home-section';
 import { ModuleRails } from './module-rails';
+import { NewEpisodesRail } from './new-episodes-rail';
 import { NowEmpty, NowError } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
@@ -66,7 +69,7 @@ const favouriteKey = (f: SourcedFavourite) => contentKey(f.connectionId, f.libra
 /**
  * Home (STYLEGUIDE section 2, the Stacks Home): the greeting, the Now card (with This
  * week beside it on a desktop), Continue listening, Next in your series, This week
- * (tablet and phone), smart shelves, then Recently added, Favourites and Recently
+ * (tablet and phone), New episodes, smart shelves, then Recently added, Favourites and Recently
  * finished. Aggregated across every signed-in server; each book keeps its own. An active
  * module's rails (`src/modules/registry.ts`, none yet) follow Next in your series;
  * `modules` is the list to choose from (the registry; tests pass a fake).
@@ -105,15 +108,25 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const nowSaved = nowKey ? progress.find((p) => progressKey(p) === nowKey) : undefined;
   const continuing = inProgress.filter((p) => progressKey(p) !== nowKey);
 
-  const next = useNextInSeries(nextCandidates(nowAt, inProgress, finished));
+  // Episodes (Bridge 2d-1) lead the Now card and Continue listening like any book, but
+  // the book shelves below hold books only, and `/next` is never asked about one.
+  const isBook = bookRowTest(useLibrariesAll().groups);
+  const bookInProgress = inProgress.filter((p) => isBook(progressAt(p)));
+  const bookFinished = finished.filter((p) => isBook(progressAt(p)));
+
+  const next = useNextInSeries(
+    nextCandidates(nowAt && isBook(nowAt) ? nowAt : null, bookInProgress, bookFinished),
+  );
   // A next book already on Home (on the Now card, in progress or finished) isn't news.
   const skipNext = new Set(progress.filter((p) => p.finished || p.position > 0).map(progressKey));
   if (nowKey) skipNext.add(nowKey);
-  const nextItems = nextInSeriesItems(next.answers, skipNext);
+  const nextItems = nextInSeriesItems(next.answers, skipNext).filter(
+    (item) => item.kind !== 'book' || isBook(item),
+  );
 
-  const narrator = useNarratorShelf(defaultCid, inProgress);
+  const narrator = useNarratorShelf(defaultCid, bookInProgress);
   const shelves = smartShelves({
-    inProgress,
+    inProgress: bookInProgress,
     recent: recent.books,
     narrator,
     now: mountedAt,
@@ -148,7 +161,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
 
   const recentBooks = recent.books.slice(0, SHELF_LIMIT);
   const favouriteBooks = favourites.filter((f) => f.is_book).slice(0, SHELF_LIMIT);
-  const finishedItems = finished.slice(0, SHELF_LIMIT);
+  const finishedItems = bookFinished.slice(0, SHELF_LIMIT);
 
   return (
     <View className="flex-1">
@@ -225,6 +238,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
             )}
           </HomeSection>
         ) : null}
+
+        {/* The latest episodes of the shows followed, not yet started (Bridge 2d-1). */}
+        <NewEpisodesRail connections={connections} skip={skipNext} limit={SHELF_LIMIT} />
 
         <ModuleRails connections={connections} modules={modules} />
 

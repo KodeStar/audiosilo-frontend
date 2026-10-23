@@ -20,11 +20,14 @@ export function BookScale({
   segments,
   pins,
   percent,
+  episode = false,
 }: {
   segments: readonly ScaleSegment[];
   /** Bookmarks, 0..1 along the book. */
   pins: readonly number[];
   percent: number;
+  /** Name the scale for a podcast episode, not a book. */
+  episode?: boolean;
 }) {
   const { t } = useTranslation();
   if (segments.length === 0) return null;
@@ -32,7 +35,9 @@ export function BookScale({
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={t('home.now.scaleLabel', { percent })}
+      accessibilityLabel={t(episode ? 'home.now.scaleLabelEpisode' : 'home.now.scaleLabel', {
+        percent,
+      })}
       className="relative h-[30px]"
     >
       {pins.map((at, i) => (

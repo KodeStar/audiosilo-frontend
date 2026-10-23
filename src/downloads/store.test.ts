@@ -782,6 +782,27 @@ describe('download() per-connection routing', () => {
   });
 });
 
+// Bridge Phase 2d-1, decision 6.1: whoever asks (a tile, auto-download, keep-ahead).
+describe('download() refuses a podcast episode', () => {
+  it('is unsupported, and queues nothing', async () => {
+    const episode = makeBook({
+      episode: {
+        show_path: 'Show',
+        published: null,
+        season: null,
+        episode: null,
+        episode_type: 'full',
+        explicit: false,
+        downloaded: true,
+        duration_source: 'file',
+        removed: false,
+      },
+    });
+    await expect(useDownloads.getState().download('c1', 2, episode)).resolves.toBe('unsupported');
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]).toBeUndefined();
+  });
+});
+
 describe('download() refuses a book this browser plays transcoded', () => {
   const prevOS = Platform.OS;
   afterEach(() => {

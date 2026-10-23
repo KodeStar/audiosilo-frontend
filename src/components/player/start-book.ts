@@ -1,7 +1,18 @@
 import { resolveClient } from '@/api/connection-clients';
+import { fetchCapabilities } from '@/api/hooks';
+import type { Book } from '@/api/types';
 import { downloadedEntryOf } from '@/downloads/store';
 import { contentKeyOf } from '@/lib/content-key';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
+import {
+  cancelEpisodeFetchOf,
+  cancelEpisodeFetchUnless,
+  isAbsentEpisode,
+  isEpisodeFetchStarting,
+  isLatestStart,
+  needsEpisodeFetch,
+  requestEpisodeFetch,
+} from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { mayActFor } from '@/stores/profiles';
 
@@ -74,13 +85,29 @@ async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
  * shows it; 8b-1, D2) joins it, never a second start. Only while it is the latest start: a
  * start of another book after it (a tap on story B between two on A) takes over the
  * player, so asking for A again starts A again, as the last tap must win.
+ *
+ * An episode its server has not fetched yet (Bridge Phase 2d-1) goes to the episode fetch
+ * (`requestEpisodeFetch`), which starts it here again once it is ready, unless a start of
+ * something else (or a Cancel) came first; any other start ends a fetch on its way.
  */
-export function startBookInPlace(target: PlayTarget, opts: StartOptions = {}): Promise<boolean> {
-  const key = JSON.stringify([contentKeyOf(target), opts.position, opts.track, opts.speed]);
+export function startBookInPlace(
+  target: PlayTarget,
+  opts: StartOptions = {},
+  how: StartHow = {},
+): Promise<boolean> {
+  // A start of anything else ends an episode's fetch on its way (the last tap wins).
+  cancelEpisodeFetchUnless(contentKeyOf(target));
+  const key = JSON.stringify([
+    contentKeyOf(target),
+    opts.position,
+    opts.track,
+    opts.speed,
+    !!how.fetched,
+  ]);
   const running = starting.get(key);
   if (running && latestStart === key) return running;
   latestStart = key;
-  const start: Promise<boolean> = startNow(target, opts).finally(() => {
+  const start: Promise<boolean> = startNow(target, opts, how).finally(() => {
     // Only its own entry: a later start of the same book may have replaced it.
     if (starting.get(key) === start) starting.delete(key);
   });
@@ -88,15 +115,49 @@ export function startBookInPlace(target: PlayTarget, opts: StartOptions = {}): P
   return start;
 }
 
+/** How a start is made (`startBookInPlace`), beside where it starts. */
+export type StartHow = {
+  /** The episode's fetch has just finished (`episode-fetch.ts`): start it, never hand it
+   * back to the fetch. */
+  fetched?: boolean;
+};
+
+/** Whether `book` is an episode its server must fetch before it plays (`podcast_fetch`
+ * from the cached flags, read once when the cache holds none). */
+async function needsFetch(target: PlayTarget, book: Book): Promise<boolean> {
+  if (!isAbsentEpisode(book)) return false;
+  const client = resolveClient(target.connectionId);
+  if (!client) return false;
+  const caps = await fetchCapabilities(target.connectionId, client).catch(() => null);
+  return needsEpisodeFetch(book, caps?.podcast_fetch);
+}
+
 /** The starts on their way, by book and options (`startBookInPlace`). */
 const starting = new Map<string, Promise<boolean>>();
 /** The key of the start asked for last (`startBookInPlace`). */
 let latestStart: string | null = null;
 
-async function startNow(target: PlayTarget, opts: StartOptions): Promise<boolean> {
+async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): Promise<boolean> {
   if (!mayActFor(target.connectionId)) return false;
   const source = await startSourceOf(target);
   if (!source) return false;
+  const key = contentKeyOf(target);
+  if (how.fetched) {
+    // The fetch's own start, only while it stands: a Cancel, or a start of something else,
+    // since the episode was ready wins.
+    if (!isEpisodeFetchStarting(key)) return false;
+  } else if (!source.local && (await needsFetch(target, source.book))) {
+    // An episode not on its server yet: the fetch waits for it, then starts it here again
+    // (`fetched`). The start is handled (the listener sees it on its way). Not when a tap
+    // on another book took over while this one was looked up: that one stands.
+    if (!isLatestStart(key)) return false;
+    requestEpisodeFetch(target, source.book, opts);
+    return true;
+  } else {
+    // Played here (on its server now, or a server that does not fetch): a fetch of it still
+    // on its way ends, or it would start it a second time once ready.
+    cancelEpisodeFetchOf(key);
+  }
   // The speed goes in with the start: set after it, the book audibly began at another.
   await usePlayer
     .getState()

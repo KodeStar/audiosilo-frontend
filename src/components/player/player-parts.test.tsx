@@ -99,6 +99,12 @@ describe('PlayerStatusLine', () => {
     expect(screen.getByText(/^Saved on this device, will sync/)).toBeTruthy();
   });
 
+  it('says "of the episode" for a podcast episode', async () => {
+    usePlayer.setState({ nowPlaying: { ...BOOK, episode: true } } as never);
+    await mount(<PlayerStatusLine />);
+    expect(screen.getByText('Synced · 40% of the episode · 1h 12m left at 1.25×')).toBeTruthy();
+  });
+
   it('becomes the Undo chip while a jump can be undone', async () => {
     useJumpUndo.setState({
       jump: { bookKey: 'a:1:Corey/Calibans War', from: 3600, at: 1, until: Date.now() + 9000 },
@@ -133,6 +139,18 @@ describe('touch targets on native', () => {
       expectNativeTarget(screen.getByLabelText(label));
     }
     expectNativeTarget(screen.getByTestId('player-upnext'));
+  });
+});
+
+describe('CompanionChips', () => {
+  it("offers no Who's who or Story so far for a podcast episode", async () => {
+    await mountWithPortal(<CompanionChips />);
+    expect(screen.getByLabelText("Who's who")).toBeTruthy();
+    usePlayer.setState({ nowPlaying: { ...BOOK, episode: true } } as never);
+    await mountWithPortal(<CompanionChips />);
+    expect(screen.getAllByLabelText('Chapters').length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText("Who's who")).toBeNull();
+    expect(screen.queryByLabelText('Story so far')).toBeNull();
   });
 });
 

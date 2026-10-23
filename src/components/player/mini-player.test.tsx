@@ -21,6 +21,7 @@ jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 
 /* eslint-disable import/first */
 import { useShellMetrics } from '@/components/shell/shell-metrics';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
@@ -28,6 +29,7 @@ import { expectNativeTarget } from '@/testing/touch-target';
 
 import { selectChapterFraction } from './chapter-progress';
 import {
+  FETCH_STRIP_HEIGHT,
   FloatingMiniPlayer,
   MINI_PLAYER_GAP,
   MINI_PLAYER_HEIGHT,
@@ -185,5 +187,46 @@ describe('selectChapterFraction', () => {
     expect(selectChapterFraction(s as never)).toBe(0.5); // 900 in 600..1200
     expect(selectChapterFraction({ ...s, chapter: null } as never)).toBe(0.25); // 900 / 3600
     expect(selectChapterFraction({ ...s, nowPlaying: null } as never)).toBe(0);
+  });
+});
+
+// Bridge Phase 2d-1: the fetch strip floats above the card.
+describe('MiniPlayer while an episode is fetched', () => {
+  const PENDING = {
+    key: 'c1:5:Show/Ep.mp3',
+    target: { connectionId: 'c1', libraryId: 5, path: 'Show/Ep.mp3' },
+    title: 'Monday',
+    show: 'Daily News',
+    opts: {},
+    phase: 'waiting' as const,
+    status: null,
+    code: null,
+  };
+  afterEach(async () => {
+    await act(async () => useEpisodeFetch.setState({ pending: null }));
+  });
+
+  it('shows the strip above the card, or alone with no book', async () => {
+    useEpisodeFetch.setState({ pending: PENDING });
+    const view = await render(<MiniPlayer />);
+    expect(screen.getByTestId('episode-fetch-strip')).toBeTruthy();
+    expect(screen.getByTestId('mini-player-card')).toBeTruthy();
+    await act(async () => player.usePlayer.setState({ nowPlaying: null } as never));
+    await view.rerender(<MiniPlayer />);
+    expect(screen.getByTestId('episode-fetch-strip')).toBeTruthy();
+    expect(screen.queryByTestId('mini-player-card')).toBeNull();
+  });
+
+  it('reserves room for the strip too', async () => {
+    useEpisodeFetch.setState({ pending: PENDING });
+    function Probe() {
+      const inset = useMiniPlayerInset();
+      const { Text } = jest.requireActual('react-native');
+      return <Text>{`inset ${inset}`}</Text>;
+    }
+    await render(<Probe />);
+    expect(
+      screen.getByText(`inset ${16 + MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP + FETCH_STRIP_HEIGHT}`),
+    ).toBeTruthy();
   });
 });

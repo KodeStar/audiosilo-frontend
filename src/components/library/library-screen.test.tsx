@@ -15,29 +15,53 @@ jest.mock('@/lib/layout', () => ({
 }));
 
 let mockCaps: Record<string, boolean | undefined> = {};
+// The connection each book list was asked for ('' asks nothing).
+const mockBookListCids: string[] = [];
+const mockShowsEnabled: boolean[] = [];
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
   useCapability: (flag: string) => mockCaps[flag],
-  useAuthors: () => ({
-    data: mockCaps.browse_people ? { people: [{}, {}], unknown: 0 } : undefined,
-  }),
+  useAuthors: (_lib: number, cid: string) => {
+    mockBookListCids.push(cid);
+    return { data: mockCaps.browse_people && cid ? { people: [{}, {}], unknown: 0 } : undefined };
+  },
   useNarrators: () => ({ data: undefined }),
-  useSeriesList: () => ({ data: mockCaps.browse_people ? [{}] : undefined }),
+  useSeriesList: (_lib: number, cid: string) => {
+    mockBookListCids.push(cid);
+    return { data: mockCaps.browse_people && cid ? [{}] : undefined };
+  },
   useCollections: () => ({ data: undefined }),
+  usePodcastShows: (_lib: number, _cid: string, opts: { enabled: boolean }) => {
+    mockShowsEnabled.push(opts.enabled);
+    return { data: opts.enabled ? [{}, {}, {}] : undefined };
+  },
+}));
+jest.mock('@/components/podcasts/shows-mode', () => ({
+  PodcastShowsMode: ({ connectionId, libraryId }: { connectionId: string; libraryId: number }) => {
+    const { Text: T } = jest.requireActual('react-native');
+    return <T>{`Shows of ${connectionId}/${libraryId}`}</T>;
+  },
 }));
 
 type Group = {
   connectionId: string;
   connectionName: string;
   libraryIds: number[];
-  libraries: { id: number; name: string; connectionId: string; connectionName: string }[];
+  libraries: {
+    id: number;
+    name: string;
+    connectionId: string;
+    connectionName: string;
+    kind?: string;
+  }[];
   status: 'ready';
 };
-const lib = (connectionId: string, id: number, name: string) => ({
+const lib = (connectionId: string, id: number, name: string, kind?: string) => ({
   id,
   name,
   connectionId,
   connectionName: connectionId === 'a' ? 'Hearthside' : "Maya's Shelf",
+  ...(kind ? { kind } : {}),
 });
 let mockGroups: Group[] = [];
 let mockSelection: { connectionId: string; libraryId: number } | null = null;
@@ -150,6 +174,50 @@ describe('LibraryScreen', () => {
     await render(<LibraryScreen />);
     expect(screen.getByRole('radio', { name: 'Books', checked: true })).toBeTruthy();
     expect(screen.queryByRole('radio', { name: /Authors/ })).toBeNull();
+  });
+
+  // Bridge Phase 2d-1: a podcast library has its shows, never the book lists.
+  describe('a podcast library', () => {
+    beforeEach(() => {
+      mockGroups = [
+        {
+          ...group('a', [[1, 'Audiobooks']]),
+          libraries: [lib('a', 1, 'Audiobooks'), lib('a', 7, 'Podcasts', 'podcasts')],
+          libraryIds: [1, 7],
+        },
+      ];
+      mockSelection = { connectionId: 'a', libraryId: 7 };
+      mockCaps = { browse_people: true, collections: true };
+      mockBookListCids.length = 0;
+      mockShowsEnabled.length = 0;
+    });
+
+    it('offers Shows and Folders, counts its shows, and never asks the book lists', async () => {
+      await mountWithPortal(<LibraryScreen />);
+      expect(screen.getAllByRole('radio').map((r) => r.props.accessibilityLabel)).toEqual([
+        'Shows, 3',
+        'Folders',
+      ]);
+      expect(screen.getByText('Shows of a/7')).toBeTruthy();
+      expect(mockBookListCids.every((cid) => cid === '')).toBe(true);
+      expect(mockShowsEnabled).toContain(true);
+    });
+
+    it('lands a book mode link on Shows', async () => {
+      mockParams = { mode: 'authors' };
+      await mountWithPortal(<LibraryScreen />);
+      expect(screen.getByRole('radio', { name: 'Shows, 3', checked: true })).toBeTruthy();
+      expect(screen.getByText('Shows of a/7')).toBeTruthy();
+    });
+
+    it('never offers Shows on a books library, nor asks for shows', async () => {
+      mockSelection = { connectionId: 'a', libraryId: 1 };
+      mockParams = { mode: 'shows' };
+      await mountWithPortal(<LibraryScreen />);
+      expect(screen.queryByRole('radio', { name: /Shows/ })).toBeNull();
+      expect(screen.getByText('Books body')).toBeTruthy();
+      expect(mockShowsEnabled.every((e) => !e)).toBe(true);
+    });
   });
 
   it('says so when there is no library', async () => {

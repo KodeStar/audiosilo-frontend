@@ -65,8 +65,9 @@ export function useCompanionData(target: PlayTarget): CompanionData {
   // `metadata` still unknown counts as off (the phone's chips read it the same way): an
   // offline cold start or an unreachable server may never answer, and the community tabs
   // would sit blank, loading, for good.
+  // An episode (Bridge 2d-1) has no community tabs at all.
   const status: CompanionStatus =
-    metadata !== true ? 'off' : loading ? 'loading' : work ? 'ready' : 'none';
+    metadata !== true || book?.episode ? 'off' : loading ? 'loading' : work ? 'ready' : 'none';
 
   return {
     target,

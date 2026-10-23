@@ -1,5 +1,6 @@
 import type { Href } from 'expo-router';
 
+import type { PodcastEpisodeOrder } from '@/api/types';
 import { resolveConnectionId } from '@/lib/connection-id';
 
 /** Reconstruct a rel_path from an Expo Router catch-all param. */
@@ -45,6 +46,7 @@ export const BROWSE_PATHS = [
   '/author',
   '/narrator',
   '/collection',
+  '/podcast',
 ] as const;
 
 // Content routes are FLAT (`/book/[libraryId]`, `/library/[libraryId]`, `/account`); the
@@ -202,6 +204,25 @@ export function authorHref(connectionId: string, libraryId: number, name: string
   };
 }
 
+/** `/podcast?connection=<cid>&library=<id>&show=<show path>[&order=newest|oldest]`: a
+ * podcast show and its episodes (Bridge Phase 2d-1). The show is its folder path. */
+export function podcastShowHref(
+  connectionId: string,
+  libraryId: number,
+  show: string,
+  order?: PodcastEpisodeOrder,
+): Href {
+  return {
+    pathname: '/podcast',
+    params: {
+      connection: connectionId,
+      library: String(libraryId),
+      show,
+      ...(order ? { order } : {}),
+    },
+  };
+}
+
 /** `/narrator?connection=<cid>&library=<id>&name=<narrator>` (exact `Book.narrator`). */
 export function narratorHref(connectionId: string, libraryId: number, name: string): Href {
   return {
@@ -317,6 +338,26 @@ export function idParam(v: string | string[] | undefined): number | null {
   if (!/^\d+$/.test(s)) return null;
   const n = Number(s);
   return n > 0 && Number.isSafeInteger(n) ? n : null;
+}
+
+/** The show page's params, or null when the link can't name a show (no library or no
+ * `show`). `order` is null when the link names none (the show's default). */
+export function parsePodcastParams(p: RawParams): {
+  connectionId: string;
+  libraryId: number;
+  show: string;
+  order: PodcastEpisodeOrder | null;
+} | null {
+  const libraryId = idParam(p.library);
+  const show = firstParam(p.show);
+  if (libraryId === null || !show) return null;
+  const order = firstParam(p.order);
+  return {
+    connectionId: connectionParam(p.connection),
+    libraryId,
+    show,
+    order: order === 'newest' || order === 'oldest' ? order : null,
+  };
 }
 
 /** The series page's params, or null when the link can't name a series (no library, or

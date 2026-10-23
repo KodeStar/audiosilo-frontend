@@ -39,6 +39,14 @@ beforeEach(() => {
 });
 
 describe('DownloadControl', () => {
+  // Bridge Phase 2d-1, decision 6.1: episodes are never kept offline.
+  it('renders nothing for a podcast episode', async () => {
+    mockControlsOverride = { status: undefined, progress: 0 };
+    const episode = { ...book, episode: { show_path: 'Show', downloaded: true } } as Book;
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={episode} />);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   // Removed from the menu its "Downloaded" button opens (with the size on this device).
   const pressRemove = async () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Downloaded' }));
