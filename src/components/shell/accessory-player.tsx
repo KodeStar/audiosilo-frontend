@@ -9,11 +9,16 @@ import { ChapterProgressLine } from '@/components/player/chapter-progress';
 import { slopTo44 } from '@/components/player/control-pill';
 import { MiniPlayerSubtitle, useMiniHeading } from '@/components/player/mini-player';
 import { usePlayerOnTop } from '@/components/player/player-sheets';
+import {
+  AccessoryEpisodeFetch,
+  useEpisodeFetchLine,
+} from '@/components/podcasts/episode-fetch-panel';
 import { SkipButton } from '@/components/player/skip-button';
 import { PlayButton } from '@/components/player/transport-controls';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -30,12 +35,18 @@ import { useChromeEdge } from './shell-metrics';
  * skip back, play/pause, the chapter progress line); the narrow `inline` keeps the cover,
  * the chapter and play/pause. Text and glyphs use the themed tokens (the glass follows
  * the app theme, which Uniwind applies to the native appearance).
+ *
+ * An episode being fetched (Bridge Phase 2d-1) has no room for the mini player's strip
+ * here: with nothing playing the pill is the fetch (`AccessoryEpisodeFetch`); with a book
+ * playing on meanwhile, `regular`'s second line says how the fetch is going instead.
  */
 export function AccessoryPlayer() {
   const placement = NativeTabs.BottomAccessory.usePlacement();
   const { t } = useTranslation();
   const themed = useThemeColors();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
+  const fetching = useEpisodeFetch((s) => s.pending !== null);
+  const fetchLine = useEpisodeFetchLine();
   const skipSeconds = usePlayer((s) => s.skipSeconds);
   const skipBackward = useSettings((s) => s.skipBackward);
   const { heading, isChapter } = useMiniHeading();
@@ -44,7 +55,7 @@ export function AccessoryPlayer() {
   // the full player (a root modal over the tabs).
   const phone = useLayout() === 'phone';
   const onTop = usePlayerOnTop();
-  const shown = nowPlaying != null && phone && !onTop;
+  const shown = (nowPlaying != null || fetching) && phone && !onTop;
   const regular = placement === 'regular';
 
   // The pill above the bar (`regular`) publishes its top edge for the root toasts. It is
@@ -61,6 +72,19 @@ export function AccessoryPlayer() {
     });
 
   if (!shown) return null;
+
+  if (!nowPlaying) {
+    return (
+      <View
+        ref={pill}
+        onLayout={regular ? measure : undefined}
+        testID={`accessory-player-${placement}`}
+        className="flex-1"
+      >
+        <AccessoryEpisodeFetch regular={regular} />
+      </View>
+    );
+  }
 
   return (
     <View
@@ -87,7 +111,13 @@ export function AccessoryPlayer() {
           <Text variant="label" className="text-[13.5px] leading-[17px]" numberOfLines={1}>
             {heading}
           </Text>
-          {regular ? <MiniPlayerSubtitle title={nowPlaying.title} showTitle={isChapter} /> : null}
+          {regular && fetchLine ? (
+            <Text variant="caption" numberOfLines={1} testID="accessory-fetch-line">
+              {fetchLine}
+            </Text>
+          ) : regular ? (
+            <MiniPlayerSubtitle title={nowPlaying.title} showTitle={isChapter} />
+          ) : null}
         </View>
       </AnimatedPressable>
       {regular ? (

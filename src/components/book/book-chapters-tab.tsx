@@ -85,6 +85,8 @@ export type BookChaptersTabProps = {
    * found in the narration. A quiet line under the rows says so while they are those
    * chapters (never under the player's parts or the files). */
   source: ChaptersSource | undefined;
+  /** A podcast episode's page: the card and the parts notice say "episode", not "book". */
+  episode?: boolean;
   onJump: (jump: Jump) => void;
 };
 
@@ -108,6 +110,7 @@ export function BookChaptersTab({
   roomy,
   interval,
   source,
+  episode = false,
   onJump,
 }: BookChaptersTabProps) {
   const { t } = useTranslation();
@@ -141,6 +144,7 @@ export function BookChaptersTab({
           finished={finished}
           loaded={loaded}
           pins={pins}
+          episode={episode}
           onJump={onJump}
         />
       ) : null}
@@ -148,7 +152,7 @@ export function BookChaptersTab({
         <Notice
           icon="circle-info"
           tone="info"
-          title={t('book.chapters.partsTitle')}
+          title={t(episode ? 'book.chapters.partsTitleEpisode' : 'book.chapters.partsTitle')}
           body={t('book.chapters.partsBody', { minutes: Math.round(interval / 60) })}
         />
       ) : null}
@@ -198,6 +202,7 @@ function WholeBook({
   finished,
   loaded,
   pins,
+  episode,
   onJump,
 }: {
   starts: number[];
@@ -207,6 +212,7 @@ function WholeBook({
   finished: boolean;
   loaded: boolean;
   pins: BookPins;
+  episode: boolean;
   onJump: (jump: Jump) => void;
 }) {
   const { t } = useTranslation();
@@ -236,7 +242,9 @@ function WholeBook({
   return (
     <Card testID="book-whole-timeline" className="gap-4 p-5">
       <View className="flex-row flex-wrap items-center justify-between gap-2">
-        <Text variant="title">{t('book.chapters.wholeBook')}</Text>
+        <Text variant="title">
+          {t(episode ? 'book.chapters.wholeEpisode' : 'book.chapters.wholeBook')}
+        </Text>
         <View className="flex-row items-center gap-3">
           <View className="flex-row items-center gap-1">
             <Icon name="bookmark" size={12} color={themed.mutedForeground} />

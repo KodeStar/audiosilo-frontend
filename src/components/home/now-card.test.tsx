@@ -30,6 +30,7 @@ let mockSecondTitle = 'Holden';
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockDays: { date: string; listened: number }[] | null = null;
 let mockEpisode = false;
+let mockPodcastLibrary = false;
 let mockChapterCount = 3;
 const mockChar = (name: string, chapter: number) => ({
   id: name,
@@ -41,6 +42,7 @@ jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useCapability: (flag: string) => mockCaps[flag],
+  useIsPodcastLibrary: () => mockPodcastLibrary,
   useBook: () => ({
     data: {
       title: "Caliban's War",
@@ -119,6 +121,7 @@ beforeEach(() => {
   mockDays = null;
   mockSecondTitle = 'Holden';
   mockEpisode = false;
+  mockPodcastLibrary = false;
   mockChapterCount = 3;
   mockPush.mockClear();
 });
@@ -149,6 +152,16 @@ describe('NowCard', () => {
     await render(<NowCard at={at} saved={saved} />);
     expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
     expect(screen.getByRole('image', { name: '50% through the episode' })).toBeTruthy();
+  });
+
+  it('resumes an episode without a chapter in its label, known by its library before its item (R-5)', async () => {
+    // The item has not said it is an episode yet: its podcast library already has.
+    mockPodcastLibrary = true;
+    mockChapterCount = 1;
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Resume chapter/ })).toBeNull();
+    expect(screen.getByText('through the episode')).toBeTruthy();
   });
 
   it('names the chapter like the players do: a file name prettified, an untitled one by number', async () => {

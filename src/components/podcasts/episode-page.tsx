@@ -46,7 +46,13 @@ import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { episodeMarks, episodeMetaLine, episodeRowState, rowStateReasonKey } from './podcast-model';
+import {
+  canRetryFetch,
+  episodeMarks,
+  episodeMetaLine,
+  episodeRowState,
+  rowStateReasonKey,
+} from './podcast-model';
 
 const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 
@@ -55,7 +61,7 @@ const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
  * podcast episode (`book.episode`), at the same `/book` link, so Continue listening, the
  * Now card, history and favourites reach it as any book. Its cover, title, a link to its
  * show, its date, length and marks; Play / Resume (Pause while it plays), or Try again
- * after a failed fetch; a note when its audio changed under a saved place (never moved);
+ * after a failed fetch (`canRetryFetch`); a note when its audio changed under a saved place (never moved);
  * the description; and the chapters an episode's own file carries. No series, community
  * metadata, rating, Generate or Download.
  */
@@ -178,7 +184,7 @@ function EpisodeBody({
   const reason = reasonKey ? t(reasonKey) : null;
 
   const primary =
-    state.kind === 'failed' && !loaded ? (
+    canRetryFetch(state) && !loaded ? (
       <Button
         size="lg"
         icon="rotate"
@@ -282,6 +288,7 @@ function EpisodeBody({
             roomy={width >= 600}
             interval={interval}
             source={knownChaptersSource(book.chapters_source)}
+            episode
             onJump={onJump}
           />
         ) : null}

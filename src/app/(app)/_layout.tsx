@@ -15,6 +15,7 @@ import { ShellFrame } from '@/components/shell/shell-frame';
 import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useLayout } from '@/lib/layout';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -37,6 +38,8 @@ function NativeShell() {
   const themed = useThemeColors();
   const wide = useLayout() !== 'phone';
   const loaded = usePlayer((s) => s.nowPlaying != null);
+  // An episode on its way shows in the accessory too, with nothing playing yet.
+  const fetching = useEpisodeFetch((s) => s.pending !== null);
   const top = useIsTopShell();
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
@@ -74,7 +77,7 @@ function NativeShell() {
             labelVisibilityMode="labeled"
             indicatorColor={themed.brandSoft}
             minimizeBehavior="onScrollDown"
-            unstable_nativeProps={{ ios: { bottomAccessoryHidden: !loaded || wide } }}
+            unstable_nativeProps={{ ios: { bottomAccessoryHidden: !(loaded || fetching) || wide } }}
           >
             {TABS.map((d) => (
               <NativeTabs.Trigger

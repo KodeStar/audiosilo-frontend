@@ -1,4 +1,4 @@
-import type { BookMetaCharacter, BookMetaRecap, Chapter } from '@/api/types';
+import type { BookMetaCharacter, BookMetaRecap, Chapter, PodcastEpisodeInfo } from '@/api/types';
 
 import {
   chapterNumberAt,
@@ -185,6 +185,11 @@ describe('metaEnabledFor', () => {
   it('asks for a book with neither that has generated characters or recaps', () => {
     expect(metaEnabledFor(true, { asin: '', isbn: '', generated: true })).toBe(true);
     expect(metaEnabledFor(false, { generated: true })).toBe(false);
+  });
+
+  it('never asks for a podcast episode, whatever its tags carry', () => {
+    const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
+    expect(metaEnabledFor(true, { asin: 'B0', isbn: '978', generated: true, episode })).toBe(false);
   });
 });
 

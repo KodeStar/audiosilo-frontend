@@ -21,6 +21,7 @@ import { useSession } from '@/stores/session';
 import { episodeBook, fetchStatus, wire2b } from '@/testing/podcast-fixtures';
 
 import {
+  blipDelay,
   cancelEpisodeFetch,
   cancelEpisodeFetchOf,
   cancelEpisodeFetchUnless,
@@ -251,10 +252,41 @@ describe('requestEpisodeFetch', () => {
     await flush();
     await jest.advanceTimersByTimeAsync(2000);
     expect(phase()).toBe('waiting');
+    // The second blip in a row waits twice as long.
     await jest.advanceTimersByTimeAsync(2000);
     expect(phase()).toBe('waiting');
     await jest.advanceTimersByTimeAsync(2000);
+    expect(mockClient!.podcastFetchStatus).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(2000);
     expect(mockClient!.podcastFetchStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it('backs off while the server keeps failing, and polls every 2 s again once it answers', async () => {
+    mockClient!.podcastFetchStatus.mockRejectedValue(new ApiError(500, 'Internal Server Error'));
+    requestEpisodeFetch(target, book);
+    await flush();
+    const calls = () => mockClient!.podcastFetchStatus.mock.calls.length;
+    // Looks at 2 s, then 2, 4, 8, 16, 32 and 60 s apart (never more).
+    const at: number[] = [];
+    for (let s = 1; s <= 200; s++) {
+      const before = calls();
+      await jest.advanceTimersByTimeAsync(1000);
+      if (calls() > before) at.push(s);
+    }
+    expect(at).toEqual([2, 4, 8, 16, 32, 64, 124, 184]);
+    expect(phase()).toBe('waiting');
+    mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.status_response.fetch });
+    await jest.advanceTimersByTimeAsync(60_000);
+    const answered = calls();
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(calls()).toBe(answered + 1);
+  });
+
+  it('waits at least the Retry-After of a refused look', () => {
+    expect(blipDelay(1)).toBe(2);
+    expect(blipDelay(3)).toBe(8);
+    expect(blipDelay(10)).toBe(60);
+    expect(blipDelay(1, 30)).toBe(30);
   });
 
   it('is starting only while its start may still play', async () => {

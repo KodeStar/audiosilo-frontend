@@ -3,12 +3,14 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BookCover } from '@/components/library/book-cover';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { formatBytes } from '@/lib/format';
+import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import {
   cancelEpisodeFetch,
@@ -214,6 +216,101 @@ function Strip({ pending, className }: { pending: PendingEpisodeFetch; className
         onPress={cancelEpisodeFetch}
         accessibilityLabel={t('podcasts.fetch.cancelLabel', { title: pending.title })}
         testID="episode-fetch-strip-cancel"
+      >
+        <Icon name="close" size={16} color={themed.mutedForeground} />
+      </Button>
+    </View>
+  );
+}
+
+/** The fetch in one short line, for the iOS 26 tab bar accessory while a book plays on
+ * (its second line): "Getting <title> · 40%", or why it stopped. */
+export function useEpisodeFetchLine(): string | null {
+  const { t } = useTranslation();
+  const pending = useEpisodeFetch((s) => s.pending);
+  if (!pending) return null;
+  if (isStopped(pending.phase)) {
+    return t(
+      pending.phase === 'failed' ? 'podcasts.fetch.failedTitle' : 'podcasts.fetch.unavailableTitle',
+    );
+  }
+  const { percent } = fetchProgress(pending.status);
+  const getting = t('podcasts.fetch.stripLabel', { title: pending.title });
+  return percent === null ? getting : `${getting} · ${percent}%`;
+}
+
+/**
+ * The fetch in the iOS 26 tab bar accessory when no book plays (`AccessoryPlayer`, which
+ * has no room for the mini player's strip, Bridge Phase 2d-1 follow-up): the episode's
+ * cover and title, how far it is (`regular` only: the pill above the bar), Try again once
+ * it stopped, and Cancel. A press opens the player on the episode, which shows the fetch
+ * panel. Pure of its placement, as the accessory renders twice.
+ */
+export function AccessoryEpisodeFetch({ regular }: { regular: boolean }) {
+  const pending = useEpisodeFetch((s) => s.pending);
+  if (!pending) return null;
+  return <AccessoryFetch pending={pending} regular={regular} />;
+}
+
+function AccessoryFetch({ pending, regular }: { pending: PendingEpisodeFetch; regular: boolean }) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  const { openPlayer } = useOpen();
+  const copy = useFetchCopy(pending);
+  const { connectionId, libraryId, path } = pending.target;
+  const stopped = isStopped(pending.phase);
+  return (
+    <View
+      testID={`accessory-fetch-${regular ? 'regular' : 'inline'}`}
+      className="flex-1 flex-row items-center gap-1 pl-1.5 pr-1"
+    >
+      <AnimatedPressable
+        onPress={() => openPlayer(connectionId, libraryId, path)}
+        accessibilityRole="button"
+        accessibilityLabel={t('podcasts.fetch.stripLabel', { title: pending.title })}
+        className="min-w-0 flex-1 flex-row items-center gap-2.5 self-stretch"
+      >
+        <BookCover
+          connectionId={connectionId}
+          libraryId={libraryId}
+          path={path}
+          title={pending.title}
+          author={pending.show}
+          width={regular ? 36 : 28}
+          thumbnail={160}
+          className="rounded-full"
+        />
+        <View className="min-w-0 flex-1">
+          <Text variant="label" className="text-[13.5px] leading-[17px]" numberOfLines={1}>
+            {pending.title}
+          </Text>
+          {regular ? (
+            <Text
+              variant="caption"
+              numberOfLines={1}
+              style={tabularNums}
+              testID="accessory-fetch-line"
+            >
+              {stopped ? copy.heading : copy.line}
+            </Text>
+          ) : null}
+        </View>
+      </AnimatedPressable>
+      {regular && stopped ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          title={t('podcasts.fetch.tryAgain')}
+          onPress={retryEpisodeFetch}
+          testID="accessory-fetch-retry"
+        />
+      ) : null}
+      <Button
+        variant="ghost"
+        size="icon"
+        onPress={cancelEpisodeFetch}
+        accessibilityLabel={t('podcasts.fetch.cancelLabel', { title: pending.title })}
+        testID="accessory-fetch-cancel"
       >
         <Icon name="close" size={16} color={themed.mutedForeground} />
       </Button>

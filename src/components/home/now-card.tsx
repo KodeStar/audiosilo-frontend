@@ -8,6 +8,7 @@ import {
   useBookmarks,
   useCapability,
   useChapters,
+  useIsPodcastLibrary,
   useMyStats,
   type SourcedProgress,
 } from '@/api/hooks';
@@ -72,6 +73,10 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const { libraryId, path } = at;
 
   const { data: book } = useBook(libraryId, path);
+  // An episode (Bridge 2d-1) is no book. Its library says so before its item has loaded
+  // (the progress list carries no `episode`), so no "Resume chapter 1" flashes first.
+  const podcastLibrary = useIsPodcastLibrary(libraryId, at.connectionId);
+  const episode = !!book?.episode || podcastLibrary;
   const { data: chapterData } = useChapters(libraryId, path);
   const { data: bookmarks } = useBookmarks(libraryId, path);
   const metaEnabled = metaEnabledFor(useCapability('metadata'), book);
@@ -141,7 +146,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     });
   const resumeLabel = playing
     ? t('home.now.pause')
-    : place
+    : place && (!episode || place.count > 1)
       ? resumeChapterLabel(t, place)
       : t('home.now.resume');
   // "Ch. 13 of 25" beside a title "Chapter 12" contradicts it: then the count alone.
@@ -172,8 +177,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     </AnimatedPressable>
   );
 
-  // An episode (Bridge 2d-1) is no book: no "Chapter 1 of 1" for one without chapters.
-  const episode = !!book?.episode;
+  // No "Chapter 1 of 1" for an episode without chapters.
   const chapterLine =
     place && (!episode || place.count > 1) ? (
       <View className="flex-row items-center gap-2.5">

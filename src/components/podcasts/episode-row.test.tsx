@@ -155,4 +155,27 @@ describe('EpisodeRow', () => {
     await renderRow(podcastEpisode());
     expect(screen.queryByTestId('episode-reason')).toBeNull();
   });
+
+  it('says why even once finished, so a disabled Play is never unexplained (R-7)', async () => {
+    await renderRow(podcastEpisode({ downloaded: false }), {
+      canFetch: false,
+      progress: { position: 1800, duration: 1800, finished: true } as Progress,
+    });
+    expect(screen.getByTestId('episode-finished')).toBeTruthy();
+    expect(screen.getByTestId('episode-reason').props.children).toBe(
+      "Your server can't download episodes right now.",
+    );
+  });
+
+  it('offers Try again when not available for a reason it cannot name, never for a known one (R-23)', async () => {
+    const unavailable = (code: string) =>
+      podcastEpisode({
+        downloaded: false,
+        fetch: fetchStatus({ state: 'unavailable', error: { code, message: 'x' } }),
+      });
+    await renderRow(unavailable('something_new'));
+    expect(screen.getByTestId('episode-retry')).toBeTruthy();
+    await renderRow(unavailable('library_not_writable'));
+    expect(screen.queryByTestId('episode-retry')).toBeNull();
+  });
 });

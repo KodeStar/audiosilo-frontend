@@ -67,10 +67,21 @@ export function needsEpisodeFetch(book: Book, podcastFetch: boolean | undefined)
 
 /** The poll interval floor, seconds (the server's `Retry-After`). */
 const MIN_POLL_S = 2;
+/** The longest wait between two looks while the server keeps failing (5xx, no answer). */
+const MAX_BLIP_POLL_S = 60;
+
+/** The wait before the next look after `blips` failed looks in a row: doubling from the
+ * floor, at most `MAX_BLIP_POLL_S`, and never under the answer's `Retry-After`. */
+export function blipDelay(blips: number, retryAfter?: number): number {
+  const backoff = Math.min(MAX_BLIP_POLL_S, MIN_POLL_S * 2 ** Math.max(0, blips - 1));
+  return Math.max(backoff, retryAfter ?? 0);
+}
 
 type Run = {
   abort: AbortController;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Failed looks in a row (a blip: no answer, the limiter, a 5xx): the wait doubles. */
+  blips: number;
   /** In the background with a poll due: it runs on the way back (`AppState`). */
   paused: boolean;
   stop: () => void;
@@ -217,7 +228,13 @@ function begin(
 ) {
   cancelEpisodeFetch();
   const cid = from.target.connectionId;
-  const r: Run = { abort: new AbortController(), timer: null, paused: false, stop: () => {} };
+  const r: Run = {
+    abort: new AbortController(),
+    timer: null,
+    blips: 0,
+    paused: false,
+    stop: () => {},
+  };
   run = r;
   useEpisodeFetch.setState({
     pending: { ...from, phase: 'probing', code: null },
@@ -276,17 +293,23 @@ async function step(r: Run, action: 'probe' | 'retry' | 'poll') {
       action === 'retry'
         ? await client.retryPodcastFetch(libraryId, path, signal)
         : await client.podcastFetchStatus(libraryId, path, signal);
-    if (run === r) settle(r, client, answer.fetch);
+    if (run === r) {
+      r.blips = 0;
+      settle(r, client, answer.fetch);
+    }
   } catch (e) {
     if (run !== r) return;
     if (e instanceof PodcastFetchPendingError) {
+      r.blips = 0;
       settle(r, client, e.fetch, e.retryAfterSeconds);
       return;
     }
     // A blip while waiting (offline a moment, a timeout, a proxy's 502/503 while the server
-    // restarts, the rate limiter): ask again at the next turn.
+    // restarts, the rate limiter): ask again later, waiting longer each time in a row
+    // (`blipDelay`), so a server answering 5xx for good is not asked every 2 s.
     if (action === 'poll' && (!(e instanceof ApiError) || e.status === 429 || e.status >= 500)) {
-      schedule(r, MIN_POLL_S);
+      r.blips++;
+      schedule(r, blipDelay(r.blips, e instanceof ApiError ? e.retryAfterSeconds : undefined));
       return;
     }
     refused(r, e);

@@ -154,6 +154,22 @@ describe('startCastSync', () => {
     stop();
   });
 
+  it('names an episode that cannot be cast as an episode (R-21)', async () => {
+    const router = routed(localEngine());
+    const driver = fakeDriver();
+    const stop = startCastSync({ driver });
+    await flush();
+    driver.fire({ type: 'started', remote: remote() });
+    await flush();
+    router.onCastFailed?.(new CastBlockedError('episode'));
+    expect(mockToast).toHaveBeenCalledWith({
+      title: "This episode can't be cast",
+      description: "Podcast episodes can't be cast yet, so this one stays on this device.",
+    });
+    expect(driver.endSession).toHaveBeenCalledWith(true);
+    stop();
+  });
+
   it('picks up a session already running at launch (the app was relaunched mid-cast)', async () => {
     const router = routed(localEngine());
     const driver = fakeDriver();
