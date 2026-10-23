@@ -3,8 +3,10 @@ import type { ParseKeys } from 'i18next';
 import { ApiError, apiErrorKind } from '@/api/client';
 import type { OpmlImportRow, PodcastRequest } from '@/api/types';
 import { FIND_SHOWS_SECTIONS, type FindShowsSection } from '@/lib/paths';
-import { isOpenRequest } from '@/lib/podcast-requests';
+import { isOpenRequest, requestShow } from '@/lib/podcast-requests';
 import { utf8 } from '@/lib/sha256';
+
+import { isQueuedRow } from './opml-waves';
 
 /**
  * Find shows' pure rules (Bridge Phase 2d-2): which sections a server offers, the search
@@ -226,7 +228,7 @@ export function requestStateKey(r: Pick<PodcastRequest, 'state'>): ParseKeys {
 
 /** How a follow request ended, read from the live follow requests: `null` while it is
  * open or not listed (what the follow's answer said stands). */
-export type RequestEnd = { kind: 'done'; libraryId: number; path: string } | { kind: 'failed' };
+type RequestEnd = { kind: 'following'; libraryId: number; path: string } | { kind: 'failed' };
 
 export function requestEnd(
   requests: readonly PodcastRequest[] | undefined,
@@ -235,13 +237,9 @@ export function requestEnd(
   if (id === null || id === undefined) return null;
   const r = requests?.find((x) => x.id === id);
   if (!r || isOpenRequest(r)) return null;
-  return r.state === 'done' && r.library_id !== null && r.show_path
-    ? { kind: 'done', libraryId: r.library_id, path: r.show_path }
-    : { kind: 'failed' };
+  const show = requestShow(r);
+  return show ? { kind: 'following', ...show } : { kind: 'failed' };
 }
-
-const isQueuedRow = (r: Pick<OpmlImportRow, 'status'>) =>
-  r.status === 'queued' || r.status === 'already_queued';
 
 /** An import's rows with each queued one's request read live: followed once it ended
  * done, an error once it ended otherwise. */
@@ -253,7 +251,7 @@ export function liveImportRows(
     if (!isQueuedRow(r)) return r;
     const end = requestEnd(requests, r.request_id);
     if (!end) return r;
-    return end.kind === 'done'
+    return end.kind === 'following'
       ? { ...r, status: 'followed', path: r.path ?? end.path }
       : { ...r, status: 'error' };
   });
@@ -261,8 +259,3 @@ export function liveImportRows(
 
 /** Whether any row of an import is still being added. */
 export const stillAdding = (rows: readonly OpmlImportRow[]) => rows.some(isQueuedRow);
-
-/** The rows that need a person (no online Bridge, a library it can't write, the module
- * off): never another automatic wave, only Try again. */
-export const unavailableRows = (rows: readonly Pick<OpmlImportRow, 'status'>[]) =>
-  rows.filter((r) => r.status === 'unavailable').length;

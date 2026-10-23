@@ -82,10 +82,19 @@ export const isRunning = (status: WaveStatus) => RUNNING.has(status.kind);
  * left to send). */
 const canRetry = (status: WaveStatus) => !isRunning(status) && status.kind !== 'done';
 
+/** Whether an import row is on its way: queued by this upload or an earlier one. */
+export const isQueuedRow = (r: Pick<OpmlImportRow, 'status'>) =>
+  r.status === 'queued' || r.status === 'already_queued';
+
+/** The rows that need a person (no online Bridge, a library it can't write, the module
+ * off): never another automatic wave, only Try again. */
+export const unavailableRows = (rows: readonly Pick<OpmlImportRow, 'status'>[]) =>
+  rows.filter((r) => r.status === 'unavailable').length;
+
 /** Whether Try again applies to an import: as `canRetry`, or done with rows that could
  * not be added right now (they need a person, so no automatic wave asks again). */
 export const canRetryImport = ({ status, rows }: WaveState) =>
-  canRetry(status) || (status.kind === 'done' && rows.some((r) => r.status === 'unavailable'));
+  canRetry(status) || (status.kind === 'done' && unavailableRows(rows) > 0);
 
 /** The rows of `before` with `next`'s answers over them, by `outline_index`. */
 export function mergeRows(
@@ -217,10 +226,7 @@ export class OpmlWaves {
       if (!this.live(run)) return;
       const open = new Set(requests.filter(isOpenRequest).map((r) => r.id));
       const mine = this.state.rows.some(
-        (r) =>
-          (r.status === 'queued' || r.status === 'already_queued') &&
-          r.request_id !== null &&
-          open.has(r.request_id),
+        (r) => isQueuedRow(r) && r.request_id !== null && open.has(r.request_id),
       );
       if (mine || open.size >= OPEN_REQUEST_CAP) {
         this.later(run, FOLLOW_REQUEST_POLL_MS);

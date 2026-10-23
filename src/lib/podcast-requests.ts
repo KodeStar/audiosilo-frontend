@@ -7,6 +7,15 @@ import { isOpenJob } from '@/lib/bridge-jobs';
  * know) has ended. */
 export const isOpenRequest: (r: Pick<PodcastRequest, 'state'>) => boolean = isOpenJob;
 
+/** The show a follow request added: set once it ended `done` with a show in a library. */
+export function requestShow(
+  r: Pick<PodcastRequest, 'state' | 'library_id' | 'show_path'>,
+): { libraryId: number; path: string } | null {
+  return r.state === 'done' && r.library_id !== null && r.show_path
+    ? { libraryId: r.library_id, path: r.show_path }
+    : null;
+}
+
 /** How often a screen showing follow requests reads them again while one is open. */
 export const FOLLOW_REQUEST_POLL_MS = 5_000;
 

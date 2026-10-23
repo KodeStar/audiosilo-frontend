@@ -1,6 +1,6 @@
 import { useIsFocused } from 'expo-router';
 import type { TFunction } from 'i18next';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -19,10 +19,15 @@ import {
   importRowKey,
   liveImportRows,
   stillAdding,
-  unavailableRows,
 } from './find-shows-model';
 import { pickOpml } from './opml-pick';
-import { canRetryImport, isRunning, type WaveState, type WaveStatus } from './opml-waves';
+import {
+  canRetryImport,
+  isRunning,
+  unavailableRows,
+  type WaveState,
+  type WaveStatus,
+} from './opml-waves';
 import type { OpmlImport } from './use-opml-import';
 
 /** The status line of an import (`now` for a countdown). A done import is done only once
@@ -143,7 +148,7 @@ function ImportProgress({
   const { t } = useTranslation();
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  const rows = liveImportRows(state.rows, requests);
+  const rows = useMemo(() => liveImportRows(state.rows, requests), [state.rows, requests]);
   const { settled, total } = importProgress(rows);
   const retryable = canRetryImport(state);
   return (

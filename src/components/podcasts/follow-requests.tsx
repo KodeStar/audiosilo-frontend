@@ -11,7 +11,7 @@ import { RowSurface } from '@/components/ui/row-surface';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
-import { isOpenRequest } from '@/lib/podcast-requests';
+import { isOpenRequest, requestShow } from '@/lib/podcast-requests';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { requestStateKey } from './find-shows-model';
@@ -56,10 +56,7 @@ function RequestRow({ connectionId, request }: { connectionId: string; request: 
   const { openPodcastShow } = useOpen();
   const open = isOpenRequest(request);
   const failed = !open && request.state !== 'done' && request.state !== 'cancelled';
-  const show =
-    request.state === 'done' && request.library_id !== null && request.show_path
-      ? { libraryId: request.library_id, path: request.show_path }
-      : null;
+  const show = requestShow(request);
   return (
     <RowSurface testID={`follow-request-${request.id}`} className="flex-row items-center gap-3 p-3">
       <Icon

@@ -1,5 +1,5 @@
 import { useIsFocused } from 'expo-router';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
@@ -82,16 +82,13 @@ export function DirectorySearch({
   // it turns Following or Couldn't add once the request ends.
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  const outcomeOf = (feedUrl: string): ResultOutcome | undefined => {
-    const outcome = outcomes[feedUrl];
-    if (outcome?.kind !== 'adding') return outcome;
-    const end = requestEnd(requests, outcome.requestId);
-    return !end
-      ? outcome
-      : end.kind === 'done'
-        ? { kind: 'following', libraryId: end.libraryId, path: end.path }
-        : { kind: 'failed' };
-  };
+  const liveOutcomes = useMemo(() => {
+    const live: Record<string, ResultOutcome> = {};
+    for (const [feedUrl, outcome] of Object.entries(outcomes))
+      live[feedUrl] =
+        (outcome.kind === 'adding' && requestEnd(requests, outcome.requestId)) || outcome;
+    return live;
+  }, [outcomes, requests]);
 
   const submit = (using: PodcastDiscoveryProvider = provider) => {
     const q = cleanSearchText(text);
@@ -222,7 +219,7 @@ export function DirectorySearch({
       testID="directory-search"
       data={failure ? [] : (answered?.results ?? [])}
       keyExtractor={(r) => r.feed_url}
-      extraData={{ outcomes, requests }}
+      extraData={liveOutcomes}
       {...TAB_PAGE_SCROLL_PROPS}
       initialNumToRender={8}
       windowSize={5}
@@ -231,7 +228,7 @@ export function DirectorySearch({
           connectionId={connectionId}
           result={item}
           providerName={providerName}
-          outcome={outcomeOf(item.feed_url)}
+          outcome={liveOutcomes[item.feed_url]}
           canFollow={canFollow}
           onFollow={() => followResult(item)}
           onOpenShow={(lib, path) => openPodcastShow(connectionId, lib, path)}
