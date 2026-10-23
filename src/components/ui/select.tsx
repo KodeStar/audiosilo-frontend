@@ -148,7 +148,7 @@ export function SelectItem({
       className={cn(
         'min-h-[44px] w-full flex-row items-center gap-2 rounded-[9px] py-2 pl-2.5 pr-9 active:bg-accent',
         Platform.select({
-          web: 'min-h-[36px] cursor-pointer outline-none focus:bg-accent hover:bg-accent data-[disabled]:pointer-events-none',
+          web: 'flex min-h-[36px] cursor-pointer outline-none focus:bg-accent hover:bg-accent data-[disabled]:pointer-events-none',
         }),
         props.disabled && 'opacity-50',
         className,

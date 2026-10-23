@@ -171,6 +171,7 @@ export function PlayerStatusLine() {
   const themed = useThemeColors();
   const cid = usePlayer((s) => s.nowPlaying?.connectionId ?? '');
   const total = usePlayer((s) => s.nowPlaying?.queue.total ?? 0);
+  const episode = usePlayer((s) => !!s.nowPlaying?.episode);
   const playing = usePlayer(selectIsPlaying);
   const undo = useUndoVisible();
   const sync = usePlaceSync(cid, playing);
@@ -186,7 +187,9 @@ export function PlayerStatusLine() {
   }
   const parts = [
     sync?.text ?? '',
-    total > 0 ? t('player.full.percentOfBook', { percent }) : '',
+    total > 0
+      ? t(episode ? 'player.full.percentOfEpisode' : 'player.full.percentOfBook', { percent })
+      : '',
     left,
   ].filter(Boolean);
   return (
@@ -357,7 +360,9 @@ export function CompanionChips() {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const cid = usePlayer((s) => s.nowPlaying?.connectionId);
-  const metadata = useCapability('metadata', cid) === true;
+  // An episode (Bridge 2d-1) has no community Who's who or Story so far.
+  const episode = usePlayer((s) => !!s.nowPlaying?.episode);
+  const metadata = useCapability('metadata', cid) === true && !episode;
   return (
     <ScrollView
       horizontal
