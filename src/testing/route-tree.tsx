@@ -39,7 +39,9 @@ export function realRouteTree(): Record<string, RouteModule> {
       if (e.isDirectory()) walk(p);
       // Platform variants (`_layout.web.tsx`) share their route with the base file.
       else if (/\.tsx$/.test(e.name) && !/\.(web|native|ios|android)\.tsx$/.test(e.name)) {
-        if (!e.name.startsWith('+')) keys.push(path.relative(APP, p).replace(/\.tsx$/, ''));
+        // `+not-found` is a route (any address without a page); `+html` and `+native-intent` are not.
+        if (!e.name.startsWith('+') || e.name === '+not-found.tsx')
+          keys.push(path.relative(APP, p).replace(/\.tsx$/, ''));
       }
     }
   };

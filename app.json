@@ -47,7 +47,12 @@
       "it": "./assets/locales/it.json"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "sitemap": false
+        }
+      ],
       [
         "expo-splash-screen",
         {
