@@ -1,5 +1,6 @@
 import { ApiError } from '@/api/client';
 import i18n from '@/i18n';
+import type { OpmlImportRow, PodcastRequest } from '@/api/types';
 import { golden2c3 } from '@/testing/podcast-fixtures-2c3';
 
 import { artworkRetryDelay } from './artwork-retry';
@@ -13,6 +14,8 @@ import {
   importFailureKey,
   importProgress,
   importRowKey,
+  liveImportRows,
+  requestEnd,
   requestStateKey,
   resolveSection,
   searchErrorCopy,
@@ -219,6 +222,55 @@ describe('import rows and requests', () => {
     ] as const) {
       expect(requestReasonKey(code)).toBe(`podcasts.requests.reason.${key}`);
     }
+  });
+});
+
+describe('follow requests read live', () => {
+  const req = (r: Partial<PodcastRequest>) => r as PodcastRequest;
+  const requests = [
+    req({ id: 1, state: 'running', library_id: 7, show_path: null }),
+    req({ id: 2, state: 'done', library_id: 7, show_path: 'Daily News' }),
+    req({ id: 3, state: 'failed', library_id: 7, show_path: null }),
+  ];
+
+  it('says how a request ended: nothing while open or not listed', () => {
+    expect(requestEnd(requests, 1)).toBeNull();
+    expect(requestEnd(requests, 9)).toBeNull();
+    expect(requestEnd(undefined, 2)).toBeNull();
+    expect(requestEnd(requests, null)).toBeNull();
+    expect(requestEnd(requests, 2)).toEqual({
+      kind: 'following',
+      libraryId: 7,
+      path: 'Daily News',
+    });
+    expect(requestEnd(requests, 3)).toEqual({ kind: 'failed' });
+  });
+
+  it("reads each queued import row's request, leaving the others as they are", () => {
+    const row = (i: number, o: Partial<OpmlImportRow>) =>
+      ({
+        outline_index: i,
+        status: 'queued',
+        feed: 'https://a.example/...',
+        private: false,
+        path: null,
+        request_id: null,
+        duplicate_of: null,
+        error: null,
+        ...o,
+      }) as OpmlImportRow;
+    const rows = [
+      row(1, { request_id: 1 }),
+      row(2, { status: 'already_queued', request_id: 2 }),
+      row(3, { request_id: 3 }),
+      row(4, { status: 'unavailable', request_id: 3 }),
+    ];
+    expect(liveImportRows(rows, requests).map((r) => [r.status, r.path])).toEqual([
+      ['queued', null],
+      ['followed', 'Daily News'],
+      ['error', null],
+      ['unavailable', null],
+    ]);
   });
 });
 

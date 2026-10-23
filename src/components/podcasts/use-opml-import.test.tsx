@@ -91,6 +91,15 @@ describe('useOpmlImport', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.myPodcasts('c1') });
   });
 
+  it('reads the follow requests again for rows already queued elsewhere', async () => {
+    mockClient.importOpml.mockResolvedValue(answer([row(0, 'already_queued')]));
+    const invalidate = jest.spyOn(qc, 'invalidateQueries');
+    const { result } = await mount();
+    await act(async () => result.current.start(file()));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.myPodcasts('c1') });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.podcastShows('c1', 7) });
+  });
+
   it('reads the follow requests through the shared cache entry between waves', async () => {
     mockClient.importOpml
       .mockResolvedValueOnce(answer([row(0, 'queued'), row(1, 'limited')]))

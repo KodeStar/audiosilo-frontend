@@ -9,7 +9,7 @@ import { mayActFor } from '@/stores/profiles';
 
 import { OPML_MAX_BYTES } from './find-shows-model';
 import type { PickedOpml } from './opml-pick';
-import { OpmlWaves, type WaveState } from './opml-waves';
+import { isQueuedRow, OpmlWaves, type WaveState } from './opml-waves';
 
 /** An import the page could not start: the file is over the limit, or could not be
  * read. */
@@ -89,13 +89,15 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
         mayAct: () => mayActFor(connectionId),
         onChange: setState,
         // A followed row is in the show list and the followed shows now; a queued one is a
-        // new follow request (the show list follows when it ends done: `myPodcastsQuery`).
+        // follow request (the show list follows when it ends done: `myPodcastsQuery`). An
+        // already queued one may be one the cache has not seen (another device's), and the
+        // panel reads every queued row's request live, so either reads the requests again.
         onWave: ({ rows }) => {
           const followed = rows.some((r) => r.status === 'followed');
           if (followed) {
             void qc.invalidateQueries({ queryKey: qk.podcastShows(connectionId, libraryId) });
           }
-          if (followed || rows.some((r) => r.status === 'queued')) {
+          if (followed || rows.some(isQueuedRow)) {
             void qc.invalidateQueries({ queryKey: qk.myPodcasts(connectionId) });
           }
         },
