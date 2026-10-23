@@ -128,7 +128,10 @@ describe('episodeRowState', () => {
     expect(episodeRowState(podcastEpisode(), null, true)).toEqual({ kind: 'ready' });
     expect(episodeRowState(absent, null, true)).toEqual({ kind: 'onDemand' });
     // A server that cannot fetch it: not available.
-    expect(episodeRowState(absent, null, false)).toEqual({ kind: 'unavailable' });
+    expect(episodeRowState(absent, null, false)).toEqual({
+      kind: 'unavailable',
+      code: 'bridge_unavailable',
+    });
   });
 
   it("follows the list's batched status", () => {
@@ -140,22 +143,40 @@ describe('episodeRowState', () => {
     );
     expect(episodeRowState({ ...absent, fetch: wire2b.failed }, null, true)).toEqual({
       kind: 'failed',
+      code: wire2b.failed.error?.code ?? null,
     });
     expect(
       episodeRowState({ ...absent, fetch: fetchStatus({ state: 'unavailable' }) }, null, true),
-    ).toEqual({ kind: 'unavailable' });
+    ).toEqual({ kind: 'unavailable', code: null });
+    expect(
+      episodeRowState(
+        {
+          ...absent,
+          fetch: fetchStatus({
+            state: 'unavailable',
+            error: { code: 'library_not_writable', message: 'read-only mount' },
+          }),
+        },
+        null,
+        true,
+      ),
+    ).toEqual({ kind: 'unavailable', code: 'library_not_writable' });
   });
 
   it("prefers the player's own fetch of the episode", () => {
-    const waiting = { phase: 'waiting' as const, status: fetchStatus({ bytes_received: 500 }) };
+    const waiting = {
+      phase: 'waiting' as const,
+      status: fetchStatus({ bytes_received: 500 }),
+      code: null,
+    };
     expect(episodeRowState(absent, waiting, true)).toEqual({ kind: 'getting', percent: 50 });
-    expect(episodeRowState(absent, { phase: 'refused', status: null }, true)).toEqual({
-      kind: 'failed',
-    });
-    expect(episodeRowState(absent, { phase: 'unavailable', status: null }, true)).toEqual({
-      kind: 'unavailable',
-    });
-    expect(episodeRowState(absent, { phase: 'probing', status: null }, true)).toEqual({
+    expect(
+      episodeRowState(absent, { phase: 'refused', status: null, code: 'fetch_limit' }, true),
+    ).toEqual({ kind: 'failed', code: 'fetch_limit' });
+    expect(
+      episodeRowState(absent, { phase: 'unavailable', status: null, code: 'module_off' }, true),
+    ).toEqual({ kind: 'unavailable', code: 'module_off' });
+    expect(episodeRowState(absent, { phase: 'probing', status: null, code: null }, true)).toEqual({
       kind: 'getting',
       percent: null,
     });

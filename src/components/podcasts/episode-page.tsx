@@ -46,7 +46,7 @@ import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
-import { episodeMarks, episodeMetaLine, episodeRowState } from './podcast-model';
+import { episodeMarks, episodeMetaLine, episodeRowState, fetchReasonKey } from './podcast-model';
 
 const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 
@@ -173,6 +173,11 @@ function EpisodeBody({
     new Date(),
   );
   const marks = episodeMarks(episode, t);
+  // Why it can't play (or wasn't fetched), beside the disabled Play or Try again.
+  const reason =
+    (state.kind === 'unavailable' || state.kind === 'failed') && !loaded
+      ? t(fetchReasonKey(state.code))
+      : null;
 
   const primary =
     state.kind === 'failed' && !loaded ? (
@@ -223,6 +228,7 @@ function EpisodeBody({
               variant="link"
               title={showTitle}
               onPress={() => openPodcastShow(cid, libraryId, episode.show_path)}
+              className={phone ? 'self-center' : 'self-start'}
               testID="episode-show-link"
             />
             <Text variant="display" className={phone ? 'text-center' : undefined}>
@@ -238,7 +244,22 @@ function EpisodeBody({
                 ))}
               </View>
             ) : null}
-            <View className="flex-row items-center gap-3 pt-2">{primary}</View>
+            <View
+              className={
+                phone ? 'items-center gap-2 pt-2' : 'flex-row flex-wrap items-center gap-3 pt-2'
+              }
+            >
+              {primary}
+              {reason ? (
+                <Text
+                  variant="caption"
+                  className={phone ? 'text-center' : 'min-w-0 flex-1'}
+                  testID="episode-page-reason"
+                >
+                  {reason}
+                </Text>
+              ) : null}
+            </View>
           </View>
         </View>
         {episode.timeline_changed === true && (progress?.position ?? 0) > 0 ? (

@@ -134,4 +134,25 @@ describe('EpisodeRow', () => {
       }),
     );
   });
+
+  it('says why it is not available or could not be got', async () => {
+    await renderRow(podcastEpisode({ downloaded: false }), { canFetch: false });
+    expect(screen.getByTestId('episode-reason').props.children).toBe(
+      "Your server can't download episodes right now.",
+    );
+    await renderRow(
+      podcastEpisode({
+        downloaded: false,
+        fetch: fetchStatus({
+          state: 'unavailable',
+          error: { code: 'library_not_writable', message: 'read-only' },
+        }),
+      }),
+    );
+    expect(screen.getByTestId('episode-reason').props.children).toBe(
+      "Your server can't save episodes to this library.",
+    );
+    await renderRow(podcastEpisode());
+    expect(screen.queryByTestId('episode-reason')).toBeNull();
+  });
 });

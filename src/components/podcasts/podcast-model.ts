@@ -129,42 +129,43 @@ export type EpisodeRowState =
   | { kind: 'ready' }
   | { kind: 'onDemand' }
   | { kind: 'getting'; percent: number | null }
-  | { kind: 'failed' }
-  | { kind: 'unavailable' };
+  | { kind: 'failed'; code: string | null }
+  | { kind: 'unavailable'; code: string | null };
 
 /**
  * What an episode row says about its file: on the server (Ready), fetched when played
  * (Plays on demand), on its way (Getting it, with the share when known), or stopped
- * (Couldn't get it, Not available now). `pending` is the player's fetch of THIS episode,
+ * (Couldn't get it, Not available now, with the server's `code` for why: `fetchReasonKey`;
+ * a server that can't fetch at all reads as `bridge_unavailable`). `pending` is the player's fetch of THIS episode,
  * which knows more than the list's batched `fetch`; `canFetch` is the server's
  * `podcast_fetch` (an episode not on a server that can't fetch it is not available).
  */
 export function episodeRowState(
   ep: Pick<PodcastEpisode, 'downloaded' | 'fetch'>,
-  pending: Pick<PendingEpisodeFetch, 'phase' | 'status'> | null,
+  pending: Pick<PendingEpisodeFetch, 'phase' | 'status' | 'code'> | null,
   canFetch: boolean | undefined,
 ): EpisodeRowState {
   if (pending) {
     switch (pending.phase) {
       case 'failed':
       case 'refused':
-        return { kind: 'failed' };
+        return { kind: 'failed', code: pending.code };
       case 'unavailable':
-        return { kind: 'unavailable' };
+        return { kind: 'unavailable', code: pending.code };
       default:
         return { kind: 'getting', percent: fetchProgress(pending.status).percent };
     }
   }
   if (ep.downloaded) return { kind: 'ready' };
-  if (canFetch === false) return { kind: 'unavailable' };
+  if (canFetch === false) return { kind: 'unavailable', code: 'bridge_unavailable' };
   switch (ep.fetch?.state) {
     case 'queued':
     case 'fetching':
       return { kind: 'getting', percent: fetchProgress(ep.fetch).percent };
     case 'failed':
-      return { kind: 'failed' };
+      return { kind: 'failed', code: ep.fetch.error?.code ?? null };
     case 'unavailable':
-      return { kind: 'unavailable' };
+      return { kind: 'unavailable', code: ep.fetch.error?.code ?? null };
     default:
       return { kind: 'onDemand' };
   }

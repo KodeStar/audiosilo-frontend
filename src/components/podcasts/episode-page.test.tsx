@@ -113,6 +113,24 @@ describe('EpisodePage', () => {
     expect(screen.getByTestId('episode-page-play').props.accessibilityState).toMatchObject({
       disabled: true,
     });
+    // Beside it, why.
+    expect(screen.getByTestId('episode-page-reason').props.children).toBe(
+      "Your server can't download episodes right now.",
+    );
+  });
+
+  it("says why the server couldn't get it, beside Try again", async () => {
+    mockFetchStatus = { ...wire2b.failed, error: { code: 'too_large', message: 'big' } };
+    await mount();
+    expect(screen.getByTestId('episode-page-retry')).toBeTruthy();
+    expect(screen.getByTestId('episode-page-reason').props.children).toBe(
+      'This episode is too large for your server to keep.',
+    );
+  });
+
+  it('gives no reason while it can play', async () => {
+    await mount();
+    expect(screen.queryByTestId('episode-page-reason')).toBeNull();
   });
 
   it('notes a changed timeline only under a saved place', async () => {

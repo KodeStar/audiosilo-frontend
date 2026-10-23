@@ -185,8 +185,15 @@ function Strip({ pending, className }: { pending: PendingEpisodeFetch; className
         <Text variant="label" numberOfLines={1}>
           {pending.title}
         </Text>
-        <Text variant="caption" numberOfLines={1} style={tabularNums} aria-live="polite">
-          {isStopped(pending.phase) ? copy.heading : copy.line}
+        {/* Stopped: why (the reason), not only that it stopped. */}
+        <Text
+          variant="caption"
+          numberOfLines={isStopped(pending.phase) ? 2 : 1}
+          style={tabularNums}
+          aria-live="polite"
+          testID="episode-fetch-strip-line"
+        >
+          {copy.line}
         </Text>
         {copy.fraction !== null ? (
           <ProgressBar fraction={copy.fraction} minPercent={2} className="mt-0.5" />

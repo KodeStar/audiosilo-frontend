@@ -116,4 +116,12 @@ describe('EpisodeFetchStrip', () => {
     await fireEvent.press(screen.getByTestId('episode-fetch-strip-retry'));
     expect(mockRetry).toHaveBeenCalledTimes(1);
   });
+
+  it('says why once it stopped, not only that it did', async () => {
+    useEpisodeFetch.setState({ pending: pending({ phase: 'unavailable', code: 'module_off' }) });
+    await render(<EpisodeFetchStrip />);
+    expect(screen.getByTestId('episode-fetch-strip-line').props.children).toBe(
+      'Podcasts are turned off on this server.',
+    );
+  });
 });
