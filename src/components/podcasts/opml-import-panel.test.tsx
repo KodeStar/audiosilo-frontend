@@ -38,6 +38,9 @@ function importer(over: Partial<OpmlImport> = {}): OpmlImport {
     unreadable: jest.fn(),
     stop: jest.fn(),
     retry: jest.fn(),
+    retries: {},
+    canRetryRow: () => false,
+    retryRow: jest.fn(),
     ...over,
   };
 }
@@ -212,10 +215,75 @@ describe('OpmlImportPanel', () => {
     expect(within(screen.getByTestId('opml-row-2')).getByText('Following')).toBeTruthy();
     expect(within(screen.getByTestId('opml-row-2')).getByText('Daily News')).toBeTruthy();
     expect(within(screen.getByTestId('opml-row-3')).getByText("Couldn't add")).toBeTruthy();
-    expect(screen.getByTestId('opml-status').props.children).toBe('All done.');
+    // Not "All done." with a row that could not be added (R-4).
+    expect(screen.getByTestId('opml-status').props.children).toBe(
+      "Done. 1 show couldn't be added. You can try it again below.",
+    );
     expect(screen.getByTestId('opml-summary').props.children).toBe(
       '2 of 3 shows followed or being added',
     );
+  });
+
+  it("says an import's own rate limit in words of its own (BRIDGE-08)", async () => {
+    jest.useFakeTimers({ now: 0 });
+    try {
+      await render(
+        <OpmlImportPanel
+          opml={importer({ state: state({ kind: 'waitingTime', at: 25_000, why: 'rateLimited' }) })}
+          connectionId="c1"
+          libraryId={7}
+        />,
+      );
+      expect(screen.getByTestId('opml-status').props.children).toBe(
+        'Imports can run about once every 30 seconds. Trying again in 25 s.',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('says why a row could not be added, with its own Try again (BRIDGE-01)', async () => {
+    const failed = row(1, {
+      status: 'error',
+      request_id: 9,
+      error: { code: 'recently_failed', message: 'x' },
+    });
+    const retryRow = jest.fn();
+    const opml = importer({
+      state: state({ kind: 'done' }, [failed, row(2), row(3, { status: 'cancelled' })]),
+      canRetryRow: (r) => r.outline_index !== 2,
+      retryRow,
+    });
+    const view = await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(screen.getByTestId('opml-row-reason-1').props.children).toBe(
+      "It couldn't be added a short while ago.",
+    );
+    expect(within(screen.getByTestId('opml-row-3')).getByText('Cancelled')).toBeTruthy();
+    expect(screen.queryByTestId('opml-row-retry-2')).toBeNull();
+    await fireEvent.press(screen.getByTestId('opml-row-retry-1'));
+    expect(retryRow).toHaveBeenCalledWith(failed);
+
+    // Its request's own reason, once the list holds it.
+    mockRequests = [{ id: 9, state: 'failed', error: { code: 'not_a_feed', message: 'x' } }];
+    await view.rerender(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(screen.getByTestId('opml-row-reason-1').props.children).toBe(
+      "That address isn't a podcast feed.",
+    );
+  });
+
+  it("shows a row's Try again answer over the wave's", async () => {
+    const failed = row(1, { status: 'error', error: { code: 'recently_failed', message: 'x' } });
+    const opml = importer({
+      state: state({ kind: 'done' }, [failed]),
+      retries: { 1: { kind: 'answered', row: { ...failed, status: 'followed', error: null } } },
+      // As the hook's: a row that could not be added.
+      canRetryRow: (r) => r.status === 'error' || r.status === 'cancelled',
+    });
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(within(screen.getByTestId('opml-row-1')).getByText('Following')).toBeTruthy();
+    expect(screen.queryByTestId('opml-row-reason-1')).toBeNull();
+    expect(screen.queryByTestId('opml-row-retry-1')).toBeNull();
+    expect(screen.getByTestId('opml-status').props.children).toBe('All done.');
   });
 
   it('counts the shows that could not be added and offers Try again for them', async () => {

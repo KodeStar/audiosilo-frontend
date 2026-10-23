@@ -12,14 +12,18 @@ import { useOpen } from '@/lib/open';
 
 import { feedAddressProblem, followByUrlErrorKey } from './find-shows-model';
 
-type Outcome = { kind: 'following'; show: PodcastShow } | { kind: 'adding' };
+/** What the follow answered. `publicAlready`: asked as a private feed, but the library
+ * already had the show as a public one, so the follow joined it as it is. */
+type Outcome =
+  { kind: 'following'; show: PodcastShow; publicAlready: boolean } | { kind: 'adding' };
 
 /**
  * Follow a feed by its address (Bridge Phase 2d-2): a pasted RSS address, checked here
  * first (http(s) with a host, at most 2,048 bytes) so a bad one sends nothing, and a
  * Private feed switch for a feed made for the listener alone (sent as `private: true`
- * only when on). A show the library has is followed at once (Open show); a new one is a
- * request the page's list follows until it is added.
+ * only when on). A show the library has is followed at once (Open show), and the page
+ * says so when it was asked for as private but the library has it as a public feed; a new
+ * one is a request the page's list follows until it is added.
  */
 export function FollowByUrl({
   connectionId,
@@ -46,11 +50,16 @@ export function FollowByUrl({
     }
     setError(null);
     setOutcome(null);
-    follow.mutateAsync({ libraryId, feedUrl: address.trim(), private: isPrivate }).then(
+    const askedPrivate = isPrivate;
+    follow.mutateAsync({ libraryId, feedUrl: address.trim(), private: askedPrivate }).then(
       (answer) => {
         setOutcome(
           answer.state === 'following'
-            ? { kind: 'following', show: answer.show }
+            ? {
+                kind: 'following',
+                show: answer.show,
+                publicAlready: askedPrivate && !answer.show.private,
+              }
             : { kind: 'adding' },
         );
         setAddress('');
@@ -108,8 +117,13 @@ export function FollowByUrl({
       />
       {outcome?.kind === 'following' ? (
         <View className="flex-row flex-wrap items-center gap-3" accessibilityLiveRegion="polite">
-          <Text variant="body">
-            {t('podcasts.find.address.following', { title: outcome.show.title })}
+          <Text variant="body" testID="follow-by-url-following">
+            {t(
+              outcome.publicAlready
+                ? 'podcasts.find.address.followingPublic'
+                : 'podcasts.find.address.following',
+              { title: outcome.show.title },
+            )}
           </Text>
           <Button
             variant="outline"

@@ -7,6 +7,7 @@ import { isOpenRequest, requestShow } from '@/lib/podcast-requests';
 import { utf8 } from '@/lib/sha256';
 
 import { isQueuedRow } from './opml-waves';
+import { requestReasonKey } from './podcast-model';
 
 /**
  * Find shows' pure rules (Bridge Phase 2d-2): which sections a server offers, the search
@@ -88,6 +89,10 @@ export function searchErrorCopy(e: unknown): { key: ParseKeys; seconds?: number 
       return { key: 'podcasts.find.searchError.invalidQuery' };
     case 'invalid_country':
       return { key: 'podcasts.find.searchError.invalidCountry' };
+    // On search this is the app, not a library share: a client the server shows no
+    // podcasts to (an older or unidentified player).
+    case 'no_library_access':
+      return { key: 'podcasts.find.searchError.noAccess' };
     default:
       return { key: accountRefusalKey(apiErrorKind(e)) ?? 'podcasts.find.searchError.other' };
   }
@@ -193,8 +198,34 @@ export function importRowKey(row: Pick<OpmlImportRow, 'status'>): ParseKeys {
       return 'podcasts.import.row.limited';
     case 'unavailable':
       return 'podcasts.import.row.unavailable';
+    case 'cancelled':
+      return 'podcasts.import.row.cancelled';
     default:
       return 'podcasts.import.row.error';
+  }
+}
+
+/** Why an import row could not be added, or null when it says nothing more: an `error`
+ * row in the words of its follow request's failure when the requests list it (a queued
+ * row that ended, or a `recently_failed` one naming the failed request), else by the row's
+ * own code. */
+export function importRowReasonKey(
+  row: Pick<OpmlImportRow, 'status' | 'error' | 'request_id'>,
+  requests: readonly PodcastRequest[] | undefined,
+): ParseKeys | null {
+  if (row.status !== 'error') return null;
+  const request =
+    row.request_id === null ? undefined : requests?.find((r) => r.id === row.request_id);
+  if (request?.error) return requestReasonKey(request.error.code);
+  switch (row.error?.code) {
+    case 'recently_failed':
+      return 'podcasts.import.reason.recentlyFailed';
+    case 'privacy_conflict':
+      return 'podcasts.find.followError.privacyConflict';
+    case 'no_library_access':
+      return 'podcasts.find.refusal.noAccess';
+    default:
+      return row.error ? requestReasonKey(row.error.code) : null;
   }
 }
 
@@ -227,22 +258,33 @@ export function requestStateKey(r: Pick<PodcastRequest, 'state'>): ParseKeys {
 }
 
 /** How a follow request ended, read from the live follow requests: `null` while it is
- * open or not listed (what the follow's answer said stands). */
-type RequestEnd = { kind: 'following'; libraryId: number; path: string } | { kind: 'failed' };
+ * open, or before the requests have been read (what the follow's answer said stands);
+ * `unknown` once a read list no longer holds it (the server lists a week's requests, so an
+ * old one is gone without saying how it ended). */
+type RequestEnd =
+  | { kind: 'following'; libraryId: number; path: string }
+  | { kind: 'failed'; error: PodcastRequest['error'] }
+  | { kind: 'cancelled' }
+  | { kind: 'unknown' };
 
 export function requestEnd(
   requests: readonly PodcastRequest[] | undefined,
   id: number | null | undefined,
 ): RequestEnd | null {
-  if (id === null || id === undefined) return null;
-  const r = requests?.find((x) => x.id === id);
-  if (!r || isOpenRequest(r)) return null;
+  if (id === null || id === undefined || !requests) return null;
+  const r = requests.find((x) => x.id === id);
+  if (!r) return { kind: 'unknown' };
+  if (isOpenRequest(r)) return null;
   const show = requestShow(r);
-  return show ? { kind: 'following', ...show } : { kind: 'failed' };
+  if (show) return { kind: 'following', ...show };
+  return r.state === 'cancelled' ? { kind: 'cancelled' } : { kind: 'failed', error: r.error };
 }
 
 /** An import's rows with each queued one's request read live: followed once it ended
- * done, an error once it ended otherwise. */
+ * done, cancelled, or an error (with the request's error) once it ended otherwise. A
+ * request the list does not hold stands as the import's answer said: the import's own
+ * requests are newer than any list's cut-off, and a list read before a wave's requests
+ * landed must not end them. */
 export function liveImportRows(
   rows: readonly OpmlImportRow[],
   requests: readonly PodcastRequest[] | undefined,
@@ -250,12 +292,23 @@ export function liveImportRows(
   return rows.map((r) => {
     if (!isQueuedRow(r)) return r;
     const end = requestEnd(requests, r.request_id);
-    if (!end) return r;
-    return end.kind === 'following'
-      ? { ...r, status: 'followed', path: r.path ?? end.path }
-      : { ...r, status: 'error' };
+    switch (end?.kind) {
+      case 'following':
+        return { ...r, status: 'followed', path: r.path ?? end.path };
+      case 'cancelled':
+        return { ...r, status: 'cancelled' };
+      case 'failed':
+        return { ...r, status: 'error', error: end.error ?? r.error };
+      default:
+        return r;
+    }
   });
 }
+
+/** How many rows of an import could not be added (`error`, a follow that ended without
+ * the show): each has its own Try again. */
+export const failedRows = (rows: readonly Pick<OpmlImportRow, 'status'>[]) =>
+  rows.filter((r) => r.status === 'error').length;
 
 /** Whether any row of an import is still being added. */
 export const stillAdding = (rows: readonly OpmlImportRow[]) => rows.some(isQueuedRow);

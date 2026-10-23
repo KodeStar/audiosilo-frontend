@@ -2,6 +2,7 @@ import i18n from '@/i18n';
 import { fetchStatus, podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
 
 import {
+  canRetryFetch,
   defaultEpisodeOrder,
   episodeAsBook,
   episodeLabel,
@@ -33,6 +34,21 @@ describe('fetchReasonKey', () => {
     expect(fetchReasonKey('http_404')).toBe('podcasts.fetch.reason.other');
     expect(fetchReasonKey(null)).toBe('podcasts.fetch.reason.other');
     expect(fetchReasonKey(undefined)).toBe('podcasts.fetch.reason.other');
+  });
+});
+
+describe('canRetryFetch (R-23)', () => {
+  it('offers Try again for a failed fetch, or one unavailable for a reason this build cannot name', () => {
+    expect(canRetryFetch({ kind: 'failed', code: 'http_500' })).toBe(true);
+    expect(canRetryFetch({ kind: 'unavailable', code: 'something_new' })).toBe(true);
+    expect(canRetryFetch({ kind: 'unavailable', code: null })).toBe(true);
+  });
+
+  it('offers none for a known reason, which needs a person first, nor for a playable episode', () => {
+    for (const code of ['module_off', 'bridge_unavailable', 'library_not_writable']) {
+      expect(canRetryFetch({ kind: 'unavailable', code })).toBe(false);
+    }
+    expect(canRetryFetch({ kind: 'ready' })).toBe(false);
   });
 });
 

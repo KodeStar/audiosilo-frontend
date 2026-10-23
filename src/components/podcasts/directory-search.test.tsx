@@ -205,6 +205,8 @@ describe('DirectorySearch', () => {
       state: 'subscribing',
       request: { id: 3 },
     } as unknown as PodcastFollowResult);
+    // The follow put its request in the cached list (`storeFollowByUrl`).
+    mockRequests = [{ id: 3, state: 'queued', library_id: 7, show_path: null }];
     await mount();
     await search('history');
     await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
@@ -227,7 +229,10 @@ describe('DirectorySearch', () => {
     mockFollow
       .mockResolvedValueOnce({ state: 'subscribing', request: { id: 3 } })
       .mockResolvedValueOnce({ state: 'subscribing', request: { id: 4 } });
-    mockRequests = [];
+    mockRequests = [
+      { id: 3, state: 'running', library_id: 7, show_path: null },
+      { id: 4, state: 'queued', library_id: 7, show_path: null },
+    ];
     await mount();
     await search('history');
     await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
@@ -245,6 +250,36 @@ describe('DirectorySearch', () => {
     expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'History Hour');
     expect(screen.getByTestId('discovery-result-failed').props.children).toBe("Couldn't add");
     // A failed one can be followed again.
+    expect(screen.getByRole('button', { name: 'Follow Other' })).toBeTruthy();
+  });
+
+  it('says Cancelled for a request cancelled, and drops one the list no longer holds (R-24)', async () => {
+    mockSearch = {
+      data: {
+        provider: 'itunes',
+        query: 'h',
+        country: 'GB',
+        results: [result(), result({ feed_url: 'https://b.example/feed', title: 'Other' })],
+      },
+    };
+    mockFollow
+      .mockResolvedValueOnce({ state: 'subscribing', request: { id: 3 } })
+      .mockResolvedValueOnce({ state: 'subscribing', request: { id: 4 } });
+    mockRequests = [
+      { id: 3, state: 'queued', library_id: 7, show_path: null },
+      { id: 4, state: 'queued', library_id: 7, show_path: null },
+    ];
+    await mount();
+    await search('history');
+    await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Follow Other' }));
+    expect(await screen.findAllByTestId('discovery-result-adding')).toHaveLength(2);
+
+    // 3 was cancelled; 4 was pruned from the list (days later): no longer "Adding".
+    mockRequests = [{ id: 3, state: 'cancelled', library_id: 7, show_path: null }];
+    await fireEvent.changeText(screen.getByTestId('directory-search-input'), 'history ');
+    expect(screen.queryByTestId('discovery-result-adding')).toBeNull();
+    expect(screen.getByText('Cancelled')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Follow Other' })).toBeTruthy();
   });
 

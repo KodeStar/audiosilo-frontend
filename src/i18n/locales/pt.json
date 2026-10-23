@@ -10,7 +10,12 @@
     "off": "Desativado",
     "resumeChapter": "Retomar o capítulo {{chapter}}",
     "resumeTitled": "Retomar {{title}}",
-    "tooManyTries": "Demasiadas tentativas. Aguarde alguns minutos e tente novamente."
+    "tooManyTries": "Demasiadas tentativas. Aguarde alguns minutos e tente novamente.",
+    "notFound": {
+      "title": "Página não encontrada",
+      "body": "Esta ligação não leva a lugar nenhum no AudioSilo. Talvez seja antiga ou esteja escrita errado.",
+      "home": "Ir para o Início"
+    }
   },
   "settings": {
     "title": "Definições",
@@ -358,7 +363,7 @@
     },
     "scan": {
       "closeLabel": "Fechar o leitor",
-      "invalidCode": "Esse código QR não é um código de emparelhamento do AudioSilo.",
+      "invalidCode": "Esse código QR não é um código de emparelhamento nem de convite do AudioSilo.",
       "permissionTitle": "É necessário acesso à câmara",
       "permissionDenied": "O AudioSilo precisa de acesso à câmara para ler o código QR de emparelhamento do teu servidor.",
       "tryAgain": "Tentar novamente",
@@ -382,7 +387,9 @@
       "open": "Tenho uma ligação de emparelhamento",
       "label": "Ligação de emparelhamento",
       "connect": "Ligar",
-      "invalid": "Isto não é uma ligação de emparelhamento do AudioSilo. Estas ligações são como https://<servidor>/web/connect?token=... ou audiosilo://connect?..."
+      "invalid": "Isto não é uma ligação de emparelhamento do AudioSilo. Estas ligações são como https://<servidor>/web/connect?token=... ou audiosilo://connect?...",
+      "otherServer": "Esta ligação é de outro servidor, e esta página só se liga ao seu próprio. Abra a ligação para se ligar lá.",
+      "openLink": "Abrir a ligação"
     },
     "memberNotReady": "Este dispositivo ainda não consegue iniciar a sessão dessa pessoa. Tente novamente daqui a pouco."
   },
@@ -1182,7 +1189,9 @@
       "startsAt": "começa em {{time}}",
       "community": "Capítulos da base de dados da comunidade AudioSilo",
       "generated": "Capítulos encontrados na narração neste servidor",
-      "id3Chap": "Capítulos do arquivo do episódio"
+      "id3Chap": "Capítulos do arquivo do episódio",
+      "wholeEpisode": "O episódio inteiro",
+      "partsTitleEpisode": "Este episódio não tem marcas de capítulo"
     },
     "details": {
       "title": "Detalhes",
@@ -1774,7 +1783,10 @@
     "autoPlayHint": "Inicia o primeiro livro de A seguir, ou o seguinte da série.",
     "buttonLabel_one": "A seguir, {{count}} livro",
     "buttonLabel_other": "A seguir, {{count}} livros",
-    "buttonLabelEmpty": "A seguir"
+    "buttonLabelEmpty": "A seguir",
+    "autoPlayEpisode": "Reproduzir A seguir automaticamente",
+    "autoPlayEpisodeHint": "Quando este episódio terminar, o primeiro item de A seguir começa.",
+    "nextEpisode": "Próximo episódio"
   },
   "series": {
     "eyebrow": "Série",
@@ -2186,7 +2198,9 @@
       "unsupported": "O servidor ainda não suporta Cast. Atualizar o AudioSilo no servidor acrescenta-o.",
       "local-address": "A app chega ao servidor pelo endereço deste próprio dispositivo (localhost), que um dispositivo Cast não consegue alcançar. Liga-te ao servidor pelo endereço de rede.",
       "codec": "O formato de áudio não toca em dispositivos Cast e o servidor não o consegue converter.",
-      "no-connection": "O servidor não tem sessão iniciada neste dispositivo. Inicia sessão de novo para o transmitir."
+      "no-connection": "O servidor não tem sessão iniciada neste dispositivo. Inicia sessão de novo para o transmitir.",
+      "titleEpisode": "Este episódio não pode ser transmitido",
+      "episode": "Episódios de podcast ainda não podem ser transmitidos, então este fica neste dispositivo."
     },
     "failed": {
       "title": "Não foi possível começar a transmitir",
@@ -2661,7 +2675,7 @@
         "import": "Importar uma lista"
       },
       "unavailable": "Não é possível adicionar programas agora",
-      "unavailableHint": "Talvez os podcasts estejam desativados neste servidor, ou ele não possa adicionar programas no momento. Tente mais tarde.",
+      "unavailableHint": "Pergunte a quem administra seu servidor: talvez os podcasts estejam desativados lá, ou ele não possa adicionar programas no momento.",
       "kid": "Peça a um adulto para adicionar programas.",
       "demo": "Na demonstração não é possível adicionar programas.",
       "search": {
@@ -2701,7 +2715,8 @@
         "off": "A pesquisa de programas está desativada neste servidor.",
         "invalidQuery": "Use de 2 a 200 caracteres.",
         "invalidCountry": "O diretório não conhece a região deste dispositivo.",
-        "other": "Não foi possível pesquisar. Tente de novo."
+        "other": "Não foi possível pesquisar. Tente de novo.",
+        "noAccess": "Este app não pode usar podcasts neste servidor. Atualize o app e tente de novo."
       },
       "refusal": {
         "moduleOff": "Os podcasts estão desativados neste servidor.",
@@ -2729,7 +2744,8 @@
         "notHttp": "Use um endereço que comece com http:// ou https://.",
         "tooLong": "Esse endereço é longo demais.",
         "following": "Você segue {{title}}.",
-        "adding": "Adicionando o programa. Ele aparece em Programas quando estiver pronto."
+        "adding": "Adicionando o programa. Ele aparece em Programas quando estiver pronto.",
+        "followingPublic": "Você segue {{title}}. Ele já estava nesta biblioteca como feed público, então não é privado."
       }
     },
     "requests": {
@@ -2749,7 +2765,12 @@
         "notAFeed": "Esse endereço não é um feed de podcast.",
         "gone": "O feed não existe mais.",
         "followAgain": "Siga o feed de novo para terminar de adicioná-lo.",
-        "other": "Algo deu errado ao adicioná-lo."
+        "other": "Algo deu errado ao adicioná-lo.",
+        "notFound": "Nada foi encontrado nesse endereço.",
+        "denied": "O feed recusou o pedido. Talvez ele exija login.",
+        "localAddress": "Esse endereço está em uma rede local. Quem administra seu servidor pode permiti-lo.",
+        "tooLarge": "Esse feed é grande demais.",
+        "feedError": "O servidor do feed respondeu com um erro. Tente mais tarde."
       }
     },
     "import": {
@@ -2775,7 +2796,10 @@
         "stalled": "O próximo grupo não conseguiu começar. Tente mais tarde.",
         "stoppedUser": "Parado. Os programas já adicionados ficam.",
         "stoppedBusy": "Seu servidor continuou ocupado. Tente mais tarde.",
-        "stoppedCantAct": "Parado, porque agora outra pessoa está ouvindo neste dispositivo."
+        "stoppedCantAct": "Parado, porque agora outra pessoa está ouvindo neste dispositivo.",
+        "rateLimited": "É possível importar mais ou menos uma vez a cada 30 segundos. Nova tentativa em {{seconds}} s.",
+        "doneFailed_one": "Pronto. {{count}} programa não pôde ser adicionado. Você pode tentar de novo abaixo.",
+        "doneFailed_other": "Pronto. {{count}} programas não puderam ser adicionados. Você pode tentar cada um de novo abaixo."
       },
       "fail": {
         "notOpml": "Esse arquivo não é uma lista OPML.",
@@ -2790,8 +2814,13 @@
         "invalid": "Sem endereço de feed utilizável",
         "limited": "Esperando o próximo grupo",
         "unavailable": "Não pode ser adicionado agora",
-        "error": "Não foi adicionado"
-      }
+        "error": "Não foi adicionado",
+        "cancelled": "Cancelado"
+      },
+      "reason": {
+        "recentlyFailed": "Não foi possível adicioná-lo há pouco."
+      },
+      "tryRowAgain": "Tentar a entrada {{index}} de novo"
     },
     "export": {
       "action": "Exportar meus programas",

@@ -9,11 +9,13 @@ import {
   checkErrorKey,
   cleanSearchText,
   exportErrorKey,
+  failedRows,
   feedAddressProblem,
   followByUrlErrorKey,
   importFailureKey,
   importProgress,
   importRowKey,
+  importRowReasonKey,
   liveImportRows,
   requestEnd,
   requestStateKey,
@@ -99,8 +101,9 @@ describe('refusals in the listener words', () => {
     expect(searchErrorCopy(refusal(404, 'module_off')).key).toBe('podcasts.find.refusal.moduleOff');
     expect(searchErrorCopy(refusal(403, 'kid_account')).key).toBe('podcasts.find.refusal.kid');
     expect(searchErrorCopy(refusal(403, 'demo_account')).key).toBe('podcasts.find.refusal.demo');
+    // A search refused for the library is about searching, not adding (R-27).
     expect(searchErrorCopy(refusal(403, 'no_library_access')).key).toBe(
-      'podcasts.find.refusal.noAccess',
+      'podcasts.find.searchError.noAccess',
     );
     expect(t('podcasts.find.searchError.rateLimitedWait', { seconds: 6 })).toBe(
       "You've searched a lot just now. Try again in 6 s.",
@@ -213,10 +216,17 @@ describe('import rows and requests', () => {
       ['not_a_feed', 'notAFeed'],
       ['not_a_podcast', 'notAFeed'],
       ['gone', 'gone'],
-      ['http_404', 'gone'],
+      // A first follow's 404 is an address with nothing there, never a feed that left
+      // (BRIDGE-17); the feed's own refusals and errors in words (BRIDGE-06).
+      ['http_404', 'notFound'],
+      ['http_401', 'denied'],
+      ['http_403', 'denied'],
+      ['http_500', 'feedError'],
+      ['http_429', 'feedError'],
+      ['blocked_address', 'localAddress'],
+      ['too_large', 'tooLarge'],
       ['request_expired', 'followAgain'],
       ['feed_secret_missing', 'followAgain'],
-      ['too_large', 'other'],
       ['bridge_lost', 'other'],
       [null, 'other'],
     ] as const) {
@@ -233,9 +243,8 @@ describe('follow requests read live', () => {
     req({ id: 3, state: 'failed', library_id: 7, show_path: null }),
   ];
 
-  it('says how a request ended: nothing while open or not listed', () => {
+  it('says how a request ended: nothing while open or not read yet', () => {
     expect(requestEnd(requests, 1)).toBeNull();
-    expect(requestEnd(requests, 9)).toBeNull();
     expect(requestEnd(undefined, 2)).toBeNull();
     expect(requestEnd(requests, null)).toBeNull();
     expect(requestEnd(requests, 2)).toEqual({
@@ -243,7 +252,27 @@ describe('follow requests read live', () => {
       libraryId: 7,
       path: 'Daily News',
     });
-    expect(requestEnd(requests, 3)).toEqual({ kind: 'failed' });
+    expect(requestEnd(requests, 3)).toEqual({ kind: 'failed', error: undefined });
+  });
+
+  it('tells a cancelled request, and one the list no longer holds, from a failed one (R-24)', () => {
+    const more = [
+      ...requests,
+      req({ id: 4, state: 'cancelled', library_id: 7, show_path: null }),
+      req({
+        id: 5,
+        state: 'failed',
+        library_id: 7,
+        show_path: null,
+        error: { code: 'http_404', message: '' },
+      }),
+    ];
+    expect(requestEnd(more, 4)).toEqual({ kind: 'cancelled' });
+    expect(requestEnd(more, 5)).toEqual({
+      kind: 'failed',
+      error: { code: 'http_404', message: '' },
+    });
+    expect(requestEnd(more, 9)).toEqual({ kind: 'unknown' });
   });
 
   it("reads each queued import row's request, leaving the others as they are", () => {
@@ -271,6 +300,81 @@ describe('follow requests read live', () => {
       ['error', null],
       ['unavailable', null],
     ]);
+  });
+
+  it("ends a queued row cancelled with its request, and keeps one whose request isn't listed", () => {
+    const row = (i: number, o: Partial<OpmlImportRow>) =>
+      ({
+        outline_index: i,
+        status: 'queued',
+        feed: 'https://a.example/...',
+        private: false,
+        path: null,
+        request_id: null,
+        duplicate_of: null,
+        error: null,
+        ...o,
+      }) as OpmlImportRow;
+    const listed = [
+      req({ id: 4, state: 'cancelled', library_id: 7, show_path: null }),
+      req({
+        id: 5,
+        state: 'failed',
+        library_id: 7,
+        show_path: null,
+        error: { code: 'not_a_feed', message: '' },
+      }),
+    ];
+    const live = liveImportRows(
+      [row(1, { request_id: 4 }), row(2, { request_id: 5 }), row(3, { request_id: 9 })],
+      listed,
+    );
+    expect(live.map((r) => r.status)).toEqual(['cancelled', 'error', 'queued']);
+    // The failed row carries its request's reason, for the row's line.
+    expect(live[1].error).toMatchObject({ code: 'not_a_feed' });
+  });
+});
+
+describe('an import row that could not be added (BRIDGE-01)', () => {
+  const row = (o: Partial<OpmlImportRow>) =>
+    ({ status: 'error', request_id: null, error: null, ...o }) as OpmlImportRow;
+  const failed = {
+    id: 8,
+    state: 'failed',
+    library_id: 7,
+    show_path: null,
+    error: { code: 'http_404', message: '' },
+  } as PodcastRequest;
+
+  it("says why: its request's own reason when the list holds it", () => {
+    expect(
+      importRowReasonKey(row({ request_id: 8, error: { code: 'recently_failed', message: '' } }), [
+        failed,
+      ]),
+    ).toBe('podcasts.requests.reason.notFound');
+  });
+
+  it("else the row's own code, in words", () => {
+    const key = (code: string) =>
+      importRowReasonKey(row({ request_id: 8, error: { code, message: '' } }), []);
+    expect(key('recently_failed')).toBe('podcasts.import.reason.recentlyFailed');
+    expect(key('privacy_conflict')).toBe('podcasts.find.followError.privacyConflict');
+    expect(key('no_library_access')).toBe('podcasts.find.refusal.noAccess');
+    expect(key('dns')).toBe('podcasts.requests.reason.unreachable');
+    expect(importRowReasonKey(row({}), undefined)).toBeNull();
+  });
+
+  it('gives no reason for a row that was added, and counts the failed ones', () => {
+    expect(importRowReasonKey(row({ status: 'followed' }), [failed])).toBeNull();
+    expect(importRowKey({ status: 'cancelled' })).toBe('podcasts.import.row.cancelled');
+    expect(
+      failedRows([
+        { status: 'error' },
+        { status: 'followed' },
+        { status: 'error' },
+        { status: 'cancelled' },
+      ]),
+    ).toBe(2);
   });
 });
 

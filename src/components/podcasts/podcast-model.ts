@@ -48,6 +48,18 @@ export function rowStateReasonKey(state: EpisodeRowState): ParseKeys | null {
     : null;
 }
 
+/** Whether a stopped fetch offers Try again (a manual ask, `retryEpisodeFetch`): a failed
+ * one, or one not available for a reason this build has no sentence for (no code, or an
+ * unknown one: asking again may well work). A known reason (the module off, no Bridge
+ * online, the library not writable, ...) needs a person first, so Play stays disabled
+ * with that reason beside it. */
+export function canRetryFetch(state: EpisodeRowState): boolean {
+  return (
+    state.kind === 'failed' ||
+    (state.kind === 'unavailable' && !(state.code && KNOWN_REASONS.has(state.code)))
+  );
+}
+
 /** How far a fetch has got: the bytes so far, the size when the server knows it, and the
  * share done (0..100, whole) when it does. */
 export function fetchProgress(status: PodcastFetchStatus | null): {
@@ -212,10 +224,13 @@ export function episodeAsBook(ep: PodcastEpisode, show: PodcastShow): Book {
 
 /** Why a follow request (`PodcastRequest.error.code`) did not finish, in the listener's
  * words (`podcasts.requests.reason.*`): the feed could not be reached (`dns`, `timeout`,
- * `tls`, `network`), is not a podcast (`not_a_feed`, `not_a_podcast`), is gone (`gone`,
- * `http_<status>`), or needs following again (`request_expired`: the server restarted
- * before the request was taken up; `feed_secret_missing`: a private feed's address was
- * lost); anything else reads generically. Never the server's English. */
+ * `tls`, `network`), is not a podcast (`not_a_feed`, `not_a_podcast`), is gone (`gone`:
+ * HTTP 410), was not found (`http_404`), refused the request (`http_401`, `http_403`),
+ * answered another error (`http_<status>`), is on a local network the server may not
+ * reach (`blocked_address`: the admin can allow it), is too large (`too_large`), or needs
+ * following again (`request_expired`: the server restarted before the request was taken
+ * up; `feed_secret_missing`: a private feed's address was lost); anything else reads
+ * generically. Never the server's English. */
 export function requestReasonKey(code: string | null | undefined): ParseKeys {
   switch (code) {
     case 'dns':
@@ -228,12 +243,21 @@ export function requestReasonKey(code: string | null | undefined): ParseKeys {
       return 'podcasts.requests.reason.notAFeed';
     case 'gone':
       return 'podcasts.requests.reason.gone';
+    case 'http_404':
+      return 'podcasts.requests.reason.notFound';
+    case 'http_401':
+    case 'http_403':
+      return 'podcasts.requests.reason.denied';
+    case 'blocked_address':
+      return 'podcasts.requests.reason.localAddress';
+    case 'too_large':
+      return 'podcasts.requests.reason.tooLarge';
     case 'request_expired':
     case 'feed_secret_missing':
       return 'podcasts.requests.reason.followAgain';
     default:
       return code?.startsWith('http_')
-        ? 'podcasts.requests.reason.gone'
+        ? 'podcasts.requests.reason.feedError'
         : 'podcasts.requests.reason.other';
   }
 }

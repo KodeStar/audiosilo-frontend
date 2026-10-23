@@ -91,7 +91,14 @@ describe('FollowRequests', () => {
   it.each([
     ['dns', "Couldn't reach the feed."],
     ['not_a_feed', "That address isn't a podcast feed."],
-    ['http_404', "The feed isn't there any more."],
+    ['gone', "The feed isn't there any more."],
+    // A first follow's 404: nothing at that address (BRIDGE-17), never a feed that left.
+    ['http_404', 'Nothing was found at that address.'],
+    ['http_403', 'The feed refused the request. It may need a login.'],
+    [
+      'blocked_address',
+      'That address is on a local network. The person who runs your server can allow it.',
+    ],
     ['request_expired', 'Follow the feed again to finish adding it.'],
     ['something_new', 'Something went wrong adding it.'],
   ])('says why one failed (%s)', async (code, copy) => {
