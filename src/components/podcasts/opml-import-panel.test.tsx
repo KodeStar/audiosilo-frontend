@@ -1,0 +1,174 @@
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+
+import type { OpmlImportRow } from '@/api/types';
+
+const mockPick = jest.fn();
+jest.mock('./opml-pick', () => ({ pickOpml: () => mockPick() }));
+
+/* eslint-disable import/first */
+import { OpmlImportPanel } from './opml-import-panel';
+import type { WaveState } from './opml-waves';
+import type { OpmlImport } from './use-opml-import';
+/* eslint-enable import/first */
+
+const row = (i: number, over: Partial<OpmlImportRow> = {}): OpmlImportRow => ({
+  outline_index: i,
+  status: 'followed',
+  feed: `https://example.com/...`,
+  private: false,
+  path: null,
+  request_id: null,
+  duplicate_of: null,
+  error: null,
+  ...over,
+});
+
+function importer(over: Partial<OpmlImport> = {}): OpmlImport {
+  return {
+    state: null,
+    problem: null,
+    fileName: null,
+    start: jest.fn(),
+    unreadable: jest.fn(),
+    stop: jest.fn(),
+    retry: jest.fn(),
+    ...over,
+  };
+}
+
+const state = (status: WaveState['status'], rows: OpmlImportRow[] = []): WaveState => ({
+  status,
+  rows,
+  waves: 1,
+});
+
+beforeEach(() => {
+  mockPick.mockReset();
+});
+
+describe('OpmlImportPanel', () => {
+  it('starts an import with the chosen file', async () => {
+    const opml = importer();
+    const picked = { name: 'subs.opml', size: 10, body: new Uint8Array(10) };
+    mockPick.mockResolvedValue(picked);
+    await render(<OpmlImportPanel opml={opml} />);
+    expect(screen.getByText('Choose a file')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('opml-choose'));
+    expect(opml.start).toHaveBeenCalledWith(picked);
+  });
+
+  it('does nothing when the picker is cancelled, and says so when it fails', async () => {
+    const opml = importer();
+    mockPick.mockResolvedValueOnce(null);
+    await render(<OpmlImportPanel opml={opml} />);
+    await fireEvent.press(screen.getByTestId('opml-choose'));
+    expect(opml.start).not.toHaveBeenCalled();
+    expect(opml.unreadable).not.toHaveBeenCalled();
+    mockPick.mockRejectedValueOnce(new Error('no'));
+    await fireEvent.press(screen.getByTestId('opml-choose'));
+    expect(opml.unreadable).toHaveBeenCalled();
+  });
+
+  it('says a file over 1 MB was refused, with no progress', async () => {
+    await render(
+      <OpmlImportPanel opml={importer({ problem: 'tooLarge', fileName: 'big.opml' })} />,
+    );
+    expect(screen.getByTestId('opml-problem').props.children).toBe(
+      'That file is over 1 MB. Export a shorter list.',
+    );
+    expect(screen.getByText('Choose another file')).toBeTruthy();
+    expect(screen.queryByTestId('opml-status')).toBeNull();
+  });
+
+  it('counts down to the next batch while waiting, with Stop', async () => {
+    jest.useFakeTimers({ now: 1_000_000 });
+    try {
+      const opml = importer({
+        fileName: 'subs.opml',
+        state: state({ kind: 'waitingTime', at: 1_000_000 + 25_000, why: 'spacing' }, [
+          row(1),
+          row(2, { status: 'queued', request_id: 5 }),
+          row(3, { status: 'limited' }),
+          row(4, { status: 'duplicate', duplicate_of: 1 }),
+        ]),
+      });
+      await render(<OpmlImportPanel opml={opml} />);
+      expect(screen.getByTestId('opml-status').props.children).toBe('Next batch in 25 s.');
+      expect(screen.getByTestId('opml-summary').props.children).toBe(
+        '2 of 3 shows followed or being added',
+      );
+      await act(async () => jest.advanceTimersByTime(5_000));
+      expect(screen.getByTestId('opml-status').props.children).toBe('Next batch in 20 s.');
+      expect(screen.getByTestId('opml-choose').props.accessibilityState?.disabled).toBe(true);
+      await fireEvent.press(screen.getByTestId('opml-stop'));
+      expect(opml.stop).toHaveBeenCalled();
+      expect(screen.queryByTestId('opml-retry')).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('lists every subscription by its place, with what happened to it', async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          state: state({ kind: 'done' }, [
+            row(1, { path: 'Daily News' }),
+            row(2, { status: 'already_following', private: true }),
+            row(3, { status: 'invalid', feed: null }),
+            row(4, { status: 'duplicate', duplicate_of: 1 }),
+            row(5, { status: 'unavailable' }),
+          ]),
+        })}
+      />,
+    );
+    const r = (i: number) => within(screen.getByTestId(`opml-row-${i}`));
+    expect(r(1).getByText('Entry 1')).toBeTruthy();
+    expect(r(1).getByText('Daily News')).toBeTruthy();
+    expect(r(1).getByText('Following')).toBeTruthy();
+    expect(r(2).getByText('Already following')).toBeTruthy();
+    expect(r(2).getByText('Private feed')).toBeTruthy();
+    expect(r(3).getAllByText('No usable feed address')).toHaveLength(2);
+    expect(r(4).getByText('In the list twice (Entry 1)')).toBeTruthy();
+    expect(r(5).getByText("Can't be added right now")).toBeTruthy();
+    expect(screen.getByTestId('opml-status').props.children).toBe('All done.');
+    expect(screen.queryByTestId('opml-stop')).toBeNull();
+    expect(screen.queryByTestId('opml-retry')).toBeNull();
+  });
+
+  it.each([
+    [{ kind: 'stalled' }, "The next batch couldn't start. Try again in a while."],
+    [{ kind: 'stopped', why: 'user' }, 'Stopped. Shows already added stay.'],
+    [{ kind: 'stopped', why: 'busy' }, 'Your server stayed busy. Try again later.'],
+    [
+      { kind: 'stopped', why: 'cantAct' },
+      'Stopped, because someone else is listening on this device now.',
+    ],
+    [{ kind: 'failed', code: 'invalid_opml' }, "That file isn't an OPML list."],
+    [{ kind: 'failed', code: 'opml_limit' }, 'That list is too large to import.'],
+    [{ kind: 'failed', code: null }, "Couldn't import the list. Try again."],
+  ] as [WaveState['status'], string][])('offers Try again once %j', async (status, copy) => {
+    const opml = importer({ state: state(status) });
+    await render(<OpmlImportPanel opml={opml} />);
+    expect(screen.getByTestId('opml-status').props.children).toBe(copy);
+    await fireEvent.press(screen.getByTestId('opml-retry'));
+    expect(opml.retry).toHaveBeenCalled();
+    expect(screen.queryByTestId('opml-stop')).toBeNull();
+  });
+
+  it('says the server is busy with its wait', async () => {
+    jest.useFakeTimers({ now: 0 });
+    try {
+      await render(
+        <OpmlImportPanel
+          opml={importer({ state: state({ kind: 'waitingTime', at: 2_000, why: 'busy' }) })}
+        />,
+      );
+      expect(screen.getByTestId('opml-status').props.children).toBe(
+        'Your server is busy. Trying again in 2 s.',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
