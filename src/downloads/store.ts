@@ -374,7 +374,7 @@ export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntr
  * it was downloaded (a rescan, a community chapter list fitted onto its audio, the admin
  * switching it back), and offline it plays and lists what the manifest holds. Only the
  * chapters move: when the fresh answer's audio files are not the ones on the device (the
- * same paths in the same order, `bookFileSpecs` as the download read them, and the same
+ * same paths in the order the manifest plays them now, `bookFileSpecs`, and the same
  * sizes where both answers know them: a file replaced in place keeps its path), the local
  * audio no longer matches and that is a new download, so nothing changes. The same files
  * in another order are taken only by a start that plays them that way
@@ -404,7 +404,9 @@ function chaptersRefresh(
   const read = bookFileSpecs(manifest.book, manifest.chapters ?? undefined);
   const readSize = new Map(read.map((s) => [s.path, s.size]));
   // The device's files, each one named exactly once, in any order.
-  const onDevice = new Set(manifest.files.map((f) => f.relPath));
+  const onDisk = manifest.files.map((f) => f.relPath);
+  const onDiskSet = new Set(onDisk);
+  const onDevice = new Set(onDiskSet);
   for (const s of want) {
     if (!onDevice.delete(s.path)) return null;
     const was = readSize.get(s.path) ?? 0;
@@ -412,9 +414,8 @@ function chaptersRefresh(
   }
   // The order the manifest plays them in now: its chapters', else (saved chapters that name
   // no file list of their own) the order the download wrote them.
-  const onDisk = manifest.files.map((f) => f.relPath);
   const playing =
-    read.length === onDisk.length && read.every((s) => onDisk.includes(s.path))
+    read.length === onDisk.length && read.every((s) => onDiskSet.has(s.path))
       ? read.map((s) => s.path)
       : onDisk;
   const reordered = want.some((s, i) => s.path !== playing[i]);
@@ -437,9 +438,11 @@ function chaptersRefresh(
  */
 export function adoptStartedChapters(ref: BookRef, chapters: ChaptersResponse): void {
   const entry = downloadedEntryOf(ref);
-  const manifest = entry && chaptersRefresh(entry.manifest, chapters)?.manifest;
-  if (!manifest) return;
-  patchEntry(contentKeyOf(ref), { manifest });
+  const refresh = entry && chaptersRefresh(entry.manifest, chapters);
+  // The same order is the background refresh's to take (`startChapterRefresh`): a start's
+  // answer can be older (cached) than one the manifest took while it loaded.
+  if (!refresh?.reordered) return;
+  patchEntry(contentKeyOf(ref), { manifest: refresh.manifest });
   void persist();
 }
 
@@ -471,12 +474,11 @@ export function startChapterRefresh(): () => void {
     const book = chaptersKeyParts(event.query.queryKey);
     const fresh = event.action.data as ChaptersResponse | undefined;
     if (!book || !fresh) return;
-    const key = downloadKey(book.cid, book.libraryId, book.path);
-    const entry = useDownloads.getState().entries[key];
-    if (entry?.status !== 'downloaded') return;
-    const manifest = refreshedChapters(entry.manifest, fresh);
+    const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
+    const entry = downloadedEntryOf(ref);
+    const manifest = entry && refreshedChapters(entry.manifest, fresh);
     if (!manifest) return;
-    patchEntry(key, { manifest });
+    patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out) saves the registry
     // once, not once per book.
     persistSoon();

@@ -1776,9 +1776,11 @@ are asked, at most 10,000 rows.
   next started. The same files in another order (server v2.4.0 plays them in natural order, "2-"
   before "10-") are taken **only by a start that loads the engine in that order**
   (`adoptStartedChapters`, from `playBook` once its load landed and it still owns the engine;
-  saved at once), never from a background answer: JS sees only what it loaded, not a book the
-  Android service or a Cast receiver holds before `adoptLoaded` / the receiver adoption, which map
-  the engine's track index through the manifest. So an offline start, Android's no-JS car start
+  saved at once; a start given no chapters plays the download's own files and chapters), never
+  from a background answer, and a start's answer in the manifest's own order is left to the
+  background refresh: JS sees only what it loaded, not a book the Android service or a Cast
+  receiver holds before `adoptLoaded` / the receiver adoption, which map the engine's track index
+  through the manifest. So an offline start, Android's no-JS car start
   and `adoptLoaded` keep the manifest's order until an online start plays the new one. The
   chapters carry the order (every queue over a download orders its files by them and finds each by
   path); `manifest.files` itself never moves, since a file's index there is its name on disk

@@ -751,6 +751,8 @@ describe("refreshing a downloaded book's chapters", () => {
         );
         adoptStartedChapters(ref, resized);
         adoptStartedChapters({ ...ref, path: 'B/Book' }, reordered());
+        // The same order is the background refresh's to take, not a start's (it can be older).
+        adoptStartedChapters(ref, fresh());
         expect(useDownloads.getState().entries[key]).toBe(e);
       });
     });

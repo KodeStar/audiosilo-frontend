@@ -1430,6 +1430,28 @@ describe('a downloaded book re-ordered on its server', () => {
     expect(order()).toEqual(paths);
   });
 
+  it("plays the download's order when a start has no chapters for it", async () => {
+    // The server's item lists the files in its new order; its chapters read failed.
+    const fresh = { ...book, files: chaptersIn(serverOrder).files };
+    await usePlayer.getState().playBook('c1', 2, fresh, undefined, 0);
+    const tracks = usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url);
+    expect(tracks).toEqual(['file:///dl/0.mp3', 'file:///dl/1.mp3']);
+    expect(order()).toEqual(paths);
+  });
+
+  it("plays the download's file list when it saved no chapters and a start has none", async () => {
+    const e = useDownloads.getState().entries[key];
+    const saved = { ...book, files: chaptersIn(paths).files };
+    useDownloads.setState({
+      entries: { [key]: { ...e, manifest: { ...e.manifest, book: saved, chapters: null } } },
+    });
+    const fresh = { ...book, files: chaptersIn(serverOrder).files };
+    await usePlayer.getState().playBook('c1', 2, fresh, undefined, 0);
+    const tracks = usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url);
+    expect(tracks).toEqual(['file:///dl/0.mp3', 'file:///dl/1.mp3']);
+    expect(order()).toEqual(paths);
+  });
+
   it('takes nothing from a start overtaken by another before its load landed', async () => {
     let loaded: () => void = () => {};
     (mockSvc.load as jest.Mock).mockImplementationOnce(
