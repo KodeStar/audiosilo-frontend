@@ -337,6 +337,9 @@ async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<Kids
   ]);
   const mode = kidsShelfMode(conn.user, collections.has, collections.list);
   if (mode === 'unknown') return { mode, library: null, shelf: unreadable };
+  // Without the libraries a shared collection's episode can't be told from a story (its
+  // items carry no `episode`), and the one library can't be picked.
+  if (!libraries) return { mode, library: null, shelf: unreadable };
   if (mode === 'collections') {
     const shared = kidsCollections(collections.list ?? [], conn.user);
     const details = await mapLimit(shared, ITEM_CONCURRENCY, (c) =>
@@ -350,7 +353,6 @@ async function readKidsShelf(conn: Connection, kids: KidsSettings): Promise<Kids
         kidsSectionBooks(kidsCollectionSections(shared, details, progress, libraries)),
     };
   }
-  if (!libraries) return { mode, library: null, shelf: unreadable };
   const lib = kidsLibrary(libraries, conn.id, kids);
   if (!lib) return { mode, library: null, shelf: async () => [] };
   const page = await read({

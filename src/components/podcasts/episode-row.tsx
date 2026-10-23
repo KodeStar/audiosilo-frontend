@@ -84,6 +84,7 @@ export function EpisodeRow({
   const state = episodeRowState(episode, pending, canFetch);
   const finished = !!progress?.finished;
   const reasonKey = finished ? null : rowStateReasonKey(state);
+  const reason = reasonKey ? t(reasonKey) : null;
   const started = !!progress && isInProgress(progress);
   const fraction =
     progress && !finished && progress.position > 0
@@ -101,7 +102,7 @@ export function EpisodeRow({
       <AnimatedPressable
         onPress={() => openBook(connectionId, libraryId, episode.path)}
         accessibilityRole="button"
-        accessibilityLabel={[episode.title, meta, ...marks].filter(Boolean).join(', ')}
+        accessibilityLabel={[episode.title, meta, ...marks, reason].filter(Boolean).join(', ')}
         className={cn(
           'min-w-0 flex-1 gap-1 rounded-control',
           Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
@@ -149,9 +150,9 @@ export function EpisodeRow({
             <ProgressBar fraction={fraction} minPercent={3} className="w-16" />
           ) : null}
         </View>
-        {reasonKey ? (
+        {reason ? (
           <Text variant="caption" numberOfLines={2} testID="episode-reason">
-            {t(reasonKey)}
+            {reason}
           </Text>
         ) : null}
       </AnimatedPressable>

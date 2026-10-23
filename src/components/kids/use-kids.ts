@@ -239,7 +239,8 @@ export function useKidsStories(): {
   const sectionBooks = useMemo(() => kidsSectionBooks(sections), [sections]);
 
   const retry = () => {
-    if (mode !== 'collections') void libraries.refetch();
+    // The collections need the libraries too (they tell an episode from a story).
+    void libraries.refetch();
     if (ask) {
       void collections.refetch();
       for (const c of shared) {
@@ -298,6 +299,10 @@ export function useKidsStories(): {
     // the libraries, which tell an episode (never shown here) from a story.
     if (details.loading || progress.isLoading || libraries.isLoading) {
       stories = { status: 'loading' };
+    } else if (!libraries.data) {
+      // The libraries can't be read: an episode can't be told from a story (the
+      // collection's items carry no `episode`), so none of them is shown.
+      stories = fallback();
     } else if (sections.length === 0) {
       stories = details.failed ? fallback() : { status: 'empty', serverName, askGrownUp: true };
     } else {

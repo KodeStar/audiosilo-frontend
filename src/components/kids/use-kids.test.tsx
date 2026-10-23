@@ -435,6 +435,18 @@ describe("a household member's kids shelf: the owner's shared collections (Phase
     expect(s.status === 'ready' && s.books.map((b) => b.rel_path)).toEqual(['x']);
   });
 
+  // Without the libraries an episode can't be told from a story: none is listed.
+  it('shows no shared collection while the libraries cannot be read', async () => {
+    setMember();
+    mockClient.libraries.mockRejectedValue(new Error('down'));
+    mockClient.collections.mockResolvedValue([evies]);
+    mockClient.collection.mockResolvedValue(
+      detail(evies, [book('x', 1), book('Daily News/Monday.mp3', 9)]),
+    );
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.stories.status).toBe('error'));
+  });
+
   it('several collections: one titled run each, in the list order', async () => {
     setMember();
     mockClient.collections.mockResolvedValue([bedtime, evies]);
