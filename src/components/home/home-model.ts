@@ -1,10 +1,11 @@
 import type { Href } from 'expo-router';
 
 import type { SourcedProgress } from '@/api/hooks';
-import type { Book, BookMetaSeriesWork, NextBook } from '@/api/types';
+import type { Book, BookMetaSeriesWork, Library, NextBook } from '@/api/types';
 import { lengthBucket, libraryBooksHref } from '@/components/library/books/books-view';
 import { contentKeyOf } from '@/lib/content-key';
 import type { MergedBook } from '@/lib/dedup';
+import { isPodcastLibrary } from '@/lib/library-kind';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { isInProgress, percentHeard } from '@/lib/progress-view';
 
@@ -34,6 +35,37 @@ export const progressAt = (p: SourcedProgress): BookAt => ({
   libraryId: p.library_id,
   path: p.path,
 });
+
+/** One server's library list as Home reads it (`useLibrariesAll`'s groups). */
+type LibraryGroupLike = {
+  connectionId: string;
+  libraries: readonly Pick<Library, 'id' | 'kind'>[];
+  status: 'loading' | 'ready' | 'error';
+};
+
+/**
+ * Whether a row is a book, not a podcast episode (Bridge Phase 2d-1): Home's book shelves
+ * (Next in your series and what it asks `/next` about, the smart shelves, Recently
+ * finished) hold books only. Progress carries no `episode`, so a row is told by its
+ * library's kind. While a server's list is loading its rows are not yet known to be
+ * books (no `/next` is asked for an episode meanwhile); a server whose list failed is
+ * read as books (an older server has no podcast libraries).
+ */
+export function bookRowTest(groups: readonly LibraryGroupLike[]): (at: BookAt) => boolean {
+  const podcasts = new Map<string, Set<number> | null>();
+  for (const g of groups) {
+    podcasts.set(
+      g.connectionId,
+      g.status === 'loading'
+        ? null
+        : new Set(g.libraries.filter((l) => isPodcastLibrary(l)).map((l) => l.id)),
+    );
+  }
+  return (at) => {
+    const libs = podcasts.get(at.connectionId);
+    return !!libs && !libs.has(at.libraryId);
+  };
+}
 
 /** The listener's books by state, most recently played first. */
 export function splitProgress(progress: readonly SourcedProgress[]): {
