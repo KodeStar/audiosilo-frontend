@@ -25,6 +25,13 @@ jest.mock('@/playback/episode-fetch', () => {
   const { create } = jest.requireActual('zustand');
   return { useEpisodeFetch: create(() => ({ pending: null })) };
 });
+// Check for new episodes has its own suite: here, only that the hero has it.
+jest.mock('./check-episodes-button', () => ({
+  CheckEpisodesButton: ({ show }: { show: { path: string } }) => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text testID="check-episodes">{`check ${show.path}`}</Text>;
+  },
+}));
 // The rows have their own suite: here, which episodes in which order.
 jest.mock('./episode-row', () => ({
   EpisodeRow: ({ episode }: { episode: { title: string } }) => {
@@ -104,6 +111,7 @@ describe('PodcastShowScreen', () => {
     expect(screen.getByText('Daily News')).toBeTruthy();
     expect(screen.getByText('8 episodes')).toBeTruthy();
     expect(screen.getAllByTestId('row').map((r) => r.props.children)).toEqual(['Kept', 'Live']);
+    expect(screen.getByTestId('check-episodes').props.children).toBe('check Daily News');
   });
 
   it('reads an episodic show newest first and a serial one oldest first', async () => {

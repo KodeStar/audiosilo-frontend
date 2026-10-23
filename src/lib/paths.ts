@@ -47,6 +47,7 @@ export const BROWSE_PATHS = [
   '/narrator',
   '/collection',
   '/podcast',
+  '/find-shows',
 ] as const;
 
 // Content routes are FLAT (`/book/[libraryId]`, `/library/[libraryId]`, `/account`); the
@@ -223,6 +224,28 @@ export function podcastShowHref(
   };
 }
 
+/** Find shows' sections (Bridge Phase 2d-2), in order: a directory search, a feed's
+ * address, an OPML list. */
+export const FIND_SHOWS_SECTIONS = ['search', 'address', 'import'] as const;
+export type FindShowsSection = (typeof FIND_SHOWS_SECTIONS)[number];
+
+/** `/find-shows?connection=<cid>&library=<id>[&section=search|address|import]`: adding
+ * shows to a podcast library (Bridge Phase 2d-2), on `section` when given. */
+export function findShowsHref(
+  connectionId: string,
+  libraryId: number,
+  section?: FindShowsSection,
+): Href {
+  return {
+    pathname: '/find-shows',
+    params: {
+      connection: connectionId,
+      library: String(libraryId),
+      ...(section ? { section } : {}),
+    },
+  };
+}
+
 /** `/narrator?connection=<cid>&library=<id>&name=<narrator>` (exact `Book.narrator`). */
 export function narratorHref(connectionId: string, libraryId: number, name: string): Href {
   return {
@@ -357,6 +380,25 @@ export function parsePodcastParams(p: RawParams): {
     libraryId,
     show,
     order: order === 'newest' || order === 'oldest' ? order : null,
+  };
+}
+
+/** Find shows' params, or null without a library. `section` is null when the link names
+ * none, or one this build does not know. */
+export function parseFindShowsParams(p: RawParams): {
+  connectionId: string;
+  libraryId: number;
+  section: FindShowsSection | null;
+} | null {
+  const libraryId = idParam(p.library);
+  if (libraryId === null) return null;
+  const section = firstParam(p.section);
+  return {
+    connectionId: connectionParam(p.connection),
+    libraryId,
+    section: (FIND_SHOWS_SECTIONS as readonly unknown[]).includes(section)
+      ? (section as FindShowsSection)
+      : null,
   };
 }
 

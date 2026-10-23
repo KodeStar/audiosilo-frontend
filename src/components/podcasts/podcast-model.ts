@@ -209,3 +209,31 @@ export function episodeAsBook(ep: PodcastEpisode, show: PodcastShow): Book {
     },
   };
 }
+
+/** Why a follow request (`PodcastRequest.error.code`) did not finish, in the listener's
+ * words (`podcasts.requests.reason.*`): the feed could not be reached (`dns`, `timeout`,
+ * `tls`, `network`), is not a podcast (`not_a_feed`, `not_a_podcast`), is gone (`gone`,
+ * `http_<status>`), or needs following again (`request_expired`: the server restarted
+ * before the request was taken up; `feed_secret_missing`: a private feed's address was
+ * lost); anything else reads generically. Never the server's English. */
+export function requestReasonKey(code: string | null | undefined): ParseKeys {
+  switch (code) {
+    case 'dns':
+    case 'timeout':
+    case 'tls':
+    case 'network':
+      return 'podcasts.requests.reason.unreachable';
+    case 'not_a_feed':
+    case 'not_a_podcast':
+      return 'podcasts.requests.reason.notAFeed';
+    case 'gone':
+      return 'podcasts.requests.reason.gone';
+    case 'request_expired':
+    case 'feed_secret_missing':
+      return 'podcasts.requests.reason.followAgain';
+    default:
+      return code?.startsWith('http_')
+        ? 'podcasts.requests.reason.gone'
+        : 'podcasts.requests.reason.other';
+  }
+}

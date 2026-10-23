@@ -513,6 +513,35 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   episode or any item of a podcast library), and Home's "New episodes" rail (followed shows'
   recent episodes with no progress, after Next in your series). Never "Bridge" in listener
   copy, never the server's English: refusals read through `fetchReasonKey` and the follow errors.
+- **Finding shows (Phase 2d-2)**: `/find-shows?connection=&library=[&section=]`
+  (`findShowsHref`, `openFindShows`), opened from the Shows mode's Add shows (`ShowsActions`: in
+  the sub-nav row on tablet and desktop, above the grid on a phone) and its empty state. Every
+  section ends in a follow, so the page is only for a listener who may (`useAddShowsAccess`);
+  the sections follow the flags (`availableSections`: `search` needs `podcast_discovery`,
+  `import` needs `podcast_opml`, the feed address is always there). The directory searches only
+  on submit (never while typing), Apple Podcasts unless the server offers Podcast Index too
+  (only then a picker), the device region for Apple only. Artwork loads only through the
+  server's proxy with the media token (`discoveryArtworkUrl` refuses any other URL), and a
+  failed load mounts again on `artworkRetryDelay`'s schedule. All copy for refusals lives in
+  `find-shows-model.ts`; a code it does not know reads as the general line.
+- **Follow requests poll only while open and seen**: `useFollowRequests(lib, {active})` reads
+  `/me/podcasts` every 5 s only while one of the library's requests is open (`queued`,
+  `claimed`, `running`, `needs_attention`), `active` (its screen focused: the Shows mode stays
+  mounted under a pushed Find shows) and the app in the foreground. A request ending `done`
+  reads its library's show list again (`myPodcastsQuery`).
+- **The OPML import is `OpmlWaves`**, a framework-free controller (its own timers, tested with
+  fake timers; `useOpmlImport` wraps it at page level so it survives a section switch and ends
+  with the page). It re-uploads the same bytes in waves (the server keeps nothing): after the
+  last upload's own requests have ended, fewer than five are open and 30 s have passed;
+  `Retry-After` on 429 / 503 `opml_busy`; a wave that moves no `limited` row is `stalled`; five
+  busy answers in a row stop it; `mayActFor` before each upload; held in the background. A file
+  over 1 MiB is refused before any upload.
+- **Export my shows** (`useExportShows`, capability `podcast_opml`, works with the module off,
+  never the demo) reads `GET /podcasts/opml/export` with the Authorization header (never
+  `?token=`), saves it the Journal's way (`saveExport`) and toasts the `X-OPML-*` counts; a
+  count the browser cannot read (cross-origin without `Expose-Headers`) reads as unknown, and
+  the toast always says private feeds are never exported. Check for new episodes
+  (`CheckEpisodesButton`) is for a followed show only, and reads the show again once, 15 s later.
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the

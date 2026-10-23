@@ -5,11 +5,13 @@ import {
   authorHref,
   bookHref,
   collectionHref,
+  findShowsHref,
   finishedHref,
   libraryHref,
   narratorHref,
   parentPath,
   parseCollectionParams,
+  parseFindShowsParams,
   parseConnectBook,
   parsePersonParams,
   parsePodcastParams,
@@ -313,6 +315,35 @@ describe('browse detail params', () => {
     }
     expect(parseConnectBook({ book: '2', path: '  ', uid: '5' })).toBeNull();
     expect(parseConnectBook({ book: '2', uid: '5' })).toBeNull();
+  });
+});
+
+// Bridge Phase 2d-2.
+describe('findShowsHref / parseFindShowsParams', () => {
+  it('links a library, on its section when given', () => {
+    expect(findShowsHref('c', 5)).toEqual({
+      pathname: '/find-shows',
+      params: { connection: 'c', library: '5' },
+    });
+    expect(findShowsHref('c', 5, 'import')).toEqual({
+      pathname: '/find-shows',
+      params: { connection: 'c', library: '5', section: 'import' },
+    });
+  });
+
+  it('reads a link back, the section only when it is one', () => {
+    expect(parseFindShowsParams({ connection: 'c', library: '5', section: 'address' })).toEqual({
+      connectionId: 'c',
+      libraryId: 5,
+      section: 'address',
+    });
+    expect(parseFindShowsParams({ connection: 'c', library: '5', section: 'nope' })).toEqual({
+      connectionId: 'c',
+      libraryId: 5,
+      section: null,
+    });
+    expect(parseFindShowsParams({ connection: 'c' })).toBeNull();
+    expect(parseFindShowsParams({ library: '0' })).toBeNull();
   });
 });
 

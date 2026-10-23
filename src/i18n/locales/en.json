@@ -2577,7 +2577,10 @@
       "following": "Following",
       "newEpisode": "New episode {{when}}",
       "privateBadge": "Private feed",
-      "loadError": "Couldn't load the shows."
+      "loadError": "Couldn't load the shows.",
+      "addShows": "Add shows",
+      "addShowsHint": "Search a directory, paste a feed address or import a list from another app.",
+      "actionsMenu": "More show actions"
     },
     "show": {
       "episodes_one": "{{count}} episode",
@@ -2648,6 +2651,171 @@
         "identity_changed": "This episode changed in its feed. Open the show to find it again.",
         "other": "Something went wrong getting it. Try again in a while."
       }
+    },
+    "find": {
+      "title": "Add shows",
+      "sectionsLabel": "How to add shows",
+      "sections": {
+        "search": "Search",
+        "address": "Feed address",
+        "import": "Import a list"
+      },
+      "unavailable": "Adding shows isn't available right now",
+      "unavailableHint": "Podcasts may be turned off on this server, or it can't add shows at the moment. Try again later.",
+      "kid": "Ask a grown-up to add shows.",
+      "demo": "The demo can't add shows.",
+      "search": {
+        "label": "Search for a show",
+        "placeholder": "Show name",
+        "submit": "Search",
+        "tooShort": "Type at least 2 characters.",
+        "providerLabel": "Directory",
+        "resultsFrom": "Results from {{provider}}",
+        "noResults": "No shows found",
+        "noResultsHint": "Try other words, or follow the show by its feed address.",
+        "episodes_one": "{{count}} episode",
+        "episodes_other": "{{count}} episodes",
+        "viewOn": "View on {{provider}}",
+        "follow": "Follow",
+        "followLabel": "Follow {{title}}",
+        "adding": "Adding",
+        "following": "Following",
+        "openShow": "Open show",
+        "searchAgain": "Search again",
+        "loading": "Searching..."
+      },
+      "provider": {
+        "itunes": "Apple Podcasts",
+        "podcast_index": "Podcast Index"
+      },
+      "searchError": {
+        "rateLimitedWait": "You've searched a lot just now. Try again in {{seconds}} s.",
+        "rateLimited": "You've searched a lot just now. Try again in a minute.",
+        "providerBusyWait": "The directory is busy. Try again in {{seconds}} s.",
+        "providerBusy": "The directory is busy. Try again in a minute.",
+        "busy": "Your server is busy searching. Try again in a moment.",
+        "timeout": "The directory didn't answer in time. Try again.",
+        "rejected": "Your server can't use Podcast Index right now. Try Apple Podcasts.",
+        "unavailable": "Couldn't reach the directory. Try again in a while.",
+        "providerUnavailable": "Podcast Index isn't set up on this server.",
+        "off": "Searching for shows is turned off on this server.",
+        "invalidQuery": "Use 2 to 200 letters or words.",
+        "invalidCountry": "The directory doesn't know this device's region.",
+        "other": "Couldn't search. Try again."
+      },
+      "refusal": {
+        "moduleOff": "Podcasts are turned off on this server.",
+        "kid": "Ask a grown-up to add shows.",
+        "demo": "The demo can't do that.",
+        "noAccess": "You can add shows only to a library shared with you in full.",
+        "notPodcastLibrary": "This library isn't for podcasts."
+      },
+      "followError": {
+        "invalidFeedUrl": "That feed address can't be used. Check it and try again.",
+        "privacyConflict": "This feed is already being added with the other privacy setting. Wait for it to finish, then try again.",
+        "cantAddNow": "Your server can't add new shows right now. Try again later.",
+        "notWritable": "Your server can't save shows to this library.",
+        "tooMany": "Five shows are already being added. Try again once one is done.",
+        "other": "Couldn't follow that show. Try again."
+      },
+      "address": {
+        "label": "Feed address",
+        "placeholder": "https://example.com/feed.xml",
+        "hint": "Paste the show's RSS feed address, from its website or your podcast app.",
+        "private": "Private feed",
+        "privateHint": "For a feed made just for you, like a paid or member feed. Only you will see the show, and it's never exported.",
+        "submit": "Follow",
+        "empty": "Paste a feed address.",
+        "notHttp": "Use an address starting with http:// or https://.",
+        "tooLong": "That address is too long.",
+        "following": "You follow {{title}}.",
+        "adding": "Adding the show. It appears in Shows once it's ready."
+      }
+    },
+    "requests": {
+      "title": "Shows being added",
+      "notice_one": "Adding {{count}} show",
+      "notice_other": "Adding {{count}} shows",
+      "state": {
+        "waiting": "Waiting for its turn",
+        "adding": "Adding",
+        "done": "Added",
+        "failed": "Couldn't add",
+        "cancelled": "Cancelled"
+      },
+      "openShow": "Open show",
+      "reason": {
+        "unreachable": "Couldn't reach the feed.",
+        "notAFeed": "That address isn't a podcast feed.",
+        "gone": "The feed isn't there any more.",
+        "followAgain": "Follow the feed again to finish adding it.",
+        "other": "Something went wrong adding it."
+      }
+    },
+    "import": {
+      "intro": "Bring the shows you follow in another podcast app. Export an OPML file there, then choose it here. Long lists are added in batches of five.",
+      "choose": "Choose a file",
+      "chooseAnother": "Choose another file",
+      "tooLarge": "That file is over 1 MB. Export a shorter list.",
+      "unreadable": "Couldn't read that file.",
+      "summary": "{{settled}} of {{total}} shows followed or being added",
+      "rowsLabel": "Shows in the list",
+      "entry": "Entry {{index}}",
+      "stop": "Stop",
+      "tryAgain": "Try again",
+      "status": {
+        "uploading": "Sending the list...",
+        "waitingRequests": "Waiting for the shows being added before the next batch.",
+        "waitingTime": "Next batch in {{seconds}} s.",
+        "busy": "Your server is busy. Trying again in {{seconds}} s.",
+        "done": "All done.",
+        "finishing": "The last shows are still being added.",
+        "unavailable_one": "{{count}} show can't be added right now. Try again later, or ask the person who runs your server.",
+        "unavailable_other": "{{count}} shows can't be added right now. Try again later, or ask the person who runs your server.",
+        "stalled": "The next batch couldn't start. Try again in a while.",
+        "stoppedUser": "Stopped. Shows already added stay.",
+        "stoppedBusy": "Your server stayed busy. Try again later.",
+        "stoppedCantAct": "Stopped, because someone else is listening on this device now."
+      },
+      "fail": {
+        "notOpml": "That file isn't an OPML list.",
+        "tooLarge": "That list is too large to import.",
+        "other": "Couldn't import the list. Try again."
+      },
+      "row": {
+        "followed": "Following",
+        "alreadyFollowing": "Already following",
+        "queued": "Being added",
+        "duplicate": "In the list twice",
+        "invalid": "No usable feed address",
+        "limited": "Waiting for the next batch",
+        "unavailable": "Can't be added right now",
+        "error": "Couldn't add"
+      }
+    },
+    "export": {
+      "action": "Export my shows",
+      "dialogTitle": "Your shows",
+      "done_one": "Exported {{count}} show",
+      "done_other": "Exported {{count}} shows",
+      "doneUnknown": "Exported your shows",
+      "privateLeftOut_one": "{{count}} private show left out. Private feeds are never exported.",
+      "privateLeftOut_other": "{{count}} private shows left out. Private feeds are never exported.",
+      "privateNever": "Private feeds are never exported.",
+      "unavailableLeftOut_one": "{{count}} show without a public address left out.",
+      "unavailableLeftOut_other": "{{count}} shows without a public address left out.",
+      "error": {
+        "tooMany": "Too many shows to export in one file.",
+        "busy": "You've exported a lot just now. Try again in a minute.",
+        "other": "Couldn't export your shows. Try again."
+      }
+    },
+    "check": {
+      "action": "Check for new episodes",
+      "started": "Checking for new episodes",
+      "recently": "Checked less than a minute ago. Try again shortly.",
+      "cantNow": "Your server can't check feeds right now. Try again later.",
+      "failed": "Couldn't check this show. Try again."
     }
   }
 }

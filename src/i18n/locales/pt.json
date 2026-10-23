@@ -2577,7 +2577,10 @@
       "following": "Seguindo",
       "newEpisode": "Episódio novo {{when}}",
       "privateBadge": "Feed privado",
-      "loadError": "Não foi possível carregar os programas."
+      "loadError": "Não foi possível carregar os programas.",
+      "addShows": "Adicionar programas",
+      "addShowsHint": "Pesquise em um diretório, cole o endereço de um feed ou importe uma lista de outro app.",
+      "actionsMenu": "Mais ações de programas"
     },
     "show": {
       "episodes_one": "{{count}} episódio",
@@ -2648,6 +2651,171 @@
         "identity_changed": "Este episódio mudou no feed. Abra o programa para encontrá-lo de novo.",
         "other": "Algo deu errado ao baixar. Tente de novo mais tarde."
       }
+    },
+    "find": {
+      "title": "Adicionar programas",
+      "sectionsLabel": "Como adicionar programas",
+      "sections": {
+        "search": "Pesquisar",
+        "address": "Endereço do feed",
+        "import": "Importar uma lista"
+      },
+      "unavailable": "Não é possível adicionar programas agora",
+      "unavailableHint": "Talvez os podcasts estejam desativados neste servidor, ou ele não possa adicionar programas no momento. Tente mais tarde.",
+      "kid": "Peça a um adulto para adicionar programas.",
+      "demo": "Na demonstração não é possível adicionar programas.",
+      "search": {
+        "label": "Pesquisar um programa",
+        "placeholder": "Nome do programa",
+        "submit": "Pesquisar",
+        "tooShort": "Digite pelo menos 2 caracteres.",
+        "providerLabel": "Diretório",
+        "resultsFrom": "Resultados de {{provider}}",
+        "noResults": "Nenhum programa encontrado",
+        "noResultsHint": "Tente outras palavras ou siga o programa pelo endereço do feed.",
+        "episodes_one": "{{count}} episódio",
+        "episodes_other": "{{count}} episódios",
+        "viewOn": "Ver em {{provider}}",
+        "follow": "Seguir",
+        "followLabel": "Seguir {{title}}",
+        "adding": "Adicionando",
+        "following": "Seguindo",
+        "openShow": "Abrir programa",
+        "searchAgain": "Pesquisar de novo",
+        "loading": "Pesquisando..."
+      },
+      "provider": {
+        "itunes": "Apple Podcasts",
+        "podcast_index": "Podcast Index"
+      },
+      "searchError": {
+        "rateLimitedWait": "Você pesquisou muito agora há pouco. Tente de novo em {{seconds}} s.",
+        "rateLimited": "Você pesquisou muito agora há pouco. Tente de novo em um minuto.",
+        "providerBusyWait": "O diretório está ocupado. Tente de novo em {{seconds}} s.",
+        "providerBusy": "O diretório está ocupado. Tente de novo em um minuto.",
+        "busy": "Seu servidor está ocupado pesquisando. Tente de novo em instantes.",
+        "timeout": "O diretório não respondeu a tempo. Tente de novo.",
+        "rejected": "Seu servidor não pode usar o Podcast Index agora. Tente o Apple Podcasts.",
+        "unavailable": "Não foi possível acessar o diretório. Tente mais tarde.",
+        "providerUnavailable": "O Podcast Index não está configurado neste servidor.",
+        "off": "A pesquisa de programas está desativada neste servidor.",
+        "invalidQuery": "Use de 2 a 200 caracteres.",
+        "invalidCountry": "O diretório não conhece a região deste dispositivo.",
+        "other": "Não foi possível pesquisar. Tente de novo."
+      },
+      "refusal": {
+        "moduleOff": "Os podcasts estão desativados neste servidor.",
+        "kid": "Peça a um adulto para adicionar programas.",
+        "demo": "Na demonstração não é possível fazer isso.",
+        "noAccess": "Você só pode adicionar programas a uma biblioteca compartilhada inteira com você.",
+        "notPodcastLibrary": "Esta biblioteca não é de podcasts."
+      },
+      "followError": {
+        "invalidFeedUrl": "Esse endereço de feed não pode ser usado. Confira e tente de novo.",
+        "privacyConflict": "Este feed já está sendo adicionado com a outra configuração de privacidade. Espere terminar e tente de novo.",
+        "cantAddNow": "Seu servidor não pode adicionar programas novos agora. Tente mais tarde.",
+        "notWritable": "Seu servidor não pode salvar programas nesta biblioteca.",
+        "tooMany": "Cinco programas já estão sendo adicionados. Tente de novo quando um terminar.",
+        "other": "Não foi possível seguir esse programa. Tente de novo."
+      },
+      "address": {
+        "label": "Endereço do feed",
+        "placeholder": "https://example.com/feed.xml",
+        "hint": "Cole o endereço do feed RSS do programa, do site dele ou do seu app de podcasts.",
+        "private": "Feed privado",
+        "privateHint": "Para um feed só seu, como um pago ou de assinantes. Só você verá o programa, e ele nunca é exportado.",
+        "submit": "Seguir",
+        "empty": "Cole o endereço de um feed.",
+        "notHttp": "Use um endereço que comece com http:// ou https://.",
+        "tooLong": "Esse endereço é longo demais.",
+        "following": "Você segue {{title}}.",
+        "adding": "Adicionando o programa. Ele aparece em Programas quando estiver pronto."
+      }
+    },
+    "requests": {
+      "title": "Programas sendo adicionados",
+      "notice_one": "Adicionando {{count}} programa",
+      "notice_other": "Adicionando {{count}} programas",
+      "state": {
+        "waiting": "Esperando a vez",
+        "adding": "Adicionando",
+        "done": "Adicionado",
+        "failed": "Não foi adicionado",
+        "cancelled": "Cancelado"
+      },
+      "openShow": "Abrir programa",
+      "reason": {
+        "unreachable": "Não foi possível acessar o feed.",
+        "notAFeed": "Esse endereço não é um feed de podcast.",
+        "gone": "O feed não existe mais.",
+        "followAgain": "Siga o feed de novo para terminar de adicioná-lo.",
+        "other": "Algo deu errado ao adicioná-lo."
+      }
+    },
+    "import": {
+      "intro": "Traga os programas que você segue em outro app de podcasts. Exporte lá um arquivo OPML e escolha-o aqui. Listas longas são adicionadas de cinco em cinco.",
+      "choose": "Escolher um arquivo",
+      "chooseAnother": "Escolher outro arquivo",
+      "tooLarge": "Esse arquivo tem mais de 1 MB. Exporte uma lista menor.",
+      "unreadable": "Não foi possível ler esse arquivo.",
+      "summary": "{{settled}} de {{total}} programas seguidos ou sendo adicionados",
+      "rowsLabel": "Programas da lista",
+      "entry": "Item {{index}}",
+      "stop": "Parar",
+      "tryAgain": "Tentar de novo",
+      "status": {
+        "uploading": "Enviando a lista...",
+        "waitingRequests": "Esperando os programas sendo adicionados antes do próximo grupo.",
+        "waitingTime": "Próximo grupo em {{seconds}} s.",
+        "busy": "Seu servidor está ocupado. Nova tentativa em {{seconds}} s.",
+        "done": "Tudo pronto.",
+        "finishing": "Os últimos programas ainda estão sendo adicionados.",
+        "unavailable_one": "{{count}} programa não pode ser adicionado agora. Tente mais tarde ou pergunte a quem administra seu servidor.",
+        "unavailable_other": "{{count}} programas não podem ser adicionados agora. Tente mais tarde ou pergunte a quem administra seu servidor.",
+        "stalled": "O próximo grupo não conseguiu começar. Tente mais tarde.",
+        "stoppedUser": "Parado. Os programas já adicionados ficam.",
+        "stoppedBusy": "Seu servidor continuou ocupado. Tente mais tarde.",
+        "stoppedCantAct": "Parado, porque agora outra pessoa está ouvindo neste dispositivo."
+      },
+      "fail": {
+        "notOpml": "Esse arquivo não é uma lista OPML.",
+        "tooLarge": "Essa lista é grande demais para importar.",
+        "other": "Não foi possível importar a lista. Tente de novo."
+      },
+      "row": {
+        "followed": "Seguindo",
+        "alreadyFollowing": "Já segue",
+        "queued": "Sendo adicionado",
+        "duplicate": "Duas vezes na lista",
+        "invalid": "Sem endereço de feed utilizável",
+        "limited": "Esperando o próximo grupo",
+        "unavailable": "Não pode ser adicionado agora",
+        "error": "Não foi adicionado"
+      }
+    },
+    "export": {
+      "action": "Exportar meus programas",
+      "dialogTitle": "Seus programas",
+      "done_one": "{{count}} programa exportado",
+      "done_other": "{{count}} programas exportados",
+      "doneUnknown": "Seus programas foram exportados",
+      "privateLeftOut_one": "{{count}} programa privado ficou de fora. Feeds privados nunca são exportados.",
+      "privateLeftOut_other": "{{count}} programas privados ficaram de fora. Feeds privados nunca são exportados.",
+      "privateNever": "Feeds privados nunca são exportados.",
+      "unavailableLeftOut_one": "{{count}} programa sem endereço público ficou de fora.",
+      "unavailableLeftOut_other": "{{count}} programas sem endereço público ficaram de fora.",
+      "error": {
+        "tooMany": "Programas demais para exportar em um arquivo.",
+        "busy": "Você exportou muito agora há pouco. Tente de novo em um minuto.",
+        "other": "Não foi possível exportar seus programas. Tente de novo."
+      }
+    },
+    "check": {
+      "action": "Procurar episódios novos",
+      "started": "Procurando episódios novos",
+      "recently": "Verificado há menos de um minuto. Tente de novo daqui a pouco.",
+      "cantNow": "Seu servidor não pode verificar feeds agora. Tente mais tarde.",
+      "failed": "Não foi possível verificar este programa. Tente de novo."
     }
   }
 }

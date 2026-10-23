@@ -11,6 +11,7 @@ import {
 } from '@/api/client';
 import type { AddMemberBody, BridgeEstimate, SidecarsGenerateResult } from '@/api/types';
 import { podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
+import { golden2c3, goldenBytes, goldenError, goldenText } from '@/testing/podcast-fixtures-2c3';
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -2463,5 +2464,365 @@ describe('ApiClient podcasts (Bridge Phase 2d-1)', () => {
       new ApiClient('https://h', 'tok', 15000, onAuthError).prepareEpisodeStream(5, 'E'),
     ).rejects.toMatchObject({ status: 401 });
     expect(onAuthError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
+  type Answer = { status: number; body?: unknown; text?: string; headers?: Record<string, string> };
+
+  /** A fake fetch with response headers (case-insensitive, like `Headers.get`). */
+  function installAnswers(impl: (url: string, init: RequestInit) => Answer): jest.Mock {
+    const mock = jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const { status, body, text, headers = {} } = impl(String(input), init ?? {});
+      const raw = text ?? (body === undefined ? '' : JSON.stringify(body));
+      const lower = new Map(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+      return Promise.resolve({
+        ok: status >= 200 && status < 300,
+        status,
+        statusText: `status ${status}`,
+        headers: { get: (name: string) => lower.get(name.toLowerCase()) ?? null },
+        text: () => Promise.resolve(raw),
+      } as unknown as Response);
+    });
+    globalThis.fetch = mock as unknown as typeof globalThis.fetch;
+    return mock;
+  }
+
+  /** Answer every request with one refusal. */
+  const refuse = (status: number, code: string, headers?: Record<string, string>) =>
+    installAnswers(() => ({ status, body: { error: 'Server English.', code }, headers }));
+
+  const client = () => new ApiClient('https://h', 'tok');
+  const call = (m: jest.Mock, i = 0) => ({
+    url: new URL(String(m.mock.calls[i][0])),
+    init: m.mock.calls[i][1] as RequestInit,
+  });
+  const failure = (p: Promise<unknown>) =>
+    p.then(
+      () => {
+        throw new Error('resolved');
+      },
+      (e: unknown) => e as ApiError,
+    );
+
+  it('reads the providers', async () => {
+    const m = installAnswers(() => ({ status: 200, body: golden2c3.wire.providers }));
+    await expect(client().podcastDiscoveryProviders()).resolves.toEqual(golden2c3.wire.providers);
+    expect(call(m).url.toString()).toBe('https://h/api/v1/podcasts/discovery/providers');
+    expect(headerValue(call(m).init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('searches iTunes with the country and keeps provider ids as strings', async () => {
+    const m = installAnswers(() => ({
+      status: 200,
+      text: goldenText('providers/itunes-normalized.json'),
+    }));
+    const r = await client().searchPodcastDirectory({
+      q: 'fixture show',
+      provider: 'itunes',
+      country: 'GB',
+      limit: 20,
+    });
+    expect(r).toEqual(golden2c3.itunes);
+    expect(r.results[1].provider_ids.itunes).toBe('9007199254740993');
+    const { url } = call(m);
+    expect(url.pathname).toBe('/api/v1/podcasts/discovery/search');
+    expect([...url.searchParams.entries()]).toEqual([
+      ['q', 'fixture show'],
+      ['provider', 'itunes'],
+      ['limit', '20'],
+      ['country', 'GB'],
+    ]);
+  });
+
+  it('never sends a country to Podcast Index', async () => {
+    const m = installAnswers(() => ({
+      status: 200,
+      text: goldenText('providers/podcast-index-normalized.json'),
+    }));
+    const r = await client().searchPodcastDirectory({
+      q: 'fixture show',
+      provider: 'podcast_index',
+      country: 'GB',
+    });
+    expect(r).toEqual(golden2c3.podcastIndex);
+    expect(r.country).toBeNull();
+    expect(call(m).url.searchParams.has('country')).toBe(false);
+    expect(call(m).url.searchParams.get('provider')).toBe('podcast_index');
+  });
+
+  it('tells the search refusals apart, with Retry-After when it reads', async () => {
+    const unavailable = goldenError('provider_unavailable');
+    installAnswers(() => ({ status: unavailable.http_status, body: unavailable.body }));
+    const e409 = await failure(
+      client().searchPodcastDirectory({ q: 'ab', provider: 'podcast_index' }),
+    );
+    expect(e409.status).toBe(409);
+    expect(apiErrorKind(e409)).toBe('provider_unavailable');
+
+    const limited = goldenError('discovery_rate_limited');
+    installAnswers(() => ({
+      status: limited.http_status,
+      body: limited.body,
+      headers: limited.headers,
+    }));
+    const e429 = await failure(client().searchPodcastDirectory({ q: 'ab', provider: 'itunes' }));
+    expect(apiErrorKind(e429)).toBe('discovery_rate_limited');
+    expect(e429.retryAfterSeconds).toBe(6);
+
+    // A header the browser can't read (cross-origin) or a date reads as absent.
+    installAnswers(() => ({ status: 429, body: limited.body }));
+    const noHeader = await failure(
+      client().searchPodcastDirectory({ q: 'ab', provider: 'itunes' }),
+    );
+    expect(noHeader.retryAfterSeconds).toBeUndefined();
+    refuse(429, 'provider_rate_limited', { 'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT' });
+    const dated = await failure(client().searchPodcastDirectory({ q: 'ab', provider: 'itunes' }));
+    expect(apiErrorKind(dated)).toBe('provider_rate_limited');
+    expect(dated.retryAfterSeconds).toBeUndefined();
+
+    refuse(503, 'discovery_busy', { 'Retry-After': '1' });
+    const busy = await failure(client().searchPodcastDirectory({ q: 'ab', provider: 'itunes' }));
+    expect(apiErrorKind(busy)).toBe('discovery_busy');
+    expect(busy.retryAfterSeconds).toBe(1);
+
+    for (const [status, code] of [
+      [404, 'discovery_off'],
+      [404, 'module_off'],
+      [403, 'kid_account'],
+      [403, 'demo_account'],
+      [403, 'no_library_access'],
+      [400, 'invalid_query'],
+      [400, 'invalid_country'],
+      [504, 'discovery_timeout'],
+      [502, 'provider_rejected'],
+      [502, 'discovery_unavailable'],
+    ] as const) {
+      refuse(status, code);
+      const e = await failure(client().searchPodcastDirectory({ q: 'ab', provider: 'itunes' }));
+      expect([e.status, apiErrorKind(e)]).toEqual([status, code]);
+    }
+  });
+
+  it('rebuilds a result artwork URL from its id with the media token', () => {
+    const rel = golden2c3.itunes.results[0].artwork_url;
+    const url = new URL(client().discoveryArtworkUrl(rel)!);
+    expect(url.origin + url.pathname).toBe('https://h/api/v1/podcasts/discovery/artwork');
+    expect([...url.searchParams.entries()]).toEqual([
+      ['id', '4745a0c5c9b5a0a81f9d9396ab9abcc27c981462c6fdcbb7ab8f117de612d0e6'],
+      ['token', 'tok'],
+    ]);
+    expect(new ApiClient('https://h').discoveryArtworkUrl(rel)).toBe(
+      'https://h/api/v1/podcasts/discovery/artwork?id=4745a0c5c9b5a0a81f9d9396ab9abcc27c981462c6fdcbb7ab8f117de612d0e6',
+    );
+    const id = 'a'.repeat(64);
+    for (const bad of [
+      null,
+      undefined,
+      '',
+      `https://evil.example/api/v1/podcasts/discovery/artwork?id=${id}`,
+      `/api/v1/podcasts/discovery/artwork?id=${'A'.repeat(64)}`,
+      `/api/v1/podcasts/discovery/artwork?id=${id.slice(1)}`,
+      `/api/v1/podcasts/discovery/artwork?id=${id}&x=1`,
+      `/api/v1/libraries/1/cover?id=${id}`,
+    ]) {
+      expect(client().discoveryArtworkUrl(bad)).toBeNull();
+    }
+  });
+
+  it('follows by address with exactly {library_id, feed_url}, private only when asked', async () => {
+    const m = installAnswers(() => ({
+      status: 200,
+      body: { state: 'following', show: podcastShow() },
+    }));
+    await expect(
+      client().followPodcastByUrl(5, 'https://feeds.example.org/one.xml'),
+    ).resolves.toEqual({
+      state: 'following',
+      show: podcastShow(),
+    });
+    expect(call(m).url.toString()).toBe('https://h/api/v1/podcasts/follow');
+    expect(call(m).init.method).toBe('POST');
+    expect(JSON.parse(call(m).init.body as string)).toEqual({
+      library_id: 5,
+      feed_url: 'https://feeds.example.org/one.xml',
+    });
+    await client().followPodcastByUrl(5, 'https://f/x', { private: false });
+    expect(JSON.parse(call(m, 1).init.body as string)).toEqual({
+      library_id: 5,
+      feed_url: 'https://f/x',
+    });
+    await client().followPodcastByUrl(5, 'https://f/x', { private: true });
+    expect(JSON.parse(call(m, 2).init.body as string)).toEqual({
+      library_id: 5,
+      feed_url: 'https://f/x',
+      private: true,
+    });
+  });
+
+  it('decodes a 202 subscribing and the follow-by-address refusals', async () => {
+    const request = {
+      id: 81,
+      library_id: 5,
+      state: 'queued',
+      feed: 'https://feeds.example.org/...',
+      private: false,
+      show_path: null,
+      error: null,
+      created_at: '2026-10-20T08:00:00Z',
+      updated_at: '2026-10-20T08:00:00Z',
+    };
+    installAnswers(() => ({ status: 202, body: { state: 'subscribing', request } }));
+    await expect(client().followPodcastByUrl(5, 'https://f/x')).resolves.toEqual({
+      state: 'subscribing',
+      request,
+    });
+    for (const [status, code] of [
+      [400, 'invalid_feed_url'],
+      [409, 'privacy_conflict'],
+      [409, 'bridge_unavailable'],
+      [409, 'not_podcast_library'],
+      [409, 'library_not_writable'],
+      [429, 'too_many_requests'],
+      [403, 'no_library_access'],
+    ] as const) {
+      refuse(status, code);
+      const e = await failure(client().followPodcastByUrl(5, 'https://f/x'));
+      expect([e.status, apiErrorKind(e)]).toEqual([status, code]);
+    }
+  });
+
+  it('asks a show to check with exactly {library_id, path}', async () => {
+    const m = installAnswers(() => ({
+      status: 202,
+      body: { request: { id: 9, state: 'queued' } },
+    }));
+    await expect(client().checkPodcast(5, 'Daily News')).resolves.toEqual({
+      request: { id: 9, state: 'queued' },
+    });
+    expect(call(m).url.toString()).toBe('https://h/api/v1/podcasts/check');
+    expect(JSON.parse(call(m).init.body as string)).toEqual({ library_id: 5, path: 'Daily News' });
+    refuse(429, 'checked_recently');
+    expect(apiErrorKind(await failure(client().checkPodcast(5, 'S')))).toBe('checked_recently');
+    refuse(404, 'show_not_found');
+    expect(apiErrorKind(await failure(client().checkPodcast(5, 'S')))).toBe('show_not_found');
+  });
+
+  it('uploads OPML as the raw body with text/x-opml and decodes the rows', async () => {
+    const m = installAnswers(() => ({
+      status: 200,
+      text: goldenText('opml/duplicates-private-expected.json'),
+    }));
+    const bytes = goldenBytes('opml/queue-cap.opml');
+    await expect(client().importOpml(7, bytes)).resolves.toEqual(golden2c3.importRows);
+    const { url, init } = call(m);
+    expect(url.toString()).toBe('https://h/api/v1/podcasts/opml/import?library_id=7');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(bytes);
+    expect(headerValue(init, 'Content-Type')).toBe('text/x-opml');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+    expect(headerValue(init, 'Content-Encoding')).toBeUndefined();
+    // A Blob (the web picker's File) goes as it is too, whatever type it carries.
+    const blob = new Blob(['<opml/>'], { type: 'application/octet-stream' });
+    await client().importOpml(7, blob);
+    expect(call(m, 1).init.body).toBe(blob);
+    expect(headerValue(call(m, 1).init, 'Content-Type')).toBe('text/x-opml');
+  });
+
+  it('gives an OPML upload 45 s before it times out', async () => {
+    jest.useFakeTimers();
+    try {
+      globalThis.fetch = jest.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            );
+          }),
+      ) as unknown as typeof globalThis.fetch;
+      const p = failure(client().importOpml(7, new Uint8Array([1])));
+      jest.advanceTimersByTime(44_000);
+      let settled = false;
+      void p.then(() => (settled = true));
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      jest.advanceTimersByTime(1_000);
+      expect(await p).toMatchObject({ name: 'TimeoutError', timeoutMs: 45_000 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('tells the import refusals apart, with Retry-After', async () => {
+    const invalid = goldenError('invalid_opml');
+    installAnswers(() => ({ status: invalid.http_status, body: invalid.body }));
+    const e400 = await failure(client().importOpml(7, new Uint8Array()));
+    expect([e400.status, apiErrorKind(e400)]).toEqual([400, 'invalid_opml']);
+    for (const [status, code] of [
+      [413, 'opml_limit'],
+      [415, 'unsupported_opml_type'],
+      [404, 'module_off'],
+      [409, 'not_podcast_library'],
+    ] as const) {
+      refuse(status, code);
+      const e = await failure(client().importOpml(7, new Uint8Array()));
+      expect([e.status, apiErrorKind(e)]).toEqual([status, code]);
+    }
+    refuse(429, 'opml_rate_limited', { 'Retry-After': '29' });
+    const limited = await failure(client().importOpml(7, new Uint8Array()));
+    expect([apiErrorKind(limited), limited.retryAfterSeconds]).toEqual(['opml_rate_limited', 29]);
+    refuse(503, 'opml_busy', { 'Retry-After': '1' });
+    const busy = await failure(client().importOpml(7, new Uint8Array()));
+    expect([apiErrorKind(busy), busy.retryAfterSeconds]).toEqual(['opml_busy', 1]);
+  });
+
+  it('exports with the Authorization header and reads the X-OPML counts in any case', async () => {
+    // Go writes the canonical `X-Opml-*` spelling; `Headers.get` matches any case.
+    const canonical = Object.fromEntries(
+      Object.entries(golden2c3.exportHeaders).map(([k, v]) => [
+        k.replace(/^X-OPML-/, 'X-Opml-'),
+        v,
+      ]),
+    );
+    const m = installAnswers(() => ({
+      status: 200,
+      text: goldenText('opml/export-expected.opml'),
+      headers: canonical,
+    }));
+    await expect(client().exportOpml()).resolves.toEqual({
+      text: goldenText('opml/export-expected.opml'),
+      exported: 1,
+      omittedPrivate: 1,
+      omittedUnavailable: 1,
+    });
+    const { url, init } = call(m);
+    expect(url.toString()).toBe('https://h/api/v1/podcasts/opml/export');
+    expect(url.searchParams.has('token')).toBe(false);
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('reads missing or odd export counts as null', async () => {
+    installAnswers(() => ({
+      status: 200,
+      text: '<opml/>',
+      headers: { 'X-OPML-Exported': 'lots', 'X-OPML-Omitted-Private': '-1' },
+    }));
+    await expect(client().exportOpml()).resolves.toEqual({
+      text: '<opml/>',
+      exported: null,
+      omittedPrivate: null,
+      omittedUnavailable: null,
+    });
+  });
+
+  it('tells the export refusals apart', async () => {
+    refuse(413, 'opml_export_limit');
+    expect(apiErrorKind(await failure(client().exportOpml()))).toBe('opml_export_limit');
+    refuse(429, 'opml_rate_limited', { 'Retry-After': '10' });
+    const limited = await failure(client().exportOpml());
+    expect([apiErrorKind(limited), limited.retryAfterSeconds]).toEqual(['opml_rate_limited', 10]);
+    refuse(403, 'demo_account');
+    expect(apiErrorKind(await failure(client().exportOpml()))).toBe('demo_account');
   });
 });

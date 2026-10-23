@@ -132,6 +132,16 @@ export type Capabilities = {
    * `GET`/`POST /libraries/{id}/podcasts/fetch`. Absent on older servers: treat missing as
    * false and play an episode like any book. */
   podcast_fetch?: boolean;
+  /** Whether the server can search a podcast directory (Bridge Phase 2c-3; the player's
+   * Find shows, Phase 2d-2): `GET /podcasts/discovery/{providers,search,artwork}`. A core
+   * flag, not a module's (no `ModuleFlag`), and it does not say the caller may search (a
+   * kid's or demo account, or the module off, is refused by the routes). Absent on older
+   * servers: treat missing as false and offer no directory search. */
+  podcast_discovery?: boolean;
+  /** Whether the server imports and exports OPML subscription lists (Bridge Phase 2c-3):
+   * `POST /podcasts/opml/import` (the module's) and `GET /podcasts/opml/export` (core).
+   * Absent on older servers: treat missing as false and offer neither. */
+  podcast_opml?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -1592,3 +1602,86 @@ export type MyPodcasts = { shows: PodcastShow[]; requests: PodcastRequest[] };
 /** `POST /podcasts/follow`: following at once (a path), or (by URL, 2d-2) a request. */
 export type PodcastFollowResult =
   { state: 'following'; show: PodcastShow } | { state: 'subscribing'; request: PodcastRequest };
+
+// --- Podcast discovery and OPML (Bridge Phase 2c-3 on the server; the player's Find shows
+// is Phase 2d-2). Hand-mirrored from the API reference ("Podcast discovery", "OPML import
+// and export"); every key inside these objects is always sent, nulls included.
+
+/** A podcast directory the server can search. */
+export type PodcastDiscoveryProvider = 'itunes' | 'podcast_index';
+
+/** `GET /podcasts/discovery/providers`: always both, `itunes` first; `podcast_index` is
+ * `available` only when the server holds its key pair. */
+export type PodcastDiscoveryProviders = {
+  providers: { id: PodcastDiscoveryProvider | (string & {}); available: boolean }[];
+};
+
+/** One search result: a public show the directory lists. Nothing in it says whether the
+ * server already has it. */
+export type PodcastDiscoveryResult = {
+  title: string;
+  author: string;
+  /** The normalized public feed address: what a follow sends. */
+  feed_url: string;
+  /** Relative: `/api/v1/podcasts/discovery/artwork?id=<64 hex>` (the server's proxy), or
+   * null. Load it through `discoveryArtworkUrl`. */
+  artwork_url: string | null;
+  /** Each directory's id as a decimal STRING (they exceed 2^53), null when unknown. */
+  provider_ids: { itunes: string | null; podcast_index: string | null };
+  episode_count: number | null;
+  /** The show's page on the directory, or null. */
+  provider_url: string | null;
+};
+
+/** `GET /podcasts/discovery/search`. `query` echoes the cleaned search text; `country`
+ * is null for Podcast Index. */
+export type PodcastDiscoverySearch = {
+  provider: PodcastDiscoveryProvider;
+  query: string;
+  country: string | null;
+  results: PodcastDiscoveryResult[];
+};
+
+/** `POST /podcasts/check`'s 202: the poll asked for (an open one when there is one). */
+export type PodcastCheckResult = { request: { id: number; state: string } };
+
+/** What an OPML import did with one subscription. */
+export type OpmlRowStatus =
+  | 'followed'
+  | 'already_following'
+  | 'queued'
+  | 'already_queued'
+  | 'duplicate'
+  | 'invalid'
+  | 'limited'
+  | 'unavailable'
+  | 'error';
+
+/** One subscription of an imported OPML list. */
+export type OpmlImportRow = {
+  /** 1-based among ALL outlines, categories included. */
+  outline_index: number;
+  status: OpmlRowStatus | (string & {});
+  /** A redacted label (scheme and host, "/..." for the rest); null for a missing or
+   * invalid address. */
+  feed: string | null;
+  private: boolean;
+  path: string | null;
+  request_id: number | null;
+  /** A `duplicate`'s earlier `outline_index`. */
+  duplicate_of: number | null;
+  error: PodcastError | null;
+};
+
+/** `POST /podcasts/opml/import?library_id=`: the decisions, not completion. */
+export type OpmlImportResult = { library_id: number; rows: OpmlImportRow[] };
+
+/** `GET /podcasts/opml/export` as the client hands it back: the document and the
+ * `X-OPML-*` counts (null when a header can't be read, as cross-origin without the
+ * server exposing it). A client-side shape, not a JSON body. */
+export type OpmlExport = {
+  text: string;
+  exported: number | null;
+  omittedPrivate: number | null;
+  omittedUnavailable: number | null;
+};

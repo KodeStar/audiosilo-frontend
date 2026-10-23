@@ -30,6 +30,12 @@ import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { isPodcastLibrary } from '@/lib/library-kind';
+import {
+  FOLLOW_REQUEST_POLL_MS,
+  isOpenRequest,
+  libraryRequests,
+  requestsDone,
+} from '@/lib/podcast-requests';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
@@ -77,6 +83,9 @@ import type {
   PodcastEpisodePage,
   PodcastFetchStatus,
   PodcastShow,
+  MyPodcasts,
+  PodcastDiscoveryProvider,
+  PodcastFollowResult,
   Progress,
   ProgressEdit,
   Rating,
@@ -199,6 +208,18 @@ export const qk = {
   /** An episode's on-demand fetch status (the episode-fetch controller seeds it). */
   podcastFetch: (cid: string, lib: number, path: string) =>
     ['podcastFetch', cid, lib, path] as const,
+  // Finding shows (Bridge Phase 2d-2), capability `podcast_discovery`.
+  /** The directories the server can search. */
+  discoveryProviders: (cid: string) => ['discoveryProviders', cid] as const,
+  /** One directory search: its provider, cleaned text, country and limit (the server's
+   * own cache key), so an unchanged repeat reuses the held results. */
+  discoverySearch: (
+    cid: string,
+    provider: string,
+    q: string,
+    country: string | null,
+    limit: number,
+  ) => ['discoverySearch', cid, provider, q, country, limit] as const,
 };
 
 /** Whether a query key is a connection's Up next queue (`qk.queue`). */
@@ -2309,12 +2330,56 @@ export function latestEpisodesQuery(
   });
 }
 
-/** The shows the caller follows (`GET /me/podcasts`). */
+/** The shows the caller follows and their follow requests (`GET /me/podcasts`). A
+ * request this cache last saw open that has now ended `done` reads its library's show
+ * list again (the show is there now; the followed shows came in this answer), whichever
+ * observer asked. */
 export function myPodcastsQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.myPodcasts(cid),
-    queryFn: client ? ({ signal }) => client.myPodcasts(signal) : skipToken,
+    queryFn: client
+      ? async ({ signal, client: qc }) => {
+          const before = qc.getQueryData<MyPodcasts>(qk.myPodcasts(cid))?.requests;
+          const answer = await client.myPodcasts(signal);
+          const libs = new Set(requestsDone(before, answer.requests).map((r) => r.library_id));
+          for (const lib of libs) {
+            if (lib !== null) void qc.invalidateQueries({ queryKey: qk.podcastShows(cid, lib) });
+          }
+          return answer;
+        }
+      : skipToken,
     staleTime: PODCAST_STALE_MS,
+  });
+}
+
+/** A library's follow requests (`GET /me/podcasts`'s `requests`; `libraryId` undefined:
+ * every library's), open first then ended, each newest first. Read again every
+ * `FOLLOW_REQUEST_POLL_MS` only while one of them is open, the surface showing them is
+ * `active` (its screen focused) and the app in the foreground: nothing polls once they
+ * have all ended. A request that ends `done` reads its library's show list again. Core:
+ * no capability (the route lists nothing while the module never queued anything). */
+export function useFollowRequests(
+  libraryId: number | undefined,
+  { active }: { active: boolean },
+  connectionId?: string,
+) {
+  const cid = useCid(connectionId);
+  const client = useOptionalApi(connectionId);
+  const select = useCallback(
+    (d: MyPodcasts) => libraryRequests(d.requests, libraryId),
+    [libraryId],
+  );
+  return useQuery({
+    ...myPodcastsQuery(cid, client),
+    select,
+    refetchInterval: (query) =>
+      active &&
+      AppState.currentState === 'active' &&
+      query.state.data?.requests.some(
+        (r) => (libraryId === undefined || r.library_id === libraryId) && isOpenRequest(r),
+      )
+        ? FOLLOW_REQUEST_POLL_MS
+        : false,
   });
 }
 
@@ -2352,6 +2417,110 @@ export function useFollowPodcast(connectionId?: string) {
         true,
         answer.state === 'following' ? answer.show : undefined,
       ),
+  );
+}
+
+/** What following by address answered, into the cache: a show the library had (`200
+ * following`) into its show list (the list read again when it lacks the show) and the
+ * followed shows read again; a new feed's request (`202 subscribing`) at the head of the
+ * cached follow requests, so a screen showing them starts following it (`storeAnswer`: a
+ * read already in flight, the follow requests' own poll, can't land over it). */
+async function storeFollowByUrl(qc: QueryClient, cid: string, answer: PodcastFollowResult) {
+  if (answer.state === 'following') {
+    const { show } = answer;
+    const list = qc.getQueryData<PodcastShow[]>(qk.podcastShows(cid, show.library_id));
+    if (list?.some((s) => s.path === show.path)) {
+      storeFollowing(qc, cid, show.library_id, show.path, true, show);
+      return;
+    }
+    void qc.invalidateQueries({ queryKey: qk.podcastShows(cid, show.library_id) });
+    void qc.invalidateQueries({ queryKey: qk.myPodcasts(cid) });
+    return;
+  }
+  const { request } = answer;
+  await storeAnswer<MyPodcasts>(
+    qc,
+    qk.myPodcasts(cid),
+    (cached) =>
+      cached && {
+        ...cached,
+        requests: [request, ...cached.requests.filter((r) => r.id !== request.id)],
+      },
+  );
+}
+
+/** Follow a feed by its address in a podcast library (capability `podcasts`): a
+ * directory result, a pasted address. `private` only when the listener says the feed is
+ * theirs alone. The cache takes the answer (`storeFollowByUrl`). */
+export function useFollowPodcastByUrl(connectionId?: string) {
+  return useCapabilityMutation(
+    'podcasts',
+    connectionId,
+    (api, v: { libraryId: number; feedUrl: string; private?: boolean }) =>
+      api.followPodcastByUrl(v.libraryId, v.feedUrl, { private: v.private }),
+    ({ qc, cid }, answer) => storeFollowByUrl(qc, cid, answer),
+  );
+}
+
+/** Ask a followed show to check its feed now (capability `podcasts`): 202. Nothing
+ * follows the check (it is not a follow request): the caller reads the show again a while
+ * later. */
+export function useCheckPodcast(connectionId?: string) {
+  return useCapabilityMutation(
+    'podcasts',
+    connectionId,
+    (api, v: { libraryId: number; path: string }) => api.checkPodcast(v.libraryId, v.path),
+  );
+}
+
+/** Export the followed public shows as OPML (capability `podcast_opml`; a core read the
+ * module being off does not stop). Resolves with the document and its counts. */
+export function useExportOpml(connectionId?: string) {
+  return useCapabilityMutation('podcast_opml', connectionId, (api, _v: void) => api.exportOpml());
+}
+
+/** How long a directory search's results are held (the server's own cache is 15
+ * minutes): an unchanged repeat asks nothing. */
+const DISCOVERY_STALE_MS = 15 * 60_000;
+
+/** The directories the server can search (capability `podcast_discovery`). */
+export function usePodcastDiscoveryProviders(connectionId?: string) {
+  return useCapabilityQuery(
+    'podcast_discovery',
+    qk.discoveryProviders,
+    (api, signal) => api.podcastDiscoveryProviders(signal),
+    connectionId,
+    { staleTime: DISCOVERY_STALE_MS, retry: false },
+  );
+}
+
+/** A submitted directory search: the cleaned text (`cleanSearchText`), the provider, the
+ * country (iTunes only, else null) and the result count. */
+export type PodcastSearchParams = {
+  q: string;
+  provider: PodcastDiscoveryProvider;
+  country: string | null;
+  limit: number;
+};
+
+/** One directory search (capability `podcast_discovery`), asked only once submitted
+ * (`params` null asks nothing), never retried by itself (a refusal is the caller's to say:
+ * its budget is small), and held for 15 minutes. */
+export function usePodcastSearch(params: PodcastSearchParams | null, connectionId?: string) {
+  return useCapabilityQuery(
+    'podcast_discovery',
+    (cid) =>
+      qk.discoverySearch(
+        cid,
+        params?.provider ?? '',
+        params?.q ?? '',
+        params?.country ?? null,
+        params?.limit ?? 0,
+      ),
+    // `ready` holds the query until there are params.
+    (api, signal) => api.searchPodcastDirectory(params!, signal),
+    connectionId,
+    { ready: params !== null, staleTime: DISCOVERY_STALE_MS, retry: false },
   );
 }
 
