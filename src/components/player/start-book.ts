@@ -17,7 +17,7 @@ import { usePlayer } from '@/playback/store';
 import { mayActFor } from '@/stores/profiles';
 
 import type { PlayTarget } from './play-route';
-import { dropFromQueue } from './queue-drop';
+import { dropStartedBook } from './drop-started';
 
 /** Where `startBookInPlace` starts a book, when not from its saved place. */
 export type StartOptions = {
@@ -79,7 +79,7 @@ async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
  * the background; the app came back to a black screen). Resolves `false` when the book is
  * not downloaded and its connection is gone, or it is not the listening person's
  * (`mayActFor`: refused before anything is fetched); rejects when the book could not be
- * fetched. A book that starts leaves Up next (`dropFromQueue`).
+ * fetched. A book that starts leaves Up next (`dropStartedBook`).
  *
  * A start asked for again while the same one is on its way (the same book from the same
  * place: a second tap while its item, chapters and place are looked up, before the player
@@ -172,8 +172,9 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
       opts.speed,
     );
   // The book you're on is not up next any more (Up next's own Play now does the same):
-  // a queued book started from its page, a browse row or the car leaves the queue. Quiet
+  // a queued book started from its page, a browse row or the car leaves the queue, once it
+  // is the book loaded (a start another one took over keeps its place). Quiet
   // housekeeping, and nothing is sent for a book that isn't queued.
-  void dropFromQueue(target.connectionId, [{ library_id: target.libraryId, path: target.path }]);
+  dropStartedBook(target.connectionId, target.libraryId, source.book.rel_path);
   return true;
 }

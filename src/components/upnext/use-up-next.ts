@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAllProgressAll, useCapability, useNextBook, useQueue } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { useQueueActions } from '@/components/library/use-queue-actions';
-import { dropFromQueue } from '@/components/player/queue-drop';
+import { dropStartedBook } from '@/components/player/drop-started';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import { useLayout } from '@/lib/layout';
@@ -134,8 +134,9 @@ export function useUpNextData(cid: string | undefined) {
 /**
  * "Play now" for a queued book, through the one play path (`usePlayBook`): a phone
  * closes the sheet and opens the full player; a tablet or desktop starts it under the
- * docked bar. The entry leaves the queue once the book is on its way (`dropFromQueue`, as
- * any start does: the one remove, never a second one beside the start's own).
+ * docked bar. The entry leaves the queue once the book has started (`dropStartedBook`, as
+ * any start does: the one remove, never a second one beside the start's own), and stays
+ * when the start failed.
  */
 export function usePlayNow(cid: string | undefined) {
   const { t } = useTranslation();
@@ -147,7 +148,9 @@ export function usePlayNow(cid: string | undefined) {
     if (phone) closeUpNext();
     try {
       await play({ connectionId: cid, libraryId: entry.library_id, path: entry.path });
-      void dropFromQueue(cid, [entry]);
+      // Already loaded (it played on): it leaves here. A start drops it itself once it
+      // started (`startBookInPlace`, the player route), and one that failed keeps it.
+      dropStartedBook(cid, entry.library_id, entry.path);
     } catch {
       toast({ title: t('upnext.playFailed', { title }) });
     }

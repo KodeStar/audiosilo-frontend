@@ -5,32 +5,49 @@ import { sameOrigin } from '@/lib/same-origin';
  * The feed address of each subscription in an OPML list, by the import rows'
  * `outline_index` (server v2.4.0's import Try again): the server reports only a redacted
  * label (scheme and host), so a row's single follow by address reads its address from the
- * bytes the page still holds. Counted as the server counts (`internal/podcast/opml`):
- * every unprefixed `<outline>` inside `<body>`, in document order, 1-based, categories
- * included; the `xmlUrl` attribute in any letter case, XML's own entities decoded. Lenient
- * on purpose (the server already validated the list): comments and CDATA are skipped, and
- * an address it can't find gives the row no Try again (`rowFeedUrl`).
+ * bytes the page still holds. Counted as the server counts (`internal/podcast/opml`
+ * `Parse`): every unprefixed `<outline>` in the body's outline tree (the body's own, and
+ * outlines inside those), in document order, 1-based, categories included; an outline
+ * under any other element is not counted, nor is anything below it. The `xmlUrl`
+ * attribute in any letter case, XML's own entities decoded. Comments, CDATA and the XML
+ * declaration are skipped (left to right, so a comment opener inside a CDATA is text).
+ * Markup it can't read (a DOCTYPE, a tag it can't parse, a default namespace) gives no
+ * address at all, never numbers that could have slipped onto another row: an address it
+ * can't find gives the row no Try again (`rowFeedUrl`).
  */
 export function outlineFeeds(text: string): Map<number, string> {
   const out = new Map<number, string>();
-  const clean = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
-  const open = /<body(?:\s[^>]*)?>/.exec(clean);
-  if (!open) return out;
-  const start = open.index + open[0].length;
-  const end = clean.indexOf('</body', start);
-  const body = clean.slice(start, end === -1 ? undefined : end);
-  // A start tag's attributes may hold `>` inside quotes, so they are read value by value.
-  const tag = /<outline((?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*\/?>/g;
+  const clean = text.replace(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>/g, ' ');
+  // A tag: its name, then attributes read value by value (a quoted value may hold `>`).
+  const tag = /<(\/?)([^\s/>]+)((?:\s*[^\s=/>"']+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
   const attr = /([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  // The open elements, outermost first.
+  const stack: string[] = [];
   let index = 0;
-  for (let m = tag.exec(body); m; m = tag.exec(body)) {
-    index++;
-    for (let a = attr.exec(m[1]); a; a = attr.exec(m[1])) {
-      if (a[1].toLowerCase() !== 'xmlurl') continue;
-      const url = decodeEntities(a[2] ?? a[3] ?? '').trim();
-      if (url) out.set(index, url);
+  for (let at = clean.indexOf('<'); at !== -1; at = clean.indexOf('<', tag.lastIndex)) {
+    tag.lastIndex = at;
+    const m = tag.exec(clean);
+    if (!m) return new Map();
+    const [, closing, name, attrs, selfClosing] = m;
+    if (closing) {
+      stack.pop();
+      continue;
+    }
+    let url: string | null = null;
+    for (let a = attr.exec(attrs); a; a = attr.exec(attrs)) {
+      const key = a[1].toLowerCase();
+      // A default namespace makes the element (and those below it) namespaced.
+      if (key === 'xmlns' && (a[2] ?? a[3])) return new Map();
+      if (key === 'xmlurl') url = decodeEntities(a[2] ?? a[3] ?? '').trim();
     }
     attr.lastIndex = 0;
+    const inTree =
+      stack[0] === 'opml' && stack[1] === 'body' && stack.slice(2).every((n) => n === 'outline');
+    if (name === 'outline' && inTree) {
+      index++;
+      if (url) out.set(index, url);
+    }
+    if (!selfClosing) stack.push(name);
   }
   return out;
 }

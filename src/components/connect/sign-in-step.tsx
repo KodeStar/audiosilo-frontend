@@ -65,7 +65,13 @@ export function SignInStep({
     label: t(`connect.signIn.mode.${value}`),
   }));
 
+  // One sign-in at a time: the field's return key (or the invite link's own sign-in below)
+  // must not redeem the code a second time while one is on its way, which could spend
+  // another of the invite's uses.
+  const submitting = useRef(false);
   const onSubmit = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
     setError(null);
     setLoading(true);
     try {
@@ -91,6 +97,8 @@ export function SignInStep({
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('connect.signIn.failed'));
       setLoading(false);
+    } finally {
+      submitting.current = false;
     }
   };
 

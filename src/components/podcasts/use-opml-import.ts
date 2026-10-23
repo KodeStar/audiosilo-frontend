@@ -57,7 +57,21 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   const [state, setState] = useState<WaveState | null>(null);
   /** The list's feed addresses by `outline_index`, once its bytes are read. */
   const [feeds, setFeeds] = useState<ReadonlyMap<number, string> | null>(null);
-  const [retries, setRetries] = useState<Record<number, RowRetry>>({});
+  // The rows followed again by hand, with the list they belong to (`list`, one more for
+  // each new list or none): a follow answered after another list was picked must not land
+  // on that list's row at the same place.
+  const [retryState, setRetryState] = useState<{
+    list: number;
+    rows: Record<number, RowRetry>;
+  }>({ list: 0, rows: {} });
+  const { list, rows: retries } = retryState;
+  const currentList = useRef(list);
+  useEffect(() => {
+    currentList.current = list;
+  }, [list]);
+  // The rows whose Try again is on its way (`<list>:<index>`), read at the press: a second
+  // tap before the busy state renders sends nothing.
+  const retrying = useRef(new Set<string>());
   const [problem, setProblem] = useState<OpmlLocalProblem | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const waves = useRef<OpmlWaves | null>(null);
@@ -82,7 +96,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     setState(null);
     setProblem(why);
     setFeeds(null);
-    setRetries({});
+    setRetryState((r) => ({ list: r.list + 1, rows: {} }));
   }, []);
 
   // The page moved to another connection or library: the import was the other one's, so
@@ -153,10 +167,18 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   const retryRow = useCallback(
     (row: OpmlImportRow) => {
       const feedUrl = rowFeedUrl(feeds, row);
-      if (!feedUrl || retries[row.outline_index]?.kind === 'busy') return;
       const index = row.outline_index;
-      const settle = (next: RowRetry | null) =>
-        setRetries(({ [index]: _, ...rest }) => (next ? { ...rest, [index]: next } : rest));
+      const key = `${list}:${index}`;
+      if (!feedUrl || retrying.current.has(key)) return;
+      retrying.current.add(key);
+      const settle = (next: RowRetry | null) => {
+        if (next?.kind !== 'busy') retrying.current.delete(key);
+        setRetryState((r) => {
+          if (r.list !== list) return r;
+          const { [index]: _, ...rest } = r.rows;
+          return { list, rows: next ? { ...rest, [index]: next } : rest };
+        });
+      };
       settle({ kind: 'busy' });
       followByUrl({ libraryId, feedUrl }).then(
         (answer) =>
@@ -175,11 +197,12 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
           }),
         (e: unknown) => {
           settle(null);
-          if (!(e instanceof CapabilityError)) toast({ title: t(followByUrlErrorKey(e)) });
+          if (currentList.current === list && !(e instanceof CapabilityError))
+            toast({ title: t(followByUrlErrorKey(e)) });
         },
       );
     },
-    [feeds, retries, followByUrl, libraryId, t],
+    [feeds, list, followByUrl, libraryId, t],
   );
 
   return {

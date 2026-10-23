@@ -30,7 +30,9 @@ export default function NotFoundScreen() {
         icon="link"
         title={t('common.notFound.title')}
         hint={t('common.notFound.body')}
-        action={{ label: t('common.notFound.home'), onPress: () => router.replace('/') }}
+        // `dismissTo`, never `replace`: `(app)` is the root stack's anchor and already sits
+        // under this page, so a replace would stack a second `(app)` (`leaveOnboarding`).
+        action={{ label: t('common.notFound.home'), onPress: () => router.dismissTo('/') }}
       />
     </Screen>
   );

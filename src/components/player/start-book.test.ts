@@ -18,7 +18,7 @@ jest.mock('@/playback/store', () => ({
 }));
 
 const mockDrop = jest.fn();
-jest.mock('./queue-drop', () => ({ dropFromQueue: (...a: unknown[]) => mockDrop(...a) }));
+jest.mock('./drop-started', () => ({ dropStartedBook: (...a: unknown[]) => mockDrop(...a) }));
 const mockRequestFetch = jest.fn();
 const mockCancelUnless = jest.fn();
 const mockCancelOf = jest.fn();
@@ -130,7 +130,7 @@ describe('startBookInPlace', () => {
 
   it('takes the book it starts off Up next, as Play now does (PLAYER-04)', async () => {
     await expect(startBookInPlace(target)).resolves.toBe(true);
-    expect(mockDrop).toHaveBeenCalledWith('c1', [{ library_id: 2, path: target.path }]);
+    expect(mockDrop).toHaveBeenCalledWith('c1', 2, target.path);
   });
 
   it('leaves Up next alone when the book does not start', async () => {

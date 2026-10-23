@@ -37,6 +37,37 @@ describe('outlineFeeds', () => {
     expect([...outlineFeeds(text)]).toEqual([[1, 'https://a.example/feed/1']]);
   });
 
+  it("counts no outline under another element of the body, as the server's outline tree does", () => {
+    const feeds = outlineFeeds(
+      opml(`
+        <group><outline xmlUrl="https://feeds.example.com/a"/></group>
+        <outline xmlUrl="https://feeds.example.com/b"/>`),
+    );
+    expect([...feeds]).toEqual([[1, 'https://feeds.example.com/b']]);
+  });
+
+  it('reads attributes with no space between them, and a comment opener inside a CDATA', () => {
+    const feeds = outlineFeeds(
+      opml(`
+        <outline text="A"xmlUrl="https://a.example/feed"/>
+        <![CDATA[ <!-- ]]>
+        <outline xmlUrl="https://b.example/feed"/>
+        <!-- -->`),
+    );
+    expect([...feeds]).toEqual([
+      [1, 'https://a.example/feed'],
+      [2, 'https://b.example/feed'],
+    ]);
+  });
+
+  it('gives no address at all for markup it cannot read, rather than numbers that slipped', () => {
+    expect(
+      outlineFeeds(`<!DOCTYPE opml>${opml('<outline xmlUrl="https://a.example/"/>')}`).size,
+    ).toBe(0);
+    expect(outlineFeeds(opml('<outline text=a xmlUrl="https://a.example/"/>')).size).toBe(0);
+    expect(outlineFeeds(opml('<outline xmlns="urn:x" xmlUrl="https://a.example/"/>')).size).toBe(0);
+  });
+
   it('reads nothing from a document without a body', () => {
     expect(outlineFeeds('<opml><outline xmlUrl="https://a.example/"/></opml>').size).toBe(0);
     expect(outlineFeeds('not xml').size).toBe(0);

@@ -28,8 +28,8 @@ jest.mock('@/api/hooks', () => {
 const mockItem = jest.fn();
 const mockChapters = jest.fn();
 const mockDrop = jest.fn();
-jest.mock('@/components/player/queue-drop', () => ({
-  dropFromQueue: (...a: unknown[]) => mockDrop(...a),
+jest.mock('@/components/player/drop-started', () => ({
+  dropStartedBook: (...a: unknown[]) => mockDrop(...a),
 }));
 jest.mock('@/api/provider', () =>
   // `require` (not an import) because a jest.mock factory is hoisted above every import.
@@ -217,7 +217,7 @@ describe('usePlayNow', () => {
       undefined,
       undefined,
     );
-    expect(mockDrop).toHaveBeenCalledWith('c', [entry('B')]);
+    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B');
   });
 
   it('opens the full player on a phone, closing the sheet first', async () => {
@@ -233,7 +233,7 @@ describe('usePlayNow', () => {
       params: { connection: 'c', libraryId: '1', path: 'B' },
     });
     expect(mockPlayBook).not.toHaveBeenCalled();
-    expect(mockDrop).toHaveBeenCalledWith('c', [entry('B')]);
+    expect(mockDrop).toHaveBeenCalledWith('c', 1, 'B');
   });
 
   it('keeps the entry and says so when the book cannot start', async () => {

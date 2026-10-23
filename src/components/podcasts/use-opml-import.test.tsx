@@ -216,6 +216,29 @@ describe('useOpmlImport', () => {
       expect(mockClient.followPodcastByUrl).not.toHaveBeenCalled();
     });
 
+    it('sends one follow for two quick taps, and drops an answer that lands on a new list', async () => {
+      const one = failed(1, 'https://example.com/...');
+      const { result } = await started([one]);
+      let answerFollow: (v: unknown) => void = () => {};
+      mockClient.followPodcastByUrl.mockImplementation(
+        () => new Promise((resolve) => (answerFollow = resolve)),
+      );
+      await act(async () => {
+        result.current.retryRow(one);
+        result.current.retryRow(one);
+      });
+      await act(async () => jest.advanceTimersByTimeAsync(0));
+      expect(mockClient.followPodcastByUrl).toHaveBeenCalledTimes(1);
+      // Another list is picked while the follow is on its way: its row 1 is not that feed.
+      mockClient.importOpml.mockResolvedValue(answer([row(1, 'followed')]));
+      await act(async () => result.current.start(listFile()));
+      await act(async () => {
+        answerFollow({ state: 'subscribing', request: { id: 55, state: 'queued', library_id: 7 } });
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.retries).toEqual({});
+    });
+
     it('says why a follow by address was refused, and the row stays as it was', async () => {
       const one = failed(1, 'https://example.com/...');
       const { result } = await started([one]);

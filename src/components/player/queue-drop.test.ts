@@ -95,4 +95,19 @@ describe('dropFromQueue', () => {
     expect(mockRemove).toHaveBeenCalledTimes(1);
     expect(queryClient.getQueryData(qk.queue('c1'))).toEqual([]);
   });
+
+  it('sends one remove for an entry a drop reaches later, when another drop asks for it meanwhile', async () => {
+    queryClient.setQueryData(qk.queue('c1'), [entry('Series/Book 1'), entry('Other/Queued')]);
+    let release: () => void = () => {};
+    mockRemove.mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
+    const both = dropFromQueue('c1', [finished, queued]);
+    const second = dropFromQueue('c1', [queued]);
+    await Promise.resolve();
+    release();
+    await Promise.all([both, second]);
+    expect(mockRemove.mock.calls).toEqual([
+      ['c1', { libraryId: 1, path: 'Series/Book 1' }],
+      ['c1', { libraryId: 1, path: 'Other/Queued' }],
+    ]);
+  });
 });

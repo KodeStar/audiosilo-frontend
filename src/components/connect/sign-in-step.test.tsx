@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import type { User } from '@/api/types';
 import { useSession } from '@/stores/session';
@@ -108,6 +108,18 @@ describe("an invite link's code (a scanned or pasted invite, #98)", () => {
     expect(mockApi.redeemCode).toHaveBeenCalledWith('ABCD-1234');
     expect(mockApi.exchange).toHaveBeenCalledWith('pt', 'Test device');
     expect(conn('srv-1')?.name).toBe('Hearthside');
+  });
+
+  it("never redeems it again from the field's return key while it is on its way", async () => {
+    let answer: (v: unknown) => void = () => {};
+    mockApi.redeemCode.mockImplementation(() => new Promise((r) => (answer = r)));
+    mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} initialCode="ABCD-1234" />);
+    await fireEvent(screen.getByPlaceholderText('Enter your invite code'), 'submitEditing');
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
+    await act(async () => answer({ server_name: 'Hearthside', pairing_token: 'pt' }));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a refused code in the field with the reason, and tries it once only', async () => {

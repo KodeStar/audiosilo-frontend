@@ -37,9 +37,10 @@ export async function dropFromQueue(
       books.some((b) => entryHolds(e, b.library_id, b.path)) &&
       !removing.has(entryKeyOf(connectionId, e)),
   );
+  // All of them at once: a call meanwhile for an entry this one reaches later sends nothing.
+  for (const e of held) removing.add(entryKeyOf(connectionId, e));
   for (const e of held) {
     const key = entryKeyOf(connectionId, e);
-    removing.add(key);
     try {
       await removeFromQueue(connectionId, client, { libraryId: e.library_id, path: e.path });
       queryClient.setQueryData<QueueEntry[]>(qk.queue(connectionId), (cached) =>

@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react-native';
+import { act, render, waitFor } from '@testing-library/react-native';
 
 // The full player route (`src/app/player.tsx`): when it starts its book and when it jumps
 // to its `?position=` / `?track=`. The test lives here because a file under `src/app` is a
@@ -46,8 +46,8 @@ jest.mock('@/components/podcasts/episode-fetch-panel', () => {
 jest.mock('@/api/provider', () => ({ useCid: (id?: string) => id ?? 'c' }));
 jest.mock('@/components/player/player-view', () => ({ PlayerView: () => null }));
 const mockDrop = jest.fn();
-jest.mock('@/components/player/queue-drop', () => ({
-  dropFromQueue: (...a: unknown[]) => mockDrop(...a),
+jest.mock('@/components/player/drop-started', () => ({
+  dropStartedBook: (...a: unknown[]) => mockDrop(...a),
 }));
 const mockSeekBook = jest.fn();
 const mockGoToTrack = jest.fn();
@@ -93,7 +93,7 @@ beforeEach(() => {
   setNowPlaying(null);
   mockSeekBook.mockReset();
   mockGoToTrack.mockReset();
-  mockPlayBook.mockReset();
+  mockPlayBook.mockReset().mockResolvedValue(undefined);
   mockDrop.mockReset();
   mockRequestFetch.mockReset();
   mockBook = plainBook;
@@ -138,8 +138,8 @@ describe('the player route', () => {
     routeTo({ position: '600' });
     await render(<PlayerScreen />);
     expect(mockPlayBook.mock.calls).toEqual([['c', 1, mockBook, mockChapters, 600, undefined]]);
-    // The book you're on leaves Up next (PLAYER-04), once.
-    expect(mockDrop.mock.calls).toEqual([['c', [{ library_id: 1, path: 'Author/Book' }]]]);
+    // The book you're on leaves Up next (PLAYER-04), once, after its start.
+    await waitFor(() => expect(mockDrop.mock.calls).toEqual([['c', 1, 'Author/Book']]));
     // playBook loads the book (already at 600), then the hot-swap replaces it.
     await act(async () => setNowPlaying(THIS_BOOK));
     await act(async () => setNowPlaying(THIS_BOOK));
