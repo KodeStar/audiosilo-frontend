@@ -23,7 +23,7 @@ jest.mock('@/api/hooks', () => {
 const mockNoteFailure = jest.fn();
 jest.mock('@/api/reachability', () => ({
   ...jest.requireActual('@/api/reachability'),
-  noteFailure: (e: unknown) => mockNoteFailure(e),
+  noteFailure: (...a: unknown[]) => mockNoteFailure(...a),
 }));
 
 /* eslint-disable import/first */

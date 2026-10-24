@@ -15,7 +15,6 @@ import { useStatsServer } from '@/components/you/stats/use-stats-server';
 import { useLayout } from '@/lib/layout';
 import { yearHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
-import type { Connection } from '@/stores/session';
 
 import { cardHeight } from './card-size';
 import { StoryStage } from './story-stage';
@@ -119,7 +118,11 @@ export function YearSection() {
     body = (
       <View className="gap-5">
         {story.status === 'unsupported' ? null : pickers}
-        <YearState story={story} phone={phone} width={width} signedOut={signedOut} />
+        {story.status === 'error' && signedOut ? (
+          <SignInAgainState connection={signedOut} />
+        ) : (
+          <YearState story={story} phone={phone} width={width} />
+        )}
       </View>
     );
   }
@@ -135,19 +138,8 @@ export function YearSection() {
   );
 }
 
-/** Loading, unsupported, error and empty: a calm state in the section's place. An error
- * while the server needs signing in again (`signedOut`) is the sign-in state, no Retry. */
-function YearState({
-  story,
-  phone,
-  width,
-  signedOut,
-}: {
-  story: YearStory;
-  phone: boolean;
-  width: number;
-  signedOut: Connection | undefined;
-}) {
+/** Loading, unsupported, error and empty: a calm state in the section's place. */
+function YearState({ story, phone, width }: { story: YearStory; phone: boolean; width: number }) {
   const { t } = useTranslation();
   switch (story.status) {
     case 'unsupported': {
@@ -155,7 +147,6 @@ function YearState({
       return <Notice icon="circle-info" title={copy.title} body={copy.body} />;
     }
     case 'error': {
-      if (signedOut) return <SignInAgainState connection={signedOut} />;
       const copy = yearStateCopy(story, t);
       return (
         <EmptyState

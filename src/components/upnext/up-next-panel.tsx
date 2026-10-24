@@ -3,7 +3,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import { useBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
-import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
 import { slopTo44 } from '@/components/player/control-pill';
@@ -71,7 +71,7 @@ export function UpNextPanel({
   const { entries } = data;
   const loaded = nowPlaying?.connectionId === cid ? nowPlaying : null;
   // Its sign-in ended: the sign-in state in place of the load error and its Retry (#124).
-  const signedOut = useSignedOutConnections().find((c) => c.id === cid);
+  const signedOut = useSignedOutConnection(cid);
 
   return (
     <View className="pb-2">

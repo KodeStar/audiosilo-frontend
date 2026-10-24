@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
+import { ErrorNote } from '@/components/ui/query-state';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import type { Connection } from '@/stores/session';
@@ -18,6 +19,28 @@ export { useSignedOutConnections } from './reconnect-banner';
  * that cannot work (CONNECT-03). */
 export function useSignedOutConnection(cid: string | undefined): Connection | undefined {
   return useSignedOutConnections().find((c) => c.id === cid);
+}
+
+/** A page's load error for `cid`'s server: the sign-in state while that server needs
+ * signing in again (CONNECT-03), else `message` with its Retry. `className` styles the
+ * sign-in card only. */
+export function LoadFailedNote({
+  cid,
+  message,
+  onRetry,
+  className,
+}: {
+  cid: string | undefined;
+  message: string;
+  onRetry: () => void;
+  className?: string;
+}) {
+  const signedOut = useSignedOutConnection(cid);
+  return signedOut ? (
+    <SignInAgainState connection={signedOut} className={className} />
+  ) : (
+    <ErrorNote message={message} onRetry={onRetry} />
+  );
 }
 
 /** The first of `signedOut` whose list failed among `groups` (one per server): its
