@@ -25,6 +25,7 @@ import {
 jest.mock('@/api/reachability', () => ({
   isReachable: jest.fn(() => true),
   noteError: jest.fn(),
+  noteFailure: jest.fn(),
   noteSuccess: jest.fn(),
 }));
 
@@ -404,11 +405,14 @@ describe('progress-sync', () => {
     expect(reachability.noteSuccess).toHaveBeenCalledWith('c2');
   });
 
-  it("loadInitialProgress notes a fetch failure against the book's own connection", async () => {
+  it("loadInitialProgress reports a fetch failure against the book's own connection, as a check request", async () => {
     reachable.mockReturnValue(true);
     const down = fakeGetApi(() => Promise.reject(new Error('server B down')));
     await loadInitialProgress(down, 'c2', 1, 'A/Book');
-    expect(reachability.noteError).toHaveBeenCalledWith('c2', expect.any(Error));
+    // A slow or failed read only asks for a check (frontend#131); it never marks the
+    // server down itself.
+    expect(reachability.noteFailure).toHaveBeenCalledWith('c2', expect.any(Error));
+    expect(reachability.noteError).not.toHaveBeenCalled();
   });
 
   // --- durable mirror + resume lookup (never restart an in-progress book from 0) ---

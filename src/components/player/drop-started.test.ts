@@ -41,3 +41,15 @@ it('keeps it queued when the start failed or another book took over', () => {
   dropStartedBook('c1', 1, 'Other/Queued');
   expect(mockDrop).not.toHaveBeenCalled();
 });
+
+it('also drops the path the start was asked for, when it is not the book path (#122)', () => {
+  usePlayer.setState({ nowPlaying: loaded } as never);
+  dropStartedBook('c1', 1, 'Other/Queued', 'Other/Queued/Part 1');
+  expect(mockDrop).toHaveBeenCalledWith('c1', [
+    { library_id: 1, path: 'Other/Queued' },
+    { library_id: 1, path: 'Other/Queued/Part 1' },
+  ]);
+  mockDrop.mockReset();
+  dropStartedBook('c1', 1, 'Other/Queued', 'Other/Queued');
+  expect(mockDrop).toHaveBeenCalledWith('c1', [{ library_id: 1, path: 'Other/Queued' }]);
+});

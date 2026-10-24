@@ -130,7 +130,15 @@ describe('startBookInPlace', () => {
 
   it('takes the book it starts off Up next, as Play now does (PLAYER-04)', async () => {
     await expect(startBookInPlace(target)).resolves.toBe(true);
-    expect(mockDrop).toHaveBeenCalledWith('c1', 2, target.path);
+    expect(mockDrop).toHaveBeenCalledWith('c1', 2, target.path, target.path);
+  });
+
+  it('drops both the book and the path it was asked for when the server moved it (#122)', async () => {
+    // A queue entry that is no longer exactly a book (a part path the server now resolves
+    // to the book folder) must leave Up next too once the book it names has started.
+    mockItem.mockResolvedValue({ rel_path: 'Folder' });
+    await expect(startBookInPlace({ ...target, path: 'Folder/Part 1' })).resolves.toBe(true);
+    expect(mockDrop).toHaveBeenCalledWith('c1', 2, 'Folder', 'Folder/Part 1');
   });
 
   it('leaves Up next alone when the book does not start', async () => {
