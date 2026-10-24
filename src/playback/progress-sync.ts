@@ -1,6 +1,6 @@
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { isReachable, noteError, noteFailure, noteSuccess } from '@/api/reachability';
+import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -280,7 +280,9 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
     void flushQueue();
   } catch (e) {
     if (isUnrecoverable(e)) return; // auth/forbidden - don't retry forever
-    noteError(save.connectionId, e); // a connection error flips this server offline
+    // No answer only asks for a check of the server (`noteFailure`): one slow save never
+    // marks a healthy server down; the check does when it gets no answer either.
+    noteFailure(save.connectionId, e);
     await enqueue(save);
   }
 }
@@ -339,7 +341,7 @@ async function flushGroup(
       noteSuccess(cid);
     } catch (e) {
       if (isUnrecoverable(e)) continue; // 4xx: drop, can't ever succeed
-      noteError(cid, e);
+      noteFailure(cid, e); // only a check marks the server down
       remaining.push(save); // keep it to retry next time
       // An `ApiError` means the server ANSWERED (even a 500), so the failure is specific
       // to this save - keep flushing the rest of the group past it rather than blocking

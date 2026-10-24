@@ -622,8 +622,8 @@ export function anyCapability(
 /** Rejection of a capability-gated mutation on a server that does not advertise its
  * flag, or whose `/server` info is not known yet (`unknown`): the request is never sent,
  * so an older server can't answer it with a bare 404, and no reconnect is flagged (only
- * a 401 does that). Don't hand it to `noteError` or treat it as a network failure:
- * reachability reads any error that is not an `ApiError` as an unreachable server. */
+ * a 401 does that). Never treat it as a network failure: no request was sent, so it says
+ * nothing about whether the server answers. */
 export class CapabilityError extends Error {
   constructor(
     public capability: keyof Capabilities,
@@ -1087,8 +1087,8 @@ export function useBookProgress(
  *    likewise a real answer, not an excuse to serve stale local state.
  *  - Anything else (offline, DNS, `TimeoutError`) means we never reached the server:
  *    have its server checked (`noteFailure`, frontend#131) and serve the mirror so a
- *    downloaded book still knows where the listener is. Never marked down straight away
- *    (`noteError`): the mirror's success would have the down server checked, found up,
+ *    downloaded book still knows where the listener is. Never marked down straight
+ *    away: the mirror's success would have the down server checked, found up,
  *    and every query of the connection read again, this one included, round and round
  *    for a read that is only slow or broken.
  *
@@ -2016,7 +2016,7 @@ export function useHousehold(connectionId?: string) {
 
 /** Share (`true`) or stop sharing what the caller is listening to (capability
  * `household`). Rejects with `CapabilityError` (sending nothing) while the server's
- * flag is off or not known yet; never hand that to `noteError`. A demo account is
+ * flag is off or not known yet (no request sent: not a network failure). A demo account is
  * refused by the server (403). Stores the answer and refreshes the house, which a
  * change of the caller's own choice opens or empties (it is reciprocal). */
 export function useSetHousehold(connectionId?: string) {
@@ -2559,7 +2559,7 @@ export function usePodcastFetchStatus(
 // --- Household members (capability `household_members`, Phase 8b-1) -----------------
 // The queries ask only a server that advertises the flag (`skipToken` elsewhere); the
 // writes reject with a `CapabilityError`, sending nothing, while it is off or not known
-// yet (never hand that to `noteError`). An owner can rename, sign out and delete their
+// yet (no request sent: not a network failure). An owner can rename, sign out and delete their
 // members whatever `allowed` says; only adding is gated by it.
 
 /** The caller's household members, whether they may add more (`allowed`, else a

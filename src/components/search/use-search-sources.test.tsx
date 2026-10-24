@@ -75,7 +75,7 @@ jest.mock('@/api/provider', () => ({
     ]),
   }),
 }));
-jest.mock('@/api/reachability', () => ({ noteError: jest.fn() }));
+jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: jest.fn(async () => null),
   saveProgress: jest.fn(async () => {}),

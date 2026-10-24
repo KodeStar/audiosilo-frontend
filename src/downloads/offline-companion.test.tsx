@@ -68,7 +68,7 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 // would otherwise outlive the test.
 jest.mock('@/api/reachability', () => ({
   ...jest.requireActual('@/api/reachability'),
-  noteError: jest.fn(),
+  noteFailure: jest.fn(),
 }));
 
 /* eslint-disable import/first */
