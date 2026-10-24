@@ -165,7 +165,11 @@ describe('the offline probe', () => {
           fail = reject;
         }),
     );
-    return { client: { serverInfo, baseUrl } as never, fail: (e: unknown) => fail(e) };
+    return {
+      client: { serverInfo, baseUrl } as never,
+      serverInfo,
+      fail: (e: unknown) => fail(e),
+    };
   }
 
   // frontend#131: a check is stale once something newer is known, and records nothing.
@@ -175,7 +179,7 @@ describe('the offline probe', () => {
     r.setReachabilityClients(new Map([['c1', client]]));
     const check = r.checkReachability('c1');
     r.noteSuccess('c1'); // a save got through while the check waited out its timeout
-    fail(new TimeoutError(15_000));
+    fail(new TypeError('Network request failed')); // a fresh module: its own TimeoutError class
     await check;
     expect(r.isReachable('c1')).toBe(true);
   });
@@ -197,7 +201,7 @@ describe('the offline probe', () => {
     const check = r.checkReachability('c1');
     // The address runner left home: the connection's client is the away one now.
     r.setReachabilityClients(new Map([['c1', pendingClient('https://h').client]]));
-    home.fail(new TimeoutError(15_000));
+    home.fail(new TypeError('Network request failed'));
     await check;
     expect(r.useReachability.getState().online.c1).toBeUndefined();
   });
@@ -211,6 +215,20 @@ describe('the offline probe', () => {
     fail(new TypeError('Network request failed'));
     await check;
     expect(r.useReachability.getState().online.c1).toBeUndefined();
+  });
+
+  it('checks again after a stale check when a query succeeded while it waited', async () => {
+    const r = fresh();
+    const { client, serverInfo, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    r.noteError('c1', new TypeError('Network request failed'));
+    const check = r.checkReachability('c1');
+    r.recheckReachability('c1'); // a Retry got through while the check waited
+    expect(serverInfo).toHaveBeenCalledTimes(1);
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(serverInfo).toHaveBeenCalledTimes(2);
+    fail(new TypeError('Network request failed'));
   });
 
   it("probes through the provider's client when it registered one", async () => {

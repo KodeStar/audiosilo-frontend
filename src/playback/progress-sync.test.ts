@@ -415,6 +415,14 @@ describe('progress-sync', () => {
     expect(reachability.noteError).not.toHaveBeenCalled();
   });
 
+  it('loadInitialProgress takes an ApiError as an answer from its server', async () => {
+    reachable.mockReturnValue(true);
+    const answered = fakeGetApi(() => Promise.reject(new ApiError(500, 'boom')));
+    await loadInitialProgress(answered, 'c2', 1, 'A/Book');
+    expect(reachability.noteSuccess).toHaveBeenCalledWith('c2');
+    expect(reachability.noteFailure).not.toHaveBeenCalled();
+  });
+
   // --- durable mirror + resume lookup (never restart an in-progress book from 0) ---
 
   it('writes the durable mirror on a successful (online) save', async () => {

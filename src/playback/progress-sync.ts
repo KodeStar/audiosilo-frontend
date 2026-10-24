@@ -113,10 +113,11 @@ export async function loadInitialProgress(
       serverOk = true;
     } catch (e) {
       // Reachability is per-connection, so report the failure against THIS book's own
-      // server. A read with a local fallback only asks for a check (`noteFailure`): one
-      // slow read never marks a healthy server down (frontend#131). The local mirror/queue
-      // fallback below keys off `serverOk`, not this call.
-      noteFailure(connectionId, e);
+      // server. An `ApiError` is an answer (it is up); anything else only asks for a check
+      // (`noteFailure`): one slow read never marks a healthy server down (frontend#131).
+      // The local mirror/queue fallback below keys off `serverOk`, not this call.
+      if (e instanceof ApiError) noteSuccess(connectionId);
+      else noteFailure(connectionId, e);
     }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,

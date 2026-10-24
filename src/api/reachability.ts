@@ -12,8 +12,9 @@ import { resolveClient } from './connection-clients';
  * LAN-only server you've left) without penalising the others. The app is multi-server,
  * so "reachable" is a property of a connection, not a global. A connection with no
  * recorded state is assumed reachable (optimistic). A connection flips to `false` when
- * one of its requests fails with a connection error (a fetch rejection - no HTTP
- * response), and back to `true` when a lightweight probe of that server succeeds or the
+ * a save fails with a connection error (a fetch rejection - no HTTP response), or when a
+ * query or read got no answer and a check of its server (`checkReachability`) got none
+ * either, and back to `true` when a lightweight probe of that server succeeds or the
  * browser reports it's back online. While a connection is offline its progress/history
  * saves queue locally; registered reconnect handlers run (per connection) on recovery.
  */
@@ -37,6 +38,9 @@ const checking = new Map<string, ApiClient>();
 /** How many answers each connection's server has given (every `setOnline(id, true)`), so
  * a check that got none can tell another request was answered while it waited. */
 const answers = new Map<string, number>();
+/** Connections whose check in flight must run again once it ends without an answer: a
+ * query succeeded meanwhile (`recheckReachability`), so the check may be a stale one. */
+const recheck = new Set<string>();
 
 /** Point the reachability probe at the current set of clients (set by ApiProvider). */
 export function setReachabilityClients(map: Map<string, ApiClient>) {
@@ -182,10 +186,23 @@ export async function checkReachability(connectionId: string): Promise<void> {
   // Removed while it ran (removal drops its entry): nothing to record.
   if (checking.get(connectionId) !== client) return;
   checking.delete(connectionId);
+  const again = recheck.delete(connectionId);
   const now = clientFor(connectionId);
-  if (!now || now.baseUrl !== client.baseUrl) return;
-  if (answered) setOnline(connectionId, true);
-  else if ((answers.get(connectionId) ?? 0) === answersBefore) setOnline(connectionId, false);
+  if (now && now.baseUrl === client.baseUrl) {
+    if (answered) setOnline(connectionId, true);
+    else if ((answers.get(connectionId) ?? 0) === answersBefore) setOnline(connectionId, false);
+  }
+  // A query succeeded while this one waited (a Retry that got through, a check sent before
+  // the network came back): ask again now, not at the next probe.
+  if (again && !isReachable(connectionId)) void checkReachability(connectionId);
+}
+
+/** `checkReachability` for a query that succeeded while its server is marked down: when
+ * a check is already on its way (it may have been sent before the network came back),
+ * it runs once more after that one, so the success is never lost to a stale check. */
+export function recheckReachability(connectionId: string): void {
+  if (checking.has(connectionId)) recheck.add(connectionId);
+  else void checkReachability(connectionId);
 }
 
 /** Probe every currently-offline connection's server; mark those that answer online.
@@ -214,6 +231,7 @@ async function runProbe() {
 onConnectionRemoved((id) => {
   checking.delete(id);
   answers.delete(id);
+  recheck.delete(id);
   const current = useReachability.getState().online;
   if (!(id in current)) return;
   const { [id]: _drop, ...rest } = current;

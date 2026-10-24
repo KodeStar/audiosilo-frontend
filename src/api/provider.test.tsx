@@ -326,6 +326,13 @@ describe('queries and reachability', () => {
     expect(useReachability.getState().online.c1).toBe(false);
   });
 
+  it('brings a down server back on its own /server answer, with no second check', async () => {
+    useReachability.setState({ online: { c1: false } });
+    await queryClient.fetchQuery({ queryKey: qk.server('c1'), queryFn: async () => ({}) });
+    expect(useReachability.getState().online.c1).toBe(true);
+    expect(serverInfo).not.toHaveBeenCalled();
+  });
+
   it('refetches a failed list once its server is back, and an answer brings it back', async () => {
     serverInfo.mockRejectedValue(new TypeError('Network request failed'));
     const libraries = jest.fn().mockRejectedValue(new TypeError('Network request failed'));

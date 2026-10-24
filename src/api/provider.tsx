@@ -10,9 +10,10 @@ import { pickedUrl, useAddressRoute } from './address-route';
 import { ApiClient, isSignedOutError } from './client';
 import {
   anyOffline,
-  checkReachability,
   noteFailure,
+  noteSuccess,
   onReconnect,
+  recheckReachability,
   setReachabilityClients,
   useReachability,
 } from './reachability';
@@ -70,13 +71,16 @@ function noteQueryError(error: unknown, key: readonly unknown[]) {
 
 /** A query that succeeded for a server marked down has it checked at once, so a Retry
  * that got through brings the connection back now, not at the next probe. Checked, not
- * trusted: a query can succeed from a local copy (`fetchProgress`'s mirror). Bails first
- * when nothing is down (every successful fetch runs it). */
+ * trusted: a query can succeed from a local copy (`fetchBookProgress`'s mirror). The
+ * public `/server` query is that check's own request, so its success is the answer
+ * itself. Bails first when nothing is down (every successful fetch runs it). */
 function noteQueryReached(key: readonly unknown[]) {
   const { online } = useReachability.getState();
   if (!anyOffline(online)) return;
   const cid = cidOfKey(key);
-  if (cid && online[cid] === false) void checkReachability(cid);
+  if (!cid || online[cid] !== false) return;
+  if (isServerInfoKey(key)) noteSuccess(cid);
+  else recheckReachability(cid);
 }
 
 /**
