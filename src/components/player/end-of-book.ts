@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { contentKeyOf } from '@/lib/content-key';
+import { useEpisodeFetch } from '@/playback/episode-fetch';
 import type { UpNextBook } from '@/playback/up-next-resolver';
 
 import { dropFromQueue } from './queue-drop';
@@ -25,6 +27,11 @@ export const useAutoPlayHold = create<{ key: string | null }>(() => ({ key: null
  * this function's business: it leaves Up next where it is finished, whether or not the
  * next one starts (`BookEndedListener`, the credits). Showing the player is the caller's
  * choice (`navigateWhenActive`).
+ *
+ * An episode its server still has to fetch is handed to the fetch (`startBookInPlace`):
+ * it is on its way but not playing yet, so it stays next on Up next. The fetch's own start
+ * takes it off once it plays (`dropStartedBook`); a fetch that fails or is cancelled
+ * leaves it at the head of Up next.
  */
 export async function advanceTo(next: UpNextBook): Promise<boolean> {
   try {
@@ -33,6 +40,7 @@ export async function advanceTo(next: UpNextBook): Promise<boolean> {
     console.warn('[end-of-book] could not start the next book', err);
     return false;
   }
-  if (next.queueEntry) void dropFromQueue(next.connectionId, [next.queueEntry]);
+  if (next.queueEntry && useEpisodeFetch.getState().pending?.key !== contentKeyOf(next))
+    void dropFromQueue(next.connectionId, [next.queueEntry]);
   return true;
 }
