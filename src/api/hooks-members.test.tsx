@@ -42,7 +42,7 @@ jest.mock('@/api/provider', () => ({
   useCid: (id?: string) => id ?? 'c1',
   useOptionalApi: (id?: string) => mockClients[id ?? 'c1'] ?? null,
 }));
-jest.mock('@/api/reachability', () => ({ noteError: jest.fn() }));
+jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: jest.fn(async () => null),
   saveProgress: jest.fn(async () => {}),
@@ -64,7 +64,7 @@ import {
   useRevokeMyDevice,
   useUpdateMember,
 } from '@/api/hooks';
-import { noteError } from '@/api/reachability';
+import { noteFailure } from '@/api/reachability';
 import { type Connection, useSession } from '@/stores/session';
 /* eslint-enable import/first */
 
@@ -235,7 +235,7 @@ describe('household member writes', () => {
       expect(error).toBeInstanceOf(CapabilityError);
       expect(error).toMatchObject({ capability: 'household_members', unknown: false });
       expect(mockClients.c1[method]).not.toHaveBeenCalled();
-      expect(noteError).not.toHaveBeenCalled();
+      expect(noteFailure).not.toHaveBeenCalled();
     },
   );
 

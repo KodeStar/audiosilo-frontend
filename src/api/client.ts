@@ -422,6 +422,7 @@ export class ApiClient {
   private readonly clientHeaders: Record<string, string>;
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
+  private readonly onAnswer?: () => void;
   /** The batch loader behind `seriesBooksPage`, one per `libraryId:limit` (so bounded
    * by libraries x page sizes), created on first use. */
   private readonly seriesLoaders = new Map<string, (name: string) => Promise<BookPage>>();
@@ -450,17 +451,24 @@ export class ApiClient {
    * network/offline failure surfaces as `TimeoutError` or a raw fetch rejection, with
    * no status), a 401 `ApiError` inherently proves "server responded, token refused" -
    * cleanly distinct from offline (the reachability layer relies on the same invariant).
+   *
+   * `onAnswer` is invoked whenever the server answers a request at all (the fetch
+   * resolved, any status), before the answer is read: reachability counts it, so a check
+   * of a slow but healthy server that timed out never marks it down while other requests
+   * were answered (FU-SLOWOK).
    */
   constructor(
     baseUrl: string,
     token: string | null = null,
     timeoutMs = 15000,
     onAuthError?: () => void,
+    onAnswer?: () => void,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
     this.timeoutMs = timeoutMs;
     this.onAuthError = onAuthError;
+    this.onAnswer = onAnswer;
     this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, webOrigin())
       ? { [CLIENT_HEADER]: clientIdentity(APP_VERSION, Platform.OS) }
       : {};
@@ -522,6 +530,7 @@ export class ApiClient {
         body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
         signal: controller.signal,
       });
+      this.onAnswer?.();
       return await read(res);
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in

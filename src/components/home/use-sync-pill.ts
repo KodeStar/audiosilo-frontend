@@ -48,8 +48,8 @@ export function usePendingSaves({
 
 /** The greeting's sync pill (see `syncPill`), from the offline queue, the servers'
  * reachability and the newest saved progress. */
-export function useSyncPill(lastSaved: string | undefined) {
+export function useSyncPill(newest: { at: string; connectionId: string } | undefined) {
   const pending = usePendingSaves({ active: useIsFocused() });
-  const offline = useReachability((s) => anyOffline(s.online));
-  return syncPill({ offline, pending, lastSaved });
+  const online = useReachability((s) => s.online);
+  return syncPill({ online, pending, newest });
 }

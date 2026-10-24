@@ -23,6 +23,16 @@ const mockOpen = {
 };
 jest.mock('@/lib/open', () => ({ useOpen: () => mockOpen }));
 
+// The sign-in state has its own tests; a page only places it for its signed-out server.
+let mockSignedOut: { id: string; name: string } | undefined;
+jest.mock('@/components/layout/sign-in-again', () => ({
+  useSignedOutConnection: () => mockSignedOut,
+  SignInAgainState: ({ connection }: { connection: { name: string } }) => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text>{`Sign in again to ${connection.name}`}</Text>;
+  },
+}));
+
 let mockConnections = [{ id: 'a', name: 'Hearthside' }];
 jest.mock('@/api/provider', () => ({
   useApis: () => mockConnections.map((connection) => ({ connection, client: {} })),
@@ -139,6 +149,7 @@ function fixtures() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSignedOut = undefined;
   mockCalls.length = 0;
   mockLayout = 'desktop';
   mockConnections = [{ id: 'a', name: 'Hearthside' }];
@@ -172,6 +183,16 @@ describe('StatsSection states', () => {
     await fireEvent.press(screen.getByText('Retry'));
     expect(mockStats.refetch).toHaveBeenCalled();
     expect(mockListening.refetch).toHaveBeenCalled();
+  });
+
+  // CONNECT-03: a session that ended is the sign-in state, not a Retry that cannot work.
+  it('shows the sign-in state, and no Retry, when the session ended', async () => {
+    mockSignedOut = { id: 'a', name: 'Hearthside' };
+    mockStats = q<UserStats>(undefined, { isError: true });
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByText("Your listening didn't load")).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
   });
 
   it('says so when there is no listening yet', async () => {

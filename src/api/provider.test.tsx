@@ -20,8 +20,10 @@ import {
 // The provider's reconnect handler, as the reachability layer would run it (registered
 // while the provider is imported, so no initializer here that would reset it after).
 let mockReconnect: ((cid: string) => void) | undefined;
+const mockNoteAnswer = jest.fn();
 jest.mock('./reachability', () => ({
   ...jest.requireActual('./reachability'),
+  noteAnswer: (cid: string) => mockNoteAnswer(cid),
   onReconnect: (cb: (cid: string) => void) => {
     mockReconnect = cb;
     return () => {};
@@ -145,6 +147,26 @@ describe('buildClients', () => {
     );
     expect(repaired.get('c1')!.client).toBe(switched.get('c1')!.client);
     expect(repaired.get('c2')!.client).not.toBe(switched.get('c2')!.client);
+  });
+
+  // FU-SLOWOK: every answer a connection's client gets counts for its reachability.
+  it("counts each answer its client gets against that connection's server", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 503,
+      statusText: 'busy',
+      text: async () => '{"error":"busy"}',
+    })) as unknown as typeof globalThis.fetch;
+    try {
+      mockNoteAnswer.mockClear();
+      const built = buildClients(conns, {}, new Map());
+      await expect(built.get('c2')!.client.serverInfo()).rejects.toBeInstanceOf(ApiError);
+      expect(mockNoteAnswer).toHaveBeenCalledWith('c2');
+      expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 
   it('drops a removed connection', () => {

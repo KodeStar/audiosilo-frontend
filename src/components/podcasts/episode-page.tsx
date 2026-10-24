@@ -22,6 +22,7 @@ import {
   rowAt,
 } from '@/components/book/book-page-model';
 import { BookSkeleton } from '@/components/book/book-skeleton';
+import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
 import { pageGutter } from '@/components/library/cover-layout';
 import { chapterStartsOf, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
@@ -33,7 +34,6 @@ import { useBookAnnotations } from '@/components/player/use-playing-pins';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Notice } from '@/components/ui/notice';
-import { ErrorNote } from '@/components/ui/query-state';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
@@ -83,7 +83,7 @@ export function EpisodePage({ libraryId, path }: { libraryId: number; path: stri
   if (!book) {
     return (
       <View className="flex-1 p-4">
-        <ErrorNote message={t('book.loadError')} onRetry={() => refetch()} />
+        <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />
       </View>
     );
   }

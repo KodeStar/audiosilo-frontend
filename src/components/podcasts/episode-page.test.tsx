@@ -2,7 +2,10 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, Progress } from '@/api/types';
 
-jest.mock('@/api/provider', () => ({ useScopedCid: () => 'c1' }));
+jest.mock('@/api/provider', () => ({
+  useScopedCid: () => 'c1',
+  useCid: (id?: string) => id ?? 'c1',
+}));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
@@ -55,6 +58,7 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
+import { useSession } from '@/stores/session';
 import { episodeBook, wire2b } from '@/testing/podcast-fixtures';
 
 import { EpisodePage } from './episode-page';
@@ -73,9 +77,36 @@ beforeEach(() => {
   mockPlay.mockReset().mockResolvedValue(undefined);
   mockRequest.mockReset();
   mockOpenShow.mockReset();
+  useSession.setState({ connections: [] } as never);
 });
 
 describe('EpisodePage', () => {
+  it('keeps the error with a Retry when the episode did not load', async () => {
+    mockBook = undefined;
+    await mount();
+    expect(screen.getByText('Could not load this book.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  // CONNECT-03: an episode that did not load because the session ended.
+  it('shows the sign-in state, and no Retry, when the session ended', async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c1',
+          name: 'Hearthside',
+          serverUrl: 'https://h',
+          token: 't',
+          needsReconnect: 'auth',
+        },
+      ],
+    } as never);
+    mockBook = undefined;
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   it('shows the episode with a link to its show, and plays it the normal way', async () => {
     await mount();
     expect(screen.getByText('Monday')).toBeTruthy();

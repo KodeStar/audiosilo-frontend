@@ -2,7 +2,7 @@ import { Link } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
+import { type LibrariesOfServer, useFavouritesAll, useLibrariesAll } from '@/api/hooks';
 import {
   refusedConnection,
   SignInAgainState,
@@ -11,12 +11,12 @@ import {
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
-import { ErrorNote } from '@/components/ui/query-state';
 import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useOpen } from '@/lib/open';
 
+import { LoadError } from '../books/book-states';
 import { GlyphTile } from '../glyph-tile';
 // The quiet row's layout (the surface itself is PressableRow's).
 const ROW = 'my-1 w-full flex-row items-center gap-3 px-3 py-2.5';
@@ -53,47 +53,50 @@ function FavouritesShelfRow() {
  */
 export function FoldersMode() {
   const { t } = useTranslation();
-  const { libraries, groups: lists, isLoading } = useLibrariesAll();
+  const { libraries, groups: lists, isLoading, retryServer } = useLibrariesAll();
   const { openLibrary } = useOpen();
   // A server whose sign-in ended shows the sign-in state, not a load error or "no
-  // libraries" (frontend#124); a list that failed otherwise keeps the error note.
+  // libraries" (frontend#124); a list that failed otherwise says which server's it is,
+  // under that server's heading, with a Retry of its own (CONNECT-06).
   const signedOut = useSignedOutConnections();
   const refused = refusedConnection(signedOut, lists);
-  const error = lists.some(
-    (g) => g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId),
-  );
+  const failed = (g: LibrariesOfServer) =>
+    g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId);
+  const error = lists.some(failed);
 
-  // Group libraries by their server (connection), preserving connection order.
-  const groups: { id: string; name: string; libs: SourcedLibrary[] }[] = [];
-  for (const lib of libraries) {
-    let g = groups.find((x) => x.id === lib.connectionId);
-    if (!g) {
-      g = { id: lib.connectionId, name: lib.connectionName, libs: [] };
-      groups.push(g);
-    }
-    g.libs.push(lib);
-  }
+  // One group per server (in connection order) that has libraries or failed to list them,
+  // each under its server's heading when there are several (a signed-out server's list
+  // still cached included, so no two servers' libraries ever read as one).
+  const groups = lists.filter((g) => g.libraries.length > 0 || failed(g));
   const showServerHeaders = groups.length > 1;
 
   return (
     <TabPageScroll contentContainerClassName="gap-0">
       {isLoading ? <RowSkeletonList /> : null}
       {refused ? <SignInAgainState connection={refused} className="mb-2" /> : null}
-      {error ? <ErrorNote message={t('library.list.loadLibrariesError')} /> : null}
-
       <FavouritesShelfRow />
 
       {groups.map((g) => (
-        <View key={g.id}>
+        <View key={g.connectionId}>
           {showServerHeaders ? (
             <Text variant="eyebrow" className="mb-1 mt-4">
-              {g.name}
+              {g.connectionName}
             </Text>
           ) : null}
-          {g.libs.map((lib) => (
+          {failed(g) ? (
+            <View className="my-1">
+              <LoadError
+                compact
+                title={t('library.list.loadServerLibrariesError', { name: g.connectionName })}
+                retryLabel={t('common.retry')}
+                onRetry={() => retryServer(g.connectionId)}
+              />
+            </View>
+          ) : null}
+          {g.libraries.map((lib) => (
             <PressableRow
-              key={`${g.id}:${lib.id}`}
-              onPress={() => void openLibrary(g.id, lib.id)}
+              key={`${g.connectionId}:${lib.id}`}
+              onPress={() => void openLibrary(g.connectionId, lib.id)}
               accessibilityRole="button"
               className={ROW}
             >

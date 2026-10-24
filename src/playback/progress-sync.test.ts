@@ -24,7 +24,6 @@ import {
 // the mocked value, so a test toggles reachability for the single connection it exercises.
 jest.mock('@/api/reachability', () => ({
   isReachable: jest.fn(() => true),
-  noteError: jest.fn(),
   noteFailure: jest.fn(),
   noteSuccess: jest.fn(),
 }));
@@ -169,7 +168,7 @@ describe('progress-sync', () => {
   it('enqueues on a connection error, then replays it on the next flush', async () => {
     const failing = fakeApi(() => Promise.reject(new Error('network down')));
     await saveProgress(failing, save);
-    expect(reachability.noteError).toHaveBeenCalled();
+    expect(reachability.noteFailure).toHaveBeenCalled();
     expect(await readQueue()).toHaveLength(1);
 
     // flushQueue takes no args now: it resolves each save to its own connection's client.
@@ -391,11 +390,11 @@ describe('progress-sync', () => {
   // hits saveProgress. Each save notes success/failure against ITS OWN connection, so one
   // server's outage never flips another's banner.
 
-  it('a failed save notes the error against its own connection', async () => {
+  it('a failed save notes the failure against its own connection', async () => {
     reachable.mockReturnValue(true);
     const failing = fakeApi(() => Promise.reject(new Error('server B down')));
     await saveProgress(failing, { ...save, connectionId: 'c2' });
-    expect(reachability.noteError).toHaveBeenCalledWith('c2', expect.any(Error));
+    expect(reachability.noteFailure).toHaveBeenCalledWith('c2', expect.any(Error));
   });
 
   it('a successful save notes success against its own connection', async () => {
@@ -412,7 +411,6 @@ describe('progress-sync', () => {
     // A slow or failed read only asks for a check (frontend#131); it never marks the
     // server down itself.
     expect(reachability.noteFailure).toHaveBeenCalledWith('c2', expect.any(Error));
-    expect(reachability.noteError).not.toHaveBeenCalled();
   });
 
   it('loadInitialProgress takes an ApiError as an answer from its server', async () => {

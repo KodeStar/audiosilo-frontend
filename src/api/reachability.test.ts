@@ -7,14 +7,31 @@ jest.mock('@/api/connection-clients', () => ({
 import { ApiError, TimeoutError } from '@/api/client';
 import {
   anyOffline,
+  checkReachability,
   isReachable,
-  noteError,
+  noteFailure,
   noteSuccess,
   onReconnect,
   serverStatus,
   useReachability,
 } from '@/api/reachability';
 /* eslint-enable import/first */
+
+/** A client whose `/server` never answers. */
+const deadClient = () => ({
+  serverInfo: jest.fn(async () => {
+    throw new TypeError('Network request failed');
+  }),
+});
+
+/** Mark `cid` down the only way it goes down: a check of its server that got no answer. */
+async function markDown(
+  cid: string,
+  check: (cid: string) => Promise<void> = checkReachability,
+): Promise<void> {
+  mockResolveClient.mockReturnValue(deadClient());
+  await check(cid);
+}
 
 describe('serverStatus', () => {
   it('prefers the reconnect flag, then reachability', () => {
@@ -26,12 +43,13 @@ describe('serverStatus', () => {
   });
 });
 
-// Exercises the per-connection reachability state machine. `setOnline` is driven through
-// the public `noteError` (-> offline) / `noteSuccess` (-> online) per connection id.
+// Exercises the per-connection reachability state machine. A connection goes down only
+// through a check that got no answer (`markDown`), and up through `noteSuccess`.
 // Fake timers keep the offline probe's setInterval from leaking between tests.
 describe('per-connection reachability state machine', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    mockResolveClient.mockReset();
     useReachability.setState({ online: {} });
   });
 
@@ -47,47 +65,56 @@ describe('per-connection reachability state machine', () => {
     expect(isReachable('c1')).toBe(true);
   });
 
-  it('stays online for an ApiError (the server answered)', () => {
-    noteError('c1', new ApiError(503, 'unavailable'));
+  // FU-NOTEERR: one request with no answer never marks its server down by itself.
+  it('has the server checked for a request with no answer, and only the check marks it down', async () => {
+    const dead = deadClient();
+    mockResolveClient.mockReturnValue(dead);
+    noteFailure('c1', new TimeoutError(5000));
+    expect(isReachable('c1')).toBe(true);
+    expect(dead.serverInfo).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(isReachable('c1')).toBe(false);
+  });
+
+  it('leaves the server up when the check is answered', async () => {
+    const serverInfo = jest.fn(async () => ({}));
+    mockResolveClient.mockReturnValue({ serverInfo });
+    noteFailure('c1', new TypeError('Network request failed'));
+    await jest.advanceTimersByTimeAsync(0);
+    expect(serverInfo).toHaveBeenCalled();
     expect(isReachable('c1')).toBe(true);
   });
 
-  it('is a no-op for an AbortError (deliberate cancellation)', () => {
+  it('asks nothing for an answer (an ApiError) or a cancellation', () => {
+    const dead = deadClient();
+    mockResolveClient.mockReturnValue(dead);
+    noteFailure('c1', new ApiError(503, 'unavailable'));
     const abort = new Error('aborted');
     abort.name = 'AbortError';
-    noteError('c1', abort);
+    noteFailure('c1', abort);
+    expect(dead.serverInfo).not.toHaveBeenCalled();
     expect(isReachable('c1')).toBe(true);
   });
 
-  it('flips a connection offline for a TimeoutError', () => {
-    noteError('c1', new TimeoutError(5000));
-    expect(isReachable('c1')).toBe(false);
-  });
-
-  it('flips a connection offline for a generic connection error', () => {
-    noteError('c1', new Error('Network request failed'));
-    expect(isReachable('c1')).toBe(false);
-  });
-
-  it('marks only the failing connection offline, not its siblings', () => {
-    noteError('c1', new Error('down'));
+  it('marks only the failing connection offline, not its siblings', async () => {
+    await markDown('c1');
     expect(isReachable('c1')).toBe(false);
     expect(isReachable('c2')).toBe(true); // unaffected
   });
 
-  it('anyOffline reflects whether any connection is down', () => {
+  it('anyOffline reflects whether any connection is down', async () => {
     expect(anyOffline(useReachability.getState().online)).toBe(false);
-    noteError('c1', new Error('down'));
+    await markDown('c1');
     expect(anyOffline(useReachability.getState().online)).toBe(true);
     noteSuccess('c1');
     expect(anyOffline(useReachability.getState().online)).toBe(false);
   });
 
-  it('fires onReconnect with the recovered connection id, exactly once per edge', () => {
+  it('fires onReconnect with the recovered connection id, exactly once per edge', async () => {
     const handler = jest.fn();
     const unsubscribe = onReconnect(handler);
 
-    noteError('c1', new Error('down')); // online -> offline
+    await markDown('c1'); // online -> offline
     expect(isReachable('c1')).toBe(false);
     expect(handler).not.toHaveBeenCalled();
 
@@ -103,12 +130,12 @@ describe('per-connection reachability state machine', () => {
     unsubscribe();
   });
 
-  it('reconnect edges are independent per connection', () => {
+  it('reconnect edges are independent per connection', async () => {
     const handler = jest.fn();
     const unsubscribe = onReconnect(handler);
 
-    noteError('c1', new Error('down'));
-    noteError('c2', new Error('down'));
+    await markDown('c1');
+    await markDown('c2');
     noteSuccess('c2'); // only c2 recovers
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith('c2');
@@ -142,11 +169,11 @@ describe('the offline probe', () => {
 
   it('reaches the server through a client built from the session when no provider registered one (the car with no React tree)', async () => {
     const r = fresh();
+    await markDown('c1', r.checkReachability);
     const serverInfo = jest.fn(async () => ({}));
     mockResolveClient.mockReturnValue({ serverInfo });
     const handler = jest.fn();
     const off = r.onReconnect(handler);
-    r.noteError('c1', new Error('Network request failed'));
     expect(r.isReachable('c1')).toBe(false);
     await jest.advanceTimersByTimeAsync(20_000);
     expect(mockResolveClient).toHaveBeenCalledWith('c1');
@@ -182,6 +209,25 @@ describe('the offline probe', () => {
     fail(new TypeError('Network request failed')); // a fresh module: its own TimeoutError class
     await check;
     expect(r.isReachable('c1')).toBe(true);
+  });
+
+  // FU-SLOWOK: a slow but healthy server answers queries while its check times out.
+  it('leaves a server up whose client got an answer while a check got none', async () => {
+    const r = fresh();
+    const { client, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    const check = r.checkReachability('c1');
+    r.noteAnswer('c1'); // a query got its answer while the check waited out its timeout
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(r.isReachable('c1')).toBe(true);
+  });
+
+  it('counts an answer without marking a down server up', async () => {
+    const r = fresh();
+    await markDown('c1', r.checkReachability);
+    r.noteAnswer('c1');
+    expect(r.isReachable('c1')).toBe(false);
   });
 
   it('marks a server down when its check got no answer and nothing else did', async () => {
@@ -220,8 +266,8 @@ describe('the offline probe', () => {
   it('checks again after a stale check when a query succeeded while it waited', async () => {
     const r = fresh();
     const { client, serverInfo, fail } = pendingClient('https://h');
+    await markDown('c1', r.checkReachability);
     r.setReachabilityClients(new Map([['c1', client]]));
-    r.noteError('c1', new TypeError('Network request failed'));
     const check = r.checkReachability('c1');
     r.recheckReachability('c1'); // a Retry got through while the check waited
     expect(serverInfo).toHaveBeenCalledTimes(1);
@@ -233,9 +279,10 @@ describe('the offline probe', () => {
 
   it("probes through the provider's client when it registered one", async () => {
     const r = fresh();
+    await markDown('c1', r.checkReachability);
+    mockResolveClient.mockClear();
     const serverInfo = jest.fn(async () => ({}));
     r.setReachabilityClients(new Map([['c1', { serverInfo } as never]]));
-    r.noteError('c1', new Error('down'));
     await jest.advanceTimersByTimeAsync(20_000);
     expect(serverInfo).toHaveBeenCalled();
     expect(mockResolveClient).not.toHaveBeenCalled();

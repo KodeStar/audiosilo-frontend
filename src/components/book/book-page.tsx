@@ -22,6 +22,7 @@ import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
 import { ContentScope } from '@/components/layout/content-scope';
+import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { bookMetaWork, matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { bookStatus } from '@/components/library/books/books-view';
@@ -43,7 +44,6 @@ import { useBookPlace } from '@/components/player/use-listening-position';
 import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
 import { useBookAnnotations } from '@/components/player/use-playing-pins';
 import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left';
-import { ErrorNote } from '@/components/ui/query-state';
 import { pathCrumbs } from '@/components/ui/breadcrumbs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
@@ -363,7 +363,7 @@ function BookPage() {
   if (!book) {
     return (
       <View className="flex-1 p-4">
-        <ErrorNote message={t('book.loadError')} onRetry={() => refetch()} />
+        <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />
       </View>
     );
   }

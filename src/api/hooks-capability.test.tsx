@@ -111,7 +111,7 @@ jest.mock('@/api/provider', () => ({
   useCid: (id?: string) => id ?? 'c1',
   useOptionalApi: (id?: string) => mockClients[id ?? 'c1'] ?? null,
 }));
-jest.mock('@/api/reachability', () => ({ noteError: jest.fn() }));
+jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: jest.fn(async () => null),
   saveProgress: jest.fn(async () => {}),

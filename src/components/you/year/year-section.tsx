@@ -5,6 +5,7 @@ import { Platform, View } from 'react-native';
 
 import { useMyStats } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Notice } from '@/components/ui/notice';
@@ -62,6 +63,7 @@ export function YearSection() {
   const { cid, choices: servers } = useStatsServer(picked);
   const [range, setRange] = useState<YearRange>('year');
   const story = useYearStory(cid, range);
+  const signedOut = useSignedOutConnection(cid);
   // This year's number (server time), whichever year is on show.
   const thisYearRange = useMyStats('year', cid).data?.range;
   const thisYear = thisYearRange ? Number(thisYearRange) : null;
@@ -116,7 +118,11 @@ export function YearSection() {
     body = (
       <View className="gap-5">
         {story.status === 'unsupported' ? null : pickers}
-        <YearState story={story} phone={phone} width={width} />
+        {story.status === 'error' && signedOut ? (
+          <SignInAgainState connection={signedOut} />
+        ) : (
+          <YearState story={story} phone={phone} width={width} />
+        )}
       </View>
     );
   }

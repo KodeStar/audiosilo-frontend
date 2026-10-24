@@ -10,6 +10,8 @@ jest.mock('@/stores/session', () => ({
   useSession: { getState: jest.fn() },
   sessionHydrateFailed: jest.fn(() => false),
 }));
+const mockNoteAnswer = jest.fn();
+jest.mock('@/api/reachability', () => ({ noteAnswer: (cid: string) => mockNoteAnswer(cid) }));
 
 const getState = (useSession as unknown as { getState: jest.Mock }).getState;
 const hydrateFailed = sessionHydrateFailed as jest.Mock;
@@ -89,6 +91,16 @@ describe('connection-clients', () => {
     } finally {
       setConnectionAliases({});
     }
+  });
+
+  // FU-SLOWOK: the save loop, the car and the downloads ask through this client, so every
+  // answer it gets counts for its connection's reachability, as a provider-built one's does.
+  it('counts each answer the resolved client gets against its connection, a 5xx included', async () => {
+    setStore([{ id: 'c1', serverUrl: 'https://h', token: 'tok' }]);
+    installFetch(() => ({ status: 503, body: { error: 'busy' } }));
+    await expect(resolveClient('c1')!.me()).rejects.toMatchObject({ status: 503 });
+    expect(mockNoteAnswer).toHaveBeenCalledWith('c1');
+    expect(mockNoteAnswer).toHaveBeenCalledTimes(1);
   });
 
   it('a 403 through the resolved client does NOT flag reconnect (valid token, forbidden)', async () => {

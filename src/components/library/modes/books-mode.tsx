@@ -8,7 +8,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAllProgressAll } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
-import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
 import { SubNavActions } from '@/components/shell/tab-root-nav';
@@ -113,7 +113,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const libraryName = useSelectedLibrary().library?.name ?? '';
 
   const whole = useWholeLibrary(connectionId, libraryId);
-  const signedOut = useSignedOutConnections().find((c) => c.id === connectionId);
+  const signedOut = useSignedOutConnection(connectionId);
   const { progress } = useAllProgressAll();
   const progressMap = useMemo(
     () =>

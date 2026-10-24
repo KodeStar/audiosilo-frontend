@@ -26,12 +26,14 @@ function useMinuteClock(): Date {
   return now;
 }
 
+/** One of the greeting's pills: never wider than its row, its text cut to fit (a long
+ * server name on a phone). */
 function Pill({ children, label }: { children: ReactNode; label: string }) {
   return (
     <View
       accessible
       accessibilityLabel={label}
-      className="h-[30px] flex-row items-center gap-[7px] rounded-full border border-border bg-card px-3"
+      className="h-[30px] max-w-full flex-row items-center gap-[7px] rounded-full border border-border bg-card px-3"
     >
       {children}
     </View>
@@ -42,8 +44,9 @@ function Pill({ children, label }: { children: ReactNode; label: string }) {
  * Home's greeting (STYLEGUIDE section 2): today's date, "Good evening, <name>." and the
  * truthful sync pill, plus how many servers Home gathers from when there is more than
  * one, or the one of them that is not answering (`down`, by name: never a green "2
- * servers" over a server that is down; frontend#131). A phone keeps its large "Home" title (so back buttons stay named after it) and
- * shows the date and the pill under it.
+ * servers" over a server that is down; frontend#131). A phone keeps its large "Home"
+ * title (so back buttons stay named after it) and shows the date and the sync pill under
+ * it, and the server that is down on a row of its own.
  */
 export function Greeting({
   name,
@@ -83,19 +86,39 @@ export function Greeting({
         size={14}
         color={sync?.kind === 'local' ? themed.warning : themed.success}
       />
-      <Text className="font-sans-semibold text-[12.5px] text-muted-foreground" numberOfLines={1}>
+      <Text
+        className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
+        numberOfLines={1}
+      >
         {syncText}
       </Text>
     </Pill>
   ) : null;
+  const serversPill =
+    servers > 1 ? (
+      <Pill label={serversText}>
+        <View className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`} />
+        <Text
+          className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
+          numberOfLines={1}
+        >
+          {serversText}
+        </Text>
+      </Pill>
+    ) : null;
 
   if (phone) {
+    // A phone row has no room for both pills beside the date: the server that is down
+    // gets a row of its own under it (the healthy "2 servers" count stays desktop-only).
     return (
-      <View className="min-h-[30px] flex-row items-center justify-between gap-3">
-        <Text variant="muted" className="flex-1" numberOfLines={1}>
-          {date}
-        </Text>
-        {syncPill}
+      <View className="gap-2">
+        <View className="min-h-[30px] flex-row items-center justify-between gap-3">
+          <Text variant="muted" className="flex-1" numberOfLines={1}>
+            {date}
+          </Text>
+          {syncPill}
+        </View>
+        {down && serversPill ? <View className="flex-row">{serversPill}</View> : null}
       </View>
     );
   }
@@ -109,16 +132,7 @@ export function Greeting({
       </View>
       <View className="flex-row flex-wrap gap-2">
         {syncPill}
-        {servers > 1 ? (
-          <Pill label={serversText}>
-            <View
-              className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`}
-            />
-            <Text className="font-sans-semibold text-[12.5px] text-muted-foreground">
-              {serversText}
-            </Text>
-          </Pill>
-        ) : null}
+        {serversPill}
       </View>
     </View>
   );

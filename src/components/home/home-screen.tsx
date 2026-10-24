@@ -135,7 +135,10 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     now: mountedAt,
   });
 
-  const sync = useSyncPill(progress[0]?.updated_at);
+  const newest = progress[0];
+  const sync = useSyncPill(
+    newest ? { at: newest.updated_at, connectionId: newest.connectionId } : undefined,
+  );
   const serverLabel = useServerFlag();
 
   const retryProgress = () => void qc.refetchQueries({ queryKey: qk.allProgressAll() });

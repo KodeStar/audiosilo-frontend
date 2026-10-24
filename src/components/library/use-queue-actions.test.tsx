@@ -20,10 +20,10 @@ jest.mock('@/api/hooks', () => {
     useRemoveFromQueue: () => ({ mutateAsync: mockRemove, isPending: false }),
   };
 });
-const mockNoteError = jest.fn();
+const mockNoteFailure = jest.fn();
 jest.mock('@/api/reachability', () => ({
   ...jest.requireActual('@/api/reachability'),
-  noteError: (e: unknown) => mockNoteError(e),
+  noteFailure: (...a: unknown[]) => mockNoteFailure(...a),
 }));
 
 /* eslint-disable import/first */
@@ -57,7 +57,7 @@ describe('useQueueActions', () => {
     mockAdd.mockReset();
     mockRemove.mockReset();
     mockToast.mockReset();
-    mockNoteError.mockReset();
+    mockNoteFailure.mockReset();
   });
 
   const hook = async () => (await renderHook(() => useQueueActions('c'))).result;
@@ -111,7 +111,7 @@ describe('useQueueActions', () => {
     });
     expect(ok).toBe(false);
     expect(mockToast).not.toHaveBeenCalled();
-    expect(mockNoteError).not.toHaveBeenCalled();
+    expect(mockNoteFailure).not.toHaveBeenCalled();
   });
 
   it('says when Up next is full, and when a change failed', async () => {

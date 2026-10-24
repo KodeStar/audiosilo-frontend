@@ -265,6 +265,26 @@ describe('HomeScreen', () => {
     }
   });
 
+  // CONNECT-04: a phone names the server that is down too, not only "offline".
+  it('names a server that is not answering on a phone', async () => {
+    mockLayout = 'phone';
+    mockConnections = [
+      { id: 'a', name: 'Home' },
+      { id: 'b', name: "Maya's Shelf" },
+    ];
+    // All answering: a phone shows no servers count.
+    await mountHome();
+    expect(screen.queryByText('2 servers')).toBeNull();
+    useReachability.setState({ online: { b: false } });
+    try {
+      await mountHome();
+      expect(screen.getByText("Maya's Shelf isn't answering")).toBeTruthy();
+    } finally {
+      screen.unmount();
+      useReachability.setState({ online: {} });
+    }
+  });
+
   it('leaves out This week and Next in your series until the server says it has them', async () => {
     mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
     await mountHome();

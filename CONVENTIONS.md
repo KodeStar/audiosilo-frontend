@@ -337,7 +337,7 @@ surface is on screen; loading, errors and "not sharing" all read as no rows. The
 An owner adds and manages accounts of their own: a kid (no password or API keys; the owner signs
 them in) or a grown-up, each on "Everything I can listen to" or "Only collections I share".
 - **Wire**: `useHouseholdMembers` and the member hooks in `hooks.ts`; their mutations reject with
-  `CapabilityError` (never to `noteError`). `allowed` (else a `reason`) gates adding only: an owner
+  `CapabilityError` (no request sent: not a network failure). `allowed` (else a `reason`) gates adding only: an owner
   can always rename, sign out and delete their members. `useRevokeMyDevice({ id, alsoMembers })`
   also signs out the members signed in on that device (its `member_sign_ins`; sent only to a
   server with the flag). Switching a member to everything sends `collection_ids: []` (the owner's
@@ -770,8 +770,8 @@ whole-list PUT (`useSetQueue`, `useSetCollectionItems`) deletes the caller's hid
 (out-of-access) rows too; move one book with an add and a `position` (an index in the
 visible order) instead. **Mutations check their flag at call time** and reject with
 `CapabilityError` without sending anything when the flag is false or `/server` hasn't
-answered yet (no request, so no 401 and no reconnect flag; never hand it to `noteError`,
-which reads any non-`ApiError` as an unreachable server). Each mutation stores its answer
+answered yet (no request, so no 401 and no reconnect flag, and never a network failure for
+reachability). Each mutation stores its answer
 through `storeAnswer` (cancels a read of the same key in flight, which would land over
 it, and reads again), is keyed by connection (`mutationKey`, so a pending write keeps
 its own connection) and runs one at a time per capability and connection (`scope`).
@@ -823,7 +823,7 @@ That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
 gated). Its `queryFn` falls back to the durable local mirror (`mirroredProgress` in
 `progress-sync.ts`) **only for a non-`ApiError` failure** (offline/unreachable, and
-it has the server checked with `noteFailure`, never `noteError`: marking it down at once
+it has the server checked with `noteFailure`, like every request: marking it down at once
 would have the mirror's success find it up and read every query again, round and round,
 frontend#131) - an `ApiError` means
 the server ANSWERED and is rethrown, because resolving a 401 as a query *success*

@@ -3,6 +3,7 @@ import { type Connection, sessionHydrateFailed, useSession } from '@/stores/sess
 
 import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
+import { noteAnswer } from './reachability';
 
 /**
  * The seam that lets framework-free modules (progress-sync, the downloads store)
@@ -25,8 +26,14 @@ export function resolveClient(connectionId: string): ApiClient | null {
   // Inject the dead-token callback so a 401 from the framework-free progress-sync save
   // loop (which resolves its client here) flags this connection for reconnect too - the
   // same detection every provider-built client gets, so no request path is a blind spot.
-  return new ApiClient(effectiveUrl(conn), conn.token, undefined, () =>
-    useSession.getState().markNeedsReconnect(conn.id, 'auth'),
+  // Every answer it gets counts for reachability too (`noteAnswer`, FU-SLOWOK), as a
+  // provider-built client's does: the save loop, the car and the downloads ask through here.
+  return new ApiClient(
+    effectiveUrl(conn),
+    conn.token,
+    undefined,
+    () => useSession.getState().markNeedsReconnect(conn.id, 'auth'),
+    () => noteAnswer(conn.id),
   );
 }
 

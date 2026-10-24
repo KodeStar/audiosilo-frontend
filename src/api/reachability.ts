@@ -3,7 +3,7 @@ import { create } from 'zustand';
 
 import { type Connection, onConnectionRemoved } from '@/stores/session';
 
-import { ApiError, type ApiClient, TimeoutError } from './client';
+import { type ApiClient, TimeoutError } from './client';
 import { resolveClient } from './connection-clients';
 
 /**
@@ -11,12 +11,12 @@ import { resolveClient } from './connection-clients';
  * reachable, so the sync layer can stop hammering a dead endpoint (offline, or a
  * LAN-only server you've left) without penalising the others. The app is multi-server,
  * so "reachable" is a property of a connection, not a global. A connection with no
- * recorded state is assumed reachable (optimistic). A connection flips to `false` when
- * a save fails with a connection error (a fetch rejection - no HTTP response), or when a
- * query or read got no answer and a check of its server (`checkReachability`) got none
- * either, and back to `true` when a lightweight probe of that server succeeds or the
- * browser reports it's back online. While a connection is offline its progress/history
- * saves queue locally; registered reconnect handlers run (per connection) on recovery.
+ * recorded state is assumed reachable (optimistic). A connection flips to `false` only
+ * when a request (a query, a read, a save) got no answer and a check of its server
+ * (`checkReachability`) got none either, and back to `true` when a lightweight probe of
+ * that server succeeds, a save gets through, or the browser reports it's back online.
+ * While a connection is offline its progress/history saves queue locally; registered
+ * reconnect handlers run (per connection) on recovery.
  */
 type ReachabilityState = { online: Record<string, boolean> };
 
@@ -35,8 +35,9 @@ const reconnectHandlers = new Set<(connectionId: string) => void>();
  * it asks through. Removal drops the entry, so a check that outlives its connection
  * records nothing. */
 const checking = new Map<string, ApiClient>();
-/** How many answers each connection's server has given (every `setOnline(id, true)`), so
- * a check that got none can tell another request was answered while it waited. */
+/** How many answers each connection's server has given (every `setOnline(id, true)`, and
+ * every HTTP response its client got: `noteAnswer`), so a check that got none can tell
+ * another request was answered while it waited. */
 const answers = new Map<string, number>();
 /** Connections whose check in flight must run again once it ends without an answer: a
  * query succeeded meanwhile (`recheckReachability`), so the check may be a stale one. */
@@ -84,8 +85,18 @@ export function onReconnect(cb: (connectionId: string) => void): () => void {
   return () => reconnectHandlers.delete(cb);
 }
 
+/**
+ * The server of `connectionId` answered a request (any status; the ApiClient's
+ * `onAnswer`). Counted only, the state is left alone: a check that got no answer then
+ * leaves this server up (it is slow, not gone; FU-SLOWOK), while marking a down server up
+ * stays the probe's job.
+ */
+export function noteAnswer(connectionId: string): void {
+  answers.set(connectionId, (answers.get(connectionId) ?? 0) + 1);
+}
+
 function setOnline(connectionId: string, online: boolean) {
-  if (online) answers.set(connectionId, (answers.get(connectionId) ?? 0) + 1);
+  if (online) noteAnswer(connectionId);
   const current = useReachability.getState().online;
   const prev = current[connectionId] ?? true;
   if (prev === online) {
@@ -102,33 +113,20 @@ function setOnline(connectionId: string, online: boolean) {
   }
 }
 
-/**
- * Classify a thrown API error for a connection. An `ApiError` means the server answered
- * (even a 500), so it's reachable; a plain fetch rejection (or a `TimeoutError`) means it
- * isn't. Deliberate caller cancellations (`AbortError`) are ignored - only a
- * `TimeoutError`, not an `AbortError`, marks the server unreachable.
- */
-export function noteError(connectionId: string, e: unknown) {
-  if (e instanceof ApiError) return setOnline(connectionId, true);
-  if (e instanceof Error && e.name === 'AbortError') return;
-  setOnline(connectionId, false);
-}
-
 /** Whether a failed request got no answer from its server: our timeout, or the fetch
- * itself rejecting (a `TypeError`: "Failed to fetch", "Network request failed"). The
- * strict test for a caller that sees every kind of failure (the query cache), where
- * `noteError`'s "anything that is not an `ApiError`" would read a capability gate or a
- * cancelled read as a dead server. */
+ * itself rejecting (a `TypeError`: "Failed to fetch", "Network request failed"). Strict,
+ * so a caller that sees every kind of failure (the query cache) never reads a capability
+ * gate or a cancelled read as a dead server. */
 function isUnreachableError(e: unknown): boolean {
   return e instanceof TimeoutError || e instanceof TypeError;
 }
 
 /**
- * A request of `connectionId` failed with `e`, as a caller that sees every kind of failure
- * reports it (the query cache, a read with a local fallback), in place of `noteError`. No
- * answer (`isUnreachableError`) has the server checked (`checkReachability`) unless it is
- * already marked down (the probe watches it then): only the check marks it down, so one
- * slow or broken request alone never does (frontend#131). Anything else says nothing.
+ * A request of `connectionId` failed with `e` (a query, a read with a local fallback, a
+ * progress save, a listening span). No answer (`isUnreachableError`) has the server
+ * checked (`checkReachability`) unless it is already marked down (the probe watches it
+ * then): only the check marks it down, so one slow or broken request alone never does
+ * (frontend#131). Anything else says nothing.
  */
 export function noteFailure(connectionId: string, e: unknown): void {
   if (isUnreachableError(e) && isReachable(connectionId)) void checkReachability(connectionId);

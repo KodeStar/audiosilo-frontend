@@ -4,7 +4,7 @@ import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import { isReachable, noteError } from '@/api/reachability';
+import { isReachable, noteFailure } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
 import {
   adoptStartedChapters,
@@ -576,7 +576,7 @@ function endHistory() {
     })
     .then(() => queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) }))
     .catch((err) => {
-      noteError(np.connectionId, err);
+      noteFailure(np.connectionId, err); // a check, not a down mark, for one lost span
       console.warn('[history] failed to save listening span', err);
     });
 }

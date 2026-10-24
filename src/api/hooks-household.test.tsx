@@ -25,7 +25,7 @@ jest.mock('@/api/provider', () => ({
   useCid: (id?: string) => id ?? 'c1',
   useOptionalApi: (id?: string) => mockClients[id ?? 'c1'] ?? null,
 }));
-jest.mock('@/api/reachability', () => ({ noteError: jest.fn() }));
+jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: jest.fn(async () => null),
   saveProgress: jest.fn(async () => {}),
@@ -43,7 +43,7 @@ import {
   useHouseListening,
   useSetHousehold,
 } from '@/api/hooks';
-import { noteError } from '@/api/reachability';
+import { noteFailure } from '@/api/reachability';
 /* eslint-enable import/first */
 
 function serverWith(id: string, caps: Partial<Capabilities>): ServerInfo {
@@ -150,7 +150,7 @@ describe('household hooks', () => {
     expect(error).toBeInstanceOf(CapabilityError);
     expect(error).toMatchObject({ capability: 'household', unknown: false });
     expect(mockClients.c1.setHousehold).not.toHaveBeenCalled();
-    expect(noteError).not.toHaveBeenCalled();
+    expect(noteFailure).not.toHaveBeenCalled();
   });
 
   it('a write while /server is unknown rejects as unknown', async () => {
