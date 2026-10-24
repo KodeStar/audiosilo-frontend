@@ -728,6 +728,7 @@
       "noFinished": "No finished books yet.",
       "noFinishedHint": "Finish a book and it lands here.",
       "loadLibrariesError": "Could not load libraries.",
+      "loadServerLibrariesError": "Couldn't load libraries from {{name}}.",
       "noLibraries": "No libraries are shared with your account yet.",
       "noLibrariesHint": "Ask the server owner to share one with you.",
       "viewLabel": "Book list"

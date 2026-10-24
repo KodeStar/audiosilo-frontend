@@ -728,6 +728,7 @@
       "noFinished": "Aún no hay libros terminados.",
       "noFinishedHint": "Termina un libro y aparecerá aquí.",
       "loadLibrariesError": "No se pudieron cargar las bibliotecas.",
+      "loadServerLibrariesError": "No se pudieron cargar las bibliotecas de {{name}}.",
       "noLibraries": "Aún no se ha compartido ninguna biblioteca con tu cuenta.",
       "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo.",
       "viewLabel": "Lista de libros"
