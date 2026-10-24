@@ -53,20 +53,22 @@ function FavouritesShelfRow() {
  */
 export function FoldersMode() {
   const { t } = useTranslation();
-  const { libraries, groups: lists, isLoading, retry } = useLibrariesAll();
+  const { libraries, groups: lists, isLoading, retryServer } = useLibrariesAll();
   const { openLibrary } = useOpen();
   // A server whose sign-in ended shows the sign-in state, not a load error or "no
   // libraries" (frontend#124); a list that failed otherwise says which server's it is,
-  // under that server's heading, with a Retry (CONNECT-06).
+  // under that server's heading, with a Retry of its own (CONNECT-06).
   const signedOut = useSignedOutConnections();
   const refused = refusedConnection(signedOut, lists);
-  const signedIn = lists.filter((g) => !signedOut.some((c) => c.id === g.connectionId));
-  const failed = (g: LibrariesOfServer) => g.status === 'error' && signedIn.includes(g);
+  const failed = (g: LibrariesOfServer) =>
+    g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId);
   const error = lists.some(failed);
 
-  // One group per server (in connection order) that has libraries or failed to list them.
+  // One group per server (in connection order) that has libraries or failed to list them,
+  // each under its server's heading when there are several (a signed-out server's list
+  // still cached included, so no two servers' libraries ever read as one).
   const groups = lists.filter((g) => g.libraries.length > 0 || failed(g));
-  const showServerHeaders = signedIn.length > 1;
+  const showServerHeaders = groups.length > 1;
 
   return (
     <TabPageScroll contentContainerClassName="gap-0">
@@ -87,7 +89,7 @@ export function FoldersMode() {
                 compact
                 title={t('library.list.loadServerLibrariesError', { name: g.connectionName })}
                 retryLabel={t('common.retry')}
-                onRetry={retry}
+                onRetry={() => retryServer(g.connectionId)}
               />
             </View>
           ) : null}

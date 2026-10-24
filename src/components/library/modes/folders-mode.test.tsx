@@ -17,7 +17,7 @@ jest.mock('@/api/hooks', () => ({
     groups: mockLists,
     libraries: mockLists.flatMap((g) => g.libraries),
     isLoading: false,
-    retry: mockRetry,
+    retryServer: mockRetry,
   }),
 }));
 let mockSignedOut: { id: string; name: string; needsReconnect: string }[] = [];
@@ -64,7 +64,8 @@ describe('FoldersMode', () => {
     expect(screen.getByText("Couldn't load libraries from Maya's Shelf.")).toBeTruthy();
     expect(screen.getByText('Audiobooks')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
-    expect(mockRetry).toHaveBeenCalled();
+    // Only that server is asked again.
+    expect(mockRetry).toHaveBeenCalledWith('b');
   });
 
   it('names the one server too when it is the only one', async () => {
@@ -83,6 +84,18 @@ describe('FoldersMode', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     // Only one server is signed in: no server headings.
     expect(screen.queryByText('Home')).toBeNull();
+  });
+
+  it("keeps the server headings while a signed-out server's list is still cached", async () => {
+    mockSignedOut = [{ id: 'b', name: "Maya's Shelf", needsReconnect: 'auth' }];
+    mockLists = [
+      list('a', 'Home', 'ready', ['Audiobooks']),
+      list('b', "Maya's Shelf", 'ready', ['Kids']),
+    ];
+    await render(<FoldersMode />);
+    expect(screen.getByText('Home')).toBeTruthy();
+    expect(screen.getByText("Maya's Shelf")).toBeTruthy();
+    expect(screen.getByText('Kids')).toBeTruthy();
   });
 
   it('opens a library from its row', async () => {

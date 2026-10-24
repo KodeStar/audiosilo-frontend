@@ -10,7 +10,12 @@ jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 
 jest.mock('@/components/layout/content-scope', () => ({
   ContentScope: ({ children }: { children: ReactNode }) => children,
 }));
-jest.mock('@/api/provider', () => ({ useScopedCid: () => 'home' }));
+// The route's scope ('' for a link without `?connection=`) falls back to the default.
+let mockScope = 'home';
+jest.mock('@/api/provider', () => ({
+  useScopedCid: () => mockScope,
+  useCid: (id?: string) => id ?? (mockScope || 'home'),
+}));
 const mockRefetch = jest.fn();
 let mockError: Error | null = null;
 jest.mock('@/api/hooks', () => ({
@@ -38,6 +43,7 @@ const connection = { id: 'home', name: 'Hearthside', serverUrl: 'https://h', tok
 beforeEach(() => {
   mockRefetch.mockClear();
   mockError = null;
+  mockScope = 'home';
   useSession.setState({ connections: [connection] } as never);
 });
 
@@ -58,6 +64,15 @@ describe('BrowseScreen', () => {
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
     expect(screen.queryByText('Could not open this folder.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it("shows the default server's sign-in state on a link without ?connection=", async () => {
+    mockScope = '';
+    useSession.setState({ connections: [{ ...connection, needsReconnect: 'auth' }] } as never);
+    mockError = new ApiError(401, 'invalid or expired token');
+    await render(<BrowseScreen />);
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 });

@@ -2803,6 +2803,11 @@ export function useLibrariesAll() {
         retry: () => {
           for (const r of results) if (r.isError) void r.refetch();
         },
+        /** Ask one server again for its list (its own Retry). */
+        retryServer: (connectionId: string) => {
+          const r = results[apis.findIndex((a) => a.connection.id === connectionId)];
+          if (r?.isError) void r.refetch();
+        },
       };
     },
   });

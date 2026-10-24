@@ -2,7 +2,10 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, Progress } from '@/api/types';
 
-jest.mock('@/api/provider', () => ({ useScopedCid: () => 'c1' }));
+jest.mock('@/api/provider', () => ({
+  useScopedCid: () => 'c1',
+  useCid: (id?: string) => id ?? 'c1',
+}));
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));

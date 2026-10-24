@@ -45,6 +45,9 @@ describe('a progress save that fails', () => {
   it('leaves its server reachable after a timeout, queues the save and asks for a check', async () => {
     mockServerInfo.mockResolvedValue({});
     await saveProgress(failingApi(new TimeoutError(15_000)), save);
+    // Let the check finish inside this test (the module's one-check-at-a-time state is
+    // shared by every test here).
+    await jest.advanceTimersByTimeAsync(0);
     expect(mockServerInfo).toHaveBeenCalledTimes(1);
     expect(isReachable('c1')).toBe(true);
     expect(await pendingSaveCount('c1')).toBe(1);

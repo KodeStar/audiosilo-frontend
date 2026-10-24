@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useCid } from '@/api/provider';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -22,8 +23,9 @@ export function useSignedOutConnection(cid: string | undefined): Connection | un
 }
 
 /** A page's load error for `cid`'s server: the sign-in state while that server needs
- * signing in again (CONNECT-03), else `message` with its Retry. `className` styles the
- * sign-in card only. */
+ * signing in again (CONNECT-03), else `message` with its Retry. `cid` is resolved as the
+ * page's own reads resolve theirs (`useCid`): a route scope of '' (a link without
+ * `?connection=`) is the default server. `className` styles the sign-in card only. */
 export function LoadFailedNote({
   cid,
   message,
@@ -35,7 +37,7 @@ export function LoadFailedNote({
   onRetry: () => void;
   className?: string;
 }) {
-  const signedOut = useSignedOutConnection(cid);
+  const signedOut = useSignedOutConnection(useCid(cid || undefined));
   return signedOut ? (
     <SignInAgainState connection={signedOut} className={className} />
   ) : (

@@ -26,12 +26,14 @@ function useMinuteClock(): Date {
   return now;
 }
 
+/** One of the greeting's pills: never wider than its row, its text cut to fit (a long
+ * server name on a phone). */
 function Pill({ children, label }: { children: ReactNode; label: string }) {
   return (
     <View
       accessible
       accessibilityLabel={label}
-      className="h-[30px] flex-row items-center gap-[7px] rounded-full border border-border bg-card px-3"
+      className="h-[30px] max-w-full flex-row items-center gap-[7px] rounded-full border border-border bg-card px-3"
     >
       {children}
     </View>
@@ -84,7 +86,10 @@ export function Greeting({
         size={14}
         color={sync?.kind === 'local' ? themed.warning : themed.success}
       />
-      <Text className="font-sans-semibold text-[12.5px] text-muted-foreground" numberOfLines={1}>
+      <Text
+        className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
+        numberOfLines={1}
+      >
         {syncText}
       </Text>
     </Pill>
@@ -93,7 +98,10 @@ export function Greeting({
     servers > 1 ? (
       <Pill label={serversText}>
         <View className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`} />
-        <Text className="font-sans-semibold text-[12.5px] text-muted-foreground" numberOfLines={1}>
+        <Text
+          className="shrink font-sans-semibold text-[12.5px] text-muted-foreground"
+          numberOfLines={1}
+        >
           {serversText}
         </Text>
       </Pill>
