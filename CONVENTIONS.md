@@ -1014,7 +1014,11 @@ media GETs only.
   (`autoDownloadNext`, default `'wifi'`) can land while its start is still `loading`, or just
   after the engine began playing but before its `playing` reached JS; iOS's `load` pauses the
   player (Android keeps `playWhenReady`), so a swap that didn't play left a kid's first story
-  stopped on Play, or on a watchdog error (8b-1).
+  stopped on Play, or on a watchdog error (8b-1). It **keeps the same file at the same in-file
+  place**, found by track id (path-keyed), not by whole-book seconds: the download can order its
+  files differently from the stream (a pre-2.4.0 download retried while the new order streams).
+  When that moves the track index, saves and remote moves are held (`loadingBook`) until the
+  download's queue is committed, which on a load is before the rate and the play.
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
@@ -1169,7 +1173,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
   JS (`consumePendingBookmarks`) drain at start and on every foreground, and one that can't
-  reach its server waits under `audiosilo.carBookmarks`.
+  reach its server waits under `audiosilo.carBookmarks`, at the whole-book place read on its
+  first try (a file place read later could go through a re-ordered download's timeline); only
+  one whose place could not be read yet stays in file coordinates.
 - **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
