@@ -16,6 +16,15 @@ jest.mock('@/api/provider', () => ({
   useCid: (id?: string) => id ?? 'a',
   useApis: () => mockConnections.map((connection) => ({ connection, client: {} })),
 }));
+// The sign-in state has its own tests; a page only places it for its signed-out server.
+let mockSignedOut: { id: string; name: string } | undefined;
+jest.mock('@/components/layout/sign-in-again', () => ({
+  useSignedOutConnection: () => mockSignedOut,
+  SignInAgainState: ({ connection }: { connection: { name: string } }) => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text>{`Sign in again to ${connection.name}`}</Text>;
+  },
+}));
 let mockYears: number[] = [];
 jest.mock('./year-probes', () => ({ useStoryYears: () => mockYears }));
 jest.mock('@/stores/session', () => ({
@@ -77,6 +86,7 @@ async function mount(width = 1000) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSignedOut = undefined;
   mockLayout = 'desktop';
   mockConnections = [{ id: 'a', name: 'Hearthside', user: { username: 'alex' } }];
   mockCaps = { a: { user_stats: true } };
@@ -194,6 +204,16 @@ describe('YearSection', () => {
     expect(screen.getByText("Couldn't load your year")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
+  });
+
+  // CONNECT-03: a session that ended is the sign-in state, not a Retry that cannot work.
+  it('shows the sign-in state, and no Retry, when the session ended', async () => {
+    mockSignedOut = { id: 'a', name: 'Hearthside' };
+    mockStats.year = { isError: true, refetch: jest.fn() };
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your year")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('shows the stage shapes while loading', async () => {

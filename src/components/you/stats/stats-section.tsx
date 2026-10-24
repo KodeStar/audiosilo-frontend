@@ -11,6 +11,7 @@ import {
 } from '@/api/hooks';
 import type { ListeningGoalStatus, MyListening, UserStats } from '@/api/types';
 import { listeningStreak, serverToday } from '@/components/home/listening';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -93,6 +94,7 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
   const listening = useMyListening('1y', cid);
   const stats = useMyStats('year', cid);
   const goal = useListeningGoal(cid);
+  const signedOut = useSignedOutConnection(cid);
 
   if (supported === false) {
     return (
@@ -105,6 +107,7 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
   }
   const today = listening.data ? serverToday(listening.data) : null;
   if (listening.isError || stats.isError || (listening.data && !today)) {
+    if (signedOut) return <SignInAgainState connection={signedOut} />;
     return (
       <Card className="gap-3 p-6">
         <Text variant="title">{t('stats.error.title')}</Text>

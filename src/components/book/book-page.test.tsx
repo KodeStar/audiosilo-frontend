@@ -306,6 +306,36 @@ describe('book page, a podcast episode', () => {
   });
 });
 
+// CONNECT-03: a book that did not load because the session ended is the sign-in state.
+describe('book page, signed out', () => {
+  it('shows the sign-in state, and no Retry, when the session ended', async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'home',
+          name: 'Hearthside',
+          serverUrl: 'https://h',
+          token: 't',
+          needsReconnect: 'auth',
+        },
+      ],
+    } as never);
+    mockBook = undefined;
+    await mountAt('desktop');
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+    expect(screen.queryByText('Could not load this book.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('keeps the error with a Retry while signed in', async () => {
+    mockBook = undefined;
+    await mountAt('desktop');
+    expect(screen.getByText('Could not load this book.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+});
+
 // A link without `?connection=` is the default server's book, never a blank page.
 describe('book page without a connection param', () => {
   it("acts on the default server's book", async () => {

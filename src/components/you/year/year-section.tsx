@@ -5,6 +5,7 @@ import { Platform, View } from 'react-native';
 
 import { useMyStats } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Notice } from '@/components/ui/notice';
@@ -14,6 +15,7 @@ import { useStatsServer } from '@/components/you/stats/use-stats-server';
 import { useLayout } from '@/lib/layout';
 import { yearHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
+import type { Connection } from '@/stores/session';
 
 import { cardHeight } from './card-size';
 import { StoryStage } from './story-stage';
@@ -62,6 +64,7 @@ export function YearSection() {
   const { cid, choices: servers } = useStatsServer(picked);
   const [range, setRange] = useState<YearRange>('year');
   const story = useYearStory(cid, range);
+  const signedOut = useSignedOutConnection(cid);
   // This year's number (server time), whichever year is on show.
   const thisYearRange = useMyStats('year', cid).data?.range;
   const thisYear = thisYearRange ? Number(thisYearRange) : null;
@@ -116,7 +119,7 @@ export function YearSection() {
     body = (
       <View className="gap-5">
         {story.status === 'unsupported' ? null : pickers}
-        <YearState story={story} phone={phone} width={width} />
+        <YearState story={story} phone={phone} width={width} signedOut={signedOut} />
       </View>
     );
   }
@@ -132,8 +135,19 @@ export function YearSection() {
   );
 }
 
-/** Loading, unsupported, error and empty: a calm state in the section's place. */
-function YearState({ story, phone, width }: { story: YearStory; phone: boolean; width: number }) {
+/** Loading, unsupported, error and empty: a calm state in the section's place. An error
+ * while the server needs signing in again (`signedOut`) is the sign-in state, no Retry. */
+function YearState({
+  story,
+  phone,
+  width,
+  signedOut,
+}: {
+  story: YearStory;
+  phone: boolean;
+  width: number;
+  signedOut: Connection | undefined;
+}) {
   const { t } = useTranslation();
   switch (story.status) {
     case 'unsupported': {
@@ -141,6 +155,7 @@ function YearState({ story, phone, width }: { story: YearStory; phone: boolean; 
       return <Notice icon="circle-info" title={copy.title} body={copy.body} />;
     }
     case 'error': {
+      if (signedOut) return <SignInAgainState connection={signedOut} />;
       const copy = yearStateCopy(story, t);
       return (
         <EmptyState

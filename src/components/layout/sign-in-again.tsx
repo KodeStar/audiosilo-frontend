@@ -9,9 +9,16 @@ import { cn } from '@/lib/utils';
 import type { Connection } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { reconnectConnection } from './reconnect-banner';
+import { reconnectConnection, useSignedOutConnections } from './reconnect-banner';
 
 export { useSignedOutConnections } from './reconnect-banner';
+
+/** `cid`'s connection while it needs signing in again (else undefined): a page of that
+ * server whose load failed shows `SignInAgainState` for it, not an error with a Retry
+ * that cannot work (CONNECT-03). */
+export function useSignedOutConnection(cid: string | undefined): Connection | undefined {
+  return useSignedOutConnections().find((c) => c.id === cid);
+}
 
 /** The first of `signedOut` whose list failed among `groups` (one per server): its
  * screen shows the sign-in state for it, not a load error or "no libraries". */

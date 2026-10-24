@@ -7,6 +7,7 @@ import { useBrowseInfinite, useLibraries } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { BreadCrumbs, pathCrumbs } from '@/components/ui/breadcrumbs';
@@ -92,6 +93,7 @@ function BrowseContent() {
   // The connection rides in the `?connection=` query param; the `(app)` layout publishes
   // it as the scope, so browse/scroll/hrefs all resolve to that server (not the default).
   const cid = useScopedCid();
+  const signedOut = useSignedOutConnection(cid);
 
   const { data: libraries } = useLibraries();
   const { data, isLoading, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -221,7 +223,11 @@ function BrowseContent() {
       ) : null}
 
       {isLoading ? <BrowseSkeleton /> : null}
-      {error ? (
+      {error && signedOut ? (
+        <View className="px-4 lg:px-8">
+          <SignInAgainState connection={signedOut} />
+        </View>
+      ) : error ? (
         <ErrorNote message={t('library.browse.openError')} onRetry={() => refetch()} />
       ) : null}
 

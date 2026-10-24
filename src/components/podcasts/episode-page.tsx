@@ -22,6 +22,7 @@ import {
   rowAt,
 } from '@/components/book/book-page-model';
 import { BookSkeleton } from '@/components/book/book-skeleton';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
 import { pageGutter } from '@/components/library/cover-layout';
 import { chapterStartsOf, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
@@ -69,6 +70,7 @@ export function EpisodePage({ libraryId, path }: { libraryId: number; path: stri
   const { t } = useTranslation();
   const cid = useScopedCid();
   const { data: book, isLoading, refetch } = useBook(libraryId, path);
+  const signedOut = useSignedOutConnection(cid);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
   const paddingBottom = useMiniPlayerInset();
   const layout = useLayout();
@@ -83,7 +85,11 @@ export function EpisodePage({ libraryId, path }: { libraryId: number; path: stri
   if (!book) {
     return (
       <View className="flex-1 p-4">
-        <ErrorNote message={t('book.loadError')} onRetry={() => refetch()} />
+        {signedOut ? (
+          <SignInAgainState connection={signedOut} />
+        ) : (
+          <ErrorNote message={t('book.loadError')} onRetry={() => refetch()} />
+        )}
       </View>
     );
   }

@@ -22,6 +22,7 @@ import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
 import { ContentScope } from '@/components/layout/content-scope';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { bookMetaWork, matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
 import { bookStatus } from '@/components/library/books/books-view';
@@ -187,6 +188,7 @@ function BookPage() {
   const path = segmentsToPath(pathParam);
   const cid = useCid();
   const api = useOptionalApi(cid);
+  const signedOut = useSignedOutConnection(cid);
   const [width, setWidth] = useState(0);
   const layout = bookPageLayout(useLayout(), width);
   const measure = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
@@ -363,7 +365,11 @@ function BookPage() {
   if (!book) {
     return (
       <View className="flex-1 p-4">
-        <ErrorNote message={t('book.loadError')} onRetry={() => refetch()} />
+        {signedOut ? (
+          <SignInAgainState connection={signedOut} />
+        ) : (
+          <ErrorNote message={t('book.loadError')} onRetry={() => refetch()} />
+        )}
       </View>
     );
   }
