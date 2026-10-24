@@ -3,7 +3,7 @@ import { create } from 'zustand';
 
 import { type Connection, onConnectionRemoved } from '@/stores/session';
 
-import { ApiError, type ApiClient } from './client';
+import { ApiError, type ApiClient, TimeoutError } from './client';
 import { resolveClient } from './connection-clients';
 
 /**
@@ -92,6 +92,15 @@ export function noteError(connectionId: string, e: unknown) {
   if (e instanceof ApiError) return setOnline(connectionId, true);
   if (e instanceof Error && e.name === 'AbortError') return;
   setOnline(connectionId, false);
+}
+
+/** Whether a failed request got no answer from its server: our timeout, or the fetch
+ * itself rejecting (a `TypeError`: "Failed to fetch", "Network request failed"). The
+ * strict test for a caller that sees every kind of failure (the query cache), where
+ * `noteError`'s "anything that is not an `ApiError`" would read a capability gate or a
+ * cancelled read as a dead server. */
+export function isUnreachableError(e: unknown): boolean {
+  return e instanceof TimeoutError || e instanceof TypeError;
 }
 
 /** A completed request proves that connection's server is reachable. */

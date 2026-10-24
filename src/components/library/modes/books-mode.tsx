@@ -187,6 +187,9 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
 
   const filtered = hasFilters(view);
   const total = whole.books.length;
+  // No counts while the list is loading or failed with nothing in (a failed list is not
+  // "Not started 0"; frontend#131).
+  const countsUnknown = whole.isLoading || (!!whole.error && total === 0);
   const more = whole.complete ? '' : '+';
   const countLine = filtered
     ? t('library.books.matches', {
@@ -216,7 +219,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
           <FilterChip
             key={s}
             label={t(STATUS_KEY[s])}
-            count={whole.isLoading ? undefined : counts[s]}
+            count={countsUnknown ? undefined : counts[s]}
             selected={view.status === s}
             onPress={() => setView({ status: view.status === s ? undefined : s })}
           />
@@ -264,7 +267,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       </ChipRow>
       <View className="min-h-[38px] flex-row items-center justify-between gap-3">
         <Text variant="muted" style={tabularNums} accessibilityLiveRegion="polite">
-          {whole.isLoading ? ' ' : countLine}
+          {countsUnknown ? ' ' : countLine}
         </Text>
         {phone ? controls : null}
       </View>

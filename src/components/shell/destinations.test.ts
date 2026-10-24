@@ -136,7 +136,12 @@ describe('serverLine', () => {
 
   it('says offline when the default server is unreachable', () => {
     expect(serverLine([a, b], 'a', { a: false })).toEqual({ kind: 'offline' });
-    expect(serverLine([a, b], 'a', { b: false }).kind).toBe('server');
+  });
+
+  // frontend#131: never a green "+ 1 more" over a server that is down.
+  it('names another server that is not answering', () => {
+    expect(serverLine([a, b], 'a', { b: false })).toEqual({ kind: 'down', name: "Maya's Shelf" });
+    expect(serverLine([a, b], 'a', { b: true }).kind).toBe('server');
   });
 
   it('says the default server needs signing in again before anything else', () => {

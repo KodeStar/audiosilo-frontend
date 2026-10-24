@@ -14,6 +14,7 @@ import {
   useRecentAll,
 } from '@/api/hooks';
 import { isSignedOutError } from '@/api/client';
+import { serverStatus, useReachability } from '@/api/reachability';
 import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
 import { profileName } from '@/components/profiles/profiles-model';
 import { HouseRow } from '@/components/house/house-row';
@@ -141,6 +142,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   // A refused sign-in (a 401) shows ONE sign-in state, in the Now card's place, with the
   // Reconnect action; the shelves below show no Retry of their own for it (#124).
   const signedOut = useSignedOutConnections()[0];
+  // A server of several that is not answering, named on the greeting's servers pill.
+  const online = useReachability((s) => s.online);
+  const down = connections.find((c) => serverStatus(c, online) === 'offline');
   const progressRefused = isSignedOutError(error) && !!signedOut;
   const recentRefused = isSignedOutError(recent.error);
 
@@ -188,6 +192,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
             name={profile ? profileName(profile, t) : user?.username}
             sync={sync}
             servers={connections.length}
+            down={down?.name}
           />
           {/* Back on the Now card's book after 12+ days: where they left it. */}
           {nowAt ? <PreviouslyOnCard at={nowAt} saved={nowSaved} /> : null}

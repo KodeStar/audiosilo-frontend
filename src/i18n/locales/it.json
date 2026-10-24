@@ -1654,6 +1654,7 @@
     },
     "home": "Home di AudioSilo",
     "offline": "Offline · i download si riproducono",
+    "notAnswering": "{{name}} non risponde",
     "serverMore_one": "{{name}} + un altro",
     "serverMore_other": "{{name}} + altri {{count}}",
     "openPlayer": "Apri il lettore completo per {{title}}",

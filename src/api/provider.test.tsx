@@ -1,4 +1,5 @@
-import { act, render } from '@testing-library/react-native';
+import { QueryObserver } from '@tanstack/react-query';
+import { act, render, waitFor } from '@testing-library/react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -6,6 +7,7 @@ import { useSession } from '@/stores/session';
 import { setAddressPick, useAddressRoute } from './address-route';
 import { ApiError, TimeoutError } from './client';
 import { qk } from './hooks';
+import { noteSuccess, useReachability } from './reachability';
 import {
   type ApiConnection,
   ApiProvider,
@@ -15,8 +17,15 @@ import {
   useApis,
 } from './provider';
 
+// The provider's reconnect handler, as the reachability layer would run it (registered
+// while the provider is imported, so no initializer here that would reset it after).
+let mockReconnect: ((cid: string) => void) | undefined;
 jest.mock('./reachability', () => ({
-  onReconnect: jest.fn(),
+  ...jest.requireActual('./reachability'),
+  onReconnect: (cb: (cid: string) => void) => {
+    mockReconnect = cb;
+    return () => {};
+  },
   setReachabilityClients: jest.fn(),
 }));
 
@@ -253,5 +262,60 @@ describe('the default query retry', () => {
 
   it('never retries a 401', () => {
     expect(retryQuery(0, new ApiError(401, 'unauthorized'))).toBe(false);
+  });
+});
+
+// frontend#131: a query that got no answer marks its server unreachable, so the chrome
+// names it and its screens refetch once it is back.
+describe('queries and reachability', () => {
+  beforeEach(() => {
+    useReachability.setState({ online: {} });
+    useSession.setState({
+      connections: [{ id: 'c1', name: 'Hearthside', serverUrl: 'https://h', token: 't' }],
+    } as never);
+    queryClient.clear();
+  });
+  // Back online, so the reachability probe a test started stops.
+  afterEach(() => noteSuccess('c1'));
+
+  const fail = (error: unknown, key = qk.libraries('c1')) =>
+    queryClient
+      .fetchQuery({ queryKey: key, queryFn: () => Promise.reject(error), retry: false })
+      .catch(() => {});
+
+  it('marks a server unreachable when a query got no answer', async () => {
+    await fail(new TypeError('Failed to fetch'));
+    expect(useReachability.getState().online.c1).toBe(false);
+  });
+
+  it('never for an answer, a cancel or a capability gate', async () => {
+    await fail(new ApiError(500, 'down'));
+    await fail(new ApiError(401, 'unauthorized'));
+    const abort = new Error('aborted');
+    abort.name = 'AbortError';
+    await fail(abort);
+    await fail(new Error('This server does not support queue'));
+    expect(useReachability.getState().online.c1).toBeUndefined();
+  });
+
+  it('refetches a failed list once its server is back, and an answer brings it back', async () => {
+    const libraries = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: qk.libraries('c1'),
+      queryFn: libraries,
+      retry: false,
+    });
+    const stop = observer.subscribe(() => {});
+    try {
+      await waitFor(() => expect(observer.getCurrentResult().isError).toBe(true));
+      expect(useReachability.getState().online.c1).toBe(false);
+      libraries.mockResolvedValue([{ id: 1 }]);
+      // The probe found it answering: the provider's reconnect handler refetches.
+      mockReconnect?.('c1');
+      await waitFor(() => expect(observer.getCurrentResult().data).toEqual([{ id: 1 }]));
+      expect(useReachability.getState().online.c1).toBe(true);
+    } finally {
+      stop();
+    }
   });
 });

@@ -1654,6 +1654,7 @@
     },
     "home": "AudioSilo-Startseite",
     "offline": "Offline · Downloads spielen",
+    "notAnswering": "{{name}} antwortet nicht",
     "serverMore_one": "{{name}} + {{count}} weiterer",
     "serverMore_other": "{{name}} + {{count}} weitere",
     "openPlayer": "Vollen Player für {{title}} öffnen",

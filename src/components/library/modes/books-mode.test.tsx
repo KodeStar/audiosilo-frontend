@@ -253,6 +253,9 @@ describe('BooksMode', () => {
     mockWhole.books = [];
     await mount();
     expect(screen.getByText("Couldn't load the books")).toBeTruthy();
+    // frontend#131: a failed list counts nothing ("Not started 0" is not true).
+    expect(screen.getByRole('checkbox', { name: 'Not started' })).toBeTruthy();
+    expect(screen.queryByText('0 books')).toBeNull();
   });
 
   // frontend#124: a refused session is one sign-in state, never a Retry.

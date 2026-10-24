@@ -29,6 +29,8 @@ jest.mock('@/stores/session', () => ({
       defaultConnectionId: 'a',
       user: { username: 'alex' },
     }),
+  // The reachability store (the servers pill) drops a removed connection's state.
+  onConnectionRemoved: () => () => {},
 }));
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
@@ -150,6 +152,7 @@ import { useState } from 'react';
 import { Text } from 'react-native';
 
 import { ApiError } from '@/api/client';
+import { useReachability } from '@/api/reachability';
 import type { PlayerModule } from '@/modules/registry';
 
 import { HomeScreen } from './home-screen';
@@ -241,6 +244,25 @@ describe('HomeScreen', () => {
     expect(screen.queryByText("Couldn't load your progress")).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.queryByText('Recently added')).toBeNull();
+  });
+
+  // frontend#131: never a green "2 servers" over a server that is down.
+  it('names a server that is not answering on the servers pill', async () => {
+    mockConnections = [
+      { id: 'a', name: 'Home' },
+      { id: 'b', name: "Maya's Shelf" },
+    ];
+    await mountHome();
+    expect(screen.getByText('2 servers')).toBeTruthy();
+    useReachability.setState({ online: { b: false } });
+    try {
+      await mountHome();
+      expect(screen.getByText("Maya's Shelf isn't answering")).toBeTruthy();
+      expect(screen.queryByText('2 servers')).toBeNull();
+    } finally {
+      screen.unmount();
+      useReachability.setState({ online: {} });
+    }
   });
 
   it('leaves out This week and Next in your series until the server says it has them', async () => {

@@ -41,17 +41,21 @@ function Pill({ children, label }: { children: ReactNode; label: string }) {
 /**
  * Home's greeting (STYLEGUIDE section 2): today's date, "Good evening, <name>." and the
  * truthful sync pill, plus how many servers Home gathers from when there is more than
- * one. A phone keeps its large "Home" title (so back buttons stay named after it) and
+ * one, or the one of them that is not answering (`down`, by name: never a green "2
+ * servers" over a server that is down; frontend#131). A phone keeps its large "Home" title (so back buttons stay named after it) and
  * shows the date and the pill under it.
  */
 export function Greeting({
   name,
   sync,
   servers,
+  down,
 }: {
   name: string | undefined;
   sync: SyncPill;
   servers: number;
+  /** The name of a server that is not answering. */
+  down?: string;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
@@ -69,6 +73,9 @@ export function Greeting({
             when: formatRelative(sync.at),
           })
         : null;
+  const serversText = down
+    ? t('shell.notAnswering', { name: down })
+    : t('home.servers', { count: servers });
   const syncPill = syncText ? (
     <Pill label={syncText}>
       <Icon
@@ -103,10 +110,12 @@ export function Greeting({
       <View className="flex-row flex-wrap gap-2">
         {syncPill}
         {servers > 1 ? (
-          <Pill label={t('home.servers', { count: servers })}>
-            <View className="h-[7px] w-[7px] rounded-full bg-success" />
+          <Pill label={serversText}>
+            <View
+              className={`h-[7px] w-[7px] rounded-full ${down ? 'bg-warning' : 'bg-success'}`}
+            />
             <Text className="font-sans-semibold text-[12.5px] text-muted-foreground">
-              {t('home.servers', { count: servers })}
+              {serversText}
             </Text>
           </Pill>
         ) : null}

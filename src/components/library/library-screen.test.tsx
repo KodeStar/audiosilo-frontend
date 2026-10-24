@@ -67,6 +67,7 @@ const lib = (connectionId: string, id: number, name: string, kind?: string) => (
 let mockGroups: Group[] = [];
 let mockSelection: { connectionId: string; libraryId: number } | null = null;
 const mockSelect = jest.fn();
+const mockRetry = jest.fn();
 jest.mock('./use-selected-library', () => ({
   useSelectedLibrary: () => ({
     groups: mockGroups,
@@ -78,6 +79,7 @@ jest.mock('./use-selected-library', () => ({
       : null,
     select: mockSelect,
     isLoading: false,
+    retry: mockRetry,
   }),
 }));
 jest.mock('./modes/folders-mode', () => ({
@@ -229,6 +231,17 @@ describe('LibraryScreen', () => {
     mockSelection = null;
     await render(<LibraryScreen />);
     expect(screen.getByText('No libraries are shared with your account yet.')).toBeTruthy();
+  });
+
+  // frontend#131: a server that did not answer has not said it shares nothing.
+  it('says the libraries did not load, with Retry, when a server did not answer', async () => {
+    mockGroups = [{ ...group('a', []), status: 'error' }];
+    mockSelection = null;
+    await render(<LibraryScreen />);
+    expect(screen.getByText('Could not load libraries.')).toBeTruthy();
+    expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockRetry).toHaveBeenCalled();
   });
 
   // frontend#124: a revoked session is not "no libraries shared".

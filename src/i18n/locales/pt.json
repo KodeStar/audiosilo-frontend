@@ -1654,6 +1654,7 @@
     },
     "home": "Início do AudioSilo",
     "offline": "Offline · as transferências tocam",
+    "notAnswering": "{{name}} não responde",
     "serverMore_one": "{{name}} + mais {{count}}",
     "serverMore_other": "{{name}} + mais {{count}}",
     "openPlayer": "Abrir o leitor completo de {{title}}",

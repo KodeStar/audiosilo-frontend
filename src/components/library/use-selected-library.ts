@@ -18,13 +18,15 @@ export type LibraryChoiceGroup = LibraryGroup & { libraries: SourcedLibrary[] };
  * stays put).
  * - `selection` / `library`: what to show (null while there is nothing yet);
  * - `groups`: every server's libraries in connection order, for `LibraryPicker`;
- * - `select`: remember another library.
+ * - `select`: remember another library;
+ * - `retry`: ask again the servers whose list failed.
  * The library lists are `useLibrariesAll`'s.
  */
 export function useSelectedLibrary() {
   const stored = useLibrarySelection((s) => s.selection);
   const select = useLibrarySelection((s) => s.select);
-  const groups: LibraryChoiceGroup[] = useLibrariesAll().groups.map((g) => ({
+  const all = useLibrariesAll();
+  const groups: LibraryChoiceGroup[] = all.groups.map((g) => ({
     ...g,
     libraryIds: g.libraries.map((l) => l.id),
   }));
@@ -45,5 +47,6 @@ export function useSelectedLibrary() {
     groups,
     select,
     isLoading: groups.some((g) => g.status === 'loading'),
+    retry: all.retry,
   };
 }

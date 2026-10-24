@@ -2796,6 +2796,10 @@ export function useLibrariesAll() {
         libraries: groups.flatMap((g) => g.libraries),
         isLoading: results.some((r) => r.isLoading),
         error: results.find((r) => r.error)?.error ?? null,
+        /** Ask again every server whose list failed. */
+        retry: () => {
+          for (const r of results) if (r.isError) void r.refetch();
+        },
       };
     },
   });

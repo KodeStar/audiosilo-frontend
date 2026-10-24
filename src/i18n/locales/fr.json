@@ -1654,6 +1654,7 @@
     },
     "home": "Accueil AudioSilo",
     "offline": "Hors ligne · les téléchargements sont lus",
+    "notAnswering": "{{name}} ne répond pas",
     "serverMore_one": "{{name}} + {{count}} autre",
     "serverMore_other": "{{name}} + {{count}} autres",
     "openPlayer": "Ouvrir le lecteur complet pour {{title}}",

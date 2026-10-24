@@ -28,6 +28,7 @@ import {
   parseLibraryMode,
   resolveLibraryMode,
 } from './library-modes';
+import { LoadError } from './books/book-states';
 import { LibraryPicker } from './library-picker';
 import { AuthorsMode } from './modes/authors-mode';
 import { BooksMode } from './modes/books-mode';
@@ -61,7 +62,7 @@ export function LibraryScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { mode: modeParam } = useLocalSearchParams<{ mode?: string | string[] }>();
-  const { selection, library, groups, isLoading } = useSelectedLibrary();
+  const { selection, library, groups, isLoading, retry } = useSelectedLibrary();
   const signedOut = useSignedOutConnections();
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
@@ -108,6 +109,19 @@ export function LibraryScreen() {
       return (
         <View className="p-4 lg:px-8">
           <SignInAgainState connection={refused} />
+        </View>
+      );
+    }
+    // A server that did not answer has not said it shares nothing (frontend#131): its
+    // lists come back on their own once it answers again (`onReconnect`), or on Retry.
+    if (groups.some((g) => g.status === 'error')) {
+      return (
+        <View className="p-4 lg:px-8">
+          <LoadError
+            title={t('library.list.loadLibrariesError')}
+            retryLabel={t('common.retry')}
+            onRetry={retry}
+          />
         </View>
       );
     }
