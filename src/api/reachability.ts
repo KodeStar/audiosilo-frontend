@@ -30,6 +30,13 @@ let probe: ReturnType<typeof setInterval> | null = null;
 let probing = false;
 const PROBE_MS = 20_000;
 const reconnectHandlers = new Set<(connectionId: string) => void>();
+/** Each connection's check in flight (`checkReachability`, one at a time) and the client
+ * it asks through. Removal drops the entry, so a check that outlives its connection
+ * records nothing. */
+const checking = new Map<string, ApiClient>();
+/** How many answers each connection's server has given (every `setOnline(id, true)`), so
+ * a check that got none can tell another request was answered while it waited. */
+const answers = new Map<string, number>();
 
 /** Point the reachability probe at the current set of clients (set by ApiProvider). */
 export function setReachabilityClients(map: Map<string, ApiClient>) {
@@ -74,6 +81,7 @@ export function onReconnect(cb: (connectionId: string) => void): () => void {
 }
 
 function setOnline(connectionId: string, online: boolean) {
+  if (online) answers.set(connectionId, (answers.get(connectionId) ?? 0) + 1);
   const current = useReachability.getState().online;
   const prev = current[connectionId] ?? true;
   if (prev === online) {
@@ -107,8 +115,19 @@ export function noteError(connectionId: string, e: unknown) {
  * strict test for a caller that sees every kind of failure (the query cache), where
  * `noteError`'s "anything that is not an `ApiError`" would read a capability gate or a
  * cancelled read as a dead server. */
-export function isUnreachableError(e: unknown): boolean {
+function isUnreachableError(e: unknown): boolean {
   return e instanceof TimeoutError || e instanceof TypeError;
+}
+
+/**
+ * A request of `connectionId` failed with `e`, as a caller that sees every kind of failure
+ * reports it (the query cache, a read with a local fallback), in place of `noteError`. No
+ * answer (`isUnreachableError`) has the server checked (`checkReachability`) unless it is
+ * already marked down (the probe watches it then): only the check marks it down, so one
+ * slow or broken request alone never does (frontend#131). Anything else says nothing.
+ */
+export function noteFailure(connectionId: string, e: unknown): void {
+  if (isUnreachableError(e) && isReachable(connectionId)) void checkReachability(connectionId);
 }
 
 /** A completed request proves that connection's server is reachable. */
@@ -126,7 +145,11 @@ function stopProbe() {
   }
 }
 
-const checking = new Set<string>();
+/** The client a connection's requests go through now: the provider's, else one built from
+ * the session (on the address in use now). Null once the connection is gone. */
+function clientFor(connectionId: string): ApiClient | null {
+  return clients.get(connectionId) ?? resolveClient(connectionId);
+}
 
 /**
  * Ask one connection's server whether it answers (`GET /server`: public and cheap) and
@@ -138,25 +161,31 @@ const checking = new Set<string>();
  * never sets the state itself. So one slow or broken query (a long read past its timeout,
  * a code bug's `TypeError`) cannot mark a healthy server down, and a query answered from
  * a local copy cannot mark a dead one up, either of which would flap the offline banner,
- * the reconnect refetch and (native) the address re-pick.
+ * the reconnect refetch and (native) the address re-pick. For the same reason a check
+ * records nothing once it is stale: its connection was removed, or moved to another
+ * address (home / away), while it waited, and a check that got no answer leaves alone a
+ * server another request was answered by meanwhile (the check can wait out its whole
+ * timeout on a request sent before the network came back).
  */
 export async function checkReachability(connectionId: string): Promise<void> {
   if (checking.has(connectionId)) return;
-  const client = clients.get(connectionId) ?? resolveClient(connectionId);
+  const client = clientFor(connectionId);
   if (!client) return; // connection gone; removal purges its state
-  checking.add(connectionId);
+  checking.set(connectionId, client);
+  const answersBefore = answers.get(connectionId) ?? 0;
   let answered = true;
   try {
     await client.serverInfo();
   } catch (e) {
-    answered = e instanceof ApiError || !isUnreachableError(e);
-  } finally {
-    checking.delete(connectionId);
+    answered = !isUnreachableError(e); // an `ApiError` is an answer, whatever its status
   }
+  // Removed while it ran (removal drops its entry): nothing to record.
+  if (checking.get(connectionId) !== client) return;
+  checking.delete(connectionId);
+  const now = clientFor(connectionId);
+  if (!now || now.baseUrl !== client.baseUrl) return;
   if (answered) setOnline(connectionId, true);
-  // Removed while the check ran: a stale `false` would keep the banner up and the probe
-  // spinning (a stale `true` is harmless).
-  else if (clients.has(connectionId) || resolveClient(connectionId)) setOnline(connectionId, false);
+  else if ((answers.get(connectionId) ?? 0) === answersBefore) setOnline(connectionId, false);
 }
 
 /** Probe every currently-offline connection's server; mark those that answer online.
@@ -183,6 +212,8 @@ async function runProbe() {
 // keep `anyOffline` true (banner stuck) and the probe loop spinning on a client that no
 // longer exists.
 onConnectionRemoved((id) => {
+  checking.delete(id);
+  answers.delete(id);
   const current = useReachability.getState().online;
   if (!(id in current)) return;
   const { [id]: _drop, ...rest } = current;

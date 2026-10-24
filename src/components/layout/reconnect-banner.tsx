@@ -26,17 +26,6 @@ export async function reconnectConnection(conn: Connection): Promise<void> {
 }
 
 /**
- * Slim, accent-bordered bar shown when a connection's token is being rejected (or its
- * server was reset), so the user is never silently stuck on dead requests. Tapping it
- * starts the reconnect flow for that server: it pre-fills the address the connection uses
- * now (`effectiveUrl`) via `pendingServerUrl` and opens the sign-in step for it, where the
- * user just re-enters a code or password. A successful re-pair calls `setSession`, which
- * clears the flag (and refreshes the known-servers list).
- *
- * When more than one connection needs reconnecting we surface the first (with a "+N"),
- * keeping the chrome unobtrusive.
- */
-/**
  * The person listening's connections whose sign-in ended (`needsReconnect`: a 401 on any
  * request, or a server reset), in connection order: the banner's list, and the one a
  * screen whose load failed for them checks to show `SignInAgainState` in place of its
@@ -47,6 +36,17 @@ export function useSignedOutConnections(): Connection[] {
   return useProfileConnections().filter((c) => c.needsReconnect);
 }
 
+/**
+ * Slim, accent-bordered bar shown when a connection's token is being rejected (or its
+ * server was reset), so the user is never silently stuck on dead requests. Tapping it
+ * starts the reconnect flow for that server: it pre-fills the address the connection uses
+ * now (`effectiveUrl`) via `pendingServerUrl` and opens the sign-in step for it, where the
+ * user just re-enters a code or password. A successful re-pair calls `setSession`, which
+ * clears the flag (and refreshes the known-servers list).
+ *
+ * When more than one connection needs reconnecting we surface the first (with a "+N"),
+ * keeping the chrome unobtrusive.
+ */
 export function ReconnectBanner({ className }: { className?: string } = {}) {
   const themed = useThemeColors();
   const { t } = useTranslation();

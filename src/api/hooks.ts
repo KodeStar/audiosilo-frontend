@@ -48,7 +48,7 @@ import {
 } from './client';
 import { resolveClient } from './connection-clients';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
-import { noteError } from './reachability';
+import { noteFailure } from './reachability';
 import type {
   AddMemberBody,
   Book,
@@ -1086,8 +1086,11 @@ export function useBookProgress(
  *    and wipe the banner the same request just raised. A 403 (scope/share denial) is
  *    likewise a real answer, not an excuse to serve stale local state.
  *  - Anything else (offline, DNS, `TimeoutError`) means we never reached the server:
- *    note it against this connection's reachability - same as `loadInitialProgress` -
- *    and serve the mirror so a downloaded book still knows where the listener is.
+ *    have its server checked (`noteFailure`, frontend#131) and serve the mirror so a
+ *    downloaded book still knows where the listener is. Never marked down straight away
+ *    (`noteError`): the mirror's success would have the down server checked, found up,
+ *    and every query of the connection read again, this one included, round and round
+ *    for a read that is only slow or broken.
  *
  * A cancelled query stays cancelled (the abort rethrows untouched).
  */
@@ -1105,7 +1108,7 @@ export async function fetchBookProgress(
     if (signal.aborted) throw e;
     // The server answered (any HTTP status) - propagate, never mask it with the mirror.
     if (e instanceof ApiError) throw e;
-    noteError(connectionId, e);
+    noteFailure(connectionId, e);
     return await mirroredProgress(connectionId, libraryId, path);
   }
 }

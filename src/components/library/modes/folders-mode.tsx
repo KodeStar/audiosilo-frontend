@@ -108,7 +108,8 @@ export function FoldersMode() {
         </View>
       ))}
 
-      {libraries.length === 0 && !isLoading && !refused ? (
+      {/* A server that did not answer has not said it shares nothing (frontend#131). */}
+      {libraries.length === 0 && !isLoading && !refused && !error ? (
         <EmptyState
           icon="library"
           title={t('library.list.noLibraries')}

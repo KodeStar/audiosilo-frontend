@@ -11,8 +11,7 @@ import { ApiClient, isSignedOutError } from './client';
 import {
   anyOffline,
   checkReachability,
-  isReachable,
-  isUnreachableError,
+  noteFailure,
   onReconnect,
   setReachabilityClients,
   useReachability,
@@ -58,16 +57,15 @@ function cidOfKey(key: readonly unknown[]): string | null {
 
 /**
  * A query that could not reach its server (no answer: the fetch failed or timed out) has
- * the server checked (`checkReachability`): only a `/server` that does not answer either
+ * the server checked (`noteFailure`): only a `/server` that does not answer either
  * marks the connection unreachable, so the chrome names it, the probe watches for it, and
  * its queries refetch once it is back (`onReconnect`, below; frontend#131). One slow or
  * broken query alone never does. An answer (an `ApiError`, a 401 included) or anything
  * else (a capability gate, a cancel) says nothing about reachability.
  */
 function noteQueryError(error: unknown, key: readonly unknown[]) {
-  if (!isUnreachableError(error)) return;
   const cid = cidOfKey(key);
-  if (cid && isReachable(cid)) void checkReachability(cid);
+  if (cid) noteFailure(cid, error);
 }
 
 /** A query that succeeded for a server marked down has it checked at once, so a Retry
