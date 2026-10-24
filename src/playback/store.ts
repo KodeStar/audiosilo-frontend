@@ -13,7 +13,7 @@ import {
   useDownloads,
 } from '@/downloads/store';
 import { resolveConnectionId } from '@/lib/connection-id';
-import { contentKey } from '@/lib/content-key';
+import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
@@ -1270,11 +1270,11 @@ async function switchCurrentBookToLocal() {
   // another file's place read through the stream's queue until the commit: a save then
   // (a paused book's `ready` settles and persists) would write it to the server. Hold
   // saves and remote moves meanwhile, the way a start does (`loadingBook`).
-  const key = contentKey(nowPlaying.connectionId, nowPlaying.libraryId, nowPlaying.path);
+  const key = contentKeyOf(nowPlaying);
   const hold = index !== snapshot.trackIndex && usePlayer.getState().loadingBook === null;
   if (hold) usePlayer.setState({ loadingBook: key });
-  const release = (): Partial<PlayerState> =>
-    hold && usePlayer.getState().loadingBook === key ? { loadingBook: null } : {};
+  const holding = () => hold && usePlayer.getState().loadingBook === key;
+  const released = () => (holding() ? { loadingBook: null } : undefined);
   try {
     if (svc.swapTo) {
       // Gapless: keep streaming until the local file is buffered at this position. The
@@ -1287,7 +1287,7 @@ async function switchCurrentBookToLocal() {
         queue.chapterClips,
         bookRefOf(nowPlaying),
       );
-      if (swapped) commit(release());
+      if (swapped) commit(released());
     } else {
       await svc.load(
         queue.tracks,
@@ -1298,14 +1298,13 @@ async function switchCurrentBookToLocal() {
       );
       // Committed before the rate and the play, so the play's `playing` (and the save loop
       // it starts) reads the engine's index through the download's queue.
-      commit(release());
+      commit(released());
       await svc.setRate(rate);
       if (wasPlaying) await svc.play();
     }
   } finally {
     // A refused swap or a failed load: the hold must not outlive it.
-    const left = release();
-    if (left.loadingBook === null) usePlayer.setState(left);
+    if (holding()) usePlayer.setState({ loadingBook: null });
   }
 }
 
