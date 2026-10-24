@@ -1014,7 +1014,17 @@ media GETs only.
   (`autoDownloadNext`, default `'wifi'`) can land while its start is still `loading`, or just
   after the engine began playing but before its `playing` reached JS; iOS's `load` pauses the
   player (Android keeps `playWhenReady`), so a swap that didn't play left a kid's first story
-  stopped on Play, or on a watchdog error (8b-1).
+  stopped on Play, or on a watchdog error (8b-1). It **keeps the engine's file order**: a
+  download made in another order (a pre-2.4.0 download retried while the new order streams)
+  takes the chapters the book was started from (`adoptStartedChapters`, as that start's own load
+  would have), so the swap changes only the files' urls, and the track index, the in-file place
+  and the whole-book seconds stay what the saves, the resume floor, the sleep timer, jump undo,
+  the spoiler gates and a Cast receiver read. One that can't take that order (a start given no
+  chapters) leaves the book streaming. Only a download holding other files moves the listener:
+  to the same file (by path-keyed track id) when it has it, else to the same whole-book place,
+  the resume floor moving with it; while that moves the track index, `persist` and
+  `onRemoteMove` refuse a place at another index of that book (`swapHold`) until the download's
+  queue is committed, which on a load is before the rate and the play.
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
@@ -1169,7 +1179,9 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
   JS (`consumePendingBookmarks`) drain at start and on every foreground, and one that can't
-  reach its server waits under `audiosilo.carBookmarks`.
+  reach its server waits under `audiosilo.carBookmarks`, at the whole-book place read on its
+  first try (a file place read later could go through a re-ordered download's timeline); only
+  one whose place could not be read yet stays in file coordinates.
 - **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
@@ -1775,8 +1787,9 @@ are asked, at most 10,000 rows.
   The audio is never touched, and a queue already playing keeps its chapters until the book is
   next started. The same files in another order (server v2.4.0 plays them in natural order, "2-"
   before "10-") are taken **only by a start that loads the engine in that order**
-  (`adoptStartedChapters`, from `playBook` once its load landed and it still owns the engine;
-  saved at once; a start given no chapters plays the download's own files and chapters), never
+  (`adoptStartedChapters`, from `playBook` once its load landed and it still owns the engine,
+  and from the hot-swap when the download lands while that start's order streams; saved at
+  once; a start given no chapters plays the download's own files and chapters), never
   from a background answer, and a start's answer in the manifest's own order is left to the
   background refresh: JS sees only what it loaded, not a book the Android service or a Cast
   receiver holds before `adoptLoaded` / the receiver adoption, which map the engine's track index

@@ -788,24 +788,31 @@ async function bookPlaceOf(b: CarBookmark): Promise<number | null> {
   return toBookPosition(offsets, b.trackIndex, b.positionInTrack);
 }
 
-/** Add one: `done`, `retry` (its server can't be reached, or its place can't be read yet) or
- * `drop` (its connection is gone, or the server refused it). */
-async function addCarBookmark(b: CarBookmark): Promise<'done' | 'retry' | 'drop'> {
+/** Add one: null when it is finished with (added, its connection is gone, or the server
+ * refused it), else the bookmark to try again (its server can't be reached, or its place
+ * can't be read yet). The one kept is at the whole-book place read now whenever one could
+ * be: a place kept in file coordinates would be read later through whatever order the book's
+ * files are in then (a download re-ordered by a start in the server's order), which can be
+ * another file's. */
+async function addCarBookmark(b: CarBookmark): Promise<CarBookmark | null> {
   // No connection: gone for good once the session has loaded, else (a session that failed
   // to load: a CarPlay launch with the phone locked) kept until it has.
-  if (!resolveClient(b.connectionId)) return sessionReady() ? 'drop' : 'retry';
+  const connected = resolveClient(b.connectionId) !== null;
+  if (!connected && sessionReady()) return null;
   const position = await bookPlaceOf(b);
-  if (position === null) return 'retry';
+  if (position === null) return b;
+  const placed: CarBookmark = { ...bookRefOf(b), position };
+  if (!connected) return placed;
   try {
     // No label: the car's bookmark is a plain one, so nothing waits on `annotations`.
     await addBookmark(b.connectionId, b.libraryId, b.path, Math.round(Math.max(0, position)));
-    return 'done';
+    return null;
   } catch (err) {
     if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
       console.warn('[car] the server refused a bookmark', err);
-      return 'drop';
+      return null;
     }
-    return 'retry';
+    return placed;
   }
 }
 
@@ -843,7 +850,8 @@ function addBookmarks(fresh: CarBookmark[]): Promise<void> {
     if (todo.length === 0) return;
     const retry: CarBookmark[] = [];
     for (const b of todo) {
-      if ((await addCarBookmark(b)) === 'retry') retry.push(b);
+      const again = await addCarBookmark(b);
+      if (again) retry.push(again);
     }
     if (retry.length > 0 || kept.length > 0) await setItem(RETRY_KEY, retry);
   });

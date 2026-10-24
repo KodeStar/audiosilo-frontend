@@ -1208,6 +1208,61 @@ describe('bookmarks from outside the app', () => {
     expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
   });
 
+  it('keeps one at the place read on its first try, whatever order its download takes after', async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    // Files of 100 s and 60 s, so the same file place reads differently in the other order.
+    const withLengths = (order: [number, number]) => {
+      const e = downloaded('c1', 'D');
+      e.manifest.chapters = {
+        ...twoFileChapters,
+        files: twoFileChapters.files.map((f, i) => ({
+          ...f,
+          seq: order[i],
+          duration: i === 0 ? 100 : 60,
+        })),
+      };
+      return e;
+    };
+    useDownloads.setState({ entries: { 'c1:2:D': withLengths([0, 1]) } });
+    // Pressed with no JS running: file 2 (D/2.mp3), 30 s in = whole-book 130.
+    mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+      { connectionId: 'c1', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+    ]);
+    mockAddBookmark.mockRejectedValueOnce(new TypeError('Network request failed'));
+    stop = startCarSync();
+    await settle();
+    expect(await getItem('audiosilo.carBookmarks')).toEqual([
+      { connectionId: 'c1', libraryId: 2, path: 'D', position: 130 },
+    ]);
+
+    // The download takes the server's other order: file index 1 is now D/1.mp3, so the
+    // press's file place would read as 60 + 30 = 90 there.
+    useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+    mockAddBookmark.mockClear();
+    appStateListener?.('background');
+    appStateListener?.('active');
+    await settle();
+    expect(mockAddBookmark).toHaveBeenCalledTimes(1);
+    expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 130);
+    expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+  });
+
+  it('keeps one in file coordinates while its place cannot be read yet', async () => {
+    // Not downloaded and not loaded, its server out of reach: no timeline to read.
+    connect(['c1']);
+    mockClients.c1 = fakeClient({});
+    mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+      { connectionId: 'c1', libraryId: 2, path: 'S', trackIndex: 1, position: 10 },
+    ]);
+    stop = startCarSync();
+    await settle();
+    expect(mockAddBookmark).not.toHaveBeenCalled();
+    expect(await getItem('audiosilo.carBookmarks')).toEqual([
+      { connectionId: 'c1', libraryId: 2, path: 'S', trackIndex: 1, positionInTrack: 10 },
+    ]);
+  });
+
   it('drops one the server refuses', async () => {
     const { ApiError } = jest.requireActual('@/api/client');
     connect(['c1']);

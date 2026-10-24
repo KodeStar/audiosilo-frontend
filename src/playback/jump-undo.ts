@@ -27,7 +27,8 @@ import { selectBookKey, selectBookPosition, usePlayer } from './store';
  * - Retry / reload and buffering: only SETTLED states (`playing`, `paused`) are sampled.
  *   While the engine is `loading`, `ready`, `error`... the last settled sample is kept,
  *   and a reload resumes where it was.
- * - The downloads hot-swap (`switchCurrentBookToLocal`): same book, same position.
+ * - The downloads hot-swap (`switchCurrentBookToLocal`): same book, same position (it keeps
+ *   the engine's file order; only a download holding other files can move the place).
  * - The app coming back after iOS suspended JS: while the previous sample was playing,
  *   anything up to (elapsed wall time x rate) is natural, so an hour of background
  *   listening is an hour of allowance. If JS was not running at all (the heartbeat below
