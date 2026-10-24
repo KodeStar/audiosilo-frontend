@@ -1,12 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import {
   historyQuery,
+  qk,
   useBook,
   useBookMeta,
   useBookProgress,
@@ -122,6 +123,9 @@ function BookOrEpisode() {
   const cid = useScopedCid();
   const podcastLibrary = useIsPodcastLibrary(libraryId, cid);
   const { data: book } = useBook(libraryId, path);
+  const canonical = useCanonicalBookPath(cid, libraryId, path, book);
+  // A file path on its way to its book's path: nothing reads or writes a place under it.
+  if (!canonical) return null;
   // The item's own shape once it is in (an item of a podcast library that is no episode
   // gets the book page, never a blank one).
   return (book ? book.episode : podcastLibrary) ? (
@@ -129,6 +133,35 @@ function BookOrEpisode() {
   ) : (
     <BookPage />
   );
+}
+
+/**
+ * Path is the identity (CROSS-REPO section 1): a link to a track file or a disc folder inside
+ * a book, which `/item` resolves to the book above it, moves the route to the book's own
+ * `rel_path` in place (`setParams`: no history entry, so Back never returns to the file
+ * path), and the page renders only then. Its progress, its plays and its cast are asked by
+ * the book's path, never under a second key that hides the real place (frontend#130). The
+ * item already read seeds the book path's query, so the move asks nothing again. Only to a
+ * folder above the route's path (each move is shorter, so it can never bounce); any other
+ * difference (a trailing slash) is the same book and stays. False while the route is on
+ * its way.
+ */
+function useCanonicalBookPath(
+  cid: string,
+  libraryId: number,
+  path: string,
+  book: { rel_path: string } | undefined,
+): boolean {
+  const qc = useQueryClient();
+  const target = book?.rel_path.replace(/\/+$/, '');
+  const move = !!target && path.startsWith(`${target}/`);
+  useEffect(() => {
+    if (!move || !target || !book) return;
+    const key = qk.item(cid, libraryId, target);
+    if (qc.getQueryData(key) === undefined) qc.setQueryData(key, book);
+    router.setParams({ path: target });
+  }, [move, target, cid, libraryId, qc, book]);
+  return !move;
 }
 
 /**

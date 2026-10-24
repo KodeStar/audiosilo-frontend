@@ -22,9 +22,10 @@ import { mountWithPortal } from '@/testing/render-overlay';
 // the Details tab, an unmatched book reading complete, and the load and error states.
 
 const mockPush = jest.fn();
+const mockSetParams = jest.fn();
 let mockParams: Record<string, unknown> = { libraryId: '1', path: ['Author', 'Book'] };
 jest.mock('expo-router', () => ({
-  router: { push: (h: unknown) => mockPush(h) },
+  router: { push: (h: unknown) => mockPush(h), setParams: (p: unknown) => mockSetParams(p) },
   useIsFocused: () => true,
   useLocalSearchParams: () => mockParams,
 }));
@@ -38,6 +39,7 @@ let mockCaps: Record<string, boolean> = {};
 let mockBridge: { version: string; features: string[] } | undefined;
 let mockJobs: BridgeJob[] = [];
 const mockMetaArgs = jest.fn();
+const mockProgressArgs = jest.fn();
 const mockRefetch = jest.fn();
 let mockPodcastLibrary = false;
 jest.mock('@/components/podcasts/episode-page', () => ({
@@ -66,7 +68,10 @@ jest.mock('@/api/hooks', () => ({
     mockMetaArgs(...args);
     return { data: mockMeta };
   },
-  useBookProgress: () => ({ data: mockProgress, isPending: false }),
+  useBookProgress: (...args: unknown[]) => {
+    mockProgressArgs(...args);
+    return { data: mockProgress, isPending: false };
+  },
   useFavourites: () => ({ data: [] }),
   useToggleFavourite: () => ({ mutate: jest.fn() }),
   useQueue: () => ({ data: undefined }),
@@ -242,6 +247,8 @@ beforeEach(() => {
   mockBridge = undefined;
   mockJobs = [];
   mockMetaArgs.mockClear();
+  mockProgressArgs.mockClear();
+  mockSetParams.mockClear();
   mockBookmarks = [];
   mockPush.mockClear();
   mockStartBook.mockClear();
@@ -287,6 +294,36 @@ describe('book page, a podcast episode', () => {
   it('keeps the book page for a book', async () => {
     await mountAt('desktop');
     expect(screen.queryByText(/Episode page/)).toBeNull();
+    expect(screen.getByTestId('book-page')).toBeTruthy();
+  });
+});
+
+// frontend#130: path is the identity (CROSS-REPO section 1).
+describe('book page, a track file path', () => {
+  it("moves the route to the book's path before any place is read under the file's", async () => {
+    mockParams = { libraryId: '1', path: 'Author/Book/book.m4b' };
+    mockProgress = progressAt(1500);
+    await mountAt('desktop');
+    expect(mockSetParams).toHaveBeenCalledWith({ path: 'Author/Book' });
+    expect(screen.queryByTestId('book-page')).toBeNull();
+    expect(mockProgressArgs).not.toHaveBeenCalled();
+
+    // The route now names the book: the page, with the book's place.
+    mockParams = { libraryId: '1', path: 'Author/Book' };
+    await screen.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <BookScreen />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId('book-page')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Resume chapter 2' })).toBeTruthy();
+    expect(mockProgressArgs.mock.calls.every(([, path]) => path === 'Author/Book')).toBe(true);
+    expect(mockSetParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the route alone for the book path', async () => {
+    await mountAt('desktop');
+    expect(mockSetParams).not.toHaveBeenCalled();
     expect(screen.getByTestId('book-page')).toBeTruthy();
   });
 });
@@ -698,6 +735,15 @@ describe('book page Bridge (generated characters and recaps)', () => {
     mockParams = { libraryId: '1', path: ['Author', 'Book', 'Disc 1'] };
     mockBook = { ...BOOK, asin: 'B0' };
     await mountAt('desktop');
+    // The route moves to the book's own path first (frontend#130), then the page asks.
+    expect(mockSetParams).toHaveBeenCalledWith({ path: 'Author/Book' });
+    expect(mockMetaArgs).not.toHaveBeenCalled();
+    mockParams = { libraryId: '1', path: 'Author/Book' };
+    await screen.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <BookScreen />
+      </QueryClientProvider>,
+    );
     expect(mockMetaArgs).toHaveBeenLastCalledWith(1, 'Author/Book', true);
   });
 
