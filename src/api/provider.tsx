@@ -10,6 +10,7 @@ import { pickedUrl, useAddressRoute } from './address-route';
 import { ApiClient, isSignedOutError } from './client';
 import {
   anyOffline,
+  noteAnswer,
   noteFailure,
   noteSuccess,
   onReconnect,
@@ -169,8 +170,13 @@ export function buildClients(
             // (query OR mutation) flags this connection for reconnect - the client is the
             // one choke point every request path shares. Built on the address in use now
             // (`resolveClient` does the same), never straight from `serverUrl`.
-            client: new ApiClient(url, c.token, undefined, () =>
-              useSession.getState().markNeedsReconnect(c.id, 'auth'),
+            // Every answer it gets is counted for reachability (`noteAnswer`, FU-SLOWOK).
+            client: new ApiClient(
+              url,
+              c.token,
+              undefined,
+              () => useSession.getState().markNeedsReconnect(c.id, 'auth'),
+              () => noteAnswer(c.id),
             ),
           },
     );

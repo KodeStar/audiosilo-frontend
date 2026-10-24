@@ -792,6 +792,29 @@ describe('ApiClient', () => {
     expect(onAuthError).not.toHaveBeenCalled();
   });
 
+  // --- onAnswer (FU-SLOWOK: every HTTP answer counts for reachability) -----------
+  it('fires onAnswer for every response, whatever its status', async () => {
+    const onAnswer = jest.fn();
+    installFetch(() => ({ status: 200, body: { name: 'AudioSilo' } }));
+    const c = new ApiClient('https://h', 'tok', undefined, undefined, onAnswer);
+    await c.serverInfo();
+    installFetch(() => ({ status: 503, body: { error: 'busy' } }));
+    await expect(c.me()).rejects.toMatchObject({ status: 503 });
+    expect(onAnswer).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT fire onAnswer when nothing answered (a timeout or a fetch rejection)', async () => {
+    const onAnswer = jest.fn();
+    installHangingFetch();
+    const c = new ApiClient('https://h', 'tok', 10, undefined, onAnswer);
+    await expect(c.serverInfo()).rejects.toMatchObject({ name: 'TimeoutError' });
+    globalThis.fetch = jest.fn(() =>
+      Promise.reject(new TypeError('Network request failed')),
+    ) as unknown as typeof globalThis.fetch;
+    await expect(c.serverInfo()).rejects.toBeInstanceOf(TypeError);
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
   // --- Client identification header -------------------------------------------
   // Sent on native always; on web only same-origin (a cross-origin custom header would
   // force a CORS preflight that pre-header servers reject). Platform.OS and the page

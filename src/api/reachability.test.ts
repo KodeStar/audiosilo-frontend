@@ -211,6 +211,25 @@ describe('the offline probe', () => {
     expect(r.isReachable('c1')).toBe(true);
   });
 
+  // FU-SLOWOK: a slow but healthy server answers queries while its check times out.
+  it('leaves a server up whose client got an answer while a check got none', async () => {
+    const r = fresh();
+    const { client, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    const check = r.checkReachability('c1');
+    r.noteAnswer('c1'); // a query got its answer while the check waited out its timeout
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(r.isReachable('c1')).toBe(true);
+  });
+
+  it('counts an answer without marking a down server up', async () => {
+    const r = fresh();
+    await markDown('c1', r.checkReachability);
+    r.noteAnswer('c1');
+    expect(r.isReachable('c1')).toBe(false);
+  });
+
   it('marks a server down when its check got no answer and nothing else did', async () => {
     const r = fresh();
     const { client, fail } = pendingClient('https://h');

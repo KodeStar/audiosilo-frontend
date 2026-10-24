@@ -35,8 +35,9 @@ const reconnectHandlers = new Set<(connectionId: string) => void>();
  * it asks through. Removal drops the entry, so a check that outlives its connection
  * records nothing. */
 const checking = new Map<string, ApiClient>();
-/** How many answers each connection's server has given (every `setOnline(id, true)`), so
- * a check that got none can tell another request was answered while it waited. */
+/** How many answers each connection's server has given (every `setOnline(id, true)`, and
+ * every HTTP response its client got: `noteAnswer`), so a check that got none can tell
+ * another request was answered while it waited. */
 const answers = new Map<string, number>();
 /** Connections whose check in flight must run again once it ends without an answer: a
  * query succeeded meanwhile (`recheckReachability`), so the check may be a stale one. */
@@ -84,8 +85,18 @@ export function onReconnect(cb: (connectionId: string) => void): () => void {
   return () => reconnectHandlers.delete(cb);
 }
 
+/**
+ * The server of `connectionId` answered a request (any status; the ApiClient's
+ * `onAnswer`). Counted only, the state is left alone: a check that got no answer then
+ * leaves this server up (it is slow, not gone; FU-SLOWOK), while marking a down server up
+ * stays the probe's job.
+ */
+export function noteAnswer(connectionId: string): void {
+  answers.set(connectionId, (answers.get(connectionId) ?? 0) + 1);
+}
+
 function setOnline(connectionId: string, online: boolean) {
-  if (online) answers.set(connectionId, (answers.get(connectionId) ?? 0) + 1);
+  if (online) noteAnswer(connectionId);
   const current = useReachability.getState().online;
   const prev = current[connectionId] ?? true;
   if (prev === online) {
