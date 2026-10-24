@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
+import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -48,8 +49,14 @@ function FavouritesShelfRow() {
  */
 export function FoldersMode() {
   const { t } = useTranslation();
-  const { libraries, isLoading, error } = useLibrariesAll();
+  const { libraries, groups: lists, isLoading } = useLibrariesAll();
   const { openLibrary } = useOpen();
+  // A server whose sign-in ended shows the sign-in state, not a load error or "no
+  // libraries" (frontend#124); a list that failed otherwise keeps the error note.
+  const signedOut = useSignedOutConnections();
+  const failed = lists.filter((g) => g.status === 'error');
+  const refused = signedOut.find((c) => failed.some((g) => g.connectionId === c.id));
+  const error = failed.some((g) => !signedOut.some((c) => c.id === g.connectionId));
 
   // Group libraries by their server (connection), preserving connection order.
   const groups: { id: string; name: string; libs: SourcedLibrary[] }[] = [];
@@ -66,6 +73,7 @@ export function FoldersMode() {
   return (
     <TabPageScroll contentContainerClassName="gap-0">
       {isLoading ? <RowSkeletonList /> : null}
+      {refused ? <SignInAgainState connection={refused} className="mb-2" /> : null}
       {error ? <ErrorNote message={t('library.list.loadLibrariesError')} /> : null}
 
       <FavouritesShelfRow />
@@ -95,7 +103,7 @@ export function FoldersMode() {
         </View>
       ))}
 
-      {libraries.length === 0 && !isLoading ? (
+      {libraries.length === 0 && !isLoading && !refused ? (
         <EmptyState
           icon="library"
           title={t('library.list.noLibraries')}

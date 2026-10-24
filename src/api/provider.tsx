@@ -7,7 +7,7 @@ import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/store
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
-import { ApiClient } from './client';
+import { ApiClient, isSignedOutError } from './client';
 import { onReconnect, setReachabilityClients } from './reachability';
 
 // --- Dead-token / server-reset detection -----------------------------------------------
@@ -42,6 +42,15 @@ function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
   if (cid) clearNeedsReconnect(cid);
 }
 
+/**
+ * The default query retry: once, except a 401 (frontend#124). A refused token stays
+ * refused (the client has already flagged its connection for reconnect, and the screens
+ * show one sign-in state for it), so asking again only doubles every dead request.
+ */
+export function retryQuery(failureCount: number, error: unknown): boolean {
+  return failureCount < 1 && !isSignedOutError(error);
+}
+
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     // No onError: dead-token flagging lives on the ApiClient callback now (one choke
@@ -51,7 +60,7 @@ export const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: retryQuery,
       staleTime: 30_000,
       refetchOnWindowFocus: false,
     },

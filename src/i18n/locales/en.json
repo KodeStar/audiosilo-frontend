@@ -1586,6 +1586,10 @@
       "heading": "Reconnect",
       "action": "Reconnect to {{name}}",
       "forget": "Forget {{name}}"
+    },
+    "state": {
+      "title": "Sign in again to {{name}}",
+      "hint": "Your sign-in to {{name}} ended, so it can't show your books here. Nothing is lost."
     }
   },
   "nav": {

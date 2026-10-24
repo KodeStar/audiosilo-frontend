@@ -64,6 +64,10 @@ jest.mock('@/lib/layout', () => ({
 }));
 
 /* eslint-disable import/first */
+import { ApiError } from '@/api/client';
+import { resetProfilesForTests } from '@/stores/profiles';
+import { type Connection, useSession } from '@/stores/session';
+
 import { BooksMode } from './books-mode';
 /* eslint-enable import/first */
 
@@ -249,5 +253,28 @@ describe('BooksMode', () => {
     mockWhole.books = [];
     await mount();
     expect(screen.getByText("Couldn't load the books")).toBeTruthy();
+  });
+
+  // frontend#124: a refused session is one sign-in state, never a Retry.
+  it('asks to sign in again, with no Retry, when its server refused the session', async () => {
+    resetProfilesForTests();
+    const before = useSession.getState().connections;
+    useSession.setState({
+      connections: [
+        { id: 'c', name: 'Hearthside', serverUrl: 'https://h', token: 't', needsReconnect: 'auth' },
+      ] as Connection[],
+    });
+    try {
+      mockWhole.books = [];
+      mockWhole.error = new ApiError(401, 'unauthorized');
+      await mount();
+      expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+      expect(screen.queryByText("Couldn't load the books")).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    } finally {
+      screen.unmount();
+      useSession.setState({ connections: before });
+    }
   });
 });

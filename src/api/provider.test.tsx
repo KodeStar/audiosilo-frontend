@@ -4,8 +4,16 @@ import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { setAddressPick, useAddressRoute } from './address-route';
+import { ApiError, TimeoutError } from './client';
 import { qk } from './hooks';
-import { type ApiConnection, ApiProvider, buildClients, queryClient, useApis } from './provider';
+import {
+  type ApiConnection,
+  ApiProvider,
+  buildClients,
+  queryClient,
+  retryQuery,
+  useApis,
+} from './provider';
 
 jest.mock('./reachability', () => ({
   onReconnect: jest.fn(),
@@ -227,5 +235,23 @@ describe('a connection signed in again (a new token, 8b-1)', () => {
       useSession.setState({ connections: [{ ...c, name: 'Renamed' }] } as never),
     );
     expect(queryClient.getQueryState(qk.libraries('srv.5'))?.isInvalidated).toBe(false);
+  });
+});
+
+// frontend#124: a refused token stays refused, so a 401 is never asked again.
+describe('the default query retry', () => {
+  it('is the default for every query', () => {
+    expect(queryClient.getDefaultOptions().queries?.retry).toBe(retryQuery);
+  });
+
+  it('tries once more after a failure that may pass', () => {
+    expect(retryQuery(0, new ApiError(500, 'down'))).toBe(true);
+    expect(retryQuery(0, new TimeoutError(1000))).toBe(true);
+    expect(retryQuery(0, new Error('offline'))).toBe(true);
+    expect(retryQuery(1, new ApiError(500, 'down'))).toBe(false);
+  });
+
+  it('never retries a 401', () => {
+    expect(retryQuery(0, new ApiError(401, 'unauthorized'))).toBe(false);
   });
 });

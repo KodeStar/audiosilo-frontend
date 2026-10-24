@@ -4,9 +4,10 @@ import { mountWithPortal } from '@/testing/render-overlay';
 
 let mockParams: { mode?: string } = {};
 const mockSetParams = jest.fn();
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
-  router: { setParams: (p: unknown) => mockSetParams(p) },
+  router: { setParams: (p: unknown) => mockSetParams(p), push: (h: unknown) => mockPush(h) },
 }));
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'phone';
 jest.mock('@/lib/layout', () => ({
@@ -54,7 +55,7 @@ type Group = {
     connectionName: string;
     kind?: string;
   }[];
-  status: 'ready';
+  status: 'ready' | 'error';
 };
 const lib = (connectionId: string, id: number, name: string, kind?: string) => ({
   id,
@@ -109,6 +110,9 @@ jest.mock('./modes/series-mode', () => ({ SeriesMode: () => null }));
 jest.mock('./modes/narrators-mode', () => ({ NarratorsMode: () => null }));
 
 /* eslint-disable import/first */
+import { resetProfilesForTests } from '@/stores/profiles';
+import { type Connection, useSession } from '@/stores/session';
+
 import { LibraryPicker } from './library-picker';
 import { LibraryScreen } from './library-screen';
 /* eslint-enable import/first */
@@ -225,6 +229,36 @@ describe('LibraryScreen', () => {
     mockSelection = null;
     await render(<LibraryScreen />);
     expect(screen.getByText('No libraries are shared with your account yet.')).toBeTruthy();
+  });
+
+  // frontend#124: a revoked session is not "no libraries shared".
+  it('asks to sign in again, not "no libraries", when the session was refused', async () => {
+    resetProfilesForTests();
+    const before = useSession.getState().connections;
+    const conn: Connection = {
+      id: 'a',
+      name: 'Hearthside',
+      serverUrl: 'https://h',
+      token: 't',
+      needsReconnect: 'auth',
+    } as Connection;
+    useSession.setState({ connections: [conn] });
+    try {
+      mockGroups = [{ ...group('a', []), status: 'error' }];
+      mockSelection = null;
+      await render(<LibraryScreen />);
+      expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+      expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+      await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/connect/sign-in',
+        params: { serverName: 'Hearthside', reconnect: 'a' },
+      });
+    } finally {
+      screen.unmount();
+      useSession.setState({ connections: before });
+    }
   });
 });
 

@@ -115,6 +115,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Whether `e` is the server refusing the session token (a 401): the connection needs
+ * signing in again, not another try (frontend#124). */
+export function isSignedOutError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 401;
+}
+
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'
  * (Phase 8b-1; `member_disabled` is a 409 for a member the admin disabled, on their
  * session and their pairing), and `kid_account` on pairing too. One list, so the type and
@@ -525,7 +531,7 @@ export class ApiClient {
       // dead-token callback (every ApiError the readers throw lands here). 403 is a scope
       // denial (valid token, forbidden) and a network/timeout failure has no status, so
       // neither is a dead token - the full rationale is on the constructor doc above.
-      if (e instanceof ApiError && e.status === 401) this.onAuthError?.();
+      if (isSignedOutError(e)) this.onAuthError?.();
       throw e;
     } finally {
       clearTimeout(timer);

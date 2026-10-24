@@ -13,6 +13,8 @@ import {
   useLibrariesAll,
   useRecentAll,
 } from '@/api/hooks';
+import { isSignedOutError } from '@/api/client';
+import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
 import { profileName } from '@/components/profiles/profiles-model';
 import { HouseRow } from '@/components/house/house-row';
 import { libraryBooksHref } from '@/components/library/books/books-view';
@@ -136,6 +138,11 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const serverLabel = useServerFlag();
 
   const retryProgress = () => void qc.refetchQueries({ queryKey: qk.allProgressAll() });
+  // A refused sign-in (a 401) shows ONE sign-in state, in the Now card's place, with the
+  // Reconnect action; the shelves below show no Retry of their own for it (#124).
+  const signedOut = useSignedOutConnections()[0];
+  const progressRefused = isSignedOutError(error) && !!signedOut;
+  const recentRefused = isSignedOutError(recent.error);
 
   // This week stands beside the Now card only where the page column is wide enough for
   // both: a desktop window with the Up next drawer open is narrower than its class says.
@@ -149,6 +156,8 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     <NowCard at={nowAt} saved={nowSaved} />
   ) : isLoading ? (
     <NowCardSkeleton />
+  ) : progressRefused ? (
+    <SignInAgainState connection={signedOut} className={beside ? 'flex-1' : undefined} />
   ) : error ? (
     <NowError onRetry={retryProgress} fill={beside} />
   ) : (
@@ -255,7 +264,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
           </HomeSection>
         ) : null}
 
-        {recent.isLoading || recent.books.length > 0 || recent.error ? (
+        {recent.isLoading || recent.books.length > 0 || (recent.error && !recentRefused) ? (
           <HomeSection
             title={t('home.recentlyAdded')}
             sub={connections.length > 1 ? t('home.acrossServers') : undefined}

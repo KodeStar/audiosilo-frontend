@@ -1586,6 +1586,10 @@
       "heading": "Voltar a ligar",
       "action": "Voltar a ligar a {{name}}",
       "forget": "Esquecer {{name}}"
+    },
+    "state": {
+      "title": "Volta a iniciar sessão em {{name}}",
+      "hint": "A tua sessão em {{name}} terminou, por isso não pode mostrar aqui os teus livros. Nada se perdeu."
     }
   },
   "nav": {

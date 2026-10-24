@@ -21,10 +21,11 @@ jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => mockLayout,
 }));
+let mockConnections: { id: string; name: string; needsReconnect?: string }[] = [];
 jest.mock('@/stores/session', () => ({
   useSession: (sel: (s: object) => unknown) =>
     sel({
-      connections: [{ id: 'a', name: 'Home' }],
+      connections: mockConnections,
       defaultConnectionId: 'a',
       user: { username: 'alex' },
     }),
@@ -51,6 +52,11 @@ let mockProgress: { progress: Progress[]; isLoading: boolean; error: Error | nul
   isLoading: false,
   error: null,
 };
+let mockRecent: { books: unknown[]; isLoading: boolean; error: Error | null } = {
+  books: [],
+  isLoading: false,
+  error: null,
+};
 const mockToday = new Date().toISOString().slice(0, 10);
 type Group = { connectionId: string; libraries: { id: number; kind?: string }[]; status: string };
 let mockGroups: Group[] = [];
@@ -62,7 +68,7 @@ jest.mock('@/api/hooks', () => ({
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useAllProgressAll: () => mockProgress,
   useLibrariesAll: () => ({ groups: mockGroups }),
-  useRecentAll: () => ({ books: [], isLoading: false, error: null }),
+  useRecentAll: () => mockRecent,
   useFavouritesAll: () => ({ favourites: [] }),
   useBook: () => ({ data: undefined }),
   useMyListening: () => ({
@@ -143,6 +149,7 @@ jest.mock('@/modules/registry', () => ({
 import { useState } from 'react';
 import { Text } from 'react-native';
 
+import { ApiError } from '@/api/client';
 import type { PlayerModule } from '@/modules/registry';
 
 import { HomeScreen } from './home-screen';
@@ -173,6 +180,8 @@ beforeEach(() => {
   mockUseActiveModules.mockClear();
   mockCaps = {};
   mockProgress = { progress: [], isLoading: false, error: null };
+  mockRecent = { books: [], isLoading: false, error: null };
+  mockConnections = [{ id: 'a', name: 'Home' }];
   mockNext = { answers: [], supported: undefined, isLoading: false };
   mockLayout = 'desktop';
   mockCandidates.mockClear();
@@ -219,6 +228,19 @@ describe('HomeScreen', () => {
     await mountHome();
     expect(screen.getByText("Couldn't load your progress")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  // frontend#124: a revoked session is one sign-in state, not load errors with Retry.
+  it('shows one sign-in state with Reconnect, and no Retry, when the session was refused', async () => {
+    mockConnections = [{ id: 'a', name: 'Home', needsReconnect: 'auth' }];
+    mockProgress = { progress: [], isLoading: false, error: new ApiError(401, 'unauthorized') };
+    mockRecent = { books: [], isLoading: false, error: new ApiError(401, 'unauthorized') };
+    await mountHome();
+    expect(screen.getByText('Sign in again to Home')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your progress")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText('Recently added')).toBeNull();
   });
 
   it('leaves out This week and Next in your series until the server says it has them', async () => {

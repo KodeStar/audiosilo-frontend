@@ -1586,6 +1586,10 @@
       "heading": "Volver a conectar",
       "action": "Volver a conectar con {{name}}",
       "forget": "Olvidar {{name}}"
+    },
+    "state": {
+      "title": "Vuelve a iniciar sesión en {{name}}",
+      "hint": "Tu sesión en {{name}} terminó, así que no puede mostrar tus libros aquí. No se ha perdido nada."
     }
   },
   "nav": {

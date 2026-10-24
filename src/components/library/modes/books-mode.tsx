@@ -8,6 +8,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAllProgressAll } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
+import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
 import { SubNavActions } from '@/components/shell/tab-root-nav';
@@ -112,6 +113,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const libraryName = useSelectedLibrary().library?.name ?? '';
 
   const whole = useWholeLibrary(connectionId, libraryId);
+  const signedOut = useSignedOutConnections().find((c) => c.id === connectionId);
   const { progress } = useAllProgressAll();
   const progressMap = useMemo(
     () =>
@@ -266,7 +268,9 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
         </Text>
         {phone ? controls : null}
       </View>
-      {whole.error && total > 0 ? (
+      {whole.error && total > 0 && signedOut ? (
+        <SignInAgainState connection={signedOut} compact />
+      ) : whole.error && total > 0 ? (
         <LoadError
           compact
           title={t('library.books.error.partial')}
@@ -291,6 +295,8 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       );
     }
     if (whole.error && total === 0) {
+      // Its sign-in ended: one sign-in state, never a Retry that cannot help (#124).
+      if (signedOut) return <SignInAgainState connection={signedOut} />;
       return (
         <LoadError
           title={t('library.books.error.title')}
