@@ -143,6 +143,7 @@ import {
   localMoveCount,
   onPickedUpAgain,
   selectBookKey,
+  selectBookPosition,
   selectIsPlaying,
   selectIsTransportLive,
   stopPlaybackForConnection,
@@ -1464,6 +1465,157 @@ describe('a downloaded book re-ordered on its server', () => {
     loaded();
     await start;
     expect(order()).toEqual(paths);
+  });
+});
+
+// --- the download hot-swap when the download orders its files differently ---------------
+// (a download made before server v2.4.0's natural order, retried while the new order
+// streams). The swap keeps the listener in the same FILE at the same place in it.
+describe('the download hot-swap across file orders', () => {
+  const folder = 'A/Folder';
+  // Different lengths, so a whole-book place lands in another file on the other timeline.
+  const durations: Record<string, number> = { 'A/Folder/10.mp3': 30, 'A/Folder/2.mp3': 70 };
+  const oldOrder = ['A/Folder/10.mp3', 'A/Folder/2.mp3'];
+  const newOrder = ['A/Folder/2.mp3', 'A/Folder/10.mp3'];
+  const chaptersIn = (order: string[]): ChaptersResponse => {
+    let at = 0;
+    return {
+      library_id: 2,
+      path: folder,
+      duration: 100,
+      is_folder: true,
+      files: order.map((rel_path, seq) => ({
+        rel_path,
+        seq,
+        duration: durations[rel_path] ?? 50,
+        format: 'mp3',
+        size: 1,
+      })),
+      chapters: order.map((file_path, index) => {
+        const start = at;
+        at += durations[file_path] ?? 50;
+        return {
+          index,
+          title: `Chapter ${index + 1}`,
+          file_index: index,
+          file_path,
+          start: 0,
+          end: durations[file_path] ?? 50,
+          book_offset: start,
+        };
+      }),
+    };
+  };
+  const book = makeBook({ rel_path: folder, is_folder: true, format: 'mp3', duration: 100 });
+  const urlOf = (path: string) => `file:///dl/${path.split('/').pop()}`;
+
+  /** The download lands, its files (and chapters) in `order`. */
+  function downloadLands(order: string[]) {
+    const manifest: DownloadManifest = {
+      book,
+      chapters: chaptersIn(order),
+      files: order.map((relPath) => ({ relPath, localUri: urlOf(relPath) })),
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    useDownloads.setState({
+      entries: {
+        [`c1:2:${folder}`]: {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: folder,
+          title: book.title,
+          status: 'downloaded',
+          progress: 1,
+          bytes: 0,
+          totalBytes: 0,
+          manifest,
+        },
+      },
+    });
+  }
+  /** The swap's load: [first url, start index, position in that track]. */
+  const swapLoad = () => {
+    const calls = (mockSvc.load as jest.Mock).mock.calls;
+    const [tracks, index, position] = calls[calls.length - 1] as [
+      { url: string }[],
+      number,
+      number,
+    ];
+    return { url: tracks[index].url, index, position };
+  };
+
+  /** Stream the book in `order`, at file 2.mp3 20 s into it, playing or paused there. */
+  async function streamIn(order: string[], paused = false) {
+    await usePlayer.getState().playBook('c1', 2, book, chaptersIn(order), 0);
+    const at = order.indexOf('A/Folder/2.mp3');
+    pushSnapshot(snap('playing', 20, { trackIndex: at, duration: 70 }));
+    if (paused) {
+      await usePlayer.getState().pause();
+      pushSnapshot(snap('paused', 20, { trackIndex: at, duration: 70 }));
+    }
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+  }
+
+  it('keeps the same file at the same in-file place when the orders differ', async () => {
+    await streamIn(newOrder);
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    // 2.mp3 is the download's second file: the stream's whole-book 20 would be 10.mp3.
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 1, position: 20 });
+    const np = usePlayer.getState().nowPlaying;
+    expect(np?.queue.tracks.map((t) => t.url)).toEqual(oldOrder.map(urlOf));
+    expect(usePlayer.getState().loadingBook).toBeNull();
+  });
+
+  it('swaps at the same index and place when the orders match', async () => {
+    await streamIn(newOrder);
+    downloadLands(newOrder);
+    await flushMicrotasks();
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 0, position: 20 });
+  });
+
+  it('falls back to the whole-book place for a file the download does not hold', async () => {
+    // The download names its files differently (renamed on the server since).
+    await streamIn(newOrder);
+    const renamed = ['A/Folder/a.mp3', 'A/Folder/b.mp3'];
+    downloadLands(renamed);
+    await flushMicrotasks();
+    // Whole-book 20 on the stream's timeline: 20 s into the download's first 50 s file.
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/a.mp3'), index: 0, position: 20 });
+  });
+
+  it("saves no place read through the stream's queue while a paused book's swap loads", async () => {
+    await streamIn(newOrder, true);
+    mockSaveProgress.mockClear();
+    // Like the native engine: the load reports its new index (`ready`) before it returns,
+    // which settles a paused book and asks for a save.
+    (mockSvc.load as jest.Mock).mockImplementationOnce(async (_t: unknown, index: number) => {
+      pushSnapshot(snap('ready', 20, { trackIndex: index, duration: 70 }));
+    });
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    expect(swapLoad().index).toBe(1);
+    // Index 1 through the stream's queue is 10.mp3 (70 + 20 = 90): never saved.
+    const saved = mockSaveProgress.mock.calls.map((c) => (c[1] as { position: number }).position);
+    expect(saved).not.toContain(90);
+    expect(usePlayer.getState().loadingBook).toBeNull();
+    // After the commit the place reads through the download's queue: 30 + 20.
+    expect(selectBookPosition(usePlayer.getState())).toBe(50);
+  });
+
+  it('releases the hold when the swap load fails', async () => {
+    await streamIn(newOrder);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    (mockSvc.load as jest.Mock).mockRejectedValueOnce(new Error('no file'));
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+    expect(usePlayer.getState().loadingBook).toBeNull();
+    // Still on the stream's queue.
+    expect(usePlayer.getState().nowPlaying?.queue.tracks[0].url).toBe('stream:2:A/Folder/2.mp3');
   });
 });
 
