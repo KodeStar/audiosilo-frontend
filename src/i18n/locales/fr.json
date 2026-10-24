@@ -1586,6 +1586,10 @@
       "heading": "Se reconnecter",
       "action": "Se reconnecter à {{name}}",
       "forget": "Oublier {{name}}"
+    },
+    "state": {
+      "title": "Reconnecte-toi à {{name}}",
+      "hint": "Ta connexion à {{name}} a pris fin, il ne peut donc pas afficher tes livres ici. Rien n’est perdu."
     }
   },
   "nav": {
@@ -1650,6 +1654,7 @@
     },
     "home": "Accueil AudioSilo",
     "offline": "Hors ligne · les téléchargements sont lus",
+    "notAnswering": "{{name}} ne répond pas",
     "serverMore_one": "{{name}} + {{count}} autre",
     "serverMore_other": "{{name}} + {{count}} autres",
     "openPlayer": "Ouvrir le lecteur complet pour {{title}}",

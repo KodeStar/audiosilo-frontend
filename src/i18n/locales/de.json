@@ -1586,6 +1586,10 @@
       "heading": "Erneut verbinden",
       "action": "Erneut mit {{name}} verbinden",
       "forget": "{{name}} entfernen"
+    },
+    "state": {
+      "title": "Erneut bei {{name}} anmelden",
+      "hint": "Deine Anmeldung bei {{name}} ist beendet, darum kann es deine Bücher hier nicht zeigen. Nichts ist verloren."
     }
   },
   "nav": {
@@ -1650,6 +1654,7 @@
     },
     "home": "AudioSilo-Startseite",
     "offline": "Offline · Downloads spielen",
+    "notAnswering": "{{name}} antwortet nicht",
     "serverMore_one": "{{name}} + {{count}} weiterer",
     "serverMore_other": "{{name}} + {{count}} weitere",
     "openPlayer": "Vollen Player für {{title}} öffnen",

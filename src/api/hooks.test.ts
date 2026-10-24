@@ -5,9 +5,9 @@ import type { BookMeta, Capabilities, Progress, ServerInfo } from '@/api/types';
 
 // The fetch helper is deliberately framework-free, so the two collaborators it can reach
 // (the reachability layer and the durable progress mirror) are mocked and asserted on.
-const mockNoteError = jest.fn();
+const mockNoteFailure = jest.fn();
 jest.mock('@/api/reachability', () => ({
-  noteError: (...args: unknown[]) => mockNoteError(...args),
+  noteFailure: (...args: unknown[]) => mockNoteFailure(...args),
 }));
 
 const mockMirroredProgress = jest.fn(async (..._args: unknown[]): Promise<Progress | null> => null);
@@ -97,7 +97,7 @@ describe('fetchBookProgress', () => {
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).resolves.toBe(p);
     expect(mockMirroredProgress).not.toHaveBeenCalled();
-    expect(mockNoteError).not.toHaveBeenCalled();
+    expect(mockNoteFailure).not.toHaveBeenCalled();
   });
 
   // The reconnect invariant: a 401 has already flagged the connection via the client's
@@ -113,7 +113,7 @@ describe('fetchBookProgress', () => {
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).rejects.toBe(err);
     expect(mockMirroredProgress).not.toHaveBeenCalled();
-    expect(mockNoteError).not.toHaveBeenCalled();
+    expect(mockNoteFailure).not.toHaveBeenCalled();
   });
 
   it('rethrows a 403 ApiError (a real answer, not an unreachable server)', async () => {
@@ -140,7 +140,7 @@ describe('fetchBookProgress', () => {
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).resolves.toBe(mirrored);
     expect(mockMirroredProgress).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b');
-    expect(mockNoteError).toHaveBeenCalledWith('c1', err);
+    expect(mockNoteFailure).toHaveBeenCalledWith('c1', err);
   });
 
   it('falls back to the mirror on a TimeoutError too', async () => {
@@ -152,7 +152,7 @@ describe('fetchBookProgress', () => {
     await expect(
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).resolves.toBeNull();
-    expect(mockNoteError).toHaveBeenCalledWith('c1', err);
+    expect(mockNoteFailure).toHaveBeenCalledWith('c1', err);
   });
 
   it('rethrows on an aborted signal without touching the mirror', async () => {
@@ -167,7 +167,7 @@ describe('fetchBookProgress', () => {
       err,
     );
     expect(mockMirroredProgress).not.toHaveBeenCalled();
-    expect(mockNoteError).not.toHaveBeenCalled();
+    expect(mockNoteFailure).not.toHaveBeenCalled();
   });
 });
 

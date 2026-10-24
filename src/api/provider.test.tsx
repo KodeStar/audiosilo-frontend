@@ -1,14 +1,31 @@
-import { act, render } from '@testing-library/react-native';
+import { QueryObserver } from '@tanstack/react-query';
+import { act, render, waitFor } from '@testing-library/react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 import { setAddressPick, useAddressRoute } from './address-route';
+import { ApiError, TimeoutError } from './client';
 import { qk } from './hooks';
-import { type ApiConnection, ApiProvider, buildClients, queryClient, useApis } from './provider';
+import { noteSuccess, useReachability } from './reachability';
+import {
+  type ApiConnection,
+  ApiProvider,
+  buildClients,
+  queryClient,
+  retryQuery,
+  useApis,
+} from './provider';
 
+// The provider's reconnect handler, as the reachability layer would run it (registered
+// while the provider is imported, so no initializer here that would reset it after).
+let mockReconnect: ((cid: string) => void) | undefined;
 jest.mock('./reachability', () => ({
-  onReconnect: jest.fn(),
+  ...jest.requireActual('./reachability'),
+  onReconnect: (cb: (cid: string) => void) => {
+    mockReconnect = cb;
+    return () => {};
+  },
   setReachabilityClients: jest.fn(),
 }));
 
@@ -227,5 +244,115 @@ describe('a connection signed in again (a new token, 8b-1)', () => {
       useSession.setState({ connections: [{ ...c, name: 'Renamed' }] } as never),
     );
     expect(queryClient.getQueryState(qk.libraries('srv.5'))?.isInvalidated).toBe(false);
+  });
+});
+
+// frontend#124: a refused token stays refused, so a 401 is never asked again.
+describe('the default query retry', () => {
+  it('is the default for every query', () => {
+    expect(queryClient.getDefaultOptions().queries?.retry).toBe(retryQuery);
+  });
+
+  it('tries once more after a failure that may pass', () => {
+    expect(retryQuery(0, new ApiError(500, 'down'))).toBe(true);
+    expect(retryQuery(0, new TimeoutError(1000))).toBe(true);
+    expect(retryQuery(0, new Error('offline'))).toBe(true);
+    expect(retryQuery(1, new ApiError(500, 'down'))).toBe(false);
+  });
+
+  it('never retries a 401', () => {
+    expect(retryQuery(0, new ApiError(401, 'unauthorized'))).toBe(false);
+  });
+});
+
+// frontend#131: a query that got no answer has its server checked, and only a server that
+// does not answer the check either is marked unreachable, so the chrome names it and its
+// screens refetch once it is back. One slow or broken query alone never flips it.
+describe('queries and reachability', () => {
+  const reachability = jest.requireActual<typeof import('./reachability')>('./reachability');
+  const serverInfo = jest.fn();
+
+  beforeEach(() => {
+    useReachability.setState({ online: {} });
+    useSession.setState({
+      connections: [{ id: 'c1', name: 'Hearthside', serverUrl: 'https://h', token: 't' }],
+    } as never);
+    queryClient.clear();
+    serverInfo.mockReset();
+    reachability.setReachabilityClients(new Map([['c1', { serverInfo } as never]]));
+  });
+  // Back online, so the reachability probe a test started stops.
+  afterEach(() => {
+    noteSuccess('c1');
+    reachability.setReachabilityClients(new Map());
+  });
+
+  const fail = (error: unknown, key = qk.libraries('c1')) =>
+    queryClient
+      .fetchQuery({ queryKey: key, queryFn: () => Promise.reject(error), retry: false })
+      .catch(() => {});
+
+  it('marks a server unreachable when a query got no answer and neither did the server', async () => {
+    serverInfo.mockRejectedValue(new TypeError('Failed to fetch'));
+    await fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(useReachability.getState().online.c1).toBe(false));
+    expect(serverInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a server that answers the check reachable after one slow or broken query', async () => {
+    serverInfo.mockResolvedValue({});
+    await fail(new TimeoutError(15_000));
+    await fail(new TypeError("Cannot read properties of undefined (reading 'id')"));
+    await waitFor(() => expect(serverInfo).toHaveBeenCalledTimes(2));
+    expect(useReachability.getState().online.c1).not.toBe(false);
+  });
+
+  it('never checks for an answer, a cancel or a capability gate', async () => {
+    await fail(new ApiError(500, 'down'));
+    await fail(new ApiError(401, 'unauthorized'));
+    const abort = new Error('aborted');
+    abort.name = 'AbortError';
+    await fail(abort);
+    await fail(new Error('This server does not support queue'));
+    expect(serverInfo).not.toHaveBeenCalled();
+    expect(useReachability.getState().online.c1).toBeUndefined();
+  });
+
+  it('keeps a down server down when a query succeeds from a local copy', async () => {
+    useReachability.setState({ online: { c1: false } });
+    serverInfo.mockRejectedValue(new TypeError('Network request failed'));
+    await queryClient.fetchQuery({ queryKey: qk.libraries('c1'), queryFn: async () => [] });
+    await waitFor(() => expect(serverInfo).toHaveBeenCalledTimes(1));
+    expect(useReachability.getState().online.c1).toBe(false);
+  });
+
+  it('brings a down server back on its own /server answer, with no second check', async () => {
+    useReachability.setState({ online: { c1: false } });
+    await queryClient.fetchQuery({ queryKey: qk.server('c1'), queryFn: async () => ({}) });
+    expect(useReachability.getState().online.c1).toBe(true);
+    expect(serverInfo).not.toHaveBeenCalled();
+  });
+
+  it('refetches a failed list once its server is back, and an answer brings it back', async () => {
+    serverInfo.mockRejectedValue(new TypeError('Network request failed'));
+    const libraries = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: qk.libraries('c1'),
+      queryFn: libraries,
+      retry: false,
+    });
+    const stop = observer.subscribe(() => {});
+    try {
+      await waitFor(() => expect(observer.getCurrentResult().isError).toBe(true));
+      await waitFor(() => expect(useReachability.getState().online.c1).toBe(false));
+      libraries.mockResolvedValue([{ id: 1 }]);
+      serverInfo.mockResolvedValue({});
+      // The provider's reconnect handler refetches (as the probe finding it back runs it).
+      mockReconnect?.('c1');
+      await waitFor(() => expect(observer.getCurrentResult().data).toEqual([{ id: 1 }]));
+      await waitFor(() => expect(useReachability.getState().online.c1).toBe(true));
+    } finally {
+      stop();
+    }
   });
 });

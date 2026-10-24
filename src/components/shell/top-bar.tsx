@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { serverStatus, useReachability } from '@/api/reachability';
+import { firstOffline, serverStatus, useReachability } from '@/api/reachability';
 import { Logo } from '@/components/brand/logo';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
@@ -24,9 +24,10 @@ import { shortcutHint } from './palette-model';
 import { usePalette } from './palette-store';
 import { ProfileMenu } from './profile-menu';
 
-/** "Hearthside", "Hearthside + 1 more", or the default server's trouble (`serverStatus`:
- * it needs signing in again, or it is unreachable). Pure, so the top bar's server line is
- * tested without a store. */
+/** "Hearthside", "Hearthside + 1 more", the default server's trouble (`serverStatus`:
+ * it needs signing in again, or it is unreachable), or the name of another server that
+ * is not answering (`down`: never a green "+ 1 more" over a server that is down;
+ * frontend#131). Pure, so the top bar's server line is tested without a store. */
 export function serverLine(
   connections: readonly Pick<Connection, 'id' | 'name' | 'needsReconnect'>[],
   defaultId: string | null,
@@ -35,11 +36,14 @@ export function serverLine(
   | { kind: 'offline' }
   | { kind: 'reconnect' }
   | { kind: 'server'; name: string; more: number }
+  | { kind: 'down'; name: string }
   | { kind: 'none' } {
   const def = connections.find((c) => c.id === defaultId) ?? connections[0];
   if (!def) return { kind: 'none' };
   const status = serverStatus(def, online);
   if (status === 'offline' || status === 'reconnect') return { kind: status };
+  const down = firstOffline(connections, online);
+  if (down) return { kind: 'down', name: down.name };
   return { kind: 'server', name: def.name, more: connections.length - 1 };
 }
 
@@ -56,9 +60,11 @@ function ServerLine() {
       ? t('shell.offline')
       : line.kind === 'reconnect'
         ? t('shell.profile.reconnect')
-        : line.more > 0
-          ? t('shell.serverMore', { name: line.name, count: line.more })
-          : line.name;
+        : line.kind === 'down'
+          ? t('shell.notAnswering', { name: line.name })
+          : line.more > 0
+            ? t('shell.serverMore', { name: line.name, count: line.more })
+            : line.name;
   return (
     <View className="flex-row items-center gap-1.5">
       <View

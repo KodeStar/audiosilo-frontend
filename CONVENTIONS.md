@@ -823,7 +823,9 @@ That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
 gated). Its `queryFn` falls back to the durable local mirror (`mirroredProgress` in
 `progress-sync.ts`) **only for a non-`ApiError` failure** (offline/unreachable, and
-it `noteError`s reachability like `loadInitialProgress` does) - an `ApiError` means
+it has the server checked with `noteFailure`, never `noteError`: marking it down at once
+would have the mirror's success find it up and read every query again, round and round,
+frontend#131) - an `ApiError` means
 the server ANSWERED and is rethrown, because resolving a 401 as a query *success*
 on `qk.progress` would have `provider.tsx`'s `QueryCache.onSuccess` immediately
 `clearNeedsReconnect()` the banner that same request just raised. A character shows when `reveal.chapter <= max(current, 1)` (an

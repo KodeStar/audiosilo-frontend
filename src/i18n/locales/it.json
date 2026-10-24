@@ -1586,6 +1586,10 @@
       "heading": "Riconnetti",
       "action": "Riconnetti a {{name}}",
       "forget": "Dimentica {{name}}"
+    },
+    "state": {
+      "title": "Accedi di nuovo a {{name}}",
+      "hint": "Il tuo accesso a {{name}} è terminato, quindi non può mostrare qui i tuoi libri. Non si è perso nulla."
     }
   },
   "nav": {
@@ -1650,6 +1654,7 @@
     },
     "home": "Home di AudioSilo",
     "offline": "Offline · i download si riproducono",
+    "notAnswering": "{{name}} non risponde",
     "serverMore_one": "{{name}} + un altro",
     "serverMore_other": "{{name}} + altri {{count}}",
     "openPlayer": "Apri il lettore completo per {{title}}",

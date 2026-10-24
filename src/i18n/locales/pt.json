@@ -1586,6 +1586,10 @@
       "heading": "Voltar a ligar",
       "action": "Voltar a ligar a {{name}}",
       "forget": "Esquecer {{name}}"
+    },
+    "state": {
+      "title": "Volta a iniciar sessão em {{name}}",
+      "hint": "A tua sessão em {{name}} terminou, por isso não pode mostrar aqui os teus livros. Nada se perdeu."
     }
   },
   "nav": {
@@ -1650,6 +1654,7 @@
     },
     "home": "Início do AudioSilo",
     "offline": "Offline · as transferências tocam",
+    "notAnswering": "{{name}} não responde",
     "serverMore_one": "{{name}} + mais {{count}}",
     "serverMore_other": "{{name}} + mais {{count}}",
     "openPlayer": "Abrir o leitor completo de {{title}}",

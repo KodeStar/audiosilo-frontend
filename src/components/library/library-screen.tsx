@@ -10,6 +10,11 @@ import {
   usePodcastShows,
   useSeriesList,
 } from '@/api/hooks';
+import {
+  refusedConnection,
+  SignInAgainState,
+  useSignedOutConnections,
+} from '@/components/layout/sign-in-again';
 import { PodcastShowsMode } from '@/components/podcasts/shows-mode';
 import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -27,6 +32,7 @@ import {
   parseLibraryMode,
   resolveLibraryMode,
 } from './library-modes';
+import { LoadError } from './books/book-states';
 import { LibraryPicker } from './library-picker';
 import { AuthorsMode } from './modes/authors-mode';
 import { BooksMode } from './modes/books-mode';
@@ -60,7 +66,8 @@ export function LibraryScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { mode: modeParam } = useLocalSearchParams<{ mode?: string | string[] }>();
-  const { selection, library, isLoading } = useSelectedLibrary();
+  const { selection, library, groups, isLoading, retry } = useSelectedLibrary();
+  const signedOut = useSignedOutConnections();
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
   // Unknown until the selected library is listed (`resolveLibraryMode` keeps a request).
@@ -94,6 +101,29 @@ export function LibraryScreen() {
       return (
         <View className="p-4 lg:px-8">
           <RowSkeletonList />
+        </View>
+      );
+    }
+    // A server whose sign-in ended lists no libraries: it is not that none are shared
+    // (frontend#124).
+    const refused = refusedConnection(signedOut, groups);
+    if (refused) {
+      return (
+        <View className="p-4 lg:px-8">
+          <SignInAgainState connection={refused} />
+        </View>
+      );
+    }
+    // A server that did not answer has not said it shares nothing (frontend#131): its
+    // lists come back on their own once it answers again (`onReconnect`), or on Retry.
+    if (groups.some((g) => g.status === 'error')) {
+      return (
+        <View className="p-4 lg:px-8">
+          <LoadError
+            title={t('library.list.loadLibrariesError')}
+            retryLabel={t('common.retry')}
+            onRetry={retry}
+          />
         </View>
       );
     }

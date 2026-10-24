@@ -7,8 +7,16 @@ import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/store
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
-import { ApiClient } from './client';
-import { onReconnect, setReachabilityClients } from './reachability';
+import { ApiClient, isSignedOutError } from './client';
+import {
+  anyOffline,
+  noteFailure,
+  noteSuccess,
+  onReconnect,
+  recheckReachability,
+  setReachabilityClients,
+  useReachability,
+} from './reachability';
 
 // --- Dead-token / server-reset detection -----------------------------------------------
 // Dead-token detection (a 401 on an authenticated request ⇒ re-pair) rides on the
@@ -23,6 +31,7 @@ import { onReconnect, setReachabilityClients } from './reachability';
  * flag. The public `/server` query is skipped: it carries no auth, so its success proves
  * nothing about the token (and we use it to DETECT a server reset, below). */
 function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
+  noteQueryReached(key);
   if (isServerInfoKey(key)) {
     // Public /server success proves nothing about the token - never clears the flag;
     // it only DETECTS a server reset (a differing server_id ⇒ re-pair required).
@@ -35,23 +44,65 @@ function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
   // is flagged (the overwhelmingly common case) - clearNeedsReconnect would just no-op.
   const { connections, clearNeedsReconnect } = useSession.getState();
   if (!connections.some((c) => c.needsReconnect)) return;
-  const cid = connectionIdFromKey(
-    key,
-    connections.map((c) => c.id),
-  );
+  const cid = cidOfKey(key);
   if (cid) clearNeedsReconnect(cid);
+}
+
+/** The connection a query key belongs to, among the signed-in ones. */
+function cidOfKey(key: readonly unknown[]): string | null {
+  return connectionIdFromKey(
+    key,
+    useSession.getState().connections.map((c) => c.id),
+  );
+}
+
+/**
+ * A query that could not reach its server (no answer: the fetch failed or timed out) has
+ * the server checked (`noteFailure`): only a `/server` that does not answer either
+ * marks the connection unreachable, so the chrome names it, the probe watches for it, and
+ * its queries refetch once it is back (`onReconnect`, below; frontend#131). One slow or
+ * broken query alone never does. An answer (an `ApiError`, a 401 included) or anything
+ * else (a capability gate, a cancel) says nothing about reachability.
+ */
+function noteQueryError(error: unknown, key: readonly unknown[]) {
+  const cid = cidOfKey(key);
+  if (cid) noteFailure(cid, error);
+}
+
+/** A query that succeeded for a server marked down has it checked at once, so a Retry
+ * that got through brings the connection back now, not at the next probe. Checked, not
+ * trusted: a query can succeed from a local copy (`fetchBookProgress`'s mirror). The
+ * public `/server` query is that check's own request, so its success is the answer
+ * itself. Bails first when nothing is down (every successful fetch runs it). */
+function noteQueryReached(key: readonly unknown[]) {
+  const { online } = useReachability.getState();
+  if (!anyOffline(online)) return;
+  const cid = cidOfKey(key);
+  if (!cid || online[cid] !== false) return;
+  if (isServerInfoKey(key)) noteSuccess(cid);
+  else recheckReachability(cid);
+}
+
+/**
+ * The default query retry: once, except a 401 (frontend#124). A refused token stays
+ * refused (the client has already flagged its connection for reconnect, and the screens
+ * show one sign-in state for it), so asking again only doubles every dead request.
+ */
+export function retryQuery(failureCount: number, error: unknown): boolean {
+  return failureCount < 1 && !isSignedOutError(error);
 }
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
-    // No onError: dead-token flagging lives on the ApiClient callback now (one choke
-    // point for every request path). The cache keeps only success handling: clearing a
-    // flag and detecting a server reset.
+    // Dead-token flagging lives on the ApiClient callback (one choke point for every
+    // request path). The cache keeps what a per-call callback can't do: clearing a flag,
+    // detecting a server reset, and telling reachability what a query learnt.
     onSuccess: (data, query) => noteQuerySuccess(data, query.queryKey),
+    onError: (error, query) => noteQueryError(error, query.queryKey),
   }),
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: retryQuery,
       staleTime: 30_000,
       refetchOnWindowFocus: false,
     },

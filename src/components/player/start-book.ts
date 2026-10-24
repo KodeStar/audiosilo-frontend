@@ -175,6 +175,6 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
   // a queued book started from its page, a browse row or the car leaves the queue, once it
   // is the book loaded (a start another one took over keeps its place). Quiet
   // housekeeping, and nothing is sent for a book that isn't queued.
-  dropStartedBook(target.connectionId, target.libraryId, source.book.rel_path);
+  dropStartedBook(target.connectionId, target.libraryId, source.book.rel_path, target.path);
   return true;
 }

@@ -156,6 +156,81 @@ describe('the offline probe', () => {
     off();
   });
 
+  /** A client whose `/server` waits until the test settles it. */
+  function pendingClient(baseUrl: string) {
+    let fail!: (e: unknown) => void;
+    const serverInfo = jest.fn(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    return {
+      client: { serverInfo, baseUrl } as never,
+      serverInfo,
+      fail: (e: unknown) => fail(e),
+    };
+  }
+
+  // frontend#131: a check is stale once something newer is known, and records nothing.
+  it('leaves a server up that another request reached while a check got no answer', async () => {
+    const r = fresh();
+    const { client, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    const check = r.checkReachability('c1');
+    r.noteSuccess('c1'); // a save got through while the check waited out its timeout
+    fail(new TypeError('Network request failed')); // a fresh module: its own TimeoutError class
+    await check;
+    expect(r.isReachable('c1')).toBe(true);
+  });
+
+  it('marks a server down when its check got no answer and nothing else did', async () => {
+    const r = fresh();
+    const { client, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    const check = r.checkReachability('c1');
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(r.isReachable('c1')).toBe(false);
+  });
+
+  it('records nothing when its connection moved to another address while it ran', async () => {
+    const r = fresh();
+    const home = pendingClient('http://192.168.1.5:8080');
+    r.setReachabilityClients(new Map([['c1', home.client]]));
+    const check = r.checkReachability('c1');
+    // The address runner left home: the connection's client is the away one now.
+    r.setReachabilityClients(new Map([['c1', pendingClient('https://h').client]]));
+    home.fail(new TypeError('Network request failed'));
+    await check;
+    expect(r.useReachability.getState().online.c1).toBeUndefined();
+  });
+
+  it('records nothing when its connection was removed while it ran', async () => {
+    const r = fresh();
+    const { client, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    const check = r.checkReachability('c1');
+    r.setReachabilityClients(new Map()); // gone (and the session no longer has it)
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(r.useReachability.getState().online.c1).toBeUndefined();
+  });
+
+  it('checks again after a stale check when a query succeeded while it waited', async () => {
+    const r = fresh();
+    const { client, serverInfo, fail } = pendingClient('https://h');
+    r.setReachabilityClients(new Map([['c1', client]]));
+    r.noteError('c1', new TypeError('Network request failed'));
+    const check = r.checkReachability('c1');
+    r.recheckReachability('c1'); // a Retry got through while the check waited
+    expect(serverInfo).toHaveBeenCalledTimes(1);
+    fail(new TypeError('Network request failed'));
+    await check;
+    expect(serverInfo).toHaveBeenCalledTimes(2);
+    fail(new TypeError('Network request failed'));
+  });
+
   it("probes through the provider's client when it registered one", async () => {
     const r = fresh();
     const serverInfo = jest.fn(async () => ({}));

@@ -8,6 +8,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAllProgressAll } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
+import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
 import { SubNavActions } from '@/components/shell/tab-root-nav';
@@ -112,6 +113,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const libraryName = useSelectedLibrary().library?.name ?? '';
 
   const whole = useWholeLibrary(connectionId, libraryId);
+  const signedOut = useSignedOutConnections().find((c) => c.id === connectionId);
   const { progress } = useAllProgressAll();
   const progressMap = useMemo(
     () =>
@@ -185,6 +187,9 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
 
   const filtered = hasFilters(view);
   const total = whole.books.length;
+  // No counts while the list is loading or failed with nothing in (a failed list is not
+  // "Not started 0"; frontend#131).
+  const countsUnknown = whole.isLoading || (!!whole.error && total === 0);
   const more = whole.complete ? '' : '+';
   const countLine = filtered
     ? t('library.books.matches', {
@@ -214,7 +219,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
           <FilterChip
             key={s}
             label={t(STATUS_KEY[s])}
-            count={whole.isLoading ? undefined : counts[s]}
+            count={countsUnknown ? undefined : counts[s]}
             selected={view.status === s}
             onPress={() => setView({ status: view.status === s ? undefined : s })}
           />
@@ -262,21 +267,25 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       </ChipRow>
       <View className="min-h-[38px] flex-row items-center justify-between gap-3">
         <Text variant="muted" style={tabularNums} accessibilityLiveRegion="polite">
-          {whole.isLoading ? ' ' : countLine}
+          {countsUnknown ? ' ' : countLine}
         </Text>
         {phone ? controls : null}
       </View>
       {whole.error && total > 0 ? (
-        <LoadError
-          compact
-          title={t('library.books.error.partial')}
-          hint={t('library.books.error.partialHint', {
-            count: total,
-            formatted: formatCount(total),
-          })}
-          retryLabel={t('common.retry')}
-          onRetry={whole.retry}
-        />
+        signedOut ? (
+          <SignInAgainState connection={signedOut} compact />
+        ) : (
+          <LoadError
+            compact
+            title={t('library.books.error.partial')}
+            hint={t('library.books.error.partialHint', {
+              count: total,
+              formatted: formatCount(total),
+            })}
+            retryLabel={t('common.retry')}
+            onRetry={whole.retry}
+          />
+        )
       ) : null}
       {booksLayout === 'list' && shown.length > 0 ? <BookListHeader columns={columns} /> : null}
     </View>
@@ -291,6 +300,8 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       );
     }
     if (whole.error && total === 0) {
+      // Its sign-in ended: one sign-in state, never a Retry that cannot help (#124).
+      if (signedOut) return <SignInAgainState connection={signedOut} />;
       return (
         <LoadError
           title={t('library.books.error.title')}

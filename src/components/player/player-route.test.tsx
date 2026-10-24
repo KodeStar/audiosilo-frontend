@@ -139,7 +139,9 @@ describe('the player route', () => {
     await render(<PlayerScreen />);
     expect(mockPlayBook.mock.calls).toEqual([['c', 1, mockBook, mockChapters, 600, undefined]]);
     // The book you're on leaves Up next (PLAYER-04), once, after its start.
-    await waitFor(() => expect(mockDrop.mock.calls).toEqual([['c', 1, 'Author/Book']]));
+    await waitFor(() =>
+      expect(mockDrop.mock.calls).toEqual([['c', 1, 'Author/Book', 'Author/Book']]),
+    );
     // playBook loads the book (already at 600), then the hot-swap replaces it.
     await act(async () => setNowPlaying(THIS_BOOK));
     await act(async () => setNowPlaying(THIS_BOOK));

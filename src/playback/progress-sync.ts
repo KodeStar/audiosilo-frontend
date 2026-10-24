@@ -1,6 +1,6 @@
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
-import { isReachable, noteError, noteSuccess } from '@/api/reachability';
+import { isReachable, noteError, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -112,10 +112,12 @@ export async function loadInitialProgress(
       server = await api.getProgress(libraryId, path); // null = HTTP 200, no record (new book)
       serverOk = true;
     } catch (e) {
-      // Reachability is per-connection, so note the failure against THIS book's own
-      // server (it drives that connection's banner + probe). The local mirror/queue
-      // fallback below keys off `serverOk`, not this call.
-      noteError(connectionId, e);
+      // Reachability is per-connection, so report the failure against THIS book's own
+      // server. An `ApiError` is an answer (it is up); anything else only asks for a check
+      // (`noteFailure`): one slow read never marks a healthy server down (frontend#131).
+      // The local mirror/queue fallback below keys off `serverOk`, not this call.
+      if (e instanceof ApiError) noteSuccess(connectionId);
+      else noteFailure(connectionId, e);
     }
   }
   // Cache the authoritative server value so a later offline resume has it (keep-newest,

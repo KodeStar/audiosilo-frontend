@@ -169,7 +169,7 @@ export default function PlayerScreen() {
     void usePlayer
       .getState()
       .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined)
-      .then(() => dropStartedBook(cid, libraryId, book.rel_path));
+      .then(() => dropStartedBook(cid, libraryId, book.rel_path, path));
   }, [
     cid,
     book,

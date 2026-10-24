@@ -84,6 +84,20 @@ describe('UpNextPanel', () => {
     expect(d.refetch).toHaveBeenCalled();
   });
 
+  // frontend#124: a refused session is the sign-in state, never a Retry.
+  it('asks to sign in again, with no Retry, when the session was refused', async () => {
+    useSession.setState({
+      connections: [{ id: 'c', name: 'Home Library', needsReconnect: 'auth' }] as never,
+    });
+    await render(
+      <UpNextPanel cid="c" data={data({ entries: undefined, error: new Error('x') })} />,
+    );
+    expect(screen.getByText('Sign in again to Home Library')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+    expect(screen.queryByText("Couldn't load Up next.")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   it('keeps the list on screen when a refresh fails', async () => {
     await render(
       <UpNextPanel cid="c" data={data({ entries: [entry('Kept')], error: new Error('x') })} />,
