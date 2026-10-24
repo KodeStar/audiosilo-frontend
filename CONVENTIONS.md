@@ -1014,11 +1014,17 @@ media GETs only.
   (`autoDownloadNext`, default `'wifi'`) can land while its start is still `loading`, or just
   after the engine began playing but before its `playing` reached JS; iOS's `load` pauses the
   player (Android keeps `playWhenReady`), so a swap that didn't play left a kid's first story
-  stopped on Play, or on a watchdog error (8b-1). It **keeps the same file at the same in-file
-  place**, found by track id (path-keyed), not by whole-book seconds: the download can order its
-  files differently from the stream (a pre-2.4.0 download retried while the new order streams).
-  When that moves the track index, saves and remote moves are held (`loadingBook`) until the
-  download's queue is committed, which on a load is before the rate and the play.
+  stopped on Play, or on a watchdog error (8b-1). It **keeps the engine's file order**: a
+  download made in another order (a pre-2.4.0 download retried while the new order streams)
+  takes the chapters the book was started from (`adoptStartedChapters`, as that start's own load
+  would have), so the swap changes only the files' urls, and the track index, the in-file place
+  and the whole-book seconds stay what the saves, the resume floor, the sleep timer, jump undo,
+  the spoiler gates and a Cast receiver read. One that can't take that order (a start given no
+  chapters) leaves the book streaming. Only a download holding other files moves the listener:
+  to the same file (by path-keyed track id) when it has it, else to the same whole-book place,
+  the resume floor moving with it; while that moves the track index, `persist` and
+  `onRemoteMove` refuse a place at another index of that book (`swapHold`) until the download's
+  queue is committed, which on a load is before the rate and the play.
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
@@ -1781,8 +1787,9 @@ are asked, at most 10,000 rows.
   The audio is never touched, and a queue already playing keeps its chapters until the book is
   next started. The same files in another order (server v2.4.0 plays them in natural order, "2-"
   before "10-") are taken **only by a start that loads the engine in that order**
-  (`adoptStartedChapters`, from `playBook` once its load landed and it still owns the engine;
-  saved at once; a start given no chapters plays the download's own files and chapters), never
+  (`adoptStartedChapters`, from `playBook` once its load landed and it still owns the engine,
+  and from the hot-swap when the download lands while that start's order streams; saved at
+  once; a start given no chapters plays the download's own files and chapters), never
   from a background answer, and a start's answer in the manifest's own order is left to the
   background refresh: JS sees only what it loaded, not a book the Android service or a Cast
   receiver holds before `adoptLoaded` / the receiver adoption, which map the engine's track index
