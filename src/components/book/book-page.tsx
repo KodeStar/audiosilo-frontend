@@ -16,7 +16,7 @@ import {
   useIsPodcastLibrary,
   useLibraries,
 } from '@/api/hooks';
-import { useOptionalApi, useScopedCid } from '@/api/provider';
+import { useCid, useOptionalApi } from '@/api/provider';
 import { GenerateCovered } from '@/components/bridge/generate-covered';
 import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
@@ -120,7 +120,8 @@ function BookOrEpisode() {
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
-  const cid = useScopedCid();
+  // The route's `?connection=`, else the default server (a link without one).
+  const cid = useCid();
   const podcastLibrary = useIsPodcastLibrary(libraryId, cid);
   const { data: book } = useBook(libraryId, path);
   const canonical = useCanonicalBookPath(cid, libraryId, path, book);
@@ -184,7 +185,7 @@ function BookPage() {
   }>();
   const libraryId = Number(libraryIdParam);
   const path = segmentsToPath(pathParam);
-  const cid = useScopedCid();
+  const cid = useCid();
   const api = useOptionalApi(cid);
   const [width, setWidth] = useState(0);
   const layout = bookPageLayout(useLayout(), width);
@@ -211,7 +212,9 @@ function BookPage() {
   // and About's recording facts stay matched-only).
   const metaWork = bookMetaWork(meta, bookMetaEnabled);
   // Where the listener is: the hero's place, the primary action, the spoiler gate.
-  const progressQuery = useBookProgress(libraryId, path, true);
+  // Only once the item is in: until then the route's path may be a file inside the book,
+  // which `useCanonicalBookPath` moves away from before anything reads a place (#130).
+  const progressQuery = useBookProgress(libraryId, path, !!book);
   const progress = progressQuery.data ?? undefined;
   const serverName = useConnectionName(cid);
   const interval = useSettings((s) => s.virtualChapterInterval);

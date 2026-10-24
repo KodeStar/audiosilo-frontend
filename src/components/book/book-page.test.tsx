@@ -40,6 +40,8 @@ let mockBridge: { version: string; features: string[] } | undefined;
 let mockJobs: BridgeJob[] = [];
 const mockMetaArgs = jest.fn();
 const mockProgressArgs = jest.fn();
+const mockFavouriteCid = jest.fn();
+let mockScope = 'home';
 const mockRefetch = jest.fn();
 let mockPodcastLibrary = false;
 jest.mock('@/components/podcasts/episode-page', () => ({
@@ -73,7 +75,10 @@ jest.mock('@/api/hooks', () => ({
     return { data: mockProgress, isPending: false };
   },
   useFavourites: () => ({ data: [] }),
-  useToggleFavourite: () => ({ mutate: jest.fn() }),
+  useToggleFavourite: (cid?: string) => {
+    mockFavouriteCid(cid);
+    return { mutate: jest.fn() };
+  },
   useQueue: () => ({ data: undefined }),
   useRating: () => ({ data: null }),
   useMyRatings: () => ({ data: [], isError: false }),
@@ -81,8 +86,9 @@ jest.mock('@/api/hooks', () => ({
 }));
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => null,
-  useCid: () => 'home',
-  useScopedCid: () => 'home',
+  // The route's scope ('' for a link without `?connection=`) falls back to the default.
+  useCid: (id?: string) => id ?? (mockScope || 'home'),
+  useScopedCid: () => mockScope,
 }));
 jest.mock('@/components/layout/content-scope', () => ({
   ContentScope: ({ children }: { children: ReactNode }) => children,
@@ -248,6 +254,8 @@ beforeEach(() => {
   mockJobs = [];
   mockMetaArgs.mockClear();
   mockProgressArgs.mockClear();
+  mockFavouriteCid.mockClear();
+  mockScope = 'home';
   mockSetParams.mockClear();
   mockBookmarks = [];
   mockPush.mockClear();
@@ -298,6 +306,17 @@ describe('book page, a podcast episode', () => {
   });
 });
 
+// A link without `?connection=` is the default server's book, never a blank page.
+describe('book page without a connection param', () => {
+  it("acts on the default server's book", async () => {
+    mockScope = '';
+    await mountAt('desktop');
+    expect(screen.getByTestId('book-page')).toBeTruthy();
+    expect(mockFavouriteCid).toHaveBeenCalledWith('home');
+    expect(mockFavouriteCid).not.toHaveBeenCalledWith('');
+  });
+});
+
 // frontend#130: path is the identity (CROSS-REPO section 1).
 describe('book page, a track file path', () => {
   it("moves the route to the book's path before any place is read under the file's", async () => {
@@ -319,6 +338,15 @@ describe('book page, a track file path', () => {
     expect(screen.getByRole('button', { name: 'Resume chapter 2' })).toBeTruthy();
     expect(mockProgressArgs.mock.calls.every(([, path]) => path === 'Author/Book')).toBe(true);
     expect(mockSetParams).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for no place under the file path while the item is still on its way', async () => {
+    mockParams = { libraryId: '1', path: 'Author/Book/book.m4b' };
+    mockBook = undefined;
+    mockBookLoading = true;
+    await mountAt('desktop');
+    expect(mockProgressArgs).toHaveBeenCalled();
+    expect(mockProgressArgs.mock.calls.every(([, , enabled]) => enabled === false)).toBe(true);
   });
 
   it('leaves the route alone for the book path', async () => {
