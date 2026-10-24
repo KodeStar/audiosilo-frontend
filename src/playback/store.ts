@@ -20,7 +20,14 @@ import { useSettings } from '@/stores/settings';
 
 import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPlayer.types';
 
-import { buildBookQueue, chapterAt, locate, toBookPosition, type BookQueue } from './book-queue';
+import {
+  bookFileSpecs,
+  buildBookQueue,
+  chapterAt,
+  locate,
+  toBookPosition,
+  type BookQueue,
+} from './book-queue';
 import { bookSourceOf, localFromManifest, resumeStart, type LocalFiles } from './book-source';
 import { engineTick, engineTicker } from './engine-ticks';
 import {
@@ -1241,14 +1248,19 @@ async function switchCurrentBookToLocal() {
   const localUris = new Set(landed.manifest.files.map((f) => f.localUri));
   if (nowPlaying.queue.tracks.every((t) => localUris.has(t.url))) return;
 
+  // The order the manifest plays once it takes the start's chapters: its own book with
+  // those chapters (`chaptersRefresh` reads it that way), which must be the engine's.
   const started = lastPlayRequest;
+  const takenOrder = started?.chapterData
+    ? bookFileSpecs(landed.manifest.book, started.chapterData)
+    : [];
   if (
     started?.chapterData &&
     contentKey(started.connectionId, started.libraryId, started.book.rel_path) ===
       contentKeyOf(nowPlaying) &&
-    sameFileOrder(
-      buildBookQueue(null, nowPlaying.libraryId, started.book, started.chapterData),
-      nowPlaying.queue,
+    takenOrder.length === nowPlaying.queue.tracks.length &&
+    takenOrder.every(
+      (s, i) => `${nowPlaying.libraryId}:${s.path}` === nowPlaying.queue.tracks[i].id,
     )
   ) {
     adoptStartedChapters(nowPlaying, started.chapterData);
@@ -1291,13 +1303,17 @@ async function switchCurrentBookToLocal() {
   const wasPlaying = snapshot.state === 'playing' || wantsPlayback;
   const svc = await ensureService();
 
-  // Commit only once the engine has actually moved onto the local files.
-  const commit = () => {
-    swapHold = null;
+  // Commit only once the engine has actually moved onto the local files, and only while
+  // this book is still the store's: a stop, a sign-out, a switch of person or another
+  // start while the swap was out must not bring it back, nor move another book's floor.
+  const commit = (): boolean => {
+    if (swapHold?.nowPlaying === nowPlaying) swapHold = null;
+    if (usePlayer.getState().nowPlaying !== nowPlaying) return false;
     resumeFloor = Math.max(0, resumeFloor + shift);
     usePlayer.setState({
       nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue },
     });
+    return true;
   };
 
   if (svc.isCasting?.()) {
@@ -1338,7 +1354,7 @@ async function switchCurrentBookToLocal() {
       );
       // Committed before the rate and the play, so the play's `playing` (and the save loop
       // it starts) reads the engine's index through the download's queue.
-      commit();
+      if (!commit()) return;
       await svc.setRate(rate);
       if (wasPlaying) await svc.play();
     }

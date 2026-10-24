@@ -1510,10 +1510,10 @@ describe('the download hot-swap across file orders', () => {
   const urlOf = (path: string) => `file:///dl/${path.split('/').pop()}`;
   const queueUrls = () => usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url);
 
-  /** The download lands, its files (and chapters) in `order`. */
-  function downloadLands(order: string[]) {
+  /** The download lands, its files (and chapters) in `order`, its item `item`. */
+  function downloadLands(order: string[], item = book) {
     const manifest: DownloadManifest = {
-      book,
+      book: item,
       chapters: chaptersIn(order),
       files: order.map((relPath) => ({ relPath, localUri: urlOf(relPath) })),
       coverUri: null,
@@ -1603,6 +1603,21 @@ describe('the download hot-swap across file orders', () => {
     expect(downloadOrder()).toEqual(oldOrder);
   });
 
+  it('gives the download no chapters that would make it play another order', async () => {
+    // Started from chapters with no file list: the item's own list (the new order) streams.
+    const listed = { ...book, files: chaptersIn(newOrder).files };
+    await usePlayer.getState().playBook('c1', 2, listed, { ...chaptersIn(newOrder), files: [] }, 0);
+    pushSnapshot(snap('playing', 20, { trackIndex: 0, duration: 70 }));
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    // The download already plays the new order (its chapters'), but its item lists the old:
+    // taking the start's chapters would make it play the item's list, the old order.
+    downloadLands(newOrder, { ...book, files: chaptersIn(oldOrder).files });
+    await flushMicrotasks();
+    expect(downloadOrder()).toEqual(newOrder);
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 0, position: 20 });
+  });
+
   it('falls back to the whole-book place for a file the download does not hold', async () => {
     // 20 s into 10.mp3: whole-book 70 + 20 on the stream's timeline.
     await streamIn(newOrder, { file: 'A/Folder/10.mp3' });
@@ -1690,8 +1705,12 @@ describe('the download hot-swap across file orders', () => {
     await usePlayer.getState().stop();
     // The stop saved the place: nothing held it.
     expect(savedPositions()).toEqual([20]);
+    (mockSvc.play as jest.Mock).mockClear();
     landed();
     await flushMicrotasks();
+    // The swap landing after the stop brings nothing back, and plays nothing.
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    expect(mockSvc.play).not.toHaveBeenCalled();
   });
 
   describe('while casting', () => {
