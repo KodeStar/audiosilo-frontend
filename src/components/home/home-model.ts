@@ -87,17 +87,23 @@ export type SyncPill = { kind: 'local' } | { kind: 'synced'; at: string } | null
 
 /**
  * The greeting's sync pill, told as it is (STYLEGUIDE section 1.3): a save still waiting
- * in the offline queue, or a server that can't be reached, means the place is only on
- * this device; otherwise the newest progress any server holds is when it last synced.
- * Nothing at all when there is no progress yet.
+ * in the offline queue, or the server holding the newest progress not answering, means
+ * the place is only on this device; otherwise the newest progress any server holds is
+ * when it last synced. Another server being down says nothing about where the place is
+ * (its own pill names it). Nothing at all when there is no progress yet.
  */
 export function syncPill(input: {
-  offline: boolean;
+  online: Record<string, boolean>;
   pending: number;
-  lastSaved: string | undefined;
+  /** The newest saved progress: when, and on which connection. */
+  newest: { at: string; connectionId: string } | undefined;
 }): SyncPill {
-  if (input.pending > 0 || (input.offline && input.lastSaved)) return { kind: 'local' };
-  return input.lastSaved ? { kind: 'synced', at: input.lastSaved } : null;
+  const { newest } = input;
+  if (input.pending > 0) return { kind: 'local' };
+  if (!newest) return null;
+  return input.online[newest.connectionId] === false
+    ? { kind: 'local' }
+    : { kind: 'synced', at: newest.at };
 }
 
 // --- Next in your series -----------------------------------------------------------

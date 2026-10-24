@@ -72,16 +72,21 @@ describe('greetingPart', () => {
 
 describe('syncPill', () => {
   const at = '2026-10-05T10:00:00Z';
-  it('says the place is on this device while saves wait or a server is away', () => {
-    expect(syncPill({ offline: false, pending: 2, lastSaved: at })).toEqual({ kind: 'local' });
-    expect(syncPill({ offline: true, pending: 0, lastSaved: at })).toEqual({ kind: 'local' });
+  const newest = { at, connectionId: 'a' };
+  it('says the place is on this device while saves wait or its server is away', () => {
+    expect(syncPill({ online: {}, pending: 2, newest })).toEqual({ kind: 'local' });
+    expect(syncPill({ online: { a: false }, pending: 0, newest })).toEqual({ kind: 'local' });
   });
   it('says when it last synced, and nothing with no progress at all', () => {
-    expect(syncPill({ offline: false, pending: 0, lastSaved: at })).toEqual({
+    expect(syncPill({ online: {}, pending: 0, newest })).toEqual({ kind: 'synced', at });
+    expect(syncPill({ online: { a: false }, pending: 0, newest: undefined })).toBeNull();
+  });
+  // CONNECT-04: another server being down is not "saved on this device".
+  it('still says synced when only a server without the newest progress is down', () => {
+    expect(syncPill({ online: { a: true, b: false }, pending: 0, newest })).toEqual({
       kind: 'synced',
       at,
     });
-    expect(syncPill({ offline: true, pending: 0, lastSaved: undefined })).toBeNull();
   });
 });
 
