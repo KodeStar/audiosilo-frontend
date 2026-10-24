@@ -10,9 +10,9 @@ import { pickedUrl, useAddressRoute } from './address-route';
 import { ApiClient, isSignedOutError } from './client';
 import {
   anyOffline,
+  checkReachability,
+  isReachable,
   isUnreachableError,
-  noteError,
-  noteSuccess,
   onReconnect,
   setReachabilityClients,
   useReachability,
@@ -44,10 +44,7 @@ function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
   // is flagged (the overwhelmingly common case) - clearNeedsReconnect would just no-op.
   const { connections, clearNeedsReconnect } = useSession.getState();
   if (!connections.some((c) => c.needsReconnect)) return;
-  const cid = connectionIdFromKey(
-    key,
-    connections.map((c) => c.id),
-  );
+  const cid = cidOfKey(key);
   if (cid) clearNeedsReconnect(cid);
 }
 
@@ -60,26 +57,28 @@ function cidOfKey(key: readonly unknown[]): string | null {
 }
 
 /**
- * A query that could not reach its server (no answer: the fetch failed or timed out)
- * marks that connection unreachable, as a failed progress save does, so the chrome names
- * the server that is not answering, the probe watches for it, and its queries refetch once
- * it is back (`onReconnect`, below; frontend#131). Only a failure with no answer: an
- * answer (an `ApiError`, a 401 included) or anything else (a capability gate) says
- * nothing about reachability.
+ * A query that could not reach its server (no answer: the fetch failed or timed out) has
+ * the server checked (`checkReachability`): only a `/server` that does not answer either
+ * marks the connection unreachable, so the chrome names it, the probe watches for it, and
+ * its queries refetch once it is back (`onReconnect`, below; frontend#131). One slow or
+ * broken query alone never does. An answer (an `ApiError`, a 401 included) or anything
+ * else (a capability gate, a cancel) says nothing about reachability.
  */
 function noteQueryError(error: unknown, key: readonly unknown[]) {
   if (!isUnreachableError(error)) return;
   const cid = cidOfKey(key);
-  if (cid) noteError(cid, error);
+  if (cid && isReachable(cid)) void checkReachability(cid);
 }
 
-/** Any query that answered (the public `/server` one too) proves its server reachable: a
- * Retry that got through brings the connection back at once, not at the next probe. Bails
- * first when nothing is offline (every successful fetch runs it). */
+/** A query that succeeded for a server marked down has it checked at once, so a Retry
+ * that got through brings the connection back now, not at the next probe. Checked, not
+ * trusted: a query can succeed from a local copy (`fetchProgress`'s mirror). Bails first
+ * when nothing is down (every successful fetch runs it). */
 function noteQueryReached(key: readonly unknown[]) {
-  if (!anyOffline(useReachability.getState().online)) return;
+  const { online } = useReachability.getState();
+  if (!anyOffline(online)) return;
   const cid = cidOfKey(key);
-  if (cid) noteSuccess(cid);
+  if (cid && online[cid] === false) void checkReachability(cid);
 }
 
 /**

@@ -271,19 +271,21 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
         </Text>
         {phone ? controls : null}
       </View>
-      {whole.error && total > 0 && signedOut ? (
-        <SignInAgainState connection={signedOut} compact />
-      ) : whole.error && total > 0 ? (
-        <LoadError
-          compact
-          title={t('library.books.error.partial')}
-          hint={t('library.books.error.partialHint', {
-            count: total,
-            formatted: formatCount(total),
-          })}
-          retryLabel={t('common.retry')}
-          onRetry={whole.retry}
-        />
+      {whole.error && total > 0 ? (
+        signedOut ? (
+          <SignInAgainState connection={signedOut} compact />
+        ) : (
+          <LoadError
+            compact
+            title={t('library.books.error.partial')}
+            hint={t('library.books.error.partialHint', {
+              count: total,
+              formatted: formatCount(total),
+            })}
+            retryLabel={t('common.retry')}
+            onRetry={whole.retry}
+          />
+        )
       ) : null}
       {booksLayout === 'list' && shown.length > 0 ? <BookListHeader columns={columns} /> : null}
     </View>

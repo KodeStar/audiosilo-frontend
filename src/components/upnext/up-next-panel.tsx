@@ -93,20 +93,22 @@ export function UpNextPanel({
         ) : null}
       </View>
 
-      {data.error && signedOut ? (
-        <SignInAgainState connection={signedOut} compact className="mx-1.5 mb-2" />
-      ) : data.error ? (
-        <View className="mx-1.5 mb-2 flex-row items-center gap-2 rounded-xl bg-muted px-3 py-2.5">
-          <Text variant="caption" className="flex-1">
-            {entries ? t('upnext.refreshFailed') : t('upnext.loadFailed')}
-          </Text>
-          <Button
-            size="sm"
-            variant="outline"
-            title={t('common.retry')}
-            onPress={() => void data.refetch()}
-          />
-        </View>
+      {data.error ? (
+        signedOut ? (
+          <SignInAgainState connection={signedOut} compact className="mx-1.5 mb-2" />
+        ) : (
+          <View className="mx-1.5 mb-2 flex-row items-center gap-2 rounded-xl bg-muted px-3 py-2.5">
+            <Text variant="caption" className="flex-1">
+              {entries ? t('upnext.refreshFailed') : t('upnext.loadFailed')}
+            </Text>
+            <Button
+              size="sm"
+              variant="outline"
+              title={t('common.retry')}
+              onPress={() => void data.refetch()}
+            />
+          </View>
+        )
       ) : null}
 
       {entries === undefined ? (

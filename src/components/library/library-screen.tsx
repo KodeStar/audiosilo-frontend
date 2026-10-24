@@ -10,7 +10,11 @@ import {
   usePodcastShows,
   useSeriesList,
 } from '@/api/hooks';
-import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
+import {
+  refusedConnection,
+  SignInAgainState,
+  useSignedOutConnections,
+} from '@/components/layout/sign-in-again';
 import { PodcastShowsMode } from '@/components/podcasts/shows-mode';
 import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -102,9 +106,7 @@ export function LibraryScreen() {
     }
     // A server whose sign-in ended lists no libraries: it is not that none are shared
     // (frontend#124).
-    const refused = signedOut.find((c) =>
-      groups.some((g) => g.connectionId === c.id && g.status === 'error'),
-    );
+    const refused = refusedConnection(signedOut, groups);
     if (refused) {
       return (
         <View className="p-4 lg:px-8">

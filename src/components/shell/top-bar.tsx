@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { serverStatus, useReachability } from '@/api/reachability';
+import { firstOffline, serverStatus, useReachability } from '@/api/reachability';
 import { Logo } from '@/components/brand/logo';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
@@ -42,7 +42,7 @@ export function serverLine(
   if (!def) return { kind: 'none' };
   const status = serverStatus(def, online);
   if (status === 'offline' || status === 'reconnect') return { kind: status };
-  const down = connections.find((c) => serverStatus(c, online) === 'offline');
+  const down = firstOffline(connections, online);
   if (down) return { kind: 'down', name: down.name };
   return { kind: 'server', name: def.name, more: connections.length - 1 };
 }

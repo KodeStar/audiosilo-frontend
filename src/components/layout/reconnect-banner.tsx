@@ -36,12 +36,21 @@ export async function reconnectConnection(conn: Connection): Promise<void> {
  * When more than one connection needs reconnecting we surface the first (with a "+N"),
  * keeping the chrome unobtrusive.
  */
+/**
+ * The person listening's connections whose sign-in ended (`needsReconnect`: a 401 on any
+ * request, or a server reset), in connection order: the banner's list, and the one a
+ * screen whose load failed for them checks to show `SignInAgainState` in place of its
+ * load error and its empty state (frontend#124): asking again cannot help, signing in
+ * again does. Another person's sign-in is theirs to renew, so only this profile's.
+ */
+export function useSignedOutConnections(): Connection[] {
+  return useProfileConnections().filter((c) => c.needsReconnect);
+}
+
 export function ReconnectBanner({ className }: { className?: string } = {}) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  // The person listening's servers only: another person's sign-in is theirs to renew.
-  const connections = useProfileConnections();
-  const needing = connections.filter((c) => c.needsReconnect);
+  const needing = useSignedOutConnections();
 
   if (needing.length === 0) return null;
   const conn = needing[0];

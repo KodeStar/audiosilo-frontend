@@ -58,6 +58,14 @@ export function serverStatus(
   return online[connection.id] === false ? 'offline' : 'online';
 }
 
+/** The first of `connections` that is not answering (for the chrome that names it). */
+export function firstOffline<C extends Pick<Connection, 'id' | 'needsReconnect'>>(
+  connections: readonly C[],
+  online: Record<string, boolean>,
+): C | undefined {
+  return connections.find((c) => serverStatus(c, online) === 'offline');
+}
+
 /** Run `cb(connectionId)` whenever a connection's connectivity is restored. Returns an
  * unsubscribe fn. */
 export function onReconnect(cb: (connectionId: string) => void): () => void {
@@ -118,6 +126,39 @@ function stopProbe() {
   }
 }
 
+const checking = new Set<string>();
+
+/**
+ * Ask one connection's server whether it answers (`GET /server`: public and cheap) and
+ * record what that says: an answer (any status) is reachable, no answer is not. One check
+ * per connection at a time.
+ *
+ * It is also how a query's outcome reaches this state (frontend#131): a query that got no
+ * answer, or one that succeeded while its server is marked down, only asks for a check,
+ * never sets the state itself. So one slow or broken query (a long read past its timeout,
+ * a code bug's `TypeError`) cannot mark a healthy server down, and a query answered from
+ * a local copy cannot mark a dead one up, either of which would flap the offline banner,
+ * the reconnect refetch and (native) the address re-pick.
+ */
+export async function checkReachability(connectionId: string): Promise<void> {
+  if (checking.has(connectionId)) return;
+  const client = clients.get(connectionId) ?? resolveClient(connectionId);
+  if (!client) return; // connection gone; removal purges its state
+  checking.add(connectionId);
+  let answered = true;
+  try {
+    await client.serverInfo();
+  } catch (e) {
+    answered = e instanceof ApiError || !isUnreachableError(e);
+  } finally {
+    checking.delete(connectionId);
+  }
+  if (answered) setOnline(connectionId, true);
+  // Removed while the check ran: a stale `false` would keep the banner up and the probe
+  // spinning (a stale `true` is harmless).
+  else if (clients.has(connectionId) || resolveClient(connectionId)) setOnline(connectionId, false);
+}
+
 /** Probe every currently-offline connection's server; mark those that answer online.
  * The probes run concurrently (disjoint servers), so one slow/dead server can't delay
  * another's recovery. */
@@ -132,19 +173,7 @@ async function runProbe() {
   }
   probing = true;
   try {
-    await Promise.all(
-      offline.map(async (cid) => {
-        const client = clients.get(cid) ?? resolveClient(cid);
-        if (!client) return; // connection gone; removal purges its state
-        try {
-          await client.serverInfo();
-          setOnline(cid, true);
-        } catch (e) {
-          if (e instanceof ApiError) setOnline(cid, true); // answered → reachable
-          // otherwise still unreachable; keep probing
-        }
-      }),
-    );
+    await Promise.all(offline.map(checkReachability));
   } finally {
     probing = false;
   }

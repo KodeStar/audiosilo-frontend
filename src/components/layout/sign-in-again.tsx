@@ -6,20 +6,20 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
-import { useProfileConnections } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { reconnectConnection } from './reconnect-banner';
 
-/**
- * The person listening's connections whose sign-in ended (`needsReconnect`: a 401 on any
- * request, or a server reset), in connection order. A screen whose load failed for one of
- * them shows `SignInAgainState` in place of its load error and its empty state
- * (frontend#124): asking again cannot help, signing in again does.
- */
-export function useSignedOutConnections(): Connection[] {
-  return useProfileConnections().filter((c) => c.needsReconnect);
+export { useSignedOutConnections } from './reconnect-banner';
+
+/** The first of `signedOut` whose list failed among `groups` (one per server): its
+ * screen shows the sign-in state for it, not a load error or "no libraries". */
+export function refusedConnection(
+  signedOut: readonly Connection[],
+  groups: readonly { connectionId: string; status: string }[],
+): Connection | undefined {
+  return signedOut.find((c) => groups.some((g) => g.connectionId === c.id && g.status === 'error'));
 }
 
 /**

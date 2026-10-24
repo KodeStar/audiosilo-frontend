@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useFavouritesAll, useLibrariesAll, type SourcedLibrary } from '@/api/hooks';
-import { SignInAgainState, useSignedOutConnections } from '@/components/layout/sign-in-again';
+import {
+  refusedConnection,
+  SignInAgainState,
+  useSignedOutConnections,
+} from '@/components/layout/sign-in-again';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
@@ -54,9 +58,10 @@ export function FoldersMode() {
   // A server whose sign-in ended shows the sign-in state, not a load error or "no
   // libraries" (frontend#124); a list that failed otherwise keeps the error note.
   const signedOut = useSignedOutConnections();
-  const failed = lists.filter((g) => g.status === 'error');
-  const refused = signedOut.find((c) => failed.some((g) => g.connectionId === c.id));
-  const error = failed.some((g) => !signedOut.some((c) => c.id === g.connectionId));
+  const refused = refusedConnection(signedOut, lists);
+  const error = lists.some(
+    (g) => g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId),
+  );
 
   // Group libraries by their server (connection), preserving connection order.
   const groups: { id: string; name: string; libs: SourcedLibrary[] }[] = [];
