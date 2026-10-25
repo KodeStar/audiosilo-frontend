@@ -39,6 +39,23 @@ describe('locales', () => {
     );
   });
 
+  // Relative times where Hermes has no Intl.RelativeTimeFormat (#132): every language has
+  // every form `formatRelative` asks for.
+  it.each(Object.entries(LOCALES))('%s has every relative time string', (_, l) => {
+    const keys = leaves(l.common.ago).map(([k]) => k);
+    expect(keys).toEqual(leaves(en.common.ago).map(([k]) => k));
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        'now',
+        'yesterday',
+        'lastMonth',
+        'lastYear',
+        'hour_one',
+        'day_other',
+      ]),
+    );
+  });
+
   // Podcasts (Bridge 2d-1): every string in every language, including each reason an
   // episode could not be fetched (`fetchReasonKey`), and none names the Bridge or uses
   // an em dash.

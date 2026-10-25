@@ -1,3 +1,5 @@
+import { t } from 'i18next';
+
 import { getLocale } from '@/i18n/locale';
 import { parseHhMm } from '@/lib/hhmm';
 import { seriesNumber } from '@/lib/series-position';
@@ -99,12 +101,46 @@ export function formatCountdown(seconds: number): string {
   return `${s}s`;
 }
 
+/** The units `formatRelative` counts in: below each limit (seconds), how many seconds
+ * one of it is. */
+const RELATIVE_UNITS: [limit: number, secs: number, unit: Intl.RelativeTimeFormatUnit][] = [
+  [60, 1, 'second'],
+  [3600, 60, 'minute'],
+  [86400, 3600, 'hour'],
+  [2592000, 86400, 'day'],
+  [31536000, 2592000, 'month'],
+  [Infinity, 31536000, 'year'],
+];
+
+/** "il y a 3 heures", "hier", "vor 2 Monaten" from our own strings (`common.ago.*`), where
+ * there is no `Intl.RelativeTimeFormat` (Hermes). One day, month or year has its own words
+ * ("yesterday", "last month", "last year"), as `numeric: 'auto'` says them. */
+function relativeFromStrings(n: number, unit: Intl.RelativeTimeFormatUnit, lng: string): string {
+  if (n === 1 && unit === 'day') return t('common.ago.yesterday', { lng });
+  if (n === 1 && unit === 'month') return t('common.ago.lastMonth', { lng });
+  if (n === 1 && unit === 'year') return t('common.ago.lastYear', { lng });
+  switch (unit) {
+    case 'second':
+      return t('common.ago.second', { count: n, lng });
+    case 'minute':
+      return t('common.ago.minute', { count: n, lng });
+    case 'hour':
+      return t('common.ago.hour', { count: n, lng });
+    case 'day':
+      return t('common.ago.day', { count: n, lng });
+    case 'month':
+      return t('common.ago.month', { count: n, lng });
+    default:
+      return t('common.ago.year', { count: n, lng });
+  }
+}
+
 /** "now" / "3 days ago" / "2 months ago" - coarse relative time from an RFC3339
- * timestamp. Uses `Intl.RelativeTimeFormat` (locale-formatted, `numeric: 'auto'`
- * yields "yesterday"/"last month") where available - web and Node - but Hermes
- * (React Native) does NOT ship `Intl.RelativeTimeFormat`, so we fall back to a
- * plain English formatter rather than crashing. Empty when the input is missing
- * or unparseable. */
+ * timestamp, in the app's language. Uses `Intl.RelativeTimeFormat` (`numeric: 'auto'`
+ * yields "yesterday"/"last month") where available - web and Node - but Hermes (React
+ * Native) does NOT ship `Intl.RelativeTimeFormat`, so there the words come from our own
+ * strings (`common.ago.*`, every language) rather than crashing. Empty when the input is
+ * missing or unparseable. */
 export function formatRelative(iso?: string, locale: string = getLocale()): string {
   if (!iso) return '';
   const then = Date.parse(iso);
@@ -115,19 +151,11 @@ export function formatRelative(iso?: string, locale: string = getLocale()): stri
     typeof Intl !== 'undefined' && typeof Intl.RelativeTimeFormat === 'function'
       ? new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
       : null;
-  if (sec < 45) return rtf ? rtf.format(0, 'second') : 'just now';
-  const units: [limit: number, secs: number, unit: Intl.RelativeTimeFormatUnit][] = [
-    [60, 1, 'second'],
-    [3600, 60, 'minute'],
-    [86400, 3600, 'hour'],
-    [2592000, 86400, 'day'],
-    [31536000, 2592000, 'month'],
-    [Infinity, 31536000, 'year'],
-  ];
-  for (const [limit, secs, unit] of units) {
+  if (sec < 45) return rtf ? rtf.format(0, 'second') : t('common.ago.now', { lng: locale });
+  for (const [limit, secs, unit] of RELATIVE_UNITS) {
     if (sec < limit) {
       const n = Math.max(1, Math.round(sec / secs));
-      return rtf ? rtf.format(-n, unit) : `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+      return rtf ? rtf.format(-n, unit) : relativeFromStrings(n, unit, locale);
     }
   }
   return '';

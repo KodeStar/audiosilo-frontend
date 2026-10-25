@@ -15,6 +15,24 @@
       "title": "Seite nicht gefunden",
       "body": "Dieser Link führt in AudioSilo nirgendwohin. Vielleicht ist er alt oder falsch geschrieben.",
       "home": "Zur Startseite"
+    },
+    "ago": {
+      "now": "gerade eben",
+      "second_one": "vor {{count}} Sekunde",
+      "second_other": "vor {{count}} Sekunden",
+      "minute_one": "vor {{count}} Minute",
+      "minute_other": "vor {{count}} Minuten",
+      "hour_one": "vor {{count}} Stunde",
+      "hour_other": "vor {{count}} Stunden",
+      "yesterday": "gestern",
+      "day_one": "vor {{count}} Tag",
+      "day_other": "vor {{count}} Tagen",
+      "lastMonth": "letzten Monat",
+      "month_one": "vor {{count}} Monat",
+      "month_other": "vor {{count}} Monaten",
+      "lastYear": "letztes Jahr",
+      "year_one": "vor {{count}} Jahr",
+      "year_other": "vor {{count}} Jahren"
     }
   },
   "settings": {
