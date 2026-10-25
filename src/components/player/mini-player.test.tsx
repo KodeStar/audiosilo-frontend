@@ -102,6 +102,22 @@ describe('MiniPlayer', () => {
     expect(screen.getByText('36m left at 1.25×')).toBeTruthy();
   });
 
+  it('names a single-file episode once when its lone chapter is named after it', async () => {
+    const lone = { ...CHAPTER, index: 0, title: 'Retained fetch record' };
+    player.usePlayer.setState({
+      nowPlaying: {
+        ...BOOK,
+        title: 'Retained fetch record',
+        queue: { ...BOOK.queue, chapters: [lone] },
+      },
+      chapter: lone,
+    } as never);
+    await render(<MiniPlayer />);
+    expect(screen.getAllByText('Retained fetch record')).toHaveLength(1);
+    expect(screen.getByText('36m left at 1.25×')).toBeTruthy();
+    expect(screen.queryByText(/Retained fetch record ·/)).toBeNull();
+  });
+
   it('offers Retry after a playback error, and skips back', async () => {
     player.setPlayState('error');
     await render(<MiniPlayer />);

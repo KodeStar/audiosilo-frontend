@@ -128,13 +128,29 @@ export function MiniPlayerSubtitle({
   );
 }
 
-/** The heading the compact players show: the current chapter, else the book's title. */
+/** The heading the compact players show for a title and its current chapter's label (''
+ * for none), out of `chapters`: the chapter, else the title. A lone chapter named as the
+ * title is no chapter (the server gives a single-file episode or book ONE chapter named
+ * after it), so the title is not said twice. Pure for the tests. */
+export function miniHeading(
+  title: string,
+  label: string,
+  chapters: number,
+): { heading: string; isChapter: boolean } {
+  const same = label.trim().toLowerCase() === title.trim().toLowerCase();
+  return label && !(chapters <= 1 && same)
+    ? { heading: label, isChapter: true }
+    : { heading: title, isChapter: false };
+}
+
+/** The heading the compact players show: the current chapter, else the book's title
+ * (`miniHeading`). */
 export function useMiniHeading(): { heading: string; isChapter: boolean } {
   const { t } = useTranslation();
   const title = usePlayer((s) => s.nowPlaying?.title ?? '');
+  const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters.length ?? 0);
   const chapter = usePlayer(selectCurrentChapter);
-  const label = chapter ? chapterLabel(chapter, t) : '';
-  return label ? { heading: label, isChapter: true } : { heading: title, isChapter: false };
+  return miniHeading(title, chapter ? chapterLabel(chapter, t) : '', chapters);
 }
 
 /**

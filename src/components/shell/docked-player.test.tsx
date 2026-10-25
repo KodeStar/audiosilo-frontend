@@ -166,6 +166,67 @@ describe('DockedPlayer', () => {
     expect(screen.queryByText(/Episode 12 ·/)).toBeNull();
   });
 
+  // The server gives a single-file episode or book ONE chapter named after it: no chapter.
+  it('treats a lone chapter named after an episode as none', async () => {
+    const lone = { title: 'Current generation', index: 0 };
+    player.usePlayer.setState({
+      nowPlaying: {
+        ...BOOK,
+        title: 'Current generation',
+        author: 'Fixture Publisher',
+        queue: { ...BOOK.queue, chapters: [lone] },
+      },
+      chapter: lone,
+    } as never);
+    await renderAt(1280);
+    expect(screen.getAllByText('Current generation')).toHaveLength(1);
+    expect(screen.getByText('Fixture Publisher')).toBeTruthy();
+    expect(screen.queryByText(/Current generation ·/)).toBeNull();
+  });
+
+  it('treats a lone chapter named after a book as none, whatever its case and spacing', async () => {
+    const lone = { title: '  the gift of the MAGI ', index: 0 };
+    player.usePlayer.setState({
+      nowPlaying: {
+        ...BOOK,
+        title: 'The Gift of the Magi',
+        author: 'O. Henry',
+        queue: { ...BOOK.queue, chapters: [lone] },
+      },
+      chapter: lone,
+    } as never);
+    await renderAt(1280);
+    expect(screen.getByText('The Gift of the Magi')).toBeTruthy();
+    expect(screen.queryByText(/MAGI/)).toBeNull();
+    expect(screen.getByText('O. Henry')).toBeTruthy();
+    expect(screen.queryByText('The Gift of the Magi · O. Henry')).toBeNull();
+  });
+
+  it('keeps a lone chapter named otherwise as the heading', async () => {
+    const lone = { title: 'Prologue', index: 0 };
+    player.usePlayer.setState({
+      nowPlaying: { ...BOOK, queue: { ...BOOK.queue, chapters: [lone] } },
+      chapter: lone,
+    } as never);
+    await renderAt(1280);
+    expect(screen.getByText('Prologue')).toBeTruthy();
+    expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
+  });
+
+  it('keeps a chapter named after the book when the book has several', async () => {
+    const first = { title: 'The Way of Kings', index: 0 };
+    player.usePlayer.setState({
+      nowPlaying: {
+        ...BOOK,
+        queue: { ...BOOK.queue, chapters: [first, { title: 'Prologue', index: 1 }] },
+      },
+      chapter: first,
+    } as never);
+    await renderAt(1280);
+    expect(screen.getByText('The Way of Kings')).toBeTruthy();
+    expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
+  });
+
   // 2.25 rem pills are 31.5 pt on native (a 14 pt rem): their slop makes up 44.
   it('gives its pills a 44 pt target on native', async () => {
     await renderAt(1280);
