@@ -51,6 +51,22 @@ describe('dropFromQueue', () => {
     expect(mockRemove).toHaveBeenCalledWith('c1', { libraryId: 1, path: 'Series/Book 1' });
   });
 
+  // With Up next closed nothing observes the queue: the read must outlive the default
+  // gcTime, or every start reads /queue again.
+  it('reads the queue at most once a session, however long between drops', async () => {
+    jest.useFakeTimers();
+    try {
+      queryClient.setQueryDefaults(qk.queue('c1'), {}); // the app's default gcTime (5 min)
+      mockQueueRead.mockResolvedValue([entry('Other/Queued')]);
+      await dropFromQueue('c1', [finished]);
+      jest.advanceTimersByTime(6 * 60_000);
+      await dropFromQueue('c1', [finished]);
+      expect(mockQueueRead).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('sends nothing for a book not queued, a server without a queue or a gone connection', async () => {
     queryClient.setQueryData(qk.queue('c1'), [entry('Other/Queued')]);
     await dropFromQueue('c1', [finished]);

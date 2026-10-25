@@ -13,7 +13,7 @@ const entryKeyOf = (cid: string, e: BookRef) => JSON.stringify([cid, e.library_i
  * just finished, and the queued book that now plays (it is the book you're on, as Up
  * next's own Play now does). Each goes by the stored entry's own path (removes are
  * exact; the entry may be the book folder above a part path), looked up in the queue at
- * call time (the cached one, else read once), so a book that isn't queued sends
+ * call time (the cached one, else read once and kept), so a book that isn't queued sends
  * nothing. A removed entry also leaves the cached queue at once, so a later call for the
  * same book (the credits opened on return, after the end already dropped it) sends
  * nothing again, and one already being removed is not sent twice (a start in place drops
@@ -28,9 +28,15 @@ export async function dropFromQueue(
 ): Promise<void> {
   const client = resolveClient(connectionId);
   if (!client || books.length === 0 || cachedCapability(connectionId, 'queue') !== true) return;
+  // The read it makes is kept for the session (`gcTime: Infinity`): with nothing showing
+  // Up next no observer holds the queue, so it would be collected after the default five
+  // minutes and every later start would read `/queue` again. Up next's own views still
+  // refetch it when they open (staleTime 0, `up-next-sources`).
   const entries =
     queryClient.getQueryData<QueueEntry[]>(qk.queue(connectionId)) ??
-    (await queryClient.fetchQuery(queueQuery(connectionId, client)).catch(() => undefined));
+    (await queryClient
+      .fetchQuery({ ...queueQuery(connectionId, client), gcTime: Infinity })
+      .catch(() => undefined));
   if (!entries) return;
   const held = entries.filter(
     (e) =>
