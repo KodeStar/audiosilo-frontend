@@ -34,7 +34,8 @@ export async function dropFromQueue(
   // Starts in a row ask `/queue` at most once a window; an older read is read again, so a
   // book queued on another device meanwhile still leaves when it starts here. gcTime keeps
   // the entry the whole window (nothing observes it with Up next closed). This device's own
-  // writes keep the cache true: an add stores the server's queue, a remove invalidates it.
+  // writes keep the cache true: an add stores the server's queue, Up next's remove
+  // invalidates it, and a drop's own remove takes the entry out below.
   const entries = await queryClient
     .fetchQuery({
       ...queueQuery(connectionId, client),
@@ -50,12 +51,17 @@ export async function dropFromQueue(
   );
   // All of them at once: a call meanwhile for an entry this one reaches later sends nothing.
   for (const e of held) removing.add(entryKeyOf(connectionId, e));
+  const queueKey = qk.queue(connectionId);
   for (const e of held) {
     const key = entryKeyOf(connectionId, e);
     try {
       await removeFromQueue(connectionId, client, { libraryId: e.library_id, path: e.path });
-      queryClient.setQueryData<QueueEntry[]>(qk.queue(connectionId), (cached) =>
-        cached?.filter((c) => c.library_id !== e.library_id || c.path !== e.path),
+      // At the read's own age: a write here would otherwise restart the window, and drops
+      // in a row would keep a read that never sees another device's queue.
+      queryClient.setQueryData<QueueEntry[]>(
+        queueKey,
+        (cached) => cached?.filter((c) => c.library_id !== e.library_id || c.path !== e.path),
+        { updatedAt: queryClient.getQueryState(queueKey)?.dataUpdatedAt },
       );
     } catch (err) {
       if (!(err instanceof CapabilityError))

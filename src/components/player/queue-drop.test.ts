@@ -93,6 +93,22 @@ describe('dropFromQueue', () => {
       expect(mockRemove).toHaveBeenCalledWith('c1', { libraryId: 1, path: 'Series/Book 1' });
     });
 
+    it('keeps the window from its read: taking a book off the cached queue does not extend it', async () => {
+      mockQueueRead.mockResolvedValueOnce([entry('Other/Queued'), entry('Series/Book 1')]);
+      const held = new QueryObserver(queryClient, { queryKey: qk.queue('c1'), enabled: false });
+      const unsubscribe = held.subscribe(() => {});
+      await dropFromQueue('c1', [queued]);
+      jest.advanceTimersByTime(QUEUE_DROP_FRESH_MS - 60_000);
+      await dropFromQueue('c1', [finished]); // from the cache, inside the window
+      // Another device queues a book; this one starts it once the first read is too old.
+      mockQueueRead.mockResolvedValueOnce([entry('Series/Book 2')]);
+      jest.advanceTimersByTime(61_000);
+      await dropFromQueue('c1', [{ library_id: 1, path: 'Series/Book 2' }]);
+      unsubscribe();
+      expect(mockQueueRead).toHaveBeenCalledTimes(2);
+      expect(mockRemove).toHaveBeenLastCalledWith('c1', { libraryId: 1, path: 'Series/Book 2' });
+    });
+
     it('reads it again inside the window once this device invalidated it (its own write)', async () => {
       mockQueueRead.mockResolvedValueOnce([entry('Other/Queued')]);
       await dropFromQueue('c1', [finished]);
