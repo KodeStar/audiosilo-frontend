@@ -1,5 +1,4 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { t } from 'i18next';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

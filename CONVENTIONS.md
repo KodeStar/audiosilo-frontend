@@ -1145,8 +1145,8 @@ media GETs only.
   failed (`NotSupportedError`, or an `AbortError` from an errored element) as
   `PlaybackStartError('audio')` with its snapshot `error`; an `AbortError` from a healthy
   element is a superseded `play()` (a pause or the next source), not a failure. `startEngine`
-  turns every other failure into one (`offline` when the book's server is known unreachable,
-  else the engine's reason, else `unknown`). `playBook` rejects with it, and every start's
+  turns every other failure into one (`offline` when the book streams from a server known
+  unreachable, not for a downloaded book, else the engine's reason, else `unknown`). `playBook` rejects with it, and every start's
   caller toasts through `playFailedToast` (`components/player/play-failed.ts`, the reason as
   the description). `toggle` and `retry` never reject: the error state already shows Retry.
 - **A web load ignores its own first `timeupdate`.** Setting `src` queues a `timeupdate` at

@@ -194,6 +194,20 @@ describe('BooksMode', () => {
     expect(genre).toBeLessThan(status);
   });
 
+  // The picker the listener scrolled to at the row's end moves to its start once chosen:
+  // the row starts again from there (a new row), or the choice and Clear are off-screen.
+  it('starts the row again from its start when a genre is chosen', async () => {
+    mockWhole.books = [{ ...book('Dune', 20 * H), genres: ['Sci-Fi'] }, book('Emma')];
+    await mount();
+    const before = screen.getByTestId('chip-row');
+    mockParams = { status: 'finished' };
+    await screen.rerender(<BooksMode connectionId="c" libraryId={1} />);
+    expect(screen.getByTestId('chip-row')).toBe(before);
+    mockParams = { status: 'finished', genre: 'Sci-Fi' };
+    await screen.rerender(<BooksMode connectionId="c" libraryId={1} />);
+    expect(screen.getByTestId('chip-row')).not.toBe(before);
+  });
+
   it('keeps an unchosen genre picker at the end, and no Clear without a filter', async () => {
     mockWhole.books = [{ ...book('Dune', 20 * H), genres: ['Sci-Fi'] }, book('Emma')];
     await mount();

@@ -9,6 +9,7 @@ import {
   type SourcedFavourite,
   type SourcedProgress,
   useAllProgressAll,
+  useCapabilitiesAll,
   useFavouritesAll,
   useLibrariesAll,
   useRecentAll,
@@ -120,7 +121,14 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   // to be books; meanwhile the shelves they would fill keep their place with a skeleton.
   const heldInProgress = inProgress.some((p) => pending(progressAt(p)));
   const heldFinished = finished.some((p) => pending(progressAt(p)));
-  const heldNext = heldInProgress || heldFinished || (!!nowAt && pending(nowAt));
+  // Next in your series holds only for a row whose server answers `/next`, read from its
+  // flags: a held row is no candidate yet, so `next.supported` can't tell while all are held.
+  const caps = useCapabilitiesAll();
+  const heldForNext = (at: BookAt) => pending(at) && !!caps[at.connectionId]?.next_book;
+  const heldNext =
+    inProgress.some((p) => heldForNext(progressAt(p))) ||
+    finished.some((p) => heldForNext(progressAt(p))) ||
+    (!!nowAt && heldForNext(nowAt));
 
   const next = useNextInSeries(
     nextCandidates(nowAt && isBook(nowAt) ? nowAt : null, bookInProgress, bookFinished),
@@ -253,7 +261,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
 
         {!desktop ? <ThisWeekCard /> : null}
 
-        {next.supported && (nextItems.length > 0 || next.isLoading || heldNext) ? (
+        {heldNext || (next.supported && (nextItems.length > 0 || next.isLoading)) ? (
           <HomeSection
             title={t('home.next.title')}
             sub={t('home.next.sub')}

@@ -549,13 +549,14 @@ async function startEngine(svc: PlaybackService): Promise<void> {
   }
 }
 
-/** A failed start as the listener is told it: the loaded book's server is known to be
- * unreachable (`offline`, whatever the engine said), else the engine's own reason (the web
- * engine's `audio`), else `unknown`. */
+/** A failed start as the listener is told it: the loaded book streams from a server known
+ * to be unreachable (`offline`, whatever the engine said; a downloaded book needs no
+ * server), else the engine's own reason (the web engine's `audio`), else `unknown`. */
 function startFailure(err: unknown): PlaybackStartError {
-  const connectionId = usePlayer.getState().nowPlaying?.connectionId;
+  const np = usePlayer.getState().nowPlaying;
+  const connectionId = np?.connectionId;
   const reason =
-    connectionId && !isReachable(connectionId)
+    np && !isReachable(np.connectionId) && !downloadedEntryOf(np)
       ? 'offline'
       : err instanceof PlaybackStartError
         ? err.reason
@@ -1018,7 +1019,11 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     if (resumeLookupFailed && lastPlayRequest) {
       const { connectionId, libraryId, book, chapterData } = lastPlayRequest;
       resumeLookupFailed = false;
-      await get().playBook(connectionId, libraryId, book, chapterData);
+      // Like the reload below, never rejects (its callers are presses): a start that fails
+      // shows where the book is, in its error state.
+      await get()
+        .playBook(connectionId, libraryId, book, chapterData)
+        .catch((err: unknown) => console.warn('[player] could not start playback', err));
       return;
     }
     const np = get().nowPlaying;

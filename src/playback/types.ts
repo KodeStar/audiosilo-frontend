@@ -59,8 +59,8 @@ export type PlaybackStartReason = 'offline' | 'audio' | 'unknown';
 /**
  * The engine could not start playback. The web engine throws it with `audio` when the
  * element's source failed (`play()` rejects "no supported sources"); the store's
- * `startEngine` turns every other start failure into one, `offline` when the book's server
- * is known to be unreachable, so a start's caller can say why (`playFailedToast`).
+ * `startEngine` turns every other start failure into one, `offline` when the book streams
+ * from a server known to be unreachable, so a start's caller can say why (`playFailedToast`).
  */
 export class PlaybackStartError extends Error {
   readonly reason: PlaybackStartReason;

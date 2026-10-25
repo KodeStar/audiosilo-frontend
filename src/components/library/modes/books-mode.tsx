@@ -224,12 +224,18 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   );
   // With a filter on, Clear leads the row, then a chosen genre or tag, so both show at
   // the row's start however narrow the page (a phone, a desktop list the Up next drawer
-  // narrowed); the pickers not chosen stay at the end.
+  // narrowed); the pickers not chosen stay at the end. A genre or tag chosen (or let go)
+  // moves its chip, so the row is a new one, scrolled to its start: kept scrolled to the
+  // end where its picker was, the choice and Clear would be out of sight.
   const chosenLabels = labelFilters.filter(({ kind }) => !!view[kind]);
   const otherLabels = labelFilters.filter((f) => !chosenLabels.includes(f));
   const header = (
     <View className="gap-3 pb-4">
-      <ChipRow accessibilityLabel={t('library.books.filters.label')} gutter={gutter}>
+      <ChipRow
+        key={chosenLabels.map((f) => f.kind).join()}
+        accessibilityLabel={t('library.books.filters.label')}
+        gutter={gutter}
+      >
         {filtered ? (
           <>
             <Button

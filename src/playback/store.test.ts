@@ -735,6 +735,44 @@ describe('a failed start says why (PlaybackStartError)', () => {
     });
   });
 
+  it("keeps the engine's reason for a downloaded book: it needs no server", async () => {
+    const manifest: DownloadManifest = {
+      book: makeBook(),
+      chapters: null,
+      files: [{ relPath: 'A/Book.m4b', localUri: 'file:///dl/0.m4b' }],
+      coverUri: null,
+      savedAt: '2026-01-01T00:00:00Z',
+    };
+    const entry: DownloadEntry = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book.m4b',
+      title: 'A Book',
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest,
+    };
+    useDownloads.setState({ entries: { 'c1:2:A/Book.m4b': entry } });
+    useReachability.setState({ online: { c1: false } });
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new PlaybackStartError('audio'));
+    await expect(startBook(makeBook(), 0)).rejects.toMatchObject({ reason: 'audio' });
+  });
+
+  it('retry never rejects after a failed resume lookup, though the start fails', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'failed' });
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    mockLoadInitialProgress.mockResolvedValueOnce({ kind: 'empty' });
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new PlaybackStartError('audio'));
+    await expect(usePlayer.getState().retry()).resolves.toBeUndefined();
+    expect(mockLoadInitialProgress).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith('[player] could not start playback', expect.anything());
+    warn.mockRestore();
+  });
+
   it('toggle and retry never reject: the error state shows Retry', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     await startBook(makeBook(), 0);
