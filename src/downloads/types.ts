@@ -45,8 +45,9 @@ export type DownloadOutcome =
  * needs to build the queue and render the player with no network: the book +
  * chapters metadata, the local audio files, and a local cover. `files` is in the order
  * the download wrote them, each saved under its index there (`fileName` in store.ts; a
- * saved file keeps its own name across launches, `storedName`), so it never moves; the chapters give the play order (`bookFileSpecs`), which a later
- * start in the server's new order can change (`adoptStartedChapters`).
+ * saved file keeps its own name across launches, `storedName`), so it never moves; the
+ * chapters give the play order (`bookFileSpecs`), which a later start in the server's
+ * new order can change (`adoptStartedChapters`).
  */
 export type DownloadManifest = {
   book: Book;

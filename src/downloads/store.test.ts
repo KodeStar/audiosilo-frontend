@@ -247,6 +247,8 @@ beforeEach(async () => {
   mockEngine.localUri = jest.fn(defaultLocalUri);
   mockEngine.fileExists.mockResolvedValue(true);
   mockEngine.removeBook.mockResolvedValue(undefined);
+  // clearAllMocks keeps implementations: a test's downloadFile must not reach the next.
+  mockEngine.downloadFile.mockReset();
   mockEngine.verify = undefined;
   mockEngine.probe = undefined;
   // Reset the connection-clients seam so a per-test override can't leak.
@@ -404,8 +406,31 @@ describe('relocateEntry keeps a saved file its own name', () => {
         { relPath: 'A/Book/01.mka', localUri: 'file:///old/root/3.mka' },
         { relPath: 'A/Book/02.mka', localUri: 'file:///old/root/track.mka' },
         { relPath: 'A/Book/03.mka', localUri: '' },
+        // Percent-escaped in the uri, so not the name on disk.
+        { relPath: 'A/Book/04.mka', localUri: 'file:///old/root/3.m%20ka' },
       ]),
-    ).toEqual(['live:c1:2:A/Book:0.mp3', 'live:c1:2:A/Book:1.mp3', 'live:c1:2:A/Book:2.mp3']);
+    ).toEqual([
+      'live:c1:2:A/Book:0.mp3',
+      'live:c1:2:A/Book:1.mp3',
+      'live:c1:2:A/Book:2.mp3',
+      'live:c1:2:A/Book:3.mp3',
+    ]);
+  });
+
+  it('keeps the name across launches (the next hydrate reads the persisted uri back)', async () => {
+    // A real engine's uri ends in `/<name>`, which the default fake's `:<name>` does not.
+    mockEngine.localUri = jest.fn(
+      (c: string, l: number, p: string, n: string) =>
+        `file:///root/${c}/${l}/${encodeURIComponent(p)}/${n}`,
+    );
+    const uri = 'file:///root/c1/2/A%2FBook/0.mka';
+    expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: uri }])).toEqual([uri]);
+    useDownloads.setState({ entries: {}, hydrated: false });
+    await useDownloads.getState().hydrate();
+    const key = downloadKey('c1', 2, 'A/Book');
+    expect(useDownloads.getState().entries[key]?.manifest.files.map((f) => f.localUri)).toEqual([
+      uri,
+    ]);
   });
 });
 
@@ -428,7 +453,6 @@ describe('a new download names each file by fileName', () => {
       })),
     });
     useDownloads.getState().download('c1', 2, book);
-    await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
 
     const audio = mockEngine.downloadFile.mock.calls.filter((c) => c[3] !== 'cover.jpg');

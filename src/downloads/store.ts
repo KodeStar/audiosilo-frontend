@@ -674,11 +674,11 @@ function afterLaunch(task: () => void) {
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
  * `cover.jpg` for the cover), so the (connectionId, libraryId, path, fileName) → live-uri
- * mapping lives here too; `engine.localUri` supplies the container-current absolute uri (native) or
- * the virtual cache url (web). Recomputing from the entry's own connection id is also
- * what carries a download across the identity migration, which rewrites `connectionId`
- * but not the stored uris (and moves the files on native; the web engine finds them under
- * the legacy id, `legacyIdOf`). A no-op only for an engine without
+ * mapping lives here too; `engine.localUri` supplies the container-current absolute uri
+ * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
+ * is also what carries a download across the identity migration, which rewrites
+ * `connectionId` but not the stored uris (and moves the files on native; the web engine
+ * finds them under the legacy id, `legacyIdOf`). A no-op only for an engine without
  * `localUri` (no offline storage).
  */
 function relocateEntry(e: DownloadEntry): DownloadEntry {
@@ -708,8 +708,9 @@ function isAbort(e: unknown): boolean {
  * Sanitized destination filename for a file index, keeping its extension, except that a
  * `.mka` is saved as `.mp3`: a server with ffmpeg serves an MP3-in-Matroska file as a
  * lossless MP3 stream copy at the same url, and iOS AVFoundation picks a local file's
- * type by its extension, so the bytes must not land under `.mka`. Unconditional: raw Matroska from an
- * older server plays on iOS under no name, and Android's ExoPlayer sniffs the bytes.
+ * type by its extension, so the bytes must not land under `.mka`. Unconditional: raw
+ * Matroska from an older server plays on iOS under no name, and Android's ExoPlayer
+ * sniffs the bytes.
  */
 function fileName(index: number, relPath: string): string {
   const dot = relPath.lastIndexOf('.');
@@ -721,11 +722,12 @@ function fileName(index: number, relPath: string): string {
  * The name a saved file already has on disk, read from its stored uri, when it is one
  * `fileName` could have given this index (`<index>` plus an optional extension). Relocation
  * keeps it, so a download saved under an older naming rule (an Android 2.4.x `0.mka`)
- * still resolves; anything else (no stored uri, another shape) falls back to `fileName`.
+ * still resolves; anything else (no stored uri, another shape, a percent-escaped name a
+ * `file://` uri carries, which is not the name on disk) falls back to `fileName`.
  */
 function storedName(index: number, localUri: string): string | undefined {
   const name = localUri.slice(localUri.lastIndexOf('/') + 1);
-  const m = /^(\d+)(\.[^./:?#]+)?$/.exec(name);
+  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(name);
   return m?.[1] === String(index) ? name : undefined;
 }
 

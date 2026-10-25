@@ -1036,8 +1036,8 @@ media GETs only.
   `engine.localUri` in agreement. `fileName` saves a `.mka` as `<i>.mp3` (the server
   streams MP3-in-MKA as MP3 and iOS types a local file by its extension), so
   `relocateEntry` keeps each saved file's own name (`storedName`, from its stored uri)
-  and a download saved as `0.mka` before the rule still resolves. **Files are stored per-connection**: native
-  `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
+  and a download saved as `0.mka` before the rule still resolves. **Files are stored
+  per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
   `server_id` id scheme) can't be re-keyed, so the one-time `resetStaleStorage()` bump
