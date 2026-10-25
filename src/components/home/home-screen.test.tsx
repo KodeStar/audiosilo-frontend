@@ -518,7 +518,9 @@ describe("HomeScreen's book shelves leave episodes out", () => {
     expect(screen.getByText('Recently finished')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Done/ })).toBeNull();
     // Next in your series, Smart shelves and Recently finished (Continue listening has rows).
-    expect(screen.getAllByTestId('shelf-skeleton', { includeHiddenElements: true })).toHaveLength(3);
+    expect(screen.getAllByTestId('shelf-skeleton', { includeHiddenElements: true })).toHaveLength(
+      3,
+    );
 
     mockGroups = [{ connectionId: 'a', libraries: [{ id: 1, kind: 'books' }], status: 'ready' }];
     await view.rerender(

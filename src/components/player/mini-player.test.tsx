@@ -246,7 +246,9 @@ describe('MiniPlayer while an episode is fetched', () => {
         edges: { bar, mini: bar + MINI_PLAYER_GAP + 90 + MINI_PLAYER_HEIGHT },
       }),
     );
-    expect(screen.getByText(`inset ${16 + MINI_PLAYER_GAP + 90 + MINI_PLAYER_HEIGHT}`)).toBeTruthy();
+    expect(
+      screen.getByText(`inset ${16 + MINI_PLAYER_GAP + 90 + MINI_PLAYER_HEIGHT}`),
+    ).toBeTruthy();
     // Nothing loaded or fetched: only the base padding, whatever was last measured.
     await act(async () => {
       useEpisodeFetch.setState({ pending: null });

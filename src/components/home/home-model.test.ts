@@ -253,7 +253,7 @@ describe('bookRowTest', () => {
     expect(pending(at('a', 9))).toBe(false);
   });
 
-  it('holds back a loading server\'s rows as pending, and reads a failed one as books', () => {
+  it("holds back a loading server's rows as pending, and reads a failed one as books", () => {
     const { isBook, pending } = bookRowTest(groups);
     expect(isBook(at('b', 1))).toBe(false);
     expect(pending(at('b', 1))).toBe(true);
