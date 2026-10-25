@@ -13,8 +13,10 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { GlyphTile } from './glyph-tile';
 /** One row in the filesystem browse view: a folder (muted glyph tile, drill in) or
- * an audio file (blue glyph tile, opens the book). `connectionId` is the browse
- * scope's server, so drilling in / opening a book stays on the same connection. */
+ * an audio file (blue glyph tile, opens the book). A book folder, indexed or one the
+ * server flags `pending_book` (not scanned yet, read on demand by the book screen),
+ * keeps the folder glyph and opens the book. `connectionId` is the browse scope's
+ * server, so drilling in / opening a book stays on the same connection. */
 export function EntryRow({
   entry,
   connectionId,
@@ -32,23 +34,29 @@ export function EntryRow({
   const isFavourite = !!favourites?.some(
     (f) => f.library_id === libraryId && f.path === entry.path,
   );
-  // Plain folders drill in; book folders and audio leaves open the book screen.
-  const href =
-    isDir && !entry.is_book
-      ? libraryHref(connectionId, libraryId, entry.path)
-      : bookHref(connectionId, libraryId, entry.path);
+  // Plain folders drill in; book folders (indexed or pending) and audio leaves open
+  // the book screen.
+  const opensBook = !isDir || entry.is_book || entry.pending_book;
+  const href = opensBook
+    ? bookHref(connectionId, libraryId, entry.path)
+    : libraryHref(connectionId, libraryId, entry.path);
   // Show what's on disk - the name the user gave the folder/file - as the title,
   // so sibling parts ("CD 1", "CD 2", …) stay distinct. The grabbed book metadata
   // (title, author) goes underneath when it adds something the name doesn't.
   const title = entry.name;
   const bitrate = formatBitrate(entry.size, entry.duration);
-  const meta = isDir
-    ? [entry.is_book && entry.title && entry.title !== entry.name ? entry.title : '', entry.author]
-        .filter(Boolean)
-        .join(' · ')
-    : `${t('library.entryRow.duration', { value: formatDurationFull(entry.duration) })}${
-        bitrate ? `   ${t('library.entryRow.bitrate', { value: bitrate })}` : ''
-      }`;
+  const meta = entry.pending_book
+    ? t('library.entryRow.notScanned')
+    : isDir
+      ? [
+          entry.is_book && entry.title && entry.title !== entry.name ? entry.title : '',
+          entry.author,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : `${t('library.entryRow.duration', { value: formatDurationFull(entry.duration) })}${
+          bitrate ? `   ${t('library.entryRow.bitrate', { value: bitrate })}` : ''
+        }`;
 
   // The heart must NOT be inside the Link: a nested press bubbles to the Link's
   // anchor on web and navigates into the row. So the navigable area (icon + text
