@@ -1448,7 +1448,17 @@ export function useToggleFavourite(connectionId?: string) {
   return useMutation({
     mutationFn: async ({ libraryId, path, on, pendingBook }: ToggleFavouriteVars) => {
       if (!on) return api.removeFavourite(libraryId, path);
-      if (pendingBook) await api.item(libraryId, path).catch(() => undefined);
+      // Through the item query, so the book screen opened next reads it from the cache.
+      // Asked once, whatever the online flag says: a held or retried read would hold
+      // back the heart.
+      if (pendingBook)
+        await qc
+          .fetchQuery({
+            ...itemQuery(cid, api, libraryId, path),
+            networkMode: 'always',
+            retry: false,
+          })
+          .catch(() => undefined);
       return api.addFavourite(libraryId, path);
     },
     onMutate: async ({ libraryId, path, on, pendingBook }) => {

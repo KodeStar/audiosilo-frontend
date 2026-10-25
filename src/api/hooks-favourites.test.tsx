@@ -13,8 +13,11 @@ const mockItem = jest.fn(async (_lib: number, path: string) => {
   calls.push(`item ${path}`);
   return {};
 });
+// The favourites cache as the add saw it: the optimistic stub, before the settle refetch.
+let listAtAdd: Favourite[] | undefined;
 const mockAdd = jest.fn(async (_lib: number, path: string) => {
   calls.push(`add ${path}`);
+  listAtAdd = qc.getQueryData<Favourite[]>(qk.favourites('c'));
 });
 const mockRemove = jest.fn(async (_lib: number, path: string) => {
   calls.push(`remove ${path}`);
@@ -33,7 +36,7 @@ jest.mock('@/api/provider', () =>
 );
 
 /* eslint-disable import/first */
-import { qk, useToggleFavourite } from '@/api/hooks';
+import { qk, type ToggleFavouriteVars, useToggleFavourite } from '@/api/hooks';
 /* eslint-enable import/first */
 
 let qc: QueryClient;
@@ -43,23 +46,17 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   calls.length = 0;
-  mockItem.mockClear();
+  listAtAdd = undefined;
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
 });
 afterEach(() => qc.clear());
 
-async function toggle(vars: Parameters<ReturnType<typeof useToggleFavourite>['mutateAsync']>[0]) {
+async function toggle(vars: ToggleFavouriteVars) {
   const { result } = await renderHook(() => useToggleFavourite(), { wrapper });
-  // The optimistic stub, read before the settle refetch replaces it.
-  let stub: Favourite | undefined;
-  const unsubscribe = qc.getQueryCache().subscribe(() => {
-    stub ??= qc.getQueryData<Favourite[]>(qk.favourites('c'))?.find((f) => f.path === vars.path);
-  });
   await act(async () => {
     await result.current.mutateAsync(vars);
   });
-  unsubscribe();
-  return stub;
+  return listAtAdd?.find((f) => f.path === vars.path);
 }
 
 describe('useToggleFavourite', () => {
@@ -67,6 +64,8 @@ describe('useToggleFavourite', () => {
     const stub = await toggle({ libraryId: 1, path: 'A/New Book', on: true, pendingBook: true });
     expect(calls).toEqual(['item A/New Book', 'add A/New Book']);
     expect(stub?.is_book).toBe(true);
+    // The read lands in the item cache, so the book screen opened next asks nothing.
+    expect(qc.getQueryData(qk.item('c', 1, 'A/New Book'))).toEqual({});
   });
 
   it('still hearts a pending book when the read fails', async () => {
