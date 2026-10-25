@@ -9,7 +9,7 @@ import {
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
 } from '@/api/client';
-import type { AddMemberBody, BridgeEstimate, SidecarsGenerateResult } from '@/api/types';
+import type { AddMemberBody, BridgeEstimate, Listing, SidecarsGenerateResult } from '@/api/types';
 import { podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
 import { golden2c3, goldenBytes, goldenError, goldenText } from '@/testing/podcast-fixtures-2c3';
 
@@ -195,6 +195,43 @@ describe('ApiClient', () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { favourites: null } }));
     await expect(new ApiClient('https://h', 'tok').favourites()).resolves.toEqual([]);
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://h/api/v1/me/favourites');
+  });
+
+  // server#193: the wire shape of a folder the scan has not reached that the server
+  // would read as a book, passed through as-is; an older server's entry has no flag.
+  it('browses GET /libraries/{id}/fs and passes pending_book through', async () => {
+    const listing: Listing = {
+      path: 'Author X',
+      entries: [
+        {
+          name: 'New Book',
+          path: 'Author X/New Book',
+          is_dir: true,
+          is_audio: false,
+          size: 0,
+          mod_time: 0,
+          pending_book: true,
+        },
+        // An older server (or a plain folder): no pending_book key at all.
+        {
+          name: 'Artwork',
+          path: 'Author X/Artwork',
+          is_dir: true,
+          is_audio: false,
+          size: 0,
+          mod_time: 0,
+        },
+      ],
+      total: 2,
+      offset: 0,
+    };
+    const fetchMock = installFetch(() => ({ status: 200, body: listing }));
+    const got = await new ApiClient('https://h', 'tok').browse(2, 'Author X');
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://h/api/v1/libraries/2/fs?path=Author+X',
+    );
+    expect(got.entries[0].pending_book).toBe(true);
+    expect(got.entries[1].pending_book).toBeUndefined();
   });
 
   it('treats a 404 on favourites as an empty list (older server)', async () => {

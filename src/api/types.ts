@@ -314,6 +314,11 @@ export type FsEntry = {
    * join them. Sent to admins only; the player never acts on it, mirrored for
    * completeness like `override`. */
   split_discs?: boolean;
+  /** A folder the background scan has not indexed yet that the server would read as a
+   * book (audio directly in it, or a disc set marked as a book). The player opens it
+   * as a book (the book screen reads it on demand) and captions it "Not scanned yet".
+   * Absent, never false, otherwise; never alongside `is_book`; older servers omit it. */
+  pending_book?: boolean;
 };
 
 export type Listing = {

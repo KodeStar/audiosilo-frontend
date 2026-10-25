@@ -686,7 +686,8 @@
     },
     "entryRow": {
       "duration": "Duração: {{value}}",
-      "bitrate": "Taxa de bits: {{value}}"
+      "bitrate": "Taxa de bits: {{value}}",
+      "notScanned": "Ainda não analisado"
     },
     "progressCard": {
       "markFinished": "Marcar como terminado"
