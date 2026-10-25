@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { type ReactElement, type ReactNode, type Ref, useState } from 'react';
 import { Platform, type ScrollView, type ScrollViewProps } from 'react-native';
@@ -9,6 +9,7 @@ import type {
   Bookmark,
   BridgeJob,
   ChaptersResponse,
+  Listing,
   Progress,
   User,
 } from '@/api/types';
@@ -157,6 +158,7 @@ jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 
 /* eslint-disable import/first */
+import { qk } from '@/api/hooks';
 import { ADMIN, bridgeJob } from '@/testing/bridge-fixtures';
 import { playerStoreMock } from '@/testing/player-store-mock';
 import { useSession } from '@/stores/session';
@@ -226,9 +228,12 @@ const THIS_BOOK = {
 
 /** Renders the page and, for a measured width, lays it out at that width (the page
  * starts at 0, "not measured", which trusts the layout class). */
-async function mountAt(layout: LayoutClass, width?: number) {
+async function mountAt(
+  layout: LayoutClass,
+  width?: number,
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   mockLayout = layout;
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await mountWithPortal(
     <QueryClientProvider client={client}>
       <BookScreen />
@@ -383,6 +388,49 @@ describe('book page, a track file path', () => {
     await mountAt('desktop');
     expect(mockSetParams).not.toHaveBeenCalled();
     expect(screen.getByTestId('book-page')).toBeTruthy();
+  });
+});
+
+// server#193: the browse row opened a folder the scan had not reached (`pending_book`),
+// and this page's read indexed it, so the listing that flagged it is read again.
+describe('book page, a folder the scan had not reached', () => {
+  // gcTime Infinity: a seeded entry holds no collection timer past the test.
+  const cacheClient = () =>
+    new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const listing = (pending: boolean): InfiniteData<Listing> => ({
+    pageParams: [0],
+    pages: [
+      {
+        path: 'Author',
+        entries: [
+          {
+            name: 'Book',
+            path: 'Author/Book',
+            is_dir: true,
+            is_audio: false,
+            size: 0,
+            mod_time: 0,
+            ...(pending ? { pending_book: true } : { is_book: true }),
+          },
+        ],
+        total: 1,
+        offset: 0,
+      },
+    ],
+  });
+
+  it('marks the listing that flagged it stale, so going back shows its title', async () => {
+    const client = cacheClient();
+    client.setQueryData(qk.browse('home', 1, 'Author'), listing(true));
+    await mountAt('desktop', undefined, client);
+    expect(client.getQueryState(qk.browse('home', 1, 'Author'))?.isInvalidated).toBe(true);
+  });
+
+  it('leaves a listing alone that already held the book', async () => {
+    const client = cacheClient();
+    client.setQueryData(qk.browse('home', 1, 'Author'), listing(false));
+    await mountAt('desktop', undefined, client);
+    expect(client.getQueryState(qk.browse('home', 1, 'Author'))?.isInvalidated).toBe(false);
   });
 });
 

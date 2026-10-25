@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type InfiniteData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +17,7 @@ import {
   useLibraries,
 } from '@/api/hooks';
 import { useCid, useOptionalApi } from '@/api/provider';
+import type { Listing } from '@/api/types';
 import { GenerateCovered } from '@/components/bridge/generate-covered';
 import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
@@ -51,7 +52,7 @@ import { toast } from '@/components/ui/toast';
 import { useDownloadEntry } from '@/downloads/store';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { type BookTab, bookTitle, libraryHref, segmentsToPath } from '@/lib/paths';
+import { type BookTab, bookTitle, libraryHref, parentPath, segmentsToPath } from '@/lib/paths';
 import { percentHeard, progressFractionRemaining } from '@/lib/progress-view';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -125,6 +126,7 @@ function BookOrEpisode() {
   const podcastLibrary = useIsPodcastLibrary(libraryId, cid);
   const { data: book } = useBook(libraryId, path);
   const canonical = useCanonicalBookPath(cid, libraryId, path, book);
+  useRefreshPendingListing(cid, libraryId, book);
   // A file path on its way to its book's path: nothing reads or writes a place under it.
   if (!canonical) return null;
   // The item's own shape once it is in (an item of a podcast library that is no episode
@@ -163,6 +165,28 @@ function useCanonicalBookPath(
     router.setParams({ path: target });
   }, [move, target, cid, libraryId, qc, book]);
   return !move;
+}
+
+/**
+ * A folder its browse listing flagged `pending_book` (server#193) is indexed by the read
+ * that opened it here, so that cached listing is marked stale (refetched now while it is
+ * still on the stack below): going back shows the book's title, not "Not scanned yet".
+ * Opening an indexed book asks the listing nothing.
+ */
+function useRefreshPendingListing(
+  cid: string,
+  libraryId: number,
+  book: { rel_path: string } | undefined,
+) {
+  const qc = useQueryClient();
+  const rel = book?.rel_path.replace(/\/+$/, '');
+  useEffect(() => {
+    if (!rel) return;
+    const key = qk.browse(cid, libraryId, parentPath(rel));
+    const listing = qc.getQueryData<InfiniteData<Listing>>(key);
+    if (listing?.pages.some((p) => p.entries.some((e) => e.pending_book && e.path === rel)))
+      void qc.invalidateQueries({ queryKey: key, exact: true });
+  }, [rel, cid, libraryId, qc]);
 }
 
 /**
