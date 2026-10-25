@@ -14,10 +14,12 @@ let mockClient: object | null;
 jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }));
 
 /* eslint-disable import/first */
+import { QueryObserver } from '@tanstack/react-query';
+
 import { CapabilityError, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 
-import { dropFromQueue } from './queue-drop';
+import { dropFromQueue, QUEUE_DROP_FRESH_MS } from './queue-drop';
 /* eslint-enable import/first */
 
 const entry = (path: string): QueueEntry => ({ library_id: 1, path, added_at: '' });
@@ -33,6 +35,11 @@ beforeEach(() => {
   mockQueueRead.mockReset().mockResolvedValue([entry('Series/Book 1')]);
   mockRemove.mockReset().mockResolvedValue(undefined);
 });
+
+/** Until the first remove is on its way (the queue read before it settles first). */
+async function removeStarted() {
+  for (let i = 0; i < 50 && mockRemove.mock.calls.length === 0; i++) await Promise.resolve();
+}
 
 describe('dropFromQueue', () => {
   it('removes the stored entries that hold the books, by their own paths', async () => {
@@ -51,20 +58,49 @@ describe('dropFromQueue', () => {
     expect(mockRemove).toHaveBeenCalledWith('c1', { libraryId: 1, path: 'Series/Book 1' });
   });
 
-  // With Up next closed nothing observes the queue: the read must outlive the default
-  // gcTime, or every start reads /queue again.
-  it('reads the queue at most once a session, however long between drops', async () => {
-    jest.useFakeTimers();
-    try {
-      queryClient.setQueryDefaults(qk.queue('c1'), {}); // the app's default gcTime (5 min)
+  // fe#128: with Up next closed nothing observes the queue, so starts in a row must not
+  // read /queue each time; but a read must not outlive its window either, or a book queued
+  // on another device later never leaves Up next when it starts here.
+  describe('the freshness window', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      queryClient.setQueryDefaults(qk.queue('c1'), {}); // the app's defaults
+    });
+    afterEach(() => jest.useRealTimers());
+
+    it('reads the queue once for drops inside the window', async () => {
       mockQueueRead.mockResolvedValue([entry('Other/Queued')]);
       await dropFromQueue('c1', [finished]);
-      jest.advanceTimersByTime(6 * 60_000);
+      jest.advanceTimersByTime(QUEUE_DROP_FRESH_MS - 60_000);
+      await dropFromQueue('c1', [finished]);
       await dropFromQueue('c1', [finished]);
       expect(mockQueueRead).toHaveBeenCalledTimes(1);
-    } finally {
-      jest.useRealTimers();
-    }
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    it('reads it again past the window, and drops a book queued elsewhere meanwhile', async () => {
+      mockQueueRead.mockResolvedValueOnce([entry('Other/Queued')]);
+      await dropFromQueue('c1', [finished]);
+      // A view holding the queue (it is never collected): only its age may decide.
+      const held = new QueryObserver(queryClient, { queryKey: qk.queue('c1'), enabled: false });
+      const unsubscribe = held.subscribe(() => {});
+      // Another device queues the book; this one starts it after the window.
+      mockQueueRead.mockResolvedValueOnce([entry('Other/Queued'), entry('Series/Book 1')]);
+      jest.advanceTimersByTime(QUEUE_DROP_FRESH_MS + 1_000);
+      await dropFromQueue('c1', [finished]);
+      unsubscribe();
+      expect(mockQueueRead).toHaveBeenCalledTimes(2);
+      expect(mockRemove).toHaveBeenCalledWith('c1', { libraryId: 1, path: 'Series/Book 1' });
+    });
+
+    it('reads it again inside the window once this device invalidated it (its own write)', async () => {
+      mockQueueRead.mockResolvedValueOnce([entry('Other/Queued')]);
+      await dropFromQueue('c1', [finished]);
+      mockQueueRead.mockResolvedValueOnce([entry('Series/Book 1')]);
+      await queryClient.invalidateQueries({ queryKey: qk.queue('c1') });
+      await dropFromQueue('c1', [finished]);
+      expect(mockRemove).toHaveBeenCalledWith('c1', { libraryId: 1, path: 'Series/Book 1' });
+    });
   });
 
   it('sends nothing for a book not queued, a server without a queue or a gone connection', async () => {
@@ -105,7 +141,7 @@ describe('dropFromQueue', () => {
     mockRemove.mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
     const first = dropFromQueue('c1', [queued]);
     const second = dropFromQueue('c1', [queued]);
-    await Promise.resolve();
+    await removeStarted();
     release();
     await Promise.all([first, second]);
     expect(mockRemove).toHaveBeenCalledTimes(1);
@@ -118,7 +154,7 @@ describe('dropFromQueue', () => {
     mockRemove.mockImplementationOnce(() => new Promise<void>((r) => (release = r)));
     const both = dropFromQueue('c1', [finished, queued]);
     const second = dropFromQueue('c1', [queued]);
-    await Promise.resolve();
+    await removeStarted();
     release();
     await Promise.all([both, second]);
     expect(mockRemove.mock.calls).toEqual([

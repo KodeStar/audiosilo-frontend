@@ -4,6 +4,9 @@ import { queryClient } from '@/api/provider';
 import type { BookRef, QueueEntry } from '@/api/types';
 import { entryHolds } from '@/playback/up-next-resolver';
 
+/** How long a queue read answers the end-of-book drops before `/queue` is read again. */
+export const QUEUE_DROP_FRESH_MS = 5 * 60_000;
+
 /** The queue entries a removal is on its way for, by connection and entry. */
 const removing = new Set<string>();
 const entryKeyOf = (cid: string, e: BookRef) => JSON.stringify([cid, e.library_id, e.path]);
@@ -13,7 +16,7 @@ const entryKeyOf = (cid: string, e: BookRef) => JSON.stringify([cid, e.library_i
  * just finished, and the queued book that now plays (it is the book you're on, as Up
  * next's own Play now does). Each goes by the stored entry's own path (removes are
  * exact; the entry may be the book folder above a part path), looked up in the queue at
- * call time (the cached one, else read once and kept), so a book that isn't queued sends
+ * call time (the cached one while fresh, else read again: `QUEUE_DROP_FRESH_MS`), so a book that isn't queued sends
  * nothing. A removed entry also leaves the cached queue at once, so a later call for the
  * same book (the credits opened on return, after the end already dropped it) sends
  * nothing again, and one already being removed is not sent twice (a start in place drops
@@ -28,15 +31,19 @@ export async function dropFromQueue(
 ): Promise<void> {
   const client = resolveClient(connectionId);
   if (!client || books.length === 0 || cachedCapability(connectionId, 'queue') !== true) return;
-  // The read it makes is kept for the session (`gcTime: Infinity`): with nothing showing
-  // Up next no observer holds the queue, so it would be collected after the default five
-  // minutes and every later start would read `/queue` again. Up next's own views still
-  // refetch it when they open (staleTime 0, `up-next-sources`).
-  const entries =
-    queryClient.getQueryData<QueueEntry[]>(qk.queue(connectionId)) ??
-    (await queryClient
-      .fetchQuery({ ...queueQuery(connectionId, client), gcTime: Infinity })
-      .catch(() => undefined));
+  // A queue read within the last `QUEUE_DROP_FRESH_MS` is used as it is, so starts in a
+  // row ask `/queue` at most once a window (with Up next closed nothing observes the
+  // query, so it is also kept that long rather than collected). An older one is read
+  // again: a book queued on another device meanwhile must still leave when it starts here.
+  // This device's own queue writes keep the cache true (an add stores the server's queue,
+  // a remove invalidates it, which this read then refetches).
+  const entries = await queryClient
+    .fetchQuery({
+      ...queueQuery(connectionId, client),
+      staleTime: QUEUE_DROP_FRESH_MS,
+      gcTime: QUEUE_DROP_FRESH_MS,
+    })
+    .catch(() => undefined);
   if (!entries) return;
   const held = entries.filter(
     (e) =>
