@@ -88,6 +88,19 @@ describe('EntryRow', () => {
     expect(mockMutate).toHaveBeenCalledWith({ libraryId: 1, path: 'Book/Chapter 1.mp3', on: true });
   });
 
+  // The hook reads a pending book before hearting it, so the favourite is saved as a
+  // book (Favourites and Home then open it as one, not as a folder).
+  it('hearts a pending book folder as a pending book', async () => {
+    await mount(<EntryRow entry={pendingFolder} connectionId="c1" libraryId={1} />);
+    fireEvent.press(screen.getByLabelText('Add to favourites'));
+    expect(mockMutate).toHaveBeenCalledWith({
+      libraryId: 1,
+      path: 'Brandon Sanderson/New Book',
+      on: true,
+      pendingBook: true,
+    });
+  });
+
   it('shows the remove label when the entry is already a favourite', async () => {
     mockFavourites = [{ library_id: 1, path: 'Brandon Sanderson' }];
     await mount(<EntryRow entry={dir} connectionId="c1" libraryId={1} />);

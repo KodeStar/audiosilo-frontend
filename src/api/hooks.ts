@@ -1423,17 +1423,35 @@ export function useFavourites() {
   });
 }
 
+/** What `useToggleFavourite` takes. `pendingBook` marks a folder `/fs` flags
+ * `pending_book` (a book the scan has not indexed yet). */
+export type ToggleFavouriteVars = {
+  libraryId: number;
+  path: string;
+  on: boolean;
+  pendingBook?: boolean;
+};
+
 /** Toggle a path's favourite state. Optimistically updates the shared favourites
  * list so the heart and shelf react instantly, then reconciles via invalidation
- * (which fills in server-derived fields like is_book/title for a fresh add). */
+ * (which fills in server-derived fields like is_book/title for a fresh add).
+ *
+ * The server derives a favourite's `is_book` from its index when it lists them, so
+ * hearting a `pendingBook` folder first reads the book (`GET /item` indexes it on
+ * demand, as the book screen does): otherwise Favourites and Home would show it as
+ * a folder until the background scan arrives. That read is best effort; the
+ * favourite is saved either way. */
 export function useToggleFavourite(connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ libraryId, path, on }: { libraryId: number; path: string; on: boolean }) =>
-      on ? api.addFavourite(libraryId, path) : api.removeFavourite(libraryId, path),
-    onMutate: async ({ libraryId, path, on }) => {
+    mutationFn: async ({ libraryId, path, on, pendingBook }: ToggleFavouriteVars) => {
+      if (!on) return api.removeFavourite(libraryId, path);
+      if (pendingBook) await api.item(libraryId, path).catch(() => undefined);
+      return api.addFavourite(libraryId, path);
+    },
+    onMutate: async ({ libraryId, path, on, pendingBook }) => {
       await qc.cancelQueries({ queryKey: qk.favourites(cid) });
       const prev = qc.getQueryData<Favourite[]>(qk.favourites(cid));
       qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
@@ -1444,7 +1462,7 @@ export function useToggleFavourite(connectionId?: string) {
         const stub: Favourite = {
           library_id: libraryId,
           path,
-          is_book: false,
+          is_book: !!pendingBook,
           title: '',
           author: '',
           series: '',

@@ -81,7 +81,14 @@ export function EntryRow({
         </PressableRow>
       </Link>
       <PressableRow
-        onPress={() => toggleFavourite.mutate({ libraryId, path: entry.path, on: !isFavourite })}
+        onPress={() =>
+          toggleFavourite.mutate({
+            libraryId,
+            path: entry.path,
+            on: !isFavourite,
+            pendingBook: entry.pending_book,
+          })
+        }
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={
