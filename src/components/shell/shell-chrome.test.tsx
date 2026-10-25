@@ -294,7 +294,8 @@ describe('DockedPlayer', () => {
     ]) {
       expect(screen.getByLabelText(label)).toBeTruthy();
     }
-    expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
+    // No current chapter here: the heading is the title, the line under it the author.
+    expect(screen.getByText('Brandon Sanderson')).toBeTruthy();
     expect(screen.getByText('upnext-dock')).toBeTruthy();
   });
 
