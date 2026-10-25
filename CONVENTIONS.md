@@ -1038,7 +1038,10 @@ media GETs only.
   extension; Android's Media3 sniffs, the web goes by Content-Type, so both keep `.mka`).
   `relocateEntry` keeps each saved file's own name (`storedName`, from its stored uri),
   except that on iOS an old `<i>.mka` is renamed on disk to `<i>.mp3` (`playableName`,
-  `engine.renameFile`; a failed rename keeps the old name). **Files are stored
+  `engine.renameFile`; a rename that fails keeps whichever name the file is under after
+  it). While hydrate reads the registry (`hydrating`), `download` and `remove` wait for it
+  and `persist` holds off, so a saved book is never fetched over, put back after a remove,
+  or saved over by the live entries. **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the

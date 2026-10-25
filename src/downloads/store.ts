@@ -64,6 +64,13 @@ const controllers = new Map<string, AbortController>();
 // downloading it again clears the mark. Session-only on purpose: memory, not storage.
 const declined = new Set<string>();
 
+// The launch's read of the saved registry while it runs (`hydrate`, up to its merge). The
+// registry is not known yet, so `download` and `remove` wait for it (a book already on
+// disk would otherwise be fetched over its own files, or removed and then put back by the
+// merge), and `persist` holds off (it would save only the live entries over the saved
+// registry: an app closed mid-hydrate would lose every download).
+let hydrating: Promise<void> | null = null;
+
 /** Whether this book's download was cancelled or removed earlier in this session. */
 export function isDeclined(connectionId: string, libraryId: number, path: string): boolean {
   return declined.has(downloadKey(connectionId, libraryId, path));
@@ -97,51 +104,15 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   supported: engine.supported,
 
   hydrate: async () => {
-    const saved = (await getItem<Registry>(DOWNLOADS_KEY)) ?? {};
-    const cleaned: Registry = {};
-    for (const raw of Object.values(saved)) {
-      // Re-resolve stored file uris against the live storage root first: the app's
-      // document-container path can change between installs/launches (notably dev
-      // rebuilds), which leaves the persisted absolute uris stale even though the
-      // files are still on disk. Without this the existence check below fails and
-      // the book is dropped *and deleted* - the download vanishes after a rebuild.
-      const e = await relocateEntry(raw);
-      // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
-      const allPresent =
-        e.manifest.files.length > 0 &&
-        (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
-          Boolean,
-        );
-      const revived = reviveEntry(e, allPresent);
-      // Key on the entry's own connection-scoped id (stale un-scoped entries from before
-      // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
-      const key = downloadKey(e.connectionId, e.libraryId, e.path);
-      if (revived?.status === 'downloaded') {
-        // A chapters answer can reach the cache before this read the registry.
-        const manifest = withCachedChapters(e, revived.manifest);
-        cleaned[key] = manifest === revived.manifest ? revived : { ...revived, manifest };
-        seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
-      } else if (revived) {
-        cleaned[key] = revived;
-      } else if (identityMovePending()) {
-        // The identity migration gave up mid-move this launch: the files can be under the
-        // new id while this entry names the old one (or the reverse). Kept as stored,
-        // never dropped and deleted; the launch that finishes the move finds them.
-        cleaned[key] = raw;
-      } else {
-        void engine.removeBook(e.connectionId, e.libraryId, e.path);
-      }
+    let read!: () => void;
+    hydrating = new Promise<void>((r) => (read = r));
+    let cleaned: Registry;
+    try {
+      cleaned = await readRegistry();
+    } finally {
+      hydrating = null;
+      read();
     }
-    // Merge, don't overwrite: a download() firing during hydrate's async window (session
-    // wait, per-book file moves, fileExists probes) adds a live entry that a blind
-    // set(cleaned) - built from the stale start-of-hydrate snapshot - would clobber. Keep
-    // any live entry this hydrate didn't produce; the hydrated/on-disk version wins on a
-    // key collision.
-    const merged: Registry = { ...cleaned };
-    for (const [key, entry] of Object.entries(get().entries)) {
-      if (!(key in merged)) merged[key] = entry;
-    }
-    set({ entries: merged, hydrated: true, supported: engine.supported });
     await persist();
     // The community metadata kept with each downloaded book, seeded for offline reading
     // (and filled in for a download made before it was kept). In the background, once the
@@ -160,6 +131,11 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
     if (!engine.supported) return Promise.resolve<DownloadOutcome>('unsupported');
+    // Until the launch has read the registry a book already on disk looks new, and its
+    // download would write over (and, offline, lose) the files it has.
+    const reading = hydrating;
+    if (reading)
+      return reading.then(() => get().download(connectionId, libraryId, book, chapterData, origin));
     // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1): one not on
     // its server yet answers 503 to the download engines, and nothing would clean them up.
     if (book.episode) return Promise.resolve<DownloadOutcome>('unsupported');
@@ -203,6 +179,8 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   },
 
   remove: async (connectionId, libraryId, path) => {
+    // An entry the launch is still reading would come back from its merge, its files gone.
+    if (hydrating) await hydrating;
     const key = downloadKey(connectionId, libraryId, path);
     declined.add(key);
     const idx = queue.indexOf(key);
@@ -215,6 +193,58 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 }));
 
 // --- helpers ---------------------------------------------------------------
+
+/** `hydrate`'s read of the saved registry: each entry relocated, checked on disk and
+ * revived (or dropped and deleted), merged into the live entries and set. Returns the
+ * entries it read. */
+async function readRegistry(): Promise<Registry> {
+  const saved = (await getItem<Registry>(DOWNLOADS_KEY)) ?? {};
+  const cleaned: Registry = {};
+  for (const raw of Object.values(saved)) {
+    // Re-resolve stored file uris against the live storage root first: the app's
+    // document-container path can change between installs/launches (notably dev
+    // rebuilds), which leaves the persisted absolute uris stale even though the
+    // files are still on disk. Without this the existence check below fails and
+    // the book is dropped *and deleted* - the download vanishes after a rebuild.
+    const e = await relocateEntry(raw);
+    // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
+    const allPresent =
+      e.manifest.files.length > 0 &&
+      (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
+        Boolean,
+      );
+    const revived = reviveEntry(e, allPresent);
+    // Key on the entry's own connection-scoped id (stale un-scoped entries from before
+    // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
+    const key = downloadKey(e.connectionId, e.libraryId, e.path);
+    if (revived?.status === 'downloaded') {
+      // A chapters answer can reach the cache before this read the registry.
+      const manifest = withCachedChapters(e, revived.manifest);
+      cleaned[key] = manifest === revived.manifest ? revived : { ...revived, manifest };
+      seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
+    } else if (revived) {
+      cleaned[key] = revived;
+    } else if (identityMovePending()) {
+      // The identity migration gave up mid-move this launch: the files can be under the
+      // new id while this entry names the old one (or the reverse). Kept as stored,
+      // never dropped and deleted; the launch that finishes the move finds them.
+      cleaned[key] = raw;
+    } else {
+      void engine.removeBook(e.connectionId, e.libraryId, e.path);
+    }
+  }
+  // Merge, don't overwrite: a live entry made during the read's async window (per-book
+  // file moves and renames, fileExists probes; `download` itself waits for the read,
+  // `hydrating`) would be clobbered by a blind set(cleaned) built from the stale
+  // start-of-hydrate snapshot. Keep any live entry this hydrate didn't produce; the
+  // hydrated/on-disk version wins on a key collision.
+  const merged: Registry = { ...cleaned };
+  for (const [key, entry] of Object.entries(useDownloads.getState().entries)) {
+    if (!(key in merged)) merged[key] = entry;
+  }
+  useDownloads.setState({ entries: merged, hydrated: true, supported: engine.supported });
+  return cleaned;
+}
 
 /** Put a book on the one-at-a-time queue (`download` decided it may go). An errored
  * entry is retried, keeping the files its failed attempt finished. */
@@ -497,6 +527,9 @@ let pendingSave: { timer: ReturnType<typeof setTimeout>; watch: { remove: () => 
 
 /** Save the registry now (and drop any save `persistSoon` was holding). */
 function persist(): Promise<void> {
+  // The launch's read saves once it has merged (`hydrating`): before that the live entries
+  // are not the registry, and saving them would write over every saved download.
+  if (hydrating) return Promise.resolve();
   if (pendingSave) {
     clearTimeout(pendingSave.timer);
     pendingSave.watch.remove();
@@ -714,11 +747,14 @@ async function playableName(
   if (want === name || !engine.renameFile) return name;
   const from = at(name);
   try {
-    if (await engine.fileExists(from)) return (await engine.renameFile(from, want)) ? want : name;
-    return (await engine.fileExists(at(want))) ? want : name;
+    if (await engine.fileExists(from)) await engine.renameFile(from, want);
   } catch {
-    return name;
+    // the probe below finds the file under whichever name it has now
   }
+  // Whatever the rename reported, the file goes by the name it is under now: a move that
+  // landed but answered false (or threw) must not leave the entry naming a gone file,
+  // which hydrate would drop and delete.
+  return !(await engine.fileExists(from)) && (await engine.fileExists(at(want))) ? want : name;
 }
 
 function isAbort(e: unknown): boolean {

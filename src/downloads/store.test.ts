@@ -518,6 +518,24 @@ describe('relocateEntry keeps a saved file its own name', () => {
     }
   });
 
+  it('keeps the download when the rename moved the file but reported failure', async () => {
+    Platform.OS = 'ios';
+    for (const settle of [false, 'throw'] as const) {
+      onDisk('0.mka');
+      mockEngine.renameFile = jest.fn(async (from: string, to: string) => {
+        disk.delete(from);
+        disk.add(at(to));
+        if (settle === 'throw') throw new Error('late failure');
+        return false;
+      });
+      expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
+        at('0.mp3'),
+      ]);
+      expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+      expect(mockEngine.removeBook).not.toHaveBeenCalled();
+    }
+  });
+
   it("finds a file an earlier launch renamed before it saved the registry ('0.mka' listed, '0.mp3' on disk)", async () => {
     Platform.OS = 'ios';
     onDisk('0.mp3');
@@ -1034,6 +1052,51 @@ describe('hydrate concurrency', () => {
     expect(Object.keys(await readPersisted())).toEqual(
       expect.arrayContaining([savedKey, downloadKey('c1', 3, 'Z/New')]),
     );
+  });
+});
+
+describe('hydrate holds off what needs the registry', () => {
+  const savedKey = downloadKey('c1', 2, 'A/Book');
+
+  it('a download() of a saved book during hydrate answers exists, never fetching over it', async () => {
+    await seed({ [savedKey]: downloadedEntry() });
+    let outcome: Promise<unknown> | undefined;
+    mockEngine.fileExists.mockImplementationOnce(async () => {
+      outcome = useDownloads.getState().download('c1', 2, makeBook());
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    await expect(outcome).resolves.toBe('exists');
+    expect(mockEngine.downloadFile).not.toHaveBeenCalled();
+    expect(useDownloads.getState().entries[savedKey]?.status).toBe('downloaded');
+  });
+
+  it('a save during hydrate never writes over the saved registry', async () => {
+    await seed({ [savedKey]: downloadedEntry() });
+    let mid: Record<string, DownloadEntry> | undefined;
+    mockEngine.fileExists.mockImplementationOnce(async () => {
+      // cancel() saves the registry; mid-hydrate the live entries are still empty.
+      useDownloads.getState().cancel('c1', 9, 'Other');
+      await new Promise((r) => setTimeout(r, 0));
+      mid = await readPersisted();
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    expect(Object.keys(mid ?? {})).toEqual([savedKey]);
+    expect(Object.keys(await readPersisted())).toEqual([savedKey]);
+  });
+
+  it('a remove() during hydrate stays removed', async () => {
+    await seed({ [savedKey]: downloadedEntry() });
+    let removed: Promise<void> | undefined;
+    mockEngine.fileExists.mockImplementationOnce(async () => {
+      removed = useDownloads.getState().remove('c1', 2, 'A/Book');
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    await removed;
+    expect(useDownloads.getState().entries[savedKey]).toBeUndefined();
+    expect((await readPersisted())[savedKey]).toBeUndefined();
   });
 });
 
