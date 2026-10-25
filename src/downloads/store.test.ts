@@ -28,6 +28,8 @@ jest.mock('@/downloads/engine', () => ({
     verify: undefined,
     probe: undefined,
     totalBytesUsed: jest.fn(async () => 0),
+    // iOS's rename of an old `<i>.mka` (set per test; the web engine has none).
+    renameFile: undefined,
     // The offline companion's payload file (its IO goes through offline-meta, mocked
     // below); only its presence gates keeping metadata.
     writeText: jest.fn(async () => true),
@@ -157,6 +159,7 @@ const mockEngine = engine as unknown as {
   storageEstimate: jest.Mock;
   verify: ((uri: string) => Promise<boolean>) | undefined;
   probe: (() => Promise<boolean>) | undefined;
+  renameFile: jest.Mock | undefined;
 };
 
 const mockResolveClient = resolveClient as jest.Mock;
@@ -171,6 +174,9 @@ const defaultLocalUri = (connectionId: string, libraryId: number, path: string, 
   `live:${connectionId}:${libraryId}:${path}:${name}`;
 
 const KEY = 'audiosilo.downloads';
+
+// The platform a test starts on (tests that pick one get it back in beforeEach).
+const defaultOS = Platform.OS;
 
 function makeBook(p: Partial<Book> = {}): Book {
   return {
@@ -247,8 +253,12 @@ beforeEach(async () => {
   mockEngine.localUri = jest.fn(defaultLocalUri);
   mockEngine.fileExists.mockResolvedValue(true);
   mockEngine.removeBook.mockResolvedValue(undefined);
+  // clearAllMocks keeps implementations: a test's downloadFile must not reach the next.
+  mockEngine.downloadFile.mockReset();
   mockEngine.verify = undefined;
   mockEngine.probe = undefined;
+  mockEngine.renameFile = undefined;
+  Platform.OS = defaultOS;
   // Reset the connection-clients seam so a per-test override can't leak.
   mockResolveClient.mockReset().mockReturnValue(null);
   mockCapture.mockReset().mockResolvedValue(null);
@@ -344,17 +354,22 @@ describe('relocateEntry (via hydrate)', () => {
   });
 });
 
+/** Hydrate one entry with these files and return the relocated uris. */
+async function relocated(files: { relPath: string; localUri: string }[]): Promise<string[]> {
+  const entry = downloadedEntry();
+  entry.manifest.files = files;
+  entry.manifest.coverUri = null;
+  const key = downloadKey('c1', 2, 'A/Book');
+  await seed({ [key]: entry });
+  await useDownloads.getState().hydrate();
+  return useDownloads.getState().entries[key]?.manifest.files.map((f) => f.localUri) ?? [];
+}
+
 describe('fileName extension handling (observed via the relocated uri)', () => {
   // The relocated uri is `live:<cid>:<lib>:<path>:<fileName(i, relPath)>`, so the
   // segment after the last ':' is exactly what `fileName` produced for that file.
   async function relocatedNameFor(relPath: string): Promise<string> {
-    const entry = downloadedEntry();
-    entry.manifest.files = [{ relPath, localUri: 'stale' }];
-    entry.manifest.coverUri = null;
-    const key = downloadKey('c1', 2, 'A/Book');
-    await seed({ [key]: entry });
-    await useDownloads.getState().hydrate();
-    const uri = useDownloads.getState().entries[key]?.manifest.files[0]?.localUri ?? '';
+    const [uri = ''] = await relocated([{ relPath, localUri: 'stale' }]);
     return uri.slice(uri.lastIndexOf(':') + 1);
   }
 
@@ -369,6 +384,221 @@ describe('fileName extension handling (observed via the relocated uri)', () => {
   it('adds no extension when the only dot is in a parent dir, not the filename', async () => {
     // 'a.b/track' - the dot precedes the last slash, so it is not an extension.
     expect(await relocatedNameFor('a.b/track')).toBe('0');
+  });
+
+  it("names a Matroska file '.mp3' on iOS only (AVFoundation goes by the extension)", async () => {
+    Platform.OS = 'ios';
+    expect(await relocatedNameFor('A/B/track.mka')).toBe('0.mp3');
+    expect(await relocatedNameFor('A/B/TRACK.MKA')).toBe('0.mp3');
+    // Media3 sniffs the bytes and the web goes by Content-Type: raw Matroska keeps its name.
+    for (const os of ['android', 'web'] as const) {
+      Platform.OS = os;
+      expect(await relocatedNameFor('A/B/track.mka')).toBe('0.mka');
+    }
+  });
+
+  it('leaves every other extension as it is', async () => {
+    for (const os of ['ios', 'android'] as const) {
+      Platform.OS = os;
+      expect(await relocatedNameFor('A/B/track.m4b')).toBe('0.m4b');
+      expect(await relocatedNameFor('A/B/track.MP3')).toBe('0.MP3');
+      expect(await relocatedNameFor('A/B/track.flac')).toBe('0.flac');
+    }
+  });
+});
+
+describe('relocateEntry keeps a saved file its own name', () => {
+  // A real engine's uri ends in `/<name>` (the default fake's `:<name>` does not), so a
+  // second hydrate reads the persisted name back as a device's would.
+  const fileUri = (c: string, l: number, p: string, n: string) =>
+    `file:///root/${c}/${l}/${encodeURIComponent(p)}/${n}`;
+  const at = (name: string) => fileUri('c1', 2, 'A/Book', name);
+  const key = downloadKey('c1', 2, 'A/Book');
+  const uris = () => useDownloads.getState().entries[key]?.manifest.files.map((f) => f.localUri);
+  async function hydrateAgain() {
+    useDownloads.setState({ entries: {}, hydrated: false });
+    await useDownloads.getState().hydrate();
+  }
+
+  /** Files on "disk", which `fileExists` and `renameFile` act on. */
+  let disk: Set<string>;
+  function onDisk(...names: string[]) {
+    disk = new Set(names.map(at));
+    mockEngine.localUri = jest.fn(fileUri);
+    mockEngine.fileExists.mockImplementation(async (uri: string) => disk.has(uri));
+    renameWorks();
+  }
+  const renames = () => mockEngine.renameFile?.mock.calls ?? [];
+  function renameWorks() {
+    mockEngine.renameFile = jest.fn(async (from: string, to: string) => {
+      const dest = from.slice(0, from.lastIndexOf('/') + 1) + to;
+      if (!disk.has(from) || disk.has(dest)) return false;
+      disk.delete(from);
+      disk.add(dest);
+      return true;
+    });
+  }
+
+  it("an existing '.mka' download still resolves to its file on Android and the web", async () => {
+    renameWorks();
+    for (const os of ['android', 'web'] as const) {
+      Platform.OS = os;
+      expect(
+        await relocated([
+          { relPath: 'A/Book/01.mka', localUri: 'file:///old/root/c1/2/A%2FBook/0.mka' },
+          { relPath: 'A/Book/02.mka', localUri: 'https://host/_offline/c1/2/A%2FBook/1.mka' },
+        ]),
+      ).toEqual(['live:c1:2:A/Book:0.mka', 'live:c1:2:A/Book:1.mka']);
+      expect(renames()).toEqual([]);
+    }
+  });
+
+  it("falls back to fileName when the stored name is not this index's", async () => {
+    Platform.OS = 'ios';
+    expect(
+      await relocated([
+        { relPath: 'A/Book/01.mka', localUri: 'file:///old/root/3.mka' },
+        { relPath: 'A/Book/02.mka', localUri: 'file:///old/root/track.mka' },
+        { relPath: 'A/Book/03.mka', localUri: '' },
+        // Percent-escaped in the uri, so not the name on disk.
+        { relPath: 'A/Book/04.mka', localUri: 'file:///old/root/3.m%20ka' },
+      ]),
+    ).toEqual([
+      'live:c1:2:A/Book:0.mp3',
+      'live:c1:2:A/Book:1.mp3',
+      'live:c1:2:A/Book:2.mp3',
+      'live:c1:2:A/Book:3.mp3',
+    ]);
+  });
+
+  it('keeps the name across launches on Android (the next hydrate reads the persisted uri back)', async () => {
+    Platform.OS = 'android';
+    onDisk('0.mka');
+    expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
+      at('0.mka'),
+    ]);
+    await hydrateAgain();
+    expect(uris()).toEqual([at('0.mka')]);
+    expect(renames()).toEqual([]);
+  });
+
+  it("renames an old '<i>.mka' to '<i>.mp3' on disk on iOS, saves it, and leaves it there next launch", async () => {
+    Platform.OS = 'ios';
+    onDisk('0.mka', '1.m4a');
+    expect(
+      await relocated([
+        { relPath: 'A/Book/01.mka', localUri: at('0.mka') },
+        { relPath: 'A/Book/02.m4a', localUri: at('1.m4a') },
+      ]),
+    ).toEqual([at('0.mp3'), at('1.m4a')]);
+    expect(renames()).toEqual([[at('0.mka'), '0.mp3']]);
+    expect([...disk]).toEqual(expect.arrayContaining([at('0.mp3'), at('1.m4a')]));
+    expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+    expect((await readPersisted())[key]?.manifest.files.map((f) => f.localUri)).toEqual([
+      at('0.mp3'),
+      at('1.m4a'),
+    ]);
+    mockEngine.renameFile?.mockClear();
+    await hydrateAgain();
+    expect(uris()).toEqual([at('0.mp3'), at('1.m4a')]);
+    expect(renames()).toEqual([]);
+  });
+
+  it('keeps the old name, and the download, when the rename fails or throws', async () => {
+    Platform.OS = 'ios';
+    for (const fail of [async () => false, async () => Promise.reject(new Error('EPERM'))]) {
+      onDisk('0.mka');
+      mockEngine.renameFile = jest.fn(fail);
+      expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
+        at('0.mka'),
+      ]);
+      expect(renames()).toEqual([[at('0.mka'), '0.mp3']]);
+      expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+      expect(disk.has(at('0.mka'))).toBe(true);
+    }
+  });
+
+  it('keeps the download when the rename moved the file but reported failure', async () => {
+    Platform.OS = 'ios';
+    for (const settle of [false, 'throw'] as const) {
+      onDisk('0.mka');
+      mockEngine.renameFile = jest.fn(async (from: string, to: string) => {
+        disk.delete(from);
+        disk.add(at(to));
+        if (settle === 'throw') throw new Error('late failure');
+        return false;
+      });
+      expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
+        at('0.mp3'),
+      ]);
+      expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+      expect(mockEngine.removeBook).not.toHaveBeenCalled();
+    }
+  });
+
+  it("finds a file an earlier launch renamed before it saved the registry ('0.mka' listed, '0.mp3' on disk)", async () => {
+    Platform.OS = 'ios';
+    onDisk('0.mp3');
+    expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
+      at('0.mp3'),
+    ]);
+    expect(renames()).toEqual([]);
+    expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
+  });
+
+  it('keeps an iOS .mka name where the engine cannot rename', async () => {
+    Platform.OS = 'ios';
+    onDisk('0.mka');
+    mockEngine.renameFile = undefined;
+    expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
+      at('0.mka'),
+    ]);
+  });
+});
+
+describe('a new download names each file by fileName', () => {
+  async function savedNames(): Promise<string[]> {
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      streamUrl: (_lib: number, p: string) => `stream:${p}`,
+    } as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    const book = makeBook({
+      files: ['01.mka', '02.m4a', '03.mp3'].map((n, i) => ({
+        rel_path: `A/Book/${n}`,
+        seq: i,
+        duration: 60,
+        format: n.slice(3),
+        size: 100,
+      })),
+    });
+    useDownloads.getState().download('c1', 2, book);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const audio = mockEngine.downloadFile.mock.calls.filter((c) => c[3] !== 'cover.jpg');
+    expect(audio.map((c) => c[4])).toEqual([
+      'stream:A/Book/01.mka',
+      'stream:A/Book/02.m4a',
+      'stream:A/Book/03.mp3',
+    ]);
+    const e = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+    expect(e?.status).toBe('downloaded');
+    expect(e?.manifest.files.map((f) => f.localUri)).toEqual(
+      audio.map((c) => `live:c1:2:A/Book:${c[3]}`),
+    );
+    return audio.map((c) => c[3] as string);
+  }
+
+  it("saves a '.mka' track as '<i>.mp3' on iOS and every other file under its own extension", async () => {
+    Platform.OS = 'ios';
+    expect(await savedNames()).toEqual(['0.mp3', '1.m4a', '2.mp3']);
+  });
+
+  it("keeps '.mka' on Android", async () => {
+    Platform.OS = 'android';
+    expect(await savedNames()).toEqual(['0.mka', '1.m4a', '2.mp3']);
   });
 });
 
@@ -822,6 +1052,51 @@ describe('hydrate concurrency', () => {
     expect(Object.keys(await readPersisted())).toEqual(
       expect.arrayContaining([savedKey, downloadKey('c1', 3, 'Z/New')]),
     );
+  });
+});
+
+describe('hydrate holds off what needs the registry', () => {
+  const savedKey = downloadKey('c1', 2, 'A/Book');
+
+  it('a download() of a saved book during hydrate answers exists, never fetching over it', async () => {
+    await seed({ [savedKey]: downloadedEntry() });
+    let outcome: Promise<unknown> | undefined;
+    mockEngine.fileExists.mockImplementationOnce(async () => {
+      outcome = useDownloads.getState().download('c1', 2, makeBook());
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    await expect(outcome).resolves.toBe('exists');
+    expect(mockEngine.downloadFile).not.toHaveBeenCalled();
+    expect(useDownloads.getState().entries[savedKey]?.status).toBe('downloaded');
+  });
+
+  it('a save during hydrate never writes over the saved registry', async () => {
+    await seed({ [savedKey]: downloadedEntry() });
+    let mid: Record<string, DownloadEntry> | undefined;
+    mockEngine.fileExists.mockImplementationOnce(async () => {
+      // cancel() saves the registry; mid-hydrate the live entries are still empty.
+      useDownloads.getState().cancel('c1', 9, 'Other');
+      await new Promise((r) => setTimeout(r, 0));
+      mid = await readPersisted();
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    expect(Object.keys(mid ?? {})).toEqual([savedKey]);
+    expect(Object.keys(await readPersisted())).toEqual([savedKey]);
+  });
+
+  it('a remove() during hydrate stays removed', async () => {
+    await seed({ [savedKey]: downloadedEntry() });
+    let removed: Promise<void> | undefined;
+    mockEngine.fileExists.mockImplementationOnce(async () => {
+      removed = useDownloads.getState().remove('c1', 2, 'A/Book');
+      return true;
+    });
+    await useDownloads.getState().hydrate();
+    await removed;
+    expect(useDownloads.getState().entries[savedKey]).toBeUndefined();
+    expect((await readPersisted())[savedKey]).toBeUndefined();
   });
 });
 

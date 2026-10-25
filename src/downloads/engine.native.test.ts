@@ -1,6 +1,7 @@
 // An in-memory file tree standing in for expo-file-system's File/Directory (the calls the
-// engine's `moveConnection` makes: exists, list, move, delete, name), with the module's move
-// rule: into an EXISTING directory it lands inside it, else it takes the destination's name.
+// engine's `moveConnection` and `renameFile` make: exists, list, move, delete, name,
+// parentDirectory), with the module's move rule: into an EXISTING directory it lands
+// inside it, else it takes the destination's name.
 const mockTree = new Map<string, 'dir' | string>(); // uri -> 'dir' or file content
 const mockFailMove = { uri: null as string | null };
 jest.mock('expo-file-system', () => {
@@ -17,6 +18,9 @@ jest.mock('expo-file-system', () => {
     }
     get name() {
       return leaf(this.uri);
+    }
+    get parentDirectory() {
+      return new MockDirectory(this.uri.slice(0, this.uri.lastIndexOf('/')));
     }
     delete() {
       for (const k of [...mockTree.keys()]) {
@@ -145,5 +149,29 @@ describe('engine.native moveConnection', () => {
     await engine.moveConnection!('srv', 'srv.3');
     await engine.moveConnection!('srv.3', 'srv');
     expect(files()).toEqual({ 'srv/1/A-1/0.mp3': 'a' });
+  });
+});
+
+describe('engine.native renameFile', () => {
+  const book = `${ROOT}/srv/1/Book-abc`;
+
+  it('renames a stored file in its folder', async () => {
+    seed({ 'srv/1/Book-abc/0.mka': 'mp3 bytes' });
+    await expect(engine.renameFile!(`${book}/0.mka`, '0.mp3')).resolves.toBe(true);
+    expect(files()).toEqual({ 'srv/1/Book-abc/0.mp3': 'mp3 bytes' });
+  });
+
+  it('never replaces a file already under the new name', async () => {
+    seed({ 'srv/1/Book-abc/0.mka': 'old', 'srv/1/Book-abc/0.mp3': 'new' });
+    await expect(engine.renameFile!(`${book}/0.mka`, '0.mp3')).resolves.toBe(false);
+    expect(files()).toEqual({ 'srv/1/Book-abc/0.mka': 'old', 'srv/1/Book-abc/0.mp3': 'new' });
+  });
+
+  it('resolves false when the file is missing or cannot move, leaving it as it was', async () => {
+    seed({ 'srv/1/Book-abc/1.mka': 'x' });
+    await expect(engine.renameFile!(`${book}/0.mka`, '0.mp3')).resolves.toBe(false);
+    mockFailMove.uri = `${book}/1.mka`;
+    await expect(engine.renameFile!(`${book}/1.mka`, '1.mp3')).resolves.toBe(false);
+    expect(files()).toEqual({ 'srv/1/Book-abc/1.mka': 'x' });
   });
 });

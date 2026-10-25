@@ -64,6 +64,13 @@ const controllers = new Map<string, AbortController>();
 // downloading it again clears the mark. Session-only on purpose: memory, not storage.
 const declined = new Set<string>();
 
+// The launch's read of the saved registry while it runs (`hydrate`, up to its merge). The
+// registry is not known yet, so `download` and `remove` wait for it (a book already on
+// disk would otherwise be fetched over its own files, or removed and then put back by the
+// merge), and `persist` holds off (it would save only the live entries over the saved
+// registry: an app closed mid-hydrate would lose every download).
+let hydrating: Promise<void> | null = null;
+
 /** Whether this book's download was cancelled or removed earlier in this session. */
 export function isDeclined(connectionId: string, libraryId: number, path: string): boolean {
   return declined.has(downloadKey(connectionId, libraryId, path));
@@ -97,51 +104,15 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   supported: engine.supported,
 
   hydrate: async () => {
-    const saved = (await getItem<Registry>(DOWNLOADS_KEY)) ?? {};
-    const cleaned: Registry = {};
-    for (const raw of Object.values(saved)) {
-      // Re-resolve stored file uris against the live storage root first: the app's
-      // document-container path can change between installs/launches (notably dev
-      // rebuilds), which leaves the persisted absolute uris stale even though the
-      // files are still on disk. Without this the existence check below fails and
-      // the book is dropped *and deleted* - the download vanishes after a rebuild.
-      const e = relocateEntry(raw);
-      // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
-      const allPresent =
-        e.manifest.files.length > 0 &&
-        (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
-          Boolean,
-        );
-      const revived = reviveEntry(e, allPresent);
-      // Key on the entry's own connection-scoped id (stale un-scoped entries from before
-      // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
-      const key = downloadKey(e.connectionId, e.libraryId, e.path);
-      if (revived?.status === 'downloaded') {
-        // A chapters answer can reach the cache before this read the registry.
-        const manifest = withCachedChapters(e, revived.manifest);
-        cleaned[key] = manifest === revived.manifest ? revived : { ...revived, manifest };
-        seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
-      } else if (revived) {
-        cleaned[key] = revived;
-      } else if (identityMovePending()) {
-        // The identity migration gave up mid-move this launch: the files can be under the
-        // new id while this entry names the old one (or the reverse). Kept as stored,
-        // never dropped and deleted; the launch that finishes the move finds them.
-        cleaned[key] = raw;
-      } else {
-        void engine.removeBook(e.connectionId, e.libraryId, e.path);
-      }
+    let read!: () => void;
+    hydrating = new Promise<void>((r) => (read = r));
+    let cleaned: Registry;
+    try {
+      cleaned = await readRegistry();
+    } finally {
+      hydrating = null;
+      read();
     }
-    // Merge, don't overwrite: a download() firing during hydrate's async window (session
-    // wait, per-book file moves, fileExists probes) adds a live entry that a blind
-    // set(cleaned) - built from the stale start-of-hydrate snapshot - would clobber. Keep
-    // any live entry this hydrate didn't produce; the hydrated/on-disk version wins on a
-    // key collision.
-    const merged: Registry = { ...cleaned };
-    for (const [key, entry] of Object.entries(get().entries)) {
-      if (!(key in merged)) merged[key] = entry;
-    }
-    set({ entries: merged, hydrated: true, supported: engine.supported });
     await persist();
     // The community metadata kept with each downloaded book, seeded for offline reading
     // (and filled in for a download made before it was kept). In the background, once the
@@ -160,6 +131,11 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
     if (!engine.supported) return Promise.resolve<DownloadOutcome>('unsupported');
+    // Until the launch has read the registry a book already on disk looks new, and its
+    // download would write over (and, offline, lose) the files it has.
+    const reading = hydrating;
+    if (reading)
+      return reading.then(() => get().download(connectionId, libraryId, book, chapterData, origin));
     // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1): one not on
     // its server yet answers 503 to the download engines, and nothing would clean them up.
     if (book.episode) return Promise.resolve<DownloadOutcome>('unsupported');
@@ -203,6 +179,8 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   },
 
   remove: async (connectionId, libraryId, path) => {
+    // An entry the launch is still reading would come back from its merge, its files gone.
+    if (hydrating) await hydrating;
     const key = downloadKey(connectionId, libraryId, path);
     declined.add(key);
     const idx = queue.indexOf(key);
@@ -215,6 +193,58 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 }));
 
 // --- helpers ---------------------------------------------------------------
+
+/** `hydrate`'s read of the saved registry: each entry relocated, checked on disk and
+ * revived (or dropped and deleted), merged into the live entries and set. Returns the
+ * entries it read. */
+async function readRegistry(): Promise<Registry> {
+  const saved = (await getItem<Registry>(DOWNLOADS_KEY)) ?? {};
+  const cleaned: Registry = {};
+  for (const raw of Object.values(saved)) {
+    // Re-resolve stored file uris against the live storage root first: the app's
+    // document-container path can change between installs/launches (notably dev
+    // rebuilds), which leaves the persisted absolute uris stale even though the
+    // files are still on disk. Without this the existence check below fails and
+    // the book is dropped *and deleted* - the download vanishes after a rebuild.
+    const e = await relocateEntry(raw);
+    // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
+    const allPresent =
+      e.manifest.files.length > 0 &&
+      (await Promise.all(e.manifest.files.map((f) => engine.fileExists(f.localUri)))).every(
+        Boolean,
+      );
+    const revived = reviveEntry(e, allPresent);
+    // Key on the entry's own connection-scoped id (stale un-scoped entries from before
+    // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
+    const key = downloadKey(e.connectionId, e.libraryId, e.path);
+    if (revived?.status === 'downloaded') {
+      // A chapters answer can reach the cache before this read the registry.
+      const manifest = withCachedChapters(e, revived.manifest);
+      cleaned[key] = manifest === revived.manifest ? revived : { ...revived, manifest };
+      seedQueryCache(e.connectionId, e.libraryId, e.path, manifest);
+    } else if (revived) {
+      cleaned[key] = revived;
+    } else if (identityMovePending()) {
+      // The identity migration gave up mid-move this launch: the files can be under the
+      // new id while this entry names the old one (or the reverse). Kept as stored,
+      // never dropped and deleted; the launch that finishes the move finds them.
+      cleaned[key] = raw;
+    } else {
+      void engine.removeBook(e.connectionId, e.libraryId, e.path);
+    }
+  }
+  // Merge, don't overwrite: a live entry made during the read's async window (per-book
+  // file moves and renames, fileExists probes; `download` itself waits for the read,
+  // `hydrating`) would be clobbered by a blind set(cleaned) built from the stale
+  // start-of-hydrate snapshot. Keep any live entry this hydrate didn't produce; the
+  // hydrated/on-disk version wins on a key collision.
+  const merged: Registry = { ...cleaned };
+  for (const [key, entry] of Object.entries(useDownloads.getState().entries)) {
+    if (!(key in merged)) merged[key] = entry;
+  }
+  useDownloads.setState({ entries: merged, hydrated: true, supported: engine.supported });
+  return cleaned;
+}
 
 /** Put a book on the one-at-a-time queue (`download` decided it may go). An errored
  * entry is retried, keeping the files its failed attempt finished. */
@@ -431,7 +461,7 @@ function chaptersRefresh(
  * in natural order, "2-" before "10-"): the chapters carry the order every queue over the
  * download plays them in (`bookFileSpecs`, each file found by its path:
  * `localFromManifest`), and `files` itself never moves, since a file's index there is its
- * name on disk (`fileName`, which `relocateEntry` and a retry rebuild it from). A
+ * name on disk (`fileName`; `relocateEntry` keeps a saved file's own name, `storedName`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
@@ -497,6 +527,9 @@ let pendingSave: { timer: ReturnType<typeof setTimeout>; watch: { remove: () => 
 
 /** Save the registry now (and drop any save `persistSoon` was holding). */
 function persist(): Promise<void> {
+  // The launch's read saves once it has merged (`hydrating`): before that the live entries
+  // are not the registry, and saving them would write over every saved download.
+  if (hydrating) return Promise.resolve();
   if (pendingSave) {
     clearTimeout(pendingSave.timer);
     pendingSave.watch.remove();
@@ -672,38 +705,87 @@ function afterLaunch(task: () => void) {
 
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
- * on-disk filename scheme is owned here (`fileName` for audio, `cover.jpg` for the
- * cover), so the (connectionId, libraryId, path, fileName) → live-uri mapping lives
- * here too; `engine.localUri` supplies the container-current absolute uri (native) or
- * the virtual cache url (web). Recomputing from the entry's own connection id is also
- * what carries a download across the identity migration, which rewrites `connectionId`
- * but not the stored uris (and moves the files on native; the web engine finds them under
- * the legacy id, `legacyIdOf`). A no-op only for an engine without
- * `localUri` (no offline storage).
+ * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
+ * `cover.jpg` for the cover), so the (connectionId, libraryId, path, fileName) → live-uri
+ * mapping lives here too; `engine.localUri` supplies the container-current absolute uri
+ * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
+ * is also what carries a download across the identity migration, which rewrites
+ * `connectionId` but not the stored uris (and moves the files on native; the web engine
+ * finds them under the legacy id, `legacyIdOf`). On iOS an old `<i>.mka` is renamed to
+ * `<i>.mp3` on the way (`playableName`). A no-op only for an engine without `localUri`
+ * (no offline storage).
  */
-function relocateEntry(e: DownloadEntry): DownloadEntry {
+async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   const resolve = engine.localUri;
   if (!resolve) return e;
   const { connectionId, libraryId, path } = e;
-  const files = e.manifest.files.map((f, i) => ({
-    ...f,
-    localUri: resolve(connectionId, libraryId, path, fileName(i, f.relPath)),
-  }));
-  const coverUri = e.manifest.coverUri
-    ? resolve(connectionId, libraryId, path, 'cover.jpg')
-    : e.manifest.coverUri;
+  const at = (name: string) => resolve(connectionId, libraryId, path, name);
+  const files = await Promise.all(
+    e.manifest.files.map(async (f, i) => {
+      const name = storedName(i, f.localUri) ?? fileName(i, f.relPath);
+      return { ...f, localUri: at(await playableName(i, name, at)) };
+    }),
+  );
+  const coverUri = e.manifest.coverUri ? at('cover.jpg') : e.manifest.coverUri;
   return { ...e, manifest: { ...e.manifest, files, coverUri } };
+}
+
+/**
+ * The name a saved file should go by now: on iOS, a `<i>.mka` an older app saved (MP3
+ * bytes from a server that remuxes, or raw Matroska iOS can't play under any name) is
+ * renamed on disk to the `<i>.mp3` `fileName` gives it today, so it plays after the
+ * update. One a launch already renamed before the registry was saved is found under the
+ * new name. Anything that fails keeps the old name: the file is never lost. Elsewhere
+ * (and for every other name) the name is kept as it is.
+ */
+async function playableName(
+  index: number,
+  name: string,
+  at: (name: string) => string,
+): Promise<string> {
+  const want = fileName(index, name);
+  if (want === name || !engine.renameFile) return name;
+  const from = at(name);
+  try {
+    if (await engine.fileExists(from)) await engine.renameFile(from, want);
+  } catch {
+    // the probe below finds the file under whichever name it has now
+  }
+  // Whatever the rename reported, the file goes by the name it is under now: a move that
+  // landed but answered false (or threw) must not leave the entry naming a gone file,
+  // which hydrate would drop and delete.
+  return !(await engine.fileExists(from)) && (await engine.fileExists(at(want))) ? want : name;
 }
 
 function isAbort(e: unknown): boolean {
   return e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message));
 }
 
-/** Sanitized destination filename for a file index, keeping its extension. */
+/**
+ * Sanitized destination filename for a file index, keeping its extension, except that on
+ * iOS a `.mka` is saved as `.mp3`: a server with ffmpeg serves an MP3-in-Matroska file as
+ * a lossless MP3 stream copy at the same url, and AVFoundation picks a local file's type
+ * by its extension, so the bytes must not land under `.mka` there (raw Matroska from an
+ * older server plays on iOS under no name). Android's Media3 sniffs the bytes and the web
+ * plays by Content-Type, so they keep `.mka` and raw Matroska is never mislabelled.
+ */
 function fileName(index: number, relPath: string): string {
   const dot = relPath.lastIndexOf('.');
   const ext = dot > relPath.lastIndexOf('/') ? relPath.slice(dot) : '';
-  return `${index}${ext}`;
+  return `${index}${Platform.OS === 'ios' && ext.toLowerCase() === '.mka' ? '.mp3' : ext}`;
+}
+
+/**
+ * The name a saved file already has on disk, read from its stored uri, when it is one
+ * `fileName` could have given this index (`<index>` plus an optional extension). Relocation
+ * keeps it, so a download saved under an older naming rule (an Android 2.4.x `0.mka`)
+ * still resolves; anything else (no stored uri, another shape, a percent-escaped name a
+ * `file://` uri carries, which is not the name on disk) falls back to `fileName`.
+ */
+function storedName(index: number, localUri: string): string | undefined {
+  const name = localUri.slice(localUri.lastIndexOf('/') + 1);
+  const m = /^(\d+)(\.[^./:?#%]+)?$/.exec(name);
+  return m?.[1] === String(index) ? name : undefined;
 }
 
 async function runQueue() {

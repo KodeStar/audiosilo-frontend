@@ -1033,8 +1033,16 @@ media GETs only.
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
   - without it a stale path fails the existence check and the book is dropped *and
   deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
-  `engine.localUri` in agreement. **Files are stored per-connection**: native
-  `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
+  `engine.localUri` in agreement. On iOS only, `fileName` saves a `.mka` as `<i>.mp3`
+  (the server streams MP3-in-MKA as MP3 and AVFoundation types a local file by its
+  extension; Android's Media3 sniffs, the web goes by Content-Type, so both keep `.mka`).
+  `relocateEntry` keeps each saved file's own name (`storedName`, from its stored uri),
+  except that on iOS an old `<i>.mka` is renamed on disk to `<i>.mp3` (`playableName`,
+  `engine.renameFile`; a rename that fails keeps whichever name the file is under after
+  it). While hydrate reads the registry (`hydrating`), `download` and `remove` wait for it
+  and `persist` holds off, so a saved book is never fetched over, put back after a remove,
+  or saved over by the live entries. **Files are stored
+  per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
   `server_id` id scheme) can't be re-keyed, so the one-time `resetStaleStorage()` bump
@@ -1799,7 +1807,7 @@ are asked, at most 10,000 rows.
   and `adoptLoaded` keep the manifest's order until an online start plays the new one. The
   chapters carry the order (every queue over a download orders its files by them and finds each by
   path); `manifest.files` itself never moves, since a file's index there is its name on disk
-  (`fileName`, rebuilt by `relocateEntry` at every launch and by a retry). A place saved on the old
+  (`fileName`; `relocateEntry` keeps each saved file's own name at every launch). A place saved on the old
   timeline reads as moved once the new order is taken (as the server's re-index moves any
   whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
   spec rebuilt (`car-controller.ts`).

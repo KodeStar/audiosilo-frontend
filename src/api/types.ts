@@ -382,8 +382,10 @@ export type Book = {
   size: number;
   /** Audio codec (ffprobe codec_name, e.g. "aac"/"mp3"/"ac3"); empty if unprobed. */
   codec?: string;
-  /** Whether the codec plays natively in browsers. When false, a web client should
-   * request the transcoded stream (?transcode=1) instead of streaming directly. */
+  /** Whether the book plays in browsers as the server serves it (an MP3-in-Matroska
+   * `.mka` counts on a server with ffmpeg, which streams it as MP3). When false, a web
+   * client should request the transcoded stream (?transcode=1) instead of streaming
+   * directly. */
   direct_playable?: boolean;
   /** RFC3339; when the book was added (filesystem birth time, from the scanner). */
   added_at?: string;
@@ -577,7 +579,7 @@ export type ChaptersResponse = {
   chapters: Chapter[];
   /** Audio codec (ffprobe codec_name); empty if unprobed. */
   codec?: string;
-  /** Whether the codec plays natively in browsers (see Book.direct_playable). */
+  /** Whether the book plays in browsers as the server serves it (see Book.direct_playable). */
   direct_playable?: boolean;
   /** `"community"` when `chapters` are a community recording's list fitted onto the
    * book's audio, `"generated"` when a Bridge on this server found them in the

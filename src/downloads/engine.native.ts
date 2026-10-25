@@ -158,6 +158,18 @@ export const engine: DownloadEngine = {
     else await mergeInto(from, to);
   },
 
+  async renameFile(localUri, toName) {
+    try {
+      const from = new File(localUri);
+      const to = new File(from.parentDirectory, toName);
+      if (!from.exists || to.exists) return false;
+      await from.move(to);
+      return to.exists;
+    } catch {
+      return false;
+    }
+  },
+
   async clearAll() {
     try {
       const root = rootDir();
