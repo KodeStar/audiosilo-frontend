@@ -672,9 +672,9 @@ function afterLaunch(task: () => void) {
 
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
- * on-disk filename scheme is owned here (`fileName` for audio, kept as each saved file
- * already has it by `storedName`; `cover.jpg` for the cover), so the (connectionId, libraryId, path, fileName) → live-uri mapping lives
- * here too; `engine.localUri` supplies the container-current absolute uri (native) or
+ * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
+ * `cover.jpg` for the cover), so the (connectionId, libraryId, path, fileName) → live-uri
+ * mapping lives here too; `engine.localUri` supplies the container-current absolute uri (native) or
  * the virtual cache url (web). Recomputing from the entry's own connection id is also
  * what carries a download across the identity migration, which rewrites `connectionId`
  * but not the stored uris (and moves the files on native; the web engine finds them under
@@ -687,7 +687,12 @@ function relocateEntry(e: DownloadEntry): DownloadEntry {
   const { connectionId, libraryId, path } = e;
   const files = e.manifest.files.map((f, i) => ({
     ...f,
-    localUri: resolve(connectionId, libraryId, path, storedName(i, f) ?? fileName(i, f.relPath)),
+    localUri: resolve(
+      connectionId,
+      libraryId,
+      path,
+      storedName(i, f.localUri) ?? fileName(i, f.relPath),
+    ),
   }));
   const coverUri = e.manifest.coverUri
     ? resolve(connectionId, libraryId, path, 'cover.jpg')
@@ -702,8 +707,8 @@ function isAbort(e: unknown): boolean {
 /**
  * Sanitized destination filename for a file index, keeping its extension, except that a
  * `.mka` is saved as `.mp3`: a server with ffmpeg serves an MP3-in-Matroska file as a
- * lossless MP3 stream copy at the same url, and iOS AVFoundation picks a local file's type by its
- * extension, so the bytes must not land under `.mka`. Unconditional: raw Matroska from an
+ * lossless MP3 stream copy at the same url, and iOS AVFoundation picks a local file's
+ * type by its extension, so the bytes must not land under `.mka`. Unconditional: raw Matroska from an
  * older server plays on iOS under no name, and Android's ExoPlayer sniffs the bytes.
  */
 function fileName(index: number, relPath: string): string {
@@ -718,8 +723,8 @@ function fileName(index: number, relPath: string): string {
  * keeps it, so a download saved under an older naming rule (an Android 2.4.x `0.mka`)
  * still resolves; anything else (no stored uri, another shape) falls back to `fileName`.
  */
-function storedName(index: number, f: DownloadedFile): string | undefined {
-  const name = f.localUri.slice(f.localUri.lastIndexOf('/') + 1);
+function storedName(index: number, localUri: string): string | undefined {
+  const name = localUri.slice(localUri.lastIndexOf('/') + 1);
   const m = /^(\d+)(\.[^./:?#]+)?$/.exec(name);
   return m?.[1] === String(index) ? name : undefined;
 }

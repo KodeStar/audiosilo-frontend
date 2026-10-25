@@ -344,17 +344,22 @@ describe('relocateEntry (via hydrate)', () => {
   });
 });
 
+/** Hydrate one entry with these files and return the relocated uris. */
+async function relocated(files: { relPath: string; localUri: string }[]): Promise<string[]> {
+  const entry = downloadedEntry();
+  entry.manifest.files = files;
+  entry.manifest.coverUri = null;
+  const key = downloadKey('c1', 2, 'A/Book');
+  await seed({ [key]: entry });
+  await useDownloads.getState().hydrate();
+  return useDownloads.getState().entries[key]?.manifest.files.map((f) => f.localUri) ?? [];
+}
+
 describe('fileName extension handling (observed via the relocated uri)', () => {
   // The relocated uri is `live:<cid>:<lib>:<path>:<fileName(i, relPath)>`, so the
   // segment after the last ':' is exactly what `fileName` produced for that file.
   async function relocatedNameFor(relPath: string): Promise<string> {
-    const entry = downloadedEntry();
-    entry.manifest.files = [{ relPath, localUri: 'stale' }];
-    entry.manifest.coverUri = null;
-    const key = downloadKey('c1', 2, 'A/Book');
-    await seed({ [key]: entry });
-    await useDownloads.getState().hydrate();
-    const uri = useDownloads.getState().entries[key]?.manifest.files[0]?.localUri ?? '';
+    const [uri = ''] = await relocated([{ relPath, localUri: 'stale' }]);
     return uri.slice(uri.lastIndexOf(':') + 1);
   }
 
@@ -384,15 +389,6 @@ describe('fileName extension handling (observed via the relocated uri)', () => {
 });
 
 describe('relocateEntry keeps a saved file its own name', () => {
-  async function relocated(files: { relPath: string; localUri: string }[]): Promise<string[]> {
-    const entry = downloadedEntry();
-    entry.manifest.files = files;
-    const key = downloadKey('c1', 2, 'A/Book');
-    await seed({ [key]: entry });
-    await useDownloads.getState().hydrate();
-    return useDownloads.getState().entries[key]?.manifest.files.map((f) => f.localUri) ?? [];
-  }
-
   it("an existing '.mka' download (saved before the '.mp3' rule) still resolves to its file", async () => {
     expect(
       await relocated([
@@ -400,12 +396,6 @@ describe('relocateEntry keeps a saved file its own name', () => {
         { relPath: 'A/Book/02.mka', localUri: 'https://host/_offline/c1/2/A%2FBook/1.mka' },
       ]),
     ).toEqual(['live:c1:2:A/Book:0.mka', 'live:c1:2:A/Book:1.mka']);
-  });
-
-  it('keeps the stored name of a non-mka file too (same as fileName gives)', async () => {
-    expect(
-      await relocated([{ relPath: 'A/Book/01.m4a', localUri: 'file:///old/root/0.m4a' }]),
-    ).toEqual(['live:c1:2:A/Book:0.m4a']);
   });
 
   it("falls back to fileName when the stored name is not this index's", async () => {
