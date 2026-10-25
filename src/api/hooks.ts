@@ -30,6 +30,7 @@ import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/lib/dedup';
 import { isPodcastLibrary } from '@/lib/library-kind';
+import { parentPath } from '@/lib/paths';
 import {
   FOLLOW_REQUEST_POLL_MS,
   isOpenRequest,
@@ -1437,29 +1438,48 @@ export type ToggleFavouriteVars = {
  * (which fills in server-derived fields like is_book/title for a fresh add).
  *
  * The server derives a favourite's `is_book` from its index when it lists them, so
- * hearting a `pendingBook` folder first reads the book (`GET /item` indexes it on
- * demand, as the book screen does): otherwise Favourites and Home would show it as
- * a folder until the background scan arrives. That read is best effort; the
- * favourite is saved either way. */
+ * hearting a `pendingBook` folder also reads the book (`GET /item` indexes it on
+ * demand, as the book screen does), alongside the add: the mutation settles (and the
+ * list is read again) only once both are done, otherwise Favourites and Home would show
+ * it as a folder until the background scan arrives. That read is best effort; the
+ * favourite is saved either way.
+ *
+ * The toggles of one connection run one at a time (`scope`), so an unheart tapped while
+ * a heart's read is still out reaches the server after the add, never before it; and
+ * only the last of a run reads the list again, so an earlier one's answer can't flip
+ * the heart back while a later toggle is still waiting. */
 export function useToggleFavourite(connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const qc = useQueryClient();
+  const mutationKey = ['toggleFavourite', cid];
   return useMutation({
+    mutationKey,
+    scope: { id: `toggleFavourite:${cid}` },
     mutationFn: async ({ libraryId, path, on, pendingBook }: ToggleFavouriteVars) => {
       if (!on) return api.removeFavourite(libraryId, path);
+      if (!pendingBook) return api.addFavourite(libraryId, path);
       // Through the item query, so the book screen opened next reads it from the cache.
       // Asked once, whatever the online flag says: a held or retried read would hold
       // back the heart.
-      if (pendingBook)
-        await qc
-          .fetchQuery({
-            ...itemQuery(cid, api, libraryId, path),
-            networkMode: 'always',
-            retry: false,
-          })
-          .catch(() => undefined);
-      return api.addFavourite(libraryId, path);
+      const read = qc
+        .fetchQuery({
+          ...itemQuery(cid, api, libraryId, path),
+          networkMode: 'always',
+          retry: false,
+        })
+        .then(
+          // The read indexed the book: the folder listing that flagged it pending is
+          // read again, so its row shows the book, not "Not scanned yet".
+          () =>
+            void qc.invalidateQueries({
+              queryKey: qk.browse(cid, libraryId, parentPath(path)),
+              exact: true,
+            }),
+          () => undefined,
+        );
+      const [, added] = await Promise.all([read, api.addFavourite(libraryId, path)]);
+      return added;
     },
     onMutate: async ({ libraryId, path, on, pendingBook }) => {
       await qc.cancelQueries({ queryKey: qk.favourites(cid) });
@@ -1487,7 +1507,12 @@ export function useToggleFavourite(connectionId?: string) {
     onError: (_e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(qk.favourites(cid), ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.favourites(cid) }),
+    // This mutation still counts itself here; a later toggle queued behind it reads
+    // the list when it settles.
+    onSettled: () =>
+      qc.isMutating({ mutationKey }) === 1
+        ? qc.invalidateQueries({ queryKey: qk.favourites(cid) })
+        : undefined,
   });
 }
 
