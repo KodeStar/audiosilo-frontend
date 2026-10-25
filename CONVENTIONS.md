@@ -1033,7 +1033,10 @@ media GETs only.
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
   - without it a stale path fails the existence check and the book is dropped *and
   deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
-  `engine.localUri` in agreement. **Files are stored per-connection**: native
+  `engine.localUri` in agreement. `fileName` saves a `.mka` as `<i>.mp3` (the server
+  streams MP3-in-MKA as MP3 and iOS types a local file by its extension), so
+  `relocateEntry` keeps each saved file's own name (`storedName`, from its stored uri)
+  and a download saved as `0.mka` before the rule still resolves. **Files are stored per-connection**: native
   `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
@@ -1799,7 +1802,7 @@ are asked, at most 10,000 rows.
   and `adoptLoaded` keep the manifest's order until an online start plays the new one. The
   chapters carry the order (every queue over a download orders its files by them and finds each by
   path); `manifest.files` itself never moves, since a file's index there is its name on disk
-  (`fileName`, rebuilt by `relocateEntry` at every launch and by a retry). A place saved on the old
+  (`fileName`; `relocateEntry` keeps each saved file's own name at every launch). A place saved on the old
   timeline reads as moved once the new order is taken (as the server's re-index moves any
   whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
   spec rebuilt (`car-controller.ts`).

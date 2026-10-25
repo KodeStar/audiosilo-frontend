@@ -431,7 +431,7 @@ function chaptersRefresh(
  * in natural order, "2-" before "10-"): the chapters carry the order every queue over the
  * download plays them in (`bookFileSpecs`, each file found by its path:
  * `localFromManifest`), and `files` itself never moves, since a file's index there is its
- * name on disk (`fileName`, which `relocateEntry` and a retry rebuild it from). A
+ * name on disk (`fileName`; `relocateEntry` keeps a saved file's own name, `storedName`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
@@ -672,8 +672,8 @@ function afterLaunch(task: () => void) {
 
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
- * on-disk filename scheme is owned here (`fileName` for audio, `cover.jpg` for the
- * cover), so the (connectionId, libraryId, path, fileName) → live-uri mapping lives
+ * on-disk filename scheme is owned here (`fileName` for audio, kept as each saved file
+ * already has it by `storedName`; `cover.jpg` for the cover), so the (connectionId, libraryId, path, fileName) → live-uri mapping lives
  * here too; `engine.localUri` supplies the container-current absolute uri (native) or
  * the virtual cache url (web). Recomputing from the entry's own connection id is also
  * what carries a download across the identity migration, which rewrites `connectionId`
@@ -687,7 +687,7 @@ function relocateEntry(e: DownloadEntry): DownloadEntry {
   const { connectionId, libraryId, path } = e;
   const files = e.manifest.files.map((f, i) => ({
     ...f,
-    localUri: resolve(connectionId, libraryId, path, fileName(i, f.relPath)),
+    localUri: resolve(connectionId, libraryId, path, storedName(i, f) ?? fileName(i, f.relPath)),
   }));
   const coverUri = e.manifest.coverUri
     ? resolve(connectionId, libraryId, path, 'cover.jpg')
@@ -699,11 +699,29 @@ function isAbort(e: unknown): boolean {
   return e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message));
 }
 
-/** Sanitized destination filename for a file index, keeping its extension. */
+/**
+ * Sanitized destination filename for a file index, keeping its extension, except that a
+ * `.mka` is saved as `.mp3`: a server with ffmpeg serves an MP3-in-Matroska file as a
+ * lossless MP3 stream copy at the same url, and iOS AVFoundation picks a local file's type by its
+ * extension, so the bytes must not land under `.mka`. Unconditional: raw Matroska from an
+ * older server plays on iOS under no name, and Android's ExoPlayer sniffs the bytes.
+ */
 function fileName(index: number, relPath: string): string {
   const dot = relPath.lastIndexOf('.');
   const ext = dot > relPath.lastIndexOf('/') ? relPath.slice(dot) : '';
-  return `${index}${ext}`;
+  return `${index}${ext.toLowerCase() === '.mka' ? '.mp3' : ext}`;
+}
+
+/**
+ * The name a saved file already has on disk, read from its stored uri, when it is one
+ * `fileName` could have given this index (`<index>` plus an optional extension). Relocation
+ * keeps it, so a download saved under an older naming rule (an Android 2.4.x `0.mka`)
+ * still resolves; anything else (no stored uri, another shape) falls back to `fileName`.
+ */
+function storedName(index: number, f: DownloadedFile): string | undefined {
+  const name = f.localUri.slice(f.localUri.lastIndexOf('/') + 1);
+  const m = /^(\d+)(\.[^./:?#]+)?$/.exec(name);
+  return m?.[1] === String(index) ? name : undefined;
 }
 
 async function runQueue() {

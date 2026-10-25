@@ -370,6 +370,91 @@ describe('fileName extension handling (observed via the relocated uri)', () => {
     // 'a.b/track' - the dot precedes the last slash, so it is not an extension.
     expect(await relocatedNameFor('a.b/track')).toBe('0');
   });
+
+  it("names a Matroska file '.mp3' (the server streams MP3-in-MKA as MP3; iOS goes by the extension)", async () => {
+    expect(await relocatedNameFor('A/B/track.mka')).toBe('0.mp3');
+    expect(await relocatedNameFor('A/B/TRACK.MKA')).toBe('0.mp3');
+  });
+
+  it('leaves every other extension as it is', async () => {
+    expect(await relocatedNameFor('A/B/track.m4b')).toBe('0.m4b');
+    expect(await relocatedNameFor('A/B/track.MP3')).toBe('0.MP3');
+    expect(await relocatedNameFor('A/B/track.flac')).toBe('0.flac');
+  });
+});
+
+describe('relocateEntry keeps a saved file its own name', () => {
+  async function relocated(files: { relPath: string; localUri: string }[]): Promise<string[]> {
+    const entry = downloadedEntry();
+    entry.manifest.files = files;
+    const key = downloadKey('c1', 2, 'A/Book');
+    await seed({ [key]: entry });
+    await useDownloads.getState().hydrate();
+    return useDownloads.getState().entries[key]?.manifest.files.map((f) => f.localUri) ?? [];
+  }
+
+  it("an existing '.mka' download (saved before the '.mp3' rule) still resolves to its file", async () => {
+    expect(
+      await relocated([
+        { relPath: 'A/Book/01.mka', localUri: 'file:///old/root/c1/2/A%2FBook/0.mka' },
+        { relPath: 'A/Book/02.mka', localUri: 'https://host/_offline/c1/2/A%2FBook/1.mka' },
+      ]),
+    ).toEqual(['live:c1:2:A/Book:0.mka', 'live:c1:2:A/Book:1.mka']);
+  });
+
+  it('keeps the stored name of a non-mka file too (same as fileName gives)', async () => {
+    expect(
+      await relocated([{ relPath: 'A/Book/01.m4a', localUri: 'file:///old/root/0.m4a' }]),
+    ).toEqual(['live:c1:2:A/Book:0.m4a']);
+  });
+
+  it("falls back to fileName when the stored name is not this index's", async () => {
+    expect(
+      await relocated([
+        { relPath: 'A/Book/01.mka', localUri: 'file:///old/root/3.mka' },
+        { relPath: 'A/Book/02.mka', localUri: 'file:///old/root/track.mka' },
+        { relPath: 'A/Book/03.mka', localUri: '' },
+      ]),
+    ).toEqual(['live:c1:2:A/Book:0.mp3', 'live:c1:2:A/Book:1.mp3', 'live:c1:2:A/Book:2.mp3']);
+  });
+});
+
+describe('a new download names each file by fileName', () => {
+  it("saves a '.mka' track as '<i>.mp3' and every other file under its own extension", async () => {
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      streamUrl: (_lib: number, p: string) => `stream:${p}`,
+    } as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    const book = makeBook({
+      files: ['01.mka', '02.m4a', '03.mp3'].map((n, i) => ({
+        rel_path: `A/Book/${n}`,
+        seq: i,
+        duration: 60,
+        format: n.slice(3),
+        size: 100,
+      })),
+    });
+    useDownloads.getState().download('c1', 2, book);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const audio = mockEngine.downloadFile.mock.calls.filter((c) => c[3] !== 'cover.jpg');
+    expect(audio.map((c) => [c[3], c[4]])).toEqual([
+      ['0.mp3', 'stream:A/Book/01.mka'],
+      ['1.m4a', 'stream:A/Book/02.m4a'],
+      ['2.mp3', 'stream:A/Book/03.mp3'],
+    ]);
+    const e = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+    expect(e?.status).toBe('downloaded');
+    expect(e?.manifest.files.map((f) => f.localUri)).toEqual([
+      'live:c1:2:A/Book:0.mp3',
+      'live:c1:2:A/Book:1.m4a',
+      'live:c1:2:A/Book:2.mp3',
+    ]);
+  });
 });
 
 describe('hydrate pruning', () => {
