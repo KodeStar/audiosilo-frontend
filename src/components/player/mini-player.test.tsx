@@ -229,4 +229,29 @@ describe('MiniPlayer while an episode is fetched', () => {
       screen.getByText(`inset ${16 + MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP + FETCH_STRIP_HEIGHT}`),
     ).toBeTruthy();
   });
+
+  it('reserves the measured stack once it has laid out (a strip that wraps still clears)', async () => {
+    useEpisodeFetch.setState({ pending: PENDING });
+    function Probe() {
+      const inset = useMiniPlayerInset();
+      const { Text } = jest.requireActual('react-native');
+      return <Text>{`inset ${inset}`}</Text>;
+    }
+    await render(<Probe />);
+    // A 90-tall strip (with its gap) over the 56 card: the card's top edge sits at
+    // bar + gap + 90 + 56 from the window's bottom.
+    const bar = 64;
+    await act(async () =>
+      useShellMetrics.setState({
+        edges: { bar, mini: bar + MINI_PLAYER_GAP + 90 + MINI_PLAYER_HEIGHT },
+      }),
+    );
+    expect(screen.getByText(`inset ${16 + MINI_PLAYER_GAP + 90 + MINI_PLAYER_HEIGHT}`)).toBeTruthy();
+    // Nothing loaded or fetched: only the base padding, whatever was last measured.
+    await act(async () => {
+      useEpisodeFetch.setState({ pending: null });
+      player.usePlayer.setState({ nowPlaying: null } as never);
+    });
+    expect(screen.getByText('inset 16')).toBeTruthy();
+  });
 });

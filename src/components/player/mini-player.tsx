@@ -42,7 +42,8 @@ const BASE_CONTENT_PADDING = 16;
 /** The cover's side. */
 const COVER = 42;
 /** The episode fetch strip's card above the mini card (Bridge Phase 2d-1), with its gap:
- * what a scroll screen reserves for it beside the mini player's own height. */
+ * what a scroll screen reserves for it before the card stack has been measured (the strip
+ * wraps to more lines at a large font scale, so the measured stack wins once known). */
 export const FETCH_STRIP_HEIGHT = 58;
 
 /**
@@ -52,16 +53,24 @@ export const FETCH_STRIP_HEIGHT = 58;
  * the normal base padding when nothing is loaded, on tablet/desktop (the docked player
  * bar sits in the layout, below the page), and in the iOS 26 tab bar accessory (part
  * of the native bar, which the system already insets scroll content for).
+ *
+ * Once the floating stack (fetch strip and card) has laid out, its measured height is what
+ * it reserves (`mini` - `bar`: the gap plus the stack), so a strip that wraps at a large
+ * font scale or zoom still clears; the constants only stand in before that first layout.
  */
 export function useMiniPlayerInset(): number {
   const loaded = usePlayer((s) => s.nowPlaying != null);
   const fetching = useEpisodeFetch((s) => s.pending !== null);
+  const mini = useShellMetrics((s) => s.edges.mini);
+  const bar = useShellMetrics((s) => s.edges.bar);
   const phone = useLayout() === 'phone';
   const floating = phone && !ACCESSORY_SUPPORTED;
+  if (!floating || (!loaded && !fetching)) return BASE_CONTENT_PADDING;
+  if (mini !== undefined && bar !== undefined) return BASE_CONTENT_PADDING + (mini - bar);
   return (
     BASE_CONTENT_PADDING +
-    (floating && loaded ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0) +
-    (floating && fetching ? FETCH_STRIP_HEIGHT : 0)
+    (loaded ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0) +
+    (fetching ? FETCH_STRIP_HEIGHT : 0)
   );
 }
 
