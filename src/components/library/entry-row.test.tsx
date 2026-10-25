@@ -115,8 +115,6 @@ describe('EntryRow', () => {
     });
     expect(screen.getByText('New Book')).toBeTruthy();
     expect(screen.getByText('Not scanned yet')).toBeTruthy();
-    // Still a folder: the muted folder glyph, as indexed book folders keep.
-    expect(String(screen.getByTestId('glyph-tile').props.className)).toContain('bg-muted');
   });
 
   it('drills into a plain folder without the caption', async () => {

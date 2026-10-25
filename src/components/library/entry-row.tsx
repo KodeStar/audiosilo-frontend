@@ -45,18 +45,16 @@ export function EntryRow({
   // (title, author) goes underneath when it adds something the name doesn't.
   const title = entry.name;
   const bitrate = formatBitrate(entry.size, entry.duration);
-  const meta = entry.pending_book
+  const dirMeta = entry.pending_book
     ? t('library.entryRow.notScanned')
-    : isDir
-      ? [
-          entry.is_book && entry.title && entry.title !== entry.name ? entry.title : '',
-          entry.author,
-        ]
-          .filter(Boolean)
-          .join(' · ')
-      : `${t('library.entryRow.duration', { value: formatDurationFull(entry.duration) })}${
-          bitrate ? `   ${t('library.entryRow.bitrate', { value: bitrate })}` : ''
-        }`;
+    : [entry.is_book && entry.title && entry.title !== entry.name ? entry.title : '', entry.author]
+        .filter(Boolean)
+        .join(' · ');
+  const meta = isDir
+    ? dirMeta
+    : `${t('library.entryRow.duration', { value: formatDurationFull(entry.duration) })}${
+        bitrate ? `   ${t('library.entryRow.bitrate', { value: bitrate })}` : ''
+      }`;
 
   // The heart must NOT be inside the Link: a nested press bubbles to the Link's
   // anchor on web and navigates into the row. So the navigable area (icon + text

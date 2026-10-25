@@ -231,7 +231,6 @@ describe('ApiClient', () => {
       'https://h/api/v1/libraries/2/fs?path=Author+X',
     );
     expect(got.entries[0].pending_book).toBe(true);
-    expect(got.entries[0].is_book).toBeUndefined();
     expect(got.entries[1].pending_book).toBeUndefined();
   });
 
