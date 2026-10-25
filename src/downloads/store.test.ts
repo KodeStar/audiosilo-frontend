@@ -426,6 +426,7 @@ describe('relocateEntry keeps a saved file its own name', () => {
     disk = new Set(names.map(at));
     mockEngine.localUri = jest.fn(fileUri);
     mockEngine.fileExists.mockImplementation(async (uri: string) => disk.has(uri));
+    renameWorks();
   }
   const renames = () => mockEngine.renameFile?.mock.calls ?? [];
   function renameWorks() {
@@ -439,9 +440,9 @@ describe('relocateEntry keeps a saved file its own name', () => {
   }
 
   it("an existing '.mka' download still resolves to its file on Android and the web", async () => {
+    renameWorks();
     for (const os of ['android', 'web'] as const) {
       Platform.OS = os;
-      renameWorks();
       expect(
         await relocated([
           { relPath: 'A/Book/01.mka', localUri: 'file:///old/root/c1/2/A%2FBook/0.mka' },
@@ -473,7 +474,6 @@ describe('relocateEntry keeps a saved file its own name', () => {
   it('keeps the name across launches on Android (the next hydrate reads the persisted uri back)', async () => {
     Platform.OS = 'android';
     onDisk('0.mka');
-    renameWorks();
     expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
       at('0.mka'),
     ]);
@@ -485,7 +485,6 @@ describe('relocateEntry keeps a saved file its own name', () => {
   it("renames an old '<i>.mka' to '<i>.mp3' on disk on iOS, saves it, and leaves it there next launch", async () => {
     Platform.OS = 'ios';
     onDisk('0.mka', '1.m4a');
-    renameWorks();
     expect(
       await relocated([
         { relPath: 'A/Book/01.mka', localUri: at('0.mka') },
@@ -522,7 +521,6 @@ describe('relocateEntry keeps a saved file its own name', () => {
   it("finds a file an earlier launch renamed before it saved the registry ('0.mka' listed, '0.mp3' on disk)", async () => {
     Platform.OS = 'ios';
     onDisk('0.mp3');
-    renameWorks();
     expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
       at('0.mp3'),
     ]);
@@ -533,6 +531,7 @@ describe('relocateEntry keeps a saved file its own name', () => {
   it('keeps an iOS .mka name where the engine cannot rename', async () => {
     Platform.OS = 'ios';
     onDisk('0.mka');
+    mockEngine.renameFile = undefined;
     expect(await relocated([{ relPath: 'A/Book/01.mka', localUri: at('0.mka') }])).toEqual([
       at('0.mka'),
     ]);

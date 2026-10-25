@@ -1,6 +1,7 @@
 // An in-memory file tree standing in for expo-file-system's File/Directory (the calls the
-// engine's `moveConnection` makes: exists, list, move, delete, name), with the module's move
-// rule: into an EXISTING directory it lands inside it, else it takes the destination's name.
+// engine's `moveConnection` and `renameFile` make: exists, list, move, delete, name,
+// parentDirectory), with the module's move rule: into an EXISTING directory it lands
+// inside it, else it takes the destination's name.
 const mockTree = new Map<string, 'dir' | string>(); // uri -> 'dir' or file content
 const mockFailMove = { uri: null as string | null };
 jest.mock('expo-file-system', () => {
@@ -17,6 +18,9 @@ jest.mock('expo-file-system', () => {
     }
     get name() {
       return leaf(this.uri);
+    }
+    get parentDirectory() {
+      return new MockDirectory(this.uri.slice(0, this.uri.lastIndexOf('/')));
     }
     delete() {
       for (const k of [...mockTree.keys()]) {

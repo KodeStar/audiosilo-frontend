@@ -161,7 +161,7 @@ export const engine: DownloadEngine = {
   async renameFile(localUri, toName) {
     try {
       const from = new File(localUri);
-      const to = new File(localUri.slice(0, localUri.lastIndexOf('/') + 1) + toName);
+      const to = new File(from.parentDirectory, toName);
       if (!from.exists || to.exists) return false;
       await from.move(to);
       return to.exists;

@@ -431,8 +431,7 @@ function chaptersRefresh(
  * in natural order, "2-" before "10-"): the chapters carry the order every queue over the
  * download plays them in (`bookFileSpecs`, each file found by its path:
  * `localFromManifest`), and `files` itself never moves, since a file's index there is its
- * name on disk (`fileName`; `relocateEntry` keeps a saved file's own name, `storedName`,
- * renaming only an iOS `<i>.mka` to `<i>.mp3`). A
+ * name on disk (`fileName`; `relocateEntry` keeps a saved file's own name, `storedName`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
