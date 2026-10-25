@@ -165,6 +165,43 @@ describe('BooksMode', () => {
     });
   });
 
+  /** The chip row's host elements and texts, in order. */
+  type Node = { props?: Record<string, unknown>; children?: (Node | string)[] } | string;
+  function rowOrder(): string[] {
+    const out: string[] = [];
+    const walk = (n: Node) => {
+      if (typeof n === 'string') return void out.push(n);
+      const name = n.props?.testID ?? n.props?.accessibilityLabel;
+      if (typeof name === 'string') out.push(name);
+      n.children?.forEach(walk);
+    };
+    walk(screen.getByTestId('chip-row') as unknown as Node);
+    return out;
+  }
+  const firstAt = (order: string[], re: RegExp) => order.findIndex((n) => re.test(n));
+
+  // PLAYER-10: at the end of a long row, Clear and the chosen genre were off-screen at 390.
+  it('leads the row with Clear and the chosen genre while a filter is on', async () => {
+    mockWhole.books = [{ ...book('Dune', 20 * H), genres: ['Sci-Fi'] }, book('Emma')];
+    mockParams = { genre: 'Sci-Fi' };
+    await mount();
+    const order = rowOrder();
+    const clear = firstAt(order, /^books-clear-filters$/);
+    const genre = firstAt(order, /^Genre: Sci-Fi/);
+    const status = firstAt(order, /^Not started/);
+    expect(clear).toBeGreaterThanOrEqual(0);
+    expect(clear).toBeLessThan(genre);
+    expect(genre).toBeLessThan(status);
+  });
+
+  it('keeps an unchosen genre picker at the end, and no Clear without a filter', async () => {
+    mockWhole.books = [{ ...book('Dune', 20 * H), genres: ['Sci-Fi'] }, book('Emma')];
+    await mount();
+    expect(screen.queryByTestId('books-clear-filters')).toBeNull();
+    const order = rowOrder();
+    expect(firstAt(order, /^Genre$/)).toBeGreaterThan(firstAt(order, /^Long/));
+  });
+
   it('files the title order under letter heads', async () => {
     mockParams = { sort: 'title' };
     await mount();
