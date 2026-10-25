@@ -105,7 +105,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       // rebuilds), which leaves the persisted absolute uris stale even though the
       // files are still on disk. Without this the existence check below fails and
       // the book is dropped *and deleted* - the download vanishes after a rebuild.
-      const e = relocateEntry(raw);
+      const e = await relocateEntry(raw);
       // Every file the entry lists must still be on disk (`reviveEntry` has the rules).
       const allPresent =
         e.manifest.files.length > 0 &&
@@ -431,7 +431,8 @@ function chaptersRefresh(
  * in natural order, "2-" before "10-"): the chapters carry the order every queue over the
  * download plays them in (`bookFileSpecs`, each file found by its path:
  * `localFromManifest`), and `files` itself never moves, since a file's index there is its
- * name on disk (`fileName`; `relocateEntry` keeps a saved file's own name, `storedName`). A
+ * name on disk (`fileName`; `relocateEntry` keeps a saved file's own name, `storedName`,
+ * renaming only an iOS `<i>.mka` to `<i>.mp3`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.
@@ -678,26 +679,47 @@ function afterLaunch(task: () => void) {
  * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
  * is also what carries a download across the identity migration, which rewrites
  * `connectionId` but not the stored uris (and moves the files on native; the web engine
- * finds them under the legacy id, `legacyIdOf`). A no-op only for an engine without
- * `localUri` (no offline storage).
+ * finds them under the legacy id, `legacyIdOf`). On iOS an old `<i>.mka` is renamed to
+ * `<i>.mp3` on the way (`playableName`). A no-op only for an engine without `localUri`
+ * (no offline storage).
  */
-function relocateEntry(e: DownloadEntry): DownloadEntry {
+async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   const resolve = engine.localUri;
   if (!resolve) return e;
   const { connectionId, libraryId, path } = e;
-  const files = e.manifest.files.map((f, i) => ({
-    ...f,
-    localUri: resolve(
-      connectionId,
-      libraryId,
-      path,
-      storedName(i, f.localUri) ?? fileName(i, f.relPath),
-    ),
-  }));
-  const coverUri = e.manifest.coverUri
-    ? resolve(connectionId, libraryId, path, 'cover.jpg')
-    : e.manifest.coverUri;
+  const at = (name: string) => resolve(connectionId, libraryId, path, name);
+  const files = await Promise.all(
+    e.manifest.files.map(async (f, i) => {
+      const name = storedName(i, f.localUri) ?? fileName(i, f.relPath);
+      return { ...f, localUri: at(await playableName(i, name, at)) };
+    }),
+  );
+  const coverUri = e.manifest.coverUri ? at('cover.jpg') : e.manifest.coverUri;
   return { ...e, manifest: { ...e.manifest, files, coverUri } };
+}
+
+/**
+ * The name a saved file should go by now: on iOS, a `<i>.mka` an older app saved (MP3
+ * bytes from a server that remuxes, or raw Matroska iOS can't play under any name) is
+ * renamed on disk to the `<i>.mp3` `fileName` gives it today, so it plays after the
+ * update. One a launch already renamed before the registry was saved is found under the
+ * new name. Anything that fails keeps the old name: the file is never lost. Elsewhere
+ * (and for every other name) the name is kept as it is.
+ */
+async function playableName(
+  index: number,
+  name: string,
+  at: (name: string) => string,
+): Promise<string> {
+  const want = fileName(index, name);
+  if (want === name || !engine.renameFile) return name;
+  const from = at(name);
+  try {
+    if (await engine.fileExists(from)) return (await engine.renameFile(from, want)) ? want : name;
+    return (await engine.fileExists(at(want))) ? want : name;
+  } catch {
+    return name;
+  }
 }
 
 function isAbort(e: unknown): boolean {
@@ -705,17 +727,17 @@ function isAbort(e: unknown): boolean {
 }
 
 /**
- * Sanitized destination filename for a file index, keeping its extension, except that a
- * `.mka` is saved as `.mp3`: a server with ffmpeg serves an MP3-in-Matroska file as a
- * lossless MP3 stream copy at the same url, and iOS AVFoundation picks a local file's
- * type by its extension, so the bytes must not land under `.mka`. Unconditional: raw
- * Matroska from an older server plays on iOS under no name, and Android's ExoPlayer
- * sniffs the bytes.
+ * Sanitized destination filename for a file index, keeping its extension, except that on
+ * iOS a `.mka` is saved as `.mp3`: a server with ffmpeg serves an MP3-in-Matroska file as
+ * a lossless MP3 stream copy at the same url, and AVFoundation picks a local file's type
+ * by its extension, so the bytes must not land under `.mka` there (raw Matroska from an
+ * older server plays on iOS under no name). Android's Media3 sniffs the bytes and the web
+ * plays by Content-Type, so they keep `.mka` and raw Matroska is never mislabelled.
  */
 function fileName(index: number, relPath: string): string {
   const dot = relPath.lastIndexOf('.');
   const ext = dot > relPath.lastIndexOf('/') ? relPath.slice(dot) : '';
-  return `${index}${ext.toLowerCase() === '.mka' ? '.mp3' : ext}`;
+  return `${index}${Platform.OS === 'ios' && ext.toLowerCase() === '.mka' ? '.mp3' : ext}`;
 }
 
 /**

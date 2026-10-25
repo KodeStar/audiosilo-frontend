@@ -147,3 +147,27 @@ describe('engine.native moveConnection', () => {
     expect(files()).toEqual({ 'srv/1/A-1/0.mp3': 'a' });
   });
 });
+
+describe('engine.native renameFile', () => {
+  const book = `${ROOT}/srv/1/Book-abc`;
+
+  it('renames a stored file in its folder', async () => {
+    seed({ 'srv/1/Book-abc/0.mka': 'mp3 bytes' });
+    await expect(engine.renameFile!(`${book}/0.mka`, '0.mp3')).resolves.toBe(true);
+    expect(files()).toEqual({ 'srv/1/Book-abc/0.mp3': 'mp3 bytes' });
+  });
+
+  it('never replaces a file already under the new name', async () => {
+    seed({ 'srv/1/Book-abc/0.mka': 'old', 'srv/1/Book-abc/0.mp3': 'new' });
+    await expect(engine.renameFile!(`${book}/0.mka`, '0.mp3')).resolves.toBe(false);
+    expect(files()).toEqual({ 'srv/1/Book-abc/0.mka': 'old', 'srv/1/Book-abc/0.mp3': 'new' });
+  });
+
+  it('resolves false when the file is missing or cannot move, leaving it as it was', async () => {
+    seed({ 'srv/1/Book-abc/1.mka': 'x' });
+    await expect(engine.renameFile!(`${book}/0.mka`, '0.mp3')).resolves.toBe(false);
+    mockFailMove.uri = `${book}/1.mka`;
+    await expect(engine.renameFile!(`${book}/1.mka`, '1.mp3')).resolves.toBe(false);
+    expect(files()).toEqual({ 'srv/1/Book-abc/1.mka': 'x' });
+  });
+});

@@ -189,6 +189,13 @@ export interface DownloadEngine {
    * held the launch).
    */
   moveConnection?(fromId: string, toId: string): Promise<void>;
+  /**
+   * Rename a stored file in place to `toName` (same folder), never over an existing file.
+   * Resolves whether it moved; false (or a throw) leaves the file where it was. Used on
+   * iOS to give an old `<i>.mka` download its `<i>.mp3` name (`playableName` in store.ts).
+   * Omitted on the web, which never renames.
+   */
+  renameFile?(localUri: string, toName: string): Promise<boolean>;
   /** Total bytes used by all downloads. */
   totalBytesUsed(): Promise<number>;
   /** How much room there is (see {@link StorageEstimate}), or null when the platform

@@ -1033,10 +1033,12 @@ media GETs only.
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
   - without it a stale path fails the existence check and the book is dropped *and
   deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
-  `engine.localUri` in agreement. `fileName` saves a `.mka` as `<i>.mp3` (the server
-  streams MP3-in-MKA as MP3 and iOS types a local file by its extension), so
-  `relocateEntry` keeps each saved file's own name (`storedName`, from its stored uri)
-  and a download saved as `0.mka` before the rule still resolves. **Files are stored
+  `engine.localUri` in agreement. On iOS only, `fileName` saves a `.mka` as `<i>.mp3`
+  (the server streams MP3-in-MKA as MP3 and AVFoundation types a local file by its
+  extension; Android's Media3 sniffs, the web goes by Content-Type, so both keep `.mka`).
+  `relocateEntry` keeps each saved file's own name (`storedName`, from its stored uri),
+  except that on iOS an old `<i>.mka` is renamed on disk to `<i>.mp3` (`playableName`,
+  `engine.renameFile`; a failed rename keeps the old name). **Files are stored
   per-connection**: native `downloads/<connectionId>/<libraryId>/<slug>/`, web Cache API
   `/_offline/<connectionId>/<libraryId>/<slug>/`; the registry keys on
   `downloadKey(connectionId, libraryId, path)`. Pre-scoping downloads (from before the
