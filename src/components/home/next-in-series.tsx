@@ -127,7 +127,11 @@ const SKELETON_TILES = [0, 1, 2, 3, 4, 5];
 /** A row of cover placeholders, the shape a shelf takes while it loads. */
 export function ShelfSkeleton() {
   return (
-    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View
+      testID="shelf-skeleton"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
       <ShelfRow
         data={SKELETON_TILES}
         keyExtractor={(i) => String(i)}

@@ -46,17 +46,24 @@ type LibraryGroupLike = Pick<LibrariesOfServer, 'connectionId' | 'status'> & {
  * (Next in your series and what it asks `/next` about, the smart shelves, Recently
  * finished) hold books only. Progress carries no `episode`, so a row is told by its
  * library's kind. While a server's list is loading its rows are not yet known to be
- * books (no `/next` is asked for an episode meanwhile); a server whose list failed is
- * read as books (an older server has no podcast libraries).
+ * books (no `/next` is asked for an episode meanwhile): `pending` says so, so a shelf can
+ * hold its place with a skeleton rather than vanish and come back. A server whose list
+ * failed is read as books (an older server has no podcast libraries).
  */
-export function bookRowTest(groups: readonly LibraryGroupLike[]): (at: BookAt) => boolean {
+export function bookRowTest(groups: readonly LibraryGroupLike[]): {
+  isBook: (at: BookAt) => boolean;
+  pending: (at: BookAt) => boolean;
+} {
   const podcasts = new Map<string, Set<number> | null>();
   for (const g of groups) {
     podcasts.set(g.connectionId, g.status === 'loading' ? null : podcastLibraryIds(g.libraries));
   }
-  return (at) => {
-    const libs = podcasts.get(at.connectionId);
-    return !!libs && !libs.has(at.libraryId);
+  return {
+    isBook: (at) => {
+      const libs = podcasts.get(at.connectionId);
+      return !!libs && !libs.has(at.libraryId);
+    },
+    pending: (at) => podcasts.get(at.connectionId) === null,
   };
 }
 

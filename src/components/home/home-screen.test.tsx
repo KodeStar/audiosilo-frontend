@@ -484,6 +484,67 @@ describe("HomeScreen's book shelves leave episodes out", () => {
     expect(askedPaths()).toEqual(['Serial/S1E2.mp3', 'Book']);
   });
 
+  it('holds the book shelves with skeletons while the libraries load, then fills them', async () => {
+    mockCaps = { next_book: true };
+    mockNext = { answers: [], supported: true, isLoading: false };
+    mockGroups = [{ connectionId: 'a', libraries: [], status: 'loading' }];
+    // A short recent book: with the books in progress, two smart shelves.
+    mockRecent.books = [
+      {
+        connectionId: 'a',
+        library_id: 1,
+        rel_path: 'Short',
+        title: 'Short',
+        author: 'A',
+        duration: 3600,
+        added_at: '2026-01-01T00:00:00Z',
+      },
+    ];
+    mockProgress.progress = [
+      started('Now', '2026-10-05T00:00:00Z'),
+      started('Book', '2026-10-04T00:00:00Z'),
+      { ...started('Done', '2026-10-03T00:00:00Z'), finished: true, position: 1000 },
+    ];
+    const client = new QueryClient();
+    const view = await render(
+      <QueryClientProvider client={client}>
+        <HomeScreen />
+      </QueryClientProvider>,
+    );
+    await settleFlashList();
+    // Their rows are not yet known to be books: each shelf keeps its place.
+    expect(screen.getByText('Next in your series')).toBeTruthy();
+    expect(screen.getByText('Smart shelves')).toBeTruthy();
+    expect(screen.getByText('Recently finished')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Done/ })).toBeNull();
+    // Next in your series, Smart shelves and Recently finished (Continue listening has rows).
+    expect(screen.getAllByTestId('shelf-skeleton', { includeHiddenElements: true })).toHaveLength(3);
+
+    mockGroups = [{ connectionId: 'a', libraries: [{ id: 1, kind: 'books' }], status: 'ready' }];
+    await view.rerender(
+      <QueryClientProvider client={client}>
+        <HomeScreen />
+      </QueryClientProvider>,
+    );
+    await settleFlashList();
+    expect(screen.getByText('Smart shelves')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Done/ })).toBeTruthy();
+    // Nothing next to suggest once loaded: that shelf goes, and no skeleton is left.
+    expect(screen.queryByText('Next in your series')).toBeNull();
+    expect(screen.queryByTestId('shelf-skeleton', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('holds no shelf for rows of a server whose libraries have loaded as podcasts', async () => {
+    mockProgress.progress = [
+      episode('Serial/S1E2.mp3'),
+      episode('Daily/Weather.mp3', { finished: true, position: 1000 }),
+    ];
+    await mountHome();
+    expect(screen.queryByText('Smart shelves')).toBeNull();
+    expect(screen.queryByText('Recently finished')).toBeNull();
+    expect(screen.queryByTestId('shelf-skeleton', { includeHiddenElements: true })).toBeNull();
+  });
+
   it('never suggests an episode a /next answer leads to', async () => {
     mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
     mockNext = {
