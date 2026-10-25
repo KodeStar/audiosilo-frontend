@@ -1,9 +1,10 @@
-import { Image, type ImageSource } from 'expo-image';
+import type { ImageSource } from 'expo-image';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { clothColor, titleMonogram } from '@/lib/monogram';
 
+import { CoverImage } from './cover-image';
 import { Text } from './text';
 
 /** Below this size (points) a cover has no room for its title: it shows a monogram. */
@@ -16,7 +17,8 @@ export const MONOGRAM_MAX_SIZE = 72;
  * square. A cover drawn smaller than `MONOGRAM_MAX_SIZE` (a queue thumb, the dock)
  * can't fit a title, which overflowed as clipped fragments ("d Rites Jim"), so it
  * shows the title's initials on the title's own cloth colour instead. `source`
- * accepts an authenticated expo-image source (uri + headers).
+ * accepts an authenticated expo-image source (uri + headers; the web sends none, its URLs
+ * carry the media token), drawn by `CoverImage` (in CORS mode from another origin, web).
  */
 export function Cover({
   source,
@@ -47,7 +49,7 @@ export function Cover({
       style={size ? { width: size, height: size } : undefined}
     >
       {source && !failed ? (
-        <Image
+        <CoverImage
           source={source}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"

@@ -66,7 +66,17 @@ describe('hasAirPlayPicker', () => {
 // end's 'pause' before 'ended'.
 class FakeAudio {
   static all: FakeAudio[] = [];
-  src = '';
+  /** Every `src` set, with the `crossOrigin` in force when it was. */
+  srcLog: { src: string; crossOrigin: string | null }[] = [];
+  crossOrigin: string | null = null;
+  private source = '';
+  get src() {
+    return this.source;
+  }
+  set src(value: string) {
+    this.source = value;
+    this.srcLog.push({ src: value, crossOrigin: this.crossOrigin });
+  }
   preload = '';
   volume = 1;
   currentTime = 0;
@@ -985,7 +995,8 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
     }
   });
 
-  it("plays another server's stream unboosted, on a fresh element, never through the graph", async () => {
+  // server#201: a stream from another origin loads in CORS mode, so Web Audio hears it.
+  it("boosts another server's stream too: it loads in CORS mode", async () => {
     await svc.configure(config(true));
     await svc.load(directTracks, 0, 0);
     await svc.play();
@@ -993,11 +1004,64 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
     expect(routeOf(routed)).toBe('compressor');
     const foreign: PlaybackTrack[] = [{ id: 'x', url: 'https://other/stream?path=x', title: 'X' }];
     await svc.load(foreign, 0, 0);
+    expect(el()).toBe(routed);
+    expect(routed.src).toBe('https://other/stream?path=x');
+    expect(routed.crossOrigin).toBe('anonymous');
+    expect(routeOf(routed)).toBe('compressor');
+  });
+
+  it('plays a source Web Audio cannot hear unboosted, on a fresh element, never through the graph', async () => {
+    await svc.configure(config(true));
+    await svc.load(directTracks, 0, 0);
+    await svc.play();
+    const routed = el();
+    expect(routeOf(routed)).toBe('compressor');
+    const opaque: PlaybackTrack[] = [{ id: 'x', url: 'data:audio/mpeg;base64,AAAA', title: 'X' }];
+    await svc.load(opaque, 0, 0);
     const fresh = el();
     expect(fresh).not.toBe(routed);
-    expect(fresh.src).toBe('https://other/stream?path=x');
+    expect(fresh.src).toBe('data:audio/mpeg;base64,AAAA');
+    expect(fresh.crossOrigin).toBeNull();
     expect(routeOf(fresh)).toBe('element');
     expect(routed.src).toBe('');
+  });
+
+  it('loads the same origin, and its offline copies, with no crossOrigin, as before', async () => {
+    await svc.load(directTracks, 0, 0); // https://s, the page's own origin
+    expect(el().srcLog.at(-1)).toEqual({ src: FILE1, crossOrigin: null });
+    const local: PlaybackTrack[] = [
+      { id: 'l', url: 'https://s/web/_offline/c1/2/C/01.mp3', title: 'C', duration: 600 },
+    ];
+    await svc.load(local, 0, 0);
+    expect(el().srcLog.at(-1)).toEqual({ src: local[0].url, crossOrigin: null });
+  });
+
+  it('sets crossOrigin before src: on a load, a skip and the swap onto a downloaded copy', async () => {
+    jest.useFakeTimers();
+    try {
+      const foreign: PlaybackTrack[] = [
+        { id: 'a', url: 'https://other/a.mp3?token=k', title: 'A', duration: 600 },
+        { id: 'b', url: 'https://other/b.mp3?token=k', title: 'A', duration: 600 },
+      ];
+      await svc.load(foreign, 0, 0);
+      const a = el();
+      expect(a.srcLog.at(-1)).toEqual({ src: foreign[0].url, crossOrigin: 'anonymous' });
+      await svc.skipToTrack(1, 0);
+      expect(a.srcLog.at(-1)).toEqual({ src: foreign[1].url, crossOrigin: 'anonymous' });
+
+      // A copy on another origin swaps in, loaded in CORS mode from its first request.
+      const copy = foreign.map((t) => ({ ...t, url: t.url.replace('other', 'cdn.other') }));
+      const swap = svc.swapTo!(copy, 1, 0);
+      const pending = el();
+      expect(pending).not.toBe(a);
+      expect(pending.srcLog[0]).toEqual({ src: copy[1].url, crossOrigin: 'anonymous' });
+      pending.emit('loadedmetadata');
+      pending.readyState = 4;
+      pending.emit('canplay');
+      expect(await swap).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('never in Safari', async () => {

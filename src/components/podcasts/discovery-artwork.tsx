@@ -1,8 +1,8 @@
-import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { useOptionalApi } from '@/api/provider';
+import { CoverImage } from '@/components/ui/cover-image';
 import { Icon } from '@/components/ui/icon';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -53,7 +53,7 @@ export function DiscoveryArtwork({
       importantForAccessibility="no-hide-descendants"
     >
       {uri && !failed ? (
-        <Image
+        <CoverImage
           // A new key per try: the same URL mounted again is a new request.
           key={`${uri}#${failures}`}
           testID="discovery-artwork-image"

@@ -1,0 +1,89 @@
+import type { ImageSource } from 'expo-image';
+import { type CSSProperties, useState } from 'react';
+import { StyleSheet } from 'react-native';
+
+import { corsModeFor } from '@/lib/cors-mode';
+
+import type { CoverImageProps } from './cover-image';
+
+/** The URI of an expo-image style `source` (a string, `{ uri }`, or the first of a list). */
+function uriOf(source: CoverImageProps['source']): string | undefined {
+  if (!source) return undefined;
+  if (typeof source === 'string') return source;
+  if (typeof source === 'number') return undefined; // a bundled asset: covers are never one
+  const first = (Array.isArray(source) ? source[0] : source) as ImageSource | string | undefined;
+  return typeof first === 'string' ? first : (first?.uri ?? undefined);
+}
+
+/**
+ * Web: the cover as a plain `<img>`, absolutely filling its box like expo-image's web
+ * image, with `crossOrigin="anonymous"` when its server is another origin than the page
+ * (`corsModeFor`), so a player served elsewhere loads it in CORS mode, which the server's
+ * `cors_origins` grant (and its `Cross-Origin-Resource-Policy` no longer matters). Same
+ * origin, `blob:` and `data:` images take no attribute, as before.
+ *
+ * Lazy and decoded off the main thread; fades in over `transition` ms once loaded. Keyed
+ * by its URI, so a recycled row's new cover starts hidden again. `source.headers` are not
+ * sent: every server image URL carries the media token (`?token=`), and an `<img>` can't
+ * send headers anyway. `blurRadius` and `recyclingKey` are native concerns (the backdrop
+ * blurs with a CSS filter on the web).
+ */
+export function CoverImage({
+  source,
+  style,
+  contentFit,
+  transition,
+  onError,
+  testID,
+}: CoverImageProps) {
+  const uri = uriOf(source);
+  if (!uri) return null;
+  return (
+    <CoverImg
+      key={uri}
+      uri={uri}
+      style={style}
+      contentFit={contentFit}
+      transition={transition}
+      onError={onError}
+      testID={testID}
+    />
+  );
+}
+
+/** One URI's `<img>` (see `CoverImage`). */
+function CoverImg({
+  uri,
+  style,
+  contentFit = 'cover',
+  transition,
+  onError,
+  testID,
+}: Omit<CoverImageProps, 'source'> & { uri: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const fade = typeof transition === 'number' ? transition : (transition?.duration ?? 0);
+  const css: CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: contentFit,
+    ...(StyleSheet.flatten(style) as CSSProperties),
+    opacity: fade > 0 && !loaded ? 0 : 1,
+    transition: fade > 0 ? `opacity ${fade}ms ease-out` : undefined,
+  };
+  return (
+    <img
+      src={uri}
+      alt=""
+      crossOrigin={corsModeFor(uri, typeof location !== 'undefined' ? location : null)}
+      loading="lazy"
+      decoding="async"
+      data-testid={testID}
+      style={css}
+      onLoad={() => setLoaded(true)}
+      // expo-image's onError takes an event; the app's callers read none of it.
+      onError={() => onError?.({ error: `failed to load ${uri}` })}
+    />
+  );
+}

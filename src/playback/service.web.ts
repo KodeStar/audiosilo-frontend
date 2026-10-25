@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { routed } from '@/cast/routed-service';
+import { corsModeFor } from '@/lib/cors-mode';
 import { sameOrigin } from '@/lib/same-origin';
 
 import { supportsVoiceBoost } from './effects';
@@ -100,15 +101,28 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
   return node;
 }
 
+/** The page the player runs in (none outside a browser). */
+const page = () => (typeof location !== 'undefined' ? location : null);
+
 /**
- * Is `url` served from this page's own origin? A media element routed through Web Audio
- * whose source is cross-origin (without CORS) plays SILENCE (the spec's "outputs zeroes"
- * for a tainted source), so only a same-origin source is ever routed: the player served at
- * `/web` by the server it plays from, and the service worker's `/_offline/` copies. A
- * stream from another signed-in server plays on unboosted.
+ * The `crossOrigin` an element takes for `url`: `'anonymous'` for another origin's http(s)
+ * stream (the server a player served elsewhere plays from, a second signed-in server), so
+ * it loads in CORS mode, which the server's `cors_origins` grant; none (null) for the
+ * page's own origin, the service worker's `/_offline/` copies, `blob:` and `data:`, as
+ * before. Set before every `src`: it decides how that load is made.
+ */
+const crossOriginFor = (url: string): string | null => corsModeFor(url, page()) ?? null;
+
+/**
+ * Can Web Audio hear `url`? A media element routed through Web Audio whose source is
+ * cross-origin WITHOUT CORS plays SILENCE (the spec's "outputs zeroes" for a tainted
+ * source), so only a source that is same-origin (the player served at `/web` by the server
+ * it plays from, the service worker's `/_offline/` copies) or loaded in CORS mode (another
+ * origin's stream, `crossOriginFor`) is ever routed. Anything else (a `data:` URL) plays
+ * on unboosted.
  */
 const routable = (url: string): boolean =>
-  sameOrigin(url, typeof location !== 'undefined' ? location : undefined);
+  sameOrigin(url, page()) || corsModeFor(url, page()) !== undefined;
 
 /** A media element augmented with Safari's (non-standard) picker entry point. */
 type RoutePickerEl = { webkitShowPlaybackTargetPicker?: () => void };
@@ -170,7 +184,7 @@ class WebPlaybackService implements PlaybackService {
   /** Each element's source node. An element takes exactly ONE for its whole life (a second
    * `createMediaElementSource` throws), and once it has one its sound only comes out
    * through the graph: so it is only made while the context is running (a suspended one
-   * would silence the book) and only for a same-origin source (see `routable`). */
+   * would silence the book) and only for a source Web Audio can hear (see `routable`). */
   private sources = new Map<HTMLAudioElement, MediaElementAudioSourceNode>();
   /** Where each element's source node is connected now. */
   private routedTo = new Map<HTMLAudioElement, AudioNode>();
@@ -311,8 +325,8 @@ class WebPlaybackService implements PlaybackService {
     const track = this.tracks[index];
     if (!track) return;
     const source = sourceFor(track, positionInTrack);
-    // An element already routed through Voice Boost would play another server's stream
-    // as silence (see `routable`): give that source a fresh, unrouted element. A load
+    // An element already routed through Voice Boost would play a source Web Audio can't
+    // hear as silence (see `routable`): give that source a fresh, unrouted element. A load
     // interrupts playback anyway, so the change is inaudible.
     if (this.audio && this.sources.has(this.audio) && !routable(source.url)) {
       this.discard(this.audio);
@@ -325,6 +339,7 @@ class WebPlaybackService implements PlaybackService {
     this.pendingAutoplay = autoplay;
     const seq = ++this.loadSeq;
     this.placing = a;
+    a.crossOrigin = crossOriginFor(source.url);
     a.src = source.url;
     this.applyRate(a);
     this.routeBoost(a);
@@ -438,8 +453,8 @@ class WebPlaybackService implements PlaybackService {
   /**
    * Point `a`'s sound where the setting says: through the compressor when Voice Boost is
    * on, straight to the destination when it is off. An element is only given a source node
-   * (which it then keeps for life) while the context RUNS and its source is same-origin;
-   * until then it plays on by itself, unboosted, which is never worse than silence. An
+   * (which it then keeps for life) while the context RUNS and Web Audio can hear its
+   * source (`routable`); until then it plays on by itself, unboosted, which is never worse than silence. An
    * element that never had one stays as it is while the boost is off.
    */
   private routeBoost(a: HTMLAudioElement) {
@@ -524,6 +539,7 @@ class WebPlaybackService implements PlaybackService {
     const source = sourceFor(track, positionInTrack);
     const target = positionInTrack - source.offset; // where the element's playhead must be
     const pending = this.createAudio();
+    pending.crossOrigin = crossOriginFor(source.url);
     pending.src = source.url;
     this.applyRate(pending);
     const ready = await new Promise<boolean>((resolve) => {

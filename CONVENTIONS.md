@@ -995,8 +995,9 @@ media GETs only.
   gets its tap before it plays, switch on or off, for the current item and two ahead, because
   setting `audioMix` on a playing item is a ~1 s dropout); the web a Web Audio
   compressor/trim/limiter, never in WebKit-only browsers (choppy, ignores `playbackRate`,
-  suspends when locked) and for same-origin sources only (a cross-origin element routed through
-  Web Audio plays zeroes). **Smart speed is Android only**: `NarrationSilenceProcessor` (a
+  suspends when locked) and only for a source Web Audio can hear: same-origin, or another
+  origin's loaded in CORS mode (see "Server media loads in CORS mode on web"; a cross-origin
+  element WITHOUT CORS routed through Web Audio plays zeroes). **Smart speed is Android only**: `NarrationSilenceProcessor` (a
   vendored port of Media3 1.11.1's silence skipper; 1.5.1's keeps a quarter of the padding)
   heads `AudiosiloAudioChain` (silence → Sonic → boost, so skipped frames are book time and the
   boost's attack and release are real time). The switches reach the service as
@@ -1152,6 +1153,20 @@ media GETs only.
   `currentTime` 0 before any metadata; `service.web.ts` marks the element `placing` until
   `loadedmetadata` has made the seek (or `seeked`), so the snapshot keeps the load's position
   (a failed source keeps it too, the place Retry starts from).
+- **Server media loads in CORS mode on web** (server#201). Every cover, artwork or backdrop
+  image from a server is a `CoverImage` (`components/ui/cover-image.tsx`: expo-image on native,
+  unchanged; `cover-image.web.tsx` a plain `<img>`, since expo-image's web image takes no
+  `crossOrigin`), and the `<audio>` element sets `crossOrigin` before every `src`
+  (`service.web.ts`, a load, a skip, the download swap). Both ask `corsModeFor`
+  (`src/lib/cors-mode.ts`): `'anonymous'` for an http(s) URL on another origin than the page,
+  nothing for the page's own origin (the player at `/web`), the service worker's `_offline/`
+  copies, `blob:` and `data:`, and always nothing on native. The server answers CORS for its
+  `cors_origins` on media too (401s and 206s included), and CORS mode ignores
+  `Cross-Origin-Resource-Policy`, so a player on another site works against older servers and
+  survives the server narrowing CORP. Voice Boost routes a CORS-mode stream (Web Audio hears
+  it). The web sends no `source.headers` for an image (its URL carries `?token=`; an `<img>`
+  can't send headers). A new image from a server on the web goes through `CoverImage`, never
+  expo-image directly.
 - **The web engine's file advance is not a pause.** The element fires `pause` just before
   `ended` at a file's natural end; when another file follows, `service.web.ts` ignores it
   (the store keeps its intent through the next file's load, under the same 3 s watchdog as
