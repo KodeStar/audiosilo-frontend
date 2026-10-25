@@ -216,7 +216,7 @@ function EndCreditsBody({
         fired.current = false;
         setStarting(false);
         setCancelled(true);
-        playFailedToast(failure, t, t('upnext.playFailed', { title: next.title }));
+        playFailedToast(failure, t('upnext.playFailed', { title: next.title }));
       });
   }, [next, cid, libraryId, path, ended, t]);
 

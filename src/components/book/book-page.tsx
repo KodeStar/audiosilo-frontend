@@ -260,9 +260,7 @@ function BookPage() {
   // timeline tap or a pin jumps there (`usePlayBook`: a phone opens the player there).
   const playBook = usePlayBook();
   const play = (opts: PlayOptions) =>
-    void playBook(target, opts).catch((err) =>
-      playFailedToast(err, t, t('library.bookActions.playFailed')),
-    );
+    void playBook(target, opts).catch((err) => playFailedToast(err));
   const onJump = useLatest((jump: Jump) => play({ at: jump }));
 
   // The selected tab, held as an intent: which tabs EXIST depends on data that can arrive

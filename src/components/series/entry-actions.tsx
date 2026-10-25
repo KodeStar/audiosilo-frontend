@@ -108,9 +108,7 @@ export function EntryActionButton({
   const themed = useThemeColors();
   const { openBook } = useOpen();
   const play = usePlayBook();
-  const start = () =>
-    copy &&
-    void play(copy).catch((err) => playFailedToast(err, t, t('library.bookActions.playFailed')));
+  const start = () => copy && void play(copy).catch((err) => playFailedToast(err));
   const copy = entry.copy;
   // Only an owned book is queued (on this page's server); a copy on another server
   // opens there, so its Up next is never asked for.

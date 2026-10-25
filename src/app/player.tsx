@@ -172,7 +172,7 @@ export default function PlayerScreen() {
       .getState()
       .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined)
       .then(() => dropStartedBook(cid, libraryId, book.rel_path, path))
-      .catch((err) => playFailedToast(err, t, t('library.bookActions.playFailed')));
+      .catch((err) => playFailedToast(err));
   }, [
     cid,
     book,

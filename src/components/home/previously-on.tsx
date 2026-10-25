@@ -12,13 +12,13 @@ import { CoverWash } from '@/components/library/cover-wash';
 import { communityCredit } from '@/components/library/meta-gating';
 import { useBookCommunity } from '@/components/library/use-book-community';
 import { Attribution } from '@/components/player/companion/companion-pieces';
+import { playFailedToast } from '@/components/player/play-failed';
 import { selectIsLoaded } from '@/components/player/playing-target';
 import { startBookInPlace } from '@/components/player/start-book';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
 import { chapterLabel } from '@/lib/chapter-label';
 import { contentKeyOf } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
@@ -161,7 +161,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
       .then(() => dismiss(key))
       .catch((e: unknown) => {
         console.warn('[home] resume with overlap failed', e);
-        toast({ title: t('home.now.resumeFailed') });
+        playFailedToast(e, t('home.now.resumeFailed'));
       })
       .finally(() => setBusy(false));
   };

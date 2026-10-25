@@ -225,7 +225,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   // With a filter on, Clear leads the row, then a chosen genre or tag, so both show at
   // the row's start however narrow the page (a phone, a desktop list the Up next drawer
   // narrowed); the pickers not chosen stay at the end.
-  const chosenLabels = filtered ? labelFilters.filter(({ kind }) => !!view[kind]) : [];
+  const chosenLabels = labelFilters.filter(({ kind }) => !!view[kind]);
   const otherLabels = labelFilters.filter((f) => !chosenLabels.includes(f));
   const header = (
     <View className="gap-3 pb-4">

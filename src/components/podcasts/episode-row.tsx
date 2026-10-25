@@ -97,10 +97,7 @@ export function EpisodeRow({
   const meta = episodeMetaLine(episode, t, now);
   const marks = episodeMarks(episode, t);
 
-  const play = () =>
-    void playBook(target).catch((err) =>
-      playFailedToast(err, t, t('library.bookActions.playFailed')),
-    );
+  const play = () => void playBook(target).catch((err) => playFailedToast(err));
   const retry = () => requestEpisodeFetch(target, book, {}, { retry: true });
 
   return (

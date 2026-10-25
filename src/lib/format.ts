@@ -101,9 +101,11 @@ export function formatCountdown(seconds: number): string {
   return `${s}s`;
 }
 
+type RelativeUnit = 'second' | 'minute' | 'hour' | 'day' | 'month' | 'year';
+
 /** The units `formatRelative` counts in: below each limit (seconds), how many seconds
  * one of it is. */
-const RELATIVE_UNITS: [limit: number, secs: number, unit: Intl.RelativeTimeFormatUnit][] = [
+const RELATIVE_UNITS: [limit: number, secs: number, unit: RelativeUnit][] = [
   [60, 1, 'second'],
   [3600, 60, 'minute'],
   [86400, 3600, 'hour'],
@@ -112,27 +114,20 @@ const RELATIVE_UNITS: [limit: number, secs: number, unit: Intl.RelativeTimeForma
   [Infinity, 31536000, 'year'],
 ];
 
+/** The units whose one has its own words: "yesterday", not "1 day ago". */
+const SINGLE_WORDS: Partial<Record<RelativeUnit, 'yesterday' | 'lastMonth' | 'lastYear'>> = {
+  day: 'yesterday',
+  month: 'lastMonth',
+  year: 'lastYear',
+};
+
 /** "il y a 3 heures", "hier", "vor 2 Monaten" from our own strings (`common.ago.*`), where
  * there is no `Intl.RelativeTimeFormat` (Hermes). One day, month or year has its own words
  * ("yesterday", "last month", "last year"), as `numeric: 'auto'` says them. */
-function relativeFromStrings(n: number, unit: Intl.RelativeTimeFormatUnit, lng: string): string {
-  if (n === 1 && unit === 'day') return t('common.ago.yesterday', { lng });
-  if (n === 1 && unit === 'month') return t('common.ago.lastMonth', { lng });
-  if (n === 1 && unit === 'year') return t('common.ago.lastYear', { lng });
-  switch (unit) {
-    case 'second':
-      return t('common.ago.second', { count: n, lng });
-    case 'minute':
-      return t('common.ago.minute', { count: n, lng });
-    case 'hour':
-      return t('common.ago.hour', { count: n, lng });
-    case 'day':
-      return t('common.ago.day', { count: n, lng });
-    case 'month':
-      return t('common.ago.month', { count: n, lng });
-    default:
-      return t('common.ago.year', { count: n, lng });
-  }
+function relativeFromStrings(n: number, unit: RelativeUnit, lng: string): string {
+  const single = n === 1 ? SINGLE_WORDS[unit] : undefined;
+  if (single) return t(`common.ago.${single}`, { lng });
+  return t(`common.ago.${unit}`, { count: n, lng });
 }
 
 /** "now" / "3 days ago" / "2 months ago" - coarse relative time from an RFC3339

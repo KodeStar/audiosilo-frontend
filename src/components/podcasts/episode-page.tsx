@@ -143,9 +143,7 @@ function EpisodeBody({
 
   const playBook = usePlayBook();
   const play = (opts: PlayOptions) =>
-    void playBook(target, opts).catch((err) =>
-      playFailedToast(err, t, t('library.bookActions.playFailed')),
-    );
+    void playBook(target, opts).catch((err) => playFailedToast(err));
   const onJump = useLatest((jump: Jump) => play({ at: jump }));
 
   const chapters = useMemo(() => chapterData?.chapters ?? [], [chapterData]);

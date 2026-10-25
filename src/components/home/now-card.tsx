@@ -22,6 +22,7 @@ import {
   metaEnabledFor,
   splitCharacters,
 } from '@/components/library/meta-gating';
+import { playFailedToast } from '@/components/player/play-failed';
 import { selectIsLoaded } from '@/components/player/playing-target';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { useBookSpeed } from '@/components/player/use-time-left';
@@ -29,7 +30,6 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
 import { chapterLabel, contradictedTitle, resumeChapterLabel } from '@/lib/chapter-label';
 import { formatDayMonth, formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -144,7 +144,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const onResume = () =>
     void play(at, { toggle: true, viaBookPage: true }).catch((e: unknown) => {
       console.warn('[home] resume failed', e);
-      toast({ title: t('home.now.resumeFailed') });
+      playFailedToast(e, t('home.now.resumeFailed'));
     });
   const resumeLabel = playing
     ? t('home.now.pause')

@@ -20,35 +20,43 @@ beforeEach(() => {
 describe('playFailedReason', () => {
   it('names the server that cannot be reached', () => {
     const err = new PlaybackStartError('offline', { connectionId: 'c1' });
-    expect(playFailedReason(err, t)).toBe("Can't reach Hearthside right now.");
+    expect(playFailedReason(err)).toBe("Can't reach Hearthside right now.");
   });
 
   it("says the audio didn't load", () => {
-    expect(playFailedReason(new PlaybackStartError('audio'), t)).toBe(
+    expect(playFailedReason(new PlaybackStartError('audio'))).toBe(
       "Its audio didn't load from the server.",
     );
   });
 
   it('has nothing to add for an unknown failure, another error, or a server since removed', () => {
-    expect(playFailedReason(new PlaybackStartError('unknown'), t)).toBeUndefined();
-    expect(playFailedReason(new Error('boom'), t)).toBeUndefined();
-    expect(playFailedReason(undefined, t)).toBeUndefined();
+    expect(playFailedReason(new PlaybackStartError('unknown'))).toBeUndefined();
+    expect(playFailedReason(new Error('boom'))).toBeUndefined();
+    expect(playFailedReason(undefined)).toBeUndefined();
     const gone = new PlaybackStartError('offline', { connectionId: 'c9' });
-    expect(playFailedReason(gone, t)).toBeUndefined();
+    expect(playFailedReason(gone)).toBeUndefined();
   });
 });
 
 describe('playFailedToast', () => {
   it('toasts the title with the reason as its description', () => {
-    playFailedToast(new PlaybackStartError('audio'), t, 'Couldn’t start this book.');
+    playFailedToast(new PlaybackStartError('audio'), 'Couldn’t start this book.');
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Couldn’t start this book.',
       description: "Its audio didn't load from the server.",
     });
   });
 
+  it('says it could not start this book when no title is given', () => {
+    playFailedToast(new PlaybackStartError('unknown'));
+    expect(mockToast).toHaveBeenCalledWith({
+      title: t('library.bookActions.playFailed'),
+      description: undefined,
+    });
+  });
+
   it('toasts the title alone when there is no reason', () => {
-    playFailedToast(new Error('boom'), t, 'Couldn’t start this book.');
+    playFailedToast(new Error('boom'), 'Couldn’t start this book.');
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Couldn’t start this book.',
       description: undefined,

@@ -61,12 +61,14 @@ export const FETCH_STRIP_HEIGHT = 58;
 export function useMiniPlayerInset(): number {
   const loaded = usePlayer((s) => s.nowPlaying != null);
   const fetching = useEpisodeFetch((s) => s.pending !== null);
-  const mini = useShellMetrics((s) => s.edges.mini);
-  const bar = useShellMetrics((s) => s.edges.bar);
+  // The measured stack (`mini` - `bar`), so a moved bar alone re-renders no consumer.
+  const stack = useShellMetrics(({ edges: { mini, bar } }) =>
+    mini !== undefined && bar !== undefined ? mini - bar : undefined,
+  );
   const phone = useLayout() === 'phone';
   const floating = phone && !ACCESSORY_SUPPORTED;
   if (!floating || (!loaded && !fetching)) return BASE_CONTENT_PADDING;
-  if (mini !== undefined && bar !== undefined) return BASE_CONTENT_PADDING + (mini - bar);
+  if (stack !== undefined) return BASE_CONTENT_PADDING + stack;
   return (
     BASE_CONTENT_PADDING +
     (loaded ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0) +

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { routed } from '@/cast/routed-service';
 import { corsModeFor } from '@/lib/cors-mode';
-import { sameOrigin } from '@/lib/same-origin';
+import { pageLocation, sameOrigin } from '@/lib/same-origin';
 
 import { supportsVoiceBoost } from './effects';
 import {
@@ -101,9 +101,6 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
   return node;
 }
 
-/** The page the player runs in (none outside a browser). */
-const page = () => (typeof location !== 'undefined' ? location : null);
-
 /**
  * The `crossOrigin` an element takes for `url`: `'anonymous'` for another origin's http(s)
  * stream (the server a player served elsewhere plays from, a second signed-in server), so
@@ -111,7 +108,7 @@ const page = () => (typeof location !== 'undefined' ? location : null);
  * page's own origin, the service worker's `/_offline/` copies, `blob:` and `data:`, as
  * before. Set before every `src`: it decides how that load is made.
  */
-const crossOriginFor = (url: string): string | null => corsModeFor(url, page()) ?? null;
+const crossOriginFor = (url: string): string | null => corsModeFor(url, pageLocation()) ?? null;
 
 /**
  * Can Web Audio hear `url`? A media element routed through Web Audio whose source is
@@ -121,8 +118,10 @@ const crossOriginFor = (url: string): string | null => corsModeFor(url, page()) 
  * origin's stream, `crossOriginFor`) is ever routed. Anything else (a `data:` URL) plays
  * on unboosted.
  */
-const routable = (url: string): boolean =>
-  sameOrigin(url, page()) || corsModeFor(url, page()) !== undefined;
+const routable = (url: string): boolean => {
+  const page = pageLocation();
+  return sameOrigin(url, page) || corsModeFor(url, page) !== undefined;
+};
 
 /** A media element augmented with Safari's (non-standard) picker entry point. */
 type RoutePickerEl = { webkitShowPlaybackTargetPicker?: () => void };

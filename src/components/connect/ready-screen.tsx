@@ -5,12 +5,12 @@ import { View } from 'react-native';
 
 import type { ServerAddresses } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
+import { playFailedToast } from '@/components/player/play-failed';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Button } from '@/components/ui/button';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -52,7 +52,7 @@ export function ReadyScreen({
     if (!place) return;
     void playBook(place.book).catch((e: unknown) => {
       console.warn('[connect] start listening failed', e);
-      toast({ title: t('home.now.resumeFailed') });
+      playFailedToast(e, t('home.now.resumeFailed'));
     });
   };
   return (

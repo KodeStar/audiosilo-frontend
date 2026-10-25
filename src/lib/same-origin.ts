@@ -1,6 +1,11 @@
 /** Where a page is: its origin, and its full address for resolving a relative url. */
 export type PageLocation = { origin: string; href?: string };
 
+/** The page this code runs in, null outside a browser (native, Node). */
+export function pageLocation(): PageLocation | null {
+  return typeof location !== 'undefined' ? location : null;
+}
+
 /**
  * Is `url` served from `page`'s own origin? A relative `url` is resolved against
  * `page.href`; without an `href` only an absolute `url` can match. False with no page

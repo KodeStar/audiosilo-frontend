@@ -166,7 +166,7 @@ export function useBookActions(
       label: t(status === 'progress' ? 'library.bookActions.resume' : 'library.bookActions.play'),
       onPress: () =>
         void play({ connectionId, libraryId, path }, { viaBookPage: true }).catch((err) =>
-          playFailedToast(err, t, t('library.bookActions.playFailed')),
+          playFailedToast(err),
         ),
     },
   ];

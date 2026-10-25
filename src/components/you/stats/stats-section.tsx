@@ -346,11 +346,7 @@ function StatsContent({
             </View>
           }
         />
-        <ListeningCalendar
-          days={listening.days}
-          today={today}
-          width={Math.max(0, width - CARD_INSET * 2)}
-        />
+        <ListeningCalendar days={listening.days} today={today} width={width - CARD_INSET * 2} />
       </Card>
 
       <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
@@ -373,7 +369,7 @@ function StatsContent({
               duration: formatDurationOrZero(weeks.reduce((s, v) => s + v, 0)),
             })}
           />
-          <WeeklyBars weeks={weeks} width={Math.max(0, chartW - CARD_INSET * 2)} />
+          <WeeklyBars weeks={weeks} width={chartW - CARD_INSET * 2} />
         </Card>
       </View>
 

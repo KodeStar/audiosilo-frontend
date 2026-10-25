@@ -27,7 +27,5 @@ describe('corsModeFor', () => {
     expect(corsModeFor('', PAGE)).toBe(undefined);
     expect(corsModeFor('http://[bad', PAGE)).toBe(undefined);
     expect(corsModeFor('https://other.example/x.jpg', null)).toBe(undefined);
-    // Jest runs the native platform: no page, so never CORS mode.
-    expect(corsModeFor('https://other.example/x.jpg')).toBe(undefined);
   });
 });

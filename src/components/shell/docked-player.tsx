@@ -226,7 +226,7 @@ export function DockedPlayer() {
   const { queue, title, author } = nowPlaying;
   // Under a chapter heading the book and its author; when the heading is already the
   // title (a chapterless book, an episode) only the author or show, never the title twice.
-  const bookLine = isChapter ? (author ? `${title} · ${author}` : title) : author;
+  const bookLine = [isChapter && title, author].filter(Boolean).join(' · ');
   const openPlayer = () => router.push('/player');
 
   return (

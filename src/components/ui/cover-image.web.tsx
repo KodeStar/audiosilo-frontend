@@ -3,6 +3,7 @@ import { type CSSProperties, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { corsModeFor } from '@/lib/cors-mode';
+import { pageLocation } from '@/lib/same-origin';
 
 import type { CoverImageProps } from './cover-image';
 
@@ -28,27 +29,9 @@ function uriOf(source: CoverImageProps['source']): string | undefined {
  * send headers anyway. `blurRadius` and `recyclingKey` are native concerns (the backdrop
  * blurs with a CSS filter on the web).
  */
-export function CoverImage({
-  source,
-  style,
-  contentFit,
-  transition,
-  onError,
-  testID,
-}: CoverImageProps) {
+export function CoverImage({ source, ...rest }: CoverImageProps) {
   const uri = uriOf(source);
-  if (!uri) return null;
-  return (
-    <CoverImg
-      key={uri}
-      uri={uri}
-      style={style}
-      contentFit={contentFit}
-      transition={transition}
-      onError={onError}
-      testID={testID}
-    />
-  );
+  return uri ? <CoverImg key={uri} uri={uri} {...rest} /> : null;
 }
 
 /** One URI's `<img>` (see `CoverImage`). */
@@ -61,6 +44,8 @@ function CoverImg({
   testID,
 }: Omit<CoverImageProps, 'source'> & { uri: string }) {
   const [loaded, setLoaded] = useState(false);
+  // Keyed by its URI, so one answer for the element's life.
+  const [crossOrigin] = useState(() => corsModeFor(uri, pageLocation()));
   const fade = typeof transition === 'number' ? transition : (transition?.duration ?? 0);
   const css: CSSProperties = {
     position: 'absolute',
@@ -76,7 +61,7 @@ function CoverImg({
     <img
       src={uri}
       alt=""
-      crossOrigin={corsModeFor(uri, typeof location !== 'undefined' ? location : null)}
+      crossOrigin={crossOrigin}
       loading="lazy"
       decoding="async"
       data-testid={testID}

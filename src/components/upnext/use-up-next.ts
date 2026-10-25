@@ -153,7 +153,7 @@ export function usePlayNow(cid: string | undefined) {
       // started (`startBookInPlace`, the player route), and one that failed keeps it.
       dropStartedBook(cid, entry.library_id, entry.path);
     } catch (err) {
-      playFailedToast(err, t, t('upnext.playFailed', { title }));
+      playFailedToast(err, t('upnext.playFailed', { title }));
     }
   };
 }
