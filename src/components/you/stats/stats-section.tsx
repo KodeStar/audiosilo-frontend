@@ -72,7 +72,16 @@ export function StatsSection() {
   const width = measured ?? Math.max(0, Math.min(window.width - 32, 1480));
 
   return (
-    <View className="gap-4" onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}>
+    <View
+      testID="stats-section"
+      className="gap-4"
+      // A hidden page (the You tab kept mounted under another one, or the full player)
+      // lays out 0 wide: keep the last real width rather than drawing every chart at 0.
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        if (w > 0) setMeasured(w);
+      }}
+    >
       {choices.length > 1 ? (
         <SegmentedControl
           scrollable
@@ -337,7 +346,11 @@ function StatsContent({
             </View>
           }
         />
-        <ListeningCalendar days={listening.days} today={today} width={width - CARD_INSET * 2} />
+        <ListeningCalendar
+          days={listening.days}
+          today={today}
+          width={Math.max(0, width - CARD_INSET * 2)}
+        />
       </Card>
 
       <View className="flex-row flex-wrap" style={{ gap: STATS_GAP }}>
@@ -360,7 +373,7 @@ function StatsContent({
               duration: formatDurationOrZero(weeks.reduce((s, v) => s + v, 0)),
             })}
           />
-          <WeeklyBars weeks={weeks} width={chartW - CARD_INSET * 2} />
+          <WeeklyBars weeks={weeks} width={Math.max(0, chartW - CARD_INSET * 2)} />
         </Card>
       </View>
 

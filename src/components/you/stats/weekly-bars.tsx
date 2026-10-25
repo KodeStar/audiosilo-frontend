@@ -45,6 +45,10 @@ export function WeeklyBars({ weeks, width }: { weeks: readonly number[]; width: 
     weeks: weeks.map((v, i) => `${weekName(i)}: ${formatDurationOrZero(v)}`).join(', '),
   });
 
+  // Not laid out yet (or hidden, 0 wide): the box keeps its height, and nothing is drawn
+  // (an SVG may not be negative wide, nor the bars' pitch).
+  if (width <= 0) return <View style={{ height }} />;
+
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label} style={{ width, height }}>
       <Svg width={width} height={height} pointerEvents="none">

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import type { ListeningGoalStatus, MyListening, UserStats } from '@/api/types';
 import { addDays } from '@/components/home/listening';
@@ -284,6 +284,35 @@ describe('StatsSection content', () => {
       screen.getByLabelText(/^Hours listened per week, last 12 weeks: 11 weeks ago: /),
     ).toBeTruthy();
     expect(screen.getByText('Peaks at 10:00 PM-11:00 PM and 7:00 AM-8:00 AM')).toBeTruthy();
+  });
+});
+
+/** Every negative `width` a host element of the tree carries (as a prop or a style). */
+function negativeWidths(): number[] {
+  type Node = { props?: Record<string, unknown>; children?: (Node | string)[] } | string;
+  const out: number[] = [];
+  const walk = (n: Node) => {
+    if (typeof n === 'string') return;
+    const style = StyleSheet.flatten(n.props?.style as never) as { width?: unknown } | undefined;
+    for (const w of [n.props?.width, style?.width]) if (typeof w === 'number' && w < 0) out.push(w);
+    n.children?.forEach(walk);
+  };
+  const root = screen.toJSON() as unknown as Node | Node[] | null;
+  for (const n of Array.isArray(root) ? root : root ? [root] : []) walk(n);
+  return out;
+}
+
+// PLAYER-06: the You tab kept mounted under the full player (and other pages) laid out
+// 0 wide, and the weekly bars drew an <svg width="-42">.
+describe('StatsSection hidden (0 wide)', () => {
+  it('keeps its last real width, so no chart is drawn negative wide', async () => {
+    await mount();
+    const section = screen.getByTestId('stats-section');
+    await fireEvent(section, 'layout', { nativeEvent: { layout: { width: 0, height: 0 } } });
+    expect(negativeWidths()).toEqual([]);
+    expect(screen.getByLabelText(/^Hours listened per week/)).toBeTruthy();
+    await fireEvent(section, 'layout', { nativeEvent: { layout: { width: 10, height: 0 } } });
+    expect(negativeWidths()).toEqual([]);
   });
 });
 
