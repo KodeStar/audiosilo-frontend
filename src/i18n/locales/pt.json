@@ -901,7 +901,7 @@
       },
       "empty": {
         "title": "Ainda não há nada nesta coleção",
-        "hint": "Adiciona livros a partir do menu de um livro na vista de lista.",
+        "hint": "Adiciona livros a partir do menu de um livro ou da sua página.",
         "viewerHint": "{{owner}} ainda não adicionou nenhum livro que consigas abrir."
       },
       "notFound": {

@@ -901,7 +901,7 @@
       },
       "empty": {
         "title": "Noch nichts in dieser Sammlung",
-        "hint": "Füge Bücher über das Menü eines Buchs in der Listenansicht hinzu.",
+        "hint": "Füge Bücher über das Menü eines Buchs oder seine Seite hinzu.",
         "viewerHint": "{{owner}} hat noch kein Buch hinzugefügt, das du öffnen kannst."
       },
       "notFound": {

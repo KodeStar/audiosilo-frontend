@@ -901,7 +901,7 @@
       },
       "empty": {
         "title": "Nothing in this collection yet",
-        "hint": "Add books from a book's menu in the list view.",
+        "hint": "Add books from a book's menu or its page.",
         "viewerHint": "{{owner}} hasn't added a book you can open yet."
       },
       "notFound": {
