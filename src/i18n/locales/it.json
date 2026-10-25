@@ -1574,6 +1574,10 @@
       "titledAt": "{{title}}, {{time}}",
       "at": "A {{time}}",
       "undo": "Annulla"
+    },
+    "startFailed": {
+      "offline": "Al momento {{server}} non è raggiungibile.",
+      "audio": "L'audio non è stato caricato dal server."
     }
   },
   "reconnect": {

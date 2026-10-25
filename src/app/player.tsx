@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { t } from 'i18next';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { PlayerView } from '@/components/player/player-view';
 import { dropStartedBook } from '@/components/player/drop-started';
+import { playFailedToast } from '@/components/player/play-failed';
 import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
 import { contentKey } from '@/lib/content-key';
@@ -165,11 +167,12 @@ export default function PlayerScreen() {
     cancelEpisodeFetchUnless(here);
     cancelEpisodeFetchOf(here);
     // The book you're on is not up next any more, as a start in place (`startBookInPlace`):
-    // once it started, so a start that failed keeps its place in the queue.
+    // once it started, so a start that failed keeps its place in the queue, and says why.
     void usePlayer
       .getState()
       .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined)
-      .then(() => dropStartedBook(cid, libraryId, book.rel_path, path));
+      .then(() => dropStartedBook(cid, libraryId, book.rel_path, path))
+      .catch((err) => playFailedToast(err, t, t('library.bookActions.playFailed')));
   }, [
     cid,
     book,

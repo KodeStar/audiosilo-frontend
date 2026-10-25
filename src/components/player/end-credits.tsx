@@ -22,7 +22,6 @@ import { metaEnabledFor } from '@/components/library/meta-gating';
 import { CoverBackdrop } from '@/components/player/cover-backdrop';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -57,6 +56,7 @@ import { useBookRating } from './use-book-rating';
 import type { PlayTarget } from './use-play-book';
 import { useBookSpeed } from './use-time-left';
 import { advanceTo, useAutoPlayHold } from './end-of-book';
+import { playFailedToast } from './play-failed';
 import { dropFromQueue } from './queue-drop';
 import { selectIsLoaded } from './playing-target';
 
@@ -202,8 +202,9 @@ function EndCreditsBody({
     } else if (loaded) {
       stopped = player.stop().catch(() => {});
     }
+    let failure: unknown;
     void stopped
-      .then(() => advanceTo(next))
+      .then(() => advanceTo(next, (err) => (failure = err)))
       .then((ok) => {
         if (ok) {
           if (!closed.current)
@@ -215,7 +216,7 @@ function EndCreditsBody({
         fired.current = false;
         setStarting(false);
         setCancelled(true);
-        toast({ title: t('upnext.playFailed', { title: next.title }) });
+        playFailedToast(failure, t, t('upnext.playFailed', { title: next.title }));
       });
   }, [next, cid, libraryId, path, ended, t]);
 

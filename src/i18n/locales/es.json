@@ -1574,6 +1574,10 @@
       "titledAt": "{{title}}, {{time}}",
       "at": "En {{time}}",
       "undo": "Deshacer"
+    },
+    "startFailed": {
+      "offline": "No se puede conectar con {{server}} ahora mismo.",
+      "audio": "Su audio no se cargó desde el servidor."
     }
   },
   "reconnect": {

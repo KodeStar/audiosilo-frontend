@@ -1140,6 +1140,18 @@ media GETs only.
   `startEngine` in `store.ts` (the play step of `playBook`/`toggle`/`retry`) catches only
   that, clears the intent (so the watchdog can't synthesize `error`) and settles on
   `paused`. Every other `play()` failure still propagates.
+- **A failed start says why (`PlaybackStartError`).** `service.web.ts` reports a source that
+  failed (`NotSupportedError`, or an `AbortError` from an errored element) as
+  `PlaybackStartError('audio')` with its snapshot `error`; an `AbortError` from a healthy
+  element is a superseded `play()` (a pause or the next source), not a failure. `startEngine`
+  turns every other failure into one (`offline` when the book's server is known unreachable,
+  else the engine's reason, else `unknown`). `playBook` rejects with it, and every start's
+  caller toasts through `playFailedToast` (`components/player/play-failed.ts`, the reason as
+  the description). `toggle` and `retry` never reject: the error state already shows Retry.
+- **A web load ignores its own first `timeupdate`.** Setting `src` queues a `timeupdate` at
+  `currentTime` 0 before any metadata; `service.web.ts` marks the element `placing` until
+  `loadedmetadata` has made the seek (or `seeked`), so the snapshot keeps the load's position
+  (a failed source keeps it too, the place Retry starts from).
 - **The web engine's file advance is not a pause.** The element fires `pause` just before
   `ended` at a file's natural end; when another file follows, `service.web.ts` ignores it
   (the store keeps its intent through the next file's load, under the same 3 s watchdog as

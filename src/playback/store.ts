@@ -53,6 +53,7 @@ import {
   INITIAL_SNAPSHOT,
   type PlaybackService,
   type PlaybackSnapshot,
+  PlaybackStartError,
   type PlaybackState,
 } from './types';
 
@@ -535,15 +536,41 @@ function clearPlaybackIntent() {
 /** Start the engine. The browser's autoplay refusal (web, no user gesture yet: a cold
  * `/player` deep link) is a plain pause, not a failure: drop the intent (so the stall
  * watchdog never turns it into `error`) and settle on `paused`, so the play button comes
- * back and a press (the gesture it wanted) plays. Every other failure propagates. */
+ * back and a press (the gesture it wanted) plays. Every other failure rejects as a
+ * `PlaybackStartError` saying why (`startFailure`). */
 async function startEngine(svc: PlaybackService): Promise<void> {
   try {
     await svc.play();
   } catch (err) {
-    if (!(err instanceof AutoplayBlockedError)) throw err;
+    if (!(err instanceof AutoplayBlockedError)) throw startFailure(err);
     clearPlaybackIntent();
     const { snapshot } = usePlayer.getState();
     usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
+  }
+}
+
+/** A failed start as the listener is told it: the loaded book's server is known to be
+ * unreachable (`offline`, whatever the engine said), else the engine's own reason (the web
+ * engine's `audio`), else `unknown`. */
+function startFailure(err: unknown): PlaybackStartError {
+  const connectionId = usePlayer.getState().nowPlaying?.connectionId;
+  const reason =
+    connectionId && !isReachable(connectionId)
+      ? 'offline'
+      : err instanceof PlaybackStartError
+        ? err.reason
+        : 'unknown';
+  return new PlaybackStartError(reason, { cause: err, connectionId });
+}
+
+/** `startEngine` for a press on a book already loaded (play/pause, Retry): a failure shows
+ * where the book is (the engine's error state: the Retry button and its error line, or
+ * the stall watchdog's), so it is logged, not thrown at a caller with nothing to add. */
+async function startLoadedEngine(svc: PlaybackService): Promise<void> {
+  try {
+    await startEngine(svc);
+  } catch (err) {
+    console.warn('[player] could not start playback', err);
   }
 }
 
@@ -970,7 +997,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       await svc.pause();
     } else {
       beginPlaybackAttempt();
-      await startEngine(svc);
+      await startLoadedEngine(svc);
     }
   },
 
@@ -1008,7 +1035,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const { index, positionInTrack } = locate(np.queue.offsets, bookPos);
     await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips, bookRefOf(np));
     await svc.setRate(get().rate);
-    await startEngine(svc);
+    await startLoadedEngine(svc);
   },
 
   seekBook: async (bookPosition) => {

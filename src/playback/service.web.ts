@@ -6,6 +6,7 @@ import { supportsVoiceBoost } from './effects';
 import {
   AutoplayBlockedError,
   type BookRef,
+  PlaybackStartError,
   INITIAL_SNAPSHOT,
   type PlaybackChapter,
   type PlaybackConfig,
@@ -181,6 +182,13 @@ class WebPlaybackService implements PlaybackService {
    * source (a quick second seek replaces the src before the first one loads) can't seek
    * or autoplay the new one. */
   private loadSeq = 0;
+  /** The element a load is placing at its start position, until its metadata arrives
+   * and the seek is made (or it reports `seeked`). The load algorithm queues a
+   * `timeupdate` at `currentTime` 0 as soon as `src` changes, before any metadata: read
+   * as the position, it overwrote the place the load set (a book resumed at 70% showed
+   * its first chapter at 0:00), and kept it when the source then failed. While placing,
+   * its `timeupdate`s are ignored; the snapshot keeps the load's position. */
+  private placing: HTMLAudioElement | null = null;
   /** Playback is intended but hasn't started yet: set by an autoplaying load (the
    * advance to the next file, a skip or a transcoded seek while playing) and by `play()`
    * on a transcoded track; cleared on `playing`, `error`, `pause()` and `reset()`. A load
@@ -250,10 +258,13 @@ class WebPlaybackService implements PlaybackService {
     a.preload = 'auto';
     this.applyVolume(a);
     const active = () => a === this.audio;
-    a.addEventListener(
-      'timeupdate',
-      () => active() && this.update({ position: this.positionOf(a) }),
-    );
+    a.addEventListener('timeupdate', () => {
+      // Not while a load is placing it: its currentTime is the reset 0 (see `placing`).
+      if (active() && this.placing !== a) this.update({ position: this.positionOf(a) });
+    });
+    a.addEventListener('seeked', () => {
+      if (this.placing === a) this.placing = null;
+    });
     a.addEventListener('durationchange', () => {
       // A transcoded stream's element duration is Infinity/NaN or, at best, the length
       // of the remaining output; the track's known duration stands (set on load).
@@ -283,7 +294,8 @@ class WebPlaybackService implements PlaybackService {
       if (!active()) return;
       // A source that failed will never start, so nothing is about to play: a stale
       // intent would have a later skip, or the swap onto the downloaded copy, start the
-      // book by itself long after the error.
+      // book by itself long after the error. The position stays where the load put it
+      // (the place to retry from), never the dead element's 0.
       this.pendingAutoplay = false;
       this.update({ state: 'error' });
     });
@@ -312,6 +324,7 @@ class WebPlaybackService implements PlaybackService {
     this.earlyEndRetryAt = null; // handleEnded re-sets it for its own reload
     this.pendingAutoplay = autoplay;
     const seq = ++this.loadSeq;
+    this.placing = a;
     a.src = source.url;
     this.applyRate(a);
     this.routeBoost(a);
@@ -334,6 +347,8 @@ class WebPlaybackService implements PlaybackService {
           // seeking before ready; timeupdate will correct
         }
       }
+      // Placed: from here its currentTime is the position.
+      if (this.placing === a) this.placing = null;
       // Read the intent now, not as it was when the load began: a pause inside the load
       // (the listener's, or the sleep timer's) cleared it and must hold.
       if (this.pendingAutoplay) {
@@ -559,6 +574,7 @@ class WebPlaybackService implements PlaybackService {
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
     this.loadSeq++; // the old element's pending load handler (if any) is moot
+    this.placing = null; // the swapped-in element is already at its place
     if (old) this.discard(old);
     // The swapped-in element gets its own source node (an element's one for life).
     this.routeBoost(pending);
@@ -581,17 +597,34 @@ class WebPlaybackService implements PlaybackService {
     return true;
   }
 
-  /** `a.play()`, with the browser's autoplay refusal (`NotAllowedError`: no user gesture
-   * yet) settled to `paused` and reported as `AutoplayBlockedError`, so the store can read
-   * it as a pause; any other failure is rethrown as is. */
+  /**
+   * `a.play()`, its refusals told apart:
+   * - the browser's autoplay refusal (`NotAllowedError`: no user gesture yet) settles to
+   *   `paused` and is reported as `AutoplayBlockedError`, so the store can read it as a pause;
+   * - a source that failed to load (`NotSupportedError`, "no supported sources", or an
+   *   `AbortError` from an element that has errored) settles to `error` and is reported as
+   *   `PlaybackStartError('audio')`, so the start can say why;
+   * - an `AbortError` from a healthy element is a play() superseded by a pause or the next
+   *   source (which owns playback now): nothing failed;
+   * - anything else is rethrown as is.
+   */
   private async playElement(a: HTMLAudioElement) {
     try {
       await a.play();
     } catch (err) {
-      if ((err as { name?: unknown } | null)?.name !== 'NotAllowedError') throw err;
-      this.pendingAutoplay = false;
-      if (a === this.audio) this.update({ state: 'paused' });
-      throw new AutoplayBlockedError();
+      const name = (err as { name?: unknown } | null)?.name;
+      if (name === 'NotAllowedError') {
+        this.pendingAutoplay = false;
+        if (a === this.audio) this.update({ state: 'paused' });
+        throw new AutoplayBlockedError();
+      }
+      if (name === 'NotSupportedError' || (name === 'AbortError' && a.error)) {
+        this.pendingAutoplay = false;
+        if (a === this.audio) this.update({ state: 'error' });
+        throw new PlaybackStartError('audio', { cause: err });
+      }
+      if (name === 'AbortError') return;
+      throw err;
     }
   }
 
@@ -695,6 +728,7 @@ class WebPlaybackService implements PlaybackService {
     this.offset = 0;
     this.pausedAt = null;
     this.loadSeq++;
+    this.placing = null;
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
     this.snapshot = { ...INITIAL_SNAPSHOT, rate: this.rate };

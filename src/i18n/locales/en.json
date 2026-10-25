@@ -1574,6 +1574,10 @@
       "titledAt": "{{title}}, {{time}}",
       "at": "At {{time}}",
       "undo": "Undo"
+    },
+    "startFailed": {
+      "offline": "Can't reach {{server}} right now.",
+      "audio": "Its audio didn't load from the server."
     }
   },
   "reconnect": {

@@ -10,6 +10,7 @@ import {
 import {
   AutoplayBlockedError,
   type PlaybackConfig,
+  PlaybackStartError,
   type PlaybackService,
   type PlaybackState,
   type PlaybackTrack,
@@ -73,6 +74,8 @@ class FakeAudio {
   paused = true;
   ended = false;
   readyState = 0;
+  /** A MediaError once the source failed (set with `fail()`), else null. */
+  error: { code: number } | null = null;
   playbackRate = 1;
   defaultPlaybackRate = 1;
   loads = 0;
@@ -93,6 +96,7 @@ class FakeAudio {
   }
   load() {
     this.loads++;
+    this.error = null;
     this.currentTime = 0;
     this.ended = false;
     this.paused = true; // silently: the load algorithm fires no 'pause'
@@ -116,6 +120,11 @@ class FakeAudio {
       this.emit('pause');
     }
     this.emit('ended');
+  }
+  /** The source failed to load: the element errors (MEDIA_ERR_SRC_NOT_SUPPORTED). */
+  fail() {
+    this.error = { code: 4 };
+    this.emit('error');
   }
   removeAttribute(name: string) {
     if (name === 'src') this.src = '';
@@ -538,11 +547,92 @@ describe('WebPlaybackService autoplay policy', () => {
     expect(svc.getSnapshot().state).toBe('paused');
   });
 
+  it('reports a source that failed (no supported sources) as PlaybackStartError audio, errored', async () => {
+    await svc.load(direct, 0, 70);
+    el().fail();
+    refuse('NotSupportedError');
+    const played = svc.play();
+    await expect(played).rejects.toBeInstanceOf(PlaybackStartError);
+    await expect(played).rejects.toMatchObject({ reason: 'audio' });
+    expect(svc.getSnapshot()).toMatchObject({ state: 'error', position: 70 });
+  });
+
+  it('reads an AbortError from an errored element as the same failure', async () => {
+    await svc.load(direct, 0, 0);
+    el().fail();
+    refuse('AbortError');
+    await expect(svc.play()).rejects.toMatchObject({ name: 'PlaybackStartError', reason: 'audio' });
+    expect(svc.getSnapshot().state).toBe('error');
+  });
+
+  it('lets an AbortError from a healthy element go: a pause or the next source took over', async () => {
+    await svc.load(direct, 0, 0);
+    refuse('AbortError');
+    await expect(svc.play()).resolves.toBeUndefined();
+    expect(svc.getSnapshot().state).not.toBe('error');
+  });
+
   it('passes any other play() failure through untouched', async () => {
     await svc.load(direct, 0, 0);
-    refuse('NotSupportedError');
-    await expect(svc.play()).rejects.toMatchObject({ name: 'NotSupportedError' });
+    refuse('TypeError');
+    await expect(svc.play()).rejects.toMatchObject({ name: 'TypeError' });
     expect(svc.getSnapshot().state).not.toBe('paused');
+  });
+});
+
+describe('WebPlaybackService placing a load at its position', () => {
+  const realAudio = (globalThis as { Audio?: unknown }).Audio;
+  let svc: PlaybackService;
+  beforeEach(() => {
+    FakeAudio.all = [];
+    (globalThis as { Audio?: unknown }).Audio = FakeAudio;
+    svc = createPlaybackService();
+  });
+  afterEach(() => {
+    (globalThis as { Audio?: unknown }).Audio = realAudio;
+  });
+
+  it("ignores the load's own timeupdate at 0 before the metadata, then reports again", async () => {
+    await svc.load(directTracks, 1, 420);
+    const a = el();
+    // The load algorithm queues a timeupdate at the reset currentTime 0.
+    a.emit('timeupdate');
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 420 });
+    a.emit('loadedmetadata'); // the seek to 420 is made
+    expect(a.currentTime).toBe(420);
+    a.currentTime = 421;
+    a.emit('timeupdate');
+    expect(svc.getSnapshot().position).toBe(421);
+  });
+
+  it('a source that fails keeps the place it was loaded at', async () => {
+    await svc.load(directTracks, 1, 420);
+    const a = el();
+    a.emit('timeupdate');
+    a.fail();
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 420, state: 'error' });
+  });
+
+  it('is placed by a seeked too', async () => {
+    await svc.load(directTracks, 0, 30);
+    const a = el();
+    a.currentTime = 30;
+    a.emit('seeked');
+    a.currentTime = 31;
+    a.emit('timeupdate');
+    expect(svc.getSnapshot().position).toBe(31);
+  });
+
+  it('places every load again: a skip ignores its 0 until it is placed', async () => {
+    await svc.load(directTracks, 0, 0);
+    const a = el();
+    a.emit('loadedmetadata');
+    a.currentTime = 12;
+    a.emit('timeupdate');
+    expect(svc.getSnapshot().position).toBe(12);
+    await svc.skipToTrack(1, 200);
+    a.emit('timeupdate'); // the reset 0 of the new source
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 200 });
   });
 });
 
@@ -595,6 +685,7 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
   it('reports the track-absolute position and known duration, and routes the scrubber', async () => {
     const svc = createPlaybackService();
     await svc.load(transcodedTracks, 0, 250);
+    el().emit('loadedmetadata');
     el().currentTime = 4;
     el().emit('timeupdate');
     expect(setPositionState).toHaveBeenLastCalledWith({

@@ -47,7 +47,7 @@ import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left
 import { pathCrumbs } from '@/components/ui/breadcrumbs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
+import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadEntry } from '@/downloads/store';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -260,7 +260,9 @@ function BookPage() {
   // timeline tap or a pin jumps there (`usePlayBook`: a phone opens the player there).
   const playBook = usePlayBook();
   const play = (opts: PlayOptions) =>
-    void playBook(target, opts).catch(() => toast({ title: t('library.bookActions.playFailed') }));
+    void playBook(target, opts).catch((err) =>
+      playFailedToast(err, t, t('library.bookActions.playFailed')),
+    );
   const onJump = useLatest((jump: Jump) => play({ at: jump }));
 
   // The selected tab, held as an intent: which tabs EXIST depends on data that can arrive

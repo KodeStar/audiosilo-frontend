@@ -136,7 +136,8 @@ import { useSettings } from '@/stores/settings';
 
 import { bookFileSpecs } from './book-queue';
 import { flushConnection } from './progress-sync';
-import { AutoplayBlockedError } from './types';
+import { useReachability } from '@/api/reachability';
+import { AutoplayBlockedError, PlaybackStartError } from './types';
 import {
   holdSaves,
   LONG_PAUSE_MS,
@@ -702,11 +703,49 @@ describe('a browser autoplay refusal reads as a plain pause', () => {
   });
 
   it('any other play() failure still propagates and the watchdog still errors', async () => {
-    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new Error('decode failed'));
-    await expect(startBook(makeBook(), 0)).rejects.toThrow('decode failed');
+    const cause = new Error('decode failed');
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(cause);
+    const started = startBook(makeBook(), 0);
+    await expect(started).rejects.toBeInstanceOf(PlaybackStartError);
+    await expect(started).rejects.toMatchObject({ reason: 'unknown', connectionId: 'c1', cause });
     jest.advanceTimersByTime(3_000);
     await flushMicrotasks();
     expect(usePlayer.getState().snapshot.state).toBe('error');
+  });
+});
+
+describe('a failed start says why (PlaybackStartError)', () => {
+  afterEach(() => useReachability.setState({ online: {} }));
+
+  it("passes the engine's reason on: the audio didn't load", async () => {
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new PlaybackStartError('audio'));
+    await expect(startBook(makeBook(), 0)).rejects.toMatchObject({
+      name: 'PlaybackStartError',
+      reason: 'audio',
+      connectionId: 'c1',
+    });
+  });
+
+  it("is offline when the book's server is known to be unreachable, whatever the engine said", async () => {
+    useReachability.setState({ online: { c1: false } });
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new PlaybackStartError('audio'));
+    await expect(startBook(makeBook(), 0)).rejects.toMatchObject({
+      reason: 'offline',
+      connectionId: 'c1',
+    });
+  });
+
+  it('toggle and retry never reject: the error state shows Retry', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('error', 42));
+    await Promise.resolve();
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new PlaybackStartError('audio'));
+    await expect(usePlayer.getState().toggle()).resolves.toBeUndefined();
+    (mockSvc.play as jest.Mock).mockRejectedValueOnce(new Error('no supported sources'));
+    await expect(usePlayer.getState().retry()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
   });
 });
 
