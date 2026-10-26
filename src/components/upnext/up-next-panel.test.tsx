@@ -157,7 +157,13 @@ describe('UpNextPanel', () => {
   });
 
   describe('with a podcast episode loaded (BRIDGE-12)', () => {
-    const episode = { connectionId: 'c', libraryId: 1, path: 'Show/ep.mp3', title: 'Monday' };
+    const episode = {
+      connectionId: 'c',
+      libraryId: 1,
+      path: 'Show/ep.mp3',
+      title: 'Monday',
+      queue: { chapters: [{ title: 'Monday', index: 0 }] },
+    };
     afterEach(() => usePlayer.setState({ nowPlaying: null } as never));
 
     it("words the next and auto-play for an episode, and doesn't repeat its title", async () => {
@@ -182,6 +188,24 @@ describe('UpNextPanel', () => {
       expect(screen.getAllByText('Monday')).toHaveLength(1);
     });
 
+    it("doesn't repeat its title for a chapter mark named after it either", async () => {
+      usePlayer.setState({
+        nowPlaying: {
+          ...episode,
+          episode: { show_path: 'Show' },
+          queue: {
+            chapters: [
+              { title: 'Monday', index: 0 },
+              { title: 'Listener mail', index: 1 },
+            ],
+          },
+        },
+      } as never);
+      mockChapter = { title: 'Monday', index: 0 };
+      await render(<UpNextPanel cid="c" data={data({ suggestions: [] })} />);
+      expect(screen.getAllByText('Monday')).toHaveLength(1);
+    });
+
     it('keeps the book wording for a book', async () => {
       usePlayer.setState({ nowPlaying: episode } as never);
       await render(
@@ -200,7 +224,13 @@ describe('UpNextPanel', () => {
   // STYLEGUIDE section 14: rem-sized buttons (`h-11`, `h-9`) are 38.5 and 31.5 pt on native.
   it("gives play/pause and the suggestions' + a 44 pt target on native", async () => {
     usePlayer.setState({
-      nowPlaying: { connectionId: 'c', libraryId: 1, path: 'N', title: 'Now' },
+      nowPlaying: {
+        connectionId: 'c',
+        libraryId: 1,
+        path: 'N',
+        title: 'Now',
+        queue: { chapters: [] },
+      },
     } as never);
     await render(
       <UpNextPanel

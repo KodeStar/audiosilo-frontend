@@ -27,6 +27,7 @@ import {
 import { Icon, type IconName } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -164,8 +165,8 @@ export function useBookActions(
       icon: 'play',
       label: t(status === 'progress' ? 'library.bookActions.resume' : 'library.bookActions.play'),
       onPress: () =>
-        void play({ connectionId, libraryId, path }, { viaBookPage: true }).catch(() =>
-          toast({ title: t('library.bookActions.playFailed') }),
+        void play({ connectionId, libraryId, path }, { viaBookPage: true }).catch((err) =>
+          playFailedToast(err),
         ),
     },
   ];

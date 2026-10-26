@@ -35,7 +35,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Notice } from '@/components/ui/notice';
 import { Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
+import { playFailedToast } from '@/components/player/play-failed';
 import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -143,7 +143,7 @@ function EpisodeBody({
 
   const playBook = usePlayBook();
   const play = (opts: PlayOptions) =>
-    void playBook(target, opts).catch(() => toast({ title: t('library.bookActions.playFailed') }));
+    void playBook(target, opts).catch((err) => playFailedToast(err));
   const onJump = useLatest((jump: Jump) => play({ at: jump }));
 
   const chapters = useMemo(() => chapterData?.chapters ?? [], [chapterData]);

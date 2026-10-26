@@ -60,19 +60,41 @@ describe('formatRelative', () => {
     expect(formatRelative('not-a-date', 'en')).toBe('');
   });
 
-  it('falls back to plain English when Intl.RelativeTimeFormat is absent (Hermes/RN)', () => {
+  describe('without Intl.RelativeTimeFormat (Hermes/RN)', () => {
     // Hermes (React Native) ships Intl.NumberFormat but not RelativeTimeFormat.
     const intl = Intl as unknown as Record<string, unknown>;
-    const original = intl.RelativeTimeFormat;
-    delete intl.RelativeTimeFormat;
-    try {
-      expect(formatRelative(ago(10), 'en')).toBe('just now');
-      expect(formatRelative(ago(3 * 86400), 'en')).toBe('3 days ago');
-      expect(formatRelative(ago(3600), 'en')).toBe('1 hour ago');
-      expect(formatRelative(ago(60 * 86400), 'en')).toBe('2 months ago');
-    } finally {
+    let original: unknown;
+    beforeEach(() => {
+      original = intl.RelativeTimeFormat;
+      delete intl.RelativeTimeFormat;
+    });
+    afterEach(() => {
       intl.RelativeTimeFormat = original;
-    }
+    });
+
+    it('says it in English from our own strings', () => {
+      expect(formatRelative(ago(10), 'en')).toBe('just now');
+      expect(formatRelative(ago(50), 'en')).toBe('50 seconds ago');
+      expect(formatRelative(ago(60), 'en')).toBe('1 minute ago');
+      expect(formatRelative(ago(3600), 'en')).toBe('1 hour ago');
+      expect(formatRelative(ago(3 * 3600), 'en')).toBe('3 hours ago');
+      expect(formatRelative(ago(86400), 'en')).toBe('yesterday');
+      expect(formatRelative(ago(3 * 86400), 'en')).toBe('3 days ago');
+      expect(formatRelative(ago(30 * 86400), 'en')).toBe('last month');
+      expect(formatRelative(ago(60 * 86400), 'en')).toBe('2 months ago');
+      expect(formatRelative(ago(365 * 86400), 'en')).toBe('last year');
+      expect(formatRelative(ago(3 * 365 * 86400), 'en')).toBe('3 years ago');
+    });
+
+    it("says it in the app's language (#132)", () => {
+      expect(formatRelative(ago(3 * 3600), 'fr')).toBe('il y a 3 heures');
+      expect(formatRelative(ago(86400), 'fr')).toBe('hier');
+      expect(formatRelative(ago(10), 'fr')).toBe('à l’instant');
+      expect(formatRelative(ago(3 * 3600), 'de')).toBe('vor 3 Stunden');
+      expect(formatRelative(ago(60 * 86400), 'de')).toBe('vor 2 Monaten');
+      expect(formatRelative(ago(365 * 86400), 'de')).toBe('letztes Jahr');
+      expect(formatRelative(ago(3 * 86400), 'es')).toBe('hace 3 días');
+    });
   });
 });
 

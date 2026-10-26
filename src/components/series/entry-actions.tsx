@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
+import { playFailedToast } from '@/components/player/play-failed';
 import { type NamedChapter, resumeChapterLabel } from '@/lib/chapter-label';
 import { useOpen } from '@/lib/open';
 import { percentOf } from '@/lib/progress-view';
@@ -108,8 +108,7 @@ export function EntryActionButton({
   const themed = useThemeColors();
   const { openBook } = useOpen();
   const play = usePlayBook();
-  const start = () =>
-    copy && void play(copy).catch(() => toast({ title: t('library.bookActions.playFailed') }));
+  const start = () => copy && void play(copy).catch((err) => playFailedToast(err));
   const copy = entry.copy;
   // Only an owned book is queued (on this page's server); a copy on another server
   // opens there, so its Up next is never asked for.

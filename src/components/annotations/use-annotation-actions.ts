@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { BookmarkLabel } from '@/api/bookmark-labels';
 import { addBookmark, addNote, useDeleteBookmark, useDeleteNote } from '@/api/hooks';
 import type { Bookmark, Note } from '@/api/types';
+import { playFailedToast } from '@/components/player/play-failed';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { toast } from '@/components/ui/toast';
 import type { AnnotationOf, AnnotationTarget } from '@/lib/annotation-request';
@@ -20,8 +21,8 @@ export function useJumpTo(): (target: AnnotationTarget, position: number) => voi
   const { t } = useTranslation();
   const play = usePlayBook();
   return (target, position) => {
-    play(target, { at: { position } }).catch(() => {
-      toast({ title: t('annotations.jumpFailed') });
+    play(target, { at: { position } }).catch((e: unknown) => {
+      playFailedToast(e, t('annotations.jumpFailed'));
     });
   };
 }

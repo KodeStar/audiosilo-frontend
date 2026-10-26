@@ -212,9 +212,44 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   // window's: the Up next drawer can leave a desktop list tablet-narrow.
   const [bodyWidth, setBodyWidth] = useState(0);
   const columns = listColumns(layout, bodyWidth > 0 ? bodyWidth - gutter * 2 : 0);
+  const labelChip = ({ kind, options }: (typeof labelFilters)[number]) => (
+    <LabelFilter
+      key={kind}
+      kind={kind}
+      value={view[kind]}
+      options={options}
+      loading={whole.isLoading}
+      onChange={(label) => setView({ [kind]: label })}
+    />
+  );
+  // With a filter on, Clear leads the row, then a chosen genre or tag, so both show at
+  // the row's start however narrow the page (a phone, a desktop list the Up next drawer
+  // narrowed); the pickers not chosen stay at the end. A genre or tag chosen (or let go)
+  // moves its chip, so the row is a new one, scrolled to its start: kept scrolled to the
+  // end where its picker was, the choice and Clear would be out of sight.
+  const chosenLabels = labelFilters.filter(({ kind }) => !!view[kind]);
+  const otherLabels = labelFilters.filter((f) => !chosenLabels.includes(f));
   const header = (
     <View className="gap-3 pb-4">
-      <ChipRow accessibilityLabel={t('library.books.filters.label')} gutter={gutter}>
+      <ChipRow
+        key={chosenLabels.map((f) => f.kind).join()}
+        accessibilityLabel={t('library.books.filters.label')}
+        gutter={gutter}
+      >
+        {filtered ? (
+          <>
+            <Button
+              testID="books-clear-filters"
+              variant="ghost"
+              size="sm"
+              icon="close"
+              title={t('library.books.filters.clear')}
+              onPress={clearFilters}
+            />
+            {chosenLabels.map(labelChip)}
+            <ChipSeparator />
+          </>
+        ) : null}
         {BOOK_STATUSES.map((s) => (
           <FilterChip
             key={s}
@@ -244,26 +279,8 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
             onPress={() => setView({ len: view.len === l ? undefined : l })}
           />
         ))}
-        {labelFilters.length > 0 ? <ChipSeparator /> : null}
-        {labelFilters.map(({ kind, options }) => (
-          <LabelFilter
-            key={kind}
-            kind={kind}
-            value={view[kind]}
-            options={options}
-            loading={whole.isLoading}
-            onChange={(label) => setView({ [kind]: label })}
-          />
-        ))}
-        {filtered ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon="close"
-            title={t('library.books.filters.clear')}
-            onPress={clearFilters}
-          />
-        ) : null}
+        {otherLabels.length > 0 ? <ChipSeparator /> : null}
+        {otherLabels.map(labelChip)}
       </ChipRow>
       <View className="min-h-[38px] flex-row items-center justify-between gap-3">
         <Text variant="muted" style={tabularNums} accessibilityLiveRegion="polite">

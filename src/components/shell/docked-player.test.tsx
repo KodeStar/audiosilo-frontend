@@ -143,6 +143,55 @@ describe('DockedPlayer', () => {
     }
     expect(screen.getByText('1.25×')).toBeTruthy();
     expect(screen.getByText('upnext-dock')).toBeTruthy();
+    // No chapter: the heading is the title, so the line under it is the author alone.
+    expect(screen.getByText('The Way of Kings')).toBeTruthy();
+    expect(screen.getByText('Brandon Sanderson')).toBeTruthy();
+    expect(screen.queryByText('The Way of Kings · Brandon Sanderson')).toBeNull();
+  });
+
+  it('keeps the book and author under a chapter heading', async () => {
+    player.usePlayer.setState({ chapter: { title: 'Prologue', index: 0 } } as never);
+    await renderAt(1280);
+    expect(screen.getByText('Prologue')).toBeTruthy();
+    expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
+  });
+
+  it('names an episode once, then its show', async () => {
+    player.usePlayer.setState({
+      nowPlaying: { ...BOOK, title: 'Episode 12', author: 'LibriVox' },
+    } as never);
+    await renderAt(1280);
+    expect(screen.getAllByText('Episode 12')).toHaveLength(1);
+    expect(screen.getByText('LibriVox')).toBeTruthy();
+    expect(screen.queryByText(/Episode 12 ·/)).toBeNull();
+  });
+
+  // The server gives a single-file episode or book ONE chapter named after it: no chapter.
+  it('treats a lone chapter named after an episode as none', async () => {
+    const lone = { title: 'Current generation', index: 0 };
+    player.usePlayer.setState({
+      nowPlaying: {
+        ...BOOK,
+        title: 'Current generation',
+        author: 'Fixture Publisher',
+        queue: { ...BOOK.queue, chapters: [lone] },
+      },
+      chapter: lone,
+    } as never);
+    await renderAt(1280);
+    expect(screen.getAllByText('Current generation')).toHaveLength(1);
+    expect(screen.getByText('Fixture Publisher')).toBeTruthy();
+    expect(screen.queryByText(/Current generation ·/)).toBeNull();
+  });
+
+  it('keeps a lone chapter named otherwise as the heading', async () => {
+    const lone = { title: 'Prologue', index: 0 };
+    player.usePlayer.setState({
+      nowPlaying: { ...BOOK, queue: { ...BOOK.queue, chapters: [lone] } },
+      chapter: lone,
+    } as never);
+    await renderAt(1280);
+    expect(screen.getByText('Prologue')).toBeTruthy();
     expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
   });
 

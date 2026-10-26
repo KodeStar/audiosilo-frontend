@@ -9,6 +9,7 @@ import {
   type SourcedFavourite,
   type SourcedProgress,
   useAllProgressAll,
+  useCapabilitiesAll,
   useFavouritesAll,
   useLibrariesAll,
   useRecentAll,
@@ -113,9 +114,21 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
 
   // Episodes (Bridge 2d-1) lead the Now card and Continue listening like any book, but
   // the book shelves below hold books only, and `/next` is never asked about one.
-  const isBook = bookRowTest(useLibrariesAll().groups);
+  const { isBook, pending } = bookRowTest(useLibrariesAll().groups);
   const bookInProgress = inProgress.filter((p) => isBook(progressAt(p)));
   const bookFinished = finished.filter((p) => isBook(progressAt(p)));
+  // Rows whose server's libraries are still loading are held back until they are known
+  // to be books; meanwhile the shelves they would fill keep their place with a skeleton.
+  const heldInProgress = inProgress.some((p) => pending(progressAt(p)));
+  const heldFinished = finished.some((p) => pending(progressAt(p)));
+  // Next in your series holds only for a row whose server answers `/next`, read from its
+  // flags: a held row is no candidate yet, so `next.supported` can't tell while all are held.
+  const caps = useCapabilitiesAll();
+  const heldForNext = (at: BookAt) => pending(at) && !!caps[at.connectionId]?.next_book;
+  const heldNext =
+    inProgress.some((p) => heldForNext(progressAt(p))) ||
+    finished.some((p) => heldForNext(progressAt(p))) ||
+    (!!nowAt && heldForNext(nowAt));
 
   const next = useNextInSeries(
     nextCandidates(nowAt && isBook(nowAt) ? nowAt : null, bookInProgress, bookFinished),
@@ -134,6 +147,16 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     narrator,
     now: mountedAt,
   });
+  // The smart shelves hold their place only when the held rows could make them appear.
+  const heldShelves =
+    shelves.length === 0 &&
+    heldInProgress &&
+    smartShelves({
+      inProgress: inProgress.filter((p) => isBook(progressAt(p)) || pending(progressAt(p))),
+      recent: recent.books,
+      narrator,
+      now: mountedAt,
+    }).length > 0;
 
   const newest = progress[0];
   const sync = useSyncPill(
@@ -238,7 +261,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
 
         {!desktop ? <ThisWeekCard /> : null}
 
-        {next.supported && (nextItems.length > 0 || next.isLoading) ? (
+        {heldNext || (next.supported && (nextItems.length > 0 || next.isLoading)) ? (
           <HomeSection
             title={t('home.next.title')}
             sub={t('home.next.sub')}
@@ -265,9 +288,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
             person listening's (`useProfileConnections`). */}
         <HouseRow connections={connections} />
 
-        {shelves.length > 0 ? (
+        {shelves.length > 0 || heldShelves ? (
           <HomeSection title={t('home.smart.title')} sub={t('home.smart.sub')}>
-            <SmartShelves shelves={shelves} />
+            {shelves.length > 0 ? <SmartShelves shelves={shelves} /> : <ShelfSkeleton />}
           </HomeSection>
         ) : null}
 
@@ -352,7 +375,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
           </HomeSection>
         ) : null}
 
-        {finishedItems.length > 0 ? (
+        {finishedItems.length > 0 || heldFinished ? (
           <HomeSection
             title={t('home.recentlyFinished')}
             action={{
@@ -360,12 +383,16 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
               onPress: () => router.push('/browse?type=finished'),
             }}
           >
-            <ShelfRow
-              data={finishedItems}
-              keyExtractor={progressKey}
-              renderItem={progressTile}
-              accessibilityLabel={t('home.recentlyFinished')}
-            />
+            {finishedItems.length > 0 ? (
+              <ShelfRow
+                data={finishedItems}
+                keyExtractor={progressKey}
+                renderItem={progressTile}
+                accessibilityLabel={t('home.recentlyFinished')}
+              />
+            ) : (
+              <ShelfSkeleton />
+            )}
           </HomeSection>
         ) : null}
       </ScrollView>

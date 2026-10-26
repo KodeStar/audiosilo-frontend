@@ -113,9 +113,25 @@ describe('HeroActions', () => {
     const row = screen.getByTestId('hero-secondary-row');
     expect(String(row.props.className)).not.toMatch(/flex-wrap/);
     expect(String(screen.getByTestId('hero-download-slot').props.className)).toMatch(
-      /min-w-0 shrink/,
+      /min-w-0 flex-1/,
     );
     expect(screen.getByRole('button', { name: 'More for The Book' })).toBeTruthy();
+  });
+
+  // PLAYER-09: at 390 (and 360) the collection button left "Download" no room for its word.
+  it('puts Add to collection in the menu on a phone, and keeps the button on a wider page', async () => {
+    mockCaps = { queue: true, progress_edit: true, collections: true };
+    await mount(true);
+    expect(screen.queryByRole('button', { name: 'Add to collection...' })).toBeNull();
+    expect(mockOmit).toEqual(['play', 'queue', 'download']);
+    expect(mockOmit).not.toContain('collect');
+  });
+
+  it('keeps the Add to collection button off the menu at tablet and desktop widths', async () => {
+    mockCaps = { queue: true, progress_edit: true, collections: true };
+    await mount(false);
+    expect(screen.getByRole('button', { name: 'Add to collection...' })).toBeTruthy();
+    expect(mockOmit).toEqual(['play', 'queue', 'collect', 'download']);
   });
 
   it('plays a book next, with an Undo that takes it off again', async () => {

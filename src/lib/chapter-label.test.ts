@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { chapterLabel, contradictedTitle, resumeChapterLabel } from './chapter-label';
+import { chapterLabel, contradictedTitle, namesTheItem, resumeChapterLabel } from './chapter-label';
 
 const t = ((key: string, opts?: { number?: number }) =>
   `${key}:${opts?.number ?? ''}`) as unknown as TFunction;
@@ -18,6 +18,17 @@ describe('chapterLabel', () => {
 
   it('falls back to the 1-based chapter number when untitled', () => {
     expect(chapterLabel({ title: '', index: 4 }, t)).toBe('player.chapters.chapterNumber:5');
+  });
+});
+
+describe('namesTheItem', () => {
+  it.each([
+    ['a lone chapter named as the item', 'Current generation', 'Current generation', 1, true],
+    ['whatever its case and spacing', 'The Gift of the Magi', '  the gift of the MAGI ', 1, true],
+    ['a lone chapter named otherwise', 'The Way of Kings', 'Prologue', 1, false],
+    ['a same-named chapter among several', 'The Way of Kings', 'The Way of Kings', 2, false],
+  ])('%s', (_case, title, label, chapters, expected) => {
+    expect(namesTheItem(title, label, chapters)).toBe(expected);
   });
 });
 

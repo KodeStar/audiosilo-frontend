@@ -15,6 +15,24 @@
       "title": "Página no encontrada",
       "body": "Este enlace no lleva a ningún sitio en AudioSilo. Puede que sea antiguo o esté mal escrito.",
       "home": "Ir a Inicio"
+    },
+    "ago": {
+      "now": "ahora mismo",
+      "second_one": "hace {{count}} segundo",
+      "second_other": "hace {{count}} segundos",
+      "minute_one": "hace {{count}} minuto",
+      "minute_other": "hace {{count}} minutos",
+      "hour_one": "hace {{count}} hora",
+      "hour_other": "hace {{count}} horas",
+      "yesterday": "ayer",
+      "day_one": "hace {{count}} día",
+      "day_other": "hace {{count}} días",
+      "lastMonth": "el mes pasado",
+      "month_one": "hace {{count}} mes",
+      "month_other": "hace {{count}} meses",
+      "lastYear": "el año pasado",
+      "year_one": "hace {{count}} año",
+      "year_other": "hace {{count}} años"
     }
   },
   "settings": {
@@ -902,7 +920,7 @@
       },
       "empty": {
         "title": "Todavía no hay nada en esta colección",
-        "hint": "Añade libros desde el menú de un libro en la vista de lista.",
+        "hint": "Añade libros desde el menú de un libro o desde su página.",
         "viewerHint": "{{owner}} todavía no ha añadido ningún libro que puedas abrir."
       },
       "notFound": {
@@ -1575,6 +1593,10 @@
       "titledAt": "{{title}}, {{time}}",
       "at": "En {{time}}",
       "undo": "Deshacer"
+    },
+    "startFailed": {
+      "offline": "No se puede conectar con {{server}} ahora mismo.",
+      "audio": "Su audio no se cargó desde el servidor."
     }
   },
   "reconnect": {

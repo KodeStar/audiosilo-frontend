@@ -1,7 +1,8 @@
-import { Image, type ImageSource } from 'expo-image';
+import type { ImageSource } from 'expo-image';
 import { Platform, type ViewStyle, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { CoverImage } from '@/components/ui/cover-image';
 import { useDomId } from '@/lib/use-dom-id';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -54,7 +55,7 @@ export function CoverBackdrop({ source }: { source?: ImageSource | null }) {
           native ? null : dark ? WEB_FILTER_DARK : WEB_FILTER_LIGHT,
         ]}
       >
-        <Image
+        <CoverImage
           source={source}
           blurRadius={native ? 60 : 0}
           contentFit="cover"

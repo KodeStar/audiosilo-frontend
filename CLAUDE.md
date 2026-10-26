@@ -179,6 +179,9 @@ keep this index in step (one line per topic).
   - Stall → error watchdog lives in shared JS
   - Why not interpret engine events
   - A browser autoplay refusal is a pause, not an error
+  - A failed start says why (`PlaybackStartError`)
+  - A web load ignores its own first `timeupdate`
+  - Server media loads in CORS mode on web
   - The web engine's file advance is not a pause
   - JS decides what the car lists
   - `car-controller.ts`

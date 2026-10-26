@@ -24,7 +24,7 @@ import { useChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { chapterLabel } from '@/lib/chapter-label';
+import { chapterLabel, namesTheItem } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
@@ -42,7 +42,8 @@ const BASE_CONTENT_PADDING = 16;
 /** The cover's side. */
 const COVER = 42;
 /** The episode fetch strip's card above the mini card (Bridge Phase 2d-1), with its gap:
- * what a scroll screen reserves for it beside the mini player's own height. */
+ * what a scroll screen reserves for it before the card stack has been measured (the strip
+ * wraps to more lines at a large font scale, so the measured stack wins once known). */
 export const FETCH_STRIP_HEIGHT = 58;
 
 /**
@@ -52,16 +53,26 @@ export const FETCH_STRIP_HEIGHT = 58;
  * the normal base padding when nothing is loaded, on tablet/desktop (the docked player
  * bar sits in the layout, below the page), and in the iOS 26 tab bar accessory (part
  * of the native bar, which the system already insets scroll content for).
+ *
+ * Once the floating stack (fetch strip and card) has laid out, its measured height is what
+ * it reserves (`mini` - `bar`: the gap plus the stack), so a strip that wraps at a large
+ * font scale or zoom still clears; the constants only stand in before that first layout.
  */
 export function useMiniPlayerInset(): number {
   const loaded = usePlayer((s) => s.nowPlaying != null);
   const fetching = useEpisodeFetch((s) => s.pending !== null);
+  // The measured stack (`mini` - `bar`), so a moved bar alone re-renders no consumer.
+  const stack = useShellMetrics(({ edges: { mini, bar } }) =>
+    mini !== undefined && bar !== undefined ? mini - bar : undefined,
+  );
   const phone = useLayout() === 'phone';
   const floating = phone && !ACCESSORY_SUPPORTED;
+  if (!floating || (!loaded && !fetching)) return BASE_CONTENT_PADDING;
+  if (stack !== undefined) return BASE_CONTENT_PADDING + stack;
   return (
     BASE_CONTENT_PADDING +
-    (floating && loaded ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0) +
-    (floating && fetching ? FETCH_STRIP_HEIGHT : 0)
+    (loaded ? MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP : 0) +
+    (fetching ? FETCH_STRIP_HEIGHT : 0)
   );
 }
 
@@ -80,8 +91,9 @@ export function FloatingMiniPlayer() {
  * The compact players' second line (the mini card and the iOS accessory pill): the book
  * and its time left at the listener's speed ("The Way of Kings · 22h 27m left at
  * 1.25×"), or with a sleep timer counting down, the countdown first, after the moon
- * ("12:04 · The Way of Kings · ..."). `showTitle: false` drops the book (a chapterless book's heading is
- * already its title). Leaves re-render only when their text changes.
+ * ("12:04 · The Way of Kings · ..."). `showTitle: false` drops the book (the heading is
+ * already its title: a chapterless book, or a lone chapter that `namesTheItem`). Leaves
+ * re-render only when their text changes.
  */
 export function MiniPlayerSubtitle({
   title,
@@ -117,13 +129,17 @@ export function MiniPlayerSubtitle({
   );
 }
 
-/** The heading the compact players show: the current chapter, else the book's title. */
+/** The heading the compact players show: the current chapter, else the book's title
+ * (also for a lone chapter that `namesTheItem`). */
 export function useMiniHeading(): { heading: string; isChapter: boolean } {
   const { t } = useTranslation();
   const title = usePlayer((s) => s.nowPlaying?.title ?? '');
+  const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters.length ?? 0);
   const chapter = usePlayer(selectCurrentChapter);
   const label = chapter ? chapterLabel(chapter, t) : '';
-  return label ? { heading: label, isChapter: true } : { heading: title, isChapter: false };
+  return label && !namesTheItem(title, label, chapters)
+    ? { heading: label, isChapter: true }
+    : { heading: title, isChapter: false };
 }
 
 /**

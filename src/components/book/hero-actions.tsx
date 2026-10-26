@@ -28,6 +28,9 @@ import { type PrimaryAction, primaryLabel } from './book-page-model';
 
 /** The book menu's items the hero's own buttons already are. */
 const MENU_OMIT: readonly BookActionKey[] = ['play', 'queue', 'collect', 'download'];
+/** A phone's: Add to collection is in the menu there (its button would leave the download
+ * no room for its word at 390 and below). */
+const MENU_OMIT_PHONE: readonly BookActionKey[] = ['play', 'queue', 'download'];
 
 /** An icon-only hero button: 46 tall like the primary, square. */
 const ICON_BUTTON = 'w-[46px] px-0';
@@ -57,7 +60,8 @@ export type HeroActionsProps = {
  * The hero's actions (the prototype's `hero-actions`): the primary (ink: Resume chapter
  * N, Start listening, Listen again, Pause), the download, Up next (Play next / Add to the
  * end, capability `queue`), favourite, Add to collection (capability `collections`) and
- * the book menu (mark finished or not, more in this series), and for an admin "Generate
+ * the book menu (mark finished or not, more in this series; on a phone Add to collection
+ * too), and for an admin "Generate
  * characters and recaps" (or Regenerate in the menu) where the page offers it. Nothing
  * here is pink: the hero's one pink thing is the progress bar. An active module's
  * `bookActions` (none yet) follow in the book menu.
@@ -142,7 +146,7 @@ function HeroActionsView({
     <>
       <UpNextMenu connectionId={connectionId} libraryId={libraryId} book={book} />
       <FavouriteButton connectionId={connectionId} libraryId={libraryId} path={path} />
-      {collections ? (
+      {collections && !stacked ? (
         <Button
           variant="outline"
           size="lg"
@@ -158,7 +162,7 @@ function HeroActionsView({
         libraryId={libraryId}
         book={book}
         progress={progress ?? undefined}
-        omit={MENU_OMIT}
+        omit={stacked ? MENU_OMIT_PHONE : MENU_OMIT}
         extra={menuExtra}
         sheetOpen={sheet}
         onSheetOpenChange={setSheet}
@@ -180,12 +184,13 @@ function HeroActionsView({
     <>
       {stacked ? (
         // A phone: the primary across the page (its words never wrap), then the rest on
-        // ONE row: the download gives way (its words end in "...") so the icon buttons
-        // never wrap onto a row of their own.
+        // ONE row: the download takes the room the icon buttons leave (Add to collection
+        // is in the menu here), giving way (its words end in "...") rather than letting
+        // them wrap onto a row of their own.
         <View className="gap-2">
           {primaryButton}
           <View testID="hero-secondary-row" className="flex-row items-center gap-2">
-            <View testID="hero-download-slot" className="min-w-0 shrink">
+            <View testID="hero-download-slot" className="min-w-0 flex-1">
               {download}
             </View>
             {icons}

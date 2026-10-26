@@ -22,8 +22,9 @@ export type HouseWhen = 'playing' | 'paused' | 'today' | 'yesterday' | 'earlier'
 
 /** When a housemate was on their book, for the state line, as of `today` (`useToday`).
  * Calendar days, not 24-hour spans: 23:50 last night is yesterday at 00:10. A save "in
- * the future" (a clock ahead of ours), or one that doesn't parse, counts as today. Hermes
- * has no `Intl.RelativeTimeFormat`, so the words come from our own strings. */
+ * the future" (a clock ahead of ours), or one that doesn't parse, counts as today. The
+ * words come from our own strings (`house.when.*`): calendar days, which neither
+ * `Intl.RelativeTimeFormat` nor `formatRelative`'s Hermes strings count in. */
 export function houseWhen(
   row: Pick<HouseListeningRow, 'state' | 'updated_at'>,
   today: number,

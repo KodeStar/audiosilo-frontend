@@ -52,6 +52,30 @@ export class AutoplayBlockedError extends Error {
   }
 }
 
+/** Why a start failed, as the listener is told (`PlaybackStartError`): the book's server
+ * can't be reached, its audio didn't load, or something else. */
+export type PlaybackStartReason = 'offline' | 'audio' | 'unknown';
+
+/**
+ * The engine could not start playback. The web engine throws it with `audio` when the
+ * element's source failed (`play()` rejects "no supported sources"); the store's
+ * `startEngine` turns every other start failure into one, `offline` when the book streams
+ * from a server known to be unreachable, so a start's caller can say why (`playFailedToast`).
+ */
+export class PlaybackStartError extends Error {
+  readonly reason: PlaybackStartReason;
+  /** The server the book plays from, when known (the `offline` reason names it). */
+  readonly connectionId?: string;
+  constructor(reason: PlaybackStartReason, options?: { cause?: unknown; connectionId?: string }) {
+    super(`Playback could not start (${reason})`);
+    this.name = 'PlaybackStartError';
+    this.reason = reason;
+    this.connectionId = options?.connectionId;
+    // The engine's own failure, for the console (set here: not every engine takes the option).
+    if (options) this.cause = options.cause;
+  }
+}
+
 export type PlaybackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 /** Engine status, expressed per-track (the store maps it to the whole-book timeline). */

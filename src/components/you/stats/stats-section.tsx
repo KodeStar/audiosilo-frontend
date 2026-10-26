@@ -72,7 +72,16 @@ export function StatsSection() {
   const width = measured ?? Math.max(0, Math.min(window.width - 32, 1480));
 
   return (
-    <View className="gap-4" onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}>
+    <View
+      testID="stats-section"
+      className="gap-4"
+      // A hidden page (the You tab kept mounted under another one, or the full player)
+      // lays out 0 wide: keep the last real width rather than drawing every chart at 0.
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        if (w > 0) setMeasured(w);
+      }}
+    >
       {choices.length > 1 ? (
         <SegmentedControl
           scrollable

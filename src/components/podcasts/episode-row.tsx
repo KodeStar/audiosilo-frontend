@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { toast } from '@/components/ui/toast';
+import { playFailedToast } from '@/components/player/play-failed';
 import { contentKey } from '@/lib/content-key';
 import { useOpen } from '@/lib/open';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
@@ -97,8 +97,7 @@ export function EpisodeRow({
   const meta = episodeMetaLine(episode, t, now);
   const marks = episodeMarks(episode, t);
 
-  const play = () =>
-    void playBook(target).catch(() => toast({ title: t('library.bookActions.playFailed') }));
+  const play = () => void playBook(target).catch((err) => playFailedToast(err));
   const retry = () => requestEpisodeFetch(target, book, {}, { retry: true });
 
   return (

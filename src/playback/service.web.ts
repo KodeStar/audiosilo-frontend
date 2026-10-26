@@ -1,11 +1,13 @@
 /// <reference lib="dom" />
 import { routed } from '@/cast/routed-service';
-import { sameOrigin } from '@/lib/same-origin';
+import { corsModeFor } from '@/lib/cors-mode';
+import { pageLocation, sameOrigin } from '@/lib/same-origin';
 
 import { supportsVoiceBoost } from './effects';
 import {
   AutoplayBlockedError,
   type BookRef,
+  PlaybackStartError,
   INITIAL_SNAPSHOT,
   type PlaybackChapter,
   type PlaybackConfig,
@@ -100,14 +102,26 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
 }
 
 /**
- * Is `url` served from this page's own origin? A media element routed through Web Audio
- * whose source is cross-origin (without CORS) plays SILENCE (the spec's "outputs zeroes"
- * for a tainted source), so only a same-origin source is ever routed: the player served at
- * `/web` by the server it plays from, and the service worker's `/_offline/` copies. A
- * stream from another signed-in server plays on unboosted.
+ * The `crossOrigin` an element takes for `url`: `'anonymous'` for another origin's http(s)
+ * stream (the server a player served elsewhere plays from, a second signed-in server), so
+ * it loads in CORS mode, which the server's `cors_origins` grant; none (null) for the
+ * page's own origin, the service worker's `/_offline/` copies, `blob:` and `data:`, as
+ * before. Set before every `src`: it decides how that load is made.
  */
-const routable = (url: string): boolean =>
-  sameOrigin(url, typeof location !== 'undefined' ? location : undefined);
+const crossOriginFor = (url: string): string | null => corsModeFor(url, pageLocation()) ?? null;
+
+/**
+ * Can Web Audio hear `url`? A media element routed through Web Audio whose source is
+ * cross-origin WITHOUT CORS plays SILENCE (the spec's "outputs zeroes" for a tainted
+ * source), so only a source that is same-origin (the player served at `/web` by the server
+ * it plays from, the service worker's `/_offline/` copies) or loaded in CORS mode (another
+ * origin's stream, `crossOriginFor`) is ever routed. Anything else (a `data:` URL) plays
+ * on unboosted.
+ */
+const routable = (url: string): boolean => {
+  const page = pageLocation();
+  return sameOrigin(url, page) || corsModeFor(url, page) !== undefined;
+};
 
 /** A media element augmented with Safari's (non-standard) picker entry point. */
 type RoutePickerEl = { webkitShowPlaybackTargetPicker?: () => void };
@@ -169,7 +183,7 @@ class WebPlaybackService implements PlaybackService {
   /** Each element's source node. An element takes exactly ONE for its whole life (a second
    * `createMediaElementSource` throws), and once it has one its sound only comes out
    * through the graph: so it is only made while the context is running (a suspended one
-   * would silence the book) and only for a same-origin source (see `routable`). */
+   * would silence the book) and only for a source Web Audio can hear (see `routable`). */
   private sources = new Map<HTMLAudioElement, MediaElementAudioSourceNode>();
   /** Where each element's source node is connected now. */
   private routedTo = new Map<HTMLAudioElement, AudioNode>();
@@ -181,6 +195,13 @@ class WebPlaybackService implements PlaybackService {
    * source (a quick second seek replaces the src before the first one loads) can't seek
    * or autoplay the new one. */
   private loadSeq = 0;
+  /** The element a load is placing at its start position, until its metadata arrives
+   * and the seek is made (or it reports `seeked`). The load algorithm queues a
+   * `timeupdate` at `currentTime` 0 as soon as `src` changes, before any metadata: read
+   * as the position, it overwrote the place the load set (a book resumed at 70% showed
+   * its first chapter at 0:00), and kept it when the source then failed. While placing,
+   * its `timeupdate`s are ignored; the snapshot keeps the load's position. */
+  private placing: HTMLAudioElement | null = null;
   /** Playback is intended but hasn't started yet: set by an autoplaying load (the
    * advance to the next file, a skip or a transcoded seek while playing) and by `play()`
    * on a transcoded track; cleared on `playing`, `error`, `pause()` and `reset()`. A load
@@ -250,10 +271,13 @@ class WebPlaybackService implements PlaybackService {
     a.preload = 'auto';
     this.applyVolume(a);
     const active = () => a === this.audio;
-    a.addEventListener(
-      'timeupdate',
-      () => active() && this.update({ position: this.positionOf(a) }),
-    );
+    a.addEventListener('timeupdate', () => {
+      // Not while a load is placing it: its currentTime is the reset 0 (see `placing`).
+      if (active() && this.placing !== a) this.update({ position: this.positionOf(a) });
+    });
+    a.addEventListener('seeked', () => {
+      if (this.placing === a) this.placing = null;
+    });
     a.addEventListener('durationchange', () => {
       // A transcoded stream's element duration is Infinity/NaN or, at best, the length
       // of the remaining output; the track's known duration stands (set on load).
@@ -283,7 +307,8 @@ class WebPlaybackService implements PlaybackService {
       if (!active()) return;
       // A source that failed will never start, so nothing is about to play: a stale
       // intent would have a later skip, or the swap onto the downloaded copy, start the
-      // book by itself long after the error.
+      // book by itself long after the error. The position stays where the load put it
+      // (the place to retry from), never the dead element's 0.
       this.pendingAutoplay = false;
       this.update({ state: 'error' });
     });
@@ -299,8 +324,8 @@ class WebPlaybackService implements PlaybackService {
     const track = this.tracks[index];
     if (!track) return;
     const source = sourceFor(track, positionInTrack);
-    // An element already routed through Voice Boost would play another server's stream
-    // as silence (see `routable`): give that source a fresh, unrouted element. A load
+    // An element already routed through Voice Boost would play a source Web Audio can't
+    // hear as silence (see `routable`): give that source a fresh, unrouted element. A load
     // interrupts playback anyway, so the change is inaudible.
     if (this.audio && this.sources.has(this.audio) && !routable(source.url)) {
       this.discard(this.audio);
@@ -312,6 +337,8 @@ class WebPlaybackService implements PlaybackService {
     this.earlyEndRetryAt = null; // handleEnded re-sets it for its own reload
     this.pendingAutoplay = autoplay;
     const seq = ++this.loadSeq;
+    this.placing = a;
+    a.crossOrigin = crossOriginFor(source.url);
     a.src = source.url;
     this.applyRate(a);
     this.routeBoost(a);
@@ -334,6 +361,8 @@ class WebPlaybackService implements PlaybackService {
           // seeking before ready; timeupdate will correct
         }
       }
+      // Placed: from here its currentTime is the position.
+      if (this.placing === a) this.placing = null;
       // Read the intent now, not as it was when the load began: a pause inside the load
       // (the listener's, or the sleep timer's) cleared it and must hold.
       if (this.pendingAutoplay) {
@@ -423,8 +452,8 @@ class WebPlaybackService implements PlaybackService {
   /**
    * Point `a`'s sound where the setting says: through the compressor when Voice Boost is
    * on, straight to the destination when it is off. An element is only given a source node
-   * (which it then keeps for life) while the context RUNS and its source is same-origin;
-   * until then it plays on by itself, unboosted, which is never worse than silence. An
+   * (which it then keeps for life) while the context RUNS and Web Audio can hear its
+   * source (`routable`); until then it plays on by itself, unboosted, which is never worse than silence. An
    * element that never had one stays as it is while the boost is off.
    */
   private routeBoost(a: HTMLAudioElement) {
@@ -509,6 +538,7 @@ class WebPlaybackService implements PlaybackService {
     const source = sourceFor(track, positionInTrack);
     const target = positionInTrack - source.offset; // where the element's playhead must be
     const pending = this.createAudio();
+    pending.crossOrigin = crossOriginFor(source.url);
     pending.src = source.url;
     this.applyRate(pending);
     const ready = await new Promise<boolean>((resolve) => {
@@ -559,6 +589,7 @@ class WebPlaybackService implements PlaybackService {
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
     this.loadSeq++; // the old element's pending load handler (if any) is moot
+    this.placing = null; // the swapped-in element is already at its place
     if (old) this.discard(old);
     // The swapped-in element gets its own source node (an element's one for life).
     this.routeBoost(pending);
@@ -581,17 +612,34 @@ class WebPlaybackService implements PlaybackService {
     return true;
   }
 
-  /** `a.play()`, with the browser's autoplay refusal (`NotAllowedError`: no user gesture
-   * yet) settled to `paused` and reported as `AutoplayBlockedError`, so the store can read
-   * it as a pause; any other failure is rethrown as is. */
+  /**
+   * `a.play()`, its refusals told apart:
+   * - the browser's autoplay refusal (`NotAllowedError`: no user gesture yet) settles to
+   *   `paused` and is reported as `AutoplayBlockedError`, so the store can read it as a pause;
+   * - a source that failed to load (`NotSupportedError`, "no supported sources", or an
+   *   `AbortError` from an element that has errored) settles to `error` and is reported as
+   *   `PlaybackStartError('audio')`, so the start can say why;
+   * - an `AbortError` from a healthy element is a play() superseded by a pause or the next
+   *   source (which owns playback now): nothing failed;
+   * - anything else is rethrown as is.
+   */
   private async playElement(a: HTMLAudioElement) {
     try {
       await a.play();
     } catch (err) {
-      if ((err as { name?: unknown } | null)?.name !== 'NotAllowedError') throw err;
-      this.pendingAutoplay = false;
-      if (a === this.audio) this.update({ state: 'paused' });
-      throw new AutoplayBlockedError();
+      const name = (err as { name?: unknown } | null)?.name;
+      if (name === 'NotAllowedError') {
+        this.pendingAutoplay = false;
+        if (a === this.audio) this.update({ state: 'paused' });
+        throw new AutoplayBlockedError();
+      }
+      if (name === 'NotSupportedError' || (name === 'AbortError' && a.error)) {
+        this.pendingAutoplay = false;
+        if (a === this.audio) this.update({ state: 'error' });
+        throw new PlaybackStartError('audio', { cause: err });
+      }
+      if (name === 'AbortError') return;
+      throw err;
     }
   }
 
@@ -695,6 +743,7 @@ class WebPlaybackService implements PlaybackService {
     this.offset = 0;
     this.pausedAt = null;
     this.loadSeq++;
+    this.placing = null;
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
     this.snapshot = { ...INITIAL_SNAPSHOT, rate: this.rate };

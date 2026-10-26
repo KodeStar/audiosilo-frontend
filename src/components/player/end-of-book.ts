@@ -23,9 +23,9 @@ export const useAutoPlayHold = create<{ key: string | null }>(() => ({ key: null
  * Play now and countdown, the background auto-play): start it in place
  * (`startBookInPlace`, no screen involved), then take it off Up next. Resolves `true`
  * once it is on its way; `false` when it could not start (its connection gone, or its
- * book could not be fetched), and then it stays on Up next. The finished book is not
- * this function's business: it leaves Up next where it is finished, whether or not the
- * next one starts (`BookEndedListener`, the credits). Showing the player is the caller's
+ * book could not be fetched or played; `onError` is told why), and then it stays on Up
+ * next. The finished book is not this function's business: it leaves Up next where it is
+ * finished, whether or not the next one starts (`BookEndedListener`, the credits). Showing the player is the caller's
  * choice (`navigateWhenActive`).
  *
  * An episode its server still has to fetch is handed to the fetch (`startBookInPlace`):
@@ -33,11 +33,15 @@ export const useAutoPlayHold = create<{ key: string | null }>(() => ({ key: null
  * takes it off once it plays (`dropStartedBook`); a fetch that fails or is cancelled
  * leaves it at the head of Up next.
  */
-export async function advanceTo(next: UpNextBook): Promise<boolean> {
+export async function advanceTo(
+  next: UpNextBook,
+  onError?: (err: unknown) => void,
+): Promise<boolean> {
   try {
     if (!(await startBookInPlace(next))) return false;
   } catch (err) {
     console.warn('[end-of-book] could not start the next book', err);
+    onError?.(err);
     return false;
   }
   if (next.queueEntry && useEpisodeFetch.getState().pending?.key !== contentKeyOf(next))

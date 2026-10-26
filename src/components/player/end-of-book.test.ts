@@ -77,8 +77,12 @@ describe('advanceTo', () => {
     mockStart.mockResolvedValueOnce(false);
     await expect(advanceTo(next)).resolves.toBe(false);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    mockStart.mockRejectedValueOnce(new Error('offline'));
-    await expect(advanceTo(next)).resolves.toBe(false);
+    const failure = new Error('offline');
+    mockStart.mockRejectedValueOnce(failure);
+    const onError = jest.fn();
+    await expect(advanceTo(next, onError)).resolves.toBe(false);
+    // The caller is told why, for its toast.
+    expect(onError).toHaveBeenCalledWith(failure);
     warn.mockRestore();
     await new Promise((r) => setTimeout(r, 0));
     expect(mockRemove).not.toHaveBeenCalled();

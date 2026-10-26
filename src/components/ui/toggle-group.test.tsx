@@ -96,4 +96,30 @@ describe('SegmentedControl', () => {
     const scroller = screen.getByTestId('segment-scroller');
     expect(StyleSheet.flatten(scroller.props.style)?.flexGrow).toBe(0);
   });
+
+  // PLAYER-14: the You hub's six sections at 390 (a 350 viewport over 451 of tabs) must
+  // say there are more past the edge.
+  it('fades the side that has more, while the segments overflow the scroller', async () => {
+    const six = ['Stats', 'Year', 'Journal', 'Settings', 'Household', 'Account'].map((l) => ({
+      value: l.toLowerCase(),
+      label: l,
+    }));
+    await mount(<SegmentedControl options={six} value="stats" onChange={jest.fn()} scrollable />);
+    const scroller = screen.getByTestId('segment-scroller');
+    const fade = (side: string) =>
+      screen.queryByTestId(`segment-fade-${side}`, { includeHiddenElements: true });
+    await fireEvent(scroller, 'layout', { nativeEvent: { layout: { width: 350, height: 36 } } });
+    await fireEvent(scroller, 'contentSizeChange', 451, 36);
+    expect(fade('right')).toBeTruthy();
+    expect(fade('left')).toBeNull();
+    // Scrolled to the end: the start has more now, the end none.
+    await fireEvent.scroll(scroller, { nativeEvent: { contentOffset: { x: 101, y: 0 } } });
+    expect(fade('left')).toBeTruthy();
+    expect(fade('right')).toBeNull();
+    // Room for every segment: no fade at all.
+    await fireEvent(scroller, 'layout', { nativeEvent: { layout: { width: 460, height: 36 } } });
+    await fireEvent.scroll(scroller, { nativeEvent: { contentOffset: { x: 0, y: 0 } } });
+    expect(fade('left')).toBeNull();
+    expect(fade('right')).toBeNull();
+  });
 });

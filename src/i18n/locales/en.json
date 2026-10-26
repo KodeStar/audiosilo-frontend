@@ -15,6 +15,24 @@
       "title": "Page not found",
       "body": "This link doesn't go anywhere in AudioSilo. It may be old or mistyped.",
       "home": "Go to Home"
+    },
+    "ago": {
+      "now": "just now",
+      "second_one": "{{count}} second ago",
+      "second_other": "{{count}} seconds ago",
+      "minute_one": "{{count}} minute ago",
+      "minute_other": "{{count}} minutes ago",
+      "hour_one": "{{count}} hour ago",
+      "hour_other": "{{count}} hours ago",
+      "yesterday": "yesterday",
+      "day_one": "{{count}} day ago",
+      "day_other": "{{count}} days ago",
+      "lastMonth": "last month",
+      "month_one": "{{count}} month ago",
+      "month_other": "{{count}} months ago",
+      "lastYear": "last year",
+      "year_one": "{{count}} year ago",
+      "year_other": "{{count}} years ago"
     }
   },
   "settings": {
@@ -902,7 +920,7 @@
       },
       "empty": {
         "title": "Nothing in this collection yet",
-        "hint": "Add books from a book's menu in the list view.",
+        "hint": "Add books from a book's menu or its page.",
         "viewerHint": "{{owner}} hasn't added a book you can open yet."
       },
       "notFound": {
@@ -1575,6 +1593,10 @@
       "titledAt": "{{title}}, {{time}}",
       "at": "At {{time}}",
       "undo": "Undo"
+    },
+    "startFailed": {
+      "offline": "Can't reach {{server}} right now.",
+      "audio": "Its audio didn't load from the server."
     }
   },
   "reconnect": {

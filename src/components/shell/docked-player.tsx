@@ -178,7 +178,7 @@ export function DockedPlayer() {
   const insets = useSafeAreaInsets();
   const desktop = useLayout() === 'desktop';
   const nowPlaying = usePlayer((s) => s.nowPlaying);
-  const { heading } = useMiniHeading();
+  const { heading, isChapter } = useMiniHeading();
   const isPlaying = usePlayer(selectIsPlaying);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
@@ -224,7 +224,9 @@ export function DockedPlayer() {
     undo ? chipWidth : 0,
   );
   const { queue, title, author } = nowPlaying;
-  const bookLine = author ? `${title} · ${author}` : title;
+  // Under a chapter heading the book and its author; when the heading is already the
+  // title (a chapterless book, an episode) only the author or show, never the title twice.
+  const bookLine = [isChapter && title, author].filter(Boolean).join(' · ');
   const openPlayer = () => router.push('/player');
 
   return (
@@ -263,9 +265,11 @@ export function DockedPlayer() {
               <Text variant="label" numberOfLines={1}>
                 {heading}
               </Text>
-              <Text variant="caption" numberOfLines={1}>
-                {bookLine}
-              </Text>
+              {bookLine ? (
+                <Text variant="caption" numberOfLines={1}>
+                  {bookLine}
+                </Text>
+              ) : null}
               <SyncState connectionId={nowPlaying.connectionId} playing={isPlaying} />
             </View>
           </AnimatedPressable>

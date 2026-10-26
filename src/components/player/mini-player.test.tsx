@@ -102,6 +102,22 @@ describe('MiniPlayer', () => {
     expect(screen.getByText('36m left at 1.25×')).toBeTruthy();
   });
 
+  it('names a single-file episode once when its lone chapter is named after it', async () => {
+    const lone = { ...CHAPTER, index: 0, title: 'Retained fetch record' };
+    player.usePlayer.setState({
+      nowPlaying: {
+        ...BOOK,
+        title: 'Retained fetch record',
+        queue: { ...BOOK.queue, chapters: [lone] },
+      },
+      chapter: lone,
+    } as never);
+    await render(<MiniPlayer />);
+    expect(screen.getAllByText('Retained fetch record')).toHaveLength(1);
+    expect(screen.getByText('36m left at 1.25×')).toBeTruthy();
+    expect(screen.queryByText(/Retained fetch record ·/)).toBeNull();
+  });
+
   it('offers Retry after a playback error, and skips back', async () => {
     player.setPlayState('error');
     await render(<MiniPlayer />);
@@ -228,5 +244,32 @@ describe('MiniPlayer while an episode is fetched', () => {
     expect(
       screen.getByText(`inset ${16 + MINI_PLAYER_HEIGHT + MINI_PLAYER_GAP + FETCH_STRIP_HEIGHT}`),
     ).toBeTruthy();
+  });
+
+  it('reserves the measured stack once it has laid out (a strip that wraps still clears)', async () => {
+    useEpisodeFetch.setState({ pending: PENDING });
+    function Probe() {
+      const inset = useMiniPlayerInset();
+      const { Text } = jest.requireActual('react-native');
+      return <Text>{`inset ${inset}`}</Text>;
+    }
+    await render(<Probe />);
+    // A 90-tall strip (with its gap) over the 56 card: the card's top edge sits at
+    // bar + gap + 90 + 56 from the window's bottom.
+    const bar = 64;
+    await act(async () =>
+      useShellMetrics.setState({
+        edges: { bar, mini: bar + MINI_PLAYER_GAP + 90 + MINI_PLAYER_HEIGHT },
+      }),
+    );
+    expect(
+      screen.getByText(`inset ${16 + MINI_PLAYER_GAP + 90 + MINI_PLAYER_HEIGHT}`),
+    ).toBeTruthy();
+    // Nothing loaded or fetched: only the base padding, whatever was last measured.
+    await act(async () => {
+      useEpisodeFetch.setState({ pending: null });
+      player.usePlayer.setState({ nowPlaying: null } as never);
+    });
+    expect(screen.getByText('inset 16')).toBeTruthy();
   });
 });

@@ -4,6 +4,7 @@ import { libraryBooksHref } from '@/components/library/books/books-view';
 import type { MergedBook } from '@/lib/dedup';
 
 import {
+  bookRowTest,
   heroBeside,
   greetingPart,
   nextCandidates,
@@ -226,5 +227,40 @@ describe('heroBeside', () => {
     expect(heroBeside(939)).toBe(false);
     // 1024 with the drawer closed.
     expect(heroBeside(960)).toBe(true);
+  });
+});
+
+describe('bookRowTest', () => {
+  const groups = [
+    {
+      connectionId: 'a',
+      libraries: [
+        { id: 1, kind: 'books' as const },
+        { id: 9, kind: 'podcasts' as const },
+      ],
+      status: 'ready' as const,
+    },
+    { connectionId: 'b', libraries: [], status: 'loading' as const },
+    { connectionId: 'c', libraries: [], status: 'error' as const },
+  ];
+  const at = (connectionId: string, libraryId: number) => ({ connectionId, libraryId, path: 'P' });
+
+  it("tells books from episodes by the library's kind", () => {
+    const { isBook, pending } = bookRowTest(groups);
+    expect(isBook(at('a', 1))).toBe(true);
+    expect(isBook(at('a', 9))).toBe(false);
+    expect(pending(at('a', 1))).toBe(false);
+    expect(pending(at('a', 9))).toBe(false);
+  });
+
+  it("holds back a loading server's rows as pending, and reads a failed one as books", () => {
+    const { isBook, pending } = bookRowTest(groups);
+    expect(isBook(at('b', 1))).toBe(false);
+    expect(pending(at('b', 1))).toBe(true);
+    expect(isBook(at('c', 1))).toBe(true);
+    expect(pending(at('c', 1))).toBe(false);
+    // A server not in the list at all is neither.
+    expect(isBook(at('z', 1))).toBe(false);
+    expect(pending(at('z', 1))).toBe(false);
   });
 });
