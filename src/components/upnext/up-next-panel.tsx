@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { chapterLabel, namesTheItem } from '@/lib/chapter-label';
+import { chapterLabel, sameTitle } from '@/lib/chapter-label';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -188,8 +188,11 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
   const toggle = usePlayer((s) => s.toggle);
   const left = usePlayingTimeLeft();
   const chapterName = chapter ? chapterLabel(chapter, t) : '';
-  const own = namesTheItem(nowPlaying.title, chapterName, nowPlaying.queue.chapters.length);
-  const where = [own ? '' : chapterName, left].filter(Boolean).join(' · ');
+  // The title sits right above: a chapter named the same (an episode's lone chapter, or
+  // its first chapter mark) would only say it twice.
+  const where = [sameTitle(nowPlaying.title, chapterName) ? '' : chapterName, left]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <View className="mx-1.5 mb-3 flex-row items-center gap-3 rounded-2xl bg-muted p-3">
       <BookCover

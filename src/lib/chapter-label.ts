@@ -13,10 +13,15 @@ export function chapterLabel(chapter: { title: string; index: number }, t: TFunc
   );
 }
 
+/** Whether a chapter label says the same as its item's title, whatever the case and spacing. */
+export function sameTitle(title: string, label: string): boolean {
+  return label.trim().toLowerCase() === title.trim().toLowerCase();
+}
+
 /** Whether a chapter label only repeats its item's title: the server gives a single-file
  * episode or book ONE chapter named after it, so that lone chapter names nothing new. */
 export function namesTheItem(title: string, label: string, chapters: number): boolean {
-  return chapters <= 1 && label.trim().toLowerCase() === title.trim().toLowerCase();
+  return chapters <= 1 && sameTitle(title, label);
 }
 
 /** A chapter named by its place in the book (1-based) and its own title. */

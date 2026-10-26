@@ -91,8 +91,9 @@ export function FloatingMiniPlayer() {
  * The compact players' second line (the mini card and the iOS accessory pill): the book
  * and its time left at the listener's speed ("The Way of Kings · 22h 27m left at
  * 1.25×"), or with a sleep timer counting down, the countdown first, after the moon
- * ("12:04 · The Way of Kings · ..."). `showTitle: false` drops the book (a chapterless book's heading is
- * already its title). Leaves re-render only when their text changes.
+ * ("12:04 · The Way of Kings · ..."). `showTitle: false` drops the book (the heading is
+ * already its title: a chapterless book, or a lone chapter that `namesTheItem`). Leaves
+ * re-render only when their text changes.
  */
 export function MiniPlayerSubtitle({
   title,

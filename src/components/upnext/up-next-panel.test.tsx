@@ -188,6 +188,24 @@ describe('UpNextPanel', () => {
       expect(screen.getAllByText('Monday')).toHaveLength(1);
     });
 
+    it("doesn't repeat its title for a chapter mark named after it either", async () => {
+      usePlayer.setState({
+        nowPlaying: {
+          ...episode,
+          episode: { show_path: 'Show' },
+          queue: {
+            chapters: [
+              { title: 'Monday', index: 0 },
+              { title: 'Listener mail', index: 1 },
+            ],
+          },
+        },
+      } as never);
+      mockChapter = { title: 'Monday', index: 0 };
+      await render(<UpNextPanel cid="c" data={data({ suggestions: [] })} />);
+      expect(screen.getAllByText('Monday')).toHaveLength(1);
+    });
+
     it('keeps the book wording for a book', async () => {
       usePlayer.setState({ nowPlaying: episode } as never);
       await render(
