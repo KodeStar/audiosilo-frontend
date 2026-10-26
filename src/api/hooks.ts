@@ -38,6 +38,7 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
+import { lookupReadingPlace } from '@/reader/reading-progress';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
@@ -130,6 +131,9 @@ export const qk = {
   nextBook: (cid: string, lib: number, path: string) => ['nextBook', cid, lib, path] as const,
   allProgress: (cid: string) => ['progress', 'all', cid] as const,
   progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path] as const,
+  /** Where the ebook reader opens a book (`useReadingPlace`). */
+  readingPlace: (cid: string, lib: number, path: string) =>
+    ['readingPlace', cid, lib, path] as const,
   bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
   notes: (cid: string, lib: number, path: string) => ['notes', cid, lib, path] as const,
   history: (cid: string, lib: number, path: string) => ['history', cid, lib, path] as const,
@@ -1112,6 +1116,28 @@ export async function fetchBookProgress(
     noteFailure(connectionId, e);
     return await mirroredProgress(connectionId, libraryId, path);
   }
+}
+
+/** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest
+ * of the server's place, this device's mirror and its queued save (`lookupReadingPlace`,
+ * which falls back to this device's places when the server can't be reached). Read once
+ * per opening: nothing kept after the reader closes, no retry. */
+export function useReadingPlace(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  enabled = true,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  return useQuery({
+    queryKey: qk.readingPlace(cid, libraryId, path),
+    queryFn: ({ signal }) => lookupReadingPlace(api, cid, libraryId, path, signal),
+    enabled: enabled && path.length > 0,
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+  });
 }
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so

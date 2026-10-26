@@ -18,6 +18,11 @@ export const DOWNLOADS_KEY = 'audiosilo.downloads';
 export const PROGRESS_MIRROR_KEY = 'audiosilo.progressMirror';
 /** The offline save queue: an array of saves, each with a `connectionId`. */
 export const PROGRESS_QUEUE_KEY = 'audiosilo.progressQueue';
+/** The ebook reading-place mirror (`src/reader/reading-progress.ts`), keyed by
+ * `contentKey`; each value has a `connectionId`. */
+export const READING_MIRROR_KEY = 'audiosilo.readingMirror';
+/** The offline queue of ebook reading-place saves, each with a `connectionId`. */
+export const READING_QUEUE_KEY = 'audiosilo.readingQueue';
 /** Each connection's kept `/server` answer for offline reading, keyed by connection id. */
 export const OFFLINE_SERVERS_KEY = 'audiosilo.offlineServers';
 /** The car bookmarks to try again: an array, each with a `connectionId`. */

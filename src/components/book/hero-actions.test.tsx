@@ -1,5 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import type { ReactElement } from 'react';
+import { Platform } from 'react-native';
 
 import type { Book, QueueEntry } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -263,5 +265,60 @@ describe('HeroActions module actions', () => {
     mockModulesOn = { other: ['contributions'] };
     await mountWith();
     expect(mockExtra).toEqual([]);
+  });
+});
+
+// Read (Bridge Phase 3b-1): the web reader, for a book with an ebook on a server with the
+// reader; the app's own reader host is Phase 3b-2.
+describe('HeroActions Read', () => {
+  const EBOOK_BOOK = { ...BOOK, ebook: { path: 'A/Book/Book.epub', size: 1000 } } as Book;
+  const mountBook = (book: Book, stacked = false) =>
+    mountWithPortal(
+      <HeroActions
+        connectionId="home"
+        libraryId={1}
+        book={book}
+        chaptersLoading={false}
+        primary={{ kind: 'start' }}
+        onPrimary={jest.fn()}
+        stacked={stacked}
+      />,
+    );
+  const onWeb = () => jest.replaceProperty(Platform, 'OS', 'web');
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([false, true])(
+    'opens the reader on the web for a book with an ebook (stacked: %s)',
+    async (stacked) => {
+      onWeb();
+      mockCaps = { ebooks: true };
+      const push = jest.spyOn(router, 'push').mockImplementation(() => {});
+      await mountBook(EBOOK_BOOK, stacked);
+      fireEvent.press(screen.getByTestId('read-action'));
+      const href = push.mock.calls[0][0] as { pathname: string; params: Record<string, unknown> };
+      expect(href.pathname).toBe('/read');
+      expect(href.params).toMatchObject({ connection: 'home', libraryId: '1' });
+    },
+  );
+
+  it('hides Read without the capability', async () => {
+    onWeb();
+    mockCaps = { ebooks: false };
+    await mountBook(EBOOK_BOOK);
+    expect(screen.queryByTestId('read-action')).toBeNull();
+  });
+
+  it('hides Read for a book without an ebook', async () => {
+    onWeb();
+    mockCaps = { ebooks: true };
+    await mountBook(BOOK);
+    expect(screen.queryByTestId('read-action')).toBeNull();
+  });
+
+  it('hides Read in the app until its reader host lands', async () => {
+    mockCaps = { ebooks: true };
+    await mountBook(EBOOK_BOOK);
+    expect(screen.queryByTestId('read-action')).toBeNull();
   });
 });

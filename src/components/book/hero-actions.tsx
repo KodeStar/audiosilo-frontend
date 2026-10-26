@@ -1,6 +1,7 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { useCapability, useFavourites, useQueue, useToggleFavourite } from '@/api/hooks';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
@@ -21,8 +22,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { readerHref } from '@/lib/paths';
 import { WithActiveModules } from '@/modules/active-modules';
 import type { PlayerModule } from '@/modules/registry';
+import { canRead } from '@/reader/can-read';
 
 import { type PrimaryAction, primaryLabel } from './book-page-model';
 
@@ -61,7 +64,7 @@ export type HeroActionsProps = {
  * N, Start listening, Listen again, Pause), the download, Up next (Play next / Add to the
  * end, capability `queue`), favourite, Add to collection (capability `collections`) and
  * the book menu (mark finished or not, more in this series; on a phone Add to collection
- * too), and for an admin "Generate
+ * too), Read for a book with an ebook (`canRead`), and for an admin "Generate
  * characters and recaps" (or Regenerate in the menu) where the page offers it. Nothing
  * here is pink: the hero's one pink thing is the progress bar. An active module's
  * `bookActions` (none yet) follow in the book menu.
@@ -90,6 +93,7 @@ function HeroActionsView({
   const { t } = useTranslation();
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
+  const ebooks = useCapability('ebooks', connectionId);
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
   const menuExtra: BookAction[] = [
@@ -123,6 +127,19 @@ function HeroActionsView({
         onPress={generate.onPress}
       />
     ) : null;
+
+  // Read the book's ebook (Bridge Phase 3b): its own button after the download (its own
+  // row on a phone), on the web until the app's reader host lands (Phase 3b-2).
+  const readButton = canRead(ebooks, book, Platform.OS) ? (
+    <Button
+      testID="read-action"
+      variant="outline"
+      size="lg"
+      icon="book-open"
+      title={t('reader.read')}
+      onPress={() => router.push(readerHref(connectionId, libraryId, path))}
+    />
+  ) : null;
 
   const primaryButton = (
     <Button
@@ -195,12 +212,14 @@ function HeroActionsView({
             </View>
             {icons}
           </View>
+          {readButton}
           {generateButton}
         </View>
       ) : (
         <View className="flex-row flex-wrap items-center gap-2">
           {primaryButton}
           {download}
+          {readButton}
           {icons}
           {generateButton}
         </View>

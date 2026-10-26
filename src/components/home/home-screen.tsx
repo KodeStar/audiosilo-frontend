@@ -33,6 +33,7 @@ import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
 import type { PlayerModule } from '@/modules/registry';
 import { flushQueue } from '@/playback/progress-sync';
+import { flushReadingQueue } from '@/reader/reading-progress';
 import { usePlayer } from '@/playback/store';
 import { useActiveProfile, useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -98,9 +99,11 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   // "Added this week" is counted from when Home opened.
   const [mountedAt] = useState(Date.now);
 
-  // Replay any saves captured while offline (each entry routes to its own server).
+  // Replay any saves captured while offline (each entry routes to its own server), the
+  // ebook reader's places included.
   useEffect(() => {
     void flushQueue();
+    void flushReadingQueue();
   }, []);
 
   const { inProgress, finished } = useMemo(() => splitProgress(progress), [progress]);

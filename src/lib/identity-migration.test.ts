@@ -64,6 +64,13 @@ const save = (connectionId: string, path: string) => ({
   device_id: 'dev',
   updated_at: '2026-10-01T00:00:00.000Z',
 });
+const place = (connectionId: string, path: string) => ({
+  connectionId,
+  libraryId: 1,
+  path,
+  place: { cfi: 'epubcfi(/6/4!/4)', progression: 0.1, device_id: 'dev', updated_at: 'x' },
+  version: 2,
+});
 const drift = { touchAt: 1, touchPosition: 2, stoppedAt: 3, recordedAt: Date.now() - 1000 };
 
 /** Every scoped store, as a pre-Phase 8 install wrote it. `srvC` has no usable user id. */
@@ -92,6 +99,9 @@ async function seedLegacyInstall() {
     'srvB:1:Two': save('srvB', 'Two'),
   });
   await set('audiosilo.progressQueue', [save('srvB', 'Two'), save('srvA', 'Book/One')]);
+  // The ebook reader's place mirror and queue (Bridge Phase 3b) have the same shapes.
+  await set('audiosilo.readingMirror', { 'srvA:1:Book/One': place('srvA', 'Book/One') });
+  await set('audiosilo.readingQueue', [place('srvB', 'Two')]);
   await set(OFFLINE_SERVERS_KEY, {
     srvA: { info: { server_id: 'srvA' }, savedAt: 1 },
     srvB: { info: { server_id: 'srvB' }, savedAt: 2 },
@@ -138,6 +148,10 @@ async function expectMigrated() {
     save('srvB.7', 'Two'),
     save('srvA.3', 'Book/One'),
   ]);
+  expect(await get('audiosilo.readingMirror')).toEqual({
+    'srvA.3:1:Book/One': place('srvA.3', 'Book/One'),
+  });
+  expect(await get('audiosilo.readingQueue')).toEqual([place('srvB.7', 'Two')]);
   expect(await get(OFFLINE_SERVERS_KEY)).toEqual({
     'srvA.3': { info: { server_id: 'srvA' }, savedAt: 1 },
     'srvB.7': { info: { server_id: 'srvB' }, savedAt: 2 },

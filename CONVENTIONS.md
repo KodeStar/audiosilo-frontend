@@ -543,6 +543,29 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   the toast always says private feeds are never exported. Check for new episodes
   (`CheckEpisodesButton`) is for a followed show only, and reads the show again once, 15 s later.
 
+**The ebook reader (Bridge Phase 3b-1, `src/reader/`, the route `/read`).** Web only for now
+(`canRead`: capability `ebooks`, `Book.ebook`, `Platform.OS === 'web'`; the native host is a
+stub until 3b-2). The route is `read.tsx`, never `reader.tsx`: the static export would write
+`dist/reader.html` over the reader document, and the server answers `/web/reader` with it.
+- **The reader is its own document**: `reader/src/` (foliate-js vendored unmodified at the
+  commit in `reader/vendor/FOLIATE_PIN.txt`, hashes checked) built by `npm run reader:build`
+  into `public/reader.html`, ONE inline script whose sha256 is in its meta CSP
+  (`connect-src 'none'`; the server hashes the same script). `npm test` runs `reader:check`, so
+  a stale build fails the gate: rebuild and commit it with any change under `reader/`.
+  `public/sw.js` never answers it with the app shell.
+- **The host** (`reader-host.web.tsx`): a same-origin iframe sandboxed to `allow-scripts
+  allow-same-origin` (foliate cannot run in an opaque origin). The host fetches `/ebook` with
+  the Authorization header (`client.ebook`, never `?token=`) and posts the bytes as a
+  transferable; the reader never sees a token or an API URL. Messages are parsed field by field
+  and taken only from that frame on our origin (`protocol.ts`); host messages wait for `ready`.
+- **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
+  book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
+  the last version the server acknowledged, always sent (0 only when no row was ever seen).
+  Every answer's version is adopted; when the kept row is another device's place somewhere
+  else, the reader offers "Jump there?" (`jumpOffer`), and Stay needs nothing.
+- **Keys**: the reader root is `aria-modal` with `data-layer="reader"`, so the player's global
+  shortcuts stand back; its own Escape and arrows use `useGlobalShortcut(..., 'reader')`.
+
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
 Stacks book page, laid out by its MEASURED width (`bookPageLayout`: the cover beside the text

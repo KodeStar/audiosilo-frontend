@@ -54,6 +54,9 @@ function RootNavigator() {
         <Stack.Screen name="player" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="finished" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="year" options={{ presentation: 'fullScreenModal' }} />
+        {/* The ebook reader (Bridge Phase 3b). `/read`, never `/reader`: the static export
+            would write that route to reader.html, the reader document's own file. */}
+        <Stack.Screen name="read" options={{ presentation: 'fullScreenModal' }} />
         {/* "Who's listening?" (Phase 8): chosen, never swiped away. */}
         <Stack.Screen
           name="profiles"

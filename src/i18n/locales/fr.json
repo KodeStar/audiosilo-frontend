@@ -2875,5 +2875,48 @@
       "cantNow": "Votre serveur ne peut pas vérifier les flux pour le moment. Réessayez plus tard.",
       "failed": "Impossible de vérifier cette émission. Réessayez."
     }
+  },
+  "reader": {
+    "read": "Lire l'ebook",
+    "close": "Fermer le lecteur",
+    "contents": "Table des matières",
+    "smaller": "Texte plus petit",
+    "larger": "Texte plus grand",
+    "previous": "Page précédente",
+    "next": "Page suivante",
+    "where": "{{percent}} % du livre",
+    "whereSection": "{{section}} · {{percent}} %",
+    "frameTitle": "{{title}}, l'ebook",
+    "tryAgain": "Réessayer",
+    "failure": {
+      "drm": {
+        "title": "Cet ebook est verrouillé",
+        "body": "Il est protégé par DRM, AudioSilo ne peut donc pas l'ouvrir. Un EPUB sans DRM dans le dossier du livre peut être lu ici."
+      },
+      "unreadable": {
+        "title": "Impossible d'ouvrir cet ebook",
+        "body": "Le fichier n'est pas un EPUB qu'AudioSilo sait lire, ou il est endommagé."
+      },
+      "missing": {
+        "title": "L'ebook n'est plus sur le serveur",
+        "body": "L'EPUB du livre est introuvable. S'il revient, il réapparaît après la prochaine analyse de la bibliothèque."
+      },
+      "fetch": {
+        "title": "Impossible de charger l'ebook",
+        "body": "Le serveur n'a pas répondu. Ta position dans le livre est conservée. Vérifie la connexion et réessaie."
+      },
+      "noEbook": {
+        "title": "Pas d'ebook pour ce livre",
+        "body": "La lecture demande un EPUB sans DRM dans le dossier du livre, sur un serveur qui a le lecteur."
+      }
+    },
+    "offer": {
+      "device": "Sur {{device}}, tu étais à {{percent}} %. Y aller ?",
+      "unknown": "Sur un autre appareil, tu étais à {{percent}} %. Y aller ?",
+      "jump": "Y aller",
+      "stay": "Rester"
+    },
+    "nativeTitle": "La lecture se fait sur le web pour le moment",
+    "nativeBody": "Le lecteur de l'app arrive dans une mise à jour. Ouvre ce livre dans le lecteur web pour le lire."
   }
 }

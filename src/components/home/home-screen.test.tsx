@@ -13,6 +13,9 @@ jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 
 jest.mock('./previously-on', () => ({ PreviouslyOnCard: () => null }));
 jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
 jest.mock('@/playback/progress-sync', () => ({ flushQueue: jest.fn(async () => undefined) }));
+jest.mock('@/reader/reading-progress', () => ({
+  flushReadingQueue: jest.fn(async () => undefined),
+}));
 jest.mock('@/playback/store', () => ({
   usePlayer: (sel: (s: { nowPlaying: null }) => unknown) => sel({ nowPlaying: null }),
 }));

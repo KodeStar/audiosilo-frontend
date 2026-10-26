@@ -28,6 +28,8 @@ import {
   PROFILES_KEY,
   PROGRESS_MIRROR_KEY,
   PROGRESS_QUEUE_KEY,
+  READING_MIRROR_KEY,
+  READING_QUEUE_KEY,
   TIME_SAVED_KEY,
 } from '@/lib/storage-keys';
 import type { ProfilesDoc } from '@/stores/profiles';
@@ -85,6 +87,8 @@ export const ID_DOCUMENTS = {
   downloads: DOWNLOADS_KEY,
   progressMirror: PROGRESS_MIRROR_KEY,
   progressQueue: PROGRESS_QUEUE_KEY,
+  readingMirror: READING_MIRROR_KEY,
+  readingQueue: READING_QUEUE_KEY,
   offlineServers: OFFLINE_SERVERS_KEY,
   carBookmarks: CAR_BOOKMARKS_KEY,
   librarySelection: LIBRARY_SELECTION_KEY,
@@ -237,6 +241,11 @@ export const rewrite = {
   progressMirror: (plan: Plan, doc: unknown): unknown =>
     rekeyRecord(plan, doc, (v) => withConnectionId(plan, v)),
   progressQueue: (plan: Plan, doc: unknown): unknown =>
+    Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc,
+  // The ebook reader's place mirror and queue have the progress mirror's and queue's shapes.
+  readingMirror: (plan: Plan, doc: unknown): unknown =>
+    rekeyRecord(plan, doc, (v) => withConnectionId(plan, v)),
+  readingQueue: (plan: Plan, doc: unknown): unknown =>
     Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc,
   offlineServers(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc)) return doc;

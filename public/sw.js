@@ -72,7 +72,10 @@ self.addEventListener('fetch', (event) => {
   if (DEV) return; // dev: leave the app shell to the network so HMR is unaffected
 
   if (request.mode === 'navigate') {
-    event.respondWith(handleNavigation(request));
+    // The ebook reader's document (Bridge Phase 3b, framed by the reader screen) is its own
+    // page under its own CSP: never answer it with the app shell, which would boot the
+    // whole app inside the reader's frame.
+    event.respondWith(handleNavigation(request, !isReaderDocument(url)));
   } else if (CACHEABLE.has(request.destination)) {
     // Never persist token-bearing media (covers embed ?token=): the session token
     // would be written into Cache Storage, and every entry turns into unreachable
@@ -85,7 +88,13 @@ self.addEventListener('fetch', (event) => {
 
 // --- app shell -------------------------------------------------------------
 
-async function handleNavigation(request) {
+/** Whether `url` is the ebook reader's document (`<scope>reader.html`, public/reader.html). */
+function isReaderDocument(url) {
+  return url.pathname === new URL('reader.html', self.registration.scope).pathname;
+}
+
+/** Network first, then this page's own cached copy, then (`shellFallback`) the app shell. */
+async function handleNavigation(request, shellFallback = true) {
   const cache = await caches.open(SHELL_CACHE);
   try {
     const fresh = await fetch(request);
@@ -96,7 +105,7 @@ async function handleNavigation(request) {
   } catch {
     return (
       (await cache.match(request)) ||
-      (await cache.match(self.registration.scope)) ||
+      (shellFallback ? await cache.match(self.registration.scope) : undefined) ||
       new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } })
     );
   }
