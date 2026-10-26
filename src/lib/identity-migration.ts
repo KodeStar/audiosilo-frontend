@@ -212,6 +212,14 @@ function rekeyRecord(plan: Plan, doc: unknown, mapValue = <T>(v: T) => v): unkno
 }
 
 /** Each document rewritten through `plan` (`undefined` = absent, left alone). */
+/** A record keyed by connection whose values each carry a `connectionId`. */
+const connectionRecords = (plan: Plan, doc: unknown): unknown =>
+  rekeyRecord(plan, doc, (v) => withConnectionId(plan, v));
+
+/** An array whose items each carry a `connectionId`. */
+const connectionList = (plan: Plan, doc: unknown): unknown =>
+  Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc;
+
 export const rewrite = {
   connections(plan: Plan, doc: unknown): unknown {
     if (!Array.isArray(doc)) return doc;
@@ -238,15 +246,11 @@ export const rewrite = {
     }
     return out;
   },
-  progressMirror: (plan: Plan, doc: unknown): unknown =>
-    rekeyRecord(plan, doc, (v) => withConnectionId(plan, v)),
-  progressQueue: (plan: Plan, doc: unknown): unknown =>
-    Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc,
+  progressMirror: connectionRecords,
+  progressQueue: connectionList,
   // The ebook reader's place mirror and queue have the progress mirror's and queue's shapes.
-  readingMirror: (plan: Plan, doc: unknown): unknown =>
-    rekeyRecord(plan, doc, (v) => withConnectionId(plan, v)),
-  readingQueue: (plan: Plan, doc: unknown): unknown =>
-    Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc,
+  readingMirror: connectionRecords,
+  readingQueue: connectionList,
   offlineServers(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc)) return doc;
     const out: Record<string, unknown> = {};

@@ -6,15 +6,10 @@ const FONT_SCALE_KEY = 'audiosilo.readerFontScale';
 /** The text sizes A- and A+ step through: 1 is the book's own size. */
 export const FONT_SCALES = [0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.6, 1.8] as const;
 
-/** The size one step smaller (`-1`) or larger (`1`) than `scale`, held at the ends; a
- * size off the list moves to the nearest one first. */
+/** The size one step smaller (`-1`) or larger (`1`) than `scale` (one of `FONT_SCALES`,
+ * as `loadFontScale` returns), held at the ends. */
 export function stepFontScale(scale: number, direction: -1 | 1): number {
-  let nearest = 0;
-  FONT_SCALES.forEach((s, i) => {
-    if (Math.abs(s - scale) < Math.abs(FONT_SCALES[nearest] - scale)) nearest = i;
-  });
-  const onList = FONT_SCALES[nearest] === scale;
-  const i = onList ? nearest + direction : nearest;
+  const i = (FONT_SCALES as readonly number[]).indexOf(scale) + direction;
   return FONT_SCALES[Math.min(FONT_SCALES.length - 1, Math.max(0, i))];
 }
 

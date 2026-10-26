@@ -110,11 +110,11 @@ export function ReaderHost({
 
   // A theme or text size change after the book opened (by value: `open` carried the first).
   const { scheme, background, foreground } = theme;
-  const sent = useRef(`${scheme}${background}${foreground}${fontScale}`);
+  const appearanceSent = useRef(`${scheme}${background}${foreground}${fontScale}`);
   useEffect(() => {
     const key = `${scheme}${background}${foreground}${fontScale}`;
-    if (sent.current === key) return;
-    sent.current = key;
+    if (appearanceSent.current === key) return;
+    appearanceSent.current = key;
     channel.current?.send({
       type: 'appearance',
       theme: { scheme, background, foreground },

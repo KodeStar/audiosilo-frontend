@@ -141,6 +141,8 @@ export async function lookupReadingPlace(
   path: string,
   signal?: AbortSignal,
 ): Promise<ReadingPlaceLookup> {
+  // The local places are read while the server answers.
+  const local = Promise.all([readMirror(connectionId, libraryId, path), readQueue()]);
   let server: ReadingProgress | null = null;
   if (api) {
     try {
@@ -152,10 +154,7 @@ export async function lookupReadingPlace(
       else noteFailure(connectionId, e);
     }
   }
-  const [mirror, queue] = await Promise.all([
-    readMirror(connectionId, libraryId, path),
-    readQueue(),
-  ]);
+  const [mirror, queue] = await local;
   const book = { connectionId, libraryId, path };
   const queued = queue.find((s) => sameBook(s, book)) ?? null;
   let best: ReadingPlace | null = server;

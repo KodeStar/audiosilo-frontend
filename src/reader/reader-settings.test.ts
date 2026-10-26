@@ -10,10 +10,6 @@ describe('stepFontScale', () => {
     expect(stepFontScale(FONT_SCALES[0], -1)).toBe(FONT_SCALES[0]);
     expect(stepFontScale(FONT_SCALES.at(-1)!, 1)).toBe(FONT_SCALES.at(-1));
   });
-
-  it('moves a size off the list to the nearest one first', () => {
-    expect(stepFontScale(1.03, 1)).toBe(1);
-  });
 });
 
 describe('the saved text size', () => {

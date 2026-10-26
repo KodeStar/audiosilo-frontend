@@ -1,3 +1,5 @@
+import { isRecord } from '@/lib/storage-keys';
+
 /**
  * The host side of the ebook reader's message protocol (Bridge Phase 3b). The reader is
  * its own document (`reader/src/reader.js`, built into `public/reader.html`) in a sandboxed,
@@ -54,8 +56,6 @@ const MAX_TOC = 2000;
 const MAX_TEXT = 500;
 const MAX_CFI = 2048;
 
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
 const str = (v: unknown, max = MAX_TEXT): string | null =>
   typeof v === 'string' ? v.slice(0, max) : null;
 const fraction = (v: unknown): number | null =>

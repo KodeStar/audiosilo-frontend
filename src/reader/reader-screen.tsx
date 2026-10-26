@@ -1,5 +1,4 @@
-import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppState, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,9 +12,10 @@ import { Notice } from '@/components/ui/notice';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { backOrHome } from '@/lib/back-or-home';
 import { useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
-import { useLatest } from '@/lib/use-latest';
+import { useLatest, useLatestRef } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { getDeviceId } from '@/playback/progress-sync';
 import { useTheme } from '@/theme/theme-provider';
@@ -25,7 +25,7 @@ import { canRead } from './can-read';
 import type { ReaderTheme, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import type { ReaderHostEvent, ReaderHostHandle } from './reader-host-types';
-import { loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
+import { FONT_SCALES, loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
 import {
   adoptServerPlace,
   captureReadingSave,
@@ -46,11 +46,6 @@ const SPINNER_DELAY_MS = 300;
 type ReaderFailure = 'drm' | 'unreadable' | 'missing' | 'fetch' | 'noEbook';
 
 type Place = { cfi: string; fraction: number; sectionLabel: string };
-
-function closeReader() {
-  if (router.canGoBack()) router.back();
-  else router.dismissTo('/');
-}
 
 /**
  * The ebook reader (Bridge Phase 3b, the `/read` root modal): a top bar (close, the
@@ -110,10 +105,8 @@ export function ReaderScreen({
   // means this device has now seen that version, so its saves are made on it.
   const [opening, setOpening] = useState<ReadingPlaceLookup | null>(null);
   if (!opening && place.data) setOpening(place.data);
-  const at = opening
-    ? opening.place
-      ? { cfi: opening.place.cfi, fraction: opening.place.progression }
-      : null
+  const at = opening?.place
+    ? { cfi: opening.place.cfi, fraction: opening.place.progression }
     : undefined;
   useEffect(() => {
     if (opening?.fromServer)
@@ -153,10 +146,7 @@ export function ReaderScreen({
   }, [flushSave]);
 
   // --- "Jump there?" --------------------------------------------------------------------
-  const currentRef = useRef<Place | null>(null);
-  useEffect(() => {
-    currentRef.current = current;
-  }, [current]);
+  const currentRef = useLatestRef(current);
   useEffect(
     () =>
       onReadingSaved((answer) => {
@@ -178,7 +168,7 @@ export function ReaderScreen({
           ),
         );
       }),
-    [connectionId, libraryId, path],
+    [connectionId, libraryId, path, currentRef],
   );
 
   const onMessage = (message: ReaderHostEvent) => {
@@ -214,9 +204,14 @@ export function ReaderScreen({
     setAttempt((n) => n + 1);
   };
 
+  const gotoEntry = useLatest((href: string) => {
+    setTocOpen(false);
+    host.current?.goto({ href });
+  });
+
   const show = !failure && opened !== null;
   const shortcuts = Platform.OS === 'web' && !tocOpen;
-  useGlobalShortcut(shortcuts, (e) => e.key === 'Escape', closeReader, READER_LAYER);
+  useGlobalShortcut(shortcuts, (e) => e.key === 'Escape', backOrHome, READER_LAYER);
   useGlobalShortcut(
     show && shortcuts,
     (e) => e.key === 'ArrowLeft',
@@ -232,7 +227,7 @@ export function ReaderScreen({
 
   const noEbook = book !== undefined && (ebooks === false || !book.ebook);
   const shown: ReaderFailure | null = failure ?? (noEbook ? 'noEbook' : null);
-  const ready = readable && api !== null && at !== undefined && fontScale !== null;
+  const ready = readable && api !== null && opening !== null && fontScale !== null;
   const title = book ? bookTitle(book.title, path) : (opened?.title ?? '');
   const percent = current ? Math.round(current.fraction * 100) : null;
 
@@ -254,7 +249,7 @@ export function ReaderScreen({
             size="icon"
             icon="close"
             accessibilityLabel={t('reader.close')}
-            onPress={closeReader}
+            onPress={backOrHome}
           />
           <View className="min-w-0 flex-1 px-1">
             <Text variant="label" numberOfLines={1}>
@@ -283,7 +278,7 @@ export function ReaderScreen({
                 size="icon"
                 icon="minus"
                 accessibilityLabel={t('reader.smaller')}
-                disabled={fontScale === stepFontScale(fontScale ?? 1, -1)}
+                disabled={fontScale === FONT_SCALES[0]}
                 onPress={() => changeFontScale(-1)}
               />
               <Button
@@ -291,7 +286,7 @@ export function ReaderScreen({
                 size="icon"
                 icon="plus"
                 accessibilityLabel={t('reader.larger')}
-                disabled={fontScale === stepFontScale(fontScale ?? 1, 1)}
+                disabled={fontScale === FONT_SCALES.at(-1)}
                 onPress={() => changeFontScale(1)}
               />
             </>
@@ -307,7 +302,7 @@ export function ReaderScreen({
               libraryId={libraryId}
               path={path}
               name={title}
-              at={at ?? undefined}
+              at={at}
               theme={theme}
               fontScale={fontScale}
               title={t('reader.frameTitle', { title })}
@@ -358,25 +353,7 @@ export function ReaderScreen({
         title={t('reader.contents')}
         scroll
       >
-        {(opened?.toc ?? []).map((entry, i) => (
-          <Pressable
-            key={`${i}:${entry.href}`}
-            role="button"
-            className="rounded-lg py-2.5 pr-2 active:bg-muted web:hover:bg-muted"
-            style={{ paddingLeft: 8 + entry.depth * 16 }}
-            onPress={() => {
-              setTocOpen(false);
-              host.current?.goto({ href: entry.href });
-            }}
-          >
-            <Text
-              variant={current?.sectionLabel === entry.label ? 'label' : 'body'}
-              numberOfLines={2}
-            >
-              {entry.label}
-            </Text>
-          </Pressable>
-        ))}
+        <TocList toc={opened?.toc} section={current?.sectionLabel} onSelect={gotoEntry} />
       </Sheet>
     </>
   );
@@ -396,6 +373,32 @@ function useDelayed(value: boolean, ms: number): boolean {
   }, [value, ms]);
   return value && shown;
 }
+
+/** The contents, one row per entry (the current chapter in bold). Memoized: the screen
+ * re-renders on every page turn, and a long contents list need not be rebuilt for it. */
+const TocList = memo(function TocList({
+  toc,
+  section,
+  onSelect,
+}: {
+  toc: TocEntry[] | undefined;
+  section: string | undefined;
+  onSelect: (href: string) => void;
+}) {
+  return (toc ?? []).map((entry, i) => (
+    <Pressable
+      key={`${i}:${entry.href}`}
+      role="button"
+      className="rounded-lg py-2.5 pr-2 active:bg-muted web:hover:bg-muted"
+      style={{ paddingLeft: 8 + entry.depth * 16 }}
+      onPress={() => onSelect(entry.href)}
+    >
+      <Text variant={section === entry.label ? 'label' : 'body'} numberOfLines={2}>
+        {entry.label}
+      </Text>
+    </Pressable>
+  ));
+});
 
 /** A page turn at one edge of the book: a tall, quiet target over the margin. */
 function PageEdge({
@@ -437,7 +440,7 @@ function ReaderMessage({ failure, onRetry }: { failure: ReaderFailure; onRetry: 
           {failure === 'fetch' ? (
             <Button variant="outline" title={t('reader.tryAgain')} onPress={onRetry} />
           ) : null}
-          <Button title={t('reader.close')} onPress={closeReader} />
+          <Button title={t('reader.close')} onPress={backOrHome} />
         </View>
       </View>
     </View>
