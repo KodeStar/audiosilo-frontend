@@ -2924,3 +2924,92 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
     expect(apiErrorKind(await failure(client().exportOpml()))).toBe('demo_account');
   });
 });
+
+describe('reading (capability ebooks, Bridge Phase 3b)', () => {
+  const client = () => new ApiClient('https://h', 'tok');
+  const call = (m: jest.Mock) => {
+    const [input, init] = m.mock.calls[0] as [string, RequestInit];
+    return { url: new URL(input), init };
+  };
+
+  it('fetches the ebook bytes by the BOOK path, with the Authorization header and no token in the URL', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 3, 4]).buffer;
+    const m = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: () => Promise.resolve(bytes),
+        text: () => Promise.resolve(''),
+      } as unknown as Response),
+    );
+    globalThis.fetch = m as unknown as typeof globalThis.fetch;
+    await expect(client().ebook(1, 'Author/Book')).resolves.toBe(bytes);
+    const { url, init } = call(m);
+    expect(url.pathname).toBe('/api/v1/libraries/1/ebook');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    expect(url.searchParams.has('token')).toBe(false);
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('throws the server refusal for an ebook it does not serve', async () => {
+    installFetch(() => ({ status: 404, body: { error: 'no ebook' } }));
+    await expect(client().ebook(1, 'Author/Book')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('reads the place, null when there is none', async () => {
+    const row = {
+      library_id: 1,
+      path: 'Author/Book',
+      cfi: 'epubcfi(/6/4!/4/2/1:0)',
+      progression: 0.42,
+      version: 3,
+      device_id: 'd1',
+      device_name: 'Pixel 8',
+      updated_at: '2026-10-25T10:00:00Z',
+    };
+    const m = installFetch(() => ({ status: 200, body: { reading_progress: row } }));
+    await expect(client().readingProgress(1, 'Author/Book')).resolves.toEqual(row);
+    const { url } = call(m);
+    expect(url.pathname).toBe('/api/v1/libraries/1/reading-progress');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    installFetch(() => ({ status: 200, body: { reading_progress: null } }));
+    await expect(client().readingProgress(1, 'Author/Book')).resolves.toBeNull();
+  });
+
+  it('saves the place with its base_version and returns the kept row and other_place', async () => {
+    const answer = {
+      reading_progress: {
+        library_id: 1,
+        path: 'Author/Book',
+        cfi: 'epubcfi(/6/10!/4/2/1:0)',
+        progression: 0.6,
+        version: 7,
+        device_id: 'other',
+        device_name: 'Pixel 8',
+        updated_at: '2026-10-25T10:00:00Z',
+      },
+      other_place: {
+        cfi: 'epubcfi(/6/4!/4/2/1:0)',
+        progression: 0.3,
+        device_id: 'me',
+        device_name: '',
+        updated_at: '2026-10-25T11:00:00Z',
+      },
+    };
+    const m = installFetch(() => ({ status: 200, body: answer }));
+    const input = {
+      cfi: 'epubcfi(/6/4!/4/2/1:0)',
+      progression: 0.3,
+      device_id: 'me',
+      updated_at: '2026-10-25T11:00:00Z',
+      base_version: 5,
+    };
+    await expect(client().saveReadingProgress(1, 'Author/Book', input)).resolves.toEqual(answer);
+    const { url, init } = call(m);
+    expect(init.method).toBe('PUT');
+    expect(url.pathname).toBe('/api/v1/libraries/1/reading-progress');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    expect(JSON.parse(String(init.body))).toEqual(input);
+  });
+});

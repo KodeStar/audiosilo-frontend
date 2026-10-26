@@ -74,6 +74,9 @@ import type {
   ProgressEdit,
   ProgressInput,
   QueueEntry,
+  ReadingProgress,
+  ReadingProgressInput,
+  ReadingProgressSaved,
   RatedBook,
   Rating,
   RatingValue,
@@ -349,6 +352,10 @@ const UPSTREAM_TIMEOUT_MS = 30_000;
 /** The timeout of an OPML upload: past the server's own 30 s import budget, by which it
  * always answers. */
 const OPML_IMPORT_TIMEOUT_MS = 45_000;
+
+/** The timeout of an ebook download (`ebook`): the whole file in one answer, which can be
+ * tens of megabytes (a picture-heavy EPUB) on a slow link. */
+const EBOOK_TIMEOUT_MS = 120_000;
 
 /** A directory result's artwork link as the server writes it (relative, one 64-hex id). */
 const DISCOVERY_ARTWORK_RE = /^\/api\/v1\/podcasts\/discovery\/artwork\?id=([0-9a-f]{64})$/;
@@ -1138,6 +1145,43 @@ export class ApiClient {
     );
     return r.progress;
   }
+  // --- Reading (capability `ebooks`, Bridge Phase 3b) ------------------------
+  /** A book's ebook bytes (`Book.ebook`), asked for by the BOOK's path. Fetched with the
+   * `Authorization` header: the route takes no `?token=` (nothing ever holds a URL that
+   * carries a credential), and the reader gets the bytes, never a token or an API URL.
+   * 404: not a book, no ebook, or the file is gone; 403: outside the caller's access. */
+  ebook(libraryId: number, path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+    const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
+    return this.send(
+      'GET',
+      this.apiUrl(`/libraries/${libraryId}/ebook`, { path }),
+      headers,
+      { signal, timeoutMs: Math.max(this.timeoutMs, EBOOK_TIMEOUT_MS) },
+      async (res) => {
+        if (!res.ok) await readJson<void>(res);
+        return res.arrayBuffer();
+      },
+    );
+  }
+  /** The caller's place in a book's ebook; null when they have none there yet. */
+  async readingProgress(libraryId: number, path: string, signal?: AbortSignal) {
+    const r = await this.request<{ reading_progress: ReadingProgress | null }>(
+      'GET',
+      `/libraries/${libraryId}/reading-progress`,
+      { query: { path }, signal },
+    );
+    return r.reading_progress;
+  }
+  /** Save the caller's place in a book's ebook. The answer is the stored row (another
+   * device's further place when this save diverged, see {@link ReadingProgressInput}),
+   * with the place not kept as `other_place` on a diverged save. */
+  saveReadingProgress(libraryId: number, path: string, input: ReadingProgressInput) {
+    return this.request<ReadingProgressSaved>('PUT', `/libraries/${libraryId}/reading-progress`, {
+      query: { path },
+      body: input,
+    });
+  }
+
   /** The caller's own edit of a book's progress (capability `progress_edit`; see
    * {@link ProgressEdit}): mark it finished or unfinished, move the position, set or
    * clear the dates. Returns the stored progress, dates included. A 404 means no
