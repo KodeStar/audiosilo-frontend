@@ -51,6 +51,7 @@ module.exports = [
       'android/',
       'ios/',
       'public/',
+      'reader/vendor/',
       'scripts/',
       '*.config.js',
       'expo-env.d.ts',

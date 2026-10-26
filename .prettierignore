@@ -3,6 +3,8 @@ dist/
 android/
 ios/
 public/
+# foliate-js, vendored unmodified (reader/vendor/FOLIATE_PIN.txt)
+reader/vendor/
 node_modules/
 package-lock.json
 *.md
