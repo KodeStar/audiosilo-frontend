@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Switch } from '@/components/ui/switch';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { chapterLabel } from '@/lib/chapter-label';
+import { chapterLabel, namesTheItem } from '@/lib/chapter-label';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -187,12 +187,9 @@ function NowPlayingCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
   const isPlaying = usePlayer(selectIsPlaying);
   const toggle = usePlayer((s) => s.toggle);
   const left = usePlayingTimeLeft();
-  // A file with no chapter marks (an episode, often) names its one chapter after itself:
-  // the title once is enough.
   const chapterName = chapter ? chapterLabel(chapter, t) : '';
-  const where = [chapterName === nowPlaying.title ? '' : chapterName, left]
-    .filter(Boolean)
-    .join(' · ');
+  const own = namesTheItem(nowPlaying.title, chapterName, nowPlaying.queue.chapters.length);
+  const where = [own ? '' : chapterName, left].filter(Boolean).join(' · ');
   return (
     <View className="mx-1.5 mb-3 flex-row items-center gap-3 rounded-2xl bg-muted p-3">
       <BookCover

@@ -157,7 +157,13 @@ describe('UpNextPanel', () => {
   });
 
   describe('with a podcast episode loaded (BRIDGE-12)', () => {
-    const episode = { connectionId: 'c', libraryId: 1, path: 'Show/ep.mp3', title: 'Monday' };
+    const episode = {
+      connectionId: 'c',
+      libraryId: 1,
+      path: 'Show/ep.mp3',
+      title: 'Monday',
+      queue: { chapters: [{ title: 'Monday', index: 0 }] },
+    };
     afterEach(() => usePlayer.setState({ nowPlaying: null } as never));
 
     it("words the next and auto-play for an episode, and doesn't repeat its title", async () => {
@@ -200,7 +206,13 @@ describe('UpNextPanel', () => {
   // STYLEGUIDE section 14: rem-sized buttons (`h-11`, `h-9`) are 38.5 and 31.5 pt on native.
   it("gives play/pause and the suggestions' + a 44 pt target on native", async () => {
     usePlayer.setState({
-      nowPlaying: { connectionId: 'c', libraryId: 1, path: 'N', title: 'Now' },
+      nowPlaying: {
+        connectionId: 'c',
+        libraryId: 1,
+        path: 'N',
+        title: 'Now',
+        queue: { chapters: [] },
+      },
     } as never);
     await render(
       <UpNextPanel

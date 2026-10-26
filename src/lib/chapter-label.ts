@@ -13,6 +13,12 @@ export function chapterLabel(chapter: { title: string; index: number }, t: TFunc
   );
 }
 
+/** Whether a chapter label only repeats its item's title: the server gives a single-file
+ * episode or book ONE chapter named after it, so that lone chapter names nothing new. */
+export function namesTheItem(title: string, label: string, chapters: number): boolean {
+  return chapters <= 1 && label.trim().toLowerCase() === title.trim().toLowerCase();
+}
+
 /** A chapter named by its place in the book (1-based) and its own title. */
 export type NamedChapter = { number: number; title: string };
 

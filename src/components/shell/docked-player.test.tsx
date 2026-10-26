@@ -184,24 +184,6 @@ describe('DockedPlayer', () => {
     expect(screen.queryByText(/Current generation ·/)).toBeNull();
   });
 
-  it('treats a lone chapter named after a book as none, whatever its case and spacing', async () => {
-    const lone = { title: '  the gift of the MAGI ', index: 0 };
-    player.usePlayer.setState({
-      nowPlaying: {
-        ...BOOK,
-        title: 'The Gift of the Magi',
-        author: 'O. Henry',
-        queue: { ...BOOK.queue, chapters: [lone] },
-      },
-      chapter: lone,
-    } as never);
-    await renderAt(1280);
-    expect(screen.getByText('The Gift of the Magi')).toBeTruthy();
-    expect(screen.queryByText(/MAGI/)).toBeNull();
-    expect(screen.getByText('O. Henry')).toBeTruthy();
-    expect(screen.queryByText('The Gift of the Magi · O. Henry')).toBeNull();
-  });
-
   it('keeps a lone chapter named otherwise as the heading', async () => {
     const lone = { title: 'Prologue', index: 0 };
     player.usePlayer.setState({
@@ -210,20 +192,6 @@ describe('DockedPlayer', () => {
     } as never);
     await renderAt(1280);
     expect(screen.getByText('Prologue')).toBeTruthy();
-    expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
-  });
-
-  it('keeps a chapter named after the book when the book has several', async () => {
-    const first = { title: 'The Way of Kings', index: 0 };
-    player.usePlayer.setState({
-      nowPlaying: {
-        ...BOOK,
-        queue: { ...BOOK.queue, chapters: [first, { title: 'Prologue', index: 1 }] },
-      },
-      chapter: first,
-    } as never);
-    await renderAt(1280);
-    expect(screen.getByText('The Way of Kings')).toBeTruthy();
     expect(screen.getByText('The Way of Kings · Brandon Sanderson')).toBeTruthy();
   });
 

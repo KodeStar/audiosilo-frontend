@@ -24,7 +24,7 @@ import { useChromeEdge, useShellMetrics } from '@/components/shell/shell-metrics
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
-import { chapterLabel } from '@/lib/chapter-label';
+import { chapterLabel, namesTheItem } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
@@ -128,29 +128,17 @@ export function MiniPlayerSubtitle({
   );
 }
 
-/** The heading the compact players show for a title and its current chapter's label (''
- * for none), out of `chapters`: the chapter, else the title. A lone chapter named as the
- * title is no chapter (the server gives a single-file episode or book ONE chapter named
- * after it), so the title is not said twice. Pure for the tests. */
-export function miniHeading(
-  title: string,
-  label: string,
-  chapters: number,
-): { heading: string; isChapter: boolean } {
-  const same = label.trim().toLowerCase() === title.trim().toLowerCase();
-  return label && !(chapters <= 1 && same)
-    ? { heading: label, isChapter: true }
-    : { heading: title, isChapter: false };
-}
-
 /** The heading the compact players show: the current chapter, else the book's title
- * (`miniHeading`). */
+ * (also for a lone chapter that `namesTheItem`). */
 export function useMiniHeading(): { heading: string; isChapter: boolean } {
   const { t } = useTranslation();
   const title = usePlayer((s) => s.nowPlaying?.title ?? '');
   const chapters = usePlayer((s) => s.nowPlaying?.queue.chapters.length ?? 0);
   const chapter = usePlayer(selectCurrentChapter);
-  return miniHeading(title, chapter ? chapterLabel(chapter, t) : '', chapters);
+  const label = chapter ? chapterLabel(chapter, t) : '';
+  return label && !namesTheItem(title, label, chapters)
+    ? { heading: label, isChapter: true }
+    : { heading: title, isChapter: false };
 }
 
 /**
