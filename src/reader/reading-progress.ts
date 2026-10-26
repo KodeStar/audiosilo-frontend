@@ -1,4 +1,4 @@
-import { ApiError, type ApiClient } from '@/api/client';
+import { ApiError, type ApiClient, isSignedOutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
@@ -20,10 +20,12 @@ import { onConnectionRemoved } from '@/stores/session';
  * One thing it adds: `base_version`, the server's `version` of the place this device last
  * saw (acknowledged). The server bumps the version on every write it applies, so a save
  * from another device made on an older version is DIVERGED, and the server keeps the
- * further of the two places instead of moving the reader back. Every answer's version is
- * adopted (`version` in the mirror), so after the reader has seen the other device's place
- * (and chosen to stay), its next save applies: moving back on purpose works. Separate
- * from listening progress on purpose.
+ * further of the two places instead of moving the reader back. An answer that kept this
+ * device's own place is acknowledged at once (`version` in the mirror); one that kept
+ * another device's place only once the open reader has shown it (`adoptServerPlace`: Jump,
+ * Stay, or the reader is already there). Until then this device's saves stay diverged, so
+ * a place it never saw is never moved back, and after Stay its next save applies: moving
+ * back on purpose works. Separate from listening progress on purpose.
  */
 
 /** A place in the book, as the server and the mirror keep it. */
@@ -115,6 +117,16 @@ const withNewerPlace =
       ? { ...entry, place: placeOf(place) }
       : entry;
 
+/** Take the server's `row` as seen: its place when newer, and its version. */
+const acknowledged =
+  (row: ReadingProgress) =>
+  (entry: MirrorEntry): MirrorEntry => ({ ...withNewerPlace(row)(entry), version: row.version });
+
+/** Whether the server takes `save` as diverged from its stored `row` (catalog.ResolvePlace):
+ * made by another device than the row's, on another version than the row's. */
+const diverges = (save: ReadingSave, row: ReadingProgress) =>
+  save.base_version !== row.version && save.device_id !== row.device_id;
+
 async function readMirror(
   connectionId: string,
   libraryId: number,
@@ -126,9 +138,13 @@ async function readMirror(
 // --- where to open -------------------------------------------------------------------------
 
 /** Where the reader opens a book: the newest place (by `updated_at`) of the server's row,
- * the mirror and the offline queue; `fromServer` when that is the server's row (then the
- * reader adopts it with `adoptServerPlace`). `place` null: none anywhere, open at the
- * start. Never throws: an unreachable server leaves the local places. */
+ * the mirror and the offline queue, except that a queued save the server will keep (one
+ * that diverged and is further on) beats the row, however old; `fromServer` when it is
+ * the server's row (then the reader adopts it with `adoptServerPlace`). `place` null: none
+ * anywhere, open at the start. With no answer from the server, this device's own places
+ * stand; with none either, the lookup fails (throws the request's error) instead of
+ * opening at the start: a start saved over a place read elsewhere would replace it. A 401
+ * always fails it (the token is dead). */
 export type ReadingPlaceLookup = {
   place: ReadingPlace | null;
   fromServer: ReadingProgress | null;
@@ -144,41 +160,49 @@ export async function lookupReadingPlace(
   // The local places are read while the server answers.
   const local = Promise.all([readMirror(connectionId, libraryId, path), readQueue()]);
   let server: ReadingProgress | null = null;
+  // Why the server's place is unknown (no client, or the request failed); null: it answered.
+  let unknown: unknown = api ? null : new Error('no client for this connection');
   if (api) {
     try {
       server = await api.readingProgress(libraryId, path, signal);
     } catch (e) {
       if (signal?.aborted) throw e;
+      // A dead token is never masked by the local places: the client flagged it, and a
+      // lookup that succeeded anyway would clear that flag (provider.tsx).
+      if (isSignedOutError(e)) throw e;
       // An ApiError is an answer (it is up); anything else only asks for a check.
       if (e instanceof ApiError) noteSuccess(connectionId);
       else noteFailure(connectionId, e);
+      unknown = e;
     }
   }
   const [mirror, queue] = await local;
   const book = { connectionId, libraryId, path };
   const queued = queue.find((s) => sameBook(s, book)) ?? null;
   let best: ReadingPlace | null = server;
-  for (const local of [mirror?.place ?? null, queued]) {
-    if (local && (!best || timeOf(local) > timeOf(best))) best = local;
+  for (const place of [mirror?.place ?? null, queued]) {
+    if (place && (!best || timeOf(place) > timeOf(best))) best = place;
   }
+  if (queued && server && diverges(queued, server) && queued.progression > server.progression) {
+    best = queued;
+  }
+  if (!best && unknown !== null) throw unknown;
   return {
     place: best ? placeOf(best) : null,
     fromServer: best !== null && best === server ? server : null,
   };
 }
 
-/** The reader opened at the server's row: it has now seen that version, so its saves are
- * made on it (and the mirror keeps the place). */
+/** The reader has shown the server's `row` (it opened there; or another device's kept place
+ * was answered with Jump or Stay, or the reader is already there): this device has seen that
+ * version, so its saves are made on it (and the mirror keeps the place). */
 export async function adoptServerPlace(
   connectionId: string,
   libraryId: number,
   path: string,
   row: ReadingProgress,
 ): Promise<void> {
-  await updateMirror({ connectionId, libraryId, path }, (entry) => ({
-    ...withNewerPlace(row)(entry),
-    version: row.version,
-  }));
+  await updateMirror({ connectionId, libraryId, path }, acknowledged(row));
 }
 
 // --- saving ----------------------------------------------------------------------------------
@@ -217,7 +241,10 @@ export function onReadingSaved(listener: SavedListener): () => void {
 
 const isUnrecoverable = (e: unknown) => e instanceof ApiError && e.status >= 400 && e.status < 500;
 
-/** PUT one save, adopt the answer's version (and its place when newer), tell listeners. */
+/** PUT one save, keep the answer's place when newer, tell listeners. Its version is
+ * acknowledged when the server kept this device's place; another device's kept place waits
+ * for the open reader to show it (`adoptServerPlace`), and no reader may be open: a replay
+ * from Home, or the close-save answered after the reader went. */
 async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgressSaved> {
   const saved = await client.saveReadingProgress(save.libraryId, save.path, {
     cfi: save.cfi,
@@ -227,7 +254,10 @@ async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgres
     base_version: save.base_version,
   });
   const row = saved.reading_progress;
-  await updateMirror(save, (entry) => ({ ...withNewerPlace(row)(entry), version: row.version }));
+  await updateMirror(
+    save,
+    row.device_id === save.device_id ? acknowledged(row) : withNewerPlace(row),
+  );
   const answer = {
     connectionId: save.connectionId,
     libraryId: save.libraryId,
@@ -363,9 +393,10 @@ export type JumpOffer = { cfi: string; progression: number; deviceName: string }
 
 /**
  * Whether a save's answer offers a jump: the row the server KEPT is another device's and
- * is somewhere else than the reader is now (`current`). Stay needs nothing: the answer's
- * version is already adopted, so the next save applies. Otherwise (`other_place`, this
- * device's own row) nothing is offered.
+ * is somewhere else than the reader is now (`current`). Jump and Stay acknowledge it
+ * (`adoptServerPlace`), so the next save applies; until then this device's saves stay
+ * diverged and the server keeps that place. Otherwise (`other_place`, this device's own
+ * row) nothing is offered.
  */
 export function jumpOffer(
   saved: ReadingProgressSaved,

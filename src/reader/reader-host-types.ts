@@ -31,7 +31,18 @@ export type ReaderHostProps = {
   /** The frame's accessible name. */
   title: string;
   onMessage: (message: ReaderHostEvent) => void;
-  /** Fetching the EPUB failed (the reader shows nothing then). */
+  /** Fetching the EPUB failed, or the reader document never started (a
+   * `ReaderStartError`); the reader shows nothing then. */
   onLoadError: (error: unknown) => void;
   ref?: Ref<ReaderHostHandle>;
 };
+
+/** The reader document never said `ready`: a proxy's policy refused the frame or its
+ * script, or the browser cannot run it. Not the server's silence: the book may have
+ * arrived. */
+export class ReaderStartError extends Error {
+  constructor() {
+    super('the reader document did not start');
+    this.name = 'ReaderStartError';
+  }
+}

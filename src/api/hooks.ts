@@ -1119,9 +1119,29 @@ export async function fetchBookProgress(
 }
 
 /** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest
- * of the server's place, this device's mirror and its queued save (`lookupReadingPlace`,
- * which falls back to this device's places when the server can't be reached). Read once
- * per opening: nothing kept after the reader closes, no retry. */
+ * of the server's place, this device's mirror and its queued save, or that save when the
+ * server will keep it (`lookupReadingPlace`, which falls back to this device's places when
+ * the server can't be reached, and fails when it has none). Read once per opening: nothing
+ * kept after the reader closes, no retry (the screen's Try again looks again). Asked
+ * whatever the browser's online flag says: held while it says offline, the reader would
+ * wait on a spinner instead of opening at a local place or saying it can't. */
+export function readingPlaceQuery(
+  cid: string,
+  api: ApiClient | null,
+  libraryId: number,
+  path: string,
+) {
+  return queryOptions({
+    queryKey: qk.readingPlace(cid, libraryId, path),
+    queryFn: ({ signal }) => lookupReadingPlace(api, cid, libraryId, path, signal),
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+    networkMode: 'always',
+  });
+}
+
+/** The reader's {@link readingPlaceQuery}, once `enabled` (the book is readable). */
 export function useReadingPlace(
   libraryId: number,
   path: string,
@@ -1131,12 +1151,8 @@ export function useReadingPlace(
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   return useQuery({
-    queryKey: qk.readingPlace(cid, libraryId, path),
-    queryFn: ({ signal }) => lookupReadingPlace(api, cid, libraryId, path, signal),
+    ...readingPlaceQuery(cid, api, libraryId, path),
     enabled: enabled && path.length > 0,
-    staleTime: Infinity,
-    gcTime: 0,
-    retry: false,
   });
 }
 

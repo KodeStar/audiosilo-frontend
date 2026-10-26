@@ -1,8 +1,30 @@
-// The reader's DRM check (`hasDrm`): font obfuscation is not DRM, anything else is.
+// The reader's DRM check (`hasDrm`): font obfuscation is not DRM, anything else is. And the
+// SHA-1 that undoes IDPF font obfuscation where `crypto.subtle` is missing (plain HTTP).
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
-import { hasDrm } from '../src/epub-open.js';
+import { hasDrm, sha1 } from '../src/epub-open.js';
+
+test('sha1 matches the standard digest, across block boundaries and in UTF-8', () => {
+  for (const text of [
+    '',
+    'abc',
+    'urn:uuid:12345678-1234-1234-1234-123456789abc',
+    'x'.repeat(55),
+    'x'.repeat(56),
+    'x'.repeat(64),
+    'x'.repeat(119),
+    'x'.repeat(120),
+    'isbn:978-0-00-000000-0 Ünïcödé 書 🙂',
+  ]) {
+    assert.equal(
+      [...sha1(text)].map((b) => b.toString(16).padStart(2, '0')).join(''),
+      createHash('sha1').update(text, 'utf8').digest('hex'),
+      `sha1 of ${JSON.stringify(text)}`,
+    );
+  }
+});
 
 const encryption = (...algorithms) => `<?xml version="1.0"?>
 <encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"

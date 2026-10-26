@@ -9,11 +9,12 @@ import { isRecord } from '@/lib/storage-keys';
  * the appearance), `goto`, `appearance`, `next`, `prev`. Messages wait in the host until
  * the reader says `ready`.
  *
- * Reader -> host: `ready`, `opened` (title, flattened TOC), `progress` (on every move),
- * `loading` (a section is being laid out), `error`, `csp` (a blocked load, logged). The
- * reader parses an EPUB nobody vetted, so its messages are checked here field by field
- * (`parseReaderMessage`) and taken only from that frame's window on our own origin
- * (`acceptReaderMessage`).
+ * Reader -> host: `ready`, `opened` (title, flattened TOC, whether the book reads right to
+ * left), `progress` (on every move), `loading` (a section is being laid out), `error`,
+ * `escape` (Escape pressed in the book, which the host's own keys never see), `csp` (a
+ * blocked load, logged). The reader parses an EPUB nobody vetted, so its messages are
+ * checked here field by field (`parseReaderMessage`) and taken only from that frame's
+ * window on our own origin (`acceptReaderMessage`).
  */
 
 export type ReaderTheme = { scheme: 'light' | 'dark'; background: string; foreground: string };
@@ -46,10 +47,11 @@ export type ReaderErrorCode = 'drm' | 'unreadable' | 'runtime';
 
 export type ReaderMessage =
   | { type: 'ready' }
-  | { type: 'opened'; title: string; toc: TocEntry[] }
+  | { type: 'opened'; title: string; toc: TocEntry[]; rtl: boolean }
   | { type: 'progress'; cfi: string; fraction: number; sectionLabel: string }
   | { type: 'loading'; value: boolean }
   | { type: 'error'; code: ReaderErrorCode; message: string }
+  | { type: 'escape' }
   | { type: 'csp'; directive: string; blocked: string };
 
 const MAX_TOC = 2000;
@@ -83,7 +85,7 @@ export function parseReaderMessage(data: unknown): ReaderMessage | null {
     case 'opened': {
       const title = str(data.title);
       const toc = parseToc(data.toc);
-      return title !== null && toc ? { type: 'opened', title, toc } : null;
+      return title !== null && toc ? { type: 'opened', title, toc, rtl: data.rtl === true } : null;
     }
     case 'progress': {
       const cfi = str(data.cfi, MAX_CFI + 1);
@@ -102,6 +104,8 @@ export function parseReaderMessage(data: unknown): ReaderMessage | null {
           : null;
       return code ? { type: 'error', code, message: str(data.message) ?? '' } : null;
     }
+    case 'escape':
+      return { type: 'escape' };
     case 'csp':
       return {
         type: 'csp',

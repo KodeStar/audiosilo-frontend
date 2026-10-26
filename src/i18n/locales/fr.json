@@ -2905,6 +2905,10 @@
         "title": "Impossible de charger l'ebook",
         "body": "Le serveur n'a pas répondu. Ta position dans le livre est conservée. Vérifie la connexion et réessaie."
       },
+      "start": {
+        "title": "Le lecteur n'a pas démarré",
+        "body": "Le lecteur d'ebooks ne s'est pas lancé dans ce navigateur. Ta position dans le livre est conservée. Un proxy devant le serveur ou un navigateur ancien peut le bloquer : réessaie ou utilise un autre navigateur."
+      },
       "noEbook": {
         "title": "Pas d'ebook pour ce livre",
         "body": "La lecture demande un EPUB sans DRM dans le dossier du livre, sur un serveur qui a le lecteur."

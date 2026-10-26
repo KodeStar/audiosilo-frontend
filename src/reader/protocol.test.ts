@@ -17,6 +17,13 @@ describe('parseReaderMessage', () => {
       code: 'drm',
       message: 'locked',
     });
+    expect(parseReaderMessage({ type: 'escape', key: 'x' })).toEqual({ type: 'escape' });
+    expect(parseReaderMessage({ type: 'opened', title: 'Ali', toc: [], rtl: true })).toEqual({
+      type: 'opened',
+      title: 'Ali',
+      toc: [],
+      rtl: true,
+    });
   });
 
   it('keeps a usable TOC and drops broken entries', () => {
@@ -37,6 +44,7 @@ describe('parseReaderMessage', () => {
         { label: 'One', href: 'one.xhtml', depth: 0 },
         { label: 'Deep', href: 'deep.xhtml', depth: 5 },
       ],
+      rtl: false,
     });
   });
 

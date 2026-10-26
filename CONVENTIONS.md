@@ -558,13 +558,28 @@ stub until 3b-2). The route is `read.tsx`, never `reader.tsx`: the static export
   the Authorization header (`client.ebook`, never `?token=`) and posts the bytes as a
   transferable; the reader never sees a token or an API URL. Messages are parsed field by field
   and taken only from that frame on our origin (`protocol.ts`); host messages wait for `ready`.
+  A frame that never says it within `READER_START_MS` (a proxy's policy, an old browser) is a
+  `ReaderStartError`, its own notice with Try again, never an endless spinner. The download's
+  timeout restarts with every piece of the file, so only a stalled one fails.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
-  the last version the server acknowledged, always sent (0 only when no row was ever seen).
-  Every answer's version is adopted; when the kept row is another device's place somewhere
-  else, the reader offers "Jump there?" (`jumpOffer`), and Stay needs nothing.
+  the last version this device acknowledged, always sent (0 only when no row was ever seen). An
+  answer that kept this device's place is acknowledged at once; one that kept another device's
+  place only once the open reader has shown it (`adoptServerPlace`: Jump, Stay, or the reader
+  is already there), so a save that never saw it stays diverged and never moves it back. The
+  offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
+  the newest place, or at a queued save the server will keep (diverged and further on), and
+  with no answer from the server and no place on this device it fails (the fetch notice; Try
+  again looks again): never a guessed start, whose save would replace a place read elsewhere.
+  A 401 always fails it: a lookup that succeeded on local places would clear the reconnect
+  flag the same request raised (`noteQuerySuccess`). It is asked whatever the browser's online
+  flag says (`readingPlaceQuery`, `networkMode: 'always'`): held offline, it would leave the
+  reader on a spinner.
 - **Keys**: the reader root is `aria-modal` with `data-layer="reader"`, so the player's global
-  shortcuts stand back; its own Escape and arrows use `useGlobalShortcut(..., 'reader')`.
+  shortcuts stand back; its own Escape and arrows use `useGlobalShortcut(..., 'reader')`. A key
+  pressed in the book stays in the frame: the reader turns pages itself and sends Escape back
+  (`escape`). An RTL book (`opened.rtl`) turns forward from the left edge and ArrowLeft. Only a
+  bare arrow turns a page: with Cmd, Ctrl or Alt it is the browser's (Back, Forward).
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the

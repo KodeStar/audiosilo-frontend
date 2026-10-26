@@ -2905,6 +2905,10 @@
         "title": "Não foi possível carregar o ebook",
         "body": "O servidor não respondeu. A tua posição no livro fica guardada. Verifica a ligação e tenta novamente."
       },
+      "start": {
+        "title": "O leitor não arrancou",
+        "body": "O leitor de ebooks não arrancou neste navegador. A tua posição no livro fica guardada. Um proxy à frente do servidor ou um navegador antigo podem bloqueá-lo: tenta novamente ou usa outro navegador."
+      },
       "noEbook": {
         "title": "Este livro não tem ebook",
         "body": "Para ler é preciso um EPUB sem DRM na pasta do livro, num servidor que tenha o leitor."

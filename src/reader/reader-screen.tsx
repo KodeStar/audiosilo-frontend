@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/api/client';
 import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
+import type { ReadingProgressSaved } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
@@ -13,18 +14,19 @@ import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { backOrHome } from '@/lib/back-or-home';
-import { useGlobalShortcut } from '@/lib/keyboard';
+import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
-import { useLatest, useLatestRef } from '@/lib/use-latest';
+import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { getDeviceId } from '@/playback/progress-sync';
+import { tabularNums } from '@/theme/tabular-nums';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 import { canRead } from './can-read';
 import type { ReaderTheme, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
-import type { ReaderHostEvent, ReaderHostHandle } from './reader-host-types';
+import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
 import { FONT_SCALES, loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
 import {
   adoptServerPlace,
@@ -43,9 +45,18 @@ const SAVE_DEBOUNCE_MS = 2000;
 const SPINNER_DELAY_MS = 300;
 
 /** Why the reader shows a message instead of the book. */
-type ReaderFailure = 'drm' | 'unreadable' | 'missing' | 'fetch' | 'noEbook';
+type ReaderFailure = 'drm' | 'unreadable' | 'missing' | 'fetch' | 'start' | 'noEbook';
 
 type Place = { cfi: string; fraction: number; sectionLabel: string };
+
+/** Why loading failed, as the reader says it: the reader document never started, the book
+ * is gone, or the server gave no answer (for the book, or where it opens). */
+const loadFailure = (e: unknown): ReaderFailure =>
+  e instanceof ReaderStartError
+    ? 'start'
+    : e instanceof ApiError && e.status === 404
+      ? 'missing'
+      : 'fetch';
 
 /**
  * The ebook reader (Bridge Phase 3b, the `/read` root modal): a top bar (close, the
@@ -67,7 +78,12 @@ export function ReaderScreen({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const api = useOptionalApi(connectionId);
-  const { data: book, isError: bookFailed } = useBook(libraryId, path, connectionId);
+  const {
+    data: book,
+    isError: bookFailed,
+    error: bookError,
+    refetch: refetchBook,
+  } = useBook(libraryId, path, connectionId);
   const ebooks = useCapability('ebooks', connectionId);
   // The host is the platform's part (the app's placeholder says Read is on the web for
   // now), so the rest of the rule decides here.
@@ -92,13 +108,18 @@ export function ReaderScreen({
   };
 
   const host = useRef<ReaderHostHandle>(null);
-  const [opened, setOpened] = useState<{ title: string; toc: TocEntry[] } | null>(null);
+  const [opened, setOpened] = useState<{ title: string; toc: TocEntry[]; rtl: boolean } | null>(
+    null,
+  );
   const [current, setCurrent] = useState<Place | null>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<ReaderFailure | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
-  const [offer, setOffer] = useState<JumpOffer | null>(null);
-  const spinner = useDelayed(loading || (!opened && !failure), SPINNER_DELAY_MS);
+  // The app's host is a placeholder until 3b-2: nothing to wait for there.
+  const spinner = useDelayed(
+    Platform.OS === 'web' && (loading || (!opened && !failure)),
+    SPINNER_DELAY_MS,
+  );
 
   // Where it opens: decided once, when the place lookup first settles (set while
   // rendering, React's pattern for state that follows a prop). Opening at the server's row
@@ -146,35 +167,37 @@ export function ReaderScreen({
   }, [flushSave]);
 
   // --- "Jump there?" --------------------------------------------------------------------
-  const currentRef = useLatestRef(current);
+  // The latest answered save of this book (by the server's version: an answer that lands
+  // late never replaces a newer one). It is judged against the page on screen once the book
+  // shows, below: the queue's replay can answer before the first page.
+  const [answer, setAnswer] = useState<{ saved: ReadingProgressSaved; deviceId: string } | null>(
+    null,
+  );
   useEffect(
     () =>
-      onReadingSaved((answer) => {
+      onReadingSaved((heard) => {
         if (
-          answer.connectionId !== connectionId ||
-          answer.libraryId !== libraryId ||
-          answer.path !== path
+          heard.connectionId !== connectionId ||
+          heard.libraryId !== libraryId ||
+          heard.path !== path
         ) {
           return;
         }
-        const here = currentRef.current;
         void getDeviceId().then((deviceId) =>
-          setOffer(
-            jumpOffer(
-              answer.saved,
-              here ? { cfi: here.cfi, progression: here.fraction } : null,
-              deviceId,
-            ),
+          setAnswer((prev) =>
+            prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
+              ? prev
+              : { saved: heard.saved, deviceId },
           ),
         );
       }),
-    [connectionId, libraryId, path, currentRef],
+    [connectionId, libraryId, path],
   );
 
   const onMessage = (message: ReaderHostEvent) => {
     switch (message.type) {
       case 'opened':
-        setOpened({ title: message.title, toc: message.toc });
+        setOpened({ title: message.title, toc: message.toc, rtl: message.rtl });
         return;
       case 'progress':
         setCurrent({
@@ -193,15 +216,20 @@ export function ReaderScreen({
         if (message.code === 'runtime') console.warn('[reader]', message.message);
         else if (!opened) setFailure(message.code);
         return;
+      case 'escape':
+        // Escape pressed in the book: the frame keeps its keys from the shortcut below.
+        if (!tocOpen) backOrHome();
+        return;
     }
   };
-  const onLoadError = (e: unknown) =>
-    setFailure(e instanceof ApiError && e.status === 404 ? 'missing' : 'fetch');
+  const onLoadError = (e: unknown) => setFailure(loadFailure(e));
 
   const [attempt, setAttempt] = useState(0);
   const retry = () => {
     setFailure(null);
     setAttempt((n) => n + 1);
+    if (bookFailed) void refetchBook();
+    if (place.isError) void place.refetch();
   };
 
   const gotoEntry = useLatest((href: string) => {
@@ -209,24 +237,56 @@ export function ReaderScreen({
     host.current?.goto({ href });
   });
 
-  const show = !failure && opened !== null;
+  const noEbook = book !== undefined && (ebooks === false || !book.ebook);
+  // The book, or where it opens, could not be fetched: said, never a guessed start (one
+  // saved over a place read elsewhere would replace it).
+  const unfetched: ReaderFailure | null =
+    bookFailed && book === undefined
+      ? loadFailure(bookError)
+      : place.isError && !opening
+        ? loadFailure(place.error)
+        : null;
+  const shown: ReaderFailure | null = failure ?? (noEbook ? 'noEbook' : unfetched);
+  const show = shown === null && opened !== null;
   const shortcuts = Platform.OS === 'web' && !tocOpen;
+  // An RTL book's next page is on the left: the page edges and the arrows follow the book.
+  const rtl = opened?.rtl === true;
+  const turnLeft = () => (rtl ? host.current?.next() : host.current?.prev());
+  const turnRight = () => (rtl ? host.current?.prev() : host.current?.next());
   useGlobalShortcut(shortcuts, (e) => e.key === 'Escape', backOrHome, READER_LAYER);
+  // A bare arrow only, as in the book: with Cmd, Ctrl or Alt it is the browser's (Back).
+  const bare = (e: ShortcutKey) => !e.metaKey && !e.ctrlKey && !e.altKey;
   useGlobalShortcut(
     show && shortcuts,
-    (e) => e.key === 'ArrowLeft',
-    () => host.current?.prev(),
+    (e) => e.key === 'ArrowLeft' && bare(e),
+    turnLeft,
     READER_LAYER,
   );
   useGlobalShortcut(
     show && shortcuts,
-    (e) => e.key === 'ArrowRight',
-    () => host.current?.next(),
+    (e) => e.key === 'ArrowRight' && bare(e),
+    turnRight,
     READER_LAYER,
   );
 
-  const noEbook = book !== undefined && (ebooks === false || !book.ebook);
-  const shown: ReaderFailure | null = failure ?? (noEbook ? 'noEbook' : null);
+  // The offer, judged against the page on screen. Another device's kept place is
+  // acknowledged (its version adopted, so this device's next save applies) only once seen:
+  // answered with Jump or Stay, or already where the reader is.
+  const here = show && current ? { cfi: current.cfi, progression: current.fraction } : null;
+  const offer = answer && here ? jumpOffer(answer.saved, here, answer.deviceId) : null;
+  const acknowledge = useLatest(() => {
+    if (answer) void adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress);
+    setAnswer(null);
+  });
+  const alreadyThere =
+    here !== null &&
+    answer !== null &&
+    offer === null &&
+    answer.saved.reading_progress.device_id !== answer.deviceId;
+  useEffect(() => {
+    if (alreadyThere) acknowledge();
+  }, [alreadyThere, acknowledge]);
+
   const ready = readable && api !== null && opening !== null && fontScale !== null;
   const title = book ? bookTitle(book.title, path) : (opened?.title ?? '');
   const percent = current ? Math.round(current.fraction * 100) : null;
@@ -255,7 +315,7 @@ export function ReaderScreen({
             <Text variant="label" numberOfLines={1}>
               {title}
             </Text>
-            <Text variant="caption" numberOfLines={1}>
+            <Text variant="caption" numberOfLines={1} style={tabularNums}>
               {percent === null
                 ? ' '
                 : current?.sectionLabel
@@ -314,35 +374,31 @@ export function ReaderScreen({
             <>
               <PageEdge
                 side="left"
-                label={t('reader.previous')}
-                onPress={() => host.current?.prev()}
+                label={t(rtl ? 'reader.next' : 'reader.previous')}
+                onPress={turnLeft}
               />
               <PageEdge
                 side="right"
-                label={t('reader.next')}
-                onPress={() => host.current?.next()}
+                label={t(rtl ? 'reader.previous' : 'reader.next')}
+                onPress={turnRight}
               />
             </>
           ) : null}
           {shown ? (
             <ReaderMessage failure={shown} onRetry={retry} />
-          ) : spinner || (bookFailed && !opened) ? (
+          ) : spinner ? (
             <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
-              {bookFailed ? (
-                <Text variant="muted">{t('reader.failure.fetch.title')}</Text>
-              ) : (
-                <Spinner size="large" />
-              )}
+              <Spinner size="large" />
             </View>
           ) : null}
-          {offer && show ? (
+          {offer ? (
             <JumpOfferCard
               offer={offer}
               onJump={() => {
                 host.current?.goto({ cfi: offer.cfi });
-                setOffer(null);
+                acknowledge();
               }}
-              onStay={() => setOffer(null)}
+              onStay={acknowledge}
             />
           ) : null}
         </View>
@@ -437,7 +493,7 @@ function ReaderMessage({ failure, onRetry }: { failure: ReaderFailure; onRetry: 
           body={t(`reader.failure.${failure}.body`)}
         />
         <View className="flex-row justify-end gap-2">
-          {failure === 'fetch' ? (
+          {failure === 'fetch' || failure === 'start' ? (
             <Button variant="outline" title={t('reader.tryAgain')} onPress={onRetry} />
           ) : null}
           <Button title={t('reader.close')} onPress={backOrHome} />

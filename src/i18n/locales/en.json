@@ -2905,6 +2905,10 @@
         "title": "Couldn't load the ebook",
         "body": "The server didn't answer. Your place in the book is kept. Check the connection and try again."
       },
+      "start": {
+        "title": "The reader didn't start",
+        "body": "The ebook reader didn't run in this browser. Your place in the book is kept. A proxy in front of the server or an older browser can block it: try again, or use another browser."
+      },
       "noEbook": {
         "title": "No ebook for this book",
         "body": "Read needs one DRM-free EPUB in the book's folder, on a server that has the reader."

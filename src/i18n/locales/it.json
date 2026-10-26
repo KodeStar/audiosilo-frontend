@@ -2905,6 +2905,10 @@
         "title": "Impossibile caricare l'ebook",
         "body": "Il server non ha risposto. Il tuo punto nel libro è conservato. Controlla la connessione e riprova."
       },
+      "start": {
+        "title": "Il lettore non si è avviato",
+        "body": "Il lettore di ebook non è partito in questo browser. Il tuo punto nel libro è conservato. Un proxy davanti al server o un browser datato possono bloccarlo: riprova o usa un altro browser."
+      },
       "noEbook": {
         "title": "Nessun ebook per questo libro",
         "body": "Per leggere serve un EPUB senza DRM nella cartella del libro, su un server che ha il lettore."

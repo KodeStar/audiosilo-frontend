@@ -24,6 +24,44 @@ const OBFUSCATION = new Set([
   'http://ns.adobe.com/pdf/enc#RC',
 ]);
 
+/**
+ * SHA-1 of a string's UTF-8 bytes: the key of IDPF font obfuscation. foliate's own uses
+ * `crypto.subtle`, which only a secure context has, so a server's plain-HTTP home address
+ * would refuse every book with obfuscated fonts.
+ */
+export function sha1(text) {
+  const bytes = new TextEncoder().encode(text);
+  const words = new Uint32Array((((bytes.length + 8) >> 6) + 1) * 16);
+  bytes.forEach((b, i) => (words[i >> 2] |= b << (24 - (i % 4) * 8)));
+  words[bytes.length >> 2] |= 0x80 << (24 - (bytes.length % 4) * 8);
+  words[words.length - 1] = bytes.length * 8;
+  const h = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
+  const w = new Uint32Array(80);
+  for (let block = 0; block < words.length; block += 16) {
+    for (let t = 0; t < 80; t++) {
+      const x = t < 16 ? words[block + t] : w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16];
+      w[t] = t < 16 ? x : (x << 1) | (x >>> 31);
+    }
+    let [a, b, c, d, e] = h;
+    for (let t = 0; t < 80; t++) {
+      const f =
+        t < 20
+          ? ((b & c) | (~b & d)) + 0x5a827999
+          : t < 40
+            ? (b ^ c ^ d) + 0x6ed9eba1
+            : t < 60
+              ? ((b & c) | (b & d) | (c & d)) + 0x8f1bbcdc
+              : (b ^ c ^ d) + 0xca62c1d6;
+      const next = (((a << 5) | (a >>> 27)) + f + e + w[t]) >>> 0;
+      [e, d, c, b, a] = [d, c, (b << 30) | (b >>> 2), a, next];
+    }
+    [a, b, c, d, e].forEach((v, i) => (h[i] = (h[i] + v) >>> 0));
+  }
+  const out = new DataView(new ArrayBuffer(20));
+  h.forEach((v, i) => out.setUint32(i * 4, v));
+  return new Uint8Array(out.buffer);
+}
+
 /** Whether `META-INF/encryption.xml` encrypts anything with more than font obfuscation. */
 export function hasDrm(encryptionXml) {
   if (!encryptionXml) return false;
@@ -59,6 +97,7 @@ export async function openEpub(bytes) {
       loadText,
       loadBlob,
       getSize: (name) => byName.get(name)?.uncompressedSize ?? 0,
+      sha1,
     }).init();
   } catch (e) {
     throw new BookError('unreadable', `not an EPUB: ${e?.message ?? e}`);

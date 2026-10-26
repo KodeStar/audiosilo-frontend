@@ -17,7 +17,6 @@ import { BookError, openEpub } from './epub-open.js';
 void View; // registers <foliate-view>
 
 const HEX = /^#[0-9a-f]{6}$/i;
-const META_REFRESH = /<meta[^>]+http-equiv\s*=\s*["']?refresh[^>]*>/gi;
 const MAX_TOC = 2000;
 const MAX_LABEL = 300;
 
@@ -25,6 +24,7 @@ let view = null;
 let opened = false;
 let lastProgress = null;
 let busy = false;
+let moves = 0;
 let theme = { dark: false, background: '#ffffff', foreground: '#000000' };
 let fontScale = 1;
 
@@ -66,14 +66,14 @@ async function handle(msg) {
     case 'open':
       return open(msg);
     case 'goto':
-      return go(msg);
+      return move(() => go(msg));
     case 'appearance':
       setAppearance(msg);
       return;
     case 'next':
-      return view?.next();
+      return move(() => view.next());
     case 'prev':
-      return view?.prev();
+      return move(() => view.prev());
   }
 }
 
@@ -127,11 +127,28 @@ function harden(book) {
     if (e.detail.isScript) e.detail.allow = false;
   });
   target.addEventListener('data', (e) => {
-    if (!/html/.test(e.detail.type)) return;
-    e.detail.data = Promise.resolve(e.detail.data).then((d) =>
-      typeof d === 'string' ? d.replace(META_REFRESH, '') : d,
-    );
+    const { type } = e.detail;
+    if (!/html|svg/.test(type)) return;
+    e.detail.data = Promise.resolve(e.detail.data).then(async (d) => {
+      // foliate's re-serialized markup, or a Blob for a document it passes as it is (one
+      // that references itself).
+      const markup = typeof d === 'string' ? d : d instanceof Blob ? await d.text() : null;
+      return (markup !== null && /refresh/i.test(markup) && withoutRefresh(markup, type)) || d;
+    });
   });
+}
+
+/** An (X)HTML or SVG document without its meta refreshes (null when it has none): found
+ * through the DOM, so in any namespace or prefix (an XHTML meta inside SVG) and however
+ * its attributes are written. */
+function withoutRefresh(markup, type) {
+  const doc = new DOMParser().parseFromString(markup, type);
+  const refreshes = [...doc.getElementsByTagNameNS('*', 'meta')].filter((meta) =>
+    /^\s*refresh\s*$/i.test(meta.getAttribute('http-equiv') ?? ''),
+  );
+  if (refreshes.length === 0) return null;
+  for (const meta of refreshes) meta.remove();
+  return new XMLSerializer().serializeToString(doc);
 }
 
 /** A section's first load can take seconds (a whole novel in one spine item): the host
@@ -177,11 +194,11 @@ function flattenToc(items, depth = 0, out = []) {
 async function openAt(at) {
   if (!at || typeof at !== 'object') return false;
   if (typeof at.cfi === 'string' && at.cfi.startsWith('epubcfi(')) {
-    try {
-      if (await view.goTo(at.cfi)) return true;
-    } catch {
-      // a CFI from another edition of the book: fall back to the fraction
-    }
+    // View.goTo never throws: it resolves the target, or nothing when going there failed.
+    // A CFI naming no section of this EPUB (one from another edition of the book) resolves
+    // to index -1 and shows nothing: the fraction then.
+    const resolved = await view.goTo(at.cfi);
+    if (resolved?.index >= 0) return true;
   }
   if (typeof at.fraction === 'number' && Number.isFinite(at.fraction)) {
     try {
@@ -192,6 +209,16 @@ async function openAt(at) {
     }
   }
   return false;
+}
+
+/** The book's text start (its bodymatter landmark); its first page when foliate's
+ * goToTextStart throws (a landmark with no epub:type). */
+async function goToStart() {
+  try {
+    await view.goToTextStart();
+  } catch {
+    await view.next();
+  }
 }
 
 async function open(msg) {
@@ -210,6 +237,12 @@ async function open(msg) {
   harden(book);
   watchSections(book);
 
+  try {
+    // Releases the last book's listeners and blob URLs; throws when it never showed a page.
+    view?.close();
+  } catch {
+    // nothing shown, nothing more to release
+  }
   view?.remove();
   view = document.createElement('foliate-view');
   view.addEventListener('relocate', onRelocate);
@@ -219,19 +252,28 @@ async function open(msg) {
   document.getElementById('book').append(view);
   try {
     await view.open(book);
+    view.renderer.setAttribute('flow', 'paginated');
+    view.renderer.setAttribute('margin', '32px');
+    view.renderer.setAttribute('gap', '6%');
+    view.renderer.setAttribute('max-inline-size', '720px');
+    view.renderer.setStyles?.(bookCss());
+    if (!(await openAt(msg.at))) await goToStart();
+    // Still no page (a start landmark outside the spine): the first one.
+    if (!lastProgress) await view.next();
   } catch (err) {
+    // Whatever keeps the book from showing is said, never left as a spinner.
     setBusy(false);
     return report('unreadable', err);
   }
-  view.renderer.setAttribute('flow', 'paginated');
-  view.renderer.setAttribute('margin', '32px');
-  view.renderer.setAttribute('gap', '6%');
-  view.renderer.setAttribute('max-inline-size', '720px');
-  view.renderer.setStyles?.(bookCss());
-  if (!(await openAt(msg.at))) await view.goToTextStart();
 
   opened = true;
-  send({ type: 'opened', title: titleOf(book, msg.name), toc: flattenToc(book.toc) });
+  send({
+    type: 'opened',
+    title: titleOf(book, msg.name),
+    toc: flattenToc(book.toc),
+    // Its next page is on the left: the host's page edges and arrows follow it.
+    rtl: book.dir === 'rtl',
+  });
   if (lastProgress) send(lastProgress);
   setBusy(false);
 }
@@ -259,19 +301,41 @@ function onSectionLoad(e) {
   doc.addEventListener('securitypolicyviolation', reportCsp);
 }
 
+const KEY_MOVES = {
+  ArrowLeft: () => view.goLeft(),
+  ArrowRight: () => view.goRight(),
+  PageUp: () => view.prev(),
+  PageDown: () => view.next(),
+};
+
 function onKey(e) {
-  if (!view || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
-  if (e.key === 'ArrowLeft') view.goLeft();
-  else if (e.key === 'ArrowRight') view.goRight();
-  else if (e.key === 'PageUp') view.prev();
-  else if (e.key === 'PageDown') view.next();
-  else return;
+  if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+  // The host closes the reader on Escape, but a key pressed in here never reaches it.
+  if (e.key === 'Escape') {
+    if (!e.repeat) send({ type: 'escape' });
+    return;
+  }
+  const step = Object.hasOwn(KEY_MOVES, e.key) ? KEY_MOVES[e.key] : null;
+  if (!step) return;
   e.preventDefault();
+  void move(step);
 }
 document.addEventListener('keydown', onKey);
 
-async function go(msg) {
+/** A move in the open book (never while it opens: two layouts would race). The spinner a
+ * section's load raised drops when the moves settle, also when one lands nowhere new (a
+ * hidden anchor relocates nothing). */
+async function move(step) {
   if (!view || !opened) return;
+  moves++;
+  try {
+    await step();
+  } finally {
+    if (--moves === 0) setBusy(false);
+  }
+}
+
+async function go(msg) {
   if (typeof msg.cfi === 'string') await view.goTo(msg.cfi);
   else if (typeof msg.href === 'string') await view.goTo(msg.href);
   else if (typeof msg.fraction === 'number' && Number.isFinite(msg.fraction)) {

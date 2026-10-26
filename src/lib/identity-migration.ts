@@ -211,7 +211,6 @@ function rekeyRecord(plan: Plan, doc: unknown, mapValue = <T>(v: T) => v): unkno
   return out;
 }
 
-/** Each document rewritten through `plan` (`undefined` = absent, left alone). */
 /** A record keyed by connection whose values each carry a `connectionId`. */
 const connectionRecords = (plan: Plan, doc: unknown): unknown =>
   rekeyRecord(plan, doc, (v) => withConnectionId(plan, v));
@@ -220,6 +219,7 @@ const connectionRecords = (plan: Plan, doc: unknown): unknown =>
 const connectionList = (plan: Plan, doc: unknown): unknown =>
   Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc;
 
+/** Each document rewritten through `plan` (`undefined` = absent, left alone). */
 export const rewrite = {
   connections(plan: Plan, doc: unknown): unknown {
     if (!Array.isArray(doc)) return doc;
@@ -257,8 +257,7 @@ export const rewrite = {
     for (const [k, v] of Object.entries(doc)) out[mapId(plan, k) as string] = v;
     return out;
   },
-  carBookmarks: (plan: Plan, doc: unknown): unknown =>
-    Array.isArray(doc) ? doc.map((b: unknown) => withConnectionId(plan, b)) : doc,
+  carBookmarks: connectionList,
   librarySelection(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc) || !isRecord(doc.selection)) return doc;
     return { ...doc, selection: withConnectionId(plan, doc.selection) };

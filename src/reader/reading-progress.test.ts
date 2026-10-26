@@ -229,6 +229,24 @@ describe('reading-progress', () => {
     expect((await readQueue()).map((s) => s.connectionId)).toEqual(['c2']);
   });
 
+  it('acknowledges another device’s kept place only once the reader has shown it', async () => {
+    await adoptServerPlace('c1', 1, 'A/Book', row({ version: 5 }));
+    reachable.mockReturnValue(false);
+    await saveReadingPlace(null, save({ cfi: CFI_A, updated_at: '2026-10-03T00:00:00.000Z' }));
+    reachable.mockReturnValue(true);
+    // The server kept the phone's further place: this device never saw it.
+    const phone = row({ device_id: 'phone', cfi: CFI_B, progression: 0.6, version: 9 });
+    routeClients({ c1: fakeApi(async () => ({ reading_progress: phone })) });
+    await flushReadingQueue();
+    const unseen = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 });
+    expect(unseen.base_version).toBe(5);
+    expect(Object.values(await readMirror())[0].place?.cfi).toBe(CFI_A);
+    // Jump or Stay (or the reader already there): seen, so the next save applies.
+    await adoptServerPlace('c1', 1, 'A/Book', phone);
+    const seen = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 });
+    expect(seen.base_version).toBe(9);
+  });
+
   it('tells listeners every answer', async () => {
     const heard = jest.fn();
     const off = onReadingSaved(heard);
@@ -266,13 +284,84 @@ describe('reading-progress', () => {
       expect(reachability.noteFailure).toHaveBeenCalled();
     });
 
-    it('opens at the start with no place anywhere (a 404 is an answer)', async () => {
-      const api = fakeApi(undefined, () => Promise.reject(new ApiError(404, 'no ebook')));
-      await expect(lookupReadingPlace(api, 'c1', 1, 'A/Book')).resolves.toEqual({
+    it('opens at the start when the server has no place for the book', async () => {
+      await expect(lookupReadingPlace(fakeApi(), 'c1', 1, 'A/Book')).resolves.toEqual({
         place: null,
         fromServer: null,
       });
+    });
+
+    it('fails with the server’s refusal when nothing is local (a 404: no ebook)', async () => {
+      const api = fakeApi(undefined, () => Promise.reject(new ApiError(404, 'no ebook')));
+      await expect(lookupReadingPlace(api, 'c1', 1, 'A/Book')).rejects.toMatchObject({
+        status: 404,
+      });
       expect(reachability.noteSuccess).toHaveBeenCalledWith('c1');
+    });
+
+    it('fails rather than open at the start with no answer and nothing local', async () => {
+      for (const failure of [new TypeError('offline'), new ApiError(500, 'db')]) {
+        const api = fakeApi(undefined, () => Promise.reject(failure));
+        await expect(lookupReadingPlace(api, 'c1', 1, 'A/Book')).rejects.toBe(failure);
+      }
+      await expect(lookupReadingPlace(null, 'c1', 1, 'A/Book')).rejects.toThrow();
+    });
+
+    it('fails on a signed-out answer (401) whatever is local', async () => {
+      await saveReadingPlace(null, save({ cfi: CFI_B }));
+      const signedOut = new ApiError(401, 'unauthorized');
+      const api = fakeApi(undefined, () => Promise.reject(signedOut));
+      await expect(lookupReadingPlace(api, 'c1', 1, 'A/Book')).rejects.toBe(signedOut);
+    });
+
+    it('opens at a queued save the server will keep: diverged and further on', async () => {
+      const server = row({
+        device_id: 'phone',
+        progression: 0.4,
+        version: 5,
+        updated_at: '2026-10-02T00:00:00.000Z',
+      });
+      reachable.mockReturnValue(false);
+      await saveReadingPlace(
+        null,
+        save({
+          cfi: CFI_B,
+          progression: 0.7,
+          base_version: 3,
+          updated_at: '2026-10-01T00:00:00.000Z',
+        }),
+      );
+      const found = await lookupReadingPlace(
+        fakeApi(undefined, async () => server),
+        'c1',
+        1,
+        'A/Book',
+      );
+      expect(found.place?.cfi).toBe(CFI_B);
+      expect(found.fromServer).toBeNull();
+    });
+
+    it('opens at the newer server row over a diverged queued save behind it', async () => {
+      const server = row({
+        device_id: 'phone',
+        cfi: CFI_B,
+        progression: 0.6,
+        version: 5,
+        updated_at: '2026-10-02T00:00:00.000Z',
+      });
+      reachable.mockReturnValue(false);
+      await saveReadingPlace(
+        null,
+        save({ progression: 0.3, base_version: 3, updated_at: '2026-10-01T00:00:00.000Z' }),
+      );
+      const found = await lookupReadingPlace(
+        fakeApi(undefined, async () => server),
+        'c1',
+        1,
+        'A/Book',
+      );
+      expect(found.place?.cfi).toBe(CFI_B);
+      expect(found.fromServer).toBe(server);
     });
 
     it('adopting the server row makes the next save on its version', async () => {
