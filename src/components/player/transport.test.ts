@@ -4,6 +4,7 @@ import {
   trackLabel,
   previousSegmentStart,
   SCRUB_END_GUARD_S,
+  scrubGuard,
   scrubTarget,
   segmentStarts,
   stepSegment,
@@ -68,8 +69,19 @@ describe('scrubTarget', () => {
     expect(scrubTarget(0, 4000)).toBe(0);
   });
 
-  it('keeps a book shorter than the guard at its start, and ignores an unknown length', () => {
-    expect(scrubTarget(20, 25)).toBe(0);
+  it('takes only a tenth of a short book, so most of its bar still scrubs (PLAYER-04)', () => {
+    // A 60 s book: 6 s of guard, so 80% lands at 48 s and 95% at 54 s.
+    expect(scrubGuard(60)).toBeCloseTo(6);
+    expect(scrubTarget(48, 60)).toBe(48);
+    expect(scrubTarget(57, 60)).toBeCloseTo(54);
+    expect(scrubTarget(60, 60)).toBeCloseTo(54);
+    // From 300 s on, the 30 s guard.
+    expect(scrubGuard(300)).toBe(30);
+    expect(scrubGuard(240)).toBeCloseTo(24);
+    expect(scrubTarget(25, 25)).toBeCloseTo(22.5);
+  });
+
+  it('ignores an unknown length', () => {
     expect(scrubTarget(50, 0)).toBe(50);
   });
 });

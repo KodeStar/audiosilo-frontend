@@ -51,21 +51,31 @@ export function currentSegment({
   };
 }
 
-/** How far short of the end of the book a scrub lands at the latest, seconds. */
+/** How far short of the end of the book a scrub lands at the latest, seconds: at most this,
+ * and at most SCRUB_END_GUARD_SHARE of the book (`scrubGuard`). */
 export const SCRUB_END_GUARD_S = 30;
+/** The share of a short book the end guard may take: 30 s of a one-minute book would leave
+ * half its bar dead (PLAYER-04). */
+export const SCRUB_END_GUARD_SHARE = 0.1;
+
+/** How far short of the end a scrub lands in a book `total` long: 30 s, or a tenth of the
+ * book when that is less. */
+export function scrubGuard(total: number): number {
+  return Math.min(SCRUB_END_GUARD_S, total * SCRUB_END_GUARD_SHARE);
+}
 
 /**
  * Where a scrub to `bookPosition` (a tap, a drag's release or a key on the whole-book
  * timeline or a chapter scrubber) lands in a book `total` long: never on the very end.
  * A seek to the end is the book's natural end: it saves as finished, the end-of-book flow
  * clears what is playing (and with it the Undo chip) and the next play starts over at 0,
- * so a drag released past the right edge would lose the place for good. Landing 30 s
- * short keeps the jump undoable (the Undo chip lives 10 s, which 30 s of audio covers even
- * at 2x), and a book only finishes by playing out or by Mark as finished. Unchanged when
- * the length is unknown.
+ * so a drag released past the right edge would lose the place for good. Landing short of
+ * it (`scrubGuard`: 30 s, which keeps the 10 s Undo chip alive even at 2x, or a tenth of a
+ * short book, so most of its bar still scrubs) keeps the jump undoable, and a book only
+ * finishes by playing out or by Mark as finished. Unchanged when the length is unknown.
  */
 export function scrubTarget(bookPosition: number, total: number): number {
-  return total > 0 ? Math.min(bookPosition, Math.max(0, total - SCRUB_END_GUARD_S)) : bookPosition;
+  return total > 0 ? Math.min(bookPosition, Math.max(0, total - scrubGuard(total))) : bookPosition;
 }
 
 /** The whole-book offsets previous/next step between: chapters, else file boundaries. */
