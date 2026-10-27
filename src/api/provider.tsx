@@ -112,14 +112,16 @@ export const queryClient = new QueryClient({
   },
 });
 
+// Web: paint the first screens from the last visit's answers while they are asked again
+// (`startup-cache.ts`); before anything renders, so the first render already has them. A
+// kept answer whose server refuses the token goes (the screen shows the sign-in state), and
+// only the signed-in connections' answers are written.
+startupCache.restore(queryClient, { dropOnError: isSignedOutError });
+startupCache.startSaving(queryClient, (key) => cidOfKey(key) !== null);
+
 // Evict the removed server's cached data (every query key leads with its connection
 // id). Matching by `includes(id)` could in theory also match a same-string path
 // segment, but that would only evict one extra entry - harmless, it just refetches.
-// Web: paint the first screens from the last visit's answers while they are asked again
-// (`startup-cache.ts`); before anything renders, so the first render already has them.
-startupCache.restore(queryClient);
-startupCache.startSaving(queryClient);
-
 onConnectionRemoved((id) => {
   queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(id) });
   startupCache.forget(id);

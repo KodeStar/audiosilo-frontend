@@ -45,10 +45,14 @@ can never log anyone out (`{ authReset, cacheReset }`):
 - **Startup cache (web)** (`src/api/startup-cache.ts`, `STARTUP_CACHE_KEY`): the last answers
   of the queries the first screens paint from (`isStartupQuery`: `/server`, the libraries, the
   whole-library list's first page, Home's shelves and cards) are kept in localStorage and put
-  back into the query cache, invalidated, before anything renders, so a reload paints at once
-  and every hook still asks its server on mount. One of the scoped keys (a reset wipes it);
-  a removed connection's entries go with it. A new first-screen query joins `isStartupQuery`
-  only if it is small; never keep a book's detail or anything per book. Native keeps none.
+  back into the query cache, invalidated, before anything renders, so a reload paints at once;
+  each is asked again by its first observer, also a `refetchOnMount: false` one (a tile's saved
+  progress), and one whose server refuses the token (401) is cleared, not shown. Only the
+  signed-in connections' answers are written, under `MAX_CHARS` (localStorage's quota is
+  shared with the session and the queues, whose writes fail quietly), and a document of
+  another app version is ignored. One of the scoped keys (a reset wipes it); a removed
+  connection's entries go with it. A new first-screen query joins `isStartupQuery` only if it
+  is small; never keep a book's detail or anything per book. Native keeps none.
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,

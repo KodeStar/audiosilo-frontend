@@ -4,6 +4,7 @@ import { STARTUP_CACHE_KEY } from '@/lib/storage-keys';
 
 // The web: a page with localStorage (jest runs the native platform otherwise).
 jest.mock('react-native', () => ({ Platform: { OS: 'web' } }));
+jest.mock('@/lib/version', () => ({ APP_VERSION: '9.9.9' }));
 
 /* eslint-disable import/first */
 import {
@@ -58,6 +59,7 @@ describe('isStartupQuery', () => {
       ['progress', 'all', C],
       ['favourites', C],
       ['myStats', C, '30d'],
+      ['myListening', C, '1y'],
       ['libraryBooks', C, 1, { sort: 'recent' }, { pageSize: 200 }],
     ]) {
       expect([key, isStartupQuery(key)]).toEqual([key, true]);
@@ -71,6 +73,8 @@ describe('isStartupQuery', () => {
       ['item', C, 1, 'a/b'],
       ['progress', C, 1, 'a/b'],
       ['search', C, 'dune'],
+      ['myStats', C, '2023'],
+      ['myListening', C, '30d'],
       [42],
     ]) {
       expect([key, isStartupQuery(key)]).toEqual([key, false]);
@@ -146,7 +150,21 @@ describe('snapshot and restore', () => {
     };
     items.set(
       STARTUP_CACHE_KEY,
-      JSON.stringify({ v: 99, entries: [{ key: ['libraries', C], data: [], updatedAt: 1 }] }),
+      JSON.stringify({
+        v: 99,
+        app: '9.9.9',
+        entries: [{ key: ['libraries', C], data: [], updatedAt: 1 }],
+      }),
+    );
+    expect(restored()).toBe(0);
+    // Another app version's answers may have another shape.
+    items.set(
+      STARTUP_CACHE_KEY,
+      JSON.stringify({
+        v: 1,
+        app: '9.9.8',
+        entries: [{ key: ['libraries', C], data: [], updatedAt: 1 }],
+      }),
     );
     expect(restored()).toBe(0);
     items.set(STARTUP_CACHE_KEY, '{not json');
@@ -155,9 +173,12 @@ describe('snapshot and restore', () => {
       STARTUP_CACHE_KEY,
       JSON.stringify({
         v: 1,
+        app: '9.9.9',
         entries: [
           { key: ['item', C, 1, 'a'], data: {}, updatedAt: 1 },
           { key: ['server', C], updatedAt: 1 },
+          // The whole-library list is only ever kept as its first page.
+          { key: ['libraryBooks', C, 1, { sort: 'recent' }], data: { books: [] }, updatedAt: 1 },
           { key: ['libraries', C], data: [], updatedAt: 1 },
         ],
       }),
@@ -173,12 +194,82 @@ describe('snapshot and restore', () => {
     expect(qc.getQueryData(['libraries', C])).toEqual([]);
   });
 
-  it('writes nothing over the size limit (and drops the old document)', () => {
+  it('keeps each answer while the document stays under the size limit', () => {
     const qc = newClient();
-    qc.setQueryData(['libraries', C], [{ name: 'x'.repeat(1_600_000) }]);
+    qc.setQueryData(['server', C], { server_id: 'srv' });
+    qc.setQueryData(['libraries', C], [{ name: 'x'.repeat(600_000) }]);
+    qc.setQueryData(['queue', C], []);
     items.set(STARTUP_CACHE_KEY, 'old');
     save(qc);
-    expect(items.has(STARTUP_CACHE_KEY)).toBe(false);
+    expect(stored().entries.map((e: { key: unknown[] }) => e.key)).toEqual([
+      ['server', C],
+      ['queue', C],
+    ]);
+  });
+
+  it('writes only the answers `keep` takes, a failed ask’s last answer included', async () => {
+    const qc = newClient();
+    qc.setQueryData(['libraries', C], [{ id: 1 }]);
+    qc.setQueryData(['libraries', 'gone.2'], [{ id: 2 }]);
+    await qc
+      .fetchQuery({
+        queryKey: ['libraries', C],
+        queryFn: async () => {
+          throw new Error('down');
+        },
+      })
+      .catch(() => undefined);
+    save(qc, (key) => key.includes(C));
+    expect(stored().entries).toEqual([
+      expect.objectContaining({ key: ['libraries', C], data: [{ id: 1 }] }),
+    ]);
+  });
+
+  it('asks again for a kept answer whose first reader reads the cache as is', async () => {
+    const before = newClient();
+    before.setQueryData(['progress', 'all', C], [{ path: 'a', finished: false }]);
+    save(before);
+    const qc = newClient();
+    restore(qc);
+    const queryFn = jest.fn(async () => [{ path: 'a', finished: true }]);
+    const observer = new QueryObserver(qc, {
+      queryKey: ['progress', 'all', C],
+      queryFn,
+      refetchOnMount: false,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(qc.getQueryData(['progress', 'all', C])).toEqual([{ path: 'a', finished: true }]);
+    // Once asked, another reader reads the cache as is again.
+    const second = new QueryObserver(qc, {
+      queryKey: ['progress', 'all', C],
+      queryFn,
+      refetchOnMount: false,
+    });
+    const unsubscribeSecond = second.subscribe(() => {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    unsubscribeSecond();
+  });
+
+  it('clears a kept answer whose server refuses the token', async () => {
+    const before = newClient();
+    before.setQueryData(['progress', 'all', C], [{ path: 'a' }]);
+    save(before);
+    const qc = newClient();
+    const refused = new Error('401');
+    restore(qc, { dropOnError: (e) => e === refused });
+    const queryFn = jest.fn(async () => {
+      throw refused;
+    });
+    const observer = new QueryObserver(qc, { queryKey: ['progress', 'all', C], queryFn });
+    const unsubscribe = observer.subscribe(() => {});
+    await new Promise((r) => setTimeout(r, 10));
+    expect(qc.getQueryData(['progress', 'all', C])).toBeUndefined();
+    expect(qc.getQueryState(['progress', 'all', C])?.status).toBe('error');
+    unsubscribe();
   });
 });
 

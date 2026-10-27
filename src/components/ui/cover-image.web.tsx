@@ -16,6 +16,9 @@ function uriOf(source: CoverImageProps['source']): string | undefined {
   return typeof first === 'string' ? first : (first?.uri ?? undefined);
 }
 
+/** A cover that loads within this long of being drawn shows without the fade. */
+export const FADE_AFTER_MS = 120;
+
 /**
  * Web: the cover as a plain `<img>`, absolutely filling its box like expo-image's web
  * image, with `crossOrigin="anonymous"` when its server is another origin than the page
@@ -33,9 +36,6 @@ function uriOf(source: CoverImageProps['source']): string | undefined {
  * send headers anyway. `blurRadius` and `recyclingKey` are native concerns (the backdrop
  * blurs with a CSS filter on the web).
  */
-/** A cover that loads within this long of being drawn shows without the fade. */
-export const FADE_AFTER_MS = 120;
-
 export function CoverImage({ source, ...rest }: CoverImageProps) {
   const uri = uriOf(source);
   return uri ? <CoverImg key={uri} uri={uri} {...rest} /> : null;
