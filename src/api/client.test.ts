@@ -968,6 +968,28 @@ describe('ApiClient.history', () => {
   });
 });
 
+describe('ApiClient.addHistory', () => {
+  const span = {
+    from_pos: 10,
+    to_pos: 55,
+    started_at: '2026-10-02T10:00:00Z',
+    ended_at: '2026-10-02T10:00:45Z',
+  };
+
+  it('posts the span, as a keepalive request only when the page is going (PLAYER-03)', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    const c = new ApiClient('https://h', 'tok');
+    await c.addHistory(2, 'Saga/Book 1', span);
+    await c.addHistory(2, 'Saga/Book 1', span, { keepalive: true });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://h/api/v1/libraries/2/history?path=Saga%2FBook+1');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual(span);
+    expect(init.keepalive).toBeUndefined();
+    expect((fetchMock.mock.calls[1] as [string, RequestInit])[1].keepalive).toBe(true);
+  });
+});
+
 describe('ApiClient user state (Phase 1b)', () => {
   const c = () => new ApiClient('https://h', 'tok');
 

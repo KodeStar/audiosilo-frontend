@@ -523,7 +523,13 @@ export class ApiClient {
   private request<T>(
     method: string,
     path: string,
-    opts: { query?: Query; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {},
+    opts: {
+      query?: Query;
+      body?: unknown;
+      signal?: AbortSignal;
+      timeoutMs?: number;
+      keepalive?: boolean;
+    } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
@@ -536,7 +542,14 @@ export class ApiClient {
     method: string,
     url: string,
     headers: Record<string, string>,
-    opts: { body?: unknown; raw?: BodyInit; signal?: AbortSignal; timeoutMs?: number },
+    opts: {
+      body?: unknown;
+      raw?: BodyInit;
+      signal?: AbortSignal;
+      timeoutMs?: number;
+      /** The request outlives the page (web: a tab closing). */
+      keepalive?: boolean;
+    },
     read: (res: Response, touch: () => void) => Promise<T>,
   ): Promise<T> {
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
@@ -572,6 +585,7 @@ export class ApiClient {
         // A raw body (an OPML upload) goes as it is; anything else is JSON.
         body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
         signal: controller.signal,
+        ...(opts.keepalive ? { keepalive: true } : {}),
       });
       this.onAnswer?.();
       return await read(res, touch);
@@ -1685,14 +1699,18 @@ export class ApiClient {
   allHistory(page: PageQuery = {}, signal?: AbortSignal) {
     return this.page<HistoryEntry, 'history'>('/me/history', 'history', page, signal);
   }
+  /** Record a listening span. `keepalive`: sent as the page goes (web, a tab closing),
+   * the request outliving it. */
   addHistory(
     libraryId: number,
     path: string,
     span: { from_pos: number; to_pos: number; started_at: string; ended_at: string },
+    { keepalive = false }: { keepalive?: boolean } = {},
   ) {
     return this.request<void>('POST', `/libraries/${libraryId}/history`, {
       query: { path },
       body: span,
+      keepalive,
     });
   }
 }

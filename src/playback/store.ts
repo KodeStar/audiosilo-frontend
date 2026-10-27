@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
@@ -585,8 +586,9 @@ function beginHistory() {
 }
 
 /** Record the listening span (from→to over the elapsed time) when playback
- * stops, ignoring brief spans. */
-function endHistory() {
+ * stops, ignoring brief spans. `keepalive`: the page is going (web), so the request must
+ * outlive it. */
+function endHistory({ keepalive = false }: { keepalive?: boolean } = {}) {
   const start = historyStart;
   historyStart = null;
   if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
@@ -597,17 +599,57 @@ function endHistory() {
   // (reachability is per-connection, so key it on the playing book's own server).
   if (!isReachable(np.connectionId)) return;
   void apiRef
-    .addHistory(np.libraryId, np.path, {
-      from_pos: start.position,
-      to_pos: selectBookPosition(player),
-      started_at: new Date(start.at).toISOString(),
-      ended_at: new Date().toISOString(),
-    })
+    .addHistory(
+      np.libraryId,
+      np.path,
+      {
+        from_pos: start.position,
+        to_pos: selectBookPosition(player),
+        started_at: new Date(start.at).toISOString(),
+        ended_at: new Date().toISOString(),
+      },
+      { keepalive },
+    )
     .then(() => queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) }))
     .catch((err) => {
       noteFailure(np.connectionId, err); // a check, not a down mark, for one lost span
       console.warn('[history] failed to save listening span', err);
     });
+}
+
+/**
+ * Web: the listening span when the page goes or hides, sent with a keepalive request that
+ * outlives the page (PLAYER-03: closing a playing tab lost the span, which was only written
+ * on pause or stop). `pagehide` (closed, reloaded, navigated off) ends it; `hidden` (a
+ * phone's browser may close a tab with no `pagehide`) splits it, once it is long enough to
+ * keep, playing on into a new span, so a background tab is still recorded. One post per
+ * span: ending it clears it first.
+ */
+export function flushHistoryOnHide(final: boolean): void {
+  if (!historyStart) return;
+  if (!final && Date.now() - historyStart.at < MIN_HISTORY_MS) return;
+  endHistory({ keepalive: true });
+  if (!final && isPlayingState(usePlayer.getState().snapshot.state)) beginHistory();
+}
+
+/** Listens for the page going (`flushHistoryOnHide`) on `win`/`doc`; returns the stop. */
+export function watchPageHide(
+  win: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  doc: Pick<Document, 'addEventListener' | 'removeEventListener' | 'visibilityState'>,
+): () => void {
+  const onPageHide = () => flushHistoryOnHide(true);
+  const onVisibility = () => {
+    if (doc.visibilityState === 'hidden') flushHistoryOnHide(false);
+  };
+  win.addEventListener('pagehide', onPageHide);
+  doc.addEventListener('visibilitychange', onVisibility);
+  return () => {
+    win.removeEventListener('pagehide', onPageHide);
+    doc.removeEventListener('visibilitychange', onVisibility);
+  };
+}
+if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+  watchPageHide(window, document);
 }
 
 /**
