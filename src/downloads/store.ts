@@ -1,3 +1,4 @@
+import type { QueryKey } from '@tanstack/react-query';
 import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 
@@ -496,23 +497,41 @@ function withCachedChapters(ref: BookRef, manifest: DownloadManifest): DownloadM
  * replaces its saved copy when `refreshedChapters` allows. The cache already holds that
  * answer, so there is nothing to seed. A queue already playing keeps its chapters until
  * the book is next started. Returns the unsubscribe (started once from the root layout).
+ *
+ * The answers the cache already holds when it starts are taken too: the web starts it
+ * after the first paint (`root-services.web.tsx`), when a screen's answer can have landed
+ * already. Native starts it before any fetch, where the cache holds at most the store's
+ * own seeds, which are the manifests' chapters and so change nothing.
  */
 export function startChapterRefresh(): () => void {
+  let took = false;
+  for (const query of queryClient.getQueryCache().getAll()) {
+    if (query.state.status !== 'success') continue;
+    took = takeChapters(query.queryKey, query.state.data as ChaptersResponse | undefined) || took;
+  }
+  if (took) persistSoon();
   return queryClient.getQueryCache().subscribe((event) => {
     // A server answer only: the store's own seeds (`setQueryData`) are manual.
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
-    const book = chaptersKeyParts(event.query.queryKey);
-    const fresh = event.action.data as ChaptersResponse | undefined;
-    if (!book || !fresh) return;
-    const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
-    const entry = downloadedEntryOf(ref);
-    const manifest = entry && refreshedChapters(entry.manifest, fresh);
-    if (!manifest) return;
-    patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out) saves the registry
     // once, not once per book.
-    persistSoon();
+    if (takeChapters(event.query.queryKey, event.action.data as ChaptersResponse | undefined)) {
+      persistSoon();
+    }
   });
+}
+
+/** Take a chapters answer (`fresh`, cached under `queryKey`) into its downloaded book's
+ * manifest when `refreshedChapters` allows; whether it did. The caller saves. */
+function takeChapters(queryKey: QueryKey, fresh: ChaptersResponse | undefined): boolean {
+  const book = chaptersKeyParts(queryKey);
+  if (!book || !fresh) return false;
+  const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
+  const entry = downloadedEntryOf(ref);
+  const manifest = entry && refreshedChapters(entry.manifest, fresh);
+  if (!manifest) return false;
+  patchEntry(contentKeyOf(ref), { manifest });
+  return true;
 }
 
 /** While a download runs, its finished files reach storage at most this often

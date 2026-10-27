@@ -93,9 +93,12 @@ const mockFetchQuery = jest.fn((_o: { queryKey: unknown[] }): Promise<unknown> =
 );
 // The query cache's listeners (`startChapterRefresh` subscribes one).
 const mockCacheListeners = new Set<(event: unknown) => void>();
+// The queries the cache holds (`startChapterRefresh` reads them when it starts).
+const mockCacheQueries: { queryKey: unknown[]; state: { status: string; data: unknown } }[] = [];
 jest.mock('@/api/provider', () => ({
   queryClient: {
     getQueryCache: () => ({
+      getAll: () => mockCacheQueries,
       subscribe: (l: (event: unknown) => void) => {
         mockCacheListeners.add(l);
         return () => mockCacheListeners.delete(l);
@@ -985,6 +988,48 @@ describe("refreshing a downloaded book's chapters", () => {
         adoptStartedChapters(ref, fresh());
         expect(useDownloads.getState().entries[key]).toBe(e);
       });
+    });
+
+    it('takes the answers the cache held before it started, and saves them', async () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      useDownloads.setState({ entries: { [key]: downloadedEntry() } });
+      const save = AsyncStorage.setItem as jest.Mock;
+      save.mockClear();
+      mockCacheQueries.push(
+        { queryKey: ['chapters', 'c1', 2, 'A/Book'], state: { status: 'success', data: fresh() } },
+        // A failed or pending query, and another kind, are not answers to take.
+        { queryKey: ['chapters', 'c1', 2, 'B/Book'], state: { status: 'error', data: fresh() } },
+        { queryKey: ['item', 'c1', 2, 'A/Book'], state: { status: 'success', data: {} } },
+      );
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockCacheQueries.length = 0;
+      }
+      expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(fresh());
+      jest.advanceTimersByTime(2000);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect((await readPersisted())[key]?.manifest.chapters).toEqual(fresh());
+    });
+
+    it('changes nothing at start when the cache holds only the manifest seed', () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh();
+      useDownloads.setState({ entries: { [key]: e } });
+      // The seed is the manifest's own chapters (`seedOfflineMeta`), here a copy.
+      mockCacheQueries.push({
+        queryKey: ['chapters', 'c1', 2, 'A/Book'],
+        state: { status: 'success', data: fresh() },
+      });
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockCacheQueries.length = 0;
+      }
+      expect(useDownloads.getState().entries[key]).toBe(e);
     });
 
     it('stops listening once unsubscribed', () => {

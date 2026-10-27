@@ -59,6 +59,7 @@ const mockCacheListeners = new Set<(event: unknown) => void>();
 jest.mock('@/api/provider', () => ({
   queryClient: {
     getQueryCache: () => ({
+      getAll: () => [],
       subscribe: (l: (event: unknown) => void) => {
         mockCacheListeners.add(l);
         return () => mockCacheListeners.delete(l);
