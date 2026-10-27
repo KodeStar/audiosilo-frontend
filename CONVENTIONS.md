@@ -62,7 +62,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   stand-in, so the native shell's graph never loads on the web. What the first screen never
   shows loads after it has painted (`deferred`, `src/lib/deferred.tsx`, and `afterPaint`): the
   web shell's overlays (`ShellPlayerOverlays`, `CommandPalette`, `ShortcutsDialog`; their keys
-  and open states stay in the shell, `usePaletteShortcut` lives in `palette-store.ts`) and the
+  and open states stay in the shell, `usePaletteShortcut` lives in `palette-store.ts`; the
+  player's sheets are in the start anyway, the player route imports them, so only their
+  render waits; a failed load tries again `DEFERRED_RETRY_MS` later while mounted) and the
   root's lifetime services and listeners (`useRootServices`/`RootListeners`,
   `root-services{,.web}.tsx` over `root-services-impl.tsx`: the web mounts `RootServices` behind
   `deferred`, the services starting as it mounts; native starts them with the first commit, as
@@ -72,12 +74,16 @@ can never log anyone out (`{ authReset, cacheReset }`):
   to the catalogs by its test). A new module for the first screen keeps a static import; one
   for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
   (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
-  shell's scripts and every chunk they name, transitively; the previous build's dropped), at
-  install and when the app asks (`askPrecache`, 5 s after load), so a page never opened online
-  still boots offline. The worker is registered under its build's name (`sw.js?build=`, the
-  entry script's: `buildId`), so each deploy installs a new one: Chrome keeps the compiled code
-  of scripts a worker caches while installing, which is most of a warm start's speed. The
-  build's hashed files (`_expo/static/`) are served cache-first and never rewritten.
+  shell's scripts and every chunk they name, transitively; the shell cached once its own files
+  are in), at install and when the app asks (`askPrecache`, 5 s after load), so a page never
+  opened online still boots offline. Once a build is complete, the one before it stays one
+  deploy longer (a tab still running it opens its pages from those files), older files go, and
+  so does every page an earlier build cached (offline it falls back to the shell). The worker
+  is registered under its build's name (`sw.js?build=`, the entry's and the shared chunk's:
+  `buildId`; the entry does not name `__common`), so each deploy installs a new one: Chrome
+  keeps the compiled code of scripts a worker caches while installing, which is most of a warm
+  start's speed. The build's hashed files (`_expo/static/`) are served cache-first and never
+  rewritten.
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,

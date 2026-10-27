@@ -53,10 +53,10 @@ describe('registerServiceWorker', () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
-  it('registers the worker under the build it runs (its entry script), in production', () => {
+  it('registers the worker under the build it runs (its entry and shared chunk), in production', () => {
     addScripts('__expo-metro-runtime-aaa', '_layout-bbb', '__common-ccc', 'index-ddd');
     const { register } = setup('complete', { dev: false });
-    expect(register).toHaveBeenCalledWith('/web/sw.js?build=index-ddd');
+    expect(register).toHaveBeenCalledWith('/web/sw.js?build=index-ddd.__common-ccc');
   });
 
   it('keeps the dev worker on ?dev=1', () => {
@@ -91,5 +91,26 @@ describe('buildId', () => {
     expect(mod.buildId()).toBeUndefined();
     addScripts('_layout-bbb', 'index-ddd');
     expect(mod.buildId()).toBe('index-ddd');
+  });
+
+  it('names the shared chunk too (a fix there leaves the entry as it was), whatever the page', () => {
+    const { mod } = setup('loading');
+    addScripts(
+      '__expo-metro-runtime-aaa',
+      '_layout-bbb',
+      'settings-eee',
+      '__common-ccc',
+      'index-ddd',
+    );
+    expect(mod.buildId()).toBe('index-ddd.__common-ccc');
+    document.head.innerHTML = '';
+    addScripts(
+      '__expo-metro-runtime-aaa',
+      '_layout-bbb',
+      'library-fff',
+      '__common-ccc',
+      'index-ddd',
+    );
+    expect(mod.buildId()).toBe('index-ddd.__common-ccc');
   });
 });

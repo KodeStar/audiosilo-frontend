@@ -152,7 +152,8 @@ async function staleWhileRevalidate(request) {
 
 // --- the build's chunks ------------------------------------------------------
 
-// The cache entry recording the build last precached: the shell's own scripts and styles.
+// The cache entry recording the build last precached, as JSON: the shell's own scripts and
+// styles (`build`), every file of it (`files`) and the build's before it (`previous`).
 const PRECACHED_BUILD = '__precached-build';
 // A build asset named in the HTML or a chunk: `<base>/_expo/static/js/web/<name>-<hash>.js`
 // (the chunk map Expo writes into the entry and into chunks that load others) or a
@@ -169,9 +170,14 @@ function assetRefs(text) {
 /**
  * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts
  * and stylesheets, then every chunk they name, transitively. A route opened for the first
- * time offline then still finds its chunk, and a deep link still boots. The previous
- * build's chunks are dropped once this one is complete. Offline or failing part way, it
- * stops and leaves the record unwritten, so the next ask finishes it.
+ * time offline then still finds its chunk, and a deep link still boots. The shell is
+ * cached once its own files are in, so offline it always boots. Once this build is
+ * complete, the build before it stays one deploy longer (a tab still running it, its
+ * worker replaced by another tab's new build, opens its pages from these), older files
+ * go, and so does every page an earlier build cached (`handleNavigation`): offline such a
+ * page would name files no longer kept, and the shell boots this build instead. Offline
+ * or failing part way, it stops and leaves the record unwritten, so the next ask finishes
+ * it.
  *
  * At install (`fresh`) every file is written again, even one already cached: Chrome
  * compiles a script a worker caches while installing and keeps the code with it, so the
@@ -185,30 +191,59 @@ async function precacheBuild(fresh = false) {
     const shell = self.registration.scope;
     const res = await fetch(new Request(shell, { cache: 'no-cache' }));
     if (!res.ok) return;
-    await cache.put(shell, res.clone());
-    const roots = assetRefs(await res.text());
+    const roots = assetRefs(await res.clone().text());
     if (!roots.length) return;
     const build = roots.slice().sort().join('\n');
     const marker = new URL(PRECACHED_BUILD, shell).href;
-    const done = await cache.match(marker);
-    if (!fresh && done && (await done.text()) === build) return;
+    const last = await readRecord(cache, marker);
+    if (!fresh && last && last.build === build) {
+      await cache.put(shell, res);
+      return;
+    }
 
     // Level by level, each level's files at once: the entry names the route chunks, which
-    // may name more.
+    // may name more. The shell once its own files (the first level) are in.
     const seen = new Set();
     let level = roots;
     while (level.length) {
       for (const url of level) seen.add(url);
       const texts = await Promise.all(level.map((url) => precacheAsset(cache, url, fresh)));
+      if (level === roots) await cache.put(shell, res);
       level = [...new Set(texts.flatMap(assetRefs))].filter((url) => !seen.has(url));
     }
-    const stale = (await cache.keys()).filter(
-      (request) => request.url.includes(BUILD_ASSETS) && !seen.has(request.url),
-    );
-    await Promise.all(stale.map((request) => cache.delete(request)));
-    await cache.put(marker, new Response(build));
+
+    const previous = !last ? [] : last.build !== build ? last.files : last.previous;
+    const keep = new Set([...seen, ...previous]);
+    for (const request of await cache.keys()) {
+      const { url } = request;
+      if (url === shell || url === marker) continue;
+      if (url.includes(BUILD_ASSETS)) {
+        if (!keep.has(url)) await cache.delete(request);
+        continue;
+      }
+      const page = await cache.match(request);
+      if (!page || !(page.headers.get('content-type') || '').includes('text/html')) continue;
+      if (assetRefs(await page.text()).some((ref) => !seen.has(ref))) await cache.delete(request);
+    }
+    await cache.put(marker, new Response(JSON.stringify({ build, files: [...seen], previous })));
   } catch {
     // offline or the server gone: the next ask (the app's next start) tries again
+  }
+}
+
+/** The precache record (`PRECACHED_BUILD`), or null without a readable one. */
+async function readRecord(cache, marker) {
+  const res = await cache.match(marker);
+  if (!res) return null;
+  try {
+    const record = JSON.parse(await res.text());
+    return typeof record.build === 'string' &&
+      Array.isArray(record.files) &&
+      Array.isArray(record.previous)
+      ? record
+      : null;
+  } catch {
+    return null;
   }
 }
 

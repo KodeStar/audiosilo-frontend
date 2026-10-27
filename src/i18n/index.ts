@@ -64,21 +64,28 @@ export async function ensureLanguage(code: SupportedCode): Promise<void> {
 }
 
 let switches = 0;
+let latestSwitch: Promise<void> = Promise.resolve();
 
 /**
  * Switches the UI to `code`, its catalog loaded first (`ensureLanguage`). A later switch
- * wins: one still loading its catalog when another is asked for never applies.
+ * wins: one still loading its catalog when another is asked for never applies, and
+ * resolves once the later one has (so the `LanguageProvider`, holding the first paint
+ * until its switch is done, never paints before the language is in).
  */
-export async function switchLanguage(code: SupportedCode): Promise<void> {
+export function switchLanguage(code: SupportedCode): Promise<void> {
   const mine = ++switches;
-  try {
-    await ensureLanguage(code);
-  } catch {
-    // the language's strings fall back to English
-  }
-  if (mine !== switches) return;
-  // eslint-disable-next-line import/no-named-as-default-member -- the instance's own API.
-  await i18n.changeLanguage(code);
+  const run = (async () => {
+    try {
+      await ensureLanguage(code);
+    } catch {
+      // the language's strings fall back to English
+    }
+    if (mine !== switches) return latestSwitch;
+    // eslint-disable-next-line import/no-named-as-default-member -- the instance's own API.
+    await i18n.changeLanguage(code);
+  })();
+  latestSwitch = run;
+  return run;
 }
 
 export { getLocale } from './locale';

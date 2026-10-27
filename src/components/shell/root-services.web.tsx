@@ -4,9 +4,11 @@ import { deferred } from '@/lib/deferred';
  * The web's root services and listeners, from their module's loader: they and what only
  * they import (the cast session, the car and address runners, the sleep and drift
  * controllers) load after the first screen has painted, and the services start as the
- * listeners mount (`RootServices`). None of them acts before a book plays, and the web
- * engine never has one playing at launch (native can: there they start with the first
- * commit, `root-services.tsx`).
+ * listeners mount (`RootServices`). Most act only once a book plays, and the web engine
+ * never has one playing at launch (native can: there they start with the first commit,
+ * `root-services.tsx`). Two act on their own: the chapter refresh misses a server answer
+ * that lands before it starts (the next refetch brings it), and the Cast button shows once
+ * the cast sync has said Cast is supported.
  */
 export const RootListeners = deferred(() =>
   import('./root-services-impl').then((m) => m.RootServices),

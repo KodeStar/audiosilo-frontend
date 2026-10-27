@@ -14,14 +14,22 @@ import { BASE_URL, IS_DEV } from './base-url';
 export const PRECACHE_DELAY_MS = 5000;
 
 /**
- * The build this page runs, for the worker's address (`?build=`): the name of the page's
- * last bundle script, the entry, whose content hash changes with any chunk of the build
- * (it carries their names). `undefined` without one (dev, a test page).
+ * The build this page runs, for the worker's address (`?build=`): the names of the page's
+ * last bundle script, the entry (it names the route chunks, so its hash changes with
+ * them), and of the shared chunk (`__common-<hash>`, most of the app's code, which the
+ * entry does not name: a fix there leaves the entry as it was). Both are on every page,
+ * so every page of a build names the same worker. `undefined` without one (dev, a test
+ * page).
  */
 export function buildId(): string | undefined {
-  const scripts = document.querySelectorAll<HTMLScriptElement>('script[src*="/_expo/static/js/"]');
-  const last = scripts[scripts.length - 1];
-  return last?.src.split('/').pop()?.replace(/\.js$/, '') || undefined;
+  const names = Array.from(
+    document.querySelectorAll<HTMLScriptElement>('script[src*="/_expo/static/js/"]'),
+    (script) => script.src.split('/').pop()?.replace(/\.js$/, '') ?? '',
+  ).filter(Boolean);
+  const entry = names[names.length - 1];
+  if (!entry) return undefined;
+  const common = names.find((name) => name.startsWith('__common-'));
+  return common && common !== entry ? `${entry}.${common}` : entry;
 }
 
 /**

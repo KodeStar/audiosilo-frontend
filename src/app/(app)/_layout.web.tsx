@@ -13,10 +13,11 @@ import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useUpNextShortcut } from '@/components/upnext/use-up-next-shortcut';
 import { deferred } from '@/lib/deferred';
 
-// The shell's overlays open on a key or a press, never on the first screen: their modules
-// (the player's sheets with the companion and the editors, the palette with search, the
-// keyboard overlay) load once the page has painted, out of the web's start. Their keys and
-// open states are in the shell already, so a key pressed before then opens it once in.
+// The shell's overlays open on a key or a press, never on the first screen: they mount once
+// the page has painted. The palette (with search) and the keyboard overlay are their own
+// chunks, out of the web's start; the player's sheets are in the start anyway (the player
+// route imports them too), so only their render waits. Their keys and open states are in
+// the shell already, so a key pressed before then opens it once in.
 const ShellPlayerOverlays = deferred(() =>
   import('@/components/player/player-sheet-host').then((m) => m.ShellPlayerOverlays),
 );

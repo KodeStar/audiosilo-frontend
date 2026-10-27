@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -7,7 +7,7 @@ jest.mock('@/lib/after-paint', () => require('@/testing/after-paint-mock'));
 /* eslint-disable import/first */
 import { paint, painted as mockPainted } from '@/testing/after-paint-mock';
 
-import { deferred } from './deferred';
+import { DEFERRED_RETRY_MS, deferred } from './deferred';
 /* eslint-enable import/first */
 
 function Hello({ name }: { name: string }) {
@@ -74,5 +74,27 @@ describe('deferred', () => {
     await paint();
     expect(load).toHaveBeenCalledTimes(2);
     expect(screen.getByText('hello ann')).toBeTruthy();
+  });
+
+  it('tries again a while after a failed load while it stays mounted (the root services)', async () => {
+    jest.useFakeTimers();
+    try {
+      const load = jest
+        .fn<Promise<typeof Hello>, []>()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValue(Hello);
+      const Deferred = deferred(load);
+      await render(<Deferred name="ann" />);
+      await paint();
+      expect(screen.queryByText('hello ann')).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(DEFERRED_RETRY_MS);
+      });
+      await paint();
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('hello ann')).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

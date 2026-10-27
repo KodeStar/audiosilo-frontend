@@ -12,7 +12,7 @@ import vm from 'node:vm';
 const SCOPE = 'https://box.test/web/';
 const SW_SOURCE = fs.readFileSync(path.join(__dirname, '../../public/sw.js'), 'utf8');
 
-type Store = Map<string, { body: string; type: string }>;
+type Store = Map<string, { body: string; headers: [string, string][] }>;
 
 function makeCaches() {
   const caches = new Map<string, Store>();
@@ -23,10 +23,10 @@ function makeCaches() {
     return {
       match: async (r: string | { url: string }) => {
         const hit = store.get(urlOf(r));
-        return hit ? new Response(hit.body) : undefined;
+        return hit ? new Response(hit.body, { headers: hit.headers }) : undefined;
       },
       put: async (r: string | { url: string }, res: Response) => {
-        store.set(urlOf(r), { body: await res.text(), type: 'basic' });
+        store.set(urlOf(r), { body: await res.text(), headers: [...res.headers] });
       },
       keys: async () => [...store.keys()].map((url) => ({ url })),
       delete: async (r: { url: string }) => store.delete(r.url),
@@ -60,7 +60,13 @@ function load(site: Record<string, string>) {
     cacheFirst: (r: Request) => Promise<Response>;
   };
   const cached = () => [...(caches.get('audiosilo-shell-v1') ?? new Map()).keys()].sort();
-  return { sw, fetched, offline, cached, site };
+  /** A page `handleNavigation` cached while online. */
+  const cachePage = async (url: string, html: string) =>
+    (await api.open('audiosilo-shell-v1')).put(
+      url,
+      new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } }),
+    );
+  return { sw, fetched, offline, cached, cachePage, site };
 }
 
 const js = (p: string) => `https://box.test/web/_expo/static/js/web/${p}.js`;
@@ -117,13 +123,45 @@ describe('service worker: precacheBuild', () => {
     expect(fetched).toContain(js('book-a'));
   });
 
-  it("takes a new build's chunks and drops the old build's", async () => {
+  it("takes a new build's chunks, keeps the one before one deploy longer, drops older", async () => {
     const t = load(build('a'));
     await t.sw.precacheBuild(true);
     Object.assign(t.site, build('b'));
     await t.sw.precacheBuild();
     expect(t.cached()).toContain(js('zxing-b'));
+    // A tab still running build a (another tab installed b) opens its pages from these.
+    expect(t.cached()).toContain(js('scan-a'));
+    // Installing b again (the same build) keeps a.
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).toContain(js('scan-a'));
+    Object.assign(t.site, build('c'));
+    await t.sw.precacheBuild();
     expect(t.cached().filter((u) => u.endsWith('-a.js'))).toEqual([]);
+    expect(t.cached()).toContain(js('scan-b'));
+    expect(t.cached()).toContain(js('scan-c'));
+  });
+
+  it("drops the pages an earlier build cached, so offline the shell boots this one's", async () => {
+    const t = load(build('a'));
+    await t.sw.precacheBuild(true);
+    const page = (id: string) =>
+      `<script src="/web/_expo/static/js/web/__common-${id}.js" defer></script>`;
+    await t.cachePage('https://box.test/web/settings', page('a'));
+    await t.cachePage('https://box.test/web/reader.html', '<p>reader</p>');
+    Object.assign(t.site, build('b'));
+    await t.sw.precacheBuild();
+    expect(t.cached()).not.toContain('https://box.test/web/settings');
+    expect(t.cached()).toContain('https://box.test/web/reader.html');
+    await t.cachePage('https://box.test/web/library', page('b'));
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).toContain('https://box.test/web/library');
+  });
+
+  it('caches the shell only once its own files are in', async () => {
+    const t = load(build('a'));
+    t.offline.add(js('index-a'));
+    await t.sw.precacheBuild(true);
+    expect(t.cached()).not.toContain(SCOPE);
   });
 
   it('stops when the network goes part way, and finishes on the next ask', async () => {

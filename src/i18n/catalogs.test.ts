@@ -1,5 +1,6 @@
 import i18n, { ensureLanguage, SUPPORTED_CODES, switchLanguage } from '@/i18n';
 
+import * as catalogs from './catalogs';
 import { BUNDLED_CATALOGS as WEB_BUNDLED, CATALOG_LOADERS, loadCatalog } from './catalogs.web';
 import de from './locales/de.json';
 import fr from './locales/fr.json';
@@ -48,6 +49,34 @@ describe('ensureLanguage / switchLanguage', () => {
     await Promise.all([first, second]);
     expect(i18n.language).toBe('de');
     expect(i18n.t('player.sleepTimer.fellAsleepNote')).toBe(de.player.sleepTimer.fellAsleepNote);
+  });
+
+  it('a switch overtaken by another resolves only once the later one has applied', async () => {
+    // The later switch's catalog arrives last (a slower chunk): the first switch's caller
+    // (the LanguageProvider, holding the first paint) must not be let go before it.
+    const realLoad = catalogs.loadCatalog;
+    let releaseDe!: () => void;
+    const spy = jest.spyOn(catalogs, 'loadCatalog').mockImplementation(async (code) => {
+      if (code === 'de') await new Promise<void>((resolve) => (releaseDe = resolve));
+      return realLoad(code);
+    });
+    try {
+      i18n.removeResourceBundle('fr', 'translation');
+      i18n.removeResourceBundle('de', 'translation');
+      let firstDone = false;
+      const first = switchLanguage('fr').then(() => {
+        firstDone = true;
+      });
+      const second = switchLanguage('de');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(firstDone).toBe(false);
+      releaseDe();
+      await first;
+      expect(i18n.language).toBe('de');
+      await second;
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('keeps a bundled catalog as it is', async () => {
