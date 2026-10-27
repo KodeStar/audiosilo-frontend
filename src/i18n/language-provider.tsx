@@ -34,9 +34,31 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 /**
+ * The longest first paint waits for the saved language. Native bundles every catalog, so
+ * its switch is immediate; the web loads a language other than English from its own chunk
+ * (`catalogs.web.ts`), and a slow or failing fetch must not hold the app blank. Past this
+ * it paints in English and changes language when the chunk arrives.
+ */
+export const LANGUAGE_WAIT_MS = 1500;
+
+/** Resolves when `work` settles or after `ms`, whichever comes first (never rejects). */
+function settledWithin(work: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    void work
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
+}
+
+/**
  * Restores the persisted language preference (default: follow the device) and
  * applies it to i18next before first paint - gating render until resolved, like
- * {@link ThemeProvider}, so the UI never flashes the wrong language.
+ * {@link ThemeProvider}, so the UI never flashes the wrong language. The wait for the
+ * language is capped (`LANGUAGE_WAIT_MS`).
  */
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [pref, setPrefState] = useState<LanguagePref>('system');
@@ -46,7 +68,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     let active = true;
     void readLanguagePref()
       .then(async (next) => {
-        await switchLanguage(resolveLanguage(next));
+        // The switch goes on past the cap: the UI changes language when it lands.
+        await settledWithin(switchLanguage(resolveLanguage(next)), LANGUAGE_WAIT_MS);
         if (active) setPrefState(next);
       })
       .catch(() => {

@@ -68,9 +68,12 @@ can never log anyone out (`{ authReset, cacheReset }`):
   root's lifetime services and listeners (`useRootServices`/`RootListeners`,
   `root-services{,.web}.tsx` over `root-services-impl.tsx`: the web mounts `RootServices` behind
   `deferred`, the services starting as it mounts; native starts them with the first commit, as
-  before). Only English is bundled on the web (`i18n/catalogs.web.ts`); another
-  language's catalog is loaded before switching to it (`switchLanguage`, the last switch wins),
-  so a string needed in every language at once has its own table (`fell-asleep-notes.ts`, held
+  before). A service that starts late must take what happened before it: the chapter refresh
+  reads the answers already cached, the drift watch starts `late` so a play that began first
+  is still offered on. Only English is bundled on the web (`i18n/catalogs.web.ts`); another
+  language's catalog is loaded before switching to it (`switchLanguage`, the last switch wins;
+  first paint waits for a saved language at most `LANGUAGE_WAIT_MS`, then paints in English
+  and switches when the chunk lands), so a string needed in every language at once has its own table (`fell-asleep-notes.ts`, held
   to the catalogs by its test). A new module for the first screen keeps a static import; one
   for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
   (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
