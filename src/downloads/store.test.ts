@@ -71,6 +71,13 @@ jest.mock('@/downloads/offline-meta', () => ({
   releaseOfflineBook: (...a: unknown[]) => mockRelease(...a),
 }));
 
+// The app reader's cached EPUB (ebook-file.native.ts has its own tests): a download takes
+// it instead of fetching the book again.
+const mockCachedEbook = jest.fn(async (_ref: unknown): Promise<string | null> => null);
+jest.mock('@/reader/ebook-file', () => ({
+  cachedEbookUri: (ref: unknown) => mockCachedEbook(ref),
+}));
+
 // The launch's restore waits for the JS thread to be idle: here, the next turn.
 (globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback = (cb) =>
   setTimeout(cb, 0);
@@ -162,6 +169,7 @@ const mockEngine = engine as unknown as {
   verify: ((uri: string) => Promise<boolean>) | undefined;
   probe: (() => Promise<boolean>) | undefined;
   renameFile: jest.Mock | undefined;
+  copyFile: jest.Mock | undefined;
 };
 
 const mockResolveClient = resolveClient as jest.Mock;
@@ -260,6 +268,8 @@ beforeEach(async () => {
   mockEngine.verify = undefined;
   mockEngine.probe = undefined;
   mockEngine.renameFile = undefined;
+  mockEngine.copyFile = undefined;
+  mockCachedEbook.mockReset().mockResolvedValue(null);
   Platform.OS = defaultOS;
   // Reset the connection-clients seam so a per-test override can't leak.
   mockResolveClient.mockReset().mockReturnValue(null);
@@ -741,6 +751,73 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
 
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
     expect(entry()?.manifest.ebookUri).toBeUndefined();
+  });
+
+  it('counts the ebook in the progress, the total and the bytes kept', async () => {
+    api();
+    const seen: { progress: number; totalBytes: number }[] = [];
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string, _u, onProgress?: (w: number, t: number) => void) => {
+        if (name === 'book.epub') {
+          // The audio is done: the button must not read 100% while the ebook downloads.
+          const e = entry();
+          seen.push({ progress: e.progress, totalBytes: e.totalBytes });
+          onProgress?.(1000, 1000);
+        } else if (name === '0.mp3') onProgress?.(100, 100);
+        return `live:c1:2:A/Book:${name}`;
+      },
+    );
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    expect(seen).toEqual([{ progress: 0.5, totalBytes: 1100 }]);
+    expect(entry()).toMatchObject({ status: 'downloaded', progress: 1, bytes: 1100 });
+  });
+
+  it("takes the app reader's cached copy instead of fetching the ebook again", async () => {
+    api();
+    mockEngine.copyFile = jest.fn(
+      async (_c: string, _l: number, _p: string, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    mockCachedEbook.mockResolvedValue('cache:reader/book-1000.epub');
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    expect(mockCachedEbook).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book',
+      size: 1000,
+    });
+    expect(mockEngine.copyFile).toHaveBeenCalledWith(
+      'c1',
+      2,
+      'A/Book',
+      'book.epub',
+      'cache:reader/book-1000.epub',
+    );
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
+    expect(entry()?.manifest.ebookUri).toBe('live:c1:2:A/Book:book.epub');
+    expect(entry()?.bytes).toBe(1000);
+  });
+
+  it('fetches the ebook when there is no cached copy, or copying it fails', async () => {
+    api();
+    mockEngine.copyFile = jest.fn(async () => {
+      throw new Error('disk full');
+    });
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    mockCachedEbook.mockResolvedValue('cache:reader/book-1000.epub');
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toContain('book.epub');
+    expect(entry()?.manifest.ebookUri).toBe('live:c1:2:A/Book:book.epub');
   });
 
   it('relocates a saved ebook to book.epub under the live root, and adds none', async () => {
@@ -1491,6 +1568,48 @@ describe('a cancel or a failure (observed via the download error path)', () => {
     // Deleted by the cancel, and again by the download once the transfer stopped.
     expect(mockEngine.removeBook).toHaveBeenCalledTimes(2);
     expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'A/Book');
+  });
+
+  it('a cancel then Download again at once: the new download completes and stays (fe#174)', async () => {
+    const abort = new Error('cancelled by user');
+    abort.name = 'AbortError';
+    let first = true;
+    // The old transfer stops only after the listener has cancelled and asked again.
+    let stopOld!: () => void;
+    const oldStopped = new Promise<void>((r) => (stopOld = r));
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string, _u, onProgress?: (w: number, t: number) => void) => {
+        if (name === 'cover.jpg') return `local:${name}`;
+        if (first) {
+          first = false;
+          await oldStopped;
+          // A last progress tick from the old transfer, after the new entry exists.
+          onProgress?.(50, 100);
+          throw abort;
+        }
+        return `local:${name}`;
+      },
+    );
+
+    useDownloads.getState().download('c1', 2, makeBook());
+    await settle();
+    expect(useDownloads.getState().entries[key]?.status).toBe('downloading');
+
+    useDownloads.getState().cancel('c1', 2, 'A/Book');
+    useDownloads.getState().download('c1', 2, makeBook());
+    expect(useDownloads.getState().entries[key]?.status).toBe('queued');
+    stopOld();
+    await settle();
+    await settle();
+
+    const e = useDownloads.getState().entries[key];
+    expect(e?.status).toBe('downloaded');
+    expect(e?.manifest.files).toHaveLength(1);
+    // The old run cleared its files before the new one began writing.
+    const removedAt = mockEngine.removeBook.mock.invocationCallOrder.at(-1) ?? 0;
+    const lastWrite = mockEngine.downloadFile.mock.invocationCallOrder.at(-1) ?? 0;
+    expect(removedAt).toBeLessThan(lastWrite);
+    expect((await readPersisted())[key]?.status).toBe('downloaded');
   });
 
   it("keeps Android's dropped connection as a failure, with the files that finished", async () => {

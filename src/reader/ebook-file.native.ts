@@ -158,6 +158,17 @@ function existingEbook({
   return cached > 0 ? { uri: file.uri, size: cached } : null;
 }
 
+/** The reader's cached copy of the book's EPUB for the server's `size`, else null: a
+ * download takes it instead of fetching the book again (`runOne` in the downloads store). */
+export async function cachedEbookUri({
+  connectionId,
+  libraryId,
+  path,
+  size,
+}: Omit<EbookFileRef, 'saved'>): Promise<string | null> {
+  return existingEbook({ connectionId, libraryId, path, size })?.uri ?? null;
+}
+
 /** Whether the book's EPUB is on this device without a fetch (`existingEbook`). The
  * offline place lookup asks it (`lookupReadingPlace`, which takes a throw as no). */
 export async function hasLocalEbook(ref: EbookFileRef): Promise<boolean> {

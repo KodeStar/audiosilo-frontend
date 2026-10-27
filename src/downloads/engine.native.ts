@@ -77,6 +77,14 @@ export const engine: DownloadEngine = {
     return file.uri;
   },
 
+  async copyFile(connectionId, libraryId, path, fileName, fromUri) {
+    const dir = bookDir(connectionId, libraryId, path);
+    ensureDir(dir);
+    const dest = new File(dir, fileName);
+    await new File(fromUri).copy(dest, { overwrite: true });
+    return dest.uri;
+  },
+
   async fileExists(localUri) {
     try {
       return new File(localUri).exists;

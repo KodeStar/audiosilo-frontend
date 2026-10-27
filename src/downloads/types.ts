@@ -122,6 +122,16 @@ export interface DownloadEngine {
     signal?: AbortSignal,
     headers?: Record<string, string>,
   ): Promise<string>;
+  /** Copy a file already on this device (`fromUri`, the app reader's cached EPUB) into the
+   * book's directory as `fileName`; returns the local uri. Native only: the web has no
+   * reader cache to copy from. */
+  copyFile?(
+    connectionId: string,
+    libraryId: number,
+    path: string,
+    fileName: string,
+    fromUri: string,
+  ): Promise<string>;
   /** A stored file's bytes, or null when it is not there (or can't be read). The web's
    * reader reads a downloaded book's ebook with it (the app's reads it in chunks itself).
    * Omitted on native. */

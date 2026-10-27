@@ -17,7 +17,19 @@ export type EbookFileRef = {
 };
 
 /** Whether the book's EPUB is on this device: on the web only its download's copy
- * (`saved`, in the Cache API), there being no reader cache. */
+ * (`saved`, in the Cache API), there being no reader cache. The copy itself is looked for,
+ * not only the download's record: the browser can evict the Cache API's entries. */
 export async function hasLocalEbook({ saved }: EbookFileRef): Promise<boolean> {
-  return !!saved;
+  if (!saved || typeof caches === 'undefined') return false;
+  try {
+    return (await caches.match(saved)) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/** The reader's cached copy of the book's EPUB, for a download to take instead of fetching
+ * it again: none on the web, which keeps no reader cache. */
+export async function cachedEbookUri(_ref: Omit<EbookFileRef, 'saved'>): Promise<string | null> {
+  return null;
 }

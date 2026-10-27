@@ -84,7 +84,13 @@ jest.mock('expo-file-system/legacy', () => ({
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 
-import { chunkReader, clearEbookCache, hasLocalEbook, localEbook } from './ebook-file.native';
+import {
+  cachedEbookUri,
+  chunkReader,
+  clearEbookCache,
+  hasLocalEbook,
+  localEbook,
+} from './ebook-file.native';
 /* eslint-enable import/first */
 
 const api = {
@@ -261,6 +267,23 @@ describe('hasLocalEbook', () => {
     await expect(
       hasLocalEbook({ ...ref, size: 1000, saved: 'file:///docs/gone/book.epub' }),
     ).resolves.toBe(false);
+  });
+});
+
+describe('cachedEbookUri', () => {
+  const ref = { connectionId: 'c1', libraryId: 2, path: 'A/Book' };
+
+  it("names the reader's cache file at the ebook's size, for a download to copy", async () => {
+    await localEbook(args);
+    await expect(cachedEbookUri({ ...ref, size: 1000 })).resolves.toBe(BOOK);
+  });
+
+  it('has none at another size, an empty copy, or with no size', async () => {
+    await localEbook(args);
+    await expect(cachedEbookUri({ ...ref, size: 2000 })).resolves.toBeNull();
+    await expect(cachedEbookUri(ref)).resolves.toBeNull();
+    mockTree.set(BOOK, 0);
+    await expect(cachedEbookUri({ ...ref, size: 1000 })).resolves.toBeNull();
   });
 });
 
