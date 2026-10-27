@@ -31,7 +31,10 @@ jest.mock('@/api/hooks', () => ({
 }));
 // The book's download entry, and whether its EPUB is on the device (ebook-file's tests).
 let mockDownload: { status: string; manifest: { ebookUri?: string } } | undefined;
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => mockDownload }));
+jest.mock('@/downloads/store', () => ({
+  useDownloadedEbook: () =>
+    (mockDownload?.status === 'downloaded' && mockDownload.manifest.ebookUri) || undefined,
+}));
 const mockHasLocalEbook = jest.fn(async (_ref: unknown) => true);
 jest.mock('./ebook-file', () => ({ hasLocalEbook: (ref: unknown) => mockHasLocalEbook(ref) }));
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({}) }));

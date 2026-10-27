@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { useDownloadEntry } from '@/downloads/store';
+import { useDownloadedEbook } from '@/downloads/store';
 import { readerHref } from '@/lib/paths';
 import { WithActiveModules } from '@/modules/active-modules';
 import type { PlayerModule } from '@/modules/registry';
@@ -96,8 +96,7 @@ function HeroActionsView({
   const collections = useCapability('collections', connectionId) === true;
   const ebooks = useCapability('ebooks', connectionId);
   // A download holding the EPUB reads while `ebooks` is unknown (offline).
-  const entry = useDownloadEntry(connectionId, libraryId, path);
-  const downloadedEbook = entry?.status === 'downloaded' && !!entry.manifest.ebookUri;
+  const downloadedEbook = !!useDownloadedEbook(connectionId, libraryId, path);
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
   const menuExtra: BookAction[] = [

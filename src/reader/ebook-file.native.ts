@@ -6,6 +6,7 @@ import { classifyDownloadError } from '@/downloads/failure';
 import { pathSlug } from '@/lib/path-slug';
 
 import type { ChunkReader } from './book-chunks';
+import type { EbookFileRef } from './ebook-file';
 
 /**
  * Where the app's reader finds a book's EPUB (Bridge Phase 3b-2): a local file it reads in
@@ -95,16 +96,11 @@ export async function localEbook({
   saved?: string;
   signal?: AbortSignal;
 }): Promise<LocalEbook> {
-  if (saved) {
-    const file = new File(saved);
-    const bytes = sizeOf(file);
-    if (bytes > 0) return { uri: file.uri, size: bytes };
-  }
+  const here = existingEbook({ connectionId, libraryId, path, size, saved });
+  if (here) return here;
 
   const dir = cacheDir(connectionId, libraryId, path);
   const file = new File(dir, cacheName(size));
-  const cached = sizeOf(file);
-  if (cached > 0) return { uri: file.uri, size: cached };
 
   if (!dir.exists) dir.create({ intermediates: true });
   // Fetched beside it, then moved over it: a download cut short never leaves a file that
@@ -142,29 +138,30 @@ export async function localEbook({
   return { uri: file.uri, size: got };
 }
 
-/** Whether the book's EPUB is on this device without a fetch: the download's copy
- * (`saved`), or the cache file for the server's `size`. The offline place lookup asks it
- * (`lookupReadingPlace`). Never throws. */
-export async function hasLocalEbook({
+/** The book's EPUB already on this device, not empty: the download's copy (`saved`), else
+ * the cache file for the server's `size`; null when neither is there. */
+function existingEbook({
   connectionId,
   libraryId,
   path,
   size,
   saved,
-}: {
-  connectionId: string;
-  libraryId: number;
-  path: string;
-  size?: number;
-  saved?: string;
-}): Promise<boolean> {
-  try {
-    if (saved && sizeOf(new File(saved)) > 0) return true;
-    if (size === undefined) return false;
-    return sizeOf(new File(cacheDir(connectionId, libraryId, path), cacheName(size))) > 0;
-  } catch {
-    return false;
+}: EbookFileRef): LocalEbook | null {
+  if (saved) {
+    const file = new File(saved);
+    const bytes = sizeOf(file);
+    if (bytes > 0) return { uri: file.uri, size: bytes };
   }
+  if (size === undefined) return null;
+  const file = new File(cacheDir(connectionId, libraryId, path), cacheName(size));
+  const cached = sizeOf(file);
+  return cached > 0 ? { uri: file.uri, size: cached } : null;
+}
+
+/** Whether the book's EPUB is on this device without a fetch (`existingEbook`). The
+ * offline place lookup asks it (`lookupReadingPlace`, which takes a throw as no). */
+export async function hasLocalEbook(ref: EbookFileRef): Promise<boolean> {
+  return existingEbook(ref) !== null;
 }
 
 /** Reads a local EPUB's chunks as base64 (encoded natively, never in JS). */

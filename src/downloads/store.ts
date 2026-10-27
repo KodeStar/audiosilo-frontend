@@ -1013,6 +1013,19 @@ export function useDownloadEntry(
   return useDownloads((s) => s.entries[downloadKey(connectionId, libraryId, path)]);
 }
 
+/** The EPUB a finished download of the book holds (its `manifest.ebookUri`), else
+ * undefined. A string, so a download's progress ticks re-render nothing (the reader). */
+export function useDownloadedEbook(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): string | undefined {
+  return useDownloads((s) => {
+    const e = s.entries[downloadKey(connectionId, libraryId, path)];
+    return (e?.status === 'downloaded' && e.manifest.ebookUri) || undefined;
+  });
+}
+
 /** A book's registry entry when it is fully downloaded, else undefined: the non-hook
  * read for the framework-free callers (the player store, the car). */
 export function downloadedEntryOf(ref: {

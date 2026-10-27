@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform } from 'react-native';
+import { renderHook } from '@testing-library/react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book, ChaptersResponse } from '@/api/types';
@@ -144,6 +145,7 @@ import {
   refreshedChapters,
   reviveEntry,
   startChapterRefresh,
+  useDownloadedEbook,
   useDownloads,
 } from '@/downloads/store';
 import { onConnectionRemoved } from '@/stores/session';
@@ -305,6 +307,28 @@ describe('downloadedEntryOf', () => {
     expect(downloadedEntryOf({ connectionId: 'c1', libraryId: 2, path: 'A' })).toBe(a);
     expect(downloadedEntryOf({ connectionId: 'c1', libraryId: 2, path: 'B' })).toBeUndefined();
     expect(downloadedEntryOf({ connectionId: 'c2', libraryId: 2, path: 'A' })).toBeUndefined();
+    useDownloads.setState({ entries: {} });
+  });
+});
+
+describe('useDownloadedEbook', () => {
+  it("answers a finished download's EPUB, never an unfinished one's or an empty uri", async () => {
+    const withEbook = (p: Partial<DownloadEntry>, ebookUri: string) => {
+      const e = downloadedEntry(p);
+      return { ...e, manifest: { ...e.manifest, ebookUri } };
+    };
+    useDownloads.setState({
+      entries: {
+        [downloadKey('c1', 2, 'A')]: withEbook({ path: 'A' }, 'file:///d/A/book.epub'),
+        [downloadKey('c1', 2, 'B')]: withEbook({ path: 'B', status: 'downloading' }, 'x'),
+        [downloadKey('c1', 2, 'C')]: withEbook({ path: 'C' }, ''),
+        [downloadKey('c1', 2, 'D')]: downloadedEntry({ path: 'D' }),
+      },
+    });
+    const uri = async (path: string) =>
+      (await renderHook(() => useDownloadedEbook('c1', 2, path))).result.current;
+    expect(await uri('A')).toBe('file:///d/A/book.epub');
+    for (const path of ['B', 'C', 'D', 'E']) expect(await uri(path)).toBeUndefined();
     useDownloads.setState({ entries: {} });
   });
 });

@@ -55,7 +55,10 @@ jest.mock('@/components/library/books/book-actions', () => ({
 jest.mock('@/components/library/download-control', () => ({ DownloadControl: () => null }));
 // The book's download entry (Read offline: its saved EPUB).
 let mockDownload: { status: string; manifest: { ebookUri?: string } } | undefined;
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => mockDownload }));
+jest.mock('@/downloads/store', () => ({
+  useDownloadedEbook: () =>
+    (mockDownload?.status === 'downloaded' && mockDownload.manifest.ebookUri) || undefined,
+}));
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({

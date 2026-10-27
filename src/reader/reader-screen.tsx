@@ -13,7 +13,7 @@ import { Notice } from '@/components/ui/notice';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { useDownloadEntry } from '@/downloads/store';
+import { useDownloadedEbook } from '@/downloads/store';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
@@ -89,9 +89,8 @@ export function ReaderScreen({
   const ebooks = useCapability('ebooks', connectionId);
   // The download's EPUB: readable with the capability unknown (offline), and where an
   // offline lookup with no place here opens at the start.
-  const download = useDownloadEntry(connectionId, libraryId, path);
-  const savedEbook = download?.status === 'downloaded' ? download.manifest.ebookUri : undefined;
-  const readable = canRead(ebooks, book, savedEbook !== undefined);
+  const savedEbook = useDownloadedEbook(connectionId, libraryId, path);
+  const readable = canRead(ebooks, book, !!savedEbook);
   const ebookSize = book?.ebook?.size;
   const hasLocalCopy = useLatest(() =>
     hasLocalEbook({ connectionId, libraryId, path, size: ebookSize, saved: savedEbook }),

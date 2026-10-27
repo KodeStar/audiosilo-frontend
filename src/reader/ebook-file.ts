@@ -5,16 +5,19 @@
  */
 export async function clearEbookCache(_connectionId: string): Promise<void> {}
 
-/** Whether the book's EPUB is on this device: on the web only its download's copy
- * (`saved`, in the Cache API), there being no reader cache. */
-export async function hasLocalEbook({
-  saved,
-}: {
+/** A book's EPUB as `hasLocalEbook` looks for it on both platforms. */
+export type EbookFileRef = {
   connectionId: string;
   libraryId: number;
   path: string;
+  /** The server's `ebook.size`: it names the app's cache file. */
   size?: number;
+  /** The book download's EPUB (its `manifest.ebookUri`), when it has one. */
   saved?: string;
-}): Promise<boolean> {
-  return saved !== undefined && saved.length > 0;
+};
+
+/** Whether the book's EPUB is on this device: on the web only its download's copy
+ * (`saved`, in the Cache API), there being no reader cache. */
+export async function hasLocalEbook({ saved }: EbookFileRef): Promise<boolean> {
+  return !!saved;
 }
