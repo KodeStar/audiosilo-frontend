@@ -55,16 +55,18 @@ export function startDriftWatch({ late = false }: { late?: boolean } = {}): () =
 
   // The play edge: playback starting, or a different book playing. `offeredFor` is the
   // book whose current run of playing was already looked at (null while not playing).
-  const initial = usePlayer.getState();
-  const playingAtStart = selectIsPlaying(initial);
-  let offeredFor = playingAtStart && !late ? selectBookKey(initial) : null;
+  let offeredFor: string | null = null;
   // A book change shows the new book with the OLD book's snapshot until the engine reports
   // for the new one (`playBook` sets the book before it loads it): that 'playing' is not
   // the new book's play edge. Taking the drift record on it would spend the offer on the
   // old book's position, and the real edge would find nothing (jump-undo skips it too).
-  // A late start cannot tell whether the book changed before it, so it waits for the
-  // engine's next report.
-  let staleSnapshot: unknown = playingAtStart && late ? initial.snapshot : null;
+  let staleSnapshot: unknown = null;
+  const initial = usePlayer.getState();
+  if (selectIsPlaying(initial)) {
+    // A late start waits for the engine's next report (see `late` above).
+    if (late) staleSnapshot = initial.snapshot;
+    else offeredFor = selectBookKey(initial);
+  }
   const unwatchPlayer = usePlayer.subscribe((state, prev) => {
     const key = selectBookKey(state);
     if (key !== selectBookKey(prev)) {

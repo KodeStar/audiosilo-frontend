@@ -504,34 +504,29 @@ function withCachedChapters(ref: BookRef, manifest: DownloadManifest): DownloadM
  * own seeds, which are the manifests' chapters and so change nothing.
  */
 export function startChapterRefresh(): () => void {
-  let took = false;
   for (const query of queryClient.getQueryCache().getAll()) {
     if (query.state.status !== 'success') continue;
-    took = takeChapters(query.queryKey, query.state.data as ChaptersResponse | undefined) || took;
+    takeChapters(query.queryKey, query.state.data as ChaptersResponse | undefined);
   }
-  if (took) persistSoon();
   return queryClient.getQueryCache().subscribe((event) => {
     // A server answer only: the store's own seeds (`setQueryData`) are manual.
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
-    // A burst of answers (a reconnect's refetches, a search fan-out) saves the registry
-    // once, not once per book.
-    if (takeChapters(event.query.queryKey, event.action.data as ChaptersResponse | undefined)) {
-      persistSoon();
-    }
+    takeChapters(event.query.queryKey, event.action.data as ChaptersResponse | undefined);
   });
 }
 
 /** Take a chapters answer (`fresh`, cached under `queryKey`) into its downloaded book's
- * manifest when `refreshedChapters` allows; whether it did. The caller saves. */
-function takeChapters(queryKey: QueryKey, fresh: ChaptersResponse | undefined): boolean {
+ * manifest when `refreshedChapters` allows. A burst of answers (a reconnect's refetches,
+ * a search fan-out) saves the registry once, not once per book (`persistSoon`). */
+function takeChapters(queryKey: QueryKey, fresh: ChaptersResponse | undefined) {
   const book = chaptersKeyParts(queryKey);
-  if (!book || !fresh) return false;
+  if (!book || !fresh) return;
   const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
   const entry = downloadedEntryOf(ref);
   const manifest = entry && refreshedChapters(entry.manifest, fresh);
-  if (!manifest) return false;
+  if (!manifest) return;
   patchEntry(contentKeyOf(ref), { manifest });
-  return true;
+  persistSoon();
 }
 
 /** While a download runs, its finished files reach storage at most this often
