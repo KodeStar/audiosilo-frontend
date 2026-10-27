@@ -52,7 +52,8 @@ export type TocEntry = { label: string; href: string; depth: number };
 /** `drm`: the book is encrypted; `unreadable`: not an EPUB, or a damaged one (both shown);
  * `section`: a part of the open book failed to load (shown, with Try again); `runtime`:
  * anything else that went wrong after opening (logged). */
-export type ReaderErrorCode = 'drm' | 'unreadable' | 'section' | 'runtime';
+const READER_ERROR_CODES = ['drm', 'unreadable', 'section', 'runtime'] as const;
+export type ReaderErrorCode = (typeof READER_ERROR_CODES)[number];
 
 export type ReaderMessage =
   | { type: 'ready' }
@@ -107,13 +108,7 @@ export function parseReaderMessage(data: unknown): ReaderMessage | null {
     case 'loading':
       return typeof data.value === 'boolean' ? { type: 'loading', value: data.value } : null;
     case 'error': {
-      const code =
-        data.code === 'drm' ||
-        data.code === 'unreadable' ||
-        data.code === 'section' ||
-        data.code === 'runtime'
-          ? data.code
-          : null;
+      const code = READER_ERROR_CODES.find((c) => c === data.code) ?? null;
       return code ? { type: 'error', code, message: str(data.message) ?? '' } : null;
     }
     case 'escape':

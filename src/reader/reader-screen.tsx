@@ -1,6 +1,6 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppState, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { AppState, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, isSignedOutError } from '@/api/client';
@@ -17,6 +17,7 @@ import { useDownloadedEbook } from '@/downloads/store';
 import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
+import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -194,13 +195,7 @@ export function ReaderScreen({
   useEffect(
     () =>
       onReadingRefused((heard) => {
-        if (
-          heard.connectionId === connectionId &&
-          heard.libraryId === libraryId &&
-          heard.path === path
-        ) {
-          setUnsaved(true);
-        }
+        if (sameBook(heard, connectionId, libraryId, path)) setUnsaved(true);
       }),
     [connectionId, libraryId, path],
   );
@@ -213,13 +208,7 @@ export function ReaderScreen({
   useEffect(
     () =>
       onReadingSaved((heard) => {
-        if (
-          heard.connectionId !== connectionId ||
-          heard.libraryId !== libraryId ||
-          heard.path !== path
-        ) {
-          return;
-        }
+        if (!sameBook(heard, connectionId, libraryId, path)) return;
         setUnsaved(false);
         setAnswer((prev) =>
           prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
@@ -437,7 +426,7 @@ export function ReaderScreen({
               />
             </>
           ) : null}
-          {shown && signedOut && (shown === 'signedOut' || shown === 'fetch') ? (
+          {signedOut && (shown === 'signedOut' || shown === 'fetch') ? (
             <View className="absolute inset-0 items-center justify-center p-4">
               <View className="w-full max-w-md">
                 <SignInAgainState connection={signedOut} />
@@ -542,8 +531,17 @@ const TocList = memo(function TocList({
   );
 });
 
-/** Below this window width the page edges narrow to the book's margin, clear of its text. */
-const NARROW_EDGES = 480;
+/** Whether a save's answer is about this book. */
+function sameBook(
+  heard: { connectionId: string; libraryId: number; path: string },
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): boolean {
+  return (
+    heard.connectionId === connectionId && heard.libraryId === libraryId && heard.path === path
+  );
+}
 
 /** A page turn at one edge of the book: a tall, quiet target over the margin. */
 function PageEdge({
@@ -555,7 +553,8 @@ function PageEdge({
   label: string;
   onPress: () => void;
 }) {
-  const narrow = useWindowDimensions().width < NARROW_EDGES;
+  // On a phone the page edges narrow to the book's margin, clear of its text.
+  const narrow = useLayout() === 'phone';
   return (
     <Pressable
       role="button"
@@ -609,28 +608,22 @@ function NotSavedCard({
 }) {
   const { t } = useTranslation();
   return (
-    <View className="absolute bottom-4 left-4 right-4 items-center" pointerEvents="box-none">
-      <View
-        testID="reader-not-saved"
-        role="alert"
-        className="w-full max-w-md gap-2 rounded-2xl border border-border bg-popover px-4 py-3"
-      >
-        <View className="flex-row items-center gap-2">
-          <Text variant="label" className="min-w-0 flex-1">
-            {t('reader.notSaved.body')}
-          </Text>
-          {signedOut ? null : (
-            <Button
-              variant="ghost"
-              size="sm"
-              title={t('reader.notSaved.dismiss')}
-              onPress={onDismiss}
-            />
-          )}
-        </View>
-        {signedOut ? <SignInAgainState connection={signedOut} compact /> : null}
+    <FootCard testID="reader-not-saved" role="alert" className="gap-2">
+      <View className="flex-row items-center gap-2">
+        <Text variant="label" className="min-w-0 flex-1">
+          {t('reader.notSaved.body')}
+        </Text>
+        {signedOut ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            title={t('reader.notSaved.dismiss')}
+            onPress={onDismiss}
+          />
+        )}
       </View>
-    </View>
+      {signedOut ? <SignInAgainState connection={signedOut} compact /> : null}
+    </FootCard>
   );
 }
 
@@ -648,19 +641,38 @@ function JumpOfferCard({
   const { t } = useTranslation();
   const percent = Math.round(offer.progression * 100);
   return (
+    <FootCard testID="reader-jump-offer" role="status" className="flex-row items-center gap-2">
+      <Text variant="label" className="min-w-0 flex-1">
+        {offer.deviceName
+          ? t('reader.offer.device', { device: offer.deviceName, percent })
+          : t('reader.offer.unknown', { percent })}
+      </Text>
+      <Button size="sm" title={t('reader.offer.jump')} onPress={onJump} />
+      <Button variant="ghost" size="sm" title={t('reader.offer.stay')} onPress={onStay} />
+    </FootCard>
+  );
+}
+
+/** A card at the foot of the page, over the book. */
+function FootCard({
+  testID,
+  role,
+  className,
+  children,
+}: {
+  testID: string;
+  role: 'alert' | 'status';
+  className: string;
+  children: ReactNode;
+}) {
+  return (
     <View className="absolute bottom-4 left-4 right-4 items-center" pointerEvents="box-none">
       <View
-        testID="reader-jump-offer"
-        role="status"
-        className="w-full max-w-md flex-row items-center gap-2 rounded-2xl border border-border bg-popover px-4 py-3"
+        testID={testID}
+        role={role}
+        className={`w-full max-w-md rounded-2xl border border-border bg-popover px-4 py-3 ${className}`}
       >
-        <Text variant="label" className="min-w-0 flex-1">
-          {offer.deviceName
-            ? t('reader.offer.device', { device: offer.deviceName, percent })
-            : t('reader.offer.unknown', { percent })}
-        </Text>
-        <Button size="sm" title={t('reader.offer.jump')} onPress={onJump} />
-        <Button variant="ghost" size="sm" title={t('reader.offer.stay')} onPress={onStay} />
+        {children}
       </View>
     </View>
   );

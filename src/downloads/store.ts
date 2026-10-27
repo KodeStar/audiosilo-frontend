@@ -64,7 +64,7 @@ const queue: string[] = [];
 const controllers = new Map<string, AbortController>();
 
 /** Stop a book's waiting or running download: off the queue, its transfer aborted, and
- * its run no longer the live one (it leaves the entry, and a new one, alone). */
+ * its run no longer the live one (see `controllers`). */
 function stopRun(key: string) {
   const idx = queue.indexOf(key);
   if (idx >= 0) queue.splice(idx, 1);
@@ -846,8 +846,7 @@ async function runOne(key: string) {
   const { connectionId, libraryId, path } = entry;
   const ctrl = new AbortController();
   controllers.set(key, ctrl);
-  // Still the book's live run: a cancel or removal stops it (`stopRun`), and the book can
-  // be queued again at once, under the same key; this run then leaves the entry alone.
+  // Still the book's live run (see `controllers`).
   const live = () => controllers.get(key) === ctrl;
   const patch = (p: Partial<DownloadEntry>) => {
     if (live()) patchEntry(key, p);
@@ -953,16 +952,16 @@ async function runOne(key: string) {
     let ebookUri: string | undefined;
     let ebookBytes = 0;
     if (ebook) {
-      const cached = engine.copyFile
-        ? await cachedEbookUri({ connectionId, libraryId, path, size: ebook.size }).catch(
-            () => null,
-          )
-        : null;
+      const cached = await cachedEbookUri({
+        connectionId,
+        libraryId,
+        path,
+        size: ebook.size,
+      }).catch(() => null);
       if (cached && engine.copyFile) {
         ebookUri = await engine
           .copyFile(connectionId, libraryId, path, EBOOK_FILE, cached)
           .catch(() => undefined);
-        if (ebookUri) ebookBytes = ebook.size;
       }
       if (!ebookUri) {
         const { url, headers } = api.ebookRequest(libraryId, path);
@@ -973,10 +972,9 @@ async function runOne(key: string) {
             priorBytes + bytesWritten,
           );
         });
-        // An engine that reported no progress: the server's size stands in.
-        if (ebookUri && ebookBytes === 0) ebookBytes = ebook.size;
       }
-      if (!ebookUri) ebookBytes = 0;
+      // A copied EPUB, or an engine that reported no progress: the server's size stands in.
+      ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
     const bytes = priorBytes + ebookBytes;
 

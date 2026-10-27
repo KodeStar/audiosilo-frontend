@@ -51,15 +51,13 @@ export function currentSegment({
   };
 }
 
-/** How far short of the end of the book a scrub lands at the latest, seconds: at most this,
- * and at most SCRUB_END_GUARD_SHARE of the book (`scrubGuard`). */
+/** The most a scrub lands short of the end of the book, seconds (`scrubGuard`). */
 export const SCRUB_END_GUARD_S = 30;
-/** The share of a short book the end guard may take: 30 s of a one-minute book would leave
- * half its bar dead (PLAYER-04). */
-export const SCRUB_END_GUARD_SHARE = 0.1;
+const SCRUB_END_GUARD_SHARE = 0.1;
 
-/** How far short of the end a scrub lands in a book `total` long: 30 s, or a tenth of the
- * book when that is less. */
+/** How far short of the end a scrub lands in a book `total` long: 30 s, which keeps the
+ * 10 s Undo chip alive even at 2x, or a tenth of the book when that is less (30 s of a
+ * one-minute book would leave half its bar dead, PLAYER-04). */
 export function scrubGuard(total: number): number {
   return Math.min(SCRUB_END_GUARD_S, total * SCRUB_END_GUARD_SHARE);
 }
@@ -69,10 +67,9 @@ export function scrubGuard(total: number): number {
  * timeline or a chapter scrubber) lands in a book `total` long: never on the very end.
  * A seek to the end is the book's natural end: it saves as finished, the end-of-book flow
  * clears what is playing (and with it the Undo chip) and the next play starts over at 0,
- * so a drag released past the right edge would lose the place for good. Landing short of
- * it (`scrubGuard`: 30 s, which keeps the 10 s Undo chip alive even at 2x, or a tenth of a
- * short book, so most of its bar still scrubs) keeps the jump undoable, and a book only
- * finishes by playing out or by Mark as finished. Unchanged when the length is unknown.
+ * so a drag released past the right edge would lose the place for good. Landing
+ * `scrubGuard(total)` short of it keeps the jump undoable, and a book only finishes by
+ * playing out or by Mark as finished. Unchanged when the length is unknown.
  */
 export function scrubTarget(bookPosition: number, total: number): number {
   return total > 0 ? Math.min(bookPosition, Math.max(0, total - scrubGuard(total))) : bookPosition;

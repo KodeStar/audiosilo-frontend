@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { hashKey, useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from 'expo-router';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
@@ -54,8 +54,13 @@ export function usePendingSaves({
 function useProgressFetchedAt(cid: string | undefined): number {
   const qc = useQueryClient();
   const cache = qc.getQueryCache();
+  const hash = cid ? hashKey(qk.allProgress(cid)) : undefined;
   return useSyncExternalStore(
-    (onChange) => cache.subscribe(onChange),
+    // Only this list's events: Home's other queries never move it.
+    (onChange) =>
+      cache.subscribe((e) => {
+        if (e.query.queryHash === hash) onChange();
+      }),
     () => (cid ? (qc.getQueryState(qk.allProgress(cid))?.dataUpdatedAt ?? 0) : 0),
   );
 }

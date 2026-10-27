@@ -1,3 +1,5 @@
+import { engine } from '@/downloads/engine';
+
 /**
  * The app's EPUB cache (`ebook-file.native.ts`, Bridge Phase 3b-2) has nothing to clear on
  * the web, whose reader fetches the book each time it opens (or reads its download). Metro
@@ -20,12 +22,7 @@ export type EbookFileRef = {
  * (`saved`, in the Cache API), there being no reader cache. The copy itself is looked for,
  * not only the download's record: the browser can evict the Cache API's entries. */
 export async function hasLocalEbook({ saved }: EbookFileRef): Promise<boolean> {
-  if (!saved || typeof caches === 'undefined') return false;
-  try {
-    return (await caches.match(saved)) !== undefined;
-  } catch {
-    return false;
-  }
+  return saved ? engine.fileExists(saved) : false;
 }
 
 /** The reader's cached copy of the book's EPUB, for a download to take instead of fetching
