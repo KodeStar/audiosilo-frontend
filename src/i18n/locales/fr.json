@@ -2907,7 +2907,8 @@
       },
       "start": {
         "title": "Le lecteur n'a pas démarré",
-        "body": "Le lecteur d'ebooks ne s'est pas lancé dans ce navigateur. Ta position dans le livre est conservée. Un proxy devant le serveur ou un navigateur ancien peut le bloquer : réessaie ou utilise un autre navigateur."
+        "body": "Le lecteur d'ebooks ne s'est pas lancé dans ce navigateur. Ta position dans le livre est conservée. Un proxy devant le serveur ou un navigateur ancien peut le bloquer : réessaie ou utilise un autre navigateur.",
+        "bodyNative": "Le lecteur d'ebooks s'est arrêté. Ta position dans le livre est conservée. Réessaie, et s'il s'arrête encore, ferme quelques autres apps : un gros livre demande beaucoup de mémoire."
       },
       "noEbook": {
         "title": "Pas d'ebook pour ce livre",

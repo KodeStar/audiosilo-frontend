@@ -2907,7 +2907,8 @@
       },
       "start": {
         "title": "El lector no se inició",
-        "body": "El lector de ebooks no se ejecutó en este navegador. Tu punto en el libro se conserva. Un proxy delante del servidor o un navegador antiguo pueden bloquearlo: vuelve a intentarlo o usa otro navegador."
+        "body": "El lector de ebooks no se ejecutó en este navegador. Tu punto en el libro se conserva. Un proxy delante del servidor o un navegador antiguo pueden bloquearlo: vuelve a intentarlo o usa otro navegador.",
+        "bodyNative": "El lector de ebooks se detuvo. Tu punto en el libro se conserva. Vuelve a intentarlo y, si sigue deteniéndose, cierra otras apps: un libro grande necesita mucha memoria."
       },
       "noEbook": {
         "title": "Este libro no tiene ebook",

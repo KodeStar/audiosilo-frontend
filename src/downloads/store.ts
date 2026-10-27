@@ -763,10 +763,6 @@ async function playableName(
 const COVER_FILE = 'cover.jpg';
 const EBOOK_FILE = 'book.epub';
 
-function isAbort(e: unknown): boolean {
-  return e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message));
-}
-
 /**
  * Sanitized destination filename for a file index, keeping its extension, except that on
  * iOS a `.mka` is saved as `.mp3`: a server with ffmpeg serves an MP3-in-Matroska file as
@@ -856,18 +852,11 @@ async function runOne(key: string) {
           headers,
         );
       } catch (e) {
-        if (isAbort(e)) throw e;
+        if (ctrl.signal.aborted) throw e;
         return undefined;
       }
     };
     const coverUri = (await extra(COVER_FILE, api.coverUrl(libraryId, path))) ?? null;
-    // The book's ebook (Bridge Phase 3b-2), so the reader opens it offline. Its route takes
-    // the Authorization header only, never `?token=`.
-    let ebookUri: string | undefined;
-    if (entry.manifest.book.ebook) {
-      const { url, headers } = api.ebookRequest(libraryId, path);
-      ebookUri = await extra(EBOOK_FILE, url, headers);
-    }
 
     let priorBytes = 0;
     let lastTick = 0;
@@ -925,6 +914,15 @@ async function runOne(key: string) {
       }
     }
 
+    // The book's ebook (Bridge Phase 3b-2), so the reader opens it offline. After the audio:
+    // an attempt that fails on the audio never fetches it, so a retry fetches it once. Its
+    // route takes the Authorization header only, never `?token=`.
+    let ebookUri: string | undefined;
+    if (entry.manifest.book.ebook) {
+      const { url, headers } = api.ebookRequest(libraryId, path);
+      ebookUri = await extra(EBOOK_FILE, url, headers);
+    }
+
     // With the server's chapters answer when one landed while the files did.
     const manifest = withCachedChapters(entry, {
       ...entry.manifest,
@@ -957,7 +955,10 @@ async function runOne(key: string) {
     // a failure there never fails (or holds up) the book.
     keepOfflineMeta(key).catch(() => {});
   } catch (e) {
-    if (isAbort(e)) {
+    // Cancelled only when this download's own signal aborted (`cancel`, `remove`, a removed
+    // connection), whatever the error says: Android reports a dropped connection as
+    // "Software caused connection abort", which is a failure like any other.
+    if (ctrl.signal.aborted) {
       void engine.removeBook(connectionId, libraryId, path);
       removeEntry(key); // cancelled - drop the partial entry
     } else {

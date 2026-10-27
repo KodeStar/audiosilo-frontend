@@ -15,8 +15,13 @@
 //
 // EPUB scripts never run. Three layers: the loader never loads a script file and strips
 // <meta http-equiv=refresh> (here); the document's CSP, inherited by foliate's blob:
-// section frames, allows only this script by hash; and the iframe's sandbox (no popups,
-// top navigation, forms or modals).
+// section frames, allows only this script by hash; and the host. On the web that is the
+// iframe's sandbox (no popups, top navigation, forms or modals); in the app the host refuses
+// every navigation outside the reader document (allowNavigation in
+// src/reader/reader-host.native.tsx) and its WebView opens no windows.
+
+// First: foliate calls Object.groupBy and Map.groupBy, which the app's oldest iOS lacks.
+import './polyfills.js';
 import { View } from '../vendor/foliate-js/view.js';
 
 import { createAssembly } from './chunks.js';
@@ -53,8 +58,9 @@ function receive(msg) {
 
 if (__NATIVE__) {
   // The WebView's postMessage dispatches a synthetic event with a string (on the window on
-  // iOS, on the document on Android), which has no source window: a frame's postMessage
-  // always has one, so one of the book's frames can never pass for the app.
+  // iOS, on the document on Android) and no source window, so a frame's postMessage (which
+  // has one) is dropped. A book's frame is same-origin and could forge the app's event with
+  // a script; what stops that is that book scripts never run (the top of this file).
   const onNative = (e) => {
     if (e.source !== null || typeof e.data !== 'string') return;
     let msg;
@@ -321,7 +327,8 @@ async function openBook(msg, bytes) {
   view = document.createElement('foliate-view');
   view.addEventListener('relocate', onRelocate);
   view.addEventListener('load', onSectionLoad);
-  // Links out of the book never open: the sandbox would refuse the popup anyway.
+  // Links out of the book never open. On the web the sandbox would refuse the popup anyway;
+  // in the app the reader is the WebView's top document, so this is what stops it.
   view.addEventListener('external-link', (e) => e.preventDefault());
   document.getElementById('book').append(view);
   try {

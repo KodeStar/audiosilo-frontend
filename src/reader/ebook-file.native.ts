@@ -3,7 +3,6 @@ import { readAsStringAsync } from 'expo-file-system/legacy';
 
 import { ApiError, type ApiClient } from '@/api/client';
 import { classifyDownloadError } from '@/downloads/failure';
-import { downloadedEntryOf } from '@/downloads/store';
 import { pathSlug } from '@/lib/path-slug';
 
 import type { ChunkReader } from './book-chunks';
@@ -13,28 +12,28 @@ import type { ChunkReader } from './book-chunks';
  * chunks (`book-chunks.ts`), since the reader WebView itself may read no file. The book's
  * download when it holds the EPUB (`manifest.ebookUri`, read offline, never fetched again),
  * else the reader's own cache file, fetched with the Authorization header (the route takes
- * no `?token=`) and kept until the server's ebook changes size.
+ * no `?token=`).
  *
  * The cache: one folder per (connection, library, book) under the app's cache directory
- * (the system may clear it; the next open fetches again), holding `book.epub`. It goes
- * with its connection (`clearEbookCache`, on sign-out and on removing the connection).
+ * (the system may clear it; the next open fetches again), holding `book-<size>.epub`, named
+ * by the server's `ebook.size` it was fetched for. That size is what the server's last scan
+ * recorded, while the route serves the file as it is now, so the copy's own length can
+ * differ: it is the book while it is there and not empty, and a new size (a scan saw the
+ * ebook change) fetches it again and drops the old copy. It goes with its connection
+ * (`clearEbookCache`, on sign-out and on removing the connection).
  */
 
 const ROOT = 'reader';
-const FILE = 'book.epub';
 
 function cacheDir(connectionId: string, libraryId: number, path: string): Directory {
   return new Directory(Paths.cache, ROOT, connectionId, String(libraryId), pathSlug(path));
 }
 
+/** The cache file of the book at the server's `ebook.size`. */
+const cacheName = (size: number) => `book-${size}.epub`;
+
 /** A book's EPUB as a local file. */
 export type LocalEbook = { uri: string; size: number };
-
-/** Whether a cached EPUB of `cached` bytes is the server's ebook of `wanted` bytes: a
- * changed size is a changed ebook (fetched again), and an empty file is never one. */
-export function cacheUsable(cached: number | null | undefined, wanted: number): boolean {
-  return typeof cached === 'number' && cached > 0 && cached === wanted;
-}
 
 function sizeOf(file: File): number {
   try {
@@ -44,11 +43,38 @@ function sizeOf(file: File): number {
   }
 }
 
+/** Deletes a file or folder when it is there. Best effort. */
+function drop(entry: File | Directory): void {
+  try {
+    if (entry.exists) entry.delete();
+  } catch {
+    // the system clears the cache directory in time anyway
+  }
+}
+
+// The `.part` names of the fetches running now, in this process: the only parts a cleanup
+// keeps. Numbered, so two opens of one book never share one.
+const fetching = new Set<string>();
+let parts = 0;
+
+/** Drops a book folder's files but `keep` and the live parts: another size's copy, a part
+ * a fetch the app did not live to finish left behind. Best effort. */
+function dropOthers(dir: Directory, keep: string): void {
+  try {
+    for (const entry of dir.list()) {
+      if (entry.name !== keep && !fetching.has(entry.name)) drop(entry);
+    }
+  } catch {
+    // the next fetch tries again
+  }
+}
+
 /**
- * The book's EPUB on this device, fetching it into the cache when it is not there (or no
- * longer the server's size). Rejects with an `ApiError` carrying the server's status when it
- * refused (404: no ebook any more), else with the download's own error; an abort leaves no
- * partial file behind.
+ * The book's EPUB on this device: the download's copy (`saved`) when it is there, else the
+ * cache file for the server's `size`, fetched when it is not there yet. Resolves with the
+ * file's own length, the one the reader is sent. Rejects with an `ApiError` carrying the
+ * server's status when it refused (404: no ebook any more), else with the download's own
+ * error; a download that fails or is aborted leaves no partial file behind.
  */
 export async function localEbook({
   api,
@@ -56,17 +82,19 @@ export async function localEbook({
   libraryId,
   path,
   size,
+  saved,
   signal,
 }: {
   api: ApiClient;
   connectionId: string;
   libraryId: number;
   path: string;
-  /** The server's `ebook.size`. */
+  /** The server's `ebook.size` (its last scan's): it names the cache file. */
   size: number;
+  /** The book download's EPUB (its `manifest.ebookUri`), when it has one. */
+  saved?: string;
   signal?: AbortSignal;
 }): Promise<LocalEbook> {
-  const saved = downloadedEntryOf({ connectionId, libraryId, path })?.manifest.ebookUri;
   if (saved) {
     const file = new File(saved);
     const bytes = sizeOf(file);
@@ -74,32 +102,43 @@ export async function localEbook({
   }
 
   const dir = cacheDir(connectionId, libraryId, path);
-  const file = new File(dir, FILE);
-  if (cacheUsable(sizeOf(file), size)) return { uri: file.uri, size };
+  const file = new File(dir, cacheName(size));
+  const cached = sizeOf(file);
+  if (cached > 0) return { uri: file.uri, size: cached };
 
   if (!dir.exists) dir.create({ intermediates: true });
   // Fetched beside it, then moved over it: a download cut short never leaves a file that
   // reads as the book.
-  const part = new File(dir, `${FILE}.part`);
-  if (part.exists) part.delete();
+  const name = `${file.name}.${++parts}.part`;
+  const part = new File(dir, name);
   const { url, headers } = api.ebookRequest(libraryId, path);
+  fetching.add(name);
+  let got: number;
   try {
-    await File.createDownloadTask(url, part, { headers, signal }).downloadAsync();
-  } catch (e) {
-    if (part.exists) part.delete();
-    const failure = classifyDownloadError(e);
-    if (failure.kind === 'server' && failure.status) {
-      throw new ApiError(failure.status, 'The ebook could not be downloaded.');
+    try {
+      // iOS: a foreground session, which fails at once offline (and after 60 s without
+      // data); the default background one waits days for a connection. Android ignores it.
+      await File.createDownloadTask(url, part, {
+        headers,
+        signal,
+        sessionType: 'foreground',
+      }).downloadAsync();
+      got = sizeOf(part);
+      if (got <= 0) throw new Error('The ebook download was empty.');
+    } catch (e) {
+      drop(part);
+      const failure = classifyDownloadError(e);
+      if (failure.kind === 'server' && failure.status) {
+        throw new ApiError(failure.status, 'The ebook could not be downloaded.');
+      }
+      throw e;
     }
-    throw e;
+    await part.move(file, { overwrite: true });
+  } finally {
+    // Deletes nothing: after the move, `part` is the book.
+    fetching.delete(name);
   }
-  const got = sizeOf(part);
-  if (got <= 0) {
-    if (part.exists) part.delete();
-    throw new Error('The ebook download was empty.');
-  }
-  if (file.exists) file.delete();
-  await part.move(file);
+  dropOthers(dir, file.name);
   return { uri: file.uri, size: got };
 }
 

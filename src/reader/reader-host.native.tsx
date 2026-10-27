@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
+import { downloadedEntryOf } from '@/downloads/store';
 import { useLatestRef } from '@/lib/use-latest';
+import { whenActive } from '@/lib/when-active';
 
 import { sendInChunks } from './book-chunks';
 import { chunkReader, type LocalEbook, localEbook } from './ebook-file.native';
@@ -37,9 +40,14 @@ export function allowNavigation(url: string): boolean {
   );
 }
 
-/** How many times the WebView's content process may die in one reader session before the
- * reader gives up (`ReaderStartError`, with Try again) instead of reloading for good. */
+/** How many times in a row the WebView's content process may die before the reader gives
+ * up (`ReaderStartError`, with Try again) instead of reloading for good. */
 export const MAX_RELOADS = 3;
+
+/** How long a WebView must have shown the book (since its `opened`) for its death not to
+ * count against MAX_RELOADS: a book that stayed open that long was taken by the system
+ * (memory pressure, the app away), not failing to open. */
+export const STABLE_MS = 60_000;
 
 /** A message from the WebView: JSON from the reader document, checked field by field
  * (`parseReaderMessage`). On Android the bridge object reaches the book's frames too. */
@@ -73,24 +81,41 @@ export function ReaderHost({
   title,
   onMessage,
   onLoadError,
+  onReopen,
   ref,
 }: ReaderHostProps) {
   const web = useRef<WebView>(null);
   const channel = useRef<HostChannel | null>(null);
-  const latest = useLatestRef({ api, at, theme, fontScale, name, onMessage, onLoadError });
+  const latest = useLatestRef({
+    api,
+    at,
+    ebookSize,
+    theme,
+    fontScale,
+    name,
+    onMessage,
+    onLoadError,
+    onReopen,
+  });
   // The WebView's life: a new one after its content process died.
   const [generation, setGeneration] = useState(0);
   // Where the reader last was, to reopen there after a crash (else `at`).
   const lastPlace = useRef<ReaderPlace | undefined>(undefined);
+  // When this WebView last said `opened` (null before it did), for the reload budget.
+  const openedAt = useRef<number | null>(null);
   // The book's local file, found once per book.
   const book = useRef<Promise<LocalEbook | null> | null>(null);
   // What the WebView's messages are handed to (this generation's session).
   const received = useRef<(message: ReaderMessage) => void>(() => {});
+  // Ends this generation's session: on a new WebView, on unmount, and at once when the
+  // WebView dies (its new one may wait for the app to come back).
+  const endSession = useRef(() => {});
 
   useReaderControls(channel, ref, theme, fontScale);
 
   // The book's file, fetched into the cache when it is not on the device: started at once,
-  // while the WebView loads. A failure is said at once (null to whoever waits on it).
+  // while the WebView loads. A failure is said at once (null to whoever waits on it). One
+  // file per mount: a size the server changes meanwhile is fetched on the next open.
   useEffect(() => {
     const abort = new AbortController();
     lastPlace.current = undefined;
@@ -99,14 +124,16 @@ export function ReaderHost({
       connectionId,
       libraryId,
       path,
-      size: ebookSize,
+      size: latest.current.ebookSize,
+      // The download's copy, when the book is downloaded with its EPUB.
+      saved: downloadedEntryOf({ connectionId, libraryId, path })?.manifest.ebookUri,
       signal: abort.signal,
     }).catch((e: unknown) => {
       if (!abort.signal.aborted) latest.current.onLoadError(e);
       return null;
     });
     return () => abort.abort();
-  }, [connectionId, libraryId, path, ebookSize, latest]);
+  }, [connectionId, libraryId, path, latest]);
 
   // One reader session per WebView: the channel, the start timeout and the transfers.
   useEffect(() => {
@@ -154,28 +181,56 @@ export function ReaderHost({
           lastPlace.current = { cfi: message.cfi, fraction: message.fraction };
           latest.current.onMessage(message);
           return;
+        case 'opened':
+          openedAt.current = Date.now();
+          latest.current.onMessage(message);
+          return;
         default:
           latest.current.onMessage(message);
       }
     };
-    return () => {
+    const end = () => {
       closed = true;
       clearTimeout(starting);
       received.current = () => {};
       channel.current = null;
     };
+    endSession.current = end;
+    return end;
   }, [libraryId, path, generation, latest]);
 
   // The content process died (iOS) or the renderer is gone (Android): a new WebView, up to
-  // MAX_RELOADS times; then the reader says it could not start.
+  // MAX_RELOADS times in a row; then the reader says it could not start. A WebView that
+  // showed the book for STABLE_MS was taken by the system, so its death starts the count
+  // again. One that dies while the app is in the background is made again once the app is
+  // back: made away, it may get no running content process and its start timeout runs out.
   const reloads = useRef(0);
+  // A new WebView waiting for the app to come back (its cancel); a reader closed meanwhile
+  // makes none.
+  const deferred = useRef<(() => void) | null>(null);
+  useEffect(() => () => deferred.current?.(), []);
   const reload = () => {
+    endSession.current();
+    if (openedAt.current !== null && Date.now() - openedAt.current >= STABLE_MS) {
+      reloads.current = 0;
+    }
+    openedAt.current = null;
     if (reloads.current >= MAX_RELOADS) {
       latest.current.onLoadError(new ReaderStartError());
       return;
     }
     reloads.current++;
-    setGeneration((n) => n + 1);
+    latest.current.onReopen?.();
+    deferred.current?.();
+    deferred.current = null;
+    if (AppState.currentState === 'background') {
+      deferred.current = whenActive(() => {
+        deferred.current = null;
+        setGeneration((n) => n + 1);
+      });
+    } else {
+      setGeneration((n) => n + 1);
+    }
   };
 
   return (

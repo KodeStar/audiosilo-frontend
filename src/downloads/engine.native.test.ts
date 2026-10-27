@@ -1,9 +1,21 @@
 // An in-memory file tree standing in for expo-file-system's File/Directory (the calls the
-// engine's `moveConnection` and `renameFile` make: exists, list, move, delete, name,
-// parentDirectory), with the module's move rule: into an EXISTING directory it lands
-// inside it, else it takes the destination's name.
+// engine's `moveConnection`, `renameFile` and `downloadFile` make: exists, list, move,
+// delete, create, name, parentDirectory, createDownloadTask), with the module's move rule:
+// into an EXISTING directory it lands inside it, else it takes the destination's name.
 const mockTree = new Map<string, 'dir' | string>(); // uri -> 'dir' or file content
 const mockFailMove = { uri: null as string | null };
+// `File.createDownloadTask`, answering like the server's ebook route: it takes the
+// Authorization header only (never `?token=`), so a download without it fails as Android
+// reports a 401.
+const mockDownloadTask = jest.fn(
+  (_url: string, dest: { uri: string }, opts: { headers?: Record<string, string> }) => ({
+    downloadAsync: async () => {
+      if (opts.headers?.Authorization !== 'Bearer t') throw new Error('HTTP 401');
+      mockTree.set(dest.uri, 'epub');
+      return { uri: dest.uri };
+    },
+  }),
+);
 jest.mock('expo-file-system', () => {
   const join = (parts: unknown[]) =>
     parts
@@ -40,6 +52,13 @@ jest.mock('expo-file-system', () => {
     }
   }
   class MockFile extends Entry {
+    static createDownloadTask(
+      url: string,
+      dest: MockFile,
+      opts: { headers?: Record<string, string> },
+    ) {
+      return mockDownloadTask(url, dest, opts);
+    }
     get exists() {
       const v = mockTree.get(this.uri);
       return v !== undefined && v !== 'dir';
@@ -48,6 +67,9 @@ jest.mock('expo-file-system', () => {
   class MockDirectory extends Entry {
     get exists() {
       return mockTree.get(this.uri) === 'dir';
+    }
+    create() {
+      mockTree.set(this.uri, 'dir');
     }
     list() {
       return [...mockTree.entries()]
@@ -88,6 +110,7 @@ const files = () =>
 beforeEach(() => {
   mockTree.clear();
   mockFailMove.uri = null;
+  mockDownloadTask.mockClear();
 });
 
 describe('engine.native moveConnection', () => {
@@ -173,5 +196,31 @@ describe('engine.native renameFile', () => {
     mockFailMove.uri = `${book}/1.mka`;
     await expect(engine.renameFile!(`${book}/1.mka`, '1.mp3')).resolves.toBe(false);
     expect(files()).toEqual({ 'srv/1/Book-abc/1.mka': 'x' });
+  });
+});
+
+describe('engine.native downloadFile', () => {
+  it('hands the request headers to the download task (the ebook route takes no ?token=)', async () => {
+    const signal = new AbortController().signal;
+    const headers = { Authorization: 'Bearer t' };
+    const uri = await engine.downloadFile(
+      'srv',
+      1,
+      'A/Book',
+      'book.epub',
+      'https://h/ebook',
+      undefined,
+      signal,
+      headers,
+    );
+
+    expect(mockDownloadTask).toHaveBeenCalledWith(
+      'https://h/ebook',
+      expect.objectContaining({ uri }),
+      expect.objectContaining({ headers, signal }),
+    );
+    // Saved under the uri the store keeps (and relocates to).
+    expect(uri).toBe(engine.localUri!('srv', 1, 'A/Book', 'book.epub'));
+    expect(mockTree.get(uri)).toBe('epub');
   });
 });

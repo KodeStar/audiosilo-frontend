@@ -1,5 +1,6 @@
 import { act, render, waitFor } from '@testing-library/react-native';
 import type { Ref } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import type { ApiClient } from '@/api/client';
 
@@ -46,6 +47,11 @@ jest.mock('./ebook-file.native', () => ({
     `${uri}@${position}+${length}`,
 }));
 jest.mock('./reader-html.native', () => ({ READER_HTML: '<!doctype html><title>Reader</title>' }));
+// A book's download (the store has its own tests): the host hands its EPUB to the file lookup.
+const mockDownloaded = jest.fn((_ref: unknown): unknown => undefined);
+jest.mock('@/downloads/store', () => ({
+  downloadedEntryOf: (ref: unknown) => mockDownloaded(ref),
+}));
 
 /* eslint-disable import/first */
 import {
@@ -54,20 +60,25 @@ import {
   READER_BASE_URL,
   ReaderHost,
   readNativeMessage,
+  STABLE_MS,
 } from './reader-host.native';
 /* eslint-enable import/first */
 
 const theme = { scheme: 'light', background: '#ffffff', foreground: '#111111' } as const;
 
-async function mount({ onMessage = jest.fn(), onLoadError = jest.fn() } = {}) {
+async function mount({
+  onMessage = jest.fn(),
+  onLoadError = jest.fn(),
+  onReopen = jest.fn(),
+} = {}) {
   const handle: { current: ReaderHostHandle | null } = { current: null };
-  await render(
+  const host = (ebookSize: number) => (
     <ReaderHost
       api={{} as ApiClient}
       connectionId="c1"
       libraryId={2}
       path="A/Book"
-      ebookSize={CHUNK_BYTES + 5}
+      ebookSize={ebookSize}
       name="Book"
       at={{ cfi: 'epubcfi(/6/2!/4)', fraction: 0.1 }}
       theme={theme}
@@ -75,10 +86,14 @@ async function mount({ onMessage = jest.fn(), onLoadError = jest.fn() } = {}) {
       title="Reader"
       onMessage={onMessage}
       onLoadError={onLoadError}
+      onReopen={onReopen}
       ref={handle}
-    />,
+    />
   );
-  return { onMessage, onLoadError, handle };
+  const view = await render(host(CHUNK_BYTES + 5));
+  /** The screen renders the host again with the server's new size of the ebook. */
+  const resize = (ebookSize: number) => view.rerender(host(ebookSize));
+  return { onMessage, onLoadError, onReopen, handle, resize, unmount: view.unmount };
 }
 
 const latest = () => mockViews[mockViews.length - 1];
@@ -86,6 +101,40 @@ const say = (message: object, view = latest()) =>
   act(async () => {
     view.props.onMessage({ nativeEvent: { data: JSON.stringify(message) } });
   });
+const openedMessage = { type: 'opened', title: 'Book', toc: [], rtl: false };
+
+/** `Date.now()` as the test sets it (the reload budget reads it), restored by `restore`. */
+function fakeClock() {
+  let now = 1_000_000;
+  const spy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+  return { pass: (ms: number) => (now += ms), restore: () => spy.mockRestore() };
+}
+
+/** The app's state as the test moves it, heard by whoever listens (the jest preset's
+ * AppState never changes), restored by `restore`. */
+function fakeAppState() {
+  const app = AppState as { currentState: AppStateStatus };
+  const was = app.currentState;
+  let listeners: ((state: AppStateStatus) => void)[] = [];
+  const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, fn) => {
+    const listener = fn as (state: AppStateStatus) => void;
+    listeners.push(listener);
+    const remove = () => (listeners = listeners.filter((l) => l !== listener));
+    return { remove } as unknown as ReturnType<typeof AppState.addEventListener>;
+  });
+  return {
+    change: (state: AppStateStatus) =>
+      act(async () => {
+        app.currentState = state;
+        [...listeners].forEach((l) => l(state));
+      }),
+    listening: () => listeners.length,
+    restore: () => {
+      spy.mockRestore();
+      app.currentState = was;
+    },
+  };
+}
 
 beforeEach(() => {
   mockViews.length = 0;
@@ -144,14 +193,51 @@ describe('ReaderHost (app)', () => {
     await waitFor(() => expect(latest().posted[0]).toEqual({ type: 'next' }));
   });
 
+  it('hands the file lookup the download’s EPUB when the book is downloaded with one', async () => {
+    mockDownloaded.mockReturnValueOnce({ manifest: { ebookUri: 'file:///docs/c1/2/A/book.epub' } });
+    await mount();
+    expect(mockDownloaded).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book',
+    });
+    expect(mockLocalEbook).toHaveBeenCalledWith(
+      expect.objectContaining({ saved: 'file:///docs/c1/2/A/book.epub' }),
+    );
+  });
+
+  it('keeps the file it is getting when the server’s size changes (the next open fetches it)', async () => {
+    // The lookup in flight fails once aborted, as the real one does.
+    let arrive: (file: { uri: string; size: number }) => void = () => {};
+    mockLocalEbook.mockImplementationOnce(
+      (a) =>
+        new Promise((resolve, reject) => {
+          arrive = resolve;
+          (a as { signal: AbortSignal }).signal.addEventListener('abort', () =>
+            reject(new Error('aborted')),
+          );
+        }),
+    );
+    const { onLoadError, resize } = await mount();
+    await say({ type: 'ready' });
+    // The screen's book read again on resume, with the server's EPUB replaced meanwhile.
+    await resize(CHUNK_BYTES + 9);
+    await act(async () => arrive({ uri: 'file:///cache/book.epub', size: CHUNK_BYTES + 5 }));
+    await waitFor(() => expect(latest().posted).toHaveLength(3));
+    expect(mockLocalEbook).toHaveBeenCalledTimes(1);
+    expect(onLoadError).not.toHaveBeenCalled();
+  });
+
   it('reopens where the reader last was in a new WebView after the content process dies', async () => {
-    const { onMessage } = await mount();
+    const { onMessage, onReopen } = await mount();
     await say({ type: 'ready' });
     await say({ type: 'progress', cfi: 'epubcfi(/6/8!/4/2)', fraction: 0.4, sectionLabel: 'II' });
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'progress' }));
     const first = latest();
     await act(async () => first.props.onContentProcessDidTerminate());
     expect(mockViews).toHaveLength(2);
+    // The screen hears it, to wait for the book to show again.
+    expect(onReopen).toHaveBeenCalledTimes(1);
     await say({ type: 'ready' });
     await waitFor(() => expect(latest().posted[0]).toMatchObject({ type: 'open' }));
     expect(latest().posted[0]).toMatchObject({ at: { cfi: 'epubcfi(/6/8!/4/2)', fraction: 0.4 } });
@@ -160,12 +246,107 @@ describe('ReaderHost (app)', () => {
   });
 
   it('gives up after the renderer dies again and again (Android), saying so', async () => {
-    const { onLoadError } = await mount();
+    const { onLoadError, onReopen } = await mount();
     for (let i = 0; i <= MAX_RELOADS; i++) {
       await act(async () => latest().props.onRenderProcessGone());
     }
     expect(mockViews).toHaveLength(MAX_RELOADS + 1);
     expect(onLoadError).toHaveBeenCalledWith(expect.any(ReaderStartError));
+    // Each new WebView was said; the death it gave up on was not.
+    expect(onReopen).toHaveBeenCalledTimes(MAX_RELOADS);
+  });
+
+  it('counts a death within a minute of the book opening (a book that cannot stay open)', async () => {
+    const clock = fakeClock();
+    try {
+      const { onLoadError } = await mount();
+      for (let i = 0; i <= MAX_RELOADS; i++) {
+        await say({ type: 'ready' });
+        await say(openedMessage);
+        clock.pass(STABLE_MS - 1);
+        await act(async () => latest().props.onContentProcessDidTerminate());
+      }
+      expect(mockViews).toHaveLength(MAX_RELOADS + 1);
+      expect(onLoadError).toHaveBeenCalledWith(expect.any(ReaderStartError));
+    } finally {
+      clock.restore();
+    }
+  });
+
+  it('starts the count again when a WebView showed the book for a minute (the system took it)', async () => {
+    const clock = fakeClock();
+    try {
+      const { onLoadError, onMessage } = await mount();
+      // Deaths before the book opened use the budget up...
+      for (let i = 0; i < MAX_RELOADS; i++) {
+        await act(async () => latest().props.onRenderProcessGone());
+      }
+      // ...but a WebView that then showed the book for STABLE_MS was taken by the system,
+      // however often that happens in a long read.
+      for (let i = 0; i <= MAX_RELOADS; i++) {
+        await say({ type: 'ready' });
+        await say(openedMessage);
+        clock.pass(STABLE_MS);
+        await act(async () => latest().props.onContentProcessDidTerminate());
+      }
+      expect(mockViews).toHaveLength(2 * MAX_RELOADS + 2);
+      expect(onLoadError).not.toHaveBeenCalled();
+      expect(onMessage).toHaveBeenCalledWith(openedMessage);
+    } finally {
+      clock.restore();
+    }
+  });
+
+  it('makes the new WebView once the app is back when the old one died in the background', async () => {
+    const app = fakeAppState();
+    try {
+      const { onLoadError, onReopen, unmount } = await mount();
+      await say({ type: 'ready' });
+      await app.change('background');
+      await act(async () => latest().props.onContentProcessDidTerminate());
+      expect(onReopen).toHaveBeenCalledTimes(1);
+      expect(mockViews).toHaveLength(1);
+      await app.change('inactive');
+      expect(mockViews).toHaveLength(1);
+      await app.change('active');
+      expect(mockViews).toHaveLength(2);
+      await say({ type: 'ready' });
+      await waitFor(() => expect(latest().posted[0]).toMatchObject({ type: 'open' }));
+      // A reader closed while its new WebView waits makes none.
+      await app.change('background');
+      await act(async () => latest().props.onRenderProcessGone());
+      expect(app.listening()).toBe(1);
+      await unmount();
+      expect(app.listening()).toBe(0);
+      expect(onLoadError).not.toHaveBeenCalled();
+    } finally {
+      app.restore();
+    }
+  });
+
+  it('ends a dead WebView’s session at once: its start timeout never runs out meanwhile', async () => {
+    jest.useFakeTimers();
+    const app = fakeAppState();
+    try {
+      const { onLoadError } = await mount();
+      await app.change('background');
+      // It dies before saying ready, its start timeout running.
+      await act(async () => latest().props.onRenderProcessGone());
+      await act(async () => {
+        jest.advanceTimersByTime(READER_START_MS);
+      });
+      expect(onLoadError).not.toHaveBeenCalled();
+      // The new WebView's own timeout runs from when it is made.
+      await app.change('active');
+      expect(mockViews).toHaveLength(2);
+      await act(async () => {
+        jest.advanceTimersByTime(READER_START_MS);
+      });
+      expect(onLoadError).toHaveBeenCalledWith(expect.any(ReaderStartError));
+    } finally {
+      app.restore();
+      jest.useRealTimers();
+    }
   });
 
   it('reports a book it could not get, and never posts it', async () => {

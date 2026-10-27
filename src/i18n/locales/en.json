@@ -2907,7 +2907,8 @@
       },
       "start": {
         "title": "The reader didn't start",
-        "body": "The ebook reader didn't run in this browser. Your place in the book is kept. A proxy in front of the server or an older browser can block it: try again, or use another browser."
+        "body": "The ebook reader didn't run in this browser. Your place in the book is kept. A proxy in front of the server or an older browser can block it: try again, or use another browser.",
+        "bodyNative": "The ebook reader stopped. Your place in the book is kept. Try again, and if it keeps stopping, close some other apps: a large book needs a lot of memory."
       },
       "noEbook": {
         "title": "No ebook for this book",

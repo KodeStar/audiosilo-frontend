@@ -105,7 +105,13 @@ async function mountInPage({
   ebook = jest.fn(async () => new ArrayBuffer(4)),
   onMessage = jest.fn(),
   onLoadError = jest.fn(),
-}: { ebook?: jest.Mock; onMessage?: jest.Mock; onLoadError?: jest.Mock } = {}) {
+  onReopen = jest.fn(),
+}: {
+  ebook?: jest.Mock;
+  onMessage?: jest.Mock;
+  onLoadError?: jest.Mock;
+  onReopen?: jest.Mock;
+} = {}) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -123,6 +129,7 @@ async function mountInPage({
         title="Reader"
         onMessage={onMessage}
         onLoadError={onLoadError}
+        onReopen={onReopen}
       />,
     );
   });
@@ -140,7 +147,7 @@ async function mountInPage({
       root.unmount();
       container.remove();
     });
-  return { ebook, onMessage, onLoadError, say, types, unmount, posted };
+  return { ebook, onMessage, onLoadError, onReopen, say, types, unmount, posted };
 }
 
 describe('ReaderHost (web) in a page', () => {
@@ -158,6 +165,15 @@ describe('ReaderHost (web) in a page', () => {
     await host.say({ type: 'ready' });
     expect(host.ebook).toHaveBeenCalledTimes(2);
     expect(host.types()).toEqual(['open', 'open']);
+    await host.unmount();
+  });
+
+  it('tells the screen the reader is opening again when it reloads, not at its first ready', async () => {
+    const host = await mountInPage();
+    await host.say({ type: 'ready' });
+    expect(host.onReopen).not.toHaveBeenCalled();
+    await host.say({ type: 'ready' });
+    expect(host.onReopen).toHaveBeenCalledTimes(1);
     await host.unmount();
   });
 

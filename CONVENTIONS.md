@@ -554,7 +554,9 @@ every platform (`canRead`: capability `ebooks` and `Book.ebook`). The route is `
   The variants differ only by esbuild's `__NATIVE__` define, used bare at each site (a const
   alias does not fold, and the other variant's code would ship). `npm test` runs
   `reader:check`, so a stale build fails the gate: rebuild and commit both with any change
-  under `reader/`. `public/sw.js` never answers it with the app shell.
+  under `reader/`. `public/sw.js` never answers it with the app shell. `reader/src/polyfills.js`
+  is imported first: foliate calls `Object.groupBy` and `Map.groupBy` on every open, which came
+  only with Safari 17.4 and Chrome 117 (the app's iOS floor is 16.4).
 - **The host** (`reader-host.web.tsx`): a same-origin iframe sandboxed to `allow-scripts
   allow-same-origin` (foliate cannot run in an opaque origin). The host fetches `/ebook` with
   the Authorization header (`client.ebook`, never `?token=`) and posts the bytes as a
@@ -577,25 +579,49 @@ every platform (`canRead`: capability `ebooks` and `Book.ebook`). The route is `
   only): a whitelist miss would go to `Linking.openURL`, so the whitelist admits all and the
   handler refuses. The bridge object is injected into every frame on Android, so every message
   is parsed field by field (`readNativeMessage`); the reader takes only `source === null`
-  string events (WebView's own). A content or render process that dies reopens a new WebView
-  at the last place, `MAX_RELOADS` times, then `ReaderStartError`.
+  string events (WebView's own). A content or render process that dies ends that WebView's
+  session at once and reopens a new WebView at the last place, `MAX_RELOADS` times in a row,
+  then `ReaderStartError`. A death `STABLE_MS` (60 s) or more after that WebView's `opened`
+  starts the count again (the system took a book that stayed open); never `opened` alone (a
+  book that dies on its first page would reload for good), never Android's `didCrash`. A death
+  while `AppState.currentState === 'background'` makes the new WebView only once the app is
+  back (`whenActive`): made away, it may get no running process and its start timeout would run
+  out. Each new document is told to the screen (`onReopen`; the web host too, when its frame
+  says `ready` after an open reached it): the screen clears `opened`, so the edges, toolbar and
+  Jump offer wait for the next `opened`. A `drm` or `unreadable` after the book showed once on
+  the screen is said as `start` (the same file opened before), and Try again reopens where the
+  reader was (`resumeAt`), not at the screen's first place. In the app the `start` body is
+  `reader.failure.start.bodyNative` (no browser to name). `/read` keys the screen by the book:
+  a deep link to another book reuses the route with new params.
 - **react-native-webview 13.16.1** (exact pin, the version `npx expo install` chose for SDK 56;
   bump it only with `npx expo install` and a device run of the reader on both platforms). Why
   it: the one maintained WebView for RN, with Fabric support and the process-death callbacks
   the host relies on (`onContentProcessDidTerminate` iOS, `onRenderProcessGone` Android). Its
-  sharp edges, all handled in `reader-host.native.tsx` and tested there: a whitelist miss opens
-  the URL in the system (above), `window.ReactNativeWebView` reaches every frame on Android,
-  and messages to the page arrive as a `MessageEvent` on `window` (iOS) or `document`
-  (Android) with `source === null`. The file access props are set off explicitly
+  sharp edges: a whitelist miss opens the URL in the system (above) and
+  `window.ReactNativeWebView` reaches every frame on Android, both handled and tested in
+  `reader-host.native.tsx` (`allowNavigation`, `readNativeMessage`); messages to the page
+  arrive as a `MessageEvent` on `window` (iOS) or `document` (Android) with `source === null`,
+  which `reader/src/reader.js` listens for on both (no test runs the app's document: only a
+  device run shows that one). The file access props are set off explicitly
   (`allowFileAccess`, `...FromFileURLs`, `allowUniversalAccess...`), never left to defaults.
 - **The EPUB's file in the app** (`ebook-file.native.ts`): the download's copy when it is on
-  the device, else a per-book cache file (`Paths.cache/reader/<cid>/<lib>/<pathSlug>/book.epub`,
-  fetched to `.part` with the Authorization header and moved into place) kept while its size is
-  the server's `ebook.size` (a changed size fetches again); a server refusal becomes its
-  `ApiError` status (`classifyDownloadError`). A removed connection drops its cache
-  (`clearEbookCache`, from `reading-progress`'s `onConnectionRemoved`). Downloads save the
-  EPUB as `book.epub` beside the audio when the book has one (optional: a failure keeps the
-  audio, a cancel cancels).
+  the device (the host passes `manifest.ebookUri` as `saved`: this module never imports the
+  downloads store, which would close a native import cycle through `@/api/hooks` and
+  `reading-progress`), else a per-book cache file
+  `Paths.cache/reader/<cid>/<lib>/<pathSlug>/book-<size>.epub`, named by the server's
+  `ebook.size` it was fetched for. That size is the server's last scan's, while `/ebook` serves
+  the file as it is now, so the copy is the book while it is there and not empty, whatever its
+  length; its own length (never `ebook.size`) is what the chunks announce, and a new size (a
+  scan saw the ebook change) fetches again. Each fetch downloads to a `.part` of its own (two
+  readers of one book never share one) in a foreground session (iOS's default background one
+  waits days for a connection, so an offline open would spin), then moves it over the cache
+  file (`overwrite: true`) and drops the folder's other files except live parts. A server
+  refusal becomes its `ApiError` status (`classifyDownloadError`); a failed or aborted fetch
+  leaves no part. A removed connection drops its cache (`clearEbookCache`, from
+  `reading-progress`'s `onConnectionRemoved`). Downloads save the EPUB as `book.epub` beside
+  the audio when the book has one, after the audio: an attempt that fails on the audio never
+  fetches it, so a retry fetches it once. Optional: a failure keeps the audio, a cancel cancels
+  the book.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen). An
@@ -1879,7 +1905,10 @@ are asked, at most 10,000 rows.
   book the store turned away (`unavailable`: web transcode; `tooBig`: no room until the registry
   changes).
 - **Kept files**: a failed download keeps the files that finished (classified cause in
-  `failure.ts`, `failure.kept`), and a retry fetches only the rest. `runOne` lists each finished file
+  `failure.ts`, `failure.kept`), and a retry fetches only the rest. A download is cancelled (entry
+  and folder dropped) only when its own signal aborted (`cancel`, `remove`, a removed connection),
+  never by the error's text: Android reports a dropped connection as "Software caused connection
+  abort", a failure like any other. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download
   whose listed files are all still on disk (an interrupted one says the app closed); anything else is
   dropped with its folder. No storage format change.

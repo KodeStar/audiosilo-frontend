@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import type { ReadingProgress } from '@/api/types';
@@ -116,6 +117,16 @@ async function opened(cfi = CFI_A, { rtl = false } = {}) {
   await say({ type: 'progress', cfi, fraction: 0.2, sectionLabel: '' });
 }
 
+/** The host made the reader document again (the app's WebView died, the web's frame
+ * reloaded). */
+const reopened = () =>
+  act(async () => {
+    mockHost!.onReopen!();
+  });
+
+/** The page edges on screen. */
+const edges = () => screen.queryAllByLabelText(/^(Next|Previous) page$/);
+
 /** A save of this book is answered with `kept` as the server's row. */
 const answered = (kept: ReadingProgress) =>
   act(async () => {
@@ -221,7 +232,87 @@ describe('ReaderScreen', () => {
     await waitFor(() => expect(mockHost).not.toBeNull());
     await act(async () => mockHost!.onLoadError(new ReaderStartError()));
     expect(screen.getByText("The reader didn't start")).toBeTruthy();
+    // The app's reader is a WebView that stopped: no browser or proxy to blame.
+    expect(screen.getByText(/^The ebook reader stopped\./)).toBeTruthy();
     expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
+  it('names the browser when the web reader did not start', async () => {
+    const prevOS = Platform.OS;
+    try {
+      Platform.OS = 'web';
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+      expect(screen.getByText(/^The ebook reader didn't run in this browser\./)).toBeTruthy();
+      expect(screen.queryByText(/^The ebook reader stopped\./)).toBeNull();
+    } finally {
+      Platform.OS = prevOS;
+    }
+  });
+
+  it('says a book that never opened cannot be opened, with no Try again', async () => {
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    await say({ type: 'error', code: 'unreadable', message: 'not a zip' });
+    expect(screen.getByText("This ebook can't be opened")).toBeTruthy();
+    expect(screen.queryByText('Try again')).toBeNull();
+  });
+
+  it('hides the page edges, the toolbar and the offer while the reader is made again', async () => {
+    await mount();
+    await opened();
+    await answered(row());
+    expect(edges()).toHaveLength(2);
+    expect(screen.getByLabelText('Contents')).toBeTruthy();
+    expect(screen.getByTestId('reader-jump-offer')).toBeTruthy();
+    await reopened();
+    expect(edges()).toHaveLength(0);
+    expect(screen.queryByLabelText('Contents')).toBeNull();
+    expect(screen.queryByTestId('reader-jump-offer')).toBeNull();
+    // Its next `opened`: the book shows again, and the offer with it.
+    await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
+    expect(edges()).toHaveLength(2);
+    expect(screen.getByTestId('reader-jump-offer')).toBeTruthy();
+  });
+
+  it('says a reopen that fails as a reader that stopped, with Try again', async () => {
+    await mount();
+    await opened();
+    await reopened();
+    // The memory pressure that took the last WebView fails the new one's open.
+    await say({ type: 'error', code: 'unreadable', message: 'RangeError: allocation failed' });
+    expect(screen.getByText("The reader didn't start")).toBeTruthy();
+    expect(screen.queryByText("This ebook can't be opened")).toBeNull();
+    expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
+  it('shows no page edges after Try again until the book shows again', async () => {
+    await mount();
+    await opened();
+    // The app's host gave up while the book showed (its last WebView died after `opened`).
+    await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+    await fireEvent.press(screen.getByText('Try again'));
+    // A new host, and nothing over it until its book shows.
+    expect(screen.queryByText("The reader didn't start")).toBeNull();
+    expect(edges()).toHaveLength(0);
+    await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
+    expect(edges()).toHaveLength(2);
+  });
+
+  it('opens again where the reader was on Try again, not where the screen first opened', async () => {
+    mockPlace = query({
+      place: { cfi: CFI_A, progression: 0.2, device_id: 'dev', updated_at: '2026-10-01' },
+      fromServer: null,
+    });
+    await mount();
+    await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_A, fraction: 0.2 }));
+    await opened(CFI_A);
+    await say({ type: 'progress', cfi: CFI_B, fraction: 0.6, sectionLabel: 'II' });
+    await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+    await fireEvent.press(screen.getByText('Try again'));
+    // The new host (the next attempt) opens at the last page shown.
+    await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_B, fraction: 0.6 }));
   });
 
   it('turns a right-to-left book forward from the left edge', async () => {

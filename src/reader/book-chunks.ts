@@ -8,9 +8,10 @@ import type { HostMessage, OpenFields } from './protocol';
  * or the wrong size.
  *
  * 256 KB a piece: measured on Pride and Prejudice (24.8 MB) on the iOS simulator and the
- * Android emulator, it opened as fast as 1 and 2 MB pieces with the lowest peak memory
- * (`.bridge-3b/proof-3b2.md`). One piece is read only once the last one was posted, so at
- * most one piece's base64 is held on this side at a time.
+ * Android emulator, it opened as fast as 1 and 2 MB pieces with the lowest peak memory (the
+ * Phase 3b-2 proof: 463 MB on iOS and 328 MB PSS on Android, about 1.05x a plain file load).
+ * One piece is read only once the last one was posted, so at most one piece's base64 is held
+ * on this side at a time.
  */
 export const CHUNK_BYTES = 256 * 1024;
 

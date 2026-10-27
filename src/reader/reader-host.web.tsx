@@ -50,11 +50,21 @@ export function ReaderHost({
   title,
   onMessage,
   onLoadError,
+  onReopen,
   ref,
 }: ReaderHostProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const channel = useRef<HostChannel | null>(null);
-  const latest = useLatestRef({ api, at, theme, fontScale, name, onMessage, onLoadError });
+  const latest = useLatestRef({
+    api,
+    at,
+    theme,
+    fontScale,
+    name,
+    onMessage,
+    onLoadError,
+    onReopen,
+  });
 
   useReaderControls(channel, ref, theme, fontScale);
 
@@ -104,9 +114,13 @@ export function ReaderHost({
         case 'ready':
           clearTimeout(starting);
           // `ready` after an open reached it: the reader document reloaded, and the bytes
-          // it had were transferred to it, so they are fetched once more. (Checked before
-          // `session.ready()`, which delivers a held open.)
-          if (delivered) openBook();
+          // it had were transferred to it, so they are fetched once more, and the screen
+          // hears the book is opening again. (Checked before `session.ready()`, which
+          // delivers a held open.)
+          if (delivered) {
+            latest.current.onReopen?.();
+            openBook();
+          }
           session.ready();
           return;
         case 'csp':
