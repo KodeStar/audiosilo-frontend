@@ -1673,8 +1673,15 @@ export function useRemoveFromQueue(connectionId?: string) {
     connectionId,
     (api, v: { libraryId: number; path: string }) => api.removeFromQueue(v.libraryId, v.path),
     // Not awaited: the queue's next write (same scope) needn't wait for this read.
-    ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.queue(cid) }),
+    ({ qc, cid }) => void rereadQueue(qc, cid),
   );
+}
+
+/** Read the queue again after a remove. A read already in flight started before the
+ * DELETE and could put the removed entry back: it is cancelled first (`storeAnswer`), so
+ * only a read made after the remove lands (fe#155). */
+function rereadQueue(qc: QueryClient, cid: string): Promise<void> {
+  return storeAnswer(qc, qk.queue(cid), () => undefined);
 }
 
 /** {@link useRemoveFromQueue} outside React (the end of a book, which may run with no
@@ -1692,7 +1699,7 @@ export function removeFromQueue(
       const supported = cachedCapability(cid, 'queue');
       if (supported !== true) throw new CapabilityError('queue', supported === undefined);
       await client.removeFromQueue(v.libraryId, v.path);
-      void queryClient.invalidateQueries({ queryKey: qk.queue(cid) });
+      void rereadQueue(queryClient, cid);
     },
   }).mutate();
 }

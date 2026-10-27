@@ -27,9 +27,28 @@ describe('removeFromQueue', () => {
     const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
     await removeFromQueue('c1', client, { libraryId: 1, path: 'A/Book' });
     expect(remove).toHaveBeenCalledWith(1, 'A/Book');
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.queue('c1') });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.queue('c1'), exact: true });
     // One connection's queue writes run one at a time, like useRemoveFromQueue's.
     expect(queryClient.getMutationCache().getAll()[0]?.options.scope).toEqual({ id: 'queue:c1' });
+  });
+
+  it('never lets a queue read started before the remove put the entry back (fe#155)', async () => {
+    queryClient.setQueryData(qk.server('c1'), { capabilities: { queue: true } });
+    queryClient.setQueryDefaults(qk.queue('c1'), { gcTime: Infinity });
+    queryClient.setQueryData(qk.queue('c1'), [{ path: 'A/Book' }, { path: 'B/Book' }]);
+    // A read in flight from before the remove, answering the old queue late.
+    let answer!: (q: unknown) => void;
+    const stale = queryClient.fetchQuery({
+      queryKey: qk.queue('c1'),
+      queryFn: () => new Promise((r) => (answer = r)),
+    });
+    await removeFromQueue('c1', client, { libraryId: 1, path: 'A/Book' });
+    await new Promise((r) => setTimeout(r, 0));
+    answer([{ path: 'A/Book' }, { path: 'stale answer' }]);
+    await stale;
+    // Cancelled: its answer never reached the cache, and the queue is read again.
+    expect(queryClient.getQueryData(qk.queue('c1'))).not.toContainEqual({ path: 'stale answer' });
+    expect(queryClient.getQueryState(qk.queue('c1'))?.isInvalidated).toBe(true);
   });
 
   it('sends nothing while the server is unknown or without a queue', async () => {
