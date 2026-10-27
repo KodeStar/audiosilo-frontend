@@ -625,7 +625,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the book.
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
-  the last version this device acknowledged, always sent (0 only when no row was ever seen). An
+  the last version this device acknowledged, always sent (0 only when no row was ever seen). The
+  open reader's saves go one at a time (`saveReaderPlace`): one captured on 0 is sent on the
+  version the previous answer acknowledged, since two on 0 would diverge from each other. An
   answer that kept this very save (this device, the same cfi and progression; not its time,
   which the server may replace) is acknowledged at once; one that kept a place this device
   never saw (another device's, or its own at a version it never acknowledged: the device id

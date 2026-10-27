@@ -18,6 +18,7 @@ import {
   onReadingSaved,
   type ReadingSave,
   type ReadingSaved,
+  saveReaderPlace,
   saveReadingPlace,
 } from './reading-progress';
 
@@ -607,6 +608,27 @@ describe('reading-progress', () => {
       expect(stay.base_version).toBe(2);
       await saveReadingPlace(server.api, stay);
       expect(server.row()).toMatchObject({ progression: 0.03, version: 3 });
+    });
+
+    it('sends the reader’s first two saves one after the other, so a move back applies', async () => {
+      const server = ruleServer('This phone');
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      // Both fire before the first is answered; the second is a page back.
+      await Promise.all([
+        saveReaderPlace(server.api, 'c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.5 }),
+        saveReaderPlace(server.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 }),
+      ]);
+      off();
+      expect(server.api.saveReadingProgress.mock.calls.map(([, , b]) => b.base_version)).toEqual([
+        0, 1,
+      ]);
+      expect(heard.map((a) => a.seen)).toEqual([true, true]);
+      expect(heard.map((a) => jumpOffer(a, { cfi: CFI_A, progression: 0.3 }))).toEqual([
+        null,
+        null,
+      ]);
+      expect(server.row()).toMatchObject({ cfi: CFI_A, progression: 0.3, version: 2 });
     });
 
     it('acknowledges this save when the server replaced its time (a clock ahead)', async () => {

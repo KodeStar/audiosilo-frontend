@@ -259,6 +259,30 @@ export async function captureReadingSave(
   };
 }
 
+const withReaderSaveLock = serialQueue();
+
+/** The open reader's save of `place`: captured now (its place and time, kept in the mirror
+ * at once), sent once the previous save is answered. A save captured on 0 is then made on
+ * the version that answer acknowledged: two first saves on 0 in flight together would
+ * diverge from each other (catalog.ResolvePlace), so a move back would be kept as the
+ * other place. Resolves as `saveReadingPlace`. */
+export async function saveReaderPlace(
+  api: ApiClient | null,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  place: { cfi: string; progression: number },
+): Promise<ReadingProgressSaved | null> {
+  const captured = await captureReadingSave(connectionId, libraryId, path, place);
+  await updateMirror(captured, withNewerPlace(captured));
+  return withReaderSaveLock(async () => {
+    const version = captured.base_version
+      ? captured.base_version
+      : ((await readMirror(connectionId, libraryId, path))?.version ?? 0);
+    return saveReadingPlace(api, { ...captured, base_version: version });
+  });
+}
+
 type SavedListener = (saved: ReadingSaved) => void;
 const savedListeners = new Set<SavedListener>();
 

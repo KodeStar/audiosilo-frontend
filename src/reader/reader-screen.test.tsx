@@ -75,8 +75,7 @@ let mockHeard: ((saved: ReadingSaved) => void) | null = null;
 jest.mock('./reading-progress', () => ({
   ...jest.requireActual('./reading-progress'),
   adoptServerPlace: jest.fn(() => Promise.resolve()),
-  captureReadingSave: jest.fn(() => new Promise(() => {})),
-  saveReadingPlace: jest.fn(),
+  saveReaderPlace: jest.fn(() => new Promise(() => {})),
   flushReadingQueue: jest.fn(() => Promise.resolve()),
   onReadingSaved: (listener: (saved: ReadingSaved) => void) => {
     mockHeard = listener;

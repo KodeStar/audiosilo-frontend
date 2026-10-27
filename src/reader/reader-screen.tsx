@@ -30,14 +30,13 @@ import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from '.
 import { FONT_SCALES, loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
 import {
   adoptServerPlace,
-  captureReadingSave,
   flushReadingQueue,
   type JumpOffer,
   jumpOffer,
   onReadingSaved,
   type ReadingPlaceLookup,
   type ReadingSaved,
-  saveReadingPlace,
+  saveReaderPlace,
 } from './reading-progress';
 
 /** How long the reader rests on a page before its place is saved. */
@@ -155,9 +154,7 @@ export function ReaderScreen({
     pending.current = null;
     if (!next || next.cfi === lastSaved.current) return;
     lastSaved.current = next.cfi;
-    void captureReadingSave(connectionId, libraryId, path, next).then((save) =>
-      saveReadingPlace(api, save),
-    );
+    void saveReaderPlace(api, connectionId, libraryId, path, next);
   });
   useEffect(() => {
     if (opening?.place) lastSaved.current = opening.place.cfi;
