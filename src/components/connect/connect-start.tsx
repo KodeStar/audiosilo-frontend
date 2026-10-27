@@ -117,7 +117,7 @@ export function ConnectStart() {
   const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
   // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
   const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
-  // `pair` also resolves false once the screen has gone: nothing after it may then touch
+  // `pair` also resolves once the screen has gone: nothing after it may then touch
   // the route now on top (its params) or the session (a probe's pending address).
   const mounted = useRef(true);
   useEffect(() => {
@@ -143,6 +143,8 @@ export function ConnectStart() {
     }
     router.setParams({ token: undefined });
     const origin = servedOrigin();
+    // A pasted link (or Try again) on the card already found: the card stays as it is.
+    if (origin && served === 'found') return;
     if (origin) {
       setServed('pending');
       void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));

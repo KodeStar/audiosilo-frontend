@@ -662,6 +662,17 @@ describe('the player the server serves', () => {
       await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledWith('abc', 'Test device'));
       expect(screen.queryByText(/This link is for another server/)).toBeNull();
     });
+
+    it('keeps the card it found, unasked again, when its own pasted link is dead', async () => {
+      mockApi.exchange.mockRejectedValue(new ApiError(401, 'invalid or expired pairing token'));
+      await paste(`${ORIGIN}/web/connect?token=abc`);
+      expect(
+        await screen.findByText(/This pairing link has expired or was already used/),
+      ).toBeTruthy();
+      expect(screen.getByText('Found Hearthside')).toBeTruthy();
+      // Its first ask and the exchange's name read; no third ask for the card.
+      expect(mockApi.serverInfo).toHaveBeenCalledTimes(2);
+    });
   });
 
   // CONNECT-14: a used or expired link on the served player.

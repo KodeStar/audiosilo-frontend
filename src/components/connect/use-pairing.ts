@@ -78,8 +78,8 @@ async function stillSignedIn(connectionId: string): Promise<boolean> {
  * TLS on another network, where a plain-http address could be another box), with home as
  * its first address pick (`answeredAt`). A link naming a book ends on it, and skips the
  * exchange when the device is already signed in as the link's user there (its token still
- * taken, `stillSignedIn`). Resolves how it
- * ended (`PairOutcome`). Bare client: a failed exchange must never flag a reconnect.
+ * taken, `stillSignedIn`). Resolves how it ended (`PairOutcome`). Bare client: a failed
+ * exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
