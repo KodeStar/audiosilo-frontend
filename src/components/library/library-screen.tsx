@@ -66,7 +66,7 @@ export function LibraryScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { mode: modeParam } = useLocalSearchParams<{ mode?: string | string[] }>();
-  const { selection, library, groups, isLoading, retry } = useSelectedLibrary();
+  const { selection, library, groups, isLoading, offline, retry } = useSelectedLibrary();
   const signedOut = useSignedOutConnections();
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
@@ -125,6 +125,17 @@ export function LibraryScreen() {
             onRetry={retry}
           />
         </View>
+      );
+    }
+    // Offline before a server listed its libraries: not "none shared", and no skeleton
+    // that would never end. The lists arrive when the network does.
+    if (offline) {
+      return (
+        <EmptyState
+          icon="offline"
+          title={t('library.list.offlineTitle')}
+          hint={t('library.list.offlineHint')}
+        />
       );
     }
     return (

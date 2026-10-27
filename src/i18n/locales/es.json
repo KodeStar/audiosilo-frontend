@@ -750,6 +750,8 @@
       "loadServerLibrariesError": "No se pudieron cargar las bibliotecas de {{name}}.",
       "noLibraries": "Aún no se ha compartido ninguna biblioteca con tu cuenta.",
       "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo.",
+      "offlineTitle": "Estás sin conexión",
+      "offlineHint": "Tus bibliotecas aparecen en cuanto responda un servidor. Los libros descargados están en Descargas.",
       "viewLabel": "Lista de libros"
     },
     "favourites": {

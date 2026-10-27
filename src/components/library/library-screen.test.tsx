@@ -68,6 +68,7 @@ let mockGroups: Group[] = [];
 let mockSelection: { connectionId: string; libraryId: number } | null = null;
 const mockSelect = jest.fn();
 const mockRetry = jest.fn();
+let mockOffline = false;
 jest.mock('./use-selected-library', () => ({
   useSelectedLibrary: () => ({
     groups: mockGroups,
@@ -79,6 +80,7 @@ jest.mock('./use-selected-library', () => ({
       : null,
     select: mockSelect,
     isLoading: false,
+    offline: mockOffline,
     retry: mockRetry,
   }),
 }));
@@ -231,6 +233,20 @@ describe('LibraryScreen', () => {
     mockSelection = null;
     await render(<LibraryScreen />);
     expect(screen.getByText('No libraries are shared with your account yet.')).toBeTruthy();
+  });
+
+  // Offline before any list answered: neither a skeleton for good nor "no libraries".
+  it('says it is offline when the lists wait for the network', async () => {
+    mockGroups = [];
+    mockSelection = null;
+    mockOffline = true;
+    try {
+      await render(<LibraryScreen />);
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+    } finally {
+      mockOffline = false;
+    }
   });
 
   // frontend#131: a server that did not answer has not said it shares nothing.

@@ -19,6 +19,7 @@ export type LibraryChoiceGroup = LibraryGroup & { libraries: SourcedLibrary[] };
  * - `selection` / `library`: what to show (null while there is nothing yet);
  * - `groups`: every server's libraries in connection order, for `LibraryPicker`;
  * - `select`: remember another library;
+ * - `isLoading`: a list is on its way; `offline`: a list waits for the network;
  * - `retry`: ask again the servers whose list failed.
  * The library lists are `useLibrariesAll`'s.
  */
@@ -46,7 +47,10 @@ export function useSelectedLibrary() {
     library,
     groups,
     select,
-    isLoading: groups.some((g) => g.status === 'loading'),
+    // A list the device went offline waiting for (`paused`) will not arrive meanwhile:
+    // it is not loading, it is `offline` (a list already cached is `ready`).
+    isLoading: all.groups.some((g) => g.status === 'loading' && !g.paused),
+    offline: all.groups.some((g) => g.paused),
     retry: all.retry,
   };
 }

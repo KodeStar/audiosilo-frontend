@@ -750,6 +750,8 @@
       "loadServerLibrariesError": "Bibliotheken von {{name}} konnten nicht geladen werden.",
       "noLibraries": "Mit deinem Konto wurde noch keine Bibliothek geteilt.",
       "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben.",
+      "offlineTitle": "Du bist offline",
+      "offlineHint": "Deine Bibliotheken erscheinen, sobald ein Server antwortet. Heruntergeladene Bücher findest du unter Downloads.",
       "viewLabel": "Bücherliste"
     },
     "favourites": {

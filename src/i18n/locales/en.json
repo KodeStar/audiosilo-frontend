@@ -750,6 +750,8 @@
       "loadServerLibrariesError": "Couldn't load libraries from {{name}}.",
       "noLibraries": "No libraries are shared with your account yet.",
       "noLibrariesHint": "Ask the server owner to share one with you.",
+      "offlineTitle": "You're offline",
+      "offlineHint": "Your libraries show once a server answers. Books you've downloaded are in Downloads.",
       "viewLabel": "Book list"
     },
     "favourites": {

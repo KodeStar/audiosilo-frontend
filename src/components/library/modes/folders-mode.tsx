@@ -63,6 +63,7 @@ export function FoldersMode() {
   const failed = (g: LibrariesOfServer) =>
     g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId);
   const error = lists.some(failed);
+  const offline = lists.some((g) => g.paused);
 
   // One group per server (in connection order) that has libraries or failed to list them,
   // each under its server's heading when there are several (a signed-out server's list
@@ -111,13 +112,22 @@ export function FoldersMode() {
         </View>
       ))}
 
-      {/* A server that did not answer has not said it shares nothing (frontend#131). */}
+      {/* A server that did not answer has not said it shares nothing (frontend#131), nor
+          has one the device went offline waiting for (its list is paused). */}
       {libraries.length === 0 && !isLoading && !refused && !error ? (
-        <EmptyState
-          icon="library"
-          title={t('library.list.noLibraries')}
-          hint={t('library.list.noLibrariesHint')}
-        />
+        offline ? (
+          <EmptyState
+            icon="offline"
+            title={t('library.list.offlineTitle')}
+            hint={t('library.list.offlineHint')}
+          />
+        ) : (
+          <EmptyState
+            icon="library"
+            title={t('library.list.noLibraries')}
+            hint={t('library.list.noLibrariesHint')}
+          />
+        )
       ) : null}
     </TabPageScroll>
   );

@@ -99,6 +99,24 @@ describe('FoldersMode', () => {
     expect(screen.getByText('Kids')).toBeTruthy();
   });
 
+  // Offline before the list answered (paused): not "no libraries shared".
+  it('says it is offline, not "no libraries", while the lists wait for the network', async () => {
+    mockLists = [{ ...list('a', 'Home', 'loading'), paused: true }];
+    await render(<FoldersMode />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+  });
+
+  it('shows the libraries a server already listed while offline', async () => {
+    mockLists = [
+      list('a', 'Home', 'ready', ['Audiobooks']),
+      { ...list('b', 'Maya', 'loading'), paused: true },
+    ];
+    await render(<FoldersMode />);
+    expect(screen.getByText('Audiobooks')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
   it('opens a library from its row', async () => {
     mockLists = [list('a', 'Home', 'ready', ['Audiobooks'])];
     await render(<FoldersMode />);

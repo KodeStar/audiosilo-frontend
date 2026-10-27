@@ -750,6 +750,8 @@
       "loadServerLibrariesError": "Impossibile caricare le librerie di {{name}}.",
       "noLibraries": "Nessuna libreria è ancora condivisa con il tuo account.",
       "noLibrariesHint": "Chiedi al proprietario del server di condividerne una.",
+      "offlineTitle": "Sei offline",
+      "offlineHint": "Le tue librerie compaiono appena un server risponde. I libri scaricati sono in Download.",
       "viewLabel": "Elenco dei libri"
     },
     "favourites": {
