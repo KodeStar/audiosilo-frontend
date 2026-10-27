@@ -141,14 +141,16 @@ const reopened = () =>
 /** The page edges on screen. */
 const edges = () => screen.queryAllByLabelText(/^(Next|Previous) page$/);
 
-/** A save of this book is answered with `kept` as the server's row. */
-const answered = (kept: ReadingProgress) =>
+/** A save of this book is answered with `kept` as the server's row; `seen`: this device
+ * had seen it (its own save, or its own row at a version it acknowledged). */
+const answered = (kept: ReadingProgress, seen = false) =>
   act(async () => {
     mockHeard!({
       connectionId: 'c1',
       libraryId: 1,
       path: 'A/Book',
       saved: { reading_progress: kept },
+      seen,
     });
   });
 
@@ -247,12 +249,23 @@ describe('ReaderScreen', () => {
     expect(adoptServerPlace).toHaveBeenCalledWith('c1', 1, 'A/Book', row());
   });
 
-  it('offers nothing for this device’s own place', async () => {
+  it('offers nothing for a place this device had seen (its own save)', async () => {
     await mount();
     await opened();
-    await answered(row({ device_id: 'dev' }));
+    await answered(row({ device_id: 'dev' }), true);
     expect(screen.queryByTestId('reader-jump-offer')).toBeNull();
     expect(adoptServerPlace).not.toHaveBeenCalled();
+  });
+
+  it('offers this device’s own place it never saw (its places cleared), and Stay acknowledges it', async () => {
+    const own = row({ device_id: 'dev', device_name: 'This phone', progression: 0.8 });
+    await mount();
+    await opened();
+    await answered(own);
+    expect(screen.getByText('On This phone you were at 80%. Jump there?')).toBeTruthy();
+    expect(adoptServerPlace).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Stay'));
+    expect(adoptServerPlace).toHaveBeenCalledWith('c1', 1, 'A/Book', own);
   });
 
   it('says so when where the book opens could not be found out, and looks again', async () => {

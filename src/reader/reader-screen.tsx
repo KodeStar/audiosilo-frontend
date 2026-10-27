@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/api/client';
 import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
-import type { ReadingProgressSaved } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
@@ -19,7 +18,6 @@ import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
-import { getDeviceId } from '@/playback/progress-sync';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
@@ -38,6 +36,7 @@ import {
   jumpOffer,
   onReadingSaved,
   type ReadingPlaceLookup,
+  type ReadingSaved,
   saveReadingPlace,
 } from './reading-progress';
 
@@ -177,9 +176,7 @@ export function ReaderScreen({
   // The latest answered save of this book (by the server's version: an answer that lands
   // late never replaces a newer one). It is judged against the page on screen once the book
   // shows, below: the queue's replay can answer before the first page.
-  const [answer, setAnswer] = useState<{ saved: ReadingProgressSaved; deviceId: string } | null>(
-    null,
-  );
+  const [answer, setAnswer] = useState<ReadingSaved | null>(null);
   useEffect(
     () =>
       onReadingSaved((heard) => {
@@ -190,12 +187,10 @@ export function ReaderScreen({
         ) {
           return;
         }
-        void getDeviceId().then((deviceId) =>
-          setAnswer((prev) =>
-            prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
-              ? prev
-              : { saved: heard.saved, deviceId },
-          ),
+        setAnswer((prev) =>
+          prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
+            ? prev
+            : heard,
         );
       }),
     [connectionId, libraryId, path],
@@ -283,20 +278,17 @@ export function ReaderScreen({
     READER_LAYER,
   );
 
-  // The offer, judged against the page on screen. Another device's kept place is
-  // acknowledged (its version adopted, so this device's next save applies) only once seen:
-  // answered with Jump or Stay, or already where the reader is.
+  // The offer, judged against the page on screen. A kept place this device had not seen
+  // (another device's, or its own from before its places here were cleared) is
+  // acknowledged (its version adopted, so this device's next save applies) only once
+  // shown: answered with Jump or Stay, or already where the reader is.
   const here = show && current ? { cfi: current.cfi, progression: current.fraction } : null;
-  const offer = answer && here ? jumpOffer(answer.saved, here, answer.deviceId) : null;
+  const offer = answer && here ? jumpOffer(answer, here) : null;
   const acknowledge = useLatest(() => {
     if (answer) void adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress);
     setAnswer(null);
   });
-  const alreadyThere =
-    here !== null &&
-    answer !== null &&
-    offer === null &&
-    answer.saved.reading_progress.device_id !== answer.deviceId;
+  const alreadyThere = here !== null && answer !== null && offer === null && !answer.seen;
   useEffect(() => {
     if (alreadyThere) acknowledge();
   }, [alreadyThere, acknowledge]);

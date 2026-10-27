@@ -5,6 +5,7 @@ import { resolveClient, sessionReady } from '@/api/connection-clients';
 import * as reachability from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
 import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
+import { getDeviceId } from '@/playback/progress-sync';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -16,6 +17,7 @@ import {
   lookupReadingPlace,
   onReadingSaved,
   type ReadingSave,
+  type ReadingSaved,
   saveReadingPlace,
 } from './reading-progress';
 
@@ -93,6 +95,42 @@ function fakeApi(
     ),
     readingProgress: jest.fn(get),
   } as unknown as ApiClient & { saveReadingProgress: jest.Mock; readingProgress: jest.Mock };
+}
+
+/** A server keeping the book's one row by catalog.ResolvePlace's rule: a save diverges when
+ * a row is stored and its base is not the row's version, from another device or on 0 (saw
+ * nothing, whatever the device); a diverged save keeps the further place, any other is
+ * latest-wins. Every applied save bumps the version. */
+function ruleServer(deviceName: string) {
+  let kept: ReadingProgress | null = null;
+  const api = fakeApi(
+    async (input) => {
+      const save = input as Pick<
+        ReadingSave,
+        'cfi' | 'progression' | 'device_id' | 'updated_at' | 'base_version'
+      >;
+      const apply = () => {
+        kept = row({
+          cfi: save.cfi,
+          progression: save.progression,
+          device_id: save.device_id,
+          device_name: deviceName,
+          updated_at: save.updated_at,
+          version: (kept?.version ?? 0) + 1,
+        });
+      };
+      if (!kept) apply();
+      else if (
+        save.base_version !== kept.version &&
+        (save.base_version === 0 || save.device_id !== kept.device_id)
+      ) {
+        if (save.progression > kept.progression) apply();
+      } else if (Date.parse(save.updated_at) >= Date.parse(kept.updated_at)) apply();
+      return { reading_progress: kept! };
+    },
+    async () => kept,
+  );
+  return { api, row: () => kept };
 }
 
 async function stored<T>(key: string, fallback: T): Promise<T> {
@@ -405,8 +443,8 @@ describe('reading-progress', () => {
       const online = fakeApi(async () => ({ reading_progress: kept }));
       mockResolveClient.mockReturnValue(online);
       reachable.mockReturnValue(true);
-      const heard: ReadingProgressSaved[] = [];
-      const off = onReadingSaved((a) => heard.push(a.saved));
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
       await flushReadingQueue();
       off();
       expect(online.saveReadingProgress).toHaveBeenCalledWith(
@@ -414,8 +452,8 @@ describe('reading-progress', () => {
         'A/Book',
         expect.objectContaining({ base_version: 0, progression: 0.02 }),
       );
-      expect(heard).toEqual([{ reading_progress: kept }]);
-      expect(jumpOffer(heard[0], { cfi: CFI_B, progression: 0.02 }, 'dev')).toMatchObject({
+      expect(heard).toEqual([expect.objectContaining({ saved: { reading_progress: kept } })]);
+      expect(jumpOffer(heard[0], { cfi: CFI_B, progression: 0.02 })).toMatchObject({
         progression: 0.6,
         deviceName: 'Pixel 8',
       });
@@ -487,6 +525,107 @@ describe('reading-progress', () => {
     });
   });
 
+  describe('this device’s own place', () => {
+    const START = 'epubcfi(/6/2!/4/2/1:0)';
+    const at = (cfi: string, progression: number) =>
+      captureReadingSave('c1', 1, 'A/Book', { cfi, progression });
+
+    it('adopts its own saves’ versions, answered in order', async () => {
+      const server = ruleServer('This phone');
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      const bases: number[] = [];
+      for (const [cfi, progression] of [
+        [CFI_A, 0.2],
+        [CFI_C, 0.8],
+        [CFI_B, 0.5],
+      ] as const) {
+        const next = await at(cfi, progression);
+        bases.push(next.base_version);
+        await saveReadingPlace(server.api, next);
+      }
+      off();
+      expect(bases).toEqual([0, 1, 2]);
+      expect(heard.map((a) => a.seen)).toEqual([true, true, true]);
+      // Moving back on purpose applied.
+      expect(server.row()).toMatchObject({ cfi: CFI_B, progression: 0.5, version: 3 });
+      expect((await at(CFI_B, 0.51)).base_version).toBe(3);
+    });
+
+    it('signed out and back in, a start saved offline keeps its place further on and offers Jump', async () => {
+      const deviceId = await getDeviceId();
+      const server = ruleServer('This phone');
+      mockResolveClient.mockReturnValue(server.api);
+      // Read to 80% online.
+      for (const [cfi, progression] of [
+        [CFI_A, 0.2],
+        [CFI_C, 0.8],
+      ] as const) {
+        await saveReadingPlace(server.api, await at(cfi, progression));
+      }
+      expect(server.row()).toMatchObject({ progression: 0.8, version: 2, device_id: deviceId });
+      // Signed out (onConnectionRemoved): the places here are gone, the device id is not.
+      await removalCleanup('c1');
+      expect(await readMirror()).toEqual({});
+      expect(await getDeviceId()).toBe(deviceId);
+
+      // The downloaded book opens offline at the start; its save is queued on 0.
+      const offline = fakeApi(undefined, () => Promise.reject(new TypeError('offline')));
+      await expect(
+        lookupReadingPlace(offline, 'c1', 1, 'A/Book', undefined, {
+          hasLocalCopy: async () => true,
+        }),
+      ).resolves.toEqual({ place: null, fromServer: null });
+      reachable.mockReturnValue(false);
+      const start = await at(START, 0.01);
+      expect(start.base_version).toBe(0);
+      await saveReadingPlace(offline, start);
+      expect(offline.saveReadingProgress).not.toHaveBeenCalled();
+
+      // Back online, the replay: the server keeps 80%, which this device never saw.
+      reachable.mockReturnValue(true);
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      await flushReadingQueue();
+      off();
+      expect(server.row()).toMatchObject({ progression: 0.8, version: 2 });
+      expect(heard).toHaveLength(1);
+      expect(heard[0].seen).toBe(false);
+      expect(jumpOffer(heard[0], { cfi: START, progression: 0.01 })).toEqual({
+        cfi: CFI_C,
+        progression: 0.8,
+        deviceName: 'This phone',
+      });
+      // Not acknowledged: the next save is still on 0, and still never moves it back.
+      const next = await at(START, 0.02);
+      expect(next.base_version).toBe(0);
+      await saveReadingPlace(server.api, next);
+      expect(server.row()).toMatchObject({ progression: 0.8, version: 2 });
+      // Stay: seen, so the next save moves back on purpose.
+      await adoptServerPlace('c1', 1, 'A/Book', heard[0].saved.reading_progress);
+      const stay = await at(START, 0.03);
+      expect(stay.base_version).toBe(2);
+      await saveReadingPlace(server.api, stay);
+      expect(server.row()).toMatchObject({ progression: 0.03, version: 3 });
+    });
+
+    it('takes its own row echoed to a stale save as seen, its version left alone', async () => {
+      await adoptServerPlace('c1', 1, 'A/Book', row({ version: 6 }));
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      // An answer that lands late, echoing this device's version 5.
+      const echo = row({ cfi: CFI_B, progression: 0.5, version: 5 });
+      await saveReadingPlace(
+        fakeApi(async () => ({ reading_progress: echo })),
+        save({ cfi: CFI_A, base_version: 6 }),
+      );
+      off();
+      expect(heard[0].seen).toBe(true);
+      expect(jumpOffer(heard[0], { cfi: CFI_A, progression: 0.2 })).toBeNull();
+      expect((await at(CFI_A, 0.2)).base_version).toBe(6);
+    });
+  });
+
   it('forgets a removed connection’s places and queued saves', async () => {
     await saveReadingPlace(null, save({ connectionId: 'c1' }));
     await saveReadingPlace(null, save({ connectionId: 'c2' }));
@@ -498,18 +637,19 @@ describe('reading-progress', () => {
 });
 
 describe('jumpOffer', () => {
-  const kept = (p: Partial<ReadingProgress>): ReadingProgressSaved => ({
-    reading_progress: row({ device_id: 'phone', device_name: 'Pixel 8', ...p }),
+  const kept = (p: Partial<ReadingProgress>, seen = false) => ({
+    saved: { reading_progress: row({ device_id: 'phone', device_name: 'Pixel 8', ...p }) },
+    seen,
   });
 
   it('offers the place another device kept when it is somewhere else', () => {
     expect(
-      jumpOffer(kept({ cfi: CFI_B, progression: 0.6 }), { cfi: CFI_A, progression: 0.2 }, 'dev'),
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.6 }), { cfi: CFI_A, progression: 0.2 }),
     ).toEqual({ cfi: CFI_B, progression: 0.6, deviceName: 'Pixel 8' });
   });
 
-  it('offers nothing when the kept row is this device’s own (other_place or not)', () => {
-    const answer: ReadingProgressSaved = {
+  it('offers nothing when this device had seen the kept row (other_place or not)', () => {
+    const saved: ReadingProgressSaved = {
       reading_progress: row({ device_id: 'dev', cfi: CFI_B, progression: 0.6 }),
       other_place: {
         cfi: CFI_A,
@@ -519,23 +659,31 @@ describe('jumpOffer', () => {
         updated_at: '2026-10-01T10:00:00.000Z',
       },
     };
-    expect(jumpOffer(answer, { cfi: CFI_A, progression: 0.2 }, 'dev')).toBeNull();
+    expect(jumpOffer({ saved, seen: true }, { cfi: CFI_A, progression: 0.2 })).toBeNull();
+  });
+
+  it('offers this device’s own kept row it never saw', () => {
+    expect(
+      jumpOffer(
+        kept({ device_id: 'dev', device_name: 'This phone', cfi: CFI_B, progression: 0.8 }),
+        { cfi: CFI_A, progression: 0.01 },
+      ),
+    ).toEqual({ cfi: CFI_B, progression: 0.8, deviceName: 'This phone' });
   });
 
   it('offers nothing when the kept place is where the reader is', () => {
-    expect(jumpOffer(kept({ cfi: CFI_A }), { cfi: CFI_A, progression: 0.2 }, 'dev')).toBeNull();
+    expect(jumpOffer(kept({ cfi: CFI_A }), { cfi: CFI_A, progression: 0.2 })).toBeNull();
     expect(
-      jumpOffer(kept({ cfi: CFI_B, progression: 0.205 }), { cfi: CFI_A, progression: 0.2 }, 'dev'),
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.205 }), { cfi: CFI_A, progression: 0.2 }),
     ).toBeNull();
   });
 
   it('names no device when the server has no name for it', () => {
     expect(
-      jumpOffer(
-        kept({ cfi: CFI_B, progression: 0.6, device_name: undefined }),
-        { cfi: CFI_A, progression: 0.2 },
-        'dev',
-      )?.deviceName,
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.6, device_name: undefined }), {
+        cfi: CFI_A,
+        progression: 0.2,
+      })?.deviceName,
     ).toBe('');
   });
 });

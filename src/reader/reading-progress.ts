@@ -21,13 +21,15 @@ import { clearEbookCache } from './ebook-file';
  *
  * One thing it adds: `base_version`, the server's `version` of the place this device last
  * saw (acknowledged). The server bumps the version on every write it applies, so a save
- * from another device made on an older version is DIVERGED, and the server keeps the
- * further of the two places instead of moving the reader back. An answer that kept this
- * device's own place is acknowledged at once (`version` in the mirror); one that kept
- * another device's place only once the open reader has shown it (`adoptServerPlace`: Jump,
- * Stay, or the reader is already there). Until then this device's saves stay diverged, so
- * a place it never saw is never moved back, and after Stay its next save applies: moving
- * back on purpose works. Separate from listening progress on purpose.
+ * from another device made on an older version is DIVERGED, and so is any save made on 0
+ * (saw nothing, this device's own row included: its id outlives the places kept here), and
+ * the server keeps the further of the two places instead of moving the reader back. An
+ * answer that kept this very save is acknowledged at once (`version` in the mirror); one
+ * that kept a place this device never saw (another device's, or its own from before its
+ * places here were cleared) only once the open reader has shown it (`adoptServerPlace`:
+ * Jump, Stay, or the reader is already there). Until then this device's saves stay
+ * diverged, so a place it never saw is never moved back, and after Stay its next save
+ * applies: moving back on purpose works. Separate from listening progress on purpose.
  */
 
 /** A place in the book, as the server and the mirror keep it. */
@@ -57,12 +59,16 @@ export type ReadingSave = ReadingPlace & {
   base_version: number;
 };
 
-/** A save the server answered: the book it was for and the answer. */
+/** A save the server answered: the book it was for and the answer. `seen`: this device
+ * had seen the kept row (it is this save, or this device's own row at a version it had
+ * acknowledged), so there is nothing to offer; otherwise the row waits for the open reader
+ * to show it (`jumpOffer`, then `adoptServerPlace`). */
 export type ReadingSaved = {
   connectionId: string;
   libraryId: number;
   path: string;
   saved: ReadingProgressSaved;
+  seen: boolean;
 };
 
 const timeOf = (p: { updated_at: string }) => {
@@ -125,9 +131,11 @@ const acknowledged =
   (entry: MirrorEntry): MirrorEntry => ({ ...withNewerPlace(row)(entry), version: row.version });
 
 /** Whether the server takes `save` as diverged from its stored `row` (catalog.ResolvePlace):
- * made by another device than the row's, on another version than the row's. */
+ * made on another version than the row's, by another device than the row's or on 0 (saw
+ * nothing, whatever the device). */
 const diverges = (save: ReadingSave, row: ReadingProgress) =>
-  save.base_version !== row.version && save.device_id !== row.device_id;
+  save.base_version !== row.version &&
+  (save.base_version === 0 || save.device_id !== row.device_id);
 
 async function readMirror(
   connectionId: string,
@@ -152,10 +160,10 @@ async function readMirror(
  * cache holds the EPUB): a request that never reached the server opens it at the start,
  * so a downloaded book reads offline the first time. No place was ever seen here, so the
  * session's saves carry `base_version: 0` (`captureReadingSave`), which the server takes as
- * diverged from a row another device kept: it keeps a place further on and the answer
- * offers Jump there (`jumpOffer`). Not from a row this device's id wrote, its places here
- * since cleared (signed out and back in): that save applies latest-wins, a known gap. An
- * answer from the server (an `ApiError`) still fails it: online, never a guessed start. */
+ * diverged from any row, this device's own included (its id outlives its places here:
+ * signed out and back in): it keeps a place further on and the answer offers Jump there
+ * (`jumpOffer`). An answer from the server (an `ApiError`) still fails it: online, never a
+ * guessed start. */
 export type ReadingPlaceLookup = {
   place: ReadingPlace | null;
   fromServer: ReadingProgress | null;
@@ -266,9 +274,14 @@ export function onReadingSaved(listener: SavedListener): () => void {
 const isUnrecoverable = (e: unknown) => e instanceof ApiError && e.status >= 400 && e.status < 500;
 
 /** PUT one save, keep the answer's place when newer, tell listeners. Its version is
- * acknowledged when the server kept this device's place; another device's kept place waits
- * for the open reader to show it (`adoptServerPlace`), and no reader may be open: a replay
- * from Home, or the close-save answered after the reader went. */
+ * acknowledged when the server kept this save (this device, the same cfi and time). Any
+ * other kept place waits for the open reader to show it (`adoptServerPlace`), and no reader
+ * may be open: a replay from Home, or the close-save answered after the reader went. That
+ * includes this device's own row at a version it never acknowledged: its id outlives the
+ * places kept here (signed out and back in), so a save on 0 that the server answered with
+ * this device's place further on is offered like another device's. Its own row at a
+ * version it had acknowledged (a stale save echoing a newer one) was seen: nothing to show,
+ * and its version is left alone. */
 async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgressSaved> {
   const saved = await client.saveReadingProgress(save.libraryId, save.path, {
     cfi: save.cfi,
@@ -278,15 +291,20 @@ async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgres
     base_version: save.base_version,
   });
   const row = saved.reading_progress;
-  await updateMirror(
-    save,
-    row.device_id === save.device_id ? acknowledged(row) : withNewerPlace(row),
-  );
-  const answer = {
+  const own = row.device_id === save.device_id;
+  const thisSave = own && row.cfi === save.cfi && timeOf(row) === timeOf(save);
+  let seen = thisSave;
+  await updateMirror(save, (entry) => {
+    if (thisSave) return acknowledged(row)(entry);
+    seen = own && row.version <= entry.version;
+    return withNewerPlace(row)(entry);
+  });
+  const answer: ReadingSaved = {
     connectionId: save.connectionId,
     libraryId: save.libraryId,
     path: save.path,
     saved,
+    seen,
   };
   for (const listener of savedListeners) listener(answer);
   return saved;
@@ -416,19 +434,19 @@ const SAME_PLACE = 0.01;
 export type JumpOffer = { cfi: string; progression: number; deviceName: string };
 
 /**
- * Whether a save's answer offers a jump: the row the server KEPT is another device's and
- * is somewhere else than the reader is now (`current`). Jump and Stay acknowledge it
+ * Whether a save's answer offers a jump: the row the server KEPT is one this device had not
+ * seen (another device's, or its own from before its places here were cleared) and is
+ * somewhere else than the reader is now (`current`). Jump and Stay acknowledge it
  * (`adoptServerPlace`), so the next save applies; until then this device's saves stay
- * diverged and the server keeps that place. Otherwise (`other_place`, this device's own
- * row) nothing is offered.
+ * diverged and the server keeps that place. Otherwise (`other_place`, a row it had seen:
+ * this save, or its own at a version it acknowledged) nothing is offered.
  */
 export function jumpOffer(
-  saved: ReadingProgressSaved,
+  answer: Pick<ReadingSaved, 'saved' | 'seen'>,
   current: { cfi: string; progression: number } | null,
-  deviceId: string,
 ): JumpOffer | null {
-  const kept = saved.reading_progress;
-  if (!kept || kept.device_id === deviceId) return null;
+  const kept = answer.saved.reading_progress;
+  if (!kept || answer.seen) return null;
   if (
     current &&
     (kept.cfi === current.cfi || Math.abs(kept.progression - current.progression) < SAME_PLACE)

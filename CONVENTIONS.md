@@ -626,19 +626,20 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen). An
-  answer that kept this device's place is acknowledged at once; one that kept another device's
-  place only once the open reader has shown it (`adoptServerPlace`: Jump, Stay, or the reader
-  is already there), so a save that never saw it stays diverged and never moves it back. The
-  offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
+  answer that kept this very save (this device, the same cfi and time) is acknowledged at once;
+  one that kept a place this device never saw (another device's, or its own at a version it
+  never acknowledged: the device id outlives the places kept here) only once the open reader
+  has shown it (`adoptServerPlace`: Jump, Stay, or the reader is already there), so a save
+  that never saw it stays diverged and never moves it back. The answer's `seen` says which;
+  the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at
   the newest place, or at a queued save the server will keep (diverged and further on), and
   with no answer from the server and no place on this device it fails (the fetch notice; Try
   again looks again): never a guessed start, whose save would replace a place read elsewhere.
   Except offline with the EPUB on this device (the download's copy or the app's cache file,
   `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
-  `base_version: 0`, which the server takes as diverged from another device's row (it keeps a
-  place further on, and its answer offers Jump); not from a row this device's id wrote before
-  its places here were cleared (signed out and back in), a known gap that save overwrites. A
-  server's answer (`ApiError`) still fails it.
+  `base_version: 0`, which the server takes as diverged from any row, this device's own too
+  (signed out and back in, its places here cleared): it keeps a place further on, and its
+  answer offers Jump. A server's answer (`ApiError`) still fails it.
   A 401 always fails it: a lookup that succeeded on local places would clear the reconnect
   flag the same request raised (`noteQuerySuccess`). It is asked whatever the browser's online
   flag says (`readingPlaceQuery`, `networkMode: 'always'`): held offline, it would leave the
