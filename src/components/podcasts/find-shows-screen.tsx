@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -15,6 +15,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useLayout } from '@/lib/layout';
 import { type FindShowsSection, parseFindShowsParams } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 
 import { DirectorySearch } from './directory-search';
@@ -50,7 +51,7 @@ const SECTION_LABEL = {
 
 function FindShowsContent() {
   const { t } = useTranslation();
-  const params = parseFindShowsParams(useLocalSearchParams());
+  const params = parseFindShowsParams(useRouteParams());
   const cid = useScopedCid();
   usePageTitle(t('podcasts.find.title'));
   const access = useAddShowsAccess(cid);

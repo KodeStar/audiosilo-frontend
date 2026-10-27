@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -16,6 +16,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import { useMinuteClock } from '@/lib/use-now';
 
@@ -35,7 +36,7 @@ type SeeAllType = 'recent' | 'finished';
  */
 export function SeeAllScreen() {
   const { t } = useTranslation();
-  const params = useLocalSearchParams<{ type?: string }>();
+  const params = useRouteParams<{ type?: string }>();
   const type: SeeAllType = params.type === 'finished' ? 'finished' : 'recent';
   usePageTitle(
     t(type === 'recent' ? 'library.list.recentlyAdded' : 'library.list.recentlyFinished'),

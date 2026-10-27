@@ -147,6 +147,7 @@ keep this index in step (one line per topic).
   - Web start (the split build)
   - `mayActFor(cid)`
   - Routes carrying `?connection=`
+  - Route params are decoded once
   - Nobody chosen
   - Switching
   - The PIN's authority is the secure store

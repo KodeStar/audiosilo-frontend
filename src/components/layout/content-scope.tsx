@@ -1,4 +1,3 @@
-import { useLocalSearchParams } from 'expo-router';
 import type { ReactElement, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -8,12 +7,13 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Screen } from '@/components/ui/screen';
 import { backOrHome } from '@/lib/back-or-home';
 import { connectionParam } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { otherOwner, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 /**
  * Scopes a content screen's subtree to the connection carried by its OWN `?connection=`
- * query param, read via `useLocalSearchParams` - the route that owns the param, so it is
+ * query param, read via `useRouteParams` - the route that owns the param, so it is
  * populated from the screen's first render.
  *
  * It must NOT be sourced from the `(app)` layout via `useGlobalSearchParams` (the shape
@@ -35,7 +35,7 @@ import { useSession } from '@/stores/session';
  * silently: `OtherPersonGate` offers to switch to them first (their PIN rules apply).
  */
 export function ContentScope({ children }: { children: ReactNode }) {
-  const { connection } = useLocalSearchParams<{ connection?: string | string[] }>();
+  const { connection } = useRouteParams<{ connection?: string | string[] }>();
   const { cid, gate } = useRouteConnection(connection);
   return gate ?? <ConnectionScope connectionId={cid}>{children}</ConnectionScope>;
 }

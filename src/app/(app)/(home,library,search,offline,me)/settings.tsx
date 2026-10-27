@@ -1,9 +1,10 @@
-import { Redirect, router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { isHouseholdSection, sectionParam } from '@/components/settings/settings-model';
 import { SettingsContent } from '@/components/settings/settings-content';
 import { householdHref } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 
 // /settings[?section=preferences|accounts|<pane>] (settingsHref): every app setting. A page
@@ -13,7 +14,7 @@ import { usePageTitle } from '@/lib/use-page-title';
 // REPLACES itself with it, so back doesn't bounce into this redirect again.
 export default function SettingsScreen() {
   const { t } = useTranslation();
-  const { section } = useLocalSearchParams<{ section?: string }>();
+  const { section } = useRouteParams<{ section?: string }>();
   usePageTitle(t('settings.title'));
   if (isHouseholdSection(section)) return <Redirect href={householdHref()} />;
   return (

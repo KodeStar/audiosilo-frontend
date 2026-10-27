@@ -1,8 +1,9 @@
-import { Redirect, useLocalSearchParams } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { useState } from 'react';
 
 import { takeInviteCode } from '@/components/connect/invite-handoff';
 import { SignInStep } from '@/components/connect/sign-in-step';
+import { useRouteParams } from '@/lib/route-params';
 import { useSession } from '@/stores/session';
 
 /**
@@ -14,7 +15,7 @@ import { useSession } from '@/stores/session';
  * along (`holdInvite`), and the step signs in with it at once.
  */
 export default function SignInRoute() {
-  const { serverName, reconnect } = useLocalSearchParams<{
+  const { serverName, reconnect } = useRouteParams<{
     serverName?: string;
     reconnect?: string;
   }>();

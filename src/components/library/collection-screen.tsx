@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
@@ -27,6 +27,7 @@ import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { parseCollectionParams, pathLeaf } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -80,7 +81,7 @@ const itemKey = (i: CollectionItem) => `${i.library_id}:${i.path}`;
 
 function CollectionContent() {
   const { t } = useTranslation();
-  const params = parseCollectionParams(useLocalSearchParams());
+  const params = parseCollectionParams(useRouteParams());
   const cid = useCid();
   const supported = useCapability('collections', cid);
   const query = useCollection(params?.id ?? 0, cid);

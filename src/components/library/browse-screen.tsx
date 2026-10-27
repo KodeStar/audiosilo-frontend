@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, type ListRenderItem, type ViewToken, View } from 'react-native';
@@ -24,6 +24,7 @@ import {
   sectionIndexForLetter,
 } from '@/lib/alpha-sections';
 import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
 import { usePageTitle } from '@/lib/use-page-title';
 
@@ -83,7 +84,7 @@ export function BrowseScreen() {
 
 function BrowseContent() {
   const { t } = useTranslation();
-  const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
+  const { libraryId: libraryIdParam, path: pathParam } = useRouteParams<{
     libraryId: string;
     path?: string | string[];
   }>();

@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
@@ -28,6 +28,7 @@ import {
   parsePairingScan,
 } from '@/lib/pairing';
 import { firstParam, idParam, parseConnectBook } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -71,7 +72,7 @@ import { useLinkPairing } from './use-pairing';
 export function ConnectStart() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away, sid, profile, book, path, uid } = useLocalSearchParams<{
+  const { token, server, home, away, sid, profile, book, path, uid } = useRouteParams<{
     token?: string;
     server?: string;
     home?: string;

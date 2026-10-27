@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
 import { contentKey } from '@/lib/content-key';
 import { bookTitle, segmentsToPath } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import {
   cancelEpisodeFetchOf,
@@ -31,7 +32,7 @@ export default function PlayerScreen() {
     path: pathParam,
     position,
     track,
-  } = useLocalSearchParams<{
+  } = useRouteParams<{
     connection?: string;
     libraryId?: string;
     path?: string | string[];

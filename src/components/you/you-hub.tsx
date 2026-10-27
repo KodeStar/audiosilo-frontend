@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { Fragment, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -14,6 +14,7 @@ import { StatsSection } from '@/components/you/stats/stats-section';
 import { YearSection } from '@/components/you/year/year-section';
 import { useLayout } from '@/lib/layout';
 import type { CoreYouSection } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import { WithActiveModules } from '@/modules/active-modules';
 import type { PlayerModule, YouModuleSection } from '@/modules/registry';
@@ -91,7 +92,7 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   const navigation = useNavigation();
   const layout = useLayout();
   const phone = layout === 'phone';
-  const params = useLocalSearchParams<{ section?: string }>();
+  const params = useRouteParams<{ section?: string }>();
   const moduleSections = useMemo(() => youModuleSections(active), [active]);
   const moduleKeys = useMemo(() => [...moduleSections.keys()], [moduleSections]);
   const section = parseYouSection(params.section, moduleKeys);

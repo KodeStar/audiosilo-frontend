@@ -327,6 +327,10 @@ snapshot and the widget follow `activeProfileId`). The rules:
   for the content screens, called directly by the root routes: player, end credits, year,
   `/connect/ready`): an unknown connection gets a not-found state, another person's gets
   `OtherPersonGate` (switch first, their PIN asked).
+- **Route params are decoded once**: read them with `useRouteParams` (`src/lib/route-params.ts`),
+  never Expo Router's `useLocalSearchParams` (lint refuses it), which runs `decodeURIComponent`
+  over values the router already decoded, so a folder named `Lit%20Book` could not be opened and
+  a double-encoded link opened a book it does not name (CONNECT-01).
 - **Nobody chosen** (`mustChoose`: the active person left and others remain; persisted as
   `activeProfileId: null`): the auth gate holds the shell and opens "Who's listening?"
   (`/profiles`, a root full-screen modal); every person-facing list is empty

@@ -1,8 +1,7 @@
-import { useLocalSearchParams } from 'expo-router';
-
 import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { segmentsToPath } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { ReaderScreen } from '@/reader/reader-screen';
 
 /**
@@ -18,7 +17,7 @@ export default function ReaderRoute() {
     connection,
     libraryId: libParam,
     path: pathParam,
-  } = useLocalSearchParams<{ connection?: string; libraryId?: string; path?: string | string[] }>();
+  } = useRouteParams<{ connection?: string; libraryId?: string; path?: string | string[] }>();
   const { cid: param, gate } = useRouteConnection(connection);
   const cid = useCid(param || undefined);
   if (gate) return gate;

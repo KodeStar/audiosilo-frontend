@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -20,6 +20,7 @@ import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { useLayout } from '@/lib/layout';
 import { isPodcastLibrary } from '@/lib/library-kind';
+import { useRouteParams } from '@/lib/route-params';
 
 import {
   availableLibraryModes,
@@ -65,7 +66,7 @@ const MODE_BODY: Record<
 export function LibraryScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { mode: modeParam } = useLocalSearchParams<{ mode?: string | string[] }>();
+  const { mode: modeParam } = useRouteParams<{ mode?: string | string[] }>();
   const { selection, library, groups, isLoading, offline, retry } = useSelectedLibrary();
   const signedOut = useSignedOutConnections();
   const cid = selection?.connectionId ?? '';

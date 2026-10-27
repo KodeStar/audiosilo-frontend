@@ -1,5 +1,5 @@
 import { type InfiniteData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
@@ -54,6 +54,7 @@ import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { type BookTab, bookTitle, libraryHref, parentPath, segmentsToPath } from '@/lib/paths';
 import { percentHeard, progressFractionRemaining } from '@/lib/progress-view';
+import { useRouteParams } from '@/lib/route-params';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
@@ -115,7 +116,7 @@ export function BookScreen() {
  * same link; a book the book page.
  */
 function BookOrEpisode() {
-  const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
+  const { libraryId: libraryIdParam, path: pathParam } = useRouteParams<{
     libraryId: string;
     path?: string | string[];
   }>();
@@ -202,7 +203,7 @@ function BookPage() {
     libraryId: libraryIdParam,
     path: pathParam,
     tab: tabParam,
-  } = useLocalSearchParams<{
+  } = useRouteParams<{
     libraryId: string;
     path?: string | string[];
     tab?: string | string[];
