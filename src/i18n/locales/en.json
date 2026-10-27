@@ -202,7 +202,9 @@
         "title": "Remove {{name}}?",
         "confirm": "Remove server",
         "message_one": "This deletes {{count}} downloaded book on this device and any progress that hasn't synced yet.",
-        "message_other": "This deletes {{count}} downloaded books on this device and any progress that hasn't synced yet."
+        "message_other": "This deletes {{count}} downloaded books on this device and any progress that hasn't synced yet.",
+        "signOut": "This signs this device out of {{name}}. Your listening stays on the server: sign in again to get it back here.",
+        "last": "It's the only server on this device, so AudioSilo goes back to its first step."
       }
     },
     "signOut": {

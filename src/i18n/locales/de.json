@@ -202,7 +202,9 @@
         "title": "{{name}} entfernen?",
         "confirm": "Server entfernen",
         "message_one": "Dadurch wird {{count}} auf diesem Gerät heruntergeladenes Buch gelöscht, ebenso wie noch nicht synchronisierter Fortschritt.",
-        "message_other": "Dadurch werden {{count}} auf diesem Gerät heruntergeladene Bücher gelöscht, ebenso wie noch nicht synchronisierter Fortschritt."
+        "message_other": "Dadurch werden {{count}} auf diesem Gerät heruntergeladene Bücher gelöscht, ebenso wie noch nicht synchronisierter Fortschritt.",
+        "signOut": "Dadurch wird dieses Gerät von {{name}} abgemeldet. Dein Hörfortschritt bleibt auf dem Server: Melde dich wieder an, um ihn hier zurückzubekommen.",
+        "last": "Es ist der einzige Server auf diesem Gerät, daher kehrt AudioSilo zum ersten Schritt zurück."
       }
     },
     "signOut": {

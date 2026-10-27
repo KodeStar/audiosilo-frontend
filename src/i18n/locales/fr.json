@@ -202,7 +202,9 @@
         "title": "Supprimer {{name}} ?",
         "confirm": "Supprimer le serveur",
         "message_one": "Cela supprime {{count}} livre téléchargé sur cet appareil ainsi que toute progression pas encore synchronisée.",
-        "message_other": "Cela supprime {{count}} livres téléchargés sur cet appareil ainsi que toute progression pas encore synchronisée."
+        "message_other": "Cela supprime {{count}} livres téléchargés sur cet appareil ainsi que toute progression pas encore synchronisée.",
+        "signOut": "Cela déconnecte cet appareil de {{name}}. Votre écoute reste sur le serveur : reconnectez-vous pour la retrouver ici.",
+        "last": "C'est le seul serveur sur cet appareil, donc AudioSilo revient à la première étape."
       }
     },
     "signOut": {

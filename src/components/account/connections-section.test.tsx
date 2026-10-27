@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 const mockRouter = { push: jest.fn() };
@@ -9,8 +9,9 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/api/provider', () => ({ useApiRegistry: () => ({ clients: new Map() }) }));
 jest.mock('@/playback/store', () => ({ teardownBeforeTokenRevoke: jest.fn() }));
+let mockDownloaded = 0;
 jest.mock('@/downloads/store', () => ({
-  downloadedCountFor: () => 0,
+  downloadedCountFor: () => mockDownloaded,
   useDownloads: { getState: () => ({ entries: {} }) },
 }));
 
@@ -23,13 +24,15 @@ jest.mock('@/lib/base-url', () => ({
 /* eslint-disable import/first */
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { mountWithPortal } from '@/testing/render-overlay';
 import { expectNativeTarget } from '@/testing/touch-target';
 
-import { ConnectionsSection } from './connections-section';
+import { ConnectionsSection, useConnectionRemoval } from './connections-section';
 /* eslint-enable import/first */
 
 beforeEach(() => {
   mockServed = null;
+  mockDownloaded = 0;
   jest.clearAllMocks();
   resetProfilesForTests();
   useSession.setState({
@@ -116,5 +119,51 @@ describe('ConnectionsSection', () => {
     } finally {
       Platform.OS = prev;
     }
+  });
+});
+
+// frontend#143: removing a server always asks first, and says what is lost.
+describe('removing a server', () => {
+  function Pane() {
+    const { onRemove, dialog } = useConnectionRemoval();
+    return (
+      <>
+        <ConnectionsSection onRemove={onRemove} />
+        {dialog}
+      </>
+    );
+  }
+  const remove = jest.fn(async () => {});
+  beforeEach(() => {
+    remove.mockClear();
+    useSession.setState({ removeConnection: remove } as never);
+  });
+
+  it('confirms first, naming the sign-in and the way back to the first step', async () => {
+    await mountWithPortal(<Pane />);
+    await fireEvent.press(screen.getByLabelText('Remove Hearthside'));
+    expect(screen.getByText('Remove Hearthside?')).toBeTruthy();
+    expect(screen.getByText(/signs this device out of Hearthside/)).toBeTruthy();
+    expect(screen.getByText(/goes back to its first step/)).toBeTruthy();
+    expect(remove).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Cancel'));
+    expect(remove).not.toHaveBeenCalled();
+    expect(useSession.getState().connections).toHaveLength(1);
+  });
+
+  it('names the downloads it deletes, and removes on confirm', async () => {
+    mockDownloaded = 3;
+    useSession.setState({
+      connections: [
+        ...useSession.getState().connections,
+        { id: 'c2', name: 'Attic', serverUrl: 'https://attic', token: 't', user: {} as never },
+      ],
+    });
+    await mountWithPortal(<Pane />);
+    await fireEvent.press(screen.getByLabelText('Remove Hearthside'));
+    expect(screen.getByText(/deletes 3 downloaded books/)).toBeTruthy();
+    expect(screen.queryByText(/first step/)).toBeNull();
+    await fireEvent.press(screen.getByText('Remove server'));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('c1'));
   });
 });

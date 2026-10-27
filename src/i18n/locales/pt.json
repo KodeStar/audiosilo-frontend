@@ -202,7 +202,9 @@
         "title": "Remover {{name}}?",
         "confirm": "Remover servidor",
         "message_one": "Isto elimina {{count}} livro descarregado neste dispositivo e qualquer progresso ainda não sincronizado.",
-        "message_other": "Isto elimina {{count}} livros descarregados neste dispositivo e qualquer progresso ainda não sincronizado."
+        "message_other": "Isto elimina {{count}} livros descarregados neste dispositivo e qualquer progresso ainda não sincronizado.",
+        "signOut": "Isto termina a sessão deste dispositivo em {{name}}. O que ouviu fica no servidor: inicie sessão de novo para o recuperar aqui.",
+        "last": "É o único servidor neste dispositivo, por isso o AudioSilo volta ao primeiro passo."
       }
     },
     "signOut": {
