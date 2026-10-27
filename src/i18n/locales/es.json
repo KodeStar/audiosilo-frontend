@@ -371,6 +371,8 @@
       "enterAddress": "Introduce la dirección de tu servidor",
       "missingAddress": "A este enlace de vinculación le falta la dirección del servidor. Introdúcela a continuación.",
       "pairingRefused": "Este enlace de vinculación ha caducado o ya se usó. Pide uno nuevo o introduce tu código de invitación en la pantalla de inicio de sesión.",
+      "pairingUnusable": "Este enlace de vinculación no se puede usar. Pide uno nuevo o introduce tu código de invitación en la pantalla de inicio de sesión.",
+      "pairingSpent": "Este enlace se usó, pero el inicio de sesión no terminó. Pide un enlace nuevo.",
       "pairingTryAgain": "Probar el enlace de nuevo",
       "pairingServerError": "El servidor no pudo completar la vinculación. Inténtalo de nuevo o introduce tu código de invitación en la pantalla de inicio de sesión.",
       "pairingReachError": "No se pudo contactar con el servidor para completar la vinculación.",

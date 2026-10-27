@@ -371,6 +371,8 @@
       "enterAddress": "Introduz o endereço do teu servidor",
       "missingAddress": "Falta o endereço do servidor a esta ligação de emparelhamento. Introduze-o abaixo.",
       "pairingRefused": "Esta ligação de emparelhamento expirou ou já foi usada. Pede uma nova, ou introduz o teu código de convite no ecrã de início de sessão.",
+      "pairingUnusable": "Esta ligação de emparelhamento não pode ser usada. Pede uma nova, ou introduz o teu código de convite no ecrã de início de sessão.",
+      "pairingSpent": "Esta ligação foi usada, mas o início de sessão não terminou. Pede uma ligação nova.",
       "pairingTryAgain": "Tentar o link de novo",
       "pairingServerError": "O servidor não conseguiu concluir o emparelhamento. Tenta de novo, ou introduz o teu código de convite no ecrã de início de sessão.",
       "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",

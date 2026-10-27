@@ -48,14 +48,16 @@ jest.mock('@/api/server-id-probe', () => ({
 /* eslint-disable import/first */
 import { ApiError, TimeoutError } from '@/api/client';
 import type { User } from '@/api/types';
+import i18n from '@/i18n';
 import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
 import type { PairingScan } from '@/lib/pairing';
 import { type Connection, useSession } from '@/stores/session';
 
-import { type PairOutcome, pairFailureKind, useLinkPairing } from './use-pairing';
+import { type PairFailure, type PairOutcome, pairFailure, useLinkPairing } from './use-pairing';
 /* eslint-enable import/first */
 
 const scan = { base: 'https://books.example', token: 'tok' };
+const t = i18n.t.bind(i18n);
 
 /** The error a refused exchange `e` of `link` leaves, in words. */
 async function errorFor(e: unknown, link: typeof scan = scan): Promise<string | null> {
@@ -114,34 +116,94 @@ describe('useLinkPairing', () => {
     );
   });
 
-  it('reports a dead link apart from one that may work later (CONNECT-14)', async () => {
-    for (const status of [400, 401, 403, 404, 410]) {
-      expect(pairFailureKind(new ApiError(status, 'no'), false)).toBe('refused');
-    }
-    expect(pairFailureKind(new ApiError(401, 'no', 'invite_used'), false)).toBe('refused');
-    for (const e of [
-      new ApiError(429, 'slow down'),
-      new ApiError(503, 'busy'),
-      new ApiError(500, 'oops'),
-      new TypeError('Network request failed'),
-      new TimeoutError(15000),
-    ]) {
-      expect(pairFailureKind(e, false)).toBe('temporary');
-    }
-    // `pair` resolves what `pairFailureKind` says.
-    mockExchange.mockRejectedValue(new ApiError(503, 'busy'));
+  // CONNECT-14: one reading of the error gives both what it means for the link and the
+  // words, so a link the screen calls dead is never offered again, and vice versa.
+  const EXPIRED =
+    'This pairing link has expired or was already used. Ask for a new one, or enter your invite code on the sign-in screen.';
+  const UNUSABLE =
+    "This pairing link can't be used. Ask for a new one, or enter your invite code on the sign-in screen.";
+  const SERVER =
+    "The server couldn't finish pairing. Try again, or enter your invite code on the sign-in screen.";
+  const REACH = 'Could not reach the server to finish pairing.';
+  it.each<[string, unknown, boolean, PairFailure['outcome'], string]>([
+    ['401', new ApiError(401, 'x'), false, 'refused', EXPIRED],
+    ['410', new ApiError(410, 'x'), false, 'refused', EXPIRED],
+    ['400', new ApiError(400, 'x'), false, 'refused', UNUSABLE],
+    ['403', new ApiError(403, 'x'), false, 'refused', UNUSABLE],
+    ['404', new ApiError(404, 'x'), false, 'refused', UNUSABLE],
+    ['409', new ApiError(409, 'x'), false, 'refused', UNUSABLE],
+    ['413', new ApiError(413, 'x'), false, 'refused', UNUSABLE],
+    ['422', new ApiError(422, 'x'), false, 'refused', UNUSABLE],
+    [
+      'invite_used',
+      new ApiError(401, 'x', 'invite_used'),
+      false,
+      'refused',
+      'This invite has been used on all the devices it allows. Ask your admin for a new invite.',
+    ],
+    [
+      'invite_expired',
+      new ApiError(401, 'x', 'invite_expired'),
+      false,
+      'refused',
+      'This invite has expired. Ask your admin for a new invite.',
+    ],
+    [
+      'member_disabled',
+      new ApiError(409, 'x', 'member_disabled'),
+      false,
+      'refused',
+      'Your account on this server is turned off. Ask your admin to turn it back on.',
+    ],
+    ['408', new ApiError(408, 'x'), false, 'temporary', REACH],
+    [
+      '429',
+      new ApiError(429, 'x'),
+      false,
+      'temporary',
+      'Too many tries. Wait a few minutes and try again.',
+    ],
+    [
+      '429 with Retry-After',
+      new ApiError(429, 'x', undefined, 90),
+      false,
+      'temporary',
+      'Too many tries from this network. Try again in 2 minutes.',
+    ],
+    ['500', new ApiError(500, 'x'), false, 'temporary', SERVER],
+    ['503', new ApiError(503, 'x'), false, 'temporary', SERVER],
+    ['no answer', new TypeError('Network request failed'), false, 'temporary', REACH],
+    ['a timeout', new TimeoutError(15000), false, 'temporary', REACH],
+    [
+      'a failure after the exchange',
+      new Error('could not store'),
+      true,
+      'refused',
+      "This link was used, but signing in didn't finish. Ask for a new link.",
+    ],
+  ])(
+    'classifies %s as one outcome with its words',
+    async (_row, e, exchanged, outcome, message) => {
+      expect(pairFailure(e, exchanged, false, t)).toEqual({ outcome, message });
+    },
+  );
+
+  it('names a self-signed certificate only for no answer', () => {
+    const selfSigned =
+      "Couldn't reach the server. If it uses its own (self-signed) certificate, update the server, or connect on your home network.";
+    expect(pairFailure(new TypeError('x'), false, true, t).message).toBe(selfSigned);
+    expect(pairFailure(new ApiError(503, 'x'), false, true, t).message).toBe(SERVER);
+  });
+
+  it('resolves and says what the classifier says', async () => {
+    mockExchange.mockRejectedValue(new ApiError(409, 'x', 'member_disabled'));
     const { result } = await renderHook(() => useLinkPairing());
     let got: PairOutcome | undefined;
     await act(async () => {
       got = await result.current.pair(scan);
     });
-    expect(got).toBe('temporary');
-  });
-
-  it('counts a failure after the exchange as a dead link (the token is spent)', () => {
-    expect(pairFailureKind(new Error('disk full'), true)).toBe('refused');
-    expect(pairFailureKind(new ApiError(409, 'no', 'invite_expired'), false)).toBe('refused');
-    expect(pairFailureKind(new ApiError(409, 'no'), false)).toBe('temporary');
+    expect(got).toBe('refused');
+    expect(result.current.error).toMatch(/turned off/);
   });
 
   it('names a self-signed certificate only for an https link on native that did not time out', async () => {
@@ -259,7 +321,7 @@ describe('useLinkPairing: the home http fallback', () => {
     mockFinish.mockRejectedValueOnce(new Error('could not store'));
     const { paired, error } = await pairWith(homeScan);
     expect(paired).toBe('refused');
-    expect(error).toBe('Could not reach the server to finish pairing.');
+    expect(error).toBe("This link was used, but signing in didn't finish. Ask for a new link.");
   });
 
   it("says what the home's server answered when it answered", async () => {

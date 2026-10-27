@@ -371,6 +371,8 @@
       "enterAddress": "Enter your server address",
       "missingAddress": "This pairing link is missing its server address. Enter it below.",
       "pairingRefused": "This pairing link has expired or was already used. Ask for a new one, or enter your invite code on the sign-in screen.",
+      "pairingUnusable": "This pairing link can't be used. Ask for a new one, or enter your invite code on the sign-in screen.",
+      "pairingSpent": "This link was used, but signing in didn't finish. Ask for a new link.",
       "pairingTryAgain": "Try the link again",
       "pairingServerError": "The server couldn't finish pairing. Try again, or enter your invite code on the sign-in screen.",
       "pairingReachError": "Could not reach the server to finish pairing.",

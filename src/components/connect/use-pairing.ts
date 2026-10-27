@@ -1,8 +1,9 @@
+import type { TFunction } from 'i18next';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiClient, ApiError, apiErrorKind } from '@/api/client';
+import { ApiClient, ApiError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
 import { connectForNewProfile } from '@/components/profiles/connect-intent';
@@ -14,25 +15,67 @@ import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
 import { endConnect, finishConnect } from './finish-connect';
 
-/** How a pairing link's exchange ended. `refused`: the server said no for good (the token
- * is expired, used up, unknown or malformed, or was spent on an exchange whose session
- * this device then couldn't keep), so the link is dead. `temporary`: the server was busy
+/** How a pairing link's exchange ended. `refused`: the server said no for good (any 4xx
+ * but 408 and 429, or a token spent on an exchange whose session this device then
+ * couldn't keep), so the link is dead. `temporary`: the server timed out (408), was busy
  * (429), failed itself (5xx) or didn't answer, so the same link can work later (a reload
- * tries it again). Also `temporary` once the screen has gone. */
+ * tries it again). Also `temporary` once the screen has gone (`pairFailure`). */
 export type PairOutcome = 'paired' | 'refused' | 'temporary';
 
-/** A refusal the same token can never get past: 400/401/403/404/410, or the server's
- * used or expired invite codes. Anything else (429, 5xx, no answer) may pass later. */
-const DEAD_STATUSES = new Set([400, 401, 403, 404, 410]);
+/** Why a pairing link failed: what it means for the link (`PairOutcome`) and the words
+ * the screen says, from ONE reading of the error so the two never disagree. */
+export type PairFailure = { outcome: 'refused' | 'temporary'; message: string };
 
-/** Whether a failed exchange (`e`; `exchanged`: it got a session first) leaves a dead link. */
-export function pairFailureKind(e: unknown, exchanged: boolean): 'refused' | 'temporary' {
-  if (exchanged) return 'refused';
-  if (!(e instanceof ApiError)) return 'temporary';
-  const kind = apiErrorKind(e);
-  return DEAD_STATUSES.has(e.status) || kind === 'invite_used' || kind === 'invite_expired'
-    ? 'refused'
-    : 'temporary';
+/**
+ * A failed exchange (`e`), in words of our own, never the server's English:
+ * - after the exchange (`exchanged`: the token is spent, storing the session failed):
+ *   refused, ask for a new link;
+ * - no answer: temporary, naming a self-signed certificate only where one may be why
+ *   (`selfSigned`, `selfSignedMayBeWhy`);
+ * - 408, 429 (the wait in minutes from `Retry-After` when sent) and 5xx: temporary;
+ * - every other 4xx: refused, by the server's code when it names one (`invite_used`,
+ *   `invite_expired`, `member_disabled`), else expired or used (401, 410), else a link
+ *   that can't be used.
+ */
+export function pairFailure(
+  e: unknown,
+  exchanged: boolean,
+  selfSigned: boolean,
+  t: TFunction,
+): PairFailure {
+  const refused = (message: string): PairFailure => ({ outcome: 'refused', message });
+  const temporary = (message: string): PairFailure => ({ outcome: 'temporary', message });
+  if (exchanged) return refused(t('connect.server.pairingSpent'));
+  if (!(e instanceof ApiError)) {
+    return temporary(
+      selfSigned
+        ? t('connect.server.pairingReachSelfSigned')
+        : t('connect.server.pairingReachError'),
+    );
+  }
+  if (e.status === 429) {
+    const s = e.retryAfterSeconds;
+    return temporary(
+      s !== undefined && s > 0
+        ? t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) })
+        : t('common.tooManyTries'),
+    );
+  }
+  if (e.status === 408) return temporary(t('connect.server.pairingReachError'));
+  if (e.status < 400 || e.status >= 500) return temporary(t('connect.server.pairingServerError'));
+  switch (e.code) {
+    case 'invite_used':
+      return refused(t('connect.signIn.errors.inviteUsed'));
+    case 'invite_expired':
+      return refused(t('connect.signIn.errors.inviteExpired'));
+    case 'member_disabled':
+      return refused(t('connect.signIn.errors.disabled'));
+  }
+  return refused(
+    e.status === 401 || e.status === 410
+      ? t('connect.server.pairingRefused')
+      : t('connect.server.pairingUnusable'),
+  );
 }
 
 export type LinkPairing = {
@@ -163,23 +206,15 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       return 'paired';
     } catch (e) {
       if (!live.current) return 'temporary';
-      // In words of our own, never the server's English: its limiter (429), a link it
-      // refused (expired, used up, unknown: 401; or malformed), it failing itself (5xx), or
-      // no answer at all (naming a self-signed certificate only where one may be why,
-      // `selfSignedMayBeWhy`, and never for a failure after the exchange).
-      setError(
-        apiErrorKind(e) === 'too_many'
-          ? t('common.tooManyTries')
-          : !(e instanceof ApiError)
-            ? !exchanged && selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web')
-              ? t('connect.server.pairingReachSelfSigned')
-              : t('connect.server.pairingReachError')
-            : e.status >= 500
-              ? t('connect.server.pairingServerError')
-              : t('connect.server.pairingRefused'),
+      const failure = pairFailure(
+        e,
+        exchanged,
+        !exchanged && selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web'),
+        t,
       );
+      setError(failure.message);
       setPairing(false);
-      return pairFailureKind(e, exchanged);
+      return failure.outcome;
     }
   });
 

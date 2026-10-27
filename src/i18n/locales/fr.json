@@ -371,6 +371,8 @@
       "enterAddress": "Saisissez l'adresse de votre serveur",
       "missingAddress": "Ce lien d'association ne comporte pas l'adresse du serveur. Saisissez-la ci-dessous.",
       "pairingRefused": "Ce lien d'association a expiré ou a déjà été utilisé. Demandez-en un nouveau, ou saisissez votre code d'invitation sur l'écran de connexion.",
+      "pairingUnusable": "Ce lien d'association ne peut pas être utilisé. Demandez-en un nouveau, ou saisissez votre code d'invitation sur l'écran de connexion.",
+      "pairingSpent": "Ce lien a été utilisé, mais la connexion n'a pas abouti. Demandez un nouveau lien.",
       "pairingTryAgain": "Réessayer le lien",
       "pairingServerError": "Le serveur n'a pas pu terminer l'association. Réessayez, ou saisissez votre code d'invitation sur l'écran de connexion.",
       "pairingReachError": "Impossible de joindre le serveur pour terminer l'association.",
