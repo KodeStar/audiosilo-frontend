@@ -140,6 +140,15 @@ describe('ApiClient', () => {
     await expect(new ApiClient('https://h', 'tok').libraries()).resolves.toEqual([]);
   });
 
+  // CONNECT-12: a newer server sends `root` to admins only; a listener's list has none.
+  it('reads a library list without the root folder', async () => {
+    const lib = { id: 1, name: 'Books', kind: 'books', default_view: 'hybrid', sort_order: 0 };
+    installFetch(() => ({ status: 200, body: { libraries: [lib] } }));
+    const [got] = await new ApiClient('https://h', 'tok').libraries();
+    expect(got).toEqual(lib);
+    expect(got.root).toBeUndefined();
+  });
+
   it('embeds the token in media URLs only when present', () => {
     const withTok = new ApiClient('https://h', 'tok');
     expect(withTok.coverUrl(3, 'A/Book')).toContain('token=tok');
