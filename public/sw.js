@@ -4,7 +4,9 @@
  * Two jobs:
  *  1. App shell - make the PWA installable and loadable offline: network-first for
  *     navigations (falling back to a cached shell that boots the SPA), and
- *     stale-while-revalidate for the content-hashed Expo assets.
+ *     stale-while-revalidate for the content-hashed Expo assets. The web build is split
+ *     (Expo Router async routes): a page's chunks load when it is first opened, so every
+ *     chunk of the build is precached (`precacheBuild`) for a page never opened online.
  *  2. Offline media - serve downloaded audio/cover files that the web download
  *     engine (src/downloads/engine.web.ts) stored in MEDIA_CACHE under synthetic
  *     `…/_offline/…` urls, honouring HTTP Range so <audio> can seek (and so Safari,
@@ -33,14 +35,10 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       if (!DEV) {
-        const cache = await caches.open(SHELL_CACHE);
-        try {
-          // Precache the shell root so offline navigations have something to fall
-          // back to; hashed assets fill in at runtime on first online visit.
-          await cache.add(new Request(self.registration.scope, { cache: 'reload' }));
-        } catch {
-          // first install offline / root unreachable - runtime caching covers it
-        }
+        // The shell root (offline navigations fall back to it) and the build's chunks,
+        // cached while installing so Chrome keeps their compiled code (see precacheBuild).
+        // Offline or the root unreachable: runtime caching covers it, and the app asks again.
+        await precacheBuild(true);
       }
       await self.skipWaiting();
     })(),
@@ -57,6 +55,13 @@ self.addEventListener('activate', (event) => {
       await self.clients.claim();
     })(),
   );
+});
+
+// The app asks once it has started (`register-sw.web.ts`): a new build is deployed under
+// the same worker (sw.js itself unchanged, so no new install), and its chunks are precached
+// here instead.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'precache' && !DEV) event.waitUntil(precacheBuild());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -81,7 +86,12 @@ self.addEventListener('fetch', (event) => {
     // would be written into Cache Storage, and every entry turns into unreachable
     // garbage the moment the token rotates. Let the browser fetch these directly.
     if (url.searchParams.has(TOKEN_PARAM)) return;
-    event.respondWith(staleWhileRevalidate(request));
+    // The build's own files are content-hashed, so a cached one is never stale: served from
+    // the cache and never written again (a rewrite would drop the compiled code Chrome
+    // keeps for a script cached at install).
+    event.respondWith(
+      url.pathname.includes('/_expo/static/') ? cacheFirst(request) : staleWhileRevalidate(request),
+    );
   }
   // else: let the browser handle it (API requests, server-streamed audio, …)
 });
@@ -111,6 +121,15 @@ async function handleNavigation(request, shellFallback = true) {
   }
 }
 
+async function cacheFirst(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const res = await fetch(request);
+  if (res.ok && (res.type === 'basic' || res.type === 'default')) cache.put(request, res.clone());
+  return res;
+}
+
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(SHELL_CACHE);
   const cached = await cache.match(request);
@@ -123,6 +142,74 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => undefined);
   return cached || (await network) || new Response('', { status: 504 });
+}
+
+// --- the build's chunks ------------------------------------------------------
+
+// The cache entry recording the build last precached: the shell's own scripts and styles.
+const PRECACHED_BUILD = '__precached-build';
+// A build asset named in the HTML or a chunk: `<base>/_expo/static/js/web/<name>-<hash>.js`
+// (the chunk map Expo writes into the entry and into chunks that load others) or a
+// stylesheet under `_expo/static/css/`.
+const ASSET_REF = /["'](\/(?:[^"'\s]*?\/)?_expo\/static\/(?:js|css)\/[^"'\s]+?\.(?:js|css))["']/g;
+
+/** The same-origin build assets `text` names, as absolute URLs. */
+function assetRefs(text) {
+  const urls = new Set();
+  for (const m of text.matchAll(ASSET_REF)) urls.add(new URL(m[1], self.location.origin).href);
+  return [...urls];
+}
+
+/**
+ * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts
+ * and stylesheets, then every chunk they name, transitively. A route opened for the first
+ * time offline then still finds its chunk, and a deep link still boots. The previous
+ * build's chunks are dropped once this one is complete. Offline or failing part way, it
+ * stops and leaves the record unwritten, so the next ask finishes it.
+ *
+ * At install (`fresh`) every file is written again, even one already cached: Chrome
+ * compiles a script a worker caches while installing and keeps the code with it, so the
+ * next start skips most of its compiling (the app registers the worker under its build's
+ * name, so each deploy installs one). Otherwise (the app's ask) a hashed file already
+ * cached is not fetched again, and a shell naming the same files as last time is done.
+ */
+async function precacheBuild(fresh = false) {
+  try {
+    const cache = await caches.open(SHELL_CACHE);
+    const shell = self.registration.scope;
+    const res = await fetch(new Request(shell, { cache: 'no-cache' }));
+    if (!res.ok) return;
+    await cache.put(shell, res.clone());
+    const roots = assetRefs(await res.text());
+    if (!roots.length) return;
+    const build = roots.slice().sort().join('\n');
+    const marker = new URL(PRECACHED_BUILD, shell).href;
+    const done = await cache.match(marker);
+    if (!fresh && done && (await done.text()) === build) return;
+
+    const seen = new Set();
+    const queue = [...roots];
+    while (queue.length) {
+      const url = queue.shift();
+      if (seen.has(url)) continue;
+      seen.add(url);
+      let asset = fresh ? undefined : await cache.match(url);
+      if (!asset) {
+        asset = await fetch(url);
+        if (!asset.ok) return;
+        await cache.put(url, asset.clone());
+      }
+      if (url.endsWith('.js')) queue.push(...assetRefs(await asset.text()));
+    }
+    for (const request of await cache.keys()) {
+      if (request.url.includes('/_expo/static/') && !seen.has(request.url)) {
+        await cache.delete(request);
+      }
+    }
+    await cache.put(marker, new Response(build));
+  } catch {
+    // offline or the server gone: the next ask (the app's next start) tries again
+  }
 }
 
 // --- offline media ---------------------------------------------------------

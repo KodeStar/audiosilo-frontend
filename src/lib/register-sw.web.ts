@@ -10,15 +10,55 @@ import { BASE_URL, IS_DEV } from './base-url';
 // only serves downloaded media and leaves the app shell alone - otherwise its
 // asset caching would fight Metro's hot reloading.
 
+/** How long after the page has loaded the worker is asked to precache the build. */
+export const PRECACHE_DELAY_MS = 5000;
+
+/**
+ * The build this page runs, for the worker's address (`?build=`): the name of the page's
+ * last bundle script, the entry, whose content hash changes with any chunk of the build
+ * (it carries their names). `undefined` without one (dev, a test page).
+ */
+export function buildId(): string | undefined {
+  const scripts = document.querySelectorAll<HTMLScriptElement>('script[src*="/_expo/static/js/"]');
+  const last = scripts[scripts.length - 1];
+  return last?.src.split('/').pop()?.replace(/\.js$/, '') || undefined;
+}
+
+/**
+ * The worker's address. A production build names itself (`buildId`), so a new deploy is a
+ * new address and so a new worker, whose install precaches the new build's chunks: Chrome
+ * keeps compiled code for scripts a worker caches while installing, which is what makes a
+ * warm start fast (the worker's bytes are the same in every build, so without this it
+ * would never install again).
+ */
+export function workerUrl(): string {
+  if (IS_DEV) return `${BASE_URL}/sw.js?dev=1`;
+  const build = buildId();
+  return `${BASE_URL}/sw.js${build ? `?build=${encodeURIComponent(build)}` : ''}`;
+}
+
+/**
+ * Asks the active worker to precache this build's chunks (sw.js `precacheBuild`), in case
+ * its install could not (offline then): the web build is split by route, and a page whose
+ * chunk was never fetched would not boot offline. A while after the start, so its fetches
+ * never compete with the first screen's; nothing to do when the build is in already.
+ */
+export function askPrecache() {
+  void navigator.serviceWorker.ready.then(
+    (registration) => registration.active?.postMessage({ type: 'precache' }),
+    () => undefined,
+  );
+}
+
 export function registerServiceWorker() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   if (typeof window !== 'undefined' && !window.isSecureContext) return;
 
-  const url = `${BASE_URL}/sw.js${IS_DEV ? '?dev=1' : ''}`;
   const register = () => {
-    navigator.serviceWorker.register(url).catch((err) => {
+    navigator.serviceWorker.register(workerUrl()).catch((err) => {
       console.warn('[sw] registration failed', err);
     });
+    if (!IS_DEV) setTimeout(askPrecache, PRECACHE_DELAY_MS);
   };
   // This module runs when the root layout is first required, which is during React's
   // first (scheduled) render: in the static export that is usually AFTER `load` has
