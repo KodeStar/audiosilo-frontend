@@ -371,6 +371,7 @@
       "enterAddress": "Gib deine Serveradresse ein",
       "missingAddress": "Bei diesem Kopplungslink fehlt die Serveradresse. Gib sie unten ein.",
       "pairingRefused": "Dieser Kopplungslink ist abgelaufen oder wurde schon benutzt. Bitte um einen neuen oder gib deinen Einladungscode auf dem Anmeldebildschirm ein.",
+      "pairingTryAgain": "Link erneut versuchen",
       "pairingServerError": "Der Server konnte die Kopplung nicht abschließen. Versuch es noch einmal oder gib deinen Einladungscode auf dem Anmeldebildschirm ein.",
       "pairingReachError": "Der Server konnte nicht erreicht werden, um die Kopplung abzuschließen.",
       "pairingReachSelfSigned": "Der Server konnte nicht erreicht werden. Wenn er ein eigenes (selbstsigniertes) Zertifikat nutzt, aktualisiere den Server oder verbinde dich im Heimnetz.",

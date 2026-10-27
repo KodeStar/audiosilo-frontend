@@ -26,6 +26,7 @@ import {
   normalizeUrl,
   parseInviteScan,
   parsePairingScan,
+  type PairingScan,
 } from '@/lib/pairing';
 import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -114,6 +115,8 @@ export function ConnectStart() {
   // A pasted link for another server, on a server's own player (`onPasteLink`).
   const [foreignLink, setForeignLink] = useState<string | null>(null);
   const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
+  // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
+  const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
   // `pair` also resolves false once the screen has gone: nothing after it may then touch
   // the route now on top (its params) or the session (a probe's pending address).
   const mounted = useRef(true);
@@ -123,6 +126,28 @@ export function ConnectStart() {
       mounted.current = false;
     };
   }, []);
+
+  // Exchange a pairing link from the address (and again from Try again). A dead link's
+  // token leaves the address, so a reload doesn't try it again, and the served player
+  // shows its own server's card with Sign in, as it does with no link: never the address
+  // field it otherwise skips (CONNECT-14). A link that may work in a moment (the server
+  // busy, failing or not answering) keeps its token for a reload, and offers Try again.
+  const pairLink = async (scan: PairingScan) => {
+    setRetryLink(null);
+    const outcome = await pair(scan);
+    if (outcome === 'paired' || !mounted.current) return;
+    if (outcome === 'temporary') {
+      setRetryLink(scan);
+      setUrl((u) => u || scan.base);
+      return;
+    }
+    router.setParams({ token: undefined });
+    const origin = servedOrigin();
+    if (origin) {
+      setServed('pending');
+      void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
+    } else setUrl((u) => u || scan.base);
+  };
 
   // A pairing link's token: exchange it once (a language switch must not run it again).
   useEffect(() => {
@@ -137,25 +162,15 @@ export function ConnectStart() {
     const userId = idParam(uid);
     // A book to end on: an invalid one is no book, and the flow ends as it always does.
     const linked = parseConnectBook({ book, path });
-    void pair({
+    const scan: PairingScan = {
       base,
       token,
       addresses: cleanAddresses({ home, away }),
       ...(serverId ? { serverId } : {}),
       ...(userId ? { userId } : {}),
       ...(linked ? { book: linked } : {}),
-    }).then((ok) => {
-      if (ok || !mounted.current) return;
-      // The dead token leaves the address, so a reload doesn't try it again (CONNECT-14).
-      router.setParams({ token: undefined });
-      // The served player shows its own server's card, with Sign in, as it does with no
-      // link: never the address field it otherwise skips.
-      const origin = servedOrigin();
-      if (origin) {
-        setServed('pending');
-        void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
-      } else setUrl((u) => u || base);
-    });
+    };
+    void pairLink(scan);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, home, away, sid, book, path, uid, pair, fail]);
 
@@ -312,7 +327,7 @@ export function ConnectStart() {
       setForeignLink(link.trim());
       return;
     }
-    if (scan) void pair(scan);
+    if (scan) void pairLink(scan);
     else if (invite) beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
   };
 
@@ -371,6 +386,15 @@ export function ConnectStart() {
         <Text variant="caption" className="text-destructive" role="alert">
           {pairError}
         </Text>
+      ) : null}
+      {pairError && retryLink ? (
+        <Button
+          variant="outline"
+          icon="rotate"
+          title={t('connect.server.pairingTryAgain')}
+          onPress={() => void pairLink(retryLink)}
+          testID="pairing-try-again"
+        />
       ) : null}
       <View className="gap-3">
         {/* The label above the row, so the field and Continue line up at the top. The served

@@ -14,6 +14,27 @@ import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
 import { endConnect, finishConnect } from './finish-connect';
 
+/** How a pairing link's exchange ended. `refused`: the server said no for good (the token
+ * is expired, used up, unknown or malformed, or was spent on an exchange whose session
+ * this device then couldn't keep), so the link is dead. `temporary`: the server was busy
+ * (429), failed itself (5xx) or didn't answer, so the same link can work later (a reload
+ * tries it again). Also `temporary` once the screen has gone. */
+export type PairOutcome = 'paired' | 'refused' | 'temporary';
+
+/** A refusal the same token can never get past: 400/401/403/404/410, or the server's
+ * used or expired invite codes. Anything else (429, 5xx, no answer) may pass later. */
+const DEAD_STATUSES = new Set([400, 401, 403, 404, 410]);
+const DEAD_CODES = new Set(['invite_used', 'invite_expired']);
+
+/** Whether a failed exchange (`e`; `exchanged`: it got a session first) leaves a dead link. */
+export function pairFailureKind(e: unknown, exchanged: boolean): 'refused' | 'temporary' {
+  if (exchanged) return 'refused';
+  if (!(e instanceof ApiError)) return 'temporary';
+  return DEAD_STATUSES.has(e.status) || (!!e.code && DEAD_CODES.has(e.code))
+    ? 'refused'
+    : 'temporary';
+}
+
 export type LinkPairing = {
   /** A pairing token is being exchanged. */
   pairing: boolean;
@@ -22,8 +43,8 @@ export type LinkPairing = {
   /** Say why a link can't pair (a link with no server address). */
   fail: (message: string) => void;
   /** Exchange a pairing link's token on its server and finish the connect flow (on the
-   * link's book, when it names one). */
-  pair: (scan: PairingScan) => Promise<boolean>;
+   * link's book, when it names one). Resolves how it ended (`PairOutcome`). */
+  pair: (scan: PairingScan) => Promise<PairOutcome>;
 };
 
 /**
@@ -57,8 +78,8 @@ async function stillSignedIn(connectionId: string): Promise<boolean> {
  * TLS on another network, where a plain-http address could be another box), with home as
  * its first address pick (`answeredAt`). A link naming a book ends on it, and skips the
  * exchange when the device is already signed in as the link's user there (its token still
- * taken, `stillSignedIn`). Resolves whether
- * it paired. Bare client: a failed exchange must never flag a reconnect.
+ * taken, `stillSignedIn`). Resolves how it
+ * ended (`PairOutcome`). Bare client: a failed exchange must never flag a reconnect.
  */
 export function useLinkPairing(startPairing = false): LinkPairing {
   const { t } = useTranslation();
@@ -74,7 +95,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
 
   // Stable (`useLatest`): the deep link's effect lists it, and a language switch must not
   // run the exchange again.
-  const pair = useLatest(async (scan: PairingScan): Promise<boolean> => {
+  const pair = useLatest(async (scan: PairingScan): Promise<PairOutcome> => {
     setError(null);
     setPairing(true);
     // A link naming a book, for a user this device is already signed in as on its server
@@ -87,11 +108,11 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       if (sessionHydrateFailed()) await useSession.getState().hydrate();
       const signedIn = signedInAs(useSession.getState().connections, scan.serverId, scan.userId);
       if (signedIn && (await stillSignedIn(signedIn.id))) {
-        if (!live.current) return false;
+        if (!live.current) return 'temporary';
         endConnect(signedIn.id, scan.book);
-        return true;
+        return 'paired';
       }
-      if (!live.current) return false;
+      if (!live.current) return 'temporary';
     }
     // The token's exchange at `base`, with the server's name read alongside.
     const exchangeAt = (base: string) => {
@@ -130,7 +151,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         },
       );
       exchanged = true;
-      if (!live.current) return false;
+      if (!live.current) return 'temporary';
       await finishConnect({
         serverUrl: scan.base,
         session,
@@ -139,9 +160,9 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         ...(answeredAt !== scan.base ? { answeredAt } : {}),
         book: scan.book,
       });
-      return true;
+      return 'paired';
     } catch (e) {
-      if (!live.current) return false;
+      if (!live.current) return 'temporary';
       // In words of our own, never the server's English: its limiter (429), a link it
       // refused (expired, used up, unknown: 401; or malformed), it failing itself (5xx), or
       // no answer at all (naming a self-signed certificate only where one may be why,
@@ -158,7 +179,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
               : t('connect.server.pairingRefused'),
       );
       setPairing(false);
-      return false;
+      return pairFailureKind(e, exchanged);
     }
   });
 

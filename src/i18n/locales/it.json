@@ -371,6 +371,7 @@
       "enterAddress": "Inserisci l'indirizzo del tuo server",
       "missingAddress": "A questo link di abbinamento manca l'indirizzo del server. Inseriscilo qui sotto.",
       "pairingRefused": "Questo link di abbinamento è scaduto o è già stato usato. Chiedine uno nuovo, oppure inserisci il tuo codice di invito nella schermata di accesso.",
+      "pairingTryAgain": "Riprova il link",
       "pairingServerError": "Il server non è riuscito a completare l'abbinamento. Riprova, oppure inserisci il tuo codice di invito nella schermata di accesso.",
       "pairingReachError": "Impossibile raggiungere il server per completare l'abbinamento.",
       "pairingReachSelfSigned": "Impossibile raggiungere il server. Se usa un proprio certificato (autofirmato), aggiorna il server o connettiti dalla rete di casa.",

@@ -371,6 +371,7 @@
       "enterAddress": "Introduce la dirección de tu servidor",
       "missingAddress": "A este enlace de vinculación le falta la dirección del servidor. Introdúcela a continuación.",
       "pairingRefused": "Este enlace de vinculación ha caducado o ya se usó. Pide uno nuevo o introduce tu código de invitación en la pantalla de inicio de sesión.",
+      "pairingTryAgain": "Probar el enlace de nuevo",
       "pairingServerError": "El servidor no pudo completar la vinculación. Inténtalo de nuevo o introduce tu código de invitación en la pantalla de inicio de sesión.",
       "pairingReachError": "No se pudo contactar con el servidor para completar la vinculación.",
       "pairingReachSelfSigned": "No se pudo contactar con el servidor. Si usa su propio certificado (autofirmado), actualiza el servidor o conéctate desde la red de casa.",

@@ -206,6 +206,27 @@ describe('a pairing link', () => {
       await screen.findByText('Too many tries. Wait a few minutes and try again.'),
     ).toBeTruthy();
     expect(screen.queryByText(/too many attempts/)).toBeNull();
+    // CONNECT-14: a busy server is no dead link: the token stays for a reload.
+    expect(mockSetParams).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the server failing itself', new ApiError(503, 'busy')],
+    ['no answer', new TypeError('Network request failed')],
+  ])('keeps the token after %s and tries the link again on request', async (_why, e) => {
+    mockParams = { token: 'tok', server: AWAY };
+    mockApi.exchange.mockRejectedValueOnce(e);
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    const again = await screen.findByTestId('pairing-try-again');
+    expect(mockSetParams).not.toHaveBeenCalled();
+    mockApi.exchange.mockRejectedValueOnce(new ApiError(401, 'invalid or expired pairing token'));
+    await fireEvent.press(again);
+    await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledTimes(2));
+    expect(mockApi.exchange).toHaveBeenLastCalledWith('tok', expect.any(String));
+    // That answer was a refusal: now the token goes, and there is nothing to try again.
+    await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ token: undefined }));
+    expect(screen.queryByTestId('pairing-try-again')).toBeNull();
   });
 
   it('a native link with no server address asks for one', async () => {
@@ -655,6 +676,16 @@ describe('the player the server serves', () => {
     expect(screen.getByText('Sign in')).toBeTruthy();
     expect(mockSetParams).toHaveBeenCalledWith({ token: undefined });
     expect(mockApi.exchange).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the token and shows no card when its own server is busy', async () => {
+    mockParams = { token: 'tok' };
+    mockApi.exchange.mockRejectedValue(new ApiError(429, 'slow down'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    expect(await screen.findByTestId('pairing-try-again')).toBeTruthy();
+    expect(screen.queryByText('Found Hearthside')).toBeNull();
+    expect(mockSetParams).not.toHaveBeenCalled();
   });
 
   // frontend#129: a book link opened signed out comes back to the book after sign-in.
