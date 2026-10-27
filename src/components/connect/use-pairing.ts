@@ -24,13 +24,13 @@ export type PairOutcome = 'paired' | 'refused' | 'temporary';
 /** A refusal the same token can never get past: 400/401/403/404/410, or the server's
  * used or expired invite codes. Anything else (429, 5xx, no answer) may pass later. */
 const DEAD_STATUSES = new Set([400, 401, 403, 404, 410]);
-const DEAD_CODES = new Set(['invite_used', 'invite_expired']);
 
 /** Whether a failed exchange (`e`; `exchanged`: it got a session first) leaves a dead link. */
 export function pairFailureKind(e: unknown, exchanged: boolean): 'refused' | 'temporary' {
   if (exchanged) return 'refused';
   if (!(e instanceof ApiError)) return 'temporary';
-  return DEAD_STATUSES.has(e.status) || (!!e.code && DEAD_CODES.has(e.code))
+  const kind = apiErrorKind(e);
+  return DEAD_STATUSES.has(e.status) || kind === 'invite_used' || kind === 'invite_expired'
     ? 'refused'
     : 'temporary';
 }

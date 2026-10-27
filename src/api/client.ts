@@ -193,6 +193,10 @@ const API_ERROR_CODES = [
   'invalid_opml',
   'unsupported_opml_type',
   'opml_export_limit',
+  // An invite code's redeem (server v2.5.0): a real invite used on all the devices it
+  // allows, or past its expiry (401; older servers send the 401 without them).
+  'invite_used',
+  'invite_expired',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

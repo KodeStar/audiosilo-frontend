@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { ApiError } from '@/api/client';
+import { ApiError, apiErrorKind } from '@/api/client';
 
 /** Which request of the sign-in failed: the invite code's redeem, the pairing token's
  * exchange that follows it, or a username and password login. */
@@ -23,10 +23,11 @@ export function signInErrorText(e: unknown, stage: SignInStage, t: TFunction): s
       ? t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) })
       : t('common.tooManyTries');
   }
-  if (e.code === 'member_disabled') return t('connect.signIn.errors.disabled');
+  const kind = apiErrorKind(e);
+  if (kind === 'member_disabled') return t('connect.signIn.errors.disabled');
   // The server names a real invite that can't be used any more (redeem, server v2.5.0).
-  if (e.code === 'invite_used') return t('connect.signIn.errors.inviteUsed');
-  if (e.code === 'invite_expired') return t('connect.signIn.errors.inviteExpired');
+  if (kind === 'invite_used') return t('connect.signIn.errors.inviteUsed');
+  if (kind === 'invite_expired') return t('connect.signIn.errors.inviteExpired');
   if (e.status === 401 || e.status === 400) {
     if (stage === 'redeem') return t('connect.signIn.errors.badCode');
     if (stage === 'exchange') return t('connect.signIn.errors.usedInvite');

@@ -115,24 +115,27 @@ describe('useLinkPairing', () => {
   });
 
   it('reports a dead link apart from one that may work later (CONNECT-14)', async () => {
-    const outcome = async (e: unknown) => {
-      mockExchange.mockRejectedValue(e);
-      const { result } = await renderHook(() => useLinkPairing());
-      let got: PairOutcome | undefined;
-      await act(async () => {
-        got = await result.current.pair(scan);
-      });
-      return got;
-    };
     for (const status of [400, 401, 403, 404, 410]) {
-      expect(await outcome(new ApiError(status, 'no'))).toBe('refused');
+      expect(pairFailureKind(new ApiError(status, 'no'), false)).toBe('refused');
     }
-    expect(await outcome(new ApiError(401, 'no', 'invite_used'))).toBe('refused');
-    expect(await outcome(new ApiError(429, 'slow down'))).toBe('temporary');
-    expect(await outcome(new ApiError(503, 'busy'))).toBe('temporary');
-    expect(await outcome(new ApiError(500, 'oops'))).toBe('temporary');
-    expect(await outcome(new TypeError('Network request failed'))).toBe('temporary');
-    expect(await outcome(new TimeoutError(15000))).toBe('temporary');
+    expect(pairFailureKind(new ApiError(401, 'no', 'invite_used'), false)).toBe('refused');
+    for (const e of [
+      new ApiError(429, 'slow down'),
+      new ApiError(503, 'busy'),
+      new ApiError(500, 'oops'),
+      new TypeError('Network request failed'),
+      new TimeoutError(15000),
+    ]) {
+      expect(pairFailureKind(e, false)).toBe('temporary');
+    }
+    // `pair` resolves what `pairFailureKind` says.
+    mockExchange.mockRejectedValue(new ApiError(503, 'busy'));
+    const { result } = await renderHook(() => useLinkPairing());
+    let got: PairOutcome | undefined;
+    await act(async () => {
+      got = await result.current.pair(scan);
+    });
+    expect(got).toBe('temporary');
   });
 
   it('counts a failure after the exchange as a dead link (the token is spent)', () => {
@@ -207,7 +210,7 @@ describe('useLinkPairing: the home http fallback', () => {
       mockProbe.mockResolvedValue(answer);
       mockExchange.mockRejectedValue(down());
       const { paired, error } = await pairWith(homeScan);
-      expect(paired).not.toBe('paired');
+      expect(paired).toBe('temporary');
       expect(mockExchangedAt).toEqual([BASE]);
       expect(error).toMatch(/^Couldn't reach the server/);
     }
@@ -217,7 +220,7 @@ describe('useLinkPairing: the home http fallback', () => {
   it("never falls back for a link without the server's id (an older server)", async () => {
     mockExchange.mockRejectedValue(down());
     const { serverId: _drop, ...noSid } = homeScan;
-    expect((await pairWith(noSid)).paired).not.toBe('paired');
+    expect((await pairWith(noSid)).paired).toBe('temporary');
     expect(mockProbe).not.toHaveBeenCalled();
     expect(mockExchangedAt).toEqual([BASE]);
   });
@@ -227,7 +230,7 @@ describe('useLinkPairing: the home http fallback', () => {
       .mockRejectedValueOnce(down())
       .mockResolvedValueOnce({ ...session, server_id: 'srv-other' });
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).not.toBe('paired');
+    expect(paired).toBe('temporary');
     expect(mockExchangedAt).toEqual([BASE, HOME]);
     expect(error).toMatch(/^Couldn't reach the server/);
     expect(mockFinish).not.toHaveBeenCalled();
@@ -236,7 +239,7 @@ describe('useLinkPairing: the home http fallback', () => {
   it('does not fall back when the base answered, and reports what it said', async () => {
     mockExchange.mockRejectedValueOnce(new ApiError(401, 'expired'));
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).not.toBe('paired');
+    expect(paired).toBe('refused');
     expect(mockExchangedAt).toEqual([BASE]);
     expect(mockProbe).not.toHaveBeenCalled();
     expect(error).toMatch(/expired or was already used/);
@@ -246,7 +249,7 @@ describe('useLinkPairing: the home http fallback', () => {
   it("says the base couldn't be reached when the home can't either", async () => {
     mockExchange.mockRejectedValue(down());
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).not.toBe('paired');
+    expect(paired).toBe('temporary');
     expect(mockExchangedAt).toEqual([BASE, HOME]);
     expect(error).toMatch(/^Couldn't reach the server/);
   });
@@ -255,7 +258,7 @@ describe('useLinkPairing: the home http fallback', () => {
     mockExchange.mockResolvedValueOnce(session);
     mockFinish.mockRejectedValueOnce(new Error('could not store'));
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).not.toBe('paired');
+    expect(paired).toBe('refused');
     expect(error).toBe('Could not reach the server to finish pairing.');
   });
 
