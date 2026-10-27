@@ -128,6 +128,18 @@ describe('/connect', () => {
     expect(mockLeave).toHaveBeenCalledTimes(1);
   });
 
+  // CONNECT-14: a dead link's token leaves the params; the screen stays to say why.
+  it('stays signed in after a pairing link drops its dead token', async () => {
+    signedIn();
+    mockParams = { token: 'used' };
+    const r = await render(<ConnectRoute />);
+    mockParams = {};
+    await r.rerender(<ConnectRoute />);
+    await act(async () => mockRefocus?.());
+    expect(screen.getByText('first step')).toBeTruthy();
+    expect(mockLeave).not.toHaveBeenCalled();
+  });
+
   it('back on top mid-way through adding a server: stays', async () => {
     signedIn('https://b');
     await render(<ConnectRoute />);

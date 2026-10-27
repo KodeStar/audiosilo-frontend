@@ -293,6 +293,14 @@ describe('a player route with no book to show', () => {
     expect(r.getByTestId('not-in-library-book')).toBeTruthy();
   });
 
+  it('plays on a book still in the cache whose refetch is a 404 (a moved download)', async () => {
+    mockBookQuery = { data: mockBook, error: new ApiError(404, 'not found'), isError: true };
+    routeTo({});
+    const r = await render(<PlayerScreen />);
+    expect(r.queryByTestId('not-in-library-book')).toBeNull();
+    await waitFor(() => expect(mockPlayBook).toHaveBeenCalled());
+  });
+
   it('asks nothing for a library id that is not a number (frontend#129)', async () => {
     mockBookQuery = { data: undefined, error: null, isError: false };
     mockParams = { connection: 'c', libraryId: 'abc', path: 'Author/Book' };

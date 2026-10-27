@@ -7,7 +7,7 @@ import { useReachability } from '@/api/reachability';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useDeviceOnline } from '@/lib/device-online';
-import { useSession } from '@/stores/session';
+import { useProfileConnections } from '@/stores/profiles';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 function Bar({ label }: { label: string }) {
@@ -65,7 +65,8 @@ export function OfflineBanner({ connectionId }: { connectionId?: string }) {
         : Object.keys(s.online).filter((id) => s.online[id] === false),
     ),
   );
-  const connections = useSession((s) => s.connections);
+  // Only the listening person's servers are named (another person's stays theirs).
+  const connections = useProfileConnections();
   const down = connections.filter((c) => ids.includes(c.id)).map((c) => c.name);
   // A scoped page's server this device has no name for still says it is offline.
   const label =

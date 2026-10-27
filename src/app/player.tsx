@@ -210,8 +210,11 @@ export default function PlayerScreen() {
 
   // The route's book isn't there (a 404 or 403, a link that names none), or the player was
   // opened bare with nothing loaded: say so with Close and Home, never an endless spinner
-  // (CONNECT-03). A network failure keeps its Retry.
-  const missing = libParam ? !routeNamesBook || isNotInLibraryError(bookQuery.error) : !nowPlaying;
+  // (CONNECT-03). A network failure keeps its Retry. A book still in the cache (a download
+  // whose server copy moved: its refetch is a 404) plays on as it always did.
+  const missing = libParam
+    ? !routeNamesBook || (!book && isNotInLibraryError(bookQuery.error))
+    : !nowPlaying;
   if (missing || (!book && !nowPlaying)) {
     return (
       <View

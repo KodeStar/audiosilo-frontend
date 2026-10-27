@@ -2,6 +2,7 @@ import { act, render, screen } from '@testing-library/react-native';
 
 import { useReachability } from '@/api/reachability';
 import i18n from '@/i18n';
+import { useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 let mockDeviceOnline = true;
@@ -18,6 +19,7 @@ const t = i18n.t.bind(i18n);
 beforeEach(() => {
   mockDeviceOnline = true;
   useReachability.setState({ online: {} });
+  useProfiles.setState({ profiles: [], activeProfileId: null });
   useSession.setState({
     connections: [
       { id: 'a', name: 'Hearthside' },
@@ -55,6 +57,19 @@ describe('OfflineBanner', () => {
     useReachability.setState({ online: { a: false, b: false } });
     await render(<OfflineBanner />);
     expect(screen.getByText(SOME)).toBeTruthy();
+  });
+
+  it("never names another person's server on an aggregated page", async () => {
+    useProfiles.setState({
+      profiles: [
+        { id: 'p1', connectionIds: ['a'] },
+        { id: 'p2', connectionIds: ['b'] },
+      ],
+      activeProfileId: 'p1',
+    } as never);
+    useReachability.setState({ online: { b: false } });
+    await render(<OfflineBanner />);
+    expect(screen.queryByText(/Attic/)).toBeNull();
   });
 
   it("says offline for a scoped page's server it has no name for", async () => {

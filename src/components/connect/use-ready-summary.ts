@@ -13,7 +13,7 @@ import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { useResumePosition } from '@/components/player/use-listening-position';
 import { useChapterAt } from '@/components/series/use-resume-chapter';
-import { adminConsoleUrl } from '@/lib/admin-console';
+import { adminConnection, adminConsoleUrl } from '@/lib/admin-console';
 import type { NamedChapter } from '@/lib/chapter-label';
 import { isPodcastLibrary } from '@/lib/library-kind';
 import { percentHeard } from '@/lib/progress-view';
@@ -112,11 +112,11 @@ export function useReadySummary(connectionId: string): ReadySummary {
     libraries: libraries.data ? libs.map((l) => l.name) : undefined,
     books,
   });
-  const connection = useSession((s) => s.connections.find((c) => c.id === connectionId));
+  const adminOf = useSession((s) => adminConnection(s.connections, [connectionId]));
   const noLibraries = libraries.data?.length === 0;
   const admin =
-    line?.kind === 'empty' && connection?.user?.role === 'admin'
-      ? { url: adminConsoleUrl(connection.serverUrl, noLibraries ? 'setup' : ''), noLibraries }
+    line?.kind === 'empty' && adminOf
+      ? { url: adminConsoleUrl(adminOf.serverUrl, noLibraries ? 'setup' : ''), noLibraries }
       : null;
 
   return { line, failed: libraries.isError, books: recent.data, place, admin };

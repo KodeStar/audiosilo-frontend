@@ -2207,5 +2207,7 @@ under their empty state).
   player sits on its tab bar through a `100%` bottom offset, no measured height. The accessory renders
   nothing on tablet/desktop (iOS mounts both placements behind the hidden bar).
 - **Banners**: `OfflineBanner` takes the page's connection as a prop (each phone header its own
-  route's `?connection=`, the wide `WideTop` the focused page's) and selects only which message shows.
+  route's `?connection=`, the wide `WideTop` the focused page's) and selects only which servers are
+  down; the words are `offlineBannerText` (CONNECT-15): no network on the device says offline, else
+  the one server down by name (only the listening person's servers), else "some servers offline".
 

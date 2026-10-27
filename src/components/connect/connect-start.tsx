@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
 
@@ -114,6 +114,15 @@ export function ConnectStart() {
   // A pasted link for another server, on a server's own player (`onPasteLink`).
   const [foreignLink, setForeignLink] = useState<string | null>(null);
   const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
+  // `pair` also resolves false once the screen has gone: nothing after it may then touch
+  // the route now on top (its params) or the session (a probe's pending address).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // A pairing link's token: exchange it once (a language switch must not run it again).
   useEffect(() => {
@@ -136,7 +145,7 @@ export function ConnectStart() {
       ...(userId ? { userId } : {}),
       ...(linked ? { book: linked } : {}),
     }).then((ok) => {
-      if (ok) return;
+      if (ok || !mounted.current) return;
       // The dead token leaves the address, so a reload doesn't try it again (CONNECT-14).
       router.setParams({ token: undefined });
       // The served player shows its own server's card, with Sign in, as it does with no

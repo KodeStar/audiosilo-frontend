@@ -39,15 +39,26 @@ export default function ConnectRoute() {
   const [bounce] = useState(
     () => status === 'authenticated' && !add && !token && !pendingServerUrl,
   );
+  // A pairing link's flow stays one after its dead token leaves the address (CONNECT-14):
+  // the screen must not bounce home while it says why the link failed.
+  const [linked, setLinked] = useState(!!token);
+  if (token && !linked) setLinked(true);
   const shown = useRef(false);
   useFocusEffect(
     useCallback(() => {
       const s = useSession.getState();
-      if (shown.current && s.status === 'authenticated' && !add && !token && !s.pendingServerUrl) {
+      if (
+        shown.current &&
+        s.status === 'authenticated' &&
+        !add &&
+        !token &&
+        !linked &&
+        !s.pendingServerUrl
+      ) {
         leaveOnboarding();
       }
       shown.current = true;
-    }, [add, token]),
+    }, [add, token, linked]),
   );
   if (bounce) return <LeaveOnboarding />;
   return <ConnectStart />;
