@@ -29,7 +29,7 @@ export type { SchemePref };
  * src/global.css name; only the weights a token uses are imported, so only those are
  * bundled. These gate first paint (the splash stays up until they load).
  */
-const FONTS = {
+export const FONTS = {
   Figtree_400Regular,
   Figtree_500Medium,
   Figtree_600SemiBold,

@@ -32,6 +32,7 @@ import '@/lib/register-sw';
 // role-bearing pressables (tab, radio, switch...). All top-level imports evaluate before
 // the first render, so this patches RNW in time. No-op on native.
 import '@/lib/rnw-button-fix';
+import { StaticFonts } from '@/theme/static-fonts';
 import { ThemeProvider } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { startWidgetSync } from '@/widgets/widget-sync';
@@ -152,6 +153,8 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       {/* Web's static HTML: the tab's title before the app (below) hydrates. */}
       <StaticDocumentTitle />
+      {/* Web's static HTML: the fonts' @font-face rules and preloads. */}
+      <StaticFonts />
       <SafeAreaProvider>
         {/* The window's insets, for every overlay wherever it is opened from. */}
         <RootInsetsProvider>
