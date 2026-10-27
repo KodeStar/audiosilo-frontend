@@ -2,7 +2,7 @@ import { skipToken, useQueries, useQuery } from '@tanstack/react-query';
 
 import {
   allProgressQuery,
-  fetchLibraries,
+  librariesQuery,
   qk,
   useBook,
   useCapability,
@@ -55,10 +55,7 @@ export type ReadySummary = {
  */
 export function useReadySummary(connectionId: string): ReadySummary {
   const api = useOptionalApi(connectionId);
-  const libraries = useQuery({
-    queryKey: qk.libraries(connectionId),
-    queryFn: api ? () => fetchLibraries(connectionId, api) : skipToken,
-  });
+  const libraries = useQuery(librariesQuery(connectionId, api));
   const browse = useCapability('browse_people', connectionId);
   // Books only: a podcast library's shows are no books (BRIDGE-16).
   const libs = (libraries.data ?? []).filter((l) => !isPodcastLibrary(l));

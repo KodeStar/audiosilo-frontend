@@ -56,9 +56,29 @@ export async function probeArtwork(uri: string): Promise<ArtworkProbe | null> {
 /** Until when (epoch ms) a server's artwork is busy, by connection id. */
 const notBefore = new Map<string, number>();
 
+/** A server's probe on its way, by connection id: a row failing meanwhile waits for its
+ * answer before probing, so a burst of failures sends one probe while the server is busy. */
+const probing = new Map<string, Promise<unknown>>();
+
 /** Forget every server's busy window (tests). */
 export function resetArtworkBusy(): void {
   notBefore.clear();
+  probing.clear();
+}
+
+/** How long a busy answer (429 / 503 with a `Retry-After`) asks to wait, bounded; null
+ * for any other answer. */
+function busyAnswerMs(answer: ArtworkProbe | null): number | null {
+  if (!answer || !BUSY.has(answer.status) || answer.retryAfterSeconds === undefined) return null;
+  return Math.min(Math.max(answer.retryAfterSeconds * 1_000, 1_000), MAX_BUSY_WAIT_MS);
+}
+
+/** A busy wait when the server's busy window is open, else null. */
+function busyWait(key: string): ArtworkNextTry | null {
+  const until = notBefore.get(key) ?? 0;
+  if (until <= Date.now()) return null;
+  // Spread the rows that waited together, so they don't all ask again at once.
+  return { delay: until - Date.now() + Math.round(Math.random() * 1_000), busy: true };
 }
 
 /** The next try: how long to wait and whether it is a busy wait; null: stop trying. */
@@ -76,18 +96,23 @@ export async function nextArtworkTry(
   probe: (uri: string) => Promise<ArtworkProbe | null> = probeArtwork,
 ): Promise<ArtworkNextTry | null> {
   const canWait = busy < ARTWORK_BUSY_MAX_WAITS;
-  const until = notBefore.get(key) ?? 0;
-  if (canWait && until > Date.now()) {
-    // Spread the rows that waited together, so they don't all ask again at once.
-    return { delay: until - Date.now() + Math.round(Math.random() * 1_000), busy: true };
-  }
-  const answer = await probe(uri);
+  const waiting = probing.get(key);
+  if (canWait && waiting) await waiting.catch(() => undefined);
+  const wait = canWait ? busyWait(key) : null;
+  if (wait) return wait;
+  // The busy window opens before the rows waiting on this probe read it.
+  const asking = probe(uri).then((answer) => {
+    const ms = busyAnswerMs(answer);
+    if (ms !== null) notBefore.set(key, Date.now() + ms);
+    return answer;
+  });
+  probing.set(key, asking);
+  const answer = await asking.finally(() => {
+    if (probing.get(key) === asking) probing.delete(key);
+  });
   if (answer && GONE.has(answer.status)) return null;
-  if (canWait && answer && BUSY.has(answer.status) && answer.retryAfterSeconds !== undefined) {
-    const delay = Math.min(Math.max(answer.retryAfterSeconds * 1_000, 1_000), MAX_BUSY_WAIT_MS);
-    notBefore.set(key, Date.now() + delay);
-    return { delay, busy: true };
-  }
+  const ms = busyAnswerMs(answer);
+  if (canWait && ms !== null) return { delay: ms, busy: true };
   const delay = artworkRetryDelay(quiet + 1);
   return delay === null ? null : { delay, busy: false };
 }

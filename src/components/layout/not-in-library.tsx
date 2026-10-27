@@ -5,15 +5,9 @@ import { View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { backOrHome } from '@/lib/back-or-home';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
-
-/** Back where there is somewhere to go back to, else Home (a cold link). `dismissTo`, never
- * `replace`: `(app)` is the root stack's anchor and already sits under a modal. */
-export function backOrHome() {
-  if (router.canGoBack()) router.back();
-  else router.dismissTo('/');
-}
 
 /**
  * A page whose content isn't in the library (CONNECT-13, CONNECT-03): a link to a book or

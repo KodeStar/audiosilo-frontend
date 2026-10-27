@@ -61,8 +61,12 @@ export function CheckEpisodesButton({
 
   useEffect(() => {
     if (!running) return;
+    // A slow list read finishes rather than being restarted by the next tick.
     const readShows = () =>
-      void qc.invalidateQueries({ queryKey: qk.podcastShows(connectionId, libraryId) });
+      void qc.invalidateQueries(
+        { queryKey: qk.podcastShows(connectionId, libraryId) },
+        { cancelRefetch: false },
+      );
     const poll = setInterval(readShows, CHECK_POLL_MS);
     const giveUp = setTimeout(() => {
       setAsked(null);

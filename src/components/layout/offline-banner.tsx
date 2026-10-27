@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 
 import { useReachability } from '@/api/reachability';
 import { Icon } from '@/components/ui/icon';
@@ -53,19 +54,18 @@ export function offlineBannerText(
 export function OfflineBanner({ connectionId }: { connectionId?: string }) {
   const { t } = useTranslation();
   const deviceOnline = useDeviceOnline();
-  // The ids of the servers this bar is about that are down, one string so a re-render
-  // follows only a change in them.
-  const downIds = useReachability((s) =>
-    connectionId
-      ? s.online[connectionId] === false
-        ? connectionId
-        : ''
-      : Object.keys(s.online)
-          .filter((id) => s.online[id] === false)
-          .join('\n'),
+  // The ids of the servers this bar is about that are down, compared shallowly so a
+  // re-render follows only a change in them.
+  const ids = useReachability(
+    useShallow((s) =>
+      connectionId
+        ? s.online[connectionId] === false
+          ? [connectionId]
+          : []
+        : Object.keys(s.online).filter((id) => s.online[id] === false),
+    ),
   );
   const connections = useSession((s) => s.connections);
-  const ids = downIds ? downIds.split('\n') : [];
   const down = connections.filter((c) => ids.includes(c.id)).map((c) => c.name);
   // A scoped page's server this device has no name for still says it is offline.
   const label =

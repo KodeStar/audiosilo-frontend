@@ -27,7 +27,7 @@ import {
   parseInviteScan,
   parsePairingScan,
 } from '@/lib/pairing';
-import { firstParam, idParam, parseConnectBook } from '@/lib/paths';
+import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
 import { useProfileConnections } from '@/stores/profiles';
@@ -184,7 +184,7 @@ export function ConnectStart() {
       pathname: '/connect/sign-in',
       params: {
         serverName: name,
-        ...(returnBook ? { book: String(returnBook.libraryId), path: returnBook.path } : {}),
+        ...(returnBook ? connectBookParams(returnBook) : {}),
       },
     });
 

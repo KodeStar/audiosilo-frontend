@@ -200,11 +200,11 @@ function ImportProgress({
       </View>
       {rows.length > 0 ? (
         <View className="gap-2" accessibilityLabel={t('podcasts.import.rowsLabel')}>
-          {rows.map((row) => (
+          {rows.map((row, i) => (
             <ImportRow
               key={row.outline_index}
               row={row}
-              number={numbers.get(row.outline_index) ?? row.outline_index}
+              number={i + 1}
               duplicateOf={
                 row.duplicate_of === null
                   ? null

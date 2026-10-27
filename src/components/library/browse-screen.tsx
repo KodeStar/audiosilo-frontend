@@ -232,15 +232,16 @@ function BrowseContent() {
       ) : null}
 
       {isLoading ? <BrowseSkeleton /> : null}
-      {error && isNotInLibraryError(error) ? <NotInLibraryState kind="folder" /> : null}
-      {error && !isNotInLibraryError(error) ? (
+      {!error ? null : isNotInLibraryError(error) ? (
+        <NotInLibraryState kind="folder" />
+      ) : (
         <LoadFailedNote
           cid={cid}
           message={t('library.browse.openError')}
           onRetry={() => refetch()}
           className="mx-4 lg:mx-8"
         />
-      ) : null}
+      )}
 
       {!isLoading && !error ? (
         <View className="flex-1 flex-row">

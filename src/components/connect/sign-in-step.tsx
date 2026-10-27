@@ -78,6 +78,11 @@ export function SignInStep({
   const [error, setError] = useState<string | null>(null);
   // A field left empty says so under itself, and nothing is sent (CONNECT-09).
   const [missing, setMissing] = useState<Field | null>(null);
+  // Typing in a field clears its "enter your ..." prompt.
+  const edit = (field: Field, set: (v: string) => void) => (v: string) => {
+    set(v);
+    if (missing === field) setMissing(null);
+  };
   const api = useMemo(() => new ApiClient(server), [server]);
 
   const modes = MODE_VALUES.map((value) => ({
@@ -176,10 +181,7 @@ export function SignInStep({
             label={t('connect.signIn.codeLabel')}
             placeholder={t('connect.signIn.codePlaceholder')}
             value={code}
-            onChangeText={(v) => {
-              setCode(v);
-              if (missing === 'code') setMissing(null);
-            }}
+            onChangeText={edit('code', setCode)}
             error={missing === 'code' ? t('connect.signIn.errors.enterCode') : undefined}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -194,10 +196,7 @@ export function SignInStep({
             label={t('connect.signIn.usernameLabel')}
             placeholder={t('connect.signIn.usernamePlaceholder')}
             value={username}
-            onChangeText={(v) => {
-              setUsername(v);
-              if (missing === 'username') setMissing(null);
-            }}
+            onChangeText={edit('username', setUsername)}
             error={missing === 'username' ? t('connect.signIn.errors.enterUsername') : undefined}
             autoCapitalize="none"
             autoCorrect={false}
@@ -208,10 +207,7 @@ export function SignInStep({
             label={t('connect.signIn.passwordLabel')}
             placeholder={t('connect.signIn.passwordPlaceholder')}
             value={password}
-            onChangeText={(v) => {
-              setPassword(v);
-              if (missing === 'password') setMissing(null);
-            }}
+            onChangeText={edit('password', setPassword)}
             error={missing === 'password' ? t('connect.signIn.errors.enterPassword') : undefined}
             secureTextEntry
             autoComplete="current-password"

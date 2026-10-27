@@ -43,6 +43,15 @@ describe('nextArtworkTry (fe#126)', () => {
     expect(probe).toHaveBeenCalledTimes(1);
   });
 
+  it('sends one probe for a burst of failures while the server is busy', async () => {
+    const probe = answers({ status: 429, retryAfterSeconds: 10 });
+    const tries = await Promise.all(
+      [1, 2, 3].map((n) => nextArtworkTry('c1', `${URI}${n}`, 0, 0, probe)),
+    );
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(tries.every((next) => next?.busy)).toBe(true);
+  });
+
   it('bounds the wait between 1 s and a minute', async () => {
     const at = async (retryAfterSeconds: number) => {
       resetArtworkBusy();

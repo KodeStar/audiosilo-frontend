@@ -341,7 +341,7 @@ export function addressesQuery(cid: string, client: MaybeClient) {
 
 /** A server's libraries, their names kept on the device as they arrive (an offline book
  * page names its library: `useLibraryName`, PLAYER-09). Every read of `qk.libraries` asks
- * through this. */
+ * through `librariesQuery`. */
 export async function fetchLibraries(cid: string, client: ApiClient): Promise<Library[]> {
   const libraries = await client.libraries();
   rememberLibraryNames(cid, libraries);
@@ -790,7 +790,7 @@ function invalidateProgressDependents(
 export function useLibraries() {
   const api = useApi();
   const cid = useCid();
-  return useQuery({ queryKey: qk.libraries(cid), queryFn: () => fetchLibraries(cid, api) });
+  return useQuery(librariesQuery(cid, api));
 }
 
 /** Server page size for the folder browse view (the server caps a page at 500). */
@@ -2911,10 +2911,7 @@ export type LibrariesOfServer = {
 export function useLibrariesAll() {
   const apis = useApis();
   return useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.libraries(connection.id),
-      queryFn: () => fetchLibraries(connection.id, client),
-    })),
+    queries: apis.map(({ connection, client }) => librariesQuery(connection.id, client)),
     combine: (results) => {
       const groups = results.map((r, i): LibrariesOfServer => {
         const { id, name } = apis[i].connection;

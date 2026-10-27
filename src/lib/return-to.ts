@@ -2,7 +2,7 @@ import type { Href } from 'expo-router';
 import { Platform } from 'react-native';
 
 import { BASE_URL } from '@/lib/base-url';
-import { type ConnectBook, parseConnectBook } from '@/lib/paths';
+import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/paths';
 
 /**
  * The book page a web address names (`<base>/book/<library_id>?path=<rel_path>`), or null.
@@ -34,7 +34,5 @@ export function bookOfAddress(
 export function signedOutHref(): Href {
   const book =
     Platform.OS === 'web' && typeof window !== 'undefined' ? bookOfAddress(window.location) : null;
-  return book
-    ? { pathname: '/connect', params: { book: String(book.libraryId), path: book.path } }
-    : '/connect';
+  return book ? { pathname: '/connect', params: connectBookParams(book) } : '/connect';
 }

@@ -10,6 +10,7 @@ import {
   pickAddress,
   type ServerIdProbe,
 } from '@/lib/server-address';
+import { connectBookParams } from '@/lib/paths';
 import { isInProgress } from '@/lib/progress-view';
 import { isLoopbackHost, urlEndpoint } from '@/lib/url-host';
 
@@ -391,6 +392,6 @@ export function scanParams(scan: PairingScan): Record<string, string> {
     ...(scan.addresses?.away ? { away: scan.addresses.away } : {}),
     ...(scan.serverId ? { sid: scan.serverId } : {}),
     ...(scan.userId ? { uid: String(scan.userId) } : {}),
-    ...(scan.book ? { book: String(scan.book.libraryId), path: scan.book.path } : {}),
+    ...(scan.book ? connectBookParams(scan.book) : {}),
   };
 }

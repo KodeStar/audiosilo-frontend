@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
+import { shallow } from 'zustand/shallow';
 
 import { persistedDocument } from '@/lib/storage';
 import { isRecord } from '@/lib/storage-keys';
@@ -52,7 +53,7 @@ export const useLibraryNames = create<LibraryNamesState>()((set, get) => ({
     const next: Record<string, string> = {};
     for (const l of libraries) if (l.name) next[String(l.id)] = l.name;
     const cur = get().names[connectionId];
-    if (cur && sameNames(cur, next)) return;
+    if (cur && shallow(cur, next)) return;
     const names = { ...get().names, [connectionId]: next };
     set({ names });
     stored.write({ names }, { names });
@@ -65,11 +66,6 @@ export const useLibraryNames = create<LibraryNamesState>()((set, get) => ({
     stored.write({ names }, { names });
   },
 }));
-
-function sameNames(a: Record<string, string>, b: Record<string, string>): boolean {
-  const keys = Object.keys(a);
-  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
-}
 
 /** Keep a library list's names; never throws (a list read must not fail on it). */
 export function rememberLibraryNames(

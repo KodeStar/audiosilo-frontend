@@ -72,7 +72,8 @@ describe('CheckEpisodesButton', () => {
     expect(screen.getByRole('button', { busy: true })).toBe(button);
     // The show is read again while the check runs; the episodes are not yet.
     await act(async () => jest.advanceTimersByTime(CHECK_POLL_MS));
-    expect(invalidate).toHaveBeenCalledWith(showsKey(show));
+    // A slow list read is left to finish, not restarted by each tick.
+    expect(invalidate).toHaveBeenCalledWith(showsKey(show), { cancelRefetch: false });
     expect(invalidate).not.toHaveBeenCalledWith(episodesKey(show));
     // Still running at 10 s (where the old button went quiet).
     await act(async () => jest.advanceTimersByTime(10_000));
