@@ -121,8 +121,7 @@ export function syncPill(input: {
   if (!newest) return null;
   if (input.online[newest.connectionId] === false) return { kind: 'local' };
   const saved = Date.parse(newest.at);
-  const at =
-    fetchedAt > 0 && !(saved >= fetchedAt) ? new Date(fetchedAt).toISOString() : newest.at;
+  const at = fetchedAt > 0 && !(saved >= fetchedAt) ? new Date(fetchedAt).toISOString() : newest.at;
   return { kind: 'synced', at };
 }
 
