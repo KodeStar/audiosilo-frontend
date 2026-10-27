@@ -39,6 +39,7 @@ const list = (
   connectionId,
   connectionName,
   status,
+  paused: false,
   libraries: names.map((name, i) => ({
     id: i + 1,
     name,

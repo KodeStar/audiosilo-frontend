@@ -38,6 +38,8 @@ export const progressAt = (p: SourcedProgress): BookAt => ({
 
 /** One server's library list as Home reads it (`useLibrariesAll`'s groups). */
 type LibraryGroupLike = Pick<LibrariesOfServer, 'connectionId' | 'status'> & {
+  /** Absent: not paused. */
+  paused?: boolean;
   libraries: readonly Pick<Library, 'id' | 'kind'>[];
 };
 
@@ -48,7 +50,9 @@ type LibraryGroupLike = Pick<LibrariesOfServer, 'connectionId' | 'status'> & {
  * library's kind. While a server's list is loading its rows are not yet known to be
  * books (no `/next` is asked for an episode meanwhile): `pending` says so, so a shelf can
  * hold its place with a skeleton rather than vanish and come back. A server whose list
- * failed is read as books (an older server has no podcast libraries).
+ * failed is read as books (an older server has no podcast libraries), and so is one whose
+ * list waits for the network (`paused`: the device went offline before it answered),
+ * so Home shows what it has instead of skeletons for good (fe#155).
  */
 export function bookRowTest(groups: readonly LibraryGroupLike[]): {
   isBook: (at: BookAt) => boolean;
@@ -56,7 +60,10 @@ export function bookRowTest(groups: readonly LibraryGroupLike[]): {
 } {
   const podcasts = new Map<string, Set<number> | null>();
   for (const g of groups) {
-    podcasts.set(g.connectionId, g.status === 'loading' ? null : podcastLibraryIds(g.libraries));
+    podcasts.set(
+      g.connectionId,
+      g.status === 'loading' && !g.paused ? null : podcastLibraryIds(g.libraries),
+    );
   }
   return {
     isBook: (at) => {

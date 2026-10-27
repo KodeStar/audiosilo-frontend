@@ -2876,6 +2876,9 @@ export type LibrariesOfServer = {
   connectionName: string;
   libraries: SourcedLibrary[];
   status: 'loading' | 'ready' | 'error';
+  /** Still `loading`, but waiting for the network: the device went offline before this
+   * server's list answered (React Query pauses it), so it will not arrive meanwhile. */
+  paused: boolean;
 };
 
 /** Every connection's libraries: flattened (`libraries`) and per server, in connection
@@ -2899,6 +2902,7 @@ export function useLibrariesAll() {
             connectionName: name,
           })),
           status: r.data ? 'ready' : r.isError ? 'error' : 'loading',
+          paused: !r.data && r.fetchStatus === 'paused',
         };
       });
       return {

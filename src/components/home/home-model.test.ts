@@ -263,4 +263,12 @@ describe('bookRowTest', () => {
     expect(isBook(at('z', 1))).toBe(false);
     expect(pending(at('z', 1))).toBe(false);
   });
+
+  it('reads a server whose list waits for the network (offline) as books, never pending (fe#155)', () => {
+    const { isBook, pending } = bookRowTest([
+      { connectionId: 'b', libraries: [], status: 'loading', paused: true },
+    ]);
+    expect(isBook(at('b', 1))).toBe(true);
+    expect(pending(at('b', 1))).toBe(false);
+  });
 });
