@@ -20,7 +20,7 @@ import { usePageTitle } from '@/lib/use-page-title';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { CoverTile, useServerFlag } from '../cover-tile';
-import { tileCaption } from './book-items';
+import { BookTile } from './book-items';
 
 // How many recently added books to load per server (the Home shelf shows 15).
 const PAGE_LIMIT = 200;
@@ -99,15 +99,11 @@ export function SeeAllScreen() {
       data={recent.books}
       keyExtractor={(b: MergedBook) => contentKey(b.connectionId, b.library_id, b.rel_path)}
       renderItem={(b, tile) => (
-        <CoverTile
+        <BookTile
           connectionId={b.connectionId}
           libraryId={b.library_id}
-          path={b.rel_path}
-          title={bookTitle(b.title, b.rel_path)}
           book={b}
-          author={b.author}
-          caption={tileCaption(b, 'recent')}
-          coverVersion={b.cover_version}
+          sort="recent"
           server={serverOf(b.connectionId)}
           width={tile}
         />
