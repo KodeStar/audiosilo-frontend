@@ -42,6 +42,13 @@ can never log anyone out (`{ authReset, cacheReset }`):
   cache schema change: it wipes that cache (it re-downloads / re-syncs from the server)
   while keeping every login intact. A pre-existing install that predates this split adopts
   the cache version silently, without wiping its downloads.
+- **Startup cache (web)** (`src/api/startup-cache.ts`, `STARTUP_CACHE_KEY`): the last answers
+  of the queries the first screens paint from (`isStartupQuery`: `/server`, the libraries, the
+  whole-library list's first page, Home's shelves and cards) are kept in localStorage and put
+  back into the query cache, invalidated, before anything renders, so a reload paints at once
+  and every hook still asks its server on mount. One of the scoped keys (a reset wipes it);
+  a removed connection's entries go with it. A new first-screen query joins `isStartupQuery`
+  only if it is small; never keep a book's detail or anything per book. Native keeps none.
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,

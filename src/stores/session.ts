@@ -23,6 +23,7 @@ import {
   PROGRESS_QUEUE_KEY,
   READING_MIRROR_KEY,
   READING_QUEUE_KEY,
+  STARTUP_CACHE_KEY,
 } from '@/lib/storage-keys';
 
 // Multi-connection session: the app can be signed in to several servers at once.
@@ -71,6 +72,7 @@ const SCOPED_STORAGE_KEYS = [
   READING_MIRROR_KEY,
   READING_QUEUE_KEY,
   OFFLINE_SERVERS_KEY,
+  STARTUP_CACHE_KEY,
 ];
 
 /** Outcome of `resetStaleStorage`: the two axes reset independently. */

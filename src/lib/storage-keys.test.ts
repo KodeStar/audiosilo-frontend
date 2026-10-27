@@ -13,6 +13,7 @@ describe('storage keys', () => {
       READING_MIRROR_KEY: 'audiosilo.readingMirror',
       READING_QUEUE_KEY: 'audiosilo.readingQueue',
       OFFLINE_SERVERS_KEY: 'audiosilo.offlineServers',
+      STARTUP_CACHE_KEY: 'audiosilo.startupCache',
       CAR_BOOKMARKS_KEY: 'audiosilo.carBookmarks',
       CAR_SNAPSHOT_WRITTEN_KEY: 'audiosilo.carSnapshotWritten',
       LIBRARY_SELECTION_KEY: 'audiosilo.librarySelection',

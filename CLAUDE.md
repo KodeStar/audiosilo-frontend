@@ -143,6 +143,7 @@ keep this index in step (one line per topic).
 - **Architecture & conventions**
   - `AUTH_STORAGE_VERSION`
   - `CACHE_STORAGE_VERSION`
+  - Startup cache (web)
   - `mayActFor(cid)`
   - Routes carrying `?connection=`
   - Nobody chosen
