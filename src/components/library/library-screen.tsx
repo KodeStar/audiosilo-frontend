@@ -17,7 +17,6 @@ import {
 } from '@/components/layout/sign-in-again';
 import { PodcastShowsMode } from '@/components/podcasts/shows-mode';
 import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
-import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { useLayout } from '@/lib/layout';
 import { isPodcastLibrary } from '@/lib/library-kind';
@@ -40,6 +39,7 @@ import { CollectionsMode } from './modes/collections-mode';
 import { FoldersMode } from './modes/folders-mode';
 import { NarratorsMode } from './modes/narrators-mode';
 import { SeriesMode } from './modes/series-mode';
+import { NoLibrariesState } from './no-libraries-state';
 import { useSelectedLibrary } from './use-selected-library';
 
 const MODE_BODY: Record<
@@ -129,22 +129,7 @@ export function LibraryScreen() {
     }
     // Offline before a server listed its libraries: not "none shared", and no skeleton
     // that would never end. The lists arrive when the network does.
-    if (offline) {
-      return (
-        <EmptyState
-          icon="offline"
-          title={t('library.list.offlineTitle')}
-          hint={t('library.list.offlineHint')}
-        />
-      );
-    }
-    return (
-      <EmptyState
-        icon="library"
-        title={t('library.list.noLibraries')}
-        hint={t('library.list.noLibrariesHint')}
-      />
-    );
+    return <NoLibrariesState offline={offline} />;
   };
 
   return (

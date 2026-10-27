@@ -47,10 +47,8 @@ export function useSelectedLibrary() {
     library,
     groups,
     select,
-    // A list the device went offline waiting for (`paused`) will not arrive meanwhile:
-    // it is not loading, it is `offline` (a list already cached is `ready`).
-    isLoading: all.groups.some((g) => g.status === 'loading' && !g.paused),
-    offline: all.groups.some((g) => g.paused),
+    isLoading: all.isLoading,
+    offline: all.offline,
     retry: all.retry,
   };
 }

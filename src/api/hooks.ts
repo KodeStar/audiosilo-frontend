@@ -2925,7 +2925,10 @@ export function useLibrariesAll() {
       return {
         groups,
         libraries: groups.flatMap((g) => g.libraries),
+        // `isLoading` is false for a paused list: that one is `offline` instead (fe#155).
         isLoading: results.some((r) => r.isLoading),
+        /** A list waits for the network (the device went offline before it answered). */
+        offline: groups.some((g) => g.paused),
         error: results.find((r) => r.error)?.error ?? null,
         /** Ask again every server whose list failed. */
         retry: () => {

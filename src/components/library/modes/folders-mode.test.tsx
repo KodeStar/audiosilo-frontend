@@ -17,6 +17,7 @@ jest.mock('@/api/hooks', () => ({
     groups: mockLists,
     libraries: mockLists.flatMap((g) => g.libraries),
     isLoading: false,
+    offline: mockLists.some((g) => g.paused),
     retryServer: mockRetry,
   }),
 }));

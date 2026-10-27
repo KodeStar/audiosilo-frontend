@@ -136,6 +136,7 @@ describe('LibraryScreen', () => {
     mockLayout = 'phone';
     mockGroups = [group('a', [[1, 'Audiobooks']])];
     mockSelection = { connectionId: 'a', libraryId: 1 };
+    mockOffline = false;
     mockSetParams.mockReset();
   });
 
@@ -240,13 +241,9 @@ describe('LibraryScreen', () => {
     mockGroups = [];
     mockSelection = null;
     mockOffline = true;
-    try {
-      await render(<LibraryScreen />);
-      expect(screen.getByText("You're offline")).toBeTruthy();
-      expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
-    } finally {
-      mockOffline = false;
-    }
+    await render(<LibraryScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
   });
 
   // frontend#131: a server that did not answer has not said it shares nothing.

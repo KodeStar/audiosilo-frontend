@@ -9,7 +9,6 @@ import {
   useSignedOutConnections,
 } from '@/components/layout/sign-in-again';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
-import { EmptyState } from '@/components/ui/empty-state';
 import { Icon } from '@/components/ui/icon';
 import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
@@ -18,6 +17,7 @@ import { useOpen } from '@/lib/open';
 
 import { LoadError } from '../books/book-states';
 import { GlyphTile } from '../glyph-tile';
+import { NoLibrariesState } from '../no-libraries-state';
 // The quiet row's layout (the surface itself is PressableRow's).
 const ROW = 'my-1 w-full flex-row items-center gap-3 px-3 py-2.5';
 
@@ -53,7 +53,7 @@ function FavouritesShelfRow() {
  */
 export function FoldersMode() {
   const { t } = useTranslation();
-  const { libraries, groups: lists, isLoading, retryServer } = useLibrariesAll();
+  const { libraries, groups: lists, isLoading, offline, retryServer } = useLibrariesAll();
   const { openLibrary } = useOpen();
   // A server whose sign-in ended shows the sign-in state, not a load error or "no
   // libraries" (frontend#124); a list that failed otherwise says which server's it is,
@@ -63,7 +63,6 @@ export function FoldersMode() {
   const failed = (g: LibrariesOfServer) =>
     g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId);
   const error = lists.some(failed);
-  const offline = lists.some((g) => g.paused);
 
   // One group per server (in connection order) that has libraries or failed to list them,
   // each under its server's heading when there are several (a signed-out server's list
@@ -115,19 +114,7 @@ export function FoldersMode() {
       {/* A server that did not answer has not said it shares nothing (frontend#131), nor
           has one the device went offline waiting for (its list is paused). */}
       {libraries.length === 0 && !isLoading && !refused && !error ? (
-        offline ? (
-          <EmptyState
-            icon="offline"
-            title={t('library.list.offlineTitle')}
-            hint={t('library.list.offlineHint')}
-          />
-        ) : (
-          <EmptyState
-            icon="library"
-            title={t('library.list.noLibraries')}
-            hint={t('library.list.noLibrariesHint')}
-          />
-        )
+        <NoLibrariesState offline={offline} />
       ) : null}
     </TabPageScroll>
   );

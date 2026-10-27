@@ -64,6 +64,8 @@ it('marks a list that waits for the network (offline before it answered) as paus
         ['loading', true],
       ]),
     );
+    // Not loading (no skeleton for good): offline until the network is back.
+    expect(result.current).toMatchObject({ isLoading: false, offline: true });
     await act(async () => onlineManager.setOnline(true));
     await waitFor(() =>
       expect(result.current.groups.map((g) => [g.status, g.paused])).toEqual([
@@ -71,6 +73,7 @@ it('marks a list that waits for the network (offline before it answered) as paus
         ['ready', false],
       ]),
     );
+    expect(result.current).toMatchObject({ isLoading: false, offline: false });
   } finally {
     onlineManager.setOnline(true);
     qc.clear();
