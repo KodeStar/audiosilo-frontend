@@ -369,7 +369,8 @@ export type BookListQuery = {
   memberships?: boolean;
 };
 
-/** The timeout of a request that waits on the community metadata service. The server
+/** The timeout of a request that waits on the community metadata service (or indexes a
+ * book on demand: `item`). The server
  * can spend its whole metadata budget (15 s, meta's composeTimeout) before it answers
  * from local data or does more upstream work, so this is the server's own request
  * budget instead (30 s, api requestTimeout), by which it always answers (a 503 at
@@ -844,8 +845,15 @@ export class ApiClient {
       timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
+  /** A book's item. It gets the server's own request budget (30 s): an unscanned book
+   * folder (`pending_book`) is indexed on demand by this read, which for a large book
+   * takes longer than the default timeout (fe#154); an indexed book answers at once. */
   item(libraryId: number, path: string, signal?: AbortSignal) {
-    return this.request<Book>('GET', `/libraries/${libraryId}/item`, { query: { path }, signal });
+    return this.request<Book>('GET', `/libraries/${libraryId}/item`, {
+      query: { path },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
+    });
   }
   chapters(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<ChaptersResponse>('GET', `/libraries/${libraryId}/chapters`, {

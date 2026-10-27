@@ -100,7 +100,7 @@ function BrowseContent() {
 
   const [query, setQuery] = useState('');
 
-  // This screen unmounts on every navigation (see scroll-memory); restore the
+  // A folder reached again is often a fresh screen (see scroll-memory); restore the
   // last position ourselves. We remember the top visible row index rather than a
   // pixel offset, which is reliable on a virtualized list.
   const listRef = useRef<FlatList<Row>>(null);

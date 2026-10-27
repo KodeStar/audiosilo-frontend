@@ -5,10 +5,9 @@ import { onConnectionRemoved } from '@/stores/session';
  * In-memory, per-route scroll offsets so a list returns to where the user left
  * it when they navigate back to it.
  *
- * The browse view fully unmounts on every navigation - the (app) group renders a
- * single `<Slot/>` (not a kept-alive stack), and breadcrumbs/rows navigate with
- * `push`, which remounts the parent fresh - so React Navigation can't restore
- * scroll for us. We key the last offset by `(connectionId, libraryId, path)` (so two
+ * Going back up to a folder mounts a fresh browse screen: breadcrumbs and rows
+ * navigate with `push`, so a parent reached that way is a new screen instance, not the
+ * one kept in the stack, and React Navigation can't restore its scroll for us. We key the last offset by `(connectionId, libraryId, path)` (so two
  * servers with the same (libraryId, path) don't restore each other's offset) and
  * re-apply it on mount. Session-scoped: cleared on reload, never persisted.
  */
