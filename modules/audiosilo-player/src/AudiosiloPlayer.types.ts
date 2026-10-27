@@ -66,6 +66,10 @@ export type LoadedBook = BookRef & {
   position: number;
   rate: number;
   playing: boolean;
+  /** The book-relative paths of the files the service has loaded, in its file order:
+   * `trackIndex` counts in it (fe#134). Absent when the service could not tell (a queue whose
+   * ids it cannot read) and on iOS, and from binaries that predate it. */
+  files?: string[];
 };
 
 /** Android: a bookmark pressed while no JS was running. */

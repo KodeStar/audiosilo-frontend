@@ -365,15 +365,18 @@ class AudiosiloPlayerModule : Module() {
     val book = MediaItems.bookOf(c.currentMediaItem) ?: return null
     val (fileIndex, position) = timelineMap.itemToFile(c.currentMediaItemIndex, c.currentPosition)
     val ended = c.playbackState == Player.STATE_ENDED || c.playbackState == Player.STATE_IDLE
-    return mapOf(
-      "connectionId" to book.connectionId,
-      "libraryId" to book.libraryId.toDouble(),
-      "path" to book.path,
-      "trackIndex" to fileIndex,
-      "position" to position,
-      "rate" to c.playbackParameters.speed.toDouble(),
-      "playing" to (c.playWhenReady && !ended),
-    )
+    val files = LoadedFiles.of(c)
+    return buildMap {
+      put("connectionId", book.connectionId)
+      put("libraryId", book.libraryId.toDouble())
+      put("path", book.path)
+      put("trackIndex", fileIndex)
+      put("position", position)
+      put("rate", c.playbackParameters.speed.toDouble())
+      put("playing", c.playWhenReady && !ended)
+      // The files in the order the service plays them (fe#134); absent when unknown.
+      if (files != null) put("files", files)
+    }
   }
 
   /**
