@@ -102,22 +102,28 @@ export type SyncPill = { kind: 'local' } | { kind: 'synced'; at: string } | null
 /**
  * The greeting's sync pill, told as it is (STYLEGUIDE section 1.3): a save still waiting
  * in the offline queue, or the server holding the newest progress not answering, means
- * the place is only on this device; otherwise the newest progress any server holds is
- * when it last synced. Another server being down says nothing about where the place is
- * (its own pill names it). Nothing at all when there is no progress yet.
+ * the place is only on this device; otherwise this device synced when it last read that
+ * server's progress (`fetchedAt`), or when the newest save was made if that is later. The
+ * newest save alone would read "synced 24 minutes ago" on a device that signed in
+ * seconds ago (UPGRADE-05). Another server being down says nothing about where the place
+ * is (its own pill names it). Nothing at all when there is no progress yet.
  */
 export function syncPill(input: {
   online: Record<string, boolean>;
   pending: number;
   /** The newest saved progress: when, and on which connection. */
   newest: { at: string; connectionId: string } | undefined;
+  /** When this device last read the newest progress's server (epoch ms; 0 when unknown). */
+  fetchedAt?: number;
 }): SyncPill {
-  const { newest } = input;
+  const { newest, fetchedAt = 0 } = input;
   if (input.pending > 0) return { kind: 'local' };
   if (!newest) return null;
-  return input.online[newest.connectionId] === false
-    ? { kind: 'local' }
-    : { kind: 'synced', at: newest.at };
+  if (input.online[newest.connectionId] === false) return { kind: 'local' };
+  const saved = Date.parse(newest.at);
+  const at =
+    fetchedAt > 0 && !(saved >= fetchedAt) ? new Date(fetchedAt).toISOString() : newest.at;
+  return { kind: 'synced', at };
 }
 
 // --- Next in your series -----------------------------------------------------------
