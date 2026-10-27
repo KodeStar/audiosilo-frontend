@@ -28,7 +28,7 @@ function cacheDir(connectionId: string, libraryId: number, path: string): Direct
 }
 
 /** A book's EPUB as a local file. */
-export type LocalEbook = { uri: string; size: number; downloaded: boolean };
+export type LocalEbook = { uri: string; size: number };
 
 /** Whether a cached EPUB of `cached` bytes is the server's ebook of `wanted` bytes: a
  * changed size is a changed ebook (fetched again), and an empty file is never one. */
@@ -70,12 +70,12 @@ export async function localEbook({
   if (saved) {
     const file = new File(saved);
     const bytes = sizeOf(file);
-    if (bytes > 0) return { uri: file.uri, size: bytes, downloaded: true };
+    if (bytes > 0) return { uri: file.uri, size: bytes };
   }
 
   const dir = cacheDir(connectionId, libraryId, path);
   const file = new File(dir, FILE);
-  if (cacheUsable(sizeOf(file), size)) return { uri: file.uri, size, downloaded: false };
+  if (cacheUsable(sizeOf(file), size)) return { uri: file.uri, size };
 
   if (!dir.exists) dir.create({ intermediates: true });
   // Fetched beside it, then moved over it: a download cut short never leaves a file that
@@ -100,7 +100,7 @@ export async function localEbook({
   }
   if (file.exists) file.delete();
   await part.move(file);
-  return { uri: file.uri, size: got, downloaded: false };
+  return { uri: file.uri, size: got };
 }
 
 /** Reads a local EPUB's chunks as base64 (encoded natively, never in JS). */

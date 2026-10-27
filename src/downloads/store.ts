@@ -726,7 +726,7 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
       return { ...f, localUri: at(await playableName(i, name, at)) };
     }),
   );
-  const coverUri = e.manifest.coverUri ? at('cover.jpg') : e.manifest.coverUri;
+  const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
   const ebookUri = e.manifest.ebookUri ? at(EBOOK_FILE) : undefined;
   return { ...e, manifest: { ...e.manifest, files, coverUri, ebookUri } };
 }
@@ -758,9 +758,10 @@ async function playableName(
   return !(await engine.fileExists(from)) && (await engine.fileExists(at(want))) ? want : name;
 }
 
-/** A downloaded book's ebook, beside its audio (never an audio file's name: those are
- * `<index>[.ext]`). */
-export const EBOOK_FILE = 'book.epub';
+/** A downloaded book's cover and ebook, beside its audio (never an audio file's name:
+ * those are `<index>[.ext]`). */
+const COVER_FILE = 'cover.jpg';
+const EBOOK_FILE = 'book.epub';
 
 function isAbort(e: unknown): boolean {
   return e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message));
@@ -840,34 +841,15 @@ async function runOne(key: string) {
       ? specs.reduce((sum, s) => sum + s.size, 0)
       : 0;
 
-    let coverUri: string | null = null;
-    try {
-      coverUri = await engine.downloadFile(
-        connectionId,
-        libraryId,
-        path,
-        'cover.jpg',
-        api.coverUrl(libraryId, path),
-        undefined,
-        ctrl.signal,
-      );
-    } catch (e) {
-      if (isAbort(e)) throw e; // a cancel during cover download still cancels the book
-      // otherwise the cover is optional - carry on without it
-    }
-
-    // The book's ebook (Bridge Phase 3b-2), so the reader opens it offline: optional like
-    // the cover (a failure never fails the audio download), but a cancel cancels the book.
-    // Its route takes the Authorization header only, never `?token=`.
-    let ebookUri: string | undefined;
-    if (entry.manifest.book.ebook) {
+    // The book's extras beside its audio: optional (a failure never fails the audio
+    // download, the book carries on without it), but a cancel during one cancels the book.
+    const extra = async (name: string, url: string, headers?: Record<string, string>) => {
       try {
-        const { url, headers } = api.ebookRequest(libraryId, path);
-        ebookUri = await engine.downloadFile(
+        return await engine.downloadFile(
           connectionId,
           libraryId,
           path,
-          EBOOK_FILE,
+          name,
           url,
           undefined,
           ctrl.signal,
@@ -875,7 +857,16 @@ async function runOne(key: string) {
         );
       } catch (e) {
         if (isAbort(e)) throw e;
+        return undefined;
       }
+    };
+    const coverUri = (await extra(COVER_FILE, api.coverUrl(libraryId, path))) ?? null;
+    // The book's ebook (Bridge Phase 3b-2), so the reader opens it offline. Its route takes
+    // the Authorization header only, never `?token=`.
+    let ebookUri: string | undefined;
+    if (entry.manifest.book.ebook) {
+      const { url, headers } = api.ebookRequest(libraryId, path);
+      ebookUri = await extra(EBOOK_FILE, url, headers);
     }
 
     let priorBytes = 0;

@@ -1,4 +1,4 @@
-import type { HostMessage } from './protocol';
+import type { HostMessage, OpenFields } from './protocol';
 
 /**
  * The app's book transfer (Bridge Phase 3b-2): the reader WebView has no file or network
@@ -30,7 +30,7 @@ export type ChunkReader = (position: number, length: number) => Promise<string>;
  */
 export async function sendInChunks(
   size: number,
-  open: Omit<Extract<HostMessage, { type: 'open'; size: number }>, 'type' | 'size' | 'chunks'>,
+  open: OpenFields,
   read: ChunkReader,
   post: (message: HostMessage) => void,
   cancelled: () => boolean,

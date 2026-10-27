@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { engine } from '@/downloads/engine';
 import { downloadedEntryOf } from '@/downloads/store';
@@ -8,11 +8,11 @@ import { useLatestRef } from '@/lib/use-latest';
 import {
   acceptReaderMessage,
   createHostChannel,
-  type GotoTarget,
   type HostChannel,
   type HostMessage,
 } from './protocol';
 import { READER_START_MS, type ReaderHostProps, ReaderStartError } from './reader-host-types';
+import { useReaderControls } from './use-reader-controls';
 
 /** The reader document the web export serves beside the app (`public/reader.html`). */
 export const READER_URL = `${BASE_URL}/reader.html`;
@@ -56,15 +56,7 @@ export function ReaderHost({
   const channel = useRef<HostChannel | null>(null);
   const latest = useLatestRef({ api, at, theme, fontScale, name, onMessage, onLoadError });
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      goto: (target: GotoTarget) => channel.current?.send({ type: 'goto', ...target }),
-      next: () => channel.current?.send({ type: 'next' }),
-      prev: () => channel.current?.send({ type: 'prev' }),
-    }),
-    [],
-  );
+  useReaderControls(channel, ref, theme, fontScale);
 
   // One reader session per book: the channel, the window listener and the book's bytes. The
   // client is read when the bytes are fetched: a new one (a new token) keeps the session,
@@ -134,20 +126,6 @@ export function ReaderHost({
       channel.current = null;
     };
   }, [connectionId, libraryId, path, latest]);
-
-  // A theme or text size change after the book opened (by value: `open` carried the first).
-  const { scheme, background, foreground } = theme;
-  const appearanceSent = useRef(`${scheme}${background}${foreground}${fontScale}`);
-  useEffect(() => {
-    const key = `${scheme}${background}${foreground}${fontScale}`;
-    if (appearanceSent.current === key) return;
-    appearanceSent.current = key;
-    channel.current?.send({
-      type: 'appearance',
-      theme: { scheme, background, foreground },
-      fontScale,
-    });
-  }, [scheme, background, foreground, fontScale]);
 
   return (
     <iframe

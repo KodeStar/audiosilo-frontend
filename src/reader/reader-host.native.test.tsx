@@ -39,7 +39,6 @@ jest.mock('react-native-webview', () => {
 const mockLocalEbook = jest.fn(async (_a: unknown) => ({
   uri: 'file:///cache/book.epub',
   size: CHUNK_BYTES + 5,
-  downloaded: false,
 }));
 jest.mock('./ebook-file.native', () => ({
   localEbook: (a: unknown) => mockLocalEbook(a),

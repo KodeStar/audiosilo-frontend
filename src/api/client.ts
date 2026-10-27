@@ -1188,10 +1188,10 @@ export class ApiClient {
    * carries a credential), and the reader gets the bytes, never a token or an API URL.
    * 404: not a book, no ebook, or the file is gone; 403: outside the caller's access. */
   ebook(libraryId: number, path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
-    const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
+    const { url, headers } = this.ebookRequest(libraryId, path);
     return this.send(
       'GET',
-      this.apiUrl(`/libraries/${libraryId}/ebook`, { path }),
+      url,
       headers,
       { signal, timeoutMs: Math.max(this.timeoutMs, EBOOK_TIMEOUT_MS) },
       async (res, touch) => {

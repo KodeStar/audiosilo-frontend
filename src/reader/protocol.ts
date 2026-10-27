@@ -27,7 +27,8 @@ export type ReaderPlace = { cfi?: string; fraction?: number };
 
 export type GotoTarget = { href: string } | { cfi: string } | { fraction: number };
 
-type OpenFields = {
+/** What every `open` carries besides the book. */
+export type OpenFields = {
   /** The book's name, the title when the EPUB has none. */
   name: string;
   at?: ReaderPlace;

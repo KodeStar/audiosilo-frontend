@@ -118,7 +118,6 @@ describe('localEbook', () => {
     await expect(localEbook(args)).resolves.toEqual({
       uri: 'file:///docs/downloads/c1/2/b/book.epub',
       size: 1234,
-      downloaded: true,
     });
     expect(mockDownloaded).toHaveBeenCalledWith({
       connectionId: 'c1',
@@ -131,7 +130,7 @@ describe('localEbook', () => {
   it('fetches into the cache with the Authorization header (no token in the url)', async () => {
     const got = await localEbook(args);
     expect(got.uri).toMatch(CACHED);
-    expect(got).toMatchObject({ size: 1000, downloaded: false });
+    expect(got.size).toBe(1000);
     const [url, dest, opts] = mockDownload.mock.calls[0];
     expect(url).not.toMatch(/token=/);
     expect(dest).toMatch(/book\.epub\.part$/);

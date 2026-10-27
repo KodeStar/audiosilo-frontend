@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { useLatestRef } from '@/lib/use-latest';
@@ -7,7 +7,6 @@ import { sendInChunks } from './book-chunks';
 import { chunkReader, type LocalEbook, localEbook } from './ebook-file.native';
 import {
   createHostChannel,
-  type GotoTarget,
   type HostChannel,
   type HostMessage,
   parseReaderMessage,
@@ -16,6 +15,7 @@ import {
 } from './protocol';
 import { READER_START_MS, type ReaderHostProps, ReaderStartError } from './reader-host-types';
 import { READER_HTML } from './reader-html.native';
+import { useReaderControls } from './use-reader-controls';
 
 /**
  * The reader document's base URL: it gives the document an origin, without which foliate's
@@ -87,15 +87,7 @@ export function ReaderHost({
   // What the WebView's messages are handed to (this generation's session).
   const received = useRef<(message: ReaderMessage) => void>(() => {});
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      goto: (target: GotoTarget) => channel.current?.send({ type: 'goto', ...target }),
-      next: () => channel.current?.send({ type: 'next' }),
-      prev: () => channel.current?.send({ type: 'prev' }),
-    }),
-    [],
-  );
+  useReaderControls(channel, ref, theme, fontScale);
 
   // The book's file, fetched into the cache when it is not on the device: started at once,
   // while the WebView loads. A failure is said at once (null to whoever waits on it).
@@ -174,20 +166,6 @@ export function ReaderHost({
     };
   }, [libraryId, path, generation, latest]);
 
-  // A theme or text size change after the book opened (by value: `open` carried the first).
-  const { scheme, background, foreground } = theme;
-  const appearanceSent = useRef(`${scheme}${background}${foreground}${fontScale}`);
-  useEffect(() => {
-    const key = `${scheme}${background}${foreground}${fontScale}`;
-    if (appearanceSent.current === key) return;
-    appearanceSent.current = key;
-    channel.current?.send({
-      type: 'appearance',
-      theme: { scheme, background, foreground },
-      fontScale,
-    });
-  }, [scheme, background, foreground, fontScale]);
-
   // The content process died (iOS) or the renderer is gone (Android): a new WebView, up to
   // MAX_RELOADS times; then the reader says it could not start.
   const reloads = useRef(0);
@@ -227,7 +205,7 @@ export function ReaderHost({
       overScrollMode="never"
       webviewDebuggingEnabled={__DEV__}
       accessibilityLabel={title}
-      style={{ flex: 1, backgroundColor: background }}
+      style={{ flex: 1, backgroundColor: theme.background }}
     />
   );
 }
