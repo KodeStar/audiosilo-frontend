@@ -1678,10 +1678,18 @@ export function useRemoveFromQueue(connectionId?: string) {
 }
 
 /** Read the queue again after a remove. A read already in flight started before the
- * DELETE and could put the removed entry back: it is cancelled first (`storeAnswer`), so
- * only a read made after the remove lands (fe#155). */
+ * DELETE and could put the removed entry back, so only a read made after the remove lands
+ * (fe#155). Over a cached queue the read in flight is replaced by a new one
+ * (`cancelRefetch`), whose answer its caller then gets: a caller that asked for a fresh
+ * queue (`resolveUpNext` at the end of a book) is never handed the queue cached before its
+ * read, as a plain cancel would. With nothing cached it is cancelled (`storeAnswer`). */
 function rereadQueue(qc: QueryClient, cid: string): Promise<void> {
-  return storeAnswer(qc, qk.queue(cid), () => undefined);
+  const queryKey = qk.queue(cid);
+  const state = qc.getQueryState(queryKey);
+  if (state?.fetchStatus === 'fetching' && state.data !== undefined) {
+    return qc.invalidateQueries({ queryKey, exact: true, refetchType: 'all' });
+  }
+  return storeAnswer(qc, queryKey, () => undefined);
 }
 
 /** {@link useRemoveFromQueue} outside React (the end of a book, which may run with no
@@ -2909,7 +2917,9 @@ export function useLibrariesAll() {
             connectionName: name,
           })),
           status: r.data ? 'ready' : r.isError ? 'error' : 'loading',
-          paused: !r.data && r.fetchStatus === 'paused',
+          // `isPaused`, not `fetchStatus`: a prop read here is tracked, and fetchStatus would
+          // re-render every reader of the lists at each background refetch.
+          paused: !r.data && r.isPaused,
         };
       });
       return {

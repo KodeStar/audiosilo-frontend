@@ -194,6 +194,21 @@ describe('reading-progress', () => {
     expect(reachability.noteFailure).not.toHaveBeenCalled();
   });
 
+  it('queues a save the server says to try later (429 rate limit, 408), telling no one', async () => {
+    const heard: ReadingRefused[] = [];
+    const stop = onReadingRefused((r) => heard.push(r));
+    try {
+      for (const status of [429, 408]) {
+        const api = fakeApi(() => Promise.reject(new ApiError(status, 'later')));
+        await expect(saveReadingPlace(api, save({ path: `B/${status}` }))).resolves.toBeNull();
+      }
+      expect((await readQueue()).map((s) => s.path)).toEqual(['B/429', 'B/408']);
+      expect(heard).toEqual([]);
+    } finally {
+      stop();
+    }
+  });
+
   it('tells listeners a refused save, sent or replayed, and nothing else (CONNECT-04)', async () => {
     const heard: ReadingRefused[] = [];
     const stop = onReadingRefused((r) => heard.push(r));
@@ -428,6 +443,23 @@ describe('reading-progress', () => {
           { hasLocalCopy },
         ),
       ).resolves.toMatchObject({ place: { cfi: CFI_B }, fromServer: null });
+    });
+
+    it('opens at the start on a timeout once the server is found down: every request hangs', async () => {
+      // A home address away from home: the reachability check timed out too.
+      reachable.mockReturnValue(false);
+      const hasLocalCopy = jest.fn(async () => true);
+      await expect(
+        lookupReadingPlace(
+          fakeApi(undefined, () => Promise.reject(new TimeoutError(15000))),
+          'c1',
+          1,
+          'A/Book',
+          undefined,
+          { hasLocalCopy },
+        ),
+      ).resolves.toEqual({ place: null, fromServer: null });
+      expect(hasLocalCopy).toHaveBeenCalled();
     });
 
     it('still fails offline when the EPUB is not on this device (or the check fails)', async () => {

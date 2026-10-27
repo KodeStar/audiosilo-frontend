@@ -1,3 +1,5 @@
+import { FINISHED_TOLERANCE } from '@/playback/book-queue';
+
 import {
   currentSegment,
   nextSegmentStart,
@@ -78,7 +80,17 @@ describe('scrubTarget', () => {
     // From 300 s on, the 30 s guard.
     expect(scrubGuard(300)).toBe(30);
     expect(scrubGuard(240)).toBeCloseTo(24);
-    expect(scrubTarget(25, 25)).toBeCloseTo(22.5);
+  });
+
+  it('never lands a scrub where a save counts the book finished', () => {
+    // A tenth of a 25 s trailer (2.5 s) would be inside the last 5 s.
+    expect(scrubTarget(25, 25)).toBe(19);
+    expect(scrubTarget(50, 50)).toBe(44);
+    // Shorter than the guard itself: the start.
+    expect(scrubTarget(3, 3)).toBe(0);
+    for (const total of [6, 10, 25, 49, 50, 51, 59, 60, 61, 120, 299, 300, 4000]) {
+      expect(scrubTarget(total, total)).toBeLessThan(total - FINISHED_TOLERANCE);
+    }
   });
 
   it('ignores an unknown length', () => {

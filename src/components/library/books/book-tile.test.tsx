@@ -67,6 +67,18 @@ describe('BookTile caption (Recently added)', () => {
     expect(screen.getByTestId('caption')).toHaveTextContent('Author · 8 minutes ago');
   });
 
+  it('reads the minute afresh when the order turns to Recently added', async () => {
+    const tile = (sort: 'title' | 'recent') => (
+      <BookTile connectionId="c" libraryId={1} book={book} sort={sort} width={120} />
+    );
+    const { rerender } = await render(tile('title'));
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+    });
+    await rerender(tile('recent'));
+    expect(screen.getByTestId('caption')).toHaveTextContent('Author · 15 minutes ago');
+  });
+
   it('says only the author in another order', async () => {
     await render(<BookTile connectionId="c" libraryId={1} book={book} sort="title" width={120} />);
     expect(screen.getByTestId('caption')).toHaveTextContent('Author');

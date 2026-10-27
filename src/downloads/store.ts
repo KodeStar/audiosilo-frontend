@@ -851,6 +851,10 @@ async function runOne(key: string) {
   const patch = (p: Partial<DownloadEntry>) => {
     if (live()) patchEntry(key, p);
   };
+  // A stopped run's files go: whoever stopped it deleted the book, but a write can land after
+  // that delete (a transfer finishing, the EPUB's copy, which no signal stops). Awaited, so
+  // a new download of the book (it runs after this one) starts clean.
+  const dropFiles = () => engine.removeBook(connectionId, libraryId, path).catch(() => {});
   patch({ status: 'downloading', progress: 0, bytes: 0 });
   void persist();
 
@@ -977,6 +981,8 @@ async function runOne(key: string) {
       ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
     const bytes = priorBytes + ebookBytes;
+    // A book that carries on without its ebook (its fetch failed) holds only its audio.
+    const totalBytes = ebook && !ebookUri && knownTotal > 0 ? knownTotal - ebook.size : knownTotal;
 
     // With the server's chapters answer when one landed while the files did.
     const manifest = withCachedChapters(entry, {
@@ -987,8 +993,8 @@ async function runOne(key: string) {
       savedAt: new Date().toISOString(),
     });
 
-    // Stopped while its last file landed: whoever stopped it removed the book.
-    if (!live()) return;
+    // Stopped while its last file (or the EPUB's copy) landed.
+    if (!live()) return void (await dropFiles());
 
     // Don't claim "downloaded" unless the file can really be played back offline.
     // On web the bytes are cached but only playable once the service worker controls
@@ -1005,9 +1011,9 @@ async function runOne(key: string) {
       void persist();
       return;
     }
-    if (!live()) return;
+    if (!live()) return void (await dropFiles());
 
-    patchEntry(key, { status: 'downloaded', progress: 1, bytes, manifest });
+    patchEntry(key, { status: 'downloaded', progress: 1, bytes, totalBytes, manifest });
     void persist();
     seedQueryCache(connectionId, libraryId, path, manifest);
     // Keep its community metadata for offline use, after the download and apart from it:
@@ -1019,9 +1025,8 @@ async function runOne(key: string) {
     // "Software caused connection abort", which is a failure like any other.
     if (ctrl.signal.aborted) {
       // Whoever stopped it dropped the entry, and the book may be queued again already: only
-      // the files go, the transfer having been able to write after the canceller's delete.
-      // Awaited, so a new download of the book (it runs after this one) starts clean.
-      await engine.removeBook(connectionId, libraryId, path).catch(() => {});
+      // the files go.
+      await dropFiles();
     } else if (live()) {
       // Keep the files that finished: a retry skips them, so a failure 41% through a
       // multi-file book doesn't throw that 41% away. (The one being written is partial,

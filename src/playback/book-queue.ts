@@ -27,6 +27,12 @@ export type BookQueue = {
  * chapterless single-file book. Overridable per call (a user setting). */
 export const DEFAULT_VIRTUAL_CHAPTER_INTERVAL = 30 * 60;
 
+/** Treat within 5 s of the end as finished (also where the credits' Play now finishes the
+ * playing book rather than leaving it unfinished, and where a scrub never lands,
+ * `scrubGuard`). Here, framework-free, so the transport maths can read it; the player
+ * store re-exports it. */
+export const FINISHED_TOLERANCE = 5;
+
 /** One distinct audio file of a book, in play order. */
 export type FileSpec = { path: string; duration: number; size: number };
 

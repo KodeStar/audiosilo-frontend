@@ -32,6 +32,7 @@ import type { MergedBook } from '@/lib/dedup';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
+import { useMinuteClock } from '@/lib/use-now';
 import type { PlayerModule } from '@/modules/registry';
 import { flushQueue } from '@/playback/progress-sync';
 import { flushReadingQueue } from '@/reader/reading-progress';
@@ -321,23 +322,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
                 data={recentBooks}
                 keyExtractor={bookKey}
                 accessibilityLabel={t('home.recentlyAdded')}
-                renderItem={(b, width) => {
-                  const added = formatRelative(b.added_at);
-                  return (
-                    <CoverTile
-                      connectionId={b.connectionId}
-                      libraryId={b.library_id}
-                      path={b.rel_path}
-                      title={bookTitle(b.title, b.rel_path)}
-                      book={b}
-                      author={b.author}
-                      caption={added ? t('home.added', { when: added }) : b.author}
-                      coverVersion={b.cover_version}
-                      server={serverLabel(b.connectionId)}
-                      width={width}
-                    />
-                  );
-                }}
+                renderItem={(b, width) => (
+                  <AddedTile book={b} server={serverLabel(b.connectionId)} width={width} />
+                )}
               />
             ) : recent.isLoading ? (
               <ShelfSkeleton />
@@ -406,5 +393,36 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
         ) : null}
       </ScrollView>
     </View>
+  );
+}
+
+/** A Recently added tile: "Added 5 minutes ago", said in the current language and minute
+ * (the shelf's cells are memoized, so the words would otherwise keep their first render's,
+ * fe#162). */
+function AddedTile({
+  book: b,
+  server,
+  width,
+}: {
+  book: MergedBook;
+  server?: string;
+  width: number;
+}) {
+  const { t, i18n } = useTranslation();
+  const now = useMinuteClock();
+  const added = formatRelative(b.added_at, i18n.language || 'en', now);
+  return (
+    <CoverTile
+      connectionId={b.connectionId}
+      libraryId={b.library_id}
+      path={b.rel_path}
+      title={bookTitle(b.title, b.rel_path)}
+      book={b}
+      author={b.author}
+      caption={added ? t('home.added', { when: added }) : b.author}
+      coverVersion={b.cover_version}
+      server={server}
+      width={width}
+    />
   );
 }

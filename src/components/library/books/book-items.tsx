@@ -10,7 +10,7 @@ import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
-import { useNow } from '@/lib/use-now';
+import { useMinuteClock } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -39,15 +39,13 @@ export function tileCaption(
   return [b.author, extra].filter(Boolean).join(' · ');
 }
 
-/** How often a tile's "added 5 minutes ago" is said again. */
-const TILE_CLOCK_MS = 60_000;
-
 /** The language and minute a tile's caption is said in. A tile is memoized (the React
  * Compiler, FlashList's cells), so without these its "added" words would keep the
- * language and minute of its first render (fe#162). Ticks only for Recently added. */
+ * language and minute of its first render (fe#162). Ticks only for Recently added, on
+ * the clock every tile shares. */
 function useTileClock(sort: BooksSort | undefined) {
   const { i18n } = useTranslation();
-  const now = useNow(TILE_CLOCK_MS, sort === 'recent');
+  const now = useMinuteClock(sort === 'recent');
   return { locale: i18n.language || 'en', now };
 }
 

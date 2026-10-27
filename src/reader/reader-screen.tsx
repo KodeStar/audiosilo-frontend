@@ -21,6 +21,7 @@ import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
+import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
@@ -190,12 +191,16 @@ export function ReaderScreen({
   }, [flushSave]);
 
   // A save the server refused (the sign-in ended, the access went): the place is kept on
-  // this device only, and the reader says so until a save of the book goes through.
-  const [unsaved, setUnsaved] = useState(false);
+  // this device only, and the reader says so until a save of the book goes through. OK puts
+  // it away until then (each page's save is refused again meanwhile); the sign-in row stays
+  // while the sign-in has ended, Reconnect being the way out.
+  const [unsaved, setUnsaved] = useState<'shown' | 'dismissed' | null>(null);
   useEffect(
     () =>
       onReadingRefused((heard) => {
-        if (sameBook(heard, connectionId, libraryId, path)) setUnsaved(true);
+        if (sameBook(heard, connectionId, libraryId, path)) {
+          setUnsaved((was) => (was === 'dismissed' ? was : 'shown'));
+        }
       }),
     [connectionId, libraryId, path],
   );
@@ -209,7 +214,7 @@ export function ReaderScreen({
     () =>
       onReadingSaved((heard) => {
         if (!sameBook(heard, connectionId, libraryId, path)) return;
-        setUnsaved(false);
+        setUnsaved(null);
         setAnswer((prev) =>
           prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
             ? prev
@@ -314,6 +319,7 @@ export function ReaderScreen({
   // shown: answered with Jump or Stay, or already where the reader is.
   const here = show && current ? { cfi: current.cfi, progression: current.fraction } : null;
   const offer = answer && here ? jumpOffer(answer, here) : null;
+  const notSaved = show && (unsaved === 'shown' || (unsaved !== null && signedOut !== undefined));
   const acknowledge = useLatest(() => {
     if (answer) void adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress);
     setAnswer(null);
@@ -439,18 +445,26 @@ export function ReaderScreen({
               <Spinner size="large" />
             </View>
           ) : null}
-          {show && unsaved ? (
-            <NotSavedCard signedOut={signedOut} onDismiss={() => setUnsaved(false)} />
-          ) : null}
-          {offer ? (
-            <JumpOfferCard
-              offer={offer}
-              onJump={() => {
-                host.current?.goto({ cfi: offer.cfi });
-                acknowledge();
-              }}
-              onStay={acknowledge}
-            />
+          {notSaved || offer ? (
+            // One foot for both cards, stacked: a refusal can come while an offer waits.
+            <View
+              className="absolute bottom-4 left-4 right-4 items-center gap-2"
+              pointerEvents="box-none"
+            >
+              {notSaved ? (
+                <NotSavedCard signedOut={signedOut} onDismiss={() => setUnsaved('dismissed')} />
+              ) : null}
+              {offer ? (
+                <JumpOfferCard
+                  offer={offer}
+                  onJump={() => {
+                    host.current?.goto({ cfi: offer.cfi });
+                    acknowledge();
+                  }}
+                  onStay={acknowledge}
+                />
+              ) : null}
+            </View>
           ) : null}
         </View>
       </View>
@@ -653,7 +667,7 @@ function JumpOfferCard({
   );
 }
 
-/** A card at the foot of the page, over the book. */
+/** A card at the foot of the page, over the book (the screen stacks them there). */
 function FootCard({
   testID,
   role,
@@ -666,14 +680,15 @@ function FootCard({
   children: ReactNode;
 }) {
   return (
-    <View className="absolute bottom-4 left-4 right-4 items-center" pointerEvents="box-none">
-      <View
-        testID={testID}
-        role={role}
-        className={`w-full max-w-md rounded-2xl border border-border bg-popover px-4 py-3 ${className}`}
-      >
-        {children}
-      </View>
+    <View
+      testID={testID}
+      role={role}
+      className={cn(
+        'w-full max-w-md rounded-2xl border border-border bg-popover px-4 py-3',
+        className,
+      )}
+    >
+      {children}
     </View>
   );
 }

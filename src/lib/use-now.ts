@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
 /**
@@ -27,4 +27,54 @@ export function useNow(periodMs: number, enabled = true): number {
     };
   }, [periodMs, enabled]);
   return now;
+}
+
+/** The minute clock `useMinuteClock` shares: one interval and one AppState listener
+ * however many read it, running only while one does. */
+const MINUTE_MS = 60_000;
+const minute = { now: 0, readers: new Set<() => void>(), stop: null as (() => void) | null };
+
+function tickMinute() {
+  minute.now = Date.now();
+  for (const reader of minute.readers) reader();
+}
+
+function subscribeMinute(reader: () => void): () => void {
+  minute.readers.add(reader);
+  if (!minute.stop) {
+    const timer = setInterval(tickMinute, MINUTE_MS);
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') tickMinute();
+    });
+    minute.stop = () => {
+      clearInterval(timer);
+      appState?.remove();
+    };
+  }
+  return () => {
+    minute.readers.delete(reader);
+    if (minute.readers.size > 0) return;
+    minute.stop?.();
+    minute.stop = null;
+  };
+}
+
+const noSubscribe = () => () => {};
+
+/** The shared minute. While the clock stands still (nobody reads it) it is read afresh,
+ * so a reader never starts from the minute it stopped at; never twice within a second,
+ * so React reads the same value for one render. */
+function minuteNow(): number {
+  if (!minute.stop && Math.abs(Date.now() - minute.now) >= 1000) minute.now = Date.now();
+  return minute.now;
+}
+
+/**
+ * The time now, as epoch ms, to the minute: `useNow(60_000)` for a list of many readers
+ * (a grid of "added 5 minutes ago" captions), which share one clock, so they tick
+ * together and a reader that starts late (`enabled` turned on, a tile mounted later)
+ * reads the shared minute rather than the time it mounted at.
+ */
+export function useMinuteClock(enabled = true): number {
+  return useSyncExternalStore(enabled ? subscribeMinute : noSubscribe, minuteNow, minuteNow);
 }

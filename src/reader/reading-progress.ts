@@ -157,14 +157,15 @@ async function readMirror(
  * always fails it (the token is dead).
  *
  * Except offline with the book on this device (`hasLocalCopy`: its download or the app's
- * cache holds the EPUB): a request that never reached the server (not a timeout: a slow
- * server is up, and may hold a place further on) opens it at the start,
- * so a downloaded book reads offline the first time. No place was ever seen here, so the
- * session's saves carry `base_version: 0` (`captureReadingSave`), which the server takes as
- * diverged from any row, this device's own included (its id outlives its places here:
- * signed out and back in): it keeps a place further on and the answer offers Jump there
- * (`jumpOffer`). An answer from the server (an `ApiError`) still fails it: online, never a
- * guessed start. */
+ * cache holds the EPUB): a request that never reached the server opens it at the start,
+ * so a downloaded book reads offline the first time. A timed-out one opens it so only once
+ * the reachability check has found the server down too: a slow server is up, and may hold
+ * a place further on (fe#173), but one whose every request hangs (a home address away from
+ * home) is not. No place was ever seen here, so the session's saves carry
+ * `base_version: 0` (`captureReadingSave`), which the server takes as diverged from any
+ * row, this device's own included (its id outlives its places here: signed out and back
+ * in): it keeps a place further on and the answer offers Jump there (`jumpOffer`). An
+ * answer from the server (an `ApiError`) still fails it: online, never a guessed start. */
 export type ReadingPlaceLookup = {
   place: ReadingPlace | null;
   fromServer: ReadingProgress | null;
@@ -209,7 +210,9 @@ export async function lookupReadingPlace(
   }
   if (!best && unknown !== null) {
     const offline =
-      api !== null && !(unknown instanceof ApiError) && !(unknown instanceof TimeoutError);
+      api !== null &&
+      !(unknown instanceof ApiError) &&
+      !(unknown instanceof TimeoutError && isReachable(connectionId));
     if (!offline || !(await localCopy(hasLocalCopy))) throw unknown;
   }
   return {
@@ -318,8 +321,14 @@ export function onReadingRefused(listener: RefusedListener): () => void {
   };
 }
 
+/** A 4xx the save can never get past. Not a 408 or a 429 (the server's rate limit): those
+ * say "not now", so the save is queued for the replay like a failed request. */
 const isUnrecoverable = (e: unknown): e is ApiError =>
-  e instanceof ApiError && e.status >= 400 && e.status < 500;
+  e instanceof ApiError &&
+  e.status >= 400 &&
+  e.status < 500 &&
+  e.status !== 408 &&
+  e.status !== 429;
 
 /** A save dropped for `e` (`isUnrecoverable`), told to the listeners. */
 function refused(save: ReadingSave, e: ApiError): void {

@@ -17,6 +17,7 @@ import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
+import { useMinuteClock } from '@/lib/use-now';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { CoverTile, useServerFlag } from '../cover-tile';
@@ -134,7 +135,9 @@ function FinishedTile({
   server?: string;
   width: number;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Said in the current language and minute, as a book tile's "added" words (fe#162).
+  const now = useMinuteClock();
   const book = useProgressBook({
     connectionId: p.connectionId,
     libraryId: p.library_id,
@@ -150,7 +153,7 @@ function FinishedTile({
       author={book?.author}
       coverVersion={book?.cover_version}
       caption={t('library.books.finishedWhen', {
-        when: formatRelative(p.finished_at ?? p.updated_at),
+        when: formatRelative(p.finished_at ?? p.updated_at, i18n.language || 'en', now),
       })}
       finished
       server={server}

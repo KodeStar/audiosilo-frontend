@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { formatLongDate, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { useMinuteClock } from '@/lib/use-now';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { greetingPart, type SyncPill } from './home-model';
@@ -15,16 +16,6 @@ const GREETING = {
   afternoon: { plain: 'home.greeting.afternoon', named: 'home.greeting.afternoonNamed' },
   evening: { plain: 'home.greeting.evening', named: 'home.greeting.eveningNamed' },
 } as const;
-
-/** Re-render once a minute, so "synced 2 min ago" and the part of the day stay true. */
-function useMinuteClock(): Date {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
 
 /** One of the greeting's pills: never wider than its row, its text cut to fit (a long
  * server name on a phone). */
@@ -60,10 +51,12 @@ export function Greeting({
   /** The name of a server that is not answering. */
   down?: string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const themed = useThemeColors();
   const phone = useLayout() === 'phone';
-  const now = useMinuteClock();
+  // Once a minute, so "synced 2 min ago" and the part of the day stay true.
+  const minute = useMinuteClock();
+  const now = new Date(minute);
   const date = formatLongDate(now);
   const part = greetingPart(now.getHours());
   const greeting = name ? t(GREETING[part].named, { name }) : t(GREETING[part].plain);
@@ -73,7 +66,7 @@ export function Greeting({
       ? t('home.sync.local')
       : sync?.kind === 'synced'
         ? t(phone ? 'home.sync.syncedShort' : 'home.sync.synced', {
-            when: formatRelative(sync.at),
+            when: formatRelative(sync.at, i18n.language || 'en', minute),
           })
         : null;
   const serversText = down

@@ -684,6 +684,8 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
 
     expect(entry()?.status).toBe('downloaded');
     expect(entry()?.manifest.ebookUri).toBeUndefined();
+    // Its size on the device is the audio's, not the audio's and the missing ebook's.
+    expect(entry()?.totalBytes).toBe(100);
   });
 
   it('a cancel while the ebook downloads cancels the book', async () => {
@@ -802,6 +804,28 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
     expect(entry()?.manifest.ebookUri).toBe('live:c1:2:A/Book:book.epub');
     expect(entry()?.bytes).toBe(1000);
+  });
+
+  it("a cancel while the reader's copy is looked up drops the copy landing after it", async () => {
+    api();
+    mockEngine.copyFile = jest.fn(
+      async (_c: string, _l: number, _p: string, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    mockCachedEbook.mockImplementation(async () => {
+      useDownloads.getState().cancel('c1', 2, 'A/Book');
+      return 'cache:reader/book-1000.epub';
+    });
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    // The copy takes no signal: it lands after the cancel's delete, and goes with it.
+    const copiedAt = mockEngine.copyFile.mock.invocationCallOrder[0];
+    expect(mockEngine.removeBook).toHaveBeenCalledTimes(2);
+    expect(mockEngine.removeBook.mock.invocationCallOrder.at(-1)).toBeGreaterThan(copiedAt);
+    expect(entry()).toBeUndefined();
   });
 
   it('fetches the ebook when there is no cached copy, or copying it fails', async () => {

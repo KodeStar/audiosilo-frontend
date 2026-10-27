@@ -26,6 +26,7 @@ import {
   bookFileSpecs,
   buildBookQueue,
   chapterAt,
+  FINISHED_TOLERANCE,
   locate,
   toBookPosition,
   type BookQueue,
@@ -185,9 +186,8 @@ const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a 
 // by about the elapsed time still continues it). Changing the cadence means revisiting
 // those windows (CROSS-REPO.md section 20).
 const SAVE_INTERVAL_MS = 15_000;
-/** Treat within 5 s of the end as finished (also where the credits' Play now finishes the
- * playing book rather than leaving it unfinished). */
-export const FINISHED_TOLERANCE = 5;
+/** Treat within 5 s of the end as finished (defined beside the timeline maths). */
+export { FINISHED_TOLERANCE };
 const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect
 
 /** Lower the resume floor after a deliberate user seek/jump, so a legitimate backward
@@ -610,7 +610,13 @@ function endHistory({ keepalive = false }: { keepalive?: boolean } = {}) {
       },
       { keepalive },
     )
-    .then(() => queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) }))
+    .then(() => {
+      // Not for a span posted as the page hides or goes: nothing on screen shows it, and
+      // coming back reads every query again (`refreshAfterResume`), so a hidden tab that
+      // splits its span at each switch doesn't refetch the history each time.
+      if (!keepalive)
+        void queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) });
+    })
     .catch((err) => {
       noteFailure(np.connectionId, err); // a check, not a down mark, for one lost span
       console.warn('[history] failed to save listening span', err);

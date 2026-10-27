@@ -248,6 +248,39 @@ describe('ReaderScreen', () => {
       expect(screen.getByText('Reconnect')).toBeTruthy();
       expect(screen.queryByText('OK')).toBeNull();
     });
+
+    it('stays put away after OK while later saves are refused, until one goes through', async () => {
+      await mount();
+      await opened();
+      await refuse();
+      await fireEvent.press(screen.getByText('OK'));
+      await refuse();
+      expect(screen.queryByTestId('reader-not-saved')).toBeNull();
+      await answered(row({ device_id: 'dev', cfi: CFI_A, progression: 0.2 }), true);
+      await refuse();
+      expect(screen.getByTestId('reader-not-saved')).toBeTruthy();
+    });
+
+    it('shows the sign-in row after OK once the sign-in has ended', async () => {
+      await mount();
+      await opened();
+      await refuse();
+      await fireEvent.press(screen.getByText('OK'));
+      mockSignedOut = { id: 'c1', name: 'Home Library' };
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      expect(screen.getByText('Reconnect')).toBeTruthy();
+    });
+
+    it('stacks with an offer that waits, never over it', async () => {
+      await mount();
+      await opened();
+      await answered(row());
+      await refuse();
+      const notSaved = screen.getByTestId('reader-not-saved');
+      const offer = screen.getByTestId('reader-jump-offer');
+      expect(notSaved.parent).toBe(offer.parent);
+      expect(String(offer.parent?.props.className)).toContain('absolute');
+    });
   });
 
   describe('a sign-in that ended (CONNECT-04)', () => {

@@ -687,7 +687,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
   `base_version: 0`, which the server takes as diverged from any row, this device's own too
   (signed out and back in, its places here cleared): it keeps a place further on, and its
-  answer offers Jump. A server's answer (`ApiError`) still fails it.
+  answer offers Jump. A server's answer (`ApiError`) still fails it, and so does a timeout
+  while the reachability check still finds the server up (a slow server may hold a place
+  further on, fe#173); one whose check timed out too is down, and opens at the start.
   A 401 always fails it: a lookup that succeeded on local places would clear the reconnect
   flag the same request raised (`noteQuerySuccess`). It is asked whatever the browser's online
   flag says (`readingPlaceQuery`, `networkMode: 'always'`): held offline, it would leave the
@@ -2081,7 +2083,9 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   scrubbers share `scrub-parts.tsx` (hover, `Playhead`, `ScrubTip`) and one `usePlayingPins` call; the
   timeline merges chapters like the Now card's `scaleRuns` but places each run by time (`runBox`, the
   mapping the playhead, taps and pins use). A scrub never lands on the book's very end
-  (`scrubTarget`: 30 s short), which would finish the book and take the Undo chip with it.
+  (`scrubTarget`/`scrubGuard`: 30 s short, or a tenth of a book under 5 minutes, never inside
+  the last `FINISHED_TOLERANCE` seconds), which would finish the book and take the Undo chip
+  with it.
   The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
   a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
   (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover

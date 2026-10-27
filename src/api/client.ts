@@ -370,7 +370,7 @@ export type BookListQuery = {
 };
 
 /** The timeout of a request that waits on the community metadata service (or indexes a
- * book on demand: `item`). The server
+ * book on demand: `item`, `chapters`). The server
  * can spend its whole metadata budget (15 s, meta's composeTimeout) before it answers
  * from local data or does more upstream work, so this is the server's own request
  * budget instead (30 s, api requestTimeout), by which it always answers (a 503 at
@@ -855,10 +855,13 @@ export class ApiClient {
       timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
+  /** A book's chapters, with the same budget as `item`: the server indexes an unscanned
+   * book folder for this read too, and the player reads the two together (fe#154). */
   chapters(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<ChaptersResponse>('GET', `/libraries/${libraryId}/chapters`, {
       query: { path },
       signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
   /** Enriched metadata for a book (description, series rail, meta links) resolved

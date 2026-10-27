@@ -5,7 +5,7 @@
  */
 
 import { pathLeaf } from '@/lib/paths';
-import { toBookPosition } from '@/playback/book-queue';
+import { FINISHED_TOLERANCE, toBookPosition } from '@/playback/book-queue';
 
 /** The slice of the current chapter this needs (`Chapter` from the playback types). */
 type ChapterSpan = { book_offset: number; start: number; end: number };
@@ -55,11 +55,19 @@ export function currentSegment({
 export const SCRUB_END_GUARD_S = 30;
 const SCRUB_END_GUARD_SHARE = 0.1;
 
+/** The least a scrub lands short of the end: past the last `FINISHED_TOLERANCE` seconds,
+ * where a save would count the book finished. */
+const SCRUB_END_GUARD_MIN_S = FINISHED_TOLERANCE + 1;
+
 /** How far short of the end a scrub lands in a book `total` long: 30 s, which keeps the
  * 10 s Undo chip alive even at 2x, or a tenth of the book when that is less (30 s of a
- * one-minute book would leave half its bar dead, PLAYER-04). */
+ * one-minute book would leave half its bar dead, PLAYER-04), but never inside the
+ * finished window (a 25 s trailer scrubbed to its end would save as finished). */
 export function scrubGuard(total: number): number {
-  return Math.min(SCRUB_END_GUARD_S, total * SCRUB_END_GUARD_SHARE);
+  return Math.min(
+    SCRUB_END_GUARD_S,
+    Math.max(SCRUB_END_GUARD_MIN_S, total * SCRUB_END_GUARD_SHARE),
+  );
 }
 
 /**

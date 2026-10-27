@@ -2723,6 +2723,19 @@ describe('the listening span when the page goes or hides (web)', () => {
     expect(addHistory).not.toHaveBeenCalled();
   });
 
+  it('a span posted as the tab hides refreshes no history; one posted on a pause does', async () => {
+    await playing();
+    jest.advanceTimersByTime(30_000);
+    (queryClient.invalidateQueries as jest.Mock).mockClear();
+    flushHistoryOnHide(false);
+    await flushMicrotasks();
+    expect(invalidatedKeys()).not.toContainEqual(qk.historyAll('c1'));
+    jest.advanceTimersByTime(30_000);
+    pushSnapshot(snap('paused', 70));
+    await flushMicrotasks();
+    expect(invalidatedKeys()).toContainEqual(qk.historyAll('c1'));
+  });
+
   it('listens for pagehide and a hidden document, and stops listening', async () => {
     const win = new EventTarget();
     const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' }) as EventTarget & {
