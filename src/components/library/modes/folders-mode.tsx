@@ -114,7 +114,7 @@ export function FoldersMode() {
       {/* A server that did not answer has not said it shares nothing (frontend#131), nor
           has one the device went offline waiting for (its list is paused). */}
       {libraries.length === 0 && !isLoading && !refused && !error ? (
-        <NoLibrariesState offline={offline} />
+        <NoLibrariesState offline={offline} connectionIds={lists.map((g) => g.connectionId)} />
       ) : null}
     </TabPageScroll>
   );

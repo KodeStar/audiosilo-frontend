@@ -130,7 +130,9 @@ export function LibraryScreen() {
     }
     // Offline before a server listed its libraries: not "none shared", and no skeleton
     // that would never end. The lists arrive when the network does.
-    return <NoLibrariesState offline={offline} />;
+    return (
+      <NoLibrariesState offline={offline} connectionIds={groups.map((g) => g.connectionId)} />
+    );
   };
 
   return (

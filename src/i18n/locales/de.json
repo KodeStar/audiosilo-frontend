@@ -466,7 +466,11 @@
       "place": "Deine Stelle in {{title}} ist mitgekommen: {{percent}} % gehört.",
       "start": "Loslegen",
       "browse": "Bibliothek durchsuchen",
-      "placeTitled": "Deine Stelle in {{title}} ist mitgekommen: {{chapter}}, {{percent}} % gehört."
+      "placeTitled": "Deine Stelle in {{title}} ist mitgekommen: {{chapter}}, {{percent}} % gehört.",
+      "addLibrary": "Erste Bibliothek hinzufügen",
+      "openConsole": "Admin-Konsole öffnen",
+      "emptyAdminSetup": "{{name}} hat noch keine Bibliotheken. Füge deine erste in der Admin-Konsole hinzu: Wähle den Ordner mit deinen Büchern.",
+      "emptyAdmin": "{{name}} hat noch keine Bücher. Lege welche in den Ordner einer Bibliothek und scanne ihn dann in der Admin-Konsole."
     }
   },
   "home": {
@@ -767,7 +771,9 @@
       "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben.",
       "offlineTitle": "Du bist offline",
       "offlineHint": "Deine Bibliotheken erscheinen, sobald ein Server antwortet. Heruntergeladene Bücher findest du unter Downloads.",
-      "viewLabel": "Bücherliste"
+      "viewLabel": "Bücherliste",
+      "noLibrariesAdmin": "Noch keine Bibliotheken",
+      "noLibrariesAdminHint": "Füge in der Admin-Konsole von {{name}} deine erste Bibliothek hinzu: Wähle den Ordner mit deinen Büchern."
     },
     "favourites": {
       "title": "Favoriten",

@@ -466,7 +466,11 @@
       "place": "Your place in {{title}} came with you: {{percent}}% in.",
       "start": "Start listening",
       "browse": "Browse the library",
-      "placeTitled": "Your place in {{title}} came with you: {{chapter}}, {{percent}}% in."
+      "placeTitled": "Your place in {{title}} came with you: {{chapter}}, {{percent}}% in.",
+      "addLibrary": "Add your first library",
+      "openConsole": "Open the admin console",
+      "emptyAdminSetup": "{{name}} has no libraries yet. Add your first one in the admin console: pick the folder that holds your books.",
+      "emptyAdmin": "{{name}} has no books yet. Put some in a library's folder, then scan it from the admin console."
     }
   },
   "home": {
@@ -767,7 +771,9 @@
       "noLibrariesHint": "Ask the server owner to share one with you.",
       "offlineTitle": "You're offline",
       "offlineHint": "Your libraries show once a server answers. Books you've downloaded are in Downloads.",
-      "viewLabel": "Book list"
+      "viewLabel": "Book list",
+      "noLibrariesAdmin": "No libraries yet",
+      "noLibrariesAdminHint": "Add your first library in the admin console of {{name}}: pick the folder that holds your books."
     },
     "favourites": {
       "title": "Favourites",

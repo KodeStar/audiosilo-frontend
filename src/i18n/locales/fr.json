@@ -466,7 +466,11 @@
       "place": "Votre position dans {{title}} vous a suivi : {{percent}} % écouté.",
       "start": "Commencer l'écoute",
       "browse": "Parcourir la bibliothèque",
-      "placeTitled": "Votre position dans {{title}} vous a suivi : {{chapter}}, {{percent}} % écouté."
+      "placeTitled": "Votre position dans {{title}} vous a suivi : {{chapter}}, {{percent}} % écouté.",
+      "addLibrary": "Ajouter votre première bibliothèque",
+      "openConsole": "Ouvrir la console d'administration",
+      "emptyAdminSetup": "{{name}} n'a pas encore de bibliothèque. Ajoutez la première dans la console d'administration : choisissez le dossier qui contient vos livres.",
+      "emptyAdmin": "{{name}} n'a pas encore de livres. Placez-en dans le dossier d'une bibliothèque, puis analysez-le depuis la console d'administration."
     }
   },
   "home": {
@@ -767,7 +771,9 @@
       "noLibrariesHint": "Demandez au propriétaire du serveur de vous en partager une.",
       "offlineTitle": "Vous êtes hors ligne",
       "offlineHint": "Vos bibliothèques s'affichent dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements.",
-      "viewLabel": "Liste de livres"
+      "viewLabel": "Liste de livres",
+      "noLibrariesAdmin": "Aucune bibliothèque pour l'instant",
+      "noLibrariesAdminHint": "Ajoutez votre première bibliothèque dans la console d'administration de {{name}} : choisissez le dossier qui contient vos livres."
     },
     "favourites": {
       "title": "Favoris",

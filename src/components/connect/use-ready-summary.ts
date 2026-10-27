@@ -6,8 +6,11 @@ import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { useResumePosition } from '@/components/player/use-listening-position';
 import { useChapterAt } from '@/components/series/use-resume-chapter';
+import { adminConsoleUrl } from '@/lib/admin-console';
 import type { NamedChapter } from '@/lib/chapter-label';
+import { isPodcastLibrary } from '@/lib/library-kind';
 import { percentHeard } from '@/lib/progress-view';
+import { useSession } from '@/stores/session';
 
 import { bookTotal, latestPlace, readyLine, type ReadyLine } from './connect-model';
 
@@ -32,6 +35,9 @@ export type ReadySummary = {
   books: readonly Book[] | undefined;
   /** "Your place in <book> came with you", when the listener has one. */
   place: ReadyPlace | null;
+  /** The server has nothing to play and the person signed in is its admin: the console
+   * page that fixes it (its setup flow when there is no library yet, CONNECT-02). */
+  admin: { url: string; noLibraries: boolean } | null;
 };
 
 /**
@@ -47,7 +53,8 @@ export function useReadySummary(connectionId: string): ReadySummary {
     queryFn: api ? () => api.libraries() : skipToken,
   });
   const browse = useCapability('browse_people', connectionId);
-  const libs = libraries.data ?? [];
+  // Books only: a podcast library's shows are no books (BRIDGE-16).
+  const libs = (libraries.data ?? []).filter((l) => !isPodcastLibrary(l));
   const lists = useQueries({
     queries: libs.map((l) => ({
       queryKey: qk.authors(connectionId, l.id),
@@ -97,13 +104,16 @@ export function useReadySummary(connectionId: string): ReadySummary {
         }
       : null;
 
-  return {
-    line: readyLine({
-      libraries: libraries.data?.map((l) => l.name),
-      books,
-    }),
-    failed: libraries.isError,
-    books: recent.data,
-    place,
-  };
+  const line = readyLine({
+    libraries: libraries.data ? libs.map((l) => l.name) : undefined,
+    books,
+  });
+  const connection = useSession((s) => s.connections.find((c) => c.id === connectionId));
+  const noLibraries = libraries.data?.length === 0;
+  const admin =
+    line?.kind === 'empty' && connection?.user?.role === 'admin'
+      ? { url: adminConsoleUrl(connection.serverUrl, noLibraries ? 'setup' : ''), noLibraries }
+      : null;
+
+  return { line, failed: libraries.isError, books: recent.data, place, admin };
 }

@@ -26,6 +26,8 @@ jest.mock('@/components/player/use-play-book', () => ({
 }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
+const mockOpenUrl = jest.fn(async (_u: string) => {});
+jest.mock('@/lib/support', () => ({ openExternalUrl: (u: string) => mockOpenUrl(u) }));
 let mockSummary: ReadySummary;
 jest.mock('./use-ready-summary', () => ({ useReadySummary: () => mockSummary }));
 
@@ -47,6 +49,7 @@ beforeEach(() => {
       chapter: { number: 23, title: 'Chapter 23' },
       percent: 38,
     },
+    admin: null,
   };
 });
 
@@ -86,14 +89,47 @@ it('a place in a book without chapters gives the percent alone', async () => {
   expect(screen.getByText(/Your place in Dune came with you: 5% in\./)).toBeTruthy();
 });
 
-it('an empty server says so, with ghost spines', async () => {
-  mockSummary = { line: { kind: 'empty' }, failed: false, books: [], place: null };
+it('an empty server says so, with ghost spines, and offers nothing to start', async () => {
+  mockSummary = { line: { kind: 'empty' }, failed: false, books: [], place: null, admin: null };
   await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
   expect(screen.getByText(/Hearthside has no books yet/)).toBeTruthy();
+  expect(screen.queryByText('Start listening')).toBeNull();
+  expect(screen.queryByText('Add your first library')).toBeNull();
+  expect(screen.getByText('Browse the library')).toBeTruthy();
+});
+
+// CONNECT-02: the admin signing in on a fresh server is the one who adds the library.
+it("an admin on a server with no library is sent to the console's setup", async () => {
+  mockSummary = {
+    line: { kind: 'empty' },
+    failed: false,
+    books: [],
+    place: null,
+    admin: { url: 'https://h/admin/setup', noLibraries: true },
+  };
+  await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
+  expect(screen.getByText(/Hearthside has no libraries yet\. Add your first one/)).toBeTruthy();
+  expect(screen.queryByText(/once your admin adds some/)).toBeNull();
+  expect(screen.queryByText('Start listening')).toBeNull();
+  await fireEvent.press(screen.getByText('Add your first library'));
+  expect(mockOpenUrl).toHaveBeenCalledWith('https://h/admin/setup');
+});
+
+it('an admin on a server with libraries but no books is sent to the console', async () => {
+  mockSummary = {
+    line: { kind: 'empty' },
+    failed: false,
+    books: [],
+    place: null,
+    admin: { url: 'https://h/admin', noLibraries: false },
+  };
+  await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
+  expect(screen.getByText(/scan it from the admin console/)).toBeTruthy();
+  expect(screen.getByText('Open the admin console')).toBeTruthy();
 });
 
 it('libraries it could not read: says so, and still lets the listener in', async () => {
-  mockSummary = { line: null, failed: true, books: undefined, place: null };
+  mockSummary = { line: null, failed: true, books: undefined, place: null, admin: null };
   await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
   expect(screen.getByText(/couldn't be read just now/)).toBeTruthy();
   expect(screen.getByText('Start listening')).toBeTruthy();

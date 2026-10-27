@@ -466,7 +466,11 @@
       "place": "Tu punto en {{title}} viene contigo: {{percent}} % escuchado.",
       "start": "Empezar a escuchar",
       "browse": "Explorar la biblioteca",
-      "placeTitled": "Tu punto en {{title}} viene contigo: {{chapter}}, {{percent}} % escuchado."
+      "placeTitled": "Tu punto en {{title}} viene contigo: {{chapter}}, {{percent}} % escuchado.",
+      "addLibrary": "Añadir tu primera biblioteca",
+      "openConsole": "Abrir la consola de administración",
+      "emptyAdminSetup": "{{name}} aún no tiene bibliotecas. Añade la primera en la consola de administración: elige la carpeta que guarda tus libros.",
+      "emptyAdmin": "{{name}} aún no tiene libros. Pon algunos en la carpeta de una biblioteca y escanéala desde la consola de administración."
     }
   },
   "home": {
@@ -767,7 +771,9 @@
       "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo.",
       "offlineTitle": "Estás sin conexión",
       "offlineHint": "Tus bibliotecas aparecen en cuanto responda un servidor. Los libros descargados están en Descargas.",
-      "viewLabel": "Lista de libros"
+      "viewLabel": "Lista de libros",
+      "noLibrariesAdmin": "Aún no hay bibliotecas",
+      "noLibrariesAdminHint": "Añade tu primera biblioteca en la consola de administración de {{name}}: elige la carpeta que guarda tus libros."
     },
     "favourites": {
       "title": "Favoritos",
