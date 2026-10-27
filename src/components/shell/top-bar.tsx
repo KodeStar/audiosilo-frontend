@@ -1,4 +1,5 @@
 import { usePathname } from 'expo-router';
+import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
@@ -11,6 +12,7 @@ import { Icon } from '@/components/ui/icon';
 import { Kbd } from '@/components/ui/kbd';
 import { Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { openSettings } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -25,7 +27,7 @@ import { usePalette } from './palette-store';
 import { ProfileMenu } from './profile-menu';
 
 /** "Hearthside", "Hearthside + 1 more", the default server's trouble (`serverStatus`:
- * it needs signing in again, or it is unreachable), or the name of another server that
+ * it needs signing in again, or it is unreachable, with its name), or the name of another server that
  * is not answering (`down`: never a green "+ 1 more" over a server that is down;
  * frontend#131). Pure, so the top bar's server line is tested without a store. */
 export function serverLine(
@@ -33,7 +35,7 @@ export function serverLine(
   defaultId: string | null,
   online: Record<string, boolean>,
 ):
-  | { kind: 'offline' }
+  | { kind: 'offline'; name: string }
   | { kind: 'reconnect' }
   | { kind: 'server'; name: string; more: number }
   | { kind: 'down'; name: string }
@@ -41,10 +43,33 @@ export function serverLine(
   const def = connections.find((c) => c.id === defaultId) ?? connections[0];
   if (!def) return { kind: 'none' };
   const status = serverStatus(def, online);
-  if (status === 'offline' || status === 'reconnect') return { kind: status };
+  if (status === 'offline') return { kind: 'offline', name: def.name };
+  if (status === 'reconnect') return { kind: 'reconnect' };
   const down = firstOffline(connections, online);
   if (down) return { kind: 'down', name: down.name };
   return { kind: 'server', name: def.name, more: connections.length - 1 };
+}
+
+/** The server line in words. With a network on the device, a default server that is down
+ * is named ("Hearthside isn't answering"); without one, the device is offline
+ * (CONNECT-15). */
+export function serverLineLabel(
+  line: Exclude<ReturnType<typeof serverLine>, { kind: 'none' }>,
+  deviceOnline: boolean,
+  t: TFunction,
+): string {
+  switch (line.kind) {
+    case 'offline':
+      return deviceOnline ? t('shell.notAnswering', { name: line.name }) : t('shell.offline');
+    case 'reconnect':
+      return t('shell.profile.reconnect');
+    case 'down':
+      return t('shell.notAnswering', { name: line.name });
+    case 'server':
+      return line.more > 0
+        ? t('shell.serverMore', { name: line.name, count: line.more })
+        : line.name;
+  }
 }
 
 function ServerLine() {
@@ -53,18 +78,10 @@ function ServerLine() {
   const connections = useProfileConnections();
   const defaultId = useSession((s) => s.defaultConnectionId);
   const online = useReachability((s) => s.online);
+  const deviceOnline = useDeviceOnline();
   const line = serverLine(connections, defaultId, online);
   if (line.kind === 'none') return null;
-  const label =
-    line.kind === 'offline'
-      ? t('shell.offline')
-      : line.kind === 'reconnect'
-        ? t('shell.profile.reconnect')
-        : line.kind === 'down'
-          ? t('shell.notAnswering', { name: line.name })
-          : line.more > 0
-            ? t('shell.serverMore', { name: line.name, count: line.more })
-            : line.name;
+  const label = serverLineLabel(line, deviceOnline, t);
   return (
     <View className="flex-row items-center gap-1.5">
       <View

@@ -1130,7 +1130,9 @@
     "booksFailed": "Deine Server haben auf diese Suche nicht geantwortet.",
     "booksPartial": "Einige Server haben nicht geantwortet, daher fehlen eventuell ihre Bücher.",
     "peopleFailed": "Autoren, Sprecher und Reihen konnten gerade nicht durchsucht werden.",
-    "charactersFailed": "Figuren konnten gerade nicht geprüft werden."
+    "charactersFailed": "Figuren konnten gerade nicht geprüft werden.",
+    "notAnswering_one": "Nicht durchsucht: {{servers}} antwortet nicht.",
+    "notAnswering_other": "Nicht durchsucht: {{servers}} antworten nicht."
   },
   "book": {
     "loadError": "Dieses Buch konnte nicht geladen werden.",

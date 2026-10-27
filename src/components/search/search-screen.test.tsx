@@ -72,7 +72,11 @@ let mockResults: Results = empty();
 const mockUseSearch = jest.fn((_q: string) => mockResults);
 jest.mock('./use-search', () => ({ useSearch: (q: string) => mockUseSearch(q) }));
 
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+
 /* eslint-disable import/first */
+import { useReachability } from '@/api/reachability';
 import { useRecentSearches, useSearchStore } from '@/stores/search';
 import { useSession } from '@/stores/session';
 
@@ -94,6 +98,8 @@ beforeEach(() => {
   useSearchStore.setState({ query: '' });
   useRecentSearches.setState({ recent: [] });
   useSession.setState({ defaultConnectionId: 'a' });
+  useReachability.setState({ online: {} });
+  mockDeviceOnline = true;
 });
 afterEach(() => jest.useRealTimers());
 
@@ -257,5 +263,34 @@ describe('SearchScreen, results', () => {
     expect(screen.getByText("Characters couldn't be checked just now.")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(retry).toHaveBeenCalled();
+  });
+
+  // CONNECT-15: a server that isn't answering is named, and the heading counts only the
+  // servers searched.
+  describe('with one server not answering', () => {
+    const results = () => ({
+      ...empty(),
+      authors: [{ name: 'Jim Butcher', books: 7, duration: 1, source, also: [] }],
+      total: 1,
+    });
+
+    it('names it, and leaves it out of the heading', async () => {
+      useReachability.setState({ online: { b: false } });
+      mockResults = results();
+      await render(<SearchScreen />);
+      await type('jim');
+      expect(screen.getByText('1 result for "jim"')).toBeTruthy();
+      expect(screen.queryByText(/across/)).toBeNull();
+      expect(screen.getByText("Not searched: Maya's Shelf isn't answering.")).toBeTruthy();
+    });
+
+    it('says offline when the device has no network', async () => {
+      mockDeviceOnline = false;
+      useReachability.setState({ online: { b: false } });
+      mockResults = results();
+      await render(<SearchScreen />);
+      await type('jim');
+      expect(screen.getByText("Offline, so not searched: Maya's Shelf")).toBeTruthy();
+    });
   });
 });

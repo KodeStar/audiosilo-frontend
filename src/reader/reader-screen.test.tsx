@@ -470,7 +470,7 @@ describe('ReaderScreen', () => {
   it('says the book is gone when the server has no ebook for it', async () => {
     mockBook = query(undefined, new ApiError(404, 'not found'));
     await mount();
-    expect(await screen.findByText("The ebook isn't on the server any more")).toBeTruthy();
+    expect(await screen.findByText("This ebook isn't in the library")).toBeTruthy();
   });
 
   it('says the reader did not start, with Try again', async () => {

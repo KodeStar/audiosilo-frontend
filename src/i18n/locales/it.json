@@ -1130,7 +1130,9 @@
     "booksFailed": "I tuoi server non hanno risposto a questa ricerca.",
     "booksPartial": "Alcuni server non hanno risposto, quindi i loro libri potrebbero mancare.",
     "peopleFailed": "Al momento non è stato possibile cercare autori, narratori e serie.",
-    "charactersFailed": "Al momento non è stato possibile controllare i personaggi."
+    "charactersFailed": "Al momento non è stato possibile controllare i personaggi.",
+    "notAnswering_one": "Non cercato: {{servers}} non risponde.",
+    "notAnswering_other": "Non cercati: {{servers}} non rispondono."
   },
   "book": {
     "loadError": "Impossibile caricare questo libro.",

@@ -1130,7 +1130,9 @@
     "booksFailed": "Your servers didn't answer this search.",
     "booksPartial": "Some servers didn't answer, so their books may be missing.",
     "peopleFailed": "Authors, narrators and series couldn't be searched just now.",
-    "charactersFailed": "Characters couldn't be checked just now."
+    "charactersFailed": "Characters couldn't be checked just now.",
+    "notAnswering_one": "Not searched: {{servers}} isn't answering.",
+    "notAnswering_other": "Not searched: {{servers}} aren't answering."
   },
   "book": {
     "loadError": "Could not load this book.",

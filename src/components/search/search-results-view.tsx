@@ -18,6 +18,7 @@ import { Icon } from '@/components/ui/icon';
 import { ErrorNote } from '@/components/ui/query-state';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { contentKey } from '@/lib/content-key';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
@@ -65,6 +66,7 @@ export function SearchResultsView({
   const apis = useApis();
   const online = useReachability((s) => s.online);
   const offline = apis.filter((a) => online[a.connection.id] === false);
+  const deviceOnline = useDeviceOnline();
   const { progressOf } = useProgressLookup();
   const r = results;
   const settled = r.settled && !pending;
@@ -87,7 +89,12 @@ export function SearchResultsView({
     !r.booksState.isError &&
     !r.peopleState.isError &&
     !r.charactersState.isError;
-  const servers = apis.map((a) => a.connection.name);
+  // The heading counts the servers searched: one that isn't answering is named below it
+  // instead (CONNECT-15).
+  const servers = apis
+    .filter((a) => online[a.connection.id] !== false)
+    .map((a) => a.connection.name);
+  const downNames = offline.map((a) => a.connection.name);
 
   return (
     <View className="gap-8 pt-1">
@@ -104,7 +111,9 @@ export function SearchResultsView({
       )}
       {offline.length > 0 && offline.length < apis.length ? (
         <Text variant="caption">
-          {t('search.someOffline', { servers: offline.map((a) => a.connection.name).join(', ') })}
+          {deviceOnline
+            ? t('search.notAnswering', { count: downNames.length, servers: downNames.join(', ') })
+            : t('search.someOffline', { servers: downNames.join(', ') })}
         </Text>
       ) : null}
 

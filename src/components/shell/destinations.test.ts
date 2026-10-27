@@ -7,6 +7,8 @@ jest.mock('@/theme/theme-provider', () => ({
 jest.mock('@/components/upnext/up-next-button', () => ({ UpNextButton: () => null }));
 
 /* eslint-disable import/first */
+import i18n from '@/i18n';
+
 import {
   PHONE_TABS,
   rootOfPathname,
@@ -19,7 +21,7 @@ import {
   wideIcon,
   wideLabelKey,
 } from './destinations';
-import { OMNISEARCH_MIN, omnisearchFits, serverLine } from './top-bar';
+import { OMNISEARCH_MIN, omnisearchFits, serverLine, serverLineLabel } from './top-bar';
 /* eslint-enable import/first */
 
 describe('destinations', () => {
@@ -134,8 +136,17 @@ describe('serverLine', () => {
     expect(serverLine([a], null, {})).toEqual({ kind: 'server', name: 'Hearthside', more: 0 });
   });
 
-  it('says offline when the default server is unreachable', () => {
-    expect(serverLine([a, b], 'a', { a: false })).toEqual({ kind: 'offline' });
+  // CONNECT-15: the top bar names it while the device has a network.
+  it('says offline, with its name, when the default server is unreachable', () => {
+    expect(serverLine([a, b], 'a', { a: false })).toEqual({ kind: 'offline', name: 'Hearthside' });
+  });
+
+  it('names the default server that is down only while the device has a network', () => {
+    const t = i18n.t.bind(i18n);
+    const line = serverLine([a, b], 'a', { a: false });
+    if (line.kind === 'none') throw new Error('no line');
+    expect(serverLineLabel(line, true, t)).toBe("Hearthside isn't answering");
+    expect(serverLineLabel(line, false, t)).toBe('Offline · downloads play');
   });
 
   // frontend#131: never a green "+ 1 more" over a server that is down.
