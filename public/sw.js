@@ -3,10 +3,11 @@
  *
  * Two jobs:
  *  1. App shell - make the PWA installable and loadable offline: network-first for
- *     navigations (falling back to a cached shell that boots the SPA), and
- *     stale-while-revalidate for the content-hashed Expo assets. The web build is split
- *     (Expo Router async routes): a page's chunks load when it is first opened, so every
- *     chunk of the build is precached (`precacheBuild`) for a page never opened online.
+ *     navigations (falling back to a cached shell that boots the SPA), cache-first for the
+ *     content-hashed Expo build files (`_expo/static/`, `cacheFirst`), and
+ *     stale-while-revalidate for other same-origin assets. The web build is split (Expo
+ *     Router async routes): a page's chunks load when it is first opened, so every chunk
+ *     of the build is precached (`precacheBuild`) for a page never opened online.
  *  2. Offline media - serve downloaded audio/cover files that the web download
  *     engine (src/downloads/engine.web.ts) stored in MEDIA_CACHE under synthetic
  *     `…/_offline/…` urls, honouring HTTP Range so <audio> can seek (and so Safari,
@@ -27,7 +28,8 @@ const TOKEN_PARAM = 'token';
 // so the worker can't serve a stale bundle and break hot reloading.
 const DEV = new URL(self.location.href).searchParams.get('dev') === '1';
 
-// Asset request destinations we cache-and-revalidate. API calls (destination '')
+// Asset request destinations we cache (the build's own files cache-first, the rest
+// stale-while-revalidate). API calls (destination '')
 // and audio streamed from the server pass straight through to the network.
 const CACHEABLE = new Set(['script', 'style', 'font', 'image', 'manifest']);
 
@@ -60,9 +62,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// The app asks once it has started (`register-sw.web.ts`): a new build is deployed under
-// the same worker (sw.js itself unchanged, so no new install), and its chunks are precached
-// here instead.
+// The app asks once it has started (`register-sw.web.ts`). Each build registers its own
+// worker (`sw.js?build=<entry>`), so a deploy installs a new one and its install precaches
+// the build; this ask finishes the job when that install could not (offline, or the network
+// went part way), and does nothing for a build already precached.
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'precache' && !DEV) event.waitUntil(precacheBuild());
 });
