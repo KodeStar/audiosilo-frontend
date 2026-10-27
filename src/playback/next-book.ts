@@ -22,7 +22,9 @@ export function naturalCompare(a: string, b: string): number {
  * partial index would skip a book whose index is missing.
  *
  * Among the siblings that sort strictly after the current book we PREFER the next entry the
- * index already knows is a playable book (`is_book`). We only fall back to a bare directory
+ * server knows is a playable book: one the index holds (`is_book`), or a folder the scan has
+ * not reached yet that it would read as a book (`pending_book`: the book screen and the
+ * player read it on demand, fe#154). We only fall back to a bare directory
  * (a not-yet-scanned book folder is `is_dir: true, is_book: false`) when NOTHING in the
  * folder is indexed yet - i.e. a freshly-added/large library mid-scan. Once the folder has
  * any indexed book, a remaining bare directory is almost certainly a non-book folder
@@ -37,14 +39,14 @@ export function findNextSibling(entries: FsEntry[], currentPath: string): FsEntr
     .filter((e) => naturalCompare(e.name, leaf) > 0)
     .sort((a, b) => naturalCompare(a.name, b.name));
 
-  // Prefer the next entry the index already resolved to a playable book.
-  const nextBook = after.find((e) => e.is_book);
+  // Prefer the next entry the server reads as a playable book, indexed or not yet.
+  const nextBook = after.find((e) => e.is_book || e.pending_book);
   if (nextBook) return nextBook;
 
   // No indexed book follows. Fall back to the next directory ONLY when the folder is wholly
   // unindexed (mid-scan) - otherwise a trailing bare directory is a non-book folder we must
   // not offer as "next".
-  if (entries.some((e) => e.is_book)) return null;
+  if (entries.some((e) => e.is_book || e.pending_book)) return null;
   return after.find((e) => e.is_dir) ?? null;
 }
 
