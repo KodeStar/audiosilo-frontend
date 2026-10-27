@@ -10,6 +10,24 @@ jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ listBooks: mockListBooks }),
 }));
 
+// `afterPaint` held by the test (web: the frame and an idle moment after the first page),
+// so it can say when the first page has painted. Runs at once unless a test holds it.
+const mockPaint = { hold: false };
+const mockPainted: (() => void)[] = [];
+jest.mock('@/lib/after-paint', () => ({
+  afterPaint: (fn: () => void) => {
+    if (!mockPaint.hold) {
+      fn();
+      return () => {};
+    }
+    mockPainted.push(fn);
+    return () => {
+      const i = mockPainted.indexOf(fn);
+      if (i >= 0) mockPainted.splice(i, 1);
+    };
+  },
+}));
+
 /* eslint-disable import/first */
 import { useWholeLibrary } from './use-whole-library';
 /* eslint-enable import/first */
@@ -25,7 +43,28 @@ async function mount() {
 }
 
 describe('useWholeLibrary', () => {
-  beforeEach(() => mockListBooks.mockReset());
+  beforeEach(() => {
+    mockListBooks.mockReset();
+    mockPaint.hold = false;
+    mockPainted.length = 0;
+  });
+
+  it('shows the first page and asks for the rest only once it has painted', async () => {
+    mockPaint.hold = true;
+    mockListBooks.mockImplementation(async (_lib, opts) =>
+      !opts.cursor ? { books: books('A'), next_cursor: 'p2' } : { books: books('B') },
+    );
+    const result = await mount();
+    await waitFor(() => expect(result.current.books.map((b) => b.title)).toEqual(['A']));
+    expect(result.current.complete).toBe(false);
+    expect(mockListBooks).toHaveBeenCalledTimes(1);
+    expect(mockPainted).toHaveLength(1);
+
+    await act(async () => mockPainted.shift()?.());
+    await waitFor(() => expect(result.current.complete).toBe(true));
+    expect(result.current.books.map((b) => b.title)).toEqual(['A', 'B']);
+    expect(mockListBooks.mock.calls[1][1]).toMatchObject({ cursor: 'p2' });
+  });
 
   it('fetches page after page of 200 until the cursor runs out', async () => {
     mockListBooks.mockImplementation(async (_lib, opts) =>
