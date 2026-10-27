@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { PixelRatio, Platform, View } from 'react-native';
 
 import { useServerInfo } from '@/api/hooks';
@@ -9,6 +9,7 @@ import { useDownloadEntry } from '@/downloads/store';
 import { cn } from '@/lib/utils';
 
 import { CoverFrame } from './cover-frame';
+import { FirstScreenCovers } from './first-screen-covers';
 
 /** The thumbnail sizes the server makes (`cover_sizes`), smallest first. */
 const COVER_SIZES: readonly CoverSize[] = [160, 320, 640];
@@ -99,6 +100,7 @@ export function BookCover({
 }: BookCoverProps) {
   const api = useOptionalApi(connectionId);
   const info = useServerInfo(connectionId);
+  const firstScreen = useContext(FirstScreenCovers);
   // Unknown while `/server` loads; an unreachable server counts as "no thumbnails".
   const thumbnails = info.data
     ? !!info.data.capabilities.cover_sizes
@@ -130,6 +132,7 @@ export function BookCover({
           sublabel={pending ? undefined : author}
           rounded="rounded-none"
           size={width}
+          priority={firstScreen ? 'high' : undefined}
           onError={() => {
             if (uri) setFailed((f) => (f.includes(uri) ? f : [...f, uri]));
           }}

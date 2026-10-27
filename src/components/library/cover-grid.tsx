@@ -1,5 +1,5 @@
 import { FlashList, type FlashListProps, type FlashListRef } from '@shopify/flash-list';
-import { type ReactElement, type Ref, useState } from 'react';
+import type { ReactElement, Ref } from 'react';
 import { View } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -8,9 +8,15 @@ import { PressableRow, RowSurface } from '@/components/ui/row-surface';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
+import { useWidth } from '@/lib/use-width';
 
 import { BookCover } from './book-cover';
 import { type GridSpec, gridMetrics, pageGutter } from './cover-layout';
+import { FirstScreenCovers } from './first-screen-covers';
+
+/** The rows of a grid whose covers load first (`FirstScreenCovers`): a desktop window
+ * shows two and a half rows of tiles, a phone about three. */
+const FIRST_SCREEN_ROWS = 3;
 
 type PassThrough<T> = Pick<
   FlashListProps<T>,
@@ -27,7 +33,7 @@ type PassThrough<T> = Pick<
  * gutter, clear of the phone's mini player at the bottom and of the iOS tab bar
  * (`TAB_PAGE_SCROLL_PROPS`: on a Library mode it sits under the sections). A full-width
  * row inside the grid (a letter head, `isFullRow`) takes every column; `listRef` scrolls
- * it (an A-Z rail's jump).
+ * it (an A-Z rail's jump). The first rows' covers load first (`FirstScreenCovers`).
  */
 export function CoverGrid<T>({
   data,
@@ -59,7 +65,7 @@ export function CoverGrid<T>({
 } & PassThrough<T>) {
   const layout = useLayout();
   const pad = gutter ?? pageGutter(layout);
-  const [width, setWidth] = useState(0);
+  const { ref, width, onLayout } = useWidth();
   const { columns, tile, columnGap, rowGap } = gridMetrics(
     Math.max(0, width - pad * 2),
     layout,
@@ -71,7 +77,7 @@ export function CoverGrid<T>({
   const inset = (node: ReactElement | null | undefined) =>
     node ? <View style={{ paddingHorizontal: columnGap / 2 }}>{node}</View> : null;
   return (
-    <View testID={testID} className="flex-1" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View ref={ref} testID={testID} className="flex-1" onLayout={onLayout}>
       {width > 0 ? (
         <FlashList
           // A new column count re-lays the whole list.
@@ -80,10 +86,12 @@ export function CoverGrid<T>({
           data={data}
           numColumns={columns}
           keyExtractor={keyExtractor}
-          renderItem={({ item }) => (
-            <View style={{ paddingHorizontal: columnGap / 2, paddingBottom: rowGap }}>
-              {renderItem(item, tile)}
-            </View>
+          renderItem={({ item, index }) => (
+            <FirstScreenCovers.Provider value={index < columns * FIRST_SCREEN_ROWS}>
+              <View style={{ paddingHorizontal: columnGap / 2, paddingBottom: rowGap }}>
+                {renderItem(item, tile)}
+              </View>
+            </FirstScreenCovers.Provider>
           )}
           {...(isFullRow
             ? {
@@ -117,12 +125,13 @@ export function CoverGrid<T>({
 export function CoverGridSkeleton({ rows = 2, gutter }: { rows?: number; gutter?: number }) {
   const layout = useLayout();
   const pad = gutter ?? pageGutter(layout);
-  const [width, setWidth] = useState(0);
+  const { ref, width, onLayout } = useWidth();
   const { columns, tile, columnGap, rowGap } = gridMetrics(Math.max(0, width - pad * 2), layout);
   return (
     <View
+      ref={ref}
       testID="cover-grid-skeleton"
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      onLayout={onLayout}
       className="flex-row flex-wrap"
       style={{ paddingHorizontal: pad, paddingTop: 4, columnGap, rowGap }}
       accessibilityElementsHidden
