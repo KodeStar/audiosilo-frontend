@@ -401,6 +401,8 @@
         "wait_other": "Demasiados intentos desde esta red. Vuelve a intentarlo dentro de {{count}} minutos.",
         "badCode": "Ese código de invitación no ha funcionado. Revísalo o pide una nueva invitación a tu administrador.",
         "usedInvite": "Esta invitación no puede añadir otro dispositivo: se ha agotado o ha caducado. Pide una nueva invitación a tu administrador.",
+        "inviteUsed": "Esta invitación ya se ha usado en todos los dispositivos que permite. Pide una nueva invitación a tu administrador.",
+        "inviteExpired": "Esta invitación ha caducado. Pide una nueva invitación a tu administrador.",
         "badPassword": "El nombre de usuario o la contraseña no son correctos. Revísalos y vuelve a intentarlo.",
         "disabled": "Tu cuenta en este servidor está desactivada. Pide a tu administrador que la vuelva a activar.",
         "enterCode": "Introduce el código de invitación de tu administrador.",

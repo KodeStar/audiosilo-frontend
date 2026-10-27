@@ -401,6 +401,8 @@
         "wait_other": "Too many tries from this network. Try again in {{count}} minutes.",
         "badCode": "That invite code didn't work. Check it, or ask your admin for a new invite.",
         "usedInvite": "This invite can't add another device: it is used up or has expired. Ask your admin for a new invite.",
+        "inviteUsed": "This invite has been used on all the devices it allows. Ask your admin for a new invite.",
+        "inviteExpired": "This invite has expired. Ask your admin for a new invite.",
         "badPassword": "The username or password is wrong. Check them and try again.",
         "disabled": "Your account on this server is turned off. Ask your admin to turn it back on.",
         "enterCode": "Enter the invite code from your admin.",

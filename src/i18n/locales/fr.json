@@ -401,6 +401,8 @@
         "wait_other": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} minutes.",
         "badCode": "Ce code d'invitation n'a pas fonctionné. Vérifiez-le ou demandez une nouvelle invitation à votre administrateur.",
         "usedInvite": "Cette invitation ne peut plus ajouter d'appareil : elle est épuisée ou a expiré. Demandez une nouvelle invitation à votre administrateur.",
+        "inviteUsed": "Cette invitation a déjà servi sur tous les appareils qu'elle permet. Demandez une nouvelle invitation à votre administrateur.",
+        "inviteExpired": "Cette invitation a expiré. Demandez une nouvelle invitation à votre administrateur.",
         "badPassword": "Le nom d'utilisateur ou le mot de passe est incorrect. Vérifiez-les et réessayez.",
         "disabled": "Votre compte sur ce serveur est désactivé. Demandez à votre administrateur de le réactiver.",
         "enterCode": "Saisissez le code d'invitation de votre administrateur.",

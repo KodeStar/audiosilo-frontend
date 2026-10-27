@@ -15,6 +15,26 @@ describe('signInErrorText', () => {
     );
   });
 
+  it("says which way a redeemed invite can't be used when the server names it", () => {
+    expect(signInErrorText(new ApiError(401, 'x', 'invite_used'), 'redeem', t)).toBe(
+      'This invite has been used on all the devices it allows. Ask your admin for a new invite.',
+    );
+    expect(signInErrorText(new ApiError(401, 'x', 'invite_expired'), 'redeem', t)).toBe(
+      'This invite has expired. Ask your admin for a new invite.',
+    );
+    // An older server sends no code: a code that didn't work, as before.
+    expect(signInErrorText(new ApiError(401, 'x'), 'redeem', t)).toMatch(/didn't work/);
+  });
+
+  it.each(['de', 'es', 'fr', 'it', 'pt'])('has both invite messages in %s', (lng) => {
+    const tl = i18n.getFixedT(lng);
+    for (const code of ['invite_used', 'invite_expired']) {
+      const said = signInErrorText(new ApiError(401, 'x', code), 'redeem', tl);
+      expect(said).not.toBe(signInErrorText(new ApiError(401, 'x', code), 'redeem', t));
+      expect(said).not.toMatch(/connect\.signIn/);
+    }
+  });
+
   it('names the wait in whole minutes, rounding up', () => {
     expect(signInErrorText(new ApiError(429, 'x', undefined, 61), 'login', t)).toBe(
       'Too many tries from this network. Try again in 2 minutes.',

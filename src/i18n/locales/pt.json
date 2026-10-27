@@ -401,6 +401,8 @@
         "wait_other": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} minutos.",
         "badCode": "Esse código de convite não funcionou. Verifique-o ou peça um novo convite ao seu administrador.",
         "usedInvite": "Este convite não pode adicionar outro dispositivo: esgotou-se ou expirou. Peça um novo convite ao seu administrador.",
+        "inviteUsed": "Este convite já foi usado em todos os dispositivos que permite. Peça um novo convite ao seu administrador.",
+        "inviteExpired": "Este convite expirou. Peça um novo convite ao seu administrador.",
         "badPassword": "O nome de utilizador ou a palavra-passe estão errados. Verifique-os e tente novamente.",
         "disabled": "A sua conta neste servidor está desativada. Peça ao seu administrador para a reativar.",
         "enterCode": "Introduza o código de convite do seu administrador.",
