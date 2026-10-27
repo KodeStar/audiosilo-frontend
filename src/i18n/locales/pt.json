@@ -2914,7 +2914,7 @@
     },
     "check": {
       "action": "Procurar episódios novos",
-      "started": "Procurando episódios novos",
+      "asked": "Pedimos ao servidor para verificar",
       "recently": "Verificado há menos de um minuto. Tente de novo daqui a pouco.",
       "cantNow": "Seu servidor não pode verificar feeds agora. Tente mais tarde.",
       "failed": "Não foi possível verificar este programa. Tente de novo."

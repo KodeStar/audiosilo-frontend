@@ -2914,7 +2914,7 @@
     },
     "check": {
       "action": "Chercher de nouveaux épisodes",
-      "started": "Recherche de nouveaux épisodes",
+      "asked": "Vérification demandée au serveur",
       "recently": "Vérifiée il y a moins d'une minute. Réessayez dans un instant.",
       "cantNow": "Votre serveur ne peut pas vérifier les flux pour le moment. Réessayez plus tard.",
       "failed": "Impossible de vérifier cette émission. Réessayez."

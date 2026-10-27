@@ -2914,7 +2914,7 @@
     },
     "check": {
       "action": "Check for new episodes",
-      "started": "Checking for new episodes",
+      "asked": "Asked the server to check",
       "recently": "Checked less than a minute ago. Try again shortly.",
       "cantNow": "Your server can't check feeds right now. Try again later.",
       "failed": "Couldn't check this show. Try again."

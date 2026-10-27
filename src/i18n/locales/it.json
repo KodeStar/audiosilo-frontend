@@ -2914,7 +2914,7 @@
     },
     "check": {
       "action": "Cerca nuovi episodi",
-      "started": "Ricerca di nuovi episodi in corso",
+      "asked": "Controllo chiesto al server",
       "recently": "Controllato meno di un minuto fa. Riprova tra poco.",
       "cantNow": "Il tuo server non può controllare i feed al momento. Riprova più tardi.",
       "failed": "Impossibile controllare questo programma. Riprova."

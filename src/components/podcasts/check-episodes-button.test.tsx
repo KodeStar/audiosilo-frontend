@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
 import type { PodcastShow } from '@/api/types';
@@ -23,7 +23,7 @@ jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) 
 import { qk } from '@/api/hooks';
 import { useSession } from '@/stores/session';
 
-import { CHECK_REFRESH_MS, CheckEpisodesButton } from './check-episodes-button';
+import { CHECK_POLL_MS, CHECK_WAIT_MS, CheckEpisodesButton } from './check-episodes-button';
 /* eslint-enable import/first */
 
 const signIn = (user: object = {}) =>
@@ -32,12 +32,20 @@ const signIn = (user: object = {}) =>
   });
 
 let qc: QueryClient;
-const mount = (show: PodcastShow = podcastShow({ following: true })) =>
-  render(
-    <QueryClientProvider client={qc}>
-      <CheckEpisodesButton connectionId="c1" show={show} />
-    </QueryClientProvider>,
-  );
+const tree = (show: PodcastShow) => (
+  <QueryClientProvider client={qc}>
+    <CheckEpisodesButton connectionId="c1" show={show} />
+  </QueryClientProvider>
+);
+const mount = (show: PodcastShow = podcastShow({ following: true })) => render(tree(show));
+const checkedAt = (show: PodcastShow, at: string | null): PodcastShow => ({
+  ...show,
+  status: { ...show.status, last_checked: at },
+});
+const showsKey = (show: PodcastShow) => ({ queryKey: qk.podcastShows('c1', show.library_id) });
+const episodesKey = (show: PodcastShow) => ({
+  queryKey: qk.podcastEpisodesOfShow('c1', show.library_id, show.path),
+});
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -53,22 +61,49 @@ afterEach(() => {
 });
 
 describe('CheckEpisodesButton', () => {
-  it('checks the show, says it started, and reads it again once a while later', async () => {
-    const show = podcastShow({ following: true });
+  it('says it asked the server until the show was checked, then reads the episodes (BRIDGE-15)', async () => {
+    const show = checkedAt(podcastShow({ following: true }), '2026-10-27T10:00:00Z');
     const invalidate = jest.spyOn(qc, 'invalidateQueries');
-    await mount(show);
+    const view = await mount(show);
     await fireEvent.press(screen.getByRole('button', { name: 'Check for new episodes' }));
     expect(mockCheck).toHaveBeenCalledWith({ libraryId: show.library_id, path: show.path });
-    expect(mockToast).toHaveBeenCalledWith({ title: 'Checking for new episodes' });
-    await act(async () => jest.advanceTimersByTime(CHECK_REFRESH_MS - 1));
+    const button = screen.getByTestId('podcast-check');
+    expect(within(button).getByText('Asked the server to check')).toBeTruthy();
+    expect(screen.getByRole('button', { busy: true })).toBe(button);
+    // The show is read again while the check runs; the episodes are not yet.
+    await act(async () => jest.advanceTimersByTime(CHECK_POLL_MS));
+    expect(invalidate).toHaveBeenCalledWith(showsKey(show));
+    expect(invalidate).not.toHaveBeenCalledWith(episodesKey(show));
+    // Still running at 10 s (where the old button went quiet).
+    await act(async () => jest.advanceTimersByTime(10_000));
+    expect(screen.getByText('Asked the server to check')).toBeTruthy();
+    // The show list answers with a newer last check: done.
+    await view.rerender(tree(checkedAt(show, '2026-10-27T10:00:14Z')));
+    expect(screen.getByText('Check for new episodes')).toBeTruthy();
+    expect(invalidate).toHaveBeenCalledWith(episodesKey(show));
+    invalidate.mockClear();
+    await act(async () => jest.advanceTimersByTime(CHECK_WAIT_MS));
     expect(invalidate).not.toHaveBeenCalled();
-    await act(async () => jest.advanceTimersByTime(1));
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: qk.podcastShows('c1', show.library_id),
-    });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: qk.podcastEpisodesOfShow('c1', show.library_id, show.path),
-    });
+  });
+
+  it('ends for a show never checked before once it has been', async () => {
+    const show = checkedAt(podcastShow({ following: true }), null);
+    const view = await mount(show);
+    await fireEvent.press(screen.getByTestId('podcast-check'));
+    await view.rerender(tree(show));
+    expect(screen.getByText('Asked the server to check')).toBeTruthy();
+    await view.rerender(tree(checkedAt(show, '2026-10-27T10:00:14Z')));
+    expect(screen.getByText('Check for new episodes')).toBeTruthy();
+  });
+
+  it('stops waiting after a while and reads the show and episodes once more', async () => {
+    const show = checkedAt(podcastShow({ following: true }), '2026-10-27T10:00:00Z');
+    const invalidate = jest.spyOn(qc, 'invalidateQueries');
+    await mount(show);
+    await fireEvent.press(screen.getByTestId('podcast-check'));
+    await act(async () => jest.advanceTimersByTime(CHECK_WAIT_MS));
+    expect(screen.getByText('Check for new episodes')).toBeTruthy();
+    expect(invalidate).toHaveBeenCalledWith(episodesKey(show));
   });
 
   it('reads nothing again once the page has gone', async () => {
@@ -76,7 +111,7 @@ describe('CheckEpisodesButton', () => {
     const view = await mount();
     await fireEvent.press(screen.getByTestId('podcast-check'));
     await view.unmount();
-    await act(async () => jest.advanceTimersByTime(CHECK_REFRESH_MS));
+    await act(async () => jest.advanceTimersByTime(CHECK_WAIT_MS));
     expect(invalidate).not.toHaveBeenCalled();
   });
 
@@ -89,6 +124,7 @@ describe('CheckEpisodesButton', () => {
     await mount();
     await fireEvent.press(screen.getByTestId('podcast-check'));
     expect(mockToast).toHaveBeenCalledWith({ title: copy });
+    expect(screen.getByText('Check for new episodes')).toBeTruthy();
   });
 
   it('is only for a show the listener follows', async () => {
