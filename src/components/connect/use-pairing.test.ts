@@ -181,12 +181,9 @@ describe('useLinkPairing', () => {
       'refused',
       "This link was used, but signing in didn't finish. Ask for a new link.",
     ],
-  ])(
-    'classifies %s as one outcome with its words',
-    async (_row, e, exchanged, outcome, message) => {
-      expect(pairFailure(e, exchanged, false, t)).toEqual({ outcome, message });
-    },
-  );
+  ])('classifies %s as one outcome with its words', (_row, e, exchanged, outcome, message) => {
+    expect(pairFailure(e, exchanged, false, t)).toEqual({ outcome, message });
+  });
 
   it('names a self-signed certificate only for no answer', () => {
     const selfSigned =

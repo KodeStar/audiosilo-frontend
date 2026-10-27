@@ -14,6 +14,7 @@ import { sessionHydrateFailed, useSession } from '@/stores/session';
 
 import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
 import { endConnect, finishConnect } from './finish-connect';
+import { sharedRefusalText } from './sign-in-error';
 
 /** How a pairing link's exchange ended. `refused`: the server said no for good (any 4xx
  * but 408 and 429, or a token spent on an exchange whose session this device then
@@ -53,24 +54,11 @@ export function pairFailure(
         : t('connect.server.pairingReachError'),
     );
   }
-  if (e.status === 429) {
-    const s = e.retryAfterSeconds;
-    return temporary(
-      s !== undefined && s > 0
-        ? t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) })
-        : t('common.tooManyTries'),
-    );
-  }
   if (e.status === 408) return temporary(t('connect.server.pairingReachError'));
+  if (e.status === 429) return temporary(sharedRefusalText(e, t) ?? t('common.tooManyTries'));
   if (e.status < 400 || e.status >= 500) return temporary(t('connect.server.pairingServerError'));
-  switch (e.code) {
-    case 'invite_used':
-      return refused(t('connect.signIn.errors.inviteUsed'));
-    case 'invite_expired':
-      return refused(t('connect.signIn.errors.inviteExpired'));
-    case 'member_disabled':
-      return refused(t('connect.signIn.errors.disabled'));
-  }
+  const shared = sharedRefusalText(e, t);
+  if (shared !== undefined) return refused(shared);
   return refused(
     e.status === 401 || e.status === 410
       ? t('connect.server.pairingRefused')
@@ -209,7 +197,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       const failure = pairFailure(
         e,
         exchanged,
-        !exchanged && selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web'),
+        selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web'),
         t,
       );
       setError(failure.message);

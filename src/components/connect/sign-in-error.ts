@@ -7,6 +7,31 @@ import { ApiError, apiErrorKind } from '@/api/client';
 export type SignInStage = 'redeem' | 'exchange' | 'login';
 
 /**
+ * The words for a refusal that reads the same wherever it lands (a sign-in, a pairing
+ * link), or `undefined` for one the caller words itself: a 429 names the wait from the
+ * server's `Retry-After` (in whole minutes) when it sent one, and the server's
+ * `member_disabled`, `invite_used` and `invite_expired` codes their own sentences.
+ */
+export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined {
+  if (e.status === 429) {
+    const s = e.retryAfterSeconds;
+    return s !== undefined && s > 0
+      ? t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) })
+      : t('common.tooManyTries');
+  }
+  switch (apiErrorKind(e)) {
+    case 'member_disabled':
+      return t('connect.signIn.errors.disabled');
+    // The server names a real invite that can't be used any more (redeem, server v2.5.0).
+    case 'invite_used':
+      return t('connect.signIn.errors.inviteUsed');
+    case 'invite_expired':
+      return t('connect.signIn.errors.inviteExpired');
+  }
+  return undefined;
+}
+
+/**
  * A failed sign-in as a sentence that says what to do next (CONNECT-08), never the
  * server's raw string ("invalid credentials"). Told apart by status and the request that
  * failed: a 401 at redeem is a code that didn't work, at exchange an invite used up or
@@ -17,17 +42,8 @@ export type SignInStage = 'redeem' | 'exchange' | 'login';
  */
 export function signInErrorText(e: unknown, stage: SignInStage, t: TFunction): string {
   if (!(e instanceof ApiError)) return t('connect.signIn.failed');
-  if (e.status === 429) {
-    const s = e.retryAfterSeconds;
-    return s !== undefined && s > 0
-      ? t('connect.signIn.errors.wait', { count: Math.ceil(s / 60) })
-      : t('common.tooManyTries');
-  }
-  const kind = apiErrorKind(e);
-  if (kind === 'member_disabled') return t('connect.signIn.errors.disabled');
-  // The server names a real invite that can't be used any more (redeem, server v2.5.0).
-  if (kind === 'invite_used') return t('connect.signIn.errors.inviteUsed');
-  if (kind === 'invite_expired') return t('connect.signIn.errors.inviteExpired');
+  const shared = sharedRefusalText(e, t);
+  if (shared !== undefined) return shared;
   if (e.status === 401 || e.status === 400) {
     if (stage === 'redeem') return t('connect.signIn.errors.badCode');
     if (stage === 'exchange') return t('connect.signIn.errors.usedInvite');
