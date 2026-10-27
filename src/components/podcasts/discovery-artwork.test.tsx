@@ -24,7 +24,7 @@ jest.mock('@/api/provider', () => ({
 
 /* eslint-disable import/first */
 import { DiscoveryArtwork } from './discovery-artwork';
-import { ARTWORK_RETRY_DELAYS_MS } from './artwork-retry';
+import { ARTWORK_RETRY_DELAYS_MS, resetArtworkBusy } from './artwork-retry';
 /* eslint-enable import/first */
 
 const REL = '/api/v1/podcasts/discovery/artwork?id=abc';
@@ -37,13 +37,28 @@ async function fail() {
   await act(async () => image()!.props.onError());
 }
 
+// The probe after a failed load (`nextArtworkTry`): no answer unless a test gives one.
+const realFetch = global.fetch;
+const mockFetch = jest.fn(async (_uri: string, _init?: RequestInit): Promise<unknown> => {
+  throw new TypeError('Network request failed');
+});
+
 beforeEach(() => {
   jest.useFakeTimers();
+  resetArtworkBusy();
+  mockFetch.mockClear();
+  global.fetch = mockFetch as unknown as typeof fetch;
   mockArtworkUrl.mockClear().mockImplementation(proxied);
   mockMounts = 0;
 });
 afterEach(() => {
   jest.useRealTimers();
+  global.fetch = realFetch;
+});
+
+const answer = (status: number, retryAfter?: string) => ({
+  status,
+  headers: { get: (h: string) => (h === 'Retry-After' ? (retryAfter ?? null) : null) },
 });
 
 describe('DiscoveryArtwork', () => {
@@ -102,5 +117,30 @@ describe('DiscoveryArtwork', () => {
     // Nothing mounts or warns once the delay would have passed.
     await act(async () => jest.advanceTimersByTime(ARTWORK_RETRY_DELAYS_MS[0]));
     expect(mockMounts).toBe(1);
+  });
+
+  it("waits the server's Retry-After when it is busy (fe#126)", async () => {
+    mockFetch.mockResolvedValue(answer(429, '12'));
+    await render(<DiscoveryArtwork connectionId="c1" artworkUrl={REL} size={56} />);
+    await fail();
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m',
+      expect.objectContaining({ method: 'HEAD' }),
+    );
+    await act(async () => jest.advanceTimersByTime(ARTWORK_RETRY_DELAYS_MS[1]));
+    expect(image()).toBeNull();
+    await act(async () => jest.advanceTimersByTime(12_000 - ARTWORK_RETRY_DELAYS_MS[1]));
+    expect(image()).not.toBeNull();
+    expect(mockMounts).toBe(2);
+  });
+
+  it('keeps the placeholder for an artwork that is gone, without trying again', async () => {
+    mockFetch.mockResolvedValue(answer(404));
+    await render(<DiscoveryArtwork connectionId="c1" artworkUrl={REL} size={56} />);
+    await fail();
+    await act(async () => jest.advanceTimersByTime(10 * 60_000));
+    expect(image()).toBeNull();
+    expect(mockMounts).toBe(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
