@@ -145,6 +145,17 @@ export function sourceFor(
 }
 
 /**
+ * `url` asked for afresh (a `retry` stamp), so the browser fetches it again instead of
+ * reusing what it has: after garbled bytes, Retry on the same url kept failing until a
+ * reload (fe#155). A download's `_offline/` url is left as it is: the service worker
+ * matches it by its whole url.
+ */
+export function freshUrl(url: string, stamp: number): string {
+  if (url.includes('/_offline/')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}retry=${stamp}`;
+}
+
+/**
  * Web playback via a single HTML5 <audio> element. The token is already in the
  * track URL (query param), so Range requests (seek/scrub) work natively. The
  * queue is advanced manually on `ended`. Media Session API wires up OS / browser
@@ -202,6 +213,15 @@ class WebPlaybackService implements PlaybackService {
    * its first chapter at 0:00), and kept it when the source then failed. While placing,
    * its `timeupdate`s are ignored; the snapshot keeps the load's position. */
   private placing: HTMLAudioElement | null = null;
+  /** The element whose load has no metadata yet, and a seek made meanwhile: where the
+   * load places the element instead of the position it was loaded at, which would undo
+   * the seek (fe#155). */
+  private awaitingMetadata: HTMLAudioElement | null = null;
+  private placeAt: number | null = null;
+  /** The source (as `sourceFor` gives it) of the load in flight, and the last one that
+   * failed: a load of a failed source asks for it afresh (`freshUrl`). */
+  private loadingUrl: string | null = null;
+  private failedUrl: string | null = null;
   /** Playback is intended but hasn't started yet: set by an autoplaying load (the
    * advance to the next file, a skip or a transcoded seek while playing) and by `play()`
    * on a transcoded track; cleared on `playing`, `error`, `pause()` and `reset()`. A load
@@ -310,6 +330,7 @@ class WebPlaybackService implements PlaybackService {
       // book by itself long after the error. The position stays where the load put it
       // (the place to retry from), never the dead element's 0.
       this.pendingAutoplay = false;
+      this.failedUrl = this.loadingUrl;
       this.update({ state: 'error' });
     });
     return a;
@@ -338,8 +359,11 @@ class WebPlaybackService implements PlaybackService {
     this.pendingAutoplay = autoplay;
     const seq = ++this.loadSeq;
     this.placing = a;
+    this.awaitingMetadata = a;
+    this.placeAt = null;
+    this.loadingUrl = source.url;
     a.crossOrigin = crossOriginFor(source.url);
-    a.src = source.url;
+    a.src = source.url === this.failedUrl ? freshUrl(source.url, Date.now()) : source.url;
     this.applyRate(a);
     this.routeBoost(a);
     this.update({
@@ -353,14 +377,18 @@ class WebPlaybackService implements PlaybackService {
     const onLoaded = () => {
       a.removeEventListener('loadedmetadata', onLoaded);
       if (seq !== this.loadSeq) return; // a later load replaced this source
-      // A transcoded stream already starts at the position (its 0 is `offset`).
+      if (this.failedUrl === source.url) this.failedUrl = null;
+      // A transcoded stream already starts at the position (its 0 is `offset`). A seek made
+      // while it loaded wins over where it was loaded at.
       if (!track.transcoded) {
         try {
-          a.currentTime = positionInTrack || 0;
+          a.currentTime = this.placeAt ?? (positionInTrack || 0);
         } catch {
           // seeking before ready; timeupdate will correct
         }
       }
+      this.placeAt = null;
+      this.awaitingMetadata = null;
       // Placed: from here its currentTime is the position.
       if (this.placing === a) this.placing = null;
       // Read the intent now, not as it was when the load began: a pause inside the load
@@ -699,6 +727,9 @@ class WebPlaybackService implements PlaybackService {
     // drives the whole-book position mapping).
     const dur = Number.isFinite(a.duration) ? a.duration : undefined;
     const clamped = Math.max(0, dur != null ? Math.min(positionInTrack, dur) : positionInTrack);
+    // Before its metadata the load would place the element back at its start: it places
+    // it here instead.
+    if (this.awaitingMetadata === a) this.placeAt = clamped;
     a.currentTime = clamped;
     this.update({ position: clamped });
   }
