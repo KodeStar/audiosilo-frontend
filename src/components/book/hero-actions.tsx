@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { useDownloadEntry } from '@/downloads/store';
 import { readerHref } from '@/lib/paths';
 import { WithActiveModules } from '@/modules/active-modules';
 import type { PlayerModule } from '@/modules/registry';
@@ -94,6 +95,9 @@ function HeroActionsView({
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
   const ebooks = useCapability('ebooks', connectionId);
+  // A download holding the EPUB reads while `ebooks` is unknown (offline).
+  const entry = useDownloadEntry(connectionId, libraryId, path);
+  const downloadedEbook = entry?.status === 'downloaded' && !!entry.manifest.ebookUri;
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
   const menuExtra: BookAction[] = [
@@ -130,7 +134,7 @@ function HeroActionsView({
 
   // Read the book's ebook (Bridge Phase 3b): its own button after the download (its own
   // row on a phone).
-  const readButton = canRead(ebooks, book) ? (
+  const readButton = canRead(ebooks, book, downloadedEbook) ? (
     <Button
       testID="read-action"
       variant="outline"

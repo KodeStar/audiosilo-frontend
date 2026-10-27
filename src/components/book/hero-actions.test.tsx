@@ -53,6 +53,9 @@ jest.mock('@/components/library/books/book-actions', () => ({
   },
 }));
 jest.mock('@/components/library/download-control', () => ({ DownloadControl: () => null }));
+// The book's download entry (Read offline: its saved EPUB).
+let mockDownload: { status: string; manifest: { ebookUri?: string } } | undefined;
+jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => mockDownload }));
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({
@@ -286,6 +289,9 @@ describe('HeroActions Read', () => {
     );
   const onWeb = () => jest.replaceProperty(Platform, 'OS', 'web');
 
+  beforeEach(() => {
+    mockDownload = undefined;
+  });
   afterEach(() => jest.restoreAllMocks());
 
   it.each([false, true])(
@@ -320,5 +326,25 @@ describe('HeroActions Read', () => {
     mockCaps = { ebooks: true };
     await mountBook(EBOOK_BOOK);
     expect(screen.getByTestId('read-action')).toBeTruthy();
+  });
+
+  it('offers Read offline for a download holding the EPUB, the capability unknown', async () => {
+    mockCaps = {};
+    mockDownload = { status: 'downloaded', manifest: { ebookUri: 'file:///d/book.epub' } };
+    await mountBook(EBOOK_BOOK);
+    expect(screen.getByTestId('read-action')).toBeTruthy();
+  });
+
+  it('hides Read with the capability unknown when the download has no EPUB or is not done', async () => {
+    mockCaps = {};
+    for (const download of [
+      undefined,
+      { status: 'downloaded', manifest: {} },
+      { status: 'downloading', manifest: { ebookUri: 'file:///d/book.epub' } },
+    ]) {
+      mockDownload = download;
+      await mountBook(EBOOK_BOOK);
+      expect(screen.queryByTestId('read-action')).toBeNull();
+    }
   });
 });

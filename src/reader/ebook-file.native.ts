@@ -142,6 +142,31 @@ export async function localEbook({
   return { uri: file.uri, size: got };
 }
 
+/** Whether the book's EPUB is on this device without a fetch: the download's copy
+ * (`saved`), or the cache file for the server's `size`. The offline place lookup asks it
+ * (`lookupReadingPlace`). Never throws. */
+export async function hasLocalEbook({
+  connectionId,
+  libraryId,
+  path,
+  size,
+  saved,
+}: {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+  size?: number;
+  saved?: string;
+}): Promise<boolean> {
+  try {
+    if (saved && sizeOf(new File(saved)) > 0) return true;
+    if (size === undefined) return false;
+    return sizeOf(new File(cacheDir(connectionId, libraryId, path), cacheName(size))) > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Reads a local EPUB's chunks as base64 (encoded natively, never in JS). */
 export function chunkReader(uri: string): ChunkReader {
   return (position, length) => readAsStringAsync(uri, { encoding: 'base64', position, length });

@@ -146,7 +146,15 @@ async function readMirror(
  * anywhere, open at the start. With no answer from the server, this device's own places
  * stand; with none either, the lookup fails (throws the request's error) instead of
  * opening at the start: a start saved over a place read elsewhere would replace it. A 401
- * always fails it (the token is dead). */
+ * always fails it (the token is dead).
+ *
+ * Except offline with the book on this device (`hasLocalCopy`: its download or the app's
+ * cache holds the EPUB): a request that never reached the server opens it at the start,
+ * so a downloaded book reads offline the first time. That is safe because no place was
+ * ever seen here: the session's saves carry `base_version: 0` (`captureReadingSave`), which
+ * the server takes as diverged from any row another device kept, so it keeps a place
+ * further on and the answer offers Jump there (`jumpOffer`). An answer from the server (an
+ * `ApiError`) still fails it: online, never a guessed start. */
 export type ReadingPlaceLookup = {
   place: ReadingPlace | null;
   fromServer: ReadingProgress | null;
@@ -158,6 +166,7 @@ export async function lookupReadingPlace(
   libraryId: number,
   path: string,
   signal?: AbortSignal,
+  { hasLocalCopy }: { hasLocalCopy?: () => Promise<boolean> } = {},
 ): Promise<ReadingPlaceLookup> {
   // The local places are read while the server answers.
   const local = Promise.all([readMirror(connectionId, libraryId, path), readQueue()]);
@@ -188,11 +197,23 @@ export async function lookupReadingPlace(
   if (queued && server && diverges(queued, server) && queued.progression > server.progression) {
     best = queued;
   }
-  if (!best && unknown !== null) throw unknown;
+  if (!best && unknown !== null) {
+    const offline = api !== null && !(unknown instanceof ApiError);
+    if (!offline || !(await localCopy(hasLocalCopy))) throw unknown;
+  }
   return {
     place: best ? placeOf(best) : null,
     fromServer: best !== null && best === server ? server : null,
   };
+}
+
+/** Whether the book's EPUB is on this device; a check that fails says no. */
+async function localCopy(check?: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return (await check?.()) === true;
+  } catch {
+    return false;
+  }
 }
 
 /** The reader has shown the server's `row` (it opened there; or another device's kept place

@@ -13,6 +13,7 @@ import { Notice } from '@/components/ui/notice';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { useDownloadEntry } from '@/downloads/store';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
@@ -24,6 +25,7 @@ import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 import { canRead } from './can-read';
+import { hasLocalEbook } from './ebook-file';
 import type { ReaderPlace, ReaderTheme, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
@@ -85,8 +87,16 @@ export function ReaderScreen({
     refetch: refetchBook,
   } = useBook(libraryId, path, connectionId);
   const ebooks = useCapability('ebooks', connectionId);
-  const readable = canRead(ebooks, book);
-  const place = useReadingPlace(libraryId, path, connectionId, readable);
+  // The download's EPUB: readable with the capability unknown (offline), and where an
+  // offline lookup with no place here opens at the start.
+  const download = useDownloadEntry(connectionId, libraryId, path);
+  const savedEbook = download?.status === 'downloaded' ? download.manifest.ebookUri : undefined;
+  const readable = canRead(ebooks, book, savedEbook !== undefined);
+  const ebookSize = book?.ebook?.size;
+  const hasLocalCopy = useLatest(() =>
+    hasLocalEbook({ connectionId, libraryId, path, size: ebookSize, saved: savedEbook }),
+  );
+  const place = useReadingPlace(libraryId, path, connectionId, readable, hasLocalCopy);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
 
   const { scheme } = useTheme();
@@ -292,7 +302,6 @@ export function ReaderScreen({
     if (alreadyThere) acknowledge();
   }, [alreadyThere, acknowledge]);
 
-  const ebookSize = book?.ebook?.size;
   const ready =
     readable && api !== null && opening !== null && fontScale !== null && ebookSize !== undefined;
   const title = book ? bookTitle(book.title, path) : (opened?.title ?? '');

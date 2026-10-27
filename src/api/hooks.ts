@@ -1121,7 +1121,8 @@ export async function fetchBookProgress(
 /** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest
  * of the server's place, this device's mirror and its queued save, or that save when the
  * server will keep it (`lookupReadingPlace`, which falls back to this device's places when
- * the server can't be reached, and fails when it has none). Read once per opening: nothing
+ * the server can't be reached, and fails when it has none, unless the book's EPUB is on
+ * this device: then it opens at the start). Read once per opening: nothing
  * kept after the reader closes, no retry (the screen's Try again looks again). Asked
  * whatever the browser's online flag says: held while it says offline, the reader would
  * wait on a spinner instead of opening at a local place or saying it can't. */
@@ -1130,10 +1131,12 @@ export function readingPlaceQuery(
   api: ApiClient | null,
   libraryId: number,
   path: string,
+  hasLocalCopy?: () => Promise<boolean>,
 ) {
   return queryOptions({
     queryKey: qk.readingPlace(cid, libraryId, path),
-    queryFn: ({ signal }) => lookupReadingPlace(api, cid, libraryId, path, signal),
+    queryFn: ({ signal }) =>
+      lookupReadingPlace(api, cid, libraryId, path, signal, { hasLocalCopy }),
     staleTime: Infinity,
     gcTime: 0,
     retry: false,
@@ -1141,17 +1144,20 @@ export function readingPlaceQuery(
   });
 }
 
-/** The reader's {@link readingPlaceQuery}, once `enabled` (the book is readable). */
+/** The reader's {@link readingPlaceQuery}, once `enabled` (the book is readable).
+ * `hasLocalCopy` says whether the book's EPUB is on this device: offline, with no place
+ * here, such a book opens at its start (`lookupReadingPlace`). */
 export function useReadingPlace(
   libraryId: number,
   path: string,
   connectionId?: string,
   enabled = true,
+  hasLocalCopy?: () => Promise<boolean>,
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
   return useQuery({
-    ...readingPlaceQuery(cid, api, libraryId, path),
+    ...readingPlaceQuery(cid, api, libraryId, path, hasLocalCopy),
     enabled: enabled && path.length > 0,
   });
 }

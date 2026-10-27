@@ -18,11 +18,22 @@ import { adoptServerPlace, type ReadingSaved } from './reading-progress';
 type Query = { data?: unknown; isError: boolean; error: unknown; refetch: jest.Mock };
 let mockBook: Query;
 let mockPlace: Query;
+let mockEbooks: boolean | undefined = true;
+/** The last `useReadingPlace` call: (libraryId, path, connectionId, enabled, hasLocalCopy). */
+let mockPlaceArgs: unknown[] = [];
 jest.mock('@/api/hooks', () => ({
   useBook: () => mockBook,
-  useCapability: () => true,
-  useReadingPlace: () => mockPlace,
+  useCapability: () => mockEbooks,
+  useReadingPlace: (...args: unknown[]) => {
+    mockPlaceArgs = args;
+    return mockPlace;
+  },
 }));
+// The book's download entry, and whether its EPUB is on the device (ebook-file's tests).
+let mockDownload: { status: string; manifest: { ebookUri?: string } } | undefined;
+jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => mockDownload }));
+const mockHasLocalEbook = jest.fn(async (_ref: unknown) => true);
+jest.mock('./ebook-file', () => ({ hasLocalEbook: (ref: unknown) => mockHasLocalEbook(ref) }));
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({}) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/lib/back-or-home', () => ({ backOrHome: jest.fn() }));
@@ -145,6 +156,35 @@ describe('ReaderScreen', () => {
     mockShortcuts.length = 0;
     mockBook = query({ title: 'Alice', ebook: { path: 'A/Book/alice.epub', size: 1 } });
     mockPlace = query({ place: null, fromServer: null });
+    mockEbooks = true;
+    mockDownload = undefined;
+  });
+
+  it('reads a download holding the EPUB offline, the capability unknown', async () => {
+    mockEbooks = undefined;
+    mockDownload = { status: 'downloaded', manifest: { ebookUri: 'file:///d/book.epub' } };
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockPlaceArgs[3]).toBe(true);
+    // The offline lookup asks whether the EPUB is here: the download's copy, or the cache
+    // file at the ebook's size.
+    const hasLocalCopy = mockPlaceArgs[4] as () => Promise<boolean>;
+    await expect(hasLocalCopy()).resolves.toBe(true);
+    expect(mockHasLocalEbook).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      libraryId: 1,
+      path: 'A/Book',
+      size: 1,
+      saved: 'file:///d/book.epub',
+    });
+  });
+
+  it('waits, never looking up a place, with the capability unknown and no downloaded EPUB', async () => {
+    mockEbooks = undefined;
+    mockDownload = { status: 'downloaded', manifest: {} };
+    await mount();
+    expect(mockPlaceArgs[3]).toBe(false);
+    expect(mockHost).toBeNull();
   });
 
   it('hands the host the book’s connection and its ebook’s size (the app’s cache rule)', async () => {

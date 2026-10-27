@@ -544,7 +544,8 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   (`CheckEpisodesButton`) is for a followed show only, and reads the show again once, 15 s later.
 
 **The ebook reader (Bridge Phase 3b-1 web, 3b-2 app; `src/reader/`, the route `/read`).** On
-every platform (`canRead`: capability `ebooks` and `Book.ebook`). The route is `read.tsx`, never `reader.tsx`: the static export would write
+every platform (`canRead`: capability `ebooks` and `Book.ebook`; a download holding the EPUB
+reads while `ebooks` is unknown, offline, never when it is `false`). The route is `read.tsx`, never `reader.tsx`: the static export would write
 `dist/reader.html` over the reader document, and the server answers `/web/reader` with it.
 - **The reader is its own document**: `reader/src/` (foliate-js vendored unmodified at the
   commit in `reader/vendor/FOLIATE_PIN.txt`, hashes checked) built by `npm run reader:build`
@@ -632,6 +633,10 @@ every platform (`canRead`: capability `ebooks` and `Book.ebook`). The route is `
   the newest place, or at a queued save the server will keep (diverged and further on), and
   with no answer from the server and no place on this device it fails (the fetch notice; Try
   again looks again): never a guessed start, whose save would replace a place read elsewhere.
+  Except offline with the EPUB on this device (the download's copy or the app's cache file,
+  `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
+  `base_version: 0`, which the server takes as diverged from another device's row (it keeps a
+  place further on, and its answer offers Jump). A server's answer (`ApiError`) still fails it.
   A 401 always fails it: a lookup that succeeded on local places would clear the reconnect
   flag the same request raised (`noteQuerySuccess`). It is asked whatever the browser's online
   flag says (`readingPlaceQuery`, `networkMode: 'always'`): held offline, it would leave the

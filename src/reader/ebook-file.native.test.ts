@@ -84,7 +84,7 @@ jest.mock('expo-file-system/legacy', () => ({
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 
-import { chunkReader, clearEbookCache, localEbook } from './ebook-file.native';
+import { chunkReader, clearEbookCache, hasLocalEbook, localEbook } from './ebook-file.native';
 /* eslint-enable import/first */
 
 const api = {
@@ -232,6 +232,35 @@ describe('localEbook', () => {
     mockDownload.mockImplementation(async () => 0);
     await expect(localEbook(args)).rejects.toThrow('empty');
     expect(files()).toEqual([]);
+  });
+});
+
+describe('hasLocalEbook', () => {
+  const ref = { connectionId: 'c1', libraryId: 2, path: 'A/Book' };
+
+  it('finds the download’s copy, fetching nothing', async () => {
+    mockTree.set('file:///docs/downloads/b/book.epub', 1234);
+    await expect(
+      hasLocalEbook({ ...ref, saved: 'file:///docs/downloads/b/book.epub' }),
+    ).resolves.toBe(true);
+    expect(mockDownload).not.toHaveBeenCalled();
+  });
+
+  it('finds the cache file at the ebook’s size, and only at that size', async () => {
+    await localEbook(args);
+    await expect(hasLocalEbook({ ...ref, size: 1000 })).resolves.toBe(true);
+    await expect(hasLocalEbook({ ...ref, size: 2000 })).resolves.toBe(false);
+    await expect(hasLocalEbook(ref)).resolves.toBe(false);
+  });
+
+  it('says no for a gone or empty copy and nothing cached', async () => {
+    mockTree.set('file:///docs/downloads/b/book.epub', 0);
+    await expect(
+      hasLocalEbook({ ...ref, size: 1000, saved: 'file:///docs/downloads/b/book.epub' }),
+    ).resolves.toBe(false);
+    await expect(
+      hasLocalEbook({ ...ref, size: 1000, saved: 'file:///docs/gone/book.epub' }),
+    ).resolves.toBe(false);
   });
 });
 

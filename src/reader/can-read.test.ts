@@ -15,5 +15,15 @@ describe('canRead', () => {
   it('hides Read for a book without an ebook, or not loaded yet', () => {
     expect(canRead(true, {})).toBe(false);
     expect(canRead(true, undefined)).toBe(false);
+    expect(canRead(undefined, {}, true)).toBe(false);
+  });
+
+  it('offers Read for a downloaded EPUB while the capability is unknown (offline)', () => {
+    expect(canRead(undefined, { ebook }, true)).toBe(true);
+    expect(canRead(true, { ebook }, true)).toBe(true);
+  });
+
+  it('never against a server that says it has no reader, downloaded or not', () => {
+    expect(canRead(false, { ebook }, true)).toBe(false);
   });
 });

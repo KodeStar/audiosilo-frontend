@@ -312,6 +312,116 @@ describe('reading-progress', () => {
       await expect(lookupReadingPlace(null, 'c1', 1, 'A/Book')).rejects.toThrow();
     });
 
+    it('opens a book on this device at the start offline with no place anywhere', async () => {
+      const hasLocalCopy = jest.fn(async () => true);
+      for (const api of [
+        fakeApi(undefined, () => Promise.reject(new TypeError('Network request failed'))),
+        fakeApi(undefined, () => Promise.reject(new Error('The Internet connection is offline'))),
+      ]) {
+        await expect(
+          lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+        ).resolves.toEqual({ place: null, fromServer: null });
+      }
+      expect(hasLocalCopy).toHaveBeenCalled();
+    });
+
+    it('still fails offline when the EPUB is not on this device (or the check fails)', async () => {
+      const offline = new TypeError('offline');
+      const api = fakeApi(undefined, () => Promise.reject(offline));
+      for (const hasLocalCopy of [
+        async () => false,
+        () => Promise.reject(new Error('fs')),
+        undefined,
+      ]) {
+        await expect(
+          lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+        ).rejects.toBe(offline);
+      }
+    });
+
+    it('never opens at a guessed start online: a server error fails it, local copy or not', async () => {
+      const hasLocalCopy = jest.fn(async () => true);
+      for (const failure of [new ApiError(500, 'db'), new ApiError(404, 'no ebook')]) {
+        const api = fakeApi(undefined, () => Promise.reject(failure));
+        await expect(
+          lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+        ).rejects.toBe(failure);
+      }
+      const signedOut = new ApiError(401, 'unauthorized');
+      await expect(
+        lookupReadingPlace(
+          fakeApi(undefined, () => Promise.reject(signedOut)),
+          'c1',
+          1,
+          'A/Book',
+          undefined,
+          { hasLocalCopy },
+        ),
+      ).rejects.toBe(signedOut);
+      await expect(
+        lookupReadingPlace(null, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+      ).rejects.toThrow();
+      expect(hasLocalCopy).not.toHaveBeenCalled();
+    });
+
+    it('prefers a local place over the start offline, without asking for the copy', async () => {
+      await saveReadingPlace(null, save({ cfi: CFI_B }));
+      const hasLocalCopy = jest.fn(async () => true);
+      const api = fakeApi(undefined, () => Promise.reject(new TypeError('offline')));
+      const found = await lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, {
+        hasLocalCopy,
+      });
+      expect(found.place?.cfi).toBe(CFI_B);
+      expect(hasLocalCopy).not.toHaveBeenCalled();
+    });
+
+    it('an offline start saves on version 0, never acknowledging the place another device kept', async () => {
+      // Opened offline at the start: no place, no version, seen here.
+      const offline = fakeApi(undefined, () => Promise.reject(new TypeError('offline')));
+      await lookupReadingPlace(offline, 'c1', 1, 'A/Book', undefined, {
+        hasLocalCopy: async () => true,
+      });
+      reachable.mockReturnValue(false);
+      const first = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.01 });
+      expect(first.base_version).toBe(0);
+      await saveReadingPlace(offline, first);
+      // A later page of the same session is still made on version 0.
+      const next = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.02 });
+      expect(next.base_version).toBe(0);
+      await saveReadingPlace(offline, next);
+      expect(await readQueue()).toEqual([expect.objectContaining({ base_version: 0 })]);
+
+      // Back online: the server took version 0 as diverged and kept the phone's place
+      // further on (catalog.ResolvePlace); the answer offers Jump there and leaves this
+      // device's version at 0 until the reader shows it.
+      const kept = row({
+        device_id: 'phone',
+        device_name: 'Pixel 8',
+        cfi: CFI_B,
+        progression: 0.6,
+        version: 9,
+      });
+      const online = fakeApi(async () => ({ reading_progress: kept }));
+      mockResolveClient.mockReturnValue(online);
+      reachable.mockReturnValue(true);
+      const heard: ReadingProgressSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a.saved));
+      await flushReadingQueue();
+      off();
+      expect(online.saveReadingProgress).toHaveBeenCalledWith(
+        1,
+        'A/Book',
+        expect.objectContaining({ base_version: 0, progression: 0.02 }),
+      );
+      expect(heard).toEqual([{ reading_progress: kept }]);
+      expect(jumpOffer(heard[0], { cfi: CFI_A, progression: 0.02 }, 'dev')).toMatchObject({
+        progression: 0.6,
+        deviceName: 'Pixel 8',
+      });
+      const after = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.03 });
+      expect(after.base_version).toBe(0);
+    });
+
     it('fails on a signed-out answer (401) whatever is local', async () => {
       await saveReadingPlace(null, save({ cfi: CFI_B }));
       const signedOut = new ApiError(401, 'unauthorized');
