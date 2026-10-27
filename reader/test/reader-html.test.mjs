@@ -40,3 +40,11 @@ test('the policy is the reader recipe: no network, no plugins, no base or forms'
   assert.equal(directives.get('style-src'), "'unsafe-inline' blob:");
   assert.doesNotMatch(policy, /unsafe-eval|https?:|'self'/);
 });
+
+test('the page never zooms: an input focused in a book must not leave it zoomed (fe#172)', () => {
+  const viewport = /<meta\s+name="viewport"\s+content="([^"]*)"/.exec(html)?.[1] ?? '';
+  const parts = viewport.split(',').map((p) => p.trim());
+  assert.ok(parts.includes('maximum-scale=1'), viewport);
+  assert.ok(parts.includes('user-scalable=no'), viewport);
+  assert.ok(parts.includes('width=device-width'), viewport);
+});
