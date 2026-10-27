@@ -37,7 +37,6 @@ import { toast } from '@/components/ui/toast';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
 import { chapterLabel } from '@/lib/chapter-label';
-import { useGlobalShortcut } from '@/lib/keyboard';
 import { useLayout } from '@/lib/layout';
 import { openHousehold, useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
@@ -57,7 +56,6 @@ import {
   buildGoToItems,
   buildPaletteGroups,
   flattenGroups,
-  isPaletteShortcut,
   MAX_CONTINUE,
   moveSelection,
   type PaletteCover,
@@ -587,13 +585,4 @@ export function CommandPalette() {
       ) : null}
     </DialogPrimitive.Root>
   );
-}
-
-/**
- * The palette's global shortcuts (web): ⌘K / Ctrl+K and `/` open it from any tab page -
- * not over the full player, not over another dialog, and never while typing in a field.
- */
-export function usePaletteShortcut(enabled: boolean) {
-  const openPalette = usePalette((s) => s.openPalette);
-  useGlobalShortcut(enabled, isPaletteShortcut, openPalette);
 }
