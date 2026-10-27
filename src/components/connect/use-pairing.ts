@@ -55,10 +55,10 @@ export function pairFailure(
     );
   }
   if (e.status === 408) return temporary(t('connect.server.pairingReachError'));
-  if (e.status === 429) return temporary(sharedRefusalText(e, t) ?? t('common.tooManyTries'));
   if (e.status < 400 || e.status >= 500) return temporary(t('connect.server.pairingServerError'));
+  // A 429 always has shared words (the wait), and only it is temporary among them.
   const shared = sharedRefusalText(e, t);
-  if (shared !== undefined) return refused(shared);
+  if (shared !== undefined) return e.status === 429 ? temporary(shared) : refused(shared);
   return refused(
     e.status === 401 || e.status === 410
       ? t('connect.server.pairingRefused')
