@@ -20,14 +20,14 @@ import { startWidgetSync } from '@/widgets/widget-sync';
  * no rendering), so they are started rather than mounted as components that render null. Each runs whether or not
  * the player is open, on every screen. Returns the stop.
  */
-export function startRootServices(): () => void {
+export function startRootServices({ late = false }: { late?: boolean } = {}): () => void {
   const stops = [
     // The nightly auto sleep timer: it must arm for a book started from the mini player,
     // the library, or a lock-screen play.
     startAutoSleep(),
     // "Fell asleep": the bookmark and the "You drifted off" prompt after a sleep timer
     // stopped a book nobody was awake for.
-    startDriftWatch(),
+    startDriftWatch({ late }),
     // "Keep the next books ready" (downloads the books after the loaded one when the
     // listener opted in); see the controller.
     startKeepAhead(),
@@ -88,6 +88,6 @@ export function RootListeners() {
  * mounts it once the first screen has painted, and the services stop when it goes.
  */
 export function RootServices() {
-  useEffect(() => startRootServices(), []);
+  useEffect(() => startRootServices({ late: true }), []);
   return <RootListeners />;
 }

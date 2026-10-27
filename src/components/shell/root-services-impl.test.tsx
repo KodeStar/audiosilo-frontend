@@ -6,7 +6,14 @@ const service = (name: string) => () => {
   return () => mockCalls.push(`stop ${name}`);
 };
 jest.mock('@/playback/auto-sleep-controller', () => ({ startAutoSleep: service('autoSleep') }));
-jest.mock('@/playback/drift-controller', () => ({ startDriftWatch: service('drift') }));
+// The options the drift watch was started with (`late` on the web's after-paint start).
+const mockDriftOptions: unknown[] = [];
+jest.mock('@/playback/drift-controller', () => ({
+  startDriftWatch: (o: unknown) => {
+    mockDriftOptions.push(o);
+    return service('drift')();
+  },
+}));
 jest.mock('@/downloads/keep-ahead-controller', () => ({ startKeepAhead: service('keepAhead') }));
 jest.mock('@/downloads/store', () => ({ startChapterRefresh: service('chapters') }));
 jest.mock('@/playback/jump-undo', () => ({ startJumpUndo: service('jumpUndo') }));
@@ -31,7 +38,10 @@ import { RootServices, startRootServices } from './root-services-impl';
 
 describe('startRootServices', () => {
   it('starts every service in order and stops all but the car', () => {
+    mockDriftOptions.length = 0;
     const stop = startRootServices();
+    // Native's start, at the first commit: not a late one.
+    expect(mockDriftOptions).toEqual([{ late: false }]);
     expect(mockCalls).toEqual([
       'start autoSleep',
       'start drift',
@@ -66,7 +76,10 @@ describe('RootServices (the web mounts it after the first paint)', () => {
   });
 
   it('starts the services when it mounts and stops them when it goes', async () => {
+    mockDriftOptions.length = 0;
     const view = await render(<RootServices />);
+    // After the paint: a book already playing is still the drift watch's to offer on.
+    expect(mockDriftOptions).toEqual([{ late: true }]);
     expect(mockCalls).toContain('start autoSleep');
     expect(mockCalls).toContain('start cast');
     mockCalls.length = 0;

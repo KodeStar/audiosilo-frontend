@@ -38,8 +38,15 @@ import {
  *    around 23:41. Jump back 4 minutes?" with a Jump back action that seeks to the last
  *    touch (only for a gap of 1-60 content minutes, and only when the book starts near
  *    where it stopped).
+ *
+ * `late`: the watch starts after the app's first paint (the web, `RootServices`), so a
+ * book already playing is one that started before it could look: that play is still an
+ * edge to offer on, once the engine next reports (its snapshot then is the book's own, not
+ * an old book's held by `playBook`). Native starts with the first commit, where a book
+ * already playing (a play restored or started from the lock screen before the JS
+ * mounted) was looked at by an earlier run, so it is not offered again.
  */
-export function startDriftWatch(): () => void {
+export function startDriftWatch({ late = false }: { late?: boolean } = {}): () => void {
   const stopInteractions = startInteractionWatch();
 
   const unsubscribeEnded = onSleepTimerEnded((outcome) => {
@@ -49,12 +56,15 @@ export function startDriftWatch(): () => void {
   // The play edge: playback starting, or a different book playing. `offeredFor` is the
   // book whose current run of playing was already looked at (null while not playing).
   const initial = usePlayer.getState();
-  let offeredFor = selectIsPlaying(initial) ? selectBookKey(initial) : null;
+  const playingAtStart = selectIsPlaying(initial);
+  let offeredFor = playingAtStart && !late ? selectBookKey(initial) : null;
   // A book change shows the new book with the OLD book's snapshot until the engine reports
   // for the new one (`playBook` sets the book before it loads it): that 'playing' is not
   // the new book's play edge. Taking the drift record on it would spend the offer on the
   // old book's position, and the real edge would find nothing (jump-undo skips it too).
-  let staleSnapshot: unknown = null;
+  // A late start cannot tell whether the book changed before it, so it waits for the
+  // engine's next report.
+  let staleSnapshot: unknown = playingAtStart && late ? initial.snapshot : null;
   const unwatchPlayer = usePlayer.subscribe((state, prev) => {
     const key = selectBookKey(state);
     if (key !== selectBookKey(prev)) {

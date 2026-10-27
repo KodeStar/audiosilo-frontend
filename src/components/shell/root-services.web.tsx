@@ -6,9 +6,9 @@ import { deferred } from '@/lib/deferred';
  * controllers) load after the first screen has painted, and the services start as the
  * listeners mount (`RootServices`). Most act only once a book plays, and the web engine
  * never has one playing at launch (native can: there they start with the first commit,
- * `root-services.tsx`). Two act on their own: the chapter refresh misses a server answer
- * that lands before it starts (the next refetch brings it), and the Cast button shows once
- * the cast sync has said Cast is supported.
+ * `root-services.tsx`). What a play or a fetch did before they started is still taken: the
+ * chapter refresh reads the answers already cached, and the drift watch starts `late`
+ * (`RootServices`). The Cast button shows once the cast sync has said Cast is supported.
  */
 export const RootListeners = deferred(() =>
   import('./root-services-impl').then((m) => m.RootServices),
