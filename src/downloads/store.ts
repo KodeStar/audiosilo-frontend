@@ -706,7 +706,7 @@ function afterLaunch(task: () => void) {
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
- * `cover.jpg` for the cover), so the (connectionId, libraryId, path, fileName) → live-uri
+ * `cover.jpg` for the cover, `book.epub` for the ebook), so the (connectionId, libraryId, path, fileName) → live-uri
  * mapping lives here too; `engine.localUri` supplies the container-current absolute uri
  * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
  * is also what carries a download across the identity migration, which rewrites
@@ -726,8 +726,9 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
       return { ...f, localUri: at(await playableName(i, name, at)) };
     }),
   );
-  const coverUri = e.manifest.coverUri ? at('cover.jpg') : e.manifest.coverUri;
-  return { ...e, manifest: { ...e.manifest, files, coverUri } };
+  const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
+  const ebookUri = e.manifest.ebookUri ? at(EBOOK_FILE) : undefined;
+  return { ...e, manifest: { ...e.manifest, files, coverUri, ebookUri } };
 }
 
 /**
@@ -757,9 +758,10 @@ async function playableName(
   return !(await engine.fileExists(from)) && (await engine.fileExists(at(want))) ? want : name;
 }
 
-function isAbort(e: unknown): boolean {
-  return e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message));
-}
+/** A downloaded book's cover and ebook, beside its audio (never an audio file's name:
+ * those are `<index>[.ext]`). */
+const COVER_FILE = 'cover.jpg';
+const EBOOK_FILE = 'book.epub';
 
 /**
  * Sanitized destination filename for a file index, keeping its extension, except that on
@@ -835,21 +837,26 @@ async function runOne(key: string) {
       ? specs.reduce((sum, s) => sum + s.size, 0)
       : 0;
 
-    let coverUri: string | null = null;
-    try {
-      coverUri = await engine.downloadFile(
-        connectionId,
-        libraryId,
-        path,
-        'cover.jpg',
-        api.coverUrl(libraryId, path),
-        undefined,
-        ctrl.signal,
-      );
-    } catch (e) {
-      if (isAbort(e)) throw e; // a cancel during cover download still cancels the book
-      // otherwise the cover is optional - carry on without it
-    }
+    // The book's extras beside its audio: optional (a failure never fails the audio
+    // download, the book carries on without it), but a cancel during one cancels the book.
+    const extra = async (name: string, url: string, headers?: Record<string, string>) => {
+      try {
+        return await engine.downloadFile(
+          connectionId,
+          libraryId,
+          path,
+          name,
+          url,
+          undefined,
+          ctrl.signal,
+          headers,
+        );
+      } catch (e) {
+        if (ctrl.signal.aborted) throw e;
+        return undefined;
+      }
+    };
+    const coverUri = (await extra(COVER_FILE, api.coverUrl(libraryId, path))) ?? null;
 
     let priorBytes = 0;
     let lastTick = 0;
@@ -907,11 +914,21 @@ async function runOne(key: string) {
       }
     }
 
+    // The book's ebook (Bridge Phase 3b-2), so the reader opens it offline. After the audio:
+    // an attempt that fails on the audio never fetches it, so a retry fetches it once. Its
+    // route takes the Authorization header only, never `?token=`.
+    let ebookUri: string | undefined;
+    if (entry.manifest.book.ebook) {
+      const { url, headers } = api.ebookRequest(libraryId, path);
+      ebookUri = await extra(EBOOK_FILE, url, headers);
+    }
+
     // With the server's chapters answer when one landed while the files did.
     const manifest = withCachedChapters(entry, {
       ...entry.manifest,
       files,
       coverUri,
+      ebookUri,
       savedAt: new Date().toISOString(),
     });
 
@@ -938,7 +955,10 @@ async function runOne(key: string) {
     // a failure there never fails (or holds up) the book.
     keepOfflineMeta(key).catch(() => {});
   } catch (e) {
-    if (isAbort(e)) {
+    // Cancelled only when this download's own signal aborted (`cancel`, `remove`, a removed
+    // connection), whatever the error says: Android reports a dropped connection as
+    // "Software caused connection abort", which is a failure like any other.
+    if (ctrl.signal.aborted) {
       void engine.removeBook(connectionId, libraryId, path);
       removeEntry(key); // cancelled - drop the partial entry
     } else {
@@ -991,6 +1011,19 @@ export function useDownloadEntry(
   path: string,
 ): DownloadEntry | undefined {
   return useDownloads((s) => s.entries[downloadKey(connectionId, libraryId, path)]);
+}
+
+/** The EPUB a finished download of the book holds (its `manifest.ebookUri`), else
+ * undefined. A string, so a download's progress ticks re-render nothing (the reader). */
+export function useDownloadedEbook(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): string | undefined {
+  return useDownloads((s) => {
+    const e = s.entries[downloadKey(connectionId, libraryId, path)];
+    return (e?.status === 'downloaded' && e.manifest.ebookUri) || undefined;
+  });
 }
 
 /** A book's registry entry when it is fully downloaded, else undefined: the non-hook

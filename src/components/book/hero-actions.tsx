@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useCapability, useFavourites, useQueue, useToggleFavourite } from '@/api/hooks';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { useDownloadedEbook } from '@/downloads/store';
 import { readerHref } from '@/lib/paths';
 import { WithActiveModules } from '@/modules/active-modules';
 import type { PlayerModule } from '@/modules/registry';
@@ -94,6 +95,8 @@ function HeroActionsView({
   const path = book.rel_path;
   const collections = useCapability('collections', connectionId) === true;
   const ebooks = useCapability('ebooks', connectionId);
+  // A download holding the EPUB reads while `ebooks` is unknown (offline).
+  const downloadedEbook = !!useDownloadedEbook(connectionId, libraryId, path);
   const [collect, setCollect] = useState(false);
   const [sheet, setSheet] = useState(false);
   const menuExtra: BookAction[] = [
@@ -129,8 +132,8 @@ function HeroActionsView({
     ) : null;
 
   // Read the book's ebook (Bridge Phase 3b): its own button after the download (its own
-  // row on a phone), on the web until the app's reader host lands (Phase 3b-2).
-  const readButton = canRead(ebooks, book, Platform.OS) ? (
+  // row on a phone).
+  const readButton = canRead(ebooks, book, downloadedEbook) ? (
     <Button
       testID="read-action"
       variant="outline"

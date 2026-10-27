@@ -1,17 +1,30 @@
 // AudioSilo's ebook reader (Bridge Phase 3b). Built by scripts/build-reader.mjs into ONE
-// self-contained document, public/reader.html (served as /web/reader.html under its own
-// CSP), which the player shows in a sandboxed, same-origin iframe
-// (src/reader/reader-host.web.tsx). It has no network access of its own (connect-src
-// 'none'): the host posts the EPUB bytes, the place to open at and the appearance; the
-// reader posts back what it opened and where the reader is. The protocol's host side,
-// with every message's shape, is src/reader/protocol.ts.
+// self-contained document in two variants:
+//
+// - web: public/reader.html (served as /web/reader.html under its own CSP), which the
+//   player shows in a sandboxed, same-origin iframe (src/reader/reader-host.web.tsx). It
+//   has no network access of its own (connect-src 'none'): the host posts the EPUB bytes.
+// - native (__NATIVE__): src/reader/reader-html.native.ts, which the app loads as the HTML
+//   source of a WebView with every file access setting off
+//   (src/reader/reader-host.native.tsx). It has no network or file access either: the host
+//   reads the local EPUB and posts it in base64 chunks (chunks.js assembles them).
+//
+// Either way the host posts the place to open at and the appearance; the reader posts back
+// what it opened and where the reader is. The protocol's host side, with every message's
+// shape, is src/reader/protocol.ts.
 //
 // EPUB scripts never run. Three layers: the loader never loads a script file and strips
 // <meta http-equiv=refresh> (here); the document's CSP, inherited by foliate's blob:
-// section frames, allows only this script by hash; and the iframe's sandbox (no popups,
-// top navigation, forms or modals).
+// section frames, allows only this script by hash; and the host. On the web that is the
+// iframe's sandbox (no popups, top navigation, forms or modals); in the app the host refuses
+// every navigation outside the reader document (allowNavigation in
+// src/reader/reader-host.native.tsx) and its WebView opens no windows.
+
+// First: foliate calls Object.groupBy and Map.groupBy, which the app's oldest iOS lacks.
+import './polyfills.js';
 import { View } from '../vendor/foliate-js/view.js';
 
+import { createAssembly } from './chunks.js';
 import { BookError, openEpub } from './epub-open.js';
 
 void View; // registers <foliate-view>
@@ -30,17 +43,43 @@ let fontScale = 1;
 
 // ---- transport -----------------------------------------------------------------------
 
+// __NATIVE__ is replaced by the build (true or false), so each variant drops the other's code.
+/* global __NATIVE__ */
+
 function send(msg) {
-  if (window.parent !== window) window.parent.postMessage(msg, location.origin);
+  if (__NATIVE__) window.ReactNativeWebView?.postMessage(JSON.stringify(msg));
+  else if (window.parent !== window) window.parent.postMessage(msg, location.origin);
 }
 
-window.addEventListener('message', (e) => {
-  // Only the page that embeds this frame, on our own origin, may drive the reader.
-  if (e.source !== window.parent || e.origin !== location.origin) return;
-  const msg = e.data;
+function receive(msg) {
   if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
   handle(msg).catch((err) => report('runtime', err));
-});
+}
+
+if (__NATIVE__) {
+  // The WebView's postMessage dispatches a synthetic event with a string (on the window on
+  // iOS, on the document on Android) and no source window, so a frame's postMessage (which
+  // has one) is dropped. A book's frame is same-origin and could forge the app's event with
+  // a script; what stops that is that book scripts never run (the top of this file).
+  const onNative = (e) => {
+    if (e.source !== null || typeof e.data !== 'string') return;
+    let msg;
+    try {
+      msg = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    receive(msg);
+  };
+  window.addEventListener('message', onNative);
+  document.addEventListener('message', onNative);
+} else {
+  window.addEventListener('message', (e) => {
+    // Only the page that embeds this frame, on our own origin, may drive the reader.
+    if (e.source !== window.parent || e.origin !== location.origin) return;
+    receive(e.data);
+  });
+}
 
 function report(code, err) {
   send({ type: 'error', code, message: String(err?.message ?? err).slice(0, 500) });
@@ -65,6 +104,9 @@ async function handle(msg) {
   switch (msg.type) {
     case 'open':
       return open(msg);
+    case 'chunk':
+      if (__NATIVE__) return receiveChunk(msg);
+      return;
     case 'goto':
       return move(() => go(msg));
     case 'appearance':
@@ -221,15 +263,53 @@ async function goToStart() {
   }
 }
 
+/** The book arriving in chunks (native), from its `open` until its last `chunk`. */
+let incoming = null;
+
+/** Native: `open` announces the book (size, chunk count) and the chunks follow. A transfer
+ * that goes wrong in any way is the book being unreadable, never a half-open book. */
+function beginTransfer(msg) {
+  incoming = null;
+  setAppearance(msg);
+  setBusy(true);
+  try {
+    incoming = { msg, assembly: createAssembly(msg.size, msg.chunks) };
+  } catch (err) {
+    setBusy(false);
+    report('unreadable', err);
+  }
+}
+
+function receiveChunk(msg) {
+  if (!incoming) return report('unreadable', 'no book was announced');
+  const { msg: announced, assembly } = incoming;
+  let bytes;
+  try {
+    bytes = assembly.add(msg.seq, msg.data);
+  } catch (err) {
+    incoming = null;
+    setBusy(false);
+    return report('unreadable', err);
+  }
+  if (!bytes) return;
+  incoming = null;
+  return openBook(announced, bytes);
+}
+
 async function open(msg) {
+  if (__NATIVE__) return beginTransfer(msg);
   if (!(msg.book instanceof ArrayBuffer)) return report('unreadable', 'no book');
   setAppearance(msg);
+  return openBook(msg, msg.book);
+}
+
+async function openBook(msg, bytes) {
   setBusy(true);
   opened = false;
   lastProgress = null;
   let book;
   try {
-    book = await openEpub(msg.book);
+    book = await openEpub(bytes);
   } catch (err) {
     setBusy(false);
     return report(err instanceof BookError ? err.code : 'unreadable', err);
@@ -247,7 +327,8 @@ async function open(msg) {
   view = document.createElement('foliate-view');
   view.addEventListener('relocate', onRelocate);
   view.addEventListener('load', onSectionLoad);
-  // Links out of the book never open: the sandbox would refuse the popup anyway.
+  // Links out of the book never open. On the web the sandbox would refuse the popup anyway;
+  // in the app the reader is the WebView's top document, so this is what stops it.
   view.addEventListener('external-link', (e) => e.preventDefault());
   document.getElementById('book').append(view);
   try {

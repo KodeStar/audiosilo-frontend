@@ -2907,7 +2907,8 @@
       },
       "start": {
         "title": "Der Leser ist nicht gestartet",
-        "body": "Der E-Book-Leser lief in diesem Browser nicht. Deine Stelle im Buch bleibt erhalten. Ein Proxy vor dem Server oder ein älterer Browser kann ihn blockieren: Versuche es erneut oder nimm einen anderen Browser."
+        "body": "Der E-Book-Leser lief in diesem Browser nicht. Deine Stelle im Buch bleibt erhalten. Ein Proxy vor dem Server oder ein älterer Browser kann ihn blockieren: Versuche es erneut oder nimm einen anderen Browser.",
+        "bodyNative": "Der E-Book-Leser wurde beendet. Deine Stelle im Buch bleibt erhalten. Versuche es erneut, und wenn er immer wieder stoppt, schließe ein paar andere Apps: Ein großes Buch braucht viel Arbeitsspeicher."
       },
       "noEbook": {
         "title": "Kein E-Book zu diesem Buch",
@@ -2919,8 +2920,6 @@
       "unknown": "Auf einem anderen Gerät warst du bei {{percent}} %. Dorthin springen?",
       "jump": "Springen",
       "stay": "Bleiben"
-    },
-    "nativeTitle": "Lesen gibt es vorerst im Web",
-    "nativeBody": "Der Leser der App kommt mit einem Update. Öffne dieses Buch im Web-Player, um es zu lesen."
+    }
   }
 }

@@ -5,6 +5,7 @@ import { resolveClient, sessionReady } from '@/api/connection-clients';
 import * as reachability from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
 import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
+import { getDeviceId } from '@/playback/progress-sync';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -16,6 +17,8 @@ import {
   lookupReadingPlace,
   onReadingSaved,
   type ReadingSave,
+  type ReadingSaved,
+  saveReaderPlace,
   saveReadingPlace,
 } from './reading-progress';
 
@@ -33,6 +36,11 @@ jest.mock('@/api/connection-clients', () => ({
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
 }));
+// The app's EPUB cache (ebook-file.native.ts has its own tests): dropped with its connection.
+const mockClearEbookCache = jest.fn(async (_id: string) => {});
+jest.mock('./ebook-file', () => ({
+  clearEbookCache: (id: string) => mockClearEbookCache(id),
+}));
 
 // progress-sync (imported for getDeviceId) registers first; the reader's purge is the last.
 const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls.at(-1)?.[0] as (
@@ -45,6 +53,7 @@ const mockSessionReady = sessionReady as jest.Mock;
 
 const CFI_A = 'epubcfi(/6/4!/4/2/1:0)';
 const CFI_B = 'epubcfi(/6/12!/4/2/1:0)';
+const CFI_C = 'epubcfi(/6/30!/4/2/1:0)';
 
 function row(p: Partial<ReadingProgress> = {}): ReadingProgress {
   return {
@@ -87,6 +96,42 @@ function fakeApi(
     ),
     readingProgress: jest.fn(get),
   } as unknown as ApiClient & { saveReadingProgress: jest.Mock; readingProgress: jest.Mock };
+}
+
+/** A server keeping the book's one row by catalog.ResolvePlace's rule: a save diverges when
+ * a row is stored and its base is not the row's version, from another device or on 0 (saw
+ * nothing, whatever the device); a diverged save keeps the further place, any other is
+ * latest-wins. Every applied save bumps the version. */
+function ruleServer(deviceName: string) {
+  let kept: ReadingProgress | null = null;
+  const api = fakeApi(
+    async (input) => {
+      const save = input as Pick<
+        ReadingSave,
+        'cfi' | 'progression' | 'device_id' | 'updated_at' | 'base_version'
+      >;
+      const apply = () => {
+        kept = row({
+          cfi: save.cfi,
+          progression: save.progression,
+          device_id: save.device_id,
+          device_name: deviceName,
+          updated_at: save.updated_at,
+          version: (kept?.version ?? 0) + 1,
+        });
+      };
+      if (!kept) apply();
+      else if (
+        save.base_version !== kept.version &&
+        (save.base_version === 0 || save.device_id !== kept.device_id)
+      ) {
+        if (save.progression > kept.progression) apply();
+      } else if (Date.parse(save.updated_at) >= Date.parse(kept.updated_at)) apply();
+      return { reading_progress: kept! };
+    },
+    async () => kept,
+  );
+  return { api, row: () => kept };
 }
 
 async function stored<T>(key: string, fallback: T): Promise<T> {
@@ -307,6 +352,116 @@ describe('reading-progress', () => {
       await expect(lookupReadingPlace(null, 'c1', 1, 'A/Book')).rejects.toThrow();
     });
 
+    it('opens a book on this device at the start offline with no place anywhere', async () => {
+      const hasLocalCopy = jest.fn(async () => true);
+      for (const api of [
+        fakeApi(undefined, () => Promise.reject(new TypeError('Network request failed'))),
+        fakeApi(undefined, () => Promise.reject(new Error('The Internet connection is offline'))),
+      ]) {
+        await expect(
+          lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+        ).resolves.toEqual({ place: null, fromServer: null });
+      }
+      expect(hasLocalCopy).toHaveBeenCalled();
+    });
+
+    it('still fails offline when the EPUB is not on this device (or the check fails)', async () => {
+      const offline = new TypeError('offline');
+      const api = fakeApi(undefined, () => Promise.reject(offline));
+      for (const hasLocalCopy of [
+        async () => false,
+        () => Promise.reject(new Error('fs')),
+        undefined,
+      ]) {
+        await expect(
+          lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+        ).rejects.toBe(offline);
+      }
+    });
+
+    it('never opens at a guessed start online: a server error fails it, local copy or not', async () => {
+      const hasLocalCopy = jest.fn(async () => true);
+      for (const failure of [new ApiError(500, 'db'), new ApiError(404, 'no ebook')]) {
+        const api = fakeApi(undefined, () => Promise.reject(failure));
+        await expect(
+          lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+        ).rejects.toBe(failure);
+      }
+      const signedOut = new ApiError(401, 'unauthorized');
+      await expect(
+        lookupReadingPlace(
+          fakeApi(undefined, () => Promise.reject(signedOut)),
+          'c1',
+          1,
+          'A/Book',
+          undefined,
+          { hasLocalCopy },
+        ),
+      ).rejects.toBe(signedOut);
+      await expect(
+        lookupReadingPlace(null, 'c1', 1, 'A/Book', undefined, { hasLocalCopy }),
+      ).rejects.toThrow();
+      expect(hasLocalCopy).not.toHaveBeenCalled();
+    });
+
+    it('prefers a local place over the start offline, without asking for the copy', async () => {
+      await saveReadingPlace(null, save({ cfi: CFI_B }));
+      const hasLocalCopy = jest.fn(async () => true);
+      const api = fakeApi(undefined, () => Promise.reject(new TypeError('offline')));
+      const found = await lookupReadingPlace(api, 'c1', 1, 'A/Book', undefined, {
+        hasLocalCopy,
+      });
+      expect(found.place?.cfi).toBe(CFI_B);
+      expect(hasLocalCopy).not.toHaveBeenCalled();
+    });
+
+    it('an offline start saves on version 0, never acknowledging the place another device kept', async () => {
+      // Opened offline at the start: no place, no version, seen here.
+      const offline = fakeApi(undefined, () => Promise.reject(new TypeError('offline')));
+      await lookupReadingPlace(offline, 'c1', 1, 'A/Book', undefined, {
+        hasLocalCopy: async () => true,
+      });
+      reachable.mockReturnValue(false);
+      const first = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.01 });
+      expect(first.base_version).toBe(0);
+      await saveReadingPlace(offline, first);
+      // A later page of the same session is still made on version 0.
+      const next = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.02 });
+      expect(next.base_version).toBe(0);
+      await saveReadingPlace(offline, next);
+      expect(await readQueue()).toEqual([expect.objectContaining({ base_version: 0 })]);
+
+      // Back online: the server took version 0 as diverged and kept the phone's place
+      // further on (catalog.ResolvePlace); the answer offers Jump there and leaves this
+      // device's version at 0 until the reader shows it.
+      const kept = row({
+        device_id: 'phone',
+        device_name: 'Pixel 8',
+        cfi: CFI_C,
+        progression: 0.6,
+        version: 9,
+      });
+      const online = fakeApi(async () => ({ reading_progress: kept }));
+      mockResolveClient.mockReturnValue(online);
+      reachable.mockReturnValue(true);
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      await flushReadingQueue();
+      off();
+      expect(online.saveReadingProgress).toHaveBeenCalledWith(
+        1,
+        'A/Book',
+        expect.objectContaining({ base_version: 0, progression: 0.02 }),
+      );
+      expect(heard).toEqual([expect.objectContaining({ saved: { reading_progress: kept } })]);
+      expect(jumpOffer(heard[0], { cfi: CFI_B, progression: 0.02 })).toMatchObject({
+        progression: 0.6,
+        deviceName: 'Pixel 8',
+      });
+      const after = await captureReadingSave('c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.03 });
+      expect(after.base_version).toBe(0);
+    });
+
     it('fails on a signed-out answer (401) whatever is local', async () => {
       await saveReadingPlace(null, save({ cfi: CFI_B }));
       const signedOut = new ApiError(401, 'unauthorized');
@@ -371,54 +526,187 @@ describe('reading-progress', () => {
     });
   });
 
+  describe('this device’s own place', () => {
+    const START = 'epubcfi(/6/2!/4/2/1:0)';
+    const at = (cfi: string, progression: number) =>
+      captureReadingSave('c1', 1, 'A/Book', { cfi, progression });
+
+    it('adopts its own saves’ versions, answered in order', async () => {
+      const server = ruleServer('This phone');
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      const bases: number[] = [];
+      for (const [cfi, progression] of [
+        [CFI_A, 0.2],
+        [CFI_C, 0.8],
+        [CFI_B, 0.5],
+      ] as const) {
+        const next = await at(cfi, progression);
+        bases.push(next.base_version);
+        await saveReadingPlace(server.api, next);
+      }
+      off();
+      expect(bases).toEqual([0, 1, 2]);
+      expect(heard.map((a) => a.seen)).toEqual([true, true, true]);
+      // Moving back on purpose applied.
+      expect(server.row()).toMatchObject({ cfi: CFI_B, progression: 0.5, version: 3 });
+      expect((await at(CFI_B, 0.51)).base_version).toBe(3);
+    });
+
+    it('signed out and back in, a start saved offline keeps its place further on and offers Jump', async () => {
+      const deviceId = await getDeviceId();
+      const server = ruleServer('This phone');
+      mockResolveClient.mockReturnValue(server.api);
+      // Read to 80% online.
+      for (const [cfi, progression] of [
+        [CFI_A, 0.2],
+        [CFI_C, 0.8],
+      ] as const) {
+        await saveReadingPlace(server.api, await at(cfi, progression));
+      }
+      expect(server.row()).toMatchObject({ progression: 0.8, version: 2, device_id: deviceId });
+      // Signed out (onConnectionRemoved): the places here are gone, the device id is not.
+      await removalCleanup('c1');
+      expect(await readMirror()).toEqual({});
+      expect(await getDeviceId()).toBe(deviceId);
+
+      // The downloaded book opens offline at the start; its save is queued on 0.
+      const offline = fakeApi(undefined, () => Promise.reject(new TypeError('offline')));
+      await expect(
+        lookupReadingPlace(offline, 'c1', 1, 'A/Book', undefined, {
+          hasLocalCopy: async () => true,
+        }),
+      ).resolves.toEqual({ place: null, fromServer: null });
+      reachable.mockReturnValue(false);
+      const start = await at(START, 0.01);
+      expect(start.base_version).toBe(0);
+      await saveReadingPlace(offline, start);
+      expect(offline.saveReadingProgress).not.toHaveBeenCalled();
+
+      // Back online, the replay: the server keeps 80%, which this device never saw.
+      reachable.mockReturnValue(true);
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      await flushReadingQueue();
+      off();
+      expect(server.row()).toMatchObject({ progression: 0.8, version: 2 });
+      expect(heard).toHaveLength(1);
+      expect(heard[0].seen).toBe(false);
+      expect(jumpOffer(heard[0], { cfi: START, progression: 0.01 })).toEqual({
+        cfi: CFI_C,
+        progression: 0.8,
+        deviceName: 'This phone',
+      });
+      // Not acknowledged: the next save is still on 0, and still never moves it back.
+      const next = await at(START, 0.02);
+      expect(next.base_version).toBe(0);
+      await saveReadingPlace(server.api, next);
+      expect(server.row()).toMatchObject({ progression: 0.8, version: 2 });
+      // Stay: seen, so the next save moves back on purpose.
+      await adoptServerPlace('c1', 1, 'A/Book', heard[0].saved.reading_progress);
+      const stay = await at(START, 0.03);
+      expect(stay.base_version).toBe(2);
+      await saveReadingPlace(server.api, stay);
+      expect(server.row()).toMatchObject({ progression: 0.03, version: 3 });
+    });
+
+    it('sends the reader’s first two saves one after the other, so a move back applies', async () => {
+      const server = ruleServer('This phone');
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      // Both fire before the first is answered; the second is a page back.
+      await Promise.all([
+        saveReaderPlace(server.api, 'c1', 1, 'A/Book', { cfi: CFI_B, progression: 0.5 }),
+        saveReaderPlace(server.api, 'c1', 1, 'A/Book', { cfi: CFI_A, progression: 0.3 }),
+      ]);
+      off();
+      expect(server.api.saveReadingProgress.mock.calls.map(([, , b]) => b.base_version)).toEqual([
+        0, 1,
+      ]);
+      expect(heard.map((a) => a.seen)).toEqual([true, true]);
+      expect(heard.map((a) => jumpOffer(a, { cfi: CFI_A, progression: 0.3 }))).toEqual([
+        null,
+        null,
+      ]);
+      expect(server.row()).toMatchObject({ cfi: CFI_A, progression: 0.3, version: 2 });
+    });
+
+    it('acknowledges this save when the server replaced its time (a clock ahead)', async () => {
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      const echo = row({
+        cfi: CFI_B,
+        progression: 0.5,
+        version: 4,
+        updated_at: '2026-10-01T09:00:00.000Z',
+      });
+      await saveReadingPlace(
+        fakeApi(async () => ({ reading_progress: echo })),
+        save({ cfi: CFI_B, progression: 0.5, updated_at: '2026-10-01T10:00:00.000Z' }),
+      );
+      off();
+      expect(heard[0].seen).toBe(true);
+      expect((await at(CFI_B, 0.5)).base_version).toBe(4);
+    });
+
+    it('takes its own row echoed to a stale save as seen, its version left alone', async () => {
+      await adoptServerPlace('c1', 1, 'A/Book', row({ version: 6 }));
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      // An answer that lands late, echoing this device's version 5.
+      const echo = row({ cfi: CFI_B, progression: 0.5, version: 5 });
+      await saveReadingPlace(
+        fakeApi(async () => ({ reading_progress: echo })),
+        save({ cfi: CFI_A, base_version: 6 }),
+      );
+      off();
+      expect(heard[0].seen).toBe(true);
+      expect(jumpOffer(heard[0], { cfi: CFI_A, progression: 0.2 })).toBeNull();
+      expect((await at(CFI_A, 0.2)).base_version).toBe(6);
+    });
+  });
+
   it('forgets a removed connection’s places and queued saves', async () => {
     await saveReadingPlace(null, save({ connectionId: 'c1' }));
     await saveReadingPlace(null, save({ connectionId: 'c2' }));
     await removalCleanup('c1');
     expect((await readQueue()).map((s) => s.connectionId)).toEqual(['c2']);
     expect(Object.values(await readMirror())).toHaveLength(1);
+    expect(mockClearEbookCache).toHaveBeenCalledWith('c1');
   });
 });
 
 describe('jumpOffer', () => {
-  const kept = (p: Partial<ReadingProgress>): ReadingProgressSaved => ({
-    reading_progress: row({ device_id: 'phone', device_name: 'Pixel 8', ...p }),
+  const kept = (p: Partial<ReadingProgress>, seen = false) => ({
+    saved: { reading_progress: row({ device_id: 'phone', device_name: 'Pixel 8', ...p }) },
+    seen,
   });
 
   it('offers the place another device kept when it is somewhere else', () => {
     expect(
-      jumpOffer(kept({ cfi: CFI_B, progression: 0.6 }), { cfi: CFI_A, progression: 0.2 }, 'dev'),
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.6 }), { cfi: CFI_A, progression: 0.2 }),
     ).toEqual({ cfi: CFI_B, progression: 0.6, deviceName: 'Pixel 8' });
   });
 
-  it('offers nothing when the kept row is this device’s own (other_place or not)', () => {
-    const answer: ReadingProgressSaved = {
-      reading_progress: row({ device_id: 'dev', cfi: CFI_B, progression: 0.6 }),
-      other_place: {
-        cfi: CFI_A,
-        progression: 0.2,
-        device_id: 'phone',
-        device_name: 'Pixel 8',
-        updated_at: '2026-10-01T10:00:00.000Z',
-      },
-    };
-    expect(jumpOffer(answer, { cfi: CFI_A, progression: 0.2 }, 'dev')).toBeNull();
+  it('offers nothing when this device had seen the kept row', () => {
+    expect(
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.6 }, true), { cfi: CFI_A, progression: 0.2 }),
+    ).toBeNull();
   });
 
   it('offers nothing when the kept place is where the reader is', () => {
-    expect(jumpOffer(kept({ cfi: CFI_A }), { cfi: CFI_A, progression: 0.2 }, 'dev')).toBeNull();
+    expect(jumpOffer(kept({ cfi: CFI_A }), { cfi: CFI_A, progression: 0.2 })).toBeNull();
     expect(
-      jumpOffer(kept({ cfi: CFI_B, progression: 0.205 }), { cfi: CFI_A, progression: 0.2 }, 'dev'),
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.205 }), { cfi: CFI_A, progression: 0.2 }),
     ).toBeNull();
   });
 
   it('names no device when the server has no name for it', () => {
     expect(
-      jumpOffer(
-        kept({ cfi: CFI_B, progression: 0.6, device_name: undefined }),
-        { cfi: CFI_A, progression: 0.2 },
-        'dev',
-      )?.deviceName,
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.6, device_name: undefined }), {
+        cfi: CFI_A,
+        progression: 0.2,
+      })?.deviceName,
     ).toBe('');
   });
 });

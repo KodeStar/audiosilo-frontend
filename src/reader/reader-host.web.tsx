@@ -1,35 +1,46 @@
-import { useEffect, useImperativeHandle, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
+import { engine } from '@/downloads/engine';
+import { downloadedEntryOf } from '@/downloads/store';
 import { BASE_URL } from '@/lib/base-url';
 import { useLatestRef } from '@/lib/use-latest';
 
 import {
   acceptReaderMessage,
   createHostChannel,
-  type GotoTarget,
   type HostChannel,
   type HostMessage,
 } from './protocol';
-import { type ReaderHostProps, ReaderStartError } from './reader-host-types';
+import { READER_START_MS, type ReaderHostProps, ReaderStartError } from './reader-host-types';
+import { useReaderControls } from './use-reader-controls';
 
 /** The reader document the web export serves beside the app (`public/reader.html`). */
 export const READER_URL = `${BASE_URL}/reader.html`;
 
-/** How long the reader document may take to say `ready`. One that never does (a proxy
- * refusing the frame or its script, a browser that cannot run it) says nothing at all, so
- * past this it is a failed load (`ReaderStartError`), instead of a spinner for good. */
-export const READER_START_MS = 30_000;
+/** The book's EPUB as this browser has it in its download (Bridge Phase 3b-2), else null:
+ * read whenever it is there, so a downloaded book reads offline. */
+async function downloadedEbook(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<ArrayBuffer | null> {
+  const uri = downloadedEntryOf({ connectionId, libraryId, path })?.manifest.ebookUri;
+  if (!uri || !engine.readFile) return null;
+  const bytes = await engine.readFile(uri);
+  return bytes && bytes.byteLength > 0 ? bytes : null;
+}
 
 /**
  * The web reader host: the reader document in an iframe, same-origin (foliate cannot run
  * in an opaque origin) but sandboxed (no popups, top navigation, forms or modals). The host
- * fetches the EPUB with the session's `Authorization` header and hands the reader only the
- * bytes, as a transferable: the reader never sees a token or an API URL, and foliate never
+ * reads the EPUB from the book's download, else fetches it with the session's
+ * `Authorization` header, and hands the reader only the bytes, as a transferable: the reader never sees a token or an API URL, and foliate never
  * runs in the `/web` document. Messages are taken only from this frame's window on our own
  * origin (`acceptReaderMessage`) and wait until the reader says `ready`.
  */
 export function ReaderHost({
   api,
+  connectionId,
   libraryId,
   path,
   name,
@@ -39,21 +50,23 @@ export function ReaderHost({
   title,
   onMessage,
   onLoadError,
+  onReopen,
   ref,
 }: ReaderHostProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const channel = useRef<HostChannel | null>(null);
-  const latest = useLatestRef({ api, at, theme, fontScale, name, onMessage, onLoadError });
+  const latest = useLatestRef({
+    api,
+    at,
+    theme,
+    fontScale,
+    name,
+    onMessage,
+    onLoadError,
+    onReopen,
+  });
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      goto: (target: GotoTarget) => channel.current?.send({ type: 'goto', ...target }),
-      next: () => channel.current?.send({ type: 'next' }),
-      prev: () => channel.current?.send({ type: 'prev' }),
-    }),
-    [],
-  );
+  useReaderControls(channel, ref, theme, fontScale);
 
   // One reader session per book: the channel, the window listener and the book's bytes. The
   // client is read when the bytes are fetched: a new one (a new token) keeps the session,
@@ -71,8 +84,9 @@ export function ReaderHost({
       fetching?.abort();
       const abort = new AbortController();
       fetching = abort;
-      latest.current.api
-        .ebook(libraryId, path, abort.signal)
+      downloadedEbook(connectionId, libraryId, path)
+        .catch(() => null)
+        .then((saved) => saved ?? latest.current.api.ebook(libraryId, path, abort.signal))
         .then((book) => {
           if (abort.signal.aborted) return;
           const { at: place, theme: look, fontScale: scale, name: bookName } = latest.current;
@@ -100,9 +114,13 @@ export function ReaderHost({
         case 'ready':
           clearTimeout(starting);
           // `ready` after an open reached it: the reader document reloaded, and the bytes
-          // it had were transferred to it, so they are fetched once more. (Checked before
-          // `session.ready()`, which delivers a held open.)
-          if (delivered) openBook();
+          // it had were transferred to it, so they are fetched once more, and the screen
+          // hears the book is opening again. (Checked before `session.ready()`, which
+          // delivers a held open.)
+          if (delivered) {
+            latest.current.onReopen?.();
+            openBook();
+          }
           session.ready();
           return;
         case 'csp':
@@ -121,21 +139,7 @@ export function ReaderHost({
       fetching?.abort();
       channel.current = null;
     };
-  }, [libraryId, path, latest]);
-
-  // A theme or text size change after the book opened (by value: `open` carried the first).
-  const { scheme, background, foreground } = theme;
-  const appearanceSent = useRef(`${scheme}${background}${foreground}${fontScale}`);
-  useEffect(() => {
-    const key = `${scheme}${background}${foreground}${fontScale}`;
-    if (appearanceSent.current === key) return;
-    appearanceSent.current = key;
-    channel.current?.send({
-      type: 'appearance',
-      theme: { scheme, background, foreground },
-      fontScale,
-    });
-  }, [scheme, background, foreground, fontScale]);
+  }, [connectionId, libraryId, path, latest]);
 
   return (
     <iframe

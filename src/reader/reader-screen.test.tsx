@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import type { ReadingProgress } from '@/api/types';
@@ -17,11 +18,25 @@ import { adoptServerPlace, type ReadingSaved } from './reading-progress';
 type Query = { data?: unknown; isError: boolean; error: unknown; refetch: jest.Mock };
 let mockBook: Query;
 let mockPlace: Query;
+let mockEbooks: boolean | undefined = true;
+/** The last `useReadingPlace` call: (libraryId, path, connectionId, enabled, hasLocalCopy). */
+let mockPlaceArgs: unknown[] = [];
 jest.mock('@/api/hooks', () => ({
   useBook: () => mockBook,
-  useCapability: () => true,
-  useReadingPlace: () => mockPlace,
+  useCapability: () => mockEbooks,
+  useReadingPlace: (...args: unknown[]) => {
+    mockPlaceArgs = args;
+    return mockPlace;
+  },
 }));
+// The book's download entry, and whether its EPUB is on the device (ebook-file's tests).
+let mockDownload: { status: string; manifest: { ebookUri?: string } } | undefined;
+jest.mock('@/downloads/store', () => ({
+  useDownloadedEbook: () =>
+    (mockDownload?.status === 'downloaded' && mockDownload.manifest.ebookUri) || undefined,
+}));
+const mockHasLocalEbook = jest.fn(async (_ref: unknown) => true);
+jest.mock('./ebook-file', () => ({ hasLocalEbook: (ref: unknown) => mockHasLocalEbook(ref) }));
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({}) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/lib/back-or-home', () => ({ backOrHome: jest.fn() }));
@@ -60,8 +75,7 @@ let mockHeard: ((saved: ReadingSaved) => void) | null = null;
 jest.mock('./reading-progress', () => ({
   ...jest.requireActual('./reading-progress'),
   adoptServerPlace: jest.fn(() => Promise.resolve()),
-  captureReadingSave: jest.fn(() => new Promise(() => {})),
-  saveReadingPlace: jest.fn(),
+  saveReaderPlace: jest.fn(() => new Promise(() => {})),
   flushReadingQueue: jest.fn(() => Promise.resolve()),
   onReadingSaved: (listener: (saved: ReadingSaved) => void) => {
     mockHeard = listener;
@@ -116,14 +130,26 @@ async function opened(cfi = CFI_A, { rtl = false } = {}) {
   await say({ type: 'progress', cfi, fraction: 0.2, sectionLabel: '' });
 }
 
-/** A save of this book is answered with `kept` as the server's row. */
-const answered = (kept: ReadingProgress) =>
+/** The host made the reader document again (the app's WebView died, the web's frame
+ * reloaded). */
+const reopened = () =>
+  act(async () => {
+    mockHost!.onReopen!();
+  });
+
+/** The page edges on screen. */
+const edges = () => screen.queryAllByLabelText(/^(Next|Previous) page$/);
+
+/** A save of this book is answered with `kept` as the server's row; `seen`: this device
+ * had seen it (its own save, or its own row at a version it acknowledged). */
+const answered = (kept: ReadingProgress, seen = false) =>
   act(async () => {
     mockHeard!({
       connectionId: 'c1',
       libraryId: 1,
       path: 'A/Book',
       saved: { reading_progress: kept },
+      seen,
     });
   });
 
@@ -134,6 +160,46 @@ describe('ReaderScreen', () => {
     mockShortcuts.length = 0;
     mockBook = query({ title: 'Alice', ebook: { path: 'A/Book/alice.epub', size: 1 } });
     mockPlace = query({ place: null, fromServer: null });
+    mockEbooks = true;
+    mockDownload = undefined;
+  });
+
+  it('reads a download holding the EPUB offline, the capability unknown', async () => {
+    mockEbooks = undefined;
+    mockDownload = { status: 'downloaded', manifest: { ebookUri: 'file:///d/book.epub' } };
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockPlaceArgs[3]).toBe(true);
+    // The offline lookup asks whether the EPUB is here: the download's copy, or the cache
+    // file at the ebook's size.
+    const hasLocalCopy = mockPlaceArgs[4] as () => Promise<boolean>;
+    await expect(hasLocalCopy()).resolves.toBe(true);
+    expect(mockHasLocalEbook).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      libraryId: 1,
+      path: 'A/Book',
+      size: 1,
+      saved: 'file:///d/book.epub',
+    });
+  });
+
+  it('waits, never looking up a place, with the capability unknown and no downloaded EPUB', async () => {
+    mockEbooks = undefined;
+    mockDownload = { status: 'downloaded', manifest: {} };
+    await mount();
+    expect(mockPlaceArgs[3]).toBe(false);
+    expect(mockHost).toBeNull();
+  });
+
+  it('hands the host the book’s connection and its ebook’s size (the app’s cache rule)', async () => {
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockHost).toMatchObject({
+      connectionId: 'c1',
+      libraryId: 1,
+      path: 'A/Book',
+      ebookSize: 1,
+    });
   });
 
   it('offers another device’s further place, and Stay acknowledges it', async () => {
@@ -182,10 +248,10 @@ describe('ReaderScreen', () => {
     expect(adoptServerPlace).toHaveBeenCalledWith('c1', 1, 'A/Book', row());
   });
 
-  it('offers nothing for this device’s own place', async () => {
+  it('offers nothing for a place this device had seen (its own save)', async () => {
     await mount();
     await opened();
-    await answered(row({ device_id: 'dev' }));
+    await answered(row({ device_id: 'dev' }), true);
     expect(screen.queryByTestId('reader-jump-offer')).toBeNull();
     expect(adoptServerPlace).not.toHaveBeenCalled();
   });
@@ -210,7 +276,87 @@ describe('ReaderScreen', () => {
     await waitFor(() => expect(mockHost).not.toBeNull());
     await act(async () => mockHost!.onLoadError(new ReaderStartError()));
     expect(screen.getByText("The reader didn't start")).toBeTruthy();
+    // The app's reader is a WebView that stopped: no browser or proxy to blame.
+    expect(screen.getByText(/^The ebook reader stopped\./)).toBeTruthy();
     expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
+  it('names the browser when the web reader did not start', async () => {
+    const prevOS = Platform.OS;
+    try {
+      Platform.OS = 'web';
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+      expect(screen.getByText(/^The ebook reader didn't run in this browser\./)).toBeTruthy();
+      expect(screen.queryByText(/^The ebook reader stopped\./)).toBeNull();
+    } finally {
+      Platform.OS = prevOS;
+    }
+  });
+
+  it('says a book that never opened cannot be opened, with no Try again', async () => {
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    await say({ type: 'error', code: 'unreadable', message: 'not a zip' });
+    expect(screen.getByText("This ebook can't be opened")).toBeTruthy();
+    expect(screen.queryByText('Try again')).toBeNull();
+  });
+
+  it('hides the page edges, the toolbar and the offer while the reader is made again', async () => {
+    await mount();
+    await opened();
+    await answered(row());
+    expect(edges()).toHaveLength(2);
+    expect(screen.getByLabelText('Contents')).toBeTruthy();
+    expect(screen.getByTestId('reader-jump-offer')).toBeTruthy();
+    await reopened();
+    expect(edges()).toHaveLength(0);
+    expect(screen.queryByLabelText('Contents')).toBeNull();
+    expect(screen.queryByTestId('reader-jump-offer')).toBeNull();
+    // Its next `opened`: the book shows again, and the offer with it.
+    await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
+    expect(edges()).toHaveLength(2);
+    expect(screen.getByTestId('reader-jump-offer')).toBeTruthy();
+  });
+
+  it('says a reopen that fails as a reader that stopped, with Try again', async () => {
+    await mount();
+    await opened();
+    await reopened();
+    // The memory pressure that took the last WebView fails the new one's open.
+    await say({ type: 'error', code: 'unreadable', message: 'RangeError: allocation failed' });
+    expect(screen.getByText("The reader didn't start")).toBeTruthy();
+    expect(screen.queryByText("This ebook can't be opened")).toBeNull();
+    expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
+  it('shows no page edges after Try again until the book shows again', async () => {
+    await mount();
+    await opened();
+    // The app's host gave up while the book showed (its last WebView died after `opened`).
+    await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+    await fireEvent.press(screen.getByText('Try again'));
+    // A new host, and nothing over it until its book shows.
+    expect(screen.queryByText("The reader didn't start")).toBeNull();
+    expect(edges()).toHaveLength(0);
+    await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
+    expect(edges()).toHaveLength(2);
+  });
+
+  it('opens again where the reader was on Try again, not where the screen first opened', async () => {
+    mockPlace = query({
+      place: { cfi: CFI_A, progression: 0.2, device_id: 'dev', updated_at: '2026-10-01' },
+      fromServer: null,
+    });
+    await mount();
+    await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_A, fraction: 0.2 }));
+    await opened(CFI_A);
+    await say({ type: 'progress', cfi: CFI_B, fraction: 0.6, sectionLabel: 'II' });
+    await act(async () => mockHost!.onLoadError(new ReaderStartError()));
+    await fireEvent.press(screen.getByText('Try again'));
+    // The new host (the next attempt) opens at the last page shown.
+    await waitFor(() => expect(mockHost?.at).toEqual({ cfi: CFI_B, fraction: 0.6 }));
   });
 
   it('turns a right-to-left book forward from the left edge', async () => {

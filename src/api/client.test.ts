@@ -2952,6 +2952,15 @@ describe('reading (capability ebooks, Bridge Phase 3b)', () => {
     expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
   });
 
+  it('names the ebook request for a download it does not make: the credential in a header, never the URL', () => {
+    const { url, headers } = client().ebookRequest(1, 'Author/Book');
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe('/api/v1/libraries/1/ebook');
+    expect(parsed.searchParams.get('path')).toBe('Author/Book');
+    expect(parsed.searchParams.has('token')).toBe(false);
+    expect(headers.Authorization).toBe('Bearer tok');
+  });
+
   it('throws the server refusal for an ebook it does not serve', async () => {
     installFetch(() => ({ status: 404, body: { error: 'no ebook' } }));
     await expect(client().ebook(1, 'Author/Book')).rejects.toMatchObject({ status: 404 });

@@ -2907,7 +2907,8 @@
       },
       "start": {
         "title": "O leitor não arrancou",
-        "body": "O leitor de ebooks não arrancou neste navegador. A tua posição no livro fica guardada. Um proxy à frente do servidor ou um navegador antigo podem bloqueá-lo: tenta novamente ou usa outro navegador."
+        "body": "O leitor de ebooks não arrancou neste navegador. A tua posição no livro fica guardada. Um proxy à frente do servidor ou um navegador antigo podem bloqueá-lo: tenta novamente ou usa outro navegador.",
+        "bodyNative": "O leitor de ebooks parou. A tua posição no livro fica guardada. Tenta novamente e, se continuar a parar, fecha algumas outras apps: um livro grande precisa de muita memória."
       },
       "noEbook": {
         "title": "Este livro não tem ebook",
@@ -2919,8 +2920,6 @@
       "unknown": "Noutro dispositivo estavas em {{percent}}%. Ir para lá?",
       "jump": "Ir",
       "stay": "Ficar"
-    },
-    "nativeTitle": "Por agora, lê-se na web",
-    "nativeBody": "O leitor da app chega numa atualização. Abre este livro no leitor web para o ler."
+    }
   }
 }

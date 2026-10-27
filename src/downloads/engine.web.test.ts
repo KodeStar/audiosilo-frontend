@@ -21,6 +21,9 @@ class FakeResponse {
   async text() {
     return this.body;
   }
+  async arrayBuffer() {
+    return new TextEncoder().encode(this.body).buffer;
+  }
 }
 
 const cache = {
@@ -36,6 +39,19 @@ const cache = {
   delete: jest.fn(async (r: string | { url: string }) => store.delete(urlOf(r))),
 };
 
+// The network, answering like the server's ebook route: it takes the Authorization header
+// only (never `?token=`), so a request without it is refused.
+const fetchMock = jest.fn(async (_url: string, init?: RequestInit) =>
+  (init?.headers as Record<string, string> | undefined)?.Authorization === 'Bearer t'
+    ? {
+        ok: true,
+        status: 200,
+        body: new ReadableStream(),
+        headers: new Headers({ 'Content-Length': '4' }),
+      }
+    : { ok: false, status: 401, body: null },
+);
+
 const ORIGIN = 'https://books.example.com';
 let engine: DownloadEngine;
 // The engine's own copy of the alias table (it is loaded in isolation below).
@@ -46,6 +62,7 @@ beforeAll(() => {
   g.caches = { open: async () => cache, delete: async () => true };
   g.location = { origin: ORIGIN };
   g.Response = FakeResponse;
+  g.fetch = fetchMock;
   jest.isolateModules(() => {
     /* eslint-disable @typescript-eslint/no-require-imports */
     engine = (require('./engine.web') as { engine: DownloadEngine }).engine;
@@ -97,5 +114,51 @@ describe('engine.web, a connection the identity migration moved', () => {
       `${ORIGIN}/_offline/other.2/1/`,
     );
     expect(engine.localUri!('srv', 1, 'Book', '0.mp3')).toMatch(`${ORIGIN}/_offline/srv/1/`);
+  });
+});
+
+describe('engine.web downloadFile', () => {
+  it('sends the request headers with the fetch (the ebook route takes no ?token=)', async () => {
+    const signal = new AbortController().signal;
+    const uri = await engine.downloadFile(
+      'srv',
+      1,
+      'A/Book',
+      'book.epub',
+      'https://h/ebook',
+      undefined,
+      signal,
+      { Authorization: 'Bearer t' },
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://h/ebook',
+      expect.objectContaining({ signal, headers: { Authorization: 'Bearer t' } }),
+    );
+    // Saved under the uri the store keeps (and relocates to), which readFile reads.
+    expect(uri).toBe(engine.localUri!('srv', 1, 'A/Book', 'book.epub'));
+    expect(store.has(uri)).toBe(true);
+  });
+});
+
+describe('engine.web readFile', () => {
+  const epub = () => engine.localUri!('srv', 1, 'A/Book', 'book.epub');
+
+  it("reads a stored file's bytes straight from the cache", async () => {
+    put(epub(), 'EPUB');
+    const bytes = await engine.readFile!(epub());
+    expect(new TextDecoder().decode(bytes!)).toBe('EPUB');
+    expect(cache.match).toHaveBeenCalledWith(epub());
+  });
+
+  it('resolves null for a file the cache does not hold', async () => {
+    put(engine.localUri!('srv', 1, 'A/Book', '0.mp3'), 'audio');
+    await expect(engine.readFile!(epub())).resolves.toBeNull();
+  });
+
+  it('resolves null when the cache cannot be read (the reader then fetches)', async () => {
+    put(epub(), 'EPUB');
+    cache.match.mockRejectedValueOnce(new Error('SecurityError'));
+    await expect(engine.readFile!(epub())).resolves.toBeNull();
   });
 });

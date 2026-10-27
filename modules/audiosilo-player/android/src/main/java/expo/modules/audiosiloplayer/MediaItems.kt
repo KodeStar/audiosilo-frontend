@@ -189,6 +189,44 @@ object MediaItems {
 fun Player.mediaItems(): List<MediaItem> = List(mediaItemCount) { getMediaItemAt(it) }
 
 /**
+ * The book-relative paths of a loaded queue's FILES, in file-index order (fe#134), so JS can
+ * map the service's track index through the order the service really plays instead of the
+ * manifest's. JS names each track `<libraryId>:<relPath>` (`book-queue.ts`); a chapter clip's
+ * item adds `#<startInFile>` to it ([MediaItems.toClipItem]). Null when an id has another
+ * shape, two items of one file disagree, or a file index has no item: JS then keeps its own
+ * order. Pure Kotlin (unit-tested on the JVM).
+ */
+object LoadedFiles {
+  data class Item(val mediaId: String, val fileIndex: Int, val clip: Boolean)
+
+  fun paths(items: List<Item>): List<String>? {
+    if (items.isEmpty()) return null
+    val byIndex = HashMap<Int, String>()
+    for (item in items) {
+      if (item.fileIndex < 0) return null
+      // A path may hold a '#' or a ':' itself: only the clip's own suffix and the library id go.
+      val id = if (item.clip) item.mediaId.substringBeforeLast('#', missingDelimiterValue = "") else item.mediaId
+      val colon = id.indexOf(':')
+      if (colon <= 0 || colon == id.length - 1) return null
+      val path = id.substring(colon + 1)
+      val known = byIndex.put(item.fileIndex, path)
+      if (known != null && known != path) return null
+    }
+    val count = byIndex.keys.max() + 1
+    return List(count) { i -> byIndex[i] ?: return null }
+  }
+
+  /** The [paths] of a player's queue. */
+  fun of(player: Player): List<String>? =
+    paths(
+      player.mediaItems().mapIndexed { i, item ->
+        val entry = MediaItems.entryOf(item)
+        Item(item.mediaId, entry?.fileIndex ?: i, entry?.clip ?: false)
+      },
+    )
+}
+
+/**
  * Translates between the media items the engine plays and the FILE-based timeline the JS store
  * works in. The store thinks in (fileIndex, positionInFile); each engine item is one chapter clip
  * or one whole file. Built from each item's extras ([MediaItems.entryOf]), so it is right for a

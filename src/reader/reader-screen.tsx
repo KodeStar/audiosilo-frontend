@@ -6,37 +6,37 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/api/client';
 import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
-import type { ReadingProgressSaved } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
+import { useDownloadedEbook } from '@/downloads/store';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
-import { getDeviceId } from '@/playback/progress-sync';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useTheme } from '@/theme/theme-provider';
 import { colors } from '@/theme/tokens';
 
 import { canRead } from './can-read';
-import type { ReaderTheme, TocEntry } from './protocol';
+import { hasLocalEbook } from './ebook-file';
+import type { ReaderPlace, ReaderTheme, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
 import { FONT_SCALES, loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
 import {
   adoptServerPlace,
-  captureReadingSave,
   flushReadingQueue,
   type JumpOffer,
   jumpOffer,
   onReadingSaved,
   type ReadingPlaceLookup,
-  saveReadingPlace,
+  type ReadingSaved,
+  saveReaderPlace,
 } from './reading-progress';
 
 /** How long the reader rests on a page before its place is saved. */
@@ -61,7 +61,7 @@ const loadFailure = (e: unknown): ReaderFailure =>
 /**
  * The ebook reader (Bridge Phase 3b, the `/read` root modal): a top bar (close, the
  * book's title, the chapter and how far in, the contents and the text size), the book in
- * the reader host (`ReaderHost`: the web's sandboxed iframe), page edges to turn by, and
+ * the reader host (`ReaderHost`: the web's sandboxed iframe, the app's WebView), page edges to turn by, and
  * the "Jump there?" offer when another device kept a further place. The place is saved
  * through the reading-progress queue two seconds after the reader stops on a page, and at
  * once on close or when the app goes to the background.
@@ -85,10 +85,15 @@ export function ReaderScreen({
     refetch: refetchBook,
   } = useBook(libraryId, path, connectionId);
   const ebooks = useCapability('ebooks', connectionId);
-  // The host is the platform's part (the app's placeholder says Read is on the web for
-  // now), so the rest of the rule decides here.
-  const readable = canRead(ebooks, book, 'web');
-  const place = useReadingPlace(libraryId, path, connectionId, readable);
+  // The download's EPUB: readable with the capability unknown (offline), and where an
+  // offline lookup with no place here opens at the start.
+  const savedEbook = useDownloadedEbook(connectionId, libraryId, path);
+  const readable = canRead(ebooks, book, !!savedEbook);
+  const ebookSize = book?.ebook?.size;
+  const hasLocalCopy = useLatest(() =>
+    hasLocalEbook({ connectionId, libraryId, path, size: ebookSize, saved: savedEbook }),
+  );
+  const place = useReadingPlace(libraryId, path, connectionId, readable, hasLocalCopy);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
 
   const { scheme } = useTheme();
@@ -111,24 +116,24 @@ export function ReaderScreen({
   const [opened, setOpened] = useState<{ title: string; toc: TocEntry[]; rtl: boolean } | null>(
     null,
   );
+  // The book showed on this screen once: a reopen that fails then is not a bad file.
+  const shownOnce = useRef(false);
   const [current, setCurrent] = useState<Place | null>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<ReaderFailure | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
-  // The app's host is a placeholder until 3b-2: nothing to wait for there.
-  const spinner = useDelayed(
-    Platform.OS === 'web' && (loading || (!opened && !failure)),
-    SPINNER_DELAY_MS,
-  );
+  const spinner = useDelayed(loading || (!opened && !failure), SPINNER_DELAY_MS);
 
   // Where it opens: decided once, when the place lookup first settles (set while
   // rendering, React's pattern for state that follows a prop). Opening at the server's row
   // means this device has now seen that version, so its saves are made on it.
   const [opening, setOpening] = useState<ReadingPlaceLookup | null>(null);
   if (!opening && place.data) setOpening(place.data);
-  const at = opening?.place
-    ? { cfi: opening.place.cfi, fraction: opening.place.progression }
-    : undefined;
+  // Where Try again reopens: where the reader was, not where this screen first opened.
+  const [resumeAt, setResumeAt] = useState<ReaderPlace>();
+  const at =
+    resumeAt ??
+    (opening?.place ? { cfi: opening.place.cfi, fraction: opening.place.progression } : undefined);
   useEffect(() => {
     if (opening?.fromServer)
       void adoptServerPlace(connectionId, libraryId, path, opening.fromServer);
@@ -149,9 +154,7 @@ export function ReaderScreen({
     pending.current = null;
     if (!next || next.cfi === lastSaved.current) return;
     lastSaved.current = next.cfi;
-    void captureReadingSave(connectionId, libraryId, path, next).then((save) =>
-      saveReadingPlace(api, save),
-    );
+    void saveReaderPlace(api, connectionId, libraryId, path, next);
   });
   useEffect(() => {
     if (opening?.place) lastSaved.current = opening.place.cfi;
@@ -170,9 +173,7 @@ export function ReaderScreen({
   // The latest answered save of this book (by the server's version: an answer that lands
   // late never replaces a newer one). It is judged against the page on screen once the book
   // shows, below: the queue's replay can answer before the first page.
-  const [answer, setAnswer] = useState<{ saved: ReadingProgressSaved; deviceId: string } | null>(
-    null,
-  );
+  const [answer, setAnswer] = useState<ReadingSaved | null>(null);
   useEffect(
     () =>
       onReadingSaved((heard) => {
@@ -183,12 +184,10 @@ export function ReaderScreen({
         ) {
           return;
         }
-        void getDeviceId().then((deviceId) =>
-          setAnswer((prev) =>
-            prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
-              ? prev
-              : { saved: heard.saved, deviceId },
-          ),
+        setAnswer((prev) =>
+          prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
+            ? prev
+            : heard,
         );
       }),
     [connectionId, libraryId, path],
@@ -197,6 +196,7 @@ export function ReaderScreen({
   const onMessage = (message: ReaderHostEvent) => {
     switch (message.type) {
       case 'opened':
+        shownOnce.current = true;
         setOpened({ title: message.title, toc: message.toc, rtl: message.rtl });
         return;
       case 'progress':
@@ -214,7 +214,9 @@ export function ReaderScreen({
         return;
       case 'error':
         if (message.code === 'runtime') console.warn('[reader]', message.message);
-        else if (!opened) setFailure(message.code);
+        // A reopen that fails is not a bad file (the same file opened before): it is said
+        // as a reader that stopped, with Try again.
+        else if (!opened) setFailure(shownOnce.current ? 'start' : message.code);
         return;
       case 'escape':
         // Escape pressed in the book: the frame keeps its keys from the shortcut below.
@@ -227,6 +229,10 @@ export function ReaderScreen({
   const [attempt, setAttempt] = useState(0);
   const retry = () => {
     setFailure(null);
+    // The new host shows the book with its next `opened` (no edges over it till then),
+    // where the reader was.
+    setOpened(null);
+    if (current) setResumeAt({ cfi: current.cfi, fraction: current.fraction });
     setAttempt((n) => n + 1);
     if (bookFailed) void refetchBook();
     if (place.isError) void place.refetch();
@@ -269,25 +275,23 @@ export function ReaderScreen({
     READER_LAYER,
   );
 
-  // The offer, judged against the page on screen. Another device's kept place is
-  // acknowledged (its version adopted, so this device's next save applies) only once seen:
-  // answered with Jump or Stay, or already where the reader is.
+  // The offer, judged against the page on screen. A kept place this device had not seen
+  // (another device's, or its own from before its places here were cleared) is
+  // acknowledged (its version adopted, so this device's next save applies) only once
+  // shown: answered with Jump or Stay, or already where the reader is.
   const here = show && current ? { cfi: current.cfi, progression: current.fraction } : null;
-  const offer = answer && here ? jumpOffer(answer.saved, here, answer.deviceId) : null;
+  const offer = answer && here ? jumpOffer(answer, here) : null;
   const acknowledge = useLatest(() => {
     if (answer) void adoptServerPlace(connectionId, libraryId, path, answer.saved.reading_progress);
     setAnswer(null);
   });
-  const alreadyThere =
-    here !== null &&
-    answer !== null &&
-    offer === null &&
-    answer.saved.reading_progress.device_id !== answer.deviceId;
+  const alreadyThere = here !== null && answer !== null && offer === null && !answer.seen;
   useEffect(() => {
     if (alreadyThere) acknowledge();
   }, [alreadyThere, acknowledge]);
 
-  const ready = readable && api !== null && opening !== null && fontScale !== null;
+  const ready =
+    readable && api !== null && opening !== null && fontScale !== null && ebookSize !== undefined;
   const title = book ? bookTitle(book.title, path) : (opened?.title ?? '');
   const percent = current ? Math.round(current.fraction * 100) : null;
 
@@ -359,7 +363,9 @@ export function ReaderScreen({
               key={attempt}
               ref={host}
               api={api}
+              connectionId={connectionId}
               libraryId={libraryId}
+              ebookSize={ebookSize}
               path={path}
               name={title}
               at={at}
@@ -368,6 +374,9 @@ export function ReaderScreen({
               title={t('reader.frameTitle', { title })}
               onMessage={onMessage}
               onLoadError={onLoadError}
+              // The reader was made again: the edges, the toolbar and the offer wait for
+              // its next `opened`, the spinner shows meanwhile.
+              onReopen={() => setOpened(null)}
             />
           ) : null}
           {show ? (
@@ -490,7 +499,12 @@ function ReaderMessage({ failure, onRetry }: { failure: ReaderFailure; onRetry: 
           icon="circle-exclamation"
           tone="warning"
           title={t(`reader.failure.${failure}.title`)}
-          body={t(`reader.failure.${failure}.body`)}
+          // In the app 'start' is its WebView that did not start or keep running: no browser.
+          body={t(
+            failure === 'start' && Platform.OS !== 'web'
+              ? 'reader.failure.start.bodyNative'
+              : `reader.failure.${failure}.body`,
+          )}
         />
         <View className="flex-row justify-end gap-2">
           {failure === 'fetch' || failure === 'start' ? (

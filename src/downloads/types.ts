@@ -54,6 +54,10 @@ export type DownloadManifest = {
   chapters: ChaptersResponse | null;
   files: DownloadedFile[];
   coverUri: string | null;
+  /** The book's ebook (`book.epub` beside the audio, Bridge Phase 3b-2), so the reader
+   * opens it offline. Absent when the book has none, when it could not be fetched (it is
+   * optional, like the cover) and on downloads made before it existed. */
+  ebookUri?: string;
   savedAt: string;
   /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
    * Only this marker lives here: the payload (an envelope with its characters and recaps
@@ -105,7 +109,9 @@ export type DownloadProgressCb = (bytesWritten: number, totalBytes: number) => v
  */
 export interface DownloadEngine {
   readonly supported: boolean;
-  /** Download `url` into the book's directory as `fileName`; returns the local uri. */
+  /** Download `url` into the book's directory as `fileName`; returns the local uri.
+   * `headers` go with the request only (the ebook's Authorization: its route takes no
+   * `?token=`), never stored. */
   downloadFile(
     connectionId: string,
     libraryId: number,
@@ -114,7 +120,12 @@ export interface DownloadEngine {
     url: string,
     onProgress?: DownloadProgressCb,
     signal?: AbortSignal,
+    headers?: Record<string, string>,
   ): Promise<string>;
+  /** A stored file's bytes, or null when it is not there (or can't be read). The web's
+   * reader reads a downloaded book's ebook with it (the app's reads it in chunks itself).
+   * Omitted on native. */
+  readFile?(localUri: string): Promise<ArrayBuffer | null>;
   /** Whether a previously downloaded local file still exists on disk. */
   fileExists(localUri: string): Promise<boolean>;
   /**

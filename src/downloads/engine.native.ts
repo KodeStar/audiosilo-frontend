@@ -1,31 +1,17 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { pathSlug } from '@/lib/path-slug';
+
 import type { DownloadEngine, DownloadProgressCb } from './types';
 
 const ROOT = 'downloads';
-
-/** djb2 hash → short hex, to disambiguate slugified paths that collide. */
-function hash(s: string): string {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
-  return h.toString(16);
-}
-
-/** A filesystem-safe, collision-resistant directory name for a book's rel_path. */
-function slug(path: string): string {
-  const base = path
-    .replace(/[^a-zA-Z0-9._-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(-40);
-  return `${base || 'book'}-${hash(path)}`;
-}
 
 function rootDir(): Directory {
   return new Directory(Paths.document, ROOT);
 }
 
 function bookDir(connectionId: string, libraryId: number, path: string): Directory {
-  return new Directory(Paths.document, ROOT, connectionId, String(libraryId), slug(path));
+  return new Directory(Paths.document, ROOT, connectionId, String(libraryId), pathSlug(path));
 }
 
 function connectionDir(connectionId: string): Directory {
@@ -75,6 +61,7 @@ export const engine: DownloadEngine = {
     url,
     onProgress?: DownloadProgressCb,
     signal?: AbortSignal,
+    headers?: Record<string, string>,
   ) {
     const dir = bookDir(connectionId, libraryId, path);
     ensureDir(dir);
@@ -83,6 +70,7 @@ export const engine: DownloadEngine = {
     const task = File.createDownloadTask(url, dest, {
       onProgress: onProgress ? (p) => onProgress(p.bytesWritten, p.totalBytes) : undefined,
       signal,
+      headers,
     });
     const file = await task.downloadAsync();
     if (!file) throw new Error('Download did not complete.');

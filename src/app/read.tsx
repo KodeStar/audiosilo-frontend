@@ -18,11 +18,18 @@ export default function ReaderRoute() {
   } = useLocalSearchParams<{ connection?: string; libraryId?: string; path?: string | string[] }>();
   const { cid, gate } = useRouteConnection(connection);
   if (gate) return gate;
+  const libraryId = Number(libParam);
+  const path = segmentsToPath(pathParam);
+  // A new screen per book: a deep link to another book while /read is open reuses this
+  // route (expo-router's NAVIGATE reuses a route of the same name) and changes its params
+  // in place, but the screen keeps per-book state (where it opened, the last saved place,
+  // `opened`, the failure) and the app's WebView would never say ready again.
   return (
     <ReaderScreen
+      key={`${cid}:${libraryId}:${path}`}
       connectionId={cid}
-      libraryId={Number(libParam)}
-      path={segmentsToPath(pathParam)}
+      libraryId={libraryId}
+      path={path}
     />
   );
 }

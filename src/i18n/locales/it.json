@@ -2907,7 +2907,8 @@
       },
       "start": {
         "title": "Il lettore non si è avviato",
-        "body": "Il lettore di ebook non è partito in questo browser. Il tuo punto nel libro è conservato. Un proxy davanti al server o un browser datato possono bloccarlo: riprova o usa un altro browser."
+        "body": "Il lettore di ebook non è partito in questo browser. Il tuo punto nel libro è conservato. Un proxy davanti al server o un browser datato possono bloccarlo: riprova o usa un altro browser.",
+        "bodyNative": "Il lettore di ebook si è fermato. Il tuo punto nel libro è conservato. Riprova e, se continua a fermarsi, chiudi qualche altra app: un libro grande richiede molta memoria."
       },
       "noEbook": {
         "title": "Nessun ebook per questo libro",
@@ -2919,8 +2920,6 @@
       "unknown": "Su un altro dispositivo eri al {{percent}}%. Vuoi andarci?",
       "jump": "Vai",
       "stay": "Resta"
-    },
-    "nativeTitle": "Per ora si legge sul web",
-    "nativeBody": "Il lettore dell'app arriva con un aggiornamento. Apri questo libro nel lettore web per leggerlo."
+    }
   }
 }

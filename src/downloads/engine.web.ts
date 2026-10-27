@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { BASE_URL as BASE } from '@/lib/base-url';
 import { legacyIdOf } from '@/lib/connection-id';
+import { pathSlug } from '@/lib/path-slug';
 
 import type { DownloadEngine, DownloadProgressCb } from './types';
 
@@ -15,31 +16,13 @@ const MEDIA_CACHE = 'audiosilo-media-v1'; // keep in sync with public/sw.js
 // absent; the engine then reports unsupported and the UI shows downloads as such.
 const supported = typeof window !== 'undefined' && typeof caches !== 'undefined';
 
-/** djb2 hash → short hex, mirroring engine.native so the scheme is familiar. */
-function hash(s: string): string {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
-  return h.toString(16);
-}
-
-/** A url-safe, collision-resistant segment for a book's rel_path. Keep only the
- * tail (the most-specific filename, capped at 40 chars) for a readable url; the
- * appended `hash(path)` is what actually guarantees uniqueness. */
-function slug(path: string): string {
-  const base = path
-    .replace(/[^a-zA-Z0-9._-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(-40);
-  return `${base || 'book'}-${hash(path)}`;
-}
-
 /** Same-origin, in-scope url prefix for a book's files (ends with `/`). The extra
  * `<connectionId>` segment scopes downloads per server; public/sw.js matches these
  * by `includes('/_offline/')`, so the extra segment needs no service-worker change. A
  * connection the identity migration moved keeps its files under its legacy id
  * (`legacyIdOf`): the web never moves them (no `moveConnection` here). */
 function bookPrefix(connectionId: string, libraryId: number, path: string): string {
-  return `${location.origin}${BASE}/_offline/${legacyIdOf(connectionId)}/${libraryId}/${slug(path)}/`;
+  return `${location.origin}${BASE}/_offline/${legacyIdOf(connectionId)}/${libraryId}/${pathSlug(path)}/`;
 }
 
 /** Resolve true once our service worker controls this page (it serves the cached
@@ -109,9 +92,10 @@ export const engine: DownloadEngine = {
     url,
     onProgress?: DownloadProgressCb,
     signal?: AbortSignal,
+    requestHeaders?: Record<string, string>,
   ) {
     await requestPersistence();
-    const res = await fetch(url, { signal });
+    const res = await fetch(url, { signal, headers: requestHeaders });
     if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
     const total = Number(res.headers.get('Content-Length') ?? 0);
     const contentType = res.headers.get('Content-Type') ?? 'application/octet-stream';
@@ -161,6 +145,18 @@ export const engine: DownloadEngine = {
       return !!(await cache.match(localUri));
     } catch {
       return false;
+    }
+  },
+
+  // Straight from the cache, not through the service worker: it reads whether or not one
+  // controls the page.
+  async readFile(localUri) {
+    try {
+      const cache = await caches.open(MEDIA_CACHE);
+      const res = await cache.match(localUri);
+      return res ? await res.arrayBuffer() : null;
+    } catch {
+      return null;
     }
   },
 
