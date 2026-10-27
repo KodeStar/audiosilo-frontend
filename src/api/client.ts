@@ -253,7 +253,7 @@ export class PodcastFetchPendingError extends ApiError {
 
 /** An answer's `Retry-After` in seconds when it reads as a non-negative number, else
  * undefined (absent, a date, or a header the browser can't expose cross-origin). */
-export function retryAfterHeader(res: Response): number | undefined {
+function retryAfterHeader(res: Response): number | undefined {
   const header = res.headers?.get?.('Retry-After');
   if (header == null || header.trim() === '') return undefined;
   const n = Number(header);
