@@ -1,0 +1,18 @@
+:root {
+  --bg: #ffffff;
+  --fg: #000000;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+}
+#book,
+foliate-view {
+  position: absolute;
+  inset: 0;
+  display: block;
+}

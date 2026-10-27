@@ -142,6 +142,12 @@ export type Capabilities = {
    * `POST /podcasts/opml/import` (the module's) and `GET /podcasts/opml/export` (core).
    * Absent on older servers: treat missing as false and offer neither. */
   podcast_opml?: boolean;
+  /** Whether the server has the ebook reader (Bridge Phase 3b): a book's `ebook`
+   * ({@link BookEbook}), its bytes at `GET /libraries/{id}/ebook` (the `Authorization`
+   * header only, never `?token=`) and the caller's place in it at
+   * `/libraries/{id}/reading-progress` ({@link ReadingProgress}). Absent on older servers:
+   * treat missing as false and offer no Read. */
+  ebooks?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -457,7 +463,16 @@ export type Book = {
    * on-demand fetch status while it is not on the server. Absent for a book, and on older
    * servers. */
   episode?: PodcastEpisodeInfo;
+  /** The book's ebook (Bridge Phase 3b): the one DRM-free `.epub` in its folder (several
+   * is none), or `<stem>.epub` beside a single-file book. `path` is the file's library
+   * path, for display only: the reader asks for it by the BOOK's path
+   * (`client.ebook`). Sent on every book response; absent when the book has none and on
+   * older servers. */
+  ebook?: BookEbook;
 };
+
+/** A book's ebook ({@link Book.ebook}): its library path and size in bytes. */
+export type BookEbook = { path: string; size: number };
 
 /** Colours derived from a book's cover art, all lowercase "#rrggbb". `bg` is the
  * dominant colour. `accent` is its vibrant colour, adjusted to reach a WCAG contrast
@@ -850,6 +865,53 @@ export type ProgressInput = {
   version?: number;
   device_id?: string;
   updated_at?: string;
+};
+
+/** The caller's place in a book's ebook (capability `ebooks`, Bridge Phase 3b), kept per
+ * user and keyed by the BOOK's path (never the epub's). Separate from listening
+ * {@link Progress} on purpose. The server bumps `version` on every write it applies. */
+export type ReadingProgress = {
+  library_id: number;
+  path: string;
+  /** An EPUB CFI, `epubcfi(...)`. */
+  cfi: string;
+  /** How far into the book, 0 to 1. */
+  progression: number;
+  version: number;
+  device_id: string;
+  /** The saving device's name as the server knows it from the caller's sign-in (never
+   * from the body); "" when unknown. */
+  device_name?: string;
+  updated_at: string;
+};
+
+/** Body of PUT /libraries/{id}/reading-progress. `base_version` is the stored `version`
+ * this device last saw (0 for none): a save from another device than the stored row's,
+ * made on an older version, is diverged, and the server keeps the further place of the
+ * two instead of moving the reader back (the place not kept comes back as
+ * {@link ReadingProgressSaved.other_place}). */
+export type ReadingProgressInput = {
+  cfi: string;
+  progression: number;
+  device_id: string;
+  updated_at: string;
+  base_version: number;
+};
+
+/** A place the server did not keep (a diverged save's loser): response only. */
+export type OtherReadingPlace = {
+  cfi: string;
+  progression: number;
+  device_id: string;
+  device_name: string;
+  updated_at: string;
+};
+
+/** Response of PUT /libraries/{id}/reading-progress: the stored row after the save (a
+ * stale save gets the newer row back), and on a diverged save the place not kept. */
+export type ReadingProgressSaved = {
+  reading_progress: ReadingProgress;
+  other_place?: OtherReadingPlace;
 };
 
 export type Bookmark = {

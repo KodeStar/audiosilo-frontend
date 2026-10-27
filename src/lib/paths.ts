@@ -164,6 +164,17 @@ export function finishedHref(
   };
 }
 
+/** The ebook reader for a book (Bridge Phase 3b): a root modal like the player, carrying
+ * the connection under the content routes' `connection` param. `relPath` is the BOOK's
+ * path, never its epub's. The route is `/read`: a `/reader` route would be exported as
+ * reader.html, which is the reader document itself (public/reader.html). */
+export function readerHref(connectionId: string, libraryId: number, relPath: string): Href {
+  return {
+    pathname: '/read',
+    params: { connection: connectionId, libraryId: String(libraryId), path: relPath },
+  };
+}
+
 // --- Browse detail pages (player redesign Phase 2) ---------------------------------
 // Flat routes in the shared `(home,library,search,offline,me)` group, like the book page:
 // the connection and the library ride as query params (`connection`, `library`), so the

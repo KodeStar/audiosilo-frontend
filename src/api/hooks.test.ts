@@ -59,6 +59,7 @@ import {
   META_STALE_MS,
   metaWorkQuery,
   qk,
+  readingPlaceQuery,
   serverInfoQuery,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
@@ -446,6 +447,32 @@ describe('fetchCapabilities', () => {
     stop();
   });
 });
+
+describe('readingPlaceQuery', () => {
+  afterEach(() => {
+    queryClient.clear();
+    onlineManager.setOnline(true);
+  });
+
+  it('looks while the browser says it is offline, and fails with nowhere to open', async () => {
+    onlineManager.setOnline(false);
+    const offline = new TypeError('offline');
+    const readingProgress = jest.fn(() => Promise.reject(offline));
+    const api = { readingProgress } as unknown as ApiClient;
+    const observer = new QueryObserver(queryClient, readingPlaceQuery('c1', api, 1, 'A/Book'));
+    const stop = observer.subscribe(() => {});
+    await waitForQuery(() => observer.getCurrentResult().isError);
+    expect(readingProgress).toHaveBeenCalledTimes(1);
+    expect(observer.getCurrentResult().error).toBe(offline);
+    stop();
+  });
+});
+
+/** Polls (on real timers) until `done`, for a query settling through its async steps. */
+async function waitForQuery(done: () => boolean) {
+  for (let i = 0; i < 100 && !done(); i++) await new Promise((r) => setTimeout(r, 5));
+  expect(done()).toBe(true);
+}
 
 describe('librariesQuery', () => {
   it("reads a server's libraries under its libraries key, and nothing without a client", () => {

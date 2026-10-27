@@ -2924,3 +2924,157 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
     expect(apiErrorKind(await failure(client().exportOpml()))).toBe('demo_account');
   });
 });
+
+describe('reading (capability ebooks, Bridge Phase 3b)', () => {
+  const client = () => new ApiClient('https://h', 'tok');
+  const call = (m: jest.Mock) => {
+    const [input, init] = m.mock.calls[0] as [string, RequestInit];
+    return { url: new URL(input), init };
+  };
+
+  it('fetches the ebook bytes by the BOOK path, with the Authorization header and no token in the URL', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 3, 4]).buffer;
+    const m = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: () => Promise.resolve(bytes),
+        text: () => Promise.resolve(''),
+      } as unknown as Response),
+    );
+    globalThis.fetch = m as unknown as typeof globalThis.fetch;
+    await expect(client().ebook(1, 'Author/Book')).resolves.toBe(bytes);
+    const { url, init } = call(m);
+    expect(url.pathname).toBe('/api/v1/libraries/1/ebook');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    expect(url.searchParams.has('token')).toBe(false);
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('throws the server refusal for an ebook it does not serve', async () => {
+    installFetch(() => ({ status: 404, body: { error: 'no ebook' } }));
+    await expect(client().ebook(1, 'Author/Book')).rejects.toMatchObject({ status: 404 });
+  });
+
+  /** A 200 whose body the test feeds, failing when the request is aborted, as a real
+   * download's body does; `announced` is its Content-Length. */
+  function installDownload(announced?: number) {
+    let feed!: ReadableStreamDefaultController<Uint8Array>;
+    globalThis.fetch = jest.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({ start: (c) => void (feed = c) });
+      init?.signal?.addEventListener('abort', () =>
+        feed.error(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+      );
+      const headers = new Headers(
+        announced === undefined ? {} : { 'Content-Length': String(announced) },
+      );
+      return Promise.resolve({ ok: true, status: 200, headers, body } as unknown as Response);
+    }) as unknown as typeof globalThis.fetch;
+    return {
+      piece: (...bytes: number[]) => feed.enqueue(new Uint8Array(bytes)),
+      end: () => feed.close(),
+    };
+  }
+
+  it('lets a slow ebook download run past the timeout while it keeps arriving', async () => {
+    jest.useFakeTimers();
+    try {
+      const download = installDownload(3);
+      const book = client().ebook(1, 'Author/Book');
+      for (const byte of [1, 2, 3]) {
+        await jest.advanceTimersByTimeAsync(100_000);
+        download.piece(byte);
+      }
+      download.end();
+      expect([...new Uint8Array(await book)]).toEqual([1, 2, 3]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reads the whole ebook, whatever size the server announced', async () => {
+    for (const announced of [undefined, 2, 5]) {
+      const download = installDownload(announced);
+      const book = client().ebook(1, 'Author/Book');
+      download.piece(1, 2);
+      download.piece(3);
+      download.end();
+      const bytes = await book;
+      expect([...new Uint8Array(bytes)]).toEqual([1, 2, 3]);
+      expect(bytes.byteLength).toBe(3);
+    }
+  });
+
+  it('fails an ebook download that stalls as a timeout', async () => {
+    jest.useFakeTimers();
+    try {
+      const download = installDownload();
+      const book = client()
+        .ebook(1, 'Author/Book')
+        .catch((e: unknown) => e);
+      await jest.advanceTimersByTimeAsync(100_000);
+      download.piece(1);
+      await jest.advanceTimersByTimeAsync(120_000);
+      expect(await book).toMatchObject({ name: 'TimeoutError', timeoutMs: 120_000 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reads the place, null when there is none', async () => {
+    const row = {
+      library_id: 1,
+      path: 'Author/Book',
+      cfi: 'epubcfi(/6/4!/4/2/1:0)',
+      progression: 0.42,
+      version: 3,
+      device_id: 'd1',
+      device_name: 'Pixel 8',
+      updated_at: '2026-10-25T10:00:00Z',
+    };
+    const m = installFetch(() => ({ status: 200, body: { reading_progress: row } }));
+    await expect(client().readingProgress(1, 'Author/Book')).resolves.toEqual(row);
+    const { url } = call(m);
+    expect(url.pathname).toBe('/api/v1/libraries/1/reading-progress');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    installFetch(() => ({ status: 200, body: { reading_progress: null } }));
+    await expect(client().readingProgress(1, 'Author/Book')).resolves.toBeNull();
+  });
+
+  it('saves the place with its base_version and returns the kept row and other_place', async () => {
+    const answer = {
+      reading_progress: {
+        library_id: 1,
+        path: 'Author/Book',
+        cfi: 'epubcfi(/6/10!/4/2/1:0)',
+        progression: 0.6,
+        version: 7,
+        device_id: 'other',
+        device_name: 'Pixel 8',
+        updated_at: '2026-10-25T10:00:00Z',
+      },
+      other_place: {
+        cfi: 'epubcfi(/6/4!/4/2/1:0)',
+        progression: 0.3,
+        device_id: 'me',
+        device_name: '',
+        updated_at: '2026-10-25T11:00:00Z',
+      },
+    };
+    const m = installFetch(() => ({ status: 200, body: answer }));
+    const input = {
+      cfi: 'epubcfi(/6/4!/4/2/1:0)',
+      progression: 0.3,
+      device_id: 'me',
+      updated_at: '2026-10-25T11:00:00Z',
+      base_version: 5,
+    };
+    await expect(client().saveReadingProgress(1, 'Author/Book', input)).resolves.toEqual(answer);
+    const { url, init } = call(m);
+    expect(init.method).toBe('PUT');
+    expect(url.pathname).toBe('/api/v1/libraries/1/reading-progress');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    expect(JSON.parse(String(init.body))).toEqual(input);
+  });
+});

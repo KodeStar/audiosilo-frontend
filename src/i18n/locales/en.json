@@ -2875,5 +2875,52 @@
       "cantNow": "Your server can't check feeds right now. Try again later.",
       "failed": "Couldn't check this show. Try again."
     }
+  },
+  "reader": {
+    "read": "Read the ebook",
+    "close": "Close the reader",
+    "contents": "Contents",
+    "smaller": "Smaller text",
+    "larger": "Larger text",
+    "previous": "Previous page",
+    "next": "Next page",
+    "where": "{{percent}}% through the book",
+    "whereSection": "{{section}} · {{percent}}%",
+    "frameTitle": "{{title}}, the ebook",
+    "tryAgain": "Try again",
+    "failure": {
+      "drm": {
+        "title": "This ebook is locked",
+        "body": "It is protected with DRM, so AudioSilo can't open it. A DRM-free EPUB in the book's folder can be read here."
+      },
+      "unreadable": {
+        "title": "This ebook can't be opened",
+        "body": "The file isn't an EPUB AudioSilo can read, or it is damaged."
+      },
+      "missing": {
+        "title": "The ebook isn't on the server any more",
+        "body": "The book's EPUB can't be found. If it comes back, it shows again after the next library scan."
+      },
+      "fetch": {
+        "title": "Couldn't load the ebook",
+        "body": "The server didn't answer. Your place in the book is kept. Check the connection and try again."
+      },
+      "start": {
+        "title": "The reader didn't start",
+        "body": "The ebook reader didn't run in this browser. Your place in the book is kept. A proxy in front of the server or an older browser can block it: try again, or use another browser."
+      },
+      "noEbook": {
+        "title": "No ebook for this book",
+        "body": "Read needs one DRM-free EPUB in the book's folder, on a server that has the reader."
+      }
+    },
+    "offer": {
+      "device": "On {{device}} you were at {{percent}}%. Jump there?",
+      "unknown": "On another device you were at {{percent}}%. Jump there?",
+      "jump": "Jump",
+      "stay": "Stay"
+    },
+    "nativeTitle": "Reading is on the web for now",
+    "nativeBody": "The app's reader comes in an update. Open this book in the web player to read it."
   }
 }

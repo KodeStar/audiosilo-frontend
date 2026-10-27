@@ -28,6 +28,8 @@ import {
   PROFILES_KEY,
   PROGRESS_MIRROR_KEY,
   PROGRESS_QUEUE_KEY,
+  READING_MIRROR_KEY,
+  READING_QUEUE_KEY,
   TIME_SAVED_KEY,
 } from '@/lib/storage-keys';
 import type { ProfilesDoc } from '@/stores/profiles';
@@ -85,6 +87,8 @@ export const ID_DOCUMENTS = {
   downloads: DOWNLOADS_KEY,
   progressMirror: PROGRESS_MIRROR_KEY,
   progressQueue: PROGRESS_QUEUE_KEY,
+  readingMirror: READING_MIRROR_KEY,
+  readingQueue: READING_QUEUE_KEY,
   offlineServers: OFFLINE_SERVERS_KEY,
   carBookmarks: CAR_BOOKMARKS_KEY,
   librarySelection: LIBRARY_SELECTION_KEY,
@@ -207,6 +211,14 @@ function rekeyRecord(plan: Plan, doc: unknown, mapValue = <T>(v: T) => v): unkno
   return out;
 }
 
+/** A record keyed by connection whose values each carry a `connectionId`. */
+const connectionRecords = (plan: Plan, doc: unknown): unknown =>
+  rekeyRecord(plan, doc, (v) => withConnectionId(plan, v));
+
+/** An array whose items each carry a `connectionId`. */
+const connectionList = (plan: Plan, doc: unknown): unknown =>
+  Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc;
+
 /** Each document rewritten through `plan` (`undefined` = absent, left alone). */
 export const rewrite = {
   connections(plan: Plan, doc: unknown): unknown {
@@ -234,18 +246,18 @@ export const rewrite = {
     }
     return out;
   },
-  progressMirror: (plan: Plan, doc: unknown): unknown =>
-    rekeyRecord(plan, doc, (v) => withConnectionId(plan, v)),
-  progressQueue: (plan: Plan, doc: unknown): unknown =>
-    Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc,
+  progressMirror: connectionRecords,
+  progressQueue: connectionList,
+  // The ebook reader's place mirror and queue have the progress mirror's and queue's shapes.
+  readingMirror: connectionRecords,
+  readingQueue: connectionList,
   offlineServers(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc)) return doc;
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc)) out[mapId(plan, k) as string] = v;
     return out;
   },
-  carBookmarks: (plan: Plan, doc: unknown): unknown =>
-    Array.isArray(doc) ? doc.map((b: unknown) => withConnectionId(plan, b)) : doc,
+  carBookmarks: connectionList,
   librarySelection(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc) || !isRecord(doc.selection)) return doc;
     return { ...doc, selection: withConnectionId(plan, doc.selection) };

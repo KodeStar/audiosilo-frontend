@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
 import { flushConnection } from '@/playback/progress-sync';
+import { flushReadingConnection } from '@/reader/reading-progress';
 import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/stores/profiles';
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
@@ -119,12 +120,13 @@ onConnectionRemoved((id) => {
 
 // When a connection becomes reachable again, refetch that connection's queries (so
 // screens that errored or emptied while it was offline repopulate on their own) and
-// replay its queued progress saves. invalidateQueries only refetches currently-observed
+// replay its queued progress saves (and its queued ebook reading places). invalidateQueries only refetches currently-observed
 // queries, so this is cheap; every query key leads with its connection id, so the
 // predicate scopes the refetch to the recovered server.
 onReconnect((connectionId) => {
   void queryClient.invalidateQueries({ predicate: (q) => q.queryKey.includes(connectionId) });
   void flushConnection(connectionId);
+  void flushReadingConnection(connectionId);
 });
 
 type ApiRegistry = {

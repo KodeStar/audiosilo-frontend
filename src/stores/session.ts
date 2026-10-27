@@ -21,6 +21,8 @@ import {
   OFFLINE_SERVERS_KEY,
   PROGRESS_MIRROR_KEY,
   PROGRESS_QUEUE_KEY,
+  READING_MIRROR_KEY,
+  READING_QUEUE_KEY,
 } from '@/lib/storage-keys';
 
 // Multi-connection session: the app can be signed in to several servers at once.
@@ -66,6 +68,8 @@ const SCOPED_STORAGE_KEYS = [
   DOWNLOADS_KEY,
   PROGRESS_MIRROR_KEY,
   PROGRESS_QUEUE_KEY,
+  READING_MIRROR_KEY,
+  READING_QUEUE_KEY,
   OFFLINE_SERVERS_KEY,
 ];
 

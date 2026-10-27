@@ -10,6 +10,8 @@ describe('storage keys', () => {
       DOWNLOADS_KEY: 'audiosilo.downloads',
       PROGRESS_MIRROR_KEY: 'audiosilo.progressMirror',
       PROGRESS_QUEUE_KEY: 'audiosilo.progressQueue',
+      READING_MIRROR_KEY: 'audiosilo.readingMirror',
+      READING_QUEUE_KEY: 'audiosilo.readingQueue',
       OFFLINE_SERVERS_KEY: 'audiosilo.offlineServers',
       CAR_BOOKMARKS_KEY: 'audiosilo.carBookmarks',
       CAR_SNAPSHOT_WRITTEN_KEY: 'audiosilo.carSnapshotWritten',

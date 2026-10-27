@@ -2875,5 +2875,52 @@
       "cantNow": "Dein Server kann Feeds gerade nicht prüfen. Versuch es später noch einmal.",
       "failed": "Diese Sendung konnte nicht geprüft werden. Versuch es noch einmal."
     }
+  },
+  "reader": {
+    "read": "E-Book lesen",
+    "close": "Leser schließen",
+    "contents": "Inhalt",
+    "smaller": "Kleinere Schrift",
+    "larger": "Größere Schrift",
+    "previous": "Vorherige Seite",
+    "next": "Nächste Seite",
+    "where": "{{percent}} % des Buchs",
+    "whereSection": "{{section}} · {{percent}} %",
+    "frameTitle": "{{title}}, das E-Book",
+    "tryAgain": "Erneut versuchen",
+    "failure": {
+      "drm": {
+        "title": "Dieses E-Book ist gesperrt",
+        "body": "Es ist mit DRM geschützt, daher kann AudioSilo es nicht öffnen. Ein DRM-freies EPUB im Ordner des Buchs lässt sich hier lesen."
+      },
+      "unreadable": {
+        "title": "Dieses E-Book lässt sich nicht öffnen",
+        "body": "Die Datei ist kein EPUB, das AudioSilo lesen kann, oder sie ist beschädigt."
+      },
+      "missing": {
+        "title": "Das E-Book ist nicht mehr auf dem Server",
+        "body": "Das EPUB des Buchs wurde nicht gefunden. Kommt es zurück, erscheint es nach dem nächsten Scan der Bibliothek wieder."
+      },
+      "fetch": {
+        "title": "Das E-Book konnte nicht geladen werden",
+        "body": "Der Server hat nicht geantwortet. Deine Stelle im Buch bleibt erhalten. Prüfe die Verbindung und versuche es erneut."
+      },
+      "start": {
+        "title": "Der Leser ist nicht gestartet",
+        "body": "Der E-Book-Leser lief in diesem Browser nicht. Deine Stelle im Buch bleibt erhalten. Ein Proxy vor dem Server oder ein älterer Browser kann ihn blockieren: Versuche es erneut oder nimm einen anderen Browser."
+      },
+      "noEbook": {
+        "title": "Kein E-Book zu diesem Buch",
+        "body": "Lesen braucht ein DRM-freies EPUB im Ordner des Buchs, auf einem Server mit dem Leser."
+      }
+    },
+    "offer": {
+      "device": "Auf {{device}} warst du bei {{percent}} %. Dorthin springen?",
+      "unknown": "Auf einem anderen Gerät warst du bei {{percent}} %. Dorthin springen?",
+      "jump": "Springen",
+      "stay": "Bleiben"
+    },
+    "nativeTitle": "Lesen gibt es vorerst im Web",
+    "nativeBody": "Der Leser der App kommt mit einem Update. Öffne dieses Buch im Web-Player, um es zu lesen."
   }
 }

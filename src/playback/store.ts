@@ -15,6 +15,7 @@ import {
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
+import { flushReadingConnection } from '@/reader/reading-progress';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
@@ -1243,7 +1244,11 @@ export async function stopPlaybackForConnection(connectionId: string): Promise<v
  */
 export async function teardownBeforeTokenRevoke(connectionId: string): Promise<void> {
   await stopPlaybackForConnection(connectionId);
-  await flushConnection(connectionId).catch(() => undefined);
+  await Promise.all([
+    flushConnection(connectionId).catch(() => undefined),
+    // The ebook reader's queued places too (Bridge Phase 3b).
+    flushReadingConnection(connectionId).catch(() => undefined),
+  ]);
 }
 
 /** The same files in the same order (a track's id is its file's path). */

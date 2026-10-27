@@ -74,6 +74,9 @@ import type {
   ProgressEdit,
   ProgressInput,
   QueueEntry,
+  ReadingProgress,
+  ReadingProgressInput,
+  ReadingProgressSaved,
   RatedBook,
   Rating,
   RatingValue,
@@ -303,6 +306,33 @@ async function readJson<T>(res: Response): Promise<T> {
   return data as T;
 }
 
+/** A long answer's bytes (an ebook), read piece by piece with `touch` called on each, so
+ * a download that keeps arriving keeps its timeout. Written into one buffer of the
+ * announced size (grown when more arrives), never a second copy of the whole file. With
+ * no body stream (React Native's fetch), the whole answer within the timeout. */
+async function readArriving(res: Response, touch: () => void): Promise<ArrayBuffer> {
+  if (!res.body) return res.arrayBuffer();
+  const reader = res.body.getReader();
+  const announced = Number(res.headers?.get?.('Content-Length'));
+  let bytes = new Uint8Array(
+    Number.isSafeInteger(announced) && announced > 0 ? announced : 1 << 20,
+  );
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    touch();
+    if (size + value.byteLength > bytes.byteLength) {
+      const grown = new Uint8Array(Math.max(bytes.byteLength * 2, size + value.byteLength));
+      grown.set(bytes.subarray(0, size));
+      bytes = grown;
+    }
+    bytes.set(value, size);
+    size += value.byteLength;
+  }
+  return size === bytes.byteLength ? bytes.buffer : bytes.slice(0, size).buffer;
+}
+
 /**
  * Thrown when a request exceeds its timeout. Distinct from the `AbortError` a
  * caller-supplied signal raises on cancellation, so the reachability layer can
@@ -349,6 +379,11 @@ const UPSTREAM_TIMEOUT_MS = 30_000;
 /** The timeout of an OPML upload: past the server's own 30 s import budget, by which it
  * always answers. */
 const OPML_IMPORT_TIMEOUT_MS = 45_000;
+
+/** The timeout of an ebook download (`ebook`): for the answer, then restarted by every
+ * piece of the file, so a picture-heavy EPUB of tens of megabytes on a slow link arrives
+ * however long it takes, and only a stalled download fails. */
+const EBOOK_TIMEOUT_MS = 120_000;
 
 /** A directory result's artwork link as the server writes it (relative, one 64-hex id). */
 const DISCOVERY_ARTWORK_RE = /^\/api\/v1\/podcasts\/discovery\/artwork\?id=([0-9a-f]{64})$/;
@@ -495,13 +530,14 @@ export class ApiClient {
     return this.send(method, this.apiUrl(path, opts.query), headers, opts, readJson<T>);
   }
 
-  /** One request to `url`, its answer read by `read` (inside the timeout). */
+  /** One request to `url`, its answer read by `read` (inside the timeout, which `read` can
+   * restart with `touch` while a long answer keeps arriving). */
   private async send<T>(
     method: string,
     url: string,
     headers: Record<string, string>,
     opts: { body?: unknown; raw?: BodyInit; signal?: AbortSignal; timeoutMs?: number },
-    read: (res: Response) => Promise<T>,
+    read: (res: Response, touch: () => void) => Promise<T>,
   ): Promise<T> {
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
     // frozen/unreachable server can't hang the caller (and the 15s save loop)
@@ -512,10 +548,17 @@ export class ApiClient {
     const timeoutMs = opts.timeoutMs ?? this.timeoutMs;
     const controller = new AbortController();
     let timedOut = false;
-    const timer = setTimeout(() => {
+    let settled = false;
+    const expire = () => {
       timedOut = true;
       controller.abort();
-    }, timeoutMs);
+    };
+    let timer = setTimeout(expire, timeoutMs);
+    const touch = () => {
+      if (settled || timedOut) return;
+      clearTimeout(timer);
+      timer = setTimeout(expire, timeoutMs);
+    };
     const onCallerAbort = () => controller.abort();
     if (opts.signal) {
       if (opts.signal.aborted) controller.abort();
@@ -531,7 +574,7 @@ export class ApiClient {
         signal: controller.signal,
       });
       this.onAnswer?.();
-      return await read(res);
+      return await read(res, touch);
     } catch (e) {
       // Our timeout fired (not a caller cancel, and not a real server answer in
       // the same tick): report it as a timeout so it's classified as unreachable.
@@ -543,6 +586,7 @@ export class ApiClient {
       if (isSignedOutError(e)) this.onAuthError?.();
       throw e;
     } finally {
+      settled = true;
       clearTimeout(timer);
       opts.signal?.removeEventListener('abort', onCallerAbort);
     }
@@ -1138,6 +1182,43 @@ export class ApiClient {
     );
     return r.progress;
   }
+  // --- Reading (capability `ebooks`, Bridge Phase 3b) ------------------------
+  /** A book's ebook bytes (`Book.ebook`), asked for by the BOOK's path. Fetched with the
+   * `Authorization` header: the route takes no `?token=` (nothing ever holds a URL that
+   * carries a credential), and the reader gets the bytes, never a token or an API URL.
+   * 404: not a book, no ebook, or the file is gone; 403: outside the caller's access. */
+  ebook(libraryId: number, path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+    const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
+    return this.send(
+      'GET',
+      this.apiUrl(`/libraries/${libraryId}/ebook`, { path }),
+      headers,
+      { signal, timeoutMs: Math.max(this.timeoutMs, EBOOK_TIMEOUT_MS) },
+      async (res, touch) => {
+        if (!res.ok) await readJson<void>(res);
+        return readArriving(res, touch);
+      },
+    );
+  }
+  /** The caller's place in a book's ebook; null when they have none there yet. */
+  async readingProgress(libraryId: number, path: string, signal?: AbortSignal) {
+    const r = await this.request<{ reading_progress: ReadingProgress | null }>(
+      'GET',
+      `/libraries/${libraryId}/reading-progress`,
+      { query: { path }, signal },
+    );
+    return r.reading_progress;
+  }
+  /** Save the caller's place in a book's ebook. The answer is the stored row (another
+   * device's further place when this save diverged, see {@link ReadingProgressInput}),
+   * with the place not kept as `other_place` on a diverged save. */
+  saveReadingProgress(libraryId: number, path: string, input: ReadingProgressInput) {
+    return this.request<ReadingProgressSaved>('PUT', `/libraries/${libraryId}/reading-progress`, {
+      query: { path },
+      body: input,
+    });
+  }
+
   /** The caller's own edit of a book's progress (capability `progress_edit`; see
    * {@link ProgressEdit}): mark it finished or unfinished, move the position, set or
    * clear the dates. Returns the stored progress, dates included. A 404 means no

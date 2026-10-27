@@ -2875,5 +2875,52 @@
       "cantNow": "Seu servidor não pode verificar feeds agora. Tente mais tarde.",
       "failed": "Não foi possível verificar este programa. Tente de novo."
     }
+  },
+  "reader": {
+    "read": "Ler o ebook",
+    "close": "Fechar o leitor",
+    "contents": "Índice",
+    "smaller": "Texto mais pequeno",
+    "larger": "Texto maior",
+    "previous": "Página anterior",
+    "next": "Página seguinte",
+    "where": "{{percent}}% do livro",
+    "whereSection": "{{section}} · {{percent}}%",
+    "frameTitle": "{{title}}, o ebook",
+    "tryAgain": "Tentar novamente",
+    "failure": {
+      "drm": {
+        "title": "Este ebook está bloqueado",
+        "body": "Está protegido com DRM, por isso o AudioSilo não o consegue abrir. Um EPUB sem DRM na pasta do livro pode ser lido aqui."
+      },
+      "unreadable": {
+        "title": "Não é possível abrir este ebook",
+        "body": "O ficheiro não é um EPUB que o AudioSilo consiga ler, ou está danificado."
+      },
+      "missing": {
+        "title": "O ebook já não está no servidor",
+        "body": "O EPUB do livro não foi encontrado. Se voltar, aparece de novo depois da próxima análise da biblioteca."
+      },
+      "fetch": {
+        "title": "Não foi possível carregar o ebook",
+        "body": "O servidor não respondeu. A tua posição no livro fica guardada. Verifica a ligação e tenta novamente."
+      },
+      "start": {
+        "title": "O leitor não arrancou",
+        "body": "O leitor de ebooks não arrancou neste navegador. A tua posição no livro fica guardada. Um proxy à frente do servidor ou um navegador antigo podem bloqueá-lo: tenta novamente ou usa outro navegador."
+      },
+      "noEbook": {
+        "title": "Este livro não tem ebook",
+        "body": "Para ler é preciso um EPUB sem DRM na pasta do livro, num servidor que tenha o leitor."
+      }
+    },
+    "offer": {
+      "device": "No {{device}} estavas em {{percent}}%. Ir para lá?",
+      "unknown": "Noutro dispositivo estavas em {{percent}}%. Ir para lá?",
+      "jump": "Ir",
+      "stay": "Ficar"
+    },
+    "nativeTitle": "Por agora, lê-se na web",
+    "nativeBody": "O leitor da app chega numa atualização. Abre este livro no leitor web para o ler."
   }
 }

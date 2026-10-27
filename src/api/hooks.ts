@@ -38,6 +38,7 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
+import { lookupReadingPlace } from '@/reader/reading-progress';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
@@ -130,6 +131,9 @@ export const qk = {
   nextBook: (cid: string, lib: number, path: string) => ['nextBook', cid, lib, path] as const,
   allProgress: (cid: string) => ['progress', 'all', cid] as const,
   progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path] as const,
+  /** Where the ebook reader opens a book (`useReadingPlace`). */
+  readingPlace: (cid: string, lib: number, path: string) =>
+    ['readingPlace', cid, lib, path] as const,
   bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
   notes: (cid: string, lib: number, path: string) => ['notes', cid, lib, path] as const,
   history: (cid: string, lib: number, path: string) => ['history', cid, lib, path] as const,
@@ -1112,6 +1116,44 @@ export async function fetchBookProgress(
     noteFailure(connectionId, e);
     return await mirroredProgress(connectionId, libraryId, path);
   }
+}
+
+/** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest
+ * of the server's place, this device's mirror and its queued save, or that save when the
+ * server will keep it (`lookupReadingPlace`, which falls back to this device's places when
+ * the server can't be reached, and fails when it has none). Read once per opening: nothing
+ * kept after the reader closes, no retry (the screen's Try again looks again). Asked
+ * whatever the browser's online flag says: held while it says offline, the reader would
+ * wait on a spinner instead of opening at a local place or saying it can't. */
+export function readingPlaceQuery(
+  cid: string,
+  api: ApiClient | null,
+  libraryId: number,
+  path: string,
+) {
+  return queryOptions({
+    queryKey: qk.readingPlace(cid, libraryId, path),
+    queryFn: ({ signal }) => lookupReadingPlace(api, cid, libraryId, path, signal),
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+    networkMode: 'always',
+  });
+}
+
+/** The reader's {@link readingPlaceQuery}, once `enabled` (the book is readable). */
+export function useReadingPlace(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  enabled = true,
+) {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  return useQuery({
+    ...readingPlaceQuery(cid, api, libraryId, path),
+    enabled: enabled && path.length > 0,
+  });
 }
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so

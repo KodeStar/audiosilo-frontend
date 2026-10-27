@@ -74,6 +74,7 @@
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
+    "esbuild": "0.28.2",
     "eslint": "^9.39.4",
     "eslint-config-expo": "~56.0.4",
     "eslint-config-prettier": "^10.1.8",
@@ -94,7 +95,9 @@
     "gen:icons": "node ./scripts/gen-icons.mjs",
     "gen:tokens": "node ./scripts/gen-tokens.mjs",
     "lint": "expo lint",
-    "test": "node scripts/gen-tokens.mjs --check && node --test scripts/gen-tokens.test.mjs && node scripts/check-styles.cjs && jest",
+    "test": "node scripts/gen-tokens.mjs --check && node --test scripts/gen-tokens.test.mjs && node scripts/check-styles.cjs && node scripts/build-reader.mjs --check && node --test reader/test/*.test.mjs && jest",
+    "reader:build": "node scripts/build-reader.mjs",
+    "reader:check": "node scripts/build-reader.mjs --check",
     "format": "prettier --check ."
   },
   "license": "AGPL-3.0-only",
