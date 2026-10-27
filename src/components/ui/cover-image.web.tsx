@@ -16,6 +16,9 @@ function uriOf(source: CoverImageProps['source']): string | undefined {
   return typeof first === 'string' ? first : (first?.uri ?? undefined);
 }
 
+/** A cover that loads within this long of being drawn shows without the fade. */
+export const FADE_AFTER_MS = 120;
+
 /**
  * Web: the cover as a plain `<img>`, absolutely filling its box like expo-image's web
  * image, with `crossOrigin="anonymous"` when its server is another origin than the page
@@ -23,8 +26,12 @@ function uriOf(source: CoverImageProps['source']): string | undefined {
  * `cors_origins` grant (and its `Cross-Origin-Resource-Policy` no longer matters). Same
  * origin, `blob:` and `data:` images take no attribute, as before.
  *
- * Lazy and decoded off the main thread; fades in over `transition` ms once loaded. Keyed
- * by its URI, so a recycled row's new cover starts hidden again. `source.headers` are not
+ * Decoded off the main thread and loaded lazily, except a `priority="high"` cover (one
+ * on the first screen), which is fetched at once and ahead of the page's other images.
+ * Hidden until loaded; one that arrives later than `FADE_AFTER_MS` after it was drawn
+ * fades in over `transition` ms, one that arrives sooner (the browser's cache, a fast
+ * server) shows at once, so a reload's first covers are on screen the moment they load.
+ * Keyed by its URI, so a recycled row's new cover starts hidden again. `source.headers` are not
  * sent: every server image URL carries the media token (`?token=`), and an `<img>` can't
  * send headers anyway. `blurRadius` and `recyclingKey` are native concerns (the backdrop
  * blurs with a CSS filter on the web).
@@ -41,11 +48,14 @@ function CoverImg({
   contentFit = 'cover',
   transition,
   onError,
+  priority,
   testID,
 }: Omit<CoverImageProps, 'source'> & { uri: string }) {
-  const [loaded, setLoaded] = useState(false);
-  // Keyed by its URI, so one answer for the element's life.
+  // How it came in: not yet, at once (within FADE_AFTER_MS) or late (fading in).
+  const [loaded, setLoaded] = useState<'no' | 'fast' | 'late'>('no');
+  // Keyed by its URI, so one answer (and one start time) for the element's life.
   const [crossOrigin] = useState(() => corsModeFor(uri, pageLocation()));
+  const [drawnAt] = useState(() => Date.now());
   const fade = typeof transition === 'number' ? transition : (transition?.duration ?? 0);
   const css: CSSProperties = {
     position: 'absolute',
@@ -54,19 +64,29 @@ function CoverImg({
     height: '100%',
     objectFit: contentFit,
     ...(StyleSheet.flatten(style) as CSSProperties),
-    opacity: fade > 0 && !loaded ? 0 : 1,
-    transition: fade > 0 ? `opacity ${fade}ms ease-out` : undefined,
+    opacity: fade > 0 && loaded === 'no' ? 0 : 1,
+    transition: fade > 0 && loaded !== 'fast' ? `opacity ${fade}ms ease-out` : undefined,
   };
+  const high = priority === 'high';
   return (
     <img
       src={uri}
       alt=""
       crossOrigin={crossOrigin}
-      loading="lazy"
+      loading={high ? 'eager' : 'lazy'}
+      fetchPriority={high ? 'high' : undefined}
       decoding="async"
       data-testid={testID}
       style={css}
-      onLoad={() => setLoaded(true)}
+      onLoad={(e) => {
+        const fast = Date.now() - drawnAt < FADE_AFTER_MS;
+        // Shown now, not at React's next render (which a busy page can hold back).
+        if (fade > 0) {
+          if (fast) e.currentTarget.style.transition = '';
+          e.currentTarget.style.opacity = '1';
+        }
+        setLoaded(fast ? 'fast' : 'late');
+      }}
       // expo-image's onError takes an event; the app's callers read none of it.
       onError={() => onError?.({ error: `failed to load ${uri}` })}
     />

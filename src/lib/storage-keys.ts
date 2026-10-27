@@ -25,6 +25,9 @@ export const READING_MIRROR_KEY = 'audiosilo.readingMirror';
 export const READING_QUEUE_KEY = 'audiosilo.readingQueue';
 /** Each connection's kept `/server` answer for offline reading, keyed by connection id. */
 export const OFFLINE_SERVERS_KEY = 'audiosilo.offlineServers';
+/** Web: the last answers the first screens paint from (`src/api/startup-cache.ts`), each
+ * keyed by its query key (which carries the connection id). Disposable: a reset wipes it. */
+export const STARTUP_CACHE_KEY = 'audiosilo.startupCache';
 /** The car bookmarks to try again: an array, each with a `connectionId`. */
 export const CAR_BOOKMARKS_KEY = 'audiosilo.carBookmarks';
 /** Native keeps the car snapshot it was last handed; this says one was. */

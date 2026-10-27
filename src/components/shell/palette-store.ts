@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 
+import { useGlobalShortcut } from '@/lib/keyboard';
 import { useRecentSearches } from '@/stores/search';
+
+import { isPaletteShortcut } from './palette-model';
 
 type PaletteState = {
   open: boolean;
@@ -25,3 +28,14 @@ export const usePalette = create<PaletteState>()((set) => ({
   close: () => set({ open: false }),
   setQuery: (query) => set({ query }),
 }));
+
+/**
+ * The palette's global shortcuts (web): ⌘K / Ctrl+K and `/` open it from any tab page -
+ * not over the full player, not over another dialog, and never while typing in a field.
+ * Here, not with `CommandPalette`, so the keys work from the first paint while the palette
+ * itself loads after it (the web shell defers it); it opens on the open state when in.
+ */
+export function usePaletteShortcut(enabled: boolean) {
+  const openPalette = usePalette((s) => s.openPalette);
+  useGlobalShortcut(enabled, isPaletteShortcut, openPalette);
+}

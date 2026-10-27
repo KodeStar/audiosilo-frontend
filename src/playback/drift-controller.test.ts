@@ -303,4 +303,49 @@ describe('drift controller', () => {
     await settle();
     expect(mockToast).toHaveBeenCalledTimes(1);
   });
+
+  describe('started late (the web, after the first paint)', () => {
+    /** Slept last night with the watch running, then the page is closed: the record is
+     * saved, and the book is paused. */
+    async function sleptLastNight() {
+      await fallAsleep();
+      jest.advanceTimersByTime(GRACE_SECONDS * 1000);
+      await settle();
+      stop();
+      jest.setSystemTime(NOW + 9 * 3600_000);
+    }
+
+    it('offers on a play that began before it started, at the next report', async () => {
+      await sleptLastNight();
+      player.setPlayState('playing'); // Play, before the services chunk loaded
+      stop = startDriftWatch({ late: true });
+      await settle();
+      // The snapshot it started with could be an old book's: it waits for the engine.
+      expect(mockToast).not.toHaveBeenCalled();
+      player.setPlayState('playing'); // the engine's next report
+      await settle();
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      expect(lastToast().description).toBe('Jump back 5 minutes?');
+      player.setPlayState('playing');
+      await settle();
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers on a play after it started, as the first-commit start does', async () => {
+      await sleptLastNight();
+      stop = startDriftWatch({ late: true });
+      player.setPlayState('playing');
+      await settle();
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
+
+    it('the first-commit start takes a book already playing as already looked at', async () => {
+      await sleptLastNight();
+      player.setPlayState('playing');
+      stop = startDriftWatch();
+      player.setPlayState('playing');
+      await settle();
+      expect(mockToast).not.toHaveBeenCalled();
+    });
+  });
 });

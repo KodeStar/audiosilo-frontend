@@ -8,14 +8,21 @@ jest.mock('@/lib/cors-mode', () => {
 });
 
 /* eslint-disable import/first */
-import { CoverImage } from './cover-image.web';
+import { CoverImage, FADE_AFTER_MS } from './cover-image.web';
 /* eslint-enable import/first */
 
 type Img = { type: string; props: Record<string, unknown> };
 const img = () => screen.toJSON() as unknown as Img;
+/** The element a handler's event points at (its inline style, as the DOM keeps it). */
+let element: { style: Record<string, string> };
 /** Fire the `<img>`'s own handler (a DOM element: no host event plumbing in jest). */
 const fire = (handler: 'onLoad' | 'onError') =>
-  act(async () => (img().props[handler] as () => void)());
+  act(async () => (img().props[handler] as (e: unknown) => void)({ currentTarget: element }));
+
+beforeEach(() => {
+  element = { style: { opacity: '0', transition: 'opacity 150ms ease-out' } };
+});
+afterEach(() => jest.restoreAllMocks());
 
 describe('CoverImage (web)', () => {
   it('loads another server’s cover in CORS mode', async () => {
@@ -63,6 +70,37 @@ describe('CoverImage (web)', () => {
     });
     await fire('onLoad');
     expect(img().props.style).toMatchObject({ opacity: 1 });
+  });
+
+  it('shows a cover that loads at once without the fade, on the element first', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    await render(<CoverImage source="https://other.example/c" transition={150} />);
+    now.mockReturnValue(1_000 + FADE_AFTER_MS - 1);
+    await fire('onLoad');
+    // Shown on the element itself, before React's render (which a busy page holds back).
+    expect(element.style).toEqual({ opacity: '1', transition: '' });
+    expect(img().props.style).toMatchObject({ opacity: 1 });
+    expect((img().props.style as { transition?: string }).transition).toBeUndefined();
+  });
+
+  it('fades in a cover that loads later', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    await render(<CoverImage source="https://other.example/c" transition={150} />);
+    now.mockReturnValue(1_000 + FADE_AFTER_MS);
+    await fire('onLoad');
+    expect(element.style).toEqual({ opacity: '1', transition: 'opacity 150ms ease-out' });
+    expect(img().props.style).toMatchObject({
+      opacity: 1,
+      transition: 'opacity 150ms ease-out',
+    });
+  });
+
+  it('loads a first-screen cover at once and ahead of the others', async () => {
+    await render(<CoverImage source="https://other.example/c" priority="high" />);
+    expect(img().props).toMatchObject({ loading: 'eager', fetchPriority: 'high' });
+    await render(<CoverImage source="https://other.example/d" priority="normal" />);
+    expect(img().props).toMatchObject({ loading: 'lazy' });
+    expect(img().props.fetchPriority).toBeUndefined();
   });
 
   it('shows at once with no transition', async () => {

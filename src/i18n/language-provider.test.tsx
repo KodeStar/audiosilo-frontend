@@ -5,9 +5,12 @@ import { getItem, setItem } from '@/lib/storage';
 jest.mock('expo-localization', () => ({ getLocales: () => [{ languageCode: 'en' }] }));
 
 // eslint-disable-next-line import/first
+import * as i18nModule from './index';
+// eslint-disable-next-line import/first
 import i18n from './index';
 // eslint-disable-next-line import/first
 import {
+  LANGUAGE_WAIT_MS,
   LanguageProvider,
   readLanguagePref,
   restoreLanguage,
@@ -57,6 +60,38 @@ describe('LanguageProvider', () => {
     await waitFor(() => expect(value()).toBeTruthy());
     expect(value()!.pref).toBe('de');
     expect(value()!.language).toBe('de');
+  });
+
+  it('paints in English when the saved language is slow to load, then switches to it', async () => {
+    await setItem(STORAGE_KEY, 'fr');
+    // The web's fr chunk, still on its way.
+    let arrive: () => void = () => {};
+    const switching = jest.spyOn(i18nModule, 'switchLanguage').mockImplementation(
+      (code) =>
+        new Promise<void>((resolve) => {
+          arrive = () => {
+            void i18n.changeLanguage(code).then(() => resolve());
+          };
+        }),
+    );
+    jest.useFakeTimers();
+    try {
+      const value = await mountProvider();
+      expect(value()).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(LANGUAGE_WAIT_MS);
+      });
+      await waitFor(() => expect(value()).toBeTruthy());
+      expect(value()!.pref).toBe('fr');
+      expect(i18n.language).toBe('en');
+      await act(async () => {
+        arrive();
+      });
+      await waitFor(() => expect(i18n.language).toBe('fr'));
+    } finally {
+      jest.useRealTimers();
+      switching.mockRestore();
+    }
   });
 
   it('persists a pref change via setPref', async () => {

@@ -33,7 +33,7 @@ export default function TabStackLayout() {
   const phone = useLayout() === 'phone';
   const insets = useSafeAreaInsets();
   // The native tab bar's top edge (distance from the window's bottom), for the root
-  // toasts and the shell's one floating mini player (`(app)/_layout.tsx`, over NativeTabs;
+  // toasts and the shell's one floating mini player (`native-shell.tsx`, over NativeTabs;
   // web's own bar publishes itself): iOS lays the page out under its translucent bar, so
   // the bar is the bottom safe-area inset here; Android lays it out above its bar, so the
   // bar is what lies between the page's bottom and the shell frame's (which spans the

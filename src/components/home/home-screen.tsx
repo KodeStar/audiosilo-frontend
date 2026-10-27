@@ -22,6 +22,7 @@ import { HouseRow } from '@/components/house/house-row';
 import { libraryBooksHref } from '@/components/library/books/books-view';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { libraryModeHref } from '@/components/library/library-modes';
+import { FirstScreenCovers } from '@/components/library/first-screen-covers';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
@@ -185,7 +186,10 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   // The hero: the Now card, its skeleton while progress first loads, the error when
   // that failed with nothing to show, or the empty state.
   const hero = nowAt ? (
-    <NowCard at={nowAt} saved={nowSaved} />
+    // The page's largest cover: it loads first.
+    <FirstScreenCovers.Provider value>
+      <NowCard at={nowAt} saved={nowSaved} />
+    </FirstScreenCovers.Provider>
   ) : isLoading ? (
     <NowCardSkeleton />
   ) : progressRefused ? (
@@ -251,6 +255,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
           >
             {continuing.length > 0 ? (
               <ShelfRow
+                firstScreen
                 data={continuing}
                 keyExtractor={progressKey}
                 renderItem={progressTile}
@@ -312,6 +317,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
           >
             {recentBooks.length > 0 ? (
               <ShelfRow
+                firstScreen
                 data={recentBooks}
                 keyExtractor={bookKey}
                 accessibilityLabel={t('home.recentlyAdded')}

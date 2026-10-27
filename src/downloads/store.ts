@@ -496,8 +496,20 @@ function withCachedChapters(ref: BookRef, manifest: DownloadManifest): DownloadM
  * replaces its saved copy when `refreshedChapters` allows. The cache already holds that
  * answer, so there is nothing to seed. A queue already playing keeps its chapters until
  * the book is next started. Returns the unsubscribe (started once from the root layout).
+ *
+ * The answers the cache already holds when it starts are taken too: the web starts it
+ * after the first paint (`root-services.web.tsx`), when a screen's answer can have landed
+ * already. Native starts it before any fetch, where the cache holds at most the store's
+ * own seeds, which are the manifests' chapters and so change nothing.
  */
 export function startChapterRefresh(): () => void {
+  for (const entry of Object.values(useDownloads.getState().entries)) {
+    if (entry.status !== 'downloaded') continue;
+    const manifest = withCachedChapters(entry, entry.manifest);
+    if (manifest === entry.manifest) continue;
+    patchEntry(contentKeyOf(entry), { manifest });
+    persistSoon();
+  }
   return queryClient.getQueryCache().subscribe((event) => {
     // A server answer only: the store's own seeds (`setQueryData`) are manual.
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
@@ -509,8 +521,8 @@ export function startChapterRefresh(): () => void {
     const manifest = entry && refreshedChapters(entry.manifest, fresh);
     if (!manifest) return;
     patchEntry(contentKeyOf(ref), { manifest });
-    // A burst of answers (a reconnect's refetches, a search fan-out) saves the registry
-    // once, not once per book.
+    // A burst of answers (a reconnect's refetches, a search fan-out, the start's own
+    // sweep above) saves the registry once, not once per book.
     persistSoon();
   });
 }

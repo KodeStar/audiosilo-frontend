@@ -19,6 +19,7 @@ import {
   setReachabilityClients,
   useReachability,
 } from './reachability';
+import * as startupCache from './startup-cache';
 
 // --- Dead-token / server-reset detection -----------------------------------------------
 // Dead-token detection (a 401 on an authenticated request ⇒ re-pair) rides on the
@@ -111,11 +112,19 @@ export const queryClient = new QueryClient({
   },
 });
 
+// Web: paint the first screens from the last visit's answers while they are asked again
+// (`startup-cache.ts`); before anything renders, so the first render already has them. A
+// kept answer whose server refuses the token goes (the screen shows the sign-in state), and
+// only the signed-in connections' answers are written.
+startupCache.restore(queryClient, { dropOnError: isSignedOutError });
+startupCache.startSaving(queryClient, (key) => cidOfKey(key) !== null);
+
 // Evict the removed server's cached data (every query key leads with its connection
 // id). Matching by `includes(id)` could in theory also match a same-string path
 // segment, but that would only evict one extra entry - harmless, it just refetches.
 onConnectionRemoved((id) => {
   queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(id) });
+  startupCache.forget(id);
 });
 
 // When a connection becomes reachable again, refetch that connection's queries (so

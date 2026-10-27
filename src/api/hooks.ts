@@ -25,6 +25,7 @@ import {
   midRunCheckpoint,
   SIDECARS_GENERATE,
 } from '@/lib/bridge-jobs';
+import { afterPaint } from '@/lib/after-paint';
 import { byPosition } from '@/lib/by-position';
 import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -996,7 +997,8 @@ export function useLibraryBooks(
  * EVERY book of a library list (`useLibraryBooks`: the whole library, or an exact
  * `series`, `author` or `narrator`), fetching the remaining pages on its own, for a
  * screen that orders or filters them on the device. The pages so far are usable at once
- * (`complete` false while more are coming). A failed page stops the run and keeps what
+ * (`complete` false while more are coming); the second page is asked for once the first
+ * has painted (`afterPaint`). A failed page stops the run and keeps what
  * loaded; `retry` carries on from there (or starts over when the first page failed).
  */
 export function useAllLibraryBooks(
@@ -1011,7 +1013,11 @@ export function useAllLibraryBooks(
   // that asked for it, leaving the flags as they were and the effect asleep.
   const pages = data?.pages.length ?? 0;
   useEffect(() => {
-    if (hasNextPage && !isFetching && !isFetchNextPageError) void fetchNextPage();
+    if (!hasNextPage || isFetching || isFetchNextPageError) return;
+    // The first page paints before the rest are asked for (web: `afterPaint` waits for
+    // the frame and an idle moment), so their rendering never holds its covers back.
+    if (pages === 1) return afterPaint(() => void fetchNextPage());
+    void fetchNextPage();
   }, [pages, hasNextPage, isFetching, isFetchNextPageError, fetchNextPage]);
   const books = useMemo<Book[]>(() => data?.pages.flatMap((p) => p.books) ?? [], [data]);
   return {

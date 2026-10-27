@@ -1,7 +1,8 @@
 import { Image, type ImageProps } from 'expo-image';
 
-/** What the app's cover images ask of an image: a source, a size, cover fit, a fade in
- * and a failure callback. `cover-image.web.tsx` draws the same props as a plain `<img>`. */
+/** What the app's cover images ask of an image: a source, a size, cover fit, a fade in,
+ * a load priority (`high` for a cover on the first screen) and a failure callback.
+ * `cover-image.web.tsx` draws the same props as a plain `<img>`. */
 export type CoverImageProps = Pick<
   ImageProps,
   | 'source'
@@ -11,6 +12,7 @@ export type CoverImageProps = Pick<
   | 'recyclingKey'
   | 'blurRadius'
   | 'onError'
+  | 'priority'
   | 'testID'
 >;
 

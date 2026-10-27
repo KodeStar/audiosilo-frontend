@@ -26,6 +26,7 @@ export function Cover({
   sublabel,
   rounded = 'rounded-lg',
   size,
+  priority,
   onError,
 }: {
   source?: ImageSource | string | null;
@@ -33,6 +34,8 @@ export function Cover({
   sublabel?: string;
   rounded?: string;
   size?: number;
+  /** `high` for a cover on the first screen: loaded at once, ahead of the others. */
+  priority?: 'high';
   /** Called when the image fails to load (after the fallback takes over), so a caller
    * can try another source (a thumbnail falling back to the full art). */
   onError?: () => void;
@@ -54,6 +57,7 @@ export function Cover({
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
           transition={150}
+          priority={priority}
           recyclingKey={key}
           onError={() => {
             setFailedKey(key);

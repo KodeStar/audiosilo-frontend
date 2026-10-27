@@ -27,9 +27,11 @@ export type { SchemePref };
  * The Stacks fonts, one family per weight (React Native has no font fallback or
  * synthetic weights). The keys are the family names the `font-*` tokens in
  * src/global.css name; only the weights a token uses are imported, so only those are
- * bundled. These gate first paint (the splash stays up until they load).
+ * bundled. These gate first paint (the splash stays up until they load). Web: the static
+ * HTML carries their `@font-face` rules (`StaticFonts`), which expo-font counts as loaded,
+ * so there they gate nothing and the browser shows the text as the preloaded files land.
  */
-const FONTS = {
+export const FONTS = {
   Figtree_400Regular,
   Figtree_500Medium,
   Figtree_600SemiBold,

@@ -2,17 +2,31 @@ import { TabList, TabSlot, TabTrigger, Tabs } from 'expo-router/ui';
 import { View } from 'react-native';
 
 import { MiniPlayer } from '@/components/player/mini-player';
-import { ShortcutsDialog } from '@/components/player/shortcuts-dialog';
 import { usePlayerShortcuts } from '@/components/player/use-player-shortcuts';
-import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
-import { CommandPalette, usePaletteShortcut } from '@/components/shell/command-palette';
 import { TABS, useActiveTab } from '@/components/shell/destinations';
+import { usePaletteShortcut } from '@/components/shell/palette-store';
 import { PhoneTabBar } from '@/components/shell/phone-tab-bar';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useUpNextShortcut } from '@/components/upnext/use-up-next-shortcut';
+import { deferred } from '@/lib/deferred';
+
+// The shell's overlays open on a key or a press, never on the first screen: they mount once
+// the page has painted. The palette (with search) and the keyboard overlay are their own
+// chunks, out of the web's start; the player's sheets are in the start anyway (the player
+// route imports them too), so only their render waits. Their keys and open states are in
+// the shell already, so a key pressed before then opens it once in.
+const ShellPlayerOverlays = deferred(() =>
+  import('@/components/player/player-sheet-host').then((m) => m.ShellPlayerOverlays),
+);
+const CommandPalette = deferred(() =>
+  import('@/components/shell/command-palette').then((m) => m.CommandPalette),
+);
+const ShortcutsDialog = deferred(() =>
+  import('@/components/player/shortcuts-dialog').then((m) => m.ShortcutsDialog),
+);
 
 /**
  * The web shell: headless `expo-router/ui` Tabs over the SAME `(home)`/`(library)`/...

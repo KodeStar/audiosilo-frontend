@@ -3,8 +3,11 @@
  *
  * Two jobs:
  *  1. App shell - make the PWA installable and loadable offline: network-first for
- *     navigations (falling back to a cached shell that boots the SPA), and
- *     stale-while-revalidate for the content-hashed Expo assets.
+ *     navigations (falling back to a cached shell that boots the SPA), cache-first for the
+ *     content-hashed Expo build files (`_expo/static/`, `cacheFirst`), and
+ *     stale-while-revalidate for other same-origin assets. The web build is split (Expo
+ *     Router async routes): a page's chunks load when it is first opened, so every chunk
+ *     of the build is precached (`precacheBuild`) for a page never opened online.
  *  2. Offline media - serve downloaded audio/cover files that the web download
  *     engine (src/downloads/engine.web.ts) stored in MEDIA_CACHE under synthetic
  *     `…/_offline/…` urls, honouring HTTP Range so <audio> can seek (and so Safari,
@@ -25,22 +28,22 @@ const TOKEN_PARAM = 'token';
 // so the worker can't serve a stale bundle and break hot reloading.
 const DEV = new URL(self.location.href).searchParams.get('dev') === '1';
 
-// Asset request destinations we cache-and-revalidate. API calls (destination '')
+// Asset request destinations we cache (the build's own files cache-first, the rest
+// stale-while-revalidate). API calls (destination '')
 // and audio streamed from the server pass straight through to the network.
 const CACHEABLE = new Set(['script', 'style', 'font', 'image', 'manifest']);
+
+// The build's own files, content-hashed: `<base>/_expo/static/...`.
+const BUILD_ASSETS = '/_expo/static/';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       if (!DEV) {
-        const cache = await caches.open(SHELL_CACHE);
-        try {
-          // Precache the shell root so offline navigations have something to fall
-          // back to; hashed assets fill in at runtime on first online visit.
-          await cache.add(new Request(self.registration.scope, { cache: 'reload' }));
-        } catch {
-          // first install offline / root unreachable - runtime caching covers it
-        }
+        // The shell root (offline navigations fall back to it) and the build's chunks,
+        // cached while installing so Chrome keeps their compiled code (see precacheBuild).
+        // Offline or the root unreachable: runtime caching covers it, and the app asks again.
+        await precacheBuild(true);
       }
       await self.skipWaiting();
     })(),
@@ -57,6 +60,14 @@ self.addEventListener('activate', (event) => {
       await self.clients.claim();
     })(),
   );
+});
+
+// The app asks once it has started (`register-sw.web.ts`). Each build registers its own
+// worker (`sw.js?build=<entry>`), so a deploy installs a new one and its install precaches
+// the build; this ask finishes the job when that install could not (offline, or the network
+// went part way), and does nothing for a build already precached.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'precache' && !DEV) event.waitUntil(precacheBuild());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -81,7 +92,12 @@ self.addEventListener('fetch', (event) => {
     // would be written into Cache Storage, and every entry turns into unreachable
     // garbage the moment the token rotates. Let the browser fetch these directly.
     if (url.searchParams.has(TOKEN_PARAM)) return;
-    event.respondWith(staleWhileRevalidate(request));
+    // The build's own files are content-hashed, so a cached one is never stale: served from
+    // the cache and never written again (a rewrite would drop the compiled code Chrome
+    // keeps for a script cached at install).
+    event.respondWith(
+      url.pathname.includes(BUILD_ASSETS) ? cacheFirst(request) : staleWhileRevalidate(request),
+    );
   }
   // else: let the browser handle it (API requests, server-streamed audio, …)
 });
@@ -111,18 +127,142 @@ async function handleNavigation(request, shellFallback = true) {
   }
 }
 
+/** A good same-origin answer, safe to keep. */
+function cacheable(res) {
+  return res.ok && (res.type === 'basic' || res.type === 'default');
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const res = await fetch(request);
+  if (cacheable(res)) cache.put(request, res.clone());
+  return res;
+}
+
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(SHELL_CACHE);
   const cached = await cache.match(request);
   const network = fetch(request)
     .then((res) => {
-      if (res && res.ok && (res.type === 'basic' || res.type === 'default')) {
-        cache.put(request, res.clone());
-      }
+      if (res && cacheable(res)) cache.put(request, res.clone());
       return res;
     })
     .catch(() => undefined);
   return cached || (await network) || new Response('', { status: 504 });
+}
+
+// --- the build's chunks ------------------------------------------------------
+
+// The cache entry recording the build last precached, as JSON: the shell's own scripts and
+// styles (`build`), every file of it (`files`) and the build's before it (`previous`).
+const PRECACHED_BUILD = '__precached-build';
+// A build asset named in the HTML or a chunk: `<base>/_expo/static/js/web/<name>-<hash>.js`
+// (the chunk map Expo writes into the entry and into chunks that load others) or a
+// stylesheet under `_expo/static/css/`.
+const ASSET_REF = /["'](\/(?:[^"'\s]*?\/)?_expo\/static\/(?:js|css)\/[^"'\s]+?\.(?:js|css))["']/g;
+
+/** The same-origin build assets `text` names, as absolute URLs. */
+function assetRefs(text) {
+  const urls = new Set();
+  for (const m of text.matchAll(ASSET_REF)) urls.add(new URL(m[1], self.location.origin).href);
+  return [...urls];
+}
+
+/**
+ * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts
+ * and stylesheets, then every chunk they name, transitively. A route opened for the first
+ * time offline then still finds its chunk, and a deep link still boots. The shell is
+ * cached once its own files are in, so offline it always boots. Once this build is
+ * complete, the build before it stays one deploy longer (a tab still running it, its
+ * worker replaced by another tab's new build, opens its pages from these), older files
+ * go, and so does every page an earlier build cached (`handleNavigation`): offline such a
+ * page would name files no longer kept, and the shell boots this build instead. Offline
+ * or failing part way, it stops and leaves the record unwritten, so the next ask finishes
+ * it.
+ *
+ * At install (`fresh`) every file is written again, even one already cached: Chrome
+ * compiles a script a worker caches while installing and keeps the code with it, so the
+ * next start skips most of its compiling (the app registers the worker under its build's
+ * name, so each deploy installs one). Otherwise (the app's ask) a hashed file already
+ * cached is not fetched again, and a shell naming the same files as last time is done.
+ */
+async function precacheBuild(fresh = false) {
+  try {
+    const cache = await caches.open(SHELL_CACHE);
+    const shell = self.registration.scope;
+    const res = await fetch(new Request(shell, { cache: 'no-cache' }));
+    if (!res.ok) return;
+    const roots = assetRefs(await res.clone().text());
+    if (!roots.length) return;
+    const build = roots.slice().sort().join('\n');
+    const marker = new URL(PRECACHED_BUILD, shell).href;
+    const last = await readRecord(cache, marker);
+    if (!fresh && last && last.build === build) {
+      await cache.put(shell, res);
+      return;
+    }
+
+    // Level by level, each level's files at once: the entry names the route chunks, which
+    // may name more. The shell once its own files (the first level) are in.
+    const seen = new Set();
+    let level = roots;
+    while (level.length) {
+      for (const url of level) seen.add(url);
+      const texts = await Promise.all(level.map((url) => precacheAsset(cache, url, fresh)));
+      if (level === roots) await cache.put(shell, res);
+      level = [...new Set(texts.flatMap(assetRefs))].filter((url) => !seen.has(url));
+    }
+
+    const previous = !last ? [] : last.build !== build ? last.files : last.previous;
+    const keep = new Set([...seen, ...previous]);
+    for (const request of await cache.keys()) {
+      const { url } = request;
+      if (url === shell || url === marker) continue;
+      if (url.includes(BUILD_ASSETS)) {
+        if (!keep.has(url)) await cache.delete(request);
+        continue;
+      }
+      const page = await cache.match(request);
+      if (!page || !(page.headers.get('content-type') || '').includes('text/html')) continue;
+      if (assetRefs(await page.text()).some((ref) => !seen.has(ref))) await cache.delete(request);
+    }
+    await cache.put(marker, new Response(JSON.stringify({ build, files: [...seen], previous })));
+  } catch {
+    // offline or the server gone: the next ask (the app's next start) tries again
+  }
+}
+
+/** The precache record (`PRECACHED_BUILD`), or null without a readable one. */
+async function readRecord(cache, marker) {
+  const res = await cache.match(marker);
+  if (!res) return null;
+  try {
+    const record = JSON.parse(await res.text());
+    return typeof record.build === 'string' &&
+      Array.isArray(record.files) &&
+      Array.isArray(record.previous)
+      ? record
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One build file into the cache (`fresh`: fetched again even when cached), returning a
+ * script's text for the files it names ('' for a stylesheet). Throws when it can't be had,
+ * which stops the precache.
+ */
+async function precacheAsset(cache, url, fresh) {
+  let asset = fresh ? undefined : await cache.match(url);
+  if (!asset) {
+    asset = await fetch(url);
+    if (!asset.ok) throw new Error(`precache: ${url} ${asset.status}`);
+    await cache.put(url, asset.clone());
+  }
+  return url.endsWith('.js') ? asset.text() : '';
 }
 
 // --- offline media ---------------------------------------------------------

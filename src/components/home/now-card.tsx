@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -37,6 +37,7 @@ import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { bookSeriesNumber } from '@/lib/series-position';
+import { useWidth } from '@/lib/use-width';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { timeLeft, timeLeftLabel } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -66,7 +67,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const { t } = useTranslation();
   // The card's own width decides its shape, not the window's: beside This week, or on a
   // desktop with the Up next drawer open, a "desktop" card can be phone-narrow.
-  const [width, setWidth] = useState(0);
+  // (Read before the first paint on the web, `useWidth`, so the card draws its shape once.)
+  const { ref, width, onLayout } = useWidth();
   const compact = nowCardCompact(useLayout() === 'phone', width);
   const { openBook } = useOpen();
   const play = usePlayBook();
@@ -246,7 +248,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     <View
       testID="now-card"
       accessibilityLabel={t('home.continueListening')}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      ref={ref}
+      onLayout={onLayout}
       className={
         compact
           ? 'relative gap-4 overflow-hidden rounded-[22px] border border-border bg-card p-[18px]'

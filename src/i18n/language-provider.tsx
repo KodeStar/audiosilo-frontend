@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 import { getItem, setItem } from '@/lib/storage';
 
-import i18n, { FALLBACK_CODE, isSupportedCode, type SupportedCode } from './index';
+import { FALLBACK_CODE, isSupportedCode, switchLanguage, type SupportedCode } from './index';
 
 /** `'system'` follows the device language; a code pins a specific UI language. */
 export type LanguagePref = 'system' | SupportedCode;
@@ -34,9 +34,18 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 /**
+ * The longest first paint waits for the saved language. Native bundles every catalog, so
+ * its switch is immediate; the web loads a language other than English from its own chunk
+ * (`catalogs.web.ts`), and a slow or failing fetch must not hold the app blank. Past this
+ * it paints in English and changes language when the chunk arrives.
+ */
+export const LANGUAGE_WAIT_MS = 1500;
+
+/**
  * Restores the persisted language preference (default: follow the device) and
  * applies it to i18next before first paint - gating render until resolved, like
- * {@link ThemeProvider}, so the UI never flashes the wrong language.
+ * {@link ThemeProvider}, so the UI never flashes the wrong language. The wait for the
+ * language is capped (`LANGUAGE_WAIT_MS`).
  */
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [pref, setPrefState] = useState<LanguagePref>('system');
@@ -44,9 +53,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let cap: ReturnType<typeof setTimeout> | undefined;
     void readLanguagePref()
       .then(async (next) => {
-        await i18n.changeLanguage(resolveLanguage(next));
+        // The switch goes on past the cap: the UI changes language when it lands.
+        await new Promise<void>((resolve) => {
+          cap = setTimeout(resolve, LANGUAGE_WAIT_MS);
+          void switchLanguage(resolveLanguage(next))
+            .catch(() => {})
+            .finally(resolve);
+        });
+        clearTimeout(cap);
         if (active) setPrefState(next);
       })
       .catch(() => {
@@ -58,12 +75,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       });
     return () => {
       active = false;
+      clearTimeout(cap);
     };
   }, []);
 
   const setPref = (p: LanguagePref) => {
     setPrefState(p);
-    void i18n.changeLanguage(resolveLanguage(p));
+    void switchLanguage(resolveLanguage(p));
     void setItem(STORAGE_KEY, p);
   };
 
@@ -91,7 +109,7 @@ export async function readLanguagePref(): Promise<LanguagePref> {
  */
 export async function restoreLanguage(): Promise<void> {
   try {
-    await i18n.changeLanguage(resolveLanguage(await readLanguagePref()));
+    await switchLanguage(resolveLanguage(await readLanguagePref()));
   } catch {
     // the fallback language
   }

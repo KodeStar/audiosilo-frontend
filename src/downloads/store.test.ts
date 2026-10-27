@@ -1142,6 +1142,45 @@ describe("refreshing a downloaded book's chapters", () => {
       });
     });
 
+    it('takes the answers the cache held before it started, and saves them', async () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      useDownloads.setState({ entries: { [key]: downloadedEntry() } });
+      const save = AsyncStorage.setItem as jest.Mock;
+      save.mockClear();
+      // The cache answers for the downloaded book only.
+      mockGetQueryData.mockImplementation((key) =>
+        JSON.stringify(key) === JSON.stringify(['chapters', 'c1', 2, 'A/Book'])
+          ? fresh()
+          : undefined,
+      );
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockGetQueryData.mockImplementation(() => undefined);
+      }
+      expect(useDownloads.getState().entries[key].manifest.chapters).toEqual(fresh());
+      jest.advanceTimersByTime(2000);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect((await readPersisted())[key]?.manifest.chapters).toEqual(fresh());
+    });
+
+    it('changes nothing at start when the cache holds only the manifest seed', () => {
+      stop();
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      e.manifest.chapters = fresh();
+      useDownloads.setState({ entries: { [key]: e } });
+      // The seed is the manifest's own chapters (`seedOfflineMeta`), here a copy.
+      mockGetQueryData.mockImplementation(() => fresh());
+      try {
+        stop = startChapterRefresh();
+      } finally {
+        mockGetQueryData.mockImplementation(() => undefined);
+      }
+      expect(useDownloads.getState().entries[key]).toBe(e);
+    });
+
     it('stops listening once unsubscribed', () => {
       const e = downloadedEntry();
       const key = downloadKey('c1', 2, 'A/Book');
