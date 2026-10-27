@@ -392,7 +392,18 @@
       "passwordPlaceholder": "Passwort",
       "submit": "Anmelden",
       "failed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
-      "modeLabel": "Anmeldeart"
+      "modeLabel": "Anmeldeart",
+      "errors": {
+        "wait_one": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Minute noch einmal.",
+        "wait_other": "Zu viele Versuche aus diesem Netzwerk. Versuch es in {{count}} Minuten noch einmal.",
+        "badCode": "Dieser Einladungscode hat nicht funktioniert. Prüfe ihn oder bitte deinen Admin um eine neue Einladung.",
+        "usedInvite": "Diese Einladung kann kein weiteres Gerät hinzufügen: Sie ist aufgebraucht oder abgelaufen. Bitte deinen Admin um eine neue Einladung.",
+        "badPassword": "Benutzername oder Passwort ist falsch. Prüfe beides und versuch es noch einmal.",
+        "disabled": "Dein Konto auf diesem Server ist ausgeschaltet. Bitte deinen Admin, es wieder einzuschalten.",
+        "enterCode": "Gib den Einladungscode von deinem Admin ein.",
+        "enterUsername": "Gib deinen Benutzernamen ein.",
+        "enterPassword": "Gib dein Passwort ein."
+      }
     },
     "scan": {
       "closeLabel": "Scanner schließen",

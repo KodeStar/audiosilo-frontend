@@ -392,7 +392,18 @@
       "passwordPlaceholder": "Password",
       "submit": "Accedi",
       "failed": "Accesso non riuscito. Riprova.",
-      "modeLabel": "Come accedere"
+      "modeLabel": "Come accedere",
+      "errors": {
+        "wait_one": "Troppi tentativi da questa rete. Riprova tra {{count}} minuto.",
+        "wait_other": "Troppi tentativi da questa rete. Riprova tra {{count}} minuti.",
+        "badCode": "Questo codice di invito non ha funzionato. Controllalo o chiedi un nuovo invito al tuo amministratore.",
+        "usedInvite": "Questo invito non può aggiungere un altro dispositivo: è esaurito o scaduto. Chiedi un nuovo invito al tuo amministratore.",
+        "badPassword": "Il nome utente o la password sono sbagliati. Controllali e riprova.",
+        "disabled": "Il tuo account su questo server è disattivato. Chiedi al tuo amministratore di riattivarlo.",
+        "enterCode": "Inserisci il codice di invito del tuo amministratore.",
+        "enterUsername": "Inserisci il tuo nome utente.",
+        "enterPassword": "Inserisci la tua password."
+      }
     },
     "scan": {
       "closeLabel": "Chiudi lo scanner",

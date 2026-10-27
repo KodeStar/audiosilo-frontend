@@ -392,7 +392,18 @@
       "passwordPlaceholder": "Password",
       "submit": "Sign in",
       "failed": "Sign in failed. Please try again.",
-      "modeLabel": "How to sign in"
+      "modeLabel": "How to sign in",
+      "errors": {
+        "wait_one": "Too many tries from this network. Try again in {{count}} minute.",
+        "wait_other": "Too many tries from this network. Try again in {{count}} minutes.",
+        "badCode": "That invite code didn't work. Check it, or ask your admin for a new invite.",
+        "usedInvite": "This invite can't add another device: it is used up or has expired. Ask your admin for a new invite.",
+        "badPassword": "The username or password is wrong. Check them and try again.",
+        "disabled": "Your account on this server is turned off. Ask your admin to turn it back on.",
+        "enterCode": "Enter the invite code from your admin.",
+        "enterUsername": "Enter your username.",
+        "enterPassword": "Enter your password."
+      }
     },
     "scan": {
       "closeLabel": "Close scanner",

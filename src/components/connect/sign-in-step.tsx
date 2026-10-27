@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiClient } from '@/api/client';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -17,10 +17,24 @@ import { useSession } from '@/stores/session';
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
+import { type SignInStage, signInErrorText } from './sign-in-error';
 
 type Mode = 'code' | 'password';
 
 const MODE_VALUES: Mode[] = ['code', 'password'];
+
+type Field = 'code' | 'username' | 'password';
+
+/** The first field this mode needs that is still empty (a name of spaces is empty), or
+ * null when the sign-in can be sent. */
+export function emptyField(
+  mode: Mode,
+  v: { code: string; username: string; password: string },
+): Field | null {
+  if (mode === 'code') return v.code.trim() ? null : 'code';
+  if (!v.username.trim()) return 'username';
+  return v.password ? null : 'password';
+}
 
 /**
  * The sign-in step: "<server> · <host>", an invite code or a username and password, then
@@ -58,6 +72,8 @@ export function SignInStep({
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A field left empty says so under itself, and nothing is sent (CONNECT-09).
+  const [missing, setMissing] = useState<Field | null>(null);
   const api = useMemo(() => new ApiClient(server), [server]);
 
   const modes = MODE_VALUES.map((value) => ({
@@ -71,12 +87,18 @@ export function SignInStep({
   const submitting = useRef(false);
   const onSubmit = async () => {
     if (submitting.current) return;
-    submitting.current = true;
     setError(null);
+    const empty = emptyField(mode, { code, username, password });
+    setMissing(empty);
+    if (empty) return;
+    submitting.current = true;
     setLoading(true);
+    // Which request failed decides the words (`signInErrorText`).
+    let stage: SignInStage = mode === 'code' ? 'redeem' : 'login';
     try {
       if (mode === 'code') {
         const payload = await api.redeemCode(code.trim());
+        stage = 'exchange';
         const session = await api.exchange(payload.pairing_token, getDeviceName());
         await finishConnect({
           serverUrl: server,
@@ -95,7 +117,7 @@ export function SignInStep({
         });
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('connect.signIn.failed'));
+      setError(signInErrorText(e, stage, t));
       setLoading(false);
     } finally {
       submitting.current = false;
@@ -135,6 +157,7 @@ export function SignInStep({
         onChange={(m) => {
           setMode(m);
           setError(null);
+          setMissing(null);
         }}
         scrollable
       />
@@ -147,7 +170,11 @@ export function SignInStep({
             label={t('connect.signIn.codeLabel')}
             placeholder={t('connect.signIn.codePlaceholder')}
             value={code}
-            onChangeText={setCode}
+            onChangeText={(v) => {
+              setCode(v);
+              if (missing === 'code') setMissing(null);
+            }}
+            error={missing === 'code' ? t('connect.signIn.errors.enterCode') : undefined}
             autoCapitalize="characters"
             autoCorrect={false}
             returnKeyType="go"
@@ -161,7 +188,11 @@ export function SignInStep({
             label={t('connect.signIn.usernameLabel')}
             placeholder={t('connect.signIn.usernamePlaceholder')}
             value={username}
-            onChangeText={setUsername}
+            onChangeText={(v) => {
+              setUsername(v);
+              if (missing === 'username') setMissing(null);
+            }}
+            error={missing === 'username' ? t('connect.signIn.errors.enterUsername') : undefined}
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="username"
@@ -171,7 +202,11 @@ export function SignInStep({
             label={t('connect.signIn.passwordLabel')}
             placeholder={t('connect.signIn.passwordPlaceholder')}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(v) => {
+              setPassword(v);
+              if (missing === 'password') setMissing(null);
+            }}
+            error={missing === 'password' ? t('connect.signIn.errors.enterPassword') : undefined}
             secureTextEntry
             autoComplete="current-password"
             textContentType="password"

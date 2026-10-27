@@ -392,7 +392,18 @@
       "passwordPlaceholder": "Palavra-passe",
       "submit": "Iniciar sessão",
       "failed": "Falha ao iniciar sessão. Tenta novamente.",
-      "modeLabel": "Como iniciar sessão"
+      "modeLabel": "Como iniciar sessão",
+      "errors": {
+        "wait_one": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} minuto.",
+        "wait_other": "Demasiadas tentativas a partir desta rede. Tente novamente dentro de {{count}} minutos.",
+        "badCode": "Esse código de convite não funcionou. Verifique-o ou peça um novo convite ao seu administrador.",
+        "usedInvite": "Este convite não pode adicionar outro dispositivo: esgotou-se ou expirou. Peça um novo convite ao seu administrador.",
+        "badPassword": "O nome de utilizador ou a palavra-passe estão errados. Verifique-os e tente novamente.",
+        "disabled": "A sua conta neste servidor está desativada. Peça ao seu administrador para a reativar.",
+        "enterCode": "Introduza o código de convite do seu administrador.",
+        "enterUsername": "Introduza o seu nome de utilizador.",
+        "enterPassword": "Introduza a sua palavra-passe."
+      }
     },
     "scan": {
       "closeLabel": "Fechar o leitor",
