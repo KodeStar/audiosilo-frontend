@@ -543,16 +543,18 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   the toast always says private feeds are never exported. Check for new episodes
   (`CheckEpisodesButton`) is for a followed show only, and reads the show again once, 15 s later.
 
-**The ebook reader (Bridge Phase 3b-1, `src/reader/`, the route `/read`).** Web only for now
-(`canRead`: capability `ebooks`, `Book.ebook`, `Platform.OS === 'web'`; the native host is a
-stub until 3b-2). The route is `read.tsx`, never `reader.tsx`: the static export would write
+**The ebook reader (Bridge Phase 3b-1 web, 3b-2 app; `src/reader/`, the route `/read`).** On
+every platform (`canRead`: capability `ebooks` and `Book.ebook`). The route is `read.tsx`, never `reader.tsx`: the static export would write
 `dist/reader.html` over the reader document, and the server answers `/web/reader` with it.
 - **The reader is its own document**: `reader/src/` (foliate-js vendored unmodified at the
   commit in `reader/vendor/FOLIATE_PIN.txt`, hashes checked) built by `npm run reader:build`
   into `public/reader.html`, ONE inline script whose sha256 is in its meta CSP
-  (`connect-src 'none'`; the server hashes the same script). `npm test` runs `reader:check`, so
-  a stale build fails the gate: rebuild and commit it with any change under `reader/`.
-  `public/sw.js` never answers it with the app shell.
+  (`connect-src 'none'`; the server hashes the same script), and the app's variant into
+  `src/reader/reader-html.native.ts` (generated, prettier- and eslint-ignored; the same CSP).
+  The variants differ only by esbuild's `__NATIVE__` define, used bare at each site (a const
+  alias does not fold, and the other variant's code would ship). `npm test` runs
+  `reader:check`, so a stale build fails the gate: rebuild and commit both with any change
+  under `reader/`. `public/sw.js` never answers it with the app shell.
 - **The host** (`reader-host.web.tsx`): a same-origin iframe sandboxed to `allow-scripts
   allow-same-origin` (foliate cannot run in an opaque origin). The host fetches `/ebook` with
   the Authorization header (`client.ebook`, never `?token=`) and posts the bytes as a
@@ -560,7 +562,40 @@ stub until 3b-2). The route is `read.tsx`, never `reader.tsx`: the static export
   and taken only from that frame on our origin (`protocol.ts`); host messages wait for `ready`.
   A frame that never says it within `READER_START_MS` (a proxy's policy, an old browser) is a
   `ReaderStartError`, its own notice with Try again, never an endless spinner. The download's
-  timeout restarts with every piece of the file, so only a stalled one fails.
+  timeout restarts with every piece of the file, so only a stalled one fails. A downloaded book
+  is read from its saved copy (`manifest.ebookUri`, `engine.readFile`), fetching nothing.
+- **The app's host** (`reader-host.native.tsx`, react-native-webview): the reader loads as
+  `source={{html, baseUrl: 'https://reader.audiosilo.invalid/'}}` (a reserved name nothing
+  answers; without a base URL Android's foliate makes `blob:null` URLs and the renderer dies).
+  Never a `file://` load: no file access flag is on, so the WebView reads no file of the app's
+  (the 3b-2 proof: a file load could not be confined to the book). The host reads the EPUB
+  natively and posts it in 256 KB base64 chunks (`book-chunks.ts`: `open {size, chunks}`, then
+  `chunk {seq, data}`, one read held at a time); the reader (`reader/src/chunks.js`) refuses a
+  bad size or count, a chunk out of order, repeated or extra, data that is not base64, and a
+  book larger or smaller than announced, as `unreadable`. `originWhitelist={['*']}` with
+  `onShouldStartLoadWithRequest` (`allowNavigation`: the base URL, `about:blank`, our blobs
+  only): a whitelist miss would go to `Linking.openURL`, so the whitelist admits all and the
+  handler refuses. The bridge object is injected into every frame on Android, so every message
+  is parsed field by field (`readNativeMessage`); the reader takes only `source === null`
+  string events (WebView's own). A content or render process that dies reopens a new WebView
+  at the last place, `MAX_RELOADS` times, then `ReaderStartError`.
+- **react-native-webview 13.16.1** (exact pin, the version `npx expo install` chose for SDK 56;
+  bump it only with `npx expo install` and a device run of the reader on both platforms). Why
+  it: the one maintained WebView for RN, with Fabric support and the process-death callbacks
+  the host relies on (`onContentProcessDidTerminate` iOS, `onRenderProcessGone` Android). Its
+  sharp edges, all handled in `reader-host.native.tsx` and tested there: a whitelist miss opens
+  the URL in the system (above), `window.ReactNativeWebView` reaches every frame on Android,
+  and messages to the page arrive as a `MessageEvent` on `window` (iOS) or `document`
+  (Android) with `source === null`. The file access props are set off explicitly
+  (`allowFileAccess`, `...FromFileURLs`, `allowUniversalAccess...`), never left to defaults.
+- **The EPUB's file in the app** (`ebook-file.native.ts`): the download's copy when it is on
+  the device, else a per-book cache file (`Paths.cache/reader/<cid>/<lib>/<pathSlug>/book.epub`,
+  fetched to `.part` with the Authorization header and moved into place) kept while its size is
+  the server's `ebook.size` (a changed size fetches again); a server refusal becomes its
+  `ApiError` status (`classifyDownloadError`). A removed connection drops its cache
+  (`clearEbookCache`, from `reading-progress`'s `onConnectionRemoved`). Downloads save the
+  EPUB as `book.epub` beside the audio when the book has one (optional: a failure keeps the
+  audio, a cancel cancels).
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen). An
@@ -1071,7 +1106,7 @@ media GETs only.
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
   re-resolves each file's URI against the live root on hydrate (via `engine.localUri`)
   - without it a stale path fails the existence check and the book is dropped *and
-  deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg`) and
+  deleted*. Keep the on-disk filename scheme (`fileName(i, relPath)` + `cover.jpg` + `book.epub`) and
   `engine.localUri` in agreement. On iOS only, `fileName` saves a `.mka` as `<i>.mp3`
   (the server streams MP3-in-MKA as MP3 and AVFoundation types a local file by its
   extension; Android's Media3 sniffs, the web goes by Content-Type, so both keep `.mka`).

@@ -8,7 +8,8 @@ const NETWORK =
   /failed to fetch|load failed|networkerror|network request failed|network connection was lost|internet connection appears to be offline|could not connect|timed? ?out|econn|socket|unable to resolve host|connection (reset|refused|abort)/i;
 const STORAGE =
   /quota|no space|enospc|disk (is )?full|not enough (free )?space|insufficient storage/i;
-const STATUS = /\((\d{3})\)|status(?: code)?[:= ]+(\d{3})/i;
+// expo-file-system's download task says `server returned HTTP 404` (iOS) or `HTTP 404`.
+const STATUS = /\((\d{3})\)|status(?: code)?[:= ]+(\d{3})|\bHTTP (\d{3})\b/i;
 
 /** What kind of failure a thrown download error is (see {@link DownloadFailure}). */
 export function classifyDownloadError(error: unknown): DownloadFailure {
@@ -16,7 +17,7 @@ export function classifyDownloadError(error: unknown): DownloadFailure {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   if (name === 'QuotaExceededError' || STORAGE.test(message)) return { kind: 'storage' };
   const status = STATUS.exec(message);
-  const code = status ? Number(status[1] ?? status[2]) : NaN;
+  const code = status ? Number(status[1] ?? status[2] ?? status[3]) : NaN;
   if (code >= 400 && code < 600) return { kind: 'server', status: code };
   if (NETWORK.test(message)) return { kind: 'network' };
   return { kind: 'unknown' };

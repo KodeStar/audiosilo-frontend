@@ -10,6 +10,8 @@ import { READING_MIRROR_KEY, READING_QUEUE_KEY } from '@/lib/storage-keys';
 import { getDeviceId } from '@/playback/progress-sync';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { clearEbookCache } from './ebook-file';
+
 /**
  * The ebook reader's place, saved per user on the server (Bridge Phase 3b,
  * `/libraries/{id}/reading-progress`), the way `src/playback/progress-sync.ts` saves the
@@ -414,9 +416,11 @@ export function jumpOffer(
   return { cfi: kept.cfi, progression: kept.progression, deviceName: kept.device_name ?? '' };
 }
 
-// Removing a connection orphans its reading places and queued saves.
+// Removing a connection (signing out of it too) orphans its reading places, queued saves
+// and the app's cached EPUBs.
 onConnectionRemoved(async (id) => {
   await Promise.all([
+    clearEbookCache(id),
     withMirrorLock(async () => {
       const map = await readMirrorMap();
       const kept = Object.fromEntries(

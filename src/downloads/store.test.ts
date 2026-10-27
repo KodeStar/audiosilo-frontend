@@ -602,6 +602,97 @@ describe('a new download names each file by fileName', () => {
   });
 });
 
+describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () => {
+  const withEbook = () =>
+    makeBook({
+      files: [{ rel_path: 'A/Book/01.mp3', seq: 0, duration: 60, format: 'mp3', size: 100 }],
+      ebook: { path: 'A/Book/Book.epub', size: 1000 },
+    });
+  function api() {
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      streamUrl: (_lib: number, p: string) => `stream:${p}`,
+      ebookRequest: (lib: number, p: string) => ({
+        url: `ebook:${lib}:${p}`,
+        headers: { Authorization: 'Bearer t' },
+      }),
+    } as unknown as ApiClient);
+  }
+  const settle = async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  const entry = () => useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+
+  it('saves it as book.epub with the Authorization header (never a token in the url)', async () => {
+    api();
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    const call = mockEngine.downloadFile.mock.calls.find((c) => c[3] === 'book.epub');
+    expect(call?.[4]).toBe('ebook:2:A/Book');
+    expect(call?.[7]).toEqual({ Authorization: 'Bearer t' });
+    expect(entry()?.status).toBe('downloaded');
+    expect(entry()?.manifest.ebookUri).toBe('live:c1:2:A/Book:book.epub');
+  });
+
+  it('never fails the audio when the ebook fails: the book is downloaded without it', async () => {
+    api();
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name === 'book.epub') throw new Error('server returned HTTP 404');
+      return `live:c1:2:A/Book:${name}`;
+    });
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    expect(entry()?.status).toBe('downloaded');
+    expect(entry()?.manifest.ebookUri).toBeUndefined();
+  });
+
+  it('a cancel while the ebook downloads cancels the book', async () => {
+    api();
+    const abort = new Error('aborted');
+    abort.name = 'AbortError';
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name === 'book.epub') throw abort;
+      return `live:c1:2:A/Book:${name}`;
+    });
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', 'book.epub']);
+    expect(entry()?.status).not.toBe('downloaded');
+  });
+
+  it('asks for no ebook for a book without one', async () => {
+    api();
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    useDownloads.getState().download('c1', 2, makeBook({ files: withEbook().files }));
+    await settle();
+
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '0.mp3']);
+    expect(entry()?.manifest.ebookUri).toBeUndefined();
+  });
+
+  it('relocates a saved ebook to book.epub under the live root, and adds none', async () => {
+    const key = downloadKey('c1', 2, 'A/Book');
+    const saved = downloadedEntry();
+    saved.manifest.ebookUri = 'stale:book.epub';
+    await seed({ [key]: saved, [downloadKey('c1', 2, 'B')]: downloadedEntry({ path: 'B' }) });
+
+    await useDownloads.getState().hydrate();
+
+    const entries = useDownloads.getState().entries;
+    expect(entries[key].manifest.ebookUri).toBe('live:c1:2:A/Book:book.epub');
+    expect(entries[downloadKey('c1', 2, 'B')].manifest.ebookUri).toBeUndefined();
+  });
+});
+
 describe('hydrate pruning', () => {
   it('keeps a fully-present downloaded entry', async () => {
     mockEngine.fileExists.mockResolvedValue(true);

@@ -2919,8 +2919,6 @@
       "unknown": "On another device you were at {{percent}}%. Jump there?",
       "jump": "Jump",
       "stay": "Stay"
-    },
-    "nativeTitle": "Reading is on the web for now",
-    "nativeBody": "The app's reader comes in an update. Open this book in the web player to read it."
+    }
   }
 }

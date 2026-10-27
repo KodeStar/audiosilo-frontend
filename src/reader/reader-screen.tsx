@@ -61,7 +61,7 @@ const loadFailure = (e: unknown): ReaderFailure =>
 /**
  * The ebook reader (Bridge Phase 3b, the `/read` root modal): a top bar (close, the
  * book's title, the chapter and how far in, the contents and the text size), the book in
- * the reader host (`ReaderHost`: the web's sandboxed iframe), page edges to turn by, and
+ * the reader host (`ReaderHost`: the web's sandboxed iframe, the app's WebView), page edges to turn by, and
  * the "Jump there?" offer when another device kept a further place. The place is saved
  * through the reading-progress queue two seconds after the reader stops on a page, and at
  * once on close or when the app goes to the background.
@@ -85,9 +85,7 @@ export function ReaderScreen({
     refetch: refetchBook,
   } = useBook(libraryId, path, connectionId);
   const ebooks = useCapability('ebooks', connectionId);
-  // The host is the platform's part (the app's placeholder says Read is on the web for
-  // now), so the rest of the rule decides here.
-  const readable = canRead(ebooks, book, 'web');
+  const readable = canRead(ebooks, book);
   const place = useReadingPlace(libraryId, path, connectionId, readable);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
 
@@ -115,11 +113,7 @@ export function ReaderScreen({
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<ReaderFailure | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
-  // The app's host is a placeholder until 3b-2: nothing to wait for there.
-  const spinner = useDelayed(
-    Platform.OS === 'web' && (loading || (!opened && !failure)),
-    SPINNER_DELAY_MS,
-  );
+  const spinner = useDelayed(loading || (!opened && !failure), SPINNER_DELAY_MS);
 
   // Where it opens: decided once, when the place lookup first settles (set while
   // rendering, React's pattern for state that follows a prop). Opening at the server's row
@@ -287,7 +281,9 @@ export function ReaderScreen({
     if (alreadyThere) acknowledge();
   }, [alreadyThere, acknowledge]);
 
-  const ready = readable && api !== null && opening !== null && fontScale !== null;
+  const ebookSize = book?.ebook?.size;
+  const ready =
+    readable && api !== null && opening !== null && fontScale !== null && ebookSize !== undefined;
   const title = book ? bookTitle(book.title, path) : (opened?.title ?? '');
   const percent = current ? Math.round(current.fraction * 100) : null;
 
@@ -359,7 +355,9 @@ export function ReaderScreen({
               key={attempt}
               ref={host}
               api={api}
+              connectionId={connectionId}
               libraryId={libraryId}
+              ebookSize={ebookSize}
               path={path}
               name={title}
               at={at}

@@ -2919,8 +2919,6 @@
       "unknown": "En otro dispositivo ibas por el {{percent}} %. ¿Ir allí?",
       "jump": "Ir",
       "stay": "Quedarme"
-    },
-    "nativeTitle": "Por ahora se lee en la web",
-    "nativeBody": "El lector de la app llegará en una actualización. Abre este libro en el reproductor web para leerlo."
+    }
   }
 }

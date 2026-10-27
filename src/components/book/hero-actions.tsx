@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useCapability, useFavourites, useQueue, useToggleFavourite } from '@/api/hooks';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
@@ -129,8 +129,8 @@ function HeroActionsView({
     ) : null;
 
   // Read the book's ebook (Bridge Phase 3b): its own button after the download (its own
-  // row on a phone), on the web until the app's reader host lands (Phase 3b-2).
-  const readButton = canRead(ebooks, book, Platform.OS) ? (
+  // row on a phone).
+  const readButton = canRead(ebooks, book) ? (
     <Button
       testID="read-action"
       variant="outline"

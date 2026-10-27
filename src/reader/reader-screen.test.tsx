@@ -136,6 +136,17 @@ describe('ReaderScreen', () => {
     mockPlace = query({ place: null, fromServer: null });
   });
 
+  it('hands the host the book’s connection and its ebook’s size (the app’s cache rule)', async () => {
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockHost).toMatchObject({
+      connectionId: 'c1',
+      libraryId: 1,
+      path: 'A/Book',
+      ebookSize: 1,
+    });
+  });
+
   it('offers another device’s further place, and Stay acknowledges it', async () => {
     await mount();
     await opened();

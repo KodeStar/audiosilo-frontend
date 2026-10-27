@@ -316,9 +316,9 @@ describe('HeroActions Read', () => {
     expect(screen.queryByTestId('read-action')).toBeNull();
   });
 
-  it('hides Read in the app until its reader host lands', async () => {
+  it('offers Read in the app too (its WebView reader, Phase 3b-2)', async () => {
     mockCaps = { ebooks: true };
     await mountBook(EBOOK_BOOK);
-    expect(screen.queryByTestId('read-action')).toBeNull();
+    expect(screen.getByTestId('read-action')).toBeTruthy();
   });
 });

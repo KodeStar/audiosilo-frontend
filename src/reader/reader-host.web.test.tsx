@@ -7,8 +7,19 @@ import { act, type ReactNode } from 'react';
 
 import type { ApiClient } from '@/api/client';
 
-import { ReaderStartError } from './reader-host-types';
-import { READER_START_MS, READER_URL, ReaderHost } from './reader-host.web';
+import { READER_START_MS, ReaderStartError } from './reader-host-types';
+import { READER_URL, ReaderHost } from './reader-host.web';
+
+// A book's download (the store and the web engine have their own tests): the host reads
+// the EPUB from it when it holds one.
+const mockDownloaded = jest.fn((_ref: unknown): unknown => undefined);
+const mockReadFile = jest.fn(async (_uri: string): Promise<ArrayBuffer | null> => null);
+jest.mock('@/downloads/store', () => ({
+  downloadedEntryOf: (ref: unknown) => mockDownloaded(ref),
+}));
+jest.mock('@/downloads/engine', () => ({
+  engine: { readFile: (uri: string) => mockReadFile(uri) },
+}));
 
 // The web host's own seams (jest runs the native platform, so the web file is imported
 // directly): the sandboxed frame, the book fetched by the host, a failed fetch reported;
@@ -20,6 +31,8 @@ function mount(api: Partial<ApiClient>, onLoadError = jest.fn()) {
   return render(
     <ReaderHost
       api={api as ApiClient}
+      connectionId="c1"
+      ebookSize={4}
       libraryId={1}
       path="A/Book"
       name="Book"
@@ -43,6 +56,34 @@ describe('ReaderHost (web)', () => {
     expect(frame.props.sandbox).toBe('allow-scripts allow-same-origin');
     expect(frame.props.referrerPolicy).toBe('no-referrer');
     expect(api.ebook).toHaveBeenCalledWith(1, 'A/Book', expect.any(AbortSignal));
+  });
+
+  it("reads a downloaded book's EPUB from its download, fetching nothing", async () => {
+    const saved = new ArrayBuffer(8);
+    mockDownloaded.mockReturnValueOnce({ manifest: { ebookUri: 'https://h/web/_offline/b' } });
+    mockReadFile.mockResolvedValueOnce(saved);
+    const host = await mountInPage();
+    const posted = host.posted;
+    await host.say({ type: 'ready' });
+    expect(mockDownloaded).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      libraryId: 1,
+      path: 'A/Book',
+    });
+    expect(mockReadFile).toHaveBeenCalledWith('https://h/web/_offline/b');
+    expect(host.ebook).not.toHaveBeenCalled();
+    expect((posted.mock.calls[0]?.[0] as { book: ArrayBuffer }).book).toBe(saved);
+    await host.unmount();
+  });
+
+  it('fetches the book when its download holds no EPUB (or it cannot be read)', async () => {
+    mockDownloaded.mockReturnValueOnce({ manifest: { ebookUri: 'https://h/web/_offline/b' } });
+    mockReadFile.mockRejectedValueOnce(new Error('cache gone'));
+    const host = await mountInPage();
+    await host.say({ type: 'ready' });
+    expect(host.ebook).toHaveBeenCalledTimes(1);
+    expect(host.types()).toEqual(['open']);
+    await host.unmount();
   });
 
   it('reports a book it could not fetch', async () => {
@@ -72,6 +113,8 @@ async function mountInPage({
     root.render(
       <ReaderHost
         api={{ ebook } as unknown as ApiClient}
+        connectionId="c1"
+        ebookSize={4}
         libraryId={1}
         path="A/Book"
         name="Book"
@@ -97,7 +140,7 @@ async function mountInPage({
       root.unmount();
       container.remove();
     });
-  return { ebook, onMessage, onLoadError, say, types, unmount };
+  return { ebook, onMessage, onLoadError, say, types, unmount, posted };
 }
 
 describe('ReaderHost (web) in a page', () => {

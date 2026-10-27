@@ -22,6 +22,12 @@ describe('classifyDownloadError', () => {
       kind: 'server',
       status: 503,
     });
+    // expo-file-system's download task, on iOS and on Android.
+    expect(classifyDownloadError(new Error('server returned HTTP 404'))).toEqual({
+      kind: 'server',
+      status: 404,
+    });
+    expect(classifyDownloadError(new Error('HTTP 403'))).toEqual({ kind: 'server', status: 403 });
   });
 
   it('reads a full disk or quota as storage, before anything else', () => {

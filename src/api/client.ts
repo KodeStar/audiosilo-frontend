@@ -1200,6 +1200,15 @@ export class ApiClient {
       },
     );
   }
+  /** The request `ebook` makes, for a download that is not this client's fetch (the app's
+   * reader cache file, a downloaded book's copy): the url, and the headers it must carry.
+   * The url holds no credential; the headers do, so they are never stored. */
+  ebookRequest(libraryId: number, path: string): { url: string; headers: Record<string, string> } {
+    return {
+      url: this.apiUrl(`/libraries/${libraryId}/ebook`, { path }),
+      headers: { ...this.clientHeaders, ...this.authHeaders() },
+    };
+  }
   /** The caller's place in a book's ebook; null when they have none there yet. */
   async readingProgress(libraryId: number, path: string, signal?: AbortSignal) {
     const r = await this.request<{ reading_progress: ReadingProgress | null }>(

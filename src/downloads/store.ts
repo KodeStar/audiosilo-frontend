@@ -706,7 +706,7 @@ function afterLaunch(task: () => void) {
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
- * `cover.jpg` for the cover), so the (connectionId, libraryId, path, fileName) → live-uri
+ * `cover.jpg` for the cover, `book.epub` for the ebook), so the (connectionId, libraryId, path, fileName) → live-uri
  * mapping lives here too; `engine.localUri` supplies the container-current absolute uri
  * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
  * is also what carries a download across the identity migration, which rewrites
@@ -727,7 +727,8 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
     }),
   );
   const coverUri = e.manifest.coverUri ? at('cover.jpg') : e.manifest.coverUri;
-  return { ...e, manifest: { ...e.manifest, files, coverUri } };
+  const ebookUri = e.manifest.ebookUri ? at(EBOOK_FILE) : undefined;
+  return { ...e, manifest: { ...e.manifest, files, coverUri, ebookUri } };
 }
 
 /**
@@ -756,6 +757,10 @@ async function playableName(
   // which hydrate would drop and delete.
   return !(await engine.fileExists(from)) && (await engine.fileExists(at(want))) ? want : name;
 }
+
+/** A downloaded book's ebook, beside its audio (never an audio file's name: those are
+ * `<index>[.ext]`). */
+export const EBOOK_FILE = 'book.epub';
 
 function isAbort(e: unknown): boolean {
   return e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message));
@@ -851,6 +856,28 @@ async function runOne(key: string) {
       // otherwise the cover is optional - carry on without it
     }
 
+    // The book's ebook (Bridge Phase 3b-2), so the reader opens it offline: optional like
+    // the cover (a failure never fails the audio download), but a cancel cancels the book.
+    // Its route takes the Authorization header only, never `?token=`.
+    let ebookUri: string | undefined;
+    if (entry.manifest.book.ebook) {
+      try {
+        const { url, headers } = api.ebookRequest(libraryId, path);
+        ebookUri = await engine.downloadFile(
+          connectionId,
+          libraryId,
+          path,
+          EBOOK_FILE,
+          url,
+          undefined,
+          ctrl.signal,
+          headers,
+        );
+      } catch (e) {
+        if (isAbort(e)) throw e;
+      }
+    }
+
     let priorBytes = 0;
     let lastTick = 0;
     // Files a failed attempt already finished, by position (the on-disk name is the
@@ -912,6 +939,7 @@ async function runOne(key: string) {
       ...entry.manifest,
       files,
       coverUri,
+      ebookUri,
       savedAt: new Date().toISOString(),
     });
 

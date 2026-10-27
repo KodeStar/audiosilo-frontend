@@ -33,6 +33,11 @@ jest.mock('@/api/connection-clients', () => ({
 jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
 }));
+// The app's EPUB cache (ebook-file.native.ts has its own tests): dropped with its connection.
+const mockClearEbookCache = jest.fn(async (_id: string) => {});
+jest.mock('./ebook-file', () => ({
+  clearEbookCache: (id: string) => mockClearEbookCache(id),
+}));
 
 // progress-sync (imported for getDeviceId) registers first; the reader's purge is the last.
 const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls.at(-1)?.[0] as (
@@ -377,6 +382,7 @@ describe('reading-progress', () => {
     await removalCleanup('c1');
     expect((await readQueue()).map((s) => s.connectionId)).toEqual(['c2']);
     expect(Object.values(await readMirror())).toHaveLength(1);
+    expect(mockClearEbookCache).toHaveBeenCalledWith('c1');
   });
 });
 
