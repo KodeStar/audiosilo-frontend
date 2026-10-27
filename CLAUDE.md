@@ -144,6 +144,7 @@ keep this index in step (one line per topic).
   - `AUTH_STORAGE_VERSION`
   - `CACHE_STORAGE_VERSION`
   - Startup cache (web)
+  - Web start (the split build)
   - `mayActFor(cid)`
   - Routes carrying `?connection=`
   - Nobody chosen
@@ -246,7 +247,7 @@ src/reader/         the ebook reader's host (web iframe, native stub), protocol,
 src/modules/        player modules (Bridge Phase 2a): the registry (empty) + the slot wrapper; NOT the root modules/
 src/components/      ui/ (primitives + Icon), shell/ (tabs, top bar, dock, headers, palette), layout/ (banners, ContentScope), player/, book/ (the book page), annotations/ (bookmark + note rows, editors), journal/, you/ (the You hub: stats/, year/), settings/ (Settings panes), account/ (the account page), connect/ (onboarding), library/ (covers, Library modes, book actions), home/, series/ (series + people pages), search/, upnext/, downloads/, profiles/ (people, PIN, Household), kids/ (kids mode), house/ (listening in the house)
 src/stores/         Zustand: session, profiles, search, settings, series-orderings, library-selection
-src/i18n/           i18next setup, language provider, locale JSONs (locales/)
+src/i18n/           i18next setup, language provider, catalogs (all on native, English + loaded on web), locale JSONs (locales/)
 src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemeProvider
 src/lib/            storage (+ storage-keys), secure-store, bootstrap (launch steps), storage + identity migrations, connection-id, profile-pin, sha256, native-intent, device, paths, format, register-sw
 reader/             the reader document's source + vendored foliate-js; `npm run reader:build` -> public/reader.html

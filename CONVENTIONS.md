@@ -53,6 +53,30 @@ can never log anyone out (`{ authReset, cacheReset }`):
   another app version is ignored. One of the scoped keys (a reset wipes it); a removed
   connection's entries go with it. A new first-screen query joins `isStartupQuery` only if it
   is small; never keep a book's detail or anything per book. Native keeps none.
+- **Web start (the split build)**: the web export uses Expo Router async routes (`app.json`
+  `asyncRoutes: { web: "production", default: false }`; native and `npm run web` stay one
+  bundle), so a page's chunk loads when it is first opened and each page's static HTML names
+  only its own chunks. Expo Router still evaluates EVERY `_layout` file of a group to read its
+  settings, the plain one as well as the platform one: `src/app/(app)/_layout.tsx` only
+  re-exports `NativeAppShell` (`components/shell/native-shell.tsx`), whose web file is an empty
+  stand-in, so the native shell's graph never loads on the web. What the first screen never
+  shows loads after it has painted (`deferred`, `src/lib/deferred.tsx`, and `afterPaint`): the
+  web shell's overlays (`ShellPlayerOverlays`, `CommandPalette`, `ShortcutsDialog`; their keys
+  and open states stay in the shell, `usePaletteShortcut` lives in `palette-store.ts`) and the
+  root's lifetime services and listeners (`useRootServices`/`RootListeners`,
+  `root-services{,.web}.tsx` over `root-services-impl.tsx`: native starts them with the first
+  commit, as before). Only English is bundled on the web (`i18n/catalogs.web.ts`); another
+  language's catalog is loaded before switching to it (`switchLanguage`, the last switch wins),
+  so a string needed in every language at once has its own table (`fell-asleep-notes.ts`, held
+  to the catalogs by its test). A new module for the first screen keeps a static import; one
+  for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
+  (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
+  shell's scripts and every chunk they name, transitively; the previous build's dropped), at
+  install and when the app asks (`askPrecache`, 5 s after load), so a page never opened online
+  still boots offline. The worker is registered under its build's name (`sw.js?build=`, the
+  entry script's: `buildId`), so each deploy installs a new one: Chrome keeps the compiled code
+  of scripts a worker caches while installing, which is most of a warm start's speed. The
+  build's hashed files (`_expo/static/`) are served cache-first and never rewritten.
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,
@@ -1378,7 +1402,7 @@ on first need). NOT device-verified (no Cast device yet).
   a cast exactly as they drive the phone. Switching is a pause on one side and a paused load on
   the other: the router emits `paused` at the handed-over place (the store saves it); a cast
   started while playing plays on, and the phone never plays by itself when a cast ends.
-  `startCastSync` (root layout) follows the driver's session events; `endCastForCar` and
+  `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app.
 - **The receiver never gets the session token**: `prepareCast` builds the queue with cast tokens
   (`POST /cast/token`, book-scoped, 24 h; `castTokens` caches one per book until an hour before
@@ -1581,7 +1605,7 @@ from `src/theme/tokens.ts`.
 onboarding; `src/app/player.tsx` / `finished.tsx` are root full-screen modals. **ONE route tree
 on every platform**, five tab groups under `(app)`:
 ```
-src/app/(app)/_layout.tsx        native: NativeTabs (5 triggers + BottomAccessory), hidden on tablet/desktop; the one floating mini player
+src/app/(app)/_layout.tsx        native: NativeTabs (5 triggers + BottomAccessory), hidden on tablet/desktop; the one floating mini player (`NativeAppShell`, components/shell/native-shell.tsx)
 src/app/(app)/_layout.web.tsx    web: headless expo-router/ui Tabs + our chrome around ONE <TabSlot/>
 src/app/(app)/(home)/index.tsx                  /
 src/app/(app)/(library)/library/index.tsx       /library
@@ -1864,8 +1888,8 @@ are asked, at most 10,000 rows.
   probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).
 - Removing a download asks first everywhere (`RemoveDownloadConfirm`, with the room it frees).
 - **Changed chapters**: a book's chapters can change on the server after it was downloaded (a
-  rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (root
-  layout) watches the query cache: a server answer for a downloaded book's chapters replaces
+  rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (the
+  root's services) watches the query cache: a server answer for a downloaded book's chapters replaces
   `manifest.chapters` when its audio files are the ones on the device (`refreshedChapters`: same
   paths, same order, same sizes where both answers know them); otherwise the manifest stays (that
   is a new download). An answer that reached the cache before the book was downloaded (while its
@@ -1932,7 +1956,7 @@ floating `MiniPlayer` card elsewhere (`ACCESSORY_SUPPORTED`): 56 pt, inset 8 fro
 show the chapter, the book with its time left (`usePlayingTimeLeft`; the sleep countdown first while a
 timer runs, `MiniPlayerSubtitle`), skip back, the `plain` `PlayButton` (spinner, Retry) and the
 `ChapterProgressLine`; the accessory's narrow `inline` placement keeps cover, chapter and play. On native that card is ONE
-`FloatingMiniPlayer`, rendered by `(app)/_layout.tsx` as the shell frame's `phoneBottom` over
+`FloatingMiniPlayer`, rendered by the native shell (`native-shell.tsx`) as the shell frame's `phoneBottom` over
 NativeTabs (never per tab stack: NativeTabs keeps visited tabs alive, so a card per stack ticked up to
 five times), absolutely positioned on the native bar's measured `bar` edge, so it sits on the bar on
 every tab and over pushed pages and a tab switch never remounts it; web puts its card on its own tab
