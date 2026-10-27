@@ -433,7 +433,8 @@
       "connect": "Verbinden",
       "invalid": "Das ist kein AudioSilo-Kopplungslink. Kopplungslinks sehen so aus: https://<server>/web/connect?token=... oder audiosilo://connect?...",
       "otherServer": "Dieser Link gehört zu einem anderen Server, und diese Seite kann sich nur mit ihrem eigenen verbinden. Öffne den Link, um dich dort zu verbinden.",
-      "openLink": "Link öffnen"
+      "openLink": "Link öffnen",
+      "appOnly": "Dieser Link ist für einen anderen Server und öffnet sich nur in der AudioSilo-App. Öffne ihn auf deinem Smartphone oder Tablet."
     },
     "memberNotReady": "Dieses Gerät kann die Person noch nicht anmelden. Versuche es gleich noch einmal."
   },

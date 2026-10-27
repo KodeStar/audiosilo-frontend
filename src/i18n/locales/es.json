@@ -433,7 +433,8 @@
       "connect": "Conectar",
       "invalid": "Ese no es un enlace de emparejamiento de AudioSilo. Estos enlaces son como https://<servidor>/web/connect?token=... o audiosilo://connect?...",
       "otherServer": "Este enlace es de otro servidor, y esta página solo puede conectarse al suyo. Abre el enlace para conectarte allí.",
-      "openLink": "Abrir el enlace"
+      "openLink": "Abrir el enlace",
+      "appOnly": "Este enlace es de otro servidor y solo se abre en la app de AudioSilo. Ábrelo en tu móvil o tableta."
     },
     "memberNotReady": "Este dispositivo aún no puede iniciar su sesión. Vuelve a intentarlo en un momento."
   },

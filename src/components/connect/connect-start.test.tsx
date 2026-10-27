@@ -14,6 +14,7 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockDismissTo = jest.fn();
 const mockBack = jest.fn();
+const mockSetParams = jest.fn();
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
@@ -23,6 +24,7 @@ jest.mock('expo-router', () => ({
     dismissTo: (h: unknown) => mockDismissTo(h),
     back: () => mockBack(),
     canGoBack: () => mockCanGoBack,
+    setParams: (p: unknown) => mockSetParams(p),
   },
   useLocalSearchParams: () => mockParams,
 }));
@@ -191,6 +193,8 @@ describe('a pairing link', () => {
     expect(screen.queryByText(/token expired/)).toBeNull();
     expect(screen.getByLabelText('Server address').props.value).toBe(AWAY);
     expect(useSession.getState().connections).toHaveLength(0);
+    // CONNECT-14: the dead token leaves the address, so a reload doesn't try it again.
+    expect(mockSetParams).toHaveBeenCalledWith({ token: undefined });
   });
 
   it("says too many tries when the server's limiter refuses the exchange", async () => {
@@ -617,6 +621,14 @@ describe('the player the server serves', () => {
       }
     });
 
+    // frontend#129: a browser can't open an app link, so there is no button for one.
+    it('offers no "Open the link" for an audiosilo:// link', async () => {
+      await paste(`audiosilo://connect?server=${encodeURIComponent(HOME)}&token=abc`);
+      expect(screen.getByText(/opens only in the AudioSilo app/)).toBeTruthy();
+      expect(screen.queryByText('Open the link')).toBeNull();
+      expect(mockApi.exchange).not.toHaveBeenCalled();
+    });
+
     it("does the same for another server's invite link", async () => {
       await paste(`${HOME}/connect#code=ABCD-1234`);
       expect(screen.getByText(/This link is for another server/)).toBeTruthy();
@@ -628,6 +640,33 @@ describe('the player the server serves', () => {
       await paste(`${ORIGIN}/web/connect?token=abc`);
       await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledWith('abc', 'Test device'));
       expect(screen.queryByText(/This link is for another server/)).toBeNull();
+    });
+  });
+
+  // CONNECT-14: a used or expired link on the served player.
+  it("shows its own server's card with Sign in after a dead link, and drops the token", async () => {
+    mockParams = { token: 'used' };
+    mockApi.exchange.mockRejectedValue(new ApiError(401, 'invalid or expired pairing token'));
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    expect(screen.getByText(/This pairing link has expired or was already used/)).toBeTruthy();
+    expect(screen.queryByLabelText('Server address')).toBeNull();
+    expect(screen.getByText('Sign in')).toBeTruthy();
+    expect(mockSetParams).toHaveBeenCalledWith({ token: undefined });
+    expect(mockApi.exchange).toHaveBeenCalledTimes(1);
+  });
+
+  // frontend#129: a book link opened signed out comes back to the book after sign-in.
+  it('carries the book a signed-out visit was opening on to the sign-in step', async () => {
+    mockParams = { book: '2', path: 'Jane Austen/Emma' };
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(screen.getByText('Found Hearthside')).toBeTruthy());
+    await fireEvent.press(screen.getByText('Sign in'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { serverName: 'Hearthside', book: '2', path: 'Jane Austen/Emma' },
     });
   });
 

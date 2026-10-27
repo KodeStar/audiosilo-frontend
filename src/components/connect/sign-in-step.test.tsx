@@ -187,6 +187,20 @@ it('says an invite used up at the exchange is used up, not a bad code', async ()
   expect(await screen.findByText(/This invite can't add another device/)).toBeTruthy();
 });
 
+// frontend#129: a book link opened signed out ends on that book after sign-in.
+it('ends on the book the signed-out visit was opening', async () => {
+  mockApi.login.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+  await render(<SignInStep server={AWAY} book={{ libraryId: 2, path: 'Jane Austen/Emma' }} />);
+  await signInWith('chris', 'pw');
+  await waitFor(() =>
+    expect(mockDismissTo).toHaveBeenCalledWith({
+      pathname: '/book/[libraryId]',
+      params: { libraryId: '2', connection: 'srv-1.1', path: 'Jane Austen/Emma' },
+    }),
+  );
+  expect(mockReplace).not.toHaveBeenCalled();
+});
+
 // CONNECT-09: an empty field is prompted for under itself, and nothing is sent.
 it('prompts for an empty invite code and sends nothing', async () => {
   await render(<SignInStep server={AWAY} />);

@@ -8,6 +8,7 @@ import { useKidsActive } from '@/components/kids/use-kids';
 import { Screen } from '@/components/ui/screen';
 import { Spinner } from '@/components/ui/spinner';
 import { accountFlagsKnown } from '@/lib/account';
+import { signedOutHref } from '@/lib/return-to';
 import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { useMustChoose, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -73,7 +74,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (asksAtLaunch(useProfiles.getState()) && !pickerOnTop()) openProfiles();
   }, [status, profilesHydrated, choose, focused]);
 
-  if (status === 'unauthenticated') return <Redirect href="/connect" />;
+  // A book link opened signed out comes back to that book after sign-in (frontend#129).
+  if (status === 'unauthenticated') return <Redirect href={signedOutHref()} />;
   // A spinner while the session loads; and the profiles too (Phase 8): the shell must not
   // mount for a moment as the wrong person (or as a kids profile's grown-up tabs) before
   // they have loaded, nor at all while nobody is chosen (no one's pages, not even the last

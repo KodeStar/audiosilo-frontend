@@ -12,6 +12,7 @@ import { servedOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
+import type { ConnectBook } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
@@ -55,11 +56,14 @@ export function SignInStep({
   serverName,
   reconnectId,
   initialCode,
+  book,
 }: {
   server: string;
   serverName?: string;
   reconnectId?: string;
   initialCode?: string;
+  /** The book the sign-in ends on (a book link opened signed out). */
+  book?: ConnectBook;
 }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
@@ -106,6 +110,7 @@ export function SignInStep({
           linkAddresses: payload.addresses,
           name: payload.server_name || serverName,
           reconnectId,
+          book,
         });
       } else {
         const session = await api.login(username.trim(), password, getDeviceName());
@@ -114,6 +119,7 @@ export function SignInStep({
           session,
           name: serverName,
           reconnectId,
+          book,
         });
       }
     } catch (e) {

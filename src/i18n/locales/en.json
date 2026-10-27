@@ -433,7 +433,8 @@
       "connect": "Connect",
       "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?...",
       "otherServer": "This link is for another server, and this page can only connect to its own. Open the link to connect there.",
-      "openLink": "Open the link"
+      "openLink": "Open the link",
+      "appOnly": "This link is for another server, and it opens only in the AudioSilo app. Open it on your phone or tablet."
     },
     "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment."
   },

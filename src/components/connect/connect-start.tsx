@@ -136,7 +136,16 @@ export function ConnectStart() {
       ...(userId ? { userId } : {}),
       ...(linked ? { book: linked } : {}),
     }).then((ok) => {
-      if (!ok) setUrl((u) => u || base);
+      if (ok) return;
+      // The dead token leaves the address, so a reload doesn't try it again (CONNECT-14).
+      router.setParams({ token: undefined });
+      // The served player shows its own server's card, with Sign in, as it does with no
+      // link: never the address field it otherwise skips.
+      const origin = servedOrigin();
+      if (origin) {
+        setServed('pending');
+        void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
+      } else setUrl((u) => u || base);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, home, away, sid, book, path, uid, pair, fail]);
@@ -167,8 +176,17 @@ export function ConnectStart() {
   // Back to where the listener came from (Settings, the profile menu), else the app.
   const closeAdd = () => (router.canGoBack() ? router.back() : leaveOnboarding());
 
+  // A book the signed-out visit was opening (`signedOutHref`) goes along, so the sign-in
+  // ends on it (frontend#129). A pairing link's book goes through `pair` instead.
+  const returnBook = token ? null : parseConnectBook({ book, path });
   const goSignIn = (name: string) =>
-    router.push({ pathname: '/connect/sign-in', params: { serverName: name } });
+    router.push({
+      pathname: '/connect/sign-in',
+      params: {
+        serverName: name,
+        ...(returnBook ? { book: String(returnBook.libraryId), path: returnBook.path } : {}),
+      },
+    });
 
   // Ask the server who it is. The typed address and the served player's own server show what
   // was found (or why not); a remembered server goes straight on to sign-in unless it runs a
@@ -441,16 +459,25 @@ export function ConnectStart() {
           />
           {foreignLink ? (
             <View className="gap-2" testID="connect-link-other-server">
-              <Text variant="caption" role="alert">
-                {t('connect.link.otherServer')}
-              </Text>
-              <Button
-                className="self-start"
-                variant="secondary"
-                icon="arrow-up-right"
-                title={t('connect.link.openLink')}
-                onPress={() => void Linking.openURL(foreignLink)}
-              />
+              {/* An app link (`audiosilo://`) can't open in a browser: no button for it. */}
+              {isAppLink(foreignLink) ? (
+                <Text variant="caption" role="alert">
+                  {t('connect.link.appOnly')}
+                </Text>
+              ) : (
+                <>
+                  <Text variant="caption" role="alert">
+                    {t('connect.link.otherServer')}
+                  </Text>
+                  <Button
+                    className="self-start"
+                    variant="secondary"
+                    icon="arrow-up-right"
+                    title={t('connect.link.openLink')}
+                    onPress={() => void Linking.openURL(foreignLink)}
+                  />
+                </>
+              )}
             </View>
           ) : (
             <Button
@@ -482,4 +509,9 @@ export function ConnectStart() {
       ) : null}
     </ConnectFrame>
   );
+}
+
+/** A link for the AudioSilo app (`audiosilo://`), which a browser can't open. */
+function isAppLink(link: string): boolean {
+  return /^audiosilo:/i.test(link.trim());
 }
