@@ -288,7 +288,9 @@ async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgres
   });
   const row = saved.reading_progress;
   const own = row.device_id === save.device_id;
-  const thisSave = own && row.cfi === save.cfi && timeOf(row) === timeOf(save);
+  // This save's place, not its time: the server replaces an updated_at too far ahead of its
+  // clock with its own (plausibleUpdatedAt), and an own row at the same place is seen anyway.
+  const thisSave = own && row.cfi === save.cfi && row.progression === save.progression;
   let seen = false;
   await updateMirror(save, (entry) => {
     seen = thisSave || (own && row.version <= entry.version);

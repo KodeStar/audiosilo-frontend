@@ -626,9 +626,10 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
 - **The place** (`reading-progress.ts`) is `progress-sync`'s pattern (offline queue, latest per
   book, durable mirror, 4xx dropped, replay through each save's connection) plus `base_version`:
   the last version this device acknowledged, always sent (0 only when no row was ever seen). An
-  answer that kept this very save (this device, the same cfi and time) is acknowledged at once;
-  one that kept a place this device never saw (another device's, or its own at a version it
-  never acknowledged: the device id outlives the places kept here) only once the open reader
+  answer that kept this very save (this device, the same cfi and progression; not its time,
+  which the server may replace) is acknowledged at once; one that kept a place this device
+  never saw (another device's, or its own at a version it never acknowledged: the device id
+  outlives the places kept here) only once the open reader
   has shown it (`adoptServerPlace`: Jump, Stay, or the reader is already there), so a save
   that never saw it stays diverged and never moves it back. The answer's `seen` says which;
   the offer "Jump there?" (`jumpOffer`) is judged against the page on screen. The lookup opens at

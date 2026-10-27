@@ -609,6 +609,24 @@ describe('reading-progress', () => {
       expect(server.row()).toMatchObject({ progression: 0.03, version: 3 });
     });
 
+    it('acknowledges this save when the server replaced its time (a clock ahead)', async () => {
+      const heard: ReadingSaved[] = [];
+      const off = onReadingSaved((a) => heard.push(a));
+      const echo = row({
+        cfi: CFI_B,
+        progression: 0.5,
+        version: 4,
+        updated_at: '2026-10-01T09:00:00.000Z',
+      });
+      await saveReadingPlace(
+        fakeApi(async () => ({ reading_progress: echo })),
+        save({ cfi: CFI_B, progression: 0.5, updated_at: '2026-10-01T10:00:00.000Z' }),
+      );
+      off();
+      expect(heard[0].seen).toBe(true);
+      expect((await at(CFI_B, 0.5)).base_version).toBe(4);
+    });
+
     it('takes its own row echoed to a stale save as seen, its version left alone', async () => {
       await adoptServerPlace('c1', 1, 'A/Book', row({ version: 6 }));
       const heard: ReadingSaved[] = [];
