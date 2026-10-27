@@ -87,33 +87,35 @@ export function snapshot(client: QueryClient): Entry[] {
   for (const q of client.getQueryCache().getAll()) {
     if (q.state.status !== 'success' || q.state.data === undefined) continue;
     if (!isStartupQuery(q.queryKey)) continue;
-    const { data } = q.state;
-    if (isInfinite(data)) {
-      if (data.pages.length === 0) continue;
-      out.push({
-        key: [...q.queryKey],
-        data: data.pages[0],
-        updatedAt: q.state.dataUpdatedAt,
-        firstPage: true,
-      });
-    } else {
-      out.push({ key: [...q.queryKey], data, updatedAt: q.state.dataUpdatedAt });
-    }
+    const { data, dataUpdatedAt: updatedAt } = q.state;
+    const key = [...q.queryKey];
+    if (!isInfinite(data)) out.push({ key, data, updatedAt });
+    else if (data.pages.length > 0)
+      out.push({ key, data: data.pages[0], updatedAt, firstPage: true });
   }
   return out;
 }
 
-/** Write the startup cache from `client`'s cache now (best-effort). */
-export function save(client: QueryClient): void {
-  const store = storage();
-  if (!store) return;
+/** Write `entries` as the document (best-effort): none over the size limit, and on a
+ * failed write (quota) the old document goes rather than stay stale. */
+function write(store: Storage, entries: Entry[]): void {
   try {
-    const json = JSON.stringify({ v: VERSION, entries: snapshot(client) } satisfies Doc);
+    const json = JSON.stringify({ v: VERSION, entries } satisfies Doc);
     if (json.length > MAX_CHARS) store.removeItem(STARTUP_CACHE_KEY);
     else store.setItem(STARTUP_CACHE_KEY, json);
   } catch {
-    // quota or storage blocked: the next visit just starts without it
+    try {
+      store.removeItem(STARTUP_CACHE_KEY);
+    } catch {
+      // storage blocked: the next visit just starts without it
+    }
   }
+}
+
+/** Write the startup cache from `client`'s cache now. */
+export function save(client: QueryClient): void {
+  const store = storage();
+  if (store) write(store, snapshot(client));
 }
 
 /** The kept entries, or none when there is no document or it can't be read. */
@@ -137,12 +139,11 @@ function readEntries(store: Storage): Entry[] {
 /**
  * Put the kept answers into `client`'s cache, each invalidated so its hook asks again on
  * mount (the kept answer shows until the new one lands). A query already in the cache is
- * left alone. Call once, before anything renders. Returns how many were restored.
+ * left alone. Call once, before anything renders.
  */
-export function restore(client: QueryClient): number {
+export function restore(client: QueryClient): void {
   const store = storage();
-  if (!store) return 0;
-  let n = 0;
+  if (!store) return;
   for (const e of readEntries(store)) {
     if (client.getQueryCache().find({ queryKey: e.key, exact: true })) continue;
     // An infinite query restarts from its first page (whose param is always `undefined`:
@@ -150,9 +151,7 @@ export function restore(client: QueryClient): number {
     const data = e.firstPage ? { pages: [e.data], pageParams: [undefined] } : e.data;
     client.setQueryData(e.key, data, { updatedAt: e.updatedAt });
     void client.invalidateQueries({ queryKey: e.key, exact: true, refetchType: 'none' });
-    n++;
   }
-  return n;
 }
 
 /** Drop a connection's kept answers (it was signed out or removed). */
@@ -161,12 +160,7 @@ export function forget(connectionId: string): void {
   if (!store) return;
   const entries = readEntries(store);
   const kept = entries.filter((e) => !e.key.includes(connectionId));
-  if (kept.length === entries.length) return;
-  try {
-    store.setItem(STARTUP_CACHE_KEY, JSON.stringify({ v: VERSION, entries: kept } satisfies Doc));
-  } catch {
-    store.removeItem(STARTUP_CACHE_KEY);
-  }
+  if (kept.length < entries.length) write(store, kept);
 }
 
 /** How long after the last startup query's answer the cache is written. */
@@ -180,14 +174,19 @@ export const SAVE_DELAY_MS = 2_000;
 export function startSaving(client: QueryClient): () => void {
   if (!storage()) return () => {};
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // A startup answer arrived since the last write (a tab switch with none writes nothing).
+  let dirty = false;
   const flush = () => {
     if (timer) clearTimeout(timer);
     timer = null;
+    if (!dirty) return;
+    dirty = false;
     save(client);
   };
   const unsubscribe = client.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success') return;
     if (!isStartupQuery(event.query.queryKey)) return;
+    dirty = true;
     if (timer) clearTimeout(timer);
     timer = setTimeout(flush, SAVE_DELAY_MS);
   });

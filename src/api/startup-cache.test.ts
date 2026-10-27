@@ -107,7 +107,7 @@ describe('snapshot and restore', () => {
     save(before);
 
     const qc = newClient();
-    expect(restore(qc)).toBe(2);
+    restore(qc);
     expect(qc.getQueryData(['server', C])).toEqual({ server_id: 'srv' });
     // The list restarts from its first page, whose param is `undefined` again.
     expect(qc.getQueryData(listKey)).toEqual({
@@ -133,15 +133,24 @@ describe('snapshot and restore', () => {
     save(before);
     const qc = newClient();
     qc.setQueryData(['libraries', C], [{ id: 1, name: 'live' }]);
-    expect(restore(qc)).toBe(0);
+    restore(qc);
     expect(qc.getQueryData(['libraries', C])).toEqual([{ id: 1, name: 'live' }]);
+    expect(qc.getQueryState(['libraries', C])?.isInvalidated).toBe(false);
   });
 
   it('ignores a document of another version, an unreadable one and foreign entries', () => {
-    items.set(STARTUP_CACHE_KEY, JSON.stringify({ v: 99, entries: [] }));
-    expect(restore(newClient())).toBe(0);
+    const restored = () => {
+      const qc = newClient();
+      restore(qc);
+      return qc.getQueryCache().getAll().length;
+    };
+    items.set(
+      STARTUP_CACHE_KEY,
+      JSON.stringify({ v: 99, entries: [{ key: ['libraries', C], data: [], updatedAt: 1 }] }),
+    );
+    expect(restored()).toBe(0);
     items.set(STARTUP_CACHE_KEY, '{not json');
-    expect(restore(newClient())).toBe(0);
+    expect(restored()).toBe(0);
     items.set(
       STARTUP_CACHE_KEY,
       JSON.stringify({
@@ -154,7 +163,13 @@ describe('snapshot and restore', () => {
       }),
     );
     const qc = newClient();
-    expect(restore(qc)).toBe(1);
+    restore(qc);
+    expect(
+      qc
+        .getQueryCache()
+        .getAll()
+        .map((q) => q.queryKey),
+    ).toEqual([['libraries', C]]);
     expect(qc.getQueryData(['libraries', C])).toEqual([]);
   });
 
@@ -196,6 +211,11 @@ describe('startSaving', () => {
     await qc.fetchQuery({ queryKey: ['server', C], queryFn: async () => ({ server_id: 'srv' }) });
     listeners.get('pagehide')?.();
     expect(stored().entries).toHaveLength(2);
+
+    // Hidden again with no new answer since: nothing to write.
+    items.clear();
+    listeners.get('pagehide')?.();
+    expect(items.has(STARTUP_CACHE_KEY)).toBe(false);
 
     // A query the cache does not keep schedules nothing.
     items.clear();
