@@ -1,12 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-import de from './locales/de.json';
-import en from './locales/en.json';
-import es from './locales/es.json';
-import fr from './locales/fr.json';
-import it from './locales/it.json';
-import pt from './locales/pt.json';
+import { BUNDLED_CATALOGS, loadCatalog } from './catalogs';
 
 /**
  * Supported UI languages. `en` is the source-of-truth catalog and the fallback;
@@ -18,7 +13,7 @@ import pt from './locales/pt.json';
  * catalogs) and notably omits `en`. It does NOT read from SUPPORTED_LANGUAGES.
  * To add a language you must touch BOTH places: drop a `locales/<code>.json`,
  * import it here and add an entry below, AND add the matching `app.json` `locales`
- * entry (+ its `assets/locales/<code>.json`).
+ * entry (+ its `assets/locales/<code>.json`), plus its case in `catalogs.web.ts`.
  */
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -39,30 +34,51 @@ export function isSupportedCode(code: string | null | undefined): code is Suppor
   return !!code && (SUPPORTED_CODES as readonly string[]).includes(code);
 }
 
-/** The bundled catalogs, by language code (also read directly where a string must be
- * known in every language at once, like the sleep timer's stored note). */
-export const resources = {
-  en: { translation: en },
-  es: { translation: es },
-  fr: { translation: fr },
-  de: { translation: de },
-  pt: { translation: pt },
-  it: { translation: it },
-} as const;
-
-// Initialise synchronously: resources are bundled (no async backend), so the
-// instance is ready before the first `useTranslation` call. The real language is
-// applied by the LanguageProvider once it resolves the persisted/device choice;
-// until then we render under the fallback (the provider gates first paint).
+// Initialise synchronously: the bundled catalogs (every one on native, English on the
+// web: `catalogs.ts`) are there, so the instance is ready before the first
+// `useTranslation` call. The real language is applied by the LanguageProvider once it
+// resolves the persisted/device choice (`ensureLanguage` first, which loads a web
+// catalog); until then we render under the fallback (the provider gates first paint).
 // eslint-disable-next-line import/no-named-as-default-member -- `.use`/`.init` are the i18next instance API, not the named `use` export.
 void i18n.use(initReactI18next).init({
-  resources,
+  resources: Object.fromEntries(
+    Object.entries(BUNDLED_CATALOGS).map(([code, translation]) => [code, { translation }]),
+  ),
   lng: FALLBACK_CODE,
   fallbackLng: FALLBACK_CODE,
   supportedLngs: SUPPORTED_CODES as unknown as string[],
   interpolation: { escapeValue: false },
   returnNull: false,
 });
+
+/**
+ * Makes `code`'s catalog available before switching to it: a no-op where it is bundled
+ * (every language on native), a load of its chunk on the web. A catalog that can't be
+ * loaded (offline, never cached) leaves the language to fall back to English.
+ */
+export async function ensureLanguage(code: SupportedCode): Promise<void> {
+  if (i18n.hasResourceBundle(code, 'translation')) return;
+  const catalog = await loadCatalog(code);
+  if (catalog) i18n.addResourceBundle(code, 'translation', catalog, true, true);
+}
+
+let switches = 0;
+
+/**
+ * Switches the UI to `code`, its catalog loaded first (`ensureLanguage`). A later switch
+ * wins: one still loading its catalog when another is asked for never applies.
+ */
+export async function switchLanguage(code: SupportedCode): Promise<void> {
+  const mine = ++switches;
+  try {
+    await ensureLanguage(code);
+  } catch {
+    // the language's strings fall back to English
+  }
+  if (mine !== switches) return;
+  // eslint-disable-next-line import/no-named-as-default-member -- the instance's own API.
+  await i18n.changeLanguage(code);
+}
 
 export { getLocale } from './locale';
 

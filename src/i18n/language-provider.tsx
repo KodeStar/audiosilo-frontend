@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 import { getItem, setItem } from '@/lib/storage';
 
-import i18n, { FALLBACK_CODE, isSupportedCode, type SupportedCode } from './index';
+import { FALLBACK_CODE, isSupportedCode, switchLanguage, type SupportedCode } from './index';
 
 /** `'system'` follows the device language; a code pins a specific UI language. */
 export type LanguagePref = 'system' | SupportedCode;
@@ -46,7 +46,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     let active = true;
     void readLanguagePref()
       .then(async (next) => {
-        await i18n.changeLanguage(resolveLanguage(next));
+        await switchLanguage(resolveLanguage(next));
         if (active) setPrefState(next);
       })
       .catch(() => {
@@ -63,7 +63,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setPref = (p: LanguagePref) => {
     setPrefState(p);
-    void i18n.changeLanguage(resolveLanguage(p));
+    void switchLanguage(resolveLanguage(p));
     void setItem(STORAGE_KEY, p);
   };
 
@@ -91,7 +91,7 @@ export async function readLanguagePref(): Promise<LanguagePref> {
  */
 export async function restoreLanguage(): Promise<void> {
   try {
-    await i18n.changeLanguage(resolveLanguage(await readLanguagePref()));
+    await switchLanguage(resolveLanguage(await readLanguagePref()));
   } catch {
     // the fallback language
   }
