@@ -47,7 +47,7 @@ import { useBookPlace } from '@/components/player/use-listening-position';
 import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
 import { useBookAnnotations } from '@/components/player/use-playing-pins';
 import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left';
-import { pathCrumbs } from '@/components/ui/breadcrumbs';
+import { bookCrumbs } from '@/components/ui/breadcrumbs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
@@ -70,6 +70,7 @@ import { cn } from '@/lib/utils';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useBookTimeSaved } from '@/playback/time-saved';
+import { useLibraryName } from '@/stores/library-names';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useConnectionName } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -239,6 +240,8 @@ function BookPage() {
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
+  // Offline the live list may never come: the name the server last listed (PLAYER-09).
+  const keptLibraryName = useLibraryName(cid, libraryId);
   const ratings = useCapability('ratings', cid) === true;
   const browsePeople = useCapability('browse_people', cid);
   const relPath = book?.rel_path ?? path;
@@ -412,9 +415,11 @@ function BookPage() {
     );
   }
 
-  const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? t('book.libraryFallback');
-  // The last crumb is the on-disk folder or file name (the hero shows the title).
-  const crumbs = pathCrumbs(libraryName, path, (sub) =>
+  const libraryName =
+    libraries?.find((l) => l.id === libraryId)?.name ??
+    keptLibraryName ??
+    t('book.libraryFallback');
+  const crumbs = bookCrumbs(libraryName, path, bookTitle(book.title, path), (sub) =>
     router.push(libraryHref(cid, libraryId, sub)),
   );
 

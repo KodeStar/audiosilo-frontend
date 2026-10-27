@@ -1,6 +1,13 @@
 import { skipToken, useQueries, useQuery } from '@tanstack/react-query';
 
-import { allProgressQuery, qk, useBook, useCapability, useChapters } from '@/api/hooks';
+import {
+  allProgressQuery,
+  fetchLibraries,
+  qk,
+  useBook,
+  useCapability,
+  useChapters,
+} from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
@@ -50,7 +57,7 @@ export function useReadySummary(connectionId: string): ReadySummary {
   const api = useOptionalApi(connectionId);
   const libraries = useQuery({
     queryKey: qk.libraries(connectionId),
-    queryFn: api ? () => api.libraries() : skipToken,
+    queryFn: api ? () => fetchLibraries(connectionId, api) : skipToken,
   });
   const browse = useCapability('browse_people', connectionId);
   // Books only: a podcast library's shows are no books (BRIDGE-16).

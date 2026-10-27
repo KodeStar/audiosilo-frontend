@@ -48,6 +48,7 @@ import {
   chaptersQuery,
   fetchBookProgress,
   fetchCapabilities,
+  fetchLibraries,
   flattenPages,
   historyQuery,
   chaptersKeyParts,
@@ -63,6 +64,7 @@ import {
   serverInfoQuery,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { useLibraryNames } from '@/stores/library-names';
 /* eslint-enable import/first */
 
 function makeProgress(): Progress {
@@ -481,5 +483,12 @@ describe('librariesQuery', () => {
     expect(q.queryKey).toEqual(qk.libraries('c'));
     expect(typeof q.queryFn).toBe('function');
     expect(librariesQuery('c', null).queryFn).toBe(skipToken);
+  });
+
+  it('keeps the names it reads for an offline book page (PLAYER-09)', async () => {
+    const libraries = [{ id: 4, name: 'Books' }];
+    const client = { libraries: jest.fn(async () => libraries) } as unknown as ApiClient;
+    await expect(fetchLibraries('c', client)).resolves.toBe(libraries);
+    await waitForQuery(() => useLibraryNames.getState().names.c?.['4'] === 'Books');
   });
 });

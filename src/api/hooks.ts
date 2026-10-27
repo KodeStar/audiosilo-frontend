@@ -40,6 +40,7 @@ import {
 } from '@/lib/podcast-requests';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 import { lookupReadingPlace } from '@/reader/reading-progress';
+import { rememberLibraryNames } from '@/stores/library-names';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
@@ -338,11 +339,20 @@ export function addressesQuery(cid: string, client: MaybeClient) {
   });
 }
 
+/** A server's libraries, their names kept on the device as they arrive (an offline book
+ * page names its library: `useLibraryName`, PLAYER-09). Every read of `qk.libraries` asks
+ * through this. */
+export async function fetchLibraries(cid: string, client: ApiClient): Promise<Library[]> {
+  const libraries = await client.libraries();
+  rememberLibraryNames(cid, libraries);
+  return libraries;
+}
+
 /** A server's libraries. */
 export function librariesQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.libraries(cid),
-    queryFn: client ? () => client.libraries() : skipToken,
+    queryFn: client ? () => fetchLibraries(cid, client) : skipToken,
   });
 }
 
@@ -780,7 +790,7 @@ function invalidateProgressDependents(
 export function useLibraries() {
   const api = useApi();
   const cid = useCid();
-  return useQuery({ queryKey: qk.libraries(cid), queryFn: () => api.libraries() });
+  return useQuery({ queryKey: qk.libraries(cid), queryFn: () => fetchLibraries(cid, api) });
 }
 
 /** Server page size for the folder browse view (the server caps a page at 500). */
@@ -2903,7 +2913,7 @@ export function useLibrariesAll() {
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
       queryKey: qk.libraries(connection.id),
-      queryFn: () => client.libraries(),
+      queryFn: () => fetchLibraries(connection.id, client),
     })),
     combine: (results) => {
       const groups = results.map((r, i): LibrariesOfServer => {
