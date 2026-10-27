@@ -33,6 +33,21 @@
       "lastYear": "l'anno scorso",
       "year_one": "{{count}} anno fa",
       "year_other": "{{count}} anni fa"
+    },
+    "notInLibrary": {
+      "back": "Indietro",
+      "book": {
+        "title": "Questo libro non è nella libreria",
+        "body": "Forse è stato spostato o rimosso, oppure il link è sbagliato."
+      },
+      "folder": {
+        "title": "Questa cartella non è nella libreria",
+        "body": "Forse è stata spostata o rimossa, oppure il link è sbagliato."
+      },
+      "nothing": {
+        "title": "Non c'è niente in riproduzione",
+        "body": "Scegli un libro per iniziare l'ascolto."
+      }
     }
   },
   "settings": {
@@ -2900,8 +2915,8 @@
         "body": "Il file non è un EPUB che AudioSilo sa leggere, oppure è danneggiato."
       },
       "missing": {
-        "title": "L'ebook non è più sul server",
-        "body": "L'EPUB del libro non si trova. Se torna, ricompare dopo la prossima scansione della libreria."
+        "title": "Questo ebook non è nella libreria",
+        "body": "Il libro o il suo EPUB non è sul server. Forse è stato spostato o rimosso, oppure il link è sbagliato."
       },
       "fetch": {
         "title": "Impossibile caricare l'ebook",

@@ -1,9 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+let mockParams: Record<string, unknown> = {};
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
-  useLocalSearchParams: () => ({ libraryId: '1', path: ['Author'] }),
+  useLocalSearchParams: () => mockParams,
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
@@ -17,18 +18,22 @@ jest.mock('@/api/provider', () => ({
   useCid: (id?: string) => id ?? (mockScope || 'home'),
 }));
 const mockRefetch = jest.fn();
+const mockBrowse = jest.fn();
 let mockError: Error | null = null;
 jest.mock('@/api/hooks', () => ({
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
-  useBrowseInfinite: () => ({
-    data: undefined,
-    isLoading: false,
-    error: mockError,
-    refetch: mockRefetch,
-    fetchNextPage: jest.fn(),
-    hasNextPage: false,
-    isFetchingNextPage: false,
-  }),
+  useBrowseInfinite: (...a: unknown[]) => {
+    mockBrowse(...a);
+    return {
+      data: undefined,
+      isLoading: false,
+      error: mockError,
+      refetch: mockRefetch,
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    };
+  },
 }));
 
 /* eslint-disable import/first */
@@ -41,6 +46,8 @@ import { BrowseScreen } from './browse-screen';
 const connection = { id: 'home', name: 'Hearthside', serverUrl: 'https://h', token: 't' };
 
 beforeEach(() => {
+  mockParams = { libraryId: '1', path: ['Author'] };
+  mockBrowse.mockClear();
   mockRefetch.mockClear();
   mockError = null;
   mockScope = 'home';
@@ -74,5 +81,21 @@ describe('BrowseScreen', () => {
     await render(<BrowseScreen />);
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // CONNECT-13: a folder the server answers 404 or 403 for isn't there; Retry can't help.
+  it.each([404, 403])('shows not-in-library, and no Retry, for a %i', async (status) => {
+    mockError = new ApiError(status, 'not found');
+    await render(<BrowseScreen />);
+    expect(screen.getByText("This folder isn't in the library")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // frontend#129: `/library/abc` asks the server nothing.
+  it('asks nothing for a library id that is not a number', async () => {
+    mockParams = { libraryId: 'abc' };
+    await render(<BrowseScreen />);
+    expect(screen.getByText("This folder isn't in the library")).toBeTruthy();
+    expect(mockBrowse).not.toHaveBeenCalled();
   });
 });

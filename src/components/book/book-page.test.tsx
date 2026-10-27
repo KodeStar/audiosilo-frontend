@@ -33,6 +33,8 @@ jest.mock('expo-router', () => ({
 
 let mockBook: Book | undefined;
 let mockBookLoading = false;
+let mockBookError: unknown = null;
+const mockBookArgs = jest.fn();
 let mockChapters: ChaptersResponse | undefined;
 let mockProgress: Progress | null = null;
 let mockMeta: BookMeta | undefined;
@@ -54,7 +56,15 @@ jest.mock('@/components/podcasts/episode-page', () => ({
 jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
   useIsPodcastLibrary: () => mockPodcastLibrary,
-  useBook: () => ({ data: mockBook, isLoading: mockBookLoading, refetch: mockRefetch }),
+  useBook: (...args: unknown[]) => {
+    mockBookArgs(...args);
+    return {
+      data: mockBook,
+      isLoading: mockBookLoading,
+      error: mockBookError,
+      refetch: mockRefetch,
+    };
+  },
   useChapters: () => ({ data: mockChapters, isLoading: false }),
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
   useCapability: (flag: string) => mockCaps[flag] ?? false,
@@ -161,6 +171,7 @@ jest.mock('@/downloads/store', () => ({
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 
 /* eslint-disable import/first */
+import { ApiError } from '@/api/client';
 import { qk } from '@/api/hooks';
 import { ADMIN, bridgeJob } from '@/testing/bridge-fixtures';
 import { playerStoreMock } from '@/testing/player-store-mock';
@@ -254,6 +265,8 @@ beforeEach(() => {
   mockBook = BOOK;
   mockPodcastLibrary = false;
   mockBookLoading = false;
+  mockBookError = null;
+  mockBookArgs.mockClear();
   mockChapters = CHAPTERS;
   mockProgress = null;
   mockMeta = undefined;
@@ -341,6 +354,30 @@ describe('book page, signed out', () => {
     await mountAt('desktop');
     expect(screen.getByText('Could not load this book.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+});
+
+// CONNECT-13: a book the server answers 404, 403 or 400 for isn't in the library; Retry
+// can't help. frontend#129: a link that can't name a book asks nothing.
+describe('a book that is not in the library', () => {
+  it.each([404, 403, 400])('shows not-in-library with Back and Home for a %i', async (status) => {
+    mockBook = undefined;
+    mockBookError = new ApiError(status, 'nope');
+    await mountAt('desktop');
+    expect(screen.getByText("This book isn't in the library")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Go to Home' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it.each([
+    ['a library id that is not a number', { libraryId: 'abc', path: 'Author/Book' }],
+    ['no path', { libraryId: '1' }],
+  ])('asks nothing for %s', async (_name, params) => {
+    mockParams = params;
+    await mountAt('desktop');
+    expect(screen.getByText("This book isn't in the library")).toBeTruthy();
+    expect(mockBookArgs).not.toHaveBeenCalled();
   });
 });
 

@@ -33,6 +33,21 @@
       "lastYear": "letztes Jahr",
       "year_one": "vor {{count}} Jahr",
       "year_other": "vor {{count}} Jahren"
+    },
+    "notInLibrary": {
+      "back": "Zurück",
+      "book": {
+        "title": "Dieses Buch ist nicht in der Bibliothek",
+        "body": "Vielleicht wurde es verschoben oder entfernt, oder der Link ist falsch."
+      },
+      "folder": {
+        "title": "Dieser Ordner ist nicht in der Bibliothek",
+        "body": "Vielleicht wurde er verschoben oder entfernt, oder der Link ist falsch."
+      },
+      "nothing": {
+        "title": "Es läuft nichts",
+        "body": "Wähle ein Buch, um mit dem Hören zu beginnen."
+      }
     }
   },
   "settings": {
@@ -2900,8 +2915,8 @@
         "body": "Die Datei ist kein EPUB, das AudioSilo lesen kann, oder sie ist beschädigt."
       },
       "missing": {
-        "title": "Das E-Book ist nicht mehr auf dem Server",
-        "body": "Das EPUB des Buchs wurde nicht gefunden. Kommt es zurück, erscheint es nach dem nächsten Scan der Bibliothek wieder."
+        "title": "Dieses E-Book ist nicht in der Bibliothek",
+        "body": "Das Buch oder seine EPUB-Datei ist nicht auf dem Server. Vielleicht wurde es verschoben oder entfernt, oder der Link ist falsch."
       },
       "fetch": {
         "title": "Das E-Book konnte nicht geladen werden",

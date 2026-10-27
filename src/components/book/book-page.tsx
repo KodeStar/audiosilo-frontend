@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { isNotInLibraryError } from '@/api/client';
 import {
   historyQuery,
   qk,
@@ -23,6 +24,7 @@ import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
 import { ContentScope } from '@/components/layout/content-scope';
+import { NotInLibraryState } from '@/components/layout/not-in-library';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { bookMetaWork, matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
@@ -52,7 +54,14 @@ import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadEntry } from '@/downloads/store';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { type BookTab, bookTitle, libraryHref, parentPath, segmentsToPath } from '@/lib/paths';
+import {
+  type BookTab,
+  bookTitle,
+  idParam,
+  libraryHref,
+  parentPath,
+  segmentsToPath,
+} from '@/lib/paths';
 import { percentHeard, progressFractionRemaining } from '@/lib/progress-view';
 import { useRouteParams } from '@/lib/route-params';
 import { useLatest } from '@/lib/use-latest';
@@ -105,9 +114,17 @@ const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 export function BookScreen() {
   return (
     <ContentScope>
-      <BookOrEpisode />
+      <BookRoute />
     </ContentScope>
   );
+}
+
+/** A link that can't name a book (no positive library id, no path: `/book/abc`) asks the
+ * server nothing and shows the not-in-library state (frontend#129). */
+function BookRoute() {
+  const { libraryId, path } = useRouteParams<{ libraryId?: string; path?: string | string[] }>();
+  if (idParam(libraryId) === null || !segmentsToPath(path)) return <NotInLibraryState />;
+  return <BookOrEpisode />;
 }
 
 /**
@@ -218,7 +235,7 @@ function BookPage() {
   const paddingBottom = useMiniPlayerInset();
   const { openSeries, openAuthor, openNarrator } = useOpen();
 
-  const { data: book, isLoading, refetch } = useBook(libraryId, path);
+  const { data: book, isLoading, error, refetch } = useBook(libraryId, path);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
@@ -386,6 +403,8 @@ function BookPage() {
   // Render whenever we have book data, including a downloaded book served from the seeded
   // query cache while offline. Only error when there is no data.
   if (!book) {
+    // A 404 or 403 is a book that isn't there for this listener: no Retry (CONNECT-13).
+    if (isNotInLibraryError(error)) return <NotInLibraryState />;
     return (
       <View className="flex-1 p-4">
         <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />
