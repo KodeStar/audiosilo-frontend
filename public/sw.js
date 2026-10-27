@@ -31,6 +31,9 @@ const DEV = new URL(self.location.href).searchParams.get('dev') === '1';
 // and audio streamed from the server pass straight through to the network.
 const CACHEABLE = new Set(['script', 'style', 'font', 'image', 'manifest']);
 
+// The build's own files, content-hashed: `<base>/_expo/static/...`.
+const BUILD_ASSETS = '/_expo/static/';
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
@@ -90,7 +93,7 @@ self.addEventListener('fetch', (event) => {
     // the cache and never written again (a rewrite would drop the compiled code Chrome
     // keeps for a script cached at install).
     event.respondWith(
-      url.pathname.includes('/_expo/static/') ? cacheFirst(request) : staleWhileRevalidate(request),
+      url.pathname.includes(BUILD_ASSETS) ? cacheFirst(request) : staleWhileRevalidate(request),
     );
   }
   // else: let the browser handle it (API requests, server-streamed audio, …)
@@ -121,12 +124,17 @@ async function handleNavigation(request, shellFallback = true) {
   }
 }
 
+/** A good same-origin answer, safe to keep. */
+function cacheable(res) {
+  return res.ok && (res.type === 'basic' || res.type === 'default');
+}
+
 async function cacheFirst(request) {
   const cache = await caches.open(SHELL_CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
   const res = await fetch(request);
-  if (res.ok && (res.type === 'basic' || res.type === 'default')) cache.put(request, res.clone());
+  if (cacheable(res)) cache.put(request, res.clone());
   return res;
 }
 
@@ -135,9 +143,7 @@ async function staleWhileRevalidate(request) {
   const cached = await cache.match(request);
   const network = fetch(request)
     .then((res) => {
-      if (res && res.ok && (res.type === 'basic' || res.type === 'default')) {
-        cache.put(request, res.clone());
-      }
+      if (res && cacheable(res)) cache.put(request, res.clone());
       return res;
     })
     .catch(() => undefined);
@@ -187,29 +193,38 @@ async function precacheBuild(fresh = false) {
     const done = await cache.match(marker);
     if (!fresh && done && (await done.text()) === build) return;
 
+    // Level by level, each level's files at once: the entry names the route chunks, which
+    // may name more.
     const seen = new Set();
-    const queue = [...roots];
-    while (queue.length) {
-      const url = queue.shift();
-      if (seen.has(url)) continue;
-      seen.add(url);
-      let asset = fresh ? undefined : await cache.match(url);
-      if (!asset) {
-        asset = await fetch(url);
-        if (!asset.ok) return;
-        await cache.put(url, asset.clone());
-      }
-      if (url.endsWith('.js')) queue.push(...assetRefs(await asset.text()));
+    let level = roots;
+    while (level.length) {
+      for (const url of level) seen.add(url);
+      const texts = await Promise.all(level.map((url) => precacheAsset(cache, url, fresh)));
+      level = [...new Set(texts.flatMap(assetRefs))].filter((url) => !seen.has(url));
     }
-    for (const request of await cache.keys()) {
-      if (request.url.includes('/_expo/static/') && !seen.has(request.url)) {
-        await cache.delete(request);
-      }
-    }
+    const stale = (await cache.keys()).filter(
+      (request) => request.url.includes(BUILD_ASSETS) && !seen.has(request.url),
+    );
+    await Promise.all(stale.map((request) => cache.delete(request)));
     await cache.put(marker, new Response(build));
   } catch {
     // offline or the server gone: the next ask (the app's next start) tries again
   }
+}
+
+/**
+ * One build file into the cache (`fresh`: fetched again even when cached), returning a
+ * script's text for the files it names ('' for a stylesheet). Throws when it can't be had,
+ * which stops the precache.
+ */
+async function precacheAsset(cache, url, fresh) {
+  let asset = fresh ? undefined : await cache.match(url);
+  if (!asset) {
+    asset = await fetch(url);
+    if (!asset.ok) throw new Error(`precache: ${url} ${asset.status}`);
+    await cache.put(url, asset.clone());
+  }
+  return url.endsWith('.js') ? asset.text() : '';
 }
 
 // --- offline media ---------------------------------------------------------

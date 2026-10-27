@@ -1,18 +1,18 @@
 import { FELL_ASLEEP_LABEL } from '@/api/bookmark-labels';
 import type { Bookmark } from '@/api/types';
-import { FELL_ASLEEP_NOTES as NOTES } from '@/i18n/fell-asleep-notes';
+import { FELL_ASLEEP_NOTES } from '@/i18n/fell-asleep-notes';
 
 /**
  * The sleep timer's automatic note in every language the app speaks. The note is
  * translated when the bookmark is made (`drift-controller.ts`) and stored as text, so a
  * bookmark made in German reads "Eingeschlafen" whatever the language is today.
  */
-const FELL_ASLEEP_NOTES: ReadonlySet<string> = new Set(Object.values(NOTES));
+const NOTES: ReadonlySet<string> = new Set(Object.values(FELL_ASLEEP_NOTES));
 
 /** Whether `note` is the sleep timer's automatic "Fell asleep" note, in any of the six
  * languages (surrounding spaces ignored). */
 export function isFellAsleepNote(note: string | undefined): boolean {
-  return !!note && FELL_ASLEEP_NOTES.has(note.trim());
+  return !!note && NOTES.has(note.trim());
 }
 
 /**

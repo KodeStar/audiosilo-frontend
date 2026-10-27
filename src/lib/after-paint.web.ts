@@ -28,7 +28,6 @@ export function afterPaint(fn: () => void): () => void {
   const cap = setTimeout(run, AFTER_PAINT_MAX_MS);
   // After the next frame (the commit painted), then when idle.
   const frame = requestAnimationFrame(() => {
-    if (done) return;
     if (typeof requestIdleCallback === 'function') idle = requestIdleCallback(run);
     else run();
   });

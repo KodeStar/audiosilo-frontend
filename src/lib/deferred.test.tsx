@@ -1,31 +1,18 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
-// `afterPaint` held by the test: it says when the page has painted.
-const mockPainted: (() => void)[] = [];
-jest.mock('@/lib/after-paint', () => ({
-  afterPaint: (fn: () => void) => {
-    mockPainted.push(fn);
-    return () => {
-      const i = mockPainted.indexOf(fn);
-      if (i >= 0) mockPainted.splice(i, 1);
-    };
-  },
-}));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('@/lib/after-paint', () => require('@/testing/after-paint-mock'));
 
 /* eslint-disable import/first */
+import { paint, painted as mockPainted } from '@/testing/after-paint-mock';
+
 import { deferred } from './deferred';
 /* eslint-enable import/first */
 
 function Hello({ name }: { name: string }) {
   return <Text>hello {name}</Text>;
 }
-
-const paint = async () => {
-  await act(async () => {
-    for (const fn of mockPainted.splice(0)) fn();
-  });
-};
 
 beforeEach(() => {
   mockPainted.length = 0;

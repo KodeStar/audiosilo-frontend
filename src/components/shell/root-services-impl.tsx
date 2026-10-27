@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 import { startAddressRouting } from '@/api/address-runner';
 import { startCarSync } from '@/car/car-controller';
 import { startCastSync } from '@/cast/cast-session';
@@ -13,9 +15,9 @@ import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { startWidgetSync } from '@/widgets/widget-sync';
 
 /**
- * The app's lifetime services, started by the root layout (`useRootServices`) and stopped
- * in the same order: framework-free controllers (subscriptions, no rendering), so they are
- * started rather than mounted as components that render null. Each runs whether or not
+ * The app's lifetime services, started by the root layout (`useRootServices`; the web's
+ * `RootServices`) and stopped in the same order: framework-free controllers (subscriptions,
+ * no rendering), so they are started rather than mounted as components that render null. Each runs whether or not
  * the player is open, on every screen. Returns the stop.
  */
 export function startRootServices(): () => void {
@@ -79,4 +81,13 @@ export function RootListeners() {
       <ShakeToExtendListener />
     </>
   );
+}
+
+/**
+ * The services and the listeners in one component, for the web: `root-services.web.tsx`
+ * mounts it once the first screen has painted, and the services stop when it goes.
+ */
+export function RootServices() {
+  useEffect(() => startRootServices(), []);
+  return <RootListeners />;
 }

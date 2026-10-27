@@ -24,7 +24,9 @@ jest.mock('@/components/player/shake-to-extend-listener', () => ({
 }));
 
 /* eslint-disable import/first */
-import { startRootServices } from './root-services-impl';
+import { render } from '@testing-library/react-native';
+
+import { RootServices, startRootServices } from './root-services-impl';
 /* eslint-enable import/first */
 
 describe('startRootServices', () => {
@@ -55,5 +57,21 @@ describe('startRootServices', () => {
       'stop widget',
       'stop cast',
     ]);
+  });
+});
+
+describe('RootServices (the web mounts it after the first paint)', () => {
+  beforeEach(() => {
+    mockCalls.length = 0;
+  });
+
+  it('starts the services when it mounts and stops them when it goes', async () => {
+    const view = await render(<RootServices />);
+    expect(mockCalls).toContain('start autoSleep');
+    expect(mockCalls).toContain('start cast');
+    mockCalls.length = 0;
+    await view.unmount();
+    expect(mockCalls).toContain('stop autoSleep');
+    expect(mockCalls).toContain('stop cast');
   });
 });

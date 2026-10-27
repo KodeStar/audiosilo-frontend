@@ -64,8 +64,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   web shell's overlays (`ShellPlayerOverlays`, `CommandPalette`, `ShortcutsDialog`; their keys
   and open states stay in the shell, `usePaletteShortcut` lives in `palette-store.ts`) and the
   root's lifetime services and listeners (`useRootServices`/`RootListeners`,
-  `root-services{,.web}.tsx` over `root-services-impl.tsx`: native starts them with the first
-  commit, as before). Only English is bundled on the web (`i18n/catalogs.web.ts`); another
+  `root-services{,.web}.tsx` over `root-services-impl.tsx`: the web mounts `RootServices` behind
+  `deferred`, the services starting as it mounts; native starts them with the first commit, as
+  before). Only English is bundled on the web (`i18n/catalogs.web.ts`); another
   language's catalog is loaded before switching to it (`switchLanguage`, the last switch wins),
   so a string needed in every language at once has its own table (`fell-asleep-notes.ts`, held
   to the catalogs by its test). A new module for the first screen keeps a static import; one

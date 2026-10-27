@@ -74,8 +74,8 @@ export default function RootLayout() {
 
   // The app's lifetime services: the auto sleep timer, the drift watch, keep-ahead, the
   // chapter refresh, undo jump, the place reconcile, address routing, the widget, the car
-  // and Cast (`startRootServices`). Native starts them here; the web once the first screen
-  // has painted (their modules load after it). Their own effect, not the bootstrap one
+  // and Cast (`startRootServices`). Native starts them here; the web as `RootListeners`
+  // mounts, once the first screen has painted (their modules load after it). Their own effect, not the bootstrap one
   // above: that one is async and returns nothing, and pairing start with teardown in a
   // single expression is what keeps the subscriptions from leaking.
   useRootServices();
