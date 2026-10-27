@@ -1,4 +1,4 @@
-import { ApiError, type ApiClient, isSignedOutError } from '@/api/client';
+import { ApiError, type ApiClient, isSignedOutError, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
@@ -157,7 +157,8 @@ async function readMirror(
  * always fails it (the token is dead).
  *
  * Except offline with the book on this device (`hasLocalCopy`: its download or the app's
- * cache holds the EPUB): a request that never reached the server opens it at the start,
+ * cache holds the EPUB): a request that never reached the server (not a timeout: a slow
+ * server is up, and may hold a place further on) opens it at the start,
  * so a downloaded book reads offline the first time. No place was ever seen here, so the
  * session's saves carry `base_version: 0` (`captureReadingSave`), which the server takes as
  * diverged from any row, this device's own included (its id outlives its places here:
@@ -207,7 +208,8 @@ export async function lookupReadingPlace(
     best = queued;
   }
   if (!best && unknown !== null) {
-    const offline = api !== null && !(unknown instanceof ApiError);
+    const offline =
+      api !== null && !(unknown instanceof ApiError) && !(unknown instanceof TimeoutError);
     if (!offline || !(await localCopy(hasLocalCopy))) throw unknown;
   }
   return {
@@ -295,7 +297,40 @@ export function onReadingSaved(listener: SavedListener): () => void {
   };
 }
 
-const isUnrecoverable = (e: unknown) => e instanceof ApiError && e.status >= 400 && e.status < 500;
+/** A save the server refused (a 4xx: the sign-in ended, the book or the access went), so
+ * it was dropped: the place stays in this device's mirror only. */
+export type ReadingRefused = {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+  status: number;
+};
+
+type RefusedListener = (refused: ReadingRefused) => void;
+const refusedListeners = new Set<RefusedListener>();
+
+/** Every save the server refused, a queued one's replay included: the open reader says its
+ * place was not saved. Returns the unsubscribe. */
+export function onReadingRefused(listener: RefusedListener): () => void {
+  refusedListeners.add(listener);
+  return () => {
+    refusedListeners.delete(listener);
+  };
+}
+
+const isUnrecoverable = (e: unknown): e is ApiError =>
+  e instanceof ApiError && e.status >= 400 && e.status < 500;
+
+/** A save dropped for `e` (`isUnrecoverable`), told to the listeners. */
+function refused(save: ReadingSave, e: ApiError): void {
+  const heard: ReadingRefused = {
+    connectionId: save.connectionId,
+    libraryId: save.libraryId,
+    path: save.path,
+    status: e.status,
+  };
+  for (const listener of refusedListeners) listener(heard);
+}
 
 /** PUT one save, keep the answer's place when newer, tell listeners. Its version is
  * acknowledged when the server kept this save; any other kept row is `seen` only when it is
@@ -333,7 +368,7 @@ async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgres
 
 /**
  * Save a place now; with no client, an unreachable server or a failed request, queue it
- * for replay (a 4xx is dropped: it can never succeed). The mirror always takes the place
+ * for replay (a 4xx is dropped: it can never succeed; `onReadingRefused` hears it). The mirror always takes the place
  * first. Resolves the server's answer, or null when it was queued or dropped.
  */
 export async function saveReadingPlace(
@@ -351,7 +386,10 @@ export async function saveReadingPlace(
     void flushReadingQueue();
     return saved;
   } catch (e) {
-    if (isUnrecoverable(e)) return null;
+    if (isUnrecoverable(e)) {
+      refused(save, e);
+      return null;
+    }
     noteFailure(save.connectionId, e);
     await enqueue(save);
     return null;
@@ -393,7 +431,10 @@ async function flushGroup(
       await put(client, save);
       noteSuccess(cid);
     } catch (e) {
-      if (isUnrecoverable(e)) continue;
+      if (isUnrecoverable(e)) {
+        refused(save, e);
+        continue;
+      }
       noteFailure(cid, e);
       remaining.push(save);
       // An ApiError is this save's own failure; anything else means the server is

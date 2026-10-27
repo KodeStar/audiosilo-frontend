@@ -1,11 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppState, Platform, Pressable, View } from 'react-native';
+import { AppState, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ApiError } from '@/api/client';
+import { ApiError, isSignedOutError } from '@/api/client';
 import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
@@ -13,6 +14,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { useDownloadedEbook } from '@/downloads/store';
+import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
@@ -33,6 +35,7 @@ import {
   flushReadingQueue,
   type JumpOffer,
   jumpOffer,
+  onReadingRefused,
   onReadingSaved,
   type ReadingPlaceLookup,
   type ReadingSaved,
@@ -44,19 +47,28 @@ const SAVE_DEBOUNCE_MS = 2000;
 /** A section that lays out quicker than this shows no spinner. */
 const SPINNER_DELAY_MS = 300;
 
-/** Why the reader shows a message instead of the book. */
-type ReaderFailure = 'drm' | 'unreadable' | 'missing' | 'fetch' | 'start' | 'noEbook';
+/** Why the reader shows a message instead of the book. `signedOut`: the server refused the
+ * session (a 401), shown as the sign-in state with Reconnect while the connection needs
+ * signing in again; `section`: a part of the open book did not load. */
+type ReaderFailure =
+  'drm' | 'unreadable' | 'missing' | 'fetch' | 'start' | 'noEbook' | 'signedOut' | 'section';
+
+/** The failures Try again can mend. */
+const RETRYABLE: readonly ReaderFailure[] = ['fetch', 'start', 'section'];
 
 type Place = { cfi: string; fraction: number; sectionLabel: string };
 
-/** Why loading failed, as the reader says it: the reader document never started, the book
- * is gone, or the server gave no answer (for the book, or where it opens). */
+/** Why loading failed, as the reader says it: the reader document never started, the
+ * sign-in ended, the book is gone, or the server gave no answer (for the book, or where it
+ * opens). */
 const loadFailure = (e: unknown): ReaderFailure =>
   e instanceof ReaderStartError
     ? 'start'
-    : e instanceof ApiError && e.status === 404
-      ? 'missing'
-      : 'fetch';
+    : isSignedOutError(e)
+      ? 'signedOut'
+      : e instanceof ApiError && e.status === 404
+        ? 'missing'
+        : 'fetch';
 
 /**
  * The ebook reader (Bridge Phase 3b, the `/read` root modal): a top bar (close, the
@@ -78,6 +90,9 @@ export function ReaderScreen({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const api = useOptionalApi(connectionId);
+  // The connection while it needs signing in again: a load that failed then is the sign-in
+  // state with Reconnect, never a Try again that cannot work (CONNECT-04).
+  const signedOut = useSignedOutConnection(connectionId);
   const {
     data: book,
     isError: bookFailed,
@@ -118,6 +133,10 @@ export function ReaderScreen({
   );
   // The book showed on this screen once: a reopen that fails then is not a bad file.
   const shownOnce = useRef(false);
+  // The next `progress` is where the book landed on opening (the start of the page the
+  // saved place falls on), not a move: saving it would pull a place read at another page
+  // size back to this page's start (fe#172). The first move saves.
+  const landing = useRef(false);
   const [current, setCurrent] = useState<Place | null>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<ReaderFailure | null>(null);
@@ -169,6 +188,23 @@ export function ReaderScreen({
     };
   }, [flushSave]);
 
+  // A save the server refused (the sign-in ended, the access went): the place is kept on
+  // this device only, and the reader says so until a save of the book goes through.
+  const [unsaved, setUnsaved] = useState(false);
+  useEffect(
+    () =>
+      onReadingRefused((heard) => {
+        if (
+          heard.connectionId === connectionId &&
+          heard.libraryId === libraryId &&
+          heard.path === path
+        ) {
+          setUnsaved(true);
+        }
+      }),
+    [connectionId, libraryId, path],
+  );
+
   // --- "Jump there?" --------------------------------------------------------------------
   // The latest answered save of this book (by the server's version: an answer that lands
   // late never replaces a newer one). It is judged against the page on screen once the book
@@ -184,6 +220,7 @@ export function ReaderScreen({
         ) {
           return;
         }
+        setUnsaved(false);
         setAnswer((prev) =>
           prev && prev.saved.reading_progress.version > heard.saved.reading_progress.version
             ? prev
@@ -197,6 +234,7 @@ export function ReaderScreen({
     switch (message.type) {
       case 'opened':
         shownOnce.current = true;
+        landing.current = true;
         setOpened({ title: message.title, toc: message.toc, rtl: message.rtl });
         return;
       case 'progress':
@@ -205,6 +243,10 @@ export function ReaderScreen({
           fraction: message.fraction,
           sectionLabel: message.sectionLabel,
         });
+        if (landing.current) {
+          landing.current = false;
+          return;
+        }
         pending.current = { cfi: message.cfi, progression: message.fraction };
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
@@ -214,6 +256,8 @@ export function ReaderScreen({
         return;
       case 'error':
         if (message.code === 'runtime') console.warn('[reader]', message.message);
+        // A part of the open book did not load (fe#164): said, with Try again.
+        else if (message.code === 'section') setFailure('section');
         // A reopen that fails is not a bad file (the same file opened before): it is said
         // as a reader that stopped, with Try again.
         else if (!opened) setFailure(shownOnce.current ? 'start' : message.code);
@@ -393,12 +437,21 @@ export function ReaderScreen({
               />
             </>
           ) : null}
-          {shown ? (
+          {shown && signedOut && (shown === 'signedOut' || shown === 'fetch') ? (
+            <View className="absolute inset-0 items-center justify-center p-4">
+              <View className="w-full max-w-md">
+                <SignInAgainState connection={signedOut} />
+              </View>
+            </View>
+          ) : shown ? (
             <ReaderMessage failure={shown} onRetry={retry} />
           ) : spinner ? (
             <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
               <Spinner size="large" />
             </View>
+          ) : null}
+          {show && unsaved ? (
+            <NotSavedCard signedOut={signedOut} onDismiss={() => setUnsaved(false)} />
           ) : null}
           {offer ? (
             <JumpOfferCard
@@ -412,12 +465,7 @@ export function ReaderScreen({
           ) : null}
         </View>
       </View>
-      <Sheet
-        visible={tocOpen}
-        onClose={() => setTocOpen(false)}
-        title={t('reader.contents')}
-        scroll
-      >
+      <Sheet visible={tocOpen} onClose={() => setTocOpen(false)} title={t('reader.contents')}>
         <TocList toc={opened?.toc} section={current?.sectionLabel} onSelect={gotoEntry} />
       </Sheet>
     </>
@@ -439,8 +487,13 @@ function useDelayed(value: boolean, ms: number): boolean {
   return value && shown;
 }
 
-/** The contents, one row per entry (the current chapter in bold). Memoized: the screen
- * re-renders on every page turn, and a long contents list need not be rebuilt for it. */
+/** How far above the current entry the contents open, so the entries before it show too. */
+const TOC_LEAD = 96;
+
+/** The contents, one row per entry: the current chapter (the first entry named as the
+ * section on screen) marked, and scrolled into view when the list opens. Memoized: the
+ * screen re-renders on every page turn, and a long contents list need not be rebuilt for
+ * it. Its own scroller (the sheet caps its height), so it can open at the current entry. */
 const TocList = memo(function TocList({
   toc,
   section,
@@ -450,20 +503,47 @@ const TocList = memo(function TocList({
   section: string | undefined;
   onSelect: (href: string) => void;
 }) {
-  return (toc ?? []).map((entry, i) => (
-    <Pressable
-      key={`${i}:${entry.href}`}
-      role="button"
-      className="rounded-lg py-2.5 pr-2 active:bg-muted web:hover:bg-muted"
-      style={{ paddingLeft: 8 + entry.depth * 16 }}
-      onPress={() => onSelect(entry.href)}
-    >
-      <Text variant={section === entry.label ? 'label' : 'body'} numberOfLines={2}>
-        {entry.label}
-      </Text>
-    </Pressable>
-  ));
+  const entries = toc ?? [];
+  const current = section ? entries.findIndex((entry) => entry.label === section) : -1;
+  const scroller = useRef<ScrollView>(null);
+  // Once per opening (the sheet mounts the list each time it opens).
+  const scrolled = useRef(false);
+  return (
+    <ScrollView ref={scroller} style={{ flexShrink: 1 }} contentContainerClassName="px-2 pb-4">
+      {entries.map((entry, i) => {
+        const here = i === current;
+        return (
+          <Pressable
+            key={`${i}:${entry.href}`}
+            role="button"
+            aria-current={here ? 'location' : undefined}
+            accessibilityState={{ selected: here }}
+            className={`rounded-lg py-2.5 pr-2 active:bg-muted web:hover:bg-muted ${here ? 'bg-muted' : ''}`}
+            style={{ paddingLeft: 8 + entry.depth * 16 }}
+            onLayout={
+              here
+                ? (e) => {
+                    if (scrolled.current) return;
+                    scrolled.current = true;
+                    const y = Math.max(0, e.nativeEvent.layout.y - TOC_LEAD);
+                    scroller.current?.scrollTo({ y, animated: false });
+                  }
+                : undefined
+            }
+            onPress={() => onSelect(entry.href)}
+          >
+            <Text variant={here ? 'label' : 'body'} numberOfLines={2}>
+              {entry.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
 });
+
+/** Below this window width the page edges narrow to the book's margin, clear of its text. */
+const NARROW_EDGES = 480;
 
 /** A page turn at one edge of the book: a tall, quiet target over the margin. */
 function PageEdge({
@@ -475,12 +555,13 @@ function PageEdge({
   label: string;
   onPress: () => void;
 }) {
+  const narrow = useWindowDimensions().width < NARROW_EDGES;
   return (
     <Pressable
       role="button"
       accessibilityLabel={label}
       onPress={onPress}
-      className={`absolute bottom-0 top-0 w-11 items-center justify-center opacity-40 web:hover:opacity-100 ${
+      className={`absolute bottom-0 top-0 ${narrow ? 'w-6' : 'w-11'} items-center justify-center opacity-40 web:hover:opacity-100 ${
         side === 'left' ? 'left-0' : 'right-0'
       }`}
     >
@@ -507,11 +588,47 @@ function ReaderMessage({ failure, onRetry }: { failure: ReaderFailure; onRetry: 
           )}
         />
         <View className="flex-row justify-end gap-2">
-          {failure === 'fetch' || failure === 'start' ? (
+          {RETRYABLE.includes(failure) ? (
             <Button variant="outline" title={t('reader.tryAgain')} onPress={onRetry} />
           ) : null}
           <Button title={t('reader.close')} onPress={backOrHome} />
         </View>
+      </View>
+    </View>
+  );
+}
+
+/** "Your place wasn't saved": a save the server refused, at the foot of the page. With the
+ * sign-in ended, the sign-in row with Reconnect; else OK to put it away. */
+function NotSavedCard({
+  signedOut,
+  onDismiss,
+}: {
+  signedOut: Connection | undefined;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View className="absolute bottom-4 left-4 right-4 items-center" pointerEvents="box-none">
+      <View
+        testID="reader-not-saved"
+        role="alert"
+        className="w-full max-w-md gap-2 rounded-2xl border border-border bg-popover px-4 py-3"
+      >
+        <View className="flex-row items-center gap-2">
+          <Text variant="label" className="min-w-0 flex-1">
+            {t('reader.notSaved.body')}
+          </Text>
+          {signedOut ? null : (
+            <Button
+              variant="ghost"
+              size="sm"
+              title={t('reader.notSaved.dismiss')}
+              onPress={onDismiss}
+            />
+          )}
+        </View>
+        {signedOut ? <SignInAgainState connection={signedOut} compact /> : null}
       </View>
     </View>
   );

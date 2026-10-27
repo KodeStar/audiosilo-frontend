@@ -2913,6 +2913,14 @@
       "noEbook": {
         "title": "No ebook for this book",
         "body": "Read needs one DRM-free EPUB in the book's folder, on a server that has the reader."
+      },
+      "section": {
+        "title": "Couldn't load the ebook",
+        "body": "A part of the book didn't load. Your place in the book is kept. Try again."
+      },
+      "signedOut": {
+        "title": "Sign in again to read",
+        "body": "Your sign-in to this server ended. Your place in the book is kept on this device."
       }
     },
     "offer": {
@@ -2920,6 +2928,10 @@
       "unknown": "On another device you were at {{percent}}%. Jump there?",
       "jump": "Jump",
       "stay": "Stay"
+    },
+    "notSaved": {
+      "body": "Your place wasn't saved to the server. It's kept on this device.",
+      "dismiss": "OK"
     }
   }
 }

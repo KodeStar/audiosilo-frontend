@@ -2913,6 +2913,14 @@
       "noEbook": {
         "title": "Este libro no tiene ebook",
         "body": "Para leer hace falta un EPUB sin DRM en la carpeta del libro, en un servidor que tenga el lector."
+      },
+      "section": {
+        "title": "No se pudo cargar el ebook",
+        "body": "Una parte del libro no se cargó. Tu punto en el libro se conserva. Vuelve a intentarlo."
+      },
+      "signedOut": {
+        "title": "Vuelve a iniciar sesión para leer",
+        "body": "Tu sesión en este servidor terminó. Tu punto en el libro se conserva en este dispositivo."
       }
     },
     "offer": {
@@ -2920,6 +2928,10 @@
       "unknown": "En otro dispositivo ibas por el {{percent}} %. ¿Ir allí?",
       "jump": "Ir",
       "stay": "Quedarme"
+    },
+    "notSaved": {
+      "body": "Tu punto no se guardó en el servidor. Se conserva en este dispositivo.",
+      "dismiss": "Aceptar"
     }
   }
 }

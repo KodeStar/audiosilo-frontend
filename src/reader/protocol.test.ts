@@ -17,6 +17,12 @@ describe('parseReaderMessage', () => {
       code: 'drm',
       message: 'locked',
     });
+    // A part of the open book that did not load (fe#164).
+    expect(parseReaderMessage({ type: 'error', code: 'section', message: 'TypeError' })).toEqual({
+      type: 'error',
+      code: 'section',
+      message: 'TypeError',
+    });
     expect(parseReaderMessage({ type: 'escape', key: 'x' })).toEqual({ type: 'escape' });
     expect(parseReaderMessage({ type: 'opened', title: 'Ali', toc: [], rtl: true })).toEqual({
       type: 'opened',

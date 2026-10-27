@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { ApiError, type ApiClient } from '@/api/client';
+import { ApiError, type ApiClient, TimeoutError } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import * as reachability from '@/api/reachability';
 import type { ReadingProgress, ReadingProgressSaved } from '@/api/types';
@@ -15,7 +15,9 @@ import {
   flushReadingQueue,
   jumpOffer,
   lookupReadingPlace,
+  onReadingRefused,
   onReadingSaved,
+  type ReadingRefused,
   type ReadingSave,
   type ReadingSaved,
   saveReaderPlace,
@@ -192,6 +194,41 @@ describe('reading-progress', () => {
     expect(reachability.noteFailure).not.toHaveBeenCalled();
   });
 
+  it('tells listeners a refused save, sent or replayed, and nothing else (CONNECT-04)', async () => {
+    const heard: ReadingRefused[] = [];
+    const stop = onReadingRefused((r) => heard.push(r));
+    try {
+      await saveReadingPlace(
+        fakeApi(() => Promise.reject(new ApiError(401, 'unauthorized'))),
+        save(),
+      );
+      await saveReadingPlace(
+        fakeApi(() => Promise.reject(new TypeError('offline'))),
+        save({ path: 'B/Queued' }),
+      );
+      await saveReadingPlace(fakeApi(), save({ path: 'C/Saved' }));
+      expect(heard).toEqual([{ connectionId: 'c1', libraryId: 1, path: 'A/Book', status: 401 }]);
+
+      // The queued save's replay is refused too (its access went meanwhile).
+      routeClients({ c1: fakeApi(() => Promise.reject(new ApiError(403, 'forbidden'))) });
+      await flushReadingQueue();
+      expect(heard.at(-1)).toEqual({
+        connectionId: 'c1',
+        libraryId: 1,
+        path: 'B/Queued',
+        status: 403,
+      });
+      expect(await readQueue()).toEqual([]);
+    } finally {
+      stop();
+    }
+    await saveReadingPlace(
+      fakeApi(() => Promise.reject(new ApiError(401, 'unauthorized'))),
+      save(),
+    );
+    expect(heard).toHaveLength(2);
+  });
+
   it('queues a save that failed on the network or a 5xx', async () => {
     await saveReadingPlace(
       fakeApi(() => Promise.reject(new TypeError('offline'))),
@@ -363,6 +400,34 @@ describe('reading-progress', () => {
         ).resolves.toEqual({ place: null, fromServer: null });
       }
       expect(hasLocalCopy).toHaveBeenCalled();
+    });
+
+    it('fails on a timeout rather than open at the start: a slow server is up (fe#173)', async () => {
+      const hasLocalCopy = jest.fn(async () => true);
+      const slow = new TimeoutError(15000);
+      await expect(
+        lookupReadingPlace(
+          fakeApi(undefined, () => Promise.reject(slow)),
+          'c1',
+          1,
+          'A/Book',
+          undefined,
+          { hasLocalCopy },
+        ),
+      ).rejects.toBe(slow);
+      expect(hasLocalCopy).not.toHaveBeenCalled();
+      // A place on this device still opens there.
+      await saveReadingPlace(null, save({ cfi: CFI_B }));
+      await expect(
+        lookupReadingPlace(
+          fakeApi(undefined, () => Promise.reject(slow)),
+          'c1',
+          1,
+          'A/Book',
+          undefined,
+          { hasLocalCopy },
+        ),
+      ).resolves.toMatchObject({ place: { cfi: CFI_B }, fromServer: null });
     });
 
     it('still fails offline when the EPUB is not on this device (or the check fails)', async () => {

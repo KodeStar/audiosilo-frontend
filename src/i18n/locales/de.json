@@ -2913,6 +2913,14 @@
       "noEbook": {
         "title": "Kein E-Book zu diesem Buch",
         "body": "Lesen braucht ein DRM-freies EPUB im Ordner des Buchs, auf einem Server mit dem Leser."
+      },
+      "section": {
+        "title": "Das E-Book konnte nicht geladen werden",
+        "body": "Ein Teil des Buchs wurde nicht geladen. Deine Stelle im Buch bleibt erhalten. Versuche es erneut."
+      },
+      "signedOut": {
+        "title": "Melde dich erneut an, um zu lesen",
+        "body": "Deine Anmeldung bei diesem Server ist abgelaufen. Deine Stelle im Buch bleibt auf diesem Gerät erhalten."
       }
     },
     "offer": {
@@ -2920,6 +2928,10 @@
       "unknown": "Auf einem anderen Gerät warst du bei {{percent}} %. Dorthin springen?",
       "jump": "Springen",
       "stay": "Bleiben"
+    },
+    "notSaved": {
+      "body": "Deine Stelle wurde nicht auf dem Server gespeichert. Sie bleibt auf diesem Gerät erhalten.",
+      "dismiss": "OK"
     }
   }
 }

@@ -2913,6 +2913,14 @@
       "noEbook": {
         "title": "Pas d'ebook pour ce livre",
         "body": "La lecture demande un EPUB sans DRM dans le dossier du livre, sur un serveur qui a le lecteur."
+      },
+      "section": {
+        "title": "Impossible de charger l'ebook",
+        "body": "Une partie du livre ne s'est pas chargée. Ta position dans le livre est conservée. Réessaie."
+      },
+      "signedOut": {
+        "title": "Reconnecte-toi pour lire",
+        "body": "Ta connexion à ce serveur a pris fin. Ta position dans le livre est conservée sur cet appareil."
       }
     },
     "offer": {
@@ -2920,6 +2928,10 @@
       "unknown": "Sur un autre appareil, tu étais à {{percent}} %. Y aller ?",
       "jump": "Y aller",
       "stay": "Rester"
+    },
+    "notSaved": {
+      "body": "Ta position n'a pas été enregistrée sur le serveur. Elle est conservée sur cet appareil.",
+      "dismiss": "OK"
     }
   }
 }

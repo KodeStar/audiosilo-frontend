@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { Platform } from 'react-native';
+import { Dimensions, Platform, ScrollView } from 'react-native';
 
 import { ApiError } from '@/api/client';
 import type { ReadingProgress } from '@/api/types';
@@ -13,7 +13,12 @@ import {
   type ReaderHostProps,
   ReaderStartError,
 } from './reader-host-types';
-import { adoptServerPlace, type ReadingSaved } from './reading-progress';
+import {
+  adoptServerPlace,
+  type ReadingRefused,
+  type ReadingSaved,
+  saveReaderPlace,
+} from './reading-progress';
 
 type Query = { data?: unknown; isError: boolean; error: unknown; refetch: jest.Mock };
 let mockBook: Query;
@@ -41,6 +46,13 @@ jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({}) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/lib/back-or-home', () => ({ backOrHome: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({ getDeviceId: () => Promise.resolve('dev') }));
+// The connection while it needs signing in again (sign-in-again's own tests); the sign-in
+// state itself is the real one.
+let mockSignedOut: { id: string; name: string } | undefined;
+jest.mock('@/components/layout/sign-in-again', () => ({
+  ...jest.requireActual('@/components/layout/sign-in-again'),
+  useSignedOutConnection: () => mockSignedOut,
+}));
 
 // The screen's keyboard shortcuts as it registers them (jest runs the native platform, where
 // they never listen): what each matches, and what it does.
@@ -72,6 +84,7 @@ jest.mock('./reader-host', () => ({
 }));
 
 let mockHeard: ((saved: ReadingSaved) => void) | null = null;
+let mockRefused: ((refused: ReadingRefused) => void) | null = null;
 jest.mock('./reading-progress', () => ({
   ...jest.requireActual('./reading-progress'),
   adoptServerPlace: jest.fn(() => Promise.resolve()),
@@ -81,6 +94,12 @@ jest.mock('./reading-progress', () => ({
     mockHeard = listener;
     return () => {
       mockHeard = null;
+    };
+  },
+  onReadingRefused: (listener: (refused: ReadingRefused) => void) => {
+    mockRefused = listener;
+    return () => {
+      mockRefused = null;
     };
   },
 }));
@@ -113,8 +132,8 @@ function row(p: Partial<ReadingProgress> = {}): ReadingProgress {
   };
 }
 
-async function mount() {
-  await mountWithPortal(<ReaderScreen connectionId="c1" libraryId={1} path="A/Book" />);
+function mount() {
+  return mountWithPortal(<ReaderScreen connectionId="c1" libraryId={1} path="A/Book" />);
 }
 
 /** The reader says something to the screen. */
@@ -162,6 +181,156 @@ describe('ReaderScreen', () => {
     mockPlace = query({ place: null, fromServer: null });
     mockEbooks = true;
     mockDownload = undefined;
+    mockSignedOut = undefined;
+  });
+
+  describe('saving the place', () => {
+    it('never saves where the book landed on opening, only where the reader moves (fe#172)', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await unmount();
+      expect(saveReaderPlace).not.toHaveBeenCalled();
+    });
+
+    it('saves the first move after the landing', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await unmount();
+      expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
+        cfi: CFI_B,
+        progression: 0.3,
+      });
+    });
+
+    it('lands again without a save after Try again', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await say({ type: 'error', code: 'section', message: 'x' });
+      await fireEvent.press(screen.getByText('Try again'));
+      await opened(CFI_B);
+      await unmount();
+      expect(saveReaderPlace).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a save the server refused (CONNECT-04)', () => {
+    const refuse = (path = 'A/Book') =>
+      act(async () => {
+        mockRefused!({ connectionId: 'c1', libraryId: 1, path, status: 401 });
+      });
+
+    it("says the place wasn't saved, until a save of the book goes through", async () => {
+      await mount();
+      await opened();
+      await refuse('B/Other');
+      expect(screen.queryByTestId('reader-not-saved')).toBeNull();
+      await refuse();
+      expect(screen.getByText(/Your place wasn't saved to the server/)).toBeTruthy();
+      await answered(row({ device_id: 'dev', cfi: CFI_A, progression: 0.2 }), true);
+      expect(screen.queryByTestId('reader-not-saved')).toBeNull();
+    });
+
+    it('is put away with OK', async () => {
+      await mount();
+      await opened();
+      await refuse();
+      await fireEvent.press(screen.getByText('OK'));
+      expect(screen.queryByTestId('reader-not-saved')).toBeNull();
+    });
+
+    it('offers Reconnect when the sign-in ended', async () => {
+      mockSignedOut = { id: 'c1', name: 'Home Library' };
+      await mount();
+      await opened();
+      await refuse();
+      expect(screen.getByText('Sign in again to Home Library')).toBeTruthy();
+      expect(screen.getByText('Reconnect')).toBeTruthy();
+      expect(screen.queryByText('OK')).toBeNull();
+    });
+  });
+
+  describe('a sign-in that ended (CONNECT-04)', () => {
+    it('shows the sign-in state with Reconnect, never Try again, when the place lookup got a 401', async () => {
+      mockSignedOut = { id: 'c1', name: 'Home Library' };
+      mockPlace = query(undefined, new ApiError(401, 'unauthorized'));
+      await mount();
+      expect(screen.getByText('Sign in again to Home Library')).toBeTruthy();
+      expect(screen.getByText('Reconnect')).toBeTruthy();
+      expect(screen.queryByText('Try again')).toBeNull();
+    });
+
+    it('shows it for a fetch that failed while the connection needs signing in again', async () => {
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      mockSignedOut = { id: 'c1', name: 'Home Library' };
+      await act(async () => mockHost!.onLoadError(new TypeError('Failed to fetch')));
+      expect(screen.getByText('Sign in again to Home Library')).toBeTruthy();
+      expect(screen.queryByText('Try again')).toBeNull();
+    });
+
+    it('says so in its own words before the connection is flagged', async () => {
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await act(async () => mockHost!.onLoadError(new ApiError(401, 'unauthorized')));
+      expect(screen.getByText('Sign in again to read')).toBeTruthy();
+      expect(screen.queryByText('Try again')).toBeNull();
+    });
+  });
+
+  it('says a part of the book that did not load, with Try again (fe#164)', async () => {
+    await mount();
+    await opened();
+    const first = mockHost;
+    await say({ type: 'error', code: 'section', message: 'TypeError' });
+    expect(screen.getByText("Couldn't load the ebook")).toBeTruthy();
+    expect(screen.getByText(/A part of the book didn't load/)).toBeTruthy();
+    await fireEvent.press(screen.getByText('Try again'));
+    await waitFor(() => expect(mockHost).not.toBe(first));
+  });
+
+  it('narrows the page edges to the margin on a phone, clear of the text (PLAYER-06)', async () => {
+    const width = jest.spyOn(Dimensions, 'get');
+    try {
+      width.mockReturnValue({ width: 390, height: 844, scale: 1, fontScale: 1 });
+      const { unmount } = await mount();
+      await opened();
+      expect(screen.getByLabelText('Next page').props.className).toMatch(/\bw-6\b/);
+      await unmount();
+      width.mockReturnValue({ width: 1280, height: 800, scale: 1, fontScale: 1 });
+      await mount();
+      await opened();
+      expect(screen.getByLabelText('Next page').props.className).toMatch(/\bw-11\b/);
+    } finally {
+      width.mockRestore();
+    }
+  });
+
+  describe('the contents (PLAYER-05)', () => {
+    const toc = [
+      { label: 'Chapter I', href: 'c1.xhtml', depth: 0 },
+      { label: 'Chapter II', href: 'c2.xhtml', depth: 0 },
+      { label: 'Chapter III', href: 'c3.xhtml', depth: 0 },
+    ];
+
+    it('marks the current entry and opens scrolled to it', async () => {
+      const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+      scrollTo.mockClear();
+      await mount();
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      await say({ type: 'opened', title: 'Alice', toc, rtl: false });
+      await say({ type: 'progress', cfi: CFI_A, fraction: 0.5, sectionLabel: 'Chapter II' });
+      await fireEvent.press(screen.getByLabelText('Contents'));
+
+      const current = screen.getByRole('button', { name: 'Chapter II' });
+      expect(current).toHaveProp('aria-current', 'location');
+      expect(screen.getByRole('button', { name: 'Chapter I' })).not.toHaveProp('aria-current');
+      await fireEvent(current, 'layout', { nativeEvent: { layout: { y: 600 } } });
+      expect(scrollTo).toHaveBeenCalledWith({ y: 504, animated: false });
+      // Once per opening: a later layout leaves the reader's own scrolling alone.
+      await fireEvent(current, 'layout', { nativeEvent: { layout: { y: 900 } } });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('reads a download holding the EPUB offline, the capability unknown', async () => {

@@ -2913,6 +2913,14 @@
       "noEbook": {
         "title": "Nessun ebook per questo libro",
         "body": "Per leggere serve un EPUB senza DRM nella cartella del libro, su un server che ha il lettore."
+      },
+      "section": {
+        "title": "Impossibile caricare l'ebook",
+        "body": "Una parte del libro non si è caricata. Il tuo punto nel libro è conservato. Riprova."
+      },
+      "signedOut": {
+        "title": "Accedi di nuovo per leggere",
+        "body": "Il tuo accesso a questo server è terminato. Il tuo punto nel libro è conservato su questo dispositivo."
       }
     },
     "offer": {
@@ -2920,6 +2928,10 @@
       "unknown": "Su un altro dispositivo eri al {{percent}}%. Vuoi andarci?",
       "jump": "Vai",
       "stay": "Resta"
+    },
+    "notSaved": {
+      "body": "Il tuo punto non è stato salvato sul server. È conservato su questo dispositivo.",
+      "dismiss": "OK"
     }
   }
 }
