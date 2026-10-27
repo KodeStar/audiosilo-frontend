@@ -1702,7 +1702,12 @@
     "settingUp": "Setting up your demo…",
     "qrLabel": "QR code to open the demo in the app",
     "scanHint": "Scan with your phone to continue in the AudioSilo app, or keep exploring in this browser.",
-    "browseHere": "Browse the demo here"
+    "browseHere": "Browse the demo here",
+    "off": {
+      "title": "This server has no demo",
+      "body": "Sign in with your invite code or your account instead.",
+      "signIn": "Sign in"
+    }
   },
   "shell": {
     "unknownConnection": {

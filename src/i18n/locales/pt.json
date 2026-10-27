@@ -1702,7 +1702,12 @@
     "settingUp": "A preparar a tua demo…",
     "qrLabel": "Código QR para abrir a demo na aplicação",
     "scanHint": "Lê com o teu telemóvel para continuar na aplicação AudioSilo, ou continua a explorar neste navegador.",
-    "browseHere": "Explorar a demo aqui"
+    "browseHere": "Explorar a demo aqui",
+    "off": {
+      "title": "Este servidor não tem demo",
+      "body": "Em vez disso, inicie sessão com o seu código de convite ou a sua conta.",
+      "signIn": "Iniciar sessão"
+    }
   },
   "shell": {
     "unknownConnection": {

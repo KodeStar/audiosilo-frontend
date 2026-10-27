@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { DemoSession } from '@/api/types';
 import { useSession } from '@/stores/session';
@@ -12,6 +12,8 @@ jest.mock('@/api/client', () => {
   };
 });
 jest.mock('@/lib/base-url', () => ({ webOrigin: () => 'http://127.0.0.1:8890' }));
+const mockReplace = jest.fn();
+jest.mock('expo-router', () => ({ router: { replace: (h: unknown) => mockReplace(h) } }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test browser' }));
 jest.mock('@/components/shell/leave-onboarding', () => ({
   leaveOnboarding: jest.fn(),
@@ -19,6 +21,7 @@ jest.mock('@/components/shell/leave-onboarding', () => ({
 }));
 
 /* eslint-disable import/first */
+import { ApiError } from '@/api/client';
 import DemoScreen from '@/app/demo';
 /* eslint-enable import/first */
 
@@ -63,5 +66,23 @@ describe('/demo', () => {
     await render(<DemoScreen />);
     await waitFor(() => expect(setSession).toHaveBeenCalledTimes(1));
     expect(setSession.mock.calls[0][0]).not.toHaveProperty('name');
+  });
+
+  // CONNECT-11: a server without demo mode answers 404; Try again can never work.
+  it('says a server without demo mode has no demo, and offers Sign in', async () => {
+    mockDemoSession.mockRejectedValueOnce(new ApiError(404, 'demo mode is not enabled'));
+    await render(<DemoScreen />);
+    expect(await screen.findByText('This server has no demo')).toBeTruthy();
+    expect(screen.queryByText('Try again')).toBeNull();
+    expect(screen.queryByText(/A live, read-only demo/)).toBeNull();
+    await fireEvent.press(screen.getByText('Sign in'));
+    expect(mockReplace).toHaveBeenCalledWith('/connect');
+  });
+
+  it('keeps Try again for a demo server that failed', async () => {
+    mockDemoSession.mockRejectedValueOnce(new ApiError(429, 'too many demo sessions'));
+    await render(<DemoScreen />);
+    expect(await screen.findByText('Try again')).toBeTruthy();
+    expect(screen.queryByText('This server has no demo')).toBeNull();
   });
 });
