@@ -2,12 +2,15 @@ import { isRecord } from '@/lib/storage-keys';
 
 /**
  * The host side of the ebook reader's message protocol (Bridge Phase 3b). The reader is
- * its own document (`reader/src/reader.js`, built into `public/reader.html`) in a sandboxed,
- * same-origin iframe; the two talk only by `postMessage`, on the page's own origin.
+ * its own document (`reader/src/reader.js`), built in two variants: on the web
+ * (`public/reader.html`) a sandboxed, same-origin iframe, the two talking only by
+ * `postMessage` on the page's own origin; in the app (`reader-html.native.ts`, Phase 3b-2)
+ * a WebView's HTML source, the two talking over the WebView's bridge as JSON strings.
  *
- * Host -> reader: `open` (the EPUB bytes as a transferable `ArrayBuffer`, where to open,
- * the appearance), `goto`, `appearance`, `next`, `prev`. Messages wait in the host until
- * the reader says `ready`.
+ * Host -> reader: `open` (where to open, the appearance, and the book: on the web its
+ * bytes as a transferable `ArrayBuffer`; in the app its size and chunk count, the bytes
+ * following as `chunk`s of base64, `book-chunks.ts`), `goto`, `appearance`, `next`, `prev`.
+ * Messages wait in the host until the reader says `ready`.
  *
  * Reader -> host: `ready`, `opened` (title, flattened TOC, whether the book reads right to
  * left), `progress` (on every move), `loading` (a section is being laid out), `error`,
@@ -24,16 +27,20 @@ export type ReaderPlace = { cfi?: string; fraction?: number };
 
 export type GotoTarget = { href: string } | { cfi: string } | { fraction: number };
 
+type OpenFields = {
+  /** The book's name, the title when the EPUB has none. */
+  name: string;
+  at?: ReaderPlace;
+  theme: ReaderTheme;
+  fontScale: number;
+};
+
 export type HostMessage =
-  | {
-      type: 'open';
-      book: ArrayBuffer;
-      /** The book's name, the title when the EPUB has none. */
-      name: string;
-      at?: ReaderPlace;
-      theme: ReaderTheme;
-      fontScale: number;
-    }
+  | ({ type: 'open'; book: ArrayBuffer } & OpenFields)
+  /** The app's open: the book follows in `chunks` chunks of `size` bytes in all. */
+  | ({ type: 'open'; size: number; chunks: number } & OpenFields)
+  /** One piece of the app's book, `seq` counting from 0, as base64. */
+  | { type: 'chunk'; seq: number; data: string }
   | ({ type: 'goto' } & GotoTarget)
   | { type: 'appearance'; theme: ReaderTheme; fontScale: number }
   | { type: 'next' }
