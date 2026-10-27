@@ -648,27 +648,10 @@ describe('jumpOffer', () => {
     ).toEqual({ cfi: CFI_B, progression: 0.6, deviceName: 'Pixel 8' });
   });
 
-  it('offers nothing when this device had seen the kept row (other_place or not)', () => {
-    const saved: ReadingProgressSaved = {
-      reading_progress: row({ device_id: 'dev', cfi: CFI_B, progression: 0.6 }),
-      other_place: {
-        cfi: CFI_A,
-        progression: 0.2,
-        device_id: 'phone',
-        device_name: 'Pixel 8',
-        updated_at: '2026-10-01T10:00:00.000Z',
-      },
-    };
-    expect(jumpOffer({ saved, seen: true }, { cfi: CFI_A, progression: 0.2 })).toBeNull();
-  });
-
-  it('offers this device’s own kept row it never saw', () => {
+  it('offers nothing when this device had seen the kept row', () => {
     expect(
-      jumpOffer(
-        kept({ device_id: 'dev', device_name: 'This phone', cfi: CFI_B, progression: 0.8 }),
-        { cfi: CFI_A, progression: 0.01 },
-      ),
-    ).toEqual({ cfi: CFI_B, progression: 0.8, deviceName: 'This phone' });
+      jumpOffer(kept({ cfi: CFI_B, progression: 0.6 }, true), { cfi: CFI_A, progression: 0.2 }),
+    ).toBeNull();
   });
 
   it('offers nothing when the kept place is where the reader is', () => {

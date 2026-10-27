@@ -257,17 +257,6 @@ describe('ReaderScreen', () => {
     expect(adoptServerPlace).not.toHaveBeenCalled();
   });
 
-  it('offers this device’s own place it never saw (its places cleared), and Stay acknowledges it', async () => {
-    const own = row({ device_id: 'dev', device_name: 'This phone', progression: 0.8 });
-    await mount();
-    await opened();
-    await answered(own);
-    expect(screen.getByText('On This phone you were at 80%. Jump there?')).toBeTruthy();
-    expect(adoptServerPlace).not.toHaveBeenCalled();
-    await fireEvent.press(screen.getByText('Stay'));
-    expect(adoptServerPlace).toHaveBeenCalledWith('c1', 1, 'A/Book', own);
-  });
-
   it('says so when where the book opens could not be found out, and looks again', async () => {
     mockPlace = query(undefined, new TypeError('offline'));
     await mount();

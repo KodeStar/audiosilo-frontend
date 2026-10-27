@@ -274,14 +274,10 @@ export function onReadingSaved(listener: SavedListener): () => void {
 const isUnrecoverable = (e: unknown) => e instanceof ApiError && e.status >= 400 && e.status < 500;
 
 /** PUT one save, keep the answer's place when newer, tell listeners. Its version is
- * acknowledged when the server kept this save (this device, the same cfi and time). Any
- * other kept place waits for the open reader to show it (`adoptServerPlace`), and no reader
- * may be open: a replay from Home, or the close-save answered after the reader went. That
- * includes this device's own row at a version it never acknowledged: its id outlives the
- * places kept here (signed out and back in), so a save on 0 that the server answered with
- * this device's place further on is offered like another device's. Its own row at a
- * version it had acknowledged (a stale save echoing a newer one) was seen: nothing to show,
- * and its version is left alone. */
+ * acknowledged when the server kept this save; any other kept row is `seen` only when it is
+ * this device's own at a version it had acknowledged, else it waits for the open reader to
+ * show it (`adoptServerPlace`), and no reader may be open (a replay from Home, or the
+ * close-save answered after the reader went). */
 async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgressSaved> {
   const saved = await client.saveReadingProgress(save.libraryId, save.path, {
     cfi: save.cfi,
@@ -293,11 +289,10 @@ async function put(client: ApiClient, save: ReadingSave): Promise<ReadingProgres
   const row = saved.reading_progress;
   const own = row.device_id === save.device_id;
   const thisSave = own && row.cfi === save.cfi && timeOf(row) === timeOf(save);
-  let seen = thisSave;
+  let seen = false;
   await updateMirror(save, (entry) => {
-    if (thisSave) return acknowledged(row)(entry);
-    seen = own && row.version <= entry.version;
-    return withNewerPlace(row)(entry);
+    seen = thisSave || (own && row.version <= entry.version);
+    return (thisSave ? acknowledged : withNewerPlace)(row)(entry);
   });
   const answer: ReadingSaved = {
     connectionId: save.connectionId,
