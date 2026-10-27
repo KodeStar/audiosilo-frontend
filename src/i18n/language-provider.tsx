@@ -41,19 +41,6 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
  */
 export const LANGUAGE_WAIT_MS = 1500;
 
-/** Resolves when `work` settles or after `ms`, whichever comes first (never rejects). */
-function settledWithin(work: Promise<unknown>, ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    void work
-      .catch(() => {})
-      .finally(() => {
-        clearTimeout(timer);
-        resolve();
-      });
-  });
-}
-
 /**
  * Restores the persisted language preference (default: follow the device) and
  * applies it to i18next before first paint - gating render until resolved, like
@@ -66,10 +53,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let cap: ReturnType<typeof setTimeout> | undefined;
     void readLanguagePref()
       .then(async (next) => {
         // The switch goes on past the cap: the UI changes language when it lands.
-        await settledWithin(switchLanguage(resolveLanguage(next)), LANGUAGE_WAIT_MS);
+        await new Promise<void>((resolve) => {
+          cap = setTimeout(resolve, LANGUAGE_WAIT_MS);
+          void switchLanguage(resolveLanguage(next))
+            .catch(() => {})
+            .finally(resolve);
+        });
+        clearTimeout(cap);
         if (active) setPrefState(next);
       })
       .catch(() => {
@@ -81,6 +75,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       });
     return () => {
       active = false;
+      clearTimeout(cap);
     };
   }, []);
 
