@@ -636,7 +636,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   Except offline with the EPUB on this device (the download's copy or the app's cache file,
   `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
   `base_version: 0`, which the server takes as diverged from another device's row (it keeps a
-  place further on, and its answer offers Jump). A server's answer (`ApiError`) still fails it.
+  place further on, and its answer offers Jump); not from a row this device's id wrote before
+  its places here were cleared (signed out and back in), a known gap that save overwrites. A
+  server's answer (`ApiError`) still fails it.
   A 401 always fails it: a lookup that succeeded on local places would clear the reconnect
   flag the same request raised (`noteQuerySuccess`). It is asked whatever the browser's online
   flag says (`readingPlaceQuery`, `networkMode: 'always'`): held offline, it would leave the

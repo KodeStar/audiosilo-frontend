@@ -50,6 +50,7 @@ const mockSessionReady = sessionReady as jest.Mock;
 
 const CFI_A = 'epubcfi(/6/4!/4/2/1:0)';
 const CFI_B = 'epubcfi(/6/12!/4/2/1:0)';
+const CFI_C = 'epubcfi(/6/30!/4/2/1:0)';
 
 function row(p: Partial<ReadingProgress> = {}): ReadingProgress {
   return {
@@ -397,7 +398,7 @@ describe('reading-progress', () => {
       const kept = row({
         device_id: 'phone',
         device_name: 'Pixel 8',
-        cfi: CFI_B,
+        cfi: CFI_C,
         progression: 0.6,
         version: 9,
       });
@@ -414,7 +415,7 @@ describe('reading-progress', () => {
         expect.objectContaining({ base_version: 0, progression: 0.02 }),
       );
       expect(heard).toEqual([{ reading_progress: kept }]);
-      expect(jumpOffer(heard[0], { cfi: CFI_A, progression: 0.02 }, 'dev')).toMatchObject({
+      expect(jumpOffer(heard[0], { cfi: CFI_B, progression: 0.02 }, 'dev')).toMatchObject({
         progression: 0.6,
         deviceName: 'Pixel 8',
       });

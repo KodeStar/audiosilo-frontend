@@ -150,11 +150,12 @@ async function readMirror(
  *
  * Except offline with the book on this device (`hasLocalCopy`: its download or the app's
  * cache holds the EPUB): a request that never reached the server opens it at the start,
- * so a downloaded book reads offline the first time. That is safe because no place was
- * ever seen here: the session's saves carry `base_version: 0` (`captureReadingSave`), which
- * the server takes as diverged from any row another device kept, so it keeps a place
- * further on and the answer offers Jump there (`jumpOffer`). An answer from the server (an
- * `ApiError`) still fails it: online, never a guessed start. */
+ * so a downloaded book reads offline the first time. No place was ever seen here, so the
+ * session's saves carry `base_version: 0` (`captureReadingSave`), which the server takes as
+ * diverged from a row another device kept: it keeps a place further on and the answer
+ * offers Jump there (`jumpOffer`). Not from a row this device's id wrote, its places here
+ * since cleared (signed out and back in): that save applies latest-wins, a known gap. An
+ * answer from the server (an `ApiError`) still fails it: online, never a guessed start. */
 export type ReadingPlaceLookup = {
   place: ReadingPlace | null;
   fromServer: ReadingProgress | null;
