@@ -55,9 +55,8 @@ test('splitStartScripts: a big start script in parts, chained, its dependents re
   const names = out.map((a) => a.filename);
   const parts = names.filter((n) => n.includes('__common-abc-'));
   assert.ok(parts.length > 1);
-  assert.deepEqual(
-    parts,
-    parts.map((_, i) => `_expo/static/js/web/__common-abc-${i + 1}.js`),
+  parts.forEach((name, i) =>
+    assert.match(name, new RegExp(`^_expo/static/js/web/__common-abc-${i + 1}-[0-9a-f]{12}\\.js$`)),
   );
   const byName = new Map(out.map((a) => [a.filename, a]));
   assert.deepEqual(byName.get(parts[0]).metadata.requires, []);
@@ -74,6 +73,21 @@ test('splitStartScripts: a big start script in parts, chained, its dependents re
     bundle(30),
   );
   assert.equal(byName.get('g.css'), css);
+});
+
+test('splitStartScripts: a part is named after its own source, so another cut never reuses a name', () => {
+  const common = js('_expo/static/js/web/__common-abc.js', bundle(30));
+  const first = (partChars) => splitStartScripts([common], partChars)[0].filename;
+  assert.notEqual(first(600), first(900));
+  assert.equal(first(600), first(600));
+});
+
+test('splitStartScripts: only the trailing comments go, never the same line inside the code', () => {
+  const inner = 'var t=`a\n//# sourceMappingURL=b.js\n`;\n';
+  const chunk = js('_expo/static/js/web/route-1.js', inner + bundle(2) + '\n//# debugId=x\n', {
+    isAsync: true,
+  });
+  assert.equal(splitStartScripts([chunk], 600)[0].source, COMPILE_HINT + inner + bundle(2));
 });
 
 test('splitStartScripts: an async chunk keeps its name (it is loaded by it), hint only', () => {

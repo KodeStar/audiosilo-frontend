@@ -46,7 +46,10 @@ import { useStartupQueries } from './use-startup-queries.web';
 beforeEach(() => resetStartupQueries());
 
 function setup() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // No gc timers (jsdom keeps the 5-minute default), which would hold the test run open.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+  });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
@@ -80,4 +83,17 @@ it('holds the first screen until its answers are in, which land under the screen
   await rerender({ open: true });
   expect(result.current).toBe(true);
   expect(mockClient.recentBooks).toHaveBeenCalledTimes(1);
+});
+
+it('opens on an address whose mode has a malformed escape (read as written, never thrown on)', async () => {
+  const { wrapper } = setup();
+  window.history.replaceState({}, '', '/library?mode=%E0');
+  try {
+    jest.clearAllMocks();
+    const { result } = await renderHook(() => useStartupQueries(true), { wrapper });
+    expect(typeof result.current).toBe('boolean');
+    expect(mockClient.serverInfo).toHaveBeenCalledTimes(1);
+  } finally {
+    window.history.replaceState({}, '', '/');
+  }
 });

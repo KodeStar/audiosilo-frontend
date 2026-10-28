@@ -20,7 +20,7 @@ export const PRECACHE_DELAY_MS = 5000;
  * entry does not name: a fix there leaves the entry as it was). Both are on every page,
  * so every page of a build names the same worker. In a build whose start scripts are cut
  * into parts (`scripts/web-start-chunks.cjs`) these are the entry's last part and the shared
- * chunk's first, each named after the whole's hash. `undefined` without one (dev, a test
+ * chunk's first (`<name>-<hash>-<n>-<part hash>`). `undefined` without one (dev, a test
  * page).
  */
 export function buildId(): string | undefined {

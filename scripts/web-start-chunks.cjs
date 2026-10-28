@@ -13,12 +13,14 @@
 //    136+; other browsers read a comment): the script is compiled whole while it streams
 //    in, on a background thread, instead of function by function as it runs.
 // 2. A start script over `PART_CHARS` is cut into parts of about that size at module
-//    boundaries (each `__d(...)` definition starts a line), each its own `<script defer>`:
+//    boundaries (each `__d(...)` definition starts a line), each its own `<script defer>`
+//    named `<name>-<n>-<hash of the part>.js`:
 //    one big script compiles on one background thread, the parts on several at once.
 //    Defer scripts run in document order, so the parts run as the whole did. Only the
 //    scripts the HTML loads (`isAsync: false`); an async chunk is loaded by its name.
 'use strict';
 
+const { createHash } = require('node:crypto');
 const vm = require('node:vm');
 
 /** V8's explicit compile hint for a whole script (a comment to anything else). */
@@ -27,8 +29,9 @@ const COMPILE_HINT = '//# allFunctionsCalledOnLoad\n';
 /** The size a start script is cut to (characters, about bytes: the code is minified). */
 const PART_CHARS = 450_000;
 
-/** The trailing `//# sourceMappingURL=` / `//# debugId=` comments: they name the whole. */
-const TRAILER = /\n\/\/# (?:sourceMappingURL|debugId)=[^\n]*/g;
+/** The trailing `//# sourceMappingURL=` / `//# debugId=` comments: they name the whole.
+ * Only at the end: the same line inside a module (a template literal) is code. */
+const TRAILER = /(?:\n\/\/# (?:sourceMappingURL|debugId)=[^\n]*)+\n?$/;
 
 /**
  * `code` cut into about `parts` pieces, each a run of whole module definitions (a line
@@ -64,9 +67,16 @@ function cutModules(code, parts) {
   return pieces;
 }
 
-/** A part's file name: `<name>-<n>.js` (n from 1). */
-function partName(filename, n) {
-  return filename.replace(/\.js$/, `-${n}.js`);
+/**
+ * A part's file name: `<name>-<n>-<hash>.js` (n from 1, `hash` of the part's own source).
+ * The whole's name hashes its code, not the cut: a cut that changes on its own (another
+ * `PART_CHARS`, another rule, the hint) must not reuse a part's name, since the build's
+ * files are cached as immutable (by the browser and the service worker), and an old part
+ * beside a new one would leave modules out (or the entry's run statements).
+ */
+function partName(filename, n, source) {
+  const hash = createHash('sha256').update(source).digest('hex').slice(0, 12);
+  return filename.replace(/\.js$/, `-${n}-${hash}.js`);
 }
 
 /**
@@ -93,13 +103,9 @@ function splitStartScripts(assets, partChars = PART_CHARS) {
     }
     let requires = asset.metadata.requires;
     pieces.forEach((piece, i) => {
-      const filename = partName(asset.filename, i + 1);
-      out.push({
-        ...asset,
-        filename,
-        metadata: { ...asset.metadata, requires },
-        source: COMPILE_HINT + piece,
-      });
+      const source = COMPILE_HINT + piece;
+      const filename = partName(asset.filename, i + 1, source);
+      out.push({ ...asset, filename, metadata: { ...asset.metadata, requires }, source });
       requires = [filename];
     });
     renamed.set(asset.filename, requires[0]);

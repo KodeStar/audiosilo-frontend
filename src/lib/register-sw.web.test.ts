@@ -119,11 +119,11 @@ describe('buildId', () => {
     const { mod } = setup('loading');
     addScripts(
       '__expo-metro-runtime-aaa',
-      '__common-ccc-1',
-      '__common-ccc-2',
-      'index-ddd-1',
-      'index-ddd-2',
+      '__common-ccc-1-c1',
+      '__common-ccc-2-c2',
+      'index-ddd-1-d1',
+      'index-ddd-2-d2',
     );
-    expect(mod.buildId()).toBe('index-ddd-2.__common-ccc-1');
+    expect(mod.buildId()).toBe('index-ddd-2-d2.__common-ccc-1-c1');
   });
 });

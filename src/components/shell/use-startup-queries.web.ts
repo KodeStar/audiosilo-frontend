@@ -16,9 +16,11 @@ import {
 /** The page this load opened on, from the address (the base path off). */
 function openedOn() {
   const { pathname, search } = window.location;
-  // A regex, not `URLSearchParams` (jest's jsdom here lacks it); the modes are plain words.
+  // A regex, not `URLSearchParams` (jest's jsdom here lacks it). Read as written, never
+  // decoded: the modes are plain words, and `decodeURIComponent` throws on a malformed
+  // escape (`?mode=%E0`), which in the gate's render would take the app down on every render.
   const mode = /[?&]mode=([^&]*)/.exec(search)?.[1];
-  return startPage(appPath(pathname), mode === undefined ? null : decodeURIComponent(mode));
+  return startPage(appPath(pathname), mode ?? null);
 }
 
 /**

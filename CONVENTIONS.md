@@ -56,8 +56,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
 - **Startup queries (web)** (`src/components/shell/startup-queries.ts`,
   `use-startup-queries{,.web}.ts`): on a start the startup cache can't fill (a first visit, a
   private window), the gate (`AuthGate`) asks the first page's answers the moment it opens
-  (`startupQueries`: every server's `/server`, libraries and progress, plus Home's Recently
-  added and favourites or the selected library's first page of books for the grid) and holds
+  (`startupQueries`: every server's `/server` and libraries; on Home or the Library grid its
+  progress too, plus Home's Recently added and favourites or the selected library's first page
+  of books for the grid) and holds
   its spinner until they are in, at most `STARTUP_WAIT_MS`, so the screen renders once with
   them instead of a skeleton then again. Once per page load; only the entries the cache lacks
   are asked (a reload the startup cache filled waits for nothing). Each entry comes from the
@@ -103,7 +104,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   or an export with source maps): every web script starts with V8's compile hint
   `//# allFunctionsCalledOnLoad` (compiled whole on a background thread as it streams in, not
   function by function on the main thread as it runs), and a start script (`isAsync: false`)
-  over `PART_CHARS` is cut at module boundaries into `<name>-<n>.js` parts, chained by
+  over `PART_CHARS` is cut at module boundaries into `<name>-<n>-<hash>.js` parts (`hash` of
+  the part itself: the whole's name hashes its code, not the cut, and the build's files are
+  cached as immutable, so a changed cut must never reuse a part's name), chained by
   `requires` so the HTML names them in order (whatever required the whole requires the last
   part): several parts compile on several threads at once. A cut is kept only when every part
   compiles on its own. This is what makes a start fast where no service worker can help (a
