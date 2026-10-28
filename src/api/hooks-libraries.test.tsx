@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
@@ -43,6 +43,39 @@ it("asks only that server again on a server's own Retry", async () => {
     await waitFor(() => expect(b).toHaveBeenCalledTimes(2));
     expect(a).toHaveBeenCalledTimes(1);
   } finally {
+    qc.clear();
+  }
+});
+
+it('marks a list that waits for the network (offline before it answered) as paused (fe#155)', async () => {
+  const [a, b] = mockApis.map((x) => x.client.libraries);
+  a.mockResolvedValue([]);
+  b.mockResolvedValue([]);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  onlineManager.setOnline(false);
+  try {
+    const { result } = await renderHook(() => useLibrariesAll(), { wrapper });
+    await waitFor(() =>
+      expect(result.current.groups.map((g) => [g.status, g.paused])).toEqual([
+        ['loading', true],
+        ['loading', true],
+      ]),
+    );
+    // Not loading (no skeleton for good): offline until the network is back.
+    expect(result.current).toMatchObject({ isLoading: false, offline: true });
+    await act(async () => onlineManager.setOnline(true));
+    await waitFor(() =>
+      expect(result.current.groups.map((g) => [g.status, g.paused])).toEqual([
+        ['ready', false],
+        ['ready', false],
+      ]),
+    );
+    expect(result.current).toMatchObject({ isLoading: false, offline: false });
+  } finally {
+    onlineManager.setOnline(true);
     qc.clear();
   }
 });

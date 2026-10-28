@@ -285,6 +285,16 @@ describe('the default query retry', () => {
   it('never retries a 401', () => {
     expect(retryQuery(0, new ApiError(401, 'unauthorized'))).toBe(false);
   });
+
+  // CONNECT-13: a missing book, a library not shared, a refused path stay that way.
+  it.each([404, 403, 400])('never retries a %i', (status) => {
+    expect(retryQuery(0, new ApiError(status, 'not there'))).toBe(false);
+  });
+
+  it('still retries a 429 or a 5xx', () => {
+    expect(retryQuery(0, new ApiError(429, 'slow down'))).toBe(true);
+    expect(retryQuery(0, new ApiError(503, 'busy'))).toBe(true);
+  });
 });
 
 // frontend#131: a query that got no answer has its server checked, and only a server that

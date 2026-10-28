@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
 
@@ -26,8 +26,10 @@ import {
   normalizeUrl,
   parseInviteScan,
   parsePairingScan,
+  type PairingScan,
 } from '@/lib/pairing';
-import { firstParam, idParam, parseConnectBook } from '@/lib/paths';
+import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -71,7 +73,7 @@ import { useLinkPairing } from './use-pairing';
 export function ConnectStart() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { token, server, home, away, sid, profile, book, path, uid } = useLocalSearchParams<{
+  const { token, server, home, away, sid, profile, book, path, uid } = useRouteParams<{
     token?: string;
     server?: string;
     home?: string;
@@ -113,6 +115,41 @@ export function ConnectStart() {
   // A pasted link for another server, on a server's own player (`onPasteLink`).
   const [foreignLink, setForeignLink] = useState<string | null>(null);
   const { pairing, error: pairError, fail, pair } = useLinkPairing(!!token);
+  // A pairing link that failed for a reason that can pass (`PairOutcome` `temporary`).
+  const [retryLink, setRetryLink] = useState<PairingScan | null>(null);
+  // `pair` also resolves once the screen has gone: nothing after it may then touch
+  // the route now on top (its params) or the session (a probe's pending address).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // Exchange a pairing link from the address (and again from Try again). A dead link's
+  // token leaves the address, so a reload doesn't try it again, and the served player
+  // shows its own server's card with Sign in, as it does with no link: never the address
+  // field it otherwise skips (CONNECT-14). A link that may work in a moment (the server
+  // busy, failing or not answering) keeps its token for a reload, and offers Try again.
+  const pairLink = async (scan: PairingScan) => {
+    setRetryLink(null);
+    const outcome = await pair(scan);
+    if (outcome === 'paired' || !mounted.current) return;
+    if (outcome === 'temporary') {
+      setRetryLink(scan);
+      setUrl((u) => u || scan.base);
+      return;
+    }
+    router.setParams({ token: undefined });
+    const origin = servedOrigin();
+    // A pasted link (or Try again) on the card already found: the card stays as it is.
+    if (origin && served === 'found') return;
+    if (origin) {
+      setServed('pending');
+      void connect(origin, 'manual').then((found) => setServed(found ? 'found' : null));
+    } else setUrl((u) => u || scan.base);
+  };
 
   // A pairing link's token: exchange it once (a language switch must not run it again).
   useEffect(() => {
@@ -127,16 +164,15 @@ export function ConnectStart() {
     const userId = idParam(uid);
     // A book to end on: an invalid one is no book, and the flow ends as it always does.
     const linked = parseConnectBook({ book, path });
-    void pair({
+    const scan: PairingScan = {
       base,
       token,
       addresses: cleanAddresses({ home, away }),
       ...(serverId ? { serverId } : {}),
       ...(userId ? { userId } : {}),
       ...(linked ? { book: linked } : {}),
-    }).then((ok) => {
-      if (!ok) setUrl((u) => u || base);
-    });
+    };
+    void pairLink(scan);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, server, home, away, sid, book, path, uid, pair, fail]);
 
@@ -166,8 +202,17 @@ export function ConnectStart() {
   // Back to where the listener came from (Settings, the profile menu), else the app.
   const closeAdd = () => (router.canGoBack() ? router.back() : leaveOnboarding());
 
+  // A book the signed-out visit was opening (`signedOutHref`) goes along, so the sign-in
+  // ends on it (frontend#129). A pairing link's book goes through `pair` instead.
+  const returnBook = token ? null : parseConnectBook({ book, path });
   const goSignIn = (name: string) =>
-    router.push({ pathname: '/connect/sign-in', params: { serverName: name } });
+    router.push({
+      pathname: '/connect/sign-in',
+      params: {
+        serverName: name,
+        ...(returnBook ? connectBookParams(returnBook) : {}),
+      },
+    });
 
   // Ask the server who it is. The typed address and the served player's own server show what
   // was found (or why not); a remembered server goes straight on to sign-in unless it runs a
@@ -284,7 +329,7 @@ export function ConnectStart() {
       setForeignLink(link.trim());
       return;
     }
-    if (scan) void pair(scan);
+    if (scan) void pairLink(scan);
     else if (invite) beginInviteSignIn(invite, () => router.push('/connect/sign-in'));
   };
 
@@ -343,6 +388,15 @@ export function ConnectStart() {
         <Text variant="caption" className="text-destructive" role="alert">
           {pairError}
         </Text>
+      ) : null}
+      {pairError && retryLink ? (
+        <Button
+          variant="outline"
+          icon="rotate"
+          title={t('connect.server.pairingTryAgain')}
+          onPress={() => void pairLink(retryLink)}
+          testID="pairing-try-again"
+        />
       ) : null}
       <View className="gap-3">
         {/* The label above the row, so the field and Continue line up at the top. The served
@@ -440,16 +494,25 @@ export function ConnectStart() {
           />
           {foreignLink ? (
             <View className="gap-2" testID="connect-link-other-server">
-              <Text variant="caption" role="alert">
-                {t('connect.link.otherServer')}
-              </Text>
-              <Button
-                className="self-start"
-                variant="secondary"
-                icon="arrow-up-right"
-                title={t('connect.link.openLink')}
-                onPress={() => void Linking.openURL(foreignLink)}
-              />
+              {/* An app link (`audiosilo://`) can't open in a browser: no button for it. */}
+              {isAppLink(foreignLink) ? (
+                <Text variant="caption" role="alert">
+                  {t('connect.link.appOnly')}
+                </Text>
+              ) : (
+                <>
+                  <Text variant="caption" role="alert">
+                    {t('connect.link.otherServer')}
+                  </Text>
+                  <Button
+                    className="self-start"
+                    variant="secondary"
+                    icon="arrow-up-right"
+                    title={t('connect.link.openLink')}
+                    onPress={() => void Linking.openURL(foreignLink)}
+                  />
+                </>
+              )}
             </View>
           ) : (
             <Button
@@ -481,4 +544,9 @@ export function ConnectStart() {
       ) : null}
     </ConnectFrame>
   );
+}
+
+/** A link for the AudioSilo app (`audiosilo://`), which a browser can't open. */
+function isAppLink(link: string): boolean {
+  return /^audiosilo:/i.test(link.trim());
 }

@@ -52,6 +52,12 @@ jest.mock('expo-file-system', () => {
     }
   }
   class MockFile extends Entry {
+    async copy(to: Entry, opts?: { overwrite?: boolean }) {
+      const v = mockTree.get(this.uri);
+      if (v === undefined || v === 'dir') throw new Error(`nothing at ${this.uri}`);
+      if (mockTree.has(to.uri) && !opts?.overwrite) throw new Error('Destination already exists');
+      mockTree.set(to.uri, v);
+    }
     static createDownloadTask(
       url: string,
       dest: MockFile,
@@ -222,5 +228,38 @@ describe('engine.native downloadFile', () => {
     // Saved under the uri the store keeps (and relocates to).
     expect(uri).toBe(engine.localUri!('srv', 1, 'A/Book', 'book.epub'));
     expect(mockTree.get(uri)).toBe('epub');
+  });
+});
+
+describe('engine.native copyFile', () => {
+  it("copies the reader's cached EPUB into the book's folder, over an old copy, keeping the source", async () => {
+    mockTree.set('file:///cache/reader/srv/1/b/book-10.epub', 'epub');
+    seed({ 'srv/1/other/0.mp3': 'a' });
+    const uri = await engine.copyFile!(
+      'srv',
+      1,
+      'A/Book',
+      'book.epub',
+      'file:///cache/reader/srv/1/b/book-10.epub',
+    );
+    expect(uri).toBe(engine.localUri!('srv', 1, 'A/Book', 'book.epub'));
+    expect(mockTree.get(uri)).toBe('epub');
+    expect(mockTree.get('file:///cache/reader/srv/1/b/book-10.epub')).toBe('epub');
+
+    mockTree.set('file:///cache/reader/srv/1/b/book-10.epub', 'epub2');
+    await engine.copyFile!(
+      'srv',
+      1,
+      'A/Book',
+      'book.epub',
+      'file:///cache/reader/srv/1/b/book-10.epub',
+    );
+    expect(mockTree.get(uri)).toBe('epub2');
+  });
+
+  it('rejects when the source is gone', async () => {
+    await expect(
+      engine.copyFile!('srv', 1, 'A/Book', 'book.epub', 'file:///cache/gone.epub'),
+    ).rejects.toThrow();
   });
 });

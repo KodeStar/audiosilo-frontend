@@ -38,6 +38,8 @@ export const progressAt = (p: SourcedProgress): BookAt => ({
 
 /** One server's library list as Home reads it (`useLibrariesAll`'s groups). */
 type LibraryGroupLike = Pick<LibrariesOfServer, 'connectionId' | 'status'> & {
+  /** Absent: not paused. */
+  paused?: boolean;
   libraries: readonly Pick<Library, 'id' | 'kind'>[];
 };
 
@@ -48,7 +50,9 @@ type LibraryGroupLike = Pick<LibrariesOfServer, 'connectionId' | 'status'> & {
  * library's kind. While a server's list is loading its rows are not yet known to be
  * books (no `/next` is asked for an episode meanwhile): `pending` says so, so a shelf can
  * hold its place with a skeleton rather than vanish and come back. A server whose list
- * failed is read as books (an older server has no podcast libraries).
+ * failed is read as books (an older server has no podcast libraries), and so is one whose
+ * list waits for the network (`paused`: the device went offline before it answered),
+ * so Home shows what it has instead of skeletons for good (fe#155).
  */
 export function bookRowTest(groups: readonly LibraryGroupLike[]): {
   isBook: (at: BookAt) => boolean;
@@ -56,7 +60,10 @@ export function bookRowTest(groups: readonly LibraryGroupLike[]): {
 } {
   const podcasts = new Map<string, Set<number> | null>();
   for (const g of groups) {
-    podcasts.set(g.connectionId, g.status === 'loading' ? null : podcastLibraryIds(g.libraries));
+    podcasts.set(
+      g.connectionId,
+      g.status === 'loading' && !g.paused ? null : podcastLibraryIds(g.libraries),
+    );
   }
   return {
     isBook: (at) => {
@@ -95,22 +102,27 @@ export type SyncPill = { kind: 'local' } | { kind: 'synced'; at: string } | null
 /**
  * The greeting's sync pill, told as it is (STYLEGUIDE section 1.3): a save still waiting
  * in the offline queue, or the server holding the newest progress not answering, means
- * the place is only on this device; otherwise the newest progress any server holds is
- * when it last synced. Another server being down says nothing about where the place is
- * (its own pill names it). Nothing at all when there is no progress yet.
+ * the place is only on this device; otherwise this device synced when it last read that
+ * server's progress (`fetchedAt`), or when the newest save was made if that is later. The
+ * newest save alone would read "synced 24 minutes ago" on a device that signed in
+ * seconds ago (UPGRADE-05). Another server being down says nothing about where the place
+ * is (its own pill names it). Nothing at all when there is no progress yet.
  */
 export function syncPill(input: {
   online: Record<string, boolean>;
   pending: number;
   /** The newest saved progress: when, and on which connection. */
   newest: { at: string; connectionId: string } | undefined;
+  /** When this device last read the newest progress's server (epoch ms; 0 when unknown). */
+  fetchedAt?: number;
 }): SyncPill {
-  const { newest } = input;
+  const { newest, fetchedAt = 0 } = input;
   if (input.pending > 0) return { kind: 'local' };
   if (!newest) return null;
-  return input.online[newest.connectionId] === false
-    ? { kind: 'local' }
-    : { kind: 'synced', at: newest.at };
+  if (input.online[newest.connectionId] === false) return { kind: 'local' };
+  const saved = Date.parse(newest.at);
+  const at = fetchedAt > 0 && !(saved >= fetchedAt) ? new Date(fetchedAt).toISOString() : newest.at;
+  return { kind: 'synced', at };
 }
 
 // --- Next in your series -----------------------------------------------------------

@@ -33,6 +33,21 @@
       "lastYear": "last year",
       "year_one": "{{count}} year ago",
       "year_other": "{{count}} years ago"
+    },
+    "notInLibrary": {
+      "back": "Back",
+      "book": {
+        "title": "This book isn't in the library",
+        "body": "It may have been moved or removed, or the link is wrong."
+      },
+      "folder": {
+        "title": "This folder isn't in the library",
+        "body": "It may have been moved or removed, or the link is wrong."
+      },
+      "nothing": {
+        "title": "Nothing is playing",
+        "body": "Choose a book to start listening."
+      }
     }
   },
   "settings": {
@@ -187,7 +202,9 @@
         "title": "Remove {{name}}?",
         "confirm": "Remove server",
         "message_one": "This deletes {{count}} downloaded book on this device and any progress that hasn't synced yet.",
-        "message_other": "This deletes {{count}} downloaded books on this device and any progress that hasn't synced yet."
+        "message_other": "This deletes {{count}} downloaded books on this device and any progress that hasn't synced yet.",
+        "signOut": "This signs this device out of {{name}}. Your listening stays on the server: sign in again to get it back here.",
+        "last": "It's the only server on this device, so AudioSilo goes back to its first step."
       }
     },
     "signOut": {
@@ -354,6 +371,9 @@
       "enterAddress": "Enter your server address",
       "missingAddress": "This pairing link is missing its server address. Enter it below.",
       "pairingRefused": "This pairing link has expired or was already used. Ask for a new one, or enter your invite code on the sign-in screen.",
+      "pairingUnusable": "This pairing link can't be used. Ask for a new one, or enter your invite code on the sign-in screen.",
+      "pairingSpent": "This link was used, but signing in didn't finish. Ask for a new link.",
+      "pairingTryAgain": "Try the link again",
       "pairingServerError": "The server couldn't finish pairing. Try again, or enter your invite code on the sign-in screen.",
       "pairingReachError": "Could not reach the server to finish pairing.",
       "pairingReachSelfSigned": "Couldn't reach the server. If it uses its own (self-signed) certificate, update the server, or connect on your home network.",
@@ -377,7 +397,20 @@
       "passwordPlaceholder": "Password",
       "submit": "Sign in",
       "failed": "Sign in failed. Please try again.",
-      "modeLabel": "How to sign in"
+      "modeLabel": "How to sign in",
+      "errors": {
+        "wait_one": "Too many tries from this network. Try again in {{count}} minute.",
+        "wait_other": "Too many tries from this network. Try again in {{count}} minutes.",
+        "badCode": "That invite code didn't work. Check it, or ask your admin for a new invite.",
+        "usedInvite": "This invite can't add another device: it is used up or has expired. Ask your admin for a new invite.",
+        "inviteUsed": "This invite has been used on all the devices it allows. Ask your admin for a new invite.",
+        "inviteExpired": "This invite has expired. Ask your admin for a new invite.",
+        "badPassword": "The username or password is wrong. Check them and try again.",
+        "disabled": "Your account on this server is turned off. Ask your admin to turn it back on.",
+        "enterCode": "Enter the invite code from your admin.",
+        "enterUsername": "Enter your username.",
+        "enterPassword": "Enter your password."
+      }
     },
     "scan": {
       "closeLabel": "Close scanner",
@@ -407,7 +440,8 @@
       "connect": "Connect",
       "invalid": "That isn't an AudioSilo pairing link. Pairing links look like https://<server>/web/connect?token=... or audiosilo://connect?...",
       "otherServer": "This link is for another server, and this page can only connect to its own. Open the link to connect there.",
-      "openLink": "Open the link"
+      "openLink": "Open the link",
+      "appOnly": "This link is for another server, and it opens only in the AudioSilo app. Open it on your phone or tablet."
     },
     "memberNotReady": "This device isn't ready to sign them in yet. Try again in a moment."
   },
@@ -436,6 +470,7 @@
     "ready": {
       "connected": "{{name}} is connected",
       "title": "Your library is ready.",
+      "titleSetup": "Almost there: add a library.",
       "and": "{{rest}} and {{last}}",
       "booksIn_one": "{{books}} book in {{list}}.",
       "booksIn_other": "{{books}} books in {{list}}.",
@@ -451,7 +486,11 @@
       "place": "Your place in {{title}} came with you: {{percent}}% in.",
       "start": "Start listening",
       "browse": "Browse the library",
-      "placeTitled": "Your place in {{title}} came with you: {{chapter}}, {{percent}}% in."
+      "placeTitled": "Your place in {{title}} came with you: {{chapter}}, {{percent}}% in.",
+      "addLibrary": "Add your first library",
+      "openConsole": "Open the admin console",
+      "emptyAdminSetup": "{{name}} has no libraries yet. Add your first one in the admin console: pick the folder that holds your books.",
+      "emptyAdmin": "{{name}} has no books yet. Put some in a library's folder, then scan it from the admin console."
     }
   },
   "home": {
@@ -556,6 +595,10 @@
     "error": {
       "title": "Couldn't load your progress",
       "body": "Nothing is lost: your place is kept on each server. Check the connection and try again."
+    },
+    "offline": {
+      "title": "You're offline",
+      "body": "Your place shows once a server answers. Books you've downloaded are in Downloads."
     },
     "previouslyOn": {
       "label": "Previously on",
@@ -750,7 +793,11 @@
       "loadServerLibrariesError": "Couldn't load libraries from {{name}}.",
       "noLibraries": "No libraries are shared with your account yet.",
       "noLibrariesHint": "Ask the server owner to share one with you.",
-      "viewLabel": "Book list"
+      "offlineTitle": "You're offline",
+      "offlineHint": "Your libraries show once a server answers. Books you've downloaded are in Downloads.",
+      "viewLabel": "Book list",
+      "noLibrariesAdmin": "No libraries yet",
+      "noLibrariesAdminHint": "Add your first library in the admin console of {{name}}: pick the folder that holds your books."
     },
     "favourites": {
       "title": "Favourites",
@@ -1095,7 +1142,9 @@
     "booksFailed": "Your servers didn't answer this search.",
     "booksPartial": "Some servers didn't answer, so their books may be missing.",
     "peopleFailed": "Authors, narrators and series couldn't be searched just now.",
-    "charactersFailed": "Characters couldn't be checked just now."
+    "charactersFailed": "Characters couldn't be checked just now.",
+    "notAnswering_one": "Not searched: {{servers}} isn't answering.",
+    "notAnswering_other": "Not searched: {{servers}} aren't answering."
   },
   "book": {
     "loadError": "Could not load this book.",
@@ -1668,7 +1717,12 @@
     "settingUp": "Setting up your demo…",
     "qrLabel": "QR code to open the demo in the app",
     "scanHint": "Scan with your phone to continue in the AudioSilo app, or keep exploring in this browser.",
-    "browseHere": "Browse the demo here"
+    "browseHere": "Browse the demo here",
+    "off": {
+      "title": "This server has no demo",
+      "body": "Sign in with your invite code or your account instead.",
+      "signIn": "Sign in"
+    }
   },
   "shell": {
     "unknownConnection": {
@@ -2870,7 +2924,7 @@
     },
     "check": {
       "action": "Check for new episodes",
-      "started": "Checking for new episodes",
+      "asked": "Asked the server to check",
       "recently": "Checked less than a minute ago. Try again shortly.",
       "cantNow": "Your server can't check feeds right now. Try again later.",
       "failed": "Couldn't check this show. Try again."
@@ -2898,8 +2952,8 @@
         "body": "The file isn't an EPUB AudioSilo can read, or it is damaged."
       },
       "missing": {
-        "title": "The ebook isn't on the server any more",
-        "body": "The book's EPUB can't be found. If it comes back, it shows again after the next library scan."
+        "title": "This ebook isn't in the library",
+        "body": "The book or its EPUB isn't on the server. It may have been moved or removed, or the link is wrong."
       },
       "fetch": {
         "title": "Couldn't load the ebook",
@@ -2913,6 +2967,14 @@
       "noEbook": {
         "title": "No ebook for this book",
         "body": "Read needs one DRM-free EPUB in the book's folder, on a server that has the reader."
+      },
+      "section": {
+        "title": "Couldn't load the ebook",
+        "body": "A part of the book didn't load. Your place in the book is kept. Try again."
+      },
+      "signedOut": {
+        "title": "Sign in again to read",
+        "body": "Your sign-in to this server ended. Your place in the book is kept on this device."
       }
     },
     "offer": {
@@ -2920,6 +2982,10 @@
       "unknown": "On another device you were at {{percent}}%. Jump there?",
       "jump": "Jump",
       "stay": "Stay"
+    },
+    "notSaved": {
+      "body": "Your place wasn't saved to the server. It's kept on this device.",
+      "dismiss": "OK"
     }
   }
 }

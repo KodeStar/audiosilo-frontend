@@ -194,7 +194,10 @@ function withoutRefresh(markup, type) {
 }
 
 /** A section's first load can take seconds (a whole novel in one spine item): the host
- * shows a spinner from the load until the reader lands somewhere. */
+ * shows a spinner from the load until the reader lands somewhere. One that fails once the
+ * book shows (its bytes unreadable, the browser offline mid-read) is said as `section`, so
+ * the host offers Try again instead of a page that never comes; while the book opens,
+ * `openBook` says it. */
 function watchSections(book) {
   for (const section of book.sections) {
     const load = section.load;
@@ -205,6 +208,7 @@ function watchSections(book) {
         return await load(...args);
       } catch (err) {
         setBusy(false);
+        if (opened) report('section', err);
         throw err;
       }
     };

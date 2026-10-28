@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
@@ -27,6 +28,9 @@ export default function DemoScreen() {
   const setSession = useSession((s) => s.setSession);
   const [pairing, setPairing] = useState<PairingPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The server answered that it runs no demo (404): no Try again, a way to sign in instead
+  // (CONNECT-11).
+  const [noDemo, setNoDemo] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -59,6 +63,10 @@ export default function DemoScreen() {
         });
       } catch (e) {
         if (cancelled) return;
+        if (e instanceof ApiError && e.status === 404) {
+          setNoDemo(true);
+          return;
+        }
         setError(
           e instanceof ApiError
             ? t('demo.startError', { message: e.message })
@@ -96,12 +104,28 @@ export default function DemoScreen() {
           <Text variant="display" className="text-brand">
             {t('demo.title')}
           </Text>
-          <Text variant="muted" className="text-center">
-            {t('demo.intro')}
-          </Text>
+          {noDemo ? null : (
+            <Text variant="muted" className="text-center">
+              {t('demo.intro')}
+            </Text>
+          )}
         </View>
 
-        {error ? (
+        {noDemo ? (
+          <View testID="demo-off" className="max-w-sm items-center gap-4">
+            <Text variant="heading" className="text-center" accessibilityRole="header">
+              {t('demo.off.title')}
+            </Text>
+            <Text variant="muted" className="text-center">
+              {t('demo.off.body')}
+            </Text>
+            <Button
+              size="lg"
+              title={t('demo.off.signIn')}
+              onPress={() => router.replace('/connect')}
+            />
+          </View>
+        ) : error ? (
           <View className="items-center gap-4">
             <Text className="text-center text-sm text-destructive">{error}</Text>
             <Button size="lg" title={t('demo.tryAgain')} onPress={() => setAttempt((n) => n + 1)} />

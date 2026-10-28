@@ -28,10 +28,12 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { useDeviceOnline } from '@/lib/device-online';
 import type { MergedBook } from '@/lib/dedup';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
+import { useMinuteClock } from '@/lib/use-now';
 import type { PlayerModule } from '@/modules/registry';
 import { flushQueue } from '@/playback/progress-sync';
 import { flushReadingQueue } from '@/reader/reading-progress';
@@ -55,7 +57,7 @@ import {
 import { HomeSection } from './home-section';
 import { ModuleRails } from './module-rails';
 import { NewEpisodesRail } from './new-episodes-rail';
-import { NowEmpty, NowError } from './home-states';
+import { NowEmpty, NowError, NowOffline } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
 import { PreviouslyOnCard } from './previously-on';
@@ -92,7 +94,8 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const profile = useActiveProfile();
   const defaultCid = useSession((s) => s.defaultConnectionId);
   const user = useSession((s) => s.user);
-  const { progress, isLoading, error } = useAllProgressAll();
+  const { progress, isLoading, offline: progressOffline, error } = useAllProgressAll();
+  const deviceOnline = useDeviceOnline();
   const recent = useRecentAll();
   const { favourites } = useFavouritesAll();
   const np = usePlayer((s) => s.nowPlaying);
@@ -194,6 +197,12 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     <NowCardSkeleton />
   ) : progressRefused ? (
     <SignInAgainState connection={signedOut} className={beside ? 'flex-1' : undefined} />
+  ) : progressOffline || (!deviceOnline && error) ? (
+    // Offline with a server's progress not read yet (paused, or failed when the network
+    // went): its rows may hold the Now book, so not "pick something" (another server's
+    // finished rows say nothing about it), nor a Retry that cannot work until the network
+    // is back.
+    <NowOffline fill={beside} />
   ) : error ? (
     <NowError onRetry={retryProgress} fill={beside} />
   ) : (
@@ -321,23 +330,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
                 data={recentBooks}
                 keyExtractor={bookKey}
                 accessibilityLabel={t('home.recentlyAdded')}
-                renderItem={(b, width) => {
-                  const added = formatRelative(b.added_at);
-                  return (
-                    <CoverTile
-                      connectionId={b.connectionId}
-                      libraryId={b.library_id}
-                      path={b.rel_path}
-                      title={bookTitle(b.title, b.rel_path)}
-                      book={b}
-                      author={b.author}
-                      caption={added ? t('home.added', { when: added }) : b.author}
-                      coverVersion={b.cover_version}
-                      server={serverLabel(b.connectionId)}
-                      width={width}
-                    />
-                  );
-                }}
+                renderItem={(b, width) => (
+                  <AddedTile book={b} server={serverLabel(b.connectionId)} width={width} />
+                )}
               />
             ) : recent.isLoading ? (
               <ShelfSkeleton />
@@ -406,5 +401,36 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
         ) : null}
       </ScrollView>
     </View>
+  );
+}
+
+/** A Recently added tile: "Added 5 minutes ago", said in the current language and minute
+ * (the shelf's cells are memoized, so the words would otherwise keep their first render's,
+ * fe#162). */
+function AddedTile({
+  book: b,
+  server,
+  width,
+}: {
+  book: MergedBook;
+  server?: string;
+  width: number;
+}) {
+  const { t, i18n } = useTranslation();
+  const now = useMinuteClock();
+  const added = formatRelative(b.added_at, i18n.language || 'en', now);
+  return (
+    <CoverTile
+      connectionId={b.connectionId}
+      libraryId={b.library_id}
+      path={b.rel_path}
+      title={bookTitle(b.title, b.rel_path)}
+      book={b}
+      author={b.author}
+      caption={added ? t('home.added', { when: added }) : b.author}
+      coverVersion={b.cover_version}
+      server={server}
+      width={width}
+    />
   );
 }

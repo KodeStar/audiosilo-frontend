@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
@@ -25,6 +26,7 @@ import {
   bookFileSpecs,
   buildBookQueue,
   chapterAt,
+  FINISHED_TOLERANCE,
   locate,
   toBookPosition,
   type BookQueue,
@@ -184,9 +186,8 @@ const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a 
 // by about the elapsed time still continues it). Changing the cadence means revisiting
 // those windows (CROSS-REPO.md section 20).
 const SAVE_INTERVAL_MS = 15_000;
-/** Treat within 5 s of the end as finished (also where the credits' Play now finishes the
- * playing book rather than leaving it unfinished). */
-export const FINISHED_TOLERANCE = 5;
+/** Treat within 5 s of the end as finished (defined beside the timeline maths). */
+export { FINISHED_TOLERANCE };
 const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect
 
 /** Lower the resume floor after a deliberate user seek/jump, so a legitimate backward
@@ -585,8 +586,9 @@ function beginHistory() {
 }
 
 /** Record the listening span (from→to over the elapsed time) when playback
- * stops, ignoring brief spans. */
-function endHistory() {
+ * stops, ignoring brief spans. `keepalive`: the page is going (web), so the request must
+ * outlive it. */
+function endHistory({ keepalive = false }: { keepalive?: boolean } = {}) {
   const start = historyStart;
   historyStart = null;
   if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
@@ -597,17 +599,63 @@ function endHistory() {
   // (reachability is per-connection, so key it on the playing book's own server).
   if (!isReachable(np.connectionId)) return;
   void apiRef
-    .addHistory(np.libraryId, np.path, {
-      from_pos: start.position,
-      to_pos: selectBookPosition(player),
-      started_at: new Date(start.at).toISOString(),
-      ended_at: new Date().toISOString(),
+    .addHistory(
+      np.libraryId,
+      np.path,
+      {
+        from_pos: start.position,
+        to_pos: selectBookPosition(player),
+        started_at: new Date(start.at).toISOString(),
+        ended_at: new Date().toISOString(),
+      },
+      { keepalive },
+    )
+    .then(() => {
+      // Not for a span posted as the page hides or goes: nothing on screen shows it, and
+      // coming back reads every query again (`refreshAfterResume`), so a hidden tab that
+      // splits its span at each switch doesn't refetch the history each time.
+      if (!keepalive)
+        void queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) });
     })
-    .then(() => queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) }))
     .catch((err) => {
       noteFailure(np.connectionId, err); // a check, not a down mark, for one lost span
       console.warn('[history] failed to save listening span', err);
     });
+}
+
+/**
+ * Web: the listening span when the page goes or hides, sent with a keepalive request that
+ * outlives the page (PLAYER-03: closing a playing tab lost the span, which was only written
+ * on pause or stop). `pagehide` (closed, reloaded, navigated off) ends it; `hidden` (a
+ * phone's browser may close a tab with no `pagehide`) splits it, once it is long enough to
+ * keep, playing on into a new span, so a background tab is still recorded. One post per
+ * span: ending it clears it first.
+ */
+export function flushHistoryOnHide(final: boolean): void {
+  if (!historyStart) return;
+  if (!final && Date.now() - historyStart.at < MIN_HISTORY_MS) return;
+  endHistory({ keepalive: true });
+  if (!final && isPlayingState(usePlayer.getState().snapshot.state)) beginHistory();
+}
+
+/** Listens for the page going (`flushHistoryOnHide`) on `win`/`doc`; returns the stop. */
+export function watchPageHide(
+  win: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  doc: Pick<Document, 'addEventListener' | 'removeEventListener' | 'visibilityState'>,
+): () => void {
+  const onPageHide = () => flushHistoryOnHide(true);
+  const onVisibility = () => {
+    if (doc.visibilityState === 'hidden') flushHistoryOnHide(false);
+  };
+  win.addEventListener('pagehide', onPageHide);
+  doc.addEventListener('visibilitychange', onVisibility);
+  return () => {
+    win.removeEventListener('pagehide', onPageHide);
+    doc.removeEventListener('visibilitychange', onVisibility);
+  };
+}
+if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+  watchPageHide(window, document);
 }
 
 /**

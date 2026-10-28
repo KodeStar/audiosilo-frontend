@@ -1,5 +1,5 @@
 import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { type ReactElement, type ReactNode, type Ref, useState } from 'react';
 import { Platform, type ScrollView, type ScrollViewProps } from 'react-native';
 
@@ -33,6 +33,8 @@ jest.mock('expo-router', () => ({
 
 let mockBook: Book | undefined;
 let mockBookLoading = false;
+let mockBookError: unknown = null;
+const mockBookArgs = jest.fn();
 let mockChapters: ChaptersResponse | undefined;
 let mockProgress: Progress | null = null;
 let mockMeta: BookMeta | undefined;
@@ -45,6 +47,7 @@ const mockFavouriteCid = jest.fn();
 let mockScope = 'home';
 const mockRefetch = jest.fn();
 let mockPodcastLibrary = false;
+let mockLibraries: { id: number; name: string }[] | undefined = [{ id: 1, name: 'Fiction' }];
 jest.mock('@/components/podcasts/episode-page', () => ({
   EpisodePage: ({ path }: { path: string }) => {
     const { Text } = jest.requireActual('react-native');
@@ -54,9 +57,17 @@ jest.mock('@/components/podcasts/episode-page', () => ({
 jest.mock('@/api/hooks', () => ({
   ...jest.requireActual('@/api/hooks'),
   useIsPodcastLibrary: () => mockPodcastLibrary,
-  useBook: () => ({ data: mockBook, isLoading: mockBookLoading, refetch: mockRefetch }),
+  useBook: (...args: unknown[]) => {
+    mockBookArgs(...args);
+    return {
+      data: mockBook,
+      isLoading: mockBookLoading,
+      error: mockBookError,
+      refetch: mockRefetch,
+    };
+  },
   useChapters: () => ({ data: mockChapters, isLoading: false }),
-  useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
+  useLibraries: () => ({ data: mockLibraries }),
   useCapability: (flag: string) => mockCaps[flag] ?? false,
   useServerInfo: () => ({ data: { capabilities: mockCaps, bridge: mockBridge }, isError: false }),
   useBridgeJobs: (
@@ -161,9 +172,11 @@ jest.mock('@/downloads/store', () => ({
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 
 /* eslint-disable import/first */
+import { ApiError } from '@/api/client';
 import { qk } from '@/api/hooks';
 import { ADMIN, bridgeJob } from '@/testing/bridge-fixtures';
 import { playerStoreMock } from '@/testing/player-store-mock';
+import { useLibraryNames } from '@/stores/library-names';
 import { useSession } from '@/stores/session';
 
 import { BookScreen } from './book-page';
@@ -253,7 +266,11 @@ beforeEach(() => {
   mockParams = { libraryId: '1', path: ['Author', 'Book'] };
   mockBook = BOOK;
   mockPodcastLibrary = false;
+  mockLibraries = [{ id: 1, name: 'Fiction' }];
+  useLibraryNames.setState({ names: {} });
   mockBookLoading = false;
+  mockBookError = null;
+  mockBookArgs.mockClear();
   mockChapters = CHAPTERS;
   mockProgress = null;
   mockMeta = undefined;
@@ -341,6 +358,30 @@ describe('book page, signed out', () => {
     await mountAt('desktop');
     expect(screen.getByText('Could not load this book.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+});
+
+// CONNECT-13: a book the server answers 404, 403 or 400 for isn't in the library; Retry
+// can't help. frontend#129: a link that can't name a book asks nothing.
+describe('a book that is not in the library', () => {
+  it.each([404, 403, 400])('shows not-in-library with Back and Home for a %i', async (status) => {
+    mockBook = undefined;
+    mockBookError = new ApiError(status, 'nope');
+    await mountAt('desktop');
+    expect(screen.getByText("This book isn't in the library")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Go to Home' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it.each([
+    ['a library id that is not a number', { libraryId: 'abc', path: 'Author/Book' }],
+    ['no path', { libraryId: '1' }],
+  ])('asks nothing for %s', async (_name, params) => {
+    mockParams = params;
+    await mountAt('desktop');
+    expect(screen.getByText("This book isn't in the library")).toBeTruthy();
+    expect(mockBookArgs).not.toHaveBeenCalled();
   });
 });
 
@@ -560,6 +601,43 @@ describe('book page hero', () => {
     await mountAt('desktop');
     expect(screen.queryByRole('link', { name: 'Books read by Michael Kramer' })).toBeNull();
     expect(screen.getByText('Michael Kramer')).toBeTruthy();
+  });
+});
+
+// PLAYER-08/09: the crumbs end in the book's title, and offline name the library as the
+// server last listed it.
+describe('book page crumbs', () => {
+  const crumbText = () =>
+    within(screen.getByTestId('book-crumbs'))
+      .getAllByText(/./)
+      .map((n) => n.props.children as string);
+
+  it("end in the book's title, not its folder name", async () => {
+    await mountAt('phone', 390);
+    expect(crumbText()).toEqual(['Fiction', 'Author', 'The Way of Kings']);
+    const last = within(screen.getByTestId('book-crumbs')).getByText('The Way of Kings');
+    expect(last.props.numberOfLines).toBe(1);
+  });
+
+  it('name the library as the server last listed it while the list cannot be read', async () => {
+    mockLibraries = undefined;
+    useLibraryNames.setState({ names: { home: { '1': 'Books' } } });
+    await mountAt('desktop');
+    expect(crumbText()[0]).toBe('Books');
+    expect(screen.queryByText('Library')).toBeNull();
+  });
+
+  it('fall back to "Library" for a library never listed on this device', async () => {
+    mockLibraries = undefined;
+    useLibraryNames.setState({ names: { other: { '1': 'Books' } } });
+    await mountAt('desktop');
+    expect(crumbText()[0]).toBe('Library');
+  });
+
+  it('prefer the live name over the kept one', async () => {
+    useLibraryNames.setState({ names: { home: { '1': 'Old name' } } });
+    await mountAt('desktop');
+    expect(crumbText()[0]).toBe('Fiction');
   });
 });
 

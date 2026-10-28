@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -16,11 +16,13 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
+import { useMinuteClock } from '@/lib/use-now';
 
 import { CoverGrid, CoverGridSkeleton } from '../cover-grid';
 import { CoverTile, useServerFlag } from '../cover-tile';
-import { tileCaption } from './book-items';
+import { BookTile } from './book-items';
 
 // How many recently added books to load per server (the Home shelf shows 15).
 const PAGE_LIMIT = 200;
@@ -34,7 +36,7 @@ type SeeAllType = 'recent' | 'finished';
  */
 export function SeeAllScreen() {
   const { t } = useTranslation();
-  const params = useLocalSearchParams<{ type?: string }>();
+  const params = useRouteParams<{ type?: string }>();
   const type: SeeAllType = params.type === 'finished' ? 'finished' : 'recent';
   usePageTitle(
     t(type === 'recent' ? 'library.list.recentlyAdded' : 'library.list.recentlyFinished'),
@@ -99,15 +101,11 @@ export function SeeAllScreen() {
       data={recent.books}
       keyExtractor={(b: MergedBook) => contentKey(b.connectionId, b.library_id, b.rel_path)}
       renderItem={(b, tile) => (
-        <CoverTile
+        <BookTile
           connectionId={b.connectionId}
           libraryId={b.library_id}
-          path={b.rel_path}
-          title={bookTitle(b.title, b.rel_path)}
           book={b}
-          author={b.author}
-          caption={tileCaption(b, 'recent')}
-          coverVersion={b.cover_version}
+          sort="recent"
           server={serverOf(b.connectionId)}
           width={tile}
         />
@@ -138,7 +136,9 @@ function FinishedTile({
   server?: string;
   width: number;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Said in the current language and minute, as a book tile's "added" words (fe#162).
+  const now = useMinuteClock();
   const book = useProgressBook({
     connectionId: p.connectionId,
     libraryId: p.library_id,
@@ -154,7 +154,7 @@ function FinishedTile({
       author={book?.author}
       coverVersion={book?.cover_version}
       caption={t('library.books.finishedWhen', {
-        when: formatRelative(p.finished_at ?? p.updated_at),
+        when: formatRelative(p.finished_at ?? p.updated_at, i18n.language || 'en', now),
       })}
       finished
       server={server}

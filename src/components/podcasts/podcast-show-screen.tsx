@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
@@ -20,6 +20,7 @@ import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useLayout } from '@/lib/layout';
 import { parsePodcastParams } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 
 import { CheckEpisodesButton } from './check-episodes-button';
@@ -46,7 +47,7 @@ const BAD_LINK = new Set([403, 404, 409]);
 
 function ShowContent() {
   const { t } = useTranslation();
-  const params = parsePodcastParams(useLocalSearchParams());
+  const params = parsePodcastParams(useRouteParams());
   const cid = useScopedCid();
   const shows = usePodcastShows(params?.libraryId ?? 0, cid, { enabled: !!params });
   const show = params ? shows.data?.find((s) => s.path === params.show) : undefined;

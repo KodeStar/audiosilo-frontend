@@ -13,6 +13,7 @@ import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
 import type { BookRef } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
+import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
@@ -51,12 +52,25 @@ export const downloadKey = contentKey;
 type Registry = Record<string, DownloadEntry>;
 
 // Module-level orchestration (mirrors src/playback/store.ts): one book downloads at a
-// time; further requests wait in `queue`. The client is resolved per entry at run time
-// (see runOne), so queued downloads from different servers each use their own server's
-// client - the old single module-level apiRef raced two-server downloads.
+// time; further requests wait in `queue` (the running one is taken off it first). The
+// client is resolved per entry at run time (see runOne), so queued downloads from
+// different servers each use their own server's client - the old single module-level
+// apiRef raced two-server downloads.
 let running = false;
 const queue: string[] = [];
+// The running download's controller, by book. Whoever stops a run (`stopRun`) also takes
+// it out, so the run can tell it is no longer the book's live one: a cancel then Download
+// again queues a new entry under the same key, which the old run must never touch.
 const controllers = new Map<string, AbortController>();
+
+/** Stop a book's waiting or running download: off the queue, its transfer aborted, and
+ * its run no longer the live one (see `controllers`). */
+function stopRun(key: string) {
+  const idx = queue.indexOf(key);
+  if (idx >= 0) queue.splice(idx, 1);
+  controllers.get(key)?.abort();
+  controllers.delete(key);
+}
 
 // Books whose download was cancelled or removed in this session (by the listener, or by
 // "remove a download when you finish the book"). Automatic downloads skip them, so a
@@ -171,9 +185,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   cancel: (connectionId, libraryId, path) => {
     const key = downloadKey(connectionId, libraryId, path);
     declined.add(key);
-    const idx = queue.indexOf(key);
-    if (idx >= 0) queue.splice(idx, 1);
-    controllers.get(key)?.abort();
+    stopRun(key);
     void engine.removeBook(connectionId, libraryId, path);
     removeEntry(key);
   },
@@ -183,9 +195,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     if (hydrating) await hydrating;
     const key = downloadKey(connectionId, libraryId, path);
     declined.add(key);
-    const idx = queue.indexOf(key);
-    if (idx >= 0) queue.splice(idx, 1);
-    controllers.get(key)?.abort();
+    stopRun(key);
     await engine.removeBook(connectionId, libraryId, path);
     removeEntry(key);
     releaseOfflineBook(connectionId, libraryId, path);
@@ -352,9 +362,9 @@ function enqueue(
   useDownloads.setState({ entries: { ...entries, [key]: entry } });
   void persist();
   if (!queue.includes(key)) {
-    // The book you start goes next, ahead of keep-ahead's books still waiting (queue[0]
-    // is the download running now).
-    if (origin === 'auto' && running) queue.splice(1, 0, key);
+    // The book you start goes next, ahead of keep-ahead's books still waiting (the
+    // download running now is off the queue).
+    if (origin === 'auto' && running) queue.unshift(key);
     else queue.push(key);
   }
   void runQueue();
@@ -806,12 +816,12 @@ async function runQueue() {
   if (running) return;
   running = true;
   try {
-    while (queue.length > 0) {
-      const key = queue[0];
+    // Taken off before it runs: the same book queued again while it runs (a cancel, then
+    // Download) waits its own turn instead of being taken off with it.
+    let key: string | undefined;
+    while ((key = queue.shift()) !== undefined) {
       const entry = useDownloads.getState().entries[key];
       if (entry && entry.status !== 'downloaded') await runOne(key);
-      // re-check: cancel() may have shifted it already
-      if (queue[0] === key) queue.shift();
     }
   } finally {
     running = false;
@@ -836,7 +846,16 @@ async function runOne(key: string) {
   const { connectionId, libraryId, path } = entry;
   const ctrl = new AbortController();
   controllers.set(key, ctrl);
-  patchEntry(key, { status: 'downloading', progress: 0, bytes: 0 });
+  // Still the book's live run (see `controllers`).
+  const live = () => controllers.get(key) === ctrl;
+  const patch = (p: Partial<DownloadEntry>) => {
+    if (live()) patchEntry(key, p);
+  };
+  // A stopped run's files go: whoever stopped it deleted the book, but a write can land after
+  // that delete (a transfer finishing, the EPUB's copy, which no signal stops). Awaited, so
+  // a new download of the book (it runs after this one) starts clean.
+  const dropFiles = () => engine.removeBook(connectionId, libraryId, path).catch(() => {});
+  patch({ status: 'downloading', progress: 0, bytes: 0 });
   void persist();
 
   // The files that finished, so a failure can keep them, and how many there are.
@@ -845,13 +864,22 @@ async function runOne(key: string) {
   try {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
     fileCount = specs.length;
+    // The ebook (Bridge Phase 3b-2) is one more step after the audio, and its size counts in
+    // the total: 100% is the whole download, and the bytes kept include it.
+    const ebook = entry.manifest.book.ebook;
+    const steps = specs.length + (ebook ? 1 : 0);
     const knownTotal = specs.every((s) => s.size > 0)
-      ? specs.reduce((sum, s) => sum + s.size, 0)
+      ? specs.reduce((sum, s) => sum + s.size, 0) + (ebook?.size ?? 0)
       : 0;
 
     // The book's extras beside its audio: optional (a failure never fails the audio
     // download, the book carries on without it), but a cancel during one cancels the book.
-    const extra = async (name: string, url: string, headers?: Record<string, string>) => {
+    const extra = async (
+      name: string,
+      url: string,
+      headers?: Record<string, string>,
+      onProgress?: (bytesWritten: number, totalBytes: number) => void,
+    ) => {
       try {
         return await engine.downloadFile(
           connectionId,
@@ -859,7 +887,7 @@ async function runOne(key: string) {
           path,
           name,
           url,
-          undefined,
+          onProgress,
           ctrl.signal,
           headers,
         );
@@ -872,6 +900,13 @@ async function runOne(key: string) {
 
     let priorBytes = 0;
     let lastTick = 0;
+    /** A progress tick, at most every PROGRESS_EVERY_MS: `step` steps done (fractional). */
+    const tick = (step: number, bytes: number) => {
+      const now = Date.now();
+      if (now - lastTick < PROGRESS_EVERY_MS) return;
+      lastTick = now;
+      patch({ bytes, totalBytes: knownTotal, progress: step / steps });
+    };
     // Files a failed attempt already finished, by position (the on-disk name is the
     // index, so a file only counts where it was saved).
     const earlier = entry.manifest.files;
@@ -881,11 +916,7 @@ async function runOne(key: string) {
       if (done?.relPath === s.path && (await engine.fileExists(done.localUri))) {
         files.push(done);
         priorBytes += done.bytes ?? s.size;
-        patchEntry(key, {
-          bytes: priorBytes,
-          totalBytes: knownTotal,
-          progress: (i + 1) / specs.length,
-        });
+        patch({ bytes: priorBytes, totalBytes: knownTotal, progress: (i + 1) / steps });
         continue;
       }
       let curBytes = 0;
@@ -897,15 +928,7 @@ async function runOne(key: string) {
         api.streamUrl(libraryId, s.path, true),
         (bytesWritten, totalBytes) => {
           curBytes = bytesWritten;
-          const now = Date.now();
-          if (now - lastTick < PROGRESS_EVERY_MS) return;
-          lastTick = now;
-          const curFrac = totalBytes > 0 ? bytesWritten / totalBytes : 0;
-          patchEntry(key, {
-            bytes: priorBytes + bytesWritten,
-            totalBytes: knownTotal,
-            progress: (i + curFrac) / specs.length,
-          });
+          tick(i + (totalBytes > 0 ? bytesWritten / totalBytes : 0), priorBytes + bytesWritten);
         },
         ctrl.signal,
       );
@@ -915,25 +938,51 @@ async function runOne(key: string) {
       // middle of keeps them across the restart (`reviveEntry`). Files a failed attempt
       // finished further on stay listed in their places (the name on disk is the index).
       const cur = useDownloads.getState().entries[key];
-      if (cur) {
+      if (cur && live()) {
         patchEntry(key, {
           bytes: priorBytes,
           totalBytes: knownTotal,
-          progress: (i + 1) / specs.length,
+          progress: (i + 1) / steps,
           manifest: { ...cur.manifest, files: [...files, ...earlier.slice(files.length)] },
         });
         persistSoon();
       }
     }
 
-    // The book's ebook (Bridge Phase 3b-2), so the reader opens it offline. After the audio:
-    // an attempt that fails on the audio never fetches it, so a retry fetches it once. Its
-    // route takes the Authorization header only, never `?token=`.
+    // The book's ebook, so the reader opens it offline. After the audio: an attempt that
+    // fails on the audio never fetches it, so a retry fetches it once. The app reader's
+    // cached copy for this size is taken as it is (the reader already fetched the book);
+    // else it is fetched, its route taking the Authorization header only, never `?token=`.
     let ebookUri: string | undefined;
-    if (entry.manifest.book.ebook) {
-      const { url, headers } = api.ebookRequest(libraryId, path);
-      ebookUri = await extra(EBOOK_FILE, url, headers);
+    let ebookBytes = 0;
+    if (ebook) {
+      const cached = await cachedEbookUri({
+        connectionId,
+        libraryId,
+        path,
+        size: ebook.size,
+      }).catch(() => null);
+      if (cached && engine.copyFile) {
+        ebookUri = await engine
+          .copyFile(connectionId, libraryId, path, EBOOK_FILE, cached)
+          .catch(() => undefined);
+      }
+      if (!ebookUri) {
+        const { url, headers } = api.ebookRequest(libraryId, path);
+        ebookUri = await extra(EBOOK_FILE, url, headers, (bytesWritten, totalBytes) => {
+          ebookBytes = bytesWritten;
+          tick(
+            specs.length + (totalBytes > 0 ? bytesWritten / totalBytes : 0),
+            priorBytes + bytesWritten,
+          );
+        });
+      }
+      // A copied EPUB, or an engine that reported no progress: the server's size stands in.
+      ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
+    const bytes = priorBytes + ebookBytes;
+    // A book that carries on without its ebook (its fetch failed) holds only its audio.
+    const totalBytes = ebook && !ebookUri && knownTotal > 0 ? knownTotal - ebook.size : knownTotal;
 
     // With the server's chapters answer when one landed while the files did.
     const manifest = withCachedChapters(entry, {
@@ -944,23 +993,27 @@ async function runOne(key: string) {
       savedAt: new Date().toISOString(),
     });
 
+    // Stopped while its last file (or the EPUB's copy) landed.
+    if (!live()) return void (await dropFiles());
+
     // Don't claim "downloaded" unless the file can really be played back offline.
     // On web the bytes are cached but only playable once the service worker controls
     // the page; mark an error (keeping the bytes for a retry) so the badge can't lie.
     if (engine.verify && files.length > 0 && !(await engine.verify(files[0].localUri))) {
-      patchEntry(key, {
+      patch({
         status: 'error',
         error: 'Saved, but offline playback isn’t ready yet - reload the app, then retry.',
         failure: { kind: 'unservable' },
         progress: 1,
-        bytes: priorBytes,
+        bytes,
         manifest,
       });
       void persist();
       return;
     }
+    if (!live()) return void (await dropFiles());
 
-    patchEntry(key, { status: 'downloaded', progress: 1, bytes: priorBytes, manifest });
+    patchEntry(key, { status: 'downloaded', progress: 1, bytes, totalBytes, manifest });
     void persist();
     seedQueryCache(connectionId, libraryId, path, manifest);
     // Keep its community metadata for offline use, after the download and apart from it:
@@ -971,9 +1024,10 @@ async function runOne(key: string) {
     // connection), whatever the error says: Android reports a dropped connection as
     // "Software caused connection abort", which is a failure like any other.
     if (ctrl.signal.aborted) {
-      void engine.removeBook(connectionId, libraryId, path);
-      removeEntry(key); // cancelled - drop the partial entry
-    } else {
+      // Whoever stopped it dropped the entry, and the book may be queued again already: only
+      // the files go.
+      await dropFiles();
+    } else if (live()) {
       // Keep the files that finished: a retry skips them, so a failure 41% through a
       // multi-file book doesn't throw that 41% away. (The one being written is partial,
       // and is written over by the retry.)
@@ -989,7 +1043,7 @@ async function runOne(key: string) {
       void persist();
     }
   } finally {
-    controllers.delete(key);
+    if (live()) controllers.delete(key);
   }
 }
 
@@ -1002,9 +1056,7 @@ onConnectionRemoved(async (id) => {
   if (doomed.length === 0) return;
   const next = { ...entries };
   for (const [key] of doomed) {
-    const idx = queue.indexOf(key);
-    if (idx >= 0) queue.splice(idx, 1);
-    controllers.get(key)?.abort();
+    stopRun(key);
     delete next[key];
   }
   useDownloads.setState({ entries: next });

@@ -124,6 +124,14 @@ export function isSignedOutError(e: unknown): boolean {
   return e instanceof ApiError && e.status === 401;
 }
 
+/** Whether `e` is the server saying the content isn't there for this caller: a 404 (no
+ * such book or folder), a 403 (a library not shared with them) or a 400 (a path the
+ * server refuses, such as one leaving the library). Asking again can't change it, so it
+ * is never retried and a page shows `NotInLibraryState`, never a Retry (CONNECT-13). */
+export function isNotInLibraryError(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 404 || e.status === 403 || e.status === 400);
+}
+
 /** The refusal codes (`ApiError.code`) the app tells apart: the household members routes'
  * (Phase 8b-1; `member_disabled` is a 409 for a member the admin disabled, on their
  * session and their pairing), and `kid_account` on pairing too. One list, so the type and
@@ -185,6 +193,10 @@ const API_ERROR_CODES = [
   'invalid_opml',
   'unsupported_opml_type',
   'opml_export_limit',
+  // An invite code's redeem (server v2.5.0): a real invite used on all the devices it
+  // allows, or past its expiry (401; older servers send the 401 without them).
+  'invite_used',
+  'invite_expired',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -369,7 +381,8 @@ export type BookListQuery = {
   memberships?: boolean;
 };
 
-/** The timeout of a request that waits on the community metadata service. The server
+/** The timeout of a request that waits on the community metadata service (or indexes a
+ * book on demand: `item`, `chapters`). The server
  * can spend its whole metadata budget (15 s, meta's composeTimeout) before it answers
  * from local data or does more upstream work, so this is the server's own request
  * budget instead (30 s, api requestTimeout), by which it always answers (a 503 at
@@ -523,7 +536,13 @@ export class ApiClient {
   private request<T>(
     method: string,
     path: string,
-    opts: { query?: Query; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {},
+    opts: {
+      query?: Query;
+      body?: unknown;
+      signal?: AbortSignal;
+      timeoutMs?: number;
+      keepalive?: boolean;
+    } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { ...this.clientHeaders, ...this.authHeaders() };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
@@ -536,7 +555,14 @@ export class ApiClient {
     method: string,
     url: string,
     headers: Record<string, string>,
-    opts: { body?: unknown; raw?: BodyInit; signal?: AbortSignal; timeoutMs?: number },
+    opts: {
+      body?: unknown;
+      raw?: BodyInit;
+      signal?: AbortSignal;
+      timeoutMs?: number;
+      /** The request outlives the page (web: a tab closing). */
+      keepalive?: boolean;
+    },
     read: (res: Response, touch: () => void) => Promise<T>,
   ): Promise<T> {
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
@@ -572,6 +598,7 @@ export class ApiClient {
         // A raw body (an OPML upload) goes as it is; anything else is JSON.
         body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
         signal: controller.signal,
+        ...(opts.keepalive ? { keepalive: true } : {}),
       });
       this.onAnswer?.();
       return await read(res, touch);
@@ -830,13 +857,23 @@ export class ApiClient {
       timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
+  /** A book's item. It gets the server's own request budget (30 s): an unscanned book
+   * folder (`pending_book`) is indexed on demand by this read, which for a large book
+   * takes longer than the default timeout (fe#154); an indexed book answers at once. */
   item(libraryId: number, path: string, signal?: AbortSignal) {
-    return this.request<Book>('GET', `/libraries/${libraryId}/item`, { query: { path }, signal });
+    return this.request<Book>('GET', `/libraries/${libraryId}/item`, {
+      query: { path },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
+    });
   }
+  /** A book's chapters, with the same budget as `item`: the server indexes an unscanned
+   * book folder for this read too, and the player reads the two together (fe#154). */
   chapters(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<ChaptersResponse>('GET', `/libraries/${libraryId}/chapters`, {
       query: { path },
       signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
   /** Enriched metadata for a book (description, series rail, meta links) resolved
@@ -1685,14 +1722,18 @@ export class ApiClient {
   allHistory(page: PageQuery = {}, signal?: AbortSignal) {
     return this.page<HistoryEntry, 'history'>('/me/history', 'history', page, signal);
   }
+  /** Record a listening span. `keepalive`: sent as the page goes (web, a tab closing),
+   * the request outliving it. */
   addHistory(
     libraryId: number,
     path: string,
     span: { from_pos: number; to_pos: number; started_at: string; ended_at: string },
+    { keepalive = false }: { keepalive?: boolean } = {},
   ) {
     return this.request<void>('POST', `/libraries/${libraryId}/history`, {
       query: { path },
       body: span,
+      keepalive,
     });
   }
 }

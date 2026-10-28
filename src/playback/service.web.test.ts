@@ -1,5 +1,6 @@
 import {
   createPlaybackService,
+  freshUrl,
   isSwapReady,
   hasAirPlayPicker,
   sourceFor,
@@ -633,6 +634,41 @@ describe('WebPlaybackService placing a load at its position', () => {
     expect(svc.getSnapshot().position).toBe(31);
   });
 
+  it('a seek before the metadata holds: the load places the element there (fe#155)', async () => {
+    await svc.load(directTracks, 0, 30);
+    const a = el();
+    await svc.seekTo(250);
+    a.currentTime = 0; // the load algorithm resets it meanwhile
+    a.emit('loadedmetadata');
+    expect(a.currentTime).toBe(250);
+    a.currentTime = 251;
+    a.emit('timeupdate');
+    expect(svc.getSnapshot().position).toBe(251);
+    // The next load starts with no seek of its own.
+    await svc.skipToTrack(1, 40);
+    a.emit('loadedmetadata');
+    expect(a.currentTime).toBe(40);
+  });
+
+  it('asks again for a source that failed, with a fresh url, until one loads (fe#155)', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(77);
+    try {
+      await svc.load(directTracks, 0, 30);
+      const a = el();
+      expect(a.src).toBe(FILE1);
+      a.fail();
+      // Retry: the store loads the same track again.
+      await svc.load(directTracks, 0, 30);
+      expect(a.src).toBe(`${FILE1}&retry=77`);
+      a.emit('loadedmetadata');
+      // Loaded: the next load of it is the plain url again.
+      await svc.load(directTracks, 0, 30);
+      expect(a.src).toBe(FILE1);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
   it('places every load again: a skip ignores its 0 until it is placed', async () => {
     await svc.load(directTracks, 0, 0);
     const a = el();
@@ -643,6 +679,16 @@ describe('WebPlaybackService placing a load at its position', () => {
     await svc.skipToTrack(1, 200);
     a.emit('timeupdate'); // the reset 0 of the new source
     expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 200 });
+  });
+});
+
+describe('freshUrl', () => {
+  it("adds a retry stamp, leaving a download's offline url as it is", () => {
+    expect(freshUrl(FILE1, 5)).toBe(`${FILE1}&retry=5`);
+    expect(freshUrl('https://s/x.mp3', 5)).toBe('https://s/x.mp3?retry=5');
+    expect(freshUrl('https://h/web/_offline/c1/2/b/0.mp3', 5)).toBe(
+      'https://h/web/_offline/c1/2/b/0.mp3',
+    );
   });
 });
 

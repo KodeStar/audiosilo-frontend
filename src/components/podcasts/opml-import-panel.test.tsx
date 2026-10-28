@@ -152,6 +152,29 @@ describe('OpmlImportPanel', () => {
     expect(screen.queryByTestId('opml-retry')).toBeNull();
   });
 
+  it('numbers the feeds 1..n when a folder outline came first (BRIDGE-06)', async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          canRetryRow: (r) => r.outline_index === 3,
+          state: state({ kind: 'done' }, [
+            row(2, { path: 'Tiny Tones' }),
+            row(3, { status: 'error', path: 'Sweep Signals' }),
+            row(5, { status: 'duplicate', duplicate_of: 2 }),
+          ]),
+        })}
+        connectionId="c1"
+        libraryId={7}
+      />,
+    );
+    const r = (i: number) => within(screen.getByTestId(`opml-row-${i}`));
+    expect(r(2).getByText('Entry 1')).toBeTruthy();
+    expect(r(3).getByText('Entry 2')).toBeTruthy();
+    expect(r(5).getByText('Entry 3')).toBeTruthy();
+    expect(r(5).getByText('In the list twice (Entry 1)')).toBeTruthy();
+    expect(screen.getByLabelText('Try entry 2 again')).toBeTruthy();
+  });
+
   it.each([
     [{ kind: 'stalled' }, "The next batch couldn't start. Try again in a while."],
     [{ kind: 'stopped', why: 'user' }, 'Stopped. Shows already added stay.'],

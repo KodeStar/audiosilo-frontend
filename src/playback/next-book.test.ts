@@ -86,6 +86,25 @@ describe('findNextSibling', () => {
     expect(findNextSibling(entries, 'Series/Book 1')?.name).toBe('Book 2');
   });
 
+  it('takes an unscanned book folder (pending_book) as the next book (fe#154)', () => {
+    const entries = [
+      bookEntry('Book 1', 'Series/Book 1'),
+      dir('Book 1.5 Bonus', 'Series/Book 1.5 Bonus'),
+      dir('Book 2', 'Series/Book 2', { pending_book: true }),
+      dir('Extras', 'Series/Extras'),
+    ];
+    expect(findNextSibling(entries, 'Series/Book 1')?.name).toBe('Book 2');
+    // Past it, the trailing non-book folder is still not a book.
+    expect(findNextSibling(entries, 'Series/Book 2')).toBeNull();
+    // A folder of unscanned books only: the next one, never a non-book folder before it.
+    const unscanned = [
+      dir('Book 1', 'Series/Book 1', { pending_book: true }),
+      dir('Book 1 Art', 'Series/Book 1 Art'),
+      dir('Book 2', 'Series/Book 2', { pending_book: true }),
+    ];
+    expect(findNextSibling(unscanned, 'Series/Book 1')?.name).toBe('Book 2');
+  });
+
   it('numbered book folders (SSxx, series_index 0) still order by name', () => {
     // Path-numbered libraries: the server derives series_index 0 for "SSxx" names, so
     // ordering must come from the folder name, not the (useless) index.

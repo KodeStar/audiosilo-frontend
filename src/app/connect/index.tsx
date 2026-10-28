@@ -1,9 +1,10 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ConnectStart } from '@/components/connect/connect-start';
 import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
 import { LeaveOnboarding, leaveOnboarding } from '@/components/shell/leave-onboarding';
+import { useRouteParams } from '@/lib/route-params';
 import { useSession } from '@/stores/session';
 
 /**
@@ -21,7 +22,7 @@ import { useSession } from '@/stores/session';
 export default function ConnectRoute() {
   const status = useSession((s) => s.status);
   const pendingServerUrl = useSession((s) => s.pendingServerUrl);
-  const { add, token, profile } = useLocalSearchParams<{
+  const { add, token, profile } = useRouteParams<{
     add?: string;
     token?: string;
     profile?: string;
@@ -38,15 +39,26 @@ export default function ConnectRoute() {
   const [bounce] = useState(
     () => status === 'authenticated' && !add && !token && !pendingServerUrl,
   );
+  // A pairing link's flow stays one after its dead token leaves the address (CONNECT-14):
+  // the screen must not bounce home while it says why the link failed.
+  const [linked, setLinked] = useState(!!token);
+  if (token && !linked) setLinked(true);
   const shown = useRef(false);
   useFocusEffect(
     useCallback(() => {
       const s = useSession.getState();
-      if (shown.current && s.status === 'authenticated' && !add && !token && !s.pendingServerUrl) {
+      if (
+        shown.current &&
+        s.status === 'authenticated' &&
+        !add &&
+        !token &&
+        !linked &&
+        !s.pendingServerUrl
+      ) {
         leaveOnboarding();
       }
       shown.current = true;
-    }, [add, token]),
+    }, [add, token, linked]),
   );
   if (bounce) return <LeaveOnboarding />;
   return <ConnectStart />;

@@ -33,6 +33,21 @@
       "lastYear": "l’année dernière",
       "year_one": "il y a {{count}} an",
       "year_other": "il y a {{count}} ans"
+    },
+    "notInLibrary": {
+      "back": "Retour",
+      "book": {
+        "title": "Ce livre n'est pas dans la bibliothèque",
+        "body": "Il a peut-être été déplacé ou supprimé, ou le lien est erroné."
+      },
+      "folder": {
+        "title": "Ce dossier n'est pas dans la bibliothèque",
+        "body": "Il a peut-être été déplacé ou supprimé, ou le lien est erroné."
+      },
+      "nothing": {
+        "title": "Rien n'est en cours de lecture",
+        "body": "Choisissez un livre pour commencer l'écoute."
+      }
     }
   },
   "settings": {
@@ -187,7 +202,9 @@
         "title": "Supprimer {{name}} ?",
         "confirm": "Supprimer le serveur",
         "message_one": "Cela supprime {{count}} livre téléchargé sur cet appareil ainsi que toute progression pas encore synchronisée.",
-        "message_other": "Cela supprime {{count}} livres téléchargés sur cet appareil ainsi que toute progression pas encore synchronisée."
+        "message_other": "Cela supprime {{count}} livres téléchargés sur cet appareil ainsi que toute progression pas encore synchronisée.",
+        "signOut": "Cela déconnecte cet appareil de {{name}}. Votre écoute reste sur le serveur : reconnectez-vous pour la retrouver ici.",
+        "last": "C'est le seul serveur sur cet appareil, donc AudioSilo revient à la première étape."
       }
     },
     "signOut": {
@@ -354,6 +371,9 @@
       "enterAddress": "Saisissez l'adresse de votre serveur",
       "missingAddress": "Ce lien d'association ne comporte pas l'adresse du serveur. Saisissez-la ci-dessous.",
       "pairingRefused": "Ce lien d'association a expiré ou a déjà été utilisé. Demandez-en un nouveau, ou saisissez votre code d'invitation sur l'écran de connexion.",
+      "pairingUnusable": "Ce lien d'association ne peut pas être utilisé. Demandez-en un nouveau, ou saisissez votre code d'invitation sur l'écran de connexion.",
+      "pairingSpent": "Ce lien a été utilisé, mais la connexion n'a pas abouti. Demandez un nouveau lien.",
+      "pairingTryAgain": "Réessayer le lien",
       "pairingServerError": "Le serveur n'a pas pu terminer l'association. Réessayez, ou saisissez votre code d'invitation sur l'écran de connexion.",
       "pairingReachError": "Impossible de joindre le serveur pour terminer l'association.",
       "pairingReachSelfSigned": "Impossible de joindre le serveur. S'il utilise son propre certificat (auto-signé), mettez le serveur à jour ou connectez-vous depuis le réseau de la maison.",
@@ -377,7 +397,20 @@
       "passwordPlaceholder": "Mot de passe",
       "submit": "Se connecter",
       "failed": "Échec de la connexion. Veuillez réessayer.",
-      "modeLabel": "Mode de connexion"
+      "modeLabel": "Mode de connexion",
+      "errors": {
+        "wait_one": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} minute.",
+        "wait_other": "Trop de tentatives depuis ce réseau. Réessayez dans {{count}} minutes.",
+        "badCode": "Ce code d'invitation n'a pas fonctionné. Vérifiez-le ou demandez une nouvelle invitation à votre administrateur.",
+        "usedInvite": "Cette invitation ne peut plus ajouter d'appareil : elle est épuisée ou a expiré. Demandez une nouvelle invitation à votre administrateur.",
+        "inviteUsed": "Cette invitation a déjà servi sur tous les appareils qu'elle permet. Demandez une nouvelle invitation à votre administrateur.",
+        "inviteExpired": "Cette invitation a expiré. Demandez une nouvelle invitation à votre administrateur.",
+        "badPassword": "Le nom d'utilisateur ou le mot de passe est incorrect. Vérifiez-les et réessayez.",
+        "disabled": "Votre compte sur ce serveur est désactivé. Demandez à votre administrateur de le réactiver.",
+        "enterCode": "Saisissez le code d'invitation de votre administrateur.",
+        "enterUsername": "Saisissez votre nom d'utilisateur.",
+        "enterPassword": "Saisissez votre mot de passe."
+      }
     },
     "scan": {
       "closeLabel": "Fermer le scanner",
@@ -407,7 +440,8 @@
       "connect": "Se connecter",
       "invalid": "Ce n'est pas un lien d'appairage AudioSilo. Ces liens ressemblent à https://<serveur>/web/connect?token=... ou audiosilo://connect?...",
       "otherServer": "Ce lien concerne un autre serveur, et cette page ne peut se connecter qu’au sien. Ouvrez le lien pour vous y connecter.",
-      "openLink": "Ouvrir le lien"
+      "openLink": "Ouvrir le lien",
+      "appOnly": "Ce lien est pour un autre serveur et ne s'ouvre que dans l'app AudioSilo. Ouvrez-le sur votre téléphone ou votre tablette."
     },
     "memberNotReady": "Cet appareil ne peut pas encore la connecter. Réessayez dans un instant."
   },
@@ -436,6 +470,7 @@
     "ready": {
       "connected": "{{name}} est connecté",
       "title": "Votre bibliothèque est prête.",
+      "titleSetup": "Presque prêt : ajoutez une bibliothèque.",
       "and": "{{rest}} et {{last}}",
       "booksIn_one": "{{books}} livre dans {{list}}.",
       "booksIn_other": "{{books}} livres dans {{list}}.",
@@ -451,7 +486,11 @@
       "place": "Votre position dans {{title}} vous a suivi : {{percent}} % écouté.",
       "start": "Commencer l'écoute",
       "browse": "Parcourir la bibliothèque",
-      "placeTitled": "Votre position dans {{title}} vous a suivi : {{chapter}}, {{percent}} % écouté."
+      "placeTitled": "Votre position dans {{title}} vous a suivi : {{chapter}}, {{percent}} % écouté.",
+      "addLibrary": "Ajouter votre première bibliothèque",
+      "openConsole": "Ouvrir la console d'administration",
+      "emptyAdminSetup": "{{name}} n'a pas encore de bibliothèque. Ajoutez la première dans la console d'administration : choisissez le dossier qui contient vos livres.",
+      "emptyAdmin": "{{name}} n'a pas encore de livres. Placez-en dans le dossier d'une bibliothèque, puis analysez-le depuis la console d'administration."
     }
   },
   "home": {
@@ -556,6 +595,10 @@
     "error": {
       "title": "Impossible de charger ta progression",
       "body": "Rien n’est perdu : ta position est conservée sur chaque serveur. Vérifie la connexion et réessaie."
+    },
+    "offline": {
+      "title": "Tu es hors ligne",
+      "body": "Ta position s'affiche dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements."
     },
     "previouslyOn": {
       "label": "Précédemment",
@@ -750,7 +793,11 @@
       "loadServerLibrariesError": "Impossible de charger les bibliothèques de {{name}}.",
       "noLibraries": "Aucune bibliothèque n’est encore partagée avec ton compte.",
       "noLibrariesHint": "Demandez au propriétaire du serveur de vous en partager une.",
-      "viewLabel": "Liste de livres"
+      "offlineTitle": "Vous êtes hors ligne",
+      "offlineHint": "Vos bibliothèques s'affichent dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements.",
+      "viewLabel": "Liste de livres",
+      "noLibrariesAdmin": "Aucune bibliothèque pour l'instant",
+      "noLibrariesAdminHint": "Ajoutez votre première bibliothèque dans la console d'administration de {{name}} : choisissez le dossier qui contient vos livres."
     },
     "favourites": {
       "title": "Favoris",
@@ -1095,7 +1142,9 @@
     "booksFailed": "Vos serveurs n’ont pas répondu à cette recherche.",
     "booksPartial": "Certains serveurs n’ont pas répondu, leurs livres peuvent donc manquer.",
     "peopleFailed": "Impossible de rechercher les auteurs, narrateurs et séries pour le moment.",
-    "charactersFailed": "Impossible de vérifier les personnages pour le moment."
+    "charactersFailed": "Impossible de vérifier les personnages pour le moment.",
+    "notAnswering_one": "Non recherché : {{servers}} ne répond pas.",
+    "notAnswering_other": "Non recherchés : {{servers}} ne répondent pas."
   },
   "book": {
     "loadError": "Impossible de charger ce livre.",
@@ -1668,7 +1717,12 @@
     "settingUp": "Préparation de ta démo…",
     "qrLabel": "Code QR pour ouvrir la démo dans l'application",
     "scanHint": "Scanne avec ton téléphone pour continuer dans l'application AudioSilo, ou continue à explorer dans ce navigateur.",
-    "browseHere": "Explorer la démo ici"
+    "browseHere": "Explorer la démo ici",
+    "off": {
+      "title": "Ce serveur n'a pas de démo",
+      "body": "Connectez-vous plutôt avec votre code d'invitation ou votre compte.",
+      "signIn": "Se connecter"
+    }
   },
   "shell": {
     "unknownConnection": {
@@ -2870,7 +2924,7 @@
     },
     "check": {
       "action": "Chercher de nouveaux épisodes",
-      "started": "Recherche de nouveaux épisodes",
+      "asked": "Vérification demandée au serveur",
       "recently": "Vérifiée il y a moins d'une minute. Réessayez dans un instant.",
       "cantNow": "Votre serveur ne peut pas vérifier les flux pour le moment. Réessayez plus tard.",
       "failed": "Impossible de vérifier cette émission. Réessayez."
@@ -2898,8 +2952,8 @@
         "body": "Le fichier n'est pas un EPUB qu'AudioSilo sait lire, ou il est endommagé."
       },
       "missing": {
-        "title": "L'ebook n'est plus sur le serveur",
-        "body": "L'EPUB du livre est introuvable. S'il revient, il réapparaît après la prochaine analyse de la bibliothèque."
+        "title": "Cet ebook n'est pas dans la bibliothèque",
+        "body": "Le livre ou son EPUB n'est pas sur le serveur. Il a peut-être été déplacé ou supprimé, ou le lien est erroné."
       },
       "fetch": {
         "title": "Impossible de charger l'ebook",
@@ -2913,6 +2967,14 @@
       "noEbook": {
         "title": "Pas d'ebook pour ce livre",
         "body": "La lecture demande un EPUB sans DRM dans le dossier du livre, sur un serveur qui a le lecteur."
+      },
+      "section": {
+        "title": "Impossible de charger l'ebook",
+        "body": "Une partie du livre ne s'est pas chargée. Ta position dans le livre est conservée. Réessaie."
+      },
+      "signedOut": {
+        "title": "Reconnecte-toi pour lire",
+        "body": "Ta connexion à ce serveur a pris fin. Ta position dans le livre est conservée sur cet appareil."
       }
     },
     "offer": {
@@ -2920,6 +2982,10 @@
       "unknown": "Sur un autre appareil, tu étais à {{percent}} %. Y aller ?",
       "jump": "Y aller",
       "stay": "Rester"
+    },
+    "notSaved": {
+      "body": "Ta position n'a pas été enregistrée sur le serveur. Elle est conservée sur cet appareil.",
+      "dismiss": "OK"
     }
   }
 }

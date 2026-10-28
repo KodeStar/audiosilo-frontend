@@ -10,6 +10,7 @@ import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
+import { useMinuteClock } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -22,31 +23,50 @@ import type { ListColumns } from './list-columns';
 /** A book's shown title (its folder's name when it has none). */
 
 /** The line under a tile's title, by the list's order: when it was added (Recently
- * added), its length (Length), else its author. */
-export function tileCaption(b: Book, sort: BooksSort | undefined): string {
+ * added), its length (Length), else its author. `clock` is the language and time the
+ * "added" words are said in (`useTileClock`), else the current ones. */
+export function tileCaption(
+  b: Book,
+  sort: BooksSort | undefined,
+  clock?: { locale: string; now: number },
+): string {
   const extra =
     sort === 'recent'
-      ? formatRelative(b.added_at)
+      ? formatRelative(b.added_at, clock?.locale, clock?.now)
       : sort === 'length'
         ? formatDuration(b.duration)
         : '';
   return [b.author, extra].filter(Boolean).join(' · ');
 }
 
-/** A book of the listener's library as a cover tile (which marks its own progress). */
+/** The language and minute a tile's caption is said in. A tile is memoized (the React
+ * Compiler, FlashList's cells), so without these its "added" words would keep the
+ * language and minute of its first render (fe#162). Ticks only for Recently added, on
+ * the clock every tile shares. */
+function useTileClock(sort: BooksSort | undefined) {
+  const { i18n } = useTranslation();
+  const now = useMinuteClock(sort === 'recent');
+  return { locale: i18n.language || 'en', now };
+}
+
+/** A book of the listener's library as a cover tile (which marks its own progress).
+ * `server` is the friend-server flag of a list across servers. */
 export function BookTile({
   connectionId,
   libraryId,
   book,
   sort,
   width,
+  server,
 }: {
   connectionId: string;
   libraryId: number;
   book: Book;
   sort?: BooksSort;
   width: number;
+  server?: string;
 }) {
+  const clock = useTileClock(sort);
   return (
     <CoverTile
       connectionId={connectionId}
@@ -55,8 +75,9 @@ export function BookTile({
       book={book}
       title={bookTitle(book.title, book.rel_path)}
       author={book.author}
-      caption={tileCaption(book, sort)}
+      caption={tileCaption(book, sort, clock)}
       coverVersion={book.cover_version}
+      server={server}
       width={width}
     />
   );

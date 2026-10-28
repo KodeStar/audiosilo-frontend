@@ -33,7 +33,9 @@ export function ThisWeekCard({ className }: { className?: string }) {
   if (supported !== true) return null;
   const data = listening.data;
   if (!data) {
-    if (listening.isError) return null; // a quiet extra: nothing to retry here
+    // A quiet extra: nothing to retry here, and nothing to wait for offline (a read
+    // paused for the network would hold a skeleton until it came back).
+    if (listening.isError || listening.isPaused) return null;
     return <Skeleton className={cn('h-[252px] rounded-dialog', className)} />;
   }
   const today = serverToday(data);

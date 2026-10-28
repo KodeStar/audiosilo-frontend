@@ -158,6 +158,7 @@ function ImportProgress({
     () => liveImportRows(withRetries(state.rows, retries), requests),
     [state.rows, retries, requests],
   );
+  const numbers = useMemo(() => entryNumbers(rows), [rows]);
   const { settled, total } = importProgress(rows);
   const retryable = canRetryImport(state);
   return (
@@ -199,10 +200,16 @@ function ImportProgress({
       </View>
       {rows.length > 0 ? (
         <View className="gap-2" accessibilityLabel={t('podcasts.import.rowsLabel')}>
-          {rows.map((row) => (
+          {rows.map((row, i) => (
             <ImportRow
               key={row.outline_index}
               row={row}
+              number={i + 1}
+              duplicateOf={
+                row.duplicate_of === null
+                  ? null
+                  : (numbers.get(row.duplicate_of) ?? row.duplicate_of)
+              }
               reasonKey={importRowReasonKey(row, requests)}
               busy={retries[row.outline_index]?.kind === 'busy'}
               onRetry={canRetryRow(row) ? retryRow : undefined}
@@ -212,6 +219,15 @@ function ImportProgress({
       ) : null}
     </View>
   );
+}
+
+/**
+ * Each row's number in the list, 1..n (BRIDGE-06). The server's `outline_index` counts
+ * every outline, so a list whose feeds sit inside a folder (the usual export) started at
+ * "Entry 2": the folder was Entry 1. Rows come sorted by `outline_index`.
+ */
+export function entryNumbers(rows: readonly OpmlImportRow[]): Map<number, number> {
+  return new Map(rows.map((r, i) => [r.outline_index, i + 1]));
 }
 
 /** The status line on its own, so the countdown's ticks redraw it alone. The clock ticks
@@ -229,11 +245,17 @@ function StatusText({ status, rows }: { status: WaveStatus; rows: readonly OpmlI
 
 const ImportRow = memo(function ImportRow({
   row,
+  number,
+  duplicateOf,
   reasonKey,
   busy,
   onRetry,
 }: {
   row: OpmlImportRow;
+  /** Its place in the list as shown (`entryNumbers`). */
+  number: number;
+  /** A duplicate's earlier entry, numbered the same way. */
+  duplicateOf: number | null;
   /** Why it could not be added (`importRowReasonKey`), read by the list so a requests
    * poll redraws only the rows whose reason moved. */
   reasonKey: ParseKeys | null;
@@ -253,7 +275,7 @@ const ImportRow = memo(function ImportRow({
       <View className="min-w-0 flex-1 gap-0.5">
         <View className="flex-row items-center gap-2">
           <Text variant="caption" style={tabularNums}>
-            {t('podcasts.import.entry', { index: row.outline_index })}
+            {t('podcasts.import.entry', { index: number })}
           </Text>
           {row.private && hasFeed ? (
             <Badge variant="outline">
@@ -267,8 +289,8 @@ const ImportRow = memo(function ImportRow({
           </Text>
         ) : null}
         <Text variant="caption">
-          {row.status === 'duplicate' && row.duplicate_of !== null
-            ? `${t(importRowKey(row))} (${t('podcasts.import.entry', { index: row.duplicate_of })})`
+          {row.status === 'duplicate' && duplicateOf !== null
+            ? `${t(importRowKey(row))} (${t('podcasts.import.entry', { index: duplicateOf })})`
             : t(importRowKey(row))}
         </Text>
         {reasonKey ? (
@@ -283,7 +305,7 @@ const ImportRow = memo(function ImportRow({
           size="sm"
           icon="rotate"
           title={t('podcasts.import.tryAgain')}
-          accessibilityLabel={t('podcasts.import.tryRowAgain', { index: row.outline_index })}
+          accessibilityLabel={t('podcasts.import.tryRowAgain', { index: number })}
           loading={busy}
           onPress={() => onRetry(row)}
           testID={`opml-row-retry-${row.outline_index}`}

@@ -82,6 +82,29 @@ describe('syncPill', () => {
     expect(syncPill({ online: {}, pending: 0, newest })).toEqual({ kind: 'synced', at });
     expect(syncPill({ online: { a: false }, pending: 0, newest: undefined })).toBeNull();
   });
+  // UPGRADE-05: a device that read the list just now says so, not when the save was made.
+  it('says when this device last read the progress, when that is later than the save', () => {
+    const fetchedAt = Date.parse('2026-10-05T10:24:00Z');
+    expect(syncPill({ online: {}, pending: 0, newest, fetchedAt })).toEqual({
+      kind: 'synced',
+      at: '2026-10-05T10:24:00.000Z',
+    });
+    // A save made after the read (this device's own, not yet read back) is the later one.
+    const earlier = Date.parse('2026-10-05T09:00:00Z');
+    expect(syncPill({ online: {}, pending: 0, newest, fetchedAt: earlier })).toEqual({
+      kind: 'synced',
+      at,
+    });
+    // Never read (0): the save's time, as before.
+    expect(syncPill({ online: {}, pending: 0, newest, fetchedAt: 0 })).toEqual({
+      kind: 'synced',
+      at,
+    });
+    // Still on this device while its server is away, however recent the read.
+    expect(syncPill({ online: { a: false }, pending: 0, newest, fetchedAt })).toEqual({
+      kind: 'local',
+    });
+  });
   // CONNECT-04: another server being down is not "saved on this device".
   it('still says synced when only a server without the newest progress is down', () => {
     expect(syncPill({ online: { a: true, b: false }, pending: 0, newest })).toEqual({
@@ -262,5 +285,13 @@ describe('bookRowTest', () => {
     // A server not in the list at all is neither.
     expect(isBook(at('z', 1))).toBe(false);
     expect(pending(at('z', 1))).toBe(false);
+  });
+
+  it('reads a server whose list waits for the network (offline) as books, never pending (fe#155)', () => {
+    const { isBook, pending } = bookRowTest([
+      { connectionId: 'b', libraries: [], status: 'loading', paused: true },
+    ]);
+    expect(isBook(at('b', 1))).toBe(true);
+    expect(pending(at('b', 1))).toBe(false);
   });
 });

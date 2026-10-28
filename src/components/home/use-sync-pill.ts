@@ -1,6 +1,8 @@
+import { hashKey, useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
+import { qk } from '@/api/hooks';
 import { anyOffline, useReachability } from '@/api/reachability';
 import { pendingSaveCount } from '@/playback/progress-sync';
 
@@ -46,10 +48,28 @@ export function usePendingSaves({
   return pending;
 }
 
+/** When this device last read `cid`'s progress list from its server (the query's
+ * `dataUpdatedAt`, epoch ms; 0 before the first read). Read from the query cache without
+ * an observer of its own, so it never fetches nor changes how the list is fetched. */
+function useProgressFetchedAt(cid: string | undefined): number {
+  const qc = useQueryClient();
+  const cache = qc.getQueryCache();
+  const hash = cid ? hashKey(qk.allProgress(cid)) : undefined;
+  return useSyncExternalStore(
+    // Only this list's events: Home's other queries never move it.
+    (onChange) =>
+      cache.subscribe((e) => {
+        if (e.query.queryHash === hash) onChange();
+      }),
+    () => (cid ? (qc.getQueryState(qk.allProgress(cid))?.dataUpdatedAt ?? 0) : 0),
+  );
+}
+
 /** The greeting's sync pill (see `syncPill`), from the offline queue, the servers'
- * reachability and the newest saved progress. */
+ * reachability, the newest saved progress and when this device last read it. */
 export function useSyncPill(newest: { at: string; connectionId: string } | undefined) {
   const pending = usePendingSaves({ active: useIsFocused() });
   const online = useReachability((s) => s.online);
-  return syncPill({ online, pending, newest });
+  const fetchedAt = useProgressFetchedAt(newest?.connectionId);
+  return syncPill({ online, pending, newest, fetchedAt });
 }

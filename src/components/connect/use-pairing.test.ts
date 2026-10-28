@@ -48,24 +48,26 @@ jest.mock('@/api/server-id-probe', () => ({
 /* eslint-disable import/first */
 import { ApiError, TimeoutError } from '@/api/client';
 import type { User } from '@/api/types';
+import i18n from '@/i18n';
 import { setConnectForNewProfile } from '@/components/profiles/connect-intent';
 import type { PairingScan } from '@/lib/pairing';
 import { type Connection, useSession } from '@/stores/session';
 
-import { useLinkPairing } from './use-pairing';
+import { type PairFailure, type PairOutcome, pairFailure, useLinkPairing } from './use-pairing';
 /* eslint-enable import/first */
 
 const scan = { base: 'https://books.example', token: 'tok' };
+const t = i18n.t.bind(i18n);
 
 /** The error a refused exchange `e` of `link` leaves, in words. */
 async function errorFor(e: unknown, link: typeof scan = scan): Promise<string | null> {
   mockExchange.mockRejectedValue(e);
   const { result } = await renderHook(() => useLinkPairing());
-  let paired: boolean | undefined;
+  let paired: PairOutcome | undefined;
   await act(async () => {
     paired = await result.current.pair(link);
   });
-  expect(paired).toBe(false);
+  expect(paired).not.toBe('paired');
   expect(result.current.pairing).toBe(false);
   return result.current.error;
 }
@@ -83,7 +85,7 @@ describe('useLinkPairing', () => {
     mockExchange.mockResolvedValue(session);
     const { result } = await renderHook(() => useLinkPairing());
     await act(async () => {
-      expect(await result.current.pair(scan)).toBe(true);
+      expect(await result.current.pair(scan)).toBe('paired');
     });
     expect(mockExchange).toHaveBeenCalledWith('tok', 'Kitchen iPad');
     expect(mockFinish).toHaveBeenCalledWith(
@@ -114,6 +116,93 @@ describe('useLinkPairing', () => {
     );
   });
 
+  // CONNECT-14: one reading of the error gives both what it means for the link and the
+  // words, so a link the screen calls dead is never offered again, and vice versa.
+  const EXPIRED =
+    'This pairing link has expired or was already used. Ask for a new one, or enter your invite code on the sign-in screen.';
+  const UNUSABLE =
+    "This pairing link can't be used. Ask for a new one, or enter your invite code on the sign-in screen.";
+  const SERVER =
+    "The server couldn't finish pairing. Try again, or enter your invite code on the sign-in screen.";
+  const REACH = 'Could not reach the server to finish pairing.';
+  it.each<[string, unknown, boolean, PairFailure['outcome'], string]>([
+    ['401', new ApiError(401, 'x'), false, 'refused', EXPIRED],
+    ['410', new ApiError(410, 'x'), false, 'refused', EXPIRED],
+    ['400', new ApiError(400, 'x'), false, 'refused', UNUSABLE],
+    ['403', new ApiError(403, 'x'), false, 'refused', UNUSABLE],
+    ['404', new ApiError(404, 'x'), false, 'refused', UNUSABLE],
+    ['409', new ApiError(409, 'x'), false, 'refused', UNUSABLE],
+    ['413', new ApiError(413, 'x'), false, 'refused', UNUSABLE],
+    ['422', new ApiError(422, 'x'), false, 'refused', UNUSABLE],
+    [
+      'invite_used',
+      new ApiError(401, 'x', 'invite_used'),
+      false,
+      'refused',
+      'This invite has been used on all the devices it allows. Ask your admin for a new invite.',
+    ],
+    [
+      'invite_expired',
+      new ApiError(401, 'x', 'invite_expired'),
+      false,
+      'refused',
+      'This invite has expired. Ask your admin for a new invite.',
+    ],
+    [
+      'member_disabled',
+      new ApiError(409, 'x', 'member_disabled'),
+      false,
+      'refused',
+      'Your account on this server is turned off. Ask your admin to turn it back on.',
+    ],
+    ['408', new ApiError(408, 'x'), false, 'temporary', REACH],
+    [
+      '429',
+      new ApiError(429, 'x'),
+      false,
+      'temporary',
+      'Too many tries. Wait a few minutes and try again.',
+    ],
+    [
+      '429 with Retry-After',
+      new ApiError(429, 'x', undefined, 90),
+      false,
+      'temporary',
+      'Too many tries from this network. Try again in 2 minutes.',
+    ],
+    ['500', new ApiError(500, 'x'), false, 'temporary', SERVER],
+    ['503', new ApiError(503, 'x'), false, 'temporary', SERVER],
+    ['no answer', new TypeError('Network request failed'), false, 'temporary', REACH],
+    ['a timeout', new TimeoutError(15000), false, 'temporary', REACH],
+    [
+      'a failure after the exchange',
+      new Error('could not store'),
+      true,
+      'refused',
+      "This link was used, but signing in didn't finish. Ask for a new link.",
+    ],
+  ])('classifies %s as one outcome with its words', (_row, e, exchanged, outcome, message) => {
+    expect(pairFailure(e, exchanged, false, t)).toEqual({ outcome, message });
+  });
+
+  it('names a self-signed certificate only for no answer', () => {
+    const selfSigned =
+      "Couldn't reach the server. If it uses its own (self-signed) certificate, update the server, or connect on your home network.";
+    expect(pairFailure(new TypeError('x'), false, true, t).message).toBe(selfSigned);
+    expect(pairFailure(new ApiError(503, 'x'), false, true, t).message).toBe(SERVER);
+  });
+
+  it('resolves and says what the classifier says', async () => {
+    mockExchange.mockRejectedValue(new ApiError(409, 'x', 'member_disabled'));
+    const { result } = await renderHook(() => useLinkPairing());
+    let got: PairOutcome | undefined;
+    await act(async () => {
+      got = await result.current.pair(scan);
+    });
+    expect(got).toBe('refused');
+    expect(result.current.error).toMatch(/turned off/);
+  });
+
   it('names a self-signed certificate only for an https link on native that did not time out', async () => {
     const plain = 'Could not reach the server to finish pairing.';
     const down = new TypeError('Network request failed');
@@ -142,7 +231,7 @@ describe('useLinkPairing: the home http fallback', () => {
 
   async function pairWith(s: typeof homeScan) {
     const { result } = await renderHook(() => useLinkPairing());
-    let paired: boolean | undefined;
+    let paired: PairOutcome | undefined;
     await act(async () => {
       paired = await result.current.pair(s);
     });
@@ -151,7 +240,7 @@ describe('useLinkPairing: the home http fallback', () => {
 
   it("exchanges at the link's plain-http home when its https base can't connect and home is the link's server", async () => {
     mockExchange.mockRejectedValueOnce(down()).mockResolvedValueOnce(session);
-    expect((await pairWith(homeScan)).paired).toBe(true);
+    expect((await pairWith(homeScan)).paired).toBe('paired');
     expect(mockProbe).toHaveBeenCalledWith(HOME);
     expect(mockExchangedAt).toEqual([BASE, HOME]);
     // Stored with the https base (it fails safely by TLS elsewhere), home as the first pick.
@@ -166,7 +255,7 @@ describe('useLinkPairing: the home http fallback', () => {
 
   it('pairs at the base with no pick when the base answers', async () => {
     mockExchange.mockResolvedValueOnce(session);
-    expect((await pairWith(homeScan)).paired).toBe(true);
+    expect((await pairWith(homeScan)).paired).toBe('paired');
     expect(mockProbe).not.toHaveBeenCalled();
     expect(mockFinish).toHaveBeenCalledWith(
       expect.not.objectContaining({ answeredAt: expect.anything() }),
@@ -180,7 +269,7 @@ describe('useLinkPairing: the home http fallback', () => {
       mockProbe.mockResolvedValue(answer);
       mockExchange.mockRejectedValue(down());
       const { paired, error } = await pairWith(homeScan);
-      expect(paired).toBe(false);
+      expect(paired).toBe('temporary');
       expect(mockExchangedAt).toEqual([BASE]);
       expect(error).toMatch(/^Couldn't reach the server/);
     }
@@ -190,7 +279,7 @@ describe('useLinkPairing: the home http fallback', () => {
   it("never falls back for a link without the server's id (an older server)", async () => {
     mockExchange.mockRejectedValue(down());
     const { serverId: _drop, ...noSid } = homeScan;
-    expect((await pairWith(noSid)).paired).toBe(false);
+    expect((await pairWith(noSid)).paired).toBe('temporary');
     expect(mockProbe).not.toHaveBeenCalled();
     expect(mockExchangedAt).toEqual([BASE]);
   });
@@ -200,7 +289,7 @@ describe('useLinkPairing: the home http fallback', () => {
       .mockRejectedValueOnce(down())
       .mockResolvedValueOnce({ ...session, server_id: 'srv-other' });
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).toBe(false);
+    expect(paired).toBe('temporary');
     expect(mockExchangedAt).toEqual([BASE, HOME]);
     expect(error).toMatch(/^Couldn't reach the server/);
     expect(mockFinish).not.toHaveBeenCalled();
@@ -209,7 +298,7 @@ describe('useLinkPairing: the home http fallback', () => {
   it('does not fall back when the base answered, and reports what it said', async () => {
     mockExchange.mockRejectedValueOnce(new ApiError(401, 'expired'));
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).toBe(false);
+    expect(paired).toBe('refused');
     expect(mockExchangedAt).toEqual([BASE]);
     expect(mockProbe).not.toHaveBeenCalled();
     expect(error).toMatch(/expired or was already used/);
@@ -219,7 +308,7 @@ describe('useLinkPairing: the home http fallback', () => {
   it("says the base couldn't be reached when the home can't either", async () => {
     mockExchange.mockRejectedValue(down());
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).toBe(false);
+    expect(paired).toBe('temporary');
     expect(mockExchangedAt).toEqual([BASE, HOME]);
     expect(error).toMatch(/^Couldn't reach the server/);
   });
@@ -228,8 +317,8 @@ describe('useLinkPairing: the home http fallback', () => {
     mockExchange.mockResolvedValueOnce(session);
     mockFinish.mockRejectedValueOnce(new Error('could not store'));
     const { paired, error } = await pairWith(homeScan);
-    expect(paired).toBe(false);
-    expect(error).toBe('Could not reach the server to finish pairing.');
+    expect(paired).toBe('refused');
+    expect(error).toBe("This link was used, but signing in didn't finish. Ask for a new link.");
   });
 
   it("says what the home's server answered when it answered", async () => {
@@ -260,7 +349,7 @@ describe('useLinkPairing: a link that names a book', () => {
 
   async function pairWith(s: PairingScan) {
     const { result } = await renderHook(() => useLinkPairing());
-    let paired: boolean | undefined;
+    let paired: PairOutcome | undefined;
     await act(async () => {
       paired = await result.current.pair(s);
     });
@@ -269,7 +358,7 @@ describe('useLinkPairing: a link that names a book', () => {
 
   it('opens the book without the exchange when already signed in as its user there', async () => {
     useSession.setState({ connections: [chris] });
-    expect(await pairWith(bookScan)).toBe(true);
+    expect(await pairWith(bookScan)).toBe('paired');
     expect(mockEnd).toHaveBeenCalledWith('srv-1.1', book);
     expect(mockExchange).not.toHaveBeenCalled();
     expect(mockFinish).not.toHaveBeenCalled();
@@ -277,7 +366,7 @@ describe('useLinkPairing: a link that names a book', () => {
 
   it("asks with the stored token at the connection's own address, never the link's", async () => {
     useSession.setState({ connections: [chris] });
-    expect(await pairWith({ ...bookScan, base: 'https://elsewhere.example' })).toBe(true);
+    expect(await pairWith({ ...bookScan, base: 'https://elsewhere.example' })).toBe('paired');
     expect(mockMe).toHaveBeenCalledWith(scan.base, 't');
     expect(mockMe).not.toHaveBeenCalledWith('https://elsewhere.example', expect.anything());
   });
@@ -286,7 +375,7 @@ describe('useLinkPairing: a link that names a book', () => {
     useSession.setState({ connections: [chris] });
     mockMe.mockRejectedValueOnce(new ApiError(401, 'invalid or expired token'));
     mockExchange.mockResolvedValue(session);
-    expect(await pairWith(bookScan)).toBe(true);
+    expect(await pairWith(bookScan)).toBe('paired');
     expect(mockExchange).toHaveBeenCalledWith('tok', 'Kitchen iPad');
     expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ book }));
     expect(mockEnd).not.toHaveBeenCalled();
@@ -295,7 +384,7 @@ describe('useLinkPairing: a link that names a book', () => {
   it('opens the book when the server could not be asked', async () => {
     useSession.setState({ connections: [chris] });
     mockMe.mockRejectedValueOnce(new TimeoutError(15000));
-    expect(await pairWith(bookScan)).toBe(true);
+    expect(await pairWith(bookScan)).toBe('paired');
     expect(mockEnd).toHaveBeenCalledWith('srv-1.1', book);
     expect(mockExchange).not.toHaveBeenCalled();
   });
@@ -304,7 +393,7 @@ describe('useLinkPairing: a link that names a book', () => {
     useSession.setState({ connections: [chris] });
     setConnectForNewProfile(true);
     mockExchange.mockResolvedValue(session);
-    expect(await pairWith(bookScan)).toBe(true);
+    expect(await pairWith(bookScan)).toBe('paired');
     expect(mockMe).not.toHaveBeenCalled();
     expect(mockFinish).toHaveBeenCalledWith(expect.objectContaining({ book }));
     expect(mockEnd).not.toHaveBeenCalled();
@@ -314,7 +403,7 @@ describe('useLinkPairing: a link that names a book', () => {
     mockHydrateFailed = true;
     const hydrate = jest.fn(async () => useSession.setState({ connections: [chris] }));
     useSession.setState({ hydrate });
-    expect(await pairWith(bookScan)).toBe(true);
+    expect(await pairWith(bookScan)).toBe('paired');
     expect(hydrate).toHaveBeenCalled();
     expect(mockEnd).toHaveBeenCalledWith('srv-1.1', book);
     expect(mockExchange).not.toHaveBeenCalled();
@@ -327,13 +416,13 @@ describe('useLinkPairing: a link that names a book', () => {
       { ...bookScan, userId: 2 },
       { ...bookScan, serverId: 'srv-2' },
     ]) {
-      expect(await pairWith(s)).toBe(true);
+      expect(await pairWith(s)).toBe('paired');
       expect(mockFinish).toHaveBeenLastCalledWith(expect.objectContaining({ book }));
     }
     const { userId: _drop, ...noUser } = bookScan;
-    expect(await pairWith(noUser)).toBe(true);
+    expect(await pairWith(noUser)).toBe('paired');
     // A plain pairing link never skips, even for a user signed in there.
-    expect(await pairWith({ ...scan, serverId: 'srv-1', userId: 1 })).toBe(true);
+    expect(await pairWith({ ...scan, serverId: 'srv-1', userId: 1 })).toBe('paired');
     expect(mockExchange).toHaveBeenCalledTimes(4);
     expect(mockEnd).not.toHaveBeenCalled();
   });

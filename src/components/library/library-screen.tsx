@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -17,10 +17,11 @@ import {
 } from '@/components/layout/sign-in-again';
 import { PodcastShowsMode } from '@/components/podcasts/shows-mode';
 import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
-import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { isPodcastLibrary } from '@/lib/library-kind';
+import { useRouteParams } from '@/lib/route-params';
 
 import {
   availableLibraryModes,
@@ -40,6 +41,7 @@ import { CollectionsMode } from './modes/collections-mode';
 import { FoldersMode } from './modes/folders-mode';
 import { NarratorsMode } from './modes/narrators-mode';
 import { SeriesMode } from './modes/series-mode';
+import { NoLibrariesState } from './no-libraries-state';
 import { useSelectedLibrary } from './use-selected-library';
 
 const MODE_BODY: Record<
@@ -65,9 +67,10 @@ const MODE_BODY: Record<
 export function LibraryScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { mode: modeParam } = useLocalSearchParams<{ mode?: string | string[] }>();
-  const { selection, library, groups, isLoading, retry } = useSelectedLibrary();
+  const { mode: modeParam } = useRouteParams<{ mode?: string | string[] }>();
+  const { selection, library, groups, isLoading, offline, retry } = useSelectedLibrary();
   const signedOut = useSignedOutConnections();
+  const deviceOnline = useDeviceOnline();
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
   // Unknown until the selected library is listed (`resolveLibraryMode` keeps a request).
@@ -114,9 +117,14 @@ export function LibraryScreen() {
         </View>
       );
     }
+    // Offline (a list waits for the network, or failed with the device offline): the
+    // offline state, not "Could not load" with a Retry that cannot work until the
+    // network is back. A list that answered "none" offline still says so.
+    const failed = groups.some((g) => g.status === 'error');
+    if (offline || (failed && !deviceOnline)) return <NoLibrariesState offline />;
     // A server that did not answer has not said it shares nothing (frontend#131): its
     // lists come back on their own once it answers again (`onReconnect`), or on Retry.
-    if (groups.some((g) => g.status === 'error')) {
+    if (failed) {
       return (
         <View className="p-4 lg:px-8">
           <LoadError
@@ -127,13 +135,7 @@ export function LibraryScreen() {
         </View>
       );
     }
-    return (
-      <EmptyState
-        icon="library"
-        title={t('library.list.noLibraries')}
-        hint={t('library.list.noLibrariesHint')}
-      />
-    );
+    return <NoLibrariesState connectionIds={groups.map((g) => g.connectionId)} />;
   };
 
   return (

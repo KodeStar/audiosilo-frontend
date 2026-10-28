@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { groupSessions, type ListeningSpan, toSpan } from '@/lib/listening-sessions';
+import { useRouteParams } from '@/lib/route-params';
 import { useToday } from '@/lib/use-day-label';
 import type { JournalTab } from '@/lib/paths';
 import { cn } from '@/lib/utils';
@@ -53,7 +54,7 @@ function completeCount(sources: Source<unknown>[]): number | undefined {
  */
 export function JournalScreen({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useRouteParams<{ tab?: string }>();
   const tab = parseJournalTab(params.tab);
   const [query, setQuery] = useState('');
   const [width, setWidth] = useState(0);

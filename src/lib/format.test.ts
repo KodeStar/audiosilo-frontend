@@ -55,6 +55,13 @@ describe('formatRelative', () => {
     expect(formatRelative(ago(60 * 86400), 'en')).toBe('2 months ago');
   });
 
+  it('measures from the time it is given (a memoized caller passes its clock, fe#162)', () => {
+    const then = '2026-10-27T12:00:00Z';
+    const at = (minutes: number) => Date.parse(then) + minutes * 60_000;
+    expect(formatRelative(then, 'en', at(5))).toBe('5 minutes ago');
+    expect(formatRelative(then, 'de', at(120))).toBe('vor 2 Stunden');
+  });
+
   it('returns empty for missing or unparseable input', () => {
     expect(formatRelative(undefined, 'en')).toBe('');
     expect(formatRelative('not-a-date', 'en')).toBe('');

@@ -140,6 +140,15 @@ describe('ApiClient', () => {
     await expect(new ApiClient('https://h', 'tok').libraries()).resolves.toEqual([]);
   });
 
+  // CONNECT-12: a newer server sends `root` to admins only; a listener's list has none.
+  it('reads a library list without the root folder', async () => {
+    const lib = { id: 1, name: 'Books', kind: 'books', default_view: 'hybrid', sort_order: 0 };
+    installFetch(() => ({ status: 200, body: { libraries: [lib] } }));
+    const [got] = await new ApiClient('https://h', 'tok').libraries();
+    expect(got).toEqual(lib);
+    expect(got.root).toBeUndefined();
+  });
+
   it('embeds the token in media URLs only when present', () => {
     const withTok = new ApiClient('https://h', 'tok');
     expect(withTok.coverUrl(3, 'A/Book')).toContain('token=tok');
@@ -753,7 +762,8 @@ describe('ApiClient', () => {
 
   // The server may spend its whole 15 s community-metadata budget on /next before it
   // answers from the local series or folder, and on /meta before it fetches the previous
-  // works, so those two wait out the server's own 30 s request budget instead.
+  // works, so those two wait out the server's own 30 s request budget instead. So do an
+  // item read and a chapters read, each of which indexes an unscanned book on demand.
   it('gives the requests that wait on community metadata the server budget', async () => {
     jest.useFakeTimers();
     try {
@@ -766,6 +776,10 @@ describe('ApiClient', () => {
         });
       const pending = [
         settle('next', c.nextBook(2, 'Saga/Book 2')),
+        // An unscanned book folder is indexed by its item read (fe#154).
+        settle('item', c.item(2, 'Saga/Book 2')),
+        // So is its chapters read, which the player makes beside it.
+        settle('chapters', c.chapters(2, 'Saga/Book 2')),
         settle('previous', c.bookMeta(2, 'Saga/Book 2', undefined, { includePrevious: true })),
         settle('plain', c.bookMeta(2, 'Saga/Book 2')),
         // The Bridge's estimate asks the community what the book and its series have.
@@ -776,6 +790,8 @@ describe('ApiClient', () => {
       await jest.advanceTimersByTimeAsync(15_000);
       await Promise.all(pending);
       expect(outcomes.next).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
+      expect(outcomes.item).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
+      expect(outcomes.chapters).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.previous).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.estimate).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.plain).toMatchObject({ name: 'TimeoutError', timeoutMs: 15_000 });
@@ -965,6 +981,28 @@ describe('ApiClient.history', () => {
     expect(sent(fetchMock, 1).url).toBe(
       'https://h/api/v1/libraries/2/history?path=Saga%2FBook+1&limit=500',
     );
+  });
+});
+
+describe('ApiClient.addHistory', () => {
+  const span = {
+    from_pos: 10,
+    to_pos: 55,
+    started_at: '2026-10-02T10:00:00Z',
+    ended_at: '2026-10-02T10:00:45Z',
+  };
+
+  it('posts the span, as a keepalive request only when the page is going (PLAYER-03)', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    const c = new ApiClient('https://h', 'tok');
+    await c.addHistory(2, 'Saga/Book 1', span);
+    await c.addHistory(2, 'Saga/Book 1', span, { keepalive: true });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://h/api/v1/libraries/2/history?path=Saga%2FBook+1');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual(span);
+    expect(init.keepalive).toBeUndefined();
+    expect((fetchMock.mock.calls[1] as [string, RequestInit])[1].keepalive).toBe(true);
   });
 });
 

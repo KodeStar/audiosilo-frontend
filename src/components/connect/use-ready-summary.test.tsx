@@ -25,6 +25,7 @@ jest.mock('@/playback/store', () => ({
 
 /* eslint-disable import/first */
 import { contentKey } from '@/lib/content-key';
+import { useSession } from '@/stores/session';
 
 import { useReadySummary } from './use-ready-summary';
 /* eslint-enable import/first */
@@ -151,4 +152,68 @@ it('reports libraries it could not read', async () => {
   const result = await mount();
   await waitFor(() => expect(result.current.failed).toBe(true));
   expect(result.current.line).toBeNull();
+});
+
+// BRIDGE-16: a podcast library's shows are no books.
+it('leaves podcast libraries out of the count and the names', async () => {
+  mockClient.serverInfo.mockResolvedValue(caps(true));
+  mockClient.libraries.mockResolvedValue([
+    { id: 1, name: 'Fiction' },
+    { id: 3, name: 'Podcasts', kind: 'podcasts' },
+  ]);
+  const result = await mount();
+  await waitFor(() => expect(result.current.line).not.toBeNull());
+  expect(result.current.line).toEqual({ kind: 'booksIn', books: 4, names: ['Fiction'] });
+  expect(mockClient.authors).not.toHaveBeenCalledWith(3, expect.anything());
+});
+
+// CONNECT-02: the admin of a server with nothing to play is pointed at the console.
+describe('the admin on an empty server', () => {
+  afterEach(() => useSession.setState({ connections: [] } as never));
+
+  const signIn = (role: 'admin' | 'user') =>
+    useSession.setState({
+      connections: [
+        {
+          id: 'c1',
+          serverUrl: 'https://h:8080',
+          name: 'Hearthside',
+          token: 't',
+          user: { id: 1, username: 'a', role },
+        },
+      ],
+    } as never);
+
+  it("gets the console's setup flow when there is no library", async () => {
+    signIn('admin');
+    mockClient.serverInfo.mockResolvedValue(caps(true));
+    mockClient.libraries.mockResolvedValue([]);
+    const result = await mount();
+    await waitFor(() => expect(result.current.line).toEqual({ kind: 'empty' }));
+    expect(result.current.admin).toEqual({ url: 'https://h:8080/admin/setup', noLibraries: true });
+  });
+
+  it('gets the console when the libraries hold no books', async () => {
+    signIn('admin');
+    mockClient.serverInfo.mockResolvedValue(caps(true));
+    mockClient.authors.mockResolvedValue({ people: [], unknown: 0 });
+    const result = await mount();
+    await waitFor(() => expect(result.current.line).toEqual({ kind: 'empty' }));
+    expect(result.current.admin).toEqual({ url: 'https://h:8080/admin', noLibraries: false });
+  });
+
+  it('is nothing for a listener, or for a server with books', async () => {
+    signIn('user');
+    mockClient.serverInfo.mockResolvedValue(caps(true));
+    mockClient.libraries.mockResolvedValue([]);
+    const listener = await mount();
+    await waitFor(() => expect(listener.current.line).toEqual({ kind: 'empty' }));
+    expect(listener.current.admin).toBeNull();
+
+    signIn('admin');
+    mockClient.libraries.mockResolvedValue([{ id: 1, name: 'Fiction' }]);
+    const stocked = await mount();
+    await waitFor(() => expect(stocked.current.line).not.toBeNull());
+    expect(stocked.current.admin).toBeNull();
+  });
 });

@@ -1,8 +1,7 @@
-import { useLocalSearchParams } from 'expo-router';
-
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { EndCredits } from '@/components/player/end-credits';
 import { segmentsToPath } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 
 /**
  * The end-credits ("book finished") screen, a root modal like the player (so it sits
@@ -17,7 +16,7 @@ export default function FinishedScreen() {
     libraryId: libParam,
     path: pathParam,
     auto,
-  } = useLocalSearchParams<{
+  } = useRouteParams<{
     connection?: string;
     libraryId?: string;
     path?: string | string[];

@@ -15,6 +15,7 @@ import { contradictedTitle } from '@/lib/chapter-label';
 import { formatCount } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { joinList } from '@/lib/names';
+import { openExternalUrl } from '@/lib/support';
 
 import type { ReadyLine } from './connect-model';
 import { ConnectFrame, StepDots } from './connect-frame';
@@ -42,8 +43,17 @@ export function ReadyScreen({
 }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
-  const { line, failed, books, place } = useReadySummary(connectionId);
-  const sentence = line ? lineText(line, name, t) : null;
+  const { line, failed, books, place, admin } = useReadySummary(connectionId);
+  // An admin on a server with nothing to play is the one who adds it (CONNECT-02).
+  const sentence = admin
+    ? t(admin.noLibraries ? 'onboarding.ready.emptyAdminSetup' : 'onboarding.ready.emptyAdmin', {
+        name,
+      })
+    : line
+      ? lineText(line, name, t)
+      : null;
+  // Nothing to play: no "Start listening".
+  const empty = line?.kind === 'empty';
   const placeText = place ? placeLine(place, t) : null;
   const playBook = usePlayBook();
   const onStart = () => {
@@ -68,7 +78,8 @@ export function ReadyScreen({
           accessibilityRole="header"
           className="text-center"
         >
-          {t('onboarding.ready.title')}
+          {/* An admin whose server has no library yet has a step left, not a library. */}
+          {t(admin?.noLibraries ? 'onboarding.ready.titleSetup' : 'onboarding.ready.title')}
         </Text>
       </View>
       <View className="w-full max-w-[440px] items-center gap-1">
@@ -89,7 +100,19 @@ export function ReadyScreen({
         <AddressesCard addresses={addresses} body={addressesBody(name, t)} />
       ) : null}
       <View className="w-full flex-row flex-wrap justify-center gap-2">
-        <Button size="lg" icon="play" title={t('onboarding.ready.start')} onPress={onStart} />
+        {admin ? (
+          <Button
+            size="lg"
+            icon="arrow-up-right"
+            title={t(
+              admin.noLibraries ? 'onboarding.ready.addLibrary' : 'onboarding.ready.openConsole',
+            )}
+            onPress={() => void openExternalUrl(admin.url)}
+          />
+        ) : null}
+        {empty ? null : (
+          <Button size="lg" icon="play" title={t('onboarding.ready.start')} onPress={onStart} />
+        )}
         <Button
           size="lg"
           variant="outline"

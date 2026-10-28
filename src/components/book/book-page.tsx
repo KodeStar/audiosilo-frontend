@@ -1,10 +1,11 @@
 import { type InfiniteData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { isNotInLibraryError } from '@/api/client';
 import {
   historyQuery,
   qk,
@@ -23,6 +24,7 @@ import { GenerateDialog } from '@/components/bridge/generate-dialog';
 import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
 import { ContentScope } from '@/components/layout/content-scope';
+import { NotInLibraryState } from '@/components/layout/not-in-library';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { bookMetaWork, matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
@@ -45,21 +47,30 @@ import { useBookPlace } from '@/components/player/use-listening-position';
 import { type PlayOptions, usePlayBook } from '@/components/player/use-play-book';
 import { useBookAnnotations } from '@/components/player/use-playing-pins';
 import { useBookSpeed, useBookTimeLeft } from '@/components/player/use-time-left';
-import { pathCrumbs } from '@/components/ui/breadcrumbs';
+import { bookCrumbs } from '@/components/ui/breadcrumbs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadEntry } from '@/downloads/store';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
-import { type BookTab, bookTitle, libraryHref, parentPath, segmentsToPath } from '@/lib/paths';
+import {
+  type BookTab,
+  bookTitle,
+  idParam,
+  libraryHref,
+  parentPath,
+  segmentsToPath,
+} from '@/lib/paths';
 import { percentHeard, progressFractionRemaining } from '@/lib/progress-view';
+import { useRouteParams } from '@/lib/route-params';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useBookTimeSaved } from '@/playback/time-saved';
+import { useLibraryName } from '@/stores/library-names';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useConnectionName } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
@@ -104,9 +115,17 @@ const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 export function BookScreen() {
   return (
     <ContentScope>
-      <BookOrEpisode />
+      <BookRoute />
     </ContentScope>
   );
+}
+
+/** A link that can't name a book (no positive library id, no path: `/book/abc`) asks the
+ * server nothing and shows the not-in-library state (frontend#129). */
+function BookRoute() {
+  const { libraryId, path } = useRouteParams<{ libraryId?: string; path?: string | string[] }>();
+  if (idParam(libraryId) === null || !segmentsToPath(path)) return <NotInLibraryState />;
+  return <BookOrEpisode />;
 }
 
 /**
@@ -115,7 +134,7 @@ export function BookScreen() {
  * same link; a book the book page.
  */
 function BookOrEpisode() {
-  const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
+  const { libraryId: libraryIdParam, path: pathParam } = useRouteParams<{
     libraryId: string;
     path?: string | string[];
   }>();
@@ -202,7 +221,7 @@ function BookPage() {
     libraryId: libraryIdParam,
     path: pathParam,
     tab: tabParam,
-  } = useLocalSearchParams<{
+  } = useRouteParams<{
     libraryId: string;
     path?: string | string[];
     tab?: string | string[];
@@ -217,10 +236,12 @@ function BookPage() {
   const paddingBottom = useMiniPlayerInset();
   const { openSeries, openAuthor, openNarrator } = useOpen();
 
-  const { data: book, isLoading, refetch } = useBook(libraryId, path);
+  const { data: book, isLoading, error, refetch } = useBook(libraryId, path);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
+  // Offline the live list may never come: the name the server last listed (PLAYER-09).
+  const keptLibraryName = useLibraryName(cid, libraryId);
   const ratings = useCapability('ratings', cid) === true;
   const browsePeople = useCapability('browse_people', cid);
   const relPath = book?.rel_path ?? path;
@@ -385,6 +406,8 @@ function BookPage() {
   // Render whenever we have book data, including a downloaded book served from the seeded
   // query cache while offline. Only error when there is no data.
   if (!book) {
+    // A 404 or 403 is a book that isn't there for this listener: no Retry (CONNECT-13).
+    if (isNotInLibraryError(error)) return <NotInLibraryState />;
     return (
       <View className="flex-1 p-4">
         <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />
@@ -392,9 +415,11 @@ function BookPage() {
     );
   }
 
-  const libraryName = libraries?.find((l) => l.id === libraryId)?.name ?? t('book.libraryFallback');
-  // The last crumb is the on-disk folder or file name (the hero shows the title).
-  const crumbs = pathCrumbs(libraryName, path, (sub) =>
+  const libraryName =
+    libraries?.find((l) => l.id === libraryId)?.name ??
+    keptLibraryName ??
+    t('book.libraryFallback');
+  const crumbs = bookCrumbs(libraryName, path, bookTitle(book.title, path), (sub) =>
     router.push(libraryHref(cid, libraryId, sub)),
   );
 

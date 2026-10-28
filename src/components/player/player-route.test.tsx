@@ -1,12 +1,18 @@
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 // The full player route (`src/app/player.tsx`): when it starts its book and when it jumps
 // to its `?position=` / `?track=`. The test lives here because a file under `src/app` is a
 // route to Expo Router.
 
 let mockParams: Record<string, string | undefined> = {};
+const mockRouter = { back: jest.fn(), canGoBack: jest.fn(() => false), dismissTo: jest.fn() };
 jest.mock('expo-router', () => ({
-  router: { back: jest.fn() },
+  // Read at call time: the factory runs before this file's consts are set.
+  router: {
+    back: () => mockRouter.back(),
+    canGoBack: () => mockRouter.canGoBack(),
+    dismissTo: (href: string) => mockRouter.dismissTo(href),
+  },
   useLocalSearchParams: () => mockParams,
 }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -20,8 +26,14 @@ const mockChapters = {
   chapters: [],
   files: [{ rel_path: 'Author/Book/a.m4b', duration: 3600 }],
 };
+// The book query as the route sees it; `null`: the book above, loaded.
+let mockBookQuery: object | null = null;
+const mockBookOpts: unknown[] = [];
 jest.mock('@/api/hooks', () => ({
-  useBook: () => ({ data: mockBook }),
+  useBook: (_l: number, _p: string, _c: string, opts: unknown) => {
+    mockBookOpts.push(opts);
+    return mockBookQuery ?? { data: mockBook };
+  },
   useCapability: () => mockPodcastFetch,
   useChapters: () => ({ data: mockChapters, isLoading: false }),
 }));
@@ -65,6 +77,7 @@ jest.mock('@/playback/store', () => {
 });
 
 /* eslint-disable import/first */
+import { ApiError } from '@/api/client';
 import PlayerScreen from '@/app/player';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
@@ -97,6 +110,8 @@ beforeEach(() => {
   mockDrop.mockReset();
   mockRequestFetch.mockReset();
   mockBook = plainBook;
+  mockBookQuery = null;
+  mockBookOpts.length = 0;
   mockPodcastFetch = false;
   useEpisodeFetch.setState({ pending: null });
 });
@@ -256,5 +271,69 @@ describe('the player route', () => {
       expect(mockRequestFetch).not.toHaveBeenCalled();
       expect(mockPlayBook).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// CONNECT-03: a route whose book isn't there, or the player opened bare with nothing
+// loaded, says so with Close and Home instead of an endless spinner.
+describe('a player route with no book to show', () => {
+  it('shows not-in-library for a book the server answers 404 for, with no start', async () => {
+    mockBookQuery = { data: undefined, error: new ApiError(404, 'not found'), isError: true };
+    routeTo({});
+    const r = await render(<PlayerScreen />);
+    expect(r.getByTestId('not-in-library-book')).toBeTruthy();
+    expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+
+  it('shows not-in-library for a 404 even while another book plays', async () => {
+    setNowPlaying({ connectionId: 'c', libraryId: 1, path: 'Other/Book' });
+    mockBookQuery = { data: undefined, error: new ApiError(404, 'not found'), isError: true };
+    routeTo({});
+    const r = await render(<PlayerScreen />);
+    expect(r.getByTestId('not-in-library-book')).toBeTruthy();
+  });
+
+  it('plays on a book still in the cache whose refetch is a 404 (a moved download)', async () => {
+    mockBookQuery = { data: mockBook, error: new ApiError(404, 'not found'), isError: true };
+    routeTo({});
+    const r = await render(<PlayerScreen />);
+    expect(r.queryByTestId('not-in-library-book')).toBeNull();
+    await waitFor(() => expect(mockPlayBook).toHaveBeenCalled());
+  });
+
+  it('asks nothing for a library id that is not a number (frontend#129)', async () => {
+    mockBookQuery = { data: undefined, error: null, isError: false };
+    mockParams = { connection: 'c', libraryId: 'abc', path: 'Author/Book' };
+    const r = await render(<PlayerScreen />);
+    expect(r.getByTestId('not-in-library-book')).toBeTruthy();
+    expect(mockBookOpts.every((o) => (o as { enabled: boolean }).enabled === false)).toBe(true);
+  });
+
+  it('says nothing is playing when opened bare with nothing loaded', async () => {
+    mockBookQuery = { data: undefined, error: null, isError: false };
+    mockParams = {};
+    const r = await render(<PlayerScreen />);
+    expect(r.getByTestId('not-in-library-nothing')).toBeTruthy();
+    // Close on a cold load (nothing to go back to) goes Home.
+    await fireEvent.press(r.getByText('Close'));
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith('/');
+  });
+
+  it('opened bare shows the loaded book', async () => {
+    setNowPlaying(THIS_BOOK);
+    mockBookQuery = { data: undefined, error: null, isError: false };
+    mockParams = {};
+    const r = await render(<PlayerScreen />);
+    expect(r.queryByTestId('not-in-library-nothing')).toBeNull();
+  });
+
+  it('keeps a Retry for a failure that may pass', async () => {
+    const refetch = jest.fn();
+    mockBookQuery = { data: undefined, error: new ApiError(503, 'busy'), isError: true, refetch };
+    routeTo({});
+    const r = await render(<PlayerScreen />);
+    expect(r.queryByTestId('not-in-library-book')).toBeNull();
+    await fireEvent.press(r.getByText('Retry'));
+    expect(refetch).toHaveBeenCalled();
   });
 });

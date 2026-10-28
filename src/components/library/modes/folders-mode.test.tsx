@@ -11,12 +11,15 @@ const mockOpenLibrary = jest.fn();
 jest.mock('@/lib/open', () => ({ useOpen: () => ({ openLibrary: mockOpenLibrary }) }));
 const mockRetry = jest.fn();
 let mockLists: LibrariesOfServer[] = [];
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
 jest.mock('@/api/hooks', () => ({
   useFavouritesAll: () => ({ favourites: [] }),
   useLibrariesAll: () => ({
     groups: mockLists,
     libraries: mockLists.flatMap((g) => g.libraries),
     isLoading: false,
+    offline: mockLists.some((g) => g.paused),
     retryServer: mockRetry,
   }),
 }));
@@ -39,6 +42,7 @@ const list = (
   connectionId,
   connectionName,
   status,
+  paused: false,
   libraries: names.map((name, i) => ({
     id: i + 1,
     name,
@@ -52,6 +56,7 @@ beforeEach(() => {
   mockRetry.mockClear();
   mockSignedOut = [];
   mockLists = [];
+  mockDeviceOnline = true;
 });
 
 describe('FoldersMode', () => {
@@ -96,6 +101,32 @@ describe('FoldersMode', () => {
     expect(screen.getByText('Home')).toBeTruthy();
     expect(screen.getByText("Maya's Shelf")).toBeTruthy();
     expect(screen.getByText('Kids')).toBeTruthy();
+  });
+
+  // Offline before the list answered (paused): not "no libraries shared".
+  it('says it is offline, not "no libraries", while the lists wait for the network', async () => {
+    mockLists = [{ ...list('a', 'Home', 'loading'), paused: true }];
+    await render(<FoldersMode />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+  });
+
+  it('shows the libraries a server already listed while offline', async () => {
+    mockLists = [
+      list('a', 'Home', 'ready', ['Audiobooks']),
+      { ...list('b', 'Maya', 'loading'), paused: true },
+    ];
+    await render(<FoldersMode />);
+    expect(screen.getByText('Audiobooks')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  it('says it is offline, with no Retry per server, when a list failed with the device offline', async () => {
+    mockDeviceOnline = false;
+    mockLists = [list('a', 'Home', 'error')];
+    await render(<FoldersMode />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('opens a library from its row', async () => {

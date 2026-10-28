@@ -1,6 +1,6 @@
 import type { FlashListRef } from '@shopify/flash-list';
 import { FlashList } from '@shopify/flash-list';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -24,6 +24,7 @@ import { headIndexForLetter, presentLetters } from '@/lib/alpha-sections';
 import { formatCount } from '@/lib/format';
 import { LABEL_KINDS } from '@/lib/labels';
 import { useLayout } from '@/lib/layout';
+import { useRouteParams } from '@/lib/route-params';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { AzRail } from '../books/az-rail';
@@ -85,7 +86,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   const layout = useLayout();
   const phone = layout === 'phone';
   const reduceMotion = useReducedMotion();
-  const params = useLocalSearchParams<{
+  const params = useRouteParams<{
     sort?: string;
     status?: string;
     dl?: string;

@@ -288,7 +288,9 @@ export type Library = {
   kind?: LibraryKind | (string & {});
   id: number;
   name: string;
-  root: string;
+  /** The library's folder on the server. Sent to admins only (CONNECT-12: newer servers
+   * leave it out for a listener or a demo session); the player never reads it. */
+  root?: string;
   default_view: LibraryView;
   /** Display order (lower first). Also the tiebreaker when the same book exists in
    * more than one library - the earlier library's copy wins de-duplication. */

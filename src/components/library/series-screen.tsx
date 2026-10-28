@@ -1,10 +1,10 @@
-import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { ContentScope } from '@/components/layout/content-scope';
 import { SeriesPage, WorkSeriesPage } from '@/components/series/series-page';
 import { EmptyState } from '@/components/ui/empty-state';
 import { parseSeriesParams } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 
 /**
@@ -23,7 +23,7 @@ export function SeriesScreen() {
 
 function SeriesContent() {
   const { t } = useTranslation();
-  const params = parseSeriesParams(useLocalSearchParams());
+  const params = parseSeriesParams(useRouteParams());
   // A community-only series link has no local name: `WorkSeriesPage` names the tab.
   usePageTitle(params?.name);
   if (!params) return <EmptyState icon="library" title={t('library.detail.badLink')} />;

@@ -327,6 +327,10 @@ snapshot and the widget follow `activeProfileId`). The rules:
   for the content screens, called directly by the root routes: player, end credits, year,
   `/connect/ready`): an unknown connection gets a not-found state, another person's gets
   `OtherPersonGate` (switch first, their PIN asked).
+- **Route params are decoded once**: read them with `useRouteParams` (`src/lib/route-params.ts`),
+  never Expo Router's `useLocalSearchParams` (lint refuses it), which runs `decodeURIComponent`
+  over values the router already decoded, so a folder named `Lit%20Book` could not be opened and
+  a double-encoded link opened a book it does not name (CONNECT-01).
 - **Nobody chosen** (`mustChoose`: the active person left and others remain; persisted as
   `activeProfileId: null`): the auth gate holds the shell and opens "Who's listening?"
   (`/profiles`, a root full-screen modal); every person-facing list is empty
@@ -687,7 +691,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
   `base_version: 0`, which the server takes as diverged from any row, this device's own too
   (signed out and back in, its places here cleared): it keeps a place further on, and its
-  answer offers Jump. A server's answer (`ApiError`) still fails it.
+  answer offers Jump. A server's answer (`ApiError`) still fails it, and so does a timeout
+  while the reachability check still finds the server up (a slow server may hold a place
+  further on, fe#173); one whose check timed out too is down, and opens at the start.
   A 401 always fails it: a lookup that succeeded on local places would clear the reconnect
   flag the same request raised (`noteQuerySuccess`). It is asked whatever the browser's online
   flag says (`readingPlaceQuery`, `networkMode: 'always'`): held offline, it would leave the
@@ -2081,7 +2087,9 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   scrubbers share `scrub-parts.tsx` (hover, `Playhead`, `ScrubTip`) and one `usePlayingPins` call; the
   timeline merges chapters like the Now card's `scaleRuns` but places each run by time (`runBox`, the
   mapping the playhead, taps and pins use). A scrub never lands on the book's very end
-  (`scrubTarget`: 30 s short), which would finish the book and take the Undo chip with it.
+  (`scrubTarget`/`scrubGuard`: 30 s short, or a tenth of a book under 5 minutes, never inside
+  the last `FINISHED_TOLERANCE` seconds), which would finish the book and take the Undo chip
+  with it.
   The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
   a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
   (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover
@@ -2199,5 +2207,7 @@ under their empty state).
   player sits on its tab bar through a `100%` bottom offset, no measured height. The accessory renders
   nothing on tablet/desktop (iOS mounts both placements behind the hidden bar).
 - **Banners**: `OfflineBanner` takes the page's connection as a prop (each phone header its own
-  route's `?connection=`, the wide `WideTop` the focused page's) and selects only which message shows.
+  route's `?connection=`, the wide `WideTop` the focused page's) and selects only which servers are
+  down; the words are `offlineBannerText` (CONNECT-15): no network on the device says offline, else
+  the one server down by name (only the listening person's servers), else "some servers offline".
 

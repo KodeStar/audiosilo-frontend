@@ -1,12 +1,14 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, type ListRenderItem, type ViewToken, View } from 'react-native';
 
+import { isNotInLibraryError } from '@/api/client';
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
 import { useScopedCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
+import { NotInLibraryState } from '@/components/layout/not-in-library';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -23,7 +25,8 @@ import {
   presentLetters,
   sectionIndexForLetter,
 } from '@/lib/alpha-sections';
-import { libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
+import { idParam, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
 import { usePageTitle } from '@/lib/use-page-title';
 
@@ -76,14 +79,22 @@ function BrowseSkeleton() {
 export function BrowseScreen() {
   return (
     <ContentScope>
-      <BrowseContent />
+      <BrowseRoute />
     </ContentScope>
   );
 }
 
+/** A link with no positive library id (`/library/abc`) asks the server nothing and shows
+ * the not-in-library state (frontend#129). */
+function BrowseRoute() {
+  const { libraryId } = useRouteParams<{ libraryId?: string }>();
+  if (idParam(libraryId) === null) return <NotInLibraryState kind="folder" />;
+  return <BrowseContent />;
+}
+
 function BrowseContent() {
   const { t } = useTranslation();
-  const { libraryId: libraryIdParam, path: pathParam } = useLocalSearchParams<{
+  const { libraryId: libraryIdParam, path: pathParam } = useRouteParams<{
     libraryId: string;
     path?: string | string[];
   }>();
@@ -100,7 +111,7 @@ function BrowseContent() {
 
   const [query, setQuery] = useState('');
 
-  // This screen unmounts on every navigation (see scroll-memory); restore the
+  // A folder reached again is often a fresh screen (see scroll-memory); restore the
   // last position ourselves. We remember the top visible row index rather than a
   // pixel offset, which is reliable on a virtualized list.
   const listRef = useRef<FlatList<Row>>(null);
@@ -221,14 +232,16 @@ function BrowseContent() {
       ) : null}
 
       {isLoading ? <BrowseSkeleton /> : null}
-      {error ? (
+      {!error ? null : isNotInLibraryError(error) ? (
+        <NotInLibraryState kind="folder" />
+      ) : (
         <LoadFailedNote
           cid={cid}
           message={t('library.browse.openError')}
           onRetry={() => refetch()}
           className="mx-4 lg:mx-8"
         />
-      ) : null}
+      )}
 
       {!isLoading && !error ? (
         <View className="flex-1 flex-row">

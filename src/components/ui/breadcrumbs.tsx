@@ -26,6 +26,22 @@ export function pathCrumbs(root: string, path: string, open: (sub: string) => vo
   ];
 }
 
+/**
+ * A book's crumbs (PLAYER-08): `pathCrumbs`, the last one (the book's own folder or file,
+ * on disk often "02 - Caliban's War") named by the book's `title` as the page heading is.
+ */
+export function bookCrumbs(
+  root: string,
+  path: string,
+  title: string,
+  open: (sub: string) => void,
+): Crumb[] {
+  const crumbs = pathCrumbs(root, path, open);
+  if (crumbs.length < 2 || !title) return crumbs;
+  const last = crumbs.length - 1;
+  return [...crumbs.slice(0, last), { ...crumbs[last], label: title }];
+}
+
 /** Contiguous breadcrumb pills with hairline separators; the active (last) crumb
  * is pink. Ported from the old client's `.breadcrumbs`. */
 export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {

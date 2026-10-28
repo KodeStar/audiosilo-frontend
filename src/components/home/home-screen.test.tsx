@@ -52,11 +52,18 @@ type Progress = {
   updated_at: string;
 };
 let mockCaps: Record<string, boolean | undefined> = {};
-let mockProgress: { progress: Progress[]; isLoading: boolean; error: Error | null } = {
+let mockProgress: {
+  progress: Progress[];
+  isLoading: boolean;
+  error: Error | null;
+  offline?: boolean;
+} = {
   progress: [],
   isLoading: false,
   error: null,
 };
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
 let mockRecent: { books: unknown[]; isLoading: boolean; error: Error | null } = {
   books: [],
   isLoading: false,
@@ -188,6 +195,7 @@ beforeEach(() => {
   mockUseActiveModules.mockClear();
   mockCaps = {};
   mockProgress = { progress: [], isLoading: false, error: null };
+  mockDeviceOnline = true;
   mockRecent = { books: [], isLoading: false, error: null };
   mockConnections = [{ id: 'a', name: 'Home' }];
   mockNext = { answers: [], supported: undefined, isLoading: false };
@@ -236,6 +244,49 @@ describe('HomeScreen', () => {
     await mountHome();
     expect(screen.getByText("Couldn't load your progress")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  // Offline before progress was read (the drop came on another tab): the offline state,
+  // not "Pick something to listen to" for a listener with books in progress.
+  it('says it is offline, not "pick something", while progress waits for the network', async () => {
+    mockProgress = { progress: [], isLoading: false, error: null, offline: true };
+    await mountHome();
+    expect(screen.getByTestId('home-offline')).toBeTruthy();
+    expect(screen.queryByText('Pick something to listen to')).toBeNull();
+  });
+
+  // Another server's finished rows say nothing about the paused server's Now book.
+  it('says it is offline when only finished rows answered and another server waits', async () => {
+    mockProgress = {
+      progress: [{ ...started('Done', '2026-10-04T00:00:00Z'), position: 1000, finished: true }],
+      isLoading: false,
+      error: null,
+      offline: true,
+    };
+    await mountHome();
+    expect(screen.getByTestId('home-offline')).toBeTruthy();
+    expect(screen.queryByText('Pick something to listen to')).toBeNull();
+  });
+
+  it('says it is offline, with no Retry, when progress failed as the network went', async () => {
+    mockDeviceOnline = false;
+    mockProgress = { progress: [], isLoading: false, error: new TypeError('Failed to fetch') };
+    await mountHome();
+    expect(screen.getByTestId('home-offline')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your progress")).toBeNull();
+  });
+
+  it('keeps the cached progress offline', async () => {
+    mockDeviceOnline = false;
+    mockProgress = {
+      progress: [started('Cached', '2026-10-04T00:00:00Z')],
+      isLoading: false,
+      error: null,
+      offline: true,
+    };
+    await mountHome();
+    expect(screen.getByText('Now card: Cached')).toBeTruthy();
+    expect(screen.queryByTestId('home-offline')).toBeNull();
   });
 
   // frontend#124: a revoked session is one sign-in state, not load errors with Retry.

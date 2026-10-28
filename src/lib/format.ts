@@ -135,12 +135,17 @@ function relativeFromStrings(n: number, unit: RelativeUnit, lng: string): string
  * yields "yesterday"/"last month") where available - web and Node - but Hermes (React
  * Native) does NOT ship `Intl.RelativeTimeFormat`, so there the words come from our own
  * strings (`common.ago.*`, every language) rather than crashing. Empty when the input is
- * missing or unparseable. */
-export function formatRelative(iso?: string, locale: string = getLocale()): string {
+ * missing or unparseable. A memoized caller passes `locale` and `now` (from `useNow`), so
+ * its words follow a language switch and the clock rather than freezing (fe#162). */
+export function formatRelative(
+  iso?: string,
+  locale: string = getLocale(),
+  now: number = Date.now(),
+): string {
   if (!iso) return '';
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return '';
-  const sec = Math.max(0, (Date.now() - then) / 1000);
+  const sec = Math.max(0, (now - then) / 1000);
   // Construct the formatter only when the API exists (absent on Hermes/RN).
   const rtf =
     typeof Intl !== 'undefined' && typeof Intl.RelativeTimeFormat === 'function'

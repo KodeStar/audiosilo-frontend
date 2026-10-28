@@ -1,22 +1,25 @@
-import { useLocalSearchParams } from 'expo-router';
-
+import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { segmentsToPath } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { ReaderScreen } from '@/reader/reader-screen';
 
 /**
  * The ebook reader (Bridge Phase 3b, `/read`), a root modal like the player, so it carries the
  * connection as a param (`readerHref`). Thin: it reads the params and hands off to
  * <ReaderScreen>, unless the route-connection rule shows its gate (`useRouteConnection`:
- * an unknown connection, another person's book).
+ * an unknown connection, another person's book). A link without `connection=` (a
+ * hand-edited or old one) reads through the active connection, as the player does
+ * (CONNECT-05).
  */
 export default function ReaderRoute() {
   const {
     connection,
     libraryId: libParam,
     path: pathParam,
-  } = useLocalSearchParams<{ connection?: string; libraryId?: string; path?: string | string[] }>();
-  const { cid, gate } = useRouteConnection(connection);
+  } = useRouteParams<{ connection?: string; libraryId?: string; path?: string | string[] }>();
+  const { cid: param, gate } = useRouteConnection(connection);
+  const cid = useCid(param || undefined);
   if (gate) return gate;
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);

@@ -41,9 +41,15 @@ self.addEventListener('install', (event) => {
     (async () => {
       if (!DEV) {
         // The shell root (offline navigations fall back to it) and the build's chunks,
-        // cached while installing so Chrome keeps their compiled code (see precacheBuild).
-        // Offline or the root unreachable: runtime caching covers it, and the app asks again.
-        await precacheBuild(true);
+        // cached while installing so Chrome keeps their compiled code (see precacheBuild),
+        // and the ebook reader's document, so a downloaded book's EPUB opens offline even
+        // when the reader never opened online. Offline, unreachable or an older server with
+        // no reader: runtime caching covers it, and the app asks again.
+        const cache = await caches.open(SHELL_CACHE);
+        await Promise.all([
+          precacheBuild(true),
+          cache.add(new Request(readerDocumentUrl(), { cache: 'reload' })).catch(() => {}),
+        ]);
       }
       await self.skipWaiting();
     })(),
@@ -104,9 +110,14 @@ self.addEventListener('fetch', (event) => {
 
 // --- app shell -------------------------------------------------------------
 
-/** Whether `url` is the ebook reader's document (`<scope>reader.html`, public/reader.html). */
+/** The ebook reader's document (`<scope>reader.html`, public/reader.html). */
+function readerDocumentUrl() {
+  return new URL('reader.html', self.registration.scope).href;
+}
+
+/** Whether `url` is the ebook reader's document. */
 function isReaderDocument(url) {
-  return url.pathname === new URL('reader.html', self.registration.scope).pathname;
+  return url.pathname === new URL(readerDocumentUrl()).pathname;
 }
 
 /** Network first, then this page's own cached copy, then (`shellFallback`) the app shell. */

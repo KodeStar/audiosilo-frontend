@@ -453,6 +453,12 @@ export function parseConnectBook(p: RawParams): ConnectBook | null {
   return { libraryId, path };
 }
 
+/** A `ConnectBook` as the connect flow's `book` and `path` params (`parseConnectBook`
+ * reads them back). */
+export function connectBookParams(book: ConnectBook): { book: string; path: string } {
+  return { book: String(book.libraryId), path: book.path };
+}
+
 /** The collection page's params, or null without a valid id. */
 export function parseCollectionParams(p: RawParams): { connectionId: string; id: number } | null {
   const id = idParam(p.id);

@@ -139,6 +139,7 @@ import { flushConnection } from './progress-sync';
 import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
 import {
+  flushHistoryOnHide,
   holdSaves,
   LONG_PAUSE_MS,
   localMoveCount,
@@ -151,6 +152,7 @@ import {
   teardownBeforeTokenRevoke,
   initializePlayback,
   usePlayer,
+  watchPageHide,
 } from './store';
 /* eslint-enable import/first */
 
@@ -2660,5 +2662,100 @@ describe('Smart Speed and Voice Boost', () => {
     mockFlushTimeSaved.mockClear();
     pushSnapshot(snap('paused', 12));
     expect(mockFlushTimeSaved).toHaveBeenCalledTimes(1);
+  });
+});
+
+// --- the listening span as the page goes (PLAYER-03) ------------------------
+
+describe('the listening span when the page goes or hides (web)', () => {
+  const addHistory = fakeClient.addHistory as jest.Mock;
+  const keepalives = () =>
+    addHistory.mock.calls.map((c) => (c[3] as { keepalive: boolean }).keepalive);
+
+  async function playing() {
+    await startBook();
+    pushSnapshot(snap('playing', 10));
+    addHistory.mockClear();
+  }
+
+  it('closing the tab while playing posts the span once, with keepalive', async () => {
+    await playing();
+    jest.advanceTimersByTime(45_000);
+    pushSnapshot(snap('playing', 55));
+    flushHistoryOnHide(true);
+    expect(addHistory).toHaveBeenCalledTimes(1);
+    expect(addHistory).toHaveBeenCalledWith(
+      2,
+      'A/Book.m4b',
+      expect.objectContaining({ from_pos: 10, to_pos: 55 }),
+      { keepalive: true },
+    );
+    // The page goes on to stop the audio: no second post of the same span.
+    flushHistoryOnHide(true);
+    pushSnapshot(snap('paused', 55));
+    expect(addHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('a hidden tab splits a span long enough to keep, playing on into a new one', async () => {
+    await playing();
+    jest.advanceTimersByTime(10_000);
+    flushHistoryOnHide(false);
+    expect(addHistory).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(20_000);
+    pushSnapshot(snap('playing', 40));
+    flushHistoryOnHide(false);
+    expect(keepalives()).toEqual([true]);
+    jest.advanceTimersByTime(25_000);
+    pushSnapshot(snap('playing', 65));
+    pushSnapshot(snap('paused', 65));
+    expect(addHistory).toHaveBeenCalledTimes(2);
+    expect(addHistory.mock.calls[1][2]).toEqual(
+      expect.objectContaining({ from_pos: 40, to_pos: 65 }),
+    );
+    expect(keepalives()).toEqual([true, false]);
+  });
+
+  it('posts nothing when nothing plays', async () => {
+    await startBook();
+    addHistory.mockClear();
+    flushHistoryOnHide(true);
+    flushHistoryOnHide(false);
+    expect(addHistory).not.toHaveBeenCalled();
+  });
+
+  it('a span posted as the tab hides refreshes no history; one posted on a pause does', async () => {
+    await playing();
+    jest.advanceTimersByTime(30_000);
+    (queryClient.invalidateQueries as jest.Mock).mockClear();
+    flushHistoryOnHide(false);
+    await flushMicrotasks();
+    expect(invalidatedKeys()).not.toContainEqual(qk.historyAll('c1'));
+    jest.advanceTimersByTime(30_000);
+    pushSnapshot(snap('paused', 70));
+    await flushMicrotasks();
+    expect(invalidatedKeys()).toContainEqual(qk.historyAll('c1'));
+  });
+
+  it('listens for pagehide and a hidden document, and stops listening', async () => {
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' }) as EventTarget & {
+      visibilityState: DocumentVisibilityState;
+    };
+    const stop = watchPageHide(win, doc);
+    await playing();
+    jest.advanceTimersByTime(30_000);
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(addHistory).not.toHaveBeenCalled();
+    doc.visibilityState = 'hidden';
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(keepalives()).toEqual([true]);
+    jest.advanceTimersByTime(30_000);
+    win.dispatchEvent(new Event('pagehide'));
+    expect(keepalives()).toEqual([true, true]);
+    stop();
+    await playing();
+    jest.advanceTimersByTime(30_000);
+    win.dispatchEvent(new Event('pagehide'));
+    expect(addHistory).not.toHaveBeenCalled();
   });
 });

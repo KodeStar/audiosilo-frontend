@@ -8,7 +8,7 @@ import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/store
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
-import { ApiClient, isSignedOutError } from './client';
+import { ApiClient, isNotInLibraryError, isSignedOutError } from './client';
 import {
   anyOffline,
   noteAnswer,
@@ -87,12 +87,14 @@ function noteQueryReached(key: readonly unknown[]) {
 }
 
 /**
- * The default query retry: once, except a 401 (frontend#124). A refused token stays
- * refused (the client has already flagged its connection for reconnect, and the screens
- * show one sign-in state for it), so asking again only doubles every dead request.
+ * The default query retry: once, except a 401 (frontend#124) or content that isn't there
+ * (`isNotInLibraryError`: a 404, 403 or 400, CONNECT-13). A refused token stays refused
+ * (the client has already flagged its connection for reconnect, and the screens show one
+ * sign-in state for it), and a missing book stays missing, so asking again only doubles
+ * every dead request.
  */
 export function retryQuery(failureCount: number, error: unknown): boolean {
-  return failureCount < 1 && !isSignedOutError(error);
+  return failureCount < 1 && !isSignedOutError(error) && !isNotInLibraryError(error);
 }
 
 export const queryClient = new QueryClient({

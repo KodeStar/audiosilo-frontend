@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import type { TFunction } from 'i18next';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
@@ -29,10 +30,12 @@ const REMOVE_REM = 2.25;
  * renders `dialog` (a portaled `ConfirmDialog`, so where it sits in the tree doesn't
  * matter).
  *
- * Removing a connection purges its downloads (unreachable once its id is gone), so a
- * connection with downloaded books gets a confirm step first. The count is snapshotted
- * at tap time (no store subscription: the whole section would otherwise re-render on
- * every download progress tick).
+ * Every removal is confirmed first (frontend#143: one tap signed the device out, even of
+ * its last server), saying what is lost: the downloads (unreachable once its id is gone,
+ * so they are purged), else the sign-in on this device; and for the last server, that the
+ * app goes back to its first step. The download count is snapshotted at tap time (no
+ * store subscription: the whole section would otherwise re-render on every download
+ * progress tick).
  */
 export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dialog: ReactNode } {
   const { t } = useTranslation();
@@ -41,6 +44,7 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
   const [pendingRemoval, setPendingRemoval] = useState<{
     connection: Connection;
     downloadCount: number;
+    last: boolean;
   } | null>(null);
 
   const performRemove = async (id: string) => {
@@ -54,8 +58,8 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
 
   const onRemove = (c: Connection) => {
     const count = downloadedCountFor(useDownloads.getState().entries, c.id);
-    if (count > 0) setPendingRemoval({ connection: c, downloadCount: count });
-    else void performRemove(c.id);
+    const last = useSession.getState().connections.every((o) => o.id === c.id);
+    setPendingRemoval({ connection: c, downloadCount: count, last });
   };
 
   const dialog = (
@@ -64,9 +68,7 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
       title={t('account.connections.removeConfirm.title', {
         name: pendingRemoval?.connection.name ?? '',
       })}
-      message={t('account.connections.removeConfirm.message', {
-        count: pendingRemoval?.downloadCount ?? 0,
-      })}
+      message={removeMessage(pendingRemoval, t)}
       confirmLabel={t('account.connections.removeConfirm.confirm')}
       confirmIcon="trash"
       destructive
@@ -80,6 +82,20 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
   );
 
   return { onRemove, dialog };
+}
+
+/** What removing a server loses, in words: its downloads, else this device's sign-in;
+ * and the way back to the first step when it is the last server. */
+function removeMessage(
+  pending: { connection: Connection; downloadCount: number; last: boolean } | null,
+  t: TFunction,
+): string {
+  if (!pending) return '';
+  const lost =
+    pending.downloadCount > 0
+      ? t('account.connections.removeConfirm.message', { count: pending.downloadCount })
+      : t('account.connections.removeConfirm.signOut', { name: pending.connection.name });
+  return pending.last ? `${lost} ${t('account.connections.removeConfirm.last')}` : lost;
 }
 
 /** Settings' "Accounts and devices" pane: the signed-in servers, each opening its own

@@ -1,9 +1,8 @@
-import { useLocalSearchParams } from 'expo-router';
-
 import { ConnectionScope } from '@/api/provider';
 import { ReadyScreen } from '@/components/connect/ready-screen';
 import { useRouteConnection } from '@/components/layout/content-scope';
 import { LeaveOnboarding } from '@/components/shell/leave-onboarding';
+import { useRouteParams } from '@/lib/route-params';
 import { useSession } from '@/stores/session';
 
 /**
@@ -14,7 +13,7 @@ import { useSession } from '@/stores/session';
  * and progress.
  */
 export default function ReadyRoute() {
-  const { connection } = useLocalSearchParams<{ connection?: string }>();
+  const { connection } = useRouteParams<{ connection?: string }>();
   const { cid, gate } = useRouteConnection(connection);
   const conn = useSession((s) => s.connections.find((c) => c.id === cid));
   if (!cid || !conn) return <LeaveOnboarding />;

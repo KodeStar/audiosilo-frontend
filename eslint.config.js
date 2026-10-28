@@ -25,7 +25,7 @@ module.exports = [
     // Uniwind only resolves `className` on React Native's own components; this
     // third-party one drops its classes on native unless wrapped (see the wrapper).
     files: ['**/*.ts', '**/*.tsx'],
-    ignores: ['src/components/ui/safe-area-view.tsx'],
+    ignores: ['src/components/ui/safe-area-view.tsx', 'src/lib/route-params.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -36,6 +36,12 @@ module.exports = [
               importNames: ['SafeAreaView'],
               message:
                 "Import SafeAreaView from '@/components/ui/safe-area-view' (it resolves className; this one drops it on native).",
+            },
+            {
+              name: 'expo-router',
+              importNames: ['useLocalSearchParams'],
+              message:
+                "Use useRouteParams from '@/lib/route-params': useLocalSearchParams decodes every param a second time (a `%` in a folder name breaks).",
             },
           ],
         },

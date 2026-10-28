@@ -40,6 +40,7 @@ import {
 } from '@/lib/podcast-requests';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
 import { lookupReadingPlace } from '@/reader/reading-progress';
+import { rememberLibraryNames } from '@/stores/library-names';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
@@ -338,11 +339,20 @@ export function addressesQuery(cid: string, client: MaybeClient) {
   });
 }
 
+/** A server's libraries, their names kept on the device as they arrive (an offline book
+ * page names its library: `useLibraryName`, PLAYER-09). Every read of `qk.libraries` asks
+ * through `librariesQuery`. */
+export async function fetchLibraries(cid: string, client: ApiClient): Promise<Library[]> {
+  const libraries = await client.libraries();
+  rememberLibraryNames(cid, libraries);
+  return libraries;
+}
+
 /** A server's libraries. */
 export function librariesQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.libraries(cid),
-    queryFn: client ? () => client.libraries() : skipToken,
+    queryFn: client ? () => fetchLibraries(cid, client) : skipToken,
   });
 }
 
@@ -780,7 +790,7 @@ function invalidateProgressDependents(
 export function useLibraries() {
   const api = useApi();
   const cid = useCid();
-  return useQuery({ queryKey: qk.libraries(cid), queryFn: () => api.libraries() });
+  return useQuery(librariesQuery(cid, api));
 }
 
 /** Server page size for the folder browse view (the server caps a page at 500). */
@@ -1673,8 +1683,23 @@ export function useRemoveFromQueue(connectionId?: string) {
     connectionId,
     (api, v: { libraryId: number; path: string }) => api.removeFromQueue(v.libraryId, v.path),
     // Not awaited: the queue's next write (same scope) needn't wait for this read.
-    ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.queue(cid) }),
+    ({ qc, cid }) => void rereadQueue(qc, cid),
   );
+}
+
+/** Read the queue again after a remove. A read already in flight started before the
+ * DELETE and could put the removed entry back, so only a read made after the remove lands
+ * (fe#155). Over a cached queue the read in flight is replaced by a new one
+ * (`cancelRefetch`), whose answer its caller then gets: a caller that asked for a fresh
+ * queue (`resolveUpNext` at the end of a book) is never handed the queue cached before its
+ * read, as a plain cancel would. With nothing cached it is cancelled (`storeAnswer`). */
+function rereadQueue(qc: QueryClient, cid: string): Promise<void> {
+  const queryKey = qk.queue(cid);
+  const state = qc.getQueryState(queryKey);
+  if (state?.fetchStatus === 'fetching' && state.data !== undefined) {
+    return qc.invalidateQueries({ queryKey, exact: true, refetchType: 'all' });
+  }
+  return storeAnswer(qc, queryKey, () => undefined);
 }
 
 /** {@link useRemoveFromQueue} outside React (the end of a book, which may run with no
@@ -1692,7 +1717,7 @@ export function removeFromQueue(
       const supported = cachedCapability(cid, 'queue');
       if (supported !== true) throw new CapabilityError('queue', supported === undefined);
       await client.removeFromQueue(v.libraryId, v.path);
-      void queryClient.invalidateQueries({ queryKey: qk.queue(cid) });
+      void rereadQueue(queryClient, cid);
     },
   }).mutate();
 }
@@ -2876,6 +2901,9 @@ export type LibrariesOfServer = {
   connectionName: string;
   libraries: SourcedLibrary[];
   status: 'loading' | 'ready' | 'error';
+  /** Still `loading`, but waiting for the network: the device went offline before this
+   * server's list answered (React Query pauses it), so it will not arrive meanwhile. */
+  paused: boolean;
 };
 
 /** Every connection's libraries: flattened (`libraries`) and per server, in connection
@@ -2883,10 +2911,7 @@ export type LibrariesOfServer = {
 export function useLibrariesAll() {
   const apis = useApis();
   return useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.libraries(connection.id),
-      queryFn: () => client.libraries(),
-    })),
+    queries: apis.map(({ connection, client }) => librariesQuery(connection.id, client)),
     combine: (results) => {
       const groups = results.map((r, i): LibrariesOfServer => {
         const { id, name } = apis[i].connection;
@@ -2899,12 +2924,18 @@ export function useLibrariesAll() {
             connectionName: name,
           })),
           status: r.data ? 'ready' : r.isError ? 'error' : 'loading',
+          // `isPaused`, not `fetchStatus`: a prop read here is tracked, and fetchStatus would
+          // re-render every reader of the lists at each background refetch.
+          paused: !r.data && r.isPaused,
         };
       });
       return {
         groups,
         libraries: groups.flatMap((g) => g.libraries),
+        // `isLoading` is false for a paused list: that one is `offline` instead (fe#155).
         isLoading: results.some((r) => r.isLoading),
+        /** A list waits for the network (the device went offline before it answered). */
+        offline: groups.some((g) => g.paused),
         error: results.find((r) => r.error)?.error ?? null,
         /** Ask again every server whose list failed. */
         retry: () => {
@@ -3005,6 +3036,9 @@ export function useAllProgressAll({
         )
         .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
       isLoading: results.some((r) => r.isLoading),
+      /** A list waits for the network with nothing cached (the device went offline
+       * before it answered): not loading, and not "no progress". */
+      offline: results.some((r) => !r.data && r.isPaused),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });

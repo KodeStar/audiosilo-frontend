@@ -1,18 +1,23 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { isNotInLibraryError } from '@/api/client';
 import { useBook, useCapability, useChapters } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { useRouteConnection } from '@/components/layout/content-scope';
+import { NotInLibraryState } from '@/components/layout/not-in-library';
+import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { PlayerView } from '@/components/player/player-view';
 import { dropStartedBook } from '@/components/player/drop-started';
 import { playFailedToast } from '@/components/player/play-failed';
 import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
 import { contentKey } from '@/lib/content-key';
-import { bookTitle, segmentsToPath } from '@/lib/paths';
+import { bookTitle, idParam, segmentsToPath } from '@/lib/paths';
+import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
 import {
   cancelEpisodeFetchOf,
@@ -25,13 +30,14 @@ import {
 import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
+  const { t } = useTranslation();
   const {
     connection,
     libraryId: libParam,
     path: pathParam,
     position,
     track,
-  } = useLocalSearchParams<{
+  } = useRouteParams<{
     connection?: string;
     libraryId?: string;
     path?: string | string[];
@@ -46,6 +52,9 @@ export default function PlayerScreen() {
   const connectionId = param || undefined;
   const libraryId = Number(libParam);
   const path = segmentsToPath(pathParam);
+  // A route that names a book it can't (`?libraryId=abc`, no path) asks the server nothing
+  // and shows the not-in-library state (CONNECT-03, frontend#129).
+  const routeNamesBook = idParam(libParam) !== null && path.length > 0;
   // The player is a root modal (outside any route scope), so the connection it plays
   // rides in as a param; fall back to the active connection when opened bare (the
   // mini-player just re-shows nowPlaying).
@@ -56,7 +65,8 @@ export default function PlayerScreen() {
   const seekBook = usePlayer((s) => s.seekBook);
   const goToTrack = usePlayer((s) => s.goToTrack);
 
-  const { data: book } = useBook(libraryId, path, connectionId);
+  const bookQuery = useBook(libraryId, path, connectionId, { enabled: routeNamesBook });
+  const book = bookQuery.data;
   // Opened bare (the mini player, the docked bar, the palette) there is no route book:
   // the book on screen is the one loaded.
   usePageTitle(
@@ -66,7 +76,7 @@ export default function PlayerScreen() {
         ? bookTitle(nowPlaying.title, nowPlaying.path)
         : undefined,
   );
-  const chaptersQuery = useChapters(libraryId, path, connectionId);
+  const chaptersQuery = useChapters(libraryId, path, connectionId, { enabled: routeNamesBook });
   const chapterData = chaptersQuery.data;
   const podcastFetch = useCapability('podcast_fetch', cid);
 
@@ -198,13 +208,32 @@ export default function PlayerScreen() {
     );
   }
 
-  if (!book && !nowPlaying) {
+  // The route's book isn't there (a 404 or 403, a link that names none), or the player was
+  // opened bare with nothing loaded: say so with Close and Home, never an endless spinner
+  // (CONNECT-03). A network failure keeps its Retry. A book still in the cache (a download
+  // whose server copy moved: its refetch is a 404) plays on as it always did.
+  const missing = libParam
+    ? !routeNamesBook || (!book && isNotInLibraryError(bookQuery.error))
+    : !nowPlaying;
+  if (missing || (!book && !nowPlaying)) {
     return (
       <View
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
         className="flex-1 bg-background"
       >
-        <Spinner center />
+        {missing ? (
+          <NotInLibraryState kind={libParam ? 'book' : 'nothing'} modal />
+        ) : bookQuery.isError ? (
+          <View className="flex-1 justify-center p-4">
+            <LoadFailedNote
+              cid={cid}
+              message={t('book.loadError')}
+              onRetry={() => void bookQuery.refetch()}
+            />
+          </View>
+        ) : (
+          <Spinner center />
+        )}
       </View>
     );
   }
