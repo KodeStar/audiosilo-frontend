@@ -101,7 +101,7 @@
     "reader:build": "node scripts/build-reader.mjs",
     "reader:check": "node scripts/build-reader.mjs --check",
     "format": "prettier --check .",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package --error-on-fail"
   },
   "license": "AGPL-3.0-only",
   "private": true

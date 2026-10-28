@@ -1626,7 +1626,8 @@ tokens, type and components; its section 17 maps them onto these files.
   with no `onPress` leaves Space to its own handlers (so Radix opens a Select). No per-primitive Space
   shims.
 - **Dependency patches (`patches/`, `patch-package`):** `npm install`/`npm ci` apply them from
-  `postinstall`. `react-native-web+<ver>.patch` makes RNW's `LocaleProvider`
+  `postinstall` (`patch-package --error-on-fail`: without the flag a failure off CI only warns).
+  `react-native-web+<ver>.patch` makes RNW's `LocaleProvider`
   (`dist/modules/useLocale` and `dist/cjs/modules/useLocale`; the web export bundles the CJS one)
   keep its context value while direction and locale hold: RNW wraps every element with a `dir` (each
   root `Text` is `dir="auto"`) in it, and a fresh value per render re-rendered every View and Text
