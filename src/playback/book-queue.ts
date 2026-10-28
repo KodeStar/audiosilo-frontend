@@ -31,7 +31,7 @@ export const trackIdOf = (libraryId: number, relPath: string): string => `${libr
  * (`trackIdOf`) read through the order the book's files are in now. Shared by the adoption of
  * the playback service's book (`adoptLoaded`) and the car's kept bookmarks. */
 export function trackIndexById(queue: Pick<BookQueue, 'tracks'>, id: string | undefined): number {
-  return id === undefined ? -1 : queue.tracks.findIndex((t) => t.id === id);
+  return queue.tracks.findIndex((t) => t.id === id);
 }
 
 /** Default chapter length (seconds) used to synthesize markers for a long,

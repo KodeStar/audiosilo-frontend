@@ -59,7 +59,7 @@ import {
   toBookPosition,
   trackIndexById,
 } from '@/playback/book-queue';
-import { bookSourceOf } from '@/playback/book-source';
+import { bookSourceOf, downloadedSourceOf } from '@/playback/book-source';
 import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
 import { readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
@@ -141,9 +141,10 @@ import { carNative } from './car-native';
  *   that can't reach its server is kept on the device and tried again then.
  * - **Adopting** (Android): a book the playback service loaded itself (the car started a
  *   downloaded book with no JS, or it kept playing while JS restarted) becomes the player
- *   store's book (`adoptLoaded`, no engine reload), checked at start, when a car connects,
- *   on returning to the foreground and when the engine moves to another file or starts
- *   playing on its own (never for the store's own book switch or load).
+ *   store's book (`adoptLoaded`: no engine reload unless the engine plays another file
+ *   order than the book's queue), checked at start, when a car connects, on returning to
+ *   the foreground and when the engine moves to another file or starts playing on its own
+ *   (never for the store's own book switch or load).
  *
  * A no-op on the web and on an installed binary without the car functions.
  */
@@ -788,24 +789,26 @@ type CarBookmark = PlacedBookmark | (BookRef & { trackIndex: number; positionInT
 type Timeline = Pick<BookQueue, 'tracks' | 'offsets'>;
 
 /** The book's timeline now: the loaded book's queue, else the book's own (`bookSourceOf`: the
- * downloaded copy's, else its item and chapters). Null when none can be read now (offline,
- * not downloaded). */
-async function timelineOf(b: BookRef): Promise<Timeline | null> {
+ * downloaded copy's, else its item and chapters; only the downloaded copy's when `onDevice`,
+ * never asking the server). Null when none can be read now (offline, not downloaded). */
+async function timelineOf(b: BookRef, onDevice = false): Promise<Timeline | null> {
   const np = usePlayer.getState().nowPlaying;
   if (np && contentKeyOf(np) === contentKeyOf(b)) return np.queue;
-  const source = await bookSourceOf(b).catch(() => null);
+  const source = onDevice ? downloadedSourceOf(b) : await bookSourceOf(b).catch(() => null);
   return source ? buildBookQueue(null, b.libraryId, source.book, source.chapters) : null;
 }
 
 /** A bookmark placed on its book's timeline now (`timelineOf`). One kept in its file is read in
- * the order the book's files are in now (`trackIndexById`), so a download that took the
- * server's order since still puts it in its file; the whole-book place read then stands only
- * for a book that no longer holds the file, or whose timeline can't be read now. Null when a
- * place in the engine's file coordinates can't be read now. */
+ * the order the book's files are in now (`trackIndexById`), on the device only (the loaded
+ * queue, else the download's: the order that moves under it is a download's, fe#146, and a
+ * try never waits on the server before its send), so a download that took the server's order
+ * since still puts it in its file; the whole-book place read before stands for a book that no
+ * longer holds the file, or that is neither loaded nor downloaded. Null when a place in the
+ * engine's file coordinates can't be read now. */
 async function placeOf(b: CarBookmark): Promise<PlacedBookmark | null> {
   const ref = bookRefOf(b);
   if ('trackId' in b) {
-    const timeline = await timelineOf(b);
+    const timeline = await timelineOf(b, true);
     const index = timeline ? trackIndexById(timeline, b.trackId) : -1;
     const position =
       timeline && index >= 0
@@ -975,7 +978,8 @@ function checkLoadedBook(): Promise<void> {
         return;
       }
       if (player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded)) return;
-      if (await player.adoptLoaded(loaded)) request(true);
+      // Read again once the book's source is read (the engine plays on meanwhile).
+      if (await player.adoptLoaded(loaded, () => carNative.getLoadedBook())) request(true);
       else if (refused(loaded)) {
         // The person switched while the adoption read the book: stop it if still loaded.
         const current = await carNative.getLoadedBook();

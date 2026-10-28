@@ -1301,7 +1301,8 @@ media GETs only.
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and
   out-of-order (see below). `beginPlaybackAttempt()` (called from `playBook`/`retry`/
-  `toggle`-play) sets `wantsPlayback` + `startingPlayback` and starts a `STALL_GRACE_MS`
+  `toggle`-play and a playing adoption's reload, `reloadAdopted`) sets `wantsPlayback` +
+  `startingPlayback` and starts a `STALL_GRACE_MS`
   (3s) timer; if the engine hasn't reached `playing` when it fires, the store synthesizes
   an `error` so the player can offer a retry. Only reaching `playing` (or a user
   pause/stop) cancels it; a mid-playback stall (`playing`→`loading`) re-arms it. The fire
@@ -1402,14 +1403,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
   JS (`consumePendingBookmarks`) drain at start and on every foreground, and one that can't
-  reach its server waits under `audiosilo.carBookmarks`, kept by the place read on its first
-  try: its file (`trackId`, path-keyed) and the seconds in it, plus the whole-book place read
-  then (fe#146). Each later try reads it in the order the book's files are in now
-  (`trackIndexById`, shared with `adoptLoaded`), so a download that took the server's order
-  since still puts it in its file; the whole-book seconds stand only for a book that no longer
-  holds that file or whose timeline can't be read. A kept one of the older form (whole-book
-  seconds alone) is still read; only one whose place could not be read yet stays in file
-  coordinates.
+  reach its server waits under `audiosilo.carBookmarks`, kept by its file (`trackId`,
+  path-keyed) and the seconds in it, read on its first try, plus the whole-book place read on
+  its latest (fe#146). Each later try reads it in the order the book's files are in now
+  (`trackIndexById`, shared with `adoptLoaded`), on the device only (the loaded queue, else
+  the download's; never a request before its send), so a download that took the server's
+  order since still puts it in its file; the whole-book seconds stand only for a book that no
+  longer holds that file, or that is neither loaded nor downloaded. A kept one of the older
+  form (whole-book seconds alone) is still read; only one whose place could not be read yet
+  stays in file coordinates.
 - **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
@@ -1442,23 +1444,29 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     connected and the player has been idle `CAR_TASK_IDLE_MS` (30 s).
   - **Adopting.** `getLoadedBook()` names a book the service loaded without JS (the car
     started it, or it kept playing while JS restarted). The controller calls the store's
-    `adoptLoaded(book)` (at start, on a car connect, on the foreground, and when the engine
-    moves file or starts playing on its own), which builds the queue from `bookSourceOf`, sets
-    `nowPlaying` and the rate, makes the resume floor the engine's place, seeds the bridge
-    (`adoptPlace`, so the next tick maps onto the right file) and, if playing, runs the
-    pick-up check before its first save, all **without `svc.load`** (a reload would cut the
-    audio) while the engine plays the queue's file order. **The engine's order** (fe#134):
-    `LoadedBook.files` names the service's files in its order (absent on iOS, Cast and older
-    binaries: then, and when it is the queue's order, nothing changes). Every later tick
-    counts in that order, so the queue must be in it: a downloaded book asks the server's
-    chapters once, and when they come back in exactly the engine's order the download takes
-    them (`adoptStartedChapters`, as the start JS lost would have) and the queue is built from
-    them, with no reload. Anything else (offline, no answer, other files, a third order)
-    reloads the engine in the queue's order at the same file (`trackIndexById`) and in-file
-    place, or at the same whole-book seconds for a file the queue lacks, the resume floor at
-    that place and the play state kept (`reloadAdopted`: saves and remote moves held by
-    `loadingBook` until the load lands; a paused one saves nothing until it plays,
-    `quietAdopted`). Not while casting (fe#145). Regression tests: `store-adopt.test.ts`.
+    `adoptLoaded(book, reread)` (at start, on a car connect, on the foreground, and when the
+    engine moves file or starts playing on its own), which builds the queue from
+    `bookSourceOf`, reads the service's book again (`reread`: the engine played on meanwhile,
+    so a pause, a move or a speed change made then stands; it gives up when the engine plays
+    another book or file order now), sets `nowPlaying` and the rate, makes the resume floor
+    the engine's place, seeds the bridge (`adoptPlace`, so the next tick maps onto the right
+    file) and, if playing, runs the pick-up check before its first save, all **without
+    `svc.load`** (a reload would cut the audio) while the engine plays the queue's file order.
+    **The engine's order** (fe#134): `LoadedBook.files` names the service's files in its order
+    (absent on iOS, Cast and older binaries: then, and when it is the queue's order, nothing
+    changes). Every later tick counts in that order, so the queue must be in it: a downloaded
+    book asks the server's chapters once (afresh, for 3 s at most, `SERVED_ORDER_WAIT_MS`), and
+    when they come back in exactly the engine's order the queue is built from them as the
+    start JS lost built it (the download's files, streaming any it lacks) and the download
+    takes them when it holds those files (`adoptStartedChapters`), with no reload. Anything
+    else (offline, no answer, the server's in another order or with other files than the
+    engine's) reloads the engine in the queue's order at the same file (`trackIndexById`) and
+    in-file place, or at the same whole-book seconds for a file the queue lacks (short of the
+    queue's end; the engine's file index when an earlier file's length is unknown), the resume
+    floor at that place and the play state kept (`reloadAdopted`: saves and remote moves held
+    by `loadingBook` until the load lands, and its place saves nothing until it plays,
+    `quietAdopted`; a paused one is paused again once loaded, and a pause while it loads
+    stands). Not while casting (fe#145). Regression tests: `store-adopt.test.ts`.
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over an SDK 56
   AppDelegate fixture by `withCarPlay.test.ts`). Declaring any scene moves the whole iOS app
   onto the UIScene life cycle (the iOS 27 SDK will require it anyway), where UIKit never shows

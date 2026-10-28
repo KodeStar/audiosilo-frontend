@@ -1212,11 +1212,14 @@ describe('bookmarks from outside the app', () => {
 
     mockAddBookmark.mockClear();
     usePlayer.setState({ nowPlaying: null });
-    // Back in the foreground: the drain adds it.
+    // Back in the foreground: the drain adds it, at the place kept (a book neither loaded nor
+    // downloaded: its server is never asked for the book before the send).
     appStateListener?.('background');
     appStateListener?.('active');
     await settle();
     expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 50);
+    const asked = [...mockClients.c1.item.mock.calls, ...mockClients.c1.chapters.mock.calls];
+    expect(asked.filter((c) => c[1] === 'A/Book.m4b')).toEqual([]);
     expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
   });
 
@@ -1488,7 +1491,7 @@ describe('adopting the service’s book (Android)', () => {
     mockNative.getLoadedBook.mockResolvedValue(loaded);
     stop = startCarSync();
     await settle();
-    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
   });
 
   it('finding 9: stops unauthorized native audio without adopting or saving it', async () => {
@@ -1565,7 +1568,7 @@ describe('adopting the service’s book (Android)', () => {
       snapshot: { state: 'playing', trackIndex: 1, position: 30, duration: 100, rate: 1 },
     });
     await settle();
-    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
   });
 
   it('never brings back a book the store finished or stopped while the service was asked', async () => {
@@ -1743,7 +1746,7 @@ describe("the engine's book", () => {
       snapshot: { state: 'playing', trackIndex: 1, position: 30, duration: 100, rate: 1 },
     });
     await settle();
-    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded);
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
   });
 });
 

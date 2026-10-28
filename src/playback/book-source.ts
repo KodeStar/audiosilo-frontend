@@ -78,7 +78,19 @@ export async function fetchBookSource(
   const { connectionId, libraryId, path } = ref;
   const [book, chapters] = await Promise.all([
     fetchFailFast({ ...itemQuery(connectionId, client, libraryId, path), staleTime: 30_000 }),
-    fetchFailFast({ ...chaptersQuery(connectionId, client, libraryId, path), staleTime: 30_000 }),
+    fetchChapters(ref, client),
   ]);
   return { book, chapters };
+}
+
+/** A book's chapters from its server, through the query cache (`fetchFailFast`): a copy cached
+ * less than `staleTime` ago comes back without asking (0: always asked). Rejects when the
+ * server can't be read. */
+export function fetchChapters(
+  ref: BookRef,
+  client: NonNullable<ReturnType<typeof resolveClient>>,
+  staleTime = 30_000,
+): Promise<ChaptersResponse> {
+  const { connectionId, libraryId, path } = ref;
+  return fetchFailFast({ ...chaptersQuery(connectionId, client, libraryId, path), staleTime });
 }
