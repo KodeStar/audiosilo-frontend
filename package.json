@@ -96,7 +96,7 @@
     "gen:icons": "node ./scripts/gen-icons.mjs",
     "gen:tokens": "node ./scripts/gen-tokens.mjs",
     "lint": "expo lint",
-    "test": "node scripts/gen-tokens.mjs --check && node --test scripts/gen-tokens.test.mjs && node scripts/check-styles.cjs && node scripts/build-reader.mjs --check && node --test reader/test/*.test.mjs && jest",
+    "test": "node scripts/gen-tokens.mjs --check && node --test scripts/gen-tokens.test.mjs scripts/web-start-chunks.test.mjs && node scripts/check-styles.cjs && node scripts/build-reader.mjs --check && node --test reader/test/*.test.mjs && jest",
     "reader:build": "node scripts/build-reader.mjs",
     "reader:check": "node scripts/build-reader.mjs --check",
     "format": "prettier --check ."

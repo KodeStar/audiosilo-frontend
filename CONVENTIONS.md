@@ -87,6 +87,17 @@ can never log anyone out (`{ authReset, cacheReset }`):
   keeps the compiled code of scripts a worker caches while installing, which is most of a warm
   start's speed. The build's hashed files (`_expo/static/`) are served cache-first and never
   rewritten.
+- **Web start scripts compiled off the main thread** (`scripts/web-start-chunks.cjs`, wrapped
+  around Expo's serializer in `metro.config.js`; web export only, never the dev server, native
+  or an export with source maps): every web script starts with V8's compile hint
+  `//# allFunctionsCalledOnLoad` (compiled whole on a background thread as it streams in, not
+  function by function on the main thread as it runs), and a start script (`isAsync: false`)
+  over `PART_CHARS` is cut at module boundaries into `<name>-<n>.js` parts, chained by
+  `requires` so the HTML names them in order (whatever required the whole requires the last
+  part): several parts compile on several threads at once. A cut is kept only when every part
+  compiles on its own. This is what makes a start fast where no service worker can help (a
+  page on plain http, a private window: no code cache), about 60-80 ms off both cold and warm
+  starts. An async chunk is never cut (the runtime loads it by its name).
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,
