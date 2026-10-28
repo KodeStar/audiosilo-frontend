@@ -26,6 +26,10 @@ class FakeResponse {
   get status() {
     return this.init.status ?? 200;
   }
+  headers = { get: () => null };
+  async text() {
+    return this.body;
+  }
   clone() {
     return new FakeResponse(this.body, this.init);
   }
@@ -52,6 +56,8 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
     return {
       match: async (r: string | { url: string }) => s.get(urlOf(r)),
       put: async (r: string | { url: string }, res: FakeResponse) => void s.set(urlOf(r), res),
+      keys: async () => [...s.keys()].map((url) => ({ url })),
+      delete: async (r: string | { url: string }) => s.delete(urlOf(r)),
       add: async (r: string | { url: string }) => {
         const res = await fetch(r);
         if (!res.ok) throw new TypeError(`bad response ${res.status}`);
@@ -106,14 +112,19 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
   return { dispatch, navigate, cached, net, fetch };
 }
 
-const SITE = { [SCOPE]: '<shell>', [READER]: '<reader>' };
+// The shell names one build chunk, which the install precaches with it (`precacheBuild`).
+const ENTRY = `${SCOPE}_expo/static/js/web/entry-abc.js`;
+const SHELL_HTML = '<script src="/web/_expo/static/js/web/entry-abc.js"></script>';
+const SHELL_ONLY = { [SCOPE]: SHELL_HTML, [ENTRY]: '' };
+const SITE = { ...SHELL_ONLY, [READER]: '<reader>' };
 
 describe('sw.js', () => {
   it('precaches the app shell and the reader document on install (PLAYER-01)', async () => {
     const sw = worker({ served: SITE });
     await sw.dispatch('install');
-    expect(sw.cached(SCOPE)).toBe('<shell>');
+    expect(sw.cached(SCOPE)).toBe(SHELL_HTML);
     expect(sw.cached(READER)).toBe('<reader>');
+    expect(sw.cached(ENTRY)).toBe('');
   });
 
   it('opens the reader offline from the precache, though it never opened online', async () => {
@@ -125,14 +136,14 @@ describe('sw.js', () => {
   });
 
   it('still installs with the shell when the server has no reader (an older server)', async () => {
-    const sw = worker({ served: { [SCOPE]: '<shell>' } });
+    const sw = worker({ served: SHELL_ONLY });
     await sw.dispatch('install');
-    expect(sw.cached(SCOPE)).toBe('<shell>');
+    expect(sw.cached(SCOPE)).toBe(SHELL_HTML);
     expect(sw.cached(READER)).toBeUndefined();
   });
 
   it('never answers the reader document with the app shell, offline included (fe#164)', async () => {
-    const sw = worker({ served: { [SCOPE]: '<shell>' } });
+    const sw = worker({ served: SHELL_ONLY });
     await sw.dispatch('install');
     sw.net.online = false;
     const res = await sw.navigate(READER, 'iframe');
@@ -153,6 +164,6 @@ describe('sw.js', () => {
     await sw.dispatch('install');
     sw.net.online = false;
     const res = await sw.navigate(`${SCOPE}library`);
-    expect(res?.body).toBe('<shell>');
+    expect(res?.body).toBe(SHELL_HTML);
   });
 });
