@@ -53,6 +53,17 @@ can never log anyone out (`{ authReset, cacheReset }`):
   another app version is ignored. One of the scoped keys (a reset wipes it); a removed
   connection's entries go with it. A new first-screen query joins `isStartupQuery` only if it
   is small; never keep a book's detail or anything per book. Native keeps none.
+- **Startup queries (web)** (`src/components/shell/startup-queries.ts`,
+  `use-startup-queries{,.web}.ts`): on a start the startup cache can't fill (a first visit, a
+  private window), the gate (`AuthGate`) asks the first page's answers the moment it opens
+  (`startupQueries`: every server's `/server`, libraries and progress, plus Home's Recently
+  added and favourites or the selected library's first page of books for the grid) and holds
+  its spinner until they are in, at most `STARTUP_WAIT_MS`, so the screen renders once with
+  them instead of a skeleton then again. Once per page load; only the entries the cache lacks
+  are asked (a reload the startup cache filled waits for nothing). Each entry comes from the
+  screen's own query spec (`serverInfoQuery`, `recentQuery`, `favouritesQuery`,
+  `wholeLibraryQuery`...), so a screen finds it fresh: a new first-screen read joins through
+  its spec, never a hand-built key. Native never waits.
 - **Web start (the split build)**: the web export uses Expo Router async routes (`app.json`
   `asyncRoutes: { web: "production", default: false }`; native and `npm run web` stay one
   bundle), so a page's chunk loads when it is first opened and each page's static HTML names

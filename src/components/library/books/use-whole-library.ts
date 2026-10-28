@@ -1,4 +1,7 @@
-import { useAllLibraryBooks } from '@/api/hooks';
+import { infiniteQueryOptions, skipToken } from '@tanstack/react-query';
+
+import type { ApiClient } from '@/api/client';
+import { libraryBooksKey, nextBooksCursor, useAllLibraryBooks } from '@/api/hooks';
 
 /** The largest page GET /libraries/{id}/books gives (1-200). */
 const PAGE_SIZE = 200;
@@ -17,6 +20,25 @@ const STALE_MS = 10 * 60_000;
 export function useWholeLibrary(connectionId: string, libraryId: number) {
   return useAllLibraryBooks(libraryId, SERVER_ORDER, connectionId, {
     pageSize: PAGE_SIZE,
+    staleTime: STALE_MS,
+  });
+}
+
+/** `useWholeLibrary`'s cache entry, for asking its first page before the Library grid
+ * mounts (`components/shell/startup-queries.ts`): the same key, page size and freshness. */
+export function wholeLibraryQuery(cid: string, client: ApiClient | null, libraryId: number) {
+  return infiniteQueryOptions({
+    queryKey: libraryBooksKey(cid, libraryId, SERVER_ORDER, PAGE_SIZE),
+    queryFn: client
+      ? ({ pageParam, signal }) =>
+          client.listBooks(
+            libraryId,
+            { ...SERVER_ORDER, limit: PAGE_SIZE, cursor: pageParam },
+            signal,
+          )
+      : skipToken,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: nextBooksCursor,
     staleTime: STALE_MS,
   });
 }

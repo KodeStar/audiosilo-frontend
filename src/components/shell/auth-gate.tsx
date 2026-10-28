@@ -13,6 +13,8 @@ import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { useMustChoose, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
+import { useStartupQueries } from './use-startup-queries';
+
 /**
  * The guard around the authenticated app, shared by both `(app)` layouts (native tabs
  * and the web shell): a spinner while the session hydrates, a redirect to onboarding
@@ -74,6 +76,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (asksAtLaunch(useProfiles.getState()) && !pickerOnTop()) openProfiles();
   }, [status, profilesHydrated, choose, focused]);
 
+  // Web: the first screen's answers, asked as the gate opens and waited for a moment, so
+  // the screen renders once with them rather than as a skeleton first (`use-startup-queries`;
+  // always ready on native).
+  const open = status === 'authenticated' && profilesHydrated && !choose && !kids;
+  const ready = useStartupQueries(open);
+
   // A book link opened signed out comes back to that book after sign-in (frontend#129).
   if (status === 'unauthenticated') return <Redirect href={signedOutHref()} />;
   // A spinner while the session loads; and the profiles too (Phase 8): the shell must not
@@ -81,8 +89,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // they have loaded, nor at all while nobody is chosen (no one's pages, not even the last
   // person's, behind the picker). A kids profile never gets the shell (tabs, search,
   // settings, downloads, the web command palette): the root layout's `KidsRouteGuard`
-  // takes it to `/kids`, and this holds the screen until it has.
-  if (status === 'loading' || !profilesHydrated || choose || kids) {
+  // takes it to `/kids`, and this holds the screen until it has. On the web, also the
+  // moment the first screen's answers take (`ready`).
+  if (status === 'loading' || !profilesHydrated || choose || kids || !ready) {
     return (
       <Screen>
         <Spinner center />
