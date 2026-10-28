@@ -58,6 +58,7 @@ import type {
   Book,
   BookMeta,
   Bookmark,
+  BookPage,
   BookmarkLabel,
   BookmarkPatch,
   BookRef,
@@ -378,6 +379,25 @@ export function queueQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.queue(cid),
     queryFn: client ? ({ signal }) => client.queue(signal) : skipToken,
+  });
+}
+
+/** How many of a server's newest books Home's Recently added shows. */
+export const RECENT_LIMIT = 48;
+
+/** A server's newest books (Home's Recently added). */
+export function recentQuery(cid: string, client: MaybeClient, limit: number = RECENT_LIMIT) {
+  return queryOptions({
+    queryKey: qk.recent(cid, limit),
+    queryFn: client ? ({ signal }) => client.recentBooks(limit, signal) : skipToken,
+  });
+}
+
+/** The caller's favourites on a server. */
+export function favouritesQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.favourites(cid),
+    queryFn: client ? ({ signal }) => client.favourites(signal) : skipToken,
   });
 }
 
@@ -928,6 +948,27 @@ export function useSeriesList(libraryId: number, connectionId?: string) {
 /** Page size of `useLibraryBooks` (the server takes 1-200). */
 const BOOKS_PAGE_SIZE = 100;
 
+/** A library list (`useLibraryBooks`), page by page on the server's cursor, through
+ * `listBooks`; a page size other than the default is its own cache entry. */
+export function libraryBooksQuery(
+  cid: string,
+  client: MaybeClient,
+  libraryId: number,
+  query: BookListQuery,
+  pageSize: number = BOOKS_PAGE_SIZE,
+) {
+  const key = qk.libraryBooks(cid, libraryId, query);
+  return infiniteQueryOptions({
+    queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
+    queryFn: client
+      ? ({ pageParam, signal }) =>
+          client.listBooks(libraryId, { ...query, limit: pageSize, cursor: pageParam }, signal)
+      : skipToken,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage: BookPage) => lastPage.next_cursor || undefined,
+  });
+}
+
 export type LibraryBooksOptions = {
   /** Books per page (1-200); a size other than the default is its own cache entry. */
   pageSize?: number;
@@ -975,9 +1016,9 @@ export function useLibraryBooks(
   // asks alone first and then in a batch.
   const batchedSeries =
     batch && caps?.series_books && isPlainSeriesQuery(effective) ? effective.series : undefined;
-  const key = qk.libraryBooks(cid, libraryId, effective);
+  const spec = libraryBooksQuery(cid, api, libraryId, effective, pageSize);
   return useInfiniteQuery({
-    queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
+    ...spec,
     queryFn:
       api && (!query.narrator || narratorOk) && seriesReady
         ? // The batched first page never reads `ctx.signal`: react-query cancels (and
@@ -996,8 +1037,6 @@ export function useLibraryBooks(
                   ctx.signal,
                 )
         : skipToken,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
     ...(enabled !== undefined ? { enabled } : {}),
     ...(staleTime !== undefined ? { staleTime } : {}),
   });
@@ -2968,17 +3007,14 @@ export function useSearchAll(query: string) {
   });
 }
 
-export function useRecentAll(limit = 48) {
+export function useRecentAll(limit = RECENT_LIMIT) {
   const apis = useApis();
   const rank = (id: string) => {
     const i = apis.findIndex((a) => a.connection.id === id);
     return i === -1 ? apis.length : i;
   };
   return useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.recent(connection.id, limit),
-      queryFn: ({ signal }: { signal: AbortSignal }) => client.recentBooks(limit, signal),
-    })),
+    queries: apis.map(({ connection, client }) => recentQuery(connection.id, client, limit)),
     combine: (results) => ({
       books: dedupBooks(tagBooks(results, apis), rank),
       isLoading: results.some((r) => r.isLoading),
@@ -2990,10 +3026,7 @@ export function useRecentAll(limit = 48) {
 export function useFavouritesAll() {
   const apis = useApis();
   return useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      queryKey: qk.favourites(connection.id),
-      queryFn: ({ signal }: { signal: AbortSignal }) => client.favourites(signal),
-    })),
+    queries: apis.map(({ connection, client }) => favouritesQuery(connection.id, client)),
     combine: (results) => ({
       favourites: results.flatMap((r, i) =>
         (r.data ?? []).map((f): SourcedFavourite => ({

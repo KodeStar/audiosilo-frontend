@@ -14,6 +14,11 @@ import { sameOrigin } from '@/lib/same-origin';
 export const BASE_URL =
   process.env.NODE_ENV === 'production' ? (process.env.EXPO_BASE_URL ?? '') : '';
 
+/** A web address's `pathname` inside the app: the base path (`BASE_URL`) off. */
+export function appPath(pathname: string, base = BASE_URL): string {
+  return base && pathname.startsWith(base) ? pathname.slice(base.length) : pathname;
+}
+
 /** True under the Metro dev server (`expo start --web`). */
 export const IS_DEV = process.env.NODE_ENV !== 'production';
 

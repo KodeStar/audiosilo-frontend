@@ -53,6 +53,18 @@ can never log anyone out (`{ authReset, cacheReset }`):
   another app version is ignored. One of the scoped keys (a reset wipes it); a removed
   connection's entries go with it. A new first-screen query joins `isStartupQuery` only if it
   is small; never keep a book's detail or anything per book. Native keeps none.
+- **Startup queries (web)** (`src/components/shell/startup-queries.ts`,
+  `use-startup-queries{,.web}.ts`): on a start the startup cache can't fill (a first visit, a
+  private window), the gate (`AuthGate`) asks the first page's answers the moment it opens
+  (`startupQueries`: every server's `/server` and libraries; on Home or the Library grid its
+  progress too, plus Home's Recently added and favourites or the selected library's first page
+  of books for the grid) and holds
+  its spinner until they are in, at most `STARTUP_WAIT_MS`, so the screen renders once with
+  them instead of a skeleton then again. Once per page load; only the entries the cache lacks
+  are asked (a reload the startup cache filled waits for nothing). Each entry comes from the
+  screen's own query spec (`serverInfoQuery`, `recentQuery`, `favouritesQuery`,
+  `wholeLibraryQuery`...), so a screen finds it fresh: a new first-screen read joins through
+  its spec, never a hand-built key. Native never waits.
 - **Web start (the split build)**: the web export uses Expo Router async routes (`app.json`
   `asyncRoutes: { web: "production", default: false }`; native and `npm run web` stay one
   bundle), so a page's chunk loads when it is first opened and each page's static HTML names
@@ -87,6 +99,19 @@ can never log anyone out (`{ authReset, cacheReset }`):
   keeps the compiled code of scripts a worker caches while installing, which is most of a warm
   start's speed. The build's hashed files (`_expo/static/`) are served cache-first and never
   rewritten.
+- **Web start scripts compiled off the main thread** (`scripts/web-start-chunks.cjs`, wrapped
+  around Expo's serializer in `metro.config.js`; web export only, never the dev server, native
+  or an export with source maps): every web script starts with V8's compile hint
+  `//# allFunctionsCalledOnLoad` (compiled whole on a background thread as it streams in, not
+  function by function on the main thread as it runs), and a start script (`isAsync: false`)
+  over `PART_CHARS` is cut at module boundaries into `<name>-<n>-<hash>.js` parts (`hash` of
+  the part itself: the whole's name hashes its code, not the cut, and the build's files are
+  cached as immutable, so a changed cut must never reuse a part's name), chained by
+  `requires` so the HTML names them in order (whatever required the whole requires the last
+  part): several parts compile on several threads at once. A cut is kept only when every part
+  compiles on its own. This is what makes a start fast where no service worker can help (a
+  page on plain http, a private window: no code cache), about 60-80 ms off both cold and warm
+  starts. An async chunk is never cut (the runtime loads it by its name).
 
 **The launch steps are ONE memoised run, `bootstrapPlayback()` (`src/lib/bootstrap.ts`)**: the
 storage migration, then the downloads-root wipe (`engine.clearAll()`) when **either** axis reset,

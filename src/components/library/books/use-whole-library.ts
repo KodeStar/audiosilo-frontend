@@ -1,4 +1,5 @@
-import { useAllLibraryBooks } from '@/api/hooks';
+import type { ApiClient } from '@/api/client';
+import { libraryBooksQuery, useAllLibraryBooks } from '@/api/hooks';
 
 /** The largest page GET /libraries/{id}/books gives (1-200). */
 const PAGE_SIZE = 200;
@@ -19,4 +20,13 @@ export function useWholeLibrary(connectionId: string, libraryId: number) {
     pageSize: PAGE_SIZE,
     staleTime: STALE_MS,
   });
+}
+
+/** `useWholeLibrary`'s cache entry, for asking its first page before the Library grid
+ * mounts (`components/shell/startup-queries.ts`): the same key, page size and freshness. */
+export function wholeLibraryQuery(cid: string, client: ApiClient | null, libraryId: number) {
+  return {
+    ...libraryBooksQuery(cid, client, libraryId, SERVER_ORDER, PAGE_SIZE),
+    staleTime: STALE_MS,
+  };
 }

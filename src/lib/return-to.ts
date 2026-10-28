@@ -1,7 +1,7 @@
 import type { Href } from 'expo-router';
 import { Platform } from 'react-native';
 
-import { BASE_URL } from '@/lib/base-url';
+import { appPath, BASE_URL } from '@/lib/base-url';
 import { type ConnectBook, connectBookParams, parseConnectBook } from '@/lib/paths';
 
 /**
@@ -13,11 +13,7 @@ export function bookOfAddress(
   location: { pathname: string; search: string },
   base = BASE_URL,
 ): ConnectBook | null {
-  const path =
-    base && location.pathname.startsWith(base)
-      ? location.pathname.slice(base.length)
-      : location.pathname;
-  const m = /^\/book\/([^/]+)\/?$/.exec(path);
+  const m = /^\/book\/([^/]+)\/?$/.exec(appPath(location.pathname, base));
   if (!m) return null;
   return parseConnectBook({
     book: m[1],

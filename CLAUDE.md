@@ -144,7 +144,9 @@ keep this index in step (one line per topic).
   - `AUTH_STORAGE_VERSION`
   - `CACHE_STORAGE_VERSION`
   - Startup cache (web)
+  - Startup queries (web)
   - Web start (the split build)
+  - Web start scripts compiled off the main thread
   - `mayActFor(cid)`
   - Routes carrying `?connection=`
   - Route params are decoded once

@@ -113,4 +113,17 @@ describe('buildId', () => {
     );
     expect(mod.buildId()).toBe('index-ddd.__common-ccc');
   });
+
+  it('names the last part of the entry and the first of the shared chunk in a cut build', () => {
+    // The export cuts its big start scripts into parts (scripts/web-start-chunks.cjs).
+    const { mod } = setup('loading');
+    addScripts(
+      '__expo-metro-runtime-aaa',
+      '__common-ccc-1-c1',
+      '__common-ccc-2-c2',
+      'index-ddd-1-d1',
+      'index-ddd-2-d2',
+    );
+    expect(mod.buildId()).toBe('index-ddd-2-d2.__common-ccc-1-c1');
+  });
 });
