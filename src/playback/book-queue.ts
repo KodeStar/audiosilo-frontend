@@ -23,6 +23,17 @@ export type BookQueue = {
   syntheticChapters: boolean;
 };
 
+/** A track's id: its file's library-relative path, keyed by its library (path is the
+ * identity, so the id names the same file in every order the book's files can take). */
+export const trackIdOf = (libraryId: number, relPath: string): string => `${libraryId}:${relPath}`;
+
+/** The index of the track with this id in `queue`, else -1: a place kept by its file
+ * (`trackIdOf`) read through the order the book's files are in now. Shared by the adoption of
+ * the playback service's book (`adoptLoaded`) and the car's kept bookmarks. */
+export function trackIndexById(queue: Pick<BookQueue, 'tracks'>, id: string): number {
+  return queue.tracks.findIndex((t) => t.id === id);
+}
+
 /** Default chapter length (seconds) used to synthesize markers for a long,
  * chapterless single-file book. Overridable per call (a user setting). */
 export const DEFAULT_VIRTUAL_CHAPTER_INTERVAL = 30 * 60;
@@ -210,7 +221,7 @@ export function buildBookQueue(
     const localUri = local?.files.get(s.path);
     const transcoded = transcode && !localUri && !!api;
     return {
-      id: `${libraryId}:${s.path}`,
+      id: trackIdOf(libraryId, s.path),
       // A downloaded book has a local uri for every file; the `api?.streamUrl` fallback is
       // only for streaming (api present). The final `?? ''` is unreachable for a book the
       // caller vetted as playable (downloaded => all-local, or streaming => api present).

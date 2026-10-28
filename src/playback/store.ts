@@ -3,7 +3,7 @@ import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
+import { chaptersQuery, fetchFailFast, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure } from '@/api/reachability';
 import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
@@ -29,6 +29,8 @@ import {
   FINISHED_TOLERANCE,
   locate,
   toBookPosition,
+  trackIdOf,
+  trackIndexById,
   type BookQueue,
 } from './book-queue';
 import { bookSourceOf, localFromManifest, resumeStart, type LocalFiles } from './book-source';
@@ -152,6 +154,13 @@ const SAVE_HOLD_MAX_MS = 5_000;
  * refused or fails.
  */
 let swapHold: { nowPlaying: NowPlaying; trackIndex: number } | null = null;
+/**
+ * A paused book `adoptLoaded` had to reload in its own file order (fe#134): its engine's place
+ * is not new, so nothing saves it until it plays or the listener moves it (the paused load
+ * reports `ready` and `paused`, transitions that would otherwise save that place dated now,
+ * over another device's newer one). Cleared by the next `playing` and by `userMoved`.
+ */
+let quietAdopted: NowPlaying | null = null;
 const heldBySwap = (np: NowPlaying, trackIndex: number) =>
   swapHold !== null && swapHold.nowPlaying === np && trackIndex !== swapHold.trackIndex;
 /** When the transport last settled out of `playing` (a pause, from any source), else
@@ -201,6 +210,7 @@ function lowerFloorTo(bookPosition: number) {
  * the resume floor lowered to it (`lowerFloorTo`). */
 function userMoved(bookPosition?: number) {
   localMoves++;
+  quietAdopted = null;
   if (bookPosition !== undefined) lowerFloorTo(bookPosition);
 }
 
@@ -349,6 +359,8 @@ async function persist(opts?: { forceFinished?: boolean }) {
   if (loadingBook && !opts?.forceFinished) return;
   // Nor while the hot-swap moves the playing file to another index (`swapHold`).
   if (heldBySwap(nowPlaying, snapshot.trackIndex) && !opts?.forceFinished) return;
+  // Nor a paused adoption's reloaded place, until it plays (`quietAdopted`).
+  if (quietAdopted === nowPlaying && !opts?.forceFinished) return;
   // A downloaded book started while its connection wasn't there (a session that could not
   // be read yet: a CarPlay launch with the phone locked) saves from when it is back.
   // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`;
@@ -794,6 +806,7 @@ async function createService(): Promise<PlaybackService> {
         // before this play's first save.
         const pickedUp = pausedAt !== null && Date.now() - pausedAt >= LONG_PAUSE_MS;
         pausedAt = null;
+        quietAdopted = null; // playing again: its place is new from here
         if (pickedUp) pickedUpAgainListener?.();
         startSaveLoop();
       } else if (snapshot.state === 'loading') {
@@ -1345,7 +1358,7 @@ async function switchCurrentBookToLocal() {
       contentKeyOf(nowPlaying) &&
     takenOrder.length === nowPlaying.queue.tracks.length &&
     takenOrder.every(
-      (s, i) => `${nowPlaying.libraryId}:${s.path}` === nowPlaying.queue.tracks[i].id,
+      (s, i) => trackIdOf(nowPlaying.libraryId, s.path) === nowPlaying.queue.tracks[i].id,
     )
   ) {
     adoptStartedChapters(nowPlaying, started.chapterData);
@@ -1370,7 +1383,7 @@ async function switchCurrentBookToLocal() {
   // The same file (track ids are path-keyed); whole-book seconds only for a file the
   // download doesn't hold.
   const playingId = nowPlaying.queue.tracks[snapshot.trackIndex]?.id;
-  const sameFile = queue.tracks.findIndex((t) => t.id === playingId);
+  const sameFile = playingId === undefined ? -1 : trackIndexById(queue, playingId);
   const { index, positionInTrack } =
     sameFile >= 0
       ? { index: sameFile, positionInTrack: snapshot.position }
@@ -1454,10 +1467,18 @@ async function switchCurrentBookToLocal() {
  * downloaded book the car started with no JS running, from the car snapshot's play spec), or
  * keep playing one after the app's JS restarted. Adopting it gives the store that book
  * exactly as `playBook` would have built it, without `svc.load` (the engine is already
- * playing it; a reload would cut the audio and lose the place):
+ * playing it; a reload would cut the audio) unless the engine plays another file order:
  * - the item and chapters from `bookSourceOf` (the download manifest when it is downloaded:
  *   the queue the service built came from it; else through the query cache);
  * - `buildBookQueue` as `playBook` calls it (native never transcodes);
+ * - in the engine's file order (`LoadedBook.files`, fe#134), since every later tick counts in
+ *   it: none reported (iOS, Cast, older binaries) or the queue's own order changes nothing; a
+ *   downloaded book in another order takes the server's chapters when they come back in
+ *   exactly the engine's order (`adoptStartedChapters`, as the start JS lost would have);
+ *   anything else (offline, no answer, other files, a third order) reloads the engine in the
+ *   queue's order at the same file and in-file place (whole-book seconds for a file the queue
+ *   lacks), the resume floor at that place and the play state kept (`reloadAdopted`: the one
+ *   case that cuts the audio, briefly);
  * - the speed and place the engine reports: `resumeFloor` is that place, so a stray low
  *   position can't be saved over it, and the bridge's snapshot is seeded (`adoptPlace`)
  *   so the next tick maps onto the right file;
@@ -1494,28 +1515,60 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
     console.warn('[player] could not adopt the loaded book', err);
     return false;
   }
+  if (!source) return false;
+
+  const { connectionId, libraryId } = loaded;
+  const ref = bookRefOf(loaded);
+  const interval = useSettings.getState().virtualChapterInterval;
+  let { book, chapters: chapterData, local } = source;
+  let queue = buildBookQueue(api, libraryId, book, chapterData, local, interval);
+  // The service's own file order (fe#134), when it reports one: a start in the server's new
+  // order that Android's JS lost while it loaded leaves the engine in that order while the
+  // download keeps its own. Every later tick counts in the engine's order, so the queue must
+  // be in it: the server's chapters when they come back in exactly that order (a download
+  // asks them once, here), else the engine is reloaded in the queue's order below.
+  const engineIds = loaded.files?.length
+    ? loaded.files.map((path) => trackIdOf(libraryId, path))
+    : null;
+  const otherOrder = engineIds !== null && !inTrackOrder(queue, engineIds);
+  const served = otherOrder && local ? await serverChaptersOf(ref, api) : null;
+
   // Asked again: the person may have switched while the source was read.
-  if (!source || !mayActFor(loaded.connectionId)) return false;
+  if (!mayActFor(loaded.connectionId)) return false;
   // Another book started (or the same one was adopted) while we read, or a start is still
   // on its way (it switches the book after its awaits): theirs stands.
   const now = usePlayer.getState();
   if (now.nowPlaying !== before || now.loadingBook !== null || startsInFlight > 0) return false;
 
-  const { book, chapters: chapterData, local } = source;
-  const { connectionId, libraryId } = loaded;
-  const queue = buildBookQueue(
-    api,
-    libraryId,
-    book,
-    chapterData,
-    local,
-    useSettings.getState().virtualChapterInterval,
-  );
-  const trackIndex = Math.max(0, Math.min(loaded.trackIndex, queue.tracks.length - 1));
-  const position = Math.max(0, loaded.position);
+  if (served && sameIds(bookFileSpecs(book, served), libraryId, engineIds)) {
+    // The engine plays the server's order: the download takes those chapters, as the lost
+    // start's own load would have made it (`adoptStartedChapters`), and the queue is built
+    // from them. Nothing is reloaded.
+    adoptStartedChapters(ref, served);
+    const dl = downloadedEntryOf(ref);
+    if (dl) {
+      book = dl.manifest.book;
+      chapterData = dl.manifest.chapters ?? undefined;
+      local = localFromManifest(dl.manifest);
+      queue = buildBookQueue(api, libraryId, book, chapterData, local, interval);
+    }
+  }
+  // Still another order (offline, no answer, other files, the server's in a third order):
+  // the engine is reloaded in the queue's order at the same file and in-file place, or, for
+  // a file the queue lacks, at the same whole-book place. Not while casting: the receiver
+  // streams the book and a load would cut it (fe#145).
+  const reload =
+    engineIds !== null && !inTrackOrder(queue, engineIds) && !svc.isCasting?.()
+      ? landingOf(queue, engineIds, loaded, fileDurations(libraryId, book, chapterData, served))
+      : null;
+
+  const trackIndex = reload
+    ? reload.index
+    : Math.max(0, Math.min(loaded.trackIndex, queue.tracks.length - 1));
+  const position = reload ? reload.positionInTrack : Math.max(0, loaded.position);
   const rate = clampRate(loaded.rate > 0 ? loaded.rate : now.rate);
   const snapshot: PlaybackSnapshot = {
-    state: loaded.playing ? 'playing' : 'paused',
+    state: loaded.playing ? (reload ? 'loading' : 'playing') : 'paused',
     trackIndex,
     position,
     duration: queue.tracks[trackIndex]?.duration ?? 0,
@@ -1530,23 +1583,19 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   // can be old: a book the car started with no JS starts at the place its snapshot was built
   // with, and another device may have played on since. So the adopted book counts as picked
   // up again: a paused one on its next play (how long it has been paused is unknown), a
-  // playing one at once, below.
-  pausedAt = loaded.playing ? null : 0;
+  // playing one at once, below (a reloaded one on its next `playing`).
+  pausedAt = loaded.playing && !reload ? null : 0;
   svc.adoptPlace?.(snapshot);
   // And its queue: a Cast session started later hands this book to the receiver (never
   // taking the route with the phone still playing it), and an ended one hands it back.
-  svc.rememberLoad?.({
-    tracks: queue.tracks,
-    chapters: queue.chapterClips,
-    book: bookRefOf(loaded),
-  });
-  usePlayer.setState({
-    nowPlaying: nowPlayingOf(loaded, book, queue, api, local),
-    rate,
-    loadingBook: null,
-    snapshot,
-  });
+  svc.rememberLoad?.({ tracks: queue.tracks, chapters: queue.chapterClips, book: ref });
+  const nowPlaying = nowPlayingOf(loaded, book, queue, api, local);
+  const key = contentKey(connectionId, libraryId, loaded.path);
+  // A reload holds every save and remote move until it lands (`loadingBook`): until then a
+  // tick still counts in the engine's old order.
+  usePlayer.setState({ nowPlaying, rate, loadingBook: reload ? key : null, snapshot });
   restoreOutputGain(svc);
+  if (reload) return reloadAdopted(svc, nowPlaying, key, reload, rate, loaded.playing);
   // A speed outside the app's range (set by another controller while no JS listened) goes
   // back to the engine clamped, as `onRateChange` does: the store says what plays.
   if (rate !== loaded.rate) void svc.setRate(rate);
@@ -1558,6 +1607,117 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
     startSaveLoop();
     beginHistory();
   }
+  return true;
+}
+
+/** Whether `queue` plays exactly the files `ids` names (track ids), in that order. */
+const inTrackOrder = (queue: Pick<BookQueue, 'tracks'>, ids: string[]) =>
+  queue.tracks.length === ids.length && queue.tracks.every((t, i) => t.id === ids[i]);
+
+/** Whether `specs` (a chapters answer's files, `bookFileSpecs`) are exactly the files `ids`
+ * names, in that order. */
+const sameIds = (specs: { path: string }[], libraryId: number, ids: string[] | null) =>
+  ids !== null &&
+  specs.length === ids.length &&
+  specs.every((s, i) => trackIdOf(libraryId, s.path) === ids[i]);
+
+/** The server's chapters for a book, through the query cache (`fetchFailFast`), or null when
+ * it can't be asked (no connection, known unreachable) or does not answer. */
+async function serverChaptersOf(
+  ref: BookRef,
+  api: ApiClient | null,
+): Promise<ChaptersResponse | null> {
+  if (!api || !isReachable(ref.connectionId)) return null;
+  try {
+    return await fetchFailFast({
+      ...chaptersQuery(ref.connectionId, api, ref.libraryId, ref.path),
+      staleTime: 30_000,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Each file's duration by track id: the queue's own files', and the server's for a file only
+ * it knows (the engine's timeline can hold one the download lacks). */
+function fileDurations(
+  libraryId: number,
+  book: Book,
+  chapterData: ChaptersResponse | undefined,
+  served: ChaptersResponse | null,
+): Map<string, number> {
+  const durations = new Map<string, number>();
+  const specs = [
+    ...(served ? bookFileSpecs(book, served) : []),
+    ...bookFileSpecs(book, chapterData),
+  ];
+  for (const s of specs) durations.set(trackIdOf(libraryId, s.path), s.duration);
+  return durations;
+}
+
+/** Where the engine's place lands in `queue`: the same file (by track id) at the same place
+ * in it, else (a file the queue lacks) the same whole-book seconds, read on the engine's own
+ * timeline (`durations`). */
+function landingOf(
+  queue: BookQueue,
+  engineIds: string[],
+  loaded: Pick<LoadedBook, 'trackIndex' | 'position'>,
+  durations: Map<string, number>,
+): { index: number; positionInTrack: number } {
+  const inFile = Math.max(0, loaded.position);
+  const playingId = engineIds[loaded.trackIndex];
+  const same = playingId === undefined ? -1 : trackIndexById(queue, playingId);
+  if (same >= 0) return { index: same, positionInTrack: inFile };
+  let seconds = inFile;
+  const before = Math.max(0, Math.min(loaded.trackIndex, engineIds.length));
+  for (let i = 0; i < before; i++) seconds += Math.max(0, durations.get(engineIds[i]) ?? 0);
+  return locate(queue.offsets, queue.total > 0 ? Math.min(seconds, queue.total) : seconds);
+}
+
+/**
+ * The engine reloaded in the adopted queue's order (`adoptLoaded`, fe#134), at `landing`. A
+ * playing book starts as `playBook` starts one (the spinner and the stall watchdog, the save
+ * loop and the pick-up check from its `playing`); a paused one stays paused and saves nothing
+ * until it plays (`quietAdopted`). Gives the engine back to whoever took the store meanwhile
+ * (a start, a stop).
+ */
+async function reloadAdopted(
+  svc: PlaybackService,
+  nowPlaying: NowPlaying,
+  key: string,
+  landing: { index: number; positionInTrack: number },
+  rate: number,
+  playing: boolean,
+): Promise<boolean> {
+  const current = () => usePlayer.getState().nowPlaying === nowPlaying;
+  if (playing) beginPlaybackAttempt();
+  else quietAdopted = nowPlaying;
+  try {
+    await svc.load(
+      nowPlaying.queue.tracks,
+      landing.index,
+      landing.positionInTrack,
+      nowPlaying.queue.chapterClips,
+      bookRefOf(nowPlaying),
+    );
+  } catch (err) {
+    console.warn('[player] could not reload the adopted book in its order', err);
+    if (current()) {
+      clearPlaybackIntent();
+      const { snapshot } = usePlayer.getState();
+      usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
+    }
+    return true;
+  } finally {
+    if (usePlayer.getState().loadingBook === key) usePlayer.setState({ loadingBook: null });
+  }
+  if (!current()) {
+    // Stopped while it loaded: the stop's reset ran before this load landed in the engine.
+    if (!usePlayer.getState().nowPlaying) await svc.reset();
+    return true;
+  }
+  await svc.setRate(rate);
+  if (playing && current()) await startLoadedEngine(svc);
   return true;
 }
 
