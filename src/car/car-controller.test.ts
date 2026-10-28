@@ -1159,7 +1159,12 @@ describe('bookmarks from outside the app', () => {
   /** The book loaded here: two files of 100 s (the second starts at 100). */
   const load = (path = 'A/Book.m4b') =>
     usePlayer.setState({
-      nowPlaying: { connectionId: 'c1', libraryId: 2, path, queue: { offsets: [0, 100] } },
+      nowPlaying: {
+        connectionId: 'c1',
+        libraryId: 2,
+        path,
+        queue: { offsets: [0, 100], tracks: [{ id: '2:A/1.mp3' }, { id: '2:A/2.mp3' }] },
+      },
     });
 
   it("adds one at the loaded book's whole-book place at the press, without a label", async () => {
@@ -1193,9 +1198,16 @@ describe('bookmarks from outside the app', () => {
     mockAddBookmark.mockRejectedValueOnce(new TypeError('Network request failed'));
     mockNative.bookmark?.(0, 50);
     await settle();
-    // Kept at its whole-book place: no timeline needed to add it later.
+    // Kept in its file, with its whole-book place (fe#146).
     expect(await getItem('audiosilo.carBookmarks')).toEqual([
-      { connectionId: 'c1', libraryId: 2, path: 'A/Book.m4b', position: 50 },
+      {
+        connectionId: 'c1',
+        libraryId: 2,
+        path: 'A/Book.m4b',
+        trackId: '2:A/1.mp3',
+        positionInTrack: 50,
+        position: 50,
+      },
     ]);
 
     mockAddBookmark.mockClear();
@@ -1208,10 +1220,9 @@ describe('bookmarks from outside the app', () => {
     expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
   });
 
-  it('keeps one at the place read on its first try, whatever order its download takes after', async () => {
-    connect(['c1']);
-    mockClients.c1 = fakeClient({});
-    // Files of 100 s and 60 s, so the same file place reads differently in the other order.
+  describe('a kept one across a re-ordered download (fe#146)', () => {
+    // Files of 100 s (D/1) and 60 s (D/2), so a whole-book place reads as another file's
+    // in the other order.
     const withLengths = (order: [number, number]) => {
       const e = downloaded('c1', 'D');
       e.manifest.chapters = {
@@ -1224,28 +1235,116 @@ describe('bookmarks from outside the app', () => {
       };
       return e;
     };
-    useDownloads.setState({ entries: { 'c1:2:D': withLengths([0, 1]) } });
-    // Pressed with no JS running: file 2 (D/2.mp3), 30 s in = whole-book 130.
-    mockNative.consumePendingBookmarks.mockResolvedValueOnce([
-      { connectionId: 'c1', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
-    ]);
-    mockAddBookmark.mockRejectedValueOnce(new TypeError('Network request failed'));
-    stop = startCarSync();
-    await settle();
-    expect(await getItem('audiosilo.carBookmarks')).toEqual([
-      { connectionId: 'c1', libraryId: 2, path: 'D', position: 130 },
-    ]);
+    const redrain = async () => {
+      mockAddBookmark.mockClear();
+      appStateListener?.('background');
+      appStateListener?.('active');
+      await settle();
+    };
 
-    // The download takes the server's other order: file index 1 is now D/1.mp3, so the
-    // press's file place would read as 60 + 30 = 90 there.
-    useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
-    mockAddBookmark.mockClear();
-    appStateListener?.('background');
-    appStateListener?.('active');
-    await settle();
-    expect(mockAddBookmark).toHaveBeenCalledTimes(1);
-    expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 130);
-    expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+    it('keeps it in its file and lands it in that file once the download takes the other order', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([0, 1]) } });
+      // Pressed with no JS running: file 2 (D/2.mp3), 30 s in = whole-book 130.
+      mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+        { connectionId: 'c1', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+      ]);
+      mockAddBookmark.mockRejectedValueOnce(new TypeError('Network request failed'));
+      stop = startCarSync();
+      await settle();
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([
+        {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'D',
+          trackId: '2:D/2.mp3',
+          positionInTrack: 30,
+          position: 130,
+        },
+      ]);
+
+      // The download takes the server's other order: D/2 (60 s) first, then D/1. The kept
+      // whole-book 130 would read as D/1 70 s in there; its file place is D/2 at 30.
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+      await redrain();
+      expect(mockAddBookmark).toHaveBeenCalledTimes(1);
+      expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 30);
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+    });
+
+    it('keeps the place read on each try, in its file, until it is added', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+      await setItem('audiosilo.carBookmarks', [
+        {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'D',
+          trackId: '2:D/2.mp3',
+          positionInTrack: 30,
+          position: 130,
+        },
+      ]);
+      mockAddBookmark.mockRejectedValueOnce(new TypeError('Network request failed'));
+      stop = startCarSync();
+      await settle();
+      // Read again in the order now: the same file, its whole-book place on this timeline.
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([
+        {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'D',
+          trackId: '2:D/2.mp3',
+          positionInTrack: 30,
+          position: 30,
+        },
+      ]);
+    });
+
+    it('still reads one kept at only a whole-book place (kept before fe#146)', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+      await setItem('audiosilo.carBookmarks', [
+        { connectionId: 'c1', libraryId: 2, path: 'D', position: 130 },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 130);
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+    });
+
+    it('falls back to its whole-book place for a file the download no longer holds', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([0, 1]) } });
+      await setItem('audiosilo.carBookmarks', [
+        {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'D',
+          trackId: '2:D/gone.mp3',
+          positionInTrack: 5,
+          position: 42,
+        },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 42);
+    });
+
+    it('ignores a kept one in the new form with a malformed place', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      await setItem('audiosilo.carBookmarks', [
+        { connectionId: 'c1', libraryId: 2, path: 'D', trackId: '2:D/2.mp3', position: 5 },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark).not.toHaveBeenCalled();
+    });
   });
 
   it('keeps one in file coordinates while its place cannot be read yet', async () => {

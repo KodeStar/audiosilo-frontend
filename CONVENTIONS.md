@@ -1402,9 +1402,14 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
   JS (`consumePendingBookmarks`) drain at start and on every foreground, and one that can't
-  reach its server waits under `audiosilo.carBookmarks`, at the whole-book place read on its
-  first try (a file place read later could go through a re-ordered download's timeline); only
-  one whose place could not be read yet stays in file coordinates.
+  reach its server waits under `audiosilo.carBookmarks`, kept by the place read on its first
+  try: its file (`trackId`, path-keyed) and the seconds in it, plus the whole-book place read
+  then (fe#146). Each later try reads it in the order the book's files are in now
+  (`trackIndexById`, shared with `adoptLoaded`), so a download that took the server's order
+  since still puts it in its file; the whole-book seconds stand only for a book that no longer
+  holds that file or whose timeline can't be read. A kept one of the older form (whole-book
+  seconds alone) is still read; only one whose place could not be read yet stays in file
+  coordinates.
 - **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
@@ -1442,7 +1447,18 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     `nowPlaying` and the rate, makes the resume floor the engine's place, seeds the bridge
     (`adoptPlace`, so the next tick maps onto the right file) and, if playing, runs the
     pick-up check before its first save, all **without `svc.load`** (a reload would cut the
-    audio). Regression tests: `store-adopt.test.ts`.
+    audio) while the engine plays the queue's file order. **The engine's order** (fe#134):
+    `LoadedBook.files` names the service's files in its order (absent on iOS, Cast and older
+    binaries: then, and when it is the queue's order, nothing changes). Every later tick
+    counts in that order, so the queue must be in it: a downloaded book asks the server's
+    chapters once, and when they come back in exactly the engine's order the download takes
+    them (`adoptStartedChapters`, as the start JS lost would have) and the queue is built from
+    them, with no reload. Anything else (offline, no answer, other files, a third order)
+    reloads the engine in the queue's order at the same file (`trackIndexById`) and in-file
+    place, or at the same whole-book seconds for a file the queue lacks, the resume floor at
+    that place and the play state kept (`reloadAdopted`: saves and remote moves held by
+    `loadingBook` until the load lands; a paused one saves nothing until it plays,
+    `quietAdopted`). Not while casting (fe#145). Regression tests: `store-adopt.test.ts`.
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over an SDK 56
   AppDelegate fixture by `withCarPlay.test.ts`). Declaring any scene moves the whole iOS app
   onto the UIScene life cycle (the iOS 27 SDK will require it anyway), where UIKit never shows
@@ -2018,9 +2034,11 @@ are asked, at most 10,000 rows.
   once; a start given no chapters plays the download's own files and chapters), never
   from a background answer, and a start's answer in the manifest's own order is left to the
   background refresh: JS sees only what it loaded, not a book the Android service or a Cast
-  receiver holds before `adoptLoaded` / the receiver adoption, which map the engine's track index
-  through the manifest. So an offline start, Android's no-JS car start
-  and `adoptLoaded` keep the manifest's order until an online start plays the new one. The
+  receiver holds before `adoptLoaded` / the receiver adoption. So an offline start and
+  Android's no-JS car start keep the manifest's order until an online start plays the new
+  one; `adoptLoaded` reads the engine's own order (`LoadedBook.files`) and takes the server's
+  chapters only when they are exactly that order, else reloads the engine in the manifest's
+  (fe#134; the Cast receiver adoption still maps its track index through the manifest). The
   chapters carry the order (every queue over a download orders its files by them and finds each by
   path); `manifest.files` itself never moves, since a file's index there is its name on disk
   (`fileName`; `relocateEntry` keeps each saved file's own name at every launch). A place saved on the old

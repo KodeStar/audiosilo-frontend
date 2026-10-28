@@ -53,7 +53,12 @@ import {
   CAR_SNAPSHOT_WRITTEN_KEY as WRITTEN_KEY,
 } from '@/lib/storage-keys';
 import { onForeground } from '@/lib/when-active';
-import { buildBookQueue, toBookPosition } from '@/playback/book-queue';
+import {
+  type BookQueue,
+  buildBookQueue,
+  toBookPosition,
+  trackIndexById,
+} from '@/playback/book-queue';
 import { bookSourceOf } from '@/playback/book-source';
 import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
@@ -768,44 +773,81 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
 
 // --- Bookmarks ------------------------------------------------------------------------------
 
-/** A bookmark to add: at a whole-book place (pressed while the book was loaded here), or at
- * the engine's file coordinates (pressed while no JS ran). */
-type CarBookmark = BookRef &
-  ({ position: number } | { trackIndex: number; positionInTrack: number });
+/** A bookmark placed on its book's timeline: in its file (`trackId`, the file's path-keyed
+ * track id, and the seconds in it) with the whole-book place read then, or (no file known: one
+ * kept before fe#146) at only a whole-book place. */
+type PlacedBookmark = BookRef &
+  ({ position: number } | { trackId: string; positionInTrack: number; position: number });
 
-/** The whole-book place of a bookmark in file coordinates: through the loaded book's queue,
- * else the book's own timeline (`bookSourceOf`: the downloaded copy's, else its item and
- * chapters). Null when none can be read now (offline, not downloaded). */
-async function bookPlaceOf(b: CarBookmark): Promise<number | null> {
-  if ('position' in b) return b.position;
+/** A bookmark to add: placed (pressed while the book was loaded here, or kept from a try that
+ * read its place), or at the engine's file coordinates (pressed while no JS ran, or on the
+ * book the engine names) until its book's timeline is read. */
+type CarBookmark = PlacedBookmark | (BookRef & { trackIndex: number; positionInTrack: number });
+
+/** The book's timeline now: the loaded book's queue, else the book's own (`bookSourceOf`: the
+ * downloaded copy's, else its item and chapters). Null when none can be read now (offline,
+ * not downloaded). */
+async function timelineOf(b: BookRef): Promise<Pick<BookQueue, 'tracks' | 'offsets'> | null> {
   const np = usePlayer.getState().nowPlaying;
-  if (np && contentKeyOf(np) === contentKeyOf(b)) {
-    return toBookPosition(np.queue.offsets, b.trackIndex, b.positionInTrack);
-  }
+  if (np && contentKeyOf(np) === contentKeyOf(b)) return np.queue;
   const source = await bookSourceOf(b).catch(() => null);
-  if (!source) return null;
-  const { offsets } = buildBookQueue(null, b.libraryId, source.book, source.chapters);
-  return toBookPosition(offsets, b.trackIndex, b.positionInTrack);
+  return source ? buildBookQueue(null, b.libraryId, source.book, source.chapters) : null;
+}
+
+/** A bookmark placed on its book's timeline now (`timelineOf`). One kept in its file is read in
+ * the order the book's files are in now (`trackIndexById`), so a download that took the
+ * server's order since still puts it in its file; the whole-book place read then stands only
+ * for a book that no longer holds the file, or whose timeline can't be read now. Null when a
+ * place in the engine's file coordinates can't be read now. */
+async function placeOf(b: CarBookmark): Promise<PlacedBookmark | null> {
+  const ref = bookRefOf(b);
+  if ('trackId' in b) {
+    const timeline = await timelineOf(b);
+    const index = timeline ? trackIndexById(timeline, b.trackId) : -1;
+    const position =
+      timeline && index >= 0
+        ? toBookPosition(timeline.offsets, index, b.positionInTrack)
+        : b.position;
+    return { ...ref, trackId: b.trackId, positionInTrack: b.positionInTrack, position };
+  }
+  if ('position' in b) return { ...ref, position: b.position };
+  const timeline = await timelineOf(b);
+  return timeline && placedIn(ref, timeline, b.trackIndex, b.positionInTrack);
+}
+
+/** A place in file coordinates on `timeline`, kept by its file when the timeline names one. */
+function placedIn(
+  ref: BookRef,
+  timeline: Pick<BookQueue, 'tracks' | 'offsets'>,
+  trackIndex: number,
+  positionInTrack: number,
+): PlacedBookmark {
+  const position = toBookPosition(timeline.offsets, trackIndex, positionInTrack);
+  const trackId = timeline.tracks[trackIndex]?.id;
+  return trackId === undefined
+    ? { ...ref, position }
+    : { ...ref, trackId, positionInTrack, position };
 }
 
 /** Add one: null when it is finished with (added, its connection is gone, or the server
  * refused it), else the bookmark to try again (its server can't be reached, or its place
- * can't be read yet). The one kept is at the whole-book place read now whenever one could
- * be: a place kept in file coordinates would be read later through whatever order the book's
- * files are in then (a download re-ordered by a start in the server's order), which can be
- * another file's. */
+ * can't be read yet). The one kept is at the place read now whenever one could be
+ * (`placeOf`): kept in the engine's file coordinates it would be read later through whatever
+ * order the book's files are in then (a download that took the server's order since), and
+ * kept at only a whole-book place it would be read on the new order's timeline, where the
+ * files can differ in length (fe#146); either can be another file's. */
 async function addCarBookmark(b: CarBookmark): Promise<CarBookmark | null> {
   // No connection: gone for good once the session has loaded, else (a session that failed
   // to load: a CarPlay launch with the phone locked) kept until it has.
   const connected = resolveClient(b.connectionId) !== null;
   if (!connected && sessionReady()) return null;
-  const position = await bookPlaceOf(b);
-  if (position === null) return b;
-  const placed: CarBookmark = { ...bookRefOf(b), position };
+  const placed = await placeOf(b);
+  if (placed === null) return b;
   if (!connected) return placed;
   try {
     // No label: the car's bookmark is a plain one, so nothing waits on `annotations`.
-    await addBookmark(b.connectionId, b.libraryId, b.path, Math.round(Math.max(0, position)));
+    const position = Math.round(Math.max(0, placed.position));
+    await addBookmark(b.connectionId, b.libraryId, b.path, position);
     return null;
   } catch (err) {
     if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
@@ -823,8 +865,12 @@ function isCarBookmark(v: unknown): v is CarBookmark {
     typeof b.connectionId === 'string' &&
     typeof b.libraryId === 'number' &&
     typeof b.path === 'string' &&
-    (typeof b.position === 'number' ||
-      (typeof b.trackIndex === 'number' && typeof b.positionInTrack === 'number'))
+    ('trackId' in b
+      ? typeof b.trackId === 'string' &&
+        typeof b.positionInTrack === 'number' &&
+        typeof b.position === 'number'
+      : typeof b.position === 'number' ||
+        (typeof b.trackIndex === 'number' && typeof b.positionInTrack === 'number'))
   );
 }
 
@@ -871,11 +917,11 @@ async function drainCarBookmarks(): Promise<void> {
 
 /** A bookmark pressed outside the app while JS runs, at the engine's place. When the engine
  * names its book (a binary that knows `load`'s book), it goes on THAT book at the engine's file place
- * (`bookPlaceOf` maps it through the loaded queue when that is the book, else the book's own
+ * (`placeOf` maps it through the loaded queue when that is the book, else the book's own
  * timeline): the engine can hold a book the store has not adopted yet (a car start the JS
  * boot is still adopting), and it is the one the listener heard. Without one (an older
- * binary) it goes on the book loaded here, at its whole-book place taken now, so one kept for
- * a retry needs no timeline later; a press with none loaded is dropped. */
+ * binary) it goes on the book loaded here, at its file and whole-book place taken now
+ * (`placedIn`); a press with none loaded is dropped. */
 function onBookmarkPressed(trackIndex: number, positionInTrack: number, book?: BookRef): void {
   if (book) {
     noteInteraction();
@@ -885,9 +931,7 @@ function onBookmarkPressed(trackIndex: number, positionInTrack: number, book?: B
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
   noteInteraction();
-  void addBookmarks([
-    { ...bookRefOf(np), position: toBookPosition(np.queue.offsets, trackIndex, positionInTrack) },
-  ]);
+  void addBookmarks([placedIn(bookRefOf(np), np.queue, trackIndex, positionInTrack)]);
 }
 
 // --- Adopting -------------------------------------------------------------------------------
