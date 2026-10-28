@@ -1290,8 +1290,9 @@ media GETs only.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
-  store's `onPickedUpAgain`, called before that play's first save), the loaded book asks its
-  server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
+  store's `onPickedUpAgain`, called before that play's first save; a play reported while a load
+  holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`), the loaded
+  book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
   then it saves the held place). It moves only when the record is from another `device_id`,
   newer than this device's mirror (a newer unsynced save here wins), not finished, and more than
   30 s away, and stands back if the listener moved meanwhile (`localMoveCount`). The move goes

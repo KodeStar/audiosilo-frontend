@@ -841,6 +841,52 @@ describe('adoptLoaded', () => {
       expect(mockSvc.play).not.toHaveBeenCalled();
     });
 
+    it('runs the pick-up check once the reload lands when the engine plays during its load', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      // The place reconcile skips while a load holds the store: a check told then is lost.
+      const heldWhenTold: (string | null)[] = [];
+      const stop = onPickedUpAgain(() => heldWhenTold.push(usePlayer.getState().loadingBook));
+      try {
+        const held = heldLoad();
+        const adopting = usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+        await untilCalled(mockSvc.load as jest.Mock);
+        // Android's load keeps playWhenReady: the engine reports `playing` before it returns.
+        pushSnapshot(snap('playing', 1, 30));
+        expect(heldWhenTold).toEqual([]);
+        held.land();
+        expect(await adopting).toBe(true);
+        expect(heldWhenTold).toEqual([null]);
+      } finally {
+        stop();
+      }
+    });
+
+    it('checks on the next play when the reload lands with the book no longer playing', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      const picked = jest.fn();
+      const stop = onPickedUpAgain(picked);
+      try {
+        const held = heldLoad();
+        const adopting = usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+        await untilCalled(mockSvc.load as jest.Mock);
+        pushSnapshot(snap('playing', 1, 30));
+        pushSnapshot(snap('paused', 1, 31)); // paused before the load returned
+        held.land();
+        await adopting;
+        expect(picked).not.toHaveBeenCalled();
+        pushSnapshot(snap('playing', 1, 31));
+        expect(picked).toHaveBeenCalledTimes(1);
+      } finally {
+        stop();
+      }
+    });
+
     it("leaves a same-book start's hold to that start's own load", async () => {
       useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
       serverAnswers(new TypeError('Network request failed'));

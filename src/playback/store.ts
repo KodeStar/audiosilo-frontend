@@ -178,6 +178,18 @@ const heldBySwap = (np: NowPlaying, trackIndex: number) =>
 let pausedAt: number | null = null;
 export const LONG_PAUSE_MS = 60_000;
 let pickedUpAgainListener: (() => void) | null = null;
+/** A pick-up check due while a load held the store (`loadingBook`, by its content key): the
+ * place reconcile skips while that hold is set, so the check waits for its release (the
+ * subscription beside the download hot-swap's) instead of being used up by a `playing`
+ * reported during the load. */
+let pickUpDue: string | null = null;
+
+/** Tell the pick-up listener now, or once the load holding the store lands (`pickUpDue`). */
+function pickUp() {
+  const { loadingBook } = usePlayer.getState();
+  if (loadingBook) pickUpDue = loadingBook;
+  else pickedUpAgainListener?.();
+}
 /** Counts the listener's own moves in the loaded book (seeks, track jumps, a book
  * started): a reconcile that sees it change while its check was out stands back. */
 let localMoves = 0;
@@ -821,7 +833,7 @@ async function createService(): Promise<PlaybackService> {
         const pickedUp = pausedAt !== null && Date.now() - pausedAt >= LONG_PAUSE_MS;
         pausedAt = null;
         quietAdopted = null; // playing again: its place is new from here
-        if (pickedUp) pickedUpAgainListener?.();
+        if (pickedUp) pickUp();
         startSaveLoop();
       } else if (snapshot.state === 'loading') {
         // A mid-playback stall (or the ongoing start attempt): arm the watchdog so a
@@ -935,6 +947,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       void persist();
       switchBook(api, { connectionId, libraryId, book, chapterData });
       pausedAt = null; // a book (re)started here just had its place looked up
+      pickUpDue = null;
       deviceId = await getDeviceId();
 
       // Web only: a book the browser can't decode streams through the server's transcoder
@@ -1799,6 +1812,18 @@ async function reloadAdopted(
   // Paused while it loaded (or given up by the stall watchdog): that stands.
   if (playing && current() && wantsPlayback) await startLoadedEngine(svc);
 }
+
+// A pick-up check due while a load held the store (`pickUpDue`) runs once that hold is
+// released, synchronously, so its save hold is in place before the book's first save. A book
+// no longer playing then (paused or stalled meanwhile) checks on its next play instead.
+usePlayer.subscribe((state, prev) => {
+  if (pickUpDue === null || !prev.loadingBook || state.loadingBook) return;
+  const due = pickUpDue;
+  pickUpDue = null;
+  if (!state.nowPlaying || contentKeyOf(state.nowPlaying) !== due) return;
+  if (state.snapshot.state === 'playing') pickedUpAgainListener?.();
+  else pausedAt = 0;
+});
 
 // When a download completes for the book that's currently playing, switch it to the
 // local copy (see above).
