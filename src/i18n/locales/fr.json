@@ -597,8 +597,8 @@
       "body": "Rien n’est perdu : ta position est conservée sur chaque serveur. Vérifie la connexion et réessaie."
     },
     "offline": {
-      "title": "Vous êtes hors ligne",
-      "body": "Votre position s'affiche dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements."
+      "title": "Tu es hors ligne",
+      "body": "Ta position s'affiche dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements."
     },
     "previouslyOn": {
       "label": "Précédemment",
