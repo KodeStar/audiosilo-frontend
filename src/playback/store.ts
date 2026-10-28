@@ -119,6 +119,9 @@ let wantsPlayback = false;
  * A genuine user/lock-screen pause arrives with this already false (we reached
  * `playing` first), so it's still distinguishable. */
 let startingPlayback = false;
+/** Counts the play requests (`beginPlaybackAttempt`): a paused adoption's reload tells the
+ * listener's play made while its load was out from the engine playing by itself. */
+let playAttempts = 0;
 /** Pending stall→error timer (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 /** The whole-book position the current book resumed from, kept as a running high-water
@@ -167,7 +170,8 @@ let swapHold: { nowPlaying: NowPlaying; trackIndex: number } | null = null;
  * paused load reports `ready` and `paused`, and a playing one can stall into an `error`:
  * transitions that would otherwise save that place dated now, over another device's newer
  * one. By its key, so the download hot-swap's new `NowPlaying` keeps it. Cleared by the next
- * `playing` and by `userMoved` (every book switch is one).
+ * `playing` (one reported while the reload's load holds the store only once the reload's own
+ * play stands) and by `userMoved` (every book switch is one).
  */
 let quietAdopted: string | null = null;
 const heldBySwap = (np: NowPlaying, trackIndex: number) =>
@@ -551,6 +555,7 @@ function armStallWatchdog() {
  * reaches `playing`, and the stall watchdog is ticking from now (a dead/slow-to-start
  * stream surfaces an error after the grace, matching the old native behavior). */
 function beginPlaybackAttempt() {
+  playAttempts++;
   wantsPlayback = true;
   startingPlayback = true;
   armStallWatchdog();
@@ -832,7 +837,10 @@ async function createService(): Promise<PlaybackService> {
         // before this play's first save.
         const pickedUp = pausedAt !== null && Date.now() - pausedAt >= LONG_PAUSE_MS;
         pausedAt = null;
-        quietAdopted = null; // playing again: its place is new from here
+        // Playing again: its place is new from here. Not a play the engine reports while an
+        // adoption's reload holds the store (still the old order's, and a paused one is paused
+        // again once loaded): `reloadAdopted` clears it once its own play stands.
+        if (quietAdopted !== usePlayer.getState().loadingBook) quietAdopted = null;
         if (pickedUp) pickUp();
         startSaveLoop();
       } else if (snapshot.state === 'loading') {
@@ -1759,7 +1767,8 @@ function landingOf(
  * moves it. A playing book starts as `playBook` starts one (the spinner and the stall
  * watchdog, then the save loop and the pick-up check from its `playing`), unless the listener
  * paused it while it loaded. A paused one is paused again once loaded: an engine that ended
- * or failed still wants to play, and Android's load keeps that, so it would play by itself.
+ * or failed still wants to play, and Android's load keeps that, so it would play by itself;
+ * unless the listener pressed play while it loaded, which then starts it the same way.
  * Gives the engine back to whoever took the store meanwhile (a stop).
  */
 async function reloadAdopted(
@@ -1773,6 +1782,7 @@ async function reloadAdopted(
   const key = contentKeyOf(nowPlaying);
   quietAdopted = key;
   if (playing) beginPlaybackAttempt();
+  const attempts = playAttempts;
   try {
     await svc.load(
       nowPlaying.queue.tracks,
@@ -1807,10 +1817,19 @@ async function reloadAdopted(
   }
   // Never before the load: a start made while it was out could load first, and this load
   // would then replace that start's book in the engine.
-  if (!playing) await svc.pause();
+  // A play the listener asked for meanwhile (still wanted) stands like the adopted one.
+  const wanted = playing || (playAttempts !== attempts && wantsPlayback);
+  if (!wanted) await svc.pause();
   await svc.setRate(rate);
   // Paused while it loaded (or given up by the stall watchdog): that stands.
-  if (playing && current() && wantsPlayback) await startLoadedEngine(svc);
+  if (wanted && current() && wantsPlayback) {
+    await startLoadedEngine(svc);
+    // A `playing` reported while the load held the store left `quietAdopted` set, and no
+    // transition may follow now: the play stands from here.
+    if (current() && quietAdopted === key && usePlayer.getState().snapshot.state === 'playing') {
+      quietAdopted = null;
+    }
+  }
 }
 
 // A pick-up check due while a load held the store (`pickUpDue`) runs once that hold is
