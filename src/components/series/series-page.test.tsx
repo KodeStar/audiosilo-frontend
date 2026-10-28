@@ -8,7 +8,10 @@ const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
+jest.mock('@/downloads/store', () => ({
+  useIsDownloaded: () => false,
+  useDownloadedCoverUri: () => null,
+}));
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => 'desktop',

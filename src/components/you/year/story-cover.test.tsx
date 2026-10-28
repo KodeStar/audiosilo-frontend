@@ -2,7 +2,10 @@ import { render, screen } from '@testing-library/react-native';
 
 // BookCover reaches the theme (its frame's shadow) and the downloads store.
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
+jest.mock('@/downloads/store', () => ({
+  useIsDownloaded: () => false,
+  useDownloadedCoverUri: () => null,
+}));
 jest.mock('@/api/hooks', () => ({
   useServerInfo: () => ({ data: { capabilities: { cover_sizes: true } }, isError: false }),
 }));

@@ -1077,6 +1077,30 @@ export function useDownloadEntry(
   return useDownloads((s) => s.entries[downloadKey(connectionId, libraryId, path)]);
 }
 
+// The narrow selectors below return one primitive, so the entry patches a running
+// download makes every PROGRESS_EVERY_MS re-render nothing until the value changes.
+// Prefer them to `useDownloadEntry` wherever the caller needs no progress: a whole book
+// page or every cover of the book on screen re-rendering 4 times a second is the cost.
+
+/** Whether the book is fully downloaded. */
+export function useIsDownloaded(connectionId: string, libraryId: number, path: string): boolean {
+  return useDownloads(
+    (s) => s.entries[downloadKey(connectionId, libraryId, path)]?.status === 'downloaded',
+  );
+}
+
+/** The cover a finished download of the book holds (its `manifest.coverUri`), else null. */
+export function useDownloadedCoverUri(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): string | null {
+  return useDownloads((s) => {
+    const e = s.entries[downloadKey(connectionId, libraryId, path)];
+    return e?.status === 'downloaded' ? e.manifest.coverUri : null;
+  });
+}
+
 /** The EPUB a finished download of the book holds (its `manifest.ebookUri`), else
  * undefined. A string, so a download's progress ticks re-render nothing (the reader). */
 export function useDownloadedEbook(

@@ -24,7 +24,10 @@ jest.mock('@/api/hooks', () => ({
   useServerInfo: () => mockInfo,
 }));
 let mockEntry: { status: string; manifest: { coverUri: string | null } } | undefined;
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => mockEntry }));
+jest.mock('@/downloads/store', () => ({
+  useDownloadedCoverUri: () =>
+    mockEntry?.status === 'downloaded' ? mockEntry.manifest.coverUri : null,
+}));
 
 // CoverFrame's iOS shadow reads the theme (the provider imports global.css).
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));

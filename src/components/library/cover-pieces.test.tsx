@@ -20,8 +20,8 @@ jest.mock('@/api/hooks', () => ({
 }));
 let mockDownloaded = false;
 jest.mock('@/downloads/store', () => ({
-  useDownloadEntry: () =>
-    mockDownloaded ? { status: 'downloaded', manifest: { coverUri: null } } : undefined,
+  useIsDownloaded: () => mockDownloaded,
+  useDownloadedCoverUri: () => null,
 }));
 // The grid clears the mini player (whose module loads the playback engine).
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));

@@ -166,7 +166,7 @@ jest.mock('react-native-gesture-handler', () => ({
 }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/downloads/store', () => ({
-  useDownloadEntry: () => undefined,
+  useIsDownloaded: () => false,
   useDownloadedEbook: () => undefined,
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
