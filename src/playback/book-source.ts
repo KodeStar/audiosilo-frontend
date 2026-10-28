@@ -48,17 +48,24 @@ export type BookSource = { book: Book; chapters?: ChaptersResponse; local?: Loca
  * connection is gone; rejects when the server can't be read.
  */
 export async function bookSourceOf(ref: BookRef): Promise<BookSource | null> {
-  const dl = downloadedEntryOf(ref);
-  if (dl) {
-    return {
-      book: dl.manifest.book,
-      chapters: dl.manifest.chapters ?? undefined,
-      local: localFromManifest(dl.manifest),
-    };
-  }
+  const dl = downloadedSourceOf(ref);
+  if (dl) return dl;
   const client = resolveClient(ref.connectionId);
   if (!client) return null;
   return fetchBookSource(ref, client);
+}
+
+/** A downloaded book's item, chapters and local files, from its manifest; null when it is
+ * not downloaded. */
+export function downloadedSourceOf(ref: BookRef): BookSource | null {
+  const dl = downloadedEntryOf(ref);
+  return dl
+    ? {
+        book: dl.manifest.book,
+        chapters: dl.manifest.chapters ?? undefined,
+        local: localFromManifest(dl.manifest),
+      }
+    : null;
 }
 
 /** A book's item and chapters from its server, through the query cache (`fetchFailFast`: it

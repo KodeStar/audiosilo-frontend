@@ -784,10 +784,13 @@ type PlacedBookmark = BookRef &
  * book the engine names) until its book's timeline is read. */
 type CarBookmark = PlacedBookmark | (BookRef & { trackIndex: number; positionInTrack: number });
 
+/** The part of a book's queue a place on its timeline is read through. */
+type Timeline = Pick<BookQueue, 'tracks' | 'offsets'>;
+
 /** The book's timeline now: the loaded book's queue, else the book's own (`bookSourceOf`: the
  * downloaded copy's, else its item and chapters). Null when none can be read now (offline,
  * not downloaded). */
-async function timelineOf(b: BookRef): Promise<Pick<BookQueue, 'tracks' | 'offsets'> | null> {
+async function timelineOf(b: BookRef): Promise<Timeline | null> {
   const np = usePlayer.getState().nowPlaying;
   if (np && contentKeyOf(np) === contentKeyOf(b)) return np.queue;
   const source = await bookSourceOf(b).catch(() => null);
@@ -818,7 +821,7 @@ async function placeOf(b: CarBookmark): Promise<PlacedBookmark | null> {
 /** A place in file coordinates on `timeline`, kept by its file when the timeline names one. */
 function placedIn(
   ref: BookRef,
-  timeline: Pick<BookQueue, 'tracks' | 'offsets'>,
+  timeline: Timeline,
   trackIndex: number,
   positionInTrack: number,
 ): PlacedBookmark {
@@ -841,6 +844,8 @@ async function addCarBookmark(b: CarBookmark): Promise<CarBookmark | null> {
   // to load: a CarPlay launch with the phone locked) kept until it has.
   const connected = resolveClient(b.connectionId) !== null;
   if (!connected && sessionReady()) return null;
+  // Kept in its file already: it is read through the book's order when it can be sent.
+  if (!connected && 'trackId' in b) return b;
   const placed = await placeOf(b);
   if (placed === null) return b;
   if (!connected) return placed;

@@ -33,7 +33,13 @@ import {
   trackIndexById,
   type BookQueue,
 } from './book-queue';
-import { bookSourceOf, localFromManifest, resumeStart, type LocalFiles } from './book-source';
+import {
+  bookSourceOf,
+  downloadedSourceOf,
+  localFromManifest,
+  resumeStart,
+  type LocalFiles,
+} from './book-source';
 import { engineTick, engineTicker } from './engine-ticks';
 import {
   flushConnection,
@@ -1312,9 +1318,14 @@ export async function teardownBeforeTokenRevoke(connectionId: string): Promise<v
   ]);
 }
 
-/** The same files in the same order (a track's id is its file's path). */
-const sameFileOrder = (a: BookQueue, b: BookQueue) =>
-  a.tracks.length === b.tracks.length && a.tracks.every((t, i) => t.id === b.tracks[i].id);
+/** The same track ids in the same order (a track's id is its file's path, `trackIdOf`). */
+const sameIds = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((id, i) => id === b[i]);
+/** A queue's track ids, in its order. */
+const idsOf = (queue: Pick<BookQueue, 'tracks'>) => queue.tracks.map((t) => t.id);
+/** The track ids of a chapters answer's files (`bookFileSpecs`), in its order. */
+const specIds = (specs: { path: string }[], libraryId: number) =>
+  specs.map((s) => trackIdOf(libraryId, s.path));
 
 /**
  * Hot-swap the currently-playing book onto its local files the moment its download
@@ -1356,10 +1367,7 @@ async function switchCurrentBookToLocal() {
     started?.chapterData &&
     contentKey(started.connectionId, started.libraryId, started.book.rel_path) ===
       contentKeyOf(nowPlaying) &&
-    takenOrder.length === nowPlaying.queue.tracks.length &&
-    takenOrder.every(
-      (s, i) => trackIdOf(nowPlaying.libraryId, s.path) === nowPlaying.queue.tracks[i].id,
-    )
+    sameIds(specIds(takenOrder, nowPlaying.libraryId), idsOf(nowPlaying.queue))
   ) {
     adoptStartedChapters(nowPlaying, started.chapterData);
   }
@@ -1373,7 +1381,7 @@ async function switchCurrentBookToLocal() {
     local,
     useSettings.getState().virtualChapterInterval,
   );
-  if (!sameFileOrder(queue, nowPlaying.queue)) {
+  if (!sameIds(idsOf(queue), idsOf(nowPlaying.queue))) {
     const held = new Set(queue.tracks.map((t) => t.id));
     const sameFiles =
       queue.tracks.length === nowPlaying.queue.tracks.length &&
@@ -1383,7 +1391,7 @@ async function switchCurrentBookToLocal() {
   // The same file (track ids are path-keyed); whole-book seconds only for a file the
   // download doesn't hold.
   const playingId = nowPlaying.queue.tracks[snapshot.trackIndex]?.id;
-  const sameFile = playingId === undefined ? -1 : trackIndexById(queue, playingId);
+  const sameFile = trackIndexById(queue, playingId);
   const { index, positionInTrack } =
     sameFile >= 0
       ? { index: sameFile, positionInTrack: snapshot.position }
@@ -1530,7 +1538,7 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   const engineIds = loaded.files?.length
     ? loaded.files.map((path) => trackIdOf(libraryId, path))
     : null;
-  const otherOrder = engineIds !== null && !inTrackOrder(queue, engineIds);
+  let otherOrder = engineIds !== null && !sameIds(idsOf(queue), engineIds);
   const served = otherOrder && local ? await serverChaptersOf(ref, api) : null;
 
   // Asked again: the person may have switched while the source was read.
@@ -1540,17 +1548,16 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   const now = usePlayer.getState();
   if (now.nowPlaying !== before || now.loadingBook !== null || startsInFlight > 0) return false;
 
-  if (served && sameIds(bookFileSpecs(book, served), libraryId, engineIds)) {
+  if (served && engineIds && sameIds(specIds(bookFileSpecs(book, served), libraryId), engineIds)) {
     // The engine plays the server's order: the download takes those chapters, as the lost
     // start's own load would have made it (`adoptStartedChapters`), and the queue is built
     // from them. Nothing is reloaded.
     adoptStartedChapters(ref, served);
-    const dl = downloadedEntryOf(ref);
-    if (dl) {
-      book = dl.manifest.book;
-      chapterData = dl.manifest.chapters ?? undefined;
-      local = localFromManifest(dl.manifest);
+    const taken = downloadedSourceOf(ref);
+    if (taken) {
+      ({ book, chapters: chapterData, local } = taken);
       queue = buildBookQueue(api, libraryId, book, chapterData, local, interval);
+      otherOrder = !sameIds(idsOf(queue), engineIds);
     }
   }
   // Still another order (offline, no answer, other files, the server's in a third order):
@@ -1558,7 +1565,7 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   // a file the queue lacks, at the same whole-book place. Not while casting: the receiver
   // streams the book and a load would cut it (fe#145).
   const reload =
-    engineIds !== null && !inTrackOrder(queue, engineIds) && !svc.isCasting?.()
+    engineIds && otherOrder && !svc.isCasting?.()
       ? landingOf(queue, engineIds, loaded, fileDurations(libraryId, book, chapterData, served))
       : null;
 
@@ -1590,12 +1597,12 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   // taking the route with the phone still playing it), and an ended one hands it back.
   svc.rememberLoad?.({ tracks: queue.tracks, chapters: queue.chapterClips, book: ref });
   const nowPlaying = nowPlayingOf(loaded, book, queue, api, local);
-  const key = contentKey(connectionId, libraryId, loaded.path);
+  const key = contentKeyOf(nowPlaying);
   // A reload holds every save and remote move until it lands (`loadingBook`): until then a
   // tick still counts in the engine's old order.
   usePlayer.setState({ nowPlaying, rate, loadingBook: reload ? key : null, snapshot });
   restoreOutputGain(svc);
-  if (reload) return reloadAdopted(svc, nowPlaying, key, reload, rate, loaded.playing);
+  if (reload) return reloadAdopted(svc, nowPlaying, reload, rate, loaded.playing);
   // A speed outside the app's range (set by another controller while no JS listened) goes
   // back to the engine clamped, as `onRateChange` does: the store says what plays.
   if (rate !== loaded.rate) void svc.setRate(rate);
@@ -1609,17 +1616,6 @@ async function adoptLoadedBook(service: LoadedBook): Promise<boolean> {
   }
   return true;
 }
-
-/** Whether `queue` plays exactly the files `ids` names (track ids), in that order. */
-const inTrackOrder = (queue: Pick<BookQueue, 'tracks'>, ids: string[]) =>
-  queue.tracks.length === ids.length && queue.tracks.every((t, i) => t.id === ids[i]);
-
-/** Whether `specs` (a chapters answer's files, `bookFileSpecs`) are exactly the files `ids`
- * names, in that order. */
-const sameIds = (specs: { path: string }[], libraryId: number, ids: string[] | null) =>
-  ids !== null &&
-  specs.length === ids.length &&
-  specs.every((s, i) => trackIdOf(libraryId, s.path) === ids[i]);
 
 /** The server's chapters for a book, through the query cache (`fetchFailFast`), or null when
  * it can't be asked (no connection, known unreachable) or does not answer. */
@@ -1666,7 +1662,7 @@ function landingOf(
 ): { index: number; positionInTrack: number } {
   const inFile = Math.max(0, loaded.position);
   const playingId = engineIds[loaded.trackIndex];
-  const same = playingId === undefined ? -1 : trackIndexById(queue, playingId);
+  const same = trackIndexById(queue, playingId);
   if (same >= 0) return { index: same, positionInTrack: inFile };
   let seconds = inFile;
   const before = Math.max(0, Math.min(loaded.trackIndex, engineIds.length));
@@ -1684,12 +1680,12 @@ function landingOf(
 async function reloadAdopted(
   svc: PlaybackService,
   nowPlaying: NowPlaying,
-  key: string,
   landing: { index: number; positionInTrack: number },
   rate: number,
   playing: boolean,
 ): Promise<boolean> {
   const current = () => usePlayer.getState().nowPlaying === nowPlaying;
+  const key = contentKeyOf(nowPlaying);
   if (playing) beginPlaybackAttempt();
   else quietAdopted = nowPlaying;
   try {
