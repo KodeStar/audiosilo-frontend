@@ -1628,7 +1628,7 @@ tokens, type and components; its section 17 maps them onto these files.
 - **Dependency patches (`patches/`, `patch-package`):** `npm install`/`npm ci` apply them from
   `postinstall`. `react-native-web+<ver>.patch` makes RNW's `LocaleProvider`
   (`dist/modules/useLocale` and `dist/cjs/modules/useLocale`; the web export bundles the CJS one)
-  share one context value per direction and locale: RNW wraps every element with a `dir` (each
+  keep its context value while direction and locale hold: RNW wraps every element with a `dir` (each
   root `Text` is `dir="auto"`) in it, and a fresh value per render re-rendered every View and Text
   below a re-rendering parent straight through memo. `src/lib/react-native-web-locale.test.tsx`
   guards it. An RNW upgrade regenerates the patch (`npx patch-package react-native-web`) or drops

@@ -4,7 +4,7 @@ import { render } from '@testing-library/react-native';
 // Guards patches/react-native-web+*.patch: react-native-web wraps every host element
 // with a `dir` (each root Text has dir="auto") in its LocaleProvider, which built a new
 // context value on every render, so a re-rendering parent re-rendered every View and
-// Text below it straight through memo. The patch shares one value per direction and
+// Text below it straight through memo. The patch memoises the value on direction and
 // locale. Both builds are patched and checked: the web export bundles the CJS one today,
 // and a resolver change could pick the ESM one.
 /* eslint-disable @typescript-eslint/no-require-imports */

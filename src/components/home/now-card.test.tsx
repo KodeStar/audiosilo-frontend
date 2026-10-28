@@ -7,10 +7,7 @@ jest.mock('expo-router', () => ({
   useSegments: () => [],
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
-jest.mock('@/downloads/store', () => ({
-  useIsDownloaded: () => false,
-  useDownloadedCoverUri: () => null,
-}));
+jest.mock('@/downloads/store', () => ({ useDownloadedCoverUri: () => null }));
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => 'desktop',

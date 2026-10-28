@@ -1077,6 +1077,18 @@ export function useDownloadEntry(
   return useDownloads((s) => s.entries[downloadKey(connectionId, libraryId, path)]);
 }
 
+/** A book's entry in `entries` when it is fully downloaded, else undefined: the one
+ * "counts as downloaded" rule the selectors below and `downloadedEntryOf` share. */
+function downloadedIn(
+  entries: Registry,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): DownloadEntry | undefined {
+  const e = entries[downloadKey(connectionId, libraryId, path)];
+  return e?.status === 'downloaded' ? e : undefined;
+}
+
 // The narrow selectors below return one primitive, so the entry patches a running
 // download makes every PROGRESS_EVERY_MS re-render nothing until the value changes.
 // Prefer them to `useDownloadEntry` wherever the caller needs no progress: a whole book
@@ -1084,9 +1096,7 @@ export function useDownloadEntry(
 
 /** Whether the book is fully downloaded. */
 export function useIsDownloaded(connectionId: string, libraryId: number, path: string): boolean {
-  return useDownloads(
-    (s) => s.entries[downloadKey(connectionId, libraryId, path)]?.status === 'downloaded',
-  );
+  return useDownloads((s) => downloadedIn(s.entries, connectionId, libraryId, path) !== undefined);
 }
 
 /** The cover a finished download of the book holds (its `manifest.coverUri`), else null. */
@@ -1095,10 +1105,9 @@ export function useDownloadedCoverUri(
   libraryId: number,
   path: string,
 ): string | null {
-  return useDownloads((s) => {
-    const e = s.entries[downloadKey(connectionId, libraryId, path)];
-    return e?.status === 'downloaded' ? e.manifest.coverUri : null;
-  });
+  return useDownloads(
+    (s) => downloadedIn(s.entries, connectionId, libraryId, path)?.manifest.coverUri ?? null,
+  );
 }
 
 /** The EPUB a finished download of the book holds (its `manifest.ebookUri`), else
@@ -1108,10 +1117,9 @@ export function useDownloadedEbook(
   libraryId: number,
   path: string,
 ): string | undefined {
-  return useDownloads((s) => {
-    const e = s.entries[downloadKey(connectionId, libraryId, path)];
-    return (e?.status === 'downloaded' && e.manifest.ebookUri) || undefined;
-  });
+  return useDownloads(
+    (s) => downloadedIn(s.entries, connectionId, libraryId, path)?.manifest.ebookUri || undefined,
+  );
 }
 
 /** A book's registry entry when it is fully downloaded, else undefined: the non-hook
@@ -1121,8 +1129,7 @@ export function downloadedEntryOf(ref: {
   libraryId: number;
   path: string;
 }): DownloadEntry | undefined {
-  const e = useDownloads.getState().entries[downloadKey(ref.connectionId, ref.libraryId, ref.path)];
-  return e?.status === 'downloaded' ? e : undefined;
+  return downloadedIn(useDownloads.getState().entries, ref.connectionId, ref.libraryId, ref.path);
 }
 
 /** How many fully-downloaded books belong to a connection - the count the removal
