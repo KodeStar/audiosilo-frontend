@@ -470,6 +470,7 @@
     "ready": {
       "connected": "{{name}} está conectado",
       "title": "Tu biblioteca está lista.",
+      "titleSetup": "Ya casi está: añade una biblioteca.",
       "and": "{{rest}} y {{last}}",
       "booksIn_one": "{{books}} libro en {{list}}.",
       "booksIn_other": "{{books}} libros en {{list}}.",
@@ -594,6 +595,10 @@
     "error": {
       "title": "No se pudo cargar tu progreso",
       "body": "No se ha perdido nada: tu posición está guardada en cada servidor. Comprueba la conexión e inténtalo de nuevo."
+    },
+    "offline": {
+      "title": "Estás sin conexión",
+      "body": "Tu punto aparece en cuanto responda un servidor. Los libros descargados están en Descargas."
     },
     "previouslyOn": {
       "label": "Anteriormente",

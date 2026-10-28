@@ -43,6 +43,22 @@ export function NowEmpty({ fill = false }: { fill?: boolean }) {
   );
 }
 
+/** Offline before the listener's progress was read (paused, or failed when the network
+ * went): where their place will show, and where the downloads are. `fill` as for
+ * `NowEmpty`. */
+export function NowOffline({ fill = false }: { fill?: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <View
+      testID="home-offline"
+      className={cn('gap-3 rounded-sheet border border-border bg-card p-6', fill && 'flex-1')}
+    >
+      <Text variant="title">{t('home.offline.title')}</Text>
+      <Text variant="muted">{t('home.offline.body')}</Text>
+    </View>
+  );
+}
+
 /** What went wrong with the listener's progress, and a way to try again. Shown in the
  * Now card's place only when nothing is on screen to keep. `fill` as for `NowEmpty`. */
 export function NowError({ onRetry, fill = false }: { onRetry: () => void; fill?: boolean }) {

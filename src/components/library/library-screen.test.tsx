@@ -69,6 +69,8 @@ let mockSelection: { connectionId: string; libraryId: number } | null = null;
 const mockSelect = jest.fn();
 const mockRetry = jest.fn();
 let mockOffline = false;
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
 jest.mock('./use-selected-library', () => ({
   useSelectedLibrary: () => ({
     groups: mockGroups,
@@ -137,6 +139,7 @@ describe('LibraryScreen', () => {
     mockGroups = [group('a', [[1, 'Audiobooks']])];
     mockSelection = { connectionId: 'a', libraryId: 1 };
     mockOffline = false;
+    mockDeviceOnline = true;
     mockSetParams.mockReset();
   });
 
@@ -244,6 +247,18 @@ describe('LibraryScreen', () => {
     await render(<LibraryScreen />);
     expect(screen.getByText("You're offline")).toBeTruthy();
     expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+  });
+
+  // The list failed outright as the network went (or the app started offline): offline,
+  // not "Could not load libraries." with a Retry that cannot work yet.
+  it('says it is offline, not a load error, when the list failed with the device offline', async () => {
+    mockGroups = [{ ...group('a', []), status: 'error' }];
+    mockSelection = null;
+    mockDeviceOnline = false;
+    await render(<LibraryScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('Could not load libraries.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   // frontend#131: a server that did not answer has not said it shares nothing.

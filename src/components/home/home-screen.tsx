@@ -28,6 +28,7 @@ import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { useDeviceOnline } from '@/lib/device-online';
 import type { MergedBook } from '@/lib/dedup';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
@@ -56,7 +57,7 @@ import {
 import { HomeSection } from './home-section';
 import { ModuleRails } from './module-rails';
 import { NewEpisodesRail } from './new-episodes-rail';
-import { NowEmpty, NowError } from './home-states';
+import { NowEmpty, NowError, NowOffline } from './home-states';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
 import { PreviouslyOnCard } from './previously-on';
@@ -93,7 +94,8 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const profile = useActiveProfile();
   const defaultCid = useSession((s) => s.defaultConnectionId);
   const user = useSession((s) => s.user);
-  const { progress, isLoading, error } = useAllProgressAll();
+  const { progress, isLoading, offline: progressOffline, error } = useAllProgressAll();
+  const deviceOnline = useDeviceOnline();
   const recent = useRecentAll();
   const { favourites } = useFavouritesAll();
   const np = usePlayer((s) => s.nowPlaying);
@@ -195,6 +197,10 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     <NowCardSkeleton />
   ) : progressRefused ? (
     <SignInAgainState connection={signedOut} className={beside ? 'flex-1' : undefined} />
+  ) : progress.length === 0 && (progressOffline || (!deviceOnline && error)) ? (
+    // Offline with no progress read yet (paused, or failed when the network went): not
+    // "pick something", nor a Retry that cannot work until the network is back.
+    <NowOffline fill={beside} />
   ) : error ? (
     <NowError onRetry={retryProgress} fill={beside} />
   ) : (

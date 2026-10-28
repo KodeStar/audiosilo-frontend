@@ -78,7 +78,8 @@ export function ReadyScreen({
           accessibilityRole="header"
           className="text-center"
         >
-          {t('onboarding.ready.title')}
+          {/* An admin whose server has no library yet has a step left, not a library. */}
+          {t(admin?.noLibraries ? 'onboarding.ready.titleSetup' : 'onboarding.ready.title')}
         </Text>
       </View>
       <View className="w-full max-w-[440px] items-center gap-1">

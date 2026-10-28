@@ -3036,6 +3036,9 @@ export function useAllProgressAll({
         )
         .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
       isLoading: results.some((r) => r.isLoading),
+      /** A list waits for the network with nothing cached (the device went offline
+       * before it answered): not loading, and not "no progress". */
+      offline: results.some((r) => !r.data && r.isPaused),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });

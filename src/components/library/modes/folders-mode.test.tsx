@@ -11,6 +11,8 @@ const mockOpenLibrary = jest.fn();
 jest.mock('@/lib/open', () => ({ useOpen: () => ({ openLibrary: mockOpenLibrary }) }));
 const mockRetry = jest.fn();
 let mockLists: LibrariesOfServer[] = [];
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
 jest.mock('@/api/hooks', () => ({
   useFavouritesAll: () => ({ favourites: [] }),
   useLibrariesAll: () => ({
@@ -54,6 +56,7 @@ beforeEach(() => {
   mockRetry.mockClear();
   mockSignedOut = [];
   mockLists = [];
+  mockDeviceOnline = true;
 });
 
 describe('FoldersMode', () => {
@@ -116,6 +119,14 @@ describe('FoldersMode', () => {
     await render(<FoldersMode />);
     expect(screen.getByText('Audiobooks')).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  it('says it is offline, with no Retry per server, when a list failed with the device offline', async () => {
+    mockDeviceOnline = false;
+    mockLists = [list('a', 'Home', 'error')];
+    await render(<FoldersMode />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('opens a library from its row', async () => {

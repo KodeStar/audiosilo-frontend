@@ -470,6 +470,7 @@
     "ready": {
       "connected": "{{name}} est connecté",
       "title": "Votre bibliothèque est prête.",
+      "titleSetup": "Presque prêt : ajoutez une bibliothèque.",
       "and": "{{rest}} et {{last}}",
       "booksIn_one": "{{books}} livre dans {{list}}.",
       "booksIn_other": "{{books}} livres dans {{list}}.",
@@ -594,6 +595,10 @@
     "error": {
       "title": "Impossible de charger ta progression",
       "body": "Rien n’est perdu : ta position est conservée sur chaque serveur. Vérifie la connexion et réessaie."
+    },
+    "offline": {
+      "title": "Vous êtes hors ligne",
+      "body": "Votre position s'affiche dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements."
     },
     "previouslyOn": {
       "label": "Précédemment",

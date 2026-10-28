@@ -470,6 +470,7 @@
     "ready": {
       "connected": "{{name}} è connesso",
       "title": "La tua biblioteca è pronta.",
+      "titleSetup": "Quasi fatto: aggiungi una libreria.",
       "and": "{{rest}} e {{last}}",
       "booksIn_one": "{{books}} libro in {{list}}.",
       "booksIn_other": "{{books}} libri in {{list}}.",
@@ -594,6 +595,10 @@
     "error": {
       "title": "Impossibile caricare i tuoi progressi",
       "body": "Non è andato perso nulla: la tua posizione è salvata su ogni server. Controlla la connessione e riprova."
+    },
+    "offline": {
+      "title": "Sei offline",
+      "body": "Il punto in cui eri compare appena un server risponde. I libri scaricati sono in Download."
     },
     "previouslyOn": {
       "label": "Nelle puntate precedenti",

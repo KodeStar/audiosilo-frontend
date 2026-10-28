@@ -470,6 +470,7 @@
     "ready": {
       "connected": "{{name}} ist verbunden",
       "title": "Deine Bibliothek ist bereit.",
+      "titleSetup": "Fast geschafft: Füge eine Bibliothek hinzu.",
       "and": "{{rest}} und {{last}}",
       "booksIn_one": "{{books}} Buch in {{list}}.",
       "booksIn_other": "{{books}} Bücher in {{list}}.",
@@ -594,6 +595,10 @@
     "error": {
       "title": "Dein Fortschritt konnte nicht geladen werden",
       "body": "Nichts ist verloren: Deine Stelle ist auf jedem Server gespeichert. Prüfe die Verbindung und versuche es noch einmal."
+    },
+    "offline": {
+      "title": "Du bist offline",
+      "body": "Deine Stelle erscheint, sobald ein Server antwortet. Heruntergeladene Bücher findest du unter Downloads."
     },
     "previouslyOn": {
       "label": "Was bisher geschah",

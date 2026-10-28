@@ -108,6 +108,9 @@ it("an admin on a server with no library is sent to the console's setup", async 
     admin: { url: 'https://h/admin/setup', noLibraries: true },
   };
   await render(<ReadyScreen connectionId="c1" name="Hearthside" />);
+  // Not "Your library is ready." above "Add your first library".
+  expect(screen.getByText('Almost there: add a library.')).toBeTruthy();
+  expect(screen.queryByText('Your library is ready.')).toBeNull();
   expect(screen.getByText(/Hearthside has no libraries yet\. Add your first one/)).toBeTruthy();
   expect(screen.queryByText(/once your admin adds some/)).toBeNull();
   expect(screen.queryByText('Start listening')).toBeNull();

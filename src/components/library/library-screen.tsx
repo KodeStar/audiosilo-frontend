@@ -18,6 +18,7 @@ import {
 import { PodcastShowsMode } from '@/components/podcasts/shows-mode';
 import { SubNavActions, SubNavSections } from '@/components/shell/tab-root-nav';
 import { RowSkeletonList } from '@/components/ui/skeleton';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { isPodcastLibrary } from '@/lib/library-kind';
 import { useRouteParams } from '@/lib/route-params';
@@ -69,6 +70,7 @@ export function LibraryScreen() {
   const { mode: modeParam } = useRouteParams<{ mode?: string | string[] }>();
   const { selection, library, groups, isLoading, offline, retry } = useSelectedLibrary();
   const signedOut = useSignedOutConnections();
+  const deviceOnline = useDeviceOnline();
   const cid = selection?.connectionId ?? '';
   const libraryId = selection?.libraryId ?? 0;
   // Unknown until the selected library is listed (`resolveLibraryMode` keeps a request).
@@ -115,6 +117,10 @@ export function LibraryScreen() {
         </View>
       );
     }
+    // Offline (the device has no network, or a list waits for it): the offline state,
+    // whether the lists paused or failed when the network went. Not "Could not load"
+    // with a Retry that cannot work until the network is back.
+    if (offline || !deviceOnline) return <NoLibrariesState offline />;
     // A server that did not answer has not said it shares nothing (frontend#131): its
     // lists come back on their own once it answers again (`onReconnect`), or on Retry.
     if (groups.some((g) => g.status === 'error')) {
@@ -128,9 +134,7 @@ export function LibraryScreen() {
         </View>
       );
     }
-    // Offline before a server listed its libraries: not "none shared", and no skeleton
-    // that would never end. The lists arrive when the network does.
-    return <NoLibrariesState offline={offline} connectionIds={groups.map((g) => g.connectionId)} />;
+    return <NoLibrariesState connectionIds={groups.map((g) => g.connectionId)} />;
   };
 
   return (

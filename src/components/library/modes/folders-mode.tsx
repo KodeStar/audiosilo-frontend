@@ -13,6 +13,7 @@ import { Icon } from '@/components/ui/icon';
 import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useOpen } from '@/lib/open';
 
 import { LoadError } from '../books/book-states';
@@ -60,8 +61,11 @@ export function FoldersMode() {
   // under that server's heading, with a Retry of its own (CONNECT-06).
   const signedOut = useSignedOutConnections();
   const refused = refusedConnection(signedOut, lists);
+  // With no network on the device a failed list is the device's trouble, not the
+  // server's: the offline state says so instead of a Retry per server.
+  const deviceOnline = useDeviceOnline();
   const failed = (g: LibrariesOfServer) =>
-    g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId);
+    deviceOnline && g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId);
   const error = lists.some(failed);
 
   // One group per server (in connection order) that has libraries or failed to list them,
@@ -114,7 +118,10 @@ export function FoldersMode() {
       {/* A server that did not answer has not said it shares nothing (frontend#131), nor
           has one the device went offline waiting for (its list is paused). */}
       {libraries.length === 0 && !isLoading && !refused && !error ? (
-        <NoLibrariesState offline={offline} connectionIds={lists.map((g) => g.connectionId)} />
+        <NoLibrariesState
+          offline={offline || !deviceOnline}
+          connectionIds={lists.map((g) => g.connectionId)}
+        />
       ) : null}
     </TabPageScroll>
   );

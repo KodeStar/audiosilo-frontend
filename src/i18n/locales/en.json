@@ -470,6 +470,7 @@
     "ready": {
       "connected": "{{name}} is connected",
       "title": "Your library is ready.",
+      "titleSetup": "Almost there: add a library.",
       "and": "{{rest}} and {{last}}",
       "booksIn_one": "{{books}} book in {{list}}.",
       "booksIn_other": "{{books}} books in {{list}}.",
@@ -594,6 +595,10 @@
     "error": {
       "title": "Couldn't load your progress",
       "body": "Nothing is lost: your place is kept on each server. Check the connection and try again."
+    },
+    "offline": {
+      "title": "You're offline",
+      "body": "Your place shows once a server answers. Books you've downloaded are in Downloads."
     },
     "previouslyOn": {
       "label": "Previously on",
