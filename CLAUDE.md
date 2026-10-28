@@ -204,6 +204,7 @@ keep this index in step (one line per topic).
   - Primitives are react-native-reusables
   - The keyboard over a bottom-anchored overlay
   - Web keyboard (Space)
+  - Dependency patches (`patches/`, `patch-package`)
   - Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`
   - Fonts (Stacks)
   - `<Text>` variants are the Stacks type roles

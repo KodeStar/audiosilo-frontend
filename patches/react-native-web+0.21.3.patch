@@ -1,0 +1,88 @@
+diff --git a/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js b/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js
+index 0c9c16c..be615da 100644
+--- a/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js
++++ b/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js
+@@ -24,6 +24,27 @@ var LocaleContext = /*#__PURE__*/(0, _react.createContext)(defaultLocale);
+ function getLocaleDirection(locale) {
+   return (0, _isLocaleRTL.isLocaleRTL)(locale) ? 'rtl' : 'ltr';
+ }
++// Patched (patches/react-native-web+*.patch): one value object per direction and
++// locale. A new object on every render changed the context value each time an element
++// with a `dir` re-rendered, so every View and Text below it re-rendered too, memoised
++// or not. The value is never mutated, so sharing it is safe.
++var localeValues = new Map();
++function localeValue(direction, locale) {
++  var byLocale = localeValues.get(direction);
++  if (byLocale === undefined) {
++    byLocale = new Map();
++    localeValues.set(direction, byLocale);
++  }
++  var value = byLocale.get(locale);
++  if (value === undefined) {
++    value = {
++      direction,
++      locale
++    };
++    byLocale.set(locale, value);
++  }
++  return value;
++}
+ function LocaleProvider(props) {
+   var direction = props.direction,
+     locale = props.locale,
+@@ -31,10 +52,7 @@ function LocaleProvider(props) {
+   var needsContext = direction || locale;
+   return needsContext ? /*#__PURE__*/_react.default.createElement(LocaleContext.Provider, {
+     children: children,
+-    value: {
+-      direction: locale ? getLocaleDirection(locale) : direction,
+-      locale
+-    }
++    value: localeValue(locale ? getLocaleDirection(locale) : direction, locale)
+   }) : children;
+ }
+ function useLocaleContext() {
+diff --git a/node_modules/react-native-web/dist/modules/useLocale/index.js b/node_modules/react-native-web/dist/modules/useLocale/index.js
+index 2c4e233..24c68f0 100644
+--- a/node_modules/react-native-web/dist/modules/useLocale/index.js
++++ b/node_modules/react-native-web/dist/modules/useLocale/index.js
+@@ -17,6 +17,27 @@ var LocaleContext = /*#__PURE__*/createContext(defaultLocale);
+ export function getLocaleDirection(locale) {
+   return isLocaleRTL(locale) ? 'rtl' : 'ltr';
+ }
++// Patched (patches/react-native-web+*.patch): one value object per direction and
++// locale. A new object on every render changed the context value each time an element
++// with a `dir` re-rendered, so every View and Text below it re-rendered too, memoised
++// or not. The value is never mutated, so sharing it is safe.
++var localeValues = new Map();
++function localeValue(direction, locale) {
++  var byLocale = localeValues.get(direction);
++  if (byLocale === undefined) {
++    byLocale = new Map();
++    localeValues.set(direction, byLocale);
++  }
++  var value = byLocale.get(locale);
++  if (value === undefined) {
++    value = {
++      direction,
++      locale
++    };
++    byLocale.set(locale, value);
++  }
++  return value;
++}
+ export function LocaleProvider(props) {
+   var direction = props.direction,
+     locale = props.locale,
+@@ -24,10 +45,7 @@ export function LocaleProvider(props) {
+   var needsContext = direction || locale;
+   return needsContext ? /*#__PURE__*/React.createElement(LocaleContext.Provider, {
+     children: children,
+-    value: {
+-      direction: locale ? getLocaleDirection(locale) : direction,
+-      locale
+-    }
++    value: localeValue(locale ? getLocaleDirection(locale) : direction, locale)
+   }) : children;
+ }
+ export function useLocaleContext() {
