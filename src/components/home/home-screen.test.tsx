@@ -255,6 +255,19 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('Pick something to listen to')).toBeNull();
   });
 
+  // Another server's finished rows say nothing about the paused server's Now book.
+  it('says it is offline when only finished rows answered and another server waits', async () => {
+    mockProgress = {
+      progress: [{ ...started('Done', '2026-10-04T00:00:00Z'), position: 1000, finished: true }],
+      isLoading: false,
+      error: null,
+      offline: true,
+    };
+    await mountHome();
+    expect(screen.getByTestId('home-offline')).toBeTruthy();
+    expect(screen.queryByText('Pick something to listen to')).toBeNull();
+  });
+
   it('says it is offline, with no Retry, when progress failed as the network went', async () => {
     mockDeviceOnline = false;
     mockProgress = { progress: [], isLoading: false, error: new TypeError('Failed to fetch') };

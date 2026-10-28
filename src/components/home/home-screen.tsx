@@ -197,9 +197,11 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     <NowCardSkeleton />
   ) : progressRefused ? (
     <SignInAgainState connection={signedOut} className={beside ? 'flex-1' : undefined} />
-  ) : progress.length === 0 && (progressOffline || (!deviceOnline && error)) ? (
-    // Offline with no progress read yet (paused, or failed when the network went): not
-    // "pick something", nor a Retry that cannot work until the network is back.
+  ) : progressOffline || (!deviceOnline && error) ? (
+    // Offline with a server's progress not read yet (paused, or failed when the network
+    // went): its rows may hold the Now book, so not "pick something" (another server's
+    // finished rows say nothing about it), nor a Retry that cannot work until the network
+    // is back.
     <NowOffline fill={beside} />
   ) : error ? (
     <NowError onRetry={retryProgress} fill={beside} />

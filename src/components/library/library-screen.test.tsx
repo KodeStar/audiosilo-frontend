@@ -261,6 +261,14 @@ describe('LibraryScreen', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
+  it('keeps a cached "none shared" offline rather than calling it offline', async () => {
+    mockGroups = [group('a', [])];
+    mockSelection = null;
+    mockDeviceOnline = false;
+    await render(<LibraryScreen />);
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
   // frontend#131: a server that did not answer has not said it shares nothing.
   it('says the libraries did not load, with Retry, when a server did not answer', async () => {
     mockGroups = [{ ...group('a', []), status: 'error' }];

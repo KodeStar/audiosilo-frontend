@@ -119,7 +119,7 @@ export function FoldersMode() {
           has one the device went offline waiting for (its list is paused). */}
       {libraries.length === 0 && !isLoading && !refused && !error ? (
         <NoLibrariesState
-          offline={offline || !deviceOnline}
+          offline={offline || (!deviceOnline && lists.some((g) => g.status === 'error'))}
           connectionIds={lists.map((g) => g.connectionId)}
         />
       ) : null}

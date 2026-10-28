@@ -117,13 +117,14 @@ export function LibraryScreen() {
         </View>
       );
     }
-    // Offline (the device has no network, or a list waits for it): the offline state,
-    // whether the lists paused or failed when the network went. Not "Could not load"
-    // with a Retry that cannot work until the network is back.
-    if (offline || !deviceOnline) return <NoLibrariesState offline />;
+    // Offline (a list waits for the network, or failed with the device offline): the
+    // offline state, not "Could not load" with a Retry that cannot work until the
+    // network is back. A list that answered "none" offline still says so.
+    const failed = groups.some((g) => g.status === 'error');
+    if (offline || (failed && !deviceOnline)) return <NoLibrariesState offline />;
     // A server that did not answer has not said it shares nothing (frontend#131): its
     // lists come back on their own once it answers again (`onReconnect`), or on Retry.
-    if (groups.some((g) => g.status === 'error')) {
+    if (failed) {
       return (
         <View className="p-4 lg:px-8">
           <LoadError
