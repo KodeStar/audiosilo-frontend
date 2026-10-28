@@ -92,10 +92,14 @@ function finish() {
 }
 
 /** Ask the `queries` the cache doesn't hold yet and wait for them (at most
- * `STARTUP_WAIT_MS`); nothing to ask is done at once. Only the first call does anything. */
-export function startStartupQueries(client: QueryClient, queries: readonly StartupQuery[]): void {
+ * `STARTUP_WAIT_MS`); nothing to ask is done at once. Only the first call does anything
+ * (later ones never build their list). */
+export function startStartupQueries(
+  client: QueryClient,
+  queries: () => readonly StartupQuery[],
+): void {
   if (phase !== 'idle') return;
-  const missing = queries.filter((q) => client.getQueryData(q.queryKey) === undefined);
+  const missing = queries().filter((q) => client.getQueryData(q.queryKey) === undefined);
   if (missing.length === 0) {
     phase = 'done';
     return;

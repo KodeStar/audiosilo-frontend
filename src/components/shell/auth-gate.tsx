@@ -89,9 +89,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // they have loaded, nor at all while nobody is chosen (no one's pages, not even the last
   // person's, behind the picker). A kids profile never gets the shell (tabs, search,
   // settings, downloads, the web command palette): the root layout's `KidsRouteGuard`
-  // takes it to `/kids`, and this holds the screen until it has. On the web, also the
-  // moment the first screen's answers take (`ready`).
-  if (status === 'loading' || !profilesHydrated || choose || kids || !ready) {
+  // takes it to `/kids`, and this holds the screen until it has (`open`). On the web, also
+  // the moment the first screen's answers take (`ready`).
+  if (!open || !ready) {
     return (
       <Screen>
         <Spinner center />

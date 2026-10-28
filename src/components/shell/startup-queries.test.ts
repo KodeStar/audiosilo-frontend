@@ -6,7 +6,7 @@ import type { ApiConnection } from '@/api/provider';
 jest.mock('@/api/provider', () => ({ queryClient: null, useApis: () => [] }));
 
 /* eslint-disable import/first */
-import { libraryBooksKey, qk, RECENT_LIMIT } from '@/api/hooks';
+import { libraryBooksQuery, qk, RECENT_LIMIT } from '@/api/hooks';
 
 import {
   resetStartupQueries,
@@ -61,7 +61,7 @@ describe('startupQueries', () => {
       qk.server('b'),
       qk.libraries('b'),
       qk.allProgress('b'),
-      libraryBooksKey('b', 3, { sort: 'recent' }, 200),
+      libraryBooksQuery('b', null, 3, { sort: 'recent' }, 200).queryKey,
     ]);
     // No selection yet: no list (the grid picks the library once the lists are in).
     expect(keys(startupQueries('library', [api('a')], null))).not.toContainEqual(
@@ -93,7 +93,7 @@ describe('startStartupQueries', () => {
     const asked: string[] = [];
     const listener = jest.fn();
     subscribeStartupQueries(listener);
-    startStartupQueries(client, [
+    startStartupQueries(client, () => [
       query('kept', Promise.resolve(), asked),
       query('new', new Promise((r) => (answer = r)), asked),
     ]);
@@ -110,7 +110,7 @@ describe('startStartupQueries', () => {
     const client = new QueryClient();
     client.setQueryData(['kept'], 1);
     const asked: string[] = [];
-    startStartupQueries(client, [query('kept', Promise.resolve(), asked)]);
+    startStartupQueries(client, () => [query('kept', Promise.resolve(), asked)]);
     expect(asked).toEqual([]);
     expect(startupQueriesSettled()).toBe(true);
   });
@@ -118,7 +118,7 @@ describe('startStartupQueries', () => {
   it(`gives up after ${STARTUP_WAIT_MS} ms (a slow server gets the skeleton)`, () => {
     jest.useFakeTimers();
     try {
-      startStartupQueries(new QueryClient(), [query('slow', new Promise(() => {}), [])]);
+      startStartupQueries(new QueryClient(), () => [query('slow', new Promise(() => {}), [])]);
       expect(startupQueriesSettled()).toBe(false);
       jest.advanceTimersByTime(STARTUP_WAIT_MS - 1);
       expect(startupQueriesSettled()).toBe(false);
@@ -132,8 +132,8 @@ describe('startStartupQueries', () => {
   it('asks once per page load', () => {
     const asked: string[] = [];
     const client = new QueryClient();
-    startStartupQueries(client, [query('one', Promise.resolve(), asked)]);
-    startStartupQueries(client, [query('two', Promise.resolve(), asked)]);
+    startStartupQueries(client, () => [query('one', Promise.resolve(), asked)]);
+    startStartupQueries(client, () => [query('two', Promise.resolve(), asked)]);
     expect(asked).toEqual(['one']);
   });
 });

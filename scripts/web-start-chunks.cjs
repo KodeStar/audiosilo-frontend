@@ -37,25 +37,23 @@ const TRAILER = /\n\/\/# (?:sourceMappingURL|debugId)=[^\n]*/g;
  * complete script (one is checked by compiling it, never run).
  */
 function cutModules(code, parts) {
-  const modules = [];
-  let start = 0;
-  for (let i = code.indexOf('\n__d(', 0); i !== -1; i = code.indexOf('\n__d(', i + 1)) {
-    if (i + 1 > start) modules.push(code.slice(start, i + 1));
-    start = i + 1;
+  // Where each module definition after the first line starts (just past its newline).
+  const starts = [];
+  for (let i = code.indexOf('\n__d('); i !== -1; i = code.indexOf('\n__d(', i + 1)) {
+    starts.push(i + 1);
   }
-  modules.push(code.slice(start));
-  if (modules.length < parts) return null;
+  if (starts.length + 1 < parts) return null;
   const target = code.length / parts;
   const pieces = [];
-  let piece = '';
-  for (const m of modules) {
-    piece += m;
-    if (piece.length >= target && pieces.length < parts - 1) {
-      pieces.push(piece);
-      piece = '';
+  let from = 0;
+  for (const at of starts) {
+    if (pieces.length === parts - 1) break;
+    if (at - from >= target) {
+      pieces.push(code.slice(from, at));
+      from = at;
     }
   }
-  if (piece) pieces.push(piece);
+  pieces.push(code.slice(from));
   for (const p of pieces) {
     try {
       new vm.Script(p);
@@ -127,9 +125,7 @@ function isWebExport(result, graph) {
   const t = graph?.transformOptions;
   const env = t?.customTransformOptions?.environment;
   return (
-    !!result &&
-    typeof result === 'object' &&
-    Array.isArray(result.artifacts) &&
+    Array.isArray(result?.artifacts) &&
     t?.platform === 'web' &&
     !t.dev &&
     env !== 'node' &&
@@ -155,7 +151,6 @@ function withWebStartChunks(config) {
 module.exports = {
   COMPILE_HINT,
   isWebExport,
-  PART_CHARS,
   cutModules,
   splitStartScripts,
   withWebStartChunks,

@@ -948,21 +948,26 @@ export function useSeriesList(libraryId: number, connectionId?: string) {
 /** Page size of `useLibraryBooks` (the server takes 1-200). */
 const BOOKS_PAGE_SIZE = 100;
 
-/** A library list's cache key (`useLibraryBooks`): a page size other than the default is
- * its own entry. */
-export function libraryBooksKey(
+/** A library list (`useLibraryBooks`), page by page on the server's cursor, through
+ * `listBooks`; a page size other than the default is its own cache entry. */
+export function libraryBooksQuery(
   cid: string,
+  client: MaybeClient,
   libraryId: number,
   query: BookListQuery,
   pageSize: number = BOOKS_PAGE_SIZE,
 ) {
   const key = qk.libraryBooks(cid, libraryId, query);
-  return pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }];
+  return infiniteQueryOptions({
+    queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
+    queryFn: client
+      ? ({ pageParam, signal }) =>
+          client.listBooks(libraryId, { ...query, limit: pageSize, cursor: pageParam }, signal)
+      : skipToken,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage: BookPage) => lastPage.next_cursor || undefined,
+  });
 }
-
-/** The next page's cursor of a library list (none after the last page). */
-export const nextBooksCursor = (lastPage: BookPage): string | undefined =>
-  lastPage.next_cursor || undefined;
 
 export type LibraryBooksOptions = {
   /** Books per page (1-200); a size other than the default is its own cache entry. */
@@ -1011,8 +1016,9 @@ export function useLibraryBooks(
   // asks alone first and then in a batch.
   const batchedSeries =
     batch && caps?.series_books && isPlainSeriesQuery(effective) ? effective.series : undefined;
+  const spec = libraryBooksQuery(cid, api, libraryId, effective, pageSize);
   return useInfiniteQuery({
-    queryKey: libraryBooksKey(cid, libraryId, effective, pageSize),
+    ...spec,
     queryFn:
       api && (!query.narrator || narratorOk) && seriesReady
         ? // The batched first page never reads `ctx.signal`: react-query cancels (and
@@ -1031,8 +1037,6 @@ export function useLibraryBooks(
                   ctx.signal,
                 )
         : skipToken,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: nextBooksCursor,
     ...(enabled !== undefined ? { enabled } : {}),
     ...(staleTime !== undefined ? { staleTime } : {}),
   });
