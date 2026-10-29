@@ -1009,7 +1009,11 @@
         "wifi": "Com Wi-Fi",
         "always": "Sempre"
       },
-      "modeHint": "Baixa um livro quando você começa a ouvi-lo.",
+      "modeHint": {
+        "never": "Nada é baixado sozinho. Baixe um livro pela página dele.",
+        "wifi": "Baixa um livro no Wi-Fi quando você começa a ouvi-lo.",
+        "always": "Baixa um livro em qualquer conexão quando você começa a ouvi-lo."
+      },
       "webWifi": "Um navegador não distingue Wi-Fi de dados móveis, então aqui Com Wi-Fi baixa em qualquer conexão.",
       "keepAhead": {
         "label": "Deixar os próximos livros prontos",

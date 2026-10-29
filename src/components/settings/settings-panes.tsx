@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { ConnectionsSection } from '@/components/account/connections-section';
 import {
+  AutoDownloadHint,
   KeepAheadControl,
   KeepAheadStatusLine,
   useAutoDownloadModes,
@@ -283,11 +284,12 @@ function DownloadsPane() {
           label={t('settings.upNext.autoPlay.label')}
         />
       </SettingRow>
-      {/* The same setting, and words, as the Downloads page's rules card. */}
+      {/* The same setting, and words, as the Downloads page's rules card: its title is
+          the name the keep-ahead line asks to turn on. */}
       <SettingRow
         control="wide"
-        label={t('downloads.rules.mode.label')}
-        description={t('downloads.rules.modeHint')}
+        label={t('downloads.rules.title')}
+        description={<AutoDownloadHint mode={autoDownloadNext} />}
       >
         <SegmentedControl
           options={downloadOptions}

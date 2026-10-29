@@ -1009,7 +1009,11 @@
         "wifi": "Im WLAN",
         "always": "Immer"
       },
-      "modeHint": "Lädt ein Buch herunter, sobald du es zu hören beginnst.",
+      "modeHint": {
+        "never": "Nichts wird von selbst heruntergeladen. Lade ein Buch auf seiner Seite herunter.",
+        "wifi": "Lädt ein Buch im WLAN herunter, sobald du es zu hören beginnst.",
+        "always": "Lädt ein Buch über jede Verbindung herunter, sobald du es zu hören beginnst."
+      },
       "webWifi": "Ein Browser kann WLAN nicht von mobilen Daten unterscheiden, daher lädt „Im WLAN“ hier über jede Verbindung herunter.",
       "keepAhead": {
         "label": "Die nächsten Bücher bereithalten",

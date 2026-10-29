@@ -1009,7 +1009,11 @@
         "wifi": "En Wi-Fi",
         "always": "Toujours"
       },
-      "modeHint": "Télécharge un livre quand vous commencez à l’écouter.",
+      "modeHint": {
+        "never": "Rien ne se télécharge tout seul. Téléchargez un livre depuis sa page.",
+        "wifi": "Télécharge un livre en Wi-Fi quand vous commencez à l’écouter.",
+        "always": "Télécharge un livre sur n’importe quelle connexion quand vous commencez à l’écouter."
+      },
       "webWifi": "Un navigateur ne distingue pas le Wi-Fi des données mobiles : ici, En Wi-Fi télécharge sur n’importe quelle connexion.",
       "keepAhead": {
         "label": "Garder les prochains livres prêts",

@@ -20,8 +20,17 @@ describe('locales', () => {
   // download books" and "Download automatically").
   it.each(Object.entries(LOCALES))('%s names the auto-download setting once', (_, l) => {
     expect(l.downloads.rules.mode.label).toBeTruthy();
-    expect(l.downloads.rules.modeHint).toBeTruthy();
+    expect(l.downloads.rules.title).toBeTruthy();
     expect('autoDownload' in l.settings.upNext).toBe(false);
+  });
+
+  // The hint under the mode says what the chosen mode does (fe#196: it described On while
+  // Never was selected, the web default): one per mode, each its own words.
+  it.each(Object.entries(LOCALES))('%s has a hint for each auto-download mode', (_, l) => {
+    const hints = l.downloads.rules.modeHint;
+    expect(Object.keys(hints).sort()).toEqual(['always', 'never', 'wifi']);
+    expect(new Set(Object.values(hints)).size).toBe(3);
+    expect(Object.values(hints).every(Boolean)).toBe(true);
   });
 
   // The output pill opens AirPlay (iOS, Safari) or Android's output switcher; casting has
