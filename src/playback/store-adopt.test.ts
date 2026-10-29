@@ -534,6 +534,570 @@ describe('adoptLoaded', () => {
     expect(usePlayer.getState().nowPlaying).toBeNull();
     mockResolveClient.mockReturnValue(fakeClient);
   });
+
+  // fe#134: Android's JS restarted while a start's load ran, so the service may play the
+  // server's new file order while the download keeps its own. B's files are 100 s (B/1) and
+  // 60 s (B/2) here, so a track index read through the wrong order lands somewhere else.
+  describe("the engine's own file order (fe#134)", () => {
+    const uneven: ChaptersResponse = {
+      ...twoFileChapters,
+      duration: 160,
+      files: [
+        { rel_path: 'B/1.mp3', seq: 0, duration: 100, format: 'mp3', size: 1 },
+        { rel_path: 'B/2.mp3', seq: 1, duration: 60, format: 'mp3', size: 1 },
+      ],
+    };
+    /** The server's natural order: B/2 first. */
+    const serverOrder: ChaptersResponse = {
+      ...uneven,
+      files: [
+        { ...uneven.files[1], seq: 0 },
+        { ...uneven.files[0], seq: 1 },
+      ],
+    };
+    const downloadedUneven = (): DownloadEntry => {
+      const e = downloadedB();
+      return {
+        ...e,
+        manifest: { ...e.manifest, book: { ...twoFileBook, duration: 160 }, chapters: uneven },
+      };
+    };
+    const engine = (files: string[], p: Parameters<typeof loadedB>[0]) => ({
+      ...loadedB(p),
+      files,
+    });
+    /** The server's chapters answer (the item is never asked: the download holds it). */
+    const serverAnswers = (chapters: ChaptersResponse | Error) =>
+      mockFetchQuery.mockImplementation(async (opts: unknown) => {
+        const key = (opts as { queryKey: unknown[] }).queryKey;
+        if (key[0] !== 'chapters') throw new Error(`unexpected ${String(key[0])}`);
+        if (chapters instanceof Error) throw chapters;
+        return chapters;
+      });
+    const saveTick = async () => {
+      jest.advanceTimersByTime(15_000);
+      await flushMicrotasks();
+    };
+    /** Until `mock` was called: the first adoption of a run also creates the service, which
+     * takes more turns than a later one. */
+    const untilCalled = async (mock: jest.Mock) => {
+      for (let i = 0; i < 200 && mock.mock.calls.length === 0; i++) await Promise.resolve();
+    };
+    /** A load that lands only when `land` is called. */
+    const heldLoad = () => {
+      const held = { land: () => {} };
+      (mockSvc.load as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            held.land = resolve;
+          }),
+      );
+      return held;
+    };
+
+    afterEach(() => {
+      mockFetchQuery.mockReset();
+      mockFetchQuery.mockImplementation(async () => ({}));
+      mockResolveClient.mockReturnValue(fakeClient);
+    });
+
+    it('changes nothing when the service reports no order (iOS, Cast, older binaries)', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      await usePlayer.getState().adoptLoaded(loadedB({ trackIndex: 1, position: 30 }));
+      expect(mockFetchQuery).not.toHaveBeenCalled();
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 30 });
+    });
+
+    it("changes nothing when the service plays the download's own order", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3'], { trackIndex: 1, position: 30 }));
+      expect(mockFetchQuery).not.toHaveBeenCalled();
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      pushSnapshot(snap('playing', 1, 45));
+      await saveTick();
+      expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 145 });
+    });
+
+    it("takes the server's chapters in the engine's order, with no reload", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(serverOrder);
+      // The engine plays B/2 (60 s) then B/1 (100 s): index 0, 30 s in, is B/2.
+      const adopted = await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+      expect(adopted).toBe(true);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      // Asked afresh: a cached copy can be the download's own (`seedQueryCache`).
+      expect(mockFetchQuery.mock.calls[0][0]).toMatchObject({ staleTime: 0 });
+      const { nowPlaying, snapshot } = usePlayer.getState();
+      expect(nowPlaying!.queue.tracks.map((t) => t.url)).toEqual([
+        'file:///d/2.mp3',
+        'file:///d/1.mp3',
+      ]);
+      expect(snapshot).toMatchObject({ state: 'playing', trackIndex: 0, position: 30 });
+      // The download keeps that order for the next start (`adoptStartedChapters`).
+      expect(useDownloads.getState().entries['c1:2:B'].manifest.chapters).toBe(serverOrder);
+      // A later tick counts in the engine's order: index 1 is B/1, after B/2's 60 s.
+      pushSnapshot(snap('playing', 1, 45));
+      await saveTick();
+      expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 105 });
+    });
+
+    it("reloads in the download's order at the same file and in-file place when the server can't answer", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      let during: { loadingBook: string | null } | null = null;
+      (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+        during = { loadingBook: usePlayer.getState().loadingBook };
+      });
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+      // B/2 is index 1 in the download's order, still 30 s in.
+      expect(mockSvc.load).toHaveBeenCalledTimes(1);
+      const [tracks, index, inFile] = (mockSvc.load as jest.Mock).mock.calls[0];
+      expect((tracks as { url: string }[]).map((t) => t.url)).toEqual([
+        'file:///d/1.mp3',
+        'file:///d/2.mp3',
+      ]);
+      expect([index, inFile]).toEqual([1, 30]);
+      // Saves and remote moves were held while it loaded; the play state is kept.
+      expect(during).toEqual({ loadingBook: 'c1:2:B' });
+      expect(usePlayer.getState().loadingBook).toBeNull();
+      expect(mockSvc.setRate).toHaveBeenCalledWith(1.5);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 30 });
+
+      // The resume floor moved with it (100 + 30): a stray low place is refused...
+      pushSnapshot(snap('playing', 0, 10));
+      await saveTick();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+      // ...and a later tick maps through the download's order: B/2 after B/1's 100 s.
+      pushSnapshot(snap('playing', 1, 45));
+      await saveTick();
+      expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+      expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 145 });
+    });
+
+    it('reloads a paused one offline without playing it or saving its place until it plays', async () => {
+      mockResolveClient.mockReturnValue(null); // no connection: the server can't be asked
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      const picked = jest.fn();
+      const stop = onPickedUpAgain(picked);
+      try {
+        await usePlayer
+          .getState()
+          .adoptLoaded(
+            engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30, playing: false }),
+          );
+        expect(mockFetchQuery).not.toHaveBeenCalled();
+        expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 30]);
+        expect(mockSvc.play).not.toHaveBeenCalled();
+        // Paused again once loaded: an engine that ended or failed still wants to play, and
+        // Android's load keeps that.
+        expect((mockSvc.pause as jest.Mock).mock.invocationCallOrder[0]).toBeGreaterThan(
+          (mockSvc.load as jest.Mock).mock.invocationCallOrder[0],
+        );
+        mockResolveClient.mockReturnValue(fakeClient); // back online: saves could go out
+        // The paused load reports `ready` then `paused`: neither saves the place.
+        pushSnapshot(snap('ready', 1, 30));
+        pushSnapshot(snap('paused', 1, 30));
+        await saveTick();
+        expect(mockSaveProgress).not.toHaveBeenCalled();
+        // Its next play is a pick-up, then it saves on the download's timeline.
+        pushSnapshot(snap('playing', 1, 31));
+        expect(picked).toHaveBeenCalledTimes(1);
+        await saveTick();
+        expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 131 });
+      } finally {
+        stop();
+      }
+    });
+
+    it('saves nothing of a paused reload whose engine reports playing during its load', async () => {
+      mockResolveClient.mockReturnValue(null);
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      const held = heldLoad();
+      const adopting = usePlayer
+        .getState()
+        .adoptLoaded(
+          engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30, playing: false }),
+        );
+      await untilCalled(mockSvc.load as jest.Mock);
+      // Android's load keeps playWhenReady from an engine that ended: it plays by itself.
+      pushSnapshot(snap('playing', 1, 30));
+      held.land();
+      expect(await adopting).toBe(true);
+      expect(mockSvc.pause).toHaveBeenCalled();
+      mockResolveClient.mockReturnValue(fakeClient); // back online: saves could go out
+      // The adoption's pause lands: the engine's unchecked place is still not saved.
+      pushSnapshot(snap('paused', 1, 31));
+      await saveTick();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+    });
+
+    it('saves a playing reload once its own play stands after the engine played during its load', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      const held = heldLoad();
+      const adopting = usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+      await untilCalled(mockSvc.load as jest.Mock);
+      pushSnapshot(snap('playing', 1, 30));
+      held.land();
+      expect(await adopting).toBe(true);
+      // Still playing, with no transition after the load: its later ticks save.
+      pushSnapshot(snap('playing', 1, 35));
+      await saveTick();
+      expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 135 });
+    });
+
+    it("reloads when the server's chapters are in another order than the engine's", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(uneven); // the download's own order, not the engine's
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 1, position: 50 }));
+      // B/1 is index 0 in the download's order.
+      expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([0, 50]);
+      expect(useDownloads.getState().entries['c1:2:B'].manifest.chapters).toBe(uneven);
+    });
+
+    it("streams the server's files the download lacks when they are the engine's, with no reload", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      // The lost start streamed the server's other files (B/1, B/2 of 100 s, then B/3, which
+      // the download lacks): the download can't take those chapters, so the queue is built
+      // from them as that start built it, and the engine plays on in B/3.
+      const added: ChaptersResponse = {
+        ...uneven,
+        duration: 180,
+        files: [
+          ...uneven.files,
+          { rel_path: 'B/3.mp3', seq: 2, duration: 20, format: 'mp3', size: 1 },
+        ],
+      };
+      serverAnswers(added);
+      expect(
+        await usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 2, position: 10 })),
+      ).toBe(true);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      const { nowPlaying, snapshot } = usePlayer.getState();
+      expect(nowPlaying!.queue.tracks.map((t) => t.url)).toEqual([
+        'file:///d/1.mp3',
+        'file:///d/2.mp3',
+        'stream:2:B/3.mp3',
+      ]);
+      expect(snapshot).toMatchObject({ state: 'playing', trackIndex: 2, position: 10 });
+      expect(useDownloads.getState().entries['c1:2:B'].manifest.chapters).toBe(uneven);
+      // A later tick counts on that timeline: B/3 after 100 + 60.
+      pushSnapshot(snap('playing', 2, 15));
+      await saveTick();
+      expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 175 });
+    });
+
+    it('lands a file the download lacks at the same whole-book seconds when the server is not there', async () => {
+      mockResolveClient.mockReturnValue(null); // no connection: the server can't be asked
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      // The engine plays B/1 (100 s, the download has it) then B/9, which it lacks: 10 s into
+      // B/9 is 110 s on the engine's timeline, B/2 at 10 s in the download's.
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/1.mp3', 'B/9.mp3'], { trackIndex: 1, position: 10 }));
+      expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 10]);
+      mockResolveClient.mockReturnValue(fakeClient); // back online: saves could go out
+      // The resume floor is that place (110): a place more than a minute below is refused...
+      pushSnapshot(snap('playing', 0, 40));
+      await saveTick();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+      // ...and one at it saves.
+      pushSnapshot(snap('playing', 1, 12));
+      await saveTick();
+      expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 112 });
+    });
+
+    it("never lands at the download's end (a place there would finish the book)", async () => {
+      mockResolveClient.mockReturnValue(null);
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      // 20 s into B/3, which the download lacks, is 180 s: past its 160.
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 2, position: 20 }));
+      // Short of the last 5 s (`FINISHED_TOLERANCE`): 154 s is B/2 at 54.
+      expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 54]);
+      mockResolveClient.mockReturnValue(fakeClient);
+      // A reload that never plays gives up into an error, and still saves nothing.
+      jest.advanceTimersByTime(3_000);
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot.state).toBe('error');
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+    });
+
+    it("lands at the engine's file index when an earlier file's length is not known", async () => {
+      mockResolveClient.mockReturnValue(null);
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      // Neither file is the download's (renamed since), and B/0's length is known nowhere: the
+      // whole-book seconds can't be read, so it is the engine's index at the same place.
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/0.mp3', 'B/9.mp3'], { trackIndex: 1, position: 10 }));
+      expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 10]);
+    });
+
+    it('gives the engine back to a stop made while the reload ran', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      const held = heldLoad();
+      const adopting = usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+      await untilCalled(mockSvc.load as jest.Mock);
+      expect(usePlayer.getState().loadingBook).toBe('c1:2:B');
+      usePlayer.setState({ nowPlaying: null, loadingBook: null }); // a stop took the store
+      held.land();
+      await adopting;
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      expect(mockSvc.reset).toHaveBeenCalled();
+    });
+
+    it('keeps a pause made while the reload ran', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      const held = heldLoad();
+      const adopting = usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+      await untilCalled(mockSvc.load as jest.Mock);
+      expect(usePlayer.getState().snapshot.state).toBe('loading');
+      await usePlayer.getState().pause(); // the spinner's tap, the sleep timer
+      held.land();
+      expect(await adopting).toBe(true);
+      expect(mockSvc.play).not.toHaveBeenCalled();
+    });
+
+    it('runs the pick-up check once the reload lands when the engine plays during its load', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      // The place reconcile skips while a load holds the store: a check told then is lost.
+      const heldWhenTold: (string | null)[] = [];
+      const stop = onPickedUpAgain(() => heldWhenTold.push(usePlayer.getState().loadingBook));
+      try {
+        const held = heldLoad();
+        const adopting = usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+        await untilCalled(mockSvc.load as jest.Mock);
+        // Android's load keeps playWhenReady: the engine reports `playing` before it returns.
+        pushSnapshot(snap('playing', 1, 30));
+        expect(heldWhenTold).toEqual([]);
+        held.land();
+        expect(await adopting).toBe(true);
+        expect(heldWhenTold).toEqual([null]);
+      } finally {
+        stop();
+      }
+    });
+
+    it('checks on the next play when the reload lands with the book no longer playing', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      const picked = jest.fn();
+      const stop = onPickedUpAgain(picked);
+      try {
+        const held = heldLoad();
+        const adopting = usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+        await untilCalled(mockSvc.load as jest.Mock);
+        pushSnapshot(snap('playing', 1, 30));
+        pushSnapshot(snap('paused', 1, 31)); // paused before the load returned
+        held.land();
+        await adopting;
+        expect(picked).not.toHaveBeenCalled();
+        pushSnapshot(snap('playing', 1, 31));
+        expect(picked).toHaveBeenCalledTimes(1);
+      } finally {
+        stop();
+      }
+    });
+
+    it("keeps a play pressed while a paused one's reload ran", async () => {
+      mockResolveClient.mockReturnValue(null);
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      const held = heldLoad();
+      const adopting = usePlayer
+        .getState()
+        .adoptLoaded(
+          engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30, playing: false }),
+        );
+      await untilCalled(mockSvc.load as jest.Mock);
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+      await usePlayer.getState().toggle(); // the play button, while the load is out
+      held.land();
+      expect(await adopting).toBe(true);
+      expect(mockSvc.pause).not.toHaveBeenCalled();
+      expect(Math.max(...(mockSvc.play as jest.Mock).mock.invocationCallOrder)).toBeGreaterThan(
+        (mockSvc.load as jest.Mock).mock.invocationCallOrder[0],
+      );
+    });
+
+    it("leaves a same-book start's hold to that start's own load", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      const reloadLoad = heldLoad();
+      const adopting = usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+      await untilCalled(mockSvc.load as jest.Mock);
+      // A chapter tap starts the same book while the reload's load is out.
+      const startLoad = heldLoad();
+      const starting = usePlayer
+        .getState()
+        .playBook('c1', 2, { ...twoFileBook, duration: 160 }, uneven, 130);
+      let heldMeanwhile: string | null = null;
+      try {
+        for (let i = 0; i < 200 && (mockSvc.load as jest.Mock).mock.calls.length < 2; i++) {
+          await Promise.resolve();
+        }
+        expect(mockSvc.load).toHaveBeenCalledTimes(2);
+        reloadLoad.land();
+        await adopting;
+        heldMeanwhile = usePlayer.getState().loadingBook;
+      } finally {
+        // Landed whatever happened: a start left out would hold every later adoption back.
+        startLoad.land();
+        await starting;
+      }
+      // The start's load had not landed: its book's place was still not the engine's.
+      expect(heldMeanwhile).toBe('c1:2:B');
+      expect(usePlayer.getState().loadingBook).toBeNull();
+    });
+
+    it("doesn't reload while casting (the receiver streams the book)", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      mockSvc.isCasting.mockImplementation(() => true);
+      try {
+        expect(
+          await usePlayer
+            .getState()
+            .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 })),
+        ).toBe(true);
+        expect(mockSvc.load).not.toHaveBeenCalled();
+        expect(usePlayer.getState().loadingBook).toBeNull();
+      } finally {
+        mockSvc.isCasting.mockImplementation(() => false);
+      }
+    });
+
+    it('shows an error when the reload fails', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(new TypeError('Network request failed'));
+      (mockSvc.load as jest.Mock).mockRejectedValueOnce(new Error('no player'));
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        expect(
+          await usePlayer
+            .getState()
+            .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 })),
+        ).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
+      expect(usePlayer.getState()).toMatchObject({ loadingBook: null });
+      expect(usePlayer.getState().snapshot.state).toBe('error');
+      expect(mockSvc.play).not.toHaveBeenCalled();
+    });
+
+    it("holds a reloaded place through the download hot-swap's new book object, until a move", async () => {
+      mockResolveClient.mockReturnValue(null);
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      await usePlayer
+        .getState()
+        .adoptLoaded(
+          engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30, playing: false }),
+        );
+      mockResolveClient.mockReturnValue(fakeClient);
+      // The hot-swap commits the same book as a new object; its load reports `ready`, `paused`.
+      const np = usePlayer.getState().nowPlaying!;
+      usePlayer.setState({ nowPlaying: { ...np } });
+      pushSnapshot(snap('ready', 1, 30));
+      pushSnapshot(snap('paused', 1, 30));
+      await saveTick();
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+      // The listener's own move is a new place: it saves.
+      await usePlayer.getState().seekBook(120);
+      await flushMicrotasks();
+      expect(savedPaths()).toEqual(['B']);
+    });
+
+    it('waits at most 3 s for the server, then reloads', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      mockFetchQuery.mockImplementation(() => new Promise(() => {})); // a server that hangs
+      const adopting = usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }));
+      await untilCalled(mockFetchQuery);
+      await flushMicrotasks();
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(3_000);
+      expect(await adopting).toBe(true);
+      expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 30]);
+    });
+
+    it('adopts the place, play state and speed the engine has once the book is read', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(serverOrder);
+      // Paused and moved on into B/1 (index 1) at 1x while the server was asked.
+      const reread = jest.fn(async () =>
+        engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 1, position: 5, playing: false, rate: 1 }),
+      );
+      expect(
+        await usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }), reread),
+      ).toBe(true);
+      expect(reread).toHaveBeenCalledTimes(1);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expect(usePlayer.getState()).toMatchObject({
+        rate: 1,
+        snapshot: { state: 'paused', trackIndex: 1, position: 5 },
+      });
+      expect(mockSvc.adoptPlace).toHaveBeenCalledWith(
+        expect.objectContaining({ state: 'paused', trackIndex: 1, position: 5 }),
+      );
+    });
+
+    it('adopts nothing once the engine plays another order or book', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      serverAnswers(serverOrder);
+      const again = engine(['B/1.mp3', 'B/2.mp3'], { trackIndex: 0, position: 30 });
+      expect(
+        await usePlayer
+          .getState()
+          .adoptLoaded(
+            engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }),
+            async () => again,
+          ),
+      ).toBe(false);
+      expect(
+        await usePlayer
+          .getState()
+          .adoptLoaded(
+            engine(['B/2.mp3', 'B/1.mp3'], { trackIndex: 0, position: 30 }),
+            async () => null,
+          ),
+      ).toBe(false);
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+      expect(mockSvc.adoptPlace).not.toHaveBeenCalled();
+      expect(mockSvc.load).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('a start racing a stop, a cast or a download (Phase 8 review)', () => {

@@ -465,13 +465,14 @@ function chaptersRefresh(
 
 /**
  * A start of a downloaded book loaded the engine from `chapters` (`playBook`, once its
- * load landed): the manifest takes them, so a later start, offline or from Android's
- * service (`adoptLoaded`, which gets only a track index), plays the order the engine was
- * given. This is the only way the same files take a new order (server v2.4.0 plays them
- * in natural order, "2-" before "10-"): the chapters carry the order every queue over the
- * download plays them in (`bookFileSpecs`, each file found by its path:
- * `localFromManifest`), and `files` itself never moves, since a file's index there is its
- * name on disk (`fileName`; `relocateEntry` keeps a saved file's own name, `storedName`). A
+ * load landed; `adoptLoaded`, when Android's service plays exactly their order after a JS
+ * restart lost that start): the manifest takes them, so a later start, offline or from
+ * Android's service, plays the order the engine was given. This is the only way the same
+ * files take a new order (server v2.4.0 plays them in natural order, "2-" before "10-"):
+ * the chapters carry the order every queue over the download plays them in
+ * (`bookFileSpecs`, each file found by its path: `localFromManifest`), and `files` itself
+ * never moves, since a file's index there is its name on disk (`fileName`;
+ * `relocateEntry` keeps a saved file's own name, `storedName`). A
  * background answer never does it (`refreshedChapters`): JS cannot see a book the Android
  * service or a Cast receiver holds before it is adopted. Chapters naming other files
  * change nothing.

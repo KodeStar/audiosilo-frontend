@@ -1290,8 +1290,9 @@ media GETs only.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
-  store's `onPickedUpAgain`, called before that play's first save), the loaded book asks its
-  server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
+  store's `onPickedUpAgain`, called before that play's first save; a play reported while a load
+  holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`), the loaded
+  book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
   then it saves the held place). It moves only when the record is from another `device_id`,
   newer than this device's mirror (a newer unsynced save here wins), not finished, and more than
   30 s away, and stands back if the listener moved meanwhile (`localMoveCount`). The move goes
@@ -1301,7 +1302,8 @@ media GETs only.
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and
   out-of-order (see below). `beginPlaybackAttempt()` (called from `playBook`/`retry`/
-  `toggle`-play) sets `wantsPlayback` + `startingPlayback` and starts a `STALL_GRACE_MS`
+  `toggle`-play and a playing adoption's reload, `reloadAdopted`) sets `wantsPlayback` +
+  `startingPlayback` and starts a `STALL_GRACE_MS`
   (3s) timer; if the engine hasn't reached `playing` when it fires, the store synthesizes
   an `error` so the player can offer a retry. Only reaching `playing` (or a user
   pause/stop) cancels it; a mid-playback stall (`playing`→`loading`) re-arms it. The fire
@@ -1402,9 +1404,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   `addBookmark` (no label, so the `annotations` gate has nothing to hold back) at the engine's
   place on the book the engine names, else the loaded one; Android's bookmarks pressed with no
   JS (`consumePendingBookmarks`) drain at start and on every foreground, and one that can't
-  reach its server waits under `audiosilo.carBookmarks`, at the whole-book place read on its
-  first try (a file place read later could go through a re-ordered download's timeline); only
-  one whose place could not be read yet stays in file coordinates.
+  reach its server waits under `audiosilo.carBookmarks`, kept by its file (`trackId`,
+  path-keyed) and the seconds in it, read on its first try, plus the whole-book place read on
+  its latest (fe#146). Each later try reads it in the order the book's files are in now
+  (`trackIndexById`, shared with `adoptLoaded`), on the device only (the loaded queue, else
+  the download's; never a request before its send), so a download that took the server's
+  order since still puts it in its file; the whole-book seconds stand only for a book that no
+  longer holds that file, or that is neither loaded nor downloaded. A kept one of the older
+  form (whole-book seconds alone) is still read; only one whose place could not be read yet
+  stays in file coordinates.
 - **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
@@ -1437,12 +1445,29 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     connected and the player has been idle `CAR_TASK_IDLE_MS` (30 s).
   - **Adopting.** `getLoadedBook()` names a book the service loaded without JS (the car
     started it, or it kept playing while JS restarted). The controller calls the store's
-    `adoptLoaded(book)` (at start, on a car connect, on the foreground, and when the engine
-    moves file or starts playing on its own), which builds the queue from `bookSourceOf`, sets
-    `nowPlaying` and the rate, makes the resume floor the engine's place, seeds the bridge
-    (`adoptPlace`, so the next tick maps onto the right file) and, if playing, runs the
-    pick-up check before its first save, all **without `svc.load`** (a reload would cut the
-    audio). Regression tests: `store-adopt.test.ts`.
+    `adoptLoaded(book, reread)` (at start, on a car connect, on the foreground, and when the
+    engine moves file or starts playing on its own), which builds the queue from
+    `bookSourceOf`, reads the service's book again (`reread`: the engine played on meanwhile,
+    so a pause, a move or a speed change made then stands; it gives up when the engine plays
+    another book or file order now), sets `nowPlaying` and the rate, makes the resume floor
+    the engine's place, seeds the bridge (`adoptPlace`, so the next tick maps onto the right
+    file) and, if playing, runs the pick-up check before its first save, all **without
+    `svc.load`** (a reload would cut the audio) while the engine plays the queue's file order.
+    **The engine's order** (fe#134): `LoadedBook.files` names the service's files in its order
+    (absent on iOS, Cast and older binaries: then, and when it is the queue's order, nothing
+    changes). Every later tick counts in that order, so the queue must be in it: a downloaded
+    book asks the server's chapters once (afresh, for 3 s at most, `SERVED_ORDER_WAIT_MS`), and
+    when they come back in exactly the engine's order the queue is built from them as the
+    start JS lost built it (the download's files, streaming any it lacks) and the download
+    takes them when it holds those files (`adoptStartedChapters`), with no reload. Anything
+    else (offline, no answer, the server's in another order or with other files than the
+    engine's) reloads the engine in the queue's order at the same file (`trackIndexById`) and
+    in-file place, or at the same whole-book seconds for a file the queue lacks (short of the
+    queue's end; the engine's file index when an earlier file's length is unknown), the resume
+    floor at that place and the play state kept (`reloadAdopted`: saves and remote moves held
+    by `loadingBook` until the load lands, and its place saves nothing until it plays,
+    `quietAdopted`; a paused one is paused again once loaded, and a pause while it loads
+    stands). Not while casting (fe#145). Regression tests: `store-adopt.test.ts`.
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over an SDK 56
   AppDelegate fixture by `withCarPlay.test.ts`). Declaring any scene moves the whole iOS app
   onto the UIScene life cycle (the iOS 27 SDK will require it anyway), where UIKit never shows
@@ -2027,9 +2052,11 @@ are asked, at most 10,000 rows.
   once; a start given no chapters plays the download's own files and chapters), never
   from a background answer, and a start's answer in the manifest's own order is left to the
   background refresh: JS sees only what it loaded, not a book the Android service or a Cast
-  receiver holds before `adoptLoaded` / the receiver adoption, which map the engine's track index
-  through the manifest. So an offline start, Android's no-JS car start
-  and `adoptLoaded` keep the manifest's order until an online start plays the new one. The
+  receiver holds before `adoptLoaded` / the receiver adoption. So an offline start and
+  Android's no-JS car start keep the manifest's order until an online start plays the new
+  one; `adoptLoaded` reads the engine's own order (`LoadedBook.files`) and takes the server's
+  chapters only when they are exactly that order, else reloads the engine in the manifest's
+  (fe#134; the Cast receiver adoption still maps its track index through the manifest). The
   chapters carry the order (every queue over a download orders its files by them and finds each by
   path); `manifest.files` itself never moves, since a file's index there is its name on disk
   (`fileName`; `relocateEntry` keeps each saved file's own name at every launch). A place saved on the old
