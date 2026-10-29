@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -19,14 +19,35 @@ const mockDownload = () => ({
   cancel: jest.fn(),
   ...mockControlsOverride,
 });
+// How often the control itself rendered (once per `useDownloadControls` call), and a
+// progress value a test moves the way the store's ticks do (`mockTick`).
+let mockControlRenders = 0;
+const mockTick: { value: number | undefined; listeners: Set<() => void> } = {
+  value: undefined,
+  listeners: new Set(),
+};
 jest.mock('@/downloads/use-download-controls', () => ({
-  useDownloadControls: () => mockDownload(),
+  useDownloadControls: () => {
+    mockControlRenders++;
+    return mockDownload();
+  },
 }));
 // The confirm reads the room it frees from the registry and removes through the store;
 // the progress line reads the registry entry.
 jest.mock('@/downloads/store', () => ({
   useDownloadEntry: () => mockDownload(),
-  useDownloadProgress: () => mockDownload(),
+  useDownloadProgress: () => {
+    const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react');
+    const ticked = useSyncExternalStore(
+      (l: () => void) => {
+        mockTick.listeners.add(l);
+        return () => mockTick.listeners.delete(l);
+      },
+      () => mockTick.value,
+    );
+    const d = mockDownload();
+    return ticked === undefined ? d : { ...d, progress: ticked };
+  },
   useDownloads: { getState: () => ({ remove: mockRemove }) },
 }));
 
@@ -41,6 +62,8 @@ const book = { title: 'Blood Rites' } as Book;
 beforeEach(() => {
   mockRemove.mockReset();
   mockControlsOverride = {};
+  mockControlRenders = 0;
+  mockTick.value = undefined;
 });
 
 describe('DownloadControl', () => {
@@ -82,6 +105,23 @@ describe('DownloadControl', () => {
     expect(screen.getByText('52% · Cancel')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: '52% · Cancel, Cancel download' }));
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  // fe#196: a running download's ticks redraw the ring and its words, not the control
+  // (its hooks, its menu and its confirm).
+  it('redraws only the progress button as the download ticks', async () => {
+    mockControlsOverride = { status: 'downloading', progress: 0.04 };
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
+    expect(screen.getByText('4% · Cancel')).toBeTruthy();
+    const renders = mockControlRenders;
+    for (const value of [0.3, 0.61, 0.95]) {
+      await act(async () => {
+        mockTick.value = value;
+        mockTick.listeners.forEach((l) => l());
+      });
+    }
+    expect(screen.getByText('95% · Cancel')).toBeTruthy();
+    expect(mockControlRenders).toBe(renders);
   });
 
   // At 400 "100% · Cancel" pushed the hero's "..." onto a row of its own: a short
