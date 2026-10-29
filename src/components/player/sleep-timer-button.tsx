@@ -85,15 +85,10 @@ export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: ()
   );
 }
 
-/** How finely the sleep sheet follows the place: whole seconds, as the player's "left in
- * the chapter" does, so the two count from the same place and read the same minutes
- * (`formatTimeLeftShort`; a 15 s step put the sheet up to 15 s behind, "in 4m" over the
- * player's "3m left", v2.5.1 PLAYER-11). The body is mounted only while the sheet is open. */
-const SHEET_POSITION_STEP = 1;
-
 /**
- * The place the sheet counts from: the live whole-book position floored to
- * `SHEET_POSITION_STEP`, but never below the start of the chapter playing. Chapter ends are
+ * The place the sheet counts from: the live whole-book position floored to whole seconds,
+ * as the player's "left in the chapter" does, so the two read the same minutes
+ * (`formatTimeLeftShort`, v2.5.1 PLAYER-11), but never below the start of the chapter playing. Chapter ends are
  * rarely whole seconds, so just after a boundary the floored place would still sit in
  * the chapter that has ended: "This chapter" would be that one (a timer armed behind the
  * playhead, which pauses the book at once) and every "N chapters" row would stop a
@@ -101,13 +96,13 @@ const SHEET_POSITION_STEP = 1;
  */
 function selectSheetPosition(s: ReturnType<typeof usePlayer.getState>): number {
   const live = selectBookPosition(s);
-  const floored = Math.floor(live / SHEET_POSITION_STEP) * SHEET_POSITION_STEP;
+  const floored = Math.floor(live);
   const start = selectCurrentChapter(s)?.book_offset;
   return start !== undefined && start <= live ? Math.max(floored, start) : floored;
 }
 
-/** The body, mounted only while the sheet is open (it follows the position, by
- * `SHEET_POSITION_STEP`). */
+/** The body, mounted only while the sheet is open (it follows the position, by the
+ * second). */
 function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const phase = useSleepTimer(selectSleepPhase);

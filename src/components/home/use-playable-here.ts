@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useReachability } from '@/api/reachability';
@@ -19,13 +19,14 @@ export function usePlayableHere(): (at: BookAt) => boolean {
       Object.keys(s.entries).filter((key) => s.entries[key].status === 'downloaded'),
     ),
   );
+  const downloadedKeys = useMemo(() => new Set(downloaded), [downloaded]);
   return useCallback(
     (at: BookAt) =>
       playableHere(at, {
         deviceOnline,
         online,
-        downloaded: (book) => downloaded.includes(contentKeyOf(book)),
+        downloaded: (book) => downloadedKeys.has(contentKeyOf(book)),
       }),
-    [deviceOnline, online, downloaded],
+    [deviceOnline, online, downloadedKeys],
   );
 }

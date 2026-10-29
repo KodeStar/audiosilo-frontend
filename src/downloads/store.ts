@@ -901,20 +901,19 @@ async function keepServerPlace(
   path: string,
   signal: AbortSignal,
 ): Promise<void> {
+  let progress: Progress | null | undefined;
   try {
-    let progress: Progress | null | undefined;
-    try {
-      progress = await api.getProgress(libraryId, path, signal);
-    } catch {
-      if (signal.aborted) return;
-      progress = queryClient.getQueryData<Progress | null>(
-        qk.progress(connectionId, libraryId, path),
-      );
-    }
-    if (progress) await writeMirror(progressToSave(connectionId, libraryId, path, progress));
+    progress = await api.getProgress(libraryId, path, signal);
   } catch {
-    // Nothing kept: a later read of the book's progress (`fetchBookProgress`) keeps it.
+    if (signal.aborted) return;
+    progress = queryClient.getQueryData<Progress | null>(
+      qk.progress(connectionId, libraryId, path),
+    );
   }
+  // Nothing kept on a failed write: a later read of the book's progress
+  // (`fetchBookProgress`) keeps it.
+  if (progress)
+    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
 }
 
 async function runOne(key: string) {

@@ -864,13 +864,7 @@ const LISTED_DEPTH = 5;
 
 function findListed(v: unknown, libraryId: number, path: string, depth: number): Book | undefined {
   if (depth > LISTED_DEPTH || !v || typeof v !== 'object') return undefined;
-  if (Array.isArray(v)) {
-    for (const x of v) {
-      const found = findListed(x, libraryId, path, depth + 1);
-      if (found) return found;
-    }
-    return undefined;
-  }
+  // An array walks the same way: by its indices, and no array is a book.
   const o = v as Record<string, unknown>;
   if (o.rel_path === path && o.library_id === libraryId && typeof o.title === 'string' && o.title)
     return o as unknown as Book;
