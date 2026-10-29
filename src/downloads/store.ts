@@ -557,8 +557,21 @@ const readalongTried = new Set<string>();
  * drops the kept one when the server has no ready map any more (`readalongChange`; only from
  * a server that serves maps, so an older one never drops anything). Returns the unsubscribe
  * (started once from the root layout).
+ *
+ * The answers the cache already holds when it starts are taken too, as `startChapterRefresh`
+ * does: the web starts it after the first paint, when a screen's `/item` can have landed
+ * already. The store's own seeds name the map the download keeps (`namingReadalong`), so
+ * they change nothing.
  */
 export function startReadalongRefresh(): () => void {
+  for (const entry of Object.values(useDownloads.getState().entries)) {
+    if (entry.status !== 'downloaded') continue;
+    const ref = { connectionId: entry.connectionId, libraryId: entry.libraryId, path: entry.path };
+    const cached = queryClient.getQueryData<Book>(
+      qk.item(ref.connectionId, ref.libraryId, ref.path),
+    );
+    if (cached) void refreshReadalong(ref, cached).catch(() => {});
+  }
   return queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
     const ref = bookKeyParts(event.query.queryKey, 'item');

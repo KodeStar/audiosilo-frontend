@@ -1072,6 +1072,36 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
     afterEach(() => stop());
 
+    it('takes an /item answer the cache held before it started (the web starts it after paint)', async () => {
+      stop();
+      const e = kept('g1');
+      const made = makeBook({ readalong: { state: 'ready', generated_at: 'g2' } });
+      mockGetQueryData.mockImplementation((k: unknown) => {
+        if (!Array.isArray(k)) return undefined;
+        if (k[0] === 'server') return { capabilities: { readalong: true } };
+        return k[0] === 'item' && k[3] === 'A/Book' ? made : undefined;
+      });
+      mockFetchReadalong.mockResolvedValue('g2');
+      stop = startReadalongRefresh();
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF);
+      expect(entry()?.manifest.readalongGeneratedAt).toBe('g2');
+      // The store's own seed (the download's book, naming the map it keeps) changes nothing.
+      stop();
+      mockFetchReadalong.mockClear();
+      useDownloads.setState({ entries: { [key]: e } });
+      mockGetQueryData.mockImplementation((k: unknown) => {
+        if (!Array.isArray(k)) return undefined;
+        if (k[0] === 'server') return { capabilities: { readalong: true } };
+        return k[0] === 'item' ? e.manifest.book : undefined;
+      });
+      stop = startReadalongRefresh();
+      await settle();
+      expect(mockFetchReadalong).not.toHaveBeenCalled();
+      expect(mockRemoveReadalong).not.toHaveBeenCalled();
+      expect(entry()).toBe(e);
+    });
+
     it('fetches the map again once it was made again, and its book names it (the seed offline)', async () => {
       kept('g1');
       mockFetchReadalong.mockResolvedValue('g2');
