@@ -1200,7 +1200,7 @@ media GETs only.
   `useBookTimeSaved`.
 - **The download hot-swap plays on from intent, not from `playing`** (`switchCurrentBookToLocal`:
   `wasPlaying` is `playing` or `wantsPlayback`). A short book's automatic download
-  (`autoDownloadNext`, default `'wifi'`) can land while its start is still `loading`, or just
+  (`autoDownloadNext`, `'wifi'` in the apps) can land while its start is still `loading`, or just
   after the engine began playing but before its `playing` reached JS; iOS's `load` pauses the
   player (Android keeps `playWhenReady`), so a swap that didn't play left a kid's first story
   stopped on Play, or on a watchdog error (8b-1). It **keeps the engine's file order**: a

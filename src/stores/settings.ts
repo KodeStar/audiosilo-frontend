@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { persistedDocument } from '@/lib/storage';
@@ -51,7 +52,8 @@ export type PlaybackSettings = {
   /** Whether/when to download a book to the device when you start listening to it (the
    * player then switches to the local copy once the download finishes). The persisted key
    * is still `autoDownloadNext` for hydration compatibility - it originally prefetched the
-   * *next* book in a series near the current one's end; do not rename it. */
+   * *next* book in a series near the current one's end; do not rename it. Off by default on
+   * the web, on Wi-Fi in the apps (`defaultAutoDownload`). */
   autoDownloadNext: AutoDownloadMode;
   /** Keep this many of the next books (Up next, then the series) downloaded while a book
    * is loaded, under the `autoDownloadNext` network rule. Off by default: it downloads on
@@ -81,6 +83,13 @@ export type PlaybackSettings = {
   voiceBoost: boolean;
 };
 
+/** The `autoDownloadNext` a listener starts with. Off on the web: a browser cannot tell
+ * Wi-Fi from mobile data, so "On Wi-Fi" there downloaded every book started on any
+ * connection (PERF-SPIKE P3). The apps keep downloading on Wi-Fi. */
+function defaultAutoDownload(): AutoDownloadMode {
+  return Platform.OS === 'web' ? 'never' : 'wifi';
+}
+
 const DEFAULTS: PlaybackSettings = {
   skipForward: 30,
   skipBackward: 15,
@@ -88,7 +97,7 @@ const DEFAULTS: PlaybackSettings = {
   autoRewindMax: 5,
   virtualChapterInterval: DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
   autoPlayNext: false,
-  autoDownloadNext: 'wifi',
+  autoDownloadNext: defaultAutoDownload(),
   keepAhead: 0,
   autoDeleteFinished: true,
   autoSleepTimer: false,
@@ -101,10 +110,36 @@ const DEFAULTS: PlaybackSettings = {
   voiceBoost: false,
 };
 
-// A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all.
-const stored = persistedDocument<PlaybackSettings>('audiosilo.settings', (raw) =>
-  raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Partial<PlaybackSettings>) : {},
-);
+/** The stored document's schema version, written with every save. A document without one
+ * is version 0. 1: the web's `autoDownloadNext` default became `'never'`. */
+const SETTINGS_VERSION = 1;
+
+/** The persisted document: the settings plus the schema version they were saved under. */
+type StoredSettings = PlaybackSettings & { version: number };
+
+/**
+ * Brings a stored document saved under an older `version` up to date. Version 0 on the
+ * web: a stored `'wifi'` becomes `'never'`. It was the default every browser saved, and
+ * the browser cannot honour it (it downloaded on any connection), so it is no listener's
+ * choice; `'always'` is kept. The apps' stored values are never touched. Until the next
+ * save writes `version`, the stored document stays at 0 and this runs again on each load,
+ * to the same result; once saved, a `'wifi'` chosen on the web afterwards is kept.
+ */
+function migrateSettings(doc: Partial<StoredSettings>): Partial<StoredSettings> {
+  const version = typeof doc.version === 'number' ? doc.version : 0;
+  if (version < 1 && Platform.OS === 'web' && doc.autoDownloadNext === 'wifi') {
+    return { ...doc, autoDownloadNext: 'never' };
+  }
+  return doc;
+}
+
+// A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all, and
+// one saved under an older version is migrated (its `version` then comes from the base).
+const stored = persistedDocument<StoredSettings>('audiosilo.settings', (raw) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const { version, ...rest } = migrateSettings(raw as Partial<StoredSettings>);
+  return rest;
+});
 
 type SettingsState = PlaybackSettings & {
   hydrate: () => Promise<void>;
@@ -139,12 +174,12 @@ export const useSettings = create<SettingsState>()((set, get) => {
     const doc = Object.fromEntries(
       (Object.keys(DEFAULTS) as (keyof PlaybackSettings)[]).map((k) => [k, state[k]]),
     ) as PlaybackSettings;
-    stored.write(change, doc);
+    stored.write(change, { ...doc, version: SETTINGS_VERSION });
   };
   return {
     ...DEFAULTS,
     hydrate: () =>
-      stored.hydrate(DEFAULTS, (doc) =>
+      stored.hydrate({ ...DEFAULTS, version: SETTINGS_VERSION }, ({ version, ...doc }) =>
         set({
           ...doc,
           keepAhead: toKeepAhead(doc.keepAhead),
