@@ -1092,8 +1092,9 @@ function downloadedIn(
   return e?.status === 'downloaded' ? e : undefined;
 }
 
-// The narrow selectors below return one primitive, so the entry patches a running
-// download makes every PROGRESS_EVERY_MS re-render nothing until the value changes.
+// The narrow selectors below return one primitive (or, the last two, a shallow-compared
+// handful), so the entry patches a running download makes every PROGRESS_EVERY_MS
+// re-render nothing until the value changes.
 // Prefer them to `useDownloadEntry` wherever the caller needs no progress: a whole book
 // page or every cover of the book on screen re-rendering 4 times a second is the cost.
 

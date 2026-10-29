@@ -119,11 +119,18 @@ const SETTINGS_VERSION = 1;
 type StoredSettings = PlaybackSettings & { version: number };
 
 /** Brings a document saved under an older `version` up to date. Version 0 on the web: the
- * old default `'wifi'` (which the browser cannot honour) becomes `'never'`; the apps' values
- * are never touched. It re-runs on each load until a save writes `version`. */
+ * old default `'wifi'` (which the browser cannot honour) becomes `'never'`, unless "Keep the
+ * next books ready" is on (an opt-in to automatic downloads that `'never'` would silently
+ * stop); the apps' values are never touched. It re-runs on each load until a save writes
+ * `version`. */
 function migrateSettings(doc: Partial<StoredSettings>): Partial<StoredSettings> {
   const version = typeof doc.version === 'number' ? doc.version : 0;
-  if (version < 1 && Platform.OS === 'web' && doc.autoDownloadNext === 'wifi') {
+  if (
+    version < 1 &&
+    Platform.OS === 'web' &&
+    doc.autoDownloadNext === 'wifi' &&
+    toKeepAhead(doc.keepAhead) === 0
+  ) {
     return { ...doc, autoDownloadNext: 'never' };
   }
   return doc;

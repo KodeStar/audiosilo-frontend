@@ -247,6 +247,11 @@ describe('settings store, automatic downloads per platform', () => {
     expect(await hydrated('web', { autoDownloadNext: 'never' })).toBe('never');
   });
 
+  it('keeps a web wifi that Keep the next books ready relies on', async () => {
+    expect(await hydrated('web', { autoDownloadNext: 'wifi', keepAhead: 2 })).toBe('wifi');
+    expect(useSettings.getState().keepAhead).toBe(2);
+  });
+
   it('leaves the apps stored values alone', async () => {
     for (const os of ['ios', 'android']) {
       expect(await hydrated(os, { autoDownloadNext: 'wifi' })).toBe('wifi');
