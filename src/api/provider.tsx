@@ -129,13 +129,23 @@ onConnectionRemoved((id) => {
   startupCache.forget(id);
 });
 
+/** A book's read-along map that is in (`qk.readalong`, `qk.readalongLocal`): keyed by its
+ * `generated_at`, so the copy held is that very map after any reconnect, and reading up to
+ * 16 MiB again would change nothing. One that failed is read again like any query. */
+function isHeldReadalongMap(q: Query): boolean {
+  const kind = q.queryKey[0];
+  return (kind === 'readalong' || kind === 'readalongLocal') && q.state.status === 'success';
+}
+
 // When a connection becomes reachable again, refetch that connection's queries (so
 // screens that errored or emptied while it was offline repopulate on their own) and
 // replay its queued progress saves (and its queued ebook reading places). invalidateQueries only refetches currently-observed
 // queries, so this is cheap; every query key leads with its connection id, so the
-// predicate scopes the refetch to the recovered server.
+// predicate scopes the refetch to the recovered server. A read-along map held is kept.
 onReconnect((connectionId) => {
-  void queryClient.invalidateQueries({ predicate: (q) => q.queryKey.includes(connectionId) });
+  void queryClient.invalidateQueries({
+    predicate: (q) => q.queryKey.includes(connectionId) && !isHeldReadalongMap(q),
+  });
   void flushConnection(connectionId);
   void flushReadingConnection(connectionId);
 });

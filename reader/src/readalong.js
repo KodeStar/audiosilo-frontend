@@ -17,6 +17,8 @@
 // - a sentence running over the page end turns the page once the narration reaches its
 //   part off the page (by the share of its characters shown);
 // - a player seek (the narration jumps) follows again, once the reader has followed;
+// - the view's moves, the reader's own and the listener's, are made one at a time (a goTo
+//   started while another section loads leaves that one never settling);
 // - a span whose CFI names no section of this EPUB, or nothing in its section, is skipped
 //   and counted, never breaking the loop;
 // - the highlight is foliate's own annotation, drawn with `Overlayer.highlight`.
@@ -36,6 +38,9 @@ export const MAX_AHEAD = 3;
 export const SEEK_GRACE_MS = 2500;
 /** How near the tapped sentence a sample must be to count as the player having moved. */
 const SEEK_NEAR = 1.5;
+/** How long one move of the view may hold the moves after it (ms): foliate drops a section
+ * still loading when another goTo starts, and that goTo never settles. */
+export const MOVE_MS = 10_000;
 const TICK_MS = 50;
 const MAX_CFI = 1024;
 
@@ -120,6 +125,13 @@ export function spanAt(idx, t, holdGap = HOLD_GAP) {
   return t <= spans[ans].end + holdGap ? ans : -1;
 }
 
+/** The first span starting after whole-book time `t` (where the narration goes on from a
+ * gap), or -1. */
+export function spanAfter(idx, t) {
+  const next = lastAtOrBefore(idx.starts.length, (i) => idx.starts[i] <= t) + 1;
+  return next < idx.starts.length ? next : -1;
+}
+
 /**
  * The span (an entry of `order`, the section's spans in text order) holding the caret at
  * `at`, or -1: the last whose start is at or before it (a binary search by `compare`, the
@@ -146,7 +158,9 @@ export class PositionClock {
   }
 
   /** Takes a sample; true when it is a seek (it lands JUMP or more from where the clock
-   * was). A sample from before a tap's seek reached the player is dropped (false). */
+   * was, and from where the narration would be had it played on: a gap in the samples, a
+   * phone's timers paused in the background, is no seek however long). A sample from
+   * before a tap's seek reached the player is dropped (false). */
   sample({ t, rate, playing }) {
     if (!Number.isFinite(t) || t < 0) return false;
     if (this.pending) {
@@ -155,7 +169,8 @@ export class PositionClock {
       }
       this.pending = null;
     }
-    const jumped = this.known && Math.abs(this.get() - t) >= JUMP;
+    const playedOn = this.playing ? this.t0 + ((this.now() - this.at) / 1000) * this.rate : this.t0;
+    const jumped = this.known && Math.abs(this.get() - t) >= JUMP && Math.abs(playedOn - t) >= JUMP;
     this.t0 = t;
     this.at = this.now();
     this.rate = Number.isFinite(rate) && rate > 0 ? rate : 1;
@@ -198,6 +213,8 @@ export function createReadalong({
   now = () => performance.now(),
   every = (fn, ms) => setInterval(fn, ms),
   stop = (id) => clearInterval(id),
+  after = (fn, ms) => setTimeout(fn, ms),
+  cancel = (id) => clearTimeout(id),
 }) {
   const clock = new PositionClock(now);
   let map = null;
@@ -209,6 +226,7 @@ export function createReadalong({
   let following = false;
   let followedOnce = false;
   let programmatic = 0;
+  let moving = Promise.resolve(); // the view's moves, one at a time (`inTurn`)
   let busy = false;
   let jumped = false; // a seek came: the next tick turns to the sentence
   let lastLoc = null; // the renderer's last relocate: { range, index }
@@ -225,17 +243,40 @@ export function createReadalong({
     send({ type: 'following', value });
   }
 
-  /** A move of the reader's own (following), never taken for the listener's. */
-  async function quietly(move) {
-    programmatic++;
-    try {
-      await move();
-    } finally {
-      programmatic--;
-    }
+  /**
+   * One move of the view, after the moves before it, the reader's and the listener's:
+   * foliate drops a section still loading when another goTo starts, and that goTo never
+   * settles. One that has not settled after MOVE_MS is given up on, so it cannot hold the
+   * moves after it. `quiet`: the reader's own (following), never taken for the listener's.
+   */
+  function inTurn(move, quiet = false) {
+    const run = moving.then(async () => {
+      if (quiet) programmatic++;
+      let timeout = null;
+      try {
+        await Promise.race([
+          move(),
+          new Promise((resolve) => {
+            timeout = after(resolve, MOVE_MS);
+          }),
+        ]);
+      } finally {
+        cancel(timeout);
+        if (quiet) programmatic--;
+      }
+    });
+    moving = run.catch(() => {});
+    return run;
   }
 
-  const go = (target) => quietly(() => view.goTo(target));
+  /** The reader's own move of the view it has now, made in turn while it still follows
+   * there (a listener's move or another book can come first). */
+  function ownMove(step) {
+    const shown = view;
+    return inTurn(() => (following && view === shown ? step(shown) : undefined), true);
+  }
+
+  const go = (target) => ownMove((v) => v.goTo(target));
 
   // ---- ranges, lazily -----------------------------------------------------------------
 
@@ -360,12 +401,32 @@ export function createReadalong({
 
   // ---- following ----------------------------------------------------------------------
 
+  /** Whether two relocations show the same text: a touch snapping back to the page shown
+   * (any tap, on a touch screen) moved nothing. */
+  function samePage(a, b) {
+    if (!a?.range || !b?.range || a.index !== b.index) return false;
+    try {
+      // Range.START_TO_START (0) and END_TO_END (2), the same in every frame's realm.
+      return (
+        a.range.compareBoundaryPoints(0, b.range) === 0 &&
+        a.range.compareBoundaryPoints(2, b.range) === 0
+      );
+    } catch {
+      return false;
+    }
+  }
+
   function onRelocate(e) {
     const detail = e.detail ?? {};
+    const was = lastLoc;
     lastLoc = { range: detail.range, index: detail.index };
-    if (programmatic || !idx || cur < 0 || !MOVES.has(detail.reason)) return;
-    // The reader moved: following only while the sentence being read is still in sight.
-    setFollowing(isVisible(cur));
+    if (programmatic || !idx || !MOVES.has(detail.reason) || samePage(was, lastLoc)) return;
+    // The reader moved: following only while the sentence being read (between sentences,
+    // the next, where the narration goes on) is still in sight. Landing on it follows
+    // again only a reader that has followed: one that never did follows when asked.
+    const at = cur >= 0 ? cur : spanAfter(idx, clock.get());
+    if (at < 0 || !isVisible(at)) setFollowing(false);
+    else if (followedOnce) setFollowing(true);
   }
 
   /** When the sentence being read, starting on the page shown and running over its end,
@@ -401,7 +462,7 @@ export function createReadalong({
     if (!following || cur < 0 || bad.has(cur) || !lastLoc?.range) return;
     const at = turnTime();
     if (typeof at !== 'number' || t < at) return;
-    await quietly(() => view.next());
+    await ownMove((v) => v.next());
   }
 
   async function unhighlight() {
@@ -418,32 +479,39 @@ export function createReadalong({
   async function tick() {
     if (!idx || !view || busy) return;
     busy = true;
+    // The map indexed (and the view) this tick works on: one that changes while it waits
+    // (`setMap`, another book) leaves the rest to the next tick.
+    const at = idx;
     try {
       const t = clock.get();
-      const i = spanAt(idx, t);
+      const i = spanAt(at, t);
       const resync = jumped;
       jumped = false;
       if (i === cur) {
         // A seek within the sentence being read: back to its page, else the page end.
         if (resync && following && i >= 0 && !bad.has(i) && !isVisible(i)) {
-          await go(idx.spans[i].cfi);
+          await go(at.spans[i].cfi);
         } else await turnMidSentence(t);
         return;
       }
       await unhighlight();
+      if (idx !== at) return;
       cur = i;
       if (i < 0 || bad.has(i)) return;
-      const s = idx.spans[i];
+      const s = at.spans[i];
       if (following && !isVisible(i)) await go(s.cfi);
-      if (!view || !idx) return;
+      if (!view || idx !== at) return;
       // A CFI that names nothing in its section (a stale map, an edited EPUB) is skipped.
       if (docOf(s.si) && !rangeOf(i)) return;
+      const shown = view;
       try {
-        await view.addAnnotation({ value: s.cfi });
-        drawn = s.cfi;
+        await shown.addAnnotation({ value: s.cfi });
       } catch {
-        bad.add(i);
+        if (idx === at) bad.add(i);
+        return;
       }
+      if (idx === at && view === shown) drawn = s.cfi;
+      else shown.deleteAnnotation({ value: s.cfi }).catch(() => {});
     } finally {
       busy = false;
     }
@@ -547,6 +615,9 @@ export function createReadalong({
       const i = spanAt(idx, clock.get());
       if (i >= 0 && !bad.has(i) && !isVisible(i)) await go(idx.spans[i].cfi);
     },
+    /** A listener's move of the view (a page edge, a key, the contents): made in turn with
+     * the reader's own, so no two goTo race. */
+    move: (step) => inTurn(step),
     /** For tests and the screen's state: what it is doing now. */
     state: () => ({ cur, following, active: idx !== null, t: clock.get(), bad: bad.size }),
   };

@@ -73,13 +73,16 @@ describe('startReaderSession', () => {
 
   it('logs a blocked load and tells nobody; takes nothing once ended', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const s = start({ withReadalong: false });
-    s.session.receive({ type: 'csp', directive: 'img-src', blocked: 'https://x' });
-    expect(warn).toHaveBeenCalledWith('[reader] blocked by CSP:', 'img-src', 'https://x');
-    s.session.receive({ type: 'seek', t: 1 });
-    s.session.end();
-    s.session.receive({ type: 'loading', value: true });
-    expect(s.onMessage).not.toHaveBeenCalled();
-    warn.mockRestore();
+    try {
+      const s = start({ withReadalong: false });
+      s.session.receive({ type: 'csp', directive: 'img-src', blocked: 'https://x' });
+      expect(warn).toHaveBeenCalledWith('[reader] blocked by CSP:', 'img-src', 'https://x');
+      s.session.receive({ type: 'seek', t: 1 });
+      s.session.end();
+      s.session.receive({ type: 'loading', value: true });
+      expect(s.onMessage).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

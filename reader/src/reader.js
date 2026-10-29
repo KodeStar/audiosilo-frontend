@@ -477,9 +477,12 @@ document.addEventListener('keydown', onKey);
  * hidden anchor relocates nothing). */
 async function move(step) {
   if (!view || !opened) return;
+  const shown = view;
   moves++;
   try {
-    await step();
+    // In turn with the read-along's own moves (two goTo racing leave one never settling),
+    // and never on a book that began opening meanwhile.
+    await readalong.move(() => (view === shown && opened ? step() : undefined));
   } finally {
     if (--moves === 0) setBusy(false);
   }

@@ -6,6 +6,7 @@ import { useOptionalApi } from '@/api/provider';
 import { MakeReadalongOffer } from '@/components/bridge/make-readalong';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spinner } from '@/components/ui/spinner';
+import { contentKeyOf } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useNarration } from '@/reader/narration';
@@ -41,9 +42,20 @@ export function TextPanel({
   const { t } = useTranslation();
   const { book, map } = text;
   const title = book ? bookTitle(book.title, target.path) : undefined;
+  if (!map && text.pending) {
+    // On its way (an admin's tab shows from the start): never the Make offer meanwhile.
+    return (
+      <View testID="companion-text-pending" className="items-center py-8">
+        <Spinner size="large" />
+      </View>
+    );
+  }
   if (map && book?.ebook) {
     return (
       <ReadAlong
+        // One per book: the playing book changes under an open tab (Up next, the car), and
+        // a reader document says `ready` once, so the next book needs its own.
+        key={contentKeyOf(target)}
         target={target}
         ebookSize={book.ebook.size}
         map={map}
@@ -129,7 +141,13 @@ function ReadAlong({
   });
 
   const [opened, setOpened] = useState<{ rtl: boolean } | null>(null);
-  const [state, setState] = useState<ReadalongState['state'] | null>(null);
+  // What the reader made of the map, for that map: one the book's made again is judged again
+  // (a `none` would otherwise outlast it, its reader gone).
+  const [said, setSaid] = useState<{
+    map: ReaderReadalongMap;
+    state: ReadalongState['state'];
+  } | null>(null);
+  const state = said?.map === map ? said.state : null;
   // Null until the reader says: it follows from the start (`followNarration`).
   const [following, setFollowing] = useState<boolean | null>(null);
   const [failure, setFailure] = useState<TextFailure | null>(null);
@@ -156,7 +174,7 @@ function ReadAlong({
   const retry = () => {
     setFailure(null);
     setOpened(null);
-    setState(null);
+    setSaid(null);
     setAttempt((n) => n + 1);
   };
 
@@ -231,7 +249,7 @@ function ReadAlong({
           followNarration
           onSeek={narration.onSeek}
           onFollowing={setFollowing}
-          onReadalongState={(s) => setState(s.state)}
+          onReadalongState={(s) => setSaid({ map, state: s.state })}
         />
       ) : null}
       {show ? (

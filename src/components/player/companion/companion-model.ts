@@ -41,22 +41,23 @@ export function companionTabs(metadata: boolean, text = false): CompanionTab[] {
 
 /**
  * Whether the Text tab (Bridge Phase 3c) shows: for a listener once the book's read-along
- * map is in with a sentence to follow (`map`), never while it is on its way (`pending`: no
- * tab that vanishes a moment later) nor for a stale or absent map; for an admin who may make
- * one (`mayMake`: `mayMakeReadalong`, and the book reads with its ebook) also without a map,
- * where it offers "Make read-along".
+ * map is in with a sentence to follow (`map`), never while it is on its way (no tab that
+ * vanishes a moment later) nor for a stale or absent map; for an admin who may make one
+ * (`mayMake`: `mayMakeReadalong`, and the book reads with its ebook) always: the map on its
+ * way (a job that just made it) is a spinner, no map "Make read-along".
  */
-export function textTab(opts: { map: boolean; pending: boolean; mayMake: boolean }): boolean {
-  const { map, pending, mayMake } = opts;
-  return map || (mayMake && !pending);
+export function textTab(opts: { map: boolean; mayMake: boolean }): boolean {
+  return opts.map || opts.mayMake;
 }
 
-/** The tab to show: the one asked for when it exists, else the first. */
+/** The tab to show: the one asked for when it exists, else the first but Text (the
+ * read-along opens a reader: only when asked for, never where Chapters led before). */
 export function activeCompanionTab(
   tabs: readonly CompanionTab[],
   wanted: CompanionTab | null,
 ): CompanionTab {
-  return wanted && tabs.includes(wanted) ? wanted : tabs[0];
+  if (wanted && tabs.includes(wanted)) return wanted;
+  return tabs.find((tab) => tab !== 'text') ?? tabs[0];
 }
 
 /** Who's who order: newest first (the latest first appearance on top), so the person

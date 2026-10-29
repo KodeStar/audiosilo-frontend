@@ -1359,7 +1359,6 @@
       "noAgent": "Aucun : aucun agent IA n'est utilisé",
       "confirm": "Créer la lecture synchronisée",
       "queued": "En file d'attente. Le texte apparaîtra ici une fois terminé.",
-      "queueFailed": "Impossible de le mettre en file d'attente. Rien n'a été lancé.",
       "statusTitle": "Création de la lecture synchronisée",
       "parkedTitle": "La création de la lecture synchronisée est en pause",
       "failedTitle": "La création de la lecture synchronisée a échoué",

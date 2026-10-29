@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { useEffect, useState } from 'react';
 
 import type { BridgeJob, BridgeJobRequest, ReadalongEstimate, ServerInfo, User } from '@/api/types';
 
@@ -45,6 +46,7 @@ import { MakeReadalongOffer } from './make-readalong';
 notifyQueriesSynchronously();
 
 const TARGET = { connectionId: 'c1', libraryId: 1, path: 'London/Call of the Wild' };
+const OTHER = { connectionId: 'c1', libraryId: 1, path: 'London/White Fang' };
 const SERVER = bridgeServer({
   capabilities: { ...bridgeServer().capabilities, readalong: true },
   bridge: { version: '0.5.0', features: ['sidecars', 'readalong'] },
@@ -66,6 +68,16 @@ function signIn(user: User) {
   } as never);
 }
 
+/** The offer for the playing book, which `playing` changes (another book starts in place). */
+let playing: (target: typeof TARGET) => void = () => {};
+function Offer() {
+  const [target, setTarget] = useState(TARGET);
+  useEffect(() => {
+    playing = setTarget;
+  }, []);
+  return <MakeReadalongOffer target={target} hasEbook title="The Call of the Wild" />;
+}
+
 const queryClients: QueryClient[] = [];
 async function mount() {
   const qc = new QueryClient({
@@ -77,7 +89,7 @@ async function mount() {
   queryClients.push(qc);
   await mountWithPortal(
     <QueryClientProvider client={qc}>
-      <MakeReadalongOffer target={TARGET} hasEbook title="The Call of the Wild" />
+      <Offer />
     </QueryClientProvider>,
   );
 }
@@ -184,6 +196,16 @@ describe('the confirmation', () => {
     await open();
     expect(screen.getByTestId('readalong-blocked')).toHaveTextContent(words);
     expect(screen.getByTestId('readalong-confirm')).toBeDisabled();
+  });
+
+  it('closes when another book plays under it, never queueing that one', async () => {
+    await open();
+    await act(async () => playing(OTHER));
+    expect(screen.queryByTestId('readalong-confirm')).toBeNull();
+    // Nor does it open again by itself when the first book is back.
+    await act(async () => playing(TARGET));
+    expect(screen.queryByTestId('readalong-confirm')).toBeNull();
+    expect(mockQueue).not.toHaveBeenCalled();
   });
 
   it('says a refusal in its own words, keeping the confirmation open', async () => {

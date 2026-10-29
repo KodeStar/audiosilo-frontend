@@ -67,6 +67,10 @@ describe('companionTabs', () => {
     expect(activeCompanionTab(companionTabs(false), 'who')).toBe('chapters');
     expect(activeCompanionTab(companionTabs(true), 'notes')).toBe('notes');
     expect(activeCompanionTab(companionTabs(true), null)).toBe('who');
+    // Text opens only when asked for: with no community tabs, Chapters still leads.
+    expect(activeCompanionTab(companionTabs(false, true), null)).toBe('chapters');
+    expect(activeCompanionTab(companionTabs(false, true), 'who')).toBe('chapters');
+    expect(activeCompanionTab(companionTabs(false, true), 'text')).toBe('text');
   });
 });
 
@@ -227,16 +231,13 @@ describe('chapterRows', () => {
 
 describe('textTab', () => {
   it('shows for a listener only once a map with a sentence is in', () => {
-    expect(textTab({ map: true, pending: false, mayMake: false })).toBe(true);
-    // On its way: no tab that vanishes a moment later.
-    expect(textTab({ map: false, pending: true, mayMake: false })).toBe(false);
-    // None, or a stale one (the gate gives no map): no tab.
-    expect(textTab({ map: false, pending: false, mayMake: false })).toBe(false);
+    expect(textTab({ map: true, mayMake: false })).toBe(true);
+    // On its way (no tab that vanishes a moment later), none, or a stale one: no tab.
+    expect(textTab({ map: false, mayMake: false })).toBe(false);
   });
 
   it('shows for an admin who may make one without a map, offering Make', () => {
-    expect(textTab({ map: false, pending: false, mayMake: true })).toBe(true);
-    expect(textTab({ map: true, pending: false, mayMake: true })).toBe(true);
-    expect(textTab({ map: false, pending: true, mayMake: true })).toBe(false);
+    expect(textTab({ map: false, mayMake: true })).toBe(true);
+    expect(textTab({ map: true, mayMake: true })).toBe(true);
   });
 });

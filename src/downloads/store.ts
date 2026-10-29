@@ -39,8 +39,6 @@ import {
 } from './offline-meta';
 import {
   fetchReadalongFile,
-  type KeptReadalong,
-  READALONG_FILE,
   readalongChange,
   readReadalongFile,
   removeReadalongFile,
@@ -578,7 +576,7 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   const change = readalongChange(book, entry.manifest);
   if (change === 'keep') return;
   const key = contentKeyOf(ref);
-  let kept: KeptReadalong | undefined;
+  let kept: string | undefined;
   if (change === 'drop') {
     await removeReadalongFile(ref);
   } else {
@@ -587,6 +585,8 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     if (readalongTried.has(attempt) || !api) return;
     readalongTried.add(attempt);
     kept = await fetchReadalongFile(api, ref);
+    // Not fetched: the map kept (if any) stays, and so does what the download says of it.
+    if (!kept) return;
   }
   if (!stillDownloaded(key, entry)) {
     // Removed while it was fetched: don't leave the file behind.
@@ -595,9 +595,30 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   }
   const { manifest } = useDownloads.getState().entries[key];
   patchEntry(key, {
-    manifest: { ...manifest, readalongUri: kept?.uri, readalongGeneratedAt: kept?.generatedAt },
+    manifest: {
+      ...manifest,
+      readalongGeneratedAt: kept,
+      book: namingReadalong(manifest.book, kept, book.readalong),
+    },
   });
   persistSoon();
+}
+
+/**
+ * A download's book naming the read-along map it keeps (`kept`, its `generated_at`), or,
+ * with none kept, what `readalong` says (a server's answer: stale, or none). Offline that
+ * book is what the cache is seeded with (`seedQueryCache`), and the kept copy is read only
+ * while the book names it or no map at all (`readalongSource`).
+ */
+function namingReadalong(
+  book: Book,
+  kept: string | undefined,
+  readalong: Book['readalong'] = book.readalong,
+): Book {
+  return {
+    ...book,
+    readalong: kept ? { ...readalong, state: 'ready', generated_at: kept } : readalong,
+  };
 }
 
 /** While a download runs, its finished files reach storage at most this often
@@ -791,8 +812,8 @@ function afterLaunch(task: () => void) {
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
- * `cover.jpg` for the cover, `book.epub` for the ebook, `readalong.json` for its read-along
- * map), so the (connectionId, libraryId, path, fileName) → live-uri
+ * `cover.jpg` for the cover, `book.epub` for the ebook), so the
+ * (connectionId, libraryId, path, fileName) → live-uri
  * mapping lives here too; `engine.localUri` supplies the container-current absolute uri
  * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
  * is also what carries a download across the identity migration, which rewrites
@@ -814,8 +835,7 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   );
   const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
   const ebookUri = e.manifest.ebookUri ? at(EBOOK_FILE) : undefined;
-  const readalongUri = e.manifest.readalongUri ? at(READALONG_FILE) : undefined;
-  return { ...e, manifest: { ...e.manifest, files, coverUri, ebookUri, readalongUri } };
+  return { ...e, manifest: { ...e.manifest, files, coverUri, ebookUri } };
 }
 
 /**
@@ -1046,7 +1066,7 @@ async function runOne(key: string) {
       ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
     // The book's read-along map (Bridge Phase 3c), beside the EPUB it follows: optional too.
-    let readalong: KeptReadalong | undefined;
+    let readalong: string | undefined;
     if (
       wantsReadalong(cachedCapability(connectionId, 'readalong'), entry.manifest.book, ebookUri)
     ) {
@@ -1062,8 +1082,8 @@ async function runOne(key: string) {
       files,
       coverUri,
       ebookUri,
-      readalongUri: readalong?.uri,
-      readalongGeneratedAt: readalong?.generatedAt,
+      readalongGeneratedAt: readalong,
+      book: namingReadalong(entry.manifest.book, readalong),
       savedAt: new Date().toISOString(),
     });
 
@@ -1197,8 +1217,8 @@ export function useDownloadedEbook(
 }
 
 /** The `generated_at` of the read-along map a finished download of the book keeps beside
- * its EPUB (`manifest.readalongUri`), else undefined. A string, so a download's progress
- * ticks re-render nothing. */
+ * its EPUB (`manifest.readalongGeneratedAt`), else undefined. A string, so a download's
+ * progress ticks re-render nothing. */
 export function useDownloadedReadalong(
   connectionId: string,
   libraryId: number,
@@ -1206,7 +1226,7 @@ export function useDownloadedReadalong(
 ): string | undefined {
   return useDownloads((s) => {
     const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
-    return (m?.ebookUri && m.readalongUri && m.readalongGeneratedAt) || undefined;
+    return (m?.ebookUri && m.readalongGeneratedAt) || undefined;
   });
 }
 
@@ -1214,7 +1234,7 @@ export function useDownloadedReadalong(
  * (none kept, gone, or no map). */
 export function readDownloadedReadalong(ref: BookRef) {
   const m = downloadedEntryOf(ref)?.manifest;
-  return m?.ebookUri && m.readalongUri ? readReadalongFile(ref) : Promise.resolve(null);
+  return m?.ebookUri && m.readalongGeneratedAt ? readReadalongFile(ref) : Promise.resolve(null);
 }
 
 /** A book's registry entry when it is fully downloaded, else undefined: the non-hook

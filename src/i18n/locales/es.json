@@ -1359,7 +1359,6 @@
       "noAgent": "Ninguno: no se usa ningún agente de IA",
       "confirm": "Crear lectura sincronizada",
       "queued": "En cola. El texto aparecerá aquí cuando termine.",
-      "queueFailed": "No se pudo poner en cola. No se ha iniciado nada.",
       "statusTitle": "Creando la lectura sincronizada",
       "parkedTitle": "La creación de la lectura sincronizada está en pausa",
       "failedTitle": "La creación de la lectura sincronizada falló",

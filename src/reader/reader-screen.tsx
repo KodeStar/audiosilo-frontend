@@ -124,13 +124,12 @@ export function ReaderScreen({
   // the player holds. The map is asked for and goes to the reader only then: another book
   // playing has nothing to follow here.
   const narration = useNarration({ connectionId, libraryId, path }, host);
-  const readalong = useBookReadalong(
+  const readalongMap = useBookReadalong(
     { connectionId, libraryId, path },
     book,
     readable,
     narration.narrating,
-  );
-  const readalongMap = narration.narrating ? readalong.map : null;
+  ).map;
   // What the reader made of the map, and whether it follows the narration (null: it never
   // has, for this map).
   const [readalongOk, setReadalongOk] = useState(false);
@@ -140,6 +139,11 @@ export function ReaderScreen({
     setReadalongOk(false);
     setFollowingShown(null);
   }
+  // Nor does anything follow without a map: a reader document that was not there to say
+  // so (one that failed, or not ready yet) never follows when it comes.
+  useEffect(() => {
+    if (!readalongMap) following.current = false;
+  }, [readalongMap]);
 
   const { theme, fontScale, setFontScale } = useReaderAppearance();
   const changeFontScale = (direction: -1 | 1) => {
@@ -310,6 +314,10 @@ export function ReaderScreen({
     // where the reader was.
     setOpened(null);
     setReadalongOk(false);
+    // Its reader document has never followed (this screen sends no follow by itself): the
+    // place is saved again, and "Follow narration" asks.
+    following.current = false;
+    setFollowingShown(null);
     if (current) setResumeAt({ cfi: current.cfi, fraction: current.fraction });
     setAttempt((n) => n + 1);
     if (bookFailed) void refetchBook();

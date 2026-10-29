@@ -35,6 +35,7 @@ const ready = (generated_at = 'g1'): Pick<Book, 'ebook' | 'readalong'> => ({
   readalong: { state: 'ready', generated_at },
 });
 const REF = { connectionId: 'c1', libraryId: 1, path: 'A/Book' };
+const SERVER_MAP = map();
 
 describe('readalongSource', () => {
   const base = { serves: true as boolean | undefined, readable: true, kept: undefined };
@@ -78,8 +79,9 @@ describe('useBookReadalong', () => {
     jest.clearAllMocks();
     mockServes = true;
     mockKept = undefined;
+    // One answer per map, as the query gives it (the same object on every render).
     mockServerMap.mockImplementation(({ enabled }: { enabled: boolean }) => ({
-      data: enabled ? map() : undefined,
+      data: enabled ? SERVER_MAP : undefined,
       isError: false,
     }));
   });
@@ -128,5 +130,59 @@ describe('useBookReadalong', () => {
     mockServerMap.mockReturnValue({ data: undefined, isError: true });
     const failed = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
     expect(failed.result.current).toEqual({ map: null, pending: false });
+  });
+
+  it('keeps the map shown while another copy of it is on its way, never past a stale one', async () => {
+    const REMADE = map([{ ...SPAN, start: 3, end: 4 }]);
+    let remadeIn = false;
+    mockServerMap.mockImplementation(
+      ({ enabled, generatedAt }: { enabled: boolean; generatedAt: string }) => ({
+        data: !enabled
+          ? undefined
+          : generatedAt === 'g1'
+            ? SERVER_MAP
+            : remadeIn
+              ? REMADE
+              : undefined,
+        isError: false,
+      }),
+    );
+    const { result, rerender } = await renderHook(
+      ({ book }: { book: Pick<Book, 'ebook' | 'readalong'> }) => useBookReadalong(REF, book, true),
+      { wrapper, initialProps: { book: ready('g1') } },
+    );
+    const first = result.current.map;
+    expect(first).not.toBeNull();
+    // Made again: its map is on its way, the one shown stays.
+    await rerender({ book: ready('g2') });
+    expect(result.current).toEqual({ map: first, pending: false });
+    remadeIn = true;
+    await rerender({ book: ready('g2') });
+    expect(result.current.map).toEqual({
+      sections: [{ href: 'c1.xhtml', spans: [{ ...SPAN, start: 3, end: 4 }] }],
+    });
+    // Stale: nothing to follow, at once, and nothing kept for later.
+    await rerender({ book: { ebook: EBOOK, readalong: { state: 'stale' } } });
+    expect(result.current).toEqual({ map: null, pending: false });
+    remadeIn = false;
+    await rerender({ book: ready('g3') });
+    expect(result.current).toEqual({ map: null, pending: true });
+  });
+
+  it('keeps no map of another book', async () => {
+    mockServerMap.mockImplementation(
+      ({ enabled, generatedAt }: { enabled: boolean; generatedAt: string }) => ({
+        data: enabled && generatedAt === 'g1' ? SERVER_MAP : undefined,
+        isError: false,
+      }),
+    );
+    const { result, rerender } = await renderHook(
+      ({ path, book }: { path: string; book: Pick<Book, 'ebook' | 'readalong'> }) =>
+        useBookReadalong({ ...REF, path }, book, true),
+      { wrapper, initialProps: { path: 'A/Book', book: ready('g1') } },
+    );
+    expect(result.current.map).not.toBeNull();
+    await rerender({ path: 'B/Book', book: ready('g2') });
+    expect(result.current).toEqual({ map: null, pending: true });
   });
 });

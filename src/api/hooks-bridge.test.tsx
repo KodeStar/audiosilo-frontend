@@ -414,7 +414,7 @@ describe('useQueueBridgeJob', () => {
 
 // Read-along (Bridge Phase 3c): the map is asked only of a server with `readalong`, only
 // while the surface's gate lets it, once per map (its `generated_at`); a finished
-// readalong.align job has the book's item and map read again.
+// readalong.align job has the book's item read again, which names the map made.
 describe('useReadalong', () => {
   const withReadalong = (on: boolean) => {
     const server = bridgeServer();
@@ -446,7 +446,7 @@ describe('useReadalong', () => {
     expect(qc.getQueryData(qk.readalong('c1', 1, 'Author/Book', 'g1'))).toEqual(MAP);
   });
 
-  it("reads the book's item and map again once a readalong.align job is done", async () => {
+  it("reads the book's item again once a readalong.align job is done, never a map", async () => {
     const { qc } = await mount(bridgeServer(), () => null);
     const ITEM_KEY = qk.item('c1', 1, 'Author/Book');
     const MAP_KEY = qk.readalong('c1', 1, 'Author/Book', 'g1');
@@ -462,7 +462,9 @@ describe('useReadalong', () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(qc.getQueryState(ITEM_KEY)?.isInvalidated).toBe(true);
-    expect(qc.getQueryState(MAP_KEY)?.isInvalidated).toBe(true);
+    // A map is one `generated_at` (a later launch's done job made the one shown): its copy
+    // is never fetched again.
+    expect(qc.getQueryState(MAP_KEY)?.isInvalidated).toBe(false);
     expect(qc.getQueryState(OTHER_KEY)?.isInvalidated).toBe(false);
   });
 });

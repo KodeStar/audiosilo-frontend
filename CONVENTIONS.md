@@ -440,8 +440,9 @@ them in) or a grown-up, each on "Everything I can listen to" or "Only collection
   holding member sign-ins, and the collection share sheet notes which members can listen to it.
 
 **The Bridge (Bridge Phase 1a, capability `bridge`, admin only, `src/components/bridge/`).** The
-player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidecars.generate`
-("Generate characters and recaps"); the console covers everything else.
+player's first admin-only UI (Bridge decision 9) and its Bridge kinds, `sidecars.generate`
+("Generate characters and recaps") and (Phase 3c) `readalong.align` ("Make read-along", see
+Read-along); the console covers everything else.
 - **Wire** (`types.ts`): `Capabilities.bridge` (a Bridge paired and online) and
   `ServerInfo.bridge {version, features}`; `BridgeJob` (state `queued | claimed | running |
   needs_attention | done | failed | cancelled`; `path` is the book's own `rel_path`; `error` is a
@@ -468,12 +469,12 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
 - **Hooks** (`hooks.ts`, `qk.bridgeJobs` / `qk.bridgeEstimate`): `useBridgeJobs(lib, path,
   {enabled, active, select})` asks only a server with the flag and only while `enabled` (a
   non-admin would get a 403), `retry: false`; it POLLS (`bridgePollInterval`,
-  `src/lib/bridge-jobs.ts`) only while a `sidecars.generate` or (Phase 1d) `chapters.detect`
-  job of the book is open and the surface is `active` with the app foregrounded: `BRIDGE_POLL_MS` (10 s) while claimed or
+  `src/lib/bridge-jobs.ts`) only while a `sidecars.generate`, (Phase 1d) `chapters.detect` or
+  (Phase 3c) `readalong.align` job of the book is open and the surface is `active` with the app foregrounded: `BRIDGE_POLL_MS` (10 s) while claimed or
   running, `BRIDGE_IDLE_POLL_MS` (60 s) while queued or parked, never otherwise (the answer
   that sees the job end stops it). When a read first sees the newest job that wrote the book
-  `done` (`latestDone`: a generate job, or the console's `sidecars.describe` or
-  `chapters.detect`), `refreshAfterFinish` invalidates the book's `/meta` (every variant), its
+  `done` (`latestDone`: a generate job, the console's `sidecars.describe` or
+  `chapters.detect`, or a `readalong.align`), `refreshAfterFinish` invalidates the book's `/meta` (every variant), its
   item and its chapters (under any path that names them) and WAITS for them before the answer
   lands, once per finish per cache (`finishesActedOn`), so the tabs, `generated` and the
   chapters a Bridge found are in before the status goes and the offer never flashes back.
@@ -758,8 +759,10 @@ reader follows the narration in the book with it.
   `readalong_stale` are final). `parseReadalongMap` checks every span (the server checks only the
   head): a CFI starting `epubcfi(` of at most 1024 UTF-8 bytes, finite `0 <= start <= end`; a bad
   span is dropped and counted (`dropped`), never the map; `gaps`/`audio_gaps` are not kept. A
-  done `readalong.align` job reads the book's item and maps again (`refreshAfterFinish`); its
-  list polls while one is open. `readalongRequest` names the request for a download.
+  done `readalong.align` job reads the book's item again (`refreshAfterFinish`), which names the
+  map made: a map is one `generated_at`, so no copy is ever read again (a later launch's first
+  read of the jobs costs nothing); its list polls while one is open. The estimate
+  (`readalongEstimate`) gets `bridgeEstimate`'s budget: the server may hash the ebook first.
 - **Protocol**, both ways field by field (`protocol.ts`, `reader.js`). Host -> reader:
   `readalong {map}` (`readerMapOf`: sections' hrefs and spans only; null: none), in the app a
   map over 256 KB of JSON as `readalong {length, chunks}` + `readalongChunk {seq, data}` pieces
@@ -782,9 +785,15 @@ reader follows the narration in the book with it.
   2 s across a short gap). Ranges resolve lazily per section document; a CFI naming nothing is
   skipped (`bad`), never breaking the loop. A tap finds its sentence by CFI order (`findInOrder`
   on the caret's CFI), seeks to its start and follows; samples far from the tap are ignored for
-  `SEEK_GRACE_MS`. A person's move (page, scroll, snap, navigation; never a relayout's `anchor`)
-  off the sentence stops following; a seek in the player (a sample `JUMP` from the clock) follows
-  again once the reader has followed (never one that never did). A sentence over the page end
+  `SEEK_GRACE_MS`. A person's move (page, scroll, snap, navigation; never a relayout's `anchor`,
+  nor one that stays on the page shown, such as a tap's snap) that takes the sentence (between
+  two, the next one: `spanAfter`) off the page stops following, and one back onto it follows
+  again, both only once the reader has followed; a seek in the player (a sample `JUMP` from the
+  clock and from where it would have played on to, so a late sample is no seek) follows again
+  once the reader has followed (never one that never did). Moves are made one at a time
+  (`inTurn`: the tick's, `follow`'s and the host's page turns wait for each other, each given up
+  after `MOVE_MS`, since foliate never settles a `goTo` whose view a later one replaced), and the
+  tick lets go of a sentence whose map changed while it waited. A sentence over the page end
   turns the page once the narration passes its shown share. The highlight is foliate's
   annotation drawn with `Overlayer.highlight`. Tests: `reader/test/readalong.test.mjs` (core),
   `readalong-cfi.test.mjs` (the Bridge's Alice map and EPUB, `reader/test/fixtures`, byte copies
@@ -799,11 +808,16 @@ reader follows the narration in the book with it.
   (`use-book-readalong.ts`) picks the map's source (`readalongSource`): the download's copy
   while the server's book names it or names none (a list row, offline), else the server's
   (`useReadalong`); never a stale map, copy or not; a copy that can't be read falls back to the
-  server's. Only a map with a sentence (`hasSpans`) reaches the reader.
+  server's. Only a map with a sentence (`hasSpans`) reaches the reader. While another copy of the
+  map shown is on its way (the download took it, it was made again), the one shown stays (not
+  `pending`): a tab or a reader with a map never loses it in between.
   - **The companion's Text tab** (`companion/use-text-tab.ts`, `text-panel.tsx`), right after
-    Story: shown once the map is in (a stale or absent map: no tab for a listener), or for an
-    admin who may make one (`mayMakeReadalong`) when there is none to follow (then the tab is
-    the Make offer, "again" for a stale map). It opens at the sentence being read (`cfiAt`)
+    Story: shown once the map is in (a stale or absent map: no tab for a listener), and always
+    for an admin who may make one (`mayMakeReadalong`): a spinner while the map is on its way,
+    the Make offer when there is none to follow ("again" for a stale map). Never the tab the
+    companion opens on unasked (`activeCompanionTab`: the first but Text). One reader per book
+    (keyed by it): the playing book changing under an open tab gets its own, and what a reader
+    made of a map (`none`) holds only for that map. It opens at the sentence being read (`cfiAt`)
     with `followNarration`; Back to narration (`FollowPill`) once the listener turned away; the
     page edges only once the reader answered `ok`; a reader `none` (the map names nothing in
     this ebook) is its own notice with Make again; a section that didn't load (fe#164), a start
@@ -815,7 +829,8 @@ reader follows the narration in the book with it.
     reader said `ok`) calls `follow()`, which shows "Back to narration" once the listener
     turned away; a seek in the player re-follows only after a first follow (the core's rule).
     **No reading-place save while following** (`onFollowing(true)` drops the timer and the
-    pending save); leaving following schedules a save of the page on screen at once.
+    pending save); leaving following schedules a save of the page on screen at once. A map that
+    goes away, or Try again (a new host, which has followed nothing), ends following here too.
   - **Make read-along** (`src/components/bridge/`: `use-make-readalong.ts`,
     `make-readalong.tsx`, rules in `readalong-model.ts`) is Generate's pattern: offered
     (`readalongOffer`) to an admin once the book's jobs are known and none shows its status
@@ -824,8 +839,10 @@ reader follows the narration in the book with it.
     "Up to" the transcription (`asr_hours`; "no estimate" without `figures`), no agent, and
     where the text appears, held back (`readalongBlockKey`) on `no_ebook`,
     `library_not_writable`, an open generate or detect job, or the book's own open read-along
-    job (`readalong_open`); a refusal reads in the app's words (`readalongRefusalKey`). The
-    job's finish reads the book and its map again (`refreshAfterFinish`).
+    job (`readalong_open`); a refusal reads in the app's words (`readalongRefusalKey`). An open
+    confirmation is the book's (`useBridgeJobSurface`): it closes when the playing book changes.
+    The job's finish reads the book again (`refreshAfterFinish`); its map follows under the new
+    `generated_at`.
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
@@ -2162,16 +2179,19 @@ are asked, at most 10,000 rows.
   whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
   spec rebuilt (`car-controller.ts`).
 - **Read-along offline** (`src/downloads/readalong-file.ts`): a download that saved the EPUB
-  also saves the book's map as `readalong.json` beside it (`client.readalongRequest`: header
-  auth, the server's map as it came), when the server serves maps (`cachedCapability(cid,
-  'readalong')`) and the book is not known to have only a stale one (`wantsReadalong`); what
-  landed is checked (a `generated_at` and a sentence) or removed. Optional like the EPUB: a
-  failure keeps the book, a cancel cancels it. The manifest names it (`readalongUri`,
-  `readalongGeneratedAt`; `relocateEntry` finds it under the live root).
-  `startReadalongRefresh` (the root's services) watches the server's `/item` answers for a
-  downloaded book: another `generated_at` fetches the map again, no ready map (stale or none)
-  drops it (`readalongChange`), once per answer's map per launch (`readalongTried`). The Text
-  tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
+  also saves the book's map as `readalong.json` beside it (`fetchReadalongFile`:
+  `client.readalong`, header auth, checked; written through `engine.writeText` only once it has
+  a `generated_at` and a sentence, so nothing is written or removed before a checked map is in
+  hand), when the server serves maps (`cachedCapability(cid, 'readalong')`) and the book is not
+  known to have only a stale one (`wantsReadalong`). Optional like the EPUB: a failure keeps the
+  book, a cancel cancels it. The manifest marks it by `readalongGeneratedAt` (the file is read
+  by name), and its `book.readalong` names the map kept (`namingReadalong`): offline that book
+  is the item's seed, and `readalongSource` reads the copy only while the book names it or no
+  map. `startReadalongRefresh` (the root's services) watches the server's `/item` answers for a
+  downloaded book: another `generated_at` fetches the map again (a failed fetch keeps the copy
+  and the manifest as they were), no ready map (stale or none) drops it (`readalongChange`; the
+  book then says what the server said), once per answer's map per launch (`readalongTried`).
+  The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
   metadata (asked by `metaEnabledFor`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
@@ -2261,7 +2281,8 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   (`scrubTarget`/`scrubGuard`: 30 s short, or a tenth of a book under 5 minutes, never inside
   the last `FINISHED_TOLERANCE` seconds), which would finish the book and take the Undo chip
   with it.
-  The **companion** (`companion/`: Who's who, Story so far, Chapters, Bookmarks, Notes, History) is
+  The **companion** (`companion/`: Who's who, Story so far, Text, Chapters, Bookmarks, Notes,
+  History) is
   a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
   (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover
   slot takes what the rest leaves, `phoneCoverSize`, so the player fits without scrolling);

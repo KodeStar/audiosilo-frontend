@@ -5,15 +5,17 @@ import { ApiError } from '@/api/client';
 import { CapabilityError, useBridgeJobs, useCancelBridgeJob, useQueueBridgeJob } from '@/api/hooks';
 import type { BridgeJob } from '@/api/types';
 import { toast } from '@/components/ui/toast';
+import { contentKeyOf } from '@/lib/content-key';
 
 import type { GenerateTarget } from './use-generate';
 
 /**
  * What every player surface that queues a Bridge job for one book shares (Generate, Make
  * read-along): whether a job shows its status (`showsJob`, the job list's only read here:
- * the status's own read polls), the confirmation (closed with the permission), the queue
- * mutation and its busy flag, and Cancel. The jobs are never asked for someone who may not
- * (`allowed`: a non-admin would get a 403).
+ * the status's own read polls), the confirmation (closed with the permission, and the
+ * book's: another book playing under it would be the one queued), the queue mutation and
+ * its busy flag, and Cancel. The jobs are never asked for someone who may not (`allowed`: a
+ * non-admin would get a 403).
  */
 export function useBridgeJobSurface(
   target: GenerateTarget,
@@ -30,11 +32,14 @@ export function useBridgeJobSurface(
   );
   const queueJob = useQueueBridgeJob(connectionId);
   const cancelJob = useCancelBridgeJob(connectionId);
-  const [confirming, setConfirming] = useState(false);
+  // The book the confirmation is open for (`contentKeyOf`), or null.
+  const book = contentKeyOf(target);
+  const [confirmingFor, setConfirmingFor] = useState<string | null>(null);
   const [queueing, setQueueing] = useState(false);
   // The confirmation goes with the permission (the Bridge went offline, the flag is off):
-  // its button could send nothing, and it must not open again by itself later.
-  if (confirming && !allowed) setConfirming(false);
+  // its button could send nothing. And with its book (another one plays now): it would
+  // queue that one. Neither opens it again by itself later.
+  if (confirmingFor !== null && (!allowed || confirmingFor !== book)) setConfirmingFor(null);
 
   return {
     // An answer is in (a later read that failed keeps it: the list has `retry: false`, and
@@ -42,8 +47,8 @@ export function useBridgeJobSurface(
     jobsKnown: jobs.data !== undefined,
     showsJob: jobs.data === true,
     queueJob,
-    confirming: confirming && allowed,
-    setConfirming,
+    confirming: confirmingFor === book && allowed,
+    setConfirming: (open: boolean) => setConfirmingFor(open ? book : null),
     queueing,
     setQueueing,
     cancel: (job: BridgeJob) =>

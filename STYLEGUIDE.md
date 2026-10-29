@@ -463,7 +463,7 @@ recap", and the spoiler-safe attribution (for recaps generated on the server, th
 chip instead).
 
 ### Generate characters and recaps (admin, Bridge) *custom*
-The player's one admin-only action, for a book the community lacks characters or recaps for when the server's
+The player's first admin-only action (Make read-along, below, follows its pattern), for a book the community lacks characters or recaps for when the server's
 Bridge is online (Phase 1e: one rule with the console, `generateOffer`): an `outline` button with the sparkles
 icon after the book page's hero actions (its own row on a phone), or under the companion's empty Who's who and
 Story so far; "Regenerate characters and recaps" (a book with generated ones) is quieter, in the book menu. When
@@ -482,13 +482,14 @@ or "Try again" once it failed; a park says when it resumes by itself, else to op
 
 ### Companion: Text (read-along) *custom*
 The book's ebook in the reader, on the card palette, following the narration: the sentence being read is
-highlighted and the page turns with it; a tap on a sentence seeks there. A fixed 520 px reader in the companion's
-column (it fills the phone sheet). The page edges come only once the text follows, narrow (`w-6`) in a column
+highlighted and the page turns with it; a tap on a sentence seeks there. The reader fills the desktop column and the
+phone sheet, and takes a fixed 520 px on the tablet's page. Never the tab the companion opens on unasked; for an admin
+it is always there, with a spinner while the map is on its way. The page edges come only once the text follows, narrow (`w-6`) in a column
 under 640 px so a tap on the text is never a page turn. When the listener turns away, a small rounded-full `sm`
 Button with the microphone icon, "Back to narration", floats at the foot; the full-screen reader shows the same
 pill as "Follow narration" while its book is the one playing. Never pink. Empty, stale, no-match and failure
-states are the standard EmptyState; for an admin, "Make read-along" (or "Make it again") sits under them in
-Generate's pattern (below): the companion's secondary sparkles button, a Dialog quoting the source, "Up to" the transcription time, no
+states are the standard EmptyState; for an admin, "Make read-along" (or "Make the read-along again") sits under them in
+Generate's pattern (above): the companion's secondary sparkles button, a Dialog quoting the source, "Up to" the transcription time, no
 AI agent, and where the text appears, held back in warning text, and the same compact job status.
 
 ### Sheets (speed, sleep, bookmark, output, chapters, Up next, companion)

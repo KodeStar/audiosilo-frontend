@@ -13,6 +13,7 @@ import {
   createReadalong,
   findInOrder,
   indexMap,
+  MOVE_MS,
   spanAt,
   spineStepIndex,
 } from '../src/readalong.js';
@@ -94,9 +95,14 @@ test('a caret inside a sentence finds it by CFI order; one between sentences fin
   );
 });
 
-/** A read-along over the fake view, with the tick driven by the test and a set clock. */
+/** Lets every promise chain started so far settle. */
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+/** A read-along over the fake view, with the tick driven by the test and a set clock. A
+ * move's MOVE_MS timeout fires only when the test calls it (`timeouts`). */
 function followAlong(map = book.map, opts) {
   const sent = [];
+  const timeouts = [];
   let tick = null;
   let now = 0;
   const readalong = createReadalong({
@@ -111,6 +117,8 @@ function followAlong(map = book.map, opts) {
     stop: () => {
       tick = null;
     },
+    after: (fn) => timeouts.push(fn),
+    cancel: () => {},
   });
   const fake = fakeView(book, spansOf, opts);
   readalong.setMap(map);
@@ -119,14 +127,27 @@ function followAlong(map = book.map, opts) {
     ...fake,
     readalong,
     sent,
+    timeouts,
     pass: (ms) => (now += ms),
+    /** One tick, not waited for (its moves can be held): `settle` lets it finish. */
+    startTick: () => void tick?.(),
     tick: async () => {
       await tick?.();
       // let the tick's awaits settle
-      for (let i = 0; i < 5; i++) await Promise.resolve();
+      await settle();
     },
     of: (type) => sent.filter((m) => m.type === type),
   };
+}
+
+/** Holds the fake view's goTo until the test lets each one go (`release`), as a section
+ * that takes a while to load. */
+function holdGoTo(view) {
+  const held = [];
+  const goTo = view.goTo;
+  view.goTo = (target) =>
+    new Promise((resolve) => held.push({ target, release: () => resolve(goTo(target)) }));
+  return held;
 }
 
 const chapter = book.sections.find((s) => spansOf(s.index).length > 30);
@@ -305,7 +326,150 @@ test('a follow and a place before the book shows: it turns there once it does', 
   const { view } = fakeView(book, spansOf);
   readalong.attach(view);
   await tick();
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  await settle();
   assert.deepEqual(view.calls[0], ['goTo', spans[5].cfi]);
   assert.deepEqual(view.annotations, [spans[5].cfi]);
+});
+
+test('turning onto the sentence being read never follows a reader that never followed', async () => {
+  const r = followAlong();
+  r.readalong.position({ t: spans[10].start + 0.1, rate: 1, playing: false });
+  await r.tick();
+  r.view.turnTo(chapter.index, 9);
+  assert.equal(r.of('following').length, 0);
+  // Nor does a seek in the player after it: the reader still never followed.
+  r.readalong.position({ t: spans[25].start + 0.1, rate: 1, playing: false });
+  await r.tick();
+  assert.equal(r.of('following').length, 0);
+  assert.ok(!r.view.calls.some(([c]) => c === 'goTo'));
+});
+
+test("a touch's snap back to the page shown is no move: a tapped sentence is followed", async () => {
+  const r = followAlong();
+  r.readalong.position({ t: spans[2].start + 0.1, rate: 1, playing: false });
+  await r.readalong.follow();
+  await r.tick();
+  r.view.turnTo(chapter.index, 9);
+  assert.deepEqual(r.of('following').at(-1), { type: 'following', value: false });
+  // A tap on a sentence of this page seeks there and follows; the paginator then snaps back
+  // to the same page (after the click), which keeps it.
+  const target = r.rangeOfSpan(chapter.index, 10);
+  chapter.doc.caretRangeFromPoint = () => {
+    const caret = chapter.doc.createRange();
+    caret.setStart(target.startContainer, target.startOffset + 2);
+    return caret;
+  };
+  chapter.doc.body.dispatchEvent(new book.window.MouseEvent('click', { bubbles: true }));
+  delete chapter.doc.caretRangeFromPoint;
+  assert.deepEqual(r.of('seek').at(-1), { type: 'seek', t: spans[10].start });
+  r.view.show(chapter.index, r.pageRange(chapter.index, 9), 'snap');
+  assert.deepEqual(r.of('following').at(-1), { type: 'following', value: true });
+  await r.tick();
+  assert.deepEqual(r.view.annotations, [spans[10].cfi]);
+});
+
+test('between sentences, a move away stops following; one to where it goes on keeps it', async () => {
+  const r = followAlong();
+  // Before the first sentence (the recording's opening words): nothing is lit.
+  assert.ok(spans[0].start > 5);
+  r.readalong.position({ t: 5, rate: 1, playing: true });
+  await r.readalong.follow();
+  await r.tick();
+  assert.equal(r.readalong.state().cur, -1);
+  r.view.turnTo(chapter.index, 0);
+  assert.deepEqual(r.of('following').at(-1), { type: 'following', value: true });
+  r.view.turnTo(chapter.index, 12);
+  assert.deepEqual(r.of('following').at(-1), { type: 'following', value: false });
+  // So the narration playing on to its first sentence leaves the page where the reader is.
+  for (let t = 6; t < spans[0].start; t++) {
+    r.pass(1000);
+    r.readalong.position({ t, rate: 1, playing: true });
+  }
+  r.pass(1000);
+  r.readalong.position({ t: spans[0].start + 0.1, rate: 1, playing: true });
+  await r.tick();
+  assert.equal(r.readalong.state().cur, 0);
+  assert.ok(!r.view.calls.some(([c, t]) => c === 'goTo' && t === spans[0].cfi));
+});
+
+test("the reader's moves and the listener's are made one at a time", async () => {
+  const r = followAlong();
+  const held = holdGoTo(r.view);
+  r.readalong.position({ t: spans[5].start + 0.1, rate: 1, playing: false });
+  const follow = r.readalong.follow();
+  await settle();
+  assert.deepEqual(
+    held.map((h) => h.target),
+    [spans[5].cfi],
+  );
+  // A seek far on while that section loads: the tick's move waits for it, and so does a
+  // listener's.
+  r.readalong.position({ t: spans[25].start + 0.1, rate: 1, playing: false });
+  r.startTick();
+  await settle();
+  let turned = false;
+  const listener = r.readalong.move(() => {
+    turned = true;
+  });
+  await settle();
+  assert.equal(held.length, 1);
+  held.shift().release();
+  await follow;
+  await settle();
+  assert.deepEqual(
+    held.map((h) => h.target),
+    [spans[25].cfi],
+  );
+  assert.equal(turned, false);
+  held.shift().release();
+  await listener;
+  await settle();
+  assert.equal(turned, true);
+  assert.deepEqual(r.view.annotations, [spans[25].cfi]);
+});
+
+test('a move that never settles is given up on after MOVE_MS', async () => {
+  assert.ok(MOVE_MS >= 5000);
+  const r = followAlong();
+  const held = holdGoTo(r.view);
+  r.readalong.position({ t: spans[5].start + 0.1, rate: 1, playing: false });
+  const follow = r.readalong.follow();
+  await settle();
+  assert.equal(held.length, 1);
+  // Its section never loads (another goTo took its place): the timeout lets the rest go.
+  r.timeouts.at(-1)();
+  await follow;
+  // The reader no longer counts its own move: the listener's next one stops following.
+  r.view.turnTo(chapter.index, 20);
+  assert.deepEqual(r.of('following').at(-1), { type: 'following', value: false });
+});
+
+test('a map changed while a move waits leaves the rest to the next tick', async (t) => {
+  // The tick runs off the timer, so what it throws is an unhandled rejection.
+  const thrown = [];
+  const onThrown = (e) => thrown.push(e);
+  process.on('unhandledRejection', onThrown);
+  t.after(() => process.off('unhandledRejection', onThrown));
+  const r = followAlong();
+  r.readalong.position({ t: spans[2].start + 0.1, rate: 1, playing: false });
+  await r.readalong.follow();
+  await r.tick();
+  const held = holdGoTo(r.view);
+  // A seek into the next chapter: its section loads while the map is replaced by a
+  // shorter one.
+  const next = book.sections.find((s) => s.index > chapter.index && spansOf(s.index).length > 0);
+  const far = spansOf(next.index)[0];
+  r.readalong.position({ t: far.start + 0.1, rate: 1, playing: false });
+  r.startTick();
+  await settle();
+  assert.deepEqual(
+    held.map((h) => h.target),
+    [far.cfi],
+  );
+  r.readalong.setMap({ sections: [{ href: chapter.href, spans: [spans[0], spans[1]] }] });
+  held.shift().release();
+  await settle();
+  assert.deepEqual(thrown, []);
+  assert.ok(!r.view.annotations.includes(far.cfi));
+  assert.equal(r.readalong.state().bad, 0);
 });

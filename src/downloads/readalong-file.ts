@@ -7,16 +7,15 @@ import type { DownloadManifest } from './types';
 
 // A downloaded book's read-along map (Bridge Phase 3c): `readalong.json` beside its
 // `book.epub`, so the companion's Text tab follows the narration offline. The file is the
-// server's map as it came (fetched like the EPUB: `client.readalongRequest`, the
-// Authorization header only), checked each time it is read (`parseReadalongMap`).
+// server's map as the player checked it (`client.readalong`, the Authorization header
+// only), written through `engine.writeText` once it is in hand and has a sentence to
+// follow, and checked again each time it is read (`parseReadalongMap`). The registry marks
+// it by its `generated_at` only (`DownloadManifest.readalongGeneratedAt`).
 
 /** The map's name in the book's folder (never an audio file's: those are numbered). */
 export const READALONG_FILE = 'readalong.json';
 
 type Ref = { connectionId: string; libraryId: number; path: string };
-
-/** A map kept in a download: where, and which one (its `generated_at`). */
-export type KeptReadalong = { uri: string; generatedAt: string };
 
 /** The map a download's folder holds, read and checked; null when there is none, it is
  * gone, or it is no `audiosilo-readalong/v1` map. */
@@ -39,41 +38,34 @@ export async function removeReadalongFile(ref: Ref): Promise<void> {
 }
 
 /**
- * Fetch the book's map into its download folder, and check what landed: its uri and
- * `generated_at`, else undefined (the server has none to serve, refused it, or sent
- * something that is no map with sentences: whatever landed goes). Optional, like the
- * EPUB: only a cancel (`signal` aborted) throws.
+ * Fetch the book's map and keep it in its download folder: its `generated_at` once a map
+ * with a sentence to follow is saved, else undefined (the server has none to serve, refused
+ * it or could not be reached, sent no map with sentences, or the folder is gone). Nothing is
+ * written until a checked map is in hand, so a map the folder already keeps stays when the
+ * fetch fails. Optional, like the EPUB: only a cancel (`signal` aborted) throws.
  */
 export async function fetchReadalongFile(
   api: ApiClient,
   ref: Ref,
   signal?: AbortSignal,
-): Promise<KeptReadalong | undefined> {
+): Promise<string | undefined> {
   const { connectionId, libraryId, path } = ref;
-  const { url, headers } = api.readalongRequest(libraryId, path);
-  let uri: string;
+  let map: CheckedReadalongMap;
   try {
-    uri = await engine.downloadFile(
-      connectionId,
-      libraryId,
-      path,
-      READALONG_FILE,
-      url,
-      undefined,
-      signal,
-      headers,
-    );
+    map = await api.readalong(libraryId, path, signal);
   } catch (e) {
     if (signal?.aborted) throw e;
-    await removeReadalongFile(ref);
     return undefined;
   }
-  const map = await readReadalongFile(ref);
-  if (!map || !map.generated_at || !hasSpans(map)) {
-    await removeReadalongFile(ref);
-    return undefined;
-  }
-  return { uri, generatedAt: map.generated_at };
+  if (!map.generated_at || !hasSpans(map) || !engine.writeText) return undefined;
+  const saved = await engine.writeText(
+    connectionId,
+    libraryId,
+    path,
+    READALONG_FILE,
+    JSON.stringify(map),
+  );
+  return saved ? map.generated_at : undefined;
 }
 
 /**

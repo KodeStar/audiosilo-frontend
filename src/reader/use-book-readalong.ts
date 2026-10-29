@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { qk, useCapability, useReadalong } from '@/api/hooks';
 import type { Book } from '@/api/types';
 import { readDownloadedReadalong, useDownloadedReadalong } from '@/downloads/store';
+import { contentKey } from '@/lib/content-key';
 
 import { readalongReady } from './readalong-gating';
 import { hasSpans, type ReaderReadalongMap, readerMapOf } from './readalong-map';
@@ -49,7 +50,9 @@ export type BookReadalongMap = {
  * A book's read-along map for the reader (Bridge Phase 3c): the download's copy when one is
  * kept (offline too, with the capability unknown), else the server's (`useReadalong`), by
  * `readalongSource`. `readable` is `canRead`'s answer for the book; `enabled: false` asks
- * nothing (a surface not on screen).
+ * nothing (a surface not on screen). While another copy of the map shown is on its way (the
+ * book's download took it, it was made again), that one stays: a tab or a reader that has a
+ * map never loses it in between.
  */
 export function useBookReadalong(
   ref: { connectionId: string; libraryId: number; path: string },
@@ -88,5 +91,13 @@ export function useBookReadalong(
   const data = source === 'local' ? local.data : source === 'server' ? server.data : undefined;
   const failed = source === 'local' ? local.isError : source === 'server' && server.isError;
   const map = useMemo(() => (data && hasSpans(data) ? readerMapOf(data) : null), [data]);
-  return { map, pending: source !== null && data === undefined && !failed };
+  const pending = source !== null && data === undefined && !failed;
+  // The map last shown for this book, kept while it has one or another is on its way (set
+  // while rendering, React's pattern for state that follows a prop).
+  const bookKey = contentKey(connectionId, libraryId, path);
+  const [last, setLast] = useState<{ book: string; map: ReaderReadalongMap } | null>(null);
+  if (map && (last?.map !== map || last.book !== bookKey)) setLast({ book: bookKey, map });
+  else if (!map && !pending && last) setLast(null);
+  const held = !map && pending && last?.book === bookKey ? last.map : null;
+  return held ? { map: held, pending: false } : { map, pending };
 }

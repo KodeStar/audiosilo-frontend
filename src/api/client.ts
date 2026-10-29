@@ -1264,19 +1264,9 @@ export class ApiClient {
   /** The request `ebook` makes, for a download that is not this client's fetch (the app's
    * reader cache file, a downloaded book's copy): the url, and the headers it must carry.
    * The url holds no credential; the headers do, so they are never stored. */
-  ebookRequest(libraryId: number, path: string) {
-    return this.bookFileRequest('ebook', libraryId, path);
-  }
-  /** A header-authenticated GET of one of a book's files (`ebook`, `readalong`), for a
-   * download that is not this client's fetch: the url carries no credential, the headers
-   * do. */
-  private bookFileRequest(
-    route: 'ebook' | 'readalong',
-    libraryId: number,
-    path: string,
-  ): { url: string; headers: Record<string, string> } {
+  ebookRequest(libraryId: number, path: string): { url: string; headers: Record<string, string> } {
     return {
-      url: this.apiUrl(`/libraries/${libraryId}/${route}`, { path }),
+      url: this.apiUrl(`/libraries/${libraryId}/ebook`, { path }),
       headers: { ...this.clientHeaders, ...this.authHeaders() },
     };
   }
@@ -1299,12 +1289,6 @@ export class ApiClient {
     const map = parseReadalongMap(data);
     if (!map) throw new ReadalongMapError();
     return map;
-  }
-  /** The request `readalong` makes, for a download that is not this client's fetch (a
-   * downloaded book's copy of its map): the url, and the headers it must carry. The url
-   * holds no credential; the headers do, so they are never stored. */
-  readalongRequest(libraryId: number, path: string) {
-    return this.bookFileRequest('readalong', libraryId, path);
   }
   /** The caller's place in a book's ebook; null when they have none there yet. */
   async readingProgress(libraryId: number, path: string, signal?: AbortSignal) {
@@ -1770,11 +1754,14 @@ export class ApiClient {
   /** What making a book's read-along would take (Bridge Phase 3c, `kind=readalong.align`):
    * the most transcription, whether the Bridge can write the library, the book's ebook, its
    * read-along now and the open job a new one would be or wait for. A 404 for no such book,
-   * a 409 `kind_unavailable` when the Bridge doesn't offer the kind. */
+   * a 409 `kind_unavailable` when the Bridge doesn't offer the kind. Its read-along now may
+   * need the ebook hashed first (once, when the scan has not yet), so it gets
+   * `bridgeEstimate`'s budget. */
   readalongEstimate(libraryId: number, path: string, signal?: AbortSignal) {
     return this.request<ReadalongEstimate>('GET', '/admin/bridge/estimate', {
       query: { library_id: libraryId, path, kind: READALONG_ALIGN },
       signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }
 

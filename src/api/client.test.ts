@@ -785,6 +785,8 @@ describe('ApiClient', () => {
         settle('plain', c.bookMeta(2, 'Saga/Book 2')),
         // The Bridge's estimate asks the community what the book and its series have.
         settle('estimate', c.bridgeEstimate(2, 'Saga/Book 2', 'sidecars.generate')),
+        // The read-along estimate may hash the book's ebook first.
+        settle('readalong', c.readalongEstimate(2, 'Saga/Book 2')),
       ];
       await jest.advanceTimersByTimeAsync(15_000);
       expect(Object.keys(outcomes)).toEqual(['plain']);
@@ -795,6 +797,7 @@ describe('ApiClient', () => {
       expect(outcomes.chapters).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.previous).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.estimate).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
+      expect(outcomes.readalong).toMatchObject({ name: 'TimeoutError', timeoutMs: 30_000 });
       expect(outcomes.plain).toMatchObject({ name: 'TimeoutError', timeoutMs: 15_000 });
     } finally {
       jest.useRealTimers();
@@ -3191,15 +3194,6 @@ describe('read-along (capability readalong, Bridge Phase 3c)', () => {
   it('rejects an answer that is no read-along map', async () => {
     installFetch(() => ({ status: 200, body: { format: 'something/else', sections: [] } }));
     await expect(client().readalong(1, 'Author/Book')).rejects.toBeInstanceOf(ReadalongMapError);
-  });
-
-  it('names the map request for a download it does not make: the credential in a header, never the URL', () => {
-    const { url, headers } = client().readalongRequest(1, 'Author/Book');
-    const parsed = new URL(url);
-    expect(parsed.pathname).toBe('/api/v1/libraries/1/readalong');
-    expect(parsed.searchParams.get('path')).toBe('Author/Book');
-    expect(parsed.searchParams.has('token')).toBe(false);
-    expect(headers.Authorization).toBe('Bearer tok');
   });
 
   it('asks the Bridge estimate of the readalong.align kind; its refusals have codes', async () => {

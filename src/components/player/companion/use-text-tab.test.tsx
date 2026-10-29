@@ -67,6 +67,12 @@ describe('useTextTab', () => {
     expect((await tab()).shown).toBe(false);
   });
 
+  it("keeps an admin's tab while the map is on its way (a job that just made it)", async () => {
+    mockUser = ADMIN;
+    mockMap = { map: null, pending: true };
+    expect(await tab()).toMatchObject({ shown: true, map: null, pending: true });
+  });
+
   it('is absent for a listener when the map is stale, and offers an admin Make', async () => {
     mockBook = { ebook: EBOOK, readalong: { state: 'stale', reason: 'audio_changed' } };
     mockMap = { map: null, pending: false };

@@ -40,8 +40,8 @@ export function MakeReadalongOffer({
   target: GenerateTarget;
   hasEbook: boolean;
   title?: string;
-  /** The book has a map that can't be followed (stale, or not this ebook's): "Make it
-   * again". */
+  /** The book has a map that can't be followed (stale, or not this ebook's): "Make the
+   * read-along again". */
   again?: boolean;
 }) {
   const { t } = useTranslation();
@@ -82,13 +82,7 @@ export function MakeReadalongOffer({
  * library the Bridge can't write, or an open generate, detect or read-along job. The
  * estimate is read afresh each time it opens.
  */
-export function MakeReadalongDialog({
-  model,
-  title,
-}: {
-  model: MakeReadalongModel;
-  title?: string;
-}) {
+function MakeReadalongDialog({ model, title }: { model: MakeReadalongModel; title?: string }) {
   return (
     <Dialog open={model.confirming} onOpenChange={model.setConfirming}>
       {model.confirming ? <MakeBody model={model} title={title} /> : null}

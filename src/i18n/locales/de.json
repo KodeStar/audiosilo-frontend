@@ -1359,7 +1359,6 @@
       "noAgent": "Keine: Es wird kein KI-Agent verwendet",
       "confirm": "Mitlesen erstellen",
       "queued": "In der Warteschlange. Der Text erscheint hier, sobald es fertig ist.",
-      "queueFailed": "Konnte nicht eingereiht werden. Es wurde nichts gestartet.",
       "statusTitle": "Mitlesen wird erstellt",
       "parkedTitle": "Erstellen des Mitlesens ist pausiert",
       "failedTitle": "Erstellen des Mitlesens fehlgeschlagen",

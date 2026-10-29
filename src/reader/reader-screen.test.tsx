@@ -43,7 +43,11 @@ jest.mock('@/downloads/store', () => ({
 // Read-along (its hooks' own tests): the book's map, and the narration of the player.
 let mockMap: { sections: { href: string; spans: unknown[] }[] } | null = null;
 jest.mock('./use-book-readalong', () => ({
-  useBookReadalong: () => ({ map: mockMap, pending: false }),
+  // As the hook does: nothing while the screen does not ask (`enabled`, its book not playing).
+  useBookReadalong: (_ref: unknown, _book: unknown, _readable: boolean, enabled = true) => ({
+    map: enabled ? mockMap : null,
+    pending: false,
+  }),
 }));
 let mockNarrating = false;
 const mockSeek = jest.fn();
@@ -710,6 +714,36 @@ describe('ReaderScreen', () => {
         cfi: CFI_B,
         progression: 0.3,
       });
+    });
+
+    it('saves again, and offers Follow narration, after Try again of a reader that followed', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await mapOk();
+      await follows(true);
+      await say({ type: 'error', code: 'section', message: 'x' });
+      await fireEvent.press(screen.getByText('Try again'));
+      // The new reader document has never followed, so it says nothing of following.
+      await opened(CFI_A);
+      await mapOk();
+      expect(screen.getByText('Follow narration')).toBeTruthy();
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await unmount();
+      expect(saveReaderPlace).toHaveBeenCalledTimes(1);
+    });
+
+    it('saves again once the map is gone, though no reader said it stopped following', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await mapOk();
+      await follows(true);
+      // Another book plays: the map goes, with no reader document there to say so.
+      mockNarrating = false;
+      await say({ type: 'loading', value: false });
+      expect(mockHost!.readalongMap).toBeNull();
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await unmount();
+      expect(saveReaderPlace).toHaveBeenCalledTimes(1);
     });
 
     it('drops a save waiting to go when it starts following', async () => {

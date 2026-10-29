@@ -4,7 +4,6 @@ import { useLatestRef } from '@/lib/use-latest';
 
 import { readalongMessages } from './book-chunks';
 import type { HostChannel, HostMessage, ReadalongPosition } from './protocol';
-import type { ReaderReadalongMap } from './readalong-map';
 import type { ReaderReadalongProps } from './reader-host-types';
 import type { ReadalongLink } from './reader-session';
 
@@ -43,8 +42,6 @@ export function useReaderReadalong(
   const latest = useLatestRef(props);
   // What the reader last said of following (null: nothing yet for this map).
   const following = useRef<boolean | null>(null);
-  // The messages of the map last sent, made once per map.
-  const sent = useRef<{ map: ReaderReadalongMap | null; messages: HostMessage[] } | null>(null);
 
   const link = useMemo(() => {
     const readyChannel = () => (channel.current?.isReady() ? channel.current : null);
@@ -58,13 +55,12 @@ export function useReaderReadalong(
       const ch = readyChannel();
       if (!ch) return;
       const map = latest.current.readalongMap ?? null;
-      if (!sent.current || sent.current.map !== map) {
-        sent.current = {
-          map,
-          messages: chunked ? readalongMessages(map) : [{ type: 'readalong', map }],
-        };
-      }
-      for (const message of sent.current.messages) ch.send(message);
+      // Made for each send (a map, a document made again): a large map's pieces are not
+      // held between them.
+      const messages: HostMessage[] = chunked
+        ? readalongMessages(map)
+        : [{ type: 'readalong', map }];
+      for (const message of messages) ch.send(message);
       if (!map) return;
       // The place first, so a follow turns to the sentence being read now.
       syncPosition();

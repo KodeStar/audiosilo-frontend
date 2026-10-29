@@ -67,7 +67,7 @@ export function useMakeReadalong({
       // A CapabilityError was never sent (the Bridge went offline meanwhile): the offer
       // goes with the flag, so there is nothing to say.
       if (!(e instanceof CapabilityError)) {
-        toast({ title: t(readalongRefusalKey(e, 'bridge.readalong.queueFailed')) });
+        toast({ title: t(readalongRefusalKey(e, 'bridge.generate.queueFailed')) });
       }
       return false;
     } finally {

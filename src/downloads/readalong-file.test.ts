@@ -3,7 +3,7 @@ import type { ApiClient } from '@/api/client';
 // The download's read-along map: fetched beside book.epub, checked on read, and which map a
 // server's answer asks for. The engine is a stand-in (its own tests cover the platforms).
 const mockEngine = {
-  downloadFile: jest.fn(),
+  writeText: jest.fn(),
   readText: jest.fn(),
   removeFile: jest.fn(async () => {}),
 };
@@ -14,6 +14,8 @@ jest.mock('@/downloads/engine', () => ({
 }));
 
 /* eslint-disable import/first */
+import { parseReadalongMap } from '@/reader/readalong-map';
+
 import {
   fetchReadalongFile,
   READALONG_FILE,
@@ -31,60 +33,63 @@ const MAP = {
   generated_at: '2026-11-02T10:11:12Z',
   sections: [{ href: 'c1.xhtml', spans: [SPAN] }],
 };
-const API = {
-  readalongRequest: (lib: number, path: string) => ({
-    url: `https://h/api/v1/libraries/${lib}/readalong?path=${path}`,
-    headers: { Authorization: 'Bearer t' },
-  }),
-} as unknown as ApiClient;
+const mockReadalong = jest.fn();
+const API = { readalong: mockReadalong } as unknown as ApiClient;
+/** The server's answer as `client.readalong` resolves it: checked. */
+const checked = (raw: unknown) => parseReadalongMap(raw);
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockEngine.downloadFile.mockResolvedValue('file:///d/A/Book/readalong.json');
+  mockReadalong.mockImplementation(async () => checked(MAP));
+  mockEngine.writeText.mockResolvedValue(true);
   mockEngine.readText.mockResolvedValue(JSON.stringify(MAP));
 });
 
 describe('fetchReadalongFile', () => {
-  it('fetches the map with the header beside the EPUB and names which one it is', async () => {
+  it('fetches the map, keeps it beside the EPUB and names which one it is', async () => {
     const signal = new AbortController().signal;
-    await expect(fetchReadalongFile(API, REF, signal)).resolves.toEqual({
-      uri: 'file:///d/A/Book/readalong.json',
-      generatedAt: MAP.generated_at,
-    });
-    expect(mockEngine.downloadFile).toHaveBeenCalledWith(
+    await expect(fetchReadalongFile(API, REF, signal)).resolves.toBe(MAP.generated_at);
+    expect(mockReadalong).toHaveBeenCalledWith(2, 'A/Book', signal);
+    expect(mockEngine.writeText).toHaveBeenCalledWith(
       'c1',
       2,
       'A/Book',
       READALONG_FILE,
-      'https://h/api/v1/libraries/2/readalong?path=A/Book',
-      undefined,
-      signal,
-      { Authorization: 'Bearer t' },
+      expect.any(String),
     );
+    // What is saved reads back as the same map.
+    const saved = JSON.parse(mockEngine.writeText.mock.calls[0][4] as string);
+    expect(parseReadalongMap(saved)).toEqual(checked(MAP));
     expect(mockEngine.removeFile).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['no map', 'not json'],
-    ['another format', JSON.stringify({ ...MAP, format: 'audiosilo-readalong/v2' })],
-    ['no generated_at', JSON.stringify({ ...MAP, generated_at: undefined })],
-    ['no sentence', JSON.stringify({ ...MAP, sections: [{ href: 'c1.xhtml', spans: [] }] })],
-  ])('keeps nothing when what landed is %s', async (_, text) => {
-    mockEngine.readText.mockResolvedValue(text);
+    ['no generated_at', { ...MAP, generated_at: undefined }],
+    ['no sentence', { ...MAP, sections: [{ href: 'c1.xhtml', spans: [] }] }],
+  ])('keeps nothing when the map has %s', async (_, raw) => {
+    mockReadalong.mockImplementation(async () => checked(raw));
     await expect(fetchReadalongFile(API, REF)).resolves.toBeUndefined();
-    expect(mockEngine.removeFile).toHaveBeenCalledWith('c1', 2, 'A/Book', READALONG_FILE);
+    expect(mockEngine.writeText).not.toHaveBeenCalled();
   });
 
-  it('is none, not a failure, when the server refuses it', async () => {
-    mockEngine.downloadFile.mockRejectedValue(new Error('HTTP 404'));
+  it('is none, not a failure, when the fetch fails, and never touches a map already kept', async () => {
+    mockReadalong.mockRejectedValue(new Error('HTTP 404'));
     await expect(fetchReadalongFile(API, REF)).resolves.toBeUndefined();
-    expect(mockEngine.removeFile).toHaveBeenCalled();
+    mockReadalong.mockRejectedValue(new TypeError('Network request failed'));
+    await expect(fetchReadalongFile(API, REF)).resolves.toBeUndefined();
+    expect(mockEngine.writeText).not.toHaveBeenCalled();
+    expect(mockEngine.removeFile).not.toHaveBeenCalled();
+  });
+
+  it('is none when the folder is gone (nothing written)', async () => {
+    mockEngine.writeText.mockResolvedValue(false);
+    await expect(fetchReadalongFile(API, REF)).resolves.toBeUndefined();
   });
 
   it('throws a cancel, so the download stops', async () => {
     const ctrl = new AbortController();
     ctrl.abort();
-    mockEngine.downloadFile.mockRejectedValue(new Error('aborted'));
+    mockReadalong.mockRejectedValue(new Error('aborted'));
     await expect(fetchReadalongFile(API, REF, ctrl.signal)).rejects.toThrow('aborted');
   });
 });

@@ -1359,7 +1359,6 @@
       "noAgent": "None: no AI agent is used",
       "confirm": "Make read-along",
       "queued": "Queued. The text appears here when it's done.",
-      "queueFailed": "Couldn't queue it. Nothing was started.",
       "statusTitle": "Making the read-along",
       "parkedTitle": "Making the read-along is paused",
       "failedTitle": "Making the read-along failed",

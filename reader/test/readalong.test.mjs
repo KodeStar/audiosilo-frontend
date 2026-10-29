@@ -13,6 +13,7 @@ import {
   MAX_AHEAD,
   PositionClock,
   SEEK_GRACE_MS,
+  spanAfter,
   spanAt,
   spineStepIndex,
 } from '../src/readalong.js';
@@ -99,6 +100,17 @@ test('spanAt: the last sentence started, held across a short gap, none in a long
   );
 });
 
+test('spanAfter: the next sentence to start, none past the last', () => {
+  const idx = indexMap(
+    { sections: [{ spans: [span(10, 12), span(13, 15), span(30, 31)] }] },
+    () => 0,
+  );
+  assert.equal(spanAfter(idx, 0), 0);
+  assert.equal(spanAfter(idx, 10), 1);
+  assert.equal(spanAfter(idx, 20), 2);
+  assert.equal(spanAfter(idx, 30), -1);
+});
+
 test('findInOrder: the sentence holding the caret, by the order given', () => {
   // Sentences [0,10] [12,20] [20,30] (adjacent: the end of one is the start of the next).
   const starts = [0, 12, 20];
@@ -160,6 +172,23 @@ test('a sample far from where the clock is, is a seek; the first one never is', 
   assert.equal(clock.sample({ t: 502.2 + JUMP, rate: 1, playing: true }), true);
   now = 3000;
   assert.equal(clock.sample({ t: 100, rate: 1, playing: true }), true);
+});
+
+test('a gap in the samples while it plays is no seek; a seek in it still is', () => {
+  let now = 0;
+  const clock = new PositionClock(() => now);
+  clock.sample({ t: 100, rate: 1.5, playing: true });
+  // No sample for 40 s (a phone's timers paused in the background), the narration playing
+  // on: where it would be is no seek, though the clock stopped MAX_AHEAD past its sample.
+  now = 40_000;
+  assert.equal(clock.get(), 100 + MAX_AHEAD * 1.5);
+  assert.equal(clock.sample({ t: 160.4, rate: 1.5, playing: true }), false);
+  now = 80_000;
+  assert.equal(clock.sample({ t: 900, rate: 1.5, playing: true }), true);
+  // Paused, a sample elsewhere is a seek however long since the last.
+  clock.sample({ t: 900, rate: 1, playing: false });
+  now = 200_000;
+  assert.equal(clock.sample({ t: 950, rate: 1, playing: false }), true);
 });
 
 test('after a tap, samples from before the player moved are dropped, for a while', () => {

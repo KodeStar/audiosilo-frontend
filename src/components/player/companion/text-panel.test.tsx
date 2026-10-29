@@ -79,6 +79,7 @@ const BOOK = {
 const model = (p: Partial<TextTabModel> = {}): TextTabModel => ({
   shown: true,
   map: MAP,
+  pending: false,
   book: BOOK,
   ...p,
 });
@@ -186,6 +187,15 @@ describe('TextPanel', () => {
     expect(mockHost).toBeNull();
   });
 
+  it('says a map on its way with a spinner, never the Make offer', async () => {
+    await act(async () => {
+      render(<TextPanel target={TARGET} text={model({ map: null, pending: true })} fill />);
+    });
+    expect(screen.getByTestId('companion-text-pending')).toBeTruthy();
+    expect(screen.queryByTestId('make-offer')).toBeNull();
+    expect(mockHost).toBeNull();
+  });
+
   it('says why a stale map no longer fits, offering to make it again', async () => {
     const stale = { ...BOOK, readalong: { state: 'stale', reason: 'ebook_changed' } } as Book;
     await act(async () => {
@@ -194,6 +204,38 @@ describe('TextPanel', () => {
     expect(screen.getByText('The read-along is out of date')).toBeTruthy();
     expect(screen.getByText(/The ebook changed since it was made/)).toBeTruthy();
     expect(screen.getByTestId('make-offer').props.children).toBe('again:true');
+  });
+
+  it('opens its own reader for another book playing under the open tab', async () => {
+    let view!: Awaited<ReturnType<typeof render>>;
+    await act(async () => {
+      view = await render(<TextPanel target={TARGET} text={model()} fill />);
+    });
+    await shows();
+    const other = { ...TARGET, path: 'B/Book' };
+    await act(async () => {
+      view.rerender(<TextPanel target={other} text={model()} fill />);
+    });
+    // A reader document says `ready` once: the next book gets a new one, from its start.
+    expect(mockMounts).toBe(2);
+    expect(host().path).toBe('B/Book');
+    expect(screen.queryByLabelText('Next page')).toBeNull();
+  });
+
+  it("judges a map made again afresh: the last one's none does not outlast it", async () => {
+    let view!: Awaited<ReturnType<typeof render>>;
+    await act(async () => {
+      view = await render(<TextPanel target={TARGET} text={model()} fill />);
+    });
+    await act(async () => host().onReadalongState!({ state: 'none', unresolved: 3 }));
+    expect(screen.getByText("The text can't follow this narration")).toBeTruthy();
+    const remade = { sections: [{ ...MAP.sections[0] }] };
+    await act(async () => {
+      view.rerender(<TextPanel target={TARGET} text={model({ map: remade })} fill />);
+    });
+    expect(screen.queryByText("The text can't follow this narration")).toBeNull();
+    expect(host().readalongMap).toBe(remade);
+    expect(mockMounts).toBe(2);
   });
 
   it("says the book's server is not connected instead of opening it", async () => {
