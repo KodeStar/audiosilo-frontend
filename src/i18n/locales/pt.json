@@ -1347,6 +1347,27 @@
       "queuedRestFailed": "Este livro ainda não está na fila. Toque em Gerar de novo para colocar os outros na fila.",
       "queueFailed": "Não foi possível colocar na fila. Nada foi iniciado."
     },
+    "readalong": {
+      "make": "Criar leitura sincronizada",
+      "makeAgain": "Criar de novo a leitura sincronizada",
+      "title": "Criar leitura sincronizada",
+      "lead": "O Bridge alinha o ebook de {{title}} com a sua narração, para que o texto acompanhe enquanto ouves. Pode demorar algum tempo, e podes sair da página entretanto.",
+      "leadUntitled": "O Bridge alinha o ebook do livro com a sua narração, para que o texto acompanhe enquanto ouves. Pode demorar algum tempo, e podes sair da página entretanto.",
+      "sourceBoth": "O ebook, {{file}}, e o áudio",
+      "sourceAudio": "O áudio",
+      "upTo": "Até {{value}}",
+      "noAgent": "Nenhum: não é usado nenhum agente de IA",
+      "confirm": "Criar leitura sincronizada",
+      "queued": "Em fila. O texto aparece aqui quando terminar.",
+      "queueFailed": "Não foi possível pôr em fila. Nada foi iniciado.",
+      "statusTitle": "A criar a leitura sincronizada",
+      "parkedTitle": "A criação da leitura sincronizada está em pausa",
+      "failedTitle": "A criação da leitura sincronizada falhou",
+      "noEbook": "Este livro não tem ebook para alinhar com a narração.",
+      "generateOpen": "As personagens e os resumos deste livro estão a ser gerados. Cria a leitura sincronizada quando terminar: reutiliza a transcrição.",
+      "detectOpen": "Os capítulos do livro ainda estão a ser encontrados. Cria a leitura sincronizada quando terminar: reutiliza a transcrição.",
+      "readalongOpen": "A leitura sincronizada deste livro já está a ser criada."
+    },
     "status": {
       "title": "Gerando personagens e resumos",
       "waiting": "Esperando o Bridge",
@@ -1372,6 +1393,7 @@
       "qa_sweep": "Verificando a transcrição",
       "qa_adjudicating": "Revisando trechos duvidosos",
       "retranscribing": "Transcrevendo trechos de novo",
+      "readalong_aligning": "A alinhar o texto com a narração",
       "markers_normalizing": "Encontrando os capítulos",
       "spelling_research": "Verificando nomes e grafias",
       "correcting": "Corrigindo a transcrição",
@@ -1635,7 +1657,20 @@
       "revealBody_other": "Acabou de conhecer estas personagens no capítulo {{chapter}}. Nada para além deste ponto é mostrado.",
       "show": "Mostrar",
       "noServerTitle": "O servidor deste livro não está ligado",
-      "noServerHint": "Os marcadores, as notas e o histórico voltam assim que estiver."
+      "noServerHint": "Os marcadores, as notas e o histórico voltam assim que estiver.",
+      "text": "Texto",
+      "textEmptyTitle": "Ainda não há leitura sincronizada para este livro",
+      "textEmptyHint": "Uma leitura sincronizada alinha o ebook com a narração, para que o texto acompanhe enquanto ouves.",
+      "textStaleTitle": "A leitura sincronizada está desatualizada",
+      "textStaleEbook": "O ebook mudou desde que foi criada, por isso já não corresponde.",
+      "textStaleAudio": "O áudio mudou desde que foi criada, por isso já não corresponde.",
+      "textStaleHint": "O livro mudou desde que foi criada, por isso já não corresponde.",
+      "textNoMatchTitle": "O texto não consegue seguir esta narração",
+      "textNoMatchHint": "A leitura sincronizada não corresponde a este ebook.",
+      "textFailedTitle": "Não foi possível carregar o texto",
+      "textFailedHint": "O ebook não carregou. Verifica a ligação e tenta de novo.",
+      "textStartHint": "O leitor de ebooks não arrancou. Tenta de novo.",
+      "textNoServer": "O texto volta assim que estiver."
     },
     "placeMoved": {
       "title": "Posição retomada de outro dispositivo",
@@ -2987,6 +3022,10 @@
     "notSaved": {
       "body": "A tua posição não foi guardada no servidor. Fica guardada neste dispositivo.",
       "dismiss": "OK"
+    },
+    "readalong": {
+      "follow": "Seguir a narração",
+      "back": "Voltar à narração"
     }
   }
 }

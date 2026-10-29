@@ -1347,6 +1347,27 @@
       "queuedRestFailed": "Dieses Buch ist noch nicht eingereiht. Tippe noch einmal auf Erstellen, um den Rest einzureihen.",
       "queueFailed": "Konnte nicht eingereiht werden. Es wurde nichts gestartet."
     },
+    "readalong": {
+      "make": "Mitlesen erstellen",
+      "makeAgain": "Mitlesen neu erstellen",
+      "title": "Mitlesen erstellen",
+      "lead": "Die Bridge gleicht das E-Book von {{title}} mit der Erzählung ab, damit der Text beim Zuhören mitläuft. Das kann eine Weile dauern, und du kannst die Seite währenddessen verlassen.",
+      "leadUntitled": "Die Bridge gleicht das E-Book des Buchs mit der Erzählung ab, damit der Text beim Zuhören mitläuft. Das kann eine Weile dauern, und du kannst die Seite währenddessen verlassen.",
+      "sourceBoth": "Das E-Book, {{file}}, und das Audio",
+      "sourceAudio": "Das Audio",
+      "upTo": "Bis zu {{value}}",
+      "noAgent": "Keine: Es wird kein KI-Agent verwendet",
+      "confirm": "Mitlesen erstellen",
+      "queued": "In der Warteschlange. Der Text erscheint hier, sobald es fertig ist.",
+      "queueFailed": "Konnte nicht eingereiht werden. Es wurde nichts gestartet.",
+      "statusTitle": "Mitlesen wird erstellt",
+      "parkedTitle": "Erstellen des Mitlesens ist pausiert",
+      "failedTitle": "Erstellen des Mitlesens fehlgeschlagen",
+      "noEbook": "Dieses Buch hat kein E-Book, das mit der Erzählung abgeglichen werden kann.",
+      "generateOpen": "Für dieses Buch werden gerade Figuren und Zusammenfassungen erstellt. Erstelle das Mitlesen, wenn das fertig ist: Es verwendet die Transkription wieder.",
+      "detectOpen": "Die Kapitel des Buchs werden noch gesucht. Erstelle das Mitlesen, wenn das fertig ist: Es verwendet die Transkription wieder.",
+      "readalongOpen": "Das Mitlesen für dieses Buch wird bereits erstellt."
+    },
     "status": {
       "title": "Figuren und Rückblicke werden erstellt",
       "waiting": "Wartet auf die Bridge",
@@ -1372,6 +1393,7 @@
       "qa_sweep": "Prüft das Transkript",
       "qa_adjudicating": "Prüft zweifelhafte Stellen",
       "retranscribing": "Transkribiert Stellen erneut",
+      "readalong_aligning": "Text und Erzählung werden abgeglichen",
       "markers_normalizing": "Sucht die Kapitel",
       "spelling_research": "Prüft Namen und Schreibweisen",
       "correcting": "Korrigiert das Transkript",
@@ -1635,7 +1657,20 @@
       "revealBody_other": "Du hast sie gerade in Kapitel {{chapter}} kennengelernt. Nichts nach dieser Stelle wird gezeigt.",
       "show": "Anzeigen",
       "noServerTitle": "Der Server dieses Buchs ist nicht verbunden",
-      "noServerHint": "Lesezeichen, Notizen und Verlauf sind wieder da, sobald er es ist."
+      "noServerHint": "Lesezeichen, Notizen und Verlauf sind wieder da, sobald er es ist.",
+      "text": "Text",
+      "textEmptyTitle": "Noch kein Mitlesen für dieses Buch",
+      "textEmptyHint": "Beim Mitlesen wird das E-Book mit der Erzählung abgeglichen, sodass der Text beim Zuhören mitläuft.",
+      "textStaleTitle": "Das Mitlesen ist veraltet",
+      "textStaleEbook": "Das E-Book hat sich seit der Erstellung geändert und passt nicht mehr.",
+      "textStaleAudio": "Das Audio hat sich seit der Erstellung geändert und passt nicht mehr.",
+      "textStaleHint": "Das Buch hat sich seit der Erstellung geändert und passt nicht mehr.",
+      "textNoMatchTitle": "Der Text kann dieser Erzählung nicht folgen",
+      "textNoMatchHint": "Das Mitlesen passt nicht zu diesem E-Book.",
+      "textFailedTitle": "Der Text konnte nicht geladen werden",
+      "textFailedHint": "Das E-Book wurde nicht geladen. Prüfe die Verbindung und versuche es erneut.",
+      "textStartHint": "Der E-Book-Reader ist nicht gestartet. Versuche es erneut.",
+      "textNoServer": "Der Text ist wieder da, sobald er verbunden ist."
     },
     "placeMoved": {
       "title": "Deine Stelle von einem anderen Gerät übernommen",
@@ -2987,6 +3022,10 @@
     "notSaved": {
       "body": "Deine Stelle wurde nicht auf dem Server gespeichert. Sie bleibt auf diesem Gerät erhalten.",
       "dismiss": "OK"
+    },
+    "readalong": {
+      "follow": "Der Erzählung folgen",
+      "back": "Zurück zur Erzählung"
     }
   }
 }

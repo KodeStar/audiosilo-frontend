@@ -12,6 +12,7 @@ import {
   type RevealWatch,
   revealOnCrossing,
   storySoFar,
+  textTab,
   watchReveal,
   whoOrder,
 } from './companion-model';
@@ -40,6 +41,26 @@ describe('companionTabs', () => {
       'history',
     ]);
     expect(companionTabs(false)).toEqual(['chapters', 'bookmarks', 'notes', 'history']);
+  });
+
+  it('puts Text after Story so far, only where the book has it', () => {
+    expect(companionTabs(true, true)).toEqual([
+      'who',
+      'story',
+      'text',
+      'chapters',
+      'bookmarks',
+      'notes',
+      'history',
+    ]);
+    expect(companionTabs(false, true)).toEqual([
+      'text',
+      'chapters',
+      'bookmarks',
+      'notes',
+      'history',
+    ]);
+    expect(companionTabs(true, false)).not.toContain('text');
   });
 
   it('falls back to the first tab when the one asked for is not there', () => {
@@ -201,5 +222,30 @@ describe('chapterRows', () => {
     // A 5-minute chapter followed by a gap before the next starts.
     const gap = [chapter(0, 0, 300), chapter(1, 600, 300)];
     expect(chapterRows(gap, 100, 0, 1)[0]).toEqual({ state: 'current', left: 200 });
+  });
+});
+
+describe('textTab', () => {
+  it('shows for a listener only once a map with a sentence is in', () => {
+    expect(textTab({ map: true, pending: false, mayMake: false })).toEqual({
+      shown: true,
+      make: false,
+    });
+    // On its way: no tab that vanishes a moment later.
+    expect(textTab({ map: false, pending: true, mayMake: false }).shown).toBe(false);
+    // None, or a stale one (the gate gives no map): no tab.
+    expect(textTab({ map: false, pending: false, mayMake: false }).shown).toBe(false);
+  });
+
+  it('shows for an admin who may make one without a map, offering Make', () => {
+    expect(textTab({ map: false, pending: false, mayMake: true })).toEqual({
+      shown: true,
+      make: true,
+    });
+    expect(textTab({ map: true, pending: false, mayMake: true })).toEqual({
+      shown: true,
+      make: false,
+    });
+    expect(textTab({ map: false, pending: true, mayMake: true }).shown).toBe(false);
   });
 });

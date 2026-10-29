@@ -157,6 +157,8 @@ const STAGES = [
   'qa_sweep',
   'qa_adjudicating',
   'retranscribing',
+  // Bridge Phase 3c: a read-along job lines the ebook's sentences up with the transcript.
+  'readalong_aligning',
   'markers_normalizing',
   'spelling_research',
   'correcting',

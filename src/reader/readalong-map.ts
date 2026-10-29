@@ -118,3 +118,16 @@ export type ReaderReadalongMap = { sections: { href: string; spans: ReadalongSpa
 export function readerMapOf(map: Pick<ReadalongMap, 'sections'>): ReaderReadalongMap {
   return { sections: map.sections.map(({ href, spans }) => ({ href, spans })) };
 }
+
+/** Where the narration is at `t` (whole-book seconds) in a map: the CFI of the latest
+ * sentence starting at or before it (a reader opens there, then follows), or undefined
+ * before the first. */
+export function cfiAt(map: ReaderReadalongMap, t: number): string | undefined {
+  let best: ReadalongSpan | undefined;
+  for (const section of map.sections) {
+    for (const span of section.spans) {
+      if (span.start <= t && (!best || span.start > best.start)) best = span;
+    }
+  }
+  return best?.cfi;
+}

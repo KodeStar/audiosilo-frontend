@@ -18,6 +18,7 @@ import {
 import { type ReaderHostProps, ReaderStartError } from './reader-host-types';
 import { READER_HTML } from './reader-html.native';
 import { startReaderSession } from './reader-session';
+import { usePlaceGate } from './use-place-gate';
 import { useReaderControls } from './use-reader-controls';
 import { useReaderReadalong } from './use-reader-readalong';
 
@@ -78,6 +79,7 @@ export function ReaderHost({
   ebookSize,
   name,
   at,
+  placeKnown = true,
   theme,
   fontScale,
   title,
@@ -88,6 +90,7 @@ export function ReaderHost({
   ...readalongProps
 }: ReaderHostProps) {
   const web = useRef<WebView>(null);
+  const placeGate = usePlaceGate(placeKnown);
   const channel = useRef<HostChannel | null>(null);
   const latest = useLatestRef({
     api,
@@ -162,6 +165,8 @@ export function ReaderHost({
       const id = ++transfer;
       const stale = () => closed || id !== transfer;
       const file = await book.current;
+      // The file is in: the book goes over once the screen knows where it opens.
+      await placeGate();
       if (!file || stale()) return;
       const { at: first, theme: look, fontScale: scale, name: bookName } = latest.current;
       try {
@@ -185,7 +190,7 @@ export function ReaderHost({
     };
     endSession.current = end;
     return end;
-  }, [libraryId, path, generation, latest, readalong]);
+  }, [libraryId, path, generation, latest, readalong, placeGate]);
 
   // The content process died (iOS) or the renderer is gone (Android): a new WebView, up to
   // MAX_RELOADS times in a row; then the reader says it could not start. A WebView that

@@ -40,6 +40,21 @@ jest.mock('@/downloads/store', () => ({
   useDownloadedEbook: () =>
     (mockDownload?.status === 'downloaded' && mockDownload.manifest.ebookUri) || undefined,
 }));
+// Read-along (its hooks' own tests): the book's map, and the narration of the player.
+let mockMap: { sections: { href: string; spans: unknown[] }[] } | null = null;
+jest.mock('./use-book-readalong', () => ({
+  useBookReadalong: () => ({ map: mockMap, pending: false }),
+}));
+let mockNarrating = false;
+const mockSeek = jest.fn();
+const mockPosition = jest.fn(() => ({ t: 12, rate: 1, playing: true }));
+jest.mock('./narration', () => ({
+  useNarration: () => ({
+    narrating: mockNarrating,
+    readalongPosition: mockPosition,
+    onSeek: mockSeek,
+  }),
+}));
 const mockHasLocalEbook = jest.fn(async (_ref: unknown) => true);
 jest.mock('./ebook-file', () => ({ hasLocalEbook: (ref: unknown) => mockHasLocalEbook(ref) }));
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({}) }));
@@ -188,6 +203,8 @@ describe('ReaderScreen', () => {
     mockEbooks = true;
     mockDownload = undefined;
     mockSignedOut = undefined;
+    mockMap = null;
+    mockNarrating = false;
   });
 
   describe('saving the place', () => {
@@ -600,5 +617,109 @@ describe('ReaderScreen', () => {
     await opened();
     await say({ type: 'escape' });
     expect(backOrHome).toHaveBeenCalled();
+  });
+
+  it('starts on the book while where it opens is still looked up, and hands it over once known (fe#164)', async () => {
+    mockPlace = query(undefined);
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockHost!.placeKnown).toBe(false);
+  });
+
+  it('hands the book over at once when where it opens is known', async () => {
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    expect(mockHost!.placeKnown).toBe(true);
+  });
+
+  describe('Follow narration (Bridge Phase 3c)', () => {
+    const MAP = { sections: [{ href: 'c1.xhtml', spans: [{ cfi: CFI_A, start: 0, end: 5 }] }] };
+    const mapOk = () =>
+      act(async () => {
+        mockHost!.onReadalongState!({ state: 'ok', unresolved: 0 });
+      });
+    const follows = (value: boolean) =>
+      act(async () => {
+        mockHost!.onFollowing!(value);
+      });
+
+    beforeEach(() => {
+      mockMap = MAP;
+      mockNarrating = true;
+    });
+
+    it('sends no map, and offers nothing, while another book plays', async () => {
+      mockNarrating = false;
+      await mount();
+      await opened();
+      expect(mockHost!.readalongMap).toBeNull();
+      expect(screen.queryByTestId('readalong-follow')).toBeNull();
+    });
+
+    it('hands the host the map, the narration and the seek while this book plays', async () => {
+      await mount();
+      await opened();
+      expect(mockHost!.readalongMap).toBe(MAP);
+      expect(mockHost!.readalongPosition).toBe(mockPosition);
+      expect(mockHost!.onSeek).toBe(mockSeek);
+      // The full-screen reader waits for the listener: it never follows by itself.
+      expect(mockHost!.followNarration).toBeUndefined();
+    });
+
+    it('offers Follow narration once the reader takes the map, and follows on a press', async () => {
+      await mount();
+      await opened();
+      expect(screen.queryByTestId('readalong-follow')).toBeNull();
+      await mapOk();
+      await fireEvent.press(screen.getByText('Follow narration'));
+      expect(mockHandle.follow).toHaveBeenCalled();
+      await follows(true);
+      expect(screen.queryByTestId('readalong-follow')).toBeNull();
+    });
+
+    it('offers Back to narration once the listener turned away', async () => {
+      await mount();
+      await opened();
+      await mapOk();
+      await follows(true);
+      await follows(false);
+      await fireEvent.press(screen.getByText('Back to narration'));
+      expect(mockHandle.follow).toHaveBeenCalled();
+    });
+
+    it('saves no place while it follows the narration', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await mapOk();
+      await follows(true);
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await unmount();
+      expect(saveReaderPlace).not.toHaveBeenCalled();
+    });
+
+    it('saves where the listener is once they turn away, and every move after', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await mapOk();
+      await follows(true);
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await follows(false);
+      await unmount();
+      expect(saveReaderPlace).toHaveBeenCalledTimes(1);
+      expect(saveReaderPlace).toHaveBeenCalledWith({}, 'c1', 1, 'A/Book', {
+        cfi: CFI_B,
+        progression: 0.3,
+      });
+    });
+
+    it('drops a save waiting to go when it starts following', async () => {
+      const { unmount } = await mount();
+      await opened(CFI_A);
+      await mapOk();
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await follows(true);
+      await unmount();
+      expect(saveReaderPlace).not.toHaveBeenCalled();
+    });
   });
 });

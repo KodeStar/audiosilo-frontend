@@ -53,6 +53,22 @@ function retryLine(t: TFunction, at: Date, now = new Date()): string {
     : t('bridge.status.retryOn', { day: formatShortDay(at), time });
 }
 
+/** What a job's status needs of the surface's model (`useGenerate`'s, `useMakeReadalong`'s):
+ * the book, whether this person may act on its jobs, and the writes. */
+export type JobStatusModel = Pick<
+  GenerateModel,
+  'target' | 'allowed' | 'queueing' | 'cancel' | 'cancelling' | 'retry'
+>;
+
+/** A job status's own words: its title while it runs, while parked and once it failed, and
+ * the prefix of its test ids (`<prefix>-status`, `-retry`, `-cancel`). */
+export type JobStatusWords = {
+  title: string;
+  parkedTitle: string;
+  failedTitle: string;
+  testID: string;
+};
+
 /**
  * A book's generate job, compactly (where the action was: under the book page's actions,
  * or in the companion's empty Who's who and Story so far): the stage, "12 of 40", the time
@@ -65,26 +81,63 @@ function retryLine(t: TFunction, at: Date, now = new Date()): string {
  * its screen is focused (read here, so a poll or a blur re-renders only this).
  */
 export function GenerateStatus({ model, className }: { model: GenerateModel; className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <BridgeJobStatus
+      model={model}
+      select={statusJob}
+      words={{
+        title: t('bridge.status.title'),
+        parkedTitle: t('bridge.status.parkedTitle'),
+        failedTitle: t('bridge.status.failedTitle'),
+        testID: 'generate',
+      }}
+      className={className}
+    />
+  );
+}
+
+/**
+ * The status of the job `select` picks from a book's job list (`GenerateStatus`'s, and the
+ * read-along's `MakeReadalongOffer`), in its own words: nothing without one, nor for someone
+ * who may not act on it (`model.allowed`). It reads the job list itself, polling while its
+ * screen is focused.
+ */
+export function BridgeJobStatus({
+  model,
+  select,
+  words,
+  className,
+}: {
+  model: JobStatusModel;
+  select: (jobs: BridgeJob[]) => BridgeJob | undefined;
+  words: JobStatusWords;
+  className?: string;
+}) {
   const { connectionId, libraryId, path } = model.target;
   const focused = useIsFocused();
   const { data: job } = useBridgeJobs(
     libraryId,
     path,
-    { enabled: model.allowed, active: focused, select: statusJob },
+    { enabled: model.allowed, active: focused, select },
     connectionId,
   );
-  return job && model.allowed ? <JobStatus job={job} model={model} className={className} /> : null;
+  return job && model.allowed ? (
+    <JobStatus job={job} model={model} words={words} className={className} />
+  ) : null;
 }
 
-/** One job's status (see `GenerateStatus`). Status is the words and the icon, never
+/** One job's status (see `BridgeJobStatus`). Status is the words and the icon, never
  * colour alone. */
 function JobStatus({
   job,
   model,
+  words,
   className,
 }: {
   job: BridgeJob;
-  model: GenerateModel;
+  model: JobStatusModel;
+  words: JobStatusWords;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -92,17 +145,13 @@ function JobStatus({
   const view = jobStatusView(job);
   const parked = view.phase === 'parked';
   const failed = view.phase === 'failed';
-  const title = failed
-    ? t('bridge.status.failedTitle')
-    : parked
-      ? t('bridge.status.parkedTitle')
-      : t('bridge.status.title');
+  const title = failed ? words.failedTitle : parked ? words.parkedTitle : words.title;
   const fraction =
     view.phase === 'running' && view.done !== undefined && view.total
       ? view.done / view.total
       : undefined;
   return (
-    <View testID="generate-status" className={cn('max-w-[560px] gap-1.5', className)}>
+    <View testID={`${words.testID}-status`} className={cn('max-w-[560px] gap-1.5', className)}>
       <View className="flex-row items-center gap-2">
         <Icon
           name={failed || parked ? 'circle-exclamation' : 'sparkles'}
@@ -114,7 +163,7 @@ function JobStatus({
         </Text>
         {failed ? (
           <Button
-            testID="generate-retry"
+            testID={`${words.testID}-retry`}
             size="sm"
             variant="outline"
             icon="rotate"
@@ -124,7 +173,7 @@ function JobStatus({
           />
         ) : (
           <Button
-            testID="generate-cancel"
+            testID={`${words.testID}-cancel`}
             size="sm"
             variant="ghost"
             title={t('common.cancel')}

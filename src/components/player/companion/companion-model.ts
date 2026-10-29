@@ -10,18 +10,20 @@ import { timeLeft } from '@/playback/time-left';
 
 /**
  * The player's companion (STYLEGUIDE section 8, "Companion"): Who's who, Story so far,
- * Chapters, Bookmarks, Notes and History, beside the full player. Pure rules only; the
+ * Text (the read-along), Chapters, Bookmarks, Notes and History, beside the full player. Pure rules only; the
  * gating itself is `meta-gating.ts` (the book page's rules, never forked here).
  */
 
 /** The companion's tabs, in order. */
-export type CompanionTab = 'who' | 'story' | 'chapters' | 'bookmarks' | 'notes' | 'history';
+export type CompanionTab =
+  'who' | 'story' | 'text' | 'chapters' | 'bookmarks' | 'notes' | 'history';
 
 /** Each tab's label (i18n keys): the companion's tabs and the phone's chips name them
  * the same way. */
 export const COMPANION_TAB_LABEL = {
   who: 'player.companion.who',
   story: 'book.meta.storySoFar',
+  text: 'player.companion.text',
   chapters: 'player.chapters.chaptersTitle',
   bookmarks: 'player.bookmarks.label',
   notes: 'player.notes.label',
@@ -29,10 +31,28 @@ export const COMPANION_TAB_LABEL = {
 } as const satisfies Record<CompanionTab, string>;
 
 /** The tabs a book gets: the two community tabs only where the server has `metadata`
- * (an older server never shows them), the rest always (they are the listener's own). */
-export function companionTabs(metadata: boolean): CompanionTab[] {
+ * (an older server never shows them), Text (Bridge Phase 3c, after Story so far) only where
+ * the book has it (`textTab`), the rest always (they are the listener's own). */
+export function companionTabs(metadata: boolean, text = false): CompanionTab[] {
   const own: CompanionTab[] = ['chapters', 'bookmarks', 'notes', 'history'];
-  return metadata ? ['who', 'story', ...own] : own;
+  const community: CompanionTab[] = metadata ? ['who', 'story'] : [];
+  return [...community, ...(text ? (['text'] as const) : []), ...own];
+}
+
+/**
+ * The Text tab (Bridge Phase 3c): `shown` for a listener once the book's read-along map is
+ * in with a sentence to follow (`map`), never while it is on its way (`pending`: no tab
+ * that vanishes a moment later) nor for a stale or absent map; for an admin who may make
+ * one (`mayMake`: `mayMakeReadalong`, and the book reads with its ebook) also without a map,
+ * where it offers "Make read-along" (`make`).
+ */
+export function textTab(opts: { map: boolean; pending: boolean; mayMake: boolean }): {
+  shown: boolean;
+  make: boolean;
+} {
+  const { map, pending, mayMake } = opts;
+  const make = mayMake && !map && !pending;
+  return { shown: map || make, make };
 }
 
 /** The tab to show: the one asked for when it exists, else the first. */

@@ -1347,6 +1347,27 @@
       "queuedRestFailed": "This book isn't queued yet. Press Generate again to queue the rest.",
       "queueFailed": "Couldn't queue it. Nothing was started."
     },
+    "readalong": {
+      "make": "Make read-along",
+      "makeAgain": "Make the read-along again",
+      "title": "Make read-along",
+      "lead": "The Bridge lines {{title}}'s ebook up with its narration, so the text follows as you listen. It can take a while, and you can leave the page meanwhile.",
+      "leadUntitled": "The Bridge lines the book's ebook up with its narration, so the text follows as you listen. It can take a while, and you can leave the page meanwhile.",
+      "sourceBoth": "The ebook, {{file}}, and the audio",
+      "sourceAudio": "The audio",
+      "upTo": "Up to {{value}}",
+      "noAgent": "None: no AI agent is used",
+      "confirm": "Make read-along",
+      "queued": "Queued. The text appears here when it's done.",
+      "queueFailed": "Couldn't queue it. Nothing was started.",
+      "statusTitle": "Making the read-along",
+      "parkedTitle": "Making the read-along is paused",
+      "failedTitle": "Making the read-along failed",
+      "noEbook": "This book has no ebook to line up with its narration.",
+      "generateOpen": "This book's characters and recaps are being generated. Make the read-along once that has finished: it reuses the transcription.",
+      "detectOpen": "The book's chapters are still being found. Make the read-along once that has finished: it reuses the transcription.",
+      "readalongOpen": "This book's read-along is already being made."
+    },
     "status": {
       "title": "Generating characters and recaps",
       "waiting": "Waiting for the Bridge",
@@ -1372,6 +1393,7 @@
       "qa_sweep": "Checking the transcript",
       "qa_adjudicating": "Reviewing doubtful passages",
       "retranscribing": "Transcribing passages again",
+      "readalong_aligning": "Lining the text up with the narration",
       "markers_normalizing": "Finding the chapters",
       "spelling_research": "Checking names and spellings",
       "correcting": "Correcting the transcript",
@@ -1635,7 +1657,20 @@
       "revealBody_other": "You just met them in chapter {{chapter}}. Nothing past this point is shown.",
       "show": "Show",
       "noServerTitle": "This book's server isn't connected",
-      "noServerHint": "Bookmarks, notes and history come back once it is."
+      "noServerHint": "Bookmarks, notes and history come back once it is.",
+      "text": "Text",
+      "textEmptyTitle": "No read-along for this book yet",
+      "textEmptyHint": "A read-along lines the ebook up with the narration, so the text follows as you listen.",
+      "textStaleTitle": "The read-along is out of date",
+      "textStaleEbook": "The ebook changed since it was made, so it no longer lines up.",
+      "textStaleAudio": "The audio changed since it was made, so it no longer lines up.",
+      "textStaleHint": "The book changed since it was made, so it no longer lines up.",
+      "textNoMatchTitle": "The text can't follow this narration",
+      "textNoMatchHint": "The read-along doesn't match this ebook.",
+      "textFailedTitle": "Couldn't load the text",
+      "textFailedHint": "The ebook didn't load. Check the connection and try again.",
+      "textStartHint": "The ebook reader didn't start. Try again.",
+      "textNoServer": "The text comes back once it is."
     },
     "placeMoved": {
       "title": "Picked up your place from another device",
@@ -2987,6 +3022,10 @@
     "notSaved": {
       "body": "Your place wasn't saved to the server. It's kept on this device.",
       "dismiss": "OK"
+    },
+    "readalong": {
+      "follow": "Follow narration",
+      "back": "Back to narration"
     }
   }
 }

@@ -76,6 +76,10 @@ export type ReaderHostProps = ReaderReadalongProps & {
   name: string;
   /** Where to open; read when the book is handed over, later changes are ignored. */
   at?: ReaderPlace;
+  /** False while the screen still looks up where the book opens (fe#164): the host fetches
+   * the EPUB and loads the reader document meanwhile, and hands the book over (with `at`)
+   * once it is true. Absent: known. */
+  placeKnown?: boolean;
   theme: ReaderTheme;
   fontScale: number;
   /** The frame's accessible name. */

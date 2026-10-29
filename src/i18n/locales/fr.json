@@ -1347,6 +1347,27 @@
       "queuedRestFailed": "Ce livre n'est pas encore en file d'attente. Appuyez de nouveau sur Générer pour y mettre les autres.",
       "queueFailed": "Impossible de le mettre en file d'attente. Rien n'a été lancé."
     },
+    "readalong": {
+      "make": "Créer la lecture synchronisée",
+      "makeAgain": "Recréer la lecture synchronisée",
+      "title": "Créer la lecture synchronisée",
+      "lead": "Le Bridge aligne l'ebook de {{title}} sur sa narration, pour que le texte suive pendant l'écoute. Cela peut prendre un moment, et vous pouvez quitter la page entre-temps.",
+      "leadUntitled": "Le Bridge aligne l'ebook du livre sur sa narration, pour que le texte suive pendant l'écoute. Cela peut prendre un moment, et vous pouvez quitter la page entre-temps.",
+      "sourceBoth": "L'ebook, {{file}}, et l'audio",
+      "sourceAudio": "L'audio",
+      "upTo": "Jusqu'à {{value}}",
+      "noAgent": "Aucun : aucun agent IA n'est utilisé",
+      "confirm": "Créer la lecture synchronisée",
+      "queued": "En file d'attente. Le texte apparaîtra ici une fois terminé.",
+      "queueFailed": "Impossible de le mettre en file d'attente. Rien n'a été lancé.",
+      "statusTitle": "Création de la lecture synchronisée",
+      "parkedTitle": "La création de la lecture synchronisée est en pause",
+      "failedTitle": "La création de la lecture synchronisée a échoué",
+      "noEbook": "Ce livre n'a pas d'ebook à aligner sur sa narration.",
+      "generateOpen": "Les personnages et résumés de ce livre sont en cours de génération. Créez la lecture synchronisée une fois terminé : elle réutilise la transcription.",
+      "detectOpen": "Les chapitres du livre sont encore en cours de recherche. Créez la lecture synchronisée une fois terminé : elle réutilise la transcription.",
+      "readalongOpen": "La lecture synchronisée de ce livre est déjà en cours de création."
+    },
     "status": {
       "title": "Génération des personnages et des résumés",
       "waiting": "En attente du Bridge",
@@ -1372,6 +1393,7 @@
       "qa_sweep": "Vérification de la transcription",
       "qa_adjudicating": "Examen des passages douteux",
       "retranscribing": "Nouvelle transcription de passages",
+      "readalong_aligning": "Alignement du texte sur la narration",
       "markers_normalizing": "Recherche des chapitres",
       "spelling_research": "Vérification des noms et de l'orthographe",
       "correcting": "Correction de la transcription",
@@ -1635,7 +1657,20 @@
       "revealBody_other": "Vous venez de faire leur connaissance au chapitre {{chapter}}. Rien au-delà n’est affiché.",
       "show": "Afficher",
       "noServerTitle": "Le serveur de ce livre n'est pas connecté",
-      "noServerHint": "Les signets, les notes et l'historique reviendront dès qu'il le sera."
+      "noServerHint": "Les signets, les notes et l'historique reviendront dès qu'il le sera.",
+      "text": "Texte",
+      "textEmptyTitle": "Pas encore de lecture synchronisée pour ce livre",
+      "textEmptyHint": "Une lecture synchronisée aligne l'ebook sur la narration, pour que le texte suive pendant l'écoute.",
+      "textStaleTitle": "La lecture synchronisée n'est plus à jour",
+      "textStaleEbook": "L'ebook a changé depuis sa création, il ne correspond plus.",
+      "textStaleAudio": "L'audio a changé depuis sa création, il ne correspond plus.",
+      "textStaleHint": "Le livre a changé depuis sa création, il ne correspond plus.",
+      "textNoMatchTitle": "Le texte ne peut pas suivre cette narration",
+      "textNoMatchHint": "La lecture synchronisée ne correspond pas à cet ebook.",
+      "textFailedTitle": "Impossible de charger le texte",
+      "textFailedHint": "L'ebook ne s'est pas chargé. Vérifiez la connexion et réessayez.",
+      "textStartHint": "Le lecteur d'ebooks n'a pas démarré. Réessayez.",
+      "textNoServer": "Le texte revient dès qu'il l'est."
     },
     "placeMoved": {
       "title": "Reprise là où vous en étiez sur un autre appareil",
@@ -2987,6 +3022,10 @@
     "notSaved": {
       "body": "Ta position n'a pas été enregistrée sur le serveur. Elle est conservée sur cet appareil.",
       "dismiss": "OK"
+    },
+    "readalong": {
+      "follow": "Suivre la narration",
+      "back": "Revenir à la narration"
     }
   }
 }

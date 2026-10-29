@@ -1,4 +1,5 @@
 import {
+  cfiAt,
   checkReadalongSpan,
   hasSpans,
   MAX_READALONG_CFI_BYTES,
@@ -108,5 +109,28 @@ describe('parseReadalongMap', () => {
       dropped: 0,
     });
     expect(hasSpans(map!)).toBe(false);
+  });
+});
+
+describe('cfiAt', () => {
+  const map = {
+    sections: [
+      { href: 'a.xhtml', spans: [{ cfi: 'epubcfi(/6/2!/4/2)', start: 5, end: 9 }] },
+      {
+        href: 'b.xhtml',
+        spans: [
+          { cfi: 'epubcfi(/6/4!/4/2)', start: 20, end: 25 },
+          { cfi: 'epubcfi(/6/4!/4/4)', start: 12, end: 19 },
+        ],
+      },
+    ],
+  };
+  it('names the latest sentence starting at or before the time, in time order', () => {
+    expect(cfiAt(map, 13)).toBe('epubcfi(/6/4!/4/4)');
+    expect(cfiAt(map, 20)).toBe('epubcfi(/6/4!/4/2)');
+    expect(cfiAt(map, 9.5)).toBe('epubcfi(/6/2!/4/2)');
+  });
+  it('names nothing before the first sentence', () => {
+    expect(cfiAt(map, 1)).toBeUndefined();
   });
 });

@@ -75,9 +75,10 @@ async function mount({
   onMessage = jest.fn(),
   onLoadError = jest.fn(),
   onReopen = jest.fn(),
+  placeKnown = undefined as boolean | undefined,
 } = {}) {
   const handle: { current: ReaderHostHandle | null } = { current: null };
-  const host = (ebookSize: number) => (
+  const host = (ebookSize: number, known = placeKnown) => (
     <ReaderHost
       api={{} as ApiClient}
       connectionId="c1"
@@ -86,6 +87,7 @@ async function mount({
       ebookSize={ebookSize}
       name="Book"
       at={{ cfi: 'epubcfi(/6/2!/4)', fraction: 0.1 }}
+      placeKnown={known}
       theme={theme}
       fontScale={1}
       title="Reader"
@@ -98,7 +100,9 @@ async function mount({
   const view = await render(host(CHUNK_BYTES + 5));
   /** The screen renders the host again with the server's new size of the ebook. */
   const resize = (ebookSize: number) => view.rerender(host(ebookSize));
-  return { onMessage, onLoadError, onReopen, handle, resize, unmount: view.unmount };
+  /** The screen now knows where the book opens. */
+  const placeFound = () => view.rerender(host(CHUNK_BYTES + 5, true));
+  return { onMessage, onLoadError, onReopen, handle, resize, placeFound, unmount: view.unmount };
 }
 
 const latest = () => mockViews[mockViews.length - 1];
@@ -188,6 +192,19 @@ describe('ReaderHost (app)', () => {
       { type: 'chunk', seq: 0, data: `file:///cache/book.epub@0+${CHUNK_BYTES}` },
       { type: 'chunk', seq: 1, data: `file:///cache/book.epub@${CHUNK_BYTES}+5` },
     ]);
+  });
+
+  it('finds the file at once, and posts the book only once where it opens is known (fe#164)', async () => {
+    const { placeFound } = await mount({ placeKnown: false });
+    await waitFor(() => expect(mockLocalEbook).toHaveBeenCalled());
+    await say({ type: 'ready' });
+    await act(async () => {});
+    expect(latest().posted).toEqual([]);
+    await act(async () => {
+      await placeFound();
+    });
+    await waitFor(() => expect(latest().posted).toHaveLength(3));
+    expect(latest().posted[0]).toMatchObject({ type: 'open', at: { cfi: 'epubcfi(/6/2!/4)' } });
   });
 
   it('holds page turns until the reader is ready', async () => {

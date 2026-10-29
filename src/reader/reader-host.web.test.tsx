@@ -107,17 +107,19 @@ async function mountInPage({
   onLoadError = jest.fn(),
   onReopen = jest.fn(),
   readalong = {},
+  placeKnown,
 }: {
   ebook?: jest.Mock;
   onMessage?: jest.Mock;
   onLoadError?: jest.Mock;
   onReopen?: jest.Mock;
   readalong?: ReaderReadalongProps;
+  placeKnown?: boolean;
 } = {}) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => {
+  const draw = (known: boolean | undefined) =>
     root.render(
       <ReaderHost
         api={{ ebook } as unknown as ApiClient}
@@ -132,10 +134,19 @@ async function mountInPage({
         onMessage={onMessage}
         onLoadError={onLoadError}
         onReopen={onReopen}
+        placeKnown={known}
+        at={{ cfi: 'epubcfi(/6/2!/4/2)' }}
         {...readalong}
       />,
     );
+  await act(async () => {
+    draw(placeKnown);
   });
+  /** The screen now knows where the book opens. */
+  const placeFound = () =>
+    act(async () => {
+      draw(true);
+    });
   const reader = container.querySelector('iframe')!.contentWindow!;
   const posted = jest.spyOn(reader, 'postMessage').mockImplementation(() => {});
   const say = (data: unknown, source: Window = reader) =>
@@ -150,7 +161,7 @@ async function mountInPage({
       root.unmount();
       container.remove();
     });
-  return { ebook, onMessage, onLoadError, onReopen, say, types, unmount, posted };
+  return { ebook, onMessage, onLoadError, onReopen, say, types, unmount, posted, placeFound };
 }
 
 describe('ReaderHost (web) in a page', () => {
@@ -159,6 +170,17 @@ describe('ReaderHost (web) in a page', () => {
     await host.say({ type: 'ready' });
     expect(host.ebook).toHaveBeenCalledTimes(1);
     expect(host.types()).toEqual(['open']);
+    await host.unmount();
+  });
+
+  it('fetches the book at once, and opens it only once where it opens is known (fe#164)', async () => {
+    const host = await mountInPage({ placeKnown: false });
+    await host.say({ type: 'ready' });
+    expect(host.ebook).toHaveBeenCalledTimes(1);
+    expect(host.types()).toEqual([]);
+    await host.placeFound();
+    expect(host.types()).toEqual(['open']);
+    expect(host.posted.mock.calls[0]?.[0]).toMatchObject({ at: { cfi: 'epubcfi(/6/2!/4/2)' } });
     await host.unmount();
   });
 

@@ -8,6 +8,7 @@ import { useLatestRef } from '@/lib/use-latest';
 import { acceptReaderMessage, type HostChannel, type HostMessage } from './protocol';
 import type { ReaderHostProps } from './reader-host-types';
 import { startReaderSession } from './reader-session';
+import { usePlaceGate } from './use-place-gate';
 import { useReaderControls } from './use-reader-controls';
 import { useReaderReadalong } from './use-reader-readalong';
 
@@ -44,6 +45,7 @@ export function ReaderHost({
   path,
   name,
   at,
+  placeKnown = true,
   theme,
   fontScale,
   title,
@@ -54,6 +56,7 @@ export function ReaderHost({
   ...readalongProps
 }: ReaderHostProps) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const placeGate = usePlaceGate(placeKnown);
   const channel = useRef<HostChannel | null>(null);
   const latest = useLatestRef({
     api,
@@ -101,6 +104,11 @@ export function ReaderHost({
       downloadedEbook(connectionId, libraryId, path)
         .catch(() => null)
         .then((saved) => saved ?? latest.current.api.ebook(libraryId, path, abort.signal))
+        // The bytes are in: the book goes over once the screen knows where it opens.
+        .then(async (book) => {
+          await placeGate();
+          return book;
+        })
         .then((book) => {
           if (abort.signal.aborted) return;
           const { at: place, theme: look, fontScale: scale, name: bookName } = latest.current;
@@ -129,7 +137,7 @@ export function ReaderHost({
       fetching?.abort();
       channel.current = null;
     };
-  }, [connectionId, libraryId, path, latest, readalong]);
+  }, [connectionId, libraryId, path, latest, readalong, placeGate]);
 
   return (
     <iframe
