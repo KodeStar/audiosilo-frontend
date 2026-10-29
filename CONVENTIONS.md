@@ -1810,7 +1810,8 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   (`popTabToRoot`) and `navigate`, so the hub never gets a second copy pushed over it and is never
   looked for in another tab. Inside the hub, sections switch with `setParams` (`youSectionParams`).
   The phone hub sets its large title per section (`navigation.setOptions`; a section then leaves
-  that name out of its own heading); the wide sub-nav keeps "You". Its sections are `StatsSection`,
+  that name out of its own heading); the wide sub-nav keeps "You" and offers Stats, Year,
+  Journal and Household (v2.5.1; Settings is the gear, Account the profile menu). Its sections are `StatsSection`,
   `YearSection`, `JournalScreen`, `SettingsContent`, `HouseholdPage` and `AccountSection` (the
   `SECTIONS` map): Stats, Year, Household and Account are plain columns the hub puts in a
   `TabPageScroll` (below); the Journal and Settings scroll themselves. An active module's sections follow the hub's own (Slots, under Player modules). The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
