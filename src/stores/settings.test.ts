@@ -9,9 +9,12 @@ const KEY = 'audiosilo.settings';
 // gets a fresh module registry - and with it a fresh store and an empty storage mock.
 let AsyncStorage: typeof AsyncStorageType;
 let useSettings: typeof UseSettings;
-function load() {
+// `os` sets the fresh registry's Platform.OS before the store module (and its DEFAULTS)
+// loads; the jest preset's own platform otherwise.
+function load(os?: string) {
   jest.resetModules();
   /* eslint-disable @typescript-eslint/no-require-imports */
+  if (os) require('react-native').Platform.OS = os;
   AsyncStorage = require('@react-native-async-storage/async-storage').default;
   useSettings = (require('@/stores/settings') as typeof import('@/stores/settings')).useSettings;
   /* eslint-enable @typescript-eslint/no-require-imports */
@@ -26,7 +29,7 @@ async function restart() {
 }
 
 describe('settings store', () => {
-  beforeEach(load);
+  beforeEach(() => load());
 
   it('exposes the defaults before hydrate', () => {
     const s = useSettings.getState();
@@ -84,6 +87,7 @@ describe('settings store', () => {
         shakeSensitivity: 'medium',
         smartSpeed: false,
         voiceBoost: false,
+        version: 1,
       }),
     );
 
@@ -206,5 +210,87 @@ describe('settings store', () => {
     await restart();
     expect(useSettings.getState().smartSpeed).toBe(true);
     expect(useSettings.getState().voiceBoost).toBe(true);
+  });
+});
+
+// PERF-SPIKE P3: a browser cannot tell Wi-Fi from mobile data, so the web starts with
+// automatic downloads off, and a stored 'wifi' saved before that (the old default) is
+// migrated once to 'never'. The apps' default and stored values stay as they were.
+describe('settings store, automatic downloads per platform', () => {
+  const realOS = jest.requireActual<typeof import('react-native')>('react-native').Platform.OS;
+  afterEach(() => load(realOS));
+
+  async function hydrated(os: string, blob?: object) {
+    load(os);
+    if (blob) await AsyncStorage.setItem(KEY, JSON.stringify(blob));
+    await useSettings.getState().hydrate();
+    return useSettings.getState().autoDownloadNext;
+  }
+
+  it('defaults to never on the web and on Wi-Fi in the apps', async () => {
+    for (const [os, mode] of [
+      ['web', 'never'],
+      ['ios', 'wifi'],
+      ['android', 'wifi'],
+    ] as const) {
+      load(os);
+      expect(useSettings.getState().autoDownloadNext).toBe(mode);
+      await useSettings.getState().hydrate();
+      expect(useSettings.getState().autoDownloadNext).toBe(mode);
+    }
+  });
+
+  it('migrates a web blob saved before the change from wifi to never, keeps always', async () => {
+    expect(await hydrated('web', { skipForward: 45, autoDownloadNext: 'wifi' })).toBe('never');
+    expect(useSettings.getState().skipForward).toBe(45);
+    expect(await hydrated('web', { autoDownloadNext: 'always' })).toBe('always');
+    expect(await hydrated('web', { autoDownloadNext: 'never' })).toBe('never');
+  });
+
+  it('keeps a web wifi that Keep the next books ready relies on', async () => {
+    expect(await hydrated('web', { autoDownloadNext: 'wifi', keepAhead: 2 })).toBe('wifi');
+    expect(useSettings.getState().keepAhead).toBe(2);
+  });
+
+  it('leaves the apps stored values alone', async () => {
+    for (const os of ['ios', 'android']) {
+      expect(await hydrated(os, { autoDownloadNext: 'wifi' })).toBe('wifi');
+      expect(await hydrated(os, { autoDownloadNext: 'never' })).toBe('never');
+      expect(await hydrated(os, { autoDownloadNext: 'always' })).toBe('always');
+    }
+  });
+
+  it('migrates only once: a wifi chosen on the web afterwards is kept', async () => {
+    expect(await hydrated('web', { autoDownloadNext: 'wifi' })).toBe('never');
+    useSettings.getState().setAutoDownloadNext('wifi');
+    expect(JSON.parse((await AsyncStorage.getItem(KEY))!)).toMatchObject({
+      autoDownloadNext: 'wifi',
+      version: 1,
+    });
+    const blob = JSON.parse((await AsyncStorage.getItem(KEY))!);
+    expect(await hydrated('web', blob)).toBe('wifi');
+  });
+
+  it('saves the version with any setting, and keeps it out of the store', async () => {
+    expect(await hydrated('web', { autoDownloadNext: 'wifi' })).toBe('never');
+    useSettings.getState().setSkipForward(60);
+    expect(JSON.parse((await AsyncStorage.getItem(KEY))!)).toMatchObject({
+      autoDownloadNext: 'never',
+      skipForward: 60,
+      version: 1,
+    });
+    expect('version' in useSettings.getState()).toBe(false);
+  });
+
+  it('writes the migrated value when a change made before hydration is merged in', async () => {
+    load('web');
+    await AsyncStorage.setItem(KEY, JSON.stringify({ autoDownloadNext: 'wifi' }));
+    useSettings.getState().setSkipForward(60);
+    await useSettings.getState().hydrate();
+    expect(JSON.parse((await AsyncStorage.getItem(KEY))!)).toMatchObject({
+      autoDownloadNext: 'never',
+      skipForward: 60,
+      version: 1,
+    });
   });
 });

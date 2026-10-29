@@ -958,7 +958,9 @@ always follows the pick; a view without the current book contributes nothing (th
 Narnia regression test). The collapse is server-side too so an unaware client still
 gets one rail per family rather than a duplicate per reading order. Stores persisted as
 one JSON document share `persistedDocument` (`@/lib/storage`): a change made before
-hydration wins and never clobbers the stored rest.
+hydration wins and never clobbers the stored rest. The settings document carries a `version`
+(`SETTINGS_VERSION`, `src/stores/settings.ts`), written with every save and kept out of the
+store: to change a stored value once, bump it and add the step to `migrateSettings`.
 Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
 (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
 (`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`/
@@ -1320,7 +1322,7 @@ media GETs only.
   `useBookTimeSaved`.
 - **The download hot-swap plays on from intent, not from `playing`** (`switchCurrentBookToLocal`:
   `wasPlaying` is `playing` or `wantsPlayback`). A short book's automatic download
-  (`autoDownloadNext`, default `'wifi'`) can land while its start is still `loading`, or just
+  (`autoDownloadNext`, `'wifi'` in the apps) can land while its start is still `loading`, or just
   after the engine began playing but before its `playing` reached JS; iOS's `load` pauses the
   player (Android keeps `playWhenReady`), so a swap that didn't play left a kid's first story
   stopped on Play, or on a watchdog error (8b-1). It **keeps the engine's file order**: a
@@ -1777,8 +1779,9 @@ tokens, type and components; its section 17 maps them onto these files.
   keep its context value while direction and locale hold: RNW wraps every element with a `dir` (each
   root `Text` is `dir="auto"`) in it, and a fresh value per render re-rendered every View and Text
   below a re-rendering parent straight through memo. `src/lib/react-native-web-locale.test.tsx`
-  guards it. An RNW upgrade regenerates the patch (`npx patch-package react-native-web`) or drops
-  it once upstream fixes it; a patch that no longer applies fails the install.
+  guards it. RNW is pinned exactly to the patch's version (and ignored by Dependabot): an RNW
+  upgrade regenerates the patch (`npx patch-package react-native-web`) or drops it once upstream
+  fixes it; a patch that no longer applies fails the install.
 - **Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`**
   (`themes.light` / `themes.dark`, plus a fixed `palette` of `white`/`black`). `npm run gen:tokens`
   (`scripts/gen-tokens.mjs`) writes the generated region of `src/global.css` (each theme token as a
