@@ -387,7 +387,10 @@ export function ReaderScreen({
   // The host starts before the place is known (fe#164: the EPUB is fetched meanwhile), and
   // hands the book over once it is (`placeKnown`).
   const ready = readable && api !== null && fontScale !== null && ebookSize !== undefined;
-  if (ready && !savedEbook && cachedBefore === null) setCachedBefore(hasLocalEbook(localRef));
+  if (ready && !savedEbook && cachedBefore === null) {
+    // A throw is no copy (as `lookupReadingPlace` takes it), never an unhandled rejection.
+    setCachedBefore(hasLocalEbook(localRef).catch(() => false));
+  }
   const edges = usePageEdges();
   // "Follow narration" (first) or "Back to narration" (after turning away), while the book
   // shows, plays, and its map is this ebook's.

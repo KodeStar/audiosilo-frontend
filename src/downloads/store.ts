@@ -134,6 +134,9 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       hydrating = null;
       read();
     }
+    // An `/item` answer can reach the cache before this read the registry (the web's
+    // refresh starts after paint, its own sweep then finding no downloads yet).
+    if (readalongRefreshOn) refreshCachedReadalongs(Object.values(cleaned));
     await persist();
     // The community metadata kept with each downloaded book, seeded for offline reading
     // (and filled in for a download made before it was kept). In the background, once the
@@ -558,20 +561,16 @@ const readalongTried = new Set<string>();
  * a server that serves maps, so an older one never drops anything). Returns the unsubscribe
  * (started once from the root layout).
  *
- * The answers the cache already holds when it starts are taken too, as `startChapterRefresh`
- * does: the web starts it after the first paint, when a screen's `/item` can have landed
- * already. The store's own seeds name the map the download keeps (`namingReadalong`), so
- * they change nothing.
+ * The answers the cache already holds when it starts, and when the launch's `hydrate` has
+ * read the registry, are taken too (as `startChapterRefresh` and `withCachedChapters` do):
+ * the web starts it after the first paint, when a screen's `/item` can have landed already.
+ * The store's own seeds name the map the download keeps (`namingReadalong`), so they change
+ * nothing but a map the download could not fetch, which is tried again (`readalongTried`).
  */
 export function startReadalongRefresh(): () => void {
-  for (const entry of Object.values(useDownloads.getState().entries)) {
-    if (entry.status !== 'downloaded') continue;
-    const cached = queryClient.getQueryData<Book>(
-      qk.item(entry.connectionId, entry.libraryId, entry.path),
-    );
-    if (cached) void refreshReadalong(bookRefOf(entry), cached).catch(() => {});
-  }
-  return queryClient.getQueryCache().subscribe((event) => {
+  readalongRefreshOn = true;
+  refreshCachedReadalongs(Object.values(useDownloads.getState().entries));
+  const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
     const ref = bookKeyParts(event.query.queryKey, 'item');
     const book = event.action.data as Book | undefined;
@@ -579,6 +578,26 @@ export function startReadalongRefresh(): () => void {
     const { cid, libraryId, path } = ref;
     void refreshReadalong({ connectionId: cid, libraryId, path }, book).catch(() => {});
   });
+  return () => {
+    readalongRefreshOn = false;
+    unsubscribe();
+  };
+}
+
+/** Whether `startReadalongRefresh` runs (the launch's registry read then takes the cached
+ * answers too). */
+let readalongRefreshOn = false;
+
+/** The `/item` answers the cache holds for these downloaded books, each taken as an answer
+ * that just landed (`refreshReadalong`). */
+function refreshCachedReadalongs(entries: Iterable<DownloadEntry>): void {
+  for (const entry of entries) {
+    if (entry.status !== 'downloaded') continue;
+    const cached = queryClient.getQueryData<Book>(
+      qk.item(entry.connectionId, entry.libraryId, entry.path),
+    );
+    if (cached) void refreshReadalong(bookRefOf(entry), cached).catch(() => {});
+  }
 }
 
 /** One answer's work for `startReadalongRefresh`. */

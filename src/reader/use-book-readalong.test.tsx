@@ -170,6 +170,28 @@ describe('useBookReadalong', () => {
     }
   });
 
+  it("gives a device copy whose read threw way to the server's map when it is ready", async () => {
+    mockKept = 'g1';
+    mockReadKept.mockRejectedValue(new Error('EIO'));
+    const { result } = await renderHook(() => useBookReadalong(REF, ready('g1'), true), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.map).not.toBeNull());
+    expect(result.current.failed).toBe(false);
+  });
+
+  it('is pending, never failed, while Try again reads the map again', async () => {
+    mockServerMap.mockReturnValue({
+      data: undefined,
+      isError: true,
+      isFetching: true,
+      error: new ApiError(503, 'down'),
+      refetch: jest.fn(),
+    });
+    const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+    expect(result.current).toMatchObject({ map: null, pending: true, failed: false });
+  });
+
   it("says a copy on the device that won't read failed", async () => {
     mockServes = undefined;
     mockKept = 'g1';

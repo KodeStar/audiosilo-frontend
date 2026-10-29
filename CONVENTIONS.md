@@ -2193,8 +2193,10 @@ are asked, at most 10,000 rows.
   by name), and its `book.readalong` names the map kept (`namingReadalong`): offline that book
   is the item's seed, and `readalongSource` reads the copy only while the book names it or no
   map. `startReadalongRefresh` (the root's services) takes the `/item` answers the cache holds
-  when it starts (the web starts it after paint; the store's seeds name the kept map and change
-  nothing), then watches the server's `/item` answers for a downloaded book: another `generated_at` fetches the map again (a failed fetch keeps the copy
+  when it starts and once the launch's `hydrate` has read the registry (the web starts it after
+  paint; the store's seeds name the kept map and change nothing but a map the download could not
+  fetch), then watches the server's `/item` answers for a downloaded book: another
+  `generated_at` fetches the map again (a failed fetch keeps the copy
   and the manifest as they were), no ready map (stale or none) drops it (`readalongChange`; the
   book then says what the server said), once per answer's map per launch (`readalongTried`).
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:

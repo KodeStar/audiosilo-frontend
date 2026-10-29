@@ -89,14 +89,17 @@ export function useBookReadalong(
     // It reads the device, so it runs offline too.
     networkMode: 'always',
   });
-  // A copy that could not be read (gone, damaged) gives way to the server's, when it has
-  // the map ready.
-  const source: ReadalongSource =
-    wanted === 'local' && local.isSuccess && local.data === null
-      ? readalongReady(serves, book, readable)
-        ? 'server'
-        : null
-      : wanted;
+  // A copy that could not be read (gone, damaged, a read that threw) gives way to the
+  // server's, when it has the map ready; else a copy that is gone is none, one whose read
+  // threw a failure to say (`failed`).
+  const unread = wanted === 'local' && (local.isError || (local.isSuccess && local.data === null));
+  const source: ReadalongSource = !unread
+    ? wanted
+    : readalongReady(serves, book, readable)
+      ? 'server'
+      : local.isError
+        ? 'local'
+        : null;
   const generatedAt = book?.readalong?.generated_at ?? '';
   const server = useReadalong(
     libraryId,
@@ -106,7 +109,8 @@ export function useBookReadalong(
   );
   const read = source === 'local' ? local : source === 'server' ? server : null;
   const data = read?.data;
-  const errored = read?.isError === true;
+  // Not while Try again reads it again: on its way meanwhile (`pending`).
+  const errored = read?.isError === true && !read.isFetching;
   // A device copy's read never says "none" (`readalongNone` is false for it).
   const failed = errored && !readalongNone(read?.error);
   const refetch = read?.refetch;

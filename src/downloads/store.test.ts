@@ -1102,6 +1102,22 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
       expect(entry()).toBe(e);
     });
 
+    it("takes an /item answer that landed before the launch's hydrate read the registry", async () => {
+      const e = kept('g1');
+      useDownloads.setState({ entries: {}, hydrated: false });
+      await seed({ [key]: e });
+      const made = makeBook({ readalong: { state: 'ready', generated_at: 'g2' } });
+      mockGetQueryData.mockImplementation((k: unknown) => {
+        if (!Array.isArray(k)) return undefined;
+        if (k[0] === 'server') return { capabilities: { readalong: true } };
+        return k[0] === 'item' && k[3] === 'A/Book' ? made : undefined;
+      });
+      mockFetchReadalong.mockResolvedValue('g2');
+      await useDownloads.getState().hydrate();
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF);
+    });
+
     it('fetches the map again once it was made again, and its book names it (the seed offline)', async () => {
       kept('g1');
       mockFetchReadalong.mockResolvedValue('g2');
