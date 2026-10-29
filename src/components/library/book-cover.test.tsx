@@ -23,8 +23,8 @@ jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
   useServerInfo: () => mockInfo,
 }));
-let mockEntry: { status: string; manifest: { coverUri: string | null } } | undefined;
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => mockEntry }));
+let mockCoverUri: string | null = null;
+jest.mock('@/downloads/store', () => ({ useDownloadedCoverUri: () => mockCoverUri }));
 
 // CoverFrame's iOS shadow reads the theme (the provider imports global.css).
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
@@ -75,7 +75,7 @@ describe('BookCover', () => {
     jest.spyOn(PixelRatio, 'get').mockReturnValue(2);
     mockHasApi = true;
     mockInfo = { data: { capabilities: { cover_sizes: true } } };
-    mockEntry = undefined;
+    mockCoverUri = null;
     mockApi.coverUrl.mockClear();
   });
 
@@ -102,7 +102,7 @@ describe('BookCover', () => {
   });
 
   it("uses the downloaded copy of a book that's on this device", async () => {
-    mockEntry = { status: 'downloaded', manifest: { coverUri: 'file:///d/cover.jpg' } };
+    mockCoverUri = 'file:///d/cover.jpg';
     await render(<BookCover {...props} />);
     expect(source()).toBe('file:///d/cover.jpg');
   });

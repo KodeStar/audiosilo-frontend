@@ -45,7 +45,10 @@ jest.mock('@/components/library/use-selected-library', () => ({
     isLoading: false,
   }),
 }));
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
+jest.mock('@/downloads/store', () => ({
+  useIsDownloaded: () => false,
+  useDownloadedCoverUri: () => null,
+}));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/lib/layout', () => ({

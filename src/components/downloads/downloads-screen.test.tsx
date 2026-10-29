@@ -76,6 +76,7 @@ jest.mock('@/downloads/store', () => {
     useDownloads,
     useDownloadEntry: (c: string, l: number, p: string) =>
       useDownloads((s: { entries: Record<string, unknown> }) => s.entries[key(c, l, p)]),
+    useDownloadedCoverUri: () => null,
   };
 });
 jest.mock('@/downloads/keep-ahead-controller', () => {

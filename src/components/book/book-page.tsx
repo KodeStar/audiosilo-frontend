@@ -51,7 +51,7 @@ import { bookCrumbs } from '@/components/ui/breadcrumbs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
-import { useDownloadEntry } from '@/downloads/store';
+import { useIsDownloaded } from '@/downloads/store';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import {
@@ -290,7 +290,8 @@ function BookPage() {
     progress?.position,
     LIVE_POSITION_BUCKET_S,
   );
-  const downloaded = useDownloadEntry(cid, libraryId, path)?.status === 'downloaded';
+  // Downloads are keyed by the book's own path (`rel_path`), as the hero's control reads them.
+  const downloaded = useIsDownloaded(cid, libraryId, relPath);
   const transcoded = useNeedsWebTranscode(book, chapterData, cid);
   // The tab counts and pins read the entries the Bookmarks and Notes tabs read and write
   // (`AnnotationSection`, keyed by the route's path, which can differ from `rel_path`), so
@@ -606,7 +607,7 @@ function BookPage() {
           }
           footer={
             <>
-              <DownloadProgress libraryId={libraryId} path={path} />
+              <DownloadProgress libraryId={libraryId} path={relPath} />
               <GenerateStatus model={generate} />
               {generate.covered ? <GenerateCovered onOpen={openCharacters} /> : null}
               <TranscodeNote

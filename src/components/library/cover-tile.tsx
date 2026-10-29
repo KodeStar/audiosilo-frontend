@@ -10,7 +10,7 @@ import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import { useBookDragSource } from '@/components/upnext/drag-source';
-import { useDownloadEntry } from '@/downloads/store';
+import { useIsDownloaded } from '@/downloads/store';
 import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
 import { percentOf, progressFractionRemaining } from '@/lib/progress-view';
@@ -140,7 +140,7 @@ export function CoverTile({
 }: CoverTileProps) {
   const { t } = useTranslation();
   const { openBook } = useOpen();
-  const downloaded = useDownloadEntry(connectionId, libraryId, path)?.status === 'downloaded';
+  const downloaded = useIsDownloaded(connectionId, libraryId, path);
   // The saved progress, unless the caller says (a screen that has it, or a live place).
   const own = givenProgress === undefined && givenFinished === undefined;
   const saved = useSavedProgress(libraryId, path, connectionId, own);

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform } from 'react-native';
-import { renderHook } from '@testing-library/react-native';
+import { act, renderHook } from '@testing-library/react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book, ChaptersResponse } from '@/api/types';
@@ -152,8 +152,11 @@ import {
   refreshedChapters,
   reviveEntry,
   startChapterRefresh,
+  useDownloadedCoverUri,
   useDownloadedEbook,
+  useDownloadEntry,
   useDownloads,
+  useIsDownloaded,
 } from '@/downloads/store';
 import { onConnectionRemoved } from '@/stores/session';
 /* eslint-enable import/first */
@@ -340,6 +343,60 @@ describe('useDownloadedEbook', () => {
     expect(await uri('A')).toBe('file:///d/A/book.epub');
     for (const path of ['B', 'C', 'D', 'E']) expect(await uri(path)).toBeUndefined();
     useDownloads.setState({ entries: {} });
+  });
+});
+
+describe('the narrow download selectors', () => {
+  const key = downloadKey('c1', 2, 'A/Book');
+  const patch = (p: Partial<DownloadEntry>) =>
+    act(async () => {
+      const s = useDownloads.getState();
+      useDownloads.setState({ entries: { ...s.entries, [key]: { ...s.entries[key], ...p } } });
+    });
+
+  afterEach(() => useDownloads.setState({ entries: {} }));
+
+  it('re-render nothing on progress ticks, and update when the download finishes', async () => {
+    useDownloads.setState({
+      entries: { [key]: downloadedEntry({ status: 'downloading', progress: 0.1, bytes: 10 }) },
+    });
+    const renders = { status: 0, cover: 0, entry: 0 };
+    const status = await renderHook(() => {
+      renders.status++;
+      return useIsDownloaded('c1', 2, 'A/Book');
+    });
+    const cover = await renderHook(() => {
+      renders.cover++;
+      return useDownloadedCoverUri('c1', 2, 'A/Book');
+    });
+    // The control: a subscriber of the whole entry sees every tick.
+    await renderHook(() => {
+      renders.entry++;
+      return useDownloadEntry('c1', 2, 'A/Book');
+    });
+    expect(status.result.current).toBe(false);
+    expect(cover.result.current).toBeNull();
+    const before = { ...renders };
+
+    for (const progress of [0.2, 0.4, 0.6]) await patch({ progress, bytes: progress * 100 });
+    expect(renders.entry).toBe(before.entry + 3);
+    expect(renders.status).toBe(before.status);
+    expect(renders.cover).toBe(before.cover);
+
+    await patch({ status: 'downloaded', progress: 1 });
+    expect(status.result.current).toBe(true);
+    expect(cover.result.current).toBe('stale:cover');
+    expect(renders.status).toBe(before.status + 1);
+    expect(renders.cover).toBe(before.cover + 1);
+  });
+
+  it('answer false and null for a book with no download or one that failed', async () => {
+    useDownloads.setState({ entries: { [key]: downloadedEntry({ status: 'error' }) } });
+    expect((await renderHook(() => useIsDownloaded('c1', 2, 'A/Book'))).result.current).toBe(false);
+    expect((await renderHook(() => useDownloadedCoverUri('c1', 2, 'A/Book'))).result.current).toBe(
+      null,
+    );
+    expect((await renderHook(() => useIsDownloaded('c2', 2, 'A/Book'))).result.current).toBe(false);
   });
 });
 

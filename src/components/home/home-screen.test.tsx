@@ -11,7 +11,10 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 // Previously on has its own tests; Home only places it.
 jest.mock('./previously-on', () => ({ PreviouslyOnCard: () => null }));
-jest.mock('@/downloads/store', () => ({ useDownloadEntry: () => undefined }));
+jest.mock('@/downloads/store', () => ({
+  useIsDownloaded: () => false,
+  useDownloadedCoverUri: () => null,
+}));
 jest.mock('@/playback/progress-sync', () => ({ flushQueue: jest.fn(async () => undefined) }));
 jest.mock('@/reader/reading-progress', () => ({
   flushReadingQueue: jest.fn(async () => undefined),

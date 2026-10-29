@@ -165,8 +165,10 @@ jest.mock('react-native-gesture-handler', () => ({
   GestureDetector: ({ children }: { children: ReactNode }) => children,
 }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
+const mockIsDownloaded = jest.fn((_cid: string, _libraryId: number, _path: string) => false);
 jest.mock('@/downloads/store', () => ({
-  useDownloadEntry: () => undefined,
+  useIsDownloaded: (cid: string, libraryId: number, path: string) =>
+    mockIsDownloaded(cid, libraryId, path),
   useDownloadedEbook: () => undefined,
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
@@ -546,6 +548,12 @@ describe('book page tabs', () => {
       libraryId: 1,
       path: 'Author/Book',
     });
+  });
+
+  it("reads the download under the book's rel_path, the key the download was kept under", async () => {
+    mockBook = { ...BOOK, rel_path: 'Author/Book/' };
+    await mountAt('desktop');
+    expect(mockIsDownloaded).toHaveBeenLastCalledWith('home', 1, 'Author/Book/');
   });
 });
 

@@ -5,7 +5,7 @@ import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { CoverSize } from '@/api/types';
 import { Cover } from '@/components/ui/cover';
-import { useDownloadEntry } from '@/downloads/store';
+import { useDownloadedCoverUri } from '@/downloads/store';
 import { cn } from '@/lib/utils';
 
 import { CoverFrame } from './cover-frame';
@@ -107,8 +107,7 @@ export function BookCover({
     : info.isError
       ? false
       : undefined;
-  const entry = useDownloadEntry(connectionId, libraryId, path);
-  const local = entry?.status === 'downloaded' ? entry.manifest.coverUri : null;
+  const local = useDownloadedCoverUri(connectionId, libraryId, path);
   const candidates = coverCandidates({
     local,
     thumbnails: api ? thumbnails : false,

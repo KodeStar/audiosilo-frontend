@@ -1625,6 +1625,15 @@ tokens, type and components; its section 17 maps them onto these files.
   `switch`, `checkbox`, `option`, menu items; RNW only did `button`), and a `role="button"` pressable
   with no `onPress` leaves Space to its own handlers (so Radix opens a Select). No per-primitive Space
   shims.
+- **Dependency patches (`patches/`, `patch-package`):** `npm install`/`npm ci` apply them from
+  `postinstall` (`patch-package --error-on-fail`: without the flag a failure off CI only warns).
+  `react-native-web+<ver>.patch` makes RNW's `LocaleProvider`
+  (`dist/modules/useLocale` and `dist/cjs/modules/useLocale`; the web export bundles the CJS one)
+  keep its context value while direction and locale hold: RNW wraps every element with a `dir` (each
+  root `Text` is `dir="auto"`) in it, and a fresh value per render re-rendered every View and Text
+  below a re-rendering parent straight through memo. `src/lib/react-native-web-locale.test.tsx`
+  guards it. An RNW upgrade regenerates the patch (`npx patch-package react-native-web`) or drops
+  it once upstream fixes it; a patch that no longer applies fails the install.
 - **Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`**
   (`themes.light` / `themes.dark`, plus a fixed `palette` of `white`/`black`). `npm run gen:tokens`
   (`scripts/gen-tokens.mjs`) writes the generated region of `src/global.css` (each theme token as a

@@ -1,0 +1,50 @@
+diff --git a/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js b/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js
+index 0c9c16c..6d63213 100644
+--- a/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js
++++ b/node_modules/react-native-web/dist/cjs/modules/useLocale/index.js
+@@ -29,12 +29,16 @@ function LocaleProvider(props) {
+     locale = props.locale,
+     children = props.children;
+   var needsContext = direction || locale;
++  // Patched (patches/react-native-web+*.patch, see CONVENTIONS.md "Dependency patches"):
++  // keep the value while direction and locale hold, so a re-render does not re-render
++  // every consumer below it.
++  var value = (0, _react.useMemo)(() => ({
++    direction: locale ? getLocaleDirection(locale) : direction,
++    locale
++  }), [direction, locale]);
+   return needsContext ? /*#__PURE__*/_react.default.createElement(LocaleContext.Provider, {
+     children: children,
+-    value: {
+-      direction: locale ? getLocaleDirection(locale) : direction,
+-      locale
+-    }
++    value: value
+   }) : children;
+ }
+ function useLocaleContext() {
+diff --git a/node_modules/react-native-web/dist/modules/useLocale/index.js b/node_modules/react-native-web/dist/modules/useLocale/index.js
+index 2c4e233..a0a8c63 100644
+--- a/node_modules/react-native-web/dist/modules/useLocale/index.js
++++ b/node_modules/react-native-web/dist/modules/useLocale/index.js
+@@ -22,12 +22,16 @@ export function LocaleProvider(props) {
+     locale = props.locale,
+     children = props.children;
+   var needsContext = direction || locale;
++  // Patched (patches/react-native-web+*.patch, see CONVENTIONS.md "Dependency patches"):
++  // keep the value while direction and locale hold, so a re-render does not re-render
++  // every consumer below it.
++  var value = React.useMemo(() => ({
++    direction: locale ? getLocaleDirection(locale) : direction,
++    locale
++  }), [direction, locale]);
+   return needsContext ? /*#__PURE__*/React.createElement(LocaleContext.Provider, {
+     children: children,
+-    value: {
+-      direction: locale ? getLocaleDirection(locale) : direction,
+-      locale
+-    }
++    value: value
+   }) : children;
+ }
+ export function useLocaleContext() {
