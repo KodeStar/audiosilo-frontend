@@ -629,9 +629,12 @@ function beginHistory() {
 }
 
 /** Record the listening span (from→to over the elapsed time) when playback
- * stops, ignoring brief spans. `keepalive`: the page is going (web), so the request must
- * outlive it. */
-function endHistory({ keepalive = false }: { keepalive?: boolean } = {}) {
+ * stops, ignoring brief spans. `leaving`: the page is going or hiding (web), so nothing
+ * on screen shows the span. On web every span goes as a keepalive request: a hard
+ * navigation pauses the audio before `pagehide`, so the span that pause ends is posted
+ * from a page that is going, and a plain request was aborted with it ("failed to save
+ * listening span", v2.5.1 PLAYER-14). A span is far below keepalive's 64 KB. */
+function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   const start = historyStart;
   historyStart = null;
   if (!start || !apiRef || Date.now() - start.at < MIN_HISTORY_MS) return;
@@ -651,13 +654,13 @@ function endHistory({ keepalive = false }: { keepalive?: boolean } = {}) {
         started_at: new Date(start.at).toISOString(),
         ended_at: new Date().toISOString(),
       },
-      { keepalive },
+      { keepalive: leaving || Platform.OS === 'web' },
     )
     .then(() => {
       // Not for a span posted as the page hides or goes: nothing on screen shows it, and
       // coming back reads every query again (`refreshAfterResume`), so a hidden tab that
       // splits its span at each switch doesn't refetch the history each time.
-      if (!keepalive)
+      if (!leaving)
         void queryClient.invalidateQueries({ queryKey: qk.historyAll(np.connectionId) });
     })
     .catch((err) => {
@@ -677,7 +680,7 @@ function endHistory({ keepalive = false }: { keepalive?: boolean } = {}) {
 export function flushHistoryOnHide(final: boolean): void {
   if (!historyStart) return;
   if (!final && Date.now() - historyStart.at < MIN_HISTORY_MS) return;
-  endHistory({ keepalive: true });
+  endHistory({ leaving: true });
   if (!final && isPlayingState(usePlayer.getState().snapshot.state)) beginHistory();
 }
 
