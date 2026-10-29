@@ -118,4 +118,59 @@ describe('createHostChannel', () => {
     channel.send({ type: 'prev' });
     expect(post).toHaveBeenLastCalledWith({ type: 'prev' }, []);
   });
+
+  it('says whether the reader is ready', () => {
+    const channel = createHostChannel(jest.fn());
+    expect(channel.isReady()).toBe(false);
+    channel.ready();
+    expect(channel.isReady()).toBe(true);
+  });
+});
+
+// Read-along (Bridge Phase 3c): what the reader says back, field by field.
+describe('parseReaderMessage (read-along)', () => {
+  it('takes a seek, a follow state and what the reader made of the map', () => {
+    expect(parseReaderMessage({ type: 'seek', t: 31.2, i: 4, cfi: CFI })).toEqual({
+      type: 'seek',
+      t: 31.2,
+    });
+    expect(parseReaderMessage({ type: 'seek', t: 0 })).toEqual({ type: 'seek', t: 0 });
+    expect(parseReaderMessage({ type: 'following', value: false })).toEqual({
+      type: 'following',
+      value: false,
+    });
+    expect(parseReaderMessage({ type: 'readalong', state: 'ok', unresolved: 3 })).toEqual({
+      type: 'readalong',
+      state: 'ok',
+      unresolved: 3,
+    });
+    expect(parseReaderMessage({ type: 'readalong', state: 'none', unresolved: 0 })).toEqual({
+      type: 'readalong',
+      state: 'none',
+      unresolved: 0,
+    });
+    // A count past any map is capped, never trusted.
+    expect(parseReaderMessage({ type: 'readalong', state: 'ok', unresolved: 1e12 })).toEqual({
+      type: 'readalong',
+      state: 'ok',
+      unresolved: 1_000_000,
+    });
+  });
+
+  it.each([
+    { type: 'seek' },
+    { type: 'seek', t: -1 },
+    { type: 'seek', t: Number.NaN },
+    { type: 'seek', t: Infinity },
+    { type: 'seek', t: '12' },
+    { type: 'seek', t: 8 * 24 * 3600 },
+    { type: 'following' },
+    { type: 'following', value: 'yes' },
+    { type: 'readalong', state: 'ready', unresolved: 0 },
+    { type: 'readalong', state: 'ok' },
+    { type: 'readalong', state: 'ok', unresolved: -1 },
+    { type: 'readalong', state: 'ok', unresolved: 1.5 },
+  ])('refuses %j', (data) => {
+    expect(parseReaderMessage(data)).toBeNull();
+  });
 });

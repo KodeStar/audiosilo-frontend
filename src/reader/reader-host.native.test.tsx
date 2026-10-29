@@ -6,7 +6,12 @@ import type { ApiClient } from '@/api/client';
 
 import { CHUNK_BYTES } from './book-chunks';
 import type { HostMessage } from './protocol';
-import { READER_START_MS, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
+import {
+  READER_START_MS,
+  type ReaderHostHandle,
+  type ReaderHostProps,
+  ReaderStartError,
+} from './reader-host-types';
 
 // The app's host (Bridge Phase 3b-2), with the WebView and the book's file faked: what it
 // gives the WebView, what it posts and when, and how it comes back from a crash.
@@ -416,5 +421,166 @@ describe('readNativeMessage', () => {
     expect(readNativeMessage('{"type":"loading","value":"yes"}')).toBeNull();
     expect(readNativeMessage('{')).toBeNull();
     expect(readNativeMessage('null')).toBeNull();
+  });
+});
+
+// Read-along (Bridge Phase 3c): the map (in pieces when large), the narration's place once a
+// second, and follow go to each new WebView once it is ready; what the reader says back goes
+// to the props' callbacks.
+describe('ReaderHost (app) read-along', () => {
+  const small = {
+    sections: [{ href: 'ch1.xhtml', spans: [{ cfi: 'epubcfi(/6/4!/4/2)', start: 1, end: 2 }] }],
+  };
+  const large = {
+    sections: [
+      {
+        href: 'ch1.xhtml',
+        spans: Array.from({ length: 6000 }, (_, i) => ({
+          cfi: `epubcfi(/6/4!/4/${2 * i + 2},/1:0,/1:40)`,
+          start: i * 3,
+          end: i * 3 + 2.5,
+        })),
+      },
+    ],
+  };
+  const types = (view = latest()) => view.posted.map((m) => m.type);
+
+  async function mountAlong(props: Partial<ReaderHostProps> = {}) {
+    const handle: { current: ReaderHostHandle | null } = { current: null };
+    const callbacks = { onSeek: jest.fn(), onFollowing: jest.fn(), onReadalongState: jest.fn() };
+    let position = { t: 5, rate: 1, playing: true };
+    const host = (over: Partial<ReaderHostProps>) => (
+      <ReaderHost
+        api={{} as ApiClient}
+        connectionId="c1"
+        libraryId={2}
+        path="A/Book"
+        ebookSize={CHUNK_BYTES + 5}
+        name="Book"
+        theme={theme}
+        fontScale={1}
+        title="Reader"
+        onMessage={jest.fn()}
+        onLoadError={jest.fn()}
+        readalongPosition={() => position}
+        {...callbacks}
+        {...props}
+        {...over}
+        ref={handle}
+      />
+    );
+    const view = await render(host({}));
+    return {
+      ...callbacks,
+      handle,
+      rerender: (over: Partial<ReaderHostProps>) => view.rerender(host(over)),
+      setPosition: (p: typeof position) => (position = p),
+      unmount: view.unmount,
+    };
+  }
+
+  it('sends nothing of read-along without a map', async () => {
+    await mountAlong();
+    await say({ type: 'ready' });
+    await waitFor(() => expect(types()).toContain('open'));
+    expect(types().filter((t) => t === 'readalong' || t === 'position')).toEqual([]);
+  });
+
+  it('sends a small map whole once ready, the place, and follow when asked to follow', async () => {
+    await mountAlong({ readalongMap: small, followNarration: true });
+    expect(latest().posted).toEqual([]);
+    await say({ type: 'ready' });
+    const posted = latest().posted.filter((m) => m.type !== 'open' && m.type !== 'chunk');
+    expect(posted).toEqual([
+      { type: 'readalong', map: small },
+      { type: 'position', t: 5, rate: 1, playing: true },
+      { type: 'follow' },
+    ]);
+  });
+
+  it('sends a large map in pieces of its text, which join into the map', async () => {
+    await mountAlong({ readalongMap: large });
+    await say({ type: 'ready' });
+    const [head, ...rest] = latest().posted.filter(
+      (m) => m.type === 'readalong' || m.type === 'readalongChunk',
+    );
+    const text = JSON.stringify(large);
+    expect(text.length).toBeGreaterThan(CHUNK_BYTES);
+    expect(head).toEqual({ type: 'readalong', length: text.length, chunks: rest.length });
+    expect(rest.length).toBe(Math.ceil(text.length / CHUNK_BYTES));
+    const joined = rest.map((m) => (m.type === 'readalongChunk' ? m.data : '')).join('');
+    expect(JSON.parse(joined)).toEqual(large);
+    // Not following until asked: no follow.
+    expect(types()).not.toContain('follow');
+  });
+
+  it('sends the place every second while a map is in, and at once on syncPosition', async () => {
+    jest.useFakeTimers();
+    try {
+      const along = await mountAlong({ readalongMap: small });
+      await say({ type: 'ready' });
+      const positions = () => latest().posted.filter((m) => m.type === 'position');
+      expect(positions()).toHaveLength(1);
+      along.setPosition({ t: 6, rate: 1.5, playing: true });
+      await act(async () => jest.advanceTimersByTime(1000));
+      expect(positions().at(-1)).toEqual({ type: 'position', t: 6, rate: 1.5, playing: true });
+      along.setPosition({ t: 9, rate: 1.5, playing: false });
+      await act(async () => along.handle.current?.syncPosition());
+      expect(positions().at(-1)).toEqual({ type: 'position', t: 9, rate: 1.5, playing: false });
+      // A place that is not one (another book playing, nonsense) is not sent.
+      const count = positions().length;
+      along.setPosition({ t: Number.NaN, rate: 1, playing: true });
+      await act(async () => jest.advanceTimersByTime(1000));
+      expect(positions()).toHaveLength(count);
+      // The map goes: none is said, and the place no longer sent.
+      await act(async () => along.rerender({ readalongMap: null }));
+      expect(latest().posted.at(-1)).toEqual({ type: 'readalong', map: null });
+      along.setPosition({ t: 20, rate: 1, playing: true });
+      await act(async () => jest.advanceTimersByTime(3000));
+      expect(positions()).toHaveLength(count);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("hands the reader's seek, following and map state to the callbacks", async () => {
+    const along = await mountAlong({ readalongMap: small });
+    await say({ type: 'ready' });
+    await say({ type: 'readalong', state: 'ok', unresolved: 2 });
+    await say({ type: 'seek', t: 31.2 });
+    await say({ type: 'following', value: false });
+    await say({ type: 'seek', t: -4 });
+    expect(along.onReadalongState).toHaveBeenCalledWith({ state: 'ok', unresolved: 2 });
+    expect(along.onSeek).toHaveBeenCalledTimes(1);
+    expect(along.onSeek).toHaveBeenCalledWith(31.2);
+    expect(along.onFollowing).toHaveBeenCalledWith(false);
+  });
+
+  it('a new map in an open reader is sent at once; follow() asks the reader to follow', async () => {
+    const along = await mountAlong({ readalongMap: small });
+    await say({ type: 'ready' });
+    const other = { sections: [{ href: 'ch2.xhtml', spans: [] }] };
+    await act(async () => along.rerender({ readalongMap: other }));
+    expect(latest().posted).toContainEqual({ type: 'readalong', map: other });
+    await act(async () => along.handle.current?.follow());
+    expect(latest().posted.at(-1)).toEqual({ type: 'follow' });
+  });
+
+  it('a WebView made again gets the map and follows as the last one last said', async () => {
+    await mountAlong({ readalongMap: small, followNarration: true });
+    await say({ type: 'ready' });
+    // The reader stopped following (the person turned the page away), then died.
+    await say({ type: 'following', value: false });
+    await act(async () => latest().props.onContentProcessDidTerminate());
+    await waitFor(() => expect(mockViews).toHaveLength(2));
+    await say({ type: 'ready' });
+    expect(types()).toContain('readalong');
+    expect(types()).not.toContain('follow');
+    // Following again, then a death: the next one follows.
+    await say({ type: 'following', value: true });
+    await act(async () => latest().props.onContentProcessDidTerminate());
+    await waitFor(() => expect(mockViews).toHaveLength(3));
+    await say({ type: 'ready' });
+    expect(types()).toContain('follow');
   });
 });

@@ -1,4 +1,4 @@
-import { CHUNK_BYTES, chunkCount, sendInChunks } from './book-chunks';
+import { CHUNK_BYTES, chunkCount, readalongMessages, sendInChunks } from './book-chunks';
 import type { HostMessage } from './protocol';
 
 const open = {
@@ -107,5 +107,56 @@ describe('sendInChunks', () => {
       ),
     ).rejects.toThrow('gone');
     expect(post).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Read-along (Bridge Phase 3c): the app's map, in one message or in pieces of its text.
+describe('readalongMessages', () => {
+  const map = {
+    sections: [
+      {
+        href: 'Text/ch01.xhtml',
+        spans: [{ cfi: 'epubcfi(/6/4!/4/2,/1:0,/1:9)', start: 1, end: 2 }],
+      },
+    ],
+  };
+  const join = (messages: HostMessage[]) =>
+    messages.flatMap((m) => (m.type === 'readalongChunk' ? [m.data] : [])).join('');
+
+  it('sends a small map whole, and none as null', () => {
+    expect(readalongMessages(map)).toEqual([{ type: 'readalong', map }]);
+    expect(readalongMessages(null)).toEqual([{ type: 'readalong', map: null }]);
+  });
+
+  it('sends a large one as its length and count, then its text in order', () => {
+    const text = JSON.stringify(map);
+    const messages = readalongMessages(map, 16);
+    expect(messages[0]).toEqual({
+      type: 'readalong',
+      length: text.length,
+      chunks: Math.ceil(text.length / 16),
+    });
+    const pieces = messages.slice(1);
+    expect(pieces.map((m) => m.type === 'readalongChunk' && m.seq)).toEqual(
+      pieces.map((_, i) => i),
+    );
+    expect(join(messages)).toBe(text);
+    expect(JSON.parse(join(messages))).toEqual(map);
+  });
+
+  it('never cuts a surrogate pair in two', () => {
+    const astral = { sections: [{ href: 'x', spans: [] }], note: '\u{1F642}'.repeat(40) };
+    for (const limit of [7, 8, 9, 10, 31]) {
+      const messages = readalongMessages(astral, limit);
+      const header = messages[0];
+      const pieces = messages.slice(1) as { type: 'readalongChunk'; data: string }[];
+      expect(header).toMatchObject({ chunks: pieces.length });
+      for (const { data } of pieces) {
+        expect(data.length).toBeLessThanOrEqual(limit);
+        const last = data.charCodeAt(data.length - 1);
+        expect(last >= 0xd800 && last <= 0xdbff).toBe(false);
+      }
+      expect(JSON.parse(join(messages))).toEqual(astral);
+    }
   });
 });

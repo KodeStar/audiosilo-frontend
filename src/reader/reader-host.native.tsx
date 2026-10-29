@@ -9,16 +9,17 @@ import { whenActive } from '@/lib/when-active';
 import { sendInChunks } from './book-chunks';
 import { chunkReader, type LocalEbook, localEbook } from './ebook-file.native';
 import {
-  createHostChannel,
   type HostChannel,
   type HostMessage,
   parseReaderMessage,
   type ReaderMessage,
   type ReaderPlace,
 } from './protocol';
-import { READER_START_MS, type ReaderHostProps, ReaderStartError } from './reader-host-types';
+import { type ReaderHostProps, ReaderStartError } from './reader-host-types';
 import { READER_HTML } from './reader-html.native';
+import { startReaderSession } from './reader-session';
 import { useReaderControls } from './use-reader-controls';
+import { useReaderReadalong } from './use-reader-readalong';
 
 /**
  * The reader document's base URL: it gives the document an origin, without which foliate's
@@ -65,7 +66,8 @@ export function readNativeMessage(data: string): ReaderMessage | null {
  * request at all. The host finds the book's EPUB as a local file (its download, else the
  * reader's cache file, `ebook-file.native.ts`) and posts it in base64 chunks once the
  * reader says `ready` (`book-chunks.ts`); the reader never sees a token, an API URL or a
- * file path. When the WebView's content process dies (memory pressure), the WebView is
+ * file path. What each message does is the session both hosts share (`startReaderSession`),
+ * the read-along map (in pieces when large), place and follow too (`useReaderReadalong`). When the WebView's content process dies (memory pressure), the WebView is
  * made again and the book reopens where the reader last was.
  */
 export function ReaderHost({
@@ -83,6 +85,7 @@ export function ReaderHost({
   onLoadError,
   onReopen,
   ref,
+  ...readalongProps
 }: ReaderHostProps) {
   const web = useRef<WebView>(null);
   const channel = useRef<HostChannel | null>(null);
@@ -111,7 +114,8 @@ export function ReaderHost({
   // WebView dies (its new one may wait for the app to come back).
   const endSession = useRef(() => {});
 
-  useReaderControls(channel, ref, theme, fontScale);
+  const readalong = useReaderReadalong(channel, readalongProps, true);
+  useReaderControls(channel, ref, theme, fontScale, readalong);
 
   // The book's file, fetched into the cache when it is not on the device: started at once,
   // while the WebView loads. A failure is said at once (null to whoever waits on it). One
@@ -140,14 +144,20 @@ export function ReaderHost({
     let closed = false;
     // Each `ready` starts a transfer; a newer one (the document reloaded) stops the last.
     let transfer = 0;
-    const session = createHostChannel((message: HostMessage) =>
-      web.current?.postMessage(JSON.stringify(message)),
-    );
-    channel.current = session;
-    const starting = setTimeout(
-      () => latest.current.onLoadError(new ReaderStartError()),
-      READER_START_MS,
-    );
+    const session = startReaderSession({
+      post: (message: HostMessage) => web.current?.postMessage(JSON.stringify(message)),
+      callbacks: () => latest.current,
+      onReady: () => void sendBook(),
+      observe: (message) => {
+        if (message.type === 'progress') {
+          lastPlace.current = { cfi: message.cfi, fraction: message.fraction };
+        } else if (message.type === 'opened') {
+          openedAt.current = Date.now();
+        }
+      },
+      readalong,
+    });
+    channel.current = session.channel;
     const sendBook = async () => {
       const id = ++transfer;
       const stale = () => closed || id !== transfer;
@@ -159,45 +169,23 @@ export function ReaderHost({
           file.size,
           { name: bookName, at: lastPlace.current ?? first, theme: look, fontScale: scale },
           chunkReader(file.uri),
-          (message) => session.send(message),
+          (message) => session.channel.send(message),
           stale,
         );
       } catch (e) {
         if (!stale()) latest.current.onLoadError(e);
       }
     };
-    received.current = (message) => {
-      switch (message.type) {
-        case 'ready':
-          clearTimeout(starting);
-          session.ready();
-          void sendBook();
-          return;
-        case 'csp':
-          // A load the reader's policy blocked (an EPUB's beacon, script or font).
-          console.warn('[reader] blocked by CSP:', message.directive, message.blocked);
-          return;
-        case 'progress':
-          lastPlace.current = { cfi: message.cfi, fraction: message.fraction };
-          latest.current.onMessage(message);
-          return;
-        case 'opened':
-          openedAt.current = Date.now();
-          latest.current.onMessage(message);
-          return;
-        default:
-          latest.current.onMessage(message);
-      }
-    };
+    received.current = session.receive;
     const end = () => {
       closed = true;
-      clearTimeout(starting);
+      session.end();
       received.current = () => {};
       channel.current = null;
     };
     endSession.current = end;
     return end;
-  }, [libraryId, path, generation, latest]);
+  }, [libraryId, path, generation, latest, readalong]);
 
   // The content process died (iOS) or the renderer is gone (Android): a new WebView, up to
   // MAX_RELOADS times in a row; then the reader says it could not start. A WebView that

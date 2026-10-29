@@ -71,7 +71,13 @@ const shortcutFor = (key: string, mods: Partial<ShortcutKey> = {}) =>
 
 // The host is the platform's part (its own tests): here it hands the screen the reader's
 // messages and takes its page turns.
-const mockHandle: ReaderHostHandle = { goto: jest.fn(), next: jest.fn(), prev: jest.fn() };
+const mockHandle: ReaderHostHandle = {
+  goto: jest.fn(),
+  next: jest.fn(),
+  prev: jest.fn(),
+  follow: jest.fn(),
+  syncPosition: jest.fn(),
+};
 let mockHost: ReaderHostProps | null = null;
 jest.mock('./reader-host', () => ({
   ReaderHost: (props: ReaderHostProps) => {

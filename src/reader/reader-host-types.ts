@@ -2,21 +2,65 @@ import type { Ref } from 'react';
 
 import type { ApiClient } from '@/api/client';
 
-import type { GotoTarget, ReaderMessage, ReaderPlace, ReaderTheme } from './protocol';
+import type {
+  GotoTarget,
+  ReadalongPosition,
+  ReadalongState,
+  ReaderMessage,
+  ReaderPlace,
+  ReaderTheme,
+} from './protocol';
+import type { ReaderReadalongMap } from './readalong-map';
 
 /** What the reader screen can ask of the host. */
 export type ReaderHostHandle = {
   goto(target: GotoTarget): void;
   next(): void;
   prev(): void;
+  /** Read-along: back to the narration (turn to the sentence being read, and follow it). */
+  follow(): void;
+  /** Read-along: send the narration's place now (`readalongPosition`), not at the next
+   * second: after a play, a pause, a seek or a speed change. */
+  syncPosition(): void;
 };
 
-/** The reader's messages the screen handles (the host keeps `ready` and `csp`). */
-export type ReaderHostEvent = Exclude<ReaderMessage, { type: 'ready' } | { type: 'csp' }>;
+/** The reader's messages the screen handles through `onMessage` (the host keeps `ready`
+ * and `csp`; the read-along ones go to their own callbacks). */
+export type ReaderHostEvent = Exclude<
+  ReaderMessage,
+  | { type: 'ready' }
+  | { type: 'csp' }
+  | { type: 'seek' }
+  | { type: 'following' }
+  | { type: 'readalong' }
+>;
+
+/** The host's read-along props (Bridge Phase 3c): what drives the reader's follow mode. */
+export type ReaderReadalongProps = {
+  /** The book's read-along map (`readerMapOf` of `useReadalong`'s), or null/absent for
+   * none. Sent to every new reader document, and again when it changes (by identity), so
+   * keep it memoised. */
+  readalongMap?: ReaderReadalongMap | null;
+  /** The narration's place now (whole-book seconds, speed, playing), or null while there is
+   * none (another book playing): read once a second while a map is in, and on
+   * `syncPosition()`. */
+  readalongPosition?: () => ReadalongPosition | null;
+  /** Follow the narration as soon as a map is in (the companion's Text tab), instead of
+   * waiting for `follow()` (the full-screen reader's Follow narration). A reader document
+   * made again (a reload) follows as the last one last said (`following`). */
+  followNarration?: boolean;
+  /** A sentence was tapped: play from `t` (whole-book seconds). */
+  onSeek?: (t: number) => void;
+  /** The reader follows the narration (true), or stopped following it (false: the reader
+   * turned the page away from the sentence being read). */
+  onFollowing?: (value: boolean) => void;
+  /** What the reader made of the map (`ok`: a sentence of it is in this book). */
+  onReadalongState?: (state: ReadalongState) => void;
+};
 
 /** The host of the reader document: the web's iframe (`reader-host.web.tsx`), the app's
  * WebView (`reader-host.native.tsx`, Bridge Phase 3b-2). */
-export type ReaderHostProps = {
+export type ReaderHostProps = ReaderReadalongProps & {
   /** The book's connection's client: the host fetches the EPUB with it. */
   api: ApiClient;
   /** The book's connection: where its download (and the app's cached EPUB) is kept. */

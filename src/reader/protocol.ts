@@ -1,5 +1,7 @@
 import { isRecord } from '@/lib/storage-keys';
 
+import type { ReaderReadalongMap } from './readalong-map';
+
 /**
  * The host side of the ebook reader's message protocol (Bridge Phase 3b). The reader is
  * its own document (`reader/src/reader.js`), built in two variants: on the web
@@ -12,12 +14,23 @@ import { isRecord } from '@/lib/storage-keys';
  * following as `chunk`s of base64, `book-chunks.ts`), `goto`, `appearance`, `next`, `prev`.
  * Messages wait in the host until the reader says `ready`.
  *
+ * Read-along (Bridge Phase 3c), host -> reader: `readalong {map}` (the map's sections and
+ * spans, `readerMapOf`; null to stop; in the app a map over 256 KB of JSON comes as
+ * `readalong {length, chunks}` and `readalongChunk {seq, data}` pieces of its text,
+ * `readalongMessages`), `position {t, rate, playing}` (the narration's whole-book place,
+ * once a second while a map is in, and at once on a play, pause, seek or rate change) and
+ * `follow` (back to the narration: turn to the sentence being read and keep following).
+ *
  * Reader -> host: `ready`, `opened` (title, flattened TOC, whether the book reads right to
  * left), `progress` (on every move), `loading` (a section is being laid out), `error`,
  * `escape` (Escape pressed in the book, which the host's own keys never see), `csp` (a
- * blocked load, logged). The reader parses an EPUB nobody vetted, so its messages are
- * checked here field by field (`parseReaderMessage`) and taken only from that frame's
- * window on our own origin (`acceptReaderMessage`).
+ * blocked load, logged); read-along: `seek {t}` (a sentence was tapped: play from its
+ * start), `following {value}` (the reader follows the narration, or stopped because the
+ * reader turned away) and `readalong {state, unresolved}` (`ok` once a map is in with a
+ * sentence in this book's sections, else `none`; `unresolved` counts the spans skipped).
+ * The reader parses an EPUB nobody vetted, so its messages are checked here field by field
+ * (`parseReaderMessage`) and taken only from that frame's window on our own origin
+ * (`acceptReaderMessage`).
  */
 
 export type ReaderTheme = { scheme: 'light' | 'dark'; background: string; foreground: string };
@@ -45,7 +58,26 @@ export type HostMessage =
   | ({ type: 'goto' } & GotoTarget)
   | { type: 'appearance'; theme: ReaderTheme; fontScale: number }
   | { type: 'next' }
-  | { type: 'prev' };
+  | { type: 'prev' }
+  /** A read-along map for the open book (null: none, stop following). */
+  | { type: 'readalong'; map: ReaderReadalongMap | null }
+  /** The app's large map: its JSON text follows in `chunks` pieces, `length` UTF-16 code
+   * units in all. */
+  | { type: 'readalong'; length: number; chunks: number }
+  /** One piece of the app's large map's JSON text, `seq` counting from 0. */
+  | { type: 'readalongChunk'; seq: number; data: string }
+  /** The narration's place: whole-book seconds, its speed, and whether it is playing. */
+  | ({ type: 'position' } & ReadalongPosition)
+  | { type: 'follow' };
+
+/** Where the narration is (`position`): whole-book seconds `t`, its speed `rate`, and
+ * whether it is playing (the reader moves its clock on between samples only then). */
+export type ReadalongPosition = { t: number; rate: number; playing: boolean };
+
+/** What the reader says of a map it was given (`readalong`): `ok` with a sentence in this
+ * book's sections, else `none`; `unresolved` counts the spans it skips (a section this
+ * EPUB doesn't have, a CFI that names nothing in it). */
+export type ReadalongState = { state: 'ok' | 'none'; unresolved: number };
 
 export type TocEntry = { label: string; href: string; depth: number };
 
@@ -62,7 +94,15 @@ export type ReaderMessage =
   | { type: 'loading'; value: boolean }
   | { type: 'error'; code: ReaderErrorCode; message: string }
   | { type: 'escape' }
-  | { type: 'csp'; directive: string; blocked: string };
+  | { type: 'csp'; directive: string; blocked: string }
+  | { type: 'seek'; t: number }
+  | { type: 'following'; value: boolean }
+  | ({ type: 'readalong' } & ReadalongState);
+
+/** The longest a read-along seek may reach (seconds): a week of audio, past any book. */
+const MAX_SEEK = 7 * 24 * 3600;
+/** The most spans a reader can report unresolved (the player keeps at most 200 000). */
+const MAX_UNRESOLVED = 1_000_000;
 
 const MAX_TOC = 2000;
 const MAX_TEXT = 500;
@@ -119,6 +159,20 @@ export function parseReaderMessage(data: unknown): ReaderMessage | null {
         directive: str(data.directive, 100) ?? '',
         blocked: str(data.blocked, 200) ?? '',
       };
+    case 'seek': {
+      const t = data.t;
+      return typeof t === 'number' && Number.isFinite(t) && t >= 0 && t <= MAX_SEEK
+        ? { type: 'seek', t }
+        : null;
+    }
+    case 'following':
+      return typeof data.value === 'boolean' ? { type: 'following', value: data.value } : null;
+    case 'readalong': {
+      const state = data.state === 'ok' || data.state === 'none' ? data.state : null;
+      const n = data.unresolved;
+      if (!state || typeof n !== 'number' || !Number.isInteger(n) || n < 0) return null;
+      return { type: 'readalong', state, unresolved: Math.min(n, MAX_UNRESOLVED) };
+    }
     default:
       return null;
   }
@@ -146,6 +200,8 @@ export type HostChannel = {
   send(message: HostMessage, transfer?: Transferable[]): void;
   /** The reader said `ready`: send what waited. */
   ready(): void;
+  /** Whether the reader said `ready` (a message sent now goes at once). */
+  isReady(): boolean;
 };
 
 export function createHostChannel(
@@ -162,5 +218,6 @@ export function createHostChannel(
       isReady = true;
       for (const [message, transfer] of waiting.splice(0)) post(message, transfer);
     },
+    isReady: () => isReady,
   };
 }
