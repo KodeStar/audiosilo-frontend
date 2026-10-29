@@ -104,18 +104,13 @@ export function useBookReadalong(
     { enabled: source === 'server', generatedAt },
     connectionId,
   );
-  const data = source === 'local' ? local.data : source === 'server' ? server.data : undefined;
-  const errored = source === 'local' ? local.isError : source === 'server' && server.isError;
-  const failed =
-    source === 'local'
-      ? local.isError
-      : source === 'server' && server.isError && !readalongNone(server.error);
-  const refetchLocal = local.refetch;
-  const refetchServer = server.refetch;
-  const retry = useCallback(() => {
-    if (source === 'local') void refetchLocal();
-    else if (source === 'server') void refetchServer();
-  }, [source, refetchLocal, refetchServer]);
+  const read = source === 'local' ? local : source === 'server' ? server : null;
+  const data = read?.data;
+  const errored = read?.isError === true;
+  // A device copy's read never says "none" (`readalongNone` is false for it).
+  const failed = errored && !readalongNone(read?.error);
+  const refetch = read?.refetch;
+  const retry = useCallback(() => void refetch?.(), [refetch]);
   const map = useMemo(() => (data && hasSpans(data) ? readerMapOf(data) : null), [data]);
   const pending = source !== null && data === undefined && !errored;
   // The map last shown for this book, kept while it has one or another is on its way (set
@@ -125,7 +120,5 @@ export function useBookReadalong(
   if (map && (last?.map !== map || last.book !== bookKey)) setLast({ book: bookKey, map });
   else if (!map && !pending && last) setLast(null);
   const held = !map && pending && last?.book === bookKey ? last.map : null;
-  return held
-    ? { map: held, pending: false, failed: false, retry }
-    : { map, pending, failed: !map && failed, retry };
+  return { map: held ?? map, pending: !held && pending, failed: !map && failed, retry };
 }

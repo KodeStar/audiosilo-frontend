@@ -118,7 +118,7 @@ export function ReaderScreen({
   // fetching while the place is looked up (fe#164), and a copy this screen fetched is no
   // sign the book was read on this device, so it never makes an offline lookup open at a
   // guessed start. Asked once, as the host first renders (set while rendering, so before
-  // its effects run).
+  // its effects run), and never with a download, whose EPUB answers on its own.
   const [cachedBefore, setCachedBefore] = useState<Promise<boolean> | null>(null);
   const hasLocalCopy = useLatest(() =>
     savedEbook || !cachedBefore ? hasLocalEbook(localRef) : cachedBefore,
@@ -387,7 +387,7 @@ export function ReaderScreen({
   // The host starts before the place is known (fe#164: the EPUB is fetched meanwhile), and
   // hands the book over once it is (`placeKnown`).
   const ready = readable && api !== null && fontScale !== null && ebookSize !== undefined;
-  if (ready && cachedBefore === null) setCachedBefore(hasLocalEbook(localRef));
+  if (ready && !savedEbook && cachedBefore === null) setCachedBefore(hasLocalEbook(localRef));
   const edges = usePageEdges();
   // "Follow narration" (first) or "Back to narration" (after turning away), while the book
   // shows, plays, and its map is this ebook's.

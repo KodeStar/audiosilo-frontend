@@ -68,14 +68,11 @@ export function TextPanel({
     // The map did not load (offline, the server failed): said, with Try again. Never the
     // Make offer: a map may well be there, and making it again takes hours.
     return (
-      <View testID="companion-text-map-failed" className="py-4">
-        <EmptyState
-          icon="circle-exclamation"
-          title={t('player.companion.textFailedTitle')}
-          hint={t('player.companion.textMapFailedHint')}
-          action={{ label: t('reader.tryAgain'), onPress: text.retry }}
-        />
-      </View>
+      <TextFailed
+        testID="companion-text-map-failed"
+        hint={t('player.companion.textMapFailedHint')}
+        onRetry={text.retry}
+      />
     );
   }
   const stale = book?.readalong?.state === 'stale';
@@ -110,6 +107,29 @@ function TextEmpty({
     <View testID="companion-text-empty" className="gap-2 py-4">
       <EmptyState icon="book-open" title={title} hint={hint} />
       {children}
+    </View>
+  );
+}
+
+/** The Text tab's "couldn't load", with Try again. */
+function TextFailed({
+  testID,
+  hint,
+  onRetry,
+}: {
+  testID: string;
+  hint: string;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View testID={testID} className="py-4">
+      <EmptyState
+        icon="circle-exclamation"
+        title={t('player.companion.textFailedTitle')}
+        hint={hint}
+        action={{ label: t('reader.tryAgain'), onPress: onRetry }}
+      />
     </View>
   );
 }
@@ -202,20 +222,17 @@ function ReadAlong({
   }
   if (failure) {
     return (
-      <View testID="companion-text-failed" className="py-4">
-        <EmptyState
-          icon="circle-exclamation"
-          title={t('player.companion.textFailedTitle')}
-          hint={t(
-            failure === 'section'
-              ? 'reader.failure.section.body'
-              : failure === 'start'
-                ? 'player.companion.textStartHint'
-                : 'player.companion.textFailedHint',
-          )}
-          action={{ label: t('reader.tryAgain'), onPress: retry }}
-        />
-      </View>
+      <TextFailed
+        testID="companion-text-failed"
+        hint={t(
+          failure === 'section'
+            ? 'reader.failure.section.body'
+            : failure === 'start'
+              ? 'player.companion.textStartHint'
+              : 'player.companion.textFailedHint',
+        )}
+        onRetry={retry}
+      />
     );
   }
   if (state === 'none') {

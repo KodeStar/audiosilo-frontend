@@ -11,7 +11,7 @@ import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
-import type { BookRef } from '@/playback/types';
+import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
@@ -566,11 +566,10 @@ const readalongTried = new Set<string>();
 export function startReadalongRefresh(): () => void {
   for (const entry of Object.values(useDownloads.getState().entries)) {
     if (entry.status !== 'downloaded') continue;
-    const ref = { connectionId: entry.connectionId, libraryId: entry.libraryId, path: entry.path };
     const cached = queryClient.getQueryData<Book>(
-      qk.item(ref.connectionId, ref.libraryId, ref.path),
+      qk.item(entry.connectionId, entry.libraryId, entry.path),
     );
-    if (cached) void refreshReadalong(ref, cached).catch(() => {});
+    if (cached) void refreshReadalong(bookRefOf(entry), cached).catch(() => {});
   }
   return queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
