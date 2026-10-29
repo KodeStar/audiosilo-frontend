@@ -288,7 +288,7 @@ beforeEach(async () => {
   mockHasMetadata.mockReset().mockResolvedValue(true);
   mockCanMatch.mockReset().mockReturnValue(true);
   // Clear any entries leaked from a prior test (the store is a module singleton).
-  useDownloads.setState({ entries: {}, hydrated: false });
+  useDownloads.setState({ entries: {}, hydrated: false, supported: true });
 });
 
 describe('downloadKey', () => {
@@ -1095,8 +1095,29 @@ describe('hydrate pruning', () => {
     expect(await readPersisted()).toHaveProperty([key]);
   });
 
-  it('prunes a download that finished no file before the app closed', async () => {
+  // v2.5.1 PLAYER-04: most books are one M4B, so a reload mid-download finished no file
+  // and the book vanished from Downloads with no word.
+  it('keeps a download that finished no file before the app closed, to retry', async () => {
     const entry = downloadedEntry({ status: 'downloading', progress: 0.1 });
+    entry.manifest.files = [];
+    const key = downloadKey('c1', 2, 'A/Book');
+    await seed({ [key]: entry });
+
+    await useDownloads.getState().hydrate();
+
+    expect(useDownloads.getState().entries[key]).toMatchObject({
+      status: 'error',
+      progress: 0,
+      failure: { kind: 'interrupted', kept: 0 },
+      manifest: { files: [], coverUri: null },
+    });
+    // Its partial bytes go; the row stays.
+    expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'A/Book');
+    expect((await readPersisted())[key]?.status).toBe('error');
+  });
+
+  it('drops a keep-ahead download that finished no file (keep-ahead plans it again)', async () => {
+    const entry = downloadedEntry({ status: 'downloading', origin: 'keep-ahead' });
     entry.manifest.files = [];
     const key = downloadKey('c1', 2, 'A/Book');
     await seed({ [key]: entry });
@@ -1105,6 +1126,26 @@ describe('hydrate pruning', () => {
 
     expect(useDownloads.getState().entries[key]).toBeUndefined();
     expect(mockEngine.removeBook).toHaveBeenCalledWith('c1', 2, 'A/Book');
+  });
+
+  it('retries a kept row with no finished file from the start', async () => {
+    const entry = downloadedEntry({ status: 'downloading', progress: 0.4 });
+    entry.manifest.files = [];
+    const key = downloadKey('c1', 2, 'A/Book');
+    await seed({ [key]: entry });
+    await useDownloads.getState().hydrate();
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      streamUrl: (_lib: number, p: string) => `stream:${p}`,
+    } as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => `live:${name}`);
+
+    await expect(useDownloads.getState().download('c1', 2, entry.manifest.book)).resolves.toBe(
+      'queued',
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useDownloads.getState().entries[key]?.status).toBe('downloaded');
   });
 
   it('keeps an interrupted download as a failure holding its finished files', async () => {
@@ -1194,12 +1235,45 @@ describe('reviveEntry', () => {
     }
   });
 
-  it('drops an entry with a file missing, or with no finished file', () => {
+  it('drops an entry with a file missing, or a downloaded one with no file', () => {
     expect(reviveEntry(failed(), false)).toBeNull();
     expect(reviveEntry(downloadedEntry(), false)).toBeNull();
-    const none = failed();
+    const none = downloadedEntry();
     none.manifest.files = [];
     expect(reviveEntry(none, true)).toBeNull();
+  });
+
+  it('keeps a failure or a cut-short download with no finished file, to retry', () => {
+    const none = failed();
+    none.manifest.files = [];
+    expect(reviveEntry(none, false)).toMatchObject({
+      status: 'error',
+      error: 'Failed to fetch',
+      failure: { kind: 'network', kept: 0 },
+      progress: 0,
+    });
+    for (const status of ['queued', 'downloading'] as const) {
+      const cut = failed({ status, failure: undefined, error: undefined });
+      cut.manifest.files = [];
+      expect(reviveEntry(cut, false)?.failure).toEqual({ kind: 'interrupted', kept: 0 });
+    }
+    const ahead = failed({ origin: 'keep-ahead' });
+    ahead.manifest.files = [];
+    expect(reviveEntry(ahead, false)).toBeNull();
+  });
+
+  // v2.5.1 PLAYER-03: on web, a download whose files all landed was cut short only at the
+  // check that the service worker plays it; "the app closed" misled.
+  it('says a web download with every file saved still has to be checked', () => {
+    const all = failed({ status: 'downloading', failure: undefined });
+    all.manifest.files = [0, 1, 2].map((i) => ({
+      relPath: `A/Book/0${i}.mp3`,
+      localUri: `x:${i}`,
+    }));
+    mockEngine.verify = async () => true;
+    expect(reviveEntry(all, true)?.failure).toEqual({ kind: 'unservable', kept: 1 });
+    mockEngine.verify = undefined;
+    expect(reviveEntry(all, true)?.failure).toEqual({ kind: 'interrupted', kept: 1 });
   });
 });
 
@@ -1586,6 +1660,57 @@ describe('hydrate holds off what needs the registry', () => {
     await removed;
     expect(useDownloads.getState().entries[savedKey]).toBeUndefined();
     expect((await readPersisted())[savedKey]).toBeUndefined();
+  });
+});
+
+// v2.5.1 PLAYER-03: with no service worker controlling the page, a download ran to 100%
+// and was then refused, its bytes held. It is refused up front now.
+describe("download() waits for the launch's offline check", () => {
+  function client() {
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'cover',
+      streamUrl: (_lib: number, p: string) => `stream:${p}`,
+    } as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => `live:${name}`);
+  }
+
+  it('refuses a download asked for while the check runs, when it fails', async () => {
+    client();
+    let answer!: (ok: boolean) => void;
+    mockEngine.probe = () => new Promise<boolean>((r) => (answer = r));
+    const hydrated = useDownloads.getState().hydrate();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const outcome = useDownloads.getState().download('c1', 2, threeFileBook());
+    answer(false);
+    await expect(outcome).resolves.toBe('unsupported');
+    await hydrated;
+
+    expect(mockEngine.downloadFile).not.toHaveBeenCalled();
+    expect(useDownloads.getState().entries).toEqual({});
+    expect(useDownloads.getState().supported).toBe(false);
+    // And any later ask, whoever asks.
+    await expect(
+      useDownloads.getState().download('c1', 2, threeFileBook(), undefined, 'keep-ahead'),
+    ).resolves.toBe('unsupported');
+  });
+
+  it('lets it through once the check passes', async () => {
+    client();
+    let answer!: (ok: boolean) => void;
+    mockEngine.probe = () => new Promise<boolean>((r) => (answer = r));
+    const hydrated = useDownloads.getState().hydrate();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const outcome = useDownloads.getState().download('c1', 2, threeFileBook());
+    answer(true);
+    await expect(outcome).resolves.toBe('queued');
+    await hydrated;
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]?.status).toBe(
+      'downloaded',
+    );
   });
 });
 

@@ -2042,11 +2042,17 @@ are asked, at most 10,000 rows.
   never by the error's text: Android reports a dropped connection as "Software caused connection
   abort", a failure like any other. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download
-  whose listed files are all still on disk (an interrupted one says the app closed); anything else is
-  dropped with its folder. No storage format change.
+  whose listed files are all still on disk (an interrupted one says the app closed, or on web with
+  every file saved that only the offline check was left, `unservable`). One that finished no file
+  yet (most books are one M4B) stays as a row to retry from the start, its folder emptied, unless
+  keep-ahead started it (keep-ahead plans it again); anything else is dropped with its folder. No
+  storage format change.
 - **Web**: the service worker now registers in the exported player even when the root layout loads
   after the page's load event (before, offline web playback never worked), and the download-support
   probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).
+  The probe starts with `hydrate`, and `download` waits for its answer (`probing`) and refuses
+  (`unsupported`) while `supported` is false, so no byte is fetched for a download that could
+  never play offline (v2.5.1 PLAYER-03).
 - Removing a download asks first everywhere (`RemoveDownloadConfirm`, with the room it frees).
 - **Changed chapters**: a book's chapters can change on the server after it was downloaded (a
   rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (the

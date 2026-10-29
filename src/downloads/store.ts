@@ -89,6 +89,11 @@ const declined = new Set<string>();
 // merge), and `persist` holds off (it would save only the live entries over the saved
 // registry: an app closed mid-hydrate would lose every download).
 let hydrating: Promise<void> | null = null;
+// The launch's check that this browser can play a download offline (`engine.probe`, the
+// web: a service worker must control the page) while it runs. `download` waits for it: a
+// download started before the answer ran to 100% and was then refused, its bytes held
+// (v2.5.1 PLAYER-03).
+let probing: Promise<unknown> | null = null;
 
 /** Whether this book's download was cancelled or removed earlier in this session. */
 export function isDeclined(connectionId: string, libraryId: number, path: string): boolean {
@@ -124,8 +129,23 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   hydrate: async () => {
     let read!: () => void;
-    hydrating = new Promise<void>((r) => (read = r));
+    const reading = new Promise<void>((r) => (read = r));
+    hydrating = reading;
     let cleaned: Registry;
+    // On web, having the Cache API isn't enough - offline files only play if the
+    // service worker is actually controlling the page and serving them. Probe the
+    // real path (no real download needed) and downgrade `supported` if it can't, so
+    // the UI hides downloads instead of offering ones that won't play offline. Asked from
+    // the start, and applied once the registry is read (which sets `supported` from the
+    // engine): `download` waits for it.
+    const probe = engine.probe;
+    const checked =
+      engine.supported && probe
+        ? Promise.all([probe().catch(() => false), reading]).then(([ok]) => {
+            if (ok !== useDownloads.getState().supported) set({ supported: ok });
+          })
+        : null;
+    probing = checked;
     try {
       cleaned = await readRegistry();
     } finally {
@@ -137,14 +157,9 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // (and filled in for a download made before it was kept). In the background, once the
     // launch's first screens are up: the registry is usable without it.
     afterLaunch(() => void restoreOfflineMeta(Object.keys(cleaned)).catch(() => {}));
-
-    // On web, having the Cache API isn't enough - offline files only play if the
-    // service worker is actually controlling the page and serving them. Probe the
-    // real path (no real download needed) and downgrade `supported` if it can't, so
-    // the UI hides downloads instead of offering ones that won't play offline.
-    if (engine.supported && engine.probe) {
-      const servable = await engine.probe();
-      if (servable !== useDownloads.getState().supported) set({ supported: servable });
+    if (checked) {
+      await checked;
+      if (probing === checked) probing = null;
     }
   },
 
@@ -152,9 +167,12 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     if (!engine.supported) return Promise.resolve<DownloadOutcome>('unsupported');
     // Until the launch has read the registry a book already on disk looks new, and its
     // download would write over (and, offline, lose) the files it has.
-    const reading = hydrating;
+    const reading = hydrating ?? probing;
     if (reading)
       return reading.then(() => get().download(connectionId, libraryId, book, chapterData, origin));
+    // This browser can't play a download offline (the launch's probe): refused up front,
+    // before a byte is fetched. The control says so ("Downloads unavailable").
+    if (!get().supported) return Promise.resolve<DownloadOutcome>('unsupported');
     // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1): one not on
     // its server yet answers 503 to the download engines, and nothing would clean them up.
     if (book.episode) return Promise.resolve<DownloadOutcome>('unsupported');
@@ -236,6 +254,9 @@ async function readRegistry(): Promise<Registry> {
         Boolean,
       );
     const revived = reviveEntry(e, allPresent);
+    // A row kept with no finished file: what its folder holds is partial.
+    if (revived && revived.manifest.files.length === 0)
+      void engine.removeBook(e.connectionId, e.libraryId, e.path);
     // Key on the entry's own connection-scoped id (stale un-scoped entries from before
     // scoping were already wiped by resetStaleStorage, so every entry here has a real id).
     const key = downloadKey(e.connectionId, e.libraryId, e.path);
@@ -397,19 +418,44 @@ function stepAside(key: string) {
  * - a failed download, or one the app closed mid-way (still `queued` / `downloading`:
  *   the engines can't resume a transfer, but the files it FINISHED are listed as they
  *   land), stays as a failure keeping those files, so Retry fetches only the rest. One
- *   cut short by the app closing says so (`interrupted`);
- * - anything else is dropped (and its folder deleted by the caller): an entry with no
- *   finished file, or one whose files are no longer all there.
+ *   cut short by the app closing says so (`interrupted`), or, on web with every file
+ *   saved, that only the check that it plays offline was left (`unservable`: the service
+ *   worker that serves it may not control the page, v2.5.1 PLAYER-03);
+ * - a failed or cut-short download that finished no file yet (most books are ONE file)
+ *   stays too, as a row to retry from the start (v2.5.1 PLAYER-04), its folder emptied by
+ *   the caller; a keep-ahead one is dropped instead (keep-ahead plans it again, and never
+ *   retries a failure);
+ * - anything else is dropped (and its folder deleted by the caller): a downloaded entry
+ *   with no files, or one whose files are no longer all there.
  * The kept share is recomputed from the files, so it is what is really on the device.
  */
 export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntry | null {
   const files = e.manifest.files;
-  if (files.length === 0 || !allPresent) return null;
-  if (e.status === 'downloaded') return e;
+  if (e.status === 'downloaded') return files.length > 0 && allPresent ? e : null;
+  if (files.length === 0) {
+    if (e.origin === 'keep-ahead') return null;
+    return {
+      ...e,
+      status: 'error',
+      progress: 0,
+      bytes: 0,
+      error: e.status === 'error' ? e.error : 'Interrupted',
+      failure:
+        e.status === 'error' && e.failure
+          ? { ...e.failure, kept: 0 }
+          : { kind: 'interrupted', kept: 0 },
+      // Its folder goes (a cut-short transfer's partial bytes, the cover): the retry
+      // fetches them again.
+      manifest: { ...e.manifest, coverUri: null, ebookUri: undefined },
+    };
+  }
+  if (!allPresent) return null;
   const of = bookFileSpecs(e.manifest.book, e.manifest.chapters ?? undefined).length;
   const kept = Math.min(1, files.length / Math.max(of, files.length));
   const failure: DownloadFailure =
-    e.status === 'error' && e.failure ? { ...e.failure, kept } : { kind: 'interrupted', kept };
+    e.status === 'error' && e.failure
+      ? { ...e.failure, kept }
+      : { kind: kept === 1 && engine.verify ? 'unservable' : 'interrupted', kept };
   return {
     ...e,
     status: 'error',
