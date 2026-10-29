@@ -155,7 +155,9 @@ import {
   useDownloadedCoverUri,
   useDownloadedEbook,
   useDownloadEntry,
+  useDownloadProgress,
   useDownloads,
+  useDownloadState,
   useIsDownloaded,
 } from '@/downloads/store';
 import { onConnectionRemoved } from '@/stores/session';
@@ -388,6 +390,46 @@ describe('the narrow download selectors', () => {
     expect(cover.result.current).toBe('stale:cover');
     expect(renders.status).toBe(before.status + 1);
     expect(renders.cover).toBe(before.cover + 1);
+  });
+
+  // frontend#187: a book's actions menu (useDownloadControls) reads the state only, so a
+  // downloading book's menus stay still; the progress line reads the numbers.
+  it('split the state from the progress: only the progress re-renders per tick', async () => {
+    useDownloads.setState({
+      entries: { [key]: downloadedEntry({ status: 'downloading', progress: 0.1, bytes: 10 }) },
+    });
+    const renders = { state: 0, progress: 0 };
+    const state = await renderHook(() => {
+      renders.state++;
+      return useDownloadState('c1', 2, 'A/Book');
+    });
+    const numbers = await renderHook(() => {
+      renders.progress++;
+      return useDownloadProgress('c1', 2, 'A/Book');
+    });
+    expect(state.result.current).toEqual({ status: 'downloading', error: undefined });
+    const before = { ...renders };
+
+    for (const progress of [0.2, 0.4, 0.6]) await patch({ progress, bytes: progress * 100 });
+    expect(renders.state).toBe(before.state);
+    expect(renders.progress).toBe(before.progress + 3);
+    expect(numbers.result.current).toMatchObject({ progress: 0.6, bytes: 60 });
+
+    await patch({ status: 'error', error: 'Disk full' });
+    expect(state.result.current).toEqual({ status: 'error', error: 'Disk full' });
+    expect(renders.state).toBe(before.state + 1);
+  });
+
+  it('answer no state and zero progress for a book with no download', async () => {
+    expect((await renderHook(() => useDownloadState('c1', 2, 'None'))).result.current).toEqual({
+      status: undefined,
+      error: undefined,
+    });
+    expect((await renderHook(() => useDownloadProgress('c1', 2, 'None'))).result.current).toEqual({
+      progress: 0,
+      bytes: 0,
+      totalBytes: 0,
+    });
   });
 
   it('answer false and null for a book with no download or one that failed', async () => {

@@ -4,7 +4,7 @@ import { useScopedCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 
-import { useDownloadEntry, useDownloads } from './store';
+import { useDownloads, useDownloadState } from './store';
 import type { DownloadStatus } from './types';
 
 export type DownloadControls = {
@@ -17,14 +17,14 @@ export type DownloadControls = {
   needsTranscode: boolean;
   status: DownloadStatus | undefined;
   error: string | undefined;
-  progress: number;
-  bytes: number;
-  totalBytes: number;
   start: () => void;
   cancel: () => void;
 };
 
-/** Drives the download UI for a single book (book detail, badges, a book's actions). */
+/** Drives the download UI for a single book (book detail, badges, a book's actions): its
+ * state and the start/cancel actions, never the progress numbers, so a download's ticks
+ * re-render none of its callers. What draws the progress reads `useDownloadProgress`
+ * (`@/downloads/store`) beside it. */
 export function useDownloadControls(
   libraryId: number,
   path: string,
@@ -36,14 +36,14 @@ export function useDownloadControls(
   // downloads, unless the caller names the connection (a list of several servers).
   const scoped = useScopedCid();
   const cid = connectionId ?? scoped;
-  const entry = useDownloadEntry(cid, libraryId, path);
+  const { status, error } = useDownloadState(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
   // serve offline media), not just the static Cache-API capability.
   const storeSupported = useDownloads((s) => s.supported);
   // A download already on disk stays manageable (remove), so only an absent or failed
   // one is blocked.
   const transcoded = useNeedsWebTranscode(book, chapterData, cid);
-  const needsTranscode = transcoded && (entry === undefined || entry.status === 'error');
+  const needsTranscode = transcoded && (status === undefined || status === 'error');
   const supported = storeSupported && !needsTranscode;
 
   const start = useCallback(() => {
@@ -58,11 +58,8 @@ export function useDownloadControls(
     connectionId: cid,
     supported,
     needsTranscode,
-    status: entry?.status,
-    error: entry?.error,
-    progress: entry?.progress ?? 0,
-    bytes: entry?.bytes ?? 0,
-    totalBytes: entry?.totalBytes ?? 0,
+    status,
+    error,
     start,
     cancel,
   };
