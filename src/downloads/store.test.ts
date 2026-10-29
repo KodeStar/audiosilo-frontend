@@ -124,6 +124,7 @@ jest.mock('@/api/hooks', () => ({
   },
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
+    progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path],
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
     server: (cid: string) => ['server', cid],
   },
@@ -142,7 +143,9 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
+import { isKeptOffline } from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
+import { readMirror } from '@/playback/progress-sync';
 import {
   downloadedCountFor,
   downloadedEntryOf,
@@ -179,8 +182,9 @@ const mockEngine = engine as unknown as {
 
 const mockResolveClient = resolveClient as jest.Mock;
 
-// The purge callback the store registered at import (captured before clearAllMocks).
-const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls[0]?.[0] as (
+// The purge callback the store registered at import (captured before clearAllMocks): the
+// last one, after the progress mirror's own (the store imports progress-sync first).
+const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls.at(-1)?.[0] as (
   id: string,
 ) => Promise<void>;
 
@@ -732,6 +736,97 @@ describe('a new download names each file by fileName', () => {
   it("keeps '.mka' on Android", async () => {
     Platform.OS = 'android';
     expect(await savedNames()).toEqual(['0.mka', '1.m4a', '2.mp3']);
+  });
+});
+
+// v2.5.1 PLAYER-01: the place a download opens at offline is its server's.
+describe("a download keeps its server's place", () => {
+  const place = {
+    library_id: 2,
+    path: 'A/Book',
+    position: 3570,
+    duration: 5100,
+    finished: false,
+    playback_speed: 1,
+    version: 3,
+    device_id: 'phone',
+    updated_at: '2026-10-28T20:00:00Z',
+  };
+
+  function clientWith(getProgress: () => Promise<unknown>) {
+    const api = {
+      coverUrl: () => 'cover',
+      streamUrl: (_lib: number, p: string) => `stream:${p}`,
+      getProgress: jest.fn(getProgress),
+    };
+    mockResolveClient.mockReturnValue(api as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => `live:${name}`);
+    return api;
+  }
+
+  async function downloadIt() {
+    useDownloads.getState().download('c1', 2, threeFileBook());
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it("mirrors the server's progress as the download starts", async () => {
+    const api = clientWith(async () => place);
+    await downloadIt();
+    expect(api.getProgress).toHaveBeenCalledWith(2, 'A/Book', expect.any(AbortSignal));
+    expect(await readMirror('c1', 2, 'A/Book')).toMatchObject({
+      position: 3570,
+      device_id: 'phone',
+      updated_at: '2026-10-28T20:00:00Z',
+    });
+  });
+
+  it('takes the cached progress when the server cannot be asked', async () => {
+    clientWith(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    mockGetQueryData.mockImplementation((key: unknown) =>
+      Array.isArray(key) && key[0] === 'progress' ? place : undefined,
+    );
+    try {
+      await downloadIt();
+    } finally {
+      mockGetQueryData.mockImplementation(() => undefined);
+    }
+    expect((await readMirror('c1', 2, 'A/Book'))?.position).toBe(3570);
+  });
+
+  it('keeps nothing when the server has no record', async () => {
+    clientWith(async () => null);
+    await downloadIt();
+    expect(await readMirror('c1', 2, 'A/Book')).toBeNull();
+  });
+
+  it("never regresses a newer place of this device's own", async () => {
+    const mine = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book',
+      position: 3700,
+      duration: 5100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'me',
+      updated_at: '2026-10-29T08:00:00Z',
+    };
+    await AsyncStorage.setItem(
+      'audiosilo.progressMirror',
+      JSON.stringify({ [downloadKey('c1', 2, 'A/Book')]: mine }),
+    );
+    clientWith(async () => place);
+    await downloadIt();
+    expect((await readMirror('c1', 2, 'A/Book'))?.position).toBe(3700);
+  });
+
+  it('tells the progress read which books are kept', async () => {
+    expect(isKeptOffline('c1', 2, 'A/Book')).toBe(false);
+    useDownloads.setState({ entries: { [downloadKey('c1', 2, 'A/Book')]: downloadedEntry() } });
+    expect(isKeptOffline('c1', 2, 'A/Book')).toBe(true);
+    expect(isKeptOffline('c2', 2, 'A/Book')).toBe(false);
   });
 });
 

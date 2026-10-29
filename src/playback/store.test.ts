@@ -1909,6 +1909,23 @@ describe('plays a downloaded book whose connection is gone', () => {
     expect(usePlayer.getState().nowPlaying?.cover).toBe('file:///dl/cover.jpg');
   });
 
+  // v2.5.1 PLAYER-01: the mirror holds the server's place from the download, so the
+  // lookup answers `progress` offline and the book starts there, not at 0.
+  it('starts a downloaded book at its kept place offline', async () => {
+    seedDownloaded('c1');
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: makeProgress({ position: 70, duration: 100 }),
+    });
+    (mockSvc.load as jest.Mock).mockClear();
+
+    await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
+
+    const [tracks, , position] = (mockSvc.load as jest.Mock).mock.calls[0];
+    expect((tracks as { url: string }[])[0].url).toBe('file:///dl/0.m4b');
+    expect(position).toBe(70);
+  });
+
   it('saves nothing while the connection is gone, then saves once it is back', async () => {
     // A session that could not be read yet (a CarPlay launch with the phone locked) loads
     // its connections later, while the downloaded book plays on.

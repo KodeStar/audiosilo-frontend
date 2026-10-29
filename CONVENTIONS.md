@@ -1288,7 +1288,12 @@ media GETs only.
   **save guard** (`resumeFloor` in `store.ts`) refuses to persist a position far below
   where we resumed unless a deliberate seek lowered the floor - so a slipped restart can't
   overwrite real progress (the server is last-write-wins). This fixed the beta "book
-  restarted from the beginning" report.
+  restarted from the beginning" report. A **downloaded** book's mirror also takes its
+  server's place as the download starts (`keepServerPlace` in `downloads/store.ts`) and on
+  every server answer of `fetchBookProgress` (the registry check reaches the hooks through
+  `downloads/kept-offline.ts`, which has no imports): offline it opens there, never at 0
+  with its first save over the server's place (v2.5.1 PLAYER-01). Keep-newest, so a newer
+  save of this device's own stays.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the

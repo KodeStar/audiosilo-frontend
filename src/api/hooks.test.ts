@@ -11,8 +11,16 @@ jest.mock('@/api/reachability', () => ({
 }));
 
 const mockMirroredProgress = jest.fn(async (..._args: unknown[]): Promise<Progress | null> => null);
+const mockWriteMirror = jest.fn(async (..._args: unknown[]) => {});
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: (...args: unknown[]) => mockMirroredProgress(...args),
+  writeMirror: (...args: unknown[]) => mockWriteMirror(...args),
+  progressToSave: (connectionId: string, libraryId: number, path: string, p: Progress) => ({
+    connectionId,
+    libraryId,
+    path,
+    position: p.position,
+  }),
   saveProgress: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
 }));
@@ -64,6 +72,7 @@ import {
   serverInfoQuery,
 } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { setKeptOfflineCheck } from '@/downloads/kept-offline';
 import { useLibraryNames } from '@/stores/library-names';
 /* eslint-enable import/first */
 
@@ -156,6 +165,60 @@ describe('fetchBookProgress', () => {
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).resolves.toBeNull();
     expect(mockNoteFailure).toHaveBeenCalledWith('c1', err);
+  });
+
+  // v2.5.1 PLAYER-01: offline, a downloaded book opens where its server had it.
+  describe('a downloaded book', () => {
+    afterEach(() => setKeptOfflineCheck(() => false));
+
+    it("keeps the server's answer in the mirror", async () => {
+      setKeptOfflineCheck((cid, lib, path) => cid === 'c1' && lib === 2 && path === 'A/Book.m4b');
+      const p = makeProgress();
+      const api = clientThat(async () => p);
+
+      await expect(
+        fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
+      ).resolves.toBe(p);
+      expect(mockWriteMirror).toHaveBeenCalledWith({
+        connectionId: 'c1',
+        libraryId: 2,
+        path: 'A/Book.m4b',
+        position: 42,
+      });
+    });
+
+    it('keeps nothing when the server has no record', async () => {
+      setKeptOfflineCheck(() => true);
+      const api = clientThat(async () => null);
+
+      await expect(
+        fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
+      ).resolves.toBeNull();
+      expect(mockWriteMirror).not.toHaveBeenCalled();
+    });
+
+    it("still answers when the mirror can't be written", async () => {
+      setKeptOfflineCheck(() => true);
+      mockWriteMirror.mockRejectedValueOnce(new Error('quota'));
+      const p = makeProgress();
+
+      await expect(
+        fetchBookProgress(
+          clientThat(async () => p),
+          'c1',
+          2,
+          'A/Book.m4b',
+          new AbortController().signal,
+        ),
+      ).resolves.toBe(p);
+    });
+  });
+
+  it("does not mirror a book that isn't downloaded", async () => {
+    const api = clientThat(async () => makeProgress());
+
+    await fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal);
+    expect(mockWriteMirror).not.toHaveBeenCalled();
   });
 
   it('rethrows on an aborted signal without touching the mirror', async () => {

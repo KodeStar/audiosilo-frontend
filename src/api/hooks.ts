@@ -38,7 +38,14 @@ import {
   libraryRequests,
   requestsDone,
 } from '@/lib/podcast-requests';
-import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
+import { isKeptOffline } from '@/downloads/kept-offline';
+import {
+  getDeviceId,
+  mirroredProgress,
+  progressToSave,
+  saveProgress,
+  writeMirror,
+} from '@/playback/progress-sync';
 import { lookupReadingPlace } from '@/reader/reading-progress';
 import { rememberLibraryNames } from '@/stores/library-names';
 import { onConnectionRemoved, useSession } from '@/stores/session';
@@ -1153,6 +1160,12 @@ export function useBookProgress(
  *    for a read that is only slow or broken.
  *
  * A cancelled query stays cancelled (the abort rethrows untouched).
+ *
+ * The server's answer for a downloaded book goes into that mirror too (keep-newest, so a
+ * newer save of this device's own stays): offline, the book then opens where the server
+ * had it, and its first save starts from there instead of from 0 over the server's place.
+ * Only a downloaded book's: the mirror is never pruned, and a book only streamed resumes
+ * from its server.
  */
 export async function fetchBookProgress(
   api: ApiClient,
@@ -1161,8 +1174,9 @@ export async function fetchBookProgress(
   path: string,
   signal: AbortSignal,
 ): Promise<Progress | null> {
+  let progress: Progress | null;
   try {
-    return await api.getProgress(libraryId, path, signal);
+    progress = await api.getProgress(libraryId, path, signal);
   } catch (e) {
     // A cancelled query must stay cancelled - only a real failure falls back.
     if (signal.aborted) throw e;
@@ -1171,6 +1185,10 @@ export async function fetchBookProgress(
     noteFailure(connectionId, e);
     return await mirroredProgress(connectionId, libraryId, path);
   }
+  if (progress && isKeptOffline(connectionId, libraryId, path)) {
+    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
+  }
+  return progress;
 }
 
 /** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest
