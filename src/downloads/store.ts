@@ -2,7 +2,7 @@ import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { resolveClient } from '@/api/connection-clients';
-import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
+import { cachedCapability, chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
@@ -37,6 +37,15 @@ import {
   whenSessionReady,
   writeOfflineMeta,
 } from './offline-meta';
+import {
+  fetchReadalongFile,
+  type KeptReadalong,
+  READALONG_FILE,
+  readalongChange,
+  readReadalongFile,
+  removeReadalongFile,
+  wantsReadalong,
+} from './readalong-file';
 import type {
   DownloadedFile,
   DownloadEntry,
@@ -538,6 +547,59 @@ export function startChapterRefresh(): () => void {
   });
 }
 
+/** The map refetches this session already tried, by download and map (`startReadalongRefresh`):
+ * one attempt each per launch, so a map that keeps failing its check is not fetched again on
+ * every answer for the book. */
+const readalongTried = new Set<string>();
+
+/**
+ * Keep downloaded books' read-along maps in step with the server (Bridge Phase 3c): every
+ * `/item` answer the server gives for a downloaded book with its EPUB on the device fetches
+ * the map again when its `readalong.generated_at` is not the one the download keeps, and
+ * drops the kept one when the server has no ready map any more (`readalongChange`; only from
+ * a server that serves maps, so an older one never drops anything). Returns the unsubscribe
+ * (started once from the root layout).
+ */
+export function startReadalongRefresh(): () => void {
+  return queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
+    const [kind, cid, libraryId, path] = event.query.queryKey;
+    if (kind !== 'item' || typeof cid !== 'string' || typeof libraryId !== 'number') return;
+    const book = event.action.data as Book | undefined;
+    if (typeof path !== 'string' || !book) return;
+    void refreshReadalong({ connectionId: cid, libraryId, path }, book).catch(() => {});
+  });
+}
+
+/** One answer's work for `startReadalongRefresh`. */
+async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
+  const entry = downloadedEntryOf(ref);
+  if (!entry || cachedCapability(ref.connectionId, 'readalong') !== true) return;
+  const change = readalongChange(book, entry.manifest);
+  if (change === 'keep') return;
+  const key = contentKeyOf(ref);
+  let kept: KeptReadalong | undefined;
+  if (change === 'drop') {
+    await removeReadalongFile(ref);
+  } else {
+    const attempt = `${key}@${entry.manifest.savedAt}@${book.readalong?.generated_at}`;
+    const api = resolveClient(ref.connectionId);
+    if (readalongTried.has(attempt) || !api) return;
+    readalongTried.add(attempt);
+    kept = await fetchReadalongFile(api, ref);
+  }
+  if (!stillDownloaded(key, entry)) {
+    // Removed while it was fetched: don't leave the file behind.
+    if (!useDownloads.getState().entries[key]) await removeReadalongFile(ref);
+    return;
+  }
+  const { manifest } = useDownloads.getState().entries[key];
+  patchEntry(key, {
+    manifest: { ...manifest, readalongUri: kept?.uri, readalongGeneratedAt: kept?.generatedAt },
+  });
+  persistSoon();
+}
+
 /** While a download runs, its finished files reach storage at most this often
  * (`persistSoon`); everything else saves at once. */
 const PERSIST_EVERY_MS = 2000;
@@ -729,7 +791,8 @@ function afterLaunch(task: () => void) {
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
- * `cover.jpg` for the cover, `book.epub` for the ebook), so the (connectionId, libraryId, path, fileName) → live-uri
+ * `cover.jpg` for the cover, `book.epub` for the ebook, `readalong.json` for its read-along
+ * map), so the (connectionId, libraryId, path, fileName) → live-uri
  * mapping lives here too; `engine.localUri` supplies the container-current absolute uri
  * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
  * is also what carries a download across the identity migration, which rewrites
@@ -751,7 +814,8 @@ async function relocateEntry(e: DownloadEntry): Promise<DownloadEntry> {
   );
   const coverUri = e.manifest.coverUri ? at(COVER_FILE) : e.manifest.coverUri;
   const ebookUri = e.manifest.ebookUri ? at(EBOOK_FILE) : undefined;
-  return { ...e, manifest: { ...e.manifest, files, coverUri, ebookUri } };
+  const readalongUri = e.manifest.readalongUri ? at(READALONG_FILE) : undefined;
+  return { ...e, manifest: { ...e.manifest, files, coverUri, ebookUri, readalongUri } };
 }
 
 /**
@@ -981,6 +1045,13 @@ async function runOne(key: string) {
       // A copied EPUB, or an engine that reported no progress: the server's size stands in.
       ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
+    // The book's read-along map (Bridge Phase 3c), beside the EPUB it follows: optional too.
+    let readalong: KeptReadalong | undefined;
+    if (
+      wantsReadalong(cachedCapability(connectionId, 'readalong'), entry.manifest.book, ebookUri)
+    ) {
+      readalong = await fetchReadalongFile(api, { connectionId, libraryId, path }, ctrl.signal);
+    }
     const bytes = priorBytes + ebookBytes;
     // A book that carries on without its ebook (its fetch failed) holds only its audio.
     const totalBytes = ebook && !ebookUri && knownTotal > 0 ? knownTotal - ebook.size : knownTotal;
@@ -991,6 +1062,8 @@ async function runOne(key: string) {
       files,
       coverUri,
       ebookUri,
+      readalongUri: readalong?.uri,
+      readalongGeneratedAt: readalong?.generatedAt,
       savedAt: new Date().toISOString(),
     });
 
@@ -1121,6 +1194,27 @@ export function useDownloadedEbook(
   return useDownloads(
     (s) => downloadedIn(s.entries, connectionId, libraryId, path)?.manifest.ebookUri || undefined,
   );
+}
+
+/** The `generated_at` of the read-along map a finished download of the book keeps beside
+ * its EPUB (`manifest.readalongUri`), else undefined. A string, so a download's progress
+ * ticks re-render nothing. */
+export function useDownloadedReadalong(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): string | undefined {
+  return useDownloads((s) => {
+    const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
+    return (m?.ebookUri && m.readalongUri && m.readalongGeneratedAt) || undefined;
+  });
+}
+
+/** The read-along map a finished download of the book keeps, read and checked, else null
+ * (none kept, gone, or no map). */
+export function readDownloadedReadalong(ref: BookRef) {
+  const m = downloadedEntryOf(ref)?.manifest;
+  return m?.ebookUri && m.readalongUri ? readReadalongFile(ref) : Promise.resolve(null);
 }
 
 /** A book's registry entry when it is fully downloaded, else undefined: the non-hook

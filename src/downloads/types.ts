@@ -58,6 +58,14 @@ export type DownloadManifest = {
    * opens it offline. Absent when the book has none, when it could not be fetched (it is
    * optional, like the cover) and on downloads made before it existed. */
   ebookUri?: string;
+  /** The book's read-along map (`readalong.json` beside `book.epub`, Bridge Phase 3c), so
+   * the companion's Text tab follows the narration offline. Only with `ebookUri`; absent
+   * when the book has none (or a stale one), when it could not be fetched (optional, like
+   * the ebook) and on downloads made before it existed. */
+  readalongUri?: string;
+  /** The `generated_at` of the map in `readalongUri`: a book whose server answers another
+   * one (made again) fetches it again (`startReadalongRefresh`). */
+  readalongGeneratedAt?: string;
   savedAt: string;
   /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
    * Only this marker lives here: the payload (an envelope with its characters and recaps

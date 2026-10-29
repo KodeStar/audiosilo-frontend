@@ -15,7 +15,10 @@ jest.mock('@/playback/drift-controller', () => ({
   },
 }));
 jest.mock('@/downloads/keep-ahead-controller', () => ({ startKeepAhead: service('keepAhead') }));
-jest.mock('@/downloads/store', () => ({ startChapterRefresh: service('chapters') }));
+jest.mock('@/downloads/store', () => ({
+  startChapterRefresh: service('chapters'),
+  startReadalongRefresh: service('readalong'),
+}));
 jest.mock('@/playback/jump-undo', () => ({ startJumpUndo: service('jumpUndo') }));
 jest.mock('@/playback/place-reconcile', () => ({ startPlaceReconcile: service('reconcile') }));
 jest.mock('@/api/address-runner', () => ({ startAddressRouting: service('addresses') }));
@@ -47,6 +50,7 @@ describe('startRootServices', () => {
       'start drift',
       'start keepAhead',
       'start chapters',
+      'start readalong',
       'start jumpUndo',
       'start reconcile',
       'start addresses',
@@ -61,6 +65,7 @@ describe('startRootServices', () => {
       'stop drift',
       'stop keepAhead',
       'stop chapters',
+      'stop readalong',
       'stop jumpUndo',
       'stop reconcile',
       'stop addresses',

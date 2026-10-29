@@ -207,6 +207,11 @@ export const qk = {
     ['readalong', cid, lib, path, generatedAt] as const,
   /** Prefix matching every map of a book (invalidation). */
   readalongAll: (cid: string, lib: number, path: string) => ['readalong', cid, lib, path] as const,
+  /** The read-along map a download keeps (`readalong.json`), read from the device, per map
+   * (its `generated_at`): not under `readalong`, so a finished job's refresh never asks the
+   * device again for the same file. */
+  readalongLocal: (cid: string, lib: number, path: string, generatedAt: string) =>
+    ['readalongLocal', cid, lib, path, generatedAt] as const,
   // Podcasts (Bridge Phase 2d-1): reads are core, Follow is capability `podcasts`, the
   // fetch status `podcast_fetch`.
   /** A podcast library's shows. */

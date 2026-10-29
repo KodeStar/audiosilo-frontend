@@ -78,6 +78,19 @@ jest.mock('@/reader/ebook-file', () => ({
   cachedEbookUri: (ref: unknown) => mockCachedEbook(ref),
 }));
 
+// A download's read-along map (readalong-file.ts has its own tests): the store's part is
+// WHEN it fetches, keeps and drops one. The pure rules are the real ones.
+const mockFetchReadalong = jest.fn(
+  async (..._a: unknown[]): Promise<{ uri: string; generatedAt: string } | undefined> => undefined,
+);
+const mockRemoveReadalong = jest.fn(async (_ref: unknown) => {});
+jest.mock('@/downloads/readalong-file', () => ({
+  ...jest.requireActual('@/downloads/readalong-file'),
+  fetchReadalongFile: (...a: unknown[]) => mockFetchReadalong(...a),
+  removeReadalongFile: (ref: unknown) => mockRemoveReadalong(ref),
+  readReadalongFile: jest.fn(async () => null),
+}));
+
 // The launch's restore waits for the JS thread to be idle: here, the next turn.
 (globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback = (cb) =>
   setTimeout(cb, 0);
@@ -152,8 +165,10 @@ import {
   refreshedChapters,
   reviveEntry,
   startChapterRefresh,
+  startReadalongRefresh,
   useDownloadedCoverUri,
   useDownloadedEbook,
+  useDownloadedReadalong,
   useDownloadEntry,
   useDownloads,
   useIsDownloaded,
@@ -281,6 +296,8 @@ beforeEach(async () => {
   mockReadMeta.mockReset().mockResolvedValue(null);
   mockHasMetadata.mockReset().mockResolvedValue(true);
   mockCanMatch.mockReset().mockReturnValue(true);
+  mockFetchReadalong.mockReset().mockResolvedValue(undefined);
+  mockGetQueryData.mockReset().mockReturnValue(undefined);
   // Clear any entries leaked from a prior test (the store is a module singleton).
   useDownloads.setState({ entries: {}, hydrated: false });
 });
@@ -912,6 +929,193 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
     const entries = useDownloads.getState().entries;
     expect(entries[key].manifest.ebookUri).toBe('live:c1:2:A/Book:book.epub');
     expect(entries[downloadKey('c1', 2, 'B')].manifest.ebookUri).toBeUndefined();
+  });
+});
+
+describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", () => {
+  const REF = { connectionId: 'c1', libraryId: 2, path: 'A/Book' };
+  const key = downloadKey('c1', 2, 'A/Book');
+  const withEbook = (p: Partial<Book> = {}) =>
+    makeBook({
+      files: [{ rel_path: 'A/Book/01.mp3', seq: 0, duration: 60, format: 'mp3', size: 100 }],
+      ebook: { path: 'A/Book/Book.epub', size: 1000 },
+      ...p,
+    });
+  const API = {
+    coverUrl: () => 'cover',
+    streamUrl: (_lib: number, p: string) => `stream:${p}`,
+    ebookRequest: () => ({ url: 'ebook', headers: {} }),
+  } as unknown as ApiClient;
+  /** The server's flags as the cache holds them. */
+  const serves = (readalong: boolean) =>
+    mockGetQueryData.mockImplementation((k: unknown) =>
+      Array.isArray(k) && k[0] === 'server' ? { capabilities: { readalong } } : undefined,
+    );
+  const settle = async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  const entry = () => useDownloads.getState().entries[key];
+
+  beforeEach(() => {
+    mockResolveClient.mockReturnValue(API);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+  });
+
+  it('keeps the map beside book.epub, with which map it is', async () => {
+    serves(true);
+    mockFetchReadalong.mockResolvedValue({
+      uri: 'live:c1:2:A/Book:readalong.json',
+      generatedAt: 'g1',
+    });
+    useDownloads
+      .getState()
+      .download('c1', 2, withEbook({ readalong: { state: 'ready', generated_at: 'g1' } }));
+    await settle();
+    expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, expect.any(AbortSignal));
+    expect(entry()?.status).toBe('downloaded');
+    expect(entry()?.manifest).toMatchObject({
+      ebookUri: 'live:c1:2:A/Book:book.epub',
+      readalongUri: 'live:c1:2:A/Book:readalong.json',
+      readalongGeneratedAt: 'g1',
+    });
+  });
+
+  it('asks for none from a server without maps, for a stale map, or without the EPUB', async () => {
+    serves(false);
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+    expect(mockFetchReadalong).not.toHaveBeenCalled();
+    expect(entry()?.manifest.readalongUri).toBeUndefined();
+
+    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    serves(true);
+    useDownloads
+      .getState()
+      .download('c1', 2, withEbook({ readalong: { state: 'stale', reason: 'audio_changed' } }));
+    await settle();
+    expect(mockFetchReadalong).not.toHaveBeenCalled();
+
+    await useDownloads.getState().remove('c1', 2, 'A/Book');
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name === 'book.epub') throw new Error('HTTP 404');
+      return `live:c1:2:A/Book:${name}`;
+    });
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+    expect(mockFetchReadalong).not.toHaveBeenCalled();
+  });
+
+  it('downloads the book without a map it could not get', async () => {
+    serves(true);
+    useDownloads.getState().download('c1', 2, withEbook());
+    await settle();
+    expect(mockFetchReadalong).toHaveBeenCalled();
+    expect(entry()?.status).toBe('downloaded');
+    expect(entry()?.manifest.readalongUri).toBeUndefined();
+  });
+
+  it('finds the map again under the live storage root on launch', async () => {
+    const e = downloadedEntry();
+    e.manifest = {
+      ...e.manifest,
+      ebookUri: 'stale:book.epub',
+      readalongUri: 'stale:readalong.json',
+      readalongGeneratedAt: 'g1',
+    };
+    await seed({ [key]: e });
+    await useDownloads.getState().hydrate();
+    expect(entry()?.manifest.readalongUri).toBe('live:c1:2:A/Book:readalong.json');
+  });
+
+  it("names the kept map's generated_at only with the EPUB beside it", async () => {
+    const e = downloadedEntry();
+    e.manifest = { ...e.manifest, readalongUri: 'x', readalongGeneratedAt: 'g1' };
+    useDownloads.setState({ entries: { [key]: e } });
+    const { result, rerender } = await renderHook(() => useDownloadedReadalong('c1', 2, 'A/Book'));
+    expect(result.current).toBeUndefined();
+    await act(async () => {
+      useDownloads.setState({
+        entries: { [key]: { ...e, manifest: { ...e.manifest, ebookUri: 'book' } } },
+      });
+    });
+    await rerender({});
+    expect(result.current).toBe('g1');
+  });
+
+  describe('startReadalongRefresh', () => {
+    const answer = (
+      data: unknown,
+      manual?: boolean,
+      k: unknown[] = ['item', 'c1', 2, 'A/Book'],
+    ) => {
+      for (const l of mockCacheListeners) {
+        l({ type: 'updated', query: { queryKey: k }, action: { type: 'success', data, manual } });
+      }
+    };
+    const kept = (generatedAt = 'g1') => {
+      const e = downloadedEntry();
+      e.manifest = {
+        ...e.manifest,
+        ebookUri: 'live:book.epub',
+        readalongUri: 'live:readalong.json',
+        readalongGeneratedAt: generatedAt,
+      };
+      useDownloads.setState({ entries: { [key]: e } });
+      return e;
+    };
+    let stop: () => void = () => {};
+    beforeEach(() => {
+      serves(true);
+      stop = startReadalongRefresh();
+    });
+    afterEach(() => stop());
+
+    it('fetches the map again once it was made again', async () => {
+      kept('g1');
+      mockFetchReadalong.mockResolvedValue({ uri: 'live:readalong.json', generatedAt: 'g2' });
+      answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2' } }));
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF);
+      expect(entry()?.manifest.readalongGeneratedAt).toBe('g2');
+    });
+
+    it('drops the kept map once the server has none ready (stale, or gone)', async () => {
+      kept('g1');
+      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
+      await settle();
+      expect(mockRemoveReadalong).toHaveBeenCalledWith(REF);
+      expect(entry()?.manifest.readalongUri).toBeUndefined();
+      expect(entry()?.manifest.readalongGeneratedAt).toBeUndefined();
+      expect(mockFetchReadalong).not.toHaveBeenCalled();
+    });
+
+    it('leaves the same map, a seed, another book and an older server alone', async () => {
+      const e = kept('g1');
+      answer(makeBook({ readalong: { state: 'ready', generated_at: 'g1' } }));
+      answer(makeBook(), true);
+      answer(makeBook(), false, ['item', 'c1', 2, 'B/Other']);
+      answer(makeBook(), false, ['chapters', 'c1', 2, 'A/Book']);
+      serves(false);
+      answer(makeBook());
+      await settle();
+      expect(entry()).toBe(e);
+      expect(mockFetchReadalong).not.toHaveBeenCalled();
+      expect(mockRemoveReadalong).not.toHaveBeenCalled();
+    });
+
+    it('tries a map that keeps failing once per launch, not on every answer', async () => {
+      kept('g1');
+      const made = makeBook({ readalong: { state: 'ready', generated_at: 'g9' } });
+      answer(made);
+      await settle();
+      answer(made);
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledTimes(1);
+      expect(entry()?.manifest.readalongUri).toBeUndefined();
+    });
   });
 });
 
