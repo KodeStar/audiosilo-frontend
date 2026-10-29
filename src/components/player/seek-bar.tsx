@@ -8,7 +8,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
-import { formatClock, formatDuration, formatWallClock } from '@/lib/format';
+import { formatClock, formatTimeLeftShort, formatWallClock } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { selectBookKey, usePlayer } from '@/playback/store';
@@ -326,7 +326,7 @@ export const SeekTimes = memo(function SeekTimes({
   const remaining = Math.max(0, length - elapsed);
   // Time left to the segment's end at the speed: the app's one speed rule.
   const wall = timeLeft(elapsed, length, rate)?.seconds ?? 0;
-  const time = formatDuration(wall);
+  const time = formatTimeLeftShort(wall);
   const clock = formatWallClock(new Date(now + wall * 1000));
   return (
     <View className={cn('flex-row items-center justify-between gap-2', className)}>

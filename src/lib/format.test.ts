@@ -7,6 +7,7 @@ import {
   formatWeekday,
   localIsoDay,
   formatDurationOrZero,
+  formatTimeLeftShort,
   formatServerDay,
   formatServerShortDay,
   formatHour,
@@ -127,6 +128,26 @@ describe('formatClock', () => {
   it('clamps negatives to 0:00 and floors fractional seconds', () => {
     expect(formatClock(-10)).toBe('0:00');
     expect(formatClock(65.9)).toBe('1:05');
+  });
+});
+
+// v2.5.1 PLAYER-11: at 1.5x, 5 s into a 6-minute chapter the player read "3m left" while
+// the sleep sheet (counting from the chapter's start) read "4m": one rounding for both.
+describe('formatTimeLeftShort', () => {
+  it('rounds to the nearest minute from a minute up', () => {
+    expect(formatTimeLeftShort((360 - 5) / 1.5)).toBe('4m'); // 3m 57s
+    expect(formatTimeLeftShort(360 / 1.5)).toBe('4m');
+    expect(formatTimeLeftShort(209)).toBe('3m');
+    expect(formatTimeLeftShort(210)).toBe('4m');
+    expect(formatTimeLeftShort(3600 + 29 * 60 + 40)).toBe('1h 30m');
+    expect(formatTimeLeftShort(3599.6)).toBe('1h');
+  });
+
+  it('counts seconds under a minute, and nothing when none is left', () => {
+    expect(formatTimeLeftShort(45)).toBe('45s');
+    expect(formatTimeLeftShort(59.6)).toBe('1m');
+    expect(formatTimeLeftShort(0)).toBe('');
+    expect(formatTimeLeftShort(undefined)).toBe('');
   });
 });
 

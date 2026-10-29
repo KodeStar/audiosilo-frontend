@@ -254,6 +254,13 @@ describe('SeekTimes', () => {
     expect(screen.getByText('-28:45')).toBeTruthy();
   });
 
+  // v2.5.1 PLAYER-11: 5 s into a 6-minute chapter at 1.5x is 3m 57s, which the sleep sheet
+  // reads as "4m": the same minutes here.
+  it('rounds the minutes left as the sleep sheet does', async () => {
+    await render(<SeekTimes elapsed={5} length={360} rate={1.5} />);
+    expect(screen.getByText(/^4m left in the chapter · ends /)).toBeTruthy();
+  });
+
   it('says file for a book without a whole-book timeline', async () => {
     await render(<SeekTimes elapsed={0} length={600} rate={1} kind="file" />);
     expect(screen.getByText(/^10m left in the file · ends /)).toBeTruthy();
