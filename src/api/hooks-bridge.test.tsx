@@ -468,14 +468,8 @@ describe('useReadalong', () => {
 });
 
 describe('useReadalongEstimate', () => {
-  it('asks the read-along estimate of a server with bridge, only while enabled', async () => {
+  it('asks the read-along estimate of a server with bridge', async () => {
     const estimate = { kind: 'readalong.align', asr_hours: 1, figures: true, writable: true };
-    const shut = await mount(bridgeServer(), () =>
-      useReadalongEstimate(1, 'Author/Book', { enabled: false }),
-    );
-    await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
-    expect(shut.result.current.isPending).toBe(true);
-    expect(mockClients.c1.readalongEstimate).not.toHaveBeenCalled();
     const { result, qc } = await mount(bridgeServer(), () =>
       useReadalongEstimate(1, 'Author/Book'),
     );

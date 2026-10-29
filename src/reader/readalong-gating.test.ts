@@ -1,7 +1,7 @@
-import type { Book, ReadalongEstimate, ServerInfo } from '@/api/types';
-import { ADMIN, bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
+import type { Book, ServerInfo } from '@/api/types';
+import { ADMIN, bridgeServer } from '@/testing/bridge-fixtures';
 
-import { mayMakeReadalong, readalongBlockedReason, readalongReady } from './readalong-gating';
+import { mayMakeReadalong, readalongReady } from './readalong-gating';
 
 // Who sees read-along and when (Bridge Phase 3c, decisions 28 and 29).
 
@@ -61,36 +61,5 @@ describe('mayMakeReadalong', () => {
         capabilities: { ...offline.capabilities, bridge: false },
       }),
     ).toBe(false);
-  });
-});
-
-describe('readalongBlockedReason', () => {
-  const estimate = (over: Partial<ReadalongEstimate> = {}) => ({
-    ebook,
-    writable: true,
-    ...over,
-  });
-
-  it('holds nothing back for a book it can make, or its own open job', () => {
-    expect(readalongBlockedReason(estimate())).toBeNull();
-    expect(
-      readalongBlockedReason(estimate({ open_job: bridgeJob({ kind: 'readalong.align' }) })),
-    ).toBeNull();
-  });
-
-  it('names the refusal the server would answer', () => {
-    expect(readalongBlockedReason(estimate({ ebook: null }))).toBe('no_ebook');
-    expect(readalongBlockedReason(estimate({ writable: false }))).toBe('library_not_writable');
-    expect(readalongBlockedReason(estimate({ open_job: bridgeJob() }))).toBe('generate_open');
-    expect(
-      readalongBlockedReason(
-        estimate({ open_job: bridgeJob({ kind: 'chapters.detect', state: 'queued' }) }),
-      ),
-    ).toBe('detect_open');
-    // An ended job of those kinds holds nothing back; an unknown kind neither.
-    expect(readalongBlockedReason(estimate({ open_job: bridgeJob({ state: 'done' }) }))).toBeNull();
-    expect(
-      readalongBlockedReason(estimate({ open_job: bridgeJob({ kind: 'sidecars.contribute' }) })),
-    ).toBeNull();
   });
 });

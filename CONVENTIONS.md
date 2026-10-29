@@ -749,10 +749,10 @@ reader follows the narration in the book with it.
 - **Gating** (`readalong-gating.ts`): `readalongReady` (capability `readalong`, `Book.readalong`
   `ready` with its `generated_at`, the book reads): a stale or absent map is invisible to a
   listener; a surface still waits for the reader's `readalong {state: 'ok'}`. `mayMakeReadalong`
-  (an admin, `bridge` and `readalong` on, the Bridge's `readalong` feature);
-  `readalongBlockedReason` (the estimate: `no_ebook`, `library_not_writable`, an open generate or
-  detect job; its own open job holds nothing back). Generate is held back on an open read-along
-  job (`readalong_open`, `bridge-model.ts`).
+  (an admin, `bridge` and `readalong` on, the Bridge's `readalong` feature). Make's hold-back is
+  `readalongBlockKey` (`components/bridge/readalong-model.ts`: from the estimate, `no_ebook`,
+  `library_not_writable`, an open generate, detect or read-along job). Generate is held back on
+  an open read-along job (`readalong_open`, `bridge-model.ts`).
 - **The map** (`client.readalong`, `useReadalong`): header auth only (never `?token=`), keyed by
   the map's `generated_at` (`qk.readalong`), no retry (404 `no_readalong`, 409
   `readalong_stale` are final). `parseReadalongMap` checks every span (the server checks only the

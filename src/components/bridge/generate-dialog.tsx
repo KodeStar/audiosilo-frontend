@@ -168,8 +168,9 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
   );
 }
 
-/** One line of the estimate: what, then its value and an optional quiet note. */
-function Fact({ label, value, note }: { label: string; value: string; note?: string }) {
+/** One line of a Bridge job's estimate (Generate's, Make read-along's): what, then its
+ * value and an optional quiet note. */
+export function Fact({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <View className="gap-0.5">
       <Text variant="eyebrow">{label}</Text>

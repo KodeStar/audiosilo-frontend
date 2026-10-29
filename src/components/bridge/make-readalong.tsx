@@ -19,6 +19,7 @@ import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
 
+import { Fact } from './generate-dialog';
 import { BridgeJobStatus } from './generate-status';
 import { readalongBlockKey, readalongRefusalKey, readalongStatusJob } from './readalong-model';
 import { type MakeReadalongModel, useMakeReadalong } from './use-make-readalong';
@@ -108,7 +109,7 @@ function transcriptionKey(e: Pick<ReadalongEstimate, 'figures' | 'asr_hours'>) {
 function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string }) {
   const { t } = useTranslation();
   const { connectionId, libraryId, path } = model.target;
-  const estimate = useReadalongEstimate(libraryId, path, {}, connectionId);
+  const estimate = useReadalongEstimate(libraryId, path, connectionId);
   const data = estimate.data;
   const blocked = data ? readalongBlockKey(data) : null;
   const transcription = data ? transcriptionKey(data) : null;
@@ -180,15 +181,5 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
         />
       </DialogFooter>
     </DialogContent>
-  );
-}
-
-/** One line of the estimate: what, then its value. */
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="gap-0.5">
-      <Text variant="eyebrow">{label}</Text>
-      <Text variant="body">{value}</Text>
-    </View>
   );
 }

@@ -11,11 +11,11 @@ import type {
 } from '@/api/types';
 import {
   CHAPTERS_DETECT,
-  isOpenJob,
-  latestJob,
+  isBridgeAdmin,
   READALONG_ALIGN,
   SIDECARS_CONTRIBUTE,
   SIDECARS_GENERATE,
+  statusJobOf,
 } from '@/lib/bridge-jobs';
 
 // The rules behind the player's one Bridge action, "Generate characters and recaps"
@@ -41,8 +41,7 @@ export function mayGenerate(
   user: Pick<User, 'role' | 'is_demo' | 'managed_by' | 'member_kind'> | null | undefined,
   server: Pick<ServerInfo, 'capabilities' | 'bridge'> | null | undefined,
 ): boolean {
-  if (!user || !server) return false;
-  if (user.role !== 'admin' || user.is_demo || user.managed_by || user.member_kind) return false;
+  if (!server || !isBridgeAdmin(user)) return false;
   const caps = server.capabilities;
   return (
     caps?.bridge === true &&
@@ -82,8 +81,7 @@ function hasGenerated(content: GenerateContent | undefined): boolean {
  * (queued, running or parked) or once it failed. A cancelled or finished one shows
  * nothing (the button is back, or the tabs are there). */
 export function statusJob(jobs: readonly BridgeJob[] | undefined): BridgeJob | undefined {
-  const job = latestJob(jobs, SIDECARS_GENERATE);
-  return job && (isOpenJob(job) || job.state === 'failed') ? job : undefined;
+  return statusJobOf(jobs, SIDECARS_GENERATE);
 }
 
 /**

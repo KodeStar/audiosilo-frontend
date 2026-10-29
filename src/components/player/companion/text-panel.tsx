@@ -1,17 +1,16 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useOptionalApi } from '@/api/provider';
-import type { Book } from '@/api/types';
 import { MakeReadalongOffer } from '@/components/bridge/make-readalong';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spinner } from '@/components/ui/spinner';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useNarration } from '@/reader/narration';
-import { FollowPill, PageEdge, usePageEdges } from '@/reader/page-edge';
-import type { ReadalongState, ReaderTheme } from '@/reader/protocol';
+import { FollowPill, PageEdges, usePageEdges } from '@/reader/page-edge';
+import type { ReadalongState } from '@/reader/protocol';
 import { cfiAt, type ReaderReadalongMap } from '@/reader/readalong-map';
 import { ReaderHost } from '@/reader/reader-host';
 import {
@@ -19,9 +18,7 @@ import {
   type ReaderHostHandle,
   ReaderStartError,
 } from '@/reader/reader-host-types';
-import { loadFontScale } from '@/reader/reader-settings';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
+import { useReaderAppearance } from '@/reader/use-reader-appearance';
 
 import type { PlayTarget } from '../use-play-book';
 import type { TextTabModel } from './use-text-tab';
@@ -48,7 +45,6 @@ export function TextPanel({
     return (
       <ReadAlong
         target={target}
-        book={book}
         ebookSize={book.ebook.size}
         map={map}
         title={title ?? ''}
@@ -106,14 +102,12 @@ type TextFailure = 'section' | 'start' | 'fetch';
  */
 function ReadAlong({
   target,
-  book,
   ebookSize,
   map,
   title,
   fill,
 }: {
   target: PlayTarget;
-  book: Book;
   ebookSize: number;
   map: ReaderReadalongMap;
   title: string;
@@ -126,16 +120,7 @@ function ReadAlong({
   const narration = useNarration(target, host);
   const edges = usePageEdges();
 
-  const { scheme } = useTheme();
-  const palette = colors[scheme];
-  const theme = useMemo<ReaderTheme>(
-    () => ({ scheme, background: palette.card, foreground: palette.foreground }),
-    [scheme, palette],
-  );
-  const [fontScale, setFontScale] = useState<number | null>(null);
-  useEffect(() => {
-    void loadFontScale().then(setFontScale);
-  }, []);
+  const { theme, fontScale } = useReaderAppearance();
   // Where it opens: the sentence being read when the tab opened (then it follows on).
   const [at] = useState(() => {
     const p = narration.readalongPosition();
@@ -251,18 +236,7 @@ function ReadAlong({
       ) : null}
       {show ? (
         <>
-          <PageEdge
-            side="left"
-            narrow={edges.narrow}
-            label={t(rtl ? 'reader.next' : 'reader.previous')}
-            onPress={() => (rtl ? host.current?.next() : host.current?.prev())}
-          />
-          <PageEdge
-            side="right"
-            narrow={edges.narrow}
-            label={t(rtl ? 'reader.previous' : 'reader.next')}
-            onPress={() => (rtl ? host.current?.prev() : host.current?.next())}
-          />
+          <PageEdges host={host} rtl={rtl} narrow={edges.narrow} />
           {following === false && narration.narrating ? (
             <View
               className="absolute bottom-3 left-0 right-0 items-center"

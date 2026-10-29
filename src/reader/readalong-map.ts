@@ -13,7 +13,7 @@ import { isRecord } from '@/lib/storage-keys';
  */
 
 /** The map's format, exactly. */
-export const READALONG_FORMAT = 'audiosilo-readalong/v1';
+const READALONG_FORMAT = 'audiosilo-readalong/v1';
 
 /** The longest CFI a span may carry, in UTF-8 bytes. */
 export const MAX_READALONG_CFI_BYTES = 1024;

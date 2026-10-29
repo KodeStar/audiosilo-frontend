@@ -10,7 +10,7 @@ import type { ReadalongLink } from './reader-session';
 
 /** How often the narration's place is sent while a map is in: the reader's clock moves the
  * highlight on between samples (`PositionClock`, reader/src/readalong.js). */
-export const POSITION_MS = 1000;
+const POSITION_MS = 1000;
 
 /** What both hosts' read-along side is: the session's link, and the handle's commands. */
 export type ReaderReadalong = ReadalongLink & {

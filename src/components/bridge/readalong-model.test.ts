@@ -46,6 +46,23 @@ describe('readalongBlockKey', () => {
     );
     expect(readalongBlockKey({ ...e, ebook: null })).toBe('bridge.readalong.noEbook');
   });
+  it('names the refusal the server would answer', () => {
+    expect(readalongBlockKey({ ...e, writable: false })).toBe('bridge.generate.notWritable');
+    expect(readalongBlockKey({ ...e, open_job: bridgeJob() })).toBe(
+      'bridge.readalong.generateOpen',
+    );
+    expect(
+      readalongBlockKey({
+        ...e,
+        open_job: bridgeJob({ kind: 'chapters.detect', state: 'queued' }),
+      }),
+    ).toBe('bridge.readalong.detectOpen');
+    // An ended job of those kinds holds nothing back; an unknown kind neither.
+    expect(readalongBlockKey({ ...e, open_job: bridgeJob({ state: 'done' }) })).toBeNull();
+    expect(
+      readalongBlockKey({ ...e, open_job: bridgeJob({ kind: 'sidecars.contribute' }) }),
+    ).toBeNull();
+  });
 });
 
 describe('readalongRefusalKey', () => {

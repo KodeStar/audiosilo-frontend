@@ -1,7 +1,12 @@
 import { type ApiErrorKind, apiErrorKind } from '@/api/client';
 import type { BridgeJob, ReadalongEstimate } from '@/api/types';
-import { isOpenJob, latestJob, READALONG_ALIGN } from '@/lib/bridge-jobs';
-import { type ReadalongBlock, readalongBlockedReason } from '@/reader/readalong-gating';
+import {
+  CHAPTERS_DETECT,
+  isOpenJob,
+  READALONG_ALIGN,
+  SIDECARS_GENERATE,
+  statusJobOf,
+} from '@/lib/bridge-jobs';
 
 // The rules behind the player's "Make read-along" (Bridge Phase 3c, admin only, in the
 // companion's Text tab): when it is offered, why it is held back, how a refusal reads.
@@ -12,8 +17,7 @@ import { type ReadalongBlock, readalongBlockedReason } from '@/reader/readalong-
  * (queued, running or parked) or once it failed. A cancelled or finished one shows nothing
  * (the offer is back, or the text is there). */
 export function readalongStatusJob(jobs: readonly BridgeJob[] | undefined): BridgeJob | undefined {
-  const job = latestJob(jobs, READALONG_ALIGN);
-  return job && (isOpenJob(job) || job.state === 'failed') ? job : undefined;
+  return statusJobOf(jobs, READALONG_ALIGN);
 }
 
 /**
@@ -38,24 +42,35 @@ const BLOCK_KEY = {
   generate_open: 'bridge.readalong.generateOpen',
   detect_open: 'bridge.readalong.detectOpen',
   readalong_open: 'bridge.readalong.readalongOpen',
-} as const satisfies Record<ReadalongBlock | 'readalong_open', string>;
+} as const satisfies Partial<Record<ApiErrorKind, string>>;
 
 export type ReadalongBlockKey = (typeof BLOCK_KEY)[keyof typeof BLOCK_KEY];
 
-/**
- * Why Make is held back in the confirmation, as words, else null: the estimate's
- * `readalongBlockedReason` (no ebook, a library the Bridge can't write, a generate or detect
- * job open for the book), or the book's own read-along job open already (queued from the
+/** The open job kinds that hold Make back: those the server refuses a read-along job for
+ * (its `refusedWhileOpen` for `readalong.align`: 409 `generate_open` / `detect_open`, one
+ * engine book per audio on the Bridge), and the book's own read-along job (queued from the
  * console while the job list here had not seen it: queuing again would only answer that
- * job).
+ * job). */
+const OPEN_JOB_KEY: Readonly<Record<string, ReadalongBlockKey>> = {
+  [SIDECARS_GENERATE]: BLOCK_KEY.generate_open,
+  [CHAPTERS_DETECT]: BLOCK_KEY.detect_open,
+  [READALONG_ALIGN]: BLOCK_KEY.readalong_open,
+};
+
+/**
+ * Why Make is held back in the confirmation, as words, else null: the book has no ebook
+ * (409 `no_ebook`), the Bridge can't write the library (the map would have nowhere to go),
+ * or an open job of a kind in `OPEN_JOB_KEY`.
  */
 export function readalongBlockKey(
   e: Pick<ReadalongEstimate, 'ebook' | 'writable' | 'open_job'>,
 ): ReadalongBlockKey | null {
-  const reason = readalongBlockedReason(e);
-  if (reason) return BLOCK_KEY[reason];
+  if (!e.ebook) return BLOCK_KEY.no_ebook;
+  if (!e.writable) return BLOCK_KEY.library_not_writable;
   const job = e.open_job;
-  return job && job.kind === READALONG_ALIGN && isOpenJob(job) ? BLOCK_KEY.readalong_open : null;
+  return job && isOpenJob(job) && Object.hasOwn(OPEN_JOB_KEY, job.kind)
+    ? OPEN_JOB_KEY[job.kind]
+    : null;
 }
 
 /** The refusals a queue of `readalong.align` can meet, by `apiErrorKind`. */

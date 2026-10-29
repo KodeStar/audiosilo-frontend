@@ -1,4 +1,4 @@
-import type { BridgeJob } from '@/api/types';
+import type { BridgeJob, User } from '@/api/types';
 
 /** The Bridge job kind that generates a book's characters and recaps (and, from Bridge
  * Phase 1c, its description). */
@@ -73,6 +73,25 @@ export function latestJob(jobs: readonly BridgeJob[] | undefined, kind: string) 
   let latest: BridgeJob | undefined;
   for (const j of jobs ?? []) if (j.kind === kind && (!latest || j.id > latest.id)) latest = j;
   return latest;
+}
+
+/** The `kind` job a book's status shows: its newest one while it is open (queued,
+ * running or parked) or once it failed. A cancelled or finished one shows nothing (the
+ * offer is back, or what it made is there). */
+export function statusJobOf(
+  jobs: readonly BridgeJob[] | undefined,
+  kind: string,
+): BridgeJob | undefined {
+  const job = latestJob(jobs, kind);
+  return job && (isOpenJob(job) || job.state === 'failed') ? job : undefined;
+}
+
+/** Whether this person is one the player offers Bridge jobs to (decision 28): an admin,
+ * never a household member, a kid's account or a demo account, whatever their role says. */
+export function isBridgeAdmin(
+  user: Pick<User, 'role' | 'is_demo' | 'managed_by' | 'member_kind'> | null | undefined,
+): boolean {
+  return !!user && user.role === 'admin' && !user.is_demo && !user.managed_by && !user.member_kind;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppState, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,18 +21,17 @@ import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
 
 import { canRead } from './can-read';
 import { hasLocalEbook } from './ebook-file';
 import { useNarration } from './narration';
-import { FollowPill, PageEdge, usePageEdges } from './page-edge';
-import type { ReaderPlace, ReaderTheme, TocEntry } from './protocol';
+import { FollowPill, PageEdges, turnPage, usePageEdges } from './page-edge';
+import type { ReaderPlace, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
-import { FONT_SCALES, loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
+import { FONT_SCALES, saveFontScale, stepFontScale } from './reader-settings';
 import { useBookReadalong } from './use-book-readalong';
+import { useReaderAppearance } from './use-reader-appearance';
 import {
   adoptServerPlace,
   flushReadingQueue,
@@ -121,11 +120,16 @@ export function ReaderScreen({
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
 
   const host = useRef<ReaderHostHandle>(null);
-  // Read-along (Bridge Phase 3c): the map, and the narration while this book is the one
-  // the player holds. The map goes to the reader only then: another book playing has
-  // nothing to follow here.
-  const readalong = useBookReadalong({ connectionId, libraryId, path }, book, readable);
+  // Read-along (Bridge Phase 3c): the narration, and the map while this book is the one
+  // the player holds. The map is asked for and goes to the reader only then: another book
+  // playing has nothing to follow here.
   const narration = useNarration({ connectionId, libraryId, path }, host);
+  const readalong = useBookReadalong(
+    { connectionId, libraryId, path },
+    book,
+    readable,
+    narration.narrating,
+  );
   const readalongMap = narration.narrating ? readalong.map : null;
   // What the reader made of the map, and whether it follows the narration (null: it never
   // has, for this map).
@@ -137,16 +141,7 @@ export function ReaderScreen({
     setFollowingShown(null);
   }
 
-  const { scheme } = useTheme();
-  const palette = colors[scheme];
-  const theme = useMemo<ReaderTheme>(
-    () => ({ scheme, background: palette.card, foreground: palette.foreground }),
-    [scheme, palette],
-  );
-  const [fontScale, setFontScale] = useState<number | null>(null);
-  useEffect(() => {
-    void loadFontScale().then(setFontScale);
-  }, []);
+  const { theme, fontScale, setFontScale } = useReaderAppearance();
   const changeFontScale = (direction: -1 | 1) => {
     const next = stepFontScale(fontScale ?? 1, direction);
     setFontScale(next);
@@ -340,8 +335,8 @@ export function ReaderScreen({
   const shortcuts = Platform.OS === 'web' && !tocOpen;
   // An RTL book's next page is on the left: the page edges and the arrows follow the book.
   const rtl = opened?.rtl === true;
-  const turnLeft = () => (rtl ? host.current?.next() : host.current?.prev());
-  const turnRight = () => (rtl ? host.current?.prev() : host.current?.next());
+  const turnLeft = () => turnPage(host, rtl, 'left');
+  const turnRight = () => turnPage(host, rtl, 'right');
   useGlobalShortcut(shortcuts, (e) => e.key === 'Escape', backOrHome, READER_LAYER);
   // A bare arrow only, as in the book: with Cmd, Ctrl or Alt it is the browser's (Back).
   const bare = (e: ShortcutKey) => !e.metaKey && !e.ctrlKey && !e.altKey;
@@ -479,22 +474,7 @@ export function ReaderScreen({
               onReadalongState={(s) => setReadalongOk(s.state === 'ok')}
             />
           ) : null}
-          {show ? (
-            <>
-              <PageEdge
-                side="left"
-                narrow={edges.narrow}
-                label={t(rtl ? 'reader.next' : 'reader.previous')}
-                onPress={turnLeft}
-              />
-              <PageEdge
-                side="right"
-                narrow={edges.narrow}
-                label={t(rtl ? 'reader.previous' : 'reader.next')}
-                onPress={turnRight}
-              />
-            </>
-          ) : null}
+          {show ? <PageEdges host={host} rtl={rtl} narrow={edges.narrow} /> : null}
           {signedOut && (shown === 'signedOut' || shown === 'fetch') ? (
             <View className="absolute inset-0 items-center justify-center p-4">
               <View className="w-full max-w-md">

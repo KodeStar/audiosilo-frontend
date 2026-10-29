@@ -23,6 +23,7 @@ import {
   estimatePollInterval,
   latestDone,
   midRunCheckpoint,
+  READALONG_ALIGN,
   SIDECARS_GENERATE,
 } from '@/lib/bridge-jobs';
 import { afterPaint } from '@/lib/after-paint';
@@ -200,7 +201,7 @@ export const qk = {
   /** What making a book's read-along would take (Bridge Phase 3c): under `bridgeEstimate`,
    * so a refused queue reads both again. */
   readalongEstimate: (cid: string, lib: number, path: string) =>
-    ['bridgeEstimate', cid, lib, path, 'readalong.align'] as const,
+    ['bridgeEstimate', cid, lib, path, READALONG_ALIGN] as const,
   /** A book's read-along map (capability `readalong`, Bridge Phase 3c), per map: keyed by
    * its `generated_at` (`Book.readalong`), so a map made again is fetched again. */
   readalong: (cid: string, lib: number, path: string, generatedAt: string) =>
@@ -254,12 +255,14 @@ export const isQueueKey = (key: readonly unknown[]): boolean => key[0] === 'queu
 export const isAllProgressKey = (key: readonly unknown[]): boolean =>
   key[0] === 'progress' && key[1] === 'all';
 
-/** The book a chapters query key names (`qk.chapters`), or null for any other key. */
-export function chaptersKeyParts(
+/** The book a book's `kind` query key names (`qk.chapters`, `qk.item`), or null for any
+ * other key. */
+export function bookKeyParts(
   key: readonly unknown[],
+  kind: 'chapters' | 'item',
 ): { cid: string; libraryId: number; path: string } | null {
-  const [kind, cid, libraryId, path] = key;
-  if (kind !== 'chapters' || typeof cid !== 'string' || typeof libraryId !== 'number') return null;
+  const [k, cid, libraryId, path] = key;
+  if (k !== kind || typeof cid !== 'string' || typeof libraryId !== 'number') return null;
   return typeof path === 'string' ? { cid, libraryId, path } : null;
 }
 
@@ -2314,7 +2317,14 @@ async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly B
   await Promise.all([
     qc.invalidateQueries({ queryKey: qk.bookMeta(cid, libraryId, path) }),
     qc.invalidateQueries({ predicate: (q) => isBookAnswerOf(q, cid, libraryId, path) }),
-    qc.invalidateQueries({ queryKey: qk.readalongAll(cid, libraryId, path) }),
+    // A map made again comes under its new `generated_at` key once the item is in, so the
+    // old one is only marked stale (a full map is up to 16 MiB), and only by its own job.
+    job.kind === READALONG_ALIGN
+      ? qc.invalidateQueries({
+          queryKey: qk.readalongAll(cid, libraryId, path),
+          refetchType: 'none',
+        })
+      : undefined,
   ]);
 }
 
@@ -2401,18 +2411,13 @@ export function useBridgeEstimate(libraryId: number, path: string, connectionId?
  * readalong.align`, Bridge Phase 3c), read afresh each time it mounts (the confirmation
  * opens) and after a refused queue (`useQueueBridgeJob`: its key is under the book's
  * `bridgeEstimate`). Asked only while `enabled`. */
-export function useReadalongEstimate(
-  libraryId: number,
-  path: string,
-  { enabled = true }: { enabled?: boolean } = {},
-  connectionId?: string,
-) {
+export function useReadalongEstimate(libraryId: number, path: string, connectionId?: string) {
   return useCapabilityQuery<ReadalongEstimate>(
     'bridge',
     (cid) => qk.readalongEstimate(cid, libraryId, path),
     (api, signal) => api.readalongEstimate(libraryId, path, signal),
     connectionId,
-    { ready: enabled && path.length > 0, staleTime: 0, retry: false },
+    { ready: path.length > 0, staleTime: 0, retry: false },
   );
 }
 

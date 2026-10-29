@@ -16,9 +16,6 @@ export type TextTabModel = {
   shown: boolean;
   /** The map to follow, or null (none: the admin's Make offer shows instead). */
   map: ReaderReadalongMap | null;
-  /** An admin may make the book's read-along here, and none can be followed: the tab
-   * offers it. */
-  make: boolean;
   book: Book | undefined;
 };
 
@@ -40,6 +37,6 @@ export function useTextTab(target: PlayTarget): TextTabModel {
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const mayMake = readable && mayMakeReadalong(user, server);
-  const { shown, make } = textTab({ map: map !== null, pending, mayMake });
-  return { shown, map, make, book };
+  const shown = textTab({ map: map !== null, pending, mayMake });
+  return { shown, map, book };
 }

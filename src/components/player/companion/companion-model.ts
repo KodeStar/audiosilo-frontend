@@ -40,19 +40,15 @@ export function companionTabs(metadata: boolean, text = false): CompanionTab[] {
 }
 
 /**
- * The Text tab (Bridge Phase 3c): `shown` for a listener once the book's read-along map is
- * in with a sentence to follow (`map`), never while it is on its way (`pending`: no tab
- * that vanishes a moment later) nor for a stale or absent map; for an admin who may make
+ * Whether the Text tab (Bridge Phase 3c) shows: for a listener once the book's read-along
+ * map is in with a sentence to follow (`map`), never while it is on its way (`pending`: no
+ * tab that vanishes a moment later) nor for a stale or absent map; for an admin who may make
  * one (`mayMake`: `mayMakeReadalong`, and the book reads with its ebook) also without a map,
- * where it offers "Make read-along" (`make`).
+ * where it offers "Make read-along".
  */
-export function textTab(opts: { map: boolean; pending: boolean; mayMake: boolean }): {
-  shown: boolean;
-  make: boolean;
-} {
+export function textTab(opts: { map: boolean; pending: boolean; mayMake: boolean }): boolean {
   const { map, pending, mayMake } = opts;
-  const make = mayMake && !map && !pending;
-  return { shown: map || make, make };
+  return map || (mayMake && !pending);
 }
 
 /** The tab to show: the one asked for when it exists, else the first. */

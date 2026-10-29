@@ -93,22 +93,29 @@ export function spineStepIndex(sectionCfis) {
   };
 }
 
+/** The last index below `n` for which `atOrBefore(i)` holds (a binary search: it holds for
+ * a prefix of the indices), or -1 for none. */
+function lastAtOrBefore(n, atOrBefore) {
+  let lo = 0;
+  let hi = n - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (atOrBefore(mid)) {
+      ans = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return ans;
+}
+
 /**
  * The span to highlight at whole-book time `t`, or -1: the last one starting at or before
  * `t` (a binary search), while `t` is within `holdGap` of its end.
  */
 export function spanAt(idx, t, holdGap = HOLD_GAP) {
   const { starts, spans } = idx;
-  let lo = 0;
-  let hi = starts.length - 1;
-  let ans = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (starts[mid] <= t) {
-      ans = mid;
-      lo = mid + 1;
-    } else hi = mid - 1;
-  }
+  const ans = lastAtOrBefore(starts.length, (i) => starts[i] <= t);
   if (ans < 0) return -1;
   return t <= spans[ans].end + holdGap ? ans : -1;
 }
@@ -119,16 +126,7 @@ export function spanAt(idx, t, holdGap = HOLD_GAP) {
  * CFI order), when the caret is not past its end.
  */
 export function findInOrder(order, startOf, endOf, at, compare) {
-  let lo = 0;
-  let hi = order.length - 1;
-  let ans = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (compare(startOf(order[mid]), at) <= 0) {
-      ans = mid;
-      lo = mid + 1;
-    } else hi = mid - 1;
-  }
+  const ans = lastAtOrBefore(order.length, (k) => compare(startOf(order[k]), at) <= 0);
   if (ans < 0) return -1;
   const i = order[ans];
   return compare(at, endOf(i)) <= 0 ? i : -1;
@@ -213,7 +211,8 @@ export function createReadalong({
   let programmatic = 0;
   let busy = false;
   let jumped = false; // a seek came: the next tick turns to the sentence
-  let lastLoc = null; // the renderer's last relocate: { reason, range, index }
+  let lastLoc = null; // the renderer's last relocate: { range, index }
+  let turn = null; // the sentence being read's page turn on lastLoc's page: { cur, loc, at }
   let docRanges = new WeakMap(); // section document -> Map(span i -> Range | null)
   let sections = new Map(); // spine index -> { order, starts, ends } (lazy)
   const wired = new WeakSet();
@@ -226,14 +225,17 @@ export function createReadalong({
     send({ type: 'following', value });
   }
 
-  async function go(target) {
+  /** A move of the reader's own (following), never taken for the listener's. */
+  async function quietly(move) {
     programmatic++;
     try {
-      await view.goTo(target);
+      await move();
     } finally {
       programmatic--;
     }
   }
+
+  const go = (target) => quietly(() => view.goTo(target));
 
   // ---- ranges, lazily -----------------------------------------------------------------
 
@@ -360,36 +362,46 @@ export function createReadalong({
 
   function onRelocate(e) {
     const detail = e.detail ?? {};
-    lastLoc = { reason: detail.reason, range: detail.range, index: detail.index };
+    lastLoc = { range: detail.range, index: detail.index };
     if (programmatic || !idx || cur < 0 || !MOVES.has(detail.reason)) return;
     // The reader moved: following only while the sentence being read is still in sight.
     setFollowing(isVisible(cur));
   }
 
+  /** When the sentence being read, starting on the page shown and running over its end,
+   * turns the page (by the share of its characters shown), else null; worked out once per
+   * sentence and page, not every tick. Undefined while its section has not loaded. */
+  function turnTime() {
+    if (turn && turn.cur === cur && turn.loc === lastLoc) return turn.at;
+    const r = rangeOf(cur);
+    if (!r) return undefined;
+    const shownRange = lastLoc.range;
+    let at = null;
+    try {
+      if (
+        shownRange.comparePoint(r.startContainer, r.startOffset) === 0 &&
+        shownRange.comparePoint(r.endContainer, r.endOffset) > 0
+      ) {
+        const shown = r.cloneRange();
+        shown.setEnd(shownRange.endContainer, shownRange.endOffset);
+        const share = shown.toString().length / Math.max(1, r.toString().length);
+        const s = idx.spans[cur];
+        at = s.start + share * (s.end - s.start);
+      }
+    } catch {
+      at = null;
+    }
+    turn = { cur, loc: lastLoc, at };
+    return at;
+  }
+
   /** A sentence running over the page's end: turn once the narration reaches the part that
-   * is off the page (by the share of its characters shown). */
+   * is off the page (`turnTime`). */
   async function turnMidSentence(t) {
     if (!following || cur < 0 || bad.has(cur) || !lastLoc?.range) return;
-    const r = rangeOf(cur);
-    const shownRange = lastLoc.range;
-    if (!r) return;
-    try {
-      if (shownRange.comparePoint(r.startContainer, r.startOffset) !== 0) return;
-      if (shownRange.comparePoint(r.endContainer, r.endOffset) <= 0) return;
-      const shown = r.cloneRange();
-      shown.setEnd(shownRange.endContainer, shownRange.endOffset);
-      const share = shown.toString().length / Math.max(1, r.toString().length);
-      const s = idx.spans[cur];
-      if (t < s.start + share * (s.end - s.start)) return;
-    } catch {
-      return;
-    }
-    programmatic++;
-    try {
-      await view.next();
-    } finally {
-      programmatic--;
-    }
+    const at = turnTime();
+    if (typeof at !== 'number' || t < at) return;
+    await quietly(() => view.next());
   }
 
   async function unhighlight() {
@@ -455,6 +467,7 @@ export function createReadalong({
       }
     };
     idx = indexMap(map, sectionOf);
+    turn = null;
     docRanges = new WeakMap();
     sections = new Map();
     bad.clear();
@@ -487,9 +500,7 @@ export function createReadalong({
       deactivate();
       view = next;
       const loc = next.lastLocation;
-      lastLoc = loc?.range
-        ? { reason: 'init', range: loc.range, index: loc.section?.current }
-        : null;
+      lastLoc = loc?.range ? { range: loc.range, index: loc.section?.current } : null;
       next.renderer?.addEventListener('relocate', onRelocate);
       next.addEventListener('load', (e) => wire(e.detail?.doc, e.detail?.index));
       // The reader's only annotation is the sentence being read.
@@ -523,11 +534,7 @@ export function createReadalong({
     /** A sample of the narration's place. A seek follows again, once the reader has. */
     position(sample) {
       if (!sample || typeof sample !== 'object') return;
-      const seek = clock.sample({
-        t: sample.t,
-        rate: sample.rate,
-        playing: sample.playing,
-      });
+      const seek = clock.sample(sample);
       if (seek && followedOnce && idx) {
         setFollowing(true);
         jumped = true; // the next tick turns to the sentence, even the same one

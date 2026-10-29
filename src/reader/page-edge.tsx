@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { type RefObject, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, Pressable } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { TABLET_MIN_WIDTH, useLayout } from '@/lib/layout';
+
+import type { ReaderHostHandle } from './reader-host-types';
 
 /**
  * Whether the page edges over a reader narrow to the book's margin (24 px: the reader's
@@ -26,9 +29,50 @@ export function usePageEdges(): { narrow: boolean; onLayout: (e: LayoutChangeEve
   };
 }
 
+/** Turns the page at one side of the reader: an RTL book's next page is on the left, so
+ * the page edges and the arrow keys follow the book. */
+export function turnPage(
+  host: RefObject<ReaderHostHandle | null>,
+  rtl: boolean,
+  side: 'left' | 'right',
+): void {
+  if ((side === 'left') === rtl) host.current?.next();
+  else host.current?.prev();
+}
+
+/** Both page edges over a reader (`PageEdge`), labelled and turning the way the book
+ * reads (`turnPage`). */
+export function PageEdges({
+  host,
+  rtl,
+  narrow,
+}: {
+  host: RefObject<ReaderHostHandle | null>;
+  rtl: boolean;
+  narrow: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <PageEdge
+        side="left"
+        narrow={narrow}
+        label={t(rtl ? 'reader.next' : 'reader.previous')}
+        onPress={() => turnPage(host, rtl, 'left')}
+      />
+      <PageEdge
+        side="right"
+        narrow={narrow}
+        label={t(rtl ? 'reader.previous' : 'reader.next')}
+        onPress={() => turnPage(host, rtl, 'right')}
+      />
+    </>
+  );
+}
+
 /** A page turn at one edge of the book: a tall, quiet target over the margin, narrowed
  * clear of the text where the reader is narrow (`narrowPageEdges`). */
-export function PageEdge({
+function PageEdge({
   side,
   label,
   narrow,
@@ -59,18 +103,10 @@ export function PageEdge({
  * ever followed, "Back to narration" once the listener turned away. Pressing it calls the
  * host's `follow()`.
  */
-export function FollowPill({
-  label,
-  onPress,
-  testID = 'readalong-follow',
-}: {
-  label: string;
-  onPress: () => void;
-  testID?: string;
-}) {
+export function FollowPill({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Button
-      testID={testID}
+      testID="readalong-follow"
       size="sm"
       icon="microphone"
       title={label}

@@ -124,11 +124,11 @@ function receiveMap(msg) {
     try {
       incomingMap = createTextAssembly(msg.length, msg.chunks);
     } catch {
-      refuseMap();
+      readalong.setMap(null);
     }
     return;
   }
-  readalong.setMap(msg.map && typeof msg.map === 'object' ? msg.map : null);
+  readalong.setMap(msg.map);
 }
 
 function receiveMapChunk(msg) {
@@ -139,21 +139,17 @@ function receiveMapChunk(msg) {
   } catch (err) {
     if (!(err instanceof ChunkError)) throw err;
     incomingMap = null;
-    return refuseMap();
+    return readalong.setMap(null);
   }
   if (text === null) return;
   incomingMap = null;
-  let map;
+  let map = null;
   try {
     map = JSON.parse(text);
   } catch {
-    return refuseMap();
+    // none: said as `readalong {state: 'none'}`
   }
-  readalong.setMap(map && typeof map === 'object' ? map : null);
-}
-
-function refuseMap() {
-  readalong.setMap(null);
+  readalong.setMap(map);
 }
 
 async function handle(msg) {

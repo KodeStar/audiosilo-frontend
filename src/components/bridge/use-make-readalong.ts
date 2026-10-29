@@ -1,14 +1,6 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError } from '@/api/client';
-import {
-  CapabilityError,
-  useBridgeJobs,
-  useCancelBridgeJob,
-  useQueueBridgeJob,
-  useServerInfo,
-} from '@/api/hooks';
+import { CapabilityError, useServerInfo } from '@/api/hooks';
 import type { BridgeJob } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { READALONG_ALIGN } from '@/lib/bridge-jobs';
@@ -17,6 +9,7 @@ import { useSession } from '@/stores/session';
 
 import type { JobStatusModel } from './generate-status';
 import { readalongOffer, readalongRefusalKey, readalongStatusJob } from './readalong-model';
+import { useBridgeJobSurface } from './use-bridge-job-surface';
 import type { GenerateTarget } from './use-generate';
 
 /** Everything a surface needs to offer "Make read-along" for one book (see
@@ -56,17 +49,8 @@ export function useMakeReadalong({
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const allowed = mayMakeReadalong(user, server);
-  const jobs = useBridgeJobs(
-    libraryId,
-    path,
-    { enabled: allowed, active: false, select: showsJob },
-    connectionId,
-  );
-  const queueJob = useQueueBridgeJob(connectionId);
-  const cancelJob = useCancelBridgeJob(connectionId);
-  const [confirming, setConfirming] = useState(false);
-  const [queueing, setQueueing] = useState(false);
-  if (confirming && !allowed) setConfirming(false);
+  const surface = useBridgeJobSurface(target, allowed, showsJob);
+  const { queueJob, setQueueing } = surface;
 
   const queue = async () => {
     setQueueing(true);
@@ -97,22 +81,15 @@ export function useMakeReadalong({
     offer: readalongOffer({
       allowed,
       hasEbook,
-      jobsKnown: jobs.data !== undefined,
-      showsJob: jobs.data === true,
+      jobsKnown: surface.jobsKnown,
+      showsJob: surface.showsJob,
     }),
-    confirming: confirming && allowed,
-    setConfirming,
+    confirming: surface.confirming,
+    setConfirming: surface.setConfirming,
     queue,
-    queueing,
-    cancel: (job) =>
-      cancelJob.mutate(job, {
-        onError: (e) => {
-          // A 409: the job already ended; the list read again shows how.
-          if (e instanceof CapabilityError || (e instanceof ApiError && e.status === 409)) return;
-          toast({ title: t('bridge.status.cancelFailed') });
-        },
-      }),
-    cancelling: cancelJob.isPending,
+    queueing: surface.queueing,
+    cancel: surface.cancel,
+    cancelling: surface.cancelling,
     retry: () => void queue(),
   };
 }

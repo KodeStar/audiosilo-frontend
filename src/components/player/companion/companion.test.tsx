@@ -34,7 +34,7 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 // The Text tab's model and panel (their own tests): whether the book has one.
-let mockText = { shown: false, map: null, make: false, book: undefined };
+let mockText = { shown: false, map: null, book: undefined };
 jest.mock('./use-text-tab', () => ({ useTextTab: () => mockText }));
 jest.mock('./text-panel', () => ({
   TextPanel: ({ fill }: { fill: boolean }) => {
@@ -51,7 +51,7 @@ import { useCompanion } from './companion-store';
 
 describe('Companion', () => {
   beforeEach(() => {
-    mockText = { shown: false, map: null, make: false, book: undefined };
+    mockText = { shown: false, map: null, book: undefined };
   });
 
   it('has no Text tab for a book without a read-along to follow', async () => {

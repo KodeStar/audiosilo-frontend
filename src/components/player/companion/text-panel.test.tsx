@@ -79,7 +79,6 @@ const BOOK = {
 const model = (p: Partial<TextTabModel> = {}): TextTabModel => ({
   shown: true,
   map: MAP,
-  make: false,
   book: BOOK,
   ...p,
 });
@@ -177,7 +176,7 @@ describe('TextPanel', () => {
       render(
         <TextPanel
           target={TARGET}
-          text={model({ map: null, make: true, book: { ...BOOK, readalong: undefined } })}
+          text={model({ map: null, book: { ...BOOK, readalong: undefined } })}
           fill
         />,
       );
@@ -190,9 +189,7 @@ describe('TextPanel', () => {
   it('says why a stale map no longer fits, offering to make it again', async () => {
     const stale = { ...BOOK, readalong: { state: 'stale', reason: 'ebook_changed' } } as Book;
     await act(async () => {
-      render(
-        <TextPanel target={TARGET} text={model({ map: null, make: true, book: stale })} fill />,
-      );
+      render(<TextPanel target={TARGET} text={model({ map: null, book: stale })} fill />);
     });
     expect(screen.getByText('The read-along is out of date')).toBeTruthy();
     expect(screen.getByText(/The ebook changed since it was made/)).toBeTruthy();

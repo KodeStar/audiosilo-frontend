@@ -56,7 +56,7 @@ describe('useTextTab', () => {
   });
 
   it('is there for a listener once the map is in', async () => {
-    expect(await tab()).toMatchObject({ shown: true, map: MAP, make: false });
+    expect(await tab()).toMatchObject({ shown: true, map: MAP });
   });
 
   it('is absent for a listener while the map is on its way, or with none', async () => {
@@ -72,7 +72,7 @@ describe('useTextTab', () => {
     mockMap = { map: null, pending: false };
     expect((await tab()).shown).toBe(false);
     mockUser = ADMIN;
-    expect(await tab()).toMatchObject({ shown: true, map: null, make: true });
+    expect(await tab()).toMatchObject({ shown: true, map: null });
   });
 
   it('offers no Make where the Bridge cannot make maps, nor for a book without an ebook', async () => {

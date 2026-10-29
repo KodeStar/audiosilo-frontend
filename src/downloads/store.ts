@@ -2,7 +2,7 @@ import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { resolveClient } from '@/api/connection-clients';
-import { cachedCapability, chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
+import { bookKeyParts, cachedCapability, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
@@ -533,7 +533,7 @@ export function startChapterRefresh(): () => void {
   return queryClient.getQueryCache().subscribe((event) => {
     // A server answer only: the store's own seeds (`setQueryData`) are manual.
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
-    const book = chaptersKeyParts(event.query.queryKey);
+    const book = bookKeyParts(event.query.queryKey, 'chapters');
     const fresh = event.action.data as ChaptersResponse | undefined;
     if (!book || !fresh) return;
     const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
@@ -563,10 +563,10 @@ const readalongTried = new Set<string>();
 export function startReadalongRefresh(): () => void {
   return queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
-    const [kind, cid, libraryId, path] = event.query.queryKey;
-    if (kind !== 'item' || typeof cid !== 'string' || typeof libraryId !== 'number') return;
+    const ref = bookKeyParts(event.query.queryKey, 'item');
     const book = event.action.data as Book | undefined;
-    if (typeof path !== 'string' || !book) return;
+    if (!ref || !book) return;
+    const { cid, libraryId, path } = ref;
     void refreshReadalong({ connectionId: cid, libraryId, path }, book).catch(() => {});
   });
 }

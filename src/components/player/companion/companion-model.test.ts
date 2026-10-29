@@ -227,25 +227,16 @@ describe('chapterRows', () => {
 
 describe('textTab', () => {
   it('shows for a listener only once a map with a sentence is in', () => {
-    expect(textTab({ map: true, pending: false, mayMake: false })).toEqual({
-      shown: true,
-      make: false,
-    });
+    expect(textTab({ map: true, pending: false, mayMake: false })).toBe(true);
     // On its way: no tab that vanishes a moment later.
-    expect(textTab({ map: false, pending: true, mayMake: false }).shown).toBe(false);
+    expect(textTab({ map: false, pending: true, mayMake: false })).toBe(false);
     // None, or a stale one (the gate gives no map): no tab.
-    expect(textTab({ map: false, pending: false, mayMake: false }).shown).toBe(false);
+    expect(textTab({ map: false, pending: false, mayMake: false })).toBe(false);
   });
 
   it('shows for an admin who may make one without a map, offering Make', () => {
-    expect(textTab({ map: false, pending: false, mayMake: true })).toEqual({
-      shown: true,
-      make: true,
-    });
-    expect(textTab({ map: true, pending: false, mayMake: true })).toEqual({
-      shown: true,
-      make: false,
-    });
-    expect(textTab({ map: false, pending: true, mayMake: true }).shown).toBe(false);
+    expect(textTab({ map: false, pending: false, mayMake: true })).toBe(true);
+    expect(textTab({ map: true, pending: false, mayMake: true })).toBe(true);
+    expect(textTab({ map: false, pending: true, mayMake: true })).toBe(false);
   });
 });

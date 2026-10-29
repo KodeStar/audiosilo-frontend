@@ -146,9 +146,9 @@ jest.mock('@/api/hooks', () => ({
   chaptersQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
     queryKey: ['chapters', cid, lib, path],
   }),
-  // The real helper's reading of `qk.chapters` (hooks.test.ts covers it).
-  chaptersKeyParts: ([kind, cid, libraryId, path]: unknown[]) =>
-    kind === 'chapters' ? { cid, libraryId, path } : null,
+  // The real helper's reading of `qk.chapters` / `qk.item` (hooks.test.ts covers it).
+  bookKeyParts: ([k, cid, libraryId, path]: unknown[], kind: string) =>
+    k === kind ? { cid, libraryId, path } : null,
 }));
 
 // Imported after the mocks so the store binds to the fakes above.
