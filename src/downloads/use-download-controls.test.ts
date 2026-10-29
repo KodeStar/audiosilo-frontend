@@ -6,9 +6,9 @@ import type { Book } from '@/api/types';
 let mockCanTranscode: boolean | undefined = true;
 jest.mock('@/api/hooks', () => ({ useCapability: () => mockCanTranscode }));
 jest.mock('@/api/provider', () => ({ useScopedCid: () => 'c1' }));
-let mockEntry: { status: string } | undefined;
+let mockStatus: string | undefined;
 jest.mock('./store', () => ({
-  useDownloadState: () => ({ status: mockEntry?.status, error: undefined }),
+  useDownloadState: () => ({ status: mockStatus, error: undefined }),
   useDownloads: Object.assign(
     (select: (s: { supported: boolean }) => unknown) => select({ supported: true }),
     { getState: () => ({ download: jest.fn(), cancel: jest.fn() }) },
@@ -26,7 +26,7 @@ describe('useDownloadControls (web transcode)', () => {
   beforeEach(() => {
     Platform.OS = 'web';
     mockCanTranscode = true;
-    mockEntry = undefined;
+    mockStatus = undefined;
   });
   afterEach(() => {
     Platform.OS = prevOS;
@@ -42,7 +42,7 @@ describe('useDownloadControls (web transcode)', () => {
   });
 
   it('keeps an existing download manageable', async () => {
-    mockEntry = { status: 'downloaded' };
+    mockStatus = 'downloaded';
     expect(await controls()).toMatchObject({ supported: true, needsTranscode: false });
   });
 

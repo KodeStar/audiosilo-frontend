@@ -5,7 +5,7 @@ import { mountWithPortal } from '@/testing/render-overlay';
 const mockRemove = jest.fn();
 let mockControlsOverride: Record<string, unknown> = {};
 // One download as the control's hooks read it: the state and actions
-// (`useDownloadControls`), the progress numbers (`useDownloadProgress`).
+// (`useDownloadControls`), the progress numbers (`useDownloadProgress`, the entry).
 const mockDownload = () => ({
   connectionId: 'c',
   supported: true,
@@ -22,10 +22,10 @@ const mockDownload = () => ({
 jest.mock('@/downloads/use-download-controls', () => ({
   useDownloadControls: () => mockDownload(),
 }));
-// The confirm reads the room it frees from the registry and removes through the store.
+// The confirm reads the room it frees from the registry and removes through the store;
+// the progress line reads the registry entry.
 jest.mock('@/downloads/store', () => ({
-  useDownloadEntry: () => ({ status: 'downloaded', bytes: 52_428_800, totalBytes: 52_428_800 }),
-  useDownloadState: () => mockDownload(),
+  useDownloadEntry: () => mockDownload(),
   useDownloadProgress: () => mockDownload(),
   useDownloads: { getState: () => ({ remove: mockRemove }) },
 }));

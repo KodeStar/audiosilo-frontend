@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { persistedDocument } from '@/lib/storage';
+import { isRecord } from '@/lib/storage-keys';
 import { DEFAULT_VIRTUAL_CHAPTER_INTERVAL } from '@/playback/book-queue';
 
 /** When the player may auto-download a book to the device: never, only on an
@@ -117,14 +118,9 @@ const SETTINGS_VERSION = 1;
 /** The persisted document: the settings plus the schema version they were saved under. */
 type StoredSettings = PlaybackSettings & { version: number };
 
-/**
- * Brings a stored document saved under an older `version` up to date. Version 0 on the
- * web: a stored `'wifi'` becomes `'never'`. It was the default every browser saved, and
- * the browser cannot honour it (it downloaded on any connection), so it is no listener's
- * choice; `'always'` is kept. The apps' stored values are never touched. Until the next
- * save writes `version`, the stored document stays at 0 and this runs again on each load,
- * to the same result; once saved, a `'wifi'` chosen on the web afterwards is kept.
- */
+/** Brings a document saved under an older `version` up to date. Version 0 on the web: the
+ * old default `'wifi'` (which the browser cannot honour) becomes `'never'`; the apps' values
+ * are never touched. It re-runs on each load until a save writes `version`. */
 function migrateSettings(doc: Partial<StoredSettings>): Partial<StoredSettings> {
   const version = typeof doc.version === 'number' ? doc.version : 0;
   if (version < 1 && Platform.OS === 'web' && doc.autoDownloadNext === 'wifi') {
@@ -136,7 +132,7 @@ function migrateSettings(doc: Partial<StoredSettings>): Partial<StoredSettings> 
 // A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all, and
 // one saved under an older version is migrated (its `version` then comes from the base).
 const stored = persistedDocument<StoredSettings>('audiosilo.settings', (raw) => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  if (!isRecord(raw)) return {};
   const { version, ...rest } = migrateSettings(raw as Partial<StoredSettings>);
   return rest;
 });

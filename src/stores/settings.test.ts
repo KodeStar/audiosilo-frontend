@@ -262,11 +262,8 @@ describe('settings store, automatic downloads per platform', () => {
       autoDownloadNext: 'wifi',
       version: 1,
     });
-    const blob = await AsyncStorage.getItem(KEY);
-    load('web');
-    await AsyncStorage.setItem(KEY, blob!);
-    await useSettings.getState().hydrate();
-    expect(useSettings.getState().autoDownloadNext).toBe('wifi');
+    const blob = JSON.parse((await AsyncStorage.getItem(KEY))!);
+    expect(await hydrated('web', blob)).toBe('wifi');
   });
 
   it('saves the version with any setting, and keeps it out of the store', async () => {
