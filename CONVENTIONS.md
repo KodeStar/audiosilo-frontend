@@ -517,7 +517,8 @@ player's first admin-only UI (Bridge decision 9) and its one Bridge kind, `sidec
   a `writing`/`rescanning` step sent with an engine stage before `ready`, the early chapters
   save, reads as that stage),
   counts, ETA, a park's reason `parkReason` and when it resumes, a failure,
-  Cancel, or "Try again", re-queueing, once it failed) and `GenerateOffer` (button or status under the companion's empty Who's
+  Cancel, or "Try again", re-queueing, once it failed; its body is `BridgeJobStatus`, shared
+  with Make read-along, which takes the job model and its words) and `GenerateOffer` (button or status under the companion's empty Who's
   who / Story so far). The book page wires `useGenerate` into `HeroActions` with
   `GenerateStatus` under the actions. Costs format with `formatUsd` (`src/lib/format.ts`).
   Strings under `bridge.*` in all 6 locales; fixtures in `src/testing/bridge-fixtures.ts`.
@@ -735,6 +736,12 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the rest to the host's `observe`, then `onMessage`). A host keeps only what is its own: the
   web's reopen of a reloaded frame and its fetch, the app's chunked transfer, crash reloads and
   last place. A new message type goes through the session, never into one host.
+- **The bytes and the place together** (fe#164): both hosts start the EPUB's fetch (or its
+  local read) as soon as they mount, while the screen still looks the place up, and send the
+  book only once `placeKnown` is true (`usePlaceGate`), so the open is never the fetch after
+  the lookup. The page edges are narrow (`w-6`) by the reader's MEASURED width
+  (`narrowPageEdges`: under `TABLET_MIN_WIDTH`, so the companion's column too), clear of the
+  text a tap lands on (fe#165).
 
 **Read-along (Bridge Phase 3c; `reader/src/readalong.js`, `src/reader/`).** A Bridge aligns a
 book's ebook with its narration (`readalong.align`) and writes `.audiosilo/readalong.json`; the
@@ -783,6 +790,42 @@ reader follows the narration in the book with it.
   `readalong-cfi.test.mjs` (the Bridge's Alice map and EPUB, `reader/test/fixtures`, byte copies
   of audiosilo-bridge testdata, through the vendored `epubcfi.js` on jsdom, a devDependency
   pinned to jest's own 20.0.3).
+- **Following the narration in the player** (3c-2). `useNarration(target, hostRef)`
+  (`narration.ts`): the reader follows only while the playing book is this book
+  (`selectPlacedBookKey`); its `readalongPosition()` reads the whole-book place, rate and
+  playing, and the host is told at once (`syncPosition()`) on play, pause, a rate change or a
+  jump (`narrationMoved`: past `NARRATION_JUMP_S` of where the clock would be); a tap's
+  `onSeek` is the store's `seekBook`, only while placed. `useBookReadalong(ref, book, readable)`
+  (`use-book-readalong.ts`) picks the map's source (`readalongSource`): the download's copy
+  while the server's book names it or names none (a list row, offline), else the server's
+  (`useReadalong`); never a stale map, copy or not; a copy that can't be read falls back to the
+  server's. Only a map with a sentence (`hasSpans`) reaches the reader.
+  - **The companion's Text tab** (`companion/use-text-tab.ts`, `text-panel.tsx`), right after
+    Story: shown once the map is in (a stale or absent map: no tab for a listener), or for an
+    admin who may make one (`mayMakeReadalong`) when there is none to follow (then the tab is
+    the Make offer, "again" for a stale map). It opens at the sentence being read (`cfiAt`)
+    with `followNarration`; Back to narration (`FollowPill`) once the listener turned away; the
+    page edges only once the reader answered `ok`; a reader `none` (the map names nothing in
+    this ebook) is its own notice with Make again; a section that didn't load (fe#164), a start
+    failure or a fetch failure each say so with Try again (a new host). **It never saves the
+    reading place**: the companion follows the narration, the full-screen reader is where a
+    reading place is made.
+  - **The full-screen reader** (`reader-screen.tsx`) gets the map only while its book is the
+    playing one, and never `followNarration`: "Follow narration" (the foot pill, once the
+    reader said `ok`) calls `follow()`, which shows "Back to narration" once the listener
+    turned away; a seek in the player re-follows only after a first follow (the core's rule).
+    **No reading-place save while following** (`onFollowing(true)` drops the timer and the
+    pending save); leaving following schedules a save of the page on screen at once.
+  - **Make read-along** (`src/components/bridge/`: `use-make-readalong.ts`,
+    `make-readalong.tsx`, rules in `readalong-model.ts`) is Generate's pattern: offered
+    (`readalongOffer`) to an admin once the book's jobs are known and none shows its status
+    (`readalongStatusJob`: the newest `readalong.align` while open or once failed, shown by the
+    shared `BridgeJobStatus`, stage `readalong_aligning`); its confirmation quotes the source,
+    "Up to" the transcription (`asr_hours`; "no estimate" without `figures`), no agent, and
+    where the text appears, held back (`readalongBlockKey`) on `no_ebook`,
+    `library_not_writable`, an open generate or detect job, or the book's own open read-along
+    job (`readalong_open`); a refusal reads in the app's words (`readalongRefusalKey`). The
+    job's finish reads the book and its map again (`refreshAfterFinish`).
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
@@ -2118,6 +2161,18 @@ are asked, at most 10,000 rows.
   timeline reads as moved once the new order is taken (as the server's re-index moves any
   whole-book place: no remap). A downloaded book whose chapters change gets its Android car play
   spec rebuilt (`car-controller.ts`).
+- **Read-along offline** (`src/downloads/readalong-file.ts`): a download that saved the EPUB
+  also saves the book's map as `readalong.json` beside it (`client.readalongRequest`: header
+  auth, the server's map as it came), when the server serves maps (`cachedCapability(cid,
+  'readalong')`) and the book is not known to have only a stale one (`wantsReadalong`); what
+  landed is checked (a `generated_at` and a sentence) or removed. Optional like the EPUB: a
+  failure keeps the book, a cancel cancels it. The manifest names it (`readalongUri`,
+  `readalongGeneratedAt`; `relocateEntry` finds it under the live root).
+  `startReadalongRefresh` (the root's services) watches the server's `/item` answers for a
+  downloaded book: another `generated_at` fetches the map again, no ready map (stale or none)
+  drops it (`readalongChange`), once per answer's map per launch (`readalongTried`). The Text
+  tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
+  'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
   metadata (asked by `metaEnabledFor`, so a book with content generated on its server too; the `/meta` envelope, plus the previous work(s) the envelope doesn't hold) as
   `meta.json` beside its audio (`engine.writeText`: the book's folder on native, its Cache API

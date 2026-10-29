@@ -170,7 +170,9 @@ keep this index in step (one line per topic).
   - Podcasts
   - The ebook reader
   - One session setup
+  - The bytes and the place together
   - Read-along
+  - Following the narration in the player
   - The module's surface
   - Remote moves vs the resume floor
   - The iOS engine is split into files
@@ -230,6 +232,7 @@ keep this index in step (one line per topic).
   - Kept files
   - Web
   - Changed chapters
+  - Read-along offline
   - Offline companion
   - Full player
   - Previously on

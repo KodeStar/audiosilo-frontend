@@ -414,8 +414,9 @@ the book · 22h 27m left at 1.25x") that becomes the **Undo chip** after a jump,
 seek bar** with live scrub preview ("41:12 · 17:26:50 in the book"), "21m left in the chapter · ends 22:01", the
 **whole-book timeline** (compact), transport (54/76), and actions: speed, sleep, bookmark, output, Up next
 (phone/tablet), smart speed / voice boost ("Saved 2h 11m" Android, "Voice boost" web and iOS). Desktop: a 420 px
-companion column (Who's who · Story so far · Chapters · Bookmarks · Notes). Tablet: the companion sits below
-the controls. Phone: chips open the companion as a 78% bottom sheet.
+companion column (Who's who · Story so far · Text · Chapters · Bookmarks · Notes; Text only for a book with a
+read-along, below). Tablet: the companion sits below the controls. Phone: chips open the companion as a 78%
+bottom sheet.
 
 ### Seek bar (waveform) and chapter timeline *custom on primitives*
 Seek bar: 96 bars (56 phone) of a deterministic speech-like envelope; played bars ink, hovered bars 55% ink,
@@ -478,6 +479,17 @@ compact status takes the button's place: sparkles (circle-exclamation in warning
 failed), the title, one caption line (the stage in plain words, the counts, the time left; why it stopped; the
 error), a neutral ink progress bar (not pink: the hero's progress bar is the page's one pink thing) and Cancel,
 or "Try again" once it failed; a park says when it resumes by itself, else to open the admin console.
+
+### Companion: Text (read-along) *custom*
+The book's ebook in the reader, on the card palette, following the narration: the sentence being read is
+highlighted and the page turns with it; a tap on a sentence seeks there. A fixed 520 px reader in the companion's
+column (it fills the phone sheet). The page edges come only once the text follows, narrow (`w-6`) in a column
+under 640 px so a tap on the text is never a page turn. When the listener turns away, a small rounded-full `sm`
+Button with the microphone icon, "Back to narration", floats at the foot; the full-screen reader shows the same
+pill as "Follow narration" while its book is the one playing. Never pink. Empty, stale, no-match and failure
+states are the standard EmptyState; for an admin, "Make read-along" (or "Make it again") sits under them in
+Generate's pattern (below): the companion's secondary sparkles button, a Dialog quoting the source, "Up to" the transcription time, no
+AI agent, and where the text appears, held back in warning text, and the same compact job status.
 
 ### Sheets (speed, sleep, bookmark, output, chapters, Up next, companion)
 Desktop: an anchored popover above the dock (or centred over the player column). Tablet: centred floating sheet.
