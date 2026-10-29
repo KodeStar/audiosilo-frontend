@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { qk, useCapability, useReadalong } from '@/api/hooks';
+import { apiErrorKind } from '@/api/client';
+import { CapabilityError, qk, useCapability, useReadalong } from '@/api/hooks';
 import type { Book } from '@/api/types';
 import { readDownloadedReadalong, useDownloadedReadalong } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
@@ -44,7 +45,22 @@ export type BookReadalongMap = {
   map: ReaderReadalongMap | null;
   /** Still reading it: nothing is shown about read-along yet. */
   pending: boolean;
+  /** The read failed for a reason that says nothing about the map (offline, a 5xx, a
+   * timeout, a copy on the device that would not read): never "no read-along" (an admin
+   * would be offered a job the book does not need). `retry` reads it again. */
+  failed: boolean;
+  retry: () => void;
 };
+
+/**
+ * Whether a failed map read is the server's word that there is none to follow (404
+ * `no_readalong`, 409 `readalong_stale`, or the flag off), rather than a failure to say.
+ */
+export function readalongNone(error: unknown): boolean {
+  if (error instanceof CapabilityError) return true;
+  const kind = apiErrorKind(error);
+  return kind === 'no_readalong' || kind === 'readalong_stale';
+}
 
 /**
  * A book's read-along map for the reader (Bridge Phase 3c): the download's copy when one is
@@ -89,9 +105,19 @@ export function useBookReadalong(
     connectionId,
   );
   const data = source === 'local' ? local.data : source === 'server' ? server.data : undefined;
-  const failed = source === 'local' ? local.isError : source === 'server' && server.isError;
+  const errored = source === 'local' ? local.isError : source === 'server' && server.isError;
+  const failed =
+    source === 'local'
+      ? local.isError
+      : source === 'server' && server.isError && !readalongNone(server.error);
+  const refetchLocal = local.refetch;
+  const refetchServer = server.refetch;
+  const retry = useCallback(() => {
+    if (source === 'local') void refetchLocal();
+    else if (source === 'server') void refetchServer();
+  }, [source, refetchLocal, refetchServer]);
   const map = useMemo(() => (data && hasSpans(data) ? readerMapOf(data) : null), [data]);
-  const pending = source !== null && data === undefined && !failed;
+  const pending = source !== null && data === undefined && !errored;
   // The map last shown for this book, kept while it has one or another is on its way (set
   // while rendering, React's pattern for state that follows a prop).
   const bookKey = contentKey(connectionId, libraryId, path);
@@ -99,5 +125,7 @@ export function useBookReadalong(
   if (map && (last?.map !== map || last.book !== bookKey)) setLast({ book: bookKey, map });
   else if (!map && !pending && last) setLast(null);
   const held = !map && pending && last?.book === bookKey ? last.map : null;
-  return held ? { map: held, pending: false } : { map, pending };
+  return held
+    ? { map: held, pending: false, failed: false, retry }
+    : { map, pending, failed: !map && failed, retry };
 }

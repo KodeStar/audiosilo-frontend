@@ -19,7 +19,10 @@ jest.mock('@/stores/session', () => ({
 let mockSavedEbook: string | undefined;
 jest.mock('@/downloads/store', () => ({ useDownloadedEbook: () => mockSavedEbook }));
 // The map (`useBookReadalong`'s own tests decide where it comes from).
-let mockMap: { map: object | null; pending: boolean } = { map: null, pending: false };
+let mockMap: { map: object | null; pending: boolean; failed?: boolean; retry?: () => void } = {
+  map: null,
+  pending: false,
+};
 const mockReadable = jest.fn();
 jest.mock('@/reader/use-book-readalong', () => ({
   useBookReadalong: (_ref: unknown, _book: unknown, readable: boolean) => {
@@ -71,6 +74,12 @@ describe('useTextTab', () => {
     mockUser = ADMIN;
     mockMap = { map: null, pending: true };
     expect(await tab()).toMatchObject({ shown: true, map: null, pending: true });
+  });
+
+  it("keeps a listener's tab when the map failed to load, with its retry", async () => {
+    const retry = jest.fn();
+    mockMap = { map: null, pending: false, failed: true, retry };
+    expect(await tab()).toMatchObject({ shown: true, map: null, failed: true, retry });
   });
 
   it('is absent for a listener when the map is stale, and offers an admin Make', async () => {

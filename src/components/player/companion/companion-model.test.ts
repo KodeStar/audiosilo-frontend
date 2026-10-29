@@ -236,6 +236,10 @@ describe('textTab', () => {
     expect(textTab({ map: false, mayMake: false })).toBe(false);
   });
 
+  it('stays for everyone when the map failed to load, saying so', () => {
+    expect(textTab({ map: false, failed: true, mayMake: false })).toBe(true);
+  });
+
   it('shows for an admin who may make one without a map, offering Make', () => {
     expect(textTab({ map: false, mayMake: true })).toBe(true);
     expect(textTab({ map: true, mayMake: true })).toBe(true);

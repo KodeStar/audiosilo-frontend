@@ -808,7 +808,10 @@ reader follows the narration in the book with it.
   (`use-book-readalong.ts`) picks the map's source (`readalongSource`): the download's copy
   while the server's book names it or names none (a list row, offline), else the server's
   (`useReadalong`); never a stale map, copy or not; a copy that can't be read falls back to the
-  server's. Only a map with a sentence (`hasSpans`) reaches the reader. While another copy of the
+  server's. Only a map with a sentence (`hasSpans`) reaches the reader. A read that fails for
+  any reason but the server's none (404 `no_readalong`, 409 `readalong_stale`: `readalongNone`)
+  is `failed`, never "no read-along": the Text tab stays with a "couldn't load" notice and Try
+  again (`retry`), and never offers Make (a needless multi-hour job). While another copy of the
   map shown is on its way (the download took it, it was made again), the one shown stays (not
   `pending`): a tab or a reader with a map never loses it in between.
   - **The companion's Text tab** (`companion/use-text-tab.ts`, `text-panel.tsx`), right after

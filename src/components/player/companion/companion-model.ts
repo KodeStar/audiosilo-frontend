@@ -44,10 +44,11 @@ export function companionTabs(metadata: boolean, text = false): CompanionTab[] {
  * map is in with a sentence to follow (`map`), never while it is on its way (no tab that
  * vanishes a moment later) nor for a stale or absent map; for an admin who may make one
  * (`mayMake`: `mayMakeReadalong`, and the book reads with its ebook) always: the map on its
- * way (a job that just made it) is a spinner, no map "Make read-along".
+ * way (a job that just made it) is a spinner, no map "Make read-along". A map whose read
+ * failed (`failed`: offline, a 5xx) keeps the tab for everyone, saying so with Try again.
  */
-export function textTab(opts: { map: boolean; mayMake: boolean }): boolean {
-  return opts.map || opts.mayMake;
+export function textTab(opts: { map: boolean; failed?: boolean; mayMake: boolean }): boolean {
+  return opts.map || opts.failed === true || opts.mayMake;
 }
 
 /** The tab to show: the one asked for when it exists, else the first but Text (the

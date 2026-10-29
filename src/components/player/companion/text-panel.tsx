@@ -64,6 +64,20 @@ export function TextPanel({
       />
     );
   }
+  if (!map && text.failed) {
+    // The map did not load (offline, the server failed): said, with Try again. Never the
+    // Make offer: a map may well be there, and making it again takes hours.
+    return (
+      <View testID="companion-text-map-failed" className="py-4">
+        <EmptyState
+          icon="circle-exclamation"
+          title={t('player.companion.textFailedTitle')}
+          hint={t('player.companion.textMapFailedHint')}
+          action={{ label: t('reader.tryAgain'), onPress: text.retry }}
+        />
+      </View>
+    );
+  }
   const stale = book?.readalong?.state === 'stale';
   return (
     <TextEmpty

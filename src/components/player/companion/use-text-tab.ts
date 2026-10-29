@@ -18,6 +18,10 @@ export type TextTabModel = {
   map: ReaderReadalongMap | null;
   /** The map is on its way (`useBookReadalong`): an admin's tab says so with a spinner. */
   pending: boolean;
+  /** The map's read failed (`useBookReadalong`): the tab says so with Try again (`retry`),
+   * and never offers Make, which would queue a job the book may not need. */
+  failed: boolean;
+  retry: () => void;
   book: Book | undefined;
 };
 
@@ -35,10 +39,10 @@ export function useTextTab(target: PlayTarget): TextTabModel {
   const ebooks = useCapability('ebooks', connectionId);
   const savedEbook = useDownloadedEbook(connectionId, libraryId, path);
   const readable = canRead(ebooks, book, !!savedEbook);
-  const { map, pending } = useBookReadalong(target, book, readable);
+  const { map, pending, failed, retry } = useBookReadalong(target, book, readable);
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const mayMake = readable && mayMakeReadalong(user, server);
-  const shown = textTab({ map: map !== null, mayMake });
-  return { shown, map, pending, book };
+  const shown = textTab({ map: map !== null, failed, mayMake });
+  return { shown, map, pending, failed, retry, book };
 }

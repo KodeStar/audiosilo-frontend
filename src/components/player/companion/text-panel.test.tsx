@@ -80,6 +80,8 @@ const model = (p: Partial<TextTabModel> = {}): TextTabModel => ({
   shown: true,
   map: MAP,
   pending: false,
+  failed: false,
+  retry: jest.fn(),
   book: BOOK,
   ...p,
 });
@@ -170,6 +172,19 @@ describe('TextPanel', () => {
     await act(async () => host().onReadalongState!({ state: 'none', unresolved: 3 }));
     expect(screen.getByText("The text can't follow this narration")).toBeTruthy();
     expect(screen.getByTestId('make-offer').props.children).toBe('again:true');
+  });
+
+  it('says a map that failed to load, with Try again, and never offers Make', async () => {
+    const retry = jest.fn();
+    await act(async () => {
+      render(<TextPanel target={TARGET} text={model({ map: null, failed: true, retry })} fill />);
+    });
+    expect(screen.getByText("Couldn't load the text")).toBeTruthy();
+    expect(screen.getByText(/The read-along didn't load/)).toBeTruthy();
+    expect(screen.queryByTestId('make-offer')).toBeNull();
+    expect(mockHost).toBeNull();
+    await fireEvent.press(screen.getByText('Try again'));
+    expect(retry).toHaveBeenCalled();
   });
 
   it('offers an admin Make read-along for a book with no map yet', async () => {

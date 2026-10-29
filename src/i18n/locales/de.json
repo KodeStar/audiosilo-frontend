@@ -1668,6 +1668,7 @@
       "textNoMatchHint": "Das Mitlesen passt nicht zu diesem E-Book.",
       "textFailedTitle": "Der Text konnte nicht geladen werden",
       "textFailedHint": "Das E-Book wurde nicht geladen. Prüfe die Verbindung und versuche es erneut.",
+      "textMapFailedHint": "Das Mitlesen wurde nicht geladen. Prüfe die Verbindung und versuche es erneut.",
       "textStartHint": "Der E-Book-Reader ist nicht gestartet. Versuche es erneut.",
       "textNoServer": "Der Text ist wieder da, sobald er verbunden ist."
     },

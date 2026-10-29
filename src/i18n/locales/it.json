@@ -1668,6 +1668,7 @@
       "textNoMatchHint": "La lettura sincronizzata non corrisponde a questo ebook.",
       "textFailedTitle": "Impossibile caricare il testo",
       "textFailedHint": "L'ebook non si è caricato. Controlla la connessione e riprova.",
+      "textMapFailedHint": "La lettura sincronizzata non si è caricata. Controlla la connessione e riprova.",
       "textStartHint": "Il lettore di ebook non si è avviato. Riprova.",
       "textNoServer": "Il testo torna non appena lo è."
     },

@@ -1668,6 +1668,7 @@
       "textNoMatchHint": "The read-along doesn't match this ebook.",
       "textFailedTitle": "Couldn't load the text",
       "textFailedHint": "The ebook didn't load. Check the connection and try again.",
+      "textMapFailedHint": "The read-along didn't load. Check the connection and try again.",
       "textStartHint": "The ebook reader didn't start. Try again.",
       "textNoServer": "The text comes back once it is."
     },
