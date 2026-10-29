@@ -10,8 +10,9 @@
 //   reads the local EPUB and posts it in base64 chunks (chunks.js assembles them).
 //
 // Either way the host posts the place to open at and the appearance; the reader posts back
-// what it opened and where the reader is. The protocol's host side, with every message's
-// shape, is src/reader/protocol.ts.
+// what it opened and where the reader is. With a read-along map (Bridge Phase 3c,
+// readalong.js) it follows the narration too. The protocol's host side, with every
+// message's shape, is src/reader/protocol.ts.
 //
 // EPUB scripts never run. Three layers: the loader never loads a script file and strips
 // <meta http-equiv=refresh> (here); the document's CSP, inherited by foliate's blob:
@@ -22,10 +23,13 @@
 
 // First: foliate calls Object.groupBy and Map.groupBy, which the app's oldest iOS lacks.
 import './polyfills.js';
+import * as CFI from '../vendor/foliate-js/epubcfi.js';
+import { Overlayer } from '../vendor/foliate-js/overlayer.js';
 import { View } from '../vendor/foliate-js/view.js';
 
-import { createAssembly } from './chunks.js';
+import { ChunkError, createAssembly, createTextAssembly } from './chunks.js';
 import { BookError, openEpub } from './epub-open.js';
+import { createReadalong } from './readalong.js';
 
 void View; // registers <foliate-view>
 
@@ -100,8 +104,70 @@ function reportCsp(e) {
 }
 document.addEventListener('securitypolicyviolation', reportCsp);
 
+// ---- read-along (Bridge Phase 3c) ----------------------------------------------------
+
+const readalong = createReadalong({
+  send,
+  CFI,
+  draw: Overlayer.highlight,
+  color: () => (theme.dark ? '#d9a441' : '#f5a524'),
+});
+
+/** The app's large map arriving in pieces, from its `readalong {length, chunks}`. */
+let incomingMap = null;
+
+/** `readalong`: the map itself (null: none), or (the app's large one) its announcement. A
+ * map that comes wrong in any way is none, said as `readalong {state: 'none'}`. */
+function receiveMap(msg) {
+  incomingMap = null;
+  if (__NATIVE__ && msg.map === undefined) {
+    try {
+      incomingMap = createTextAssembly(msg.length, msg.chunks);
+    } catch {
+      refuseMap();
+    }
+    return;
+  }
+  readalong.setMap(msg.map && typeof msg.map === 'object' ? msg.map : null);
+}
+
+function receiveMapChunk(msg) {
+  if (!incomingMap) return;
+  let text;
+  try {
+    text = incomingMap.add(msg.seq, msg.data);
+  } catch (err) {
+    if (!(err instanceof ChunkError)) throw err;
+    incomingMap = null;
+    return refuseMap();
+  }
+  if (text === null) return;
+  incomingMap = null;
+  let map;
+  try {
+    map = JSON.parse(text);
+  } catch {
+    return refuseMap();
+  }
+  readalong.setMap(map && typeof map === 'object' ? map : null);
+}
+
+function refuseMap() {
+  readalong.setMap(null);
+}
+
 async function handle(msg) {
   switch (msg.type) {
+    case 'readalong':
+      return receiveMap(msg);
+    case 'readalongChunk':
+      if (__NATIVE__) return receiveMapChunk(msg);
+      return;
+    case 'position':
+      return readalong.position(msg);
+    case 'follow':
+      // Also before the book shows: it follows from its first place on.
+      return readalong.follow();
     case 'open':
       return open(msg);
     case 'chunk':
@@ -321,6 +387,7 @@ async function openBook(msg, bytes) {
   harden(book);
   watchSections(book);
 
+  readalong.detach();
   try {
     // Releases the last book's listeners and blob URLs; throws when it never showed a page.
     view?.close();
@@ -361,6 +428,8 @@ async function openBook(msg, bytes) {
   });
   if (lastProgress) send(lastProgress);
   setBusy(false);
+  // Only now: a follow `goTo` racing the opening one would supersede it.
+  readalong.attach(view);
 }
 
 // ---- moving --------------------------------------------------------------------------

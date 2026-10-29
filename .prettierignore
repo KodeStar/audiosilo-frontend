@@ -15,3 +15,5 @@ src/uniwind-types.d.ts
 
 # Apple Icon Composer artifact (its own JSON spacing; would break on re-export)
 assets/expo.icon/
+# Read-along fixtures: byte copies of audiosilo-bridge testdata (alice.epub, alice.readalong.json)
+reader/test/fixtures/

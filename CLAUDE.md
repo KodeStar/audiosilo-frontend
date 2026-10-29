@@ -169,6 +169,8 @@ keep this index in step (one line per topic).
   - Slots
   - Podcasts
   - The ebook reader
+  - One session setup
+  - Read-along
   - The module's surface
   - Remote moves vs the resume floor
   - The iOS engine is split into files

@@ -57,3 +57,45 @@ export function createAssembly(size, chunks) {
     },
   };
 }
+
+/** The longest read-along map text the reader takes (UTF-16 code units): the server bounds
+ * the map file at 16 MiB, and the app sends only its sections and spans. */
+export const MAX_MAP_LENGTH = 16 * 1024 * 1024;
+
+/** A read-along map announced by `readalong {length, chunks}` (Bridge Phase 3c): its JSON
+ * text, `add`ed a piece at a time in order (`readalongChunk {seq, data}`); `add` returns the
+ * whole text with the last piece, null before. Refused as the book's chunks are: a piece out
+ * of order, repeated or extra, one that is not a non-empty string, more text than announced,
+ * or less once the last piece is in (a ChunkError, after which it accepts nothing). */
+export function createTextAssembly(length, chunks) {
+  if (!Number.isInteger(length) || length < 1 || length > MAX_MAP_LENGTH) {
+    throw new ChunkError('the map length is not valid');
+  }
+  if (!Number.isInteger(chunks) || chunks < 1 || chunks > MAX_CHUNKS || chunks > length) {
+    throw new ChunkError('the chunk count is not valid');
+  }
+  const pieces = [];
+  let next = 0;
+  let received = 0;
+  let failed = false;
+
+  const fail = (message) => {
+    failed = true;
+    throw new ChunkError(message);
+  };
+
+  return {
+    add(seq, data) {
+      if (failed || next === chunks) fail('no chunk was expected');
+      if (seq !== next) fail(`chunk ${String(seq)} arrived, chunk ${next} was expected`);
+      if (typeof data !== 'string' || data.length === 0) fail('a chunk is not text');
+      if (received + data.length > length) fail('the map is longer than announced');
+      pieces.push(data);
+      received += data.length;
+      next++;
+      if (next < chunks) return null;
+      if (received !== length) fail('the map is shorter than announced');
+      return pieces.join('');
+    },
+  };
+}

@@ -728,6 +728,61 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   pressed in the book stays in the frame: the reader turns pages itself and sends Escape back
   (`escape`). An RTL book (`opened.rtl`) turns forward from the left edge and ArrowLeft. Only a
   bare arrow turns a page: with Cmd, Ctrl or Alt it is the browser's (Back, Forward).
+- **One session setup** (fe#172, `reader-session.ts`): both hosts start each document's
+  session with `startReaderSession` (the channel, the `READER_START_MS` timeout, and where each
+  message goes: `ready` runs the host's `onReady`, sends what waited, then the read-along side's
+  `documentReady`; `csp` is logged; `seek`, `following`, `readalong` go to the read-along side;
+  the rest to the host's `observe`, then `onMessage`). A host keeps only what is its own: the
+  web's reopen of a reloaded frame and its fetch, the app's chunked transfer, crash reloads and
+  last place. A new message type goes through the session, never into one host.
+
+**Read-along (Bridge Phase 3c; `reader/src/readalong.js`, `src/reader/`).** A Bridge aligns a
+book's ebook with its narration (`readalong.align`) and writes `.audiosilo/readalong.json`; the
+reader follows the narration in the book with it.
+- **Gating** (`readalong-gating.ts`): `readalongReady` (capability `readalong`, `Book.readalong`
+  `ready` with its `generated_at`, the book reads): a stale or absent map is invisible to a
+  listener; a surface still waits for the reader's `readalong {state: 'ok'}`. `mayMakeReadalong`
+  (an admin, `bridge` and `readalong` on, the Bridge's `readalong` feature);
+  `readalongBlockedReason` (the estimate: `no_ebook`, `library_not_writable`, an open generate or
+  detect job; its own open job holds nothing back). Generate is held back on an open read-along
+  job (`readalong_open`, `bridge-model.ts`).
+- **The map** (`client.readalong`, `useReadalong`): header auth only (never `?token=`), keyed by
+  the map's `generated_at` (`qk.readalong`), no retry (404 `no_readalong`, 409
+  `readalong_stale` are final). `parseReadalongMap` checks every span (the server checks only the
+  head): a CFI starting `epubcfi(` of at most 1024 UTF-8 bytes, finite `0 <= start <= end`; a bad
+  span is dropped and counted (`dropped`), never the map; `gaps`/`audio_gaps` are not kept. A
+  done `readalong.align` job reads the book's item and maps again (`refreshAfterFinish`); its
+  list polls while one is open. `readalongRequest` names the request for a download.
+- **Protocol**, both ways field by field (`protocol.ts`, `reader.js`). Host -> reader:
+  `readalong {map}` (`readerMapOf`: sections' hrefs and spans only; null: none), in the app a
+  map over 256 KB of JSON as `readalong {length, chunks}` + `readalongChunk {seq, data}` pieces
+  of its text (`readalongMessages`, never cutting a surrogate pair; `createTextAssembly` refuses
+  any wrong piece, and a wrong map is `none`), `position {t, rate, playing}`, `follow`. Reader ->
+  host: `seek {t}`, `following {value}`, `readalong {state: 'ok' | 'none', unresolved}`.
+- **The host API** (`useReaderReadalong`, both hosts): props `readalongMap` (memoise it: a new
+  identity is sent again), `readalongPosition()` (read every `POSITION_MS` while a map is in, and
+  on the handle's `syncPosition()`), `followNarration` (follow as soon as the map is in), and
+  `onSeek`, `onFollowing`, `onReadalongState`; the handle's `follow()` is Back to narration.
+  Nothing is held for a document that is not ready: each `ready` gets the map, then the place,
+  then `follow` when the last document last said it followed (else `followNarration`). A
+  document that never had a map is sent none.
+- **The core** (`reader/src/readalong.js`, ported from the spike's `readalong-core.js`): the map
+  is indexed only once the book shows its first place (`attach` after `opened`: a follow `goTo`
+  racing the opening one would supersede it); spans sort by time (`indexMap`, a section by the
+  CFI's `/6/N` step against the sections' own CFIs, else `view.resolveCFI`); a span in no section
+  is `unresolved`. A 50 ms tick reads `PositionClock` (1 Hz samples, moved on at the speed while
+  playing, never over 3 s past the last) and finds the sentence by binary search (`spanAt`, held
+  2 s across a short gap). Ranges resolve lazily per section document; a CFI naming nothing is
+  skipped (`bad`), never breaking the loop. A tap finds its sentence by CFI order (`findInOrder`
+  on the caret's CFI), seeks to its start and follows; samples far from the tap are ignored for
+  `SEEK_GRACE_MS`. A person's move (page, scroll, snap, navigation; never a relayout's `anchor`)
+  off the sentence stops following; a seek in the player (a sample `JUMP` from the clock) follows
+  again once the reader has followed (never one that never did). A sentence over the page end
+  turns the page once the narration passes its shown share. The highlight is foliate's
+  annotation drawn with `Overlayer.highlight`. Tests: `reader/test/readalong.test.mjs` (core),
+  `readalong-cfi.test.mjs` (the Bridge's Alice map and EPUB, `reader/test/fixtures`, byte copies
+  of audiosilo-bridge testdata, through the vendored `epubcfi.js` on jsdom, a devDependency
+  pinned to jest's own 20.0.3).
 
 **The book page** (`src/components/book/`, the route `book/[libraryId].tsx` only names
 `BookScreen`; rules in `book-page-model.ts` and `book-details-model.ts`, both tested) is the
