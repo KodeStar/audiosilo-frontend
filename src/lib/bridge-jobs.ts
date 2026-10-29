@@ -20,17 +20,30 @@ export const CHAPTERS_DETECT = 'chapters.detect';
  * queued one held while the Contributions module is off, which a new generate cancels. */
 export const SIDECARS_CONTRIBUTE = 'sidecars.contribute';
 
+/** The Bridge job kind that aligns a book's ebook with its narration and writes the map as
+ * the book's `.audiosilo/readalong.json` (Bridge Phase 3c; its feature, and its estimate's
+ * kind, `readalong`). Params `{}`. While one is queued or working the server refuses a
+ * generate or detect job for the book (409 `readalong_open`), and while either of those is
+ * open, a read-along job (409 `generate_open` / `detect_open`); a book without an ebook is
+ * refused 409 `no_ebook`. */
+export const READALONG_ALIGN = 'readalong.align';
+
+/** The Bridge feature (`ServerInfo.bridge.features`) that offers `readalong.align`. */
+export const READALONG_FEATURE = 'readalong';
+
 /** The kinds whose `done` job wrote the book's `.audiosilo/` files (see `latestDone`). */
 const WRITES_BOOK: ReadonlySet<string> = new Set([
   SIDECARS_GENERATE,
   SIDECARS_DESCRIBE,
   CHAPTERS_DETECT,
+  READALONG_ALIGN,
 ]);
 
 /** The kinds a book's job list polls for while one of them is open: the player's generate
- * job, and the console's chapter detection (Bridge Phase 1d), so a page open meanwhile sees
- * it end and reads the book's chapters again (`latestDone`). */
-const POLLED: ReadonlySet<string> = new Set([SIDECARS_GENERATE, CHAPTERS_DETECT]);
+ * job, the console's chapter detection (Bridge Phase 1d), so a page open meanwhile sees it
+ * end and reads the book's chapters again (`latestDone`), and a read-along job (Phase 3c),
+ * so the book's `readalong` and its map are read again once it is made. */
+const POLLED: ReadonlySet<string> = new Set([SIDECARS_GENERATE, CHAPTERS_DETECT, READALONG_ALIGN]);
 
 /** How often a book's jobs are asked again while one of them is being worked on
  * (claimed or running) and its surface is on screen: the jobs take minutes to hours, and
@@ -65,7 +78,7 @@ export function latestJob(jobs: readonly BridgeJob[] | undefined, kind: string) 
 /**
  * How often a book's job list polls (React Query's `refetchInterval`) while the surface is
  * `active` (on screen, the app in the foreground): every `BRIDGE_POLL_MS` while a
- * `sidecars.generate` or `chapters.detect` job of it is claimed or running, every
+ * `sidecars.generate`, `chapters.detect` or `readalong.align` job of it is claimed or running, every
  * `BRIDGE_IDLE_POLL_MS` while one only waits (queued or parked), else never. The last
  * answer, the one that saw the job end, stops it.
  */
@@ -102,7 +115,8 @@ export function estimatePollInterval(
 }
 
 /** A book's newest `done` job that wrote its `.audiosilo/` files (`sidecars.generate`, the
- * console's `sidecars.describe`, or its `chapters.detect`): the book was rescanned, so what
+ * console's `sidecars.describe`, its `chapters.detect` or a `readalong.align`): the book was
+ * rescanned, so what
  * the book's answers say about it (its chapters included) may be stale. */
 export function latestDone(jobs: readonly BridgeJob[] | undefined): BridgeJob | undefined {
   let latest: BridgeJob | undefined;

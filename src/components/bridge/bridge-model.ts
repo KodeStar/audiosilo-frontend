@@ -13,6 +13,7 @@ import {
   CHAPTERS_DETECT,
   isOpenJob,
   latestJob,
+  READALONG_ALIGN,
   SIDECARS_CONTRIBUTE,
   SIDECARS_GENERATE,
 } from '@/lib/bridge-jobs';
@@ -318,6 +319,9 @@ const REFUSAL_KEY = {
   // (a `sidecars.contribute` job queued or working, queued from the console; a queued one
   // held while the module is off never refuses); a generate run would replace what is filed.
   contribute_open: 'bridge.generate.contributeOpen',
+  // Bridge Phase 3c: the book's read-along is being made (a `readalong.align` job queued or
+  // working); a generate run reuses its transcription after it.
+  readalong_open: 'bridge.generate.readalongOpen',
 } as const satisfies Partial<Record<ApiErrorCode, string>>;
 
 /** A refusal's words (`REFUSAL_KEY`'s values). */
@@ -328,13 +332,15 @@ const REFUSAL_BY_KIND: Readonly<Partial<Record<ApiErrorKind, RefusalKey>>> = REF
 
 /** The open job kinds the server refuses a generate job for, with the words of the refusal
  * it answers (the server's `refusedWhileOpen` for `sidecars.generate`): a `chapters.detect`
- * job (Bridge Phase 1d, 409 `detect_open`) and a `sidecars.contribute` job (Phase 2b, 409
- * `contribute_open`). A kind not named here holds nothing back. */
+ * job (Bridge Phase 1d, 409 `detect_open`), a `sidecars.contribute` job (Phase 2b, 409
+ * `contribute_open`) and a `readalong.align` job (Phase 3c, 409 `readalong_open`). A kind
+ * not named here holds nothing back. */
 const OPEN_JOB_REFUSAL: Readonly<
-  Record<string, (typeof REFUSAL_KEY)['detect_open' | 'contribute_open']>
+  Record<string, (typeof REFUSAL_KEY)['detect_open' | 'contribute_open' | 'readalong_open']>
 > = {
   [CHAPTERS_DETECT]: REFUSAL_KEY.detect_open,
   [SIDECARS_CONTRIBUTE]: REFUSAL_KEY.contribute_open,
+  [READALONG_ALIGN]: REFUSAL_KEY.readalong_open,
 };
 
 /** The refusals about an open job of the refused book (`OPEN_JOB_REFUSAL`'s): their words

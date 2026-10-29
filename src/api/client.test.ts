@@ -6,6 +6,7 @@ import {
   apiErrorKind,
   isPlainSeriesQuery,
   PodcastFetchPendingError,
+  ReadalongMapError,
   SERIES_BATCH_MAX_QUERY_BYTES,
   SERIES_BOOKS_MAX_NAMES,
 } from '@/api/client';
@@ -3123,5 +3124,109 @@ describe('reading (capability ebooks, Bridge Phase 3b)', () => {
     expect(url.pathname).toBe('/api/v1/libraries/1/reading-progress');
     expect(url.searchParams.get('path')).toBe('Author/Book');
     expect(JSON.parse(String(init.body))).toEqual(input);
+  });
+});
+
+describe('read-along (capability readalong, Bridge Phase 3c)', () => {
+  const client = () => new ApiClient('https://h', 'tok');
+  const map = {
+    format: 'audiosilo-readalong/v1',
+    ebook: { file: 'Book.epub', sha256: 'a'.repeat(64) },
+    audio: { duration: 100, files: [{ path: 'Book.m4b', duration: 100 }] },
+    granularity: 'sentence',
+    generator: { name: 'audiosilo-bridge', version: '0.5.0' },
+    generated_at: '2026-11-02T10:11:12Z',
+    coverage: { text: 0.99, audio: 0.95 },
+    sections: [
+      {
+        href: 'Text/ch01.xhtml',
+        spans: [
+          { cfi: 'epubcfi(/6/4!/4/2,/1:0,/1:10)', start: 1, end: 2 },
+          { cfi: 'not a cfi', start: 3, end: 4 },
+        ],
+        gaps: [{ cfi: 'epubcfi(/6/4!/4/4)', chars: 12 }],
+      },
+    ],
+    audio_gaps: [{ start: 0, end: 1 }],
+  };
+
+  it('fetches the map by the BOOK path with the Authorization header and no token, checked span by span', async () => {
+    const m = installFetch(() => ({ status: 200, body: map }));
+    const got = await client().readalong(1, 'Author/Book');
+    const [input, init] = m.mock.calls[0] as [string, RequestInit];
+    const url = new URL(input);
+    expect(url.pathname).toBe('/api/v1/libraries/1/readalong');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    expect(url.searchParams.has('token')).toBe(false);
+    expect(init.method).toBe('GET');
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+    expect(got.sections).toEqual([
+      {
+        href: 'Text/ch01.xhtml',
+        spans: [{ cfi: 'epubcfi(/6/4!/4/2,/1:0,/1:10)', start: 1, end: 2 }],
+      },
+    ]);
+    expect(got.dropped).toBe(1);
+    expect(got.coverage).toEqual({ text: 0.99, audio: 0.95 });
+    expect(got.generated_at).toBe('2026-11-02T10:11:12Z');
+  });
+
+  it("names the server's refusals by their codes", async () => {
+    installFetch(() => ({ status: 404, body: { error: 'none', code: 'no_readalong' } }));
+    const none = await client()
+      .readalong(1, 'Author/Book')
+      .catch((e: unknown) => e);
+    expect(none).toMatchObject({ status: 404, code: 'no_readalong' });
+    expect(apiErrorKind(none)).toBe('no_readalong');
+    installFetch(() => ({
+      status: 409,
+      body: { error: 'stale', code: 'readalong_stale', reason: 'ebook_changed' },
+    }));
+    const stale = await client()
+      .readalong(1, 'Author/Book')
+      .catch((e: unknown) => e);
+    expect(apiErrorKind(stale)).toBe('readalong_stale');
+  });
+
+  it('rejects an answer that is no read-along map', async () => {
+    installFetch(() => ({ status: 200, body: { format: 'something/else', sections: [] } }));
+    await expect(client().readalong(1, 'Author/Book')).rejects.toBeInstanceOf(ReadalongMapError);
+  });
+
+  it('names the map request for a download it does not make: the credential in a header, never the URL', () => {
+    const { url, headers } = client().readalongRequest(1, 'Author/Book');
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe('/api/v1/libraries/1/readalong');
+    expect(parsed.searchParams.get('path')).toBe('Author/Book');
+    expect(parsed.searchParams.has('token')).toBe(false);
+    expect(headers.Authorization).toBe('Bearer tok');
+  });
+
+  it('asks the Bridge estimate of the readalong.align kind; its refusals have codes', async () => {
+    const m = installFetch(() => ({
+      status: 200,
+      body: {
+        kind: 'readalong.align',
+        asr_hours: 2,
+        figures: true,
+        writable: true,
+        ebook: { path: 'Author/Book/Book.epub', size: 10 },
+        readalong: null,
+      },
+    }));
+    const got = await client().readalongEstimate(1, 'Author/Book');
+    const url = new URL((m.mock.calls[0] as [string])[0]);
+    expect(url.pathname).toBe('/api/v1/admin/bridge/estimate');
+    expect(url.searchParams.get('kind')).toBe('readalong.align');
+    expect(url.searchParams.get('library_id')).toBe('1');
+    expect(url.searchParams.get('path')).toBe('Author/Book');
+    expect(got.asr_hours).toBe(2);
+    for (const code of ['readalong_open', 'generate_open', 'no_ebook']) {
+      installFetch(() => ({ status: 409, body: { error: 'refused', code } }));
+      const e = await client()
+        .queueBridgeJob({ kind: 'readalong.align', library_id: 1, path: 'Author/Book', params: {} })
+        .catch((x: unknown) => x);
+      expect(apiErrorKind(e)).toBe(code);
+    }
   });
 });

@@ -1333,6 +1333,7 @@
       "unavailable": "Le Bridge ne propose pas cela pour le moment.",
       "detectOpen": "Les chapitres du livre sont encore en cours de recherche. Appuyez sur Générer une fois que c'est fini : la transcription est réutilisée.",
       "contributeOpen": "Les personnages et résumés de ce livre sont en cours de partage avec la communauté. Appuyez sur Générer une fois que c'est fini.",
+      "readalongOpen": "La lecture synchronisée de ce livre est en cours de création. Appuyez sur Générer une fois que c'est fini.",
       "confirm": "Générer",
       "confirmMany_one": "Générer {{count}} livre",
       "confirmMany_other": "Générer {{count}} livres",

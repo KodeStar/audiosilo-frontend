@@ -39,6 +39,7 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
+import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
 import { rememberLibraryNames } from '@/stores/library-names';
 import { onConnectionRemoved, useSession } from '@/stores/session';
@@ -65,6 +66,7 @@ import type {
   BridgeEstimate,
   BridgeJob,
   BridgeJobRequest,
+  ReadalongEstimate,
   Capabilities,
   ChaptersResponse,
   Collection,
@@ -195,6 +197,16 @@ export const qk = {
   /** What generating characters and recaps for a book would take. */
   bridgeEstimate: (cid: string, lib: number, path: string) =>
     ['bridgeEstimate', cid, lib, path] as const,
+  /** What making a book's read-along would take (Bridge Phase 3c): under `bridgeEstimate`,
+   * so a refused queue reads both again. */
+  readalongEstimate: (cid: string, lib: number, path: string) =>
+    ['bridgeEstimate', cid, lib, path, 'readalong.align'] as const,
+  /** A book's read-along map (capability `readalong`, Bridge Phase 3c), per map: keyed by
+   * its `generated_at` (`Book.readalong`), so a map made again is fetched again. */
+  readalong: (cid: string, lib: number, path: string, generatedAt: string) =>
+    ['readalong', cid, lib, path, generatedAt] as const,
+  /** Prefix matching every map of a book (invalidation). */
+  readalongAll: (cid: string, lib: number, path: string) => ['readalong', cid, lib, path] as const,
   // Podcasts (Bridge Phase 2d-1): reads are core, Follow is capability `podcasts`, the
   // fetch status `podcast_fetch`.
   /** A podcast library's shows. */
@@ -1215,6 +1227,28 @@ export function useReadingPlace(
     ...readingPlaceQuery(cid, api, libraryId, path, hasLocalCopy),
     enabled: enabled && path.length > 0,
   });
+}
+
+/** A book's read-along map (capability `readalong`, Bridge Phase 3c), checked span by span
+ * (`client.readalong`), asked only while `enabled` with the `generated_at` of the map the
+ * book says is ready (`Book.readalong`; `readalongReady` in `src/reader/readalong-gating.ts`
+ * is the gate). One fetch per map: kept while the book's answer names the same
+ * `generated_at`, fetched again under a new one (made again). No retry: a 404
+ * `no_readalong` or a 409 `readalong_stale` is final, and the surface shows no read-along
+ * (an `ApiError` with that code; a `ReadalongMapError` for an answer that is no map). */
+export function useReadalong(
+  libraryId: number,
+  path: string,
+  { enabled, generatedAt }: { enabled: boolean; generatedAt: string },
+  connectionId?: string,
+) {
+  return useCapabilityQuery<CheckedReadalongMap>(
+    'readalong',
+    (cid) => qk.readalong(cid, libraryId, path, generatedAt),
+    (api, signal) => api.readalong(libraryId, path, signal),
+    connectionId,
+    { ready: enabled && path.length > 0, staleTime: Infinity, retry: false },
+  );
 }
 
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so
@@ -2275,6 +2309,7 @@ async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly B
   await Promise.all([
     qc.invalidateQueries({ queryKey: qk.bookMeta(cid, libraryId, path) }),
     qc.invalidateQueries({ predicate: (q) => isBookAnswerOf(q, cid, libraryId, path) }),
+    qc.invalidateQueries({ queryKey: qk.readalongAll(cid, libraryId, path) }),
   ]);
 }
 
@@ -2354,6 +2389,25 @@ export function useBridgeEstimate(libraryId: number, path: string, connectionId?
       refetchInterval: (query) =>
         estimatePollInterval(query.state.data?.open_job, AppState.currentState === 'active'),
     },
+  );
+}
+
+/** What making a book's read-along would take (`GET /admin/bridge/estimate?kind=
+ * readalong.align`, Bridge Phase 3c), read afresh each time it mounts (the confirmation
+ * opens) and after a refused queue (`useQueueBridgeJob`: its key is under the book's
+ * `bridgeEstimate`). Asked only while `enabled`. */
+export function useReadalongEstimate(
+  libraryId: number,
+  path: string,
+  { enabled = true }: { enabled?: boolean } = {},
+  connectionId?: string,
+) {
+  return useCapabilityQuery<ReadalongEstimate>(
+    'bridge',
+    (cid) => qk.readalongEstimate(cid, libraryId, path),
+    (api, signal) => api.readalongEstimate(libraryId, path, signal),
+    connectionId,
+    { ready: enabled && path.length > 0, staleTime: 0, retry: false },
   );
 }
 

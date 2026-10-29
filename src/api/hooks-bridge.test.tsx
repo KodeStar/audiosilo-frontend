@@ -15,6 +15,17 @@ function makeClient() {
     bridgeJobs: jest.fn(),
     queueBridgeJob: jest.fn(),
     bookMeta: jest.fn<Promise<BookMeta>, []>(),
+    readalong: jest.fn(async () => ({
+      format: 'audiosilo-readalong/v1',
+      sections: [],
+      dropped: 0,
+    })),
+    readalongEstimate: jest.fn(async () => ({
+      kind: 'readalong.align',
+      asr_hours: 1,
+      figures: true,
+      writable: true,
+    })),
   };
 }
 const mockClients: Record<string, ReturnType<typeof makeClient>> = {};
@@ -32,7 +43,15 @@ jest.mock('@/playback/progress-sync', () => ({
 }));
 
 /* eslint-disable import/first */
-import { CapabilityError, qk, useBookMeta, useBridgeJobs, useQueueBridgeJob } from '@/api/hooks';
+import {
+  CapabilityError,
+  qk,
+  useBookMeta,
+  useBridgeJobs,
+  useQueueBridgeJob,
+  useReadalong,
+  useReadalongEstimate,
+} from '@/api/hooks';
 import { bridgeJob, bridgeServer } from '@/testing/bridge-fixtures';
 /* eslint-enable import/first */
 
@@ -390,5 +409,81 @@ describe('useQueueBridgeJob', () => {
       });
     });
     expect(qc.getQueryData(listKey)).toEqual([queued, old]);
+  });
+});
+
+// Read-along (Bridge Phase 3c): the map is asked only of a server with `readalong`, only
+// while the surface's gate lets it, once per map (its `generated_at`); a finished
+// readalong.align job has the book's item and map read again.
+describe('useReadalong', () => {
+  const withReadalong = (on: boolean) => {
+    const server = bridgeServer();
+    return { ...server, capabilities: { ...server.capabilities, readalong: on } };
+  };
+  const MAP = { format: 'audiosilo-readalong/v1', sections: [], dropped: 0 };
+
+  it('asks nothing of a server without readalong, or while the gate is shut', async () => {
+    const a = await mount(withReadalong(false), () =>
+      useReadalong(1, 'Author/Book', { enabled: true, generatedAt: 'g1' }),
+    );
+    await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
+    expect(a.result.current.isPending).toBe(true);
+    expect(mockClients.c1.readalong).not.toHaveBeenCalled();
+    const b = await mount(withReadalong(true), () =>
+      useReadalong(1, 'Author/Book', { enabled: false, generatedAt: 'g1' }),
+    );
+    await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
+    expect(b.result.current.isPending).toBe(true);
+    expect(mockClients.c1.readalong).not.toHaveBeenCalled();
+  });
+
+  it('fetches the map once per generated_at, under its own key', async () => {
+    const { result, qc } = await mount(withReadalong(true), () =>
+      useReadalong(1, 'Author/Book', { enabled: true, generatedAt: 'g1' }),
+    );
+    await waitFor(() => expect(result.current.data).toEqual(MAP));
+    expect(mockClients.c1.readalong).toHaveBeenCalledWith(1, 'Author/Book', expect.anything());
+    expect(qc.getQueryData(qk.readalong('c1', 1, 'Author/Book', 'g1'))).toEqual(MAP);
+  });
+
+  it("reads the book's item and map again once a readalong.align job is done", async () => {
+    const { qc } = await mount(bridgeServer(), () => null);
+    const ITEM_KEY = qk.item('c1', 1, 'Author/Book');
+    const MAP_KEY = qk.readalong('c1', 1, 'Author/Book', 'g1');
+    const OTHER_KEY = qk.readalong('c1', 1, 'Author/Other', 'g1');
+    qc.setQueryData(ITEM_KEY, { rel_path: 'Author/Book' });
+    qc.setQueryData(MAP_KEY, MAP);
+    qc.setQueryData(OTHER_KEY, MAP);
+    mockClients.c1.bridgeJobs.mockResolvedValue([
+      bridgeJob({ kind: 'readalong.align', state: 'done', finished_at: '2026-10-29T10:05:00Z' }),
+    ]);
+    const { result } = await renderHook(() => useJobsOf(), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryState(ITEM_KEY)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(MAP_KEY)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(OTHER_KEY)?.isInvalidated).toBe(false);
+  });
+});
+
+describe('useReadalongEstimate', () => {
+  it('asks the read-along estimate of a server with bridge, only while enabled', async () => {
+    const estimate = { kind: 'readalong.align', asr_hours: 1, figures: true, writable: true };
+    const shut = await mount(bridgeServer(), () =>
+      useReadalongEstimate(1, 'Author/Book', { enabled: false }),
+    );
+    await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
+    expect(shut.result.current.isPending).toBe(true);
+    expect(mockClients.c1.readalongEstimate).not.toHaveBeenCalled();
+    const { result, qc } = await mount(bridgeServer(), () =>
+      useReadalongEstimate(1, 'Author/Book'),
+    );
+    await waitFor(() => expect(result.current.data).toEqual(estimate));
+    // Under the book's bridgeEstimate key: a refused queue reads it again too.
+    expect(qk.readalongEstimate('c1', 1, 'Author/Book').slice(0, 4)).toEqual(
+      qk.bridgeEstimate('c1', 1, 'Author/Book'),
+    );
+    expect(qc.getQueryData(qk.readalongEstimate('c1', 1, 'Author/Book'))).toEqual(estimate);
   });
 });

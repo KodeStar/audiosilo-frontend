@@ -1333,6 +1333,7 @@
       "unavailable": "Die Bridge bietet das gerade nicht an.",
       "detectOpen": "Die Kapitel des Buchs werden noch gesucht. Tippe auf Erstellen, sobald das fertig ist: Die Transkription wird wiederverwendet.",
       "contributeOpen": "Die Figuren und Rückblicke dieses Buchs werden gerade mit der Community geteilt. Tippe auf Erstellen, sobald das fertig ist.",
+      "readalongOpen": "Die Mitlesefassung dieses Buchs wird gerade erstellt. Tippe auf Erstellen, sobald das fertig ist.",
       "confirm": "Erstellen",
       "confirmMany_one": "{{count}} Buch erstellen",
       "confirmMany_other": "{{count}} Bücher erstellen",

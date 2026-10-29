@@ -1333,6 +1333,7 @@
       "unavailable": "O Bridge não oferece isto no momento.",
       "detectOpen": "Os capítulos do livro ainda estão sendo procurados. Toque em Gerar quando terminar: a transcrição é reutilizada.",
       "contributeOpen": "Os personagens e resumos deste livro estão sendo compartilhados com a comunidade. Toque em Gerar quando terminar.",
+      "readalongOpen": "A leitura sincronizada deste livro está sendo criada. Toque em Gerar quando terminar.",
       "confirm": "Gerar",
       "confirmMany_one": "Gerar {{count}} livro",
       "confirmMany_other": "Gerar {{count}} livros",

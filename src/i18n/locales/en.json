@@ -1333,6 +1333,7 @@
       "unavailable": "The Bridge doesn't offer this right now.",
       "detectOpen": "The book's chapters are still being found. Generate once that has finished: it reuses the transcription.",
       "contributeOpen": "This book's characters and recaps are being shared with the community. Generate once that has finished.",
+      "readalongOpen": "This book's read-along is being made. Generate once that has finished.",
       "confirm": "Generate",
       "confirmMany_one": "Generate {{count}} book",
       "confirmMany_other": "Generate {{count}} books",
