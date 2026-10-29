@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useScopedCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
+import { useDownloadEntry, useDownloadProgress } from '@/downloads/store';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -53,17 +55,10 @@ export function DownloadControl({
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const {
-    connectionId,
-    supported,
-    needsTranscode,
-    status,
-    error,
-    progress,
-    totalBytes,
-    start,
-    cancel,
-  } = useDownloadControls(libraryId, path, book, chapterData);
+  const { connectionId, supported, needsTranscode, status, error, start, cancel } =
+    useDownloadControls(libraryId, path, book, chapterData);
+  // The ring and the size: this control redraws with the download's progress.
+  const { progress, totalBytes } = useDownloadProgress(connectionId, libraryId, path);
   const [confirming, setConfirming] = useState(false);
   // Why downloading is off: this browser plays the book through the server's
   // transcoder (its raw files would not play offline), or offline storage is missing.
@@ -196,8 +191,10 @@ export function DownloadControl({
  * with the control's button (which handles cancel), so it carries no controls. */
 export function DownloadProgress({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
-  const { status, progress, bytes, totalBytes } = useDownloadControls(libraryId, path);
-  if (status !== 'downloading' && status !== 'queued') return null;
+  // It redraws with every tick anyway, so the whole entry is the one read it needs.
+  const entry = useDownloadEntry(useScopedCid(), libraryId, path);
+  if (entry?.status !== 'downloading' && entry?.status !== 'queued') return null;
+  const { status, progress, bytes, totalBytes } = entry;
   return (
     <View className="max-w-[560px] gap-1.5">
       <Text variant="caption" numberOfLines={1} style={tabularNums}>

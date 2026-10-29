@@ -1,5 +1,6 @@
 import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 
 import { resolveClient } from '@/api/connection-clients';
 import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
@@ -44,6 +45,7 @@ import type {
   DownloadManifest,
   DownloadOrigin,
   DownloadOutcome,
+  DownloadStatus,
   StorageEstimate,
 } from './types';
 
@@ -1090,8 +1092,9 @@ function downloadedIn(
   return e?.status === 'downloaded' ? e : undefined;
 }
 
-// The narrow selectors below return one primitive, so the entry patches a running
-// download makes every PROGRESS_EVERY_MS re-render nothing until the value changes.
+// The narrow selectors below return one primitive (or, the last two, a shallow-compared
+// handful), so the entry patches a running download makes every PROGRESS_EVERY_MS
+// re-render nothing until the value changes.
 // Prefer them to `useDownloadEntry` wherever the caller needs no progress: a whole book
 // page or every cover of the book on screen re-rendering 4 times a second is the cost.
 
@@ -1120,6 +1123,37 @@ export function useDownloadedEbook(
 ): string | undefined {
   return useDownloads(
     (s) => downloadedIn(s.entries, connectionId, libraryId, path)?.manifest.ebookUri || undefined,
+  );
+}
+
+/** A book's download status (undefined: none) and a failed one's message: what a control
+ * needs to pick its state. Shallow-compared, so progress ticks re-render nothing (a book's
+ * actions menu, `useDownloadControls`); `useDownloadProgress` carries the numbers. */
+export function useDownloadState(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): { status: DownloadStatus | undefined; error: string | undefined } {
+  return useDownloads(
+    useShallow((s) => {
+      const e = s.entries[downloadKey(connectionId, libraryId, path)];
+      return { status: e?.status, error: e?.error };
+    }),
+  );
+}
+
+/** A book's download progress (0..1) and bytes so far over the total, all 0 without a
+ * download. Changes on every tick: only for what draws the progress itself. */
+export function useDownloadProgress(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): { progress: number; bytes: number; totalBytes: number } {
+  return useDownloads(
+    useShallow((s) => {
+      const e = s.entries[downloadKey(connectionId, libraryId, path)];
+      return { progress: e?.progress ?? 0, bytes: e?.bytes ?? 0, totalBytes: e?.totalBytes ?? 0 };
+    }),
   );
 }
 

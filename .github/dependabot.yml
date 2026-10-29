@@ -78,10 +78,10 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
       - dependency-name: react-native-svg
+      # Pinned exactly to the version patches/react-native-web+<ver>.patch targets
+      # (patch-package only warns on a version mismatch), so ignored outright: a bump
+      # regenerates the patch by hand (CONVENTIONS.md, Dependency patches).
       - dependency-name: react-native-web
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
       - dependency-name: react-native-worklets
       - dependency-name: '@react-native-async-storage/async-storage'
         update-types:
