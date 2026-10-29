@@ -271,6 +271,27 @@ describe('settings store, automatic downloads per platform', () => {
     expect(await hydrated('web', blob)).toBe('wifi');
   });
 
+  // fe#196: a bundle from before 2.5.1 still open in a tab saves the document without
+  // `version`; the next load must not migrate a deliberate wifi again.
+  it('migrates once per browser, whatever a stale tab saved since', async () => {
+    expect(await hydrated('web', { autoDownloadNext: 'wifi' })).toBe('never');
+    useSettings.getState().setAutoDownloadNext('wifi');
+    const flag = await AsyncStorage.getItem('audiosilo.settingsMigrated');
+    expect(flag).not.toBeNull();
+    // The old tab's save: the listener's wifi, no version.
+    const { version: _dropped, ...stale } = JSON.parse((await AsyncStorage.getItem(KEY))!);
+    load('web');
+    await AsyncStorage.setItem('audiosilo.settingsMigrated', flag!);
+    await AsyncStorage.setItem(KEY, JSON.stringify(stale));
+    await useSettings.getState().hydrate();
+    expect(useSettings.getState().autoDownloadNext).toBe('wifi');
+  });
+
+  it('keeps a deliberate wifi saved by 2.5.0 (with its version) on the first load', async () => {
+    expect(await hydrated('web', { autoDownloadNext: 'wifi', version: 1 })).toBe('wifi');
+    expect(await AsyncStorage.getItem('audiosilo.settingsMigrated')).not.toBeNull();
+  });
+
   it('saves the version with any setting, and keeps it out of the store', async () => {
     expect(await hydrated('web', { autoDownloadNext: 'wifi' })).toBe('never');
     useSettings.getState().setSkipForward(60);

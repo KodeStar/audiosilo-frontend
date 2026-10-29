@@ -841,6 +841,9 @@ one JSON document share `persistedDocument` (`@/lib/storage`): a change made bef
 hydration wins and never clobbers the stored rest. The settings document carries a `version`
 (`SETTINGS_VERSION`, `src/stores/settings.ts`), written with every save and kept out of the
 store: to change a stored value once, bump it and add the step to `migrateSettings`.
+`migrateOnce` runs the steps before the store's first read and records the version it ran
+under its own key (`audiosilo.settingsMigrated`), since an older bundle still open in a
+browser tab saves the document without `version` (fe#196).
 Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
 (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
 (`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`/
