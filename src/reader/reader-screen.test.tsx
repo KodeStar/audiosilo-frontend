@@ -199,6 +199,7 @@ const answered = (kept: ReadingProgress, seen = false) =>
 
 describe('ReaderScreen', () => {
   beforeEach(() => {
+    mockHasLocalEbook.mockReset().mockResolvedValue(true);
     jest.clearAllMocks();
     mockHost = null;
     mockShortcuts.length = 0;
@@ -410,6 +411,26 @@ describe('ReaderScreen', () => {
       size: 1,
       saved: 'file:///d/book.epub',
     });
+  });
+
+  it("never counts the cache file this screen's own host wrote as a held EPUB (fe#164)", async () => {
+    // No download, no cache file when the screen opens; the host then fetches the EPUB into
+    // the app's cache while the place is still looked up.
+    mockHasLocalEbook.mockResolvedValue(false);
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    mockHasLocalEbook.mockResolvedValue(true);
+    const hasLocalCopy = mockPlaceArgs[4] as () => Promise<boolean>;
+    await expect(hasLocalCopy()).resolves.toBe(false);
+  });
+
+  it('still counts a cache file that was there before the screen opened', async () => {
+    mockHasLocalEbook.mockResolvedValue(true);
+    await mount();
+    await waitFor(() => expect(mockHost).not.toBeNull());
+    mockHasLocalEbook.mockResolvedValue(false);
+    const hasLocalCopy = mockPlaceArgs[4] as () => Promise<boolean>;
+    await expect(hasLocalCopy()).resolves.toBe(true);
   });
 
   it('waits, never looking up a place, with the capability unknown and no downloaded EPUB', async () => {

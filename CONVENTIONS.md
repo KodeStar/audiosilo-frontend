@@ -740,7 +740,9 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
 - **The bytes and the place together** (fe#164): both hosts start the EPUB's fetch (or its
   local read) as soon as they mount, while the screen still looks the place up, and send the
   book only once `placeKnown` is true (`usePlaceGate`), so the open is never the fetch after
-  the lookup. The page edges are narrow (`w-6`) by the reader's MEASURED width
+  the lookup. The offline lookup's "EPUB on this device" counts the app's cache file only as it
+  was when the screen mounted its host (`cachedBefore`): a copy this screen fetched meanwhile
+  never opens a guessed start. The page edges are narrow (`w-6`) by the reader's MEASURED width
   (`narrowPageEdges`: under `TABLET_MIN_WIDTH`, so the companion's column too), clear of the
   text a tap lands on (fe#165).
 
