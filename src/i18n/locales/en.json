@@ -539,7 +539,9 @@
       "whosWhoLabel_one": "Who's who, {{count}} character met so far",
       "whosWhoLabel_other": "Who's who, {{count}} characters met so far",
       "storySoFar": "Story so far",
-      "countOf": "{{chapter}} of {{total}}"
+      "countOf": "{{chapter}} of {{total}}",
+      "notDownloaded": "Not downloaded",
+      "notDownloadedHint": "This book isn't on this device. It plays once you're back online."
     },
     "week": {
       "title": "This week",

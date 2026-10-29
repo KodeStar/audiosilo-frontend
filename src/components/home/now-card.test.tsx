@@ -8,6 +8,10 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/downloads/store', () => ({ useDownloadedCoverUri: () => null }));
+// Whether the book can start here (online, or downloaded): `use-playable-here` reads the
+// network, the servers and the downloads.
+let mockPlayable = true;
+jest.mock('./use-playable-here', () => ({ usePlayableHere: () => () => mockPlayable }));
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => 'desktop',
@@ -43,6 +47,14 @@ jest.mock('@/api/hooks', () => ({
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useCapability: (flag: string) => mockCaps[flag],
   useIsPodcastLibrary: () => mockPodcastLibrary,
+  useKnownBook: () => ({
+    title: "Caliban's War",
+    author: 'James S. A. Corey',
+    series: 'The Expanse',
+    series_index: 2,
+    asin: 'B008XKUPQ8',
+    ...(mockEpisode ? { episode: { show_path: 'Daily News' } } : {}),
+  }),
   useBook: () => ({
     data: {
       title: "Caliban's War",
@@ -124,9 +136,23 @@ beforeEach(() => {
   mockPodcastLibrary = false;
   mockChapterCount = 3;
   mockPush.mockClear();
+  mockPlayable = true;
 });
 
 describe('NowCard', () => {
+  // v2.5.1 PLAYER-02: offline, Resume on a book that isn't downloaded went nowhere.
+  it("says a book isn't downloaded, instead of a Resume that can't start, offline", async () => {
+    mockPlayable = false;
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.queryByRole('button', { name: /^Resume/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Not downloaded' })).toBeDisabled();
+    expect(
+      screen.getByText(/isn't on this device\. It plays once you're back online\./),
+    ).toBeTruthy();
+    // The rest of the card still says where the listener is.
+    expect(screen.getByText("Caliban's War")).toBeTruthy();
+  });
+
   it('shows where the listener is in the book and resumes that chapter', async () => {
     await render(<NowCard at={at} saved={saved} />);
     expect(screen.getByText("Caliban's War")).toBeTruthy();

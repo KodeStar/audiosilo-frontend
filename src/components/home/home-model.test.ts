@@ -10,6 +10,7 @@ import {
   nextCandidates,
   nextInSeriesItems,
   pickNowBook,
+  playableHere,
   smartShelfHref,
   smartShelves,
   splitProgress,
@@ -60,6 +61,35 @@ describe('pickNowBook', () => {
     expect(pickNowBook(loaded, ip)).toBe(loaded);
     expect(pickNowBook(null, ip)).toEqual({ connectionId: 'a', libraryId: 1, path: 'recent' });
     expect(pickNowBook(null, [])).toBeNull();
+  });
+
+  // v2.5.1 PLAYER-02: offline, the hero led with a newer book that wasn't downloaded.
+  it('leads with the newest book that can play here, else the newest', () => {
+    const rows = [
+      progress('streamed', '2026-10-05T00:00:00Z'),
+      progress('downloaded', '2026-10-04T00:00:00Z'),
+    ];
+    const onlyDownloaded = (at: { path: string }) => at.path === 'downloaded';
+    expect(pickNowBook(null, rows, onlyDownloaded)?.path).toBe('downloaded');
+    expect(pickNowBook(null, rows, () => false)?.path).toBe('streamed');
+    expect(pickNowBook(null, rows, () => true)?.path).toBe('streamed');
+    const loaded = { connectionId: 'b', libraryId: 2, path: 'playing' };
+    expect(pickNowBook(loaded, rows, onlyDownloaded)).toBe(loaded);
+  });
+});
+
+describe('playableHere', () => {
+  const at = { connectionId: 'a', libraryId: 1, path: 'p' };
+  const no = () => false;
+  it('plays online with the server answering, or downloaded', () => {
+    expect(playableHere(at, { deviceOnline: true, online: {}, downloaded: no })).toBe(true);
+    expect(playableHere(at, { deviceOnline: true, online: { a: false }, downloaded: no })).toBe(
+      false,
+    );
+    expect(playableHere(at, { deviceOnline: false, online: {}, downloaded: no })).toBe(false);
+    expect(playableHere(at, { deviceOnline: false, online: {}, downloaded: () => true })).toBe(
+      true,
+    );
   });
 });
 

@@ -539,7 +539,9 @@
       "whosWhoLabel_one": "Wer ist wer, {{count}} Figur bisher kennengelernt",
       "whosWhoLabel_other": "Wer ist wer, {{count}} Figuren bisher kennengelernt",
       "storySoFar": "Bisher geschehen",
-      "countOf": "{{chapter}} von {{total}}"
+      "countOf": "{{chapter}} von {{total}}",
+      "notDownloaded": "Nicht heruntergeladen",
+      "notDownloadedHint": "Dieses Buch ist nicht auf diesem Gerät. Es spielt, sobald du wieder online bist."
     },
     "week": {
       "title": "Diese Woche",

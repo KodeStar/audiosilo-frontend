@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import {
-  useBook,
   useBookMeta,
   useBookmarks,
   useCapability,
   useChapters,
   useIsPodcastLibrary,
+  useKnownBook,
   useMyStats,
   type SourcedProgress,
 } from '@/api/hooks';
@@ -46,6 +46,7 @@ import { BookScale } from './book-scale';
 import type { BookAt } from './home-model';
 import { dailyPace, estimatedFinish } from './listening';
 import { bookmarkPins, bookScale, chapterPlace, nowCardCompact } from './now-card-model';
+import { usePlayableHere } from './use-playable-here';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -74,7 +75,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const play = usePlayBook();
   const { libraryId, path } = at;
 
-  const { data: book } = useBook(libraryId, path);
+  // Offline, a cached list's copy of the book keeps its title (its `/item` can't answer).
+  const book = useKnownBook(libraryId, path);
   // An episode (Bridge 2d-1) is no book. Its library says so before its item has loaded
   // (the progress list carries no `episode`), so no "Resume chapter 1" flashes first.
   const podcastLibrary = useIsPodcastLibrary(libraryId, at.connectionId);
@@ -91,6 +93,9 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     loaded ? Math.floor(selectBookPosition(s) / LIVE_STEP_S) * LIVE_STEP_S : 0,
   );
   const playing = usePlayer((s) => loaded && selectIsPlaying(s));
+  // Offline, a book that isn't downloaded can't start: Resume says so instead of failing.
+  const playableHere = usePlayableHere();
+  const unplayable = !loaded && !playableHere(at);
 
   // Chapter starts recomputed from the file durations, as the book page does (the
   // server's `book_offset` is unreliable on some books).
@@ -205,7 +210,20 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     </View>
   );
 
-  const resumeButton = (
+  const resumeButton = unplayable ? (
+    <View className={compact ? 'w-full gap-1.5' : 'gap-1.5'}>
+      <Button
+        size="lg"
+        variant="outline"
+        icon="download"
+        title={t('home.now.notDownloaded')}
+        disabled
+        accessibilityHint={t('home.now.notDownloadedHint')}
+        className={compact ? 'w-full' : 'self-start'}
+      />
+      <Text variant="caption">{t('home.now.notDownloadedHint')}</Text>
+    </View>
+  ) : (
     <Button
       size="lg"
       icon={playing ? 'pause' : 'play'}

@@ -64,6 +64,7 @@ import {
   isQueueKey,
   isSearchKey,
   librariesQuery,
+  listedBook,
   META_GENERATED_ONLY_STALE_MS,
   META_STALE_MS,
   metaWorkQuery,
@@ -234,6 +235,33 @@ describe('fetchBookProgress', () => {
     );
     expect(mockMirroredProgress).not.toHaveBeenCalled();
     expect(mockNoteFailure).not.toHaveBeenCalled();
+  });
+});
+
+// v2.5.1 PLAYER-02: offline, Home's rows (known only by path) read folder names.
+describe('listedBook', () => {
+  afterEach(() => queryClient.clear());
+  const listed = (over: Record<string, unknown> = {}) => ({
+    library_id: 1,
+    rel_path: 'Corey/03 - Abaddons Gate',
+    title: "Abaddon's Gate",
+    author: 'James S. A. Corey',
+    ...over,
+  });
+
+  it("finds a book in one of the connection's cached lists, an infinite one too", () => {
+    queryClient.setQueryData(['books', 'c1', 1, 'page'], {
+      pages: [{ items: [listed({ rel_path: 'Other' }), listed()] }],
+      pageParams: [0],
+    });
+    expect(listedBook('c1', 1, 'Corey/03 - Abaddons Gate')?.title).toBe("Abaddon's Gate");
+  });
+
+  it("never takes another connection's, another library's, or an untitled one", () => {
+    queryClient.setQueryData(['recent', 'c2'], [listed()]);
+    queryClient.setQueryData(['recent', 'c1'], [listed({ library_id: 2 }), listed({ title: '' })]);
+    expect(listedBook('c1', 1, 'Corey/03 - Abaddons Gate')).toBeUndefined();
+    expect(listedBook('c1', 1, '')).toBeUndefined();
   });
 });
 

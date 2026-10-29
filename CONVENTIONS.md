@@ -1920,7 +1920,12 @@ date from `user_stats` when there is enough listening, Who's who / Story so far 
 page on that tab via `?tab=`); This week (`user_stats`) counts the streak in SERVER time; Next in
 your series uses `next_book` (a work without `local` is a ghost opening the series page); smart
 shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
-offline queue length without changing progress-sync (decision 7).
+offline queue length without changing progress-sync (decision 7). Offline (v2.5.1 PLAYER-02)
+the Now card leads with the first in-progress book that plays here (`pickNowBook` +
+`usePlayableHere`: online, or downloaded on this device), and one that can't shows a disabled
+"Not downloaded" in place of Play. A row known only by path takes its title from
+`useKnownBook`: the book's `/item`, else (only while that query is paused or failed) the copy a
+cached list already holds (`listedBook`, a bounded walk of this connection's cached queries).
 
 **Your listening** (`src/components/you/stats/`, rules in `stats-model.ts`): `StatsSection` is the
 You hub's Stats section. It shows one server's own listening in that server's time (the default

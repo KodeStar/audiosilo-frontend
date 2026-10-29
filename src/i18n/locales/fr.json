@@ -539,7 +539,9 @@
       "whosWhoLabel_one": "Qui est qui, {{count}} personnage rencontré jusqu’ici",
       "whosWhoLabel_other": "Qui est qui, {{count}} personnages rencontrés jusqu’ici",
       "storySoFar": "L’histoire jusqu’ici",
-      "countOf": "{{chapter}} sur {{total}}"
+      "countOf": "{{chapter}} sur {{total}}",
+      "notDownloaded": "Non téléchargé",
+      "notDownloadedHint": "Ce livre n’est pas sur cet appareil. Il se lit dès que vous êtes de nouveau en ligne."
     },
     "week": {
       "title": "Cette semaine",
