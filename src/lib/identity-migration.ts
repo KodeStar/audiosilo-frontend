@@ -269,9 +269,9 @@ export const rewrite = {
   // The listening outbox: an array of events with a `connectionId`; the open span: one
   // record with a `connectionId` (or null); the sync state: keyed by connection id.
   listeningOutbox: connectionList,
-  listeningOpenSpan: (plan: Plan, doc: unknown): unknown => withConnectionId(plan, doc),
-  listeningSync: (plan: Plan, doc: unknown): unknown => byConnectionId(plan, doc),
-  offlineServers: (plan: Plan, doc: unknown): unknown => byConnectionId(plan, doc),
+  listeningOpenSpan: withConnectionId<unknown>,
+  listeningSync: byConnectionId,
+  offlineServers: byConnectionId,
   carBookmarks: connectionList,
   librarySelection(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc) || !isRecord(doc.selection)) return doc;

@@ -3,7 +3,7 @@ import { onReconnect } from '@/api/reachability';
 import { onForeground } from '@/lib/when-active';
 import { useSession } from '@/stores/session';
 
-import { flushAllOutboxes, flushOutbox, recoverOpenSpan } from './listening-outbox';
+import { flushAllOutboxes, flushOutbox } from './listening-outbox';
 import { cutListeningSpanNow } from './store';
 
 /**
@@ -37,7 +37,8 @@ export function startListeningSync(): () => void {
 
 function runListeningSync(): () => void {
   const stops: (() => void)[] = [];
-  const launch = () => void recoverOpenSpan().then(() => flushAllOutboxes());
+  // `flushAllOutboxes` closes a span a kill left open first (`recoverOpenSpan`).
+  const launch = () => void flushAllOutboxes();
   if (sessionReady()) launch();
   else {
     stops.push(

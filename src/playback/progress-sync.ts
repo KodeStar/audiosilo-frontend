@@ -366,7 +366,9 @@ export async function updateMirror(
     const key = contentKey(connectionId, libraryId, path);
     const base = map[key] ?? (row ? progressToSave(connectionId, libraryId, path, row) : null);
     if (!base) return;
-    map[key] = change(base);
+    const next = change(base);
+    if (next === map[key]) return; // unchanged (an acknowledgement already known)
+    map[key] = next;
     await setItem(MIRROR_KEY, map);
   });
 }
@@ -393,22 +395,27 @@ export function ackVersion(
 /** At most this many answered offers are kept per book (the newest). */
 const MAX_ANSWERED = 20;
 
-/** Note an offer of another place answered (Jump or Stay): `key` is `device_id|updated_at`. */
-export function markAnswered(
+/** Answer an offer of another place (Jump, Stay, the book page's "Play from there"): the
+ * row's version acknowledged (never lowered) and the offer's `key` (`device_id|updated_at`)
+ * noted, the newest `MAX_ANSWERED` kept, in one change of the mirror. */
+export function answerOffer(
   connectionId: string,
   libraryId: number,
   path: string,
+  row: Progress,
   key: string,
-  row?: Progress | null,
 ): Promise<void> {
   return updateMirror(
     connectionId,
     libraryId,
     path,
-    (s) =>
-      s.answered?.includes(key)
-        ? s
-        : { ...s, answered: [...(s.answered ?? []), key].slice(-MAX_ANSWERED) },
+    (s) => {
+      const acked = Math.max(s.ack_version ?? row.version, row.version);
+      const answered = s.answered?.includes(key)
+        ? s.answered
+        : [...(s.answered ?? []), key].slice(-MAX_ANSWERED);
+      return { ...s, ack_version: acked, answered };
+    },
     row,
   );
 }

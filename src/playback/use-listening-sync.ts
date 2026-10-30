@@ -11,7 +11,7 @@ import {
 import { pendingSaves } from './progress-sync';
 
 /** What the account's Listening sync card shows of one connection. */
-export type ListeningSyncView = {
+type ListeningSyncView = {
   /** Listens waiting: the outbox's events plus the open span while offline. */
   waiting: number;
   lastSyncAt?: string;
@@ -20,15 +20,22 @@ export type ListeningSyncView = {
 
 const EMPTY: ListeningSyncView = { waiting: 0, failed: [] };
 
-/** Re-run `read` now and on every outbox change, while mounted; `null` key reads nothing. */
-function useOutboxRead<T>(key: string | null, read: () => Promise<T>, initial: T): T {
+/** Re-run `read` now and on every outbox change, while mounted; `null` key reads nothing.
+ * A value `same` as the one held keeps it (no re-render: an outbox change that left this
+ * reader's part alone). */
+function useOutboxRead<T>(
+  key: string | null,
+  read: () => Promise<T>,
+  initial: T,
+  same: (a: T, b: T) => boolean,
+): T {
   const [value, setValue] = useState<T>(initial);
   useEffect(() => {
     if (key === null) return;
     let live = true;
     const run = () =>
       void read()
-        .then((v) => live && setValue(v))
+        .then((v) => live && setValue((prev) => (same(prev, v) ? prev : v)))
         .catch(() => undefined);
     run();
     const stop = onOutboxChange(run);
@@ -53,8 +60,26 @@ export function useListeningSync(connectionId: string | undefined): ListeningSyn
       return { waiting: listens, lastSyncAt: state.lastSyncAt, failed: state.failed ?? [] };
     },
     EMPTY,
+    (a, b) =>
+      a.waiting === b.waiting && a.lastSyncAt === b.lastSyncAt && sameIds(a.failed, b.failed),
   );
 }
+
+/** When `connectionId`'s server last answered this device's listening (Home's pill), read
+ * while `active`. */
+export function useLastSyncAt(connectionId: string | undefined, active = true): string | undefined {
+  return useOutboxRead(
+    connectionId && active ? connectionId : null,
+    async () => (await syncStateOf(connectionId as string)).lastSyncAt,
+    undefined,
+    (a, b) => a === b,
+  );
+}
+
+const sameIds = (
+  a: readonly { event: { id: string } }[],
+  b: readonly { event: { id: string } }[],
+) => a.length === b.length && a.every((x, i) => x.event.id === b[i].event.id);
 
 /** This device's listen events waiting to sync for one book (the history's "Waiting to
  * sync" rows), oldest first. */
@@ -73,5 +98,6 @@ export function usePendingListens(
             e.kind === 'listen' && e.library_id === libraryId && e.path === path,
         ),
     [],
+    (a, b) => a.length === b.length && a.every((x, i) => x.id === b[i].id),
   );
 }

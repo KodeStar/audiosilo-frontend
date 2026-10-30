@@ -54,6 +54,7 @@ import {
   finishEvent,
   flushOutbox,
   type OpenSpan,
+  type OutboxEntry,
   sendOnPageHide,
   type SpanEnd,
   spanToEvent,
@@ -460,13 +461,11 @@ async function persist(opts?: { forceFinished?: boolean }) {
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
   // spans below); the capture only keeps this device's mirror, with the file place (fe#188).
   if (usesListeningSync(nowPlaying.connectionId)) {
-    const file = fileOf(nowPlaying, snapshot.trackIndex);
+    const end = endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
     await writeMirror(
-      forceFinished || !file ? save : { ...save, file, file_pos: Math.max(0, snapshot.position) },
+      forceFinished || !end.file ? save : { ...save, file: end.file, file_pos: end.filePos },
     );
-    if (span && sameBook(span, nowPlaying) && !forceFinished) {
-      span.to = { pos: position, ...(file ? { file, filePos: snapshot.position } : {}) };
-    }
+    if (span && sameBook(span, nowPlaying) && !forceFinished) span.to = end;
     return;
   }
   await saveProgress(api, save);
@@ -594,8 +593,8 @@ let unfinishDue = false;
  * "mark finished" send one between them. Cleared when the book plays again. */
 let finishSent: string | null = null;
 
-const sameBook = (a: { connectionId: string; libraryId: number; path: string }, b: typeof a) =>
-  a.connectionId === b.connectionId && a.libraryId === b.libraryId && a.path === b.path;
+type ContentRef = { connectionId: string; libraryId: number; path: string };
+const sameBook = (a: ContentRef, b: ContentRef) => contentKeyOf(a) === contentKeyOf(b);
 
 /** The audio file (its rel path) of the track at `index`, from its id (`trackIdOf`). */
 function fileOf(np: NowPlaying, index: number): string | undefined {
@@ -626,15 +625,43 @@ function engineEnd(): SpanEnd | null {
 
 /** The acknowledged version for a book (0 when none: the server then keeps the further
  * place of the two rather than moving a place this device never saw). */
-async function baseVersionOf(ref: { connectionId: string; libraryId: number; path: string }) {
+async function baseVersionOf(ref: ContentRef) {
   const mirror = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
   return mirror?.ack_version ?? 0;
+}
+
+/** A span of the loaded book from `at`, begun `now` (ISO) for `start`. */
+function spanAt(
+  np: NowPlaying,
+  at: SpanEnd,
+  start: ListeningStart,
+  now: string,
+  baseVersion = 0,
+): OpenSpan {
+  return {
+    connectionId: np.connectionId,
+    libraryId: np.libraryId,
+    path: np.path,
+    from: at,
+    to: at,
+    duration: np.queue.total,
+    speed: usePlayer.getState().rate,
+    startedAt: now,
+    endedAt: now,
+    start,
+    baseVersion,
+  };
+}
+
+/** Put events in a connection's outbox, then send. */
+function emit(connectionId: string, events: ListeningEvent[]): void {
+  void appendEvents(connectionId, events).then(() => flushOutbox(connectionId));
 }
 
 /** Open a span at `at` (else where the engine is) when the loaded book's server takes
  * listening events and none is open. */
 function openListeningSpan(at?: SpanEnd) {
-  const { nowPlaying: np, rate } = usePlayer.getState();
+  const np = usePlayer.getState().nowPlaying;
   if (!np || !usesListeningSync(np.connectionId)) return;
   if (span) {
     if (sameBook(span, np)) return;
@@ -645,19 +672,7 @@ function openListeningSpan(at?: SpanEnd) {
   const now = new Date().toISOString();
   const start = nextStart;
   nextStart = 'resume';
-  const opened: OpenSpan = {
-    connectionId: np.connectionId,
-    libraryId: np.libraryId,
-    path: np.path,
-    from: here,
-    to: here,
-    duration: np.queue.total,
-    speed: rate,
-    startedAt: now,
-    endedAt: now,
-    start,
-    baseVersion: 0,
-  };
+  const opened = spanAt(np, here, start, now);
   span = opened;
   if (finishSent === contentKeyOf(np)) finishSent = null;
   void baseVersionOf(np).then((base) => {
@@ -665,7 +680,7 @@ function openListeningSpan(at?: SpanEnd) {
     // A finished book started again: unfinished first, then the span from 0.
     if (unfinishDue) {
       unfinishDue = false;
-      void appendEvents(np.connectionId, [finishEvent('unfinish', np, now, base)]);
+      emit(np.connectionId, [finishEvent('unfinish', np, now, base)]);
     }
   });
 }
@@ -675,23 +690,30 @@ function openListeningSpan(at?: SpanEnd) {
  * the outbox, then send. Returns the closed span (null when none was open).
  */
 function closeListeningSpan(opts: { at?: SpanEnd } = {}): OpenSpan | null {
-  const closing = span;
-  span = null;
+  const closing = takeSpan(opts.at);
   if (!closing) return null;
-  const np = usePlayer.getState().nowPlaying;
-  const here = opts.at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
-  closing.to = here;
-  closing.endedAt = new Date().toISOString();
   const cid = closing.connectionId;
   void closeSpan(closing).then(() => flushOutbox(cid));
   return closing;
 }
 
-/** Cut the span (close it, a `continue` span opening where it ended) while playing. */
-function cutListeningSpan() {
+/** Take the open span (none open from here), ended now at `at`, else where the engine is,
+ * else where it was last seen. */
+function takeSpan(at?: SpanEnd): OpenSpan | null {
+  const closing = span;
+  span = null;
+  if (!closing) return null;
+  const np = usePlayer.getState().nowPlaying;
+  closing.to = at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
+  closing.endedAt = new Date().toISOString();
+  return closing;
+}
+
+/** Cut the span (close it, a span opening where it ended, for `start`) while playing. */
+function cutListeningSpan(start: ListeningStart = 'continue') {
   const closed = closeListeningSpan();
   if (!closed || !isPlayingState(usePlayer.getState().snapshot.state)) return;
-  nextStart = 'continue';
+  nextStart = start;
   openListeningSpan(closed.to);
 }
 
@@ -731,23 +753,9 @@ function moveListeningSpan(
     return;
   }
   const now = new Date().toISOString();
-  const cid = np.connectionId;
-  void baseVersionOf(np).then((base) => {
-    const moved = spanToEvent({
-      connectionId: cid,
-      libraryId: np.libraryId,
-      path: np.path,
-      from: target,
-      to: target,
-      duration: np.queue.total,
-      speed: usePlayer.getState().rate,
-      startedAt: now,
-      endedAt: now,
-      start: reason,
-      baseVersion: base,
-    });
-    return appendEvents(cid, [moved]).then(() => flushOutbox(cid));
-  });
+  void baseVersionOf(np).then((base) =>
+    emit(np.connectionId, [spanToEvent(spanAt(np, target, reason, now, base))]),
+  );
   nextStart = reason;
 }
 
@@ -760,10 +768,9 @@ function sendFinish(np: NowPlaying) {
   if (finishSent === key) return;
   finishSent = key;
   const now = new Date().toISOString();
-  const cid = np.connectionId;
-  void baseVersionOf(np)
-    .then((base) => appendEvents(cid, [finishEvent('finish', np, now, base)]))
-    .then(() => flushOutbox(cid));
+  void baseVersionOf(np).then((base) =>
+    emit(np.connectionId, [finishEvent('finish', np, now, base)]),
+  );
 }
 
 /**
@@ -773,11 +780,7 @@ function sendFinish(np: NowPlaying) {
  */
 export function standByPlace(): void {
   nextStart = 'jump';
-  if (span && isPlayingState(usePlayer.getState().snapshot.state)) {
-    const closed = closeListeningSpan();
-    nextStart = 'jump';
-    if (closed) openListeningSpan(closed.to);
-  }
+  if (span && isPlayingState(usePlayer.getState().snapshot.state)) cutListeningSpan('jump');
 }
 
 /** Cut the playing span now (the server came back, the app went to the background); a
@@ -789,13 +792,9 @@ export function cutListeningSpanNow(connectionId?: string): void {
 
 /** Web `pagehide`: close the span and send what waits in a keepalive request. */
 function closeSpanOnPageHide() {
-  const closing = span;
-  span = null;
-  const extra: { connectionId: string; event: ListeningEvent }[] = [];
+  const closing = takeSpan();
+  const extra: OutboxEntry[] = [];
   if (closing) {
-    const here = engineEnd() ?? closing.to;
-    closing.to = here;
-    closing.endedAt = new Date().toISOString();
     const event = spanToEvent(closing);
     void closeSpan(closing, event);
     extra.push({ connectionId: closing.connectionId, event });

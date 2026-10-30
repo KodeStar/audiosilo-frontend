@@ -11,7 +11,7 @@ import {
   flushConnection,
   flushQueue,
   loadInitialProgress,
-  markAnswered,
+  answerOffer,
   mirroredProgress,
   pendingSaveCount,
   type ProgressSave,
@@ -725,14 +725,18 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     expect(await readMirrorOf('c1', 1, 'Else')).toBeNull();
   });
 
-  it('markAnswered notes each offer once and keeps the newest 20', async () => {
+  it('answerOffer acknowledges the row (never lower) and notes each offer once, the newest 20', async () => {
     await writeMirror(save);
-    await markAnswered('c1', 1, 'A/Book', 'phone|a');
-    await markAnswered('c1', 1, 'A/Book', 'phone|a');
+    const row = makeProgress({ version: 5 });
+    await answerOffer('c1', 1, 'A/Book', row, 'phone|a');
+    await answerOffer('c1', 1, 'A/Book', row, 'phone|a');
     expect((await readMirrorOf('c1', 1, 'A/Book'))?.answered).toEqual(['phone|a']);
-    for (let i = 0; i < 25; i++) await markAnswered('c1', 1, 'A/Book', `k${i}`);
-    const answered = (await readMirrorOf('c1', 1, 'A/Book'))?.answered ?? [];
-    expect(answered).toHaveLength(20);
-    expect(answered[19]).toBe('k24');
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(5);
+    await ackVersion('c1', 1, 'A/Book', 9);
+    for (let i = 0; i < 25; i++) await answerOffer('c1', 1, 'A/Book', row, `k${i}`);
+    const m = await readMirrorOf('c1', 1, 'A/Book');
+    expect(m?.answered).toHaveLength(20);
+    expect(m?.answered?.[19]).toBe('k24');
+    expect(m?.ack_version).toBe(9);
   });
 });

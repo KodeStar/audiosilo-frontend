@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -67,13 +68,17 @@ export function HistorySection({
   const nameAt = useChapterNamer({ connectionId: cid, libraryId, path });
   const jumpTo = useJumpTo();
   const waiting = usePendingListens(cid, libraryId, path);
-  const waitingSessions = groupSessions(
-    waiting
-      .map((e) => {
-        const span = toSpan({ ...e, id: 0, connectionId: cid, connectionName: '' });
-        return span && { ...span, key: `waiting\n${e.id}` };
-      })
-      .filter((s): s is ListeningSpan => s !== null),
+  const waitingSessions = useMemo(
+    () =>
+      groupSessions(
+        waiting
+          .map((e) => {
+            const span = toSpan({ ...e, id: 0, connectionId: cid, connectionName: '' });
+            return span && { ...span, key: `waiting\n${e.id}` };
+          })
+          .filter((s): s is ListeningSpan => s !== null),
+      ),
+    [waiting, cid],
   );
 
   if ((!history || history.length === 0) && waitingSessions.length === 0) {
@@ -136,9 +141,8 @@ export function HistorySection({
                 {where}
               </Text>
               <Text variant="caption" style={tabularNums}>
-                {s.waiting
-                  ? `${t('journal.minutes', { count: sessionMinutes(s) })} · ${t('journal.history.waiting')}`
-                  : t('journal.minutes', { count: sessionMinutes(s) })}
+                {t('journal.minutes', { count: sessionMinutes(s) })}
+                {s.waiting ? ` · ${t('journal.history.waiting')}` : null}
               </Text>
             </View>
             <Button

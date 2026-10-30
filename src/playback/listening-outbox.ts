@@ -89,9 +89,9 @@ export type CouldNotSync = { event: ListeningEvent; reason: string; at: string }
 export type ConnectionSyncState = { lastSyncAt?: string; failed?: CouldNotSync[] };
 
 /** At most this many events per request (the server takes 500). */
-export const MAX_CHUNK = 200;
+const MAX_CHUNK = 200;
 /** The web's `pagehide` sends at most this much in its keepalive request (64 KB limit). */
-export const KEEPALIVE_BYTES = 60_000;
+const KEEPALIVE_BYTES = 60_000;
 /** A rejected event stays on the couldn't-sync list this long. */
 export const COULD_NOT_SYNC_KEEP_MS = 30 * 24 * 60 * 60_000;
 /** A span shorter than this that moved nowhere says nothing (a play stopped at once). */
@@ -100,9 +100,7 @@ const EMPTY_SPAN_MS = 1_000;
 // --- Building events -------------------------------------------------------------------
 
 /** A new event id (a UUID: the server takes 1-64 of `[A-Za-z0-9_-]`). */
-export function newEventId(): string {
-  return randomUUID();
-}
+const newEventId = (): string => randomUUID();
 
 /** A span as its `listen` event (pure). Each end's file pair is sent only whole. */
 export function spanToEvent(span: OpenSpan, id: string = newEventId()): ListeningSpanEvent {
@@ -215,6 +213,8 @@ async function removeEvents(ids: Set<string>): Promise<void> {
 /** One after another: a cut's close and the next span's write never cross. */
 const spanOps = serialQueue();
 let recovery: Promise<void> | null = null;
+/** Whether this launch stored an open span (only offline ticks do): a close clears it then. */
+let openSpanStored = false;
 
 const isSpan = (v: unknown): v is OpenSpan =>
   isRecord(v) &&
@@ -235,9 +235,8 @@ export function recoverOpenSpan(): Promise<void> {
   recovery ??= spanOps(async () => {
     const raw = await getItem<unknown>(OPEN_SPAN_KEY);
     if (!isSpan(raw)) return;
-    if (spanSaysSomething(raw)) await appendEvents(raw.connectionId, [spanToEvent(raw)]);
-    await setItem(OPEN_SPAN_KEY, null);
-    notify();
+    openSpanStored = true;
+    await closeInto(raw);
   }).catch((e: unknown) => console.warn('[listening] could not recover the open span', e));
   return recovery;
 }
@@ -247,8 +246,21 @@ export async function storeOpenSpan(span: OpenSpan | null): Promise<void> {
   await recoverOpenSpan();
   await spanOps(async () => {
     await setItem(OPEN_SPAN_KEY, span);
-    notify();
+    // The pending count changes only when a span comes or goes, not with each rewrite.
+    const was = openSpanStored;
+    openSpanStored = span !== null;
+    if (was !== openSpanStored) notify();
   });
+}
+
+/** Append `span`'s event (when it says something) and clear the stored open span, if any.
+ * Run inside `spanOps`. */
+async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
+  if (spanSaysSomething(span)) await appendEvents(span.connectionId, [event ?? spanToEvent(span)]);
+  if (!openSpanStored) return;
+  await setItem(OPEN_SPAN_KEY, null);
+  openSpanStored = false;
+  notify();
 }
 
 /**
@@ -258,13 +270,7 @@ export async function storeOpenSpan(span: OpenSpan | null): Promise<void> {
  */
 export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
   await recoverOpenSpan();
-  await spanOps(async () => {
-    if (spanSaysSomething(span)) {
-      await appendEvents(span.connectionId, [event ?? spanToEvent(span)]);
-    }
-    await setItem(OPEN_SPAN_KEY, null);
-    notify();
-  });
+  await spanOps(() => closeInto(span, event));
 }
 
 /** The stored open span (tests, the pending count). */
@@ -276,6 +282,9 @@ export async function storedOpenSpan(): Promise<OpenSpan | null> {
 // --- Per-connection sync state ---------------------------------------------------------
 
 const withStateLock = serialQueue();
+
+/** Whether a couldn't-sync entry is still kept (30 days). */
+const stillKept = (f: CouldNotSync, now: number) => now - Date.parse(f.at) < COULD_NOT_SYNC_KEEP_MS;
 
 async function readState(): Promise<Record<string, ConnectionSyncState>> {
   const raw = await getItem<unknown>(SYNC_KEY);
@@ -302,7 +311,7 @@ export async function syncStateOf(
   now = Date.now(),
 ): Promise<ConnectionSyncState> {
   const s = (await readState())[connectionId] ?? {};
-  const failed = (s.failed ?? []).filter((f) => now - Date.parse(f.at) < COULD_NOT_SYNC_KEEP_MS);
+  const failed = (s.failed ?? []).filter((f) => stillKept(f, now));
   return { ...(s.lastSyncAt ? { lastSyncAt: s.lastSyncAt } : {}), failed };
 }
 
@@ -315,9 +324,7 @@ async function moveToFailed(
   await updateState(connectionId, (s) => {
     const now = Date.now();
     const kept = (s.failed ?? []).filter(
-      (f) =>
-        now - Date.parse(f.at) < COULD_NOT_SYNC_KEEP_MS &&
-        !items.some((i) => i.event.id === f.event.id),
+      (f) => stillKept(f, now) && !items.some((i) => i.event.id === f.event.id),
     );
     return { ...s, failed: [...kept, ...items.map((i) => ({ ...i, at }))] };
   });
@@ -396,8 +403,8 @@ export async function unsentListens(connectionId: string): Promise<number> {
 }
 
 /** A batch's envelope with this attempt's clock. */
-async function syncBody(events: ListeningEvent[]) {
-  return { device_id: await getDeviceId(), sent_at: new Date().toISOString(), events };
+function syncBody(events: ListeningEvent[], deviceId: string) {
+  return { device_id: deviceId, sent_at: new Date().toISOString(), events };
 }
 
 /** How many rounds one flush makes at most (a 500-event backlog in chunks of 200 is 3). */
@@ -426,7 +433,13 @@ async function sendChunk(
   chunk: OutboxEntry[],
 ): Promise<Next> {
   try {
-    const answer = await client.syncListening(await syncBody(chunk.map((e) => e.event)));
+    const deviceId = await getDeviceId();
+    const answer = await client.syncListening(
+      syncBody(
+        chunk.map((e) => e.event),
+        deviceId,
+      ),
+    );
     noteSuccess(connectionId);
     await applyAnswer(connectionId, chunk, answer);
     return 'more';
@@ -466,7 +479,7 @@ async function sendOneByOne(
   }
   for (const entry of chunk) {
     try {
-      const answer = await client.syncListening(await syncBody([entry.event]));
+      const answer = await client.syncListening(syncBody([entry.event], await getDeviceId()));
       await applyAnswer(connectionId, [entry], answer);
     } catch (e) {
       if (e instanceof ApiError && e.status === 400) {
@@ -568,8 +581,7 @@ export function legacySavesOf(
   for (const { listen, state } of books.values()) {
     const ref = listen ?? state;
     if (!ref) continue;
-    const finished =
-      state?.kind === 'finish' && (!listen || state.at >= listen.ended_at) ? true : false;
+    const finished = state?.kind === 'finish' && (!listen || state.at >= listen.ended_at);
     const duration = listen?.duration ?? 0;
     const listenedAt = listen?.ended_at ?? '';
     const at = state && state.at > listenedAt ? state.at : listenedAt;
@@ -588,15 +600,20 @@ export function legacySavesOf(
   return saves.filter((s) => s.position > 0 || s.finished || !!s.updated_at);
 }
 
+/** Drop a connection's events from the outbox; returns them. */
+function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
+  return withOutboxLock(async () => {
+    const queue = await readOutbox();
+    const mine = queue.filter((e) => e.connectionId === connectionId);
+    if (mine.length > 0) await writeOutbox(queue.filter((e) => e.connectionId !== connectionId));
+    return mine;
+  });
+}
+
 async function rollBack(connectionId: string, client: ApiClient): Promise<void> {
   rolledBack.add(connectionId);
   void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
-  let mine: OutboxEntry[] = [];
-  await withOutboxLock(async () => {
-    const queue = await readOutbox();
-    mine = queue.filter((e) => e.connectionId === connectionId);
-    if (mine.length > 0) await writeOutbox(queue.filter((e) => e.connectionId !== connectionId));
-  });
+  const mine = await takeConnection(connectionId);
   const deviceId = await getDeviceId();
   for (const save of legacySavesOf(connectionId, mine, deviceId)) {
     await saveProgress(client, save);
@@ -611,7 +628,7 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
  * the requests (the page is going); an answer that still arrives is applied as usual, and
  * anything unanswered stays in the outbox (a resend is a `duplicate`).
  */
-export function sendOnPageHide(extra: OutboxEntry[] = [], deviceId: string): void {
+export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
   if (!sessionReady()) return;
   const byConnection = new Map<string, OutboxEntry[]>();
   const seen = new Set<string>();
@@ -627,13 +644,14 @@ export function sendOnPageHide(extra: OutboxEntry[] = [], deviceId: string): voi
     if (!client) continue;
     const fit = fitKeepalive(entries);
     if (fit.length === 0) continue;
-    const body = {
-      device_id: deviceId,
-      sent_at: new Date().toISOString(),
-      events: fit.map((e) => e.event),
-    };
     void client
-      .syncListening(body, { keepalive: true })
+      .syncListening(
+        syncBody(
+          fit.map((e) => e.event),
+          deviceId,
+        ),
+        { keepalive: true },
+      )
       .then((answer) => applyAnswer(cid, fit, answer))
       .catch(() => undefined);
   }
@@ -674,14 +692,12 @@ onConnectionRemoved(async (id) => {
   chunkSizes.delete(id);
   rolledBack.delete(id);
   await Promise.all([
-    withOutboxLock(async () => {
-      const queue = await readOutbox();
-      const next = queue.filter((e) => e.connectionId !== id);
-      if (next.length !== queue.length) await writeOutbox(next);
-    }),
+    takeConnection(id),
     spanOps(async () => {
       const span = await storedOpenSpan();
-      if (span?.connectionId === id) await setItem(OPEN_SPAN_KEY, null);
+      if (span?.connectionId !== id) return;
+      await setItem(OPEN_SPAN_KEY, null);
+      openSpanStored = false;
     }),
     updateState(id, () => null),
   ]);
@@ -691,6 +707,7 @@ onConnectionRemoved(async (id) => {
 export function resetOutboxForTests(): void {
   outboxCache = null;
   recovery = null;
+  openSpanStored = false;
   rolledBack.clear();
   chunkSizes.clear();
   inFlight.clear();

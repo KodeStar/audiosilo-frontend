@@ -6,7 +6,7 @@ import { qk } from '@/api/hooks';
 import { anyOffline, useReachability } from '@/api/reachability';
 import { onOutboxChange } from '@/playback/listening-outbox';
 import { pendingSaves } from '@/playback/progress-sync';
-import { useListeningSync } from '@/playback/use-listening-sync';
+import { useLastSyncAt } from '@/playback/use-listening-sync';
 
 import { syncPill } from './home-model';
 
@@ -91,10 +91,11 @@ function useProgressFetchedAt(cid: string | undefined): number {
 /** The greeting's sync pill (see `syncPill`), from the offline queue, the servers'
  * reachability, the newest saved progress and when this device last read it. */
 export function useSyncPill(newest: { at: string; connectionId: string } | undefined) {
-  const { saves, listens } = usePendingCounts({ active: useIsFocused() });
+  const active = useIsFocused();
+  const { saves, listens } = usePendingCounts({ active });
   const online = useReachability((s) => s.online);
   const fetchedAt = useProgressFetchedAt(newest?.connectionId);
   // Sync v2: when the newest progress's server last answered this device's listening.
-  const { lastSyncAt } = useListeningSync(newest?.connectionId);
+  const lastSyncAt = useLastSyncAt(newest?.connectionId, active);
   return syncPill({ online, pending: saves + listens, listens, newest, fetchedAt, lastSyncAt });
 }

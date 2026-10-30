@@ -47,7 +47,16 @@ jest.mock('./progress-sync', () => ({
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: jest.fn(async () => mockMirror),
   ackVersion: (...a: unknown[]) => mockAckVersion(...a),
-  markAnswered: (...a: unknown[]) => mockMarkAnswered(...a),
+  answerOffer: async (
+    cid: string,
+    lib: number,
+    path: string,
+    row: { version: number },
+    key: string,
+  ) => {
+    await mockAckVersion(cid, lib, path, row.version, row);
+    await mockMarkAnswered(cid, lib, path, key, row);
+  },
   cachedDeviceId: () => 'this-device',
   writeMirror: jest.fn(async () => {}),
 }));

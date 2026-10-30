@@ -13,8 +13,9 @@ import { selectUndoFor, undoJump, useJumpUndo } from './jump-undo';
 import { onSyncAnswer, usesListeningSync } from './listening-outbox';
 import {
   ackVersion,
+  answerOffer,
+  cachedDeviceId,
   getDeviceId,
-  markAnswered,
   readMirror,
   type ProgressSave,
 } from './progress-sync';
@@ -117,27 +118,22 @@ export function offerOf(
   answered: readonly string[] = [],
 ): PlaceOffer | null {
   if (!row) return null;
-  const far = (position: number) => Math.abs(position - enginePosition) > MOVE_THRESHOLD_S;
-  if (
-    !row.finished &&
-    row.device_id &&
-    row.device_id !== deviceId &&
-    row.version > (ackVersion ?? 0) &&
-    far(row.position)
-  ) {
-    const key = `${row.device_id}|${row.updated_at}`;
-    if (!answered.includes(key)) {
-      return { position: row.position, deviceName: row.device_name ?? '', key };
-    }
-  }
-  const other = row.other_place;
-  if (other && other.device_id && other.device_id !== deviceId && far(other.position)) {
-    const key = `${other.device_id}|${other.updated_at}`;
-    if (!answered.includes(key)) {
-      return { position: other.position, deviceName: other.device_name ?? '', key };
-    }
-  }
-  return null;
+  // A place of another device, far enough from here and not answered yet.
+  const candidate = (p: {
+    position: number;
+    device_id?: string;
+    device_name?: string;
+    updated_at: string;
+  }): PlaceOffer | null => {
+    if (!p.device_id || p.device_id === deviceId) return null;
+    if (Math.abs(p.position - enginePosition) <= MOVE_THRESHOLD_S) return null;
+    const key = `${p.device_id}|${p.updated_at}`;
+    return answered.includes(key)
+      ? null
+      : { position: p.position, deviceName: p.device_name ?? '', key };
+  };
+  const kept = !row.finished && row.version > (ackVersion ?? 0) ? candidate(row) : null;
+  return kept ?? (row.other_place ? candidate(row.other_place) : null);
 }
 
 /** Offers shown this launch (`bookKey|key`): each is shown once, answered or not. */
@@ -169,11 +165,7 @@ export async function offerLoadedPlace(
   );
   if (!offer || shownOffers.has(`${bookKey}|${offer.key}`)) return false;
   shownOffers.add(`${bookKey}|${offer.key}`);
-  const ref = { connectionId: np.connectionId, libraryId: np.libraryId, path: np.path };
-  const answer = async () => {
-    await ackVersion(ref.connectionId, ref.libraryId, ref.path, row.version, row);
-    await markAnswered(ref.connectionId, ref.libraryId, ref.path, offer.key, row);
-  };
+  const answer = () => answerOffer(np.connectionId, np.libraryId, np.path, row, offer.key);
   whenActive(() => {
     const now = usePlayer.getState();
     if (selectBookKey(now) !== bookKey || !now.nowPlaying) return;
@@ -212,7 +204,8 @@ function offerFromAnswer(connectionId: string, rows: Progress[]) {
   const bookKey = selectBookKey(player);
   if (!np || !bookKey || np.connectionId !== connectionId) return;
   const row = rows.find((r) => r.library_id === np.libraryId && r.path === np.path);
-  if (!row) return;
+  // This device's own row with no other place offers nothing (`offerOf`): no reads then.
+  if (!row || (row.device_id === cachedDeviceId() && !row.other_place)) return;
   void Promise.all([getDeviceId(), readMirror(np.connectionId, np.libraryId, np.path)])
     .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror))
     .catch(() => undefined);

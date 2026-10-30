@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { formatClock, formatRelative } from '@/lib/format';
+import { pathLeaf } from '@/lib/paths';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { type CouldNotSync, discardFailed } from '@/playback/listening-outbox';
@@ -28,12 +29,6 @@ export function reasonKey(reason: string): Reason {
   return (REASONS as readonly string[]).includes(reason) ? (reason as Reason) : 'invalid';
 }
 
-/** The book an event was for, by its folder's last part ("Author/Book" -> "Book"). */
-function bookName(path: string): string {
-  const parts = path.split('/').filter(Boolean);
-  return parts[parts.length - 1] ?? path;
-}
-
 /** What a couldn't-sync row says it was: "Book · 1:02:13 to 1:40:00" or "Book · Marked
  * finished". */
 export function failedWhat(item: CouldNotSync, t: TFunction): string {
@@ -49,7 +44,8 @@ export function failedWhat(item: CouldNotSync, t: TFunction): string {
             ? 'account.listeningSync.finished'
             : 'account.listeningSync.unfinished',
         );
-  return `${bookName(event.path)} · ${what}`;
+  // The book by its folder's last part ("Author/Book" -> "Book").
+  return `${pathLeaf(event.path) || event.path} · ${what}`;
 }
 
 /**
