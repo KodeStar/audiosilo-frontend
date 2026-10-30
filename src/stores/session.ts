@@ -615,10 +615,9 @@ export const useSession = create<SessionState>()((set, get) => ({
     const { connections, defaultConnectionId } = get();
     const next = connections.filter((c) => c.id !== id);
     const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
-    await deleteSecure(tokenKey(id));
     // The connection's calendar link (Track U3) is a credential like its token: this device
     // forgets it with the connection (the link itself keeps working until turned off).
-    await forgetCalendarLink(id);
+    await Promise.all([deleteSecure(tokenKey(id)), forgetCalendarLink(id)]);
     await persist(next, nextDefault);
     set({ connections: next, ...mirror(next, nextDefault) });
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,

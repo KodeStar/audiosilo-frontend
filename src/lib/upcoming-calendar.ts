@@ -29,14 +29,9 @@ export const calendarLinkKey = (connectionId: string) =>
 /** This device's copy of the connection's calendar link, or null (none, unreadable, or not
  * the shape this build writes). */
 export async function readCalendarLink(connectionId: string): Promise<StoredCalendarLink | null> {
-  let raw: string | null;
   try {
-    raw = await getSecure(calendarLinkKey(connectionId));
-  } catch {
-    return null;
-  }
-  if (!raw) return null;
-  try {
+    const raw = await getSecure(calendarLinkKey(connectionId));
+    if (!raw) return null;
     const v = JSON.parse(raw) as Partial<StoredCalendarLink> | null;
     return v && typeof v.url === 'string' && typeof v.created_at === 'string'
       ? { url: v.url, created_at: v.created_at }
@@ -85,7 +80,7 @@ export function canSubscribeWebcal(
   os: string = Platform.OS,
   userAgent: string | undefined = globalThis.navigator?.userAgent,
 ): boolean {
-  if (os === 'ios' || os === 'macos') return true;
+  if (os === 'ios') return true;
   if (os !== 'web' || !userAgent) return false;
   return /Macintosh|Mac OS X|iPhone|iPad|iPod/.test(userAgent) && !/Android/.test(userAgent);
 }

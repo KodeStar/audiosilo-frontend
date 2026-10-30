@@ -112,7 +112,6 @@ function CalendarRow({
       setError(calendarError(e, server, t));
     }
   };
-  const getLink = () => run(() => mint.mutateAsync(undefined));
   const confirm = () => {
     const what = asking;
     setAsking(null);
@@ -150,7 +149,7 @@ function CalendarRow({
         title={t('upcoming.calendar.get')}
         loading={mint.isPending}
         disabled={busy}
-        onPress={() => void getLink()}
+        onPress={() => void run(() => mint.mutateAsync(undefined))}
         testID="upcoming-calendar-get"
       />
     );
@@ -178,28 +177,30 @@ function CalendarRow({
           </Text>
         )}
         <View className="flex-row flex-wrap gap-2">
-          {shown && canSubscribeWebcal() ? (
-            <Button
-              icon="arrow-up-right"
-              title={t('upcoming.calendar.subscribe')}
-              disabled={busy}
-              onPress={() => void openWebcal(shown)}
-              testID="upcoming-calendar-subscribe"
-            />
-          ) : null}
           {shown ? (
-            <Button
-              variant="outline"
-              icon={copied ? 'check' : 'copy'}
-              title={copied ? t('common.copied') : t('upcoming.calendar.copy')}
-              disabled={busy}
-              onPress={() =>
-                void copyText(shown).then((ok) => {
-                  if (ok) setCopied(true);
-                })
-              }
-              testID="upcoming-calendar-copy"
-            />
+            <>
+              {canSubscribeWebcal() ? (
+                <Button
+                  icon="arrow-up-right"
+                  title={t('upcoming.calendar.subscribe')}
+                  disabled={busy}
+                  onPress={() => void openWebcal(shown)}
+                  testID="upcoming-calendar-subscribe"
+                />
+              ) : null}
+              <Button
+                variant="outline"
+                icon={copied ? 'check' : 'copy'}
+                title={copied ? t('common.copied') : t('upcoming.calendar.copy')}
+                disabled={busy}
+                onPress={() =>
+                  void copyText(shown).then((ok) => {
+                    if (ok) setCopied(true);
+                  })
+                }
+                testID="upcoming-calendar-copy"
+              />
+            </>
           ) : null}
           <Button
             variant="outline"

@@ -3368,7 +3368,7 @@ export function useUpcomingCalendarConnections(): CalendarConnection[] {
 
 /** Whether the caller has a calendar link on the connection (`GET /me/upcoming/calendar`).
  * `ready: false` (a demo account, which can't make one) asks nothing. */
-export function useUpcomingCalendar(connectionId: string, ready = true) {
+export function useUpcomingCalendar(connectionId: string, ready: boolean) {
   return useCapabilityQuery(
     'upcoming_calendar',
     qk.upcomingCalendar,
