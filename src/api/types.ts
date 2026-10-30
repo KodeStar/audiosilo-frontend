@@ -171,7 +171,7 @@ export type Capabilities = {
    * Absent on older servers: treat missing as false and offer no calendar. */
   upcoming_calendar?: boolean;
   /** Whether the server serves the community cover of an item on the caller's own upcoming
-   * list (Track U3): `GET /me/upcoming/cover?work=&size=` (`client.upcomingCoverUrl`), a
+   * list (Track U3): `GET /me/upcoming/cover?work=&size=&v=` (`client.upcomingCoverUrl`), a
    * JPEG, for a work that list hands out with a `cover_url` (anything else is a 404). True
    * exactly when `upcoming` is. Absent on older servers: draw the ghost cover. */
   upcoming_covers?: boolean;

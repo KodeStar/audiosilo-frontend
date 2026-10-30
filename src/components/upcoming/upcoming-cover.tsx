@@ -6,6 +6,7 @@ import { useOptionalApi } from '@/api/provider';
 import { coverSizeFor } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
 import { CoverImage } from '@/components/ui/cover-image';
+import { fnv1a } from '@/lib/fnv1a';
 import { railPositionLabel } from '@/lib/series-position';
 import type { SourcedUpcomingItem } from '@/lib/upcoming';
 
@@ -26,7 +27,9 @@ export function UpcomingCover({ item, width }: { item: SourcedUpcomingItem; widt
     covers === true && api && item.work.cover_url
       ? api.upcomingCoverUrl(item.work.id, {
           size: coverSizeFor(width, PixelRatio.get()) ?? 640,
-          coverUrl: item.work.cover_url,
+          // The server caches the image for a day and its job can change a work's `cover_url`
+          // in place: a new cover gets a new URL (the hash only, never the cover's address).
+          version: fnv1a(item.work.cover_url),
         })
       : null;
   // The URI that failed (not a flag), so a recycled tile's next item starts afresh.

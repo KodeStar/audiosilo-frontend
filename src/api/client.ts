@@ -4,7 +4,6 @@ import { webOrigin } from '@/lib/base-url';
 import { createBatchLoader } from '@/lib/batch-loader';
 import { READALONG_ALIGN } from '@/lib/bridge-jobs';
 import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
-import { fnv1a } from '@/lib/fnv1a';
 import { cleanAddresses } from '@/lib/pairing';
 import { APP_VERSION } from '@/lib/version';
 import { type CheckedReadalongMap, parseReadalongMap } from '@/reader/readalong-map';
@@ -1761,14 +1760,13 @@ export class ApiClient {
   /** The URL of an upcoming item's community cover served by this server (capability
    * `upcoming_covers`): a JPEG of the `cover_url` the caller's own `/me/upcoming` list hands
    * out for `workId` (any other work is a 404), with the media token. `size` defaults to the
-   * server's 320. `coverUrl` is the item's `cover_url`, hashed into `v` purely as a cache
-   * buster (the server ignores it): the server caches the image for a day, and its upcoming
-   * job can change a work's `cover_url` in place, so a new cover gets a new URL. */
-  upcomingCoverUrl(workId: string, opts?: { size?: CoverSize; coverUrl?: string }) {
+   * server's 320. `version` is appended as `v` purely as a cache buster (the server ignores
+   * it), like {@link coverUrl}'s; `UpcomingCover` passes a hash of the item's `cover_url`. */
+  upcomingCoverUrl(workId: string, opts?: { size?: CoverSize; version?: string }) {
     return this.apiUrl('/me/upcoming/cover', {
       work: workId,
       size: opts?.size,
-      v: opts?.coverUrl ? fnv1a(opts.coverUrl) : undefined,
+      v: opts?.version || undefined,
       ...this.mediaTokenQuery(),
     });
   }

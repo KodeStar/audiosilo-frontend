@@ -33,8 +33,8 @@ jest.mock('@/api/hooks', () => ({
 }));
 // Each connection's client builds its cover URLs (`upcomingCoverUrl`).
 const mockClient = (cid: string) => ({
-  upcomingCoverUrl: (work: string, o?: { size?: number; coverUrl?: string }) =>
-    `https://${cid}/api/v1/me/upcoming/cover?work=${work}&size=${o?.size}&src=${o?.coverUrl}&token=t`,
+  upcomingCoverUrl: (work: string, o?: { size?: number; version?: string }) =>
+    `https://${cid}/api/v1/me/upcoming/cover?work=${work}&size=${o?.size}&v=${o?.version}&token=t`,
   authHeaders: () => ({ Authorization: 'Bearer t' }),
 });
 jest.mock('@/api/provider', () => ({
@@ -54,6 +54,7 @@ jest.mock('./upcoming-calendar', () => ({
 }));
 
 /* eslint-disable import/first */
+import { fnv1a } from '@/lib/fnv1a';
 import { formatReleaseDate } from '@/lib/format';
 import { settleFlashList } from '@/testing/flash-list';
 import { sourcedUpcoming } from '@/testing/upcoming-fixtures';
@@ -340,8 +341,10 @@ describe('the cover swap (Track U3)', () => {
     await render(<UpcomingContent />);
     const src = image()!.props.source;
     expect(src.uri).toMatch(
-      /^https:\/\/a\/api\/v1\/me\/upcoming\/cover\?work=c1&size=\d+&src=https:\/\/meta\.example\/c1\.jpg&token=t$/,
+      /^https:\/\/a\/api\/v1\/me\/upcoming\/cover\?work=c1&size=\d+&v=[0-9a-f]{8}&token=t$/,
     );
+    // The cache buster is a hash of the cover_url, never the cover's own address.
+    expect(src.uri).toContain(`v=${fnv1a('https://meta.example/c1.jpg')}&`);
     expect(src.headers).toEqual({ Authorization: 'Bearer t' });
     // The ghost stays underneath (it shows while the image loads).
     expect(screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true })).toBeTruthy();

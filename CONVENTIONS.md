@@ -1162,10 +1162,10 @@ other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "Firs
 hub's Upcoming section (below). Every item is `UpcomingCover` (`upcoming-cover.tsx`, Track U3): a
 `GhostCover` with the work's real cover drawn over it only when the item's OWN connection (the one
 whose row won the merge) advertises `upcoming_covers === true` (never while unknown) and the item
-has a `cover_url`; the image is `client.upcomingCoverUrl(work.id, { size, coverUrl })` ->
+has a `cover_url`; the image is `client.upcomingCoverUrl(work.id, { size, version })` ->
 `GET /me/upcoming/cover?work=&size=&v=` with the media token (the server serves only a cover the
-caller's own list hands out right now; anything else is a 404; `v` is `fnv1a(cover_url)`, a cache
-buster the server ignores: it caches the image for a day and its job can change a work's
+caller's own list hands out right now; anything else is a 404; `v` is the caller's `fnv1a(cover_url)`, a
+cache buster the server ignores: it caches the image for a day and its job can change a work's
 `cover_url` in place), never the `cover_url` itself (the
 device never contacts the cover's host, and the web player's CSP refuses another host). The ghost
 stays underneath, so it shows while the image loads, and alone without the flag or once the image
