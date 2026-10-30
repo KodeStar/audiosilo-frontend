@@ -22,7 +22,36 @@ let mockUpcoming: {
   retry: () => void;
 };
 const mockRetry = jest.fn();
-jest.mock('@/api/hooks', () => ({ useUpcomingAll: () => mockUpcoming }));
+// Each connection's `upcoming_covers` flag (Track U3), undefined while not known.
+let mockCovers: Record<string, boolean | undefined> = {};
+let mockCalendarRows: { id: string; demo: boolean }[] = [];
+jest.mock('@/api/hooks', () => ({
+  useUpcomingAll: () => mockUpcoming,
+  useCapability: (flag: string, cid: string) =>
+    flag === 'upcoming_covers' ? mockCovers[cid] : undefined,
+  useUpcomingCalendarConnections: () => mockCalendarRows,
+}));
+// Each connection's client builds its cover URLs (`upcomingCoverUrl`).
+const mockClient = (cid: string) => ({
+  upcomingCoverUrl: (work: string, o?: { size?: number }) =>
+    `https://${cid}/api/v1/me/upcoming/cover?work=${work}&size=${o?.size}&token=t`,
+  authHeaders: () => ({ Authorization: 'Bearer t' }),
+});
+jest.mock('@/api/provider', () => ({
+  useOptionalApi: (cid?: string) => (cid ? mockClient(cid) : null),
+}));
+// A host stand-in for expo-image, so a test can read the source and fire its error.
+jest.mock('expo-image', () => {
+  const { View } = jest.requireActual('react-native');
+  return { Image: (props: object) => <View {...props} /> };
+});
+// The calendar card has its own tests (upcoming-calendar.test.tsx).
+jest.mock('./upcoming-calendar', () => ({
+  UpcomingCalendarCard: () => {
+    const { Text } = jest.requireActual('react-native');
+    return mockCalendarRows.length ? <Text testID="upcoming-calendar">card</Text> : null;
+  },
+}));
 
 /* eslint-disable import/first */
 import { formatReleaseDate } from '@/lib/format';
@@ -85,6 +114,8 @@ afterAll(() => jest.useRealTimers());
 beforeEach(() => {
   jest.clearAllMocks();
   mockLabels = {};
+  mockCovers = {};
+  mockCalendarRows = [];
   mockUpcoming = { ...idle, available: true, statuses: [ok()] };
 });
 
@@ -284,5 +315,90 @@ describe('UpcomingContent', () => {
     expect(screen.getByText('Nothing coming up')).toBeTruthy();
     expect(screen.getByTestId('upcoming-stale')).toBeTruthy();
     expect(screen.getByTestId('upcoming-pending-some')).toBeTruthy();
+  });
+});
+
+describe('the cover swap (Track U3)', () => {
+  const covered = sourcedUpcoming({
+    id: 'c1',
+    kind: 'preorder',
+    release_date: '2026-11-12',
+    work: {
+      id: 'c1',
+      title: 'Covered',
+      authors: [],
+      cover_url: 'https://meta.example/c1.jpg',
+      web_url: 'https://meta/c1',
+    },
+  });
+  // Hidden from assistive tech (the ghost under it carries the name): look past that.
+  const image = () => screen.queryByTestId('upcoming-cover-image', { includeHiddenElements: true });
+
+  it("draws the work's cover from its own server over the ghost when the server serves it", async () => {
+    mockCovers = { a: true };
+    mockUpcoming.items = [covered];
+    await render(<UpcomingContent />);
+    const src = image()!.props.source;
+    expect(src.uri).toMatch(
+      /^https:\/\/a\/api\/v1\/me\/upcoming\/cover\?work=c1&size=\d+&token=t$/,
+    );
+    expect(src.headers).toEqual({ Authorization: 'Bearer t' });
+    // The ghost stays underneath (it shows while the image loads).
+    expect(screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('asks the server the item came from, not another', async () => {
+    mockCovers = { a: false, b: true };
+    mockUpcoming.items = [{ ...covered, connectionId: 'b', connectionName: 'b' }];
+    await render(<UpcomingContent />);
+    expect(image()!.props.source.uri).toMatch(/^https:\/\/b\//);
+  });
+
+  it('keeps the ghost without the flag, while it is unknown, or without a cover_url', async () => {
+    mockUpcoming.items = [covered];
+    mockCovers = { a: false };
+    await render(<UpcomingContent />);
+    expect(image()).toBeNull();
+    mockCovers = {};
+    await render(<UpcomingContent />);
+    expect(image()).toBeNull();
+    mockCovers = { a: true };
+    mockUpcoming.items = [missing];
+    await render(<UpcomingContent />);
+    expect(image()).toBeNull();
+    expect(screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('falls back to the ghost when the cover fails to load', async () => {
+    mockCovers = { a: true };
+    mockUpcoming.items = [covered];
+    await render(<UpcomingContent />);
+    await fireEvent(image()!, 'error');
+    expect(image()).toBeNull();
+    expect(screen.getByTestId('ghost-cover-mark', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('swaps on the rail too', async () => {
+    mockCovers = { a: true };
+    mockUpcoming.items = [covered];
+    await render(<UpcomingRail />);
+    await settleFlashList();
+    expect(image()!.props.source.uri).toContain('/me/upcoming/cover?work=c1');
+  });
+});
+
+describe('the calendar card on the page', () => {
+  it('shows under the list where a server offers it', async () => {
+    mockCalendarRows = [{ id: 'a', demo: false }];
+    mockUpcoming.items = [missing];
+    await render(<UpcomingContent />);
+    expect(screen.getByTestId('upcoming-calendar')).toBeTruthy();
+  });
+
+  it('is not there where Upcoming is not available (a kid, no server)', async () => {
+    mockCalendarRows = [{ id: 'a', demo: false }];
+    mockUpcoming = { ...idle, available: false };
+    await render(<UpcomingContent />);
+    expect(screen.queryByTestId('upcoming-calendar')).toBeNull();
   });
 });

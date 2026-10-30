@@ -11,6 +11,7 @@ import { Text } from '@/components/ui/text';
 import { joinList } from '@/lib/names';
 import { isNewUpcoming, upcomingSectionOf } from '@/lib/upcoming';
 
+import { UpcomingCalendarCard } from './upcoming-calendar';
 import { UpcomingRow } from './upcoming-parts';
 
 /** The screen's sections, in order (`upcomingSectionOf` places each item). */
@@ -47,8 +48,9 @@ function UpcomingSkeleton() {
  * server offers it (or the listener is a kid there), a quiet "not available" in place of a
  * list that would ask nothing. A server that didn't answer beside
  * others, a stale one, or one still on its first check beside others, is a note over the
- * list (or over "nothing coming up"). `embedded`: under the hub's own large title (phone), so
- * no heading.
+ * list (or over "nothing coming up"). Under the list, "Add to your calendar"
+ * (`UpcomingCalendarCard`, Track U3) where a server offers the calendar. `embedded`: under
+ * the hub's own large title (phone), so no heading.
  */
 export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
@@ -158,6 +160,7 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
         </Text>
       )}
       {body}
+      {available ? <UpcomingCalendarCard /> : null}
     </View>
   );
 }

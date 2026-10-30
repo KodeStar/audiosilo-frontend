@@ -3085,6 +3085,31 @@
       "hint_other": "{{server}} non hanno risposto. Non si perde nulla: riprova tra un momento.",
       "partial_one": "{{server}} non ha risposto, quindi in questo elenco potrebbero mancare delle uscite.",
       "partial_other": "{{server}} non hanno risposto, quindi in questo elenco potrebbero mancare delle uscite."
+    },
+    "calendar": {
+      "title": "Aggiungi al calendario",
+      "body": "Iscrivi la tua app di calendario alle prossime uscite delle tue serie. Ognuna appare come evento di un giorno intero nel giorno di uscita.",
+      "get": "Ottieni link del calendario",
+      "subscribe": "Iscriviti",
+      "copy": "Copia link",
+      "reset": "Reimposta link",
+      "turnOff": "Disattiva",
+      "private": "Tieni privato questo link: chiunque lo abbia può vedere le tue prossime uscite.",
+      "publicNote": "I servizi di calendario che leggono dal cloud, come Google Calendar, richiedono l'indirizzo HTTPS pubblico del tuo server.",
+      "elsewhere": "Un link è attivo. Reimpostalo per vederlo qui.",
+      "demo": "Gli account demo non possono iscriversi a un calendario.",
+      "kid": "Gli account per bambini non possono iscriversi a un calendario.",
+      "loadError": "Impossibile verificare il tuo link del calendario su {{server}}. Non è cambiato nulla.",
+      "refused": "{{server}} ha rifiutato. Il tuo link del calendario è rimasto com'era.",
+      "failed": "Impossibile raggiungere {{server}}. Il tuo link del calendario è rimasto com'era: riprova tra un momento.",
+      "resetConfirm": {
+        "title": "Reimpostare il link del calendario?",
+        "message": "Il vecchio link smette di funzionare: un calendario iscritto non si aggiorna più finché non ti iscrivi con quello nuovo."
+      },
+      "offConfirm": {
+        "title": "Disattivare il link del calendario?",
+        "message": "Il link smette di funzionare: un calendario iscritto non si aggiorna più."
+      }
     }
   }
 }

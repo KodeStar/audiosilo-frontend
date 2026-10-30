@@ -3085,6 +3085,31 @@
       "hint_other": "{{server}} haben nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
       "partial_one": "{{server}} hat nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen.",
       "partial_other": "{{server}} haben nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen."
+    },
+    "calendar": {
+      "title": "Zum Kalender hinzufügen",
+      "body": "Abonniere in deiner Kalender-App die anstehenden Erscheinungen deiner Reihen. Jede erscheint als ganztägiger Termin am Erscheinungstag.",
+      "get": "Kalenderlink erstellen",
+      "subscribe": "Abonnieren",
+      "copy": "Link kopieren",
+      "reset": "Link zurücksetzen",
+      "turnOff": "Ausschalten",
+      "private": "Halte diesen Link privat: Wer ihn hat, sieht deine anstehenden Erscheinungen.",
+      "publicNote": "Kalenderdienste, die aus der Cloud abrufen, wie Google Kalender, brauchen die öffentliche HTTPS-Adresse deines Servers.",
+      "elsewhere": "Ein Link ist aktiv. Setze ihn zurück, um ihn hier zu sehen.",
+      "demo": "Demo-Konten können keinen Kalender abonnieren.",
+      "kid": "Kinderkonten können keinen Kalender abonnieren.",
+      "loadError": "Dein Kalenderlink auf {{server}} konnte nicht geprüft werden. Nichts wurde geändert.",
+      "refused": "{{server}} hat das abgelehnt. Dein Kalenderlink ist unverändert.",
+      "failed": "{{server}} war nicht erreichbar. Dein Kalenderlink ist unverändert: Versuche es gleich noch einmal.",
+      "resetConfirm": {
+        "title": "Kalenderlink zurücksetzen?",
+        "message": "Der alte Link funktioniert nicht mehr: Ein damit abonnierter Kalender wird erst wieder aktualisiert, wenn du den neuen abonnierst."
+      },
+      "offConfirm": {
+        "title": "Kalenderlink ausschalten?",
+        "message": "Der Link funktioniert nicht mehr: Ein damit abonnierter Kalender wird nicht mehr aktualisiert."
+      }
     }
   }
 }

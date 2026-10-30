@@ -3085,6 +3085,31 @@
       "hint_other": "{{server}} não responderam. Nada se perde: tenta outra vez daqui a pouco.",
       "partial_one": "{{server}} não respondeu, por isso podem faltar lançamentos nesta lista.",
       "partial_other": "{{server}} não responderam, por isso podem faltar lançamentos nesta lista."
+    },
+    "calendar": {
+      "title": "Adicionar ao calendário",
+      "body": "Assine na sua app de calendário os próximos lançamentos das suas séries. Cada um aparece como um evento de dia inteiro na data de lançamento.",
+      "get": "Obter link do calendário",
+      "subscribe": "Assinar",
+      "copy": "Copiar link",
+      "reset": "Redefinir link",
+      "turnOff": "Desativar",
+      "private": "Mantenha este link privado: quem o tiver pode ver os seus próximos lançamentos.",
+      "publicNote": "Serviços de calendário que buscam a partir da nuvem, como o Google Agenda, precisam do endereço HTTPS público do seu servidor.",
+      "elsewhere": "Há um link ativo. Redefina-o para vê-lo aqui.",
+      "demo": "Contas de demonstração não podem assinar um calendário.",
+      "kid": "Contas infantis não podem assinar um calendário.",
+      "loadError": "Não foi possível verificar o seu link do calendário em {{server}}. Nada mudou.",
+      "refused": "{{server}} recusou. O seu link do calendário continua como estava.",
+      "failed": "Não foi possível contactar {{server}}. O seu link do calendário continua como estava: tente novamente daqui a pouco.",
+      "resetConfirm": {
+        "title": "Redefinir o link do calendário?",
+        "message": "O link antigo deixa de funcionar: um calendário assinado com ele deixa de se atualizar até assinar o novo."
+      },
+      "offConfirm": {
+        "title": "Desativar o link do calendário?",
+        "message": "O link deixa de funcionar: um calendário assinado com ele deixa de se atualizar."
+      }
     }
   }
 }

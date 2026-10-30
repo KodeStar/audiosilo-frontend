@@ -3085,6 +3085,31 @@
       "hint_other": "{{server}} no respondieron. No se pierde nada: inténtalo de nuevo en un momento.",
       "partial_one": "{{server}} no respondió, así que a esta lista pueden faltarle lanzamientos.",
       "partial_other": "{{server}} no respondieron, así que a esta lista pueden faltarle lanzamientos."
+    },
+    "calendar": {
+      "title": "Añadir al calendario",
+      "body": "Suscribe tu app de calendario a los próximos lanzamientos de tus series. Cada uno aparece como un evento de todo el día en su fecha de salida.",
+      "get": "Obtener enlace de calendario",
+      "subscribe": "Suscribirse",
+      "copy": "Copiar enlace",
+      "reset": "Restablecer enlace",
+      "turnOff": "Desactivar",
+      "private": "Mantén este enlace en privado: quien lo tenga puede ver tus próximos lanzamientos.",
+      "publicNote": "Los servicios de calendario que consultan desde la nube, como Google Calendar, necesitan la dirección HTTPS pública de tu servidor.",
+      "elsewhere": "Hay un enlace activo. Restablécelo para verlo aquí.",
+      "demo": "Las cuentas de demostración no pueden suscribirse a un calendario.",
+      "kid": "Las cuentas infantiles no pueden suscribirse a un calendario.",
+      "loadError": "No se pudo comprobar tu enlace de calendario en {{server}}. No ha cambiado nada.",
+      "refused": "{{server}} lo ha rechazado. Tu enlace de calendario sigue igual.",
+      "failed": "No se pudo conectar con {{server}}. Tu enlace de calendario sigue igual: inténtalo de nuevo en un momento.",
+      "resetConfirm": {
+        "title": "¿Restablecer el enlace de calendario?",
+        "message": "El enlace anterior deja de funcionar: un calendario suscrito a él deja de actualizarse hasta que te suscribas con el nuevo."
+      },
+      "offConfirm": {
+        "title": "¿Desactivar el enlace de calendario?",
+        "message": "El enlace deja de funcionar: un calendario suscrito a él deja de actualizarse."
+      }
     }
   }
 }

@@ -1159,10 +1159,39 @@ and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces
 (`src/components/upcoming/`): Home's rail, the `/upcoming` page (`upcomingHref`) and the You
-hub's Upcoming section (below). Every item is a `GhostCover`, never the work's `cover_url`: the
-server can't serve it (`meta_covers` proxies only covers a book's own `/meta` hands out) and the
-web player's CSP refuses another host. A tap opens `seriesHref(connectionId, local.library_id,
+hub's Upcoming section (below). Every item is `UpcomingCover` (`upcoming-cover.tsx`, Track U3): a
+`GhostCover` with the work's real cover drawn over it only when the item's OWN connection (the one
+whose row won the merge) advertises `upcoming_covers === true` (never while unknown) and the item
+has a `cover_url`; the image is `client.upcomingCoverUrl(work.id, { size })` ->
+`GET /me/upcoming/cover?work=&size=` with the media token (the server serves only a cover the
+caller's own list hands out right now; anything else is a 404), never the `cover_url` itself (the
+device never contacts the cover's host, and the web player's CSP refuses another host). The ghost
+stays underneath, so it shows while the image loads, and alone without the flag or once the image
+fails (`failed` is keyed by URI). A tap opens `seriesHref(connectionId, local.library_id,
 { name: local.series, work: work.id })`. Kids see none of it (no request, rail, section or list).
+
+**The upcoming calendar (Track U3; CROSS-REPO §8).** Flag `upcoming_calendar` (true exactly when
+`upcoming` is). `client.upcomingCalendar()` -> `GET /me/upcoming/calendar`
+(`UpcomingCalendarStatus {active, created_at?}`: the link itself is never returned again),
+`mintUpcomingCalendar()` -> `POST` (201 `UpcomingCalendarLink {path, created_at}`; revokes the
+previous link; session only, 403 `kid_account` / `demo_account`), `deleteUpcomingCalendar()` ->
+`DELETE` (204). `path` is server-relative: `calendarFeedUrl` (`src/lib/upcoming-calendar.ts`) puts
+it on the server's away address when it has one, else the address in use (a calendar app may fetch
+from anywhere). **The full URL is a credential**: this device keeps its copy per connection in the
+secure store (`calendarLinkKey`, `{url, created_at}` JSON; the keychain/keystore, localStorage on
+the web, like the session token), never AsyncStorage or the startup cache (its query,
+`qk.upcomingCalendarLink`, reads the secure store and is not a startup query). It is forgotten with
+the connection (`removeConnection`, a retired stale identity and the auth reset, in
+`src/stores/session.ts`: so it goes on sign-out even if Upcoming never mounted), on Turn off, and
+replaced on Reset (the mutation stores it before it resolves; a failed storage write still shows it
+for the session). The card (`UpcomingCalendarCard`, under the Upcoming page's list while
+`available`) has one row per connection from `calendarConnections` (flag on, not a kid: a kid is
+never asked; a demo account's row explains and asks nothing) in states from `calendarRowState`:
+loading, error (Retry), none ("Get calendar link"), shown (the URL, Copy everywhere, Subscribe as
+`webcal://` only where `canSubscribeWebcal`: the iOS app and a browser on an Apple device; Reset and
+Turn off, each confirmed), elsewhere (active, no copy here: "Reset it to see it here"). A copy whose
+`created_at` is not the server's, or of an inactive link, is stale and forgotten, but never while the
+row's own mint or delete is pending (status and copy are set one after the other).
 
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived

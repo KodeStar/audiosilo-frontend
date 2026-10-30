@@ -2,7 +2,6 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { GhostCover } from '@/components/library/ghost-cover';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Badge } from '@/components/ui/badge';
 import { Text } from '@/components/ui/text';
@@ -12,6 +11,8 @@ import { useOpen } from '@/lib/open';
 import { railPositionLabel } from '@/lib/series-position';
 import type { SourcedUpcomingItem } from '@/lib/upcoming';
 import { cn } from '@/lib/utils';
+
+import { UpcomingCover } from './upcoming-cover';
 
 /**
  * An upcoming item's date line by its kind: a preorder "Out 12 Nov 2026", a release
@@ -79,9 +80,9 @@ function useItemText({ item, isNew, server }: ItemProps) {
 }
 
 /**
- * The Home rail's tile: a ghost cover (never fake art: the book is on none of the
- * listener's servers; the web player can't load a community cover the server doesn't
- * serve), the title, the series and number, the date line, and the server when several are
+ * The Home rail's tile: the work's community cover when its server serves it, else a ghost
+ * cover (`UpcomingCover`: never fake art, the book is on none of the listener's servers),
+ * the title, the series and number, the date line, and the server when several are
  * connected. Opens the series page.
  */
 export function UpcomingTile({ width, ...props }: ItemProps & { width: number }) {
@@ -98,11 +99,7 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
       testID="upcoming-tile"
     >
       <View>
-        <GhostCover
-          title={item.work.title}
-          position={railPositionLabel(item.series.position)}
-          width={width}
-        />
+        <UpcomingCover item={item} width={width} />
         {isNew ? <NewBadge className="absolute left-[7px] top-[7px]" /> : null}
       </View>
       <View className="gap-0.5">
@@ -127,7 +124,7 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
   );
 }
 
-/** The Upcoming screen's row (an item of its section's list): the ghost thumbnail, title,
+/** The Upcoming screen's row (an item of its section's list): the cover thumbnail, title,
  * series and number, the date line, the "New" badge and the server. Opens the series page. */
 export function UpcomingRow({ first, ...props }: ItemProps & { first?: boolean }) {
   const open = useOpenItem();
@@ -144,11 +141,7 @@ export function UpcomingRow({ first, ...props }: ItemProps & { first?: boolean }
         className="flex-row items-center gap-3 py-3"
         testID="upcoming-row"
       >
-        <GhostCover
-          title={item.work.title}
-          position={railPositionLabel(item.series.position)}
-          width={phone ? 56 : 72}
-        />
+        <UpcomingCover item={item} width={phone ? 56 : 72} />
         <View className="min-w-0 flex-1 gap-0.5">
           <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
             <Text variant="label" className="shrink text-[15px]" numberOfLines={2}>
