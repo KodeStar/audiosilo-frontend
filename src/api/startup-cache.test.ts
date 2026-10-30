@@ -327,6 +327,18 @@ describe('progress-row books', () => {
     expect(keptBooks().data[0]).not.toHaveProperty('files');
   });
 
+  it('keeps no book Home would not show: unfinished and never started', () => {
+    const qc = newClient();
+    qc.setQueryData(
+      ['progress', 'all', C],
+      [row('a/1', '2026-10-01'), { ...row('a/0', '2026-10-02'), position: 0 }],
+    );
+    qc.setQueryData(['item', C, 1, 'a/1'], item('a/1', 'Leviathan Wakes'));
+    qc.setQueryData(['item', C, 1, 'a/0'], item('a/0', 'Not started'));
+    save(qc);
+    expect(keptBooks().data).toEqual([expect.objectContaining({ title: 'Leviathan Wakes' })]);
+  });
+
   it('restores them for the next visit, which keeps them while its /item is unasked', () => {
     const first = newClient();
     first.setQueryData(['progress', 'all', C], [row('a/2', '2026-10-03')]);

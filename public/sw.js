@@ -45,20 +45,18 @@ const BUILD_ASSETS = '/_expo/static/';
 const NETWORK_ONLY_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
 /** Registers the network-only routes; a browser without `addRoutes` (or one refusing a rule)
- * keeps the fetch handler's pass-through, so this never fails the install. */
-function addNetworkRoutes(event) {
-  if (typeof event.addRoutes !== 'function') return Promise.resolve();
+ * keeps the fetch handler's pass-through, so this never fails the install. Async, yet the
+ * call itself runs before the first await, so while the install event is dispatched. */
+async function addNetworkRoutes(event) {
   try {
-    return Promise.resolve(
-      event.addRoutes(
-        NETWORK_ONLY_METHODS.map((requestMethod) => ({
-          condition: { requestMethod },
-          source: 'network',
-        })),
-      ),
-    ).catch(() => {});
+    await event.addRoutes?.(
+      NETWORK_ONLY_METHODS.map((requestMethod) => ({
+        condition: { requestMethod },
+        source: 'network',
+      })),
+    );
   } catch {
-    return Promise.resolve();
+    // Unsupported or refused: the fetch handler still passes these requests through.
   }
 }
 

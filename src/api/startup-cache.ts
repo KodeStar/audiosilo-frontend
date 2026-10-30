@@ -1,6 +1,7 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
+import { isInProgress } from '@/lib/progress-view';
 import { isRecord, STARTUP_CACHE_KEY } from '@/lib/storage-keys';
 import { APP_VERSION } from '@/lib/version';
 
@@ -56,7 +57,7 @@ function storage(): Storage | null {
  * `listedBook` while a row's own `/item` can't answer. */
 export const PROGRESS_BOOKS = 'progressBooks';
 /** The most books kept per connection (the newest saves first): those in progress, and
- * the finished ones Home's Recently finished shows. */
+ * the finished ones Home's Recently finished shows (its `SHELF_LIMIT`, home-screen.tsx). */
 const IN_PROGRESS_MAX = 40;
 const FINISHED_MAX = 15;
 /** The fields a progress row draws from its book (title, cover, Home's Now card). */
@@ -126,13 +127,9 @@ export function snapshot(
     if (q.state.data === undefined) continue;
     if (!isStartupQuery(q.queryKey) || !keep(q.queryKey)) continue;
     if (q.queryKey[0] === PROGRESS_BOOKS) continue; // rebuilt below
-    const [head, all, cid] = q.queryKey;
-    if (
-      head === 'progress' &&
-      all === 'all' &&
-      typeof cid === 'string' &&
-      Array.isArray(q.state.data)
-    )
+    // `isStartupQuery` kept only `['progress', 'all', cid]` of the progress queries.
+    const cid = q.queryKey[2];
+    if (q.queryKey[0] === 'progress' && typeof cid === 'string' && Array.isArray(q.state.data))
       progressLists.push({ cid, rows: q.state.data });
     const { data, dataUpdatedAt: updatedAt } = q.state;
     const key = [...q.queryKey];
@@ -149,6 +146,8 @@ export function snapshot(
   return out;
 }
 
+const bookKey = (lib: unknown, path: unknown) => `${lib}:${path}`;
+
 /** The books of `cid`'s progress rows (newest save first: at most `IN_PROGRESS_MAX`
  * unfinished and `FINISHED_MAX` finished), each as its `/item` in the cache names it, else
  * as the last kept copy did; just the fields a row draws. */
@@ -156,7 +155,7 @@ function progressBooks(client: QueryClient, cid: string, rows: unknown[]): unkno
   const kept = new Map<string, Record<string, unknown>>();
   const before = client.getQueryData([PROGRESS_BOOKS, cid]);
   if (Array.isArray(before))
-    for (const b of before) if (isRecord(b)) kept.set(`${b.library_id}:${b.rel_path}`, b);
+    for (const b of before) if (isRecord(b)) kept.set(bookKey(b.library_id, b.rel_path), b);
   const newest = rows
     .filter(
       (r): r is Record<string, unknown> =>
@@ -164,14 +163,17 @@ function progressBooks(client: QueryClient, cid: string, rows: unknown[]): unkno
     )
     .sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
   const progress = [
-    ...newest.filter((r) => r.finished !== true).slice(0, IN_PROGRESS_MAX),
+    // Home's own rule (`splitProgress`): started and not finished.
+    ...newest
+      .filter((r) => isInProgress({ finished: r.finished === true, position: Number(r.position) }))
+      .slice(0, IN_PROGRESS_MAX),
     ...newest.filter((r) => r.finished === true).slice(0, FINISHED_MAX),
   ];
   const out: unknown[] = [];
   for (const r of progress) {
     const item = client.getQueryData(['item', cid, r.library_id, r.path]);
-    const book = isRecord(item) && item.title ? item : kept.get(`${r.library_id}:${r.path}`);
-    if (!book || !book.title) continue;
+    const book = isRecord(item) && item.title ? item : kept.get(bookKey(r.library_id, r.path));
+    if (!book) continue; // kept copies are titled: only titled books are written
     out.push(
       Object.fromEntries(BOOK_FIELDS.filter((f) => book[f] !== undefined).map((f) => [f, book[f]])),
     );
