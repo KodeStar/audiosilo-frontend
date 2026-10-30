@@ -1155,7 +1155,7 @@ Retry when no server answered and a note when some did, never "Nothing coming up
 `statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
 empty state). A note naming servers joins them with `joinList` ("Home and Maya", `common.and`)
 and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
-`formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "12 Nov 2026", read in UTC; any
+`formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "Nov 12, 2026" (the UI language's own order: `getLocale()` is the bare language, so English reads month first), read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces
 (`src/components/upcoming/`): Home's rail, the `/upcoming` page (`upcomingHref`) and the You

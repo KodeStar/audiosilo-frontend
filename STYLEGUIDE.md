@@ -609,7 +609,7 @@ library is ready."**: spines drop onto a plank one by one, with the counts and w
   ahead) and auto-played; missing ones are ghosts with "Want to listen"; ones on a friend's server open there.
 - **Coming up in your series** (Track U2): preorders, new releases and missing volumes in the series the listener
   holds, merged across servers, each a ghost cover (never the work's art) with "Book 6", its series line and one
-  date line at the metadata's own precision ("Out 12 Nov 2026", "Released Oct 2026", "First released 2014"), a
+  date line at the metadata's own precision ("Out Nov 12, 2026", "Released Oct 2026", "First released 2014"; the UI language sets the order), a
   brand "New" badge for a week after the server first listed it, and the server's name when several are
   connected. On Home it is a rail after Next in your series that is absent (no skeleton) until it has items; the
   full list (`/upcoming`, the You hub's Upcoming) is three sections: Coming soon, Just released, Missing from your
