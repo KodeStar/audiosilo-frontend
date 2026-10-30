@@ -65,17 +65,17 @@ type ItemProps = {
   server?: string;
 };
 
-/** What an item says to a screen reader, in its reading order. */
-function itemLabel({ item, isNew, server }: ItemProps, t: TFunction): string {
-  return [
-    item.work.title,
-    upcomingSeriesLine(item, t),
-    upcomingDateLabel(item, t),
-    isNew ? t('upcoming.new') : '',
-    server ? t('upcoming.fromServer', { server }) : '',
-  ]
+/** An item's lines, worked out once per render: the series line, the date line, the
+ * server line (when several are connected), and what it says to a screen reader. */
+function useItemText({ item, isNew, server }: ItemProps) {
+  const { t } = useTranslation();
+  const seriesLine = upcomingSeriesLine(item, t);
+  const date = upcomingDateLabel(item, t);
+  const from = server ? t('upcoming.fromServer', { server }) : '';
+  const label = [item.work.title, seriesLine, date, isNew ? t('upcoming.new') : '', from]
     .filter(Boolean)
     .join(', ');
+  return { seriesLine, date, from, label };
 }
 
 /**
@@ -85,15 +85,14 @@ function itemLabel({ item, isNew, server }: ItemProps, t: TFunction): string {
  * connected. Opens the series page.
  */
 export function UpcomingTile({ width, ...props }: ItemProps & { width: number }) {
-  const { t } = useTranslation();
   const open = useOpenItem();
-  const { item, isNew, server } = props;
-  const date = upcomingDateLabel(item, t);
+  const { item, isNew } = props;
+  const { seriesLine, date, from, label } = useItemText(props);
   return (
     <AnimatedPressable
       onPress={() => open(item)}
       accessibilityRole="button"
-      accessibilityLabel={itemLabel(props, t)}
+      accessibilityLabel={label}
       style={{ width }}
       className="gap-2.5 rounded-cover"
       testID="upcoming-tile"
@@ -111,16 +110,16 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
           {item.work.title}
         </Text>
         <Text variant="caption" numberOfLines={1}>
-          {upcomingSeriesLine(item, t)}
+          {seriesLine}
         </Text>
         {date ? (
           <Text variant="caption" numberOfLines={1}>
             {date}
           </Text>
         ) : null}
-        {server ? (
+        {from ? (
           <Text variant="caption" numberOfLines={1}>
-            {t('upcoming.fromServer', { server })}
+            {from}
           </Text>
         ) : null}
       </View>
@@ -130,20 +129,17 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
 
 /** The Upcoming screen's row: the ghost thumbnail, title, series and number, the date line,
  * the "New" badge and the server. Opens the series page. */
-export function UpcomingRow(props: ItemProps & { first?: boolean }) {
-  const { t } = useTranslation();
+export function UpcomingRow({ first, ...props }: ItemProps & { first?: boolean }) {
   const open = useOpenItem();
   const phone = useLayout() === 'phone';
-  const { item, isNew, server, first } = props;
-  const date = upcomingDateLabel(item, t);
-  const meta = [date, server ? t('upcoming.fromServer', { server }) : '']
-    .filter(Boolean)
-    .join(' · ');
+  const { item, isNew } = props;
+  const { seriesLine, date, from, label } = useItemText(props);
+  const meta = [date, from].filter(Boolean).join(' · ');
   return (
     <AnimatedPressable
       onPress={() => open(item)}
       accessibilityRole="button"
-      accessibilityLabel={itemLabel(props, t)}
+      accessibilityLabel={label}
       className={cn('flex-row items-center gap-3 py-3', !first && 'border-t border-border')}
       testID="upcoming-row"
     >
@@ -160,7 +156,7 @@ export function UpcomingRow(props: ItemProps & { first?: boolean }) {
           {isNew ? <NewBadge /> : null}
         </View>
         <Text variant="caption" numberOfLines={1}>
-          {upcomingSeriesLine(item, t)}
+          {seriesLine}
         </Text>
         {meta ? (
           <Text variant="caption" numberOfLines={1}>

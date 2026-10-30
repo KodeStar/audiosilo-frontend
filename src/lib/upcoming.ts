@@ -17,15 +17,23 @@ export type UpcomingServerStatus = {
   status: UpcomingStatus | (string & {});
 };
 
-const RELEASE_DATE = /^\d{4}(?:-\d{2}(?:-\d{2})?)?$/;
+const RELEASE_DATE = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/;
 
-/** Whether `value` is a release date the metadata states (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`,
- * a real month and day). */
-function isReleaseDate(value: string | undefined): value is string {
-  if (!value || !RELEASE_DATE.test(value)) return false;
-  const [y, m = '01', d = '01'] = value.split('-');
-  const date = new Date(`${y}-${m}-${d}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, value.length) === value;
+/** A release date the metadata states (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`, a real month and
+ * day), split into its parts with its first day (`start`: "2027" -> "2027-01-01"); null for
+ * anything else ("2026-13", "Nov 2026"). */
+export function parseReleaseDate(
+  value: string | undefined,
+): { year: string; month?: string; day?: string; start: string } | null {
+  const m = value ? RELEASE_DATE.exec(value) : null;
+  if (!value || !m) return null;
+  const [, year, month, day] = m;
+  const start = `${year}-${month ?? '01'}-${day ?? '01'}`;
+  const date = new Date(`${start}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, value.length) !== value) {
+    return null;
+  }
+  return { year, month, day, start };
 }
 
 /**
@@ -35,7 +43,7 @@ function isReleaseDate(value: string | undefined): value is string {
  * today is out. An unreadable or absent date is never ahead.
  */
 export function releaseIsFuture(value: string | undefined, now: Date): boolean {
-  if (!isReleaseDate(value)) return false;
+  if (!value || !parseReleaseDate(value)) return false;
   return value > now.toISOString().slice(0, value.length);
 }
 
@@ -54,16 +62,20 @@ export function isNewUpcoming(item: Pick<UpcomingItem, 'first_seen_at'>, now: Da
 /** A release date as the feed sorts it: its first day ("2027" -> "2027-01-01"), '' when
  * unreadable (the server's `datePrefix`). */
 function datePrefix(value: string | undefined): string {
-  if (!isReleaseDate(value)) return '';
-  const [y, m = '01', d = '01'] = value.split('-');
-  return `${y}-${m}-${d}`;
+  return parseReleaseDate(value)?.start ?? '';
 }
 
-/** The kinds in their order: preorders, releases, then missing volumes (and a kind this
- * player doesn't know, shown with them). */
-function kindRank(kind: string): number {
-  return kind === 'preorder' ? 0 : kind === 'released' ? 1 : 2;
+const SECTION_ORDER = ['preorder', 'released', 'missing'] as const;
+
+/** The section an item belongs to: preorders, releases, then missing volumes (a kind this
+ * player doesn't know is shown with them). */
+export function upcomingSectionOf(
+  item: Pick<UpcomingItem, 'kind'>,
+): (typeof SECTION_ORDER)[number] {
+  return item.kind === 'preorder' ? 'preorder' : item.kind === 'released' ? 'released' : 'missing';
 }
+
+const kindRank = (item: UpcomingItem) => SECTION_ORDER.indexOf(upcomingSectionOf(item));
 
 const cmp = (a: string | number, b: string | number) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -71,7 +83,7 @@ const cmp = (a: string | number, b: string | number) => (a < b ? -1 : a > b ? 1 
  * missing volumes by series name and position (numeric: "2.5" before "10"); the work id
  * breaks ties (the server's `compareItems`). */
 export function compareUpcoming(a: UpcomingItem, b: UpcomingItem): number {
-  const rank = cmp(kindRank(a.kind), kindRank(b.kind));
+  const rank = cmp(kindRank(a), kindRank(b));
   if (rank !== 0) return rank;
   if (a.kind === 'preorder') {
     return cmp(datePrefix(a.release_date), datePrefix(b.release_date)) || cmp(a.work.id, b.work.id);

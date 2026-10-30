@@ -6,7 +6,6 @@ import {
   currentEntry,
   defaultSelection,
   type ElsewhereBook,
-  ghostOutDate,
   inSeries,
   localEntries,
   localGaps,
@@ -206,23 +205,17 @@ describe('railEntries', () => {
       ],
     };
     const entries = railEntries(dated, [lw], { ...src, now });
-    expect(entries.map((e) => [e.kind, e.releaseDate, e.year])).toEqual([
+    expect(entries.map((e) => [e.kind, e.outDate, e.year])).toEqual([
       ['owned', undefined, undefined],
       ['ghost', '2026-11-12', undefined],
-      ['ghost', '2014-06', '2014'],
+      ['ghost', undefined, '2014'],
       // A bare year is out once that year has come.
-      ['ghost', '2026', '2026'],
+      ['ghost', undefined, '2026'],
       ['ghost', undefined, undefined],
     ]);
-    expect(entries.map((e) => ghostOutDate(e, now))).toEqual([
-      undefined,
-      '2026-11-12',
-      undefined,
-      undefined,
-      undefined,
-    ]);
     // The same ghost, read once its day has come, is out.
-    expect(ghostOutDate(entries[1], new Date('2026-11-12T00:00:00Z'))).toBeUndefined();
+    const onTheDay = railEntries(dated, [lw], { ...src, now: new Date('2026-11-12T00:00:00Z') });
+    expect([onTheDay[1].outDate, onTheDay[1].year]).toEqual([undefined, '2026']);
   });
 
   it('keeps a placed book from another library without its row', () => {

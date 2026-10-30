@@ -7,22 +7,16 @@ import { useServerFlag } from '@/components/library/cover-tile';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { isNewUpcoming, type SourcedUpcomingItem } from '@/lib/upcoming';
+import { isNewUpcoming, upcomingSectionOf } from '@/lib/upcoming';
 
 import { UpcomingRow } from './upcoming-parts';
 
-/** The screen's sections, in order, and the kinds each holds (a kind this player doesn't
- * know reads as missing). */
+/** The screen's sections, in order (`upcomingSectionOf` places each item). */
 const SECTIONS = [
   { key: 'preorder', titleKey: 'upcoming.sections.preorder' },
   { key: 'released', titleKey: 'upcoming.sections.released' },
   { key: 'missing', titleKey: 'upcoming.sections.missing' },
 ] as const;
-
-/** Which section an item belongs to. */
-export function upcomingSectionOf(item: Pick<SourcedUpcomingItem, 'kind'>) {
-  return item.kind === 'preorder' || item.kind === 'released' ? item.kind : 'missing';
-}
 
 /** Rows standing in for the list while the first answers load. */
 function UpcomingSkeleton() {

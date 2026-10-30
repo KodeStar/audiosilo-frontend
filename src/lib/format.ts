@@ -3,6 +3,7 @@ import { t } from 'i18next';
 import { getLocale } from '@/i18n/locale';
 import { parseHhMm } from '@/lib/hhmm';
 import { seriesNumber } from '@/lib/series-position';
+import { parseReleaseDate } from '@/lib/upcoming';
 
 /** "12h 30m" / "45m" / "30s" - compact total-duration label. */
 export function formatDuration(seconds?: number): string {
@@ -265,29 +266,16 @@ export function formatServerDay(day: string, locale: string = getLocale()): stri
  * read as that calendar day (not shifted into the device's zone), like `formatServerDay`.
  * Anything else is returned as it came. */
 export function formatReleaseDate(value: string, locale: string = getLocale()): string {
-  const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(value);
-  if (!m) return value;
-  if (!m[2]) return m[1];
-  const date = new Date(`${m[1]}-${m[2]}-${m[3] ?? '01'}T12:00:00Z`);
   // A month or day out of range ("2026-13") is no date: shown as it came.
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, value.length) !== value) {
-    return value;
-  }
-  return m[3]
-    ? formatDate(
-        date,
-        'utcDayMonthYear',
-        { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
-        locale,
-        () => value,
-      )
-    : formatDate(
-        date,
-        'utcMonthYear',
-        { month: 'short', year: 'numeric', timeZone: 'UTC' },
-        locale,
-        () => value,
-      );
+  const date = parseReleaseDate(value);
+  if (!date?.month) return value;
+  return formatDate(
+    new Date(`${date.start}T12:00:00Z`),
+    date.day ? 'utcDayMonthYear' : 'utcMonthYear',
+    { ...(date.day ? { day: 'numeric' } : {}), month: 'short', year: 'numeric', timeZone: 'UTC' },
+    locale,
+    () => value,
+  );
 }
 
 /** "Sat 3 Oct" for a server `YYYY-MM-DD` day, read as that calendar day (not shifted into

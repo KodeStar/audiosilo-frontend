@@ -2081,9 +2081,10 @@ colours `spine-colors.ts` (the cover's colour, else a cloth colour from the titl
 `src/lib/monogram.ts`). Then the entry list with each entry's one action (`entry-actions.tsx`:
 Resume chapter N, Play, `QueueButton`, Open on <server>, View on AudioSilo Meta), the "Keep ahead
 offline" card (the one `keepAhead` setting, only where the device can download) and the CC0 credit.
-A ghost carries its work's `release_date` (Track U2, `EntryFields.releaseDate`): while that is
-ahead (`ghostOutDate`, `releaseIsFuture`) the list line and the bookcase caption say "Out <date>"
-in place of "Not in your library"; once out, the date's year fills the ghost's `year`.
+A ghost reads its work's `release_date` (Track U2) in the model: while that is ahead
+(`releaseIsFuture`) it carries it as `EntryFields.outDate` and the list line and the bookcase
+caption say "Out <date>" in place of "Not in your library"; once out, the date's year fills the
+ghost's `year`.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books
 only once on screen, the cards on screen together in one request on `series_books`
 (`useSeriesBooks(..., { batch: true })`; the series page asks plainly and reuses the cache); Search reuses

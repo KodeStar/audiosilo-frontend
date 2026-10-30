@@ -113,6 +113,7 @@ import type {
   RatingValue,
   ServerInfo,
   StatsRange,
+  UpcomingResponse,
   UpdateMemberBody,
 } from './types';
 
@@ -3191,16 +3192,24 @@ export function useRecentAll(limit = RECENT_LIMIT) {
 /** How long a connection's upcoming list is fresh: its job runs once a day. */
 export const UPCOMING_STALE_MS = 15 * 60_000;
 
+/** The connections Upcoming may ask and whether there is any (`upcomingEligibility`). */
+function useUpcomingEligibility() {
+  const apis = useApis();
+  const caps = useCapabilitiesAll();
+  return {
+    apis,
+    ...upcomingEligibility(
+      apis.map((a) => a.connection),
+      caps,
+    ),
+  };
+}
+
 /** Whether Upcoming can show anything for the person listening: true once one of their
  * servers advertises `upcoming` for a user who is not a kid, false once none can, undefined
  * while a server's flags are still loading. Asks nothing beyond the shared `/server` reads. */
 export function useUpcomingAvailable(): boolean | undefined {
-  const apis = useApis();
-  const caps = useCapabilitiesAll();
-  return upcomingEligibility(
-    apis.map((a) => a.connection),
-    caps,
-  ).available;
+  return useUpcomingEligibility().available;
 }
 
 /**
@@ -3218,11 +3227,34 @@ export function useUpcomingAll(): {
   isLoading: boolean;
   statuses: UpcomingServerStatus[];
 } {
-  const apis = useApis();
-  const caps = useCapabilitiesAll();
-  const { eligible, available } = upcomingEligibility(
-    apis.map((a) => a.connection),
-    caps,
+  const { apis, eligible, available } = useUpcomingEligibility();
+  // `combine` re-runs whenever its identity changes, so it is keyed on what it reads (each
+  // connection, in order, and whether it is asked): the merge and sort run per answer, not
+  // per render.
+  const sources = JSON.stringify(
+    apis.map(({ connection: c }) => [c.id, c.name, eligible.has(c.id)] as const),
+  );
+  const combine = useCallback(
+    (results: { data?: UpcomingResponse; isLoading: boolean }[]) => {
+      const conns = JSON.parse(sources) as [string, string, boolean][];
+      const answered = conns.flatMap(([connectionId, connectionName, asked], i) => {
+        const data = results[i]?.data;
+        return asked && data
+          ? [{ connectionId, connectionName, items: data.items, status: data.status }]
+          : [];
+      });
+      return {
+        items: mergeUpcoming(answered),
+        available,
+        isLoading: results.some((r) => r.isLoading),
+        statuses: answered.map(({ connectionId, connectionName, status }) => ({
+          connectionId,
+          connectionName,
+          status,
+        })),
+      };
+    },
+    [sources, available],
   );
   return useQueries({
     queries: apis.map(({ connection, client }) => ({
@@ -3232,29 +3264,7 @@ export function useUpcomingAll(): {
         : skipToken,
       staleTime: UPCOMING_STALE_MS,
     })),
-    combine: (results) => {
-      const answered = results.flatMap((r, i) =>
-        r.data && eligible.has(apis[i].connection.id)
-          ? [
-              {
-                connectionId: apis[i].connection.id,
-                connectionName: apis[i].connection.name,
-                data: r.data,
-              },
-            ]
-          : [],
-      );
-      return {
-        items: mergeUpcoming(answered.map((a) => ({ ...a, items: a.data.items }))),
-        available,
-        isLoading: results.some((r) => r.isLoading),
-        statuses: answered.map(({ connectionId, connectionName, data }) => ({
-          connectionId,
-          connectionName,
-          status: data.status,
-        })),
-      };
-    },
+    combine,
   });
 }
 

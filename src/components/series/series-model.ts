@@ -75,9 +75,9 @@ type EntryFields = {
   /** "2012", from the copy's `published`; a ghost's from its first release once that is
    * out (`release_date`). */
   year?: string;
-  /** A ghost's first release as the community metadata states it ("2026-11-12", "2027"):
-   * shown as "Out <date>" while it is ahead (`ghostOutDate`). */
-  releaseDate?: string;
+  /** A ghost's first release as the community metadata states it ("2026-11-12", "2027"),
+   * set only while it is still ahead: shown as "Out <date>". */
+  outDate?: string;
   narrator?: string;
   coverColor?: CoverColor;
   coverVersion?: string;
@@ -304,24 +304,11 @@ function heldByRange(ghost: SeriesEntry, copies: readonly SeriesSpan[]): boolean
 
 const NOTHING = { fraction: 0, started: false, finished: false } as const;
 
-/** A ghost's release fields (Track U2): the date it carries, and its year once it is out
- * (a ghost has no copy to take one from). */
-function ghostRelease(
-  date: string | undefined,
-  now: Date,
-): Pick<EntryFields, 'releaseDate' | 'year'> {
+/** A ghost's release fields (Track U2): the date it is out while that is still ahead, its
+ * year once it is out (a ghost has no copy to take one from). */
+function ghostRelease(date: string | undefined, now: Date): Pick<EntryFields, 'outDate' | 'year'> {
   if (!date) return {};
-  return releaseIsFuture(date, now)
-    ? { releaseDate: date }
-    : { releaseDate: date, year: date.slice(0, 4) };
-}
-
-/** The release date a ghost shows as "Out <date>": its own while still ahead of `now`;
- * none for an entry with a copy, or one already out (its year says that). */
-export function ghostOutDate(entry: SeriesEntry, now: Date): string | undefined {
-  return entry.kind === 'ghost' && releaseIsFuture(entry.releaseDate, now)
-    ? entry.releaseDate
-    : undefined;
+  return releaseIsFuture(date, now) ? { outDate: date } : { year: yearOf(date) };
 }
 
 function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
@@ -366,6 +353,7 @@ export function railEntries(
   );
   const used = new Set<string>();
   const out: SeriesEntry[] = [];
+  const now = src.now ?? new Date();
   for (const w of view.works) {
     let copy: SeriesCopy | undefined;
     let position = railPositionLabel(w.position);
@@ -407,7 +395,7 @@ export function railEntries(
         kind: 'ghost',
         title: w.title,
         ...NOTHING,
-        ...ghostRelease(w.release_date, src.now ?? new Date()),
+        ...ghostRelease(w.release_date, now),
       });
     }
   }

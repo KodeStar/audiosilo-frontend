@@ -1,5 +1,4 @@
 import type { TFunction } from 'i18next';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
@@ -18,12 +17,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { EntryActionButton, EntryBadge } from './entry-actions';
-import {
-  ghostOutDate,
-  type SeriesEntry,
-  type SeriesStats,
-  type TrackSegment,
-} from './series-model';
+import type { SeriesEntry, SeriesStats, TrackSegment } from './series-model';
 import { RIBBON_WIDTH } from './spine';
 
 /** Diagonal hatching for a missing segment or swatch (decorative). */
@@ -112,22 +106,20 @@ function entryFacts(entry: SeriesEntry, t: TFunction): string {
 }
 
 /** "Out 12 Nov 2026" for a ghost whose release is still ahead (Track U2), else ''. */
-function outLabel(entry: SeriesEntry, t: TFunction, now: Date): string {
-  const out = ghostOutDate(entry, now);
-  return out ? t('series.out', { date: formatReleaseDate(out) }) : '';
+function outLabel(entry: SeriesEntry, t: TFunction): string {
+  return entry.outDate ? t('series.out', { date: formatReleaseDate(entry.outDate) }) : '';
 }
 
 /** The words under a face-out book: who reads it, or where it is, or that it is on no
  * server yet (with its release date while that is ahead). */
-function entryNote(entry: SeriesEntry, here: string, t: TFunction, now: Date) {
+function entryNote(entry: SeriesEntry, here: string, t: TFunction) {
   if (entry.kind === 'owned') {
     return entry.narrator ? t('series.readBy', { narrator: entry.narrator }) : '';
   }
   if (entry.kind === 'elsewhere') {
     return t('series.elsewhereNote', { here, server: entry.copy.connectionName });
   }
-  const out = ghostOutDate(entry, now);
-  if (out) return t('series.ghostOutNote', { date: formatReleaseDate(out) });
+  if (entry.outDate) return t('series.ghostOutNote', { date: formatReleaseDate(entry.outDate) });
   return entry.title ? t('series.ghostNote') : t('series.gapNote');
 }
 
@@ -150,8 +142,7 @@ export function ShelfCaption({
 }) {
   const { t } = useTranslation();
   const wide = useLayout() !== 'phone';
-  const [now] = useState(() => new Date());
-  const note = entryNote(entry, here, t, now);
+  const note = entryNote(entry, here, t);
   return (
     <View
       className={cn('gap-3.5 pb-1 pt-4', wide && 'flex-row items-center justify-between gap-6')}
@@ -244,13 +235,13 @@ function numberSize(position: string, phone: boolean): number {
 
 /** "2014 · 6h 17m · 40%": an entry's line in the list ("Out 12 Nov 2026" for a ghost not
  * out yet). */
-function entryLine(entry: SeriesEntry, t: TFunction, now: Date): string {
+function entryLine(entry: SeriesEntry, t: TFunction): string {
   const state = entry.finished
     ? t('covers.finished')
     : entry.kind === 'elsewhere'
       ? t('covers.onServer', { server: entry.copy.connectionName })
       : entry.kind === 'ghost'
-        ? outLabel(entry, t, now) || t('covers.notInLibrary')
+        ? outLabel(entry, t) || t('covers.notInLibrary')
         : entry.fraction > 0
           ? `${percentOf(entry.fraction)}%`
           : '';
@@ -273,14 +264,13 @@ export function EntryList({
   const phone = useLayout() === 'phone';
   const { openBook } = useOpen();
   const cover = phone ? 56 : 72;
-  const [now] = useState(() => new Date());
   return (
     <View>
       {entries.map((e, i) => {
         const current = e.key === currentKey;
         const copy = e.copy;
         const title = e.title ?? t('covers.bookNumber', { position: e.position });
-        const line = entryLine(e, t, now);
+        const line = entryLine(e, t);
         const body = (
           <>
             <Text
