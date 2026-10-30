@@ -174,6 +174,7 @@ describe('readalongChange', () => {
   const kept = (generatedAt?: string) => ({
     ebookUri: 'book.epub',
     readalongGeneratedAt: generatedAt,
+    book: {},
   });
   const ready = (g: string) => ({ readalong: { state: 'ready' as const, generated_at: g } });
 
@@ -185,13 +186,21 @@ describe('readalongChange', () => {
 
   it('drops a kept map once the server has none ready', () => {
     expect(readalongChange({}, kept('g1'))).toBe('drop');
-    expect(
-      readalongChange({ readalong: { state: 'stale', reason: 'ebook_changed' } }, kept('g1')),
-    ).toBe('drop');
+    expect(readalongChange({}, { ...kept('g1'), ebookSha256: SHA })).toBe('drop');
     expect(readalongChange({}, kept())).toBe('keep');
   });
 
+  it("keeps a stale map while it fits the download's own EPUB (fe#193)", () => {
+    const stale = { state: 'stale' as const, reason: 'ebook_changed' as const };
+    const other = { readalong: stale, ebook: { path: 'A/B.epub', size: 9 } };
+    // Its sha known: every map it kept was checked against it.
+    expect(readalongChange(other, { ...kept('g1'), ebookSha256: SHA })).toBe('keep');
+    // No sha: while the server's ebook keeps the size the download saved.
+    expect(readalongChange({ readalong: stale }, kept('g1'))).toBe('keep');
+    expect(readalongChange(other, kept('g1'))).toBe('drop');
+  });
+
   it('does nothing without the EPUB on the device', () => {
-    expect(readalongChange(ready('g2'), { readalongGeneratedAt: 'g1' })).toBe('keep');
+    expect(readalongChange(ready('g2'), { readalongGeneratedAt: 'g1', book: {} })).toBe('keep');
   });
 });

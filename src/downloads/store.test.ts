@@ -91,13 +91,11 @@ const keptMap = (generatedAt: string, ebookSha256 = 'sha-1', bytes = 300): KeptR
   bytes,
 });
 const mockRemoveReadalong = jest.fn(async (_ref: unknown) => {});
-/** The map a download's folder holds, as `readReadalongFile` reads it (none by default). */
-const mockReadKeptFile = jest.fn(async (_ref: unknown): Promise<object | null> => null);
 jest.mock('@/downloads/readalong-file', () => ({
   ...jest.requireActual('@/downloads/readalong-file'),
   fetchReadalongFile: (...a: unknown[]) => mockFetchReadalong(...a),
   removeReadalongFile: (ref: unknown) => mockRemoveReadalong(ref),
-  readReadalongFile: (ref: unknown) => mockReadKeptFile(ref),
+  readReadalongFile: jest.fn(async () => null),
 }));
 
 // The launch's restore waits for the JS thread to be idle: here, the next turn.
@@ -1386,7 +1384,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         totalBytes: 1300,
         manifest: { ebookSha256: 'sha-1', readalongBytes: 300 },
       });
-      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
+      answer(makeBook());
       await settle();
       expect(entry()).toMatchObject({ bytes: 1000, totalBytes: 1000 });
       expect(entry()?.manifest).toMatchObject({ ebookSha256: 'sha-1' });
@@ -1404,12 +1402,15 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
 
     it("keeps a map the server calls stale while it fits the download's own EPUB (fe#193)", async () => {
-      // Its sha: the copy is read and checked against the ebook the download holds.
+      // Its sha known: every map it kept was checked against it, whatever the server's ebook.
       const e = kept('g1', { manifest: { ebookSha256: 'sha-1' } });
-      mockReadKeptFile.mockResolvedValueOnce({ ebook: { file: 'a.epub', sha256: 'sha-1' } });
-      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
+      answer(
+        makeBook({
+          ebook: { path: 'A/Book/Book.epub', size: 2000 },
+          readalong: { state: 'stale', reason: 'ebook_changed' },
+        }),
+      );
       await settle();
-      expect(mockReadKeptFile).toHaveBeenCalledWith(REF);
       expect(mockRemoveReadalong).not.toHaveBeenCalled();
       expect(entry()).toBe(e);
       // No sha known: while the server's ebook keeps the size the download saved.
@@ -1420,13 +1421,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
       expect(entry()).toBe(sized);
     });
 
-    it('drops a stale map that no longer fits the EPUB, and one the server has no more', async () => {
-      // Its copy names another ebook than the download's.
-      kept('g1', { manifest: { ebookSha256: 'sha-1' } });
-      mockReadKeptFile.mockResolvedValueOnce({ ebook: { file: 'a.epub', sha256: 'sha-2' } });
-      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
-      await settle();
-      expect(mockRemoveReadalong).toHaveBeenCalledTimes(1);
+    it('drops a stale map that may not fit the EPUB, and one the server has no more', async () => {
       // No sha known, and the server's ebook changed size.
       kept('g1');
       answer(
@@ -1436,18 +1431,23 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         }),
       );
       await settle();
-      expect(mockRemoveReadalong).toHaveBeenCalledTimes(2);
-      // No map on the server at all.
-      kept('g1');
+      expect(mockRemoveReadalong).toHaveBeenCalledTimes(1);
+      // No map on the server at all, sha known or not.
+      kept('g1', { manifest: { ebookSha256: 'sha-1' } });
       answer(makeBook());
       await settle();
-      expect(mockRemoveReadalong).toHaveBeenCalledTimes(3);
+      expect(mockRemoveReadalong).toHaveBeenCalledTimes(2);
       expect(entry()?.manifest.readalongGeneratedAt).toBeUndefined();
     });
 
     it('names what the server said once it dropped the map', async () => {
-      kept('g1', { manifest: { ebookSha256: 'sha-1' } });
-      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
+      kept('g1');
+      answer(
+        makeBook({
+          ebook: { path: 'A/Book/Book.epub', size: 2000 },
+          readalong: { state: 'stale', reason: 'ebook_changed' },
+        }),
+      );
       await settle();
       expect(mockRemoveReadalong).toHaveBeenCalledWith(REF);
       expect(entry()?.manifest.readalongGeneratedAt).toBeUndefined();

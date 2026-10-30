@@ -43,8 +43,8 @@ import {
 } from './offline-meta';
 import {
   fetchReadalongFile,
-  fitsEbook,
   type KeptReadalong,
+  knowsEbook,
   readalongChange,
   readReadalongFile,
   removeReadalongFile,
@@ -639,8 +639,9 @@ const readalongTried = new Set<string>();
  * Keep downloaded books' read-along maps in step with the server (Bridge Phase 3c): every
  * `/item` answer the server gives for a downloaded book with its EPUB on the device fetches
  * the map again when its `readalong.generated_at` is not the one the download keeps, and
- * drops the kept one when the server has no ready map any more (`readalongChange`; only from
- * a server that serves maps, so an older one never drops anything). Returns the unsubscribe
+ * drops the kept one when the server has no ready map any more, unless a stale one still fits
+ * the download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
+ * never drops anything). Returns the unsubscribe
  * (started once from the root layout).
  *
  * The answers the cache already holds when it starts, and when the launch's `hydrate` has
@@ -691,12 +692,6 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   const key = contentKeyOf(ref);
   let kept: KeptReadalong | undefined;
   if (change === 'drop') {
-    // A map the server calls stale (its ebook or audio changed there) may still fit the
-    // download's own EPUB, which did not change: kept then (fe#193). Only a map that does
-    // not fit it, or a server with no map at all, is dropped.
-    if (book.readalong?.state === 'stale' && (await keptMapFits(ref, entry.manifest, book))) {
-      return;
-    }
     await removeReadalongFile(ref);
   } else {
     const attempt = `${key}@${entry.manifest.savedAt}@${book.readalong?.generated_at}`;
@@ -705,9 +700,8 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     readalongTried.add(attempt);
     // Only a map of the ebook the download holds (fe#193). Without its sha (no map was kept
     // yet), an ebook of another size on the server is another ebook: none is fetched.
-    const sha = entry.manifest.ebookSha256;
-    if (!sha && !sameEbookSize(entry.manifest.book, book)) return;
-    kept = await fetchReadalongFile(api, ref, { ebookSha256: sha });
+    if (!knowsEbook(book, entry.manifest)) return;
+    kept = await fetchReadalongFile(api, ref, { ebookSha256: entry.manifest.ebookSha256 });
     // Not fetched (or refused): the map kept (if any) stays, and so does what the download
     // says of it.
     if (!kept) return;
@@ -733,22 +727,6 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     },
   });
   persistSoon();
-}
-
-/** Whether the map a download keeps fits its own EPUB: made from the ebook its sha names
- * (`ebookSha256`, the copy read and checked), else, with no sha known, while the server's
- * ebook keeps the size the download saved (`sameEbookSize`). */
-async function keptMapFits(ref: BookRef, manifest: DownloadManifest, book: Book) {
-  const sha = manifest.ebookSha256;
-  if (!sha) return sameEbookSize(manifest.book, book);
-  const copy = await readReadalongFile(ref).catch(() => null);
-  return copy !== null && fitsEbook(copy, sha);
-}
-
-/** Whether the server's answer names an ebook of the size the download's book did when it
- * was saved (both unknown: the same). */
-function sameEbookSize(saved: Pick<Book, 'ebook'>, now: Pick<Book, 'ebook'>): boolean {
-  return saved.ebook?.size === now.ebook?.size;
 }
 
 /**

@@ -113,13 +113,16 @@ export function wantsReadalong(
 /**
  * What a server's answer for a downloaded book (its `/item`) asks of the map the download
  * keeps: `fetch` a map made again (another `generated_at`, or one the download has none of
- * yet), `drop` it when the server has no ready map any more (none, or stale: an ebook or
- * audio that changed; a listener never sees a stale map), else `keep`. Nothing without the
- * book's EPUB on the device.
+ * yet), `drop` it when the server has no ready map any more (none, or a stale one that may
+ * not fit the download's EPUB), else `keep`. A map the server calls stale (its ebook or audio
+ * changed there) stays while it fits the download's own EPUB and audio, which did not change
+ * (fe#193: `knowsEbook`). Nothing without the book's EPUB on the device.
  */
 export function readalongChange(
-  book: Pick<Book, 'readalong'>,
-  manifest: Pick<DownloadManifest, 'ebookUri' | 'readalongGeneratedAt'>,
+  book: Pick<Book, 'readalong' | 'ebook'>,
+  manifest: Pick<DownloadManifest, 'ebookUri' | 'readalongGeneratedAt' | 'ebookSha256'> & {
+    book: Pick<Book, 'ebook'>;
+  },
 ): 'keep' | 'fetch' | 'drop' {
   if (!manifest.ebookUri) return 'keep';
   const ra = book.readalong;
@@ -127,5 +130,19 @@ export function readalongChange(
     ra?.state === 'ready' && typeof ra.generated_at === 'string' ? ra.generated_at : null;
   const have = manifest.readalongGeneratedAt ?? null;
   if (wanted === have) return 'keep';
-  return wanted === null ? 'drop' : 'fetch';
+  if (wanted !== null) return 'fetch';
+  return ra?.state === 'stale' && knowsEbook(book, manifest) ? 'keep' : 'drop';
+}
+
+/**
+ * Whether a map can be paired with the download's own EPUB (fe#193): by the sha256 of the
+ * ebook its first kept map was made from (`ebookSha256`; every map kept since was checked
+ * against it, `fitsEbook`, so a kept map fits), else while the server's ebook keeps the size
+ * the download saved (both unknown: the same).
+ */
+export function knowsEbook(
+  book: Pick<Book, 'ebook'>,
+  manifest: Pick<DownloadManifest, 'ebookSha256'> & { book: Pick<Book, 'ebook'> },
+): boolean {
+  return !!manifest.ebookSha256 || manifest.book.ebook?.size === book.ebook?.size;
 }
