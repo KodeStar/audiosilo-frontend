@@ -175,6 +175,12 @@ export type Capabilities = {
    * JPEG, for a work that list hands out with a `cover_url` (anything else is a 404). True
    * exactly when `upcoming` is. Absent on older servers: draw the ghost cover. */
   upcoming_covers?: boolean;
+  /** Whether the server takes listening as events (Sync v2, Track W1):
+   * `POST /me/listening/sync` ({@link ListeningSyncRequest}, `client.syncListening`), each
+   * event resolved on its own (applied, duplicate, diverged, not applied, rejected), and
+   * `device_name` / `other_place` on {@link Progress}. Absent on older servers: treat missing
+   * as false and save by `PUT /libraries/{id}/progress` + `POST .../history` as before. */
+  listening_sync?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -906,6 +912,110 @@ export type Progress = {
   /** RFC3339 UTC: when the caller finished the book. Sent by a server with
    * `progress_edit`; absent when not finished (or unknown) and on older servers. */
   finished_at?: string;
+  /** The name of the device that wrote this place, as the server knows it from that
+   * device's sign-in (`listening_sync` servers; absent when unknown and on older servers). */
+  device_name?: string;
+  /** A place the server did not keep: another device's listening that diverged from this
+   * row (`listening_sync` servers). Kept on the row until a device that saw it carries on
+   * (or Jumps there), so the device that never saw the sync answer can still offer it. */
+  other_place?: ListeningOtherPlace;
+};
+
+/** A listening place the server did not keep (Sync v2): the losing side of a diverged
+ * event, in whole-book seconds on the server's timeline. */
+export type ListeningOtherPlace = {
+  position: number;
+  device_id: string;
+  /** "" when the server doesn't know the device's name. */
+  device_name: string;
+  updated_at: string;
+};
+
+// --- Listening sync (Sync v2, capability `listening_sync`) ------------------------
+
+/** Why a listening span began. `resume`: the loaded or resumed place; `continue`: carrying
+ * on after a cut; `moved_back` / `jump`: a deliberate move (a seek, a chapter, a bookmark,
+ * Undo, an offer's Jump); `restart`: starting again from 0. */
+export type ListeningStart = 'resume' | 'continue' | 'moved_back' | 'jump' | 'restart';
+
+/** What every listening event carries. `id` is the device's own (1-64 of
+ * `[A-Za-z0-9_-]`, a UUID here), so a resend is a `duplicate`. `base_version` is the
+ * progress version this device had acknowledged when the span began (absent: last write
+ * wins). */
+type ListeningEventBase = {
+  id: string;
+  library_id: number;
+  path: string;
+  base_version?: number;
+};
+
+/** A span of listening, in whole-book seconds on this device's timeline. Each end may also
+ * carry its audio file (the file's rel path) and the seconds into it: the server prefers that
+ * place when the file is in the book, so a place saved on a download's older file order
+ * lands in the same file (fe#188). Both of a pair or neither. */
+export type ListeningSpanEvent = ListeningEventBase & {
+  kind: 'listen';
+  from_pos: number;
+  to_pos: number;
+  from_file?: string;
+  from_file_pos?: number;
+  to_file?: string;
+  to_file_pos?: number;
+  /** The device's length of the book; 0 or absent sends no fingerprint. */
+  duration?: number;
+  /** (0, 4]; absent = 1. */
+  playback_speed?: number;
+  started_at: string;
+  ended_at: string;
+  start: ListeningStart;
+};
+
+/** Marking the book finished or not, at `at`. No positions. */
+export type ListeningFinishEvent = ListeningEventBase & {
+  kind: 'finish' | 'unfinish';
+  at: string;
+};
+
+export type ListeningEvent = ListeningSpanEvent | ListeningFinishEvent;
+
+/** Body of `POST /me/listening/sync`. Exactly one of `sent_at` (the device's clock at THIS
+ * send attempt: the phone and the web always send it) and `clock_offset` (seconds, server
+ * minus device: a watch relay). 0-500 events; `[]` is a clock probe. */
+export type ListeningSyncRequest = {
+  device_id: string;
+  sent_at?: string;
+  clock_offset?: number;
+  events: ListeningEvent[];
+};
+
+/** Why an event was not applied (`not_applied`) or not stored (`rejected`). */
+export type ListeningSyncReason =
+  | 'older'
+  | 'resume_behind'
+  | 'invalid'
+  | 'unknown_kind'
+  | 'too_old'
+  | 'duration_mismatch'
+  | 'no_access'
+  | 'not_found';
+
+/** One event's outcome, in request order. Every status but `rejected` was stored (and
+ * counts for history and sessions); `rejected` changed nothing. `diverged`: the server
+ * kept `kept` and `other_place` is the place it did not keep. */
+export type ListeningSyncResult = {
+  id: string;
+  status: 'applied' | 'duplicate' | 'diverged' | 'not_applied' | 'rejected';
+  reason?: ListeningSyncReason | string;
+  kept?: 'event' | 'stored';
+  other_place?: ListeningOtherPlace;
+};
+
+/** Response of `POST /me/listening/sync`: the server's clock, a result per event, and the
+ * progress rows of every book a stored event touched, read after the batch. */
+export type ListeningSyncResponse = {
+  server_time: string;
+  results: ListeningSyncResult[];
+  progress: Progress[] | null;
 };
 
 /** Body of PATCH /libraries/{id}/progress (capability `progress_edit`): the caller's

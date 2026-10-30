@@ -79,6 +79,8 @@ import type {
   ReadingProgress,
   ReadingProgressInput,
   ReadingProgressSaved,
+  ListeningSyncRequest,
+  ListeningSyncResponse,
   ReadalongEstimate,
   RatedBook,
   Rating,
@@ -1258,6 +1260,16 @@ export class ApiClient {
       },
     );
     return r.progress;
+  }
+  /** Send listening events (capability `listening_sync`, Sync v2): `POST
+   * /me/listening/sync`. A bad event never fails the batch (it comes back `rejected`); the
+   * batch itself is a 400 (envelope, `too_many_events`), a 413 (over 1 MiB), or a 404/405
+   * on a server without the route (rolled back). `keepalive`: sent as the page goes (web). */
+  syncListening(body: ListeningSyncRequest, { keepalive = false }: { keepalive?: boolean } = {}) {
+    return this.request<ListeningSyncResponse>('POST', '/me/listening/sync', {
+      body,
+      keepalive,
+    });
   }
   // --- Reading (capability `ebooks`, Bridge Phase 3b) ------------------------
   /** A book's ebook bytes (`Book.ebook`), asked for by the BOOK's path. Fetched with the

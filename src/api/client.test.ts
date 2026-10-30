@@ -3259,6 +3259,122 @@ describe('reading (capability ebooks, Bridge Phase 3b)', () => {
   });
 });
 
+describe('listening sync (capability listening_sync, Sync v2)', () => {
+  const client = () => new ApiClient('https://h', 'tok');
+  const call = (m: jest.Mock) => {
+    const [input, init] = m.mock.calls[0] as [string, RequestInit];
+    return { url: new URL(input), init };
+  };
+  const body = {
+    device_id: 'lq3x9-ab12cd34',
+    sent_at: '2026-10-25T07:41:03.120Z',
+    events: [
+      {
+        id: '8c1e0f6a',
+        kind: 'listen' as const,
+        library_id: 3,
+        path: 'Author/Book',
+        from_pos: 14400,
+        to_pos: 16800,
+        from_file: 'Author/Book/04.mp3',
+        from_file_pos: 812.4,
+        to_file: 'Author/Book/05.mp3',
+        to_file_pos: 1203.9,
+        duration: 61200,
+        playback_speed: 1.2,
+        started_at: '2026-10-25T07:00:12.000Z',
+        ended_at: '2026-10-25T07:33:30.000Z',
+        start: 'resume' as const,
+        base_version: 41,
+      },
+      {
+        id: '9d20',
+        kind: 'finish' as const,
+        library_id: 3,
+        path: 'Author/Book',
+        at: '2026-10-25T07:33:30.000Z',
+        base_version: 41,
+      },
+    ],
+  };
+
+  it('posts the batch as it is and returns the results and the touched rows', async () => {
+    const answer = {
+      server_time: '2026-10-25T07:41:03.480Z',
+      results: [
+        {
+          id: '8c1e0f6a',
+          status: 'diverged',
+          kept: 'stored',
+          other_place: {
+            position: 16800,
+            device_id: 'lq3x9-ab12cd34',
+            device_name: "Chris's Watch",
+            updated_at: '2026-10-25T07:33:30.000Z',
+          },
+        },
+        { id: '9d20', status: 'rejected', reason: 'duration_mismatch' },
+      ],
+      progress: [
+        {
+          library_id: 3,
+          path: 'Author/Book',
+          position: 18000,
+          duration: 61200,
+          finished: false,
+          playback_speed: 1,
+          version: 42,
+          device_id: 'other',
+          device_name: 'Pixel 8',
+          updated_at: '2026-10-25T07:40:00.000Z',
+          other_place: {
+            position: 16800,
+            device_id: 'lq3x9-ab12cd34',
+            device_name: "Chris's Watch",
+            updated_at: '2026-10-25T07:33:30.000Z',
+          },
+        },
+      ],
+    };
+    const m = installFetch(() => ({ status: 200, body: answer }));
+    await expect(client().syncListening(body)).resolves.toEqual(answer);
+    const { url, init } = call(m);
+    expect(init.method).toBe('POST');
+    expect(url.pathname).toBe('/api/v1/me/listening/sync');
+    expect(url.search).toBe('');
+    expect(JSON.parse(String(init.body))).toEqual(body);
+    expect(init.keepalive).toBeUndefined();
+  });
+
+  it('sends keepalive when asked (the web page going)', async () => {
+    const m = installFetch(() => ({
+      status: 200,
+      body: { server_time: '2026-10-25T07:41:03.480Z', results: [], progress: [] },
+    }));
+    await client().syncListening({ ...body, events: [] }, { keepalive: true });
+    expect(call(m).init.keepalive).toBe(true);
+  });
+
+  it('rejects with the status on a server without the route (rolled back)', async () => {
+    installFetch(() => ({ status: 404, body: { error: 'not found' } }));
+    await expect(client().syncListening(body)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+    });
+  });
+
+  it('carries the batch error code (too_many_events)', async () => {
+    installFetch(() => ({
+      status: 400,
+      body: { error: 'too many events', code: 'too_many_events' },
+    }));
+    await expect(client().syncListening(body)).rejects.toMatchObject({
+      status: 400,
+      code: 'too_many_events',
+    });
+  });
+});
+
 describe('read-along (capability readalong, Bridge Phase 3c)', () => {
   const client = () => new ApiClient('https://h', 'tok');
   const map = {
