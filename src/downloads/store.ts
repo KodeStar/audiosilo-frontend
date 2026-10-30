@@ -43,6 +43,7 @@ import {
 } from './offline-meta';
 import {
   fetchReadalongFile,
+  fitsEbook,
   type KeptReadalong,
   readalongChange,
   readReadalongFile,
@@ -690,6 +691,12 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   const key = contentKeyOf(ref);
   let kept: KeptReadalong | undefined;
   if (change === 'drop') {
+    // A map the server calls stale (its ebook or audio changed there) may still fit the
+    // download's own EPUB, which did not change: kept then (fe#193). Only a map that does
+    // not fit it, or a server with no map at all, is dropped.
+    if (book.readalong?.state === 'stale' && (await keptMapFits(ref, entry.manifest, book))) {
+      return;
+    }
     await removeReadalongFile(ref);
   } else {
     const attempt = `${key}@${entry.manifest.savedAt}@${book.readalong?.generated_at}`;
@@ -726,6 +733,16 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     },
   });
   persistSoon();
+}
+
+/** Whether the map a download keeps fits its own EPUB: made from the ebook its sha names
+ * (`ebookSha256`, the copy read and checked), else, with no sha known, while the server's
+ * ebook keeps the size the download saved (`sameEbookSize`). */
+async function keptMapFits(ref: BookRef, manifest: DownloadManifest, book: Book) {
+  const sha = manifest.ebookSha256;
+  if (!sha) return sameEbookSize(manifest.book, book);
+  const copy = await readReadalongFile(ref).catch(() => null);
+  return copy !== null && fitsEbook(copy, sha);
 }
 
 /** Whether the server's answer names an ebook of the size the download's book did when it

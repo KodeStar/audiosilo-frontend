@@ -91,11 +91,13 @@ const keptMap = (generatedAt: string, ebookSha256 = 'sha-1', bytes = 300): KeptR
   bytes,
 });
 const mockRemoveReadalong = jest.fn(async (_ref: unknown) => {});
+/** The map a download's folder holds, as `readReadalongFile` reads it (none by default). */
+const mockReadKeptFile = jest.fn(async (_ref: unknown): Promise<object | null> => null);
 jest.mock('@/downloads/readalong-file', () => ({
   ...jest.requireActual('@/downloads/readalong-file'),
   fetchReadalongFile: (...a: unknown[]) => mockFetchReadalong(...a),
   removeReadalongFile: (ref: unknown) => mockRemoveReadalong(ref),
-  readReadalongFile: jest.fn(async () => null),
+  readReadalongFile: (ref: unknown) => mockReadKeptFile(ref),
 }));
 
 // The launch's restore waits for the JS thread to be idle: here, the next turn.
@@ -1401,8 +1403,50 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
       expect(mockRemoveReadalong).not.toHaveBeenCalled();
     });
 
-    it('drops the kept map once the server has none ready (stale, or gone)', async () => {
+    it("keeps a map the server calls stale while it fits the download's own EPUB (fe#193)", async () => {
+      // Its sha: the copy is read and checked against the ebook the download holds.
+      const e = kept('g1', { manifest: { ebookSha256: 'sha-1' } });
+      mockReadKeptFile.mockResolvedValueOnce({ ebook: { file: 'a.epub', sha256: 'sha-1' } });
+      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
+      await settle();
+      expect(mockReadKeptFile).toHaveBeenCalledWith(REF);
+      expect(mockRemoveReadalong).not.toHaveBeenCalled();
+      expect(entry()).toBe(e);
+      // No sha known: while the server's ebook keeps the size the download saved.
+      const sized = kept('g1');
+      answer(makeBook({ readalong: { state: 'stale', reason: 'audio_changed' } }));
+      await settle();
+      expect(mockRemoveReadalong).not.toHaveBeenCalled();
+      expect(entry()).toBe(sized);
+    });
+
+    it('drops a stale map that no longer fits the EPUB, and one the server has no more', async () => {
+      // Its copy names another ebook than the download's.
+      kept('g1', { manifest: { ebookSha256: 'sha-1' } });
+      mockReadKeptFile.mockResolvedValueOnce({ ebook: { file: 'a.epub', sha256: 'sha-2' } });
+      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
+      await settle();
+      expect(mockRemoveReadalong).toHaveBeenCalledTimes(1);
+      // No sha known, and the server's ebook changed size.
       kept('g1');
+      answer(
+        makeBook({
+          ebook: { path: 'A/Book/Book.epub', size: 2000 },
+          readalong: { state: 'stale', reason: 'ebook_changed' },
+        }),
+      );
+      await settle();
+      expect(mockRemoveReadalong).toHaveBeenCalledTimes(2);
+      // No map on the server at all.
+      kept('g1');
+      answer(makeBook());
+      await settle();
+      expect(mockRemoveReadalong).toHaveBeenCalledTimes(3);
+      expect(entry()?.manifest.readalongGeneratedAt).toBeUndefined();
+    });
+
+    it('names what the server said once it dropped the map', async () => {
+      kept('g1', { manifest: { ebookSha256: 'sha-1' } });
       answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
       await settle();
       expect(mockRemoveReadalong).toHaveBeenCalledWith(REF);

@@ -1285,7 +1285,8 @@ media GETs only.
     `MediaItems.kt`): Media3's `Mp4Extractor` keeps the file's whole sample table on the Java
     heap (about 33 bytes per AAC frame: ~120 MB for a 23.5 h m4b), and every clip is its own
     extractor, two of them alive at each boundary (the next is prepared while the current
-    plays). A file whose two tables plus 64 MB don't fit `Runtime.maxMemory()` drops its
+    plays). A file whose two tables plus 64 MB don't fit `Runtime.maxMemory()` (its length
+    unknown: as far as its clips reach) drops its
     clips (no lock-screen chapter scrubber or prev/next chapter for it; the app's chapters
     are unchanged); other files keep theirs. The module's manifest sets
     `android:largeHeap="true"`, so books up to about 41 h keep their clips.
@@ -2257,8 +2258,10 @@ are asked, at most 10,000 rows.
   and the manifest as they were) only if it was made from the download's own ebook (fe#193:
   `fitsEbook` against `ebookSha256`; a download that never kept a map asks only while the
   server's `ebook.size` is the one it saved), so a map of a replaced ebook never joins the old
-  `book.epub` and the matching copy stays, no ready map (stale or none) drops it (`readalongChange`; the
-  book then says what the server said), once per answer's map per launch (`readalongTried`).
+  `book.epub` and the matching copy stays, no ready map drops it (`readalongChange`; the
+  book then says what the server said) except a stale one that still fits the download's own
+  EPUB, which stays (`keptMapFits`: its copy's sha against `ebookSha256`, else the size rule),
+  once per answer's map per launch (`readalongTried`).
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community

@@ -232,22 +232,35 @@ object ClipBudget {
 
   private val LIGHT_CONTAINER = Regex("""\.(mp3|flac|ogg|oga|opus|wav|aac|mka|webm)(?=$|[?&#])""")
 
-  /** The heap one extractor's sample table takes for [t], 0 when its container has none. */
-  fun tableBytes(t: TrackSpec): Long {
-    if (t.duration <= 0.0) return 0L
+  /**
+   * The heap one extractor's sample table takes for [t], 0 when its container has none. A
+   * file whose duration is unknown (0) is as long as [clipsEnd], the furthest its chapter
+   * clips reach into it: an unknown length is no reason to clip a long m4b.
+   */
+  fun tableBytes(t: TrackSpec, clipsEnd: Double = 0.0): Long {
+    val seconds = if (t.duration > 0.0) t.duration else clipsEnd
+    if (seconds <= 0.0) return 0L
     val names = listOf(t.id, decoded(t.url)).map { it.lowercase() }
     if (names.any { LIGHT_CONTAINER.containsMatchIn(it) }) return 0L
-    return (t.duration * SAMPLES_PER_SECOND * BYTES_PER_SAMPLE).toLong()
+    return (seconds * SAMPLES_PER_SECOND * BYTES_PER_SAMPLE).toLong()
   }
 
   /** True when two of [t]'s extractors (the playing clip and the next) fit in [heapBytes]. */
-  fun clipsFit(t: TrackSpec, heapBytes: Long): Boolean = 2 * tableBytes(t) + RESERVE_BYTES <= heapBytes
+  fun clipsFit(t: TrackSpec, heapBytes: Long, clipsEnd: Double = 0.0): Boolean =
+    2 * tableBytes(t, clipsEnd) + RESERVE_BYTES <= heapBytes
 
   /** The file indexes among [clips] that must play as whole-file items. */
-  fun wholeFiles(tracks: List<TrackSpec>, clips: List<ClipSpec>, heapBytes: Long): Set<Int> =
-    clips.mapTo(HashSet()) { it.fileIndex }.filterTo(HashSet()) { i ->
-      tracks.getOrNull(i)?.let { !clipsFit(it, heapBytes) } ?: false
+  fun wholeFiles(tracks: List<TrackSpec>, clips: List<ClipSpec>, heapBytes: Long): Set<Int> {
+    // How far each file's clips reach (its length when the track does not say).
+    val ends = HashMap<Int, Double>()
+    for (c in clips) {
+      val end = maxOf(c.startInFile, c.endInFile)
+      ends[c.fileIndex] = maxOf(ends[c.fileIndex] ?: 0.0, end)
     }
+    return ends.keys.filterTo(HashSet()) { i ->
+      tracks.getOrNull(i)?.let { !clipsFit(it, heapBytes, ends[i] ?: 0.0) } ?: false
+    }
+  }
 
   private fun decoded(url: String): String =
     try {
