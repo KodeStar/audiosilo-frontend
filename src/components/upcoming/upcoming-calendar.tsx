@@ -163,15 +163,13 @@ function CalendarRow({
       <View className="gap-3">
         {shown ? (
           <>
-            <Text
-              selectable
-              variant="mono"
-              className="rounded-control bg-muted px-3 py-2.5"
-              numberOfLines={3}
-              testID="upcoming-calendar-url"
-            >
-              {shown}
-            </Text>
+            {/* The box on a wrapper, not the Text: a clamped Text with padding shows a sliver
+                of its next line in the bottom padding (web). */}
+            <View className="rounded-control bg-muted px-3 py-2.5">
+              <Text selectable variant="mono" numberOfLines={3} testID="upcoming-calendar-url">
+                {shown}
+              </Text>
+            </View>
             <Text variant="caption">{t('upcoming.calendar.private')}</Text>
             <Text variant="caption">{t('upcoming.calendar.publicNote')}</Text>
           </>
