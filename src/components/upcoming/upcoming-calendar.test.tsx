@@ -276,7 +276,7 @@ describe('UpcomingCalendarCard', () => {
     await expect(readCalendarLink('a')).resolves.toBeNull();
   });
 
-  it('keeps the link as it was when Turn off fails, and says so', async () => {
+  it('keeps the link when Turn off gets no answer, says so, and reads the status again', async () => {
     await saveCalendarLink('a', { url: `https://a${PATH}`, created_at: CREATED });
     await mount([{ id: 'a', status: { active: true, created_at: CREATED } }]);
     mockClients.a.deleteUpcomingCalendar.mockRejectedValue(new Error('offline'));
@@ -288,6 +288,9 @@ describe('UpcomingCalendarCard', () => {
     );
     expect(screen.getByTestId('upcoming-calendar-url')).toBeTruthy();
     await expect(readCalendarLink('a')).resolves.not.toBeNull();
+    // It may have landed: the status is read again (still on here, so the link stays).
+    await waitFor(() => expect(mockClients.a.upcomingCalendar).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('upcoming-calendar-url')).toBeTruthy();
   });
 
   it("says a refused mint in the app's words (demo_account)", async () => {

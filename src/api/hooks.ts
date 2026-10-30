@@ -3453,6 +3453,7 @@ export function useMintUpcomingCalendar(connectionId: string) {
     },
     ({ qc, cid }, stored: StoredCalendarLink) =>
       storeCalendarLink(qc, cid, stored, { active: true, created_at: stored.created_at }),
+    rereadCalendarIfUnanswered,
   );
 }
 
@@ -3464,7 +3465,21 @@ export function useDeleteUpcomingCalendar(connectionId: string) {
     connectionId,
     (api) => api.deleteUpcomingCalendar(),
     ({ qc, cid }) => storeCalendarLink(qc, cid, null, { active: false }),
+    rereadCalendarIfUnanswered,
   );
+}
+
+/** A calendar write with no answer (the network, not a refusal) may still have landed: the
+ * status is read again, so a link replaced or turned off meanwhile shows as such (and this
+ * device's copy of it is forgotten) instead of being offered as live. */
+function rereadCalendarIfUnanswered(
+  { qc, cid }: { qc: QueryClient; cid: string },
+  _vars: unknown,
+  error: unknown,
+) {
+  if (error && !(error instanceof ApiError)) {
+    void qc.invalidateQueries({ queryKey: qk.upcomingCalendar(cid), exact: true });
+  }
 }
 
 export function useFavouritesAll() {
