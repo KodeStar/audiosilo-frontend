@@ -59,7 +59,7 @@ import {
   fetchLibraries,
   flattenPages,
   historyQuery,
-  chaptersKeyParts,
+  bookKeyParts,
   isAllProgressKey,
   isQueueKey,
   isSearchKey,
@@ -300,12 +300,12 @@ describe('key predicates', () => {
     expect(isQueueKey(qk.collections('c'))).toBe(false);
     expect(isAllProgressKey(qk.allProgress('c'))).toBe(true);
     expect(isAllProgressKey(qk.progress('c', 2, 'A/Book'))).toBe(false);
-    expect(chaptersKeyParts(qk.chapters('c', 2, 'A/Book'))).toEqual({
+    expect(bookKeyParts(qk.chapters('c', 2, 'A/Book'), 'chapters')).toEqual({
       cid: 'c',
       libraryId: 2,
       path: 'A/Book',
     });
-    expect(chaptersKeyParts(qk.item('c', 2, 'A/Book'))).toBeNull();
+    expect(bookKeyParts(qk.item('c', 2, 'A/Book'), 'chapters')).toBeNull();
     expect(isSearchKey(qk.search('c', 'dune'), 'dune')).toBe(true);
     expect(isSearchKey(qk.search('c', 'dun'), 'dune')).toBe(false);
     expect(qk.allProgress('c').slice(0, 2)).toEqual([...qk.allProgressAll()]);

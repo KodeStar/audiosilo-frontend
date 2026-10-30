@@ -10,6 +10,7 @@ import {
   latestDone,
   latestJob,
   midRunCheckpoint,
+  READALONG_ALIGN,
   SIDECARS_CONTRIBUTE,
   SIDECARS_DESCRIBE,
   SIDECARS_GENERATE,
@@ -61,6 +62,18 @@ describe('bridgePollInterval', () => {
       BRIDGE_IDLE_POLL_MS,
     );
     expect(bridgePollInterval([job({ kind: CHAPTERS_DETECT, state: 'done' })], true)).toBe(false);
+  });
+
+  // Bridge Phase 3c: a page that offers Make read-along sees its job end.
+  it('polls for an open readalong.align job too', () => {
+    expect(READALONG_ALIGN).toBe('readalong.align');
+    expect(bridgePollInterval([job({ kind: READALONG_ALIGN, state: 'claimed' })], true)).toBe(
+      BRIDGE_POLL_MS,
+    );
+    expect(
+      bridgePollInterval([job({ kind: READALONG_ALIGN, state: 'needs_attention' })], true),
+    ).toBe(BRIDGE_IDLE_POLL_MS);
+    expect(bridgePollInterval([job({ kind: READALONG_ALIGN, state: 'failed' })], true)).toBe(false);
   });
 
   it('stops once the job ended, off screen, for another kind and with nothing known', () => {
@@ -128,6 +141,15 @@ describe('latestDone', () => {
       job({ id: 9, kind: CHAPTERS_DETECT, state: 'running' }),
     ];
     expect(latestDone(jobs)?.id).toBe(5);
+  });
+
+  it('counts a done readalong.align job too (it wrote readalong.json)', () => {
+    const jobs = [
+      job({ id: 3, state: 'done' }),
+      job({ id: 7, kind: READALONG_ALIGN, state: 'done' }),
+      job({ id: 8, kind: READALONG_ALIGN, state: 'failed' }),
+    ];
+    expect(latestDone(jobs)?.id).toBe(7);
   });
 });
 

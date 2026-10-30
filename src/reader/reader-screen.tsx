@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppState, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,6 @@ import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
 import { Notice } from '@/components/ui/notice';
 import { Sheet } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
@@ -17,21 +16,22 @@ import { useDownloadedEbook } from '@/downloads/store';
 import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
-import { useLayout } from '@/lib/layout';
 import { bookTitle } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
-import { useTheme } from '@/theme/theme-provider';
-import { colors } from '@/theme/tokens';
 
 import { canRead } from './can-read';
 import { hasLocalEbook } from './ebook-file';
-import type { ReaderPlace, ReaderTheme, TocEntry } from './protocol';
+import { useNarration } from './narration';
+import { FollowPill, PageEdges, turnPage, usePageEdges } from './page-edge';
+import type { ReaderPlace, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
-import { FONT_SCALES, loadFontScale, saveFontScale, stepFontScale } from './reader-settings';
+import { FONT_SCALES, saveFontScale, stepFontScale } from './reader-settings';
+import { useBookReadalong } from './use-book-readalong';
+import { useReaderAppearance } from './use-reader-appearance';
 import {
   adoptServerPlace,
   flushReadingQueue,
@@ -78,7 +78,13 @@ const loadFailure = (e: unknown): ReaderFailure =>
  * the reader host (`ReaderHost`: the web's sandboxed iframe, the app's WebView), page edges to turn by, and
  * the "Jump there?" offer when another device kept a further place. The place is saved
  * through the reading-progress queue two seconds after the reader stops on a page, and at
- * once on close or when the app goes to the background.
+ * once on close or when the app goes to the background. While the book is the one playing
+ * and has a read-along map (Bridge Phase 3c), "Follow narration" follows the sentence being
+ * read; no place is saved while it follows (the narration moves the page, not the reader),
+ * and saving resumes once the listener turns away from it.
+ *
+ * The EPUB, the read-along map and where the book opens are fetched at once (fe#164): the
+ * host starts on the book while the place is looked up (`placeKnown`).
  */
 export function ReaderScreen({
   connectionId,
@@ -107,29 +113,52 @@ export function ReaderScreen({
   const savedEbook = useDownloadedEbook(connectionId, libraryId, path);
   const readable = canRead(ebooks, book, !!savedEbook);
   const ebookSize = book?.ebook?.size;
+  const localRef = { connectionId, libraryId, path, size: ebookSize, saved: savedEbook };
+  // The app's cache file as it was before this screen's host could write it: the host starts
+  // fetching while the place is looked up (fe#164), and a copy this screen fetched is no
+  // sign the book was read on this device, so it never makes an offline lookup open at a
+  // guessed start. Asked once, as the host first renders (set while rendering, so before
+  // its effects run), and never with a download, whose EPUB answers on its own.
+  const [cachedBefore, setCachedBefore] = useState<Promise<boolean> | null>(null);
   const hasLocalCopy = useLatest(() =>
-    hasLocalEbook({ connectionId, libraryId, path, size: ebookSize, saved: savedEbook }),
+    savedEbook || !cachedBefore ? hasLocalEbook(localRef) : cachedBefore,
   );
   const place = useReadingPlace(libraryId, path, connectionId, readable, hasLocalCopy);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
 
-  const { scheme } = useTheme();
-  const palette = colors[scheme];
-  const theme = useMemo<ReaderTheme>(
-    () => ({ scheme, background: palette.card, foreground: palette.foreground }),
-    [scheme, palette],
-  );
-  const [fontScale, setFontScale] = useState<number | null>(null);
+  const host = useRef<ReaderHostHandle>(null);
+  // Read-along (Bridge Phase 3c): the narration, and the map while this book is the one
+  // the player holds. The map is asked for and goes to the reader only then: another book
+  // playing has nothing to follow here.
+  const narration = useNarration({ connectionId, libraryId, path }, host);
+  const readalongMap = useBookReadalong(
+    { connectionId, libraryId, path },
+    book,
+    readable,
+    narration.narrating,
+  ).map;
+  // What the reader made of the map, and whether it follows the narration (null: it never
+  // has, for this map).
+  const [readalongOk, setReadalongOk] = useState(false);
+  const following = useRef(false);
+  const [followingShown, setFollowingShown] = useState<boolean | null>(null);
+  if (!readalongMap && (readalongOk || followingShown !== null)) {
+    setReadalongOk(false);
+    setFollowingShown(null);
+  }
+  // Nor does anything follow without a map: a reader document that was not there to say
+  // so (one that failed, or not ready yet) never follows when it comes.
   useEffect(() => {
-    void loadFontScale().then(setFontScale);
-  }, []);
+    if (!readalongMap) following.current = false;
+  }, [readalongMap]);
+
+  const { theme, fontScale, setFontScale } = useReaderAppearance();
   const changeFontScale = (direction: -1 | 1) => {
     const next = stepFontScale(fontScale ?? 1, direction);
     setFontScale(next);
     void saveFontScale(next);
   };
 
-  const host = useRef<ReaderHostHandle>(null);
   const [opened, setOpened] = useState<{ title: string; toc: TocEntry[]; rtl: boolean } | null>(
     null,
   );
@@ -168,6 +197,27 @@ export function ReaderScreen({
   const pending = useRef<{ cfi: string; progression: number } | null>(null);
   const lastSaved = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Where the reader is now (the latest `progress`), for the save once it stops following.
+  const atNow = useRef<{ cfi: string; progression: number } | null>(null);
+  const scheduleSave = (next: { cfi: string; progression: number }) => {
+    pending.current = next;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
+  };
+  // The reader follows the narration (`onFollowing`): no place is saved meanwhile (the
+  // narration turns the pages; a save would carry another device's reading along with
+  // it). Once the listener turns away, where they are is saved, and every move after.
+  const onFollowing = (value: boolean) => {
+    following.current = value;
+    setFollowingShown(value);
+    if (value) {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+      pending.current = null;
+    } else if (atNow.current) {
+      scheduleSave(atNow.current);
+    }
+  };
   const flushSave = useLatest(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
@@ -237,13 +287,13 @@ export function ReaderScreen({
           fraction: message.fraction,
           sectionLabel: message.sectionLabel,
         });
+        atNow.current = { cfi: message.cfi, progression: message.fraction };
         if (landing.current) {
           landing.current = false;
           return;
         }
-        pending.current = { cfi: message.cfi, progression: message.fraction };
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
+        if (following.current) return;
+        scheduleSave(atNow.current);
         return;
       case 'loading':
         setLoading(message.value);
@@ -270,6 +320,11 @@ export function ReaderScreen({
     // The new host shows the book with its next `opened` (no edges over it till then),
     // where the reader was.
     setOpened(null);
+    setReadalongOk(false);
+    // Its reader document has never followed (this screen sends no follow by itself): the
+    // place is saved again, and "Follow narration" asks.
+    following.current = false;
+    setFollowingShown(null);
     if (current) setResumeAt({ cfi: current.cfi, fraction: current.fraction });
     setAttempt((n) => n + 1);
     if (bookFailed) void refetchBook();
@@ -295,8 +350,8 @@ export function ReaderScreen({
   const shortcuts = Platform.OS === 'web' && !tocOpen;
   // An RTL book's next page is on the left: the page edges and the arrows follow the book.
   const rtl = opened?.rtl === true;
-  const turnLeft = () => (rtl ? host.current?.next() : host.current?.prev());
-  const turnRight = () => (rtl ? host.current?.prev() : host.current?.next());
+  const turnLeft = () => turnPage(host, rtl, 'left');
+  const turnRight = () => turnPage(host, rtl, 'right');
   useGlobalShortcut(shortcuts, (e) => e.key === 'Escape', backOrHome, READER_LAYER);
   // A bare arrow only, as in the book: with Cmd, Ctrl or Alt it is the browser's (Back).
   const bare = (e: ShortcutKey) => !e.metaKey && !e.ctrlKey && !e.altKey;
@@ -329,8 +384,22 @@ export function ReaderScreen({
     if (alreadyThere) acknowledge();
   }, [alreadyThere, acknowledge]);
 
-  const ready =
-    readable && api !== null && opening !== null && fontScale !== null && ebookSize !== undefined;
+  // The host starts before the place is known (fe#164: the EPUB is fetched meanwhile), and
+  // hands the book over once it is (`placeKnown`).
+  const ready = readable && api !== null && fontScale !== null && ebookSize !== undefined;
+  if (ready && !savedEbook && cachedBefore === null) {
+    // A throw is no copy (as `lookupReadingPlace` takes it), never an unhandled rejection.
+    setCachedBefore(hasLocalEbook(localRef).catch(() => false));
+  }
+  const edges = usePageEdges();
+  // "Follow narration" (first) or "Back to narration" (after turning away), while the book
+  // shows, plays, and its map is this ebook's.
+  const followLabel =
+    show && readalongMap && readalongOk && followingShown !== true
+      ? followingShown === null
+        ? t('reader.readalong.follow')
+        : t('reader.readalong.back')
+      : null;
   const title = book ? bookTitle(book.title, path) : (opened?.title ?? '');
   const percent = current ? Math.round(current.fraction * 100) : null;
 
@@ -396,7 +465,7 @@ export function ReaderScreen({
           ) : null}
         </View>
 
-        <View className="relative flex-1">
+        <View className="relative flex-1" onLayout={edges.onLayout}>
           {ready && !shown ? (
             <ReaderHost
               key={attempt}
@@ -408,6 +477,7 @@ export function ReaderScreen({
               path={path}
               name={title}
               at={at}
+              placeKnown={opening !== null}
               theme={theme}
               fontScale={fontScale}
               title={t('reader.frameTitle', { title })}
@@ -416,22 +486,14 @@ export function ReaderScreen({
               // The reader was made again: the edges, the toolbar and the offer wait for
               // its next `opened`, the spinner shows meanwhile.
               onReopen={() => setOpened(null)}
+              readalongMap={readalongMap}
+              readalongPosition={narration.readalongPosition}
+              onSeek={narration.onSeek}
+              onFollowing={onFollowing}
+              onReadalongState={(s) => setReadalongOk(s.state === 'ok')}
             />
           ) : null}
-          {show ? (
-            <>
-              <PageEdge
-                side="left"
-                label={t(rtl ? 'reader.next' : 'reader.previous')}
-                onPress={turnLeft}
-              />
-              <PageEdge
-                side="right"
-                label={t(rtl ? 'reader.previous' : 'reader.next')}
-                onPress={turnRight}
-              />
-            </>
-          ) : null}
+          {show ? <PageEdges host={host} rtl={rtl} narrow={edges.narrow} /> : null}
           {signedOut && (shown === 'signedOut' || shown === 'fetch') ? (
             <View className="absolute inset-0 items-center justify-center p-4">
               <View className="w-full max-w-md">
@@ -445,12 +507,16 @@ export function ReaderScreen({
               <Spinner size="large" />
             </View>
           ) : null}
-          {notSaved || offer ? (
-            // One foot for both cards, stacked: a refusal can come while an offer waits.
+          {notSaved || offer || followLabel ? (
+            // One foot for the cards and the follow pill, stacked: a refusal can come while
+            // an offer waits.
             <View
               className="absolute bottom-4 left-4 right-4 items-center gap-2"
               pointerEvents="box-none"
             >
+              {followLabel ? (
+                <FollowPill label={followLabel} onPress={() => host.current?.follow()} />
+              ) : null}
               {notSaved ? (
                 <NotSavedCard signedOut={signedOut} onDismiss={() => setUnsaved('dismissed')} />
               ) : null}
@@ -554,32 +620,6 @@ function sameBook(
 ): boolean {
   return (
     heard.connectionId === connectionId && heard.libraryId === libraryId && heard.path === path
-  );
-}
-
-/** A page turn at one edge of the book: a tall, quiet target over the margin. */
-function PageEdge({
-  side,
-  label,
-  onPress,
-}: {
-  side: 'left' | 'right';
-  label: string;
-  onPress: () => void;
-}) {
-  // On a phone the page edges narrow to the book's margin, clear of its text.
-  const narrow = useLayout() === 'phone';
-  return (
-    <Pressable
-      role="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      className={`absolute bottom-0 top-0 ${narrow ? 'w-6' : 'w-11'} items-center justify-center opacity-40 web:hover:opacity-100 ${
-        side === 'left' ? 'left-0' : 'right-0'
-      }`}
-    >
-      <Icon name={side === 'left' ? 'chevron-left' : 'chevron-right'} size={18} />
-    </Pressable>
   );
 }
 

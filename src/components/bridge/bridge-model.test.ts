@@ -366,7 +366,12 @@ describe('bridgeRefusalKey and blockedReason', () => {
     expect(bridgeRefusalKey(refusal('contribute_open'), 'x.fallback')).toBe(
       'bridge.generate.contributeOpen',
     );
+    expect(bridgeRefusalKey(refusal('readalong_open'), 'x.fallback')).toBe(
+      'bridge.generate.readalongOpen',
+    );
     // A code the app doesn't name (a newer server's) falls back, never a missing key.
+    expect(bridgeRefusalKey(refusal('some_newer_code'), 'x.fallback')).toBe('x.fallback');
+    // One it knows but Generate never answers falls back too.
     expect(bridgeRefusalKey(refusal('generate_open'), 'x.fallback')).toBe('x.fallback');
     expect(bridgeRefusalKey(new Error('offline'), 'x.fallback')).toBe('x.fallback');
   });
@@ -374,7 +379,7 @@ describe('bridgeRefusalKey and blockedReason', () => {
   // An earlier book of the series, queued first, refused for an open job of its own: those
   // words name the book refused, and the one on screen isn't it.
   it("never words another book's open-job refusal as this book's", () => {
-    for (const code of ['detect_open', 'contribute_open'])
+    for (const code of ['detect_open', 'contribute_open', 'readalong_open'])
       expect(bridgeRefusalKey(refusal(code), 'x.fallback', true)).toBe('x.fallback');
     // The library's and the Bridge's refusals are the same for every book.
     expect(bridgeRefusalKey(refusal('library_not_writable'), 'x.fallback', true)).toBe(
@@ -400,6 +405,15 @@ describe('bridgeRefusalKey and blockedReason', () => {
     expect(
       blockedReason({ writable: false, agent_ready: true, figures: true, open_job: detect }),
     ).toBe('bridge.generate.notWritable');
+  });
+
+  // Bridge Phase 3c: while a readalong.align job is queued or working the server refuses a
+  // generate job (409 readalong_open), and the estimate names it as `open_job`.
+  it("holds Generate back while the book's read-along is being made", () => {
+    const align = bridgeJob({ kind: 'readalong.align', state: 'running' });
+    expect(
+      blockedReason({ writable: true, agent_ready: true, figures: true, open_job: align }),
+    ).toBe('bridge.generate.readalongOpen');
   });
 
   // Bridge Phase 2b: while a sidecars.contribute job (queued from the console) is queued or

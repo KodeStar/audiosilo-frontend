@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
 import { resolveClient } from '@/api/connection-clients';
-import { chaptersKeyParts, chaptersQuery, itemQuery, qk } from '@/api/hooks';
+import { bookKeyParts, cachedCapability, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { ApiClient } from '@/api/client';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
@@ -14,7 +14,7 @@ import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { progressToSave, writeMirror } from '@/playback/progress-sync';
-import type { BookRef } from '@/playback/types';
+import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
@@ -41,6 +41,13 @@ import {
   whenSessionReady,
   writeOfflineMeta,
 } from './offline-meta';
+import {
+  fetchReadalongFile,
+  readalongChange,
+  readReadalongFile,
+  removeReadalongFile,
+  wantsReadalong,
+} from './readalong-file';
 import type {
   DownloadedFile,
   DownloadEntry,
@@ -164,6 +171,9 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
       hydrating = null;
       read();
     }
+    // An `/item` answer can reach the cache before this read the registry (the web's
+    // refresh starts after paint, its own sweep then finding no downloads yet).
+    if (readalongRefreshOn) refreshCachedReadalongs(Object.values(cleaned));
     await persist();
     // The community metadata kept with each downloaded book, seeded for offline reading
     // (and filled in for a download made before it was kept). In the background, once the
@@ -604,7 +614,7 @@ export function startChapterRefresh(): () => void {
   return queryClient.getQueryCache().subscribe((event) => {
     // A server answer only: the store's own seeds (`setQueryData`) are manual.
     if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
-    const book = chaptersKeyParts(event.query.queryKey);
+    const book = bookKeyParts(event.query.queryKey, 'chapters');
     const fresh = event.action.data as ChaptersResponse | undefined;
     if (!book || !fresh) return;
     const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
@@ -616,6 +626,110 @@ export function startChapterRefresh(): () => void {
     // sweep above) saves the registry once, not once per book.
     persistSoon();
   });
+}
+
+/** The map refetches this session already tried, by download and map (`startReadalongRefresh`):
+ * one attempt each per launch, so a map that keeps failing its check is not fetched again on
+ * every answer for the book. */
+const readalongTried = new Set<string>();
+
+/**
+ * Keep downloaded books' read-along maps in step with the server (Bridge Phase 3c): every
+ * `/item` answer the server gives for a downloaded book with its EPUB on the device fetches
+ * the map again when its `readalong.generated_at` is not the one the download keeps, and
+ * drops the kept one when the server has no ready map any more (`readalongChange`; only from
+ * a server that serves maps, so an older one never drops anything). Returns the unsubscribe
+ * (started once from the root layout).
+ *
+ * The answers the cache already holds when it starts, and when the launch's `hydrate` has
+ * read the registry, are taken too (as `startChapterRefresh` and `withCachedChapters` do):
+ * the web starts it after the first paint, when a screen's `/item` can have landed already.
+ * The store's own seeds name the map the download keeps (`namingReadalong`), so they change
+ * nothing but a map the download could not fetch, which is tried again (`readalongTried`).
+ */
+export function startReadalongRefresh(): () => void {
+  readalongRefreshOn = true;
+  refreshCachedReadalongs(Object.values(useDownloads.getState().entries));
+  const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
+    const ref = bookKeyParts(event.query.queryKey, 'item');
+    const book = event.action.data as Book | undefined;
+    if (!ref || !book) return;
+    const { cid, libraryId, path } = ref;
+    void refreshReadalong({ connectionId: cid, libraryId, path }, book).catch(() => {});
+  });
+  return () => {
+    readalongRefreshOn = false;
+    unsubscribe();
+  };
+}
+
+/** Whether `startReadalongRefresh` runs (the launch's registry read then takes the cached
+ * answers too). */
+let readalongRefreshOn = false;
+
+/** The `/item` answers the cache holds for these downloaded books, each taken as an answer
+ * that just landed (`refreshReadalong`). */
+function refreshCachedReadalongs(entries: Iterable<DownloadEntry>): void {
+  for (const entry of entries) {
+    if (entry.status !== 'downloaded') continue;
+    const cached = queryClient.getQueryData<Book>(
+      qk.item(entry.connectionId, entry.libraryId, entry.path),
+    );
+    if (cached) void refreshReadalong(bookRefOf(entry), cached).catch(() => {});
+  }
+}
+
+/** One answer's work for `startReadalongRefresh`. */
+async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
+  const entry = downloadedEntryOf(ref);
+  if (!entry || cachedCapability(ref.connectionId, 'readalong') !== true) return;
+  const change = readalongChange(book, entry.manifest);
+  if (change === 'keep') return;
+  const key = contentKeyOf(ref);
+  let kept: string | undefined;
+  if (change === 'drop') {
+    await removeReadalongFile(ref);
+  } else {
+    const attempt = `${key}@${entry.manifest.savedAt}@${book.readalong?.generated_at}`;
+    const api = resolveClient(ref.connectionId);
+    if (readalongTried.has(attempt) || !api) return;
+    readalongTried.add(attempt);
+    kept = await fetchReadalongFile(api, ref);
+    // Not fetched: the map kept (if any) stays, and so does what the download says of it.
+    if (!kept) return;
+  }
+  if (!stillDownloaded(key, entry)) {
+    // Removed while it was fetched: don't leave the file behind.
+    if (!useDownloads.getState().entries[key]) await removeReadalongFile(ref);
+    return;
+  }
+  const { manifest } = useDownloads.getState().entries[key];
+  patchEntry(key, {
+    manifest: {
+      ...manifest,
+      readalongGeneratedAt: kept,
+      book: namingReadalong(manifest.book, kept, book.readalong),
+    },
+  });
+  persistSoon();
+}
+
+/**
+ * A download's book naming the read-along map it keeps (`kept`, its `generated_at`), or,
+ * with none kept, what `readalong` says (a server's answer: stale, or none). Offline that
+ * book is what the cache is seeded with (`seedQueryCache`), and the kept copy is read only
+ * while the book names it or no map at all (`readalongSource`).
+ */
+function namingReadalong(
+  book: Book,
+  kept: string | undefined,
+  readalong: Book['readalong'] = book.readalong,
+): Book {
+  return {
+    ...book,
+    readalong: kept ? { ...readalong, state: 'ready', generated_at: kept } : readalong,
+  };
 }
 
 /** While a download runs, its finished files reach storage at most this often
@@ -809,7 +923,8 @@ function afterLaunch(task: () => void) {
 /**
  * Rebuild a saved entry's local file uris from the *current* storage root. The
  * on-disk filename scheme is owned here (`storedName`, else `fileName`, for audio;
- * `cover.jpg` for the cover, `book.epub` for the ebook), so the (connectionId, libraryId, path, fileName) → live-uri
+ * `cover.jpg` for the cover, `book.epub` for the ebook), so the
+ * (connectionId, libraryId, path, fileName) → live-uri
  * mapping lives here too; `engine.localUri` supplies the container-current absolute uri
  * (native) or the virtual cache url (web). Recomputing from the entry's own connection id
  * is also what carries a download across the identity migration, which rewrites
@@ -1092,6 +1207,13 @@ async function runOne(key: string) {
       // A copied EPUB, or an engine that reported no progress: the server's size stands in.
       ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
+    // The book's read-along map (Bridge Phase 3c), beside the EPUB it follows: optional too.
+    let readalong: string | undefined;
+    if (
+      wantsReadalong(cachedCapability(connectionId, 'readalong'), entry.manifest.book, ebookUri)
+    ) {
+      readalong = await fetchReadalongFile(api, { connectionId, libraryId, path }, ctrl.signal);
+    }
     const bytes = priorBytes + ebookBytes;
     // A book that carries on without its ebook (its fetch failed) holds only its audio.
     const totalBytes = ebook && !ebookUri && knownTotal > 0 ? knownTotal - ebook.size : knownTotal;
@@ -1102,6 +1224,8 @@ async function runOne(key: string) {
       files,
       coverUri,
       ebookUri,
+      readalongGeneratedAt: readalong,
+      book: namingReadalong(entry.manifest.book, readalong),
       savedAt: new Date().toISOString(),
     });
 
@@ -1233,6 +1357,27 @@ export function useDownloadedEbook(
   return useDownloads(
     (s) => downloadedIn(s.entries, connectionId, libraryId, path)?.manifest.ebookUri || undefined,
   );
+}
+
+/** The `generated_at` of the read-along map a finished download of the book keeps beside
+ * its EPUB (`manifest.readalongGeneratedAt`), else undefined. A string, so a download's
+ * progress ticks re-render nothing. */
+export function useDownloadedReadalong(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): string | undefined {
+  return useDownloads((s) => {
+    const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
+    return (m?.ebookUri && m.readalongGeneratedAt) || undefined;
+  });
+}
+
+/** The read-along map a finished download of the book keeps, read and checked, else null
+ * (none kept, gone, or no map). */
+export function readDownloadedReadalong(ref: BookRef) {
+  const m = downloadedEntryOf(ref)?.manifest;
+  return m?.ebookUri && m.readalongGeneratedAt ? readReadalongFile(ref) : Promise.resolve(null);
 }
 
 /** A book's download status (undefined: none) and a failed one's cause: what a control

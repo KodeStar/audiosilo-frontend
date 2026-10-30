@@ -7,7 +7,7 @@ import { act, type ReactNode } from 'react';
 
 import type { ApiClient } from '@/api/client';
 
-import { READER_START_MS, ReaderStartError } from './reader-host-types';
+import { READER_START_MS, type ReaderReadalongProps, ReaderStartError } from './reader-host-types';
 import { READER_URL, ReaderHost } from './reader-host.web';
 
 // A book's download (the store and the web engine have their own tests): the host reads
@@ -106,16 +106,20 @@ async function mountInPage({
   onMessage = jest.fn(),
   onLoadError = jest.fn(),
   onReopen = jest.fn(),
+  readalong = {},
+  placeKnown,
 }: {
   ebook?: jest.Mock;
   onMessage?: jest.Mock;
   onLoadError?: jest.Mock;
   onReopen?: jest.Mock;
+  readalong?: ReaderReadalongProps;
+  placeKnown?: boolean;
 } = {}) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => {
+  const draw = (known: boolean | undefined) =>
     root.render(
       <ReaderHost
         api={{ ebook } as unknown as ApiClient}
@@ -130,9 +134,19 @@ async function mountInPage({
         onMessage={onMessage}
         onLoadError={onLoadError}
         onReopen={onReopen}
+        placeKnown={known}
+        at={{ cfi: 'epubcfi(/6/2!/4/2)' }}
+        {...readalong}
       />,
     );
+  await act(async () => {
+    draw(placeKnown);
   });
+  /** The screen now knows where the book opens. */
+  const placeFound = () =>
+    act(async () => {
+      draw(true);
+    });
   const reader = container.querySelector('iframe')!.contentWindow!;
   const posted = jest.spyOn(reader, 'postMessage').mockImplementation(() => {});
   const say = (data: unknown, source: Window = reader) =>
@@ -147,7 +161,7 @@ async function mountInPage({
       root.unmount();
       container.remove();
     });
-  return { ebook, onMessage, onLoadError, onReopen, say, types, unmount, posted };
+  return { ebook, onMessage, onLoadError, onReopen, say, types, unmount, posted, placeFound };
 }
 
 describe('ReaderHost (web) in a page', () => {
@@ -156,6 +170,17 @@ describe('ReaderHost (web) in a page', () => {
     await host.say({ type: 'ready' });
     expect(host.ebook).toHaveBeenCalledTimes(1);
     expect(host.types()).toEqual(['open']);
+    await host.unmount();
+  });
+
+  it('fetches the book at once, and opens it only once where it opens is known (fe#164)', async () => {
+    const host = await mountInPage({ placeKnown: false });
+    await host.say({ type: 'ready' });
+    expect(host.ebook).toHaveBeenCalledTimes(1);
+    expect(host.types()).toEqual([]);
+    await host.placeFound();
+    expect(host.types()).toEqual(['open']);
+    expect(host.posted.mock.calls[0]?.[0]).toMatchObject({ at: { cfi: 'epubcfi(/6/2!/4/2)' } });
     await host.unmount();
   });
 
@@ -203,5 +228,48 @@ describe('ReaderHost (web) in a page', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+// Read-along (Bridge Phase 3c) in the web host: the map goes whole (structured clone), after
+// `ready`, to every document the frame loads; what the reader says goes to the callbacks.
+describe('ReaderHost (web) read-along', () => {
+  const map = {
+    sections: [{ href: 'ch1.xhtml', spans: [{ cfi: 'epubcfi(/6/4!/4/2)', start: 1, end: 2 }] }],
+  };
+
+  it('sends the map, the place and follow once ready, and again to a reloaded frame', async () => {
+    const onSeek = jest.fn();
+    const onFollowing = jest.fn();
+    const onReadalongState = jest.fn();
+    const host = await mountInPage({
+      readalong: {
+        readalongMap: map,
+        readalongPosition: () => ({ t: 3, rate: 1, playing: false }),
+        followNarration: true,
+        onSeek,
+        onFollowing,
+        onReadalongState,
+      },
+    });
+    expect(host.posted).not.toHaveBeenCalled();
+    await host.say({ type: 'ready' });
+    const sent = () => host.posted.mock.calls.map(([m]) => m);
+    expect(sent()).toContainEqual({ type: 'readalong', map });
+    expect(sent()).toContainEqual({ type: 'position', t: 3, rate: 1, playing: false });
+    expect(host.types().filter((t) => t !== 'open')).toEqual(['readalong', 'position', 'follow']);
+    await host.say({ type: 'readalong', state: 'ok', unresolved: 0 });
+    await host.say({ type: 'seek', t: 12.5 });
+    await host.say({ type: 'following', value: false });
+    expect(onReadalongState).toHaveBeenCalledWith({ state: 'ok', unresolved: 0 });
+    expect(onSeek).toHaveBeenCalledWith(12.5);
+    expect(onFollowing).toHaveBeenCalledWith(false);
+    // None of them reach the screen's messages.
+    expect(host.onMessage).not.toHaveBeenCalled();
+    // A reloaded frame gets the map again; it had stopped following, so no follow.
+    host.posted.mockClear();
+    await host.say({ type: 'ready' });
+    expect(host.types().filter((t) => t !== 'open')).toEqual(['readalong', 'position']);
+    await host.unmount();
   });
 });

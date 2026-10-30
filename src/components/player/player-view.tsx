@@ -137,7 +137,7 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
  * PLAYING book: its cover washed into the background, the cover breathing (94% when
  * paused), the chapter title (tap for the chapters), the status line (or the Undo chip
  * after a jump), the chapter seek bar with its times, the compact whole-book timeline,
- * the transport and the actions. The companion (Who's who, Story so far, Chapters,
+ * the transport and the actions. The companion (Who's who, Story so far, Text, Chapters,
  * Bookmarks, Notes, History) is a 420 column on a desktop, sits below the controls on a
  * tablet and opens as a sheet from chips on a phone. The layout follows the player's
  * MEASURED width. Its sheets render here (`PlayerSheetHost`), above the shell's.

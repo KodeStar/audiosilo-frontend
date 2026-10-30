@@ -23,7 +23,9 @@ import {
 } from './companion-model';
 import { useCompanion } from './companion-store';
 import { StoryPanel } from './story-panel';
+import { TextPanel } from './text-panel';
 import { type CompanionData, useCompanionData } from './use-companion-data';
+import { useTextTab } from './use-text-tab';
 import { WhoPanel } from './who-panel';
 
 /** Where the companion sits: the desktop's 420 column and the phone's sheet scroll on
@@ -111,6 +113,9 @@ function Panel({
       return <StoryPanel data={data} generate={generate} />;
     case 'chapters':
       return <ChaptersPanel onSelected={onChapter} />;
+    case 'text':
+      // Its own panel (`TextPanel`), outside the tab's scroller.
+      return null;
     default:
       return <OwnPanel tab={tab} target={data.target} />;
   }
@@ -127,7 +132,8 @@ function CompanionBody({
 }) {
   const { t } = useTranslation();
   const data = useCompanionData(target);
-  const tabs = companionTabs(data.status !== 'off');
+  const text = useTextTab(target);
+  const tabs = companionTabs(data.status !== 'off', text.shown);
   const wanted = useCompanion((s) => s.tab);
   const setTab = useCompanion((s) => s.setTab);
   const tab = activeCompanionTab(tabs, wanted);
@@ -146,7 +152,16 @@ function CompanionBody({
         ))}
       </TabsList>
       <TabsContent value={tab} className={cn(scrolls && 'flex-1')}>
-        {tab === 'chapters' && scrolls ? (
+        {tab === 'text' ? (
+          // The reader is its own scroller (it pages), so never inside the tab's.
+          <View
+            className={
+              scrolls ? (variant === 'column' ? 'flex-1 px-5 py-4' : 'flex-1 px-1 py-3') : 'py-4'
+            }
+          >
+            <TextPanel target={target} text={text} fill={scrolls} />
+          </View>
+        ) : tab === 'chapters' && scrolls ? (
           // The list is its own (virtualized) scroller, opened on the current chapter.
           <View className="flex-1 px-2 pt-2">
             <ChaptersPanel virtualized onSelected={onChapter} />
@@ -171,7 +186,8 @@ function CompanionBody({
 
 /**
  * The full player's companion (STYLEGUIDE section 8, "Full player" and "Companion"):
- * Who's who, Story so far, Chapters, Bookmarks, Notes and History for the PLAYING book,
+ * Who's who, Story so far, Text (the read-along, Bridge Phase 3c), Chapters, Bookmarks,
+ * Notes and History for the PLAYING book,
  * against that book's own server. The community tabs only where the server has
  * `metadata`. Which tab is open lives in `useCompanion`, so every surface agrees.
  */

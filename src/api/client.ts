@@ -2,9 +2,11 @@ import { Platform } from 'react-native';
 
 import { webOrigin } from '@/lib/base-url';
 import { createBatchLoader } from '@/lib/batch-loader';
+import { READALONG_ALIGN } from '@/lib/bridge-jobs';
 import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
 import { cleanAddresses } from '@/lib/pairing';
 import { APP_VERSION } from '@/lib/version';
+import { type CheckedReadalongMap, parseReadalongMap } from '@/reader/readalong-map';
 
 import type {
   AddMemberBody,
@@ -77,6 +79,7 @@ import type {
   ReadingProgress,
   ReadingProgressInput,
   ReadingProgressSaved,
+  ReadalongEstimate,
   RatedBook,
   Rating,
   RatingValue,
@@ -155,6 +158,15 @@ const API_ERROR_CODES = [
   'kind_unavailable',
   'detect_open',
   'contribute_open',
+  // Read-along (Bridge Phase 3c): a job refused while another kind is open for the book
+  // (409: a generate or a detect job refuses a read-along job and the other way round),
+  // a read-along job for a book with no ebook (409), and the map's own route: none to
+  // serve (404) or one made for another ebook or other audio (409).
+  'generate_open',
+  'readalong_open',
+  'no_ebook',
+  'no_readalong',
+  'readalong_stale',
   // Podcasts (Bridge Phase 2d-1): the module is off (404 on its writes), no online Bridge
   // can act (409), a listener already has five episodes on their way (409 on a Retry), the
   // episode's identity moved under a fetch (409), and a show that is gone or hidden (404).
@@ -397,6 +409,18 @@ const OPML_IMPORT_TIMEOUT_MS = 45_000;
  * piece of the file, so a picture-heavy EPUB of tens of megabytes on a slow link arrives
  * however long it takes, and only a stalled download fails. */
 const EBOOK_TIMEOUT_MS = 120_000;
+
+/** The timeout of a read-along map (`readalong`): up to 16 MiB of JSON, and the server may
+ * hash the book's ebook first (once, when the scan has not yet). */
+const READALONG_TIMEOUT_MS = 60_000;
+
+/** A read-along answer that is no `audiosilo-readalong/v1` map (`client.readalong`). */
+export class ReadalongMapError extends Error {
+  constructor() {
+    super('the read-along map is not an audiosilo-readalong/v1 map');
+    this.name = 'ReadalongMapError';
+  }
+}
 
 /** A directory result's artwork link as the server writes it (relative, one 64-hex id). */
 const DISCOVERY_ARTWORK_RE = /^\/api\/v1\/podcasts\/discovery\/artwork\?id=([0-9a-f]{64})$/;
@@ -1246,6 +1270,26 @@ export class ApiClient {
       headers: { ...this.clientHeaders, ...this.authHeaders() },
     };
   }
+  /** A book's read-along map (capability `readalong`, Bridge Phase 3c), asked for by the
+   * BOOK's path, checked span by span (`parseReadalongMap`). Fetched with the
+   * `Authorization` header only: the route takes no `?token=`. Refused 404 `no_readalong`
+   * (none, an invalid one, no ebook, a part's path), 409 `readalong_stale` (made for another
+   * ebook or other audio), 403 outside the caller's access. An answer that is no
+   * `audiosilo-readalong/v1` map at all rejects with a `ReadalongMapError`. */
+  async readalong(
+    libraryId: number,
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<CheckedReadalongMap> {
+    const data = await this.request<unknown>('GET', `/libraries/${libraryId}/readalong`, {
+      query: { path },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, READALONG_TIMEOUT_MS),
+    });
+    const map = parseReadalongMap(data);
+    if (!map) throw new ReadalongMapError();
+    return map;
+  }
   /** The caller's place in a book's ebook; null when they have none there yet. */
   async readingProgress(libraryId: number, path: string, signal?: AbortSignal) {
     const r = await this.request<{ reading_progress: ReadingProgress | null }>(
@@ -1682,7 +1726,10 @@ export class ApiClient {
    * working for the book (Bridge Phase 1d), a 409 `contribute_open` for one while a
    * `sidecars.contribute` job is queued or working for it (Phase 2b; a queued one held while
    * the Contributions module is off gives way and is cancelled), a 404 for no such book
-   * and a 400 for params the kind refuses. */
+   * and a 400 for params the kind refuses. A `readalong.align` job (Bridge Phase 3c, params
+   * `{}`) is refused 409 `no_ebook` for a book without an ebook, and 409 `generate_open` /
+   * `detect_open` while one of those is open for the book; a generate or detect job, 409
+   * `readalong_open` while a read-along job is. */
   queueBridgeJob(job: BridgeJobRequest) {
     return this.request<BridgeJob>('POST', '/admin/bridge/jobs', { body: job });
   }
@@ -1700,6 +1747,19 @@ export class ApiClient {
   bridgeEstimate(libraryId: number, path: string, kind: string, signal?: AbortSignal) {
     return this.request<BridgeEstimate>('GET', '/admin/bridge/estimate', {
       query: { library_id: libraryId, path, kind },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
+    });
+  }
+  /** What making a book's read-along would take (Bridge Phase 3c, `kind=readalong.align`):
+   * the most transcription, whether the Bridge can write the library, the book's ebook, its
+   * read-along now and the open job a new one would be or wait for. A 404 for no such book,
+   * a 409 `kind_unavailable` when the Bridge doesn't offer the kind. Its read-along now may
+   * need the ebook hashed first (once, when the scan has not yet), so it gets
+   * `bridgeEstimate`'s budget. */
+  readalongEstimate(libraryId: number, path: string, signal?: AbortSignal) {
+    return this.request<ReadalongEstimate>('GET', '/admin/bridge/estimate', {
+      query: { library_id: libraryId, path, kind: READALONG_ALIGN },
       signal,
       timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });

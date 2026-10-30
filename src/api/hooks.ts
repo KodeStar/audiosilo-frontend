@@ -23,6 +23,7 @@ import {
   estimatePollInterval,
   latestDone,
   midRunCheckpoint,
+  READALONG_ALIGN,
   SIDECARS_GENERATE,
 } from '@/lib/bridge-jobs';
 import { afterPaint } from '@/lib/after-paint';
@@ -46,6 +47,7 @@ import {
   saveProgress,
   writeMirror,
 } from '@/playback/progress-sync';
+import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
 import { rememberLibraryNames } from '@/stores/library-names';
 import { onConnectionRemoved, useSession } from '@/stores/session';
@@ -72,6 +74,7 @@ import type {
   BridgeEstimate,
   BridgeJob,
   BridgeJobRequest,
+  ReadalongEstimate,
   Capabilities,
   ChaptersResponse,
   Collection,
@@ -202,6 +205,18 @@ export const qk = {
   /** What generating characters and recaps for a book would take. */
   bridgeEstimate: (cid: string, lib: number, path: string) =>
     ['bridgeEstimate', cid, lib, path] as const,
+  /** What making a book's read-along would take (Bridge Phase 3c): under `bridgeEstimate`,
+   * so a refused queue reads both again. */
+  readalongEstimate: (cid: string, lib: number, path: string) =>
+    ['bridgeEstimate', cid, lib, path, READALONG_ALIGN] as const,
+  /** A book's read-along map (capability `readalong`, Bridge Phase 3c), per map: keyed by
+   * its `generated_at` (`Book.readalong`), so a map made again is fetched again. */
+  readalong: (cid: string, lib: number, path: string, generatedAt: string) =>
+    ['readalong', cid, lib, path, generatedAt] as const,
+  /** The read-along map a download keeps (`readalong.json`), read from the device, per map
+   * (its `generated_at`). */
+  readalongLocal: (cid: string, lib: number, path: string, generatedAt: string) =>
+    ['readalongLocal', cid, lib, path, generatedAt] as const,
   // Podcasts (Bridge Phase 2d-1): reads are core, Follow is capability `podcasts`, the
   // fetch status `podcast_fetch`.
   /** A podcast library's shows. */
@@ -244,12 +259,14 @@ export const isQueueKey = (key: readonly unknown[]): boolean => key[0] === 'queu
 export const isAllProgressKey = (key: readonly unknown[]): boolean =>
   key[0] === 'progress' && key[1] === 'all';
 
-/** The book a chapters query key names (`qk.chapters`), or null for any other key. */
-export function chaptersKeyParts(
+/** The book a book's `kind` query key names (`qk.chapters`, `qk.item`), or null for any
+ * other key. */
+export function bookKeyParts(
   key: readonly unknown[],
+  kind: 'chapters' | 'item',
 ): { cid: string; libraryId: number; path: string } | null {
-  const [kind, cid, libraryId, path] = key;
-  if (kind !== 'chapters' || typeof cid !== 'string' || typeof libraryId !== 'number') return null;
+  const [k, cid, libraryId, path] = key;
+  if (k !== kind || typeof cid !== 'string' || typeof libraryId !== 'number') return null;
   return typeof path === 'string' ? { cid, libraryId, path } : null;
 }
 
@@ -1314,6 +1331,28 @@ export function useReadingPlace(
   });
 }
 
+/** A book's read-along map (capability `readalong`, Bridge Phase 3c), checked span by span
+ * (`client.readalong`), asked only while `enabled` with the `generated_at` of the map the
+ * book says is ready (`Book.readalong`; `readalongReady` in `src/reader/readalong-gating.ts`
+ * is the gate). One fetch per map: kept while the book's answer names the same
+ * `generated_at`, fetched again under a new one (made again). No retry: a 404
+ * `no_readalong` or a 409 `readalong_stale` is final, and the surface shows no read-along
+ * (an `ApiError` with that code; a `ReadalongMapError` for an answer that is no map). */
+export function useReadalong(
+  libraryId: number,
+  path: string,
+  { enabled, generatedAt }: { enabled: boolean; generatedAt: string },
+  connectionId?: string,
+) {
+  return useCapabilityQuery<CheckedReadalongMap>(
+    'readalong',
+    (cid) => qk.readalong(cid, libraryId, path, generatedAt),
+    (api, signal) => api.readalong(libraryId, path, signal),
+    connectionId,
+    { ready: enabled && path.length > 0, staleTime: Infinity, retry: false },
+  );
+}
+
 /** Mark a book finished. Goes through the offline-aware last-write-wins save so
  * it reconciles with playback progress, then refreshes the home lists and what else a
  * finish moves (the listening stats, the goal, the book's spoilers=hide metadata). */
@@ -2325,10 +2364,11 @@ export function useHouseListening(connectionId?: string, opts: { enabled?: boole
 }
 
 // --- The Bridge (capability `bridge`, admin only; Bridge Phase 1a) -------------------
-// The player's one Bridge kind is `sidecars.generate` (characters and recaps). The reads
-// ask only a server with the flag, and only when the caller lets them (the screen's gate:
-// an admin, the `sidecars` feature, `metadata`); a non-admin would get a 403. The writes
-// reject with a `CapabilityError`, sending nothing, without the flag.
+// The player's Bridge kinds are `sidecars.generate` (characters and recaps) and (Phase 3c)
+// `readalong.align` (the read-along). The reads ask only a server with the flag, and only
+// when the caller lets them (the surface's gate: an admin and the kind's feature, plus
+// `metadata` for generate); a non-admin would get a 403. The writes reject with a
+// `CapabilityError`, sending nothing, without the flag.
 
 /** The finished jobs each cache has read a book's answers again for
  * (`refreshAfterFinish`), and the running jobs' checkpoints it has read the chapters again
@@ -2356,13 +2396,14 @@ function isBookAnswerOf(query: Query, cid: string, libraryId: number, path: stri
 }
 
 /** After a book's jobs were read: the first time this cache sees its newest job that wrote
- * the book's files done (`latestDone`: a generate job, a description the console queued, or
- * its chapter detection), read the book's `/meta` (every variant, under the job's own
- * path), its item and its chapters (under any path that names them) again, and wait for
- * them, so the generated tabs and description are in, the item's `generated` flag is on and
- * the chapters a Bridge found in the narration (Phase 1d: their rows, their caption and the
- * spoiler gate's chapter starts) are listed before the job's status goes (no Generate offer
- * flashes back in between). Once per finish, and whatever the clocks say: nothing compares
+ * the book's files done (`latestDone`: a generate job, a description the console queued,
+ * its chapter detection, or (Phase 3c) its read-along), read the book's `/meta` (every
+ * variant, under the job's own path), its item and its chapters (under any path that names
+ * them) again, and wait for them, so the generated tabs and description are in, the item's
+ * `generated` flag is on, its `readalong` names the map made and the chapters a Bridge found
+ * in the narration (Phase 1d: their rows, their caption and the spoiler gate's chapter
+ * starts) are listed before the job's status goes (no Generate offer flashes back in
+ * between). Once per finish, and whatever the clocks say: nothing compares
  * the device's fetch times with the server's finish, which need not agree. */
 async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly BridgeJob[]) {
   const job = latestDone(jobs);
@@ -2371,6 +2412,9 @@ async function refreshAfterFinish(qc: QueryClient, cid: string, jobs: readonly B
   const { library_id: libraryId, path } = job;
   await Promise.all([
     qc.invalidateQueries({ queryKey: qk.bookMeta(cid, libraryId, path) }),
+    // A map made again (`readalong.align`) comes under its new `generated_at` key once the
+    // item names it: no copy of a map is ever read again (a full one is up to 16 MiB), and
+    // a later launch's first read of the jobs costs the map it shows nothing.
     qc.invalidateQueries({ predicate: (q) => isBookAnswerOf(q, cid, libraryId, path) }),
   ]);
 }
@@ -2398,11 +2442,11 @@ function refreshMidRun(qc: QueryClient, cid: string, jobs: readonly BridgeJob[])
 /**
  * A book's Bridge jobs, newest first (`path`: the book's own `rel_path`, which the jobs
  * carry), asked only while `enabled`. Polled (`bridgePollInterval`) only while a
- * `sidecars.generate` or `chapters.detect` job of it is open and `active` (the surface on
- * screen) with the app in the foreground; the answer that sees the job end stops it. A
- * finished job has the book's `/meta`, item and chapters read again before its answer lands
- * (`refreshAfterFinish`); a running generate job past chapter detection, its chapters
- * (`refreshMidRun`).
+ * `sidecars.generate`, `chapters.detect` or (Phase 3c) `readalong.align` job of it is open
+ * and `active` (the surface on screen) with the app in the foreground; the answer that sees
+ * the job end stops it. A finished job has the book's `/meta`, item and chapters read again
+ * before its answer lands (`refreshAfterFinish`); a running generate job past chapter
+ * detection, its chapters (`refreshMidRun`).
  * `select` narrows what the caller re-renders for (a poll that changes only the progress
  * leaves it alone).
  */
@@ -2451,6 +2495,20 @@ export function useBridgeEstimate(libraryId: number, path: string, connectionId?
       refetchInterval: (query) =>
         estimatePollInterval(query.state.data?.open_job, AppState.currentState === 'active'),
     },
+  );
+}
+
+/** What making a book's read-along would take (`GET /admin/bridge/estimate?kind=
+ * readalong.align`, Bridge Phase 3c), read afresh each time it mounts (the confirmation
+ * opens) and after a refused queue (`useQueueBridgeJob`: its key is under the book's
+ * `bridgeEstimate`). Asked only from a server with the Bridge (`bridge`) for a book path. */
+export function useReadalongEstimate(libraryId: number, path: string, connectionId?: string) {
+  return useCapabilityQuery<ReadalongEstimate>(
+    'bridge',
+    (cid) => qk.readalongEstimate(cid, libraryId, path),
+    (api, signal) => api.readalongEstimate(libraryId, path, signal),
+    connectionId,
+    { ready: path.length > 0, staleTime: 0, retry: false },
   );
 }
 

@@ -1,4 +1,5 @@
 import type { HostMessage, OpenFields } from './protocol';
+import type { ReaderReadalongMap } from './readalong-map';
 
 /**
  * The app's book transfer (Bridge Phase 3b-2): the reader WebView has no file or network
@@ -46,4 +47,33 @@ export async function sendInChunks(
     post({ type: 'chunk', seq, data });
   }
   return true;
+}
+
+/**
+ * A read-along map as the app sends it (Bridge Phase 3c): one `readalong {map}` while its
+ * JSON is at most `limit` (CHUNK_BYTES) UTF-16 code units, else `readalong {length,
+ * chunks}` and its JSON text in `readalongChunk {seq, data}` pieces of at most `limit`,
+ * which the reader joins and parses (`reader/src/chunks.js`'s `createTextAssembly`). A piece
+ * never ends between the two halves of a surrogate pair. A long book's map is about 1 MB of
+ * JSON: one message of it would be held whole on both sides of the WebView's bridge.
+ */
+export function readalongMessages(
+  map: ReaderReadalongMap | null,
+  limit = CHUNK_BYTES,
+): HostMessage[] {
+  if (!map) return [{ type: 'readalong', map: null }];
+  const text = JSON.stringify(map);
+  if (text.length <= limit) return [{ type: 'readalong', map }];
+  const pieces: string[] = [];
+  for (let at = 0; at < text.length;) {
+    let end = Math.min(text.length, at + limit);
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && end - 1 > at && last >= 0xd800 && last <= 0xdbff) end--;
+    pieces.push(text.slice(at, end));
+    at = end;
+  }
+  return [
+    { type: 'readalong', length: text.length, chunks: pieces.length },
+    ...pieces.map((data, seq): HostMessage => ({ type: 'readalongChunk', seq, data })),
+  ];
 }

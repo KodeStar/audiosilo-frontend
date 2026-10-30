@@ -1342,6 +1342,7 @@
       "unavailable": "Il Bridge non offre questa funzione al momento.",
       "detectOpen": "I capitoli del libro sono ancora in ricerca. Premi Genera quando ha finito: la trascrizione viene riutilizzata.",
       "contributeOpen": "I personaggi e i riassunti di questo libro sono in fase di condivisione con la community. Premi Genera quando ha finito.",
+      "readalongOpen": "La lettura sincronizzata di questo libro è in fase di creazione. Premi Genera quando ha finito.",
       "confirm": "Genera",
       "confirmMany_one": "Genera {{count}} libro",
       "confirmMany_other": "Genera {{count}} libri",
@@ -1354,6 +1355,26 @@
       "queuedSome_other": "{{count}} libri su {{total}} in coda. Gli altri non è stato possibile metterli in coda.",
       "queuedRestFailed": "Questo libro non è ancora in coda. Premi di nuovo Genera per mettere in coda gli altri.",
       "queueFailed": "Impossibile metterlo in coda. Non è stato avviato nulla."
+    },
+    "readalong": {
+      "make": "Crea lettura sincronizzata",
+      "makeAgain": "Ricrea la lettura sincronizzata",
+      "title": "Crea lettura sincronizzata",
+      "lead": "Il Bridge allinea l'ebook di {{title}} alla sua narrazione, così il testo segue mentre ascolti. Può richiedere un po' di tempo, e nel frattempo puoi lasciare la pagina.",
+      "leadUntitled": "Il Bridge allinea l'ebook del libro alla sua narrazione, così il testo segue mentre ascolti. Può richiedere un po' di tempo, e nel frattempo puoi lasciare la pagina.",
+      "sourceBoth": "L'ebook, {{file}}, e l'audio",
+      "sourceAudio": "L'audio",
+      "upTo": "Fino a {{value}}",
+      "noAgent": "Nessuno: non viene usato alcun agente IA",
+      "confirm": "Crea lettura sincronizzata",
+      "queued": "In coda. Il testo apparirà qui quando sarà pronto.",
+      "statusTitle": "Creazione della lettura sincronizzata",
+      "parkedTitle": "La creazione della lettura sincronizzata è in pausa",
+      "failedTitle": "La creazione della lettura sincronizzata non è riuscita",
+      "noEbook": "Questo libro non ha un ebook da allineare alla narrazione.",
+      "generateOpen": "Si stanno generando i personaggi e i riassunti di questo libro. Crea la lettura sincronizzata quando avrà finito: riutilizza la trascrizione.",
+      "detectOpen": "I capitoli del libro sono ancora in ricerca. Crea la lettura sincronizzata quando avrà finito: riutilizza la trascrizione.",
+      "readalongOpen": "La lettura sincronizzata di questo libro è già in creazione."
     },
     "status": {
       "title": "Generazione di personaggi e riassunti",
@@ -1380,6 +1401,7 @@
       "qa_sweep": "Controllo della trascrizione",
       "qa_adjudicating": "Revisione dei passaggi dubbi",
       "retranscribing": "Nuova trascrizione di alcuni passaggi",
+      "readalong_aligning": "Allineamento del testo alla narrazione",
       "markers_normalizing": "Ricerca dei capitoli",
       "spelling_research": "Controllo di nomi e grafia",
       "correcting": "Correzione della trascrizione",
@@ -1643,7 +1665,21 @@
       "revealBody_other": "Li hai appena incontrati nel capitolo {{chapter}}. Non viene mostrato nulla oltre questo punto.",
       "show": "Mostra",
       "noServerTitle": "Il server di questo libro non è connesso",
-      "noServerHint": "Segnalibri, note e cronologia torneranno appena lo sarà."
+      "noServerHint": "Segnalibri, note e cronologia torneranno appena lo sarà.",
+      "text": "Testo",
+      "textEmptyTitle": "Nessuna lettura sincronizzata per questo libro",
+      "textEmptyHint": "Una lettura sincronizzata allinea l'ebook alla narrazione, così il testo segue mentre ascolti.",
+      "textStaleTitle": "La lettura sincronizzata non è aggiornata",
+      "textStaleEbook": "L'ebook è cambiato da quando è stata creata, quindi non corrisponde più.",
+      "textStaleAudio": "L'audio è cambiato da quando è stata creata, quindi non corrisponde più.",
+      "textStaleHint": "Il libro è cambiato da quando è stata creata, quindi non corrisponde più.",
+      "textNoMatchTitle": "Il testo non può seguire questa narrazione",
+      "textNoMatchHint": "La lettura sincronizzata non corrisponde a questo ebook.",
+      "textFailedTitle": "Impossibile caricare il testo",
+      "textFailedHint": "L'ebook non si è caricato. Controlla la connessione e riprova.",
+      "textMapFailedHint": "La lettura sincronizzata non si è caricata. Controlla la connessione e riprova.",
+      "textStartHint": "Il lettore di ebook non si è avviato. Riprova.",
+      "textNoServer": "Il testo torna non appena lo è."
     },
     "placeMoved": {
       "title": "Posizione ripresa da un altro dispositivo",
@@ -2995,6 +3031,10 @@
     "notSaved": {
       "body": "Il tuo punto non è stato salvato sul server. È conservato su questo dispositivo.",
       "dismiss": "OK"
+    },
+    "readalong": {
+      "follow": "Segui la narrazione",
+      "back": "Torna alla narrazione"
     }
   }
 }

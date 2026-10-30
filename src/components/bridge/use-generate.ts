@@ -1,14 +1,6 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError } from '@/api/client';
-import {
-  CapabilityError,
-  useBridgeJobs,
-  useCancelBridgeJob,
-  useQueueBridgeJob,
-  useServerInfo,
-} from '@/api/hooks';
+import { CapabilityError, useServerInfo } from '@/api/hooks';
 import type { BookRef, BridgeJob } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { SIDECARS_GENERATE } from '@/lib/bridge-jobs';
@@ -23,6 +15,7 @@ import {
   queueInOrder,
   statusJob,
 } from './bridge-model';
+import { useBridgeJobSurface } from './use-bridge-job-surface';
 
 export type GenerateTarget = {
   connectionId: string;
@@ -84,28 +77,14 @@ export function useGenerate({
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const allowed = mayGenerate(user, server);
-  // The status's own read polls; this one only says whether a job shows.
-  const jobs = useBridgeJobs(
-    libraryId,
-    path,
-    { enabled: allowed, active: false, select: showsJob },
-    connectionId,
-  );
-  const queueJob = useQueueBridgeJob(connectionId);
-  const cancelJob = useCancelBridgeJob(connectionId);
-  const [confirming, setConfirming] = useState(false);
-  const [queueing, setQueueing] = useState(false);
-  // The confirmation goes with the permission (the Bridge went offline, the flag is off):
-  // its Generate could send nothing, and it must not open again by itself later.
-  if (confirming && !allowed) setConfirming(false);
+  const surface = useBridgeJobSurface(target, allowed, showsJob);
+  const { queueJob, setQueueing } = surface;
 
   const kind = generateOffer({
     allowed,
     metaKnown,
-    // An answer is in (a later read that failed keeps it: the list has `retry: false`, and
-    // its error state alone must not take the button away).
-    jobsKnown: jobs.data !== undefined,
-    showsJob: jobs.data === true,
+    jobsKnown: surface.jobsKnown,
+    showsJob: surface.showsJob,
     content,
   });
   const offer = kind === 'covered' ? null : kind;
@@ -153,20 +132,12 @@ export function useGenerate({
     allowed,
     offer,
     covered: kind === 'covered',
-    confirming: confirming && allowed,
-    setConfirming,
+    confirming: surface.confirming,
+    setConfirming: surface.setConfirming,
     queue,
-    queueing,
-    cancel: (job) =>
-      cancelJob.mutate(job, {
-        onError: (e) => {
-          // A 409: the job already ended (code `finished`); the list read again on the
-          // refusal (`useCancelBridgeJob`) shows how, and trying again can't help.
-          if (e instanceof CapabilityError || (e instanceof ApiError && e.status === 409)) return;
-          toast({ title: t('bridge.status.cancelFailed') });
-        },
-      }),
-    cancelling: cancelJob.isPending,
+    queueing: surface.queueing,
+    cancel: surface.cancel,
+    cancelling: surface.cancelling,
     retry: () => void queue([{ library_id: libraryId, path }]),
   };
 }

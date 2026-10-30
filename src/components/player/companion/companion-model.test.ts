@@ -12,6 +12,7 @@ import {
   type RevealWatch,
   revealOnCrossing,
   storySoFar,
+  textTab,
   watchReveal,
   whoOrder,
 } from './companion-model';
@@ -42,10 +43,34 @@ describe('companionTabs', () => {
     expect(companionTabs(false)).toEqual(['chapters', 'bookmarks', 'notes', 'history']);
   });
 
+  it('puts Text after Story so far, only where the book has it', () => {
+    expect(companionTabs(true, true)).toEqual([
+      'who',
+      'story',
+      'text',
+      'chapters',
+      'bookmarks',
+      'notes',
+      'history',
+    ]);
+    expect(companionTabs(false, true)).toEqual([
+      'text',
+      'chapters',
+      'bookmarks',
+      'notes',
+      'history',
+    ]);
+    expect(companionTabs(true, false)).not.toContain('text');
+  });
+
   it('falls back to the first tab when the one asked for is not there', () => {
     expect(activeCompanionTab(companionTabs(false), 'who')).toBe('chapters');
     expect(activeCompanionTab(companionTabs(true), 'notes')).toBe('notes');
     expect(activeCompanionTab(companionTabs(true), null)).toBe('who');
+    // Text opens only when asked for: with no community tabs, Chapters still leads.
+    expect(activeCompanionTab(companionTabs(false, true), null)).toBe('chapters');
+    expect(activeCompanionTab(companionTabs(false, true), 'who')).toBe('chapters');
+    expect(activeCompanionTab(companionTabs(false, true), 'text')).toBe('text');
   });
 });
 
@@ -201,5 +226,22 @@ describe('chapterRows', () => {
     // A 5-minute chapter followed by a gap before the next starts.
     const gap = [chapter(0, 0, 300), chapter(1, 600, 300)];
     expect(chapterRows(gap, 100, 0, 1)[0]).toEqual({ state: 'current', left: 200 });
+  });
+});
+
+describe('textTab', () => {
+  it('shows for a listener only once a map with a sentence is in', () => {
+    expect(textTab({ map: true, mayMake: false })).toBe(true);
+    // On its way (no tab that vanishes a moment later), none, or a stale one: no tab.
+    expect(textTab({ map: false, mayMake: false })).toBe(false);
+  });
+
+  it('stays for everyone when the map failed to load, saying so', () => {
+    expect(textTab({ map: false, failed: true, mayMake: false })).toBe(true);
+  });
+
+  it('shows for an admin who may make one without a map, offering Make', () => {
+    expect(textTab({ map: false, mayMake: true })).toBe(true);
+    expect(textTab({ map: true, mayMake: true })).toBe(true);
   });
 });

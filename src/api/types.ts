@@ -148,6 +148,13 @@ export type Capabilities = {
    * `/libraries/{id}/reading-progress` ({@link ReadingProgress}). Absent on older servers:
    * treat missing as false and offer no Read. */
   ebooks?: boolean;
+  /** Whether the server serves read-along maps (Bridge Phase 3c): a book's `readalong`
+   * ({@link BookReadalong}) on `GET /libraries/{id}/item`, and the map a Bridge made
+   * ({@link ReadalongMap}) at `GET /libraries/{id}/readalong` (the `Authorization` header
+   * only, never `?token=`; `client.readalong`). A Bridge that can make maps lists
+   * `readalong` in {@link ServerInfo.bridge}'s `features`. Absent on older servers: treat
+   * missing as false and offer no read-along. */
+  readalong?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -176,7 +183,8 @@ export type ServerInfo = {
 };
 
 /** The Bridge block of GET /server (see {@link ServerInfo.bridge}). `features`: the job
- * families the Bridge offers (`sidecars`, `chapters`) and what it can do besides
+ * families the Bridge offers (`sidecars`, `chapters`, `readalong` from Bridge Phase 3c) and
+ * what it can do besides
  * (`contribute`: it can file contributions, Phase 2a). Test with `includes`; more values
  * arrive over time. */
 export type ServerBridge = { version: string; features: string[] };
@@ -471,10 +479,54 @@ export type Book = {
    * (`client.ebook`). Sent on every book response; absent when the book has none and on
    * older servers. */
   ebook?: BookEbook;
+  /** The state of the book's read-along map (Bridge Phase 3c, capability `readalong`):
+   * only GET /libraries/{id}/item sends it (never a list row). Absent when the book has no
+   * ebook or no valid map, and on older servers. */
+  readalong?: BookReadalong;
 };
 
 /** A book's ebook ({@link Book.ebook}): its library path and size in bytes. */
 export type BookEbook = { path: string; size: number };
+
+/** Why a read-along map no longer fits its book: it was made from another ebook, or other
+ * audio (another count of files, other paths, or a length off by more than 0.05 s). */
+export type ReadalongStaleReason = 'ebook_changed' | 'audio_changed';
+
+/** A book's read-along ({@link Book.readalong}; the read-along estimate's `readalong`). A
+ * `ready` map carries its text coverage (0..1) and when it was made (RFC 3339); a `stale`
+ * one only why. The wire fields stay open. */
+export type BookReadalong = {
+  state: 'ready' | 'stale' | (string & {});
+  reason?: ReadalongStaleReason | (string & {});
+  coverage?: number;
+  generated_at?: string;
+};
+
+/** One narrated sentence of a read-along map: its place in the ebook (a CFI of foliate's
+ * `epubcfi.js`) and its whole-book times in seconds (`start` is also where a tap seeks). */
+export type ReadalongSpan = { cfi: string; start: number; end: number };
+
+/** A read-along map (`audiosilo-readalong/v1`, GET /libraries/{id}/readalong), as the
+ * Bridge writes it beside the book (`.audiosilo/readalong.json`). Hand-mirrored from the
+ * Bridge's `internal/readalong` (mapfile.go). `sections` follow the spine, `href` relative
+ * to the OPF; spans in text order (the reader sorts them by time). `gaps` (text no sentence
+ * of the narration matched) and `audio_gaps` (narration longer than 5 s with no text) are
+ * optional, and the player keeps neither (`parseReadalongMap`). */
+export type ReadalongMap = {
+  format: 'audiosilo-readalong/v1';
+  ebook: { file: string; sha256: string };
+  audio: { duration: number; files: { path: string; duration: number }[] };
+  granularity: string;
+  generator: { name: string; version: string; aligner?: string; asr?: string };
+  generated_at: string;
+  coverage: { text: number; audio: number };
+  sections: {
+    href: string;
+    spans: ReadalongSpan[];
+    gaps?: { cfi: string; chars: number }[];
+  }[];
+  audio_gaps?: { start: number; end: number }[];
+};
 
 /** Colours derived from a book's cover art, all lowercase "#rrggbb". `bg` is the
  * dominant colour. `accent` is its vibrant colour, adjusted to reach a WCAG contrast
@@ -1376,7 +1428,7 @@ export type BridgeJob = {
   params: SidecarsGenerateParams | Record<string, unknown> | null;
   state: BridgeJobState | (string & {});
   progress: SidecarsGenerateProgress | null;
-  result: SidecarsGenerateResult | Record<string, unknown> | null;
+  result: SidecarsGenerateResult | ReadalongAlignResult | Record<string, unknown> | null;
   /** Empty unless the job failed, or is parked (the park message). */
   error: string;
   /** The admin who queued it; null once that account is deleted. */
@@ -1455,6 +1507,42 @@ export type SidecarsGenerateResult = {
   /** Why no description was written, in a few plain words; only when `description` is
    * false. */
   description_error?: string;
+};
+
+/** `readalong.align`'s result on `done` (Bridge Phase 3c): the map it wrote (`file`, the
+ * book's `.audiosilo/readalong.json`), how much of the text and the audio lined up (0..1),
+ * how many sections, sentences and long audio gaps it holds, how many windows the heal
+ * transcribed again, whether the run transcribed the audio (false when it reused a
+ * transcript the Bridge kept) and the sha256 of the ebook it aligned. Its progress is
+ * {@link SidecarsGenerateProgress}'s shape (`stage` reaching `readalong_aligning`). */
+export type ReadalongAlignResult = {
+  library_id: number;
+  path: string;
+  file: string;
+  coverage: { text: number; audio: number };
+  sections: number;
+  spans: number;
+  audio_gaps: number;
+  heal_windows: number;
+  transcribed: boolean;
+  ebook_sha256: string;
+};
+
+/** Response of GET /admin/bridge/estimate?kind=readalong.align (the confirmation before
+ * making a book's read-along): the most transcription it may take (the book's whole audio;
+ * less when the Bridge still has its transcript, and never an agent), whether the Bridge
+ * sent its figures, whether it can write the library, the book's ebook (null: the job would
+ * be refused 409 `no_ebook`), its read-along now (null for none) and the open job a new one
+ * would be (an open `readalong.align`) or would wait for (an open `sidecars.generate` or
+ * `chapters.detect`, 409 `generate_open` / `detect_open`); absent for none. */
+export type ReadalongEstimate = {
+  kind: string;
+  asr_hours: number;
+  figures: boolean;
+  writable: boolean;
+  ebook: BookEbook | null;
+  readalong: BookReadalong | null;
+  open_job?: BridgeJob;
 };
 
 /** An earlier book of the same series, in the same library, with no recaps yet (the

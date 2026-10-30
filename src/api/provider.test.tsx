@@ -365,6 +365,30 @@ describe('queries and reachability', () => {
     expect(serverInfo).not.toHaveBeenCalled();
   });
 
+  it('never reads a read-along map it holds again on a reconnect, but one that failed', async () => {
+    serverInfo.mockResolvedValue({});
+    const held = jest.fn().mockResolvedValue({ sections: [] });
+    const failing = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const observe = (queryKey: readonly unknown[], queryFn: () => Promise<unknown>) =>
+      new QueryObserver(queryClient, { queryKey, queryFn, retry: false, staleTime: Infinity });
+    const a = observe(qk.readalong('c1', 1, 'A/Book', 'g1'), held);
+    const b = observe(qk.readalongLocal('c1', 1, 'A/Book', 'g1'), held);
+    const c = observe(qk.readalong('c1', 1, 'B/Book', 'g1'), failing);
+    const stops = [a, b, c].map((o) => o.subscribe(() => {}));
+    try {
+      await waitFor(() => expect(c.getCurrentResult().isError).toBe(true));
+      await waitFor(() => expect(b.getCurrentResult().isSuccess).toBe(true));
+      expect(held).toHaveBeenCalledTimes(2);
+      failing.mockResolvedValue({ sections: [] });
+      mockReconnect?.('c1');
+      await waitFor(() => expect(c.getCurrentResult().isSuccess).toBe(true));
+      expect(held).toHaveBeenCalledTimes(2);
+      expect(failing).toHaveBeenCalledTimes(2);
+    } finally {
+      stops.forEach((stop) => stop());
+    }
+  });
+
   it('refetches a failed list once its server is back, and an answer brings it back', async () => {
     serverInfo.mockRejectedValue(new TypeError('Network request failed'));
     const libraries = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
