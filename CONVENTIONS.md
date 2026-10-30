@@ -1288,8 +1288,8 @@ media GETs only.
     plays). A file whose two tables plus 64 MB don't fit `Runtime.maxMemory()` drops its
     clips (no lock-screen chapter scrubber or prev/next chapter for it; the app's chapters
     are unchanged); other files keep theirs. A file of unknown duration counts as long as its
-    clips reach. The module's manifest sets `android:largeHeap="true"`, so books up to about
-    41 h keep their clips.
+    clips reach (the last, "to end", as long as its longest). The module's manifest sets
+    `android:largeHeap="true"`, so books up to about 41 h keep their clips.
   - **The JS store + iOS stay file-based**: the Android module translates between its chapter
     clips and the file-relative `(trackIndex, position)` the bridge reports through
     `TimelineMap` (in `MediaItems.kt`: `fileToItem`/`itemToFile`), built from each item's own

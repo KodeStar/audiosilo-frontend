@@ -66,10 +66,14 @@ class ClipBudgetTest {
   }
 
   @Test fun anUnknownDurationIsAsLongAsTheClipsReach() {
-    // Loyalists with no duration from the server: its 94 chapters reach 23.5 h into the file.
+    // Loyalists with no duration from the server: its 94 chapters reach 23.5 h into the file,
+    // the last one "to end" (endInFile 0) as `buildChapterClips` sends it.
     val unknown = loyalists.copy(duration = 0.0)
-    val clips = List(94) { ClipSpec(0, it * 901.0, (it + 1) * 901.0, "Chapter ${it + 1}") }
+    val clips = List(94) { ClipSpec(0, it * 901.0, if (it == 93) 0.0 else (it + 1) * 901.0, "Chapter ${it + 1}") }
     assertEquals(setOf(0), ClipBudget.wholeFiles(listOf(unknown), clips, 192 * mb))
+    // Two 24 h chapters, the last "to end": 48 h, not the 24 h its start says.
+    val two = listOf(ClipSpec(0, 0.0, 86_400.0, "One"), ClipSpec(0, 86_400.0, 0.0, "Two"))
+    assertEquals(setOf(0), ClipBudget.wholeFiles(listOf(unknown), two, 400 * mb))
     // A short book of unknown length keeps its clips.
     val short = track("A/Book/book.m4b", 0.0)
     assertTrue(ClipBudget.wholeFiles(listOf(short), chapters(0, 6), 192 * mb).isEmpty())

@@ -245,16 +245,26 @@ object ClipBudget {
 
   /**
    * The file indexes among [clips] that must play as whole-file items. A file whose duration
-   * is unknown (0) is as long as its clips reach into it (a clip to the file's end reaches its
-   * start): an unknown length is no reason to clip a long m4b.
+   * is unknown (0) is as long as its clips reach into it ([reach]): an unknown length is no
+   * reason to clip a long m4b.
    */
-  fun wholeFiles(tracks: List<TrackSpec>, clips: List<ClipSpec>, heapBytes: Long): Set<Int> {
-    val ends = HashMap<Int, Double>()
-    for (c in clips) ends.merge(c.fileIndex, maxOf(c.startInFile, c.endInFile)) { a, b -> maxOf(a, b) }
-    return ends.filter { (i, end) ->
+  fun wholeFiles(tracks: List<TrackSpec>, clips: List<ClipSpec>, heapBytes: Long): Set<Int> =
+    clips.groupBy { it.fileIndex }.filter { (i, fileClips) ->
       val t = tracks.getOrNull(i) ?: return@filter false
-      !clipsFit(if (t.duration > 0.0) t else t.copy(duration = end), heapBytes)
+      !clipsFit(if (t.duration > 0.0) t else t.copy(duration = reach(fileClips)), heapBytes)
     }.keys
+
+  /**
+   * How far a file's [clips] reach into it. A clip "to end" (`endInFile <= 0`, the file's last
+   * chapter as the JS sends it) is taken to run as long as the file's longest clip that names
+   * its end, so a book of a few long chapters is not counted a chapter short.
+   */
+  private fun reach(clips: List<ClipSpec>): Double {
+    val longest = clips.filter { it.endInFile > 0.0 }
+      .maxOfOrNull { it.endInFile - it.startInFile }?.coerceAtLeast(0.0) ?: 0.0
+    return clips.maxOf {
+      if (it.endInFile > 0.0) maxOf(it.startInFile, it.endInFile) else it.startInFile + longest
+    }
   }
 
   private fun decoded(url: String): String =
