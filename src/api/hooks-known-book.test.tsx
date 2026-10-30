@@ -71,6 +71,17 @@ it('takes it when the item failed, and the item itself when it answers', async (
   await waitFor(() => expect(answered.result.current?.title).toBe('From the item'));
 });
 
+it("finds a book only the startup cache's progress-row books names (a reload offline)", async () => {
+  queryClient.clear();
+  queryClient.setQueryData(
+    ['progressBooks', 'c1'],
+    [{ library_id: 1, rel_path: PATH, title: "Abaddon's Gate" }],
+  );
+  onlineManager.setOnline(false);
+  const { result } = await renderHook(() => useKnownBook(1, PATH), { wrapper });
+  await waitFor(() => expect(result.current?.title).toBe("Abaddon's Gate"));
+});
+
 it('waits for the item online, rather than walking the cache', async () => {
   mockItem.mockReturnValue(new Promise(() => {}));
   const { result } = await renderHook(() => useKnownBook(1, PATH), { wrapper });

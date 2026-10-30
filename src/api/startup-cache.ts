@@ -17,7 +17,10 @@ import { APP_VERSION } from '@/lib/version';
  * one of these queries succeeds and when the page is hidden, only for the connections
  * signed in (`keep`). Only the queries `isStartupQuery` names are kept, and of the
  * whole-library list only its first page, each while the document stays under
- * `MAX_CHARS` (about 100 KB for a 1,000-book library). Every key carries its connection
+ * `MAX_CHARS` (about 100 KB for a 1,000-book library). Beside them, the books of each
+ * connection's progress rows as their `/item` last named them (`PROGRESS_BOOKS`), so a
+ * reload offline still titles Home's and Up next's progress rows (`listedBook`; v2.5.1
+ * PLAYER-02). Every key carries its connection
  * id, so a kept entry of another connection or a signed-out one is never read (and the
  * query cache drops it unread). A sign-out drops the connection's entries (`forget`); a
  * storage reset wipes the document (`SCOPED_STORAGE_KEYS`), and a document of another
@@ -47,8 +50,31 @@ function storage(): Storage | null {
   }
 }
 
+/** The key head of a connection's kept progress-row books (`[PROGRESS_BOOKS, cid]`): a
+ * list in the cache that no screen asks for, rebuilt at each save from the books' `/item`
+ * answers (and the last kept copy of those not asked this visit), read through
+ * `listedBook` while a row's own `/item` can't answer. */
+export const PROGRESS_BOOKS = 'progressBooks';
+/** The most books kept per connection (the newest saves first): those in progress, and
+ * the finished ones Home's Recently finished shows. */
+const IN_PROGRESS_MAX = 40;
+const FINISHED_MAX = 15;
+/** The fields a progress row draws from its book (title, cover, Home's Now card). */
+const BOOK_FIELDS = [
+  'library_id',
+  'rel_path',
+  'title',
+  'author',
+  'narrator',
+  'series',
+  'series_index',
+  'cover_version',
+  'duration',
+] as const;
+
 /** The single-key queries kept (their first key element), and the narrower ones below. */
 const KEPT = new Set([
+  PROGRESS_BOOKS,
   'server',
   'libraries',
   'favourites',
@@ -94,15 +120,61 @@ export function snapshot(
   keep: (key: readonly unknown[]) => boolean = () => true,
 ): Entry[] {
   const out: Entry[] = [];
+  const progressLists: { cid: string; rows: unknown[] }[] = [];
   for (const q of client.getQueryCache().getAll()) {
     // The last answer, also when the latest ask failed (a server down for a moment).
     if (q.state.data === undefined) continue;
     if (!isStartupQuery(q.queryKey) || !keep(q.queryKey)) continue;
+    if (q.queryKey[0] === PROGRESS_BOOKS) continue; // rebuilt below
+    const [head, all, cid] = q.queryKey;
+    if (
+      head === 'progress' &&
+      all === 'all' &&
+      typeof cid === 'string' &&
+      Array.isArray(q.state.data)
+    )
+      progressLists.push({ cid, rows: q.state.data });
     const { data, dataUpdatedAt: updatedAt } = q.state;
     const key = [...q.queryKey];
     if (!isInfinite(data)) out.push({ key, data, updatedAt });
     else if (data.pages.length > 0)
       out.push({ key, data: data.pages[0], updatedAt, firstPage: true });
+  }
+  // Last: the document keeps entries in order while they fit, and the lists come first.
+  for (const { cid, rows } of progressLists) {
+    const books = progressBooks(client, cid, rows);
+    if (books.length > 0)
+      out.push({ key: [PROGRESS_BOOKS, cid], data: books, updatedAt: Date.now() });
+  }
+  return out;
+}
+
+/** The books of `cid`'s progress rows (newest save first: at most `IN_PROGRESS_MAX`
+ * unfinished and `FINISHED_MAX` finished), each as its `/item` in the cache names it, else
+ * as the last kept copy did; just the fields a row draws. */
+function progressBooks(client: QueryClient, cid: string, rows: unknown[]): unknown[] {
+  const kept = new Map<string, Record<string, unknown>>();
+  const before = client.getQueryData([PROGRESS_BOOKS, cid]);
+  if (Array.isArray(before))
+    for (const b of before) if (isRecord(b)) kept.set(`${b.library_id}:${b.rel_path}`, b);
+  const newest = rows
+    .filter(
+      (r): r is Record<string, unknown> =>
+        isRecord(r) && typeof r.library_id === 'number' && typeof r.path === 'string',
+    )
+    .sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
+  const progress = [
+    ...newest.filter((r) => r.finished !== true).slice(0, IN_PROGRESS_MAX),
+    ...newest.filter((r) => r.finished === true).slice(0, FINISHED_MAX),
+  ];
+  const out: unknown[] = [];
+  for (const r of progress) {
+    const item = client.getQueryData(['item', cid, r.library_id, r.path]);
+    const book = isRecord(item) && item.title ? item : kept.get(`${r.library_id}:${r.path}`);
+    if (!book || !book.title) continue;
+    out.push(
+      Object.fromEntries(BOOK_FIELDS.filter((f) => book[f] !== undefined).map((f) => [f, book[f]])),
+    );
   }
   return out;
 }
@@ -176,6 +248,8 @@ export function restore(
 ): void {
   const store = storage();
   if (!store) return;
+  // No screen observes the kept progress-row books: they must outlive the cache's idle sweep.
+  client.setQueryDefaults([PROGRESS_BOOKS], { gcTime: Infinity });
   const cache = client.getQueryCache();
   // The restored queries still holding the kept answer, and those not yet asked again.
   const kept = new Set<string>();
@@ -186,6 +260,8 @@ export function restore(
     // JSON can't keep it).
     const data = e.firstPage ? { pages: [e.data], pageParams: [undefined] } : e.data;
     client.setQueryData(e.key, data, { updatedAt: e.updatedAt });
+    // Nothing asks for the kept progress-row books: there is no answer to wait for.
+    if (e.key[0] === PROGRESS_BOOKS) continue;
     const query = cache.find({ queryKey: e.key, exact: true });
     if (!query) continue;
     query.invalidate();
@@ -257,7 +333,8 @@ export function startSaving(
   };
   const unsubscribe = client.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success') return;
-    if (!isStartupQuery(event.query.queryKey)) return;
+    const key = event.query.queryKey;
+    if (!isStartupQuery(key) && !(key[0] === 'item' && onProgressRow(client, key))) return;
     dirty = true;
     if (timer) clearTimeout(timer);
     timer = setTimeout(flush, SAVE_DELAY_MS);
@@ -273,4 +350,13 @@ export function startSaving(
     window.removeEventListener('pagehide', flush);
     document.removeEventListener('visibilitychange', onHidden);
   };
+}
+
+/** Whether an `/item` key (`['item', cid, lib, path]`) names a book of one of its
+ * connection's progress rows: its answer is one the startup cache may keep a copy of. */
+function onProgressRow(client: QueryClient, [, cid, lib, path]: readonly unknown[]): boolean {
+  const rows = client.getQueryData(['progress', 'all', cid]);
+  return (
+    Array.isArray(rows) && rows.some((r) => isRecord(r) && r.library_id === lib && r.path === path)
+  );
 }
