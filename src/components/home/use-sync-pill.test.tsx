@@ -2,7 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-jest.mock('@/playback/progress-sync', () => ({ pendingSaveCount: async () => 0 }));
+jest.mock('@/playback/progress-sync', () => ({
+  pendingSaves: async () => ({ saves: 0, listens: 0 }),
+}));
+jest.mock('@/playback/listening-outbox', () => ({
+  onOutboxChange: () => () => undefined,
+  outboxEvents: async () => [],
+  syncStateOf: async () => ({ failed: [] }),
+}));
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 
 /* eslint-disable import/first */

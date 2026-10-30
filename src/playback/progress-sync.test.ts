@@ -7,15 +7,19 @@ import type { Progress } from '@/api/types';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
+  ackVersion,
   flushConnection,
   flushQueue,
   loadInitialProgress,
+  markAnswered,
   mirroredProgress,
   pendingSaveCount,
   type ProgressSave,
   readLocalPlaces,
+  readMirror as readMirrorOf,
   resumeLookupOf,
   saveProgress,
+  writeMirror,
 } from '@/playback/progress-sync';
 
 // babel-jest hoists jest.mock above the imports, so the module under test sees the
@@ -642,5 +646,93 @@ describe('readLocalPlaces / resumeLookupOf', () => {
       kind: 'progress',
       progress: row,
     });
+  });
+});
+
+describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const filed = {
+    ...save,
+    position: 3600,
+    file: 'A/Book/02.mp3',
+    file_pos: 600,
+    updated_at: '2026-01-02T00:00:00Z',
+  };
+
+  it("resume carries this device's file place with its own newest save", async () => {
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+    expect(resumeLookupOf(undefined, await readLocalPlaces(), 'c1', 1, 'A/Book')).toEqual({
+      kind: 'progress',
+      progress: expect.objectContaining({ position: 3600 }),
+      file: { path: 'A/Book/02.mp3', pos: 600 },
+    });
+  });
+
+  it("the server's echo of this device's save keeps the file place; another device's does not", async () => {
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+    const places = await readLocalPlaces();
+    // The server moved the seconds to its own file order: still this device's save.
+    const echo = makeProgress({
+      position: 4100,
+      device_id: 'dev',
+      updated_at: '2026-01-03T00:00:00Z',
+    });
+    expect(resumeLookupOf(echo, places, 'c1', 1, 'A/Book')).toMatchObject({
+      file: { path: 'A/Book/02.mp3', pos: 600 },
+    });
+    const other = makeProgress({
+      position: 9000,
+      device_id: 'phone',
+      updated_at: '2026-01-03T00:00:00Z',
+    });
+    expect(resumeLookupOf(other, places, 'c1', 1, 'A/Book')).not.toHaveProperty('file');
+  });
+
+  it('writeMirror keeps ack_version, answered and the file place across a same-place record', async () => {
+    await writeMirror({ ...filed, ack_version: 7, answered: ['phone|x'] });
+    await writeMirror({ ...save, position: 3600, updated_at: '2026-01-03T00:00:00Z' });
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+      ack_version: 7,
+      answered: ['phone|x'],
+      file: 'A/Book/02.mp3',
+      file_pos: 600,
+    });
+    // Another device's place elsewhere drops the file place.
+    await writeMirror({
+      ...save,
+      position: 9000,
+      device_id: 'phone',
+      updated_at: '2026-01-04T00:00:00Z',
+    });
+    const m = await readMirrorOf('c1', 1, 'A/Book');
+    expect(m).not.toHaveProperty('file');
+    expect(m?.ack_version).toBe(7);
+  });
+
+  it('ackVersion never lowers; it creates the record from the row when none exists', async () => {
+    const row = makeProgress({ position: 50, version: 4 });
+    await ackVersion('c1', 1, 'A/Book', 4, row);
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(4);
+    await ackVersion('c1', 1, 'A/Book', 2);
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(4);
+    await ackVersion('c1', 1, 'A/Book', 9);
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(9);
+    // No record and no row: nothing.
+    await ackVersion('c1', 1, 'Else', 3);
+    expect(await readMirrorOf('c1', 1, 'Else')).toBeNull();
+  });
+
+  it('markAnswered notes each offer once and keeps the newest 20', async () => {
+    await writeMirror(save);
+    await markAnswered('c1', 1, 'A/Book', 'phone|a');
+    await markAnswered('c1', 1, 'A/Book', 'phone|a');
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.answered).toEqual(['phone|a']);
+    for (let i = 0; i < 25; i++) await markAnswered('c1', 1, 'A/Book', `k${i}`);
+    const answered = (await readMirrorOf('c1', 1, 'A/Book'))?.answered ?? [];
+    expect(answered).toHaveLength(20);
+    expect(answered[19]).toBe('k24');
   });
 });

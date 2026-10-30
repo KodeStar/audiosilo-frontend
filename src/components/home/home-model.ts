@@ -123,7 +123,10 @@ export function greetingPart(hour: number): GreetingPart {
   return hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
 }
 
-export type SyncPill = { kind: 'local' } | { kind: 'synced'; at: string } | null;
+export type SyncPill =
+  | { kind: 'local'; /** Sync v2 listens waiting (the pill counts them). */ listens?: number }
+  | { kind: 'synced'; at: string }
+  | null;
 
 /**
  * The greeting's sync pill, told as it is (STYLEGUIDE section 1.3): a save still waiting
@@ -133,21 +136,36 @@ export type SyncPill = { kind: 'local' } | { kind: 'synced'; at: string } | null
  * newest save alone would read "synced 24 minutes ago" on a device that signed in
  * seconds ago (UPGRADE-05). Another server being down says nothing about where the place
  * is (its own pill names it). Nothing at all when there is no progress yet.
+ *
+ * Sync v2 (`listening_sync`): listening events waiting in the outbox are counted ("3
+ * listens waiting to sync"), and the server's last answer to this device's events
+ * (`lastSyncAt`) counts as a sync when it is the newest.
  */
 export function syncPill(input: {
   online: Record<string, boolean>;
+  /** Everything waiting: the legacy queue's saves and the outbox's listens. */
   pending: number;
+  /** Of `pending`, the listens (Sync v2). */
+  listens?: number;
   /** The newest saved progress: when, and on which connection. */
   newest: { at: string; connectionId: string } | undefined;
   /** When this device last read the newest progress's server (epoch ms; 0 when unknown). */
   fetchedAt?: number;
+  /** When the newest progress's server last answered this device's listening events. */
+  lastSyncAt?: string;
 }): SyncPill {
-  const { newest, fetchedAt = 0 } = input;
-  if (input.pending > 0) return { kind: 'local' };
+  const { newest, fetchedAt = 0, listens = 0 } = input;
+  if (input.pending > 0) return listens > 0 ? { kind: 'local', listens } : { kind: 'local' };
   if (!newest) return null;
   if (input.online[newest.connectionId] === false) return { kind: 'local' };
+  const times = [
+    Date.parse(newest.at),
+    fetchedAt,
+    input.lastSyncAt ? Date.parse(input.lastSyncAt) : 0,
+  ];
+  const latest = Math.max(...times.filter((n) => Number.isFinite(n)));
   const saved = Date.parse(newest.at);
-  const at = fetchedAt > 0 && !(saved >= fetchedAt) ? new Date(fetchedAt).toISOString() : newest.at;
+  const at = latest > 0 && !(saved >= latest) ? new Date(latest).toISOString() : newest.at;
   return { kind: 'synced', at };
 }
 

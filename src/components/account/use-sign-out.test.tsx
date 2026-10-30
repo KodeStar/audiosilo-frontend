@@ -22,6 +22,11 @@ jest.mock('@/stores/session', () => ({
 // flush); mock the player store so this test (focused on the password-warning
 // decision) doesn't pull in the native engine.
 jest.mock('@/playback/store', () => ({ teardownBeforeTokenRevoke: jest.fn(async () => {}) }));
+// Sync v2: the listens not synced yet (after a last send) decide the unsynced confirm.
+const mockUnsent = jest.fn(async (_cid: string) => 0);
+jest.mock('@/playback/listening-outbox', () => ({
+  unsentListens: (cid: string) => mockUnsent(cid),
+}));
 
 /* eslint-disable import/first */
 import { teardownBeforeTokenRevoke } from '@/playback/store';
@@ -127,6 +132,56 @@ describe('useSignOut', () => {
     // Unknown flags + offline → no dead-end warning; clear locally instead.
     await waitFor(() => expect(mockSessionState.removeConnection).toHaveBeenCalledWith('c1'));
     expect(hook().confirmVisible).toBe(false);
+  });
+});
+
+// Sync v2 (failure row 10): listens still unsent after a last send are confirmed first.
+describe('useSignOut with unsynced listens', () => {
+  afterEach(() => mockUnsent.mockReset().mockResolvedValue(0));
+
+  it('confirms "N listens haven\'t synced" before signing out, and signs out on confirm', async () => {
+    seed(user({ has_password: true }));
+    mockUnsent.mockResolvedValue(3);
+    const hook = await mountHook(() => useSignOut('c1'));
+
+    await act(async () => {
+      await hook().requestSignOut();
+    });
+    expect(mockUnsent).toHaveBeenCalledWith('c1');
+    expect(hook().unsynced).toBe(3);
+    expect(mockSessionState.removeConnection).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await hook().confirmUnsynced();
+    });
+    expect(hook().unsynced).toBe(0);
+    await waitFor(() => expect(mockSessionState.removeConnection).toHaveBeenCalledWith('c1'));
+  });
+
+  it('cancel keeps the connection (and its listens)', async () => {
+    seed(user({ has_password: true }));
+    mockUnsent.mockResolvedValue(1);
+    const hook = await mountHook(() => useSignOut('c1'));
+    await act(async () => {
+      await hook().requestSignOut();
+    });
+    await act(async () => hook().cancelUnsynced());
+    expect(hook().unsynced).toBe(0);
+    expect(mockSessionState.removeConnection).not.toHaveBeenCalled();
+  });
+
+  it('confirmed, a stranded account still gets the password warning', async () => {
+    seed(user({ has_password: false, has_recovery: false }));
+    mockUnsent.mockResolvedValue(2);
+    const hook = await mountHook(() => useSignOut('c1'));
+    await act(async () => {
+      await hook().requestSignOut();
+    });
+    await act(async () => {
+      await hook().confirmUnsynced();
+    });
+    expect(hook().confirmVisible).toBe(true);
+    expect(mockSessionState.removeConnection).not.toHaveBeenCalled();
   });
 });
 

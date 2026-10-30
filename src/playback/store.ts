@@ -6,7 +6,14 @@ import { resolveClient } from '@/api/connection-clients';
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure } from '@/api/reachability';
-import type { Book, Chapter, ChaptersResponse, Progress } from '@/api/types';
+import type {
+  Book,
+  Chapter,
+  ChaptersResponse,
+  ListeningEvent,
+  ListeningStart,
+  Progress,
+} from '@/api/types';
 import {
   adoptStartedChapters,
   downloadedEntryOf,
@@ -42,12 +49,27 @@ import {
 } from './book-source';
 import { engineTick, engineTicker } from './engine-ticks';
 import {
+  appendEvents,
+  closeSpan,
+  finishEvent,
+  flushOutbox,
+  type OpenSpan,
+  sendOnPageHide,
+  type SpanEnd,
+  spanToEvent,
+  storeOpenSpan,
+  usesListeningSync,
+} from './listening-outbox';
+import {
+  ackVersion,
+  cachedDeviceId,
   flushConnection,
   flushQueue,
   getDeviceId,
   loadInitialProgress,
   readMirror,
   saveProgress,
+  writeMirror,
 } from './progress-sync';
 import { listenerSettings } from './listener-settings';
 import { clampRate } from './rate';
@@ -424,7 +446,7 @@ async function persist(opts?: { forceFinished?: boolean }) {
     if (position < resumeFloor - SLIP_TOLERANCE) return;
     if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
   }
-  await saveProgress(api, {
+  const save = {
     connectionId: nowPlaying.connectionId,
     libraryId: nowPlaying.libraryId,
     path: nowPlaying.path,
@@ -432,9 +454,22 @@ async function persist(opts?: { forceFinished?: boolean }) {
     duration: total,
     finished: forceFinished || (total > 0 && position >= total - FINISHED_TOLERANCE),
     playback_speed: rate,
-    device_id: deviceId,
+    device_id: deviceId || cachedDeviceId(),
     updated_at: new Date().toISOString(),
-  });
+  };
+  // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
+  // spans below); the capture only keeps this device's mirror, with the file place (fe#188).
+  if (usesListeningSync(nowPlaying.connectionId)) {
+    const file = fileOf(nowPlaying, snapshot.trackIndex);
+    await writeMirror(
+      forceFinished || !file ? save : { ...save, file, file_pos: Math.max(0, snapshot.position) },
+    );
+    if (span && sameBook(span, nowPlaying) && !forceFinished) {
+      span.to = { pos: position, ...(file ? { file, filePos: snapshot.position } : {}) };
+    }
+    return;
+  }
+  await saveProgress(api, save);
 }
 
 /** Nudge the Home/Browse "continue listening" + "finished" lists to re-read from
@@ -511,7 +546,10 @@ async function knownSpeed(connectionId: string, libraryId: number, path: string)
 /** The 15 s periodic save. An `engineTicker`, so the engine's events keep it going where
  * Android has paused the interval (screen off, app in the background). `playBook` stops
  * it before a book switch, so a late event of the old book never saves under the new one. */
-const saveLoop = engineTicker(() => void persist(), SAVE_INTERVAL_MS);
+const saveLoop = engineTicker(() => {
+  void persist();
+  tickListeningSpan();
+}, SAVE_INTERVAL_MS);
 /** Re-based on every start: the first save comes 15 s after playing starts. */
 function startSaveLoop() {
   saveLoop.stop();
@@ -528,6 +566,241 @@ function haltAndPersist() {
   void persist().then(invalidateProgressLists, invalidateProgressLists);
   stopSaveLoop();
   void flushTimeSaved(); // Smart Speed's counts are saved when playback halts, too
+}
+
+// --- Listening spans (Sync v2, `listening_sync`; see `listening-outbox.ts`) ---------------
+//
+// On a server with `listening_sync` the place reaches it as listening events: a span of
+// playing, from where it began to where it ended (whole-book seconds AND each end's file and
+// seconds into it, fe#188), with why it began (`start`) and the version this device had
+// acknowledged (`base_version`). A span OPENS when the engine starts playing; it is CUT
+// (closed into an event, a new one opening at once with `continue`) on each 15 s tick while
+// the server is reachable, a speed change, the server coming back, the app going to the
+// background and the web page hiding; it is CLOSED on a pause (any settling out of
+// `playing`), a move (the new place opens the next span with the move's reason), a stop, a
+// book switch and the end. Offline, a tick only rewrites the open span (kept in storage, so
+// a day offline is a handful of events and a kill loses nothing). The persist guards above
+// (the load, the hot-swap, an adoption's reload, the resume floor) keep a suspicious place
+// out of a span too: a span then ends where it was last seen.
+
+/** The span being played, else null. */
+let span: OpenSpan | null = null;
+/** Why the next span begins: a book started or resumed (`resume`), a move (`jump`,
+ * `moved_back`), starting again (`restart`). Back to `resume` once a span takes it. */
+let nextStart: ListeningStart = 'resume';
+/** A finished book started again owes an `unfinish` before its first span. */
+let unfinishDue = false;
+/** The book (`contentKey`) whose `finish` was sent: the natural end and the end credits'
+ * "mark finished" send one between them. Cleared when the book plays again. */
+let finishSent: string | null = null;
+
+const sameBook = (a: { connectionId: string; libraryId: number; path: string }, b: typeof a) =>
+  a.connectionId === b.connectionId && a.libraryId === b.libraryId && a.path === b.path;
+
+/** The audio file (its rel path) of the track at `index`, from its id (`trackIdOf`). */
+function fileOf(np: NowPlaying, index: number): string | undefined {
+  const id = np.queue.tracks[index]?.id;
+  const prefix = `${np.libraryId}:`;
+  return id?.startsWith(prefix) ? id.slice(prefix.length) : undefined;
+}
+
+/** A place in the loaded book as a span end. */
+function endAt(np: NowPlaying, trackIndex: number, positionInTrack: number): SpanEnd {
+  const file = fileOf(np, trackIndex);
+  return {
+    pos: Math.max(0, toBookPosition(np.queue.offsets, trackIndex, positionInTrack)),
+    ...(file ? { file, filePos: Math.max(0, positionInTrack) } : {}),
+  };
+}
+
+/** Where the engine is in the loaded book, or null while that place can't be trusted (the
+ * persist guards: a load, the hot-swap, an adoption's reload, a slip below the floor). */
+function engineEnd(): SpanEnd | null {
+  const { nowPlaying: np, snapshot, loadingBook } = usePlayer.getState();
+  if (!np || loadingBook || heldBySwap(np, snapshot.trackIndex)) return null;
+  if (quietAdopted === contentKeyOf(np)) return null;
+  const end = endAt(np, snapshot.trackIndex, snapshot.position);
+  if (!Number.isFinite(end.pos) || end.pos < resumeFloor - SLIP_TOLERANCE) return null;
+  return end;
+}
+
+/** The acknowledged version for a book (0 when none: the server then keeps the further
+ * place of the two rather than moving a place this device never saw). */
+async function baseVersionOf(ref: { connectionId: string; libraryId: number; path: string }) {
+  const mirror = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
+  return mirror?.ack_version ?? 0;
+}
+
+/** Open a span at `at` (else where the engine is) when the loaded book's server takes
+ * listening events and none is open. */
+function openListeningSpan(at?: SpanEnd) {
+  const { nowPlaying: np, rate } = usePlayer.getState();
+  if (!np || !usesListeningSync(np.connectionId)) return;
+  if (span) {
+    if (sameBook(span, np)) return;
+    closeListeningSpan();
+  }
+  const here = at ?? engineEnd();
+  if (!here) return;
+  const now = new Date().toISOString();
+  const start = nextStart;
+  nextStart = 'resume';
+  const opened: OpenSpan = {
+    connectionId: np.connectionId,
+    libraryId: np.libraryId,
+    path: np.path,
+    from: here,
+    to: here,
+    duration: np.queue.total,
+    speed: rate,
+    startedAt: now,
+    endedAt: now,
+    start,
+    baseVersion: 0,
+  };
+  span = opened;
+  if (finishSent === contentKeyOf(np)) finishSent = null;
+  void baseVersionOf(np).then((base) => {
+    opened.baseVersion = base;
+    // A finished book started again: unfinished first, then the span from 0.
+    if (unfinishDue) {
+      unfinishDue = false;
+      void appendEvents(np.connectionId, [finishEvent('unfinish', np, now, base)]);
+    }
+  });
+}
+
+/**
+ * Close the open span at `at` (else where the engine is, else where it was last seen) into
+ * the outbox, then send. Returns the closed span (null when none was open).
+ */
+function closeListeningSpan(opts: { at?: SpanEnd } = {}): OpenSpan | null {
+  const closing = span;
+  span = null;
+  if (!closing) return null;
+  const np = usePlayer.getState().nowPlaying;
+  const here = opts.at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
+  closing.to = here;
+  closing.endedAt = new Date().toISOString();
+  const cid = closing.connectionId;
+  void closeSpan(closing).then(() => flushOutbox(cid));
+  return closing;
+}
+
+/** Cut the span (close it, a `continue` span opening where it ended) while playing. */
+function cutListeningSpan() {
+  const closed = closeListeningSpan();
+  if (!closed || !isPlayingState(usePlayer.getState().snapshot.state)) return;
+  nextStart = 'continue';
+  openListeningSpan(closed.to);
+}
+
+/** The 15 s tick: cut while the server is reachable (live sessions), else keep the span. */
+function tickListeningSpan() {
+  if (!span) return;
+  if (isReachable(span.connectionId)) {
+    cutListeningSpan();
+    return;
+  }
+  const here = engineEnd();
+  if (here) span.to = here;
+  span.endedAt = new Date().toISOString();
+  void storeOpenSpan({ ...span });
+}
+
+/**
+ * A move of the place (a seek, a chapter, a bookmark, Undo, a lock-screen scrub) to
+ * `target`: the span ends where it was (`from`, else the engine's place now, else where it
+ * was last seen) and the next one begins at the target with the move's reason. Paused, the
+ * move is sent at once as a span of its own that moved nowhere (the place syncs as a PUT
+ * did), and the next play begins with the same reason.
+ */
+function moveListeningSpan(
+  target: SpanEnd,
+  opts: { from?: SpanEnd; reason?: ListeningStart } = {},
+) {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np || !usesListeningSync(np.connectionId)) return;
+  const before = opts.from ?? (span ? (engineEnd() ?? span.to) : engineEnd());
+  const reason: ListeningStart =
+    opts.reason ?? (before && target.pos < before.pos - 1 ? 'moved_back' : 'jump');
+  const closed = closeListeningSpan(before ? { at: before } : {});
+  if (closed && isPlayingState(usePlayer.getState().snapshot.state)) {
+    nextStart = reason;
+    openListeningSpan(target);
+    return;
+  }
+  const now = new Date().toISOString();
+  const cid = np.connectionId;
+  void baseVersionOf(np).then((base) => {
+    const moved = spanToEvent({
+      connectionId: cid,
+      libraryId: np.libraryId,
+      path: np.path,
+      from: target,
+      to: target,
+      duration: np.queue.total,
+      speed: usePlayer.getState().rate,
+      startedAt: now,
+      endedAt: now,
+      start: reason,
+      baseVersion: base,
+    });
+    return appendEvents(cid, [moved]).then(() => flushOutbox(cid));
+  });
+  nextStart = reason;
+}
+
+/** The book's last span closed, then its `finish` (the natural end, "Mark finished"):
+ * once between them. */
+function sendFinish(np: NowPlaying) {
+  closeListeningSpan();
+  if (!usesListeningSync(np.connectionId)) return;
+  const key = contentKeyOf(np);
+  if (finishSent === key) return;
+  finishSent = key;
+  const now = new Date().toISOString();
+  const cid = np.connectionId;
+  void baseVersionOf(np)
+    .then((base) => appendEvents(cid, [finishEvent('finish', np, now, base)]))
+    .then(() => flushOutbox(cid));
+}
+
+/**
+ * After the listener answered an offer of another device's place with Stay: this device's
+ * place stands, so its next span begins as a deliberate move (`jump`), which the server
+ * applies over the other place. Playing, the span is cut so that begins now.
+ */
+export function standByPlace(): void {
+  nextStart = 'jump';
+  if (span && isPlayingState(usePlayer.getState().snapshot.state)) {
+    const closed = closeListeningSpan();
+    nextStart = 'jump';
+    if (closed) openListeningSpan(closed.to);
+  }
+}
+
+/** Cut the playing span now (the server came back, the app went to the background); a
+ * no-op with no span open, or for another connection than `connectionId` when given. */
+export function cutListeningSpanNow(connectionId?: string): void {
+  if (!span || (connectionId !== undefined && span.connectionId !== connectionId)) return;
+  cutListeningSpan();
+}
+
+/** Web `pagehide`: close the span and send what waits in a keepalive request. */
+function closeSpanOnPageHide() {
+  const closing = span;
+  span = null;
+  const extra: { connectionId: string; event: ListeningEvent }[] = [];
+  if (closing) {
+    const here = engineEnd() ?? closing.to;
+    closing.to = here;
+    closing.endedAt = new Date().toISOString();
+    const event = spanToEvent(closing);
+    void closeSpan(closing, event);
+    extra.push({ connectionId: closing.connectionId, event });
+  }
+  sendOnPageHide(extra, deviceId || cachedDeviceId());
 }
 
 /** Surface an `error` if we wanted to play but haven't reached `playing` within the
@@ -644,6 +917,8 @@ function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
   // Listening spans are best-effort; don't fire at a server we know is unreachable
   // (reachability is per-connection, so key it on the playing book's own server).
   if (!isReachable(np.connectionId)) return;
+  // A server taking listening events has them already (the spans above).
+  if (usesListeningSync(np.connectionId)) return;
   void apiRef
     .addHistory(
       np.libraryId,
@@ -678,6 +953,10 @@ function endHistory({ leaving = false }: { leaving?: boolean } = {}) {
  * span: ending it clears it first.
  */
 export function flushHistoryOnHide(final: boolean): void {
+  // Sync v2: the page going closes the span and sends what waits with keepalive; hiding
+  // cuts it (a phone's browser may close a hidden tab with no `pagehide`).
+  if (final) closeSpanOnPageHide();
+  else cutListeningSpanNow();
   if (!historyStart) return;
   if (!final && Date.now() - historyStart.at < MIN_HISTORY_MS) return;
   endHistory({ leaving: true });
@@ -717,6 +996,8 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !=
  */
 function switchBook(api: ApiClient | null, request: NonNullable<typeof lastPlayRequest>) {
   endHistory();
+  closeListeningSpan();
+  unfinishDue = false;
   cancelStallWatchdog();
   stopSaveLoop();
   userMoved();
@@ -815,8 +1096,14 @@ async function createService(): Promise<PlaybackService> {
     usePlayer.setState({ snapshot });
     // Listening spans use the STRICT reading (see `isPlayingState`): a span must cover
     // audio the listener actually heard, so a buffer is not the start of one.
-    if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) beginHistory();
-    else if (isPlayingState(prev.state) && !isPlayingState(snapshot.state)) endHistory();
+    if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) {
+      beginHistory();
+      openListeningSpan();
+    } else if (isPlayingState(prev.state) && !isPlayingState(snapshot.state)) {
+      endHistory();
+      // The natural end sends the finish after the last span (`sendFinish`, below).
+      if (snapshot.state !== 'ended') closeListeningSpan();
+    }
     // Close + reopen a span when the track advances mid-playback (e.g. a
     // multi-file book auto-advancing), so each file is logged as it finishes.
     else if (isPlayingState(snapshot.state) && snapshot.trackIndex !== prev.trackIndex) {
@@ -859,6 +1146,8 @@ async function createService(): Promise<PlaybackService> {
         // credits, auto-play next). Do NOT navigate or clear state here.
         clearPlaybackIntent();
         haltAndPersist();
+        const np = usePlayer.getState().nowPlaying;
+        if (np) sendFinish(np);
       } else {
         // Any other settled state (a start-window transient was normalized to `loading`
         // above): a real pause, a finished book, a dead stream the web/Android engines
@@ -891,6 +1180,8 @@ async function createService(): Promise<PlaybackService> {
     // hot-swap moves the playing file (`swapHold`).
     if (loadingBook || (np && heldBySwap(np, trackIndex))) return;
     userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
+    // The engine has moved already: the span ends where it was last seen.
+    if (np) moveListeningSpan(endAt(np, trackIndex, positionInTrack), { from: span?.to });
     void persist();
   });
   // Native: the OS changed the speed and the engine already runs at it. Only a speed
@@ -899,6 +1190,7 @@ async function createService(): Promise<PlaybackService> {
     const rate = clampRate(raw);
     usePlayer.setState({ rate });
     if (rate !== raw) void svc.setRate(rate);
+    cutListeningSpan();
     void persist();
   });
   // Smart Speed's running total, counted on the playing book (`time-saved.ts`).
@@ -987,6 +1279,16 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       const svc = await ensureService();
 
       let startAt = startBookPosition ?? 0;
+      /** The resumed save's own file and the seconds in it (fe#188), when the queue has it. */
+      let startFile: { index: number; positionInTrack: number } | null = null;
+      // Why the first span begins: an explicit place is a deliberate move (0: starting again).
+      let start: ListeningStart =
+        startBookPosition === undefined && startTrack === undefined
+          ? 'resume'
+          : startBookPosition === 0 || (startBookPosition === undefined && startTrack === 0)
+            ? 'restart'
+            : 'jump';
+      let unfinish = false;
       const askedSpeed = startSpeed !== undefined && startSpeed > 0;
       // 1x for a kids profile, else the listener's setting (`listenerSettings`).
       const { defaultRate } = listenerSettings();
@@ -1000,6 +1302,28 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
           // is 0 and the slip guard won't block its early low-position saves.
           startAt = resumeStart(r.progress);
           if (!askedSpeed) speed = bookSpeed(r.progress.playback_speed, defaultRate);
+          if (r.progress.finished) {
+            // Starting a finished book again: unfinished first, then a span from 0.
+            start = 'restart';
+            unfinish = true;
+          } else if (r.file) {
+            // This device's own place by its file: the same file in the order the queue
+            // plays now, even when the place was saved on another order (fe#188).
+            const index = trackIndexById(queue, trackIdOf(libraryId, r.file.path));
+            if (index >= 0) {
+              const end = queue.offsets[index + 1] ?? queue.total;
+              const length = end - queue.offsets[index];
+              startFile = {
+                index,
+                positionInTrack: length > 0 ? Math.min(r.file.pos, length) : r.file.pos,
+              };
+            }
+          }
+          // Resumed from the server's row (this device's own records read as version 0):
+          // its version is the one this device has seen.
+          if (r.progress.version > 0) {
+            void ackVersion(connectionId, libraryId, book.rel_path, r.progress.version, r.progress);
+          }
         } else if (r.kind === 'failed' && !dl) {
           // Streaming book whose resume position couldn't be confirmed (server unreachable,
           // no local record). Starting at 0 here would restart an in-progress book AND a
@@ -1038,7 +1362,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
               index: Math.max(0, Math.min(startTrack, queue.tracks.length - 1)),
               positionInTrack: 0,
             }
-          : locate(queue.offsets, startAt);
+          : (startFile ?? locate(queue.offsets, startAt));
       // The position we actually resumed from (covers resume, bookmark jump and startTrack);
       // the save guard won't let progress regress below it without a deliberate seek.
       resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
@@ -1047,6 +1371,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       const prev = get();
       const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
       set({ rate: speed, nowPlaying, loadingBook });
+      nextStart = start;
+      unfinishDue = unfinish && usesListeningSync(connectionId);
+      finishSent = null;
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
       try {
@@ -1152,6 +1479,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
         : Math.max(0, bookPosition);
     const svc = await ensureService();
     const target = locate(np.queue.offsets, clamped);
+    moveListeningSpan(endAt(np, target.index, target.positionInTrack));
     userMoved(clamped); // a deliberate user seek may legitimately move backward
     if (target.index === get().snapshot.trackIndex) {
       await svc.seekTo(target.positionInTrack);
@@ -1167,6 +1495,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const pos = Math.max(0, dur > 0 ? Math.min(positionInTrack, dur) : positionInTrack);
     const svc = await ensureService();
     const np = get().nowPlaying;
+    if (np) moveListeningSpan(endAt(np, get().snapshot.trackIndex, pos));
     userMoved(np ? toBookPosition(np.queue.offsets, get().snapshot.trackIndex, pos) : undefined);
     await svc.seekTo(pos);
     void persist();
@@ -1177,6 +1506,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     if (!np) return;
     const i = Math.max(0, Math.min(index, np.queue.tracks.length - 1));
     const svc = await ensureService();
+    moveListeningSpan(endAt(np, i, 0));
     userMoved(toBookPosition(np.queue.offsets, i, 0));
     await svc.skipToTrack(i, 0);
     void persist();
@@ -1201,7 +1531,10 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
   setRate: async (rate) => {
     const clamped = clampRate(rate);
+    const changed = clamped !== get().rate;
     set({ rate: clamped });
+    // The span at the old speed ends here; the next runs at the new one.
+    if (changed) cutListeningSpan();
     if (service) await service.setRate(clamped);
     void persist();
   },
@@ -1220,6 +1553,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const stopping = selectBookKey(get());
     clearPlaybackIntent();
     stopSaveLoop();
+    closeListeningSpan();
     await persist();
     // Another book was started while the place saved (a switch of person whose route
     // starts the new person's book at once): it owns the engine now, and a reset would cut
@@ -1249,6 +1583,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // null it below, so the finished save carries the right identity even as state clears.
     clearPlaybackIntent();
     stopSaveLoop();
+    sendFinish(np);
     void persist({ forceFinished: true });
     // Refresh the "continue listening" / "finished" lists for this book's connection,
     // plus the book's own progress entry so a book screen mounted above the docked
@@ -1345,6 +1680,8 @@ export async function teardownBeforeTokenRevoke(connectionId: string): Promise<v
   await stopPlaybackForConnection(connectionId);
   await Promise.all([
     flushConnection(connectionId).catch(() => undefined),
+    // Sync v2's listening outbox (the stop above closed its span).
+    flushOutbox(connectionId),
     // The ebook reader's queued places too (Bridge Phase 3b).
     flushReadingConnection(connectionId).catch(() => undefined),
   ]);

@@ -46,7 +46,13 @@ jest.mock('./progress-sync', () => ({
   getDeviceId: jest.fn(async () => 'this-device'),
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: jest.fn(async () => mockMirror),
+  ackVersion: (...a: unknown[]) => mockAckVersion(...a),
+  markAnswered: (...a: unknown[]) => mockMarkAnswered(...a),
+  cachedDeviceId: () => 'this-device',
+  writeMirror: jest.fn(async () => {}),
 }));
+const mockAckVersion = jest.fn(async (..._a: unknown[]) => {});
+const mockMarkAnswered = jest.fn(async (..._a: unknown[]) => {});
 
 jest.mock('@/api/provider', () => ({
   queryClient: {
@@ -67,6 +73,7 @@ const mockClient = {
   streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
   authHeaders: () => ({}),
   addHistory: jest.fn(async () => {}),
+  syncListening: jest.fn(async () => ({ server_time: '', results: [], progress: [] })),
   getProgress: jest.fn((_lib: number, _path: string, signal?: AbortSignal) =>
     signal
       ? new Promise<Progress | null>((resolve, reject) => {
@@ -109,7 +116,9 @@ import { AppState } from 'react-native';
 
 import { useSettings } from '@/stores/settings';
 
-import { placeToMoveTo, startPlaceReconcile } from './place-reconcile';
+import { queryClient } from '@/api/provider';
+
+import { offerOf, placeToMoveTo, startPlaceReconcile } from './place-reconcile';
 import { LONG_PAUSE_MS, selectBookPosition, selectIsPlaying, usePlayer } from './store';
 /* eslint-enable import/first */
 
@@ -497,5 +506,143 @@ describe('and when it stays where it is', () => {
     expect(seeks()).toEqual([700]);
     // The seek's own save was held; the release saves the listener's place.
     expect(saved()).toEqual([700]);
+  });
+});
+
+// --- Sync v2 (`listening_sync`): another device's place offered, never moved to ----------
+
+describe('offerOf', () => {
+  const other = {
+    position: 900,
+    device_id: 'watch',
+    device_name: "Chris's Watch",
+    updated_at: '2026-10-08T11:00:00Z',
+  };
+
+  it("(a) offers the kept row of another device at a version this device hasn't seen", () => {
+    expect(offerOf(record({ device_name: 'Pixel', version: 4 }), 'this-device', 3, 105)).toEqual({
+      position: 400,
+      deviceName: 'Pixel',
+      key: 'other-device|2026-10-08T10:00:00Z',
+    });
+    // Acknowledged already, this device's own row, finished, or within 30 s: nothing.
+    expect(offerOf(record({ version: 3 }), 'this-device', 3, 105)).toBeNull();
+    expect(offerOf(record({ device_id: 'this-device' }), 'this-device', 0, 105)).toBeNull();
+    expect(offerOf(record({ finished: true }), 'this-device', 0, 105)).toBeNull();
+    expect(offerOf(record(), 'this-device', 0, 371)).toBeNull();
+    expect(offerOf(record(), 'this-device', 0, 369)?.position).toBe(400);
+    // No name known: the caller says "another device".
+    expect(offerOf(record(), 'this-device', undefined, 105)?.deviceName).toBe('');
+  });
+
+  it("(b) else the row's other_place of another device, until answered", () => {
+    const row = record({ device_id: 'this-device', position: 400, other_place: other });
+    expect(offerOf(row, 'this-device', 3, 400)).toEqual({
+      position: 900,
+      deviceName: "Chris's Watch",
+      key: 'watch|2026-10-08T11:00:00Z',
+    });
+    expect(offerOf(row, 'this-device', 3, 400, ['watch|2026-10-08T11:00:00Z'])).toBeNull();
+    // This device's own losing place is no offer; a near one isn't either.
+    expect(
+      offerOf(
+        { ...row, other_place: { ...other, device_id: 'this-device' } },
+        'this-device',
+        3,
+        400,
+      ),
+    ).toBeNull();
+    expect(offerOf(row, 'this-device', 3, 880)).toBeNull();
+    // (a) wins over (b); answered (a) falls back to (b).
+    const both = record({ version: 9, other_place: other });
+    expect(offerOf(both, 'this-device', 3, 105)?.position).toBe(400);
+    expect(
+      offerOf(both, 'this-device', 3, 105, ['other-device|2026-10-08T10:00:00Z'])?.position,
+    ).toBe(900);
+    expect(offerOf(null, 'this-device', 3, 105)).toBeNull();
+  });
+});
+
+describe('on a server with listening_sync', () => {
+  beforeEach(() => {
+    (queryClient.getQueryData as jest.Mock).mockImplementation((key: readonly unknown[]) =>
+      key[0] === 'server' ? { capabilities: { listening_sync: true } } : undefined,
+    );
+  });
+  afterEach(() => (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined));
+
+  type Toast = {
+    title: string;
+    action: { onPress: () => void };
+    onClose: () => void;
+    closeLabel: string;
+  };
+  const lastToast = () => mockToast.mock.calls[mockToast.mock.calls.length - 1][0] as Toast;
+
+  it("offers the other_place the server didn't keep, and Jump moves there acknowledged", async () => {
+    await loadedAndPaused();
+    // The row is this device's (no auto-move); the watch's place lost and is kept beside it.
+    mockServer = async () =>
+      record({
+        device_id: 'this-device',
+        position: 105,
+        version: 7,
+        other_place: {
+          position: 640,
+          device_id: 'watch',
+          device_name: "Chris's Watch",
+          updated_at: '2026-10-08T11:00:00Z',
+        },
+      });
+    await backInFront();
+    expect(seeks()).toEqual([]);
+    const offer = lastToast();
+    expect(offer.title).toBe("On Chris's Watch you were at 10:40. Jump there?");
+    expect(offer.closeLabel).toBe('Stay');
+    offer.action.onPress();
+    await settle();
+    expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 7, expect.anything());
+    expect(mockMarkAnswered).toHaveBeenCalledWith(
+      'c1',
+      2,
+      'A/Book.m4b',
+      'watch|2026-10-08T11:00:00Z',
+      expect.anything(),
+    );
+    expect(seeks()).toEqual([640]);
+  });
+
+  it('Stay acknowledges and stays; the same offer is not shown again', async () => {
+    await loadedAndPaused();
+    mockServer = async () =>
+      record({
+        device_id: 'this-device',
+        position: 105,
+        version: 8,
+        other_place: {
+          position: 700,
+          device_id: 'watch2',
+          device_name: '',
+          updated_at: '2026-10-08T11:30:00Z',
+        },
+      });
+    await backInFront();
+    const offer = lastToast();
+    expect(offer.title).toBe('On another device you were at 11:40. Jump there?');
+    offer.onClose();
+    await settle();
+    expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 8, expect.anything());
+    expect(seeks()).toEqual([]);
+    mockToast.mockClear();
+    await backInFront();
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("another device's newer row still moves the book with Undo (placeToMoveTo unchanged)", async () => {
+    await loadedAndPaused();
+    await backInFront();
+    expect(seeks()).toEqual([400]);
+    // The row it moved to is acknowledged.
+    expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 3, expect.anything());
   });
 });

@@ -4,15 +4,23 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { qk } from '@/api/hooks';
 import { anyOffline, useReachability } from '@/api/reachability';
-import { pendingSaveCount } from '@/playback/progress-sync';
+import { onOutboxChange } from '@/playback/listening-outbox';
+import { pendingSaves } from '@/playback/progress-sync';
+import { useListeningSync } from '@/playback/use-listening-sync';
 
 import { syncPill } from './home-model';
 
 /** How often the count is read again while Home is open (the queue drains on its own). */
 const RECHECK_MS = 20_000;
 
+/** What waits to sync: the offline queue's saves and Sync v2's listens. */
+export type PendingCounts = { saves: number; listens: number };
+
+const NONE: PendingCounts = { saves: 0, listens: 0 };
+
 /**
- * Saves waiting in the offline queue (all of them, or `connectionId`'s), re-read as
+ * Saves waiting in the offline queue and listens in the listening outbox (all of them, or
+ * `connectionId`'s; a change to the outbox reads them again at once), re-read as
  * servers come and go and every 20 s while `active` (Home passes whether it is the screen
  * in front: a tab kept alive behind another reads nothing). `pollWhenClear: false` keeps
  * the 20 s re-read to the times it can change anything: something is waiting, or a server
@@ -21,31 +29,46 @@ const RECHECK_MS = 20_000;
  * still reads once more 20 s after a change, so a save still in flight then (the pause
  * save) is counted.
  */
-export function usePendingSaves({
+export function usePendingCounts({
   active = true,
   pollWhenClear = true,
   connectionId,
-}: { active?: boolean; pollWhenClear?: boolean; connectionId?: string } = {}): number {
+}: { active?: boolean; pollWhenClear?: boolean; connectionId?: string } = {}): PendingCounts {
   const online = useReachability((s) => s.online);
-  const [pending, setPending] = useState(0);
-  const poll = pollWhenClear || pending > 0 || anyOffline(online);
+  const [pending, setPending] = useState<PendingCounts>(NONE);
+  const total = pending.saves + pending.listens;
+  const poll = pollWhenClear || total > 0 || anyOffline(online);
   useEffect(() => {
     if (!active) return;
     let live = true;
     const read = () =>
-      void pendingSaveCount(connectionId)
-        .then((n) => live && setPending(n))
+      void pendingSaves(connectionId)
+        .then(
+          (n) =>
+            live &&
+            setPending((prev) => (prev.saves === n.saves && prev.listens === n.listens ? prev : n)),
+        )
         .catch(() => undefined);
     read();
+    const stopWatch = onOutboxChange(read);
     const interval = poll ? setInterval(read, RECHECK_MS) : undefined;
     const settle = poll ? undefined : setTimeout(read, RECHECK_MS);
     return () => {
       live = false;
+      stopWatch();
       clearInterval(interval);
       clearTimeout(settle);
     };
   }, [online, active, poll, connectionId]);
   return pending;
+}
+
+/** `usePendingCounts` as one number: everything waiting to sync. */
+export function usePendingSaves(
+  opts: { active?: boolean; pollWhenClear?: boolean; connectionId?: string } = {},
+): number {
+  const { saves, listens } = usePendingCounts(opts);
+  return saves + listens;
 }
 
 /** When this device last read `cid`'s progress list from its server (the query's
@@ -68,8 +91,10 @@ function useProgressFetchedAt(cid: string | undefined): number {
 /** The greeting's sync pill (see `syncPill`), from the offline queue, the servers'
  * reachability, the newest saved progress and when this device last read it. */
 export function useSyncPill(newest: { at: string; connectionId: string } | undefined) {
-  const pending = usePendingSaves({ active: useIsFocused() });
+  const { saves, listens } = usePendingCounts({ active: useIsFocused() });
   const online = useReachability((s) => s.online);
   const fetchedAt = useProgressFetchedAt(newest?.connectionId);
-  return syncPill({ online, pending, newest, fetchedAt });
+  // Sync v2: when the newest progress's server last answered this device's listening.
+  const { lastSyncAt } = useListeningSync(newest?.connectionId);
+  return syncPill({ online, pending: saves + listens, listens, newest, fetchedAt, lastSyncAt });
 }

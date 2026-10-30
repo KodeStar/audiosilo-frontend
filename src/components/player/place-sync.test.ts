@@ -1,8 +1,19 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 const mockCount = jest.fn(async (_connectionId?: string) => 0);
+const mockListens = jest.fn(async () => 0);
 jest.mock('@/playback/progress-sync', () => ({
-  pendingSaveCount: (connectionId?: string) => mockCount(connectionId),
+  pendingSaves: async (connectionId?: string) => ({
+    saves: await mockCount(connectionId),
+    listens: await mockListens(),
+  }),
+}));
+const mockOutboxWatchers = new Set<() => void>();
+jest.mock('@/playback/listening-outbox', () => ({
+  onOutboxChange: (cb: () => void) => {
+    mockOutboxWatchers.add(cb);
+    return () => mockOutboxWatchers.delete(cb);
+  },
 }));
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 
@@ -74,6 +85,23 @@ describe('usePendingSaves', () => {
     const drained = mockCount.mock.calls.length;
     await tick(60_000);
     expect(mockCount.mock.calls.length).toBe(drained);
+  });
+});
+
+describe('usePendingSaves with Sync v2 listens', () => {
+  afterEach(() => mockListens.mockResolvedValue(0));
+
+  it('counts the listening outbox too, read again at once when it changes', async () => {
+    mockCount.mockResolvedValue(1);
+    mockListens.mockResolvedValue(0);
+    const { result } = await renderHook(() => usePendingSaves({ pollWhenClear: false }));
+    await act(async () => undefined);
+    expect(result.current).toBe(1);
+    mockListens.mockResolvedValue(3);
+    await act(async () => {
+      for (const watch of mockOutboxWatchers) watch();
+    });
+    expect(result.current).toBe(4);
   });
 });
 

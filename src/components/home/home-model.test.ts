@@ -135,6 +135,32 @@ describe('syncPill', () => {
       kind: 'local',
     });
   });
+  // Sync v2: listens waiting are counted, and the last answer to them is a sync.
+  it('counts the listens waiting, and takes the last listening sync when it is newest', () => {
+    expect(syncPill({ online: {}, pending: 3, listens: 3, newest })).toEqual({
+      kind: 'local',
+      listens: 3,
+    });
+    // Saves of the legacy queue only: no count.
+    expect(syncPill({ online: {}, pending: 1, listens: 0, newest })).toEqual({ kind: 'local' });
+    const lastSyncAt = '2026-10-05T10:40:00.000Z';
+    expect(
+      syncPill({
+        online: {},
+        pending: 0,
+        newest,
+        fetchedAt: Date.parse('2026-10-05T10:24:00Z'),
+        lastSyncAt,
+      }),
+    ).toEqual({ kind: 'synced', at: lastSyncAt });
+    // An older sync than the save says the save's time.
+    expect(
+      syncPill({ online: {}, pending: 0, newest, lastSyncAt: '2026-10-05T09:00:00Z' }),
+    ).toEqual({
+      kind: 'synced',
+      at,
+    });
+  });
   // CONNECT-04: another server being down is not "saved on this device".
   it('still says synced when only a server without the newest progress is down', () => {
     expect(syncPill({ online: { a: true, b: false }, pending: 0, newest })).toEqual({

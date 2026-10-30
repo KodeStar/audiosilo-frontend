@@ -63,7 +63,9 @@ export function Greeting({
 
   const syncText =
     sync?.kind === 'local'
-      ? t('home.sync.local')
+      ? sync.listens
+        ? t('home.sync.listens', { count: sync.listens })
+        : t('home.sync.local')
       : sync?.kind === 'synced'
         ? t(phone ? 'home.sync.syncedShort' : 'home.sync.synced', {
             when: formatRelative(sync.at, i18n.language || 'en', minute),

@@ -16,6 +16,7 @@ import { downloadedCountFor, useDownloads } from '@/downloads/store';
 import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { accountHref } from '@/lib/paths';
 import { cn } from '@/lib/utils';
+import { unsentListens } from '@/playback/listening-outbox';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { useThemeColors } from '@/theme/use-theme-colors';
 import { useProfileConnections } from '@/stores/profiles';
@@ -41,11 +42,7 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
   const { t } = useTranslation();
   const remove = useSession((s) => s.removeConnection);
   const { clients } = useApiRegistry();
-  const [pendingRemoval, setPendingRemoval] = useState<{
-    connection: Connection;
-    downloadCount: number;
-    last: boolean;
-  } | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
 
   const performRemove = async (id: string) => {
     const client = clients.get(id);
@@ -59,7 +56,12 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
   const onRemove = (c: Connection) => {
     const count = downloadedCountFor(useDownloads.getState().entries, c.id);
     const last = useSession.getState().connections.every((o) => o.id === c.id);
-    setPendingRemoval({ connection: c, downloadCount: count, last });
+    // Sync v2's listens get a last send first; any left are named in the confirm.
+    void unsentListens(c.id)
+      .catch(() => 0)
+      .then((unsynced) =>
+        setPendingRemoval({ connection: c, downloadCount: count, last, unsynced }),
+      );
   };
 
   const dialog = (
@@ -84,18 +86,34 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
   return { onRemove, dialog };
 }
 
+type PendingRemoval = {
+  connection: Connection;
+  downloadCount: number;
+  last: boolean;
+  /** Sync v2 listens still not on the server (lost with it). */
+  unsynced: number;
+};
+
 /** What removing a server loses, in words: its downloads, else this device's sign-in;
- * and the way back to the first step when it is the last server. */
-function removeMessage(
-  pending: { connection: Connection; downloadCount: number; last: boolean } | null,
-  t: TFunction,
-): string {
+ * the listens that haven't synced; and the way back to the first step when it is the last
+ * server. */
+function removeMessage(pending: PendingRemoval | null, t: TFunction): string {
   if (!pending) return '';
-  const lost =
+  const parts = [
     pending.downloadCount > 0
       ? t('account.connections.removeConfirm.message', { count: pending.downloadCount })
-      : t('account.connections.removeConfirm.signOut', { name: pending.connection.name });
-  return pending.last ? `${lost} ${t('account.connections.removeConfirm.last')}` : lost;
+      : t('account.connections.removeConfirm.signOut', { name: pending.connection.name }),
+  ];
+  if (pending.unsynced > 0) {
+    parts.push(
+      t('account.connections.removeConfirm.unsynced', {
+        count: pending.unsynced,
+        name: pending.connection.name,
+      }),
+    );
+  }
+  if (pending.last) parts.push(t('account.connections.removeConfirm.last'));
+  return parts.join(' ');
 }
 
 /** Settings' "Accounts and devices" pane: the signed-in servers, each opening its own

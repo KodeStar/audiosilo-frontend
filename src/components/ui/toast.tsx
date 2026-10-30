@@ -32,6 +32,11 @@ export type ToastOptions = {
   action?: { label: string; onPress: () => void };
   /** Milliseconds on screen (default 5s, 8s with an action so it can be reached). */
   duration?: number;
+  /** Called when the listener closes the toast with its close button (an answer: "Stay"
+   * beside a "Jump"), never when it times out or its action is pressed. */
+  onClose?: () => void;
+  /** The close button's label for assistive tech (default "Dismiss"). */
+  closeLabel?: string;
 };
 
 type ToastItem = ToastOptions & { id: number };
@@ -109,7 +114,7 @@ export function ToastHost({ bottomInset }: { bottomInset?: number }) {
 function ToastCard({ item }: { item: ToastItem }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const { id, title, description, action } = item;
+  const { id, title, description, action, onClose, closeLabel } = item;
 
   useEffect(() => {
     if (Platform.OS === 'ios') {
@@ -149,8 +154,11 @@ function ToastCard({ item }: { item: ToastItem }) {
         ) : null}
         <Pressable
           role="button"
-          accessibilityLabel={t('ui.toast.dismiss')}
-          onPress={() => dismissToast(id)}
+          accessibilityLabel={closeLabel ?? t('ui.toast.dismiss')}
+          onPress={() => {
+            dismissToast(id);
+            onClose?.();
+          }}
           hitSlop={8}
           className={cn(
             'h-7 w-7 items-center justify-center rounded-full active:bg-primary-foreground/15',

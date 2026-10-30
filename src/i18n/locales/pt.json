@@ -205,7 +205,9 @@
         "message_one": "Isto elimina {{count}} livro descarregado neste dispositivo e qualquer progresso ainda não sincronizado.",
         "message_other": "Isto elimina {{count}} livros descarregados neste dispositivo e qualquer progresso ainda não sincronizado.",
         "signOut": "Isto termina a sessão deste dispositivo em {{name}}. O que ouviu fica no servidor: inicie sessão de novo para o recuperar aqui.",
-        "last": "É o único servidor neste dispositivo, por isso o AudioSilo volta ao primeiro passo."
+        "last": "É o único servidor neste dispositivo, por isso o AudioSilo volta ao primeiro passo.",
+        "unsynced_one": "{{count}} audição ainda não foi sincronizada com {{name}} e vai perder-se.",
+        "unsynced_other": "{{count}} audições ainda não foram sincronizadas com {{name}} e vão perder-se."
       }
     },
     "signOut": {
@@ -216,7 +218,10 @@
       "setPassword": "Definir uma palavra-passe",
       "confirm": "Terminar sessão mesmo assim",
       "downloadsWarning_one": "Terminar sessão também elimina {{count}} livro descarregado deste servidor neste dispositivo.",
-      "downloadsWarning_other": "Terminar sessão também elimina {{count}} livros descarregados deste servidor neste dispositivo."
+      "downloadsWarning_other": "Terminar sessão também elimina {{count}} livros descarregados deste servidor neste dispositivo.",
+      "unsyncedTitle": "Audições por sincronizar",
+      "unsynced_one": "{{count}} audição ainda não foi sincronizada com {{server}}. Terminar sessão mesmo assim?",
+      "unsynced_other": "{{count}} audições ainda não foram sincronizadas com {{server}}. Terminar sessão mesmo assim?"
     },
     "switcher": "Servidor",
     "none": "Inicie sessão num servidor para ver a sua conta.",
@@ -302,6 +307,29 @@
     "danger": {
       "title": "Terminar sessão em {{server}}",
       "body": "Remove deste dispositivo os livros descarregados deste servidor. O seu progresso fica no servidor."
+    },
+    "listeningSync": {
+      "title": "Sincronização das audições",
+      "waiting_one": "{{count}} audição à espera de sincronizar",
+      "waiting_other": "{{count}} audições à espera de sincronizar",
+      "allSynced": "Tudo o que ouviste está em {{server}}.",
+      "lastSynced": "Última sincronização {{when}}",
+      "neverSynced": "Ainda não sincronizado a partir deste dispositivo",
+      "failedTitle": "Não foi possível sincronizar",
+      "failedBody": "{{server}} não as aceitou. Ficam aqui durante 30 dias.",
+      "span": "{{from}} a {{to}}",
+      "finished": "Marcado como terminado",
+      "unfinished": "Marcado como não terminado",
+      "discard": "Descartar",
+      "discardLabel": "Descartar {{what}}",
+      "reason": {
+        "duration_mismatch": "Esta cópia do livro tem uma duração diferente da do servidor.",
+        "too_old": "Tem mais de 90 dias.",
+        "no_access": "Já não podes abrir este livro no servidor.",
+        "not_found": "O livro já não está no servidor.",
+        "unknown_kind": "O servidor não conhece este tipo de audição.",
+        "invalid": "O servidor não a conseguiu ler."
+      }
     }
   },
   "annotations": {
@@ -520,7 +548,9 @@
     "sync": {
       "local": "Guardado neste dispositivo, será sincronizado",
       "synced": "Progresso sincronizado {{when}}",
-      "syncedShort": "Sincronizado {{when}}"
+      "syncedShort": "Sincronizado {{when}}",
+      "listens_one": "{{count}} audição à espera de sincronizar",
+      "listens_other": "{{count}} audições à espera de sincronizar"
     },
     "now": {
       "seriesBook": "{{series}}, livro {{position}}",
@@ -1311,6 +1341,12 @@
       "speed": "Velocidade",
       "started": "Começado",
       "finished": "Terminado"
+    },
+    "placeOffer": {
+      "device": "No {{device}}: {{place}}",
+      "unknown": "Noutro dispositivo: {{place}}",
+      "play": "Ouvir a partir daí",
+      "playLabel": "Ouvir a partir de {{place}}"
     }
   },
   "bridge": {
@@ -1698,6 +1734,12 @@
     "startFailed": {
       "offline": "Não é possível ligar a {{server}} neste momento.",
       "audio": "O áudio não foi carregado a partir do servidor."
+    },
+    "placeOffer": {
+      "device": "No {{device}} estavas em {{place}}. Ir para lá?",
+      "unknown": "Noutro dispositivo estavas em {{place}}. Ir para lá?",
+      "jump": "Ir",
+      "stay": "Ficar"
     }
   },
   "reconnect": {
@@ -2151,7 +2193,8 @@
     "history": {
       "jump": "Ir",
       "jumpLabel": "Ir para {{time}}",
-      "span": "{{from}} a {{to}}"
+      "span": "{{from}} a {{to}}",
+      "waiting": "À espera de sincronizar"
     }
   },
   "addresses": {
