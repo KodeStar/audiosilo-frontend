@@ -63,18 +63,18 @@ Desktop
 | Home | none: greeting, Now card, This week, Continue listening, Next in your series, Listening in the house, Smart shelves, Recently added, Favourites, Recently finished | `#home` |
 | Library | Books · Authors · Series · Narrators · Collections · Folders | `#library`, `#series`, `#author`, `#book` |
 | Downloads | none (storage, rules, queue, ready offline) | `#downloads` |
-| You | Stats · Year in listening · Journal | `/you?section=stats\|year\|journal` (the Me tab's root) |
+| You | Stats · Year in listening · Journal · Household | `/you?section=stats\|year\|journal\|household` (the Me tab's root) |
 | Settings (gear) | none: a page pushed on the current tab (Back returns there), with its own grouped section nav | `/settings?section=preferences\|accounts\|<pane>`, `/account?connection=` |
 | Overlays | Full player and Finished rise over the current page | `#player`, `#finished` |
 | Standalone | Onboarding / first run; kids mode replaces the whole app | `#connect` |
 
 - Phone **Me** tab is a hub (`/you?section=`): a large title naming the section ("Your listening") and a
   scrolling segmented control (Stats · Year · Journal · Settings · Household · Account). On tablet and desktop
-  the same root is the top bar's **You**; its sub-nav offers only Stats · Year in listening · Journal
-  (Settings is the gear, Household and Account the profile menu; an old link to any of them still renders).
+  the same root is the top bar's **You**; its sub-nav offers Stats · Year in listening · Journal · Household
+  (v2.5.1; Settings is the gear, Account the profile menu; an old link to either still renders).
   The Journal is a section of the hub (`/journal?tab=` still opens for older links).
-- **Household** is a page of its own (Phase 8b-1: `/household` through `openHousehold()`, the phone hub's
-  Household segment; `/settings?section=household` redirects to it): the people on this device, the
+- **Household** is a page of its own (Phase 8b-1: `/household` through `openHousehold()`, the hub's
+  Household segment at every width; `/settings?section=household` redirects to it): the people on this device, the
   household members the listener manages (a card each), then Listening in the house.
 - **Settings** (`SettingsContent`, the `/settings` page and the phone hub's Settings segment) lays out by
   its measured width: from 720 a grouped section nav (Listening · App · Servers) beside one pane's card,

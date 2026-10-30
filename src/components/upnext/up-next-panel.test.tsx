@@ -12,6 +12,7 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
   useBook: (_lib: number, path: string) => ({ data: { title: `Title of ${path}` } }),
+  useKnownBook: (_lib: number, path: string) => ({ title: `Title of ${path}` }),
 }));
 const mockQueue = jest.fn();
 const mockUnqueue = jest.fn();

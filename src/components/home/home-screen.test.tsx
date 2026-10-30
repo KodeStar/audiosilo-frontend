@@ -16,6 +16,11 @@ jest.mock('@/downloads/store', () => ({
   useDownloadedCoverUri: () => null,
 }));
 jest.mock('@/playback/progress-sync', () => ({ flushQueue: jest.fn(async () => undefined) }));
+// Which books can start here (online, or downloaded); every one unless a test says.
+let mockPlayable: (at: { path: string }) => boolean = () => true;
+jest.mock('./use-playable-here', () => ({
+  usePlayableHere: () => (at: { path: string }) => mockPlayable(at),
+}));
 jest.mock('@/reader/reading-progress', () => ({
   flushReadingQueue: jest.fn(async () => undefined),
 }));
@@ -88,6 +93,7 @@ jest.mock('@/api/hooks', () => ({
   useRecentAll: () => mockRecent,
   useFavouritesAll: () => ({ favourites: [] }),
   useBook: () => ({ data: undefined }),
+  useKnownBook: () => undefined,
   useMyListening: () => ({
     data: mockCaps.user_stats
       ? {

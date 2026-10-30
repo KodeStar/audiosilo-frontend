@@ -5,7 +5,7 @@ import type { Book, ChaptersResponse } from '@/api/types';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 
 import { useDownloads, useDownloadState } from './store';
-import type { DownloadStatus } from './types';
+import type { DownloadFailure, DownloadStatus } from './types';
 
 export type DownloadControls = {
   /** The connection the download belongs to. */
@@ -16,7 +16,8 @@ export type DownloadControls = {
    * is false too). Lets the UI say why instead of a generic "unavailable". */
   needsTranscode: boolean;
   status: DownloadStatus | undefined;
-  error: string | undefined;
+  /** A failed download's cause (`failureText` words it). */
+  failure: DownloadFailure | undefined;
   start: () => void;
   cancel: () => void;
 };
@@ -36,7 +37,7 @@ export function useDownloadControls(
   // downloads, unless the caller names the connection (a list of several servers).
   const scoped = useScopedCid();
   const cid = connectionId ?? scoped;
-  const { status, error } = useDownloadState(cid, libraryId, path);
+  const { status, failure } = useDownloadState(cid, libraryId, path);
   // Reflects the SW serveability probe (downgraded after hydrate if the worker can't
   // serve offline media), not just the static Cache-API capability.
   const storeSupported = useDownloads((s) => s.supported);
@@ -59,7 +60,7 @@ export function useDownloadControls(
     supported,
     needsTranscode,
     status,
-    error,
+    failure,
     start,
     cancel,
   };

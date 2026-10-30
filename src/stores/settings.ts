@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 
-import { persistedDocument } from '@/lib/storage';
+import { getItemStrict, persistedDocument, setItem, setItemStrict } from '@/lib/storage';
 import { isRecord } from '@/lib/storage-keys';
 import { DEFAULT_VIRTUAL_CHAPTER_INTERVAL } from '@/playback/book-queue';
 
@@ -118,15 +118,13 @@ const SETTINGS_VERSION = 1;
 /** The persisted document: the settings plus the schema version they were saved under. */
 type StoredSettings = PlaybackSettings & { version: number };
 
-/** Brings a document saved under an older `version` up to date. Version 0 on the web: the
- * old default `'wifi'` (which the browser cannot honour) becomes `'never'`, unless "Keep the
- * next books ready" is on (an opt-in to automatic downloads that `'never'` would silently
- * stop); the apps' values are never touched. It re-runs on each load until a save writes
- * `version`. */
-function migrateSettings(doc: Partial<StoredSettings>): Partial<StoredSettings> {
-  const version = typeof doc.version === 'number' ? doc.version : 0;
+/** Brings a document saved under an older version (`from`) up to date. Version 0 on the
+ * web: the old default `'wifi'` (which the browser cannot honour) becomes `'never'`, unless
+ * "Keep the next books ready" is on (an opt-in to automatic downloads that `'never'` would
+ * silently stop); the apps' values are never touched. Run once per device (`migrateOnce`). */
+function migrateSettings(doc: Partial<StoredSettings>, from: number): Partial<StoredSettings> {
   if (
-    version < 1 &&
+    from < 1 &&
     Platform.OS === 'web' &&
     doc.autoDownloadNext === 'wifi' &&
     toKeepAhead(doc.keepAhead) === 0
@@ -136,11 +134,39 @@ function migrateSettings(doc: Partial<StoredSettings>): Partial<StoredSettings> 
   return doc;
 }
 
-// A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all, and
-// one saved under an older version is migrated (its `version` then comes from the base).
-const stored = persistedDocument<StoredSettings>('audiosilo.settings', (raw) => {
+const SETTINGS_KEY = 'audiosilo.settings';
+/** The newest settings migration this device has run (`SETTINGS_VERSION`), in a key of its
+ * own. The document's `version` alone was not durable: a bundle from before 2.5.1 still
+ * open in a browser tab saves the document without it, and the next load migrated a
+ * deliberate `'wifi'` again (fe#196). */
+const MIGRATED_KEY = 'audiosilo.settingsMigrated';
+
+/** Run the migrations the stored document has not had, once (the write-once rule of the
+ * theme default in `migrateStorage`): before the store's first read, from the newer of the
+ * document's `version` and `MIGRATED_KEY`, then never again for that version. A read or
+ * write that fails rejects before the key is set, so the next load tries again (a marker
+ * read as missing would migrate a deliberate choice again; a document read as missing, or
+ * not saved, would never be migrated). */
+async function migrateOnce(): Promise<void> {
+  const done = await getItemStrict<unknown>(MIGRATED_KEY);
+  const ran = typeof done === 'number' ? done : 0;
+  if (ran >= SETTINGS_VERSION) return;
+  const raw = await getItemStrict<unknown>(SETTINGS_KEY);
+  if (isRecord(raw)) {
+    const doc = raw as Partial<StoredSettings>;
+    const migrated = migrateSettings(doc, Math.max(ran, Number(doc.version) || 0));
+    if (migrated !== doc) {
+      await setItemStrict(SETTINGS_KEY, { ...migrated, version: SETTINGS_VERSION });
+    }
+  }
+  await setItem(MIGRATED_KEY, SETTINGS_VERSION);
+}
+
+// A stored blob may predate a setting (DEFAULTS fill it) or not be an object at all. Its
+// `version` stays out of the store (the base supplies the current one).
+const stored = persistedDocument<StoredSettings>(SETTINGS_KEY, (raw) => {
   if (!isRecord(raw)) return {};
-  const { version, ...rest } = migrateSettings(raw as Partial<StoredSettings>);
+  const { version, ...rest } = raw as Partial<StoredSettings>;
   return rest;
 });
 
@@ -181,8 +207,9 @@ export const useSettings = create<SettingsState>()((set, get) => {
   };
   return {
     ...DEFAULTS,
-    hydrate: () =>
-      stored.hydrate({ ...DEFAULTS, version: SETTINGS_VERSION }, ({ version, ...doc }) =>
+    hydrate: async () => {
+      await migrateOnce().catch(() => {});
+      await stored.hydrate({ ...DEFAULTS, version: SETTINGS_VERSION }, ({ version, ...doc }) =>
         set({
           ...doc,
           keepAhead: toKeepAhead(doc.keepAhead),
@@ -193,7 +220,8 @@ export const useSettings = create<SettingsState>()((set, get) => {
           smartSpeed: doc.smartSpeed === true,
           voiceBoost: doc.voiceBoost === true,
         }),
-      ),
+      );
+    },
     setSkipForward: (skipForward) => update({ skipForward }),
     setSkipBackward: (skipBackward) => update({ skipBackward }),
     setDefaultRate: (defaultRate) => update({ defaultRate }),

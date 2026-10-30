@@ -39,7 +39,14 @@ import {
   libraryRequests,
   requestsDone,
 } from '@/lib/podcast-requests';
-import { getDeviceId, mirroredProgress, saveProgress } from '@/playback/progress-sync';
+import { isKeptOffline } from '@/downloads/kept-offline';
+import {
+  getDeviceId,
+  mirroredProgress,
+  progressToSave,
+  saveProgress,
+  writeMirror,
+} from '@/playback/progress-sync';
 import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
 import { rememberLibraryNames } from '@/stores/library-names';
@@ -54,7 +61,7 @@ import {
 } from './client';
 import { resolveClient } from './connection-clients';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
-import { noteFailure } from './reachability';
+import { noteFailure, useReachability } from './reachability';
 import type {
   AddMemberBody,
   Book,
@@ -868,6 +875,85 @@ export function useBook(
   });
 }
 
+/** How deep `listedBook` looks into a cached answer: an infinite list's book sits at
+ * data > pages > page > items > book. */
+const LISTED_DEPTH = 5;
+
+/** Each cached answer's books by `library_id:rel_path`, the first listed of each. An
+ * answer's data is replaced, never changed in place, so it is walked once, however many
+ * rows ask (`listedBook`). */
+const listedIndexes = new WeakMap<object, Map<string, Book>>();
+
+function indexListed(v: unknown, into: Map<string, Book>, depth: number): void {
+  if (depth > LISTED_DEPTH || !v || typeof v !== 'object') return;
+  // An array walks the same way: by its indices, and no array is a book.
+  const o = v as Record<string, unknown>;
+  if (
+    typeof o.rel_path === 'string' &&
+    typeof o.library_id === 'number' &&
+    typeof o.title === 'string' &&
+    o.title
+  ) {
+    const key = `${o.library_id}:${o.rel_path}`;
+    if (!into.has(key)) into.set(key, o as unknown as Book);
+  }
+  for (const k in o) indexListed(o[k], into, depth + 1);
+}
+
+function listedIn(data: object): Map<string, Book> {
+  let index = listedIndexes.get(data);
+  if (!index) {
+    index = new Map();
+    indexListed(data, index, 0);
+    listedIndexes.set(data, index);
+  }
+  return index;
+}
+
+/** A book as one of this connection's cached answers lists it (a library page, a shelf,
+ * the queue, a search), for a reader whose `/item` can't answer (offline: v2.5.1
+ * PLAYER-02, Home showed folder names). Undefined when none does. */
+export function listedBook(cid: string, libraryId: number, path: string): Book | undefined {
+  if (!path) return undefined;
+  const key = `${libraryId}:${path}`;
+  for (const query of queryClient.getQueryCache().getAll()) {
+    const data = query.state.data;
+    if (!query.queryKey.includes(cid) || !data || typeof data !== 'object') continue;
+    const found = listedIn(data).get(key);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
+ * {@link useBook}'s answer, or, while it can't come (the query paused offline, failed, or
+ * its server known to be down), the book as a cached list of the connection holds it
+ * (`listedBook`): a row known only by its path (Home's progress rows, Up next's
+ * suggestions) keeps its title and author offline. A downloaded book's own `/item` is
+ * seeded from its download, so it answers.
+ */
+export function useKnownBook(
+  libraryId: number,
+  path: string,
+  connectionId?: string,
+  opts: { staleTime?: number; enabled?: boolean } = {},
+): Book | undefined {
+  const cid = useCid(connectionId);
+  const query = useBook(libraryId, path, connectionId, opts);
+  // A down server's own failure can be a timeout away.
+  const serverDown = useReachability((s) => s.online[cid] === false);
+  // A failed item asked again has no error while it waits (a fetch without data resets it),
+  // so the count of its failures says it failed. `isPaused`, not `fetchStatus`: a refetch
+  // alone redraws no row.
+  const stuck =
+    query.data === undefined &&
+    (query.isError || query.isPaused || query.errorUpdateCount > 0 || serverDown);
+  return useMemo(
+    () => query.data ?? (stuck ? listedBook(cid, libraryId, path) : undefined),
+    [query.data, stuck, cid, libraryId, path],
+  );
+}
+
 /** A book's chapters and files; `enabled` false holds this reader back (a surface that
  * needs them only for community metadata the book may not have). */
 export function useChapters(
@@ -1170,6 +1256,12 @@ export function useBookProgress(
  *    for a read that is only slow or broken.
  *
  * A cancelled query stays cancelled (the abort rethrows untouched).
+ *
+ * The server's answer for a downloaded book goes into that mirror too (keep-newest, so a
+ * newer save of this device's own stays): offline, the book then opens where the server
+ * had it, and its first save starts from there instead of from 0 over the server's place.
+ * Only a downloaded book's: the mirror is never pruned, and a book only streamed resumes
+ * from its server.
  */
 export async function fetchBookProgress(
   api: ApiClient,
@@ -1178,8 +1270,9 @@ export async function fetchBookProgress(
   path: string,
   signal: AbortSignal,
 ): Promise<Progress | null> {
+  let progress: Progress | null;
   try {
-    return await api.getProgress(libraryId, path, signal);
+    progress = await api.getProgress(libraryId, path, signal);
   } catch (e) {
     // A cancelled query must stay cancelled - only a real failure falls back.
     if (signal.aborted) throw e;
@@ -1188,6 +1281,10 @@ export async function fetchBookProgress(
     noteFailure(connectionId, e);
     return await mirroredProgress(connectionId, libraryId, path);
   }
+  if (progress && isKeptOffline(connectionId, libraryId, path)) {
+    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
+  }
+  return progress;
 }
 
 /** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest

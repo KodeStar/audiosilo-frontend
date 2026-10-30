@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-import { type SourcedProgress, useBook } from '@/api/hooks';
+import { type SourcedProgress, useKnownBook } from '@/api/hooks';
 import { CoverTile } from '@/components/library/cover-tile';
 import { useBookTimeLeft } from '@/components/player/use-time-left';
 import { formatRelative } from '@/lib/format';
@@ -15,13 +15,14 @@ const TILE_BOOK_STALE_MS = 10 * 60_000;
 
 /**
  * A progress row carries only a path, so Home asks the book itself (`/item`, the book
- * page's own cache entry) for its title, falling back to the path's last part until it
- * answers or when it can't. Mounted per visible tile, so only the covers on screen ask.
+ * page's own cache entry) for its title; when that can't answer (offline), a cached list
+ * that holds the book (`useKnownBook`); else the path's last part. Mounted per visible
+ * tile, so only the covers on screen ask.
  */
 export function useProgressBook(at: BookAt | null) {
-  return useBook(at?.libraryId ?? 0, at?.path ?? '', at?.connectionId, {
+  return useKnownBook(at?.libraryId ?? 0, at?.path ?? '', at?.connectionId, {
     staleTime: TILE_BOOK_STALE_MS,
-  }).data;
+  });
 }
 
 /** The title of a book Home knows only by path ('' for none). */

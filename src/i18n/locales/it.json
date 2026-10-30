@@ -539,7 +539,12 @@
       "whosWhoLabel_one": "Chi è chi, {{count}} personaggio incontrato finora",
       "whosWhoLabel_other": "Chi è chi, {{count}} personaggi incontrati finora",
       "storySoFar": "La storia finora",
-      "countOf": "{{chapter}} di {{total}}"
+      "countOf": "{{chapter}} di {{total}}",
+      "notDownloaded": "Non scaricato",
+      "notDownloadedHint": "Questo libro non è su questo dispositivo. Si ascolta quando torni online.",
+      "notDownloadedServerHint": "Questo libro non è su questo dispositivo. Si ascolta quando {{name}} torna a rispondere.",
+      "episodeOfflineHint": "Questo episodio si ascolta quando torni online.",
+      "episodeServerHint": "Questo episodio si ascolta quando {{name}} torna a rispondere."
     },
     "week": {
       "title": "Questa settimana",
@@ -1009,7 +1014,11 @@
         "wifi": "Con Wi-Fi",
         "always": "Sempre"
       },
-      "modeHint": "Scarica un libro quando inizi ad ascoltarlo.",
+      "modeHint": {
+        "never": "Niente si scarica da solo. Scarica un libro dalla sua pagina.",
+        "wifi": "Scarica un libro con il Wi-Fi quando inizi ad ascoltarlo.",
+        "always": "Scarica un libro con qualsiasi connessione quando inizi ad ascoltarlo."
+      },
       "webWifi": "Un browser non distingue il Wi-Fi dai dati mobili, quindi qui Con Wi-Fi scarica con qualsiasi connessione.",
       "keepAhead": {
         "label": "Tieni pronti i prossimi libri",

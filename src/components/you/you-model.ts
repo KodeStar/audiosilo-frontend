@@ -19,9 +19,10 @@ export const YOU_SECTIONS: readonly CoreYouSection[] = [
 ];
 
 /** The sections the top bar's You destination offers in the sub-nav. Settings is the gear
- * there, Household and Account the profile menu (decision 4 of Phase 8b-1: Household is
- * the phone's sixth segment, a pushed page elsewhere). */
-const WIDE_SECTIONS: readonly CoreYouSection[] = ['stats', 'year', 'journal'];
+ * there and Account the profile menu. Household is in it as on a phone (v2.5.1 PLAYER-12:
+ * a link to it opened a hub with no segment chosen); the profile menu, Settings and Home's
+ * house row still push it as a page of its own. */
+const WIDE_SECTIONS: readonly CoreYouSection[] = ['stats', 'year', 'journal', 'household'];
 
 /** Whether `section` is one of the hub's own. */
 export function isCoreYouSection(section: string): section is CoreYouSection {
@@ -61,8 +62,8 @@ export function parseYouSection(
 }
 
 /** The sections the hub's segmented control offers on this form factor: all six on a
- * phone (it has no top bar), Stats, Year and Journal on tablet and desktop. A link to
- * Settings, Household or Account still renders there; the control then shows no segment
+ * phone (it has no top bar), Stats, Year, Journal and Household on tablet and desktop. A
+ * link to Settings or Account still renders there; the control then shows no segment
  * chosen. */
 export function youSectionsFor(layout: LayoutClass): readonly CoreYouSection[];
 export function youSectionsFor(

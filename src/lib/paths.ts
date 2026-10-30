@@ -275,9 +275,9 @@ export function collectionHref(connectionId: string, id: number): Href {
 export type JournalTab = 'diary' | 'bookmarks' | 'notes';
 
 /** The You hub's own sections (`/you?section=`, the Me tab's root; absent = `stats`). A
- * phone offers all six; tablet and desktop offer the first three and reach Settings,
- * Household and Account from the top bar's gear and profile menu (an old link to them
- * still renders). */
+ * phone offers all six; tablet and desktop offer Stats, Year, Journal and Household, and
+ * reach Settings and Account from the top bar's gear and profile menu (an old link to
+ * them still renders). */
 export type CoreYouSection = 'stats' | 'year' | 'journal' | 'settings' | 'household' | 'account';
 
 /** A You hub section: one of its own, or an active module's (`youSections` in
