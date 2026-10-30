@@ -11,6 +11,7 @@ import { foldAccents } from '@/lib/names';
 import { bookTitle } from '@/lib/paths';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import { yearOf } from '@/lib/published';
+import { releaseIsFuture } from '@/lib/release-date';
 import {
   bookSeriesNumber,
   bookSeriesSpan,
@@ -71,8 +72,12 @@ type EntryFields = {
   started: boolean;
   finished: boolean;
   updatedAt?: string;
-  /** "2012", from the copy's `published`. */
+  /** "2012", from the copy's `published`; a ghost's from its first release once that is
+   * out (`release_date`). */
   year?: string;
+  /** A ghost's first release as the community metadata states it ("2026-11-12", "2027"),
+   * set only while it is still ahead: shown as "Out <date>". */
+  outDate?: string;
   narrator?: string;
   coverColor?: CoverColor;
   coverVersion?: string;
@@ -214,6 +219,8 @@ type Source = {
   progressOf: ProgressLookup;
   /** Books in this series on the listener's OTHER connections. */
   elsewhere?: readonly ElsewhereBook[];
+  /** The clock a ghost's release date is read against (tests); now by default. */
+  now?: Date;
 };
 
 /** An entry with a copy: its facts and the listener's progress in it. */
@@ -297,6 +304,13 @@ function heldByRange(ghost: SeriesEntry, copies: readonly SeriesSpan[]): boolean
 
 const NOTHING = { fraction: 0, started: false, finished: false } as const;
 
+/** A ghost's release fields (Track U2): the date it is out while that is still ahead, its
+ * year once it is out (a ghost has no copy to take one from). */
+function ghostRelease(date: string | undefined, now: Date): Pick<EntryFields, 'outDate' | 'year'> {
+  if (!date) return {};
+  return releaseIsFuture(date, now) ? { outDate: date } : { year: yearOf(date) };
+}
+
 function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
   const names = work.authors.map((a) => looseKey(a.name)).filter(Boolean);
   const author = looseKey(book.author);
@@ -339,6 +353,7 @@ export function railEntries(
   );
   const used = new Set<string>();
   const out: SeriesEntry[] = [];
+  const now = src.now ?? new Date();
   for (const w of view.works) {
     let copy: SeriesCopy | undefined;
     let position = railPositionLabel(w.position);
@@ -375,7 +390,13 @@ export function railEntries(
     if (match) {
       out.push(elsewhereEntry(base, match, src.progressOf));
     } else {
-      out.push({ ...base, kind: 'ghost', title: w.title, ...NOTHING });
+      out.push({
+        ...base,
+        kind: 'ghost',
+        title: w.title,
+        ...NOTHING,
+        ...ghostRelease(w.release_date, now),
+      });
     }
   }
   for (const b of sortSeriesBooks(books)) {

@@ -356,6 +356,13 @@ export function householdHref(): Href {
   return '/household';
 }
 
+/** `/upcoming` (Track U2): the listener's upcoming releases across their servers, a page of
+ * the array group pushed on the current tab (Home's See all); the You hub also has it as a
+ * section while a server offers it. */
+export function upcomingHref(): Href {
+  return '/upcoming';
+}
+
 /** A route's raw search params (Expo Router may hand back `string[]`). */
 export type RawParams = Record<string, string | string[] | undefined>;
 

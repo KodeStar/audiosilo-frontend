@@ -1,5 +1,6 @@
 {
   "common": {
+    "and": "{{rest}} et {{last}}",
     "cancel": "Annuler",
     "save": "Enregistrer",
     "done": "Terminé",
@@ -471,7 +472,6 @@
       "connected": "{{name}} est connecté",
       "title": "Votre bibliothèque est prête.",
       "titleSetup": "Presque prêt : ajoutez une bibliothèque.",
-      "and": "{{rest}} et {{last}}",
       "booksIn_one": "{{books}} livre dans {{list}}.",
       "booksIn_other": "{{books}} livres dans {{list}}.",
       "booksAcross_one": "{{books}} livre dans {{libraries}} bibliothèques.",
@@ -2001,7 +2001,9 @@
       "emptyAction": "Parcourir les livres",
       "errorTitle": "Impossible de charger les séries"
     },
-    "keepAhead": "Garder de l’avance hors ligne"
+    "keepAhead": "Garder de l’avance hors ligne",
+    "out": "Sortie : {{date}}",
+    "ghostOutNote": "Sortie : {{date}}. Pas encore sur vos serveurs."
   },
   "people": {
     "author": "Auteur",
@@ -3042,6 +3044,47 @@
     "readalong": {
       "follow": "Suivre la narration",
       "back": "Revenir à la narration"
+    }
+  },
+  "upcoming": {
+    "title": "À venir",
+    "rail": {
+      "title": "À venir dans vos séries",
+      "sub": "Précommandes, nouveautés et trous"
+    },
+    "sections": {
+      "preorder": "Bientôt",
+      "released": "Tout juste sortis",
+      "missing": "Manquants dans vos séries"
+    },
+    "out": "Sortie : {{date}}",
+    "released": "Paru : {{date}}",
+    "firstReleased": "Première sortie : {{date}}",
+    "seriesBook": "{{series}}, tome {{position}}",
+    "new": "Nouveau",
+    "fromServer": "Depuis {{server}}",
+    "pending": {
+      "title": "Recherche des sorties",
+      "hint": "Votre serveur recherche les sorties ; cette liste se remplira après sa première recherche."
+    },
+    "pendingSome_one": "{{server}} effectue encore sa première recherche des sorties.",
+    "pendingSome_other": "{{server}} effectuent encore leur première recherche des sorties.",
+    "stale_one": "{{server}} n'a pas recherché les sorties depuis plus de deux jours, cette liste n'est peut-être pas à jour.",
+    "stale_other": "{{server}} n'ont pas recherché les sorties depuis plus de deux jours, cette liste n'est peut-être pas à jour.",
+    "empty": {
+      "title": "Rien à venir",
+      "hint": "Rien à venir dans les séries que vous avez."
+    },
+    "unavailable": {
+      "title": "Pas de sorties à venir ici",
+      "hint": "Vos serveurs ne listent pas les sorties à venir."
+    },
+    "error": {
+      "title": "Impossible de charger les sorties à venir",
+      "hint_one": "{{server}} n'a pas répondu. Rien n'est perdu : réessayez dans un instant.",
+      "hint_other": "{{server}} n'ont pas répondu. Rien n'est perdu : réessayez dans un instant.",
+      "partial_one": "{{server}} n'a pas répondu, il manque peut-être des sorties dans cette liste.",
+      "partial_other": "{{server}} n'ont pas répondu, il manque peut-être des sorties dans cette liste."
     }
   }
 }

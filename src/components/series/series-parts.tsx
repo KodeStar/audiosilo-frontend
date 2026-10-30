@@ -8,7 +8,7 @@ import { GhostCover } from '@/components/library/ghost-cover';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import type { NamedChapter } from '@/lib/chapter-label';
-import { formatDuration } from '@/lib/format';
+import { formatDuration, formatReleaseDate } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { percentOf } from '@/lib/progress-view';
@@ -105,8 +105,13 @@ function entryFacts(entry: SeriesEntry, t: TFunction): string {
     .join(' · ');
 }
 
+/** "Out 12 Nov 2026" for a ghost whose release is still ahead (Track U2), else ''. */
+function outLabel(entry: SeriesEntry, t: TFunction): string {
+  return entry.outDate ? t('series.out', { date: formatReleaseDate(entry.outDate) }) : '';
+}
+
 /** The words under a face-out book: who reads it, or where it is, or that it is on no
- * server yet. */
+ * server yet (with its release date while that is ahead). */
 function entryNote(entry: SeriesEntry, here: string, t: TFunction) {
   if (entry.kind === 'owned') {
     return entry.narrator ? t('series.readBy', { narrator: entry.narrator }) : '';
@@ -114,6 +119,7 @@ function entryNote(entry: SeriesEntry, here: string, t: TFunction) {
   if (entry.kind === 'elsewhere') {
     return t('series.elsewhereNote', { here, server: entry.copy.connectionName });
   }
+  if (entry.outDate) return t('series.ghostOutNote', { date: formatReleaseDate(entry.outDate) });
   return entry.title ? t('series.ghostNote') : t('series.gapNote');
 }
 
@@ -227,14 +233,15 @@ function numberSize(position: string, phone: boolean): number {
   return n >= 4 ? 16 : n === 3 ? 19 : 22;
 }
 
-/** "2014 · 6h 17m · 40%": an entry's line in the list. */
+/** "2014 · 6h 17m · 40%": an entry's line in the list ("Out 12 Nov 2026" for a ghost not
+ * out yet). */
 function entryLine(entry: SeriesEntry, t: TFunction): string {
   const state = entry.finished
     ? t('covers.finished')
     : entry.kind === 'elsewhere'
       ? t('covers.onServer', { server: entry.copy.connectionName })
       : entry.kind === 'ghost'
-        ? t('covers.notInLibrary')
+        ? outLabel(entry, t) || t('covers.notInLibrary')
         : entry.fraction > 0
           ? `${percentOf(entry.fraction)}%`
           : '';

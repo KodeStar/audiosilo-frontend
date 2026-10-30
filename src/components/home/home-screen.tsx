@@ -24,6 +24,7 @@ import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
 import { libraryModeHref } from '@/components/library/library-modes';
 import { FirstScreenCovers } from '@/components/library/first-screen-covers';
 import { ShelfRow } from '@/components/library/shelf-row';
+import { UpcomingRail } from '@/components/upcoming/upcoming-rail';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -77,8 +78,8 @@ const favouriteKey = (f: SourcedFavourite) => contentKey(f.connectionId, f.libra
 
 /**
  * Home (STYLEGUIDE section 2, the Stacks Home): the greeting, the Now card (with This
- * week beside it on a desktop), Continue listening, Next in your series, This week
- * (tablet and phone), New episodes, smart shelves, then Recently added, Favourites and Recently
+ * week beside it on a desktop), Continue listening, This week (tablet and phone), Next in
+ * your series, Coming up in your series (`UpcomingRail`), New episodes, smart shelves, then Recently added, Favourites and Recently
  * finished. Aggregated across every signed-in server; each book keeps its own. An active
  * module's rails (`src/modules/registry.ts`, none yet) follow Next in your series;
  * `modules` is the list to choose from (the registry; tests pass a fake).
@@ -296,6 +297,10 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
             )}
           </HomeSection>
         ) : null}
+
+        {/* Preorders, recent releases and missing volumes in the series held (Track U2):
+            nothing while there are none or no server offers it. */}
+        <UpcomingRail />
 
         {/* The latest episodes of the shows followed, not yet started (Bridge 2d-1). */}
         <NewEpisodesRail connections={connections} skip={skipNext} limit={SHELF_LIMIT} />

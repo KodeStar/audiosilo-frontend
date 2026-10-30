@@ -127,7 +127,7 @@ export function ReadyScreen({
 type T = TFunction;
 
 function names(list: string[], t: T): string {
-  return joinList(list, (rest, last) => String(t('onboarding.ready.and', { rest, last })));
+  return joinList(list, (rest, last) => String(t('common.and', { rest, last })));
 }
 
 /** The library sentence, in words. */

@@ -1,5 +1,6 @@
 {
   "common": {
+    "and": "{{rest}} und {{last}}",
     "cancel": "Abbrechen",
     "save": "Speichern",
     "done": "Fertig",
@@ -471,7 +472,6 @@
       "connected": "{{name}} ist verbunden",
       "title": "Deine Bibliothek ist bereit.",
       "titleSetup": "Fast geschafft: Füge eine Bibliothek hinzu.",
-      "and": "{{rest}} und {{last}}",
       "booksIn_one": "{{books}} Buch in {{list}}.",
       "booksIn_other": "{{books}} Bücher in {{list}}.",
       "booksAcross_one": "{{books}} Buch in {{libraries}} Bibliotheken.",
@@ -2001,7 +2001,9 @@
       "emptyAction": "Bücher durchsehen",
       "errorTitle": "Die Reihen konnten nicht geladen werden"
     },
-    "keepAhead": "Offline vorausladen"
+    "keepAhead": "Offline vorausladen",
+    "out": "Erscheint: {{date}}",
+    "ghostOutNote": "Erscheint: {{date}}. Noch auf keinem deiner Server."
   },
   "people": {
     "author": "Autor",
@@ -3042,6 +3044,47 @@
     "readalong": {
       "follow": "Der Erzählung folgen",
       "back": "Zurück zur Erzählung"
+    }
+  },
+  "upcoming": {
+    "title": "Demnächst",
+    "rail": {
+      "title": "Demnächst in deinen Reihen",
+      "sub": "Vorbestellungen, Neuerscheinungen und Lücken"
+    },
+    "sections": {
+      "preorder": "Erscheint bald",
+      "released": "Gerade erschienen",
+      "missing": "Fehlt in deinen Reihen"
+    },
+    "out": "Erscheint: {{date}}",
+    "released": "Erschienen: {{date}}",
+    "firstReleased": "Erstmals erschienen: {{date}}",
+    "seriesBook": "{{series}}, Band {{position}}",
+    "new": "Neu",
+    "fromServer": "Von {{server}}",
+    "pending": {
+      "title": "Suche nach Neuerscheinungen",
+      "hint": "Dein Server sucht nach Neuerscheinungen; diese Liste füllt sich nach der ersten Suche."
+    },
+    "pendingSome_one": "{{server}} sucht noch zum ersten Mal nach Neuerscheinungen.",
+    "pendingSome_other": "{{server}} suchen noch zum ersten Mal nach Neuerscheinungen.",
+    "stale_one": "{{server}} hat seit über zwei Tagen nicht nach Neuerscheinungen gesucht, diese Liste ist vielleicht nicht aktuell.",
+    "stale_other": "{{server}} haben seit über zwei Tagen nicht nach Neuerscheinungen gesucht, diese Liste ist vielleicht nicht aktuell.",
+    "empty": {
+      "title": "Nichts in Sicht",
+      "hint": "In deinen Reihen erscheint demnächst nichts."
+    },
+    "unavailable": {
+      "title": "Hier keine Neuerscheinungen",
+      "hint": "Deine Server listen keine kommenden Erscheinungen."
+    },
+    "error": {
+      "title": "Neuerscheinungen konnten nicht geladen werden",
+      "hint_one": "{{server}} hat nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
+      "hint_other": "{{server}} haben nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
+      "partial_one": "{{server}} hat nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen.",
+      "partial_other": "{{server}} haben nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen."
     }
   }
 }

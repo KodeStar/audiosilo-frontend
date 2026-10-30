@@ -3,6 +3,7 @@ import { t } from 'i18next';
 import { getLocale } from '@/i18n/locale';
 import { parseHhMm } from '@/lib/hhmm';
 import { seriesNumber } from '@/lib/series-position';
+import { parseReleaseDate } from '@/lib/release-date';
 
 /** "12h 30m" / "45m" / "30s" - compact total-duration label. */
 export function formatDuration(seconds?: number): string {
@@ -257,6 +258,23 @@ export function formatServerDay(day: string, locale: string = getLocale()): stri
     'sdm',
     { day: 'numeric', month: 'short', timeZone: 'UTC' },
     locale,
+  );
+}
+
+/** A release date as the community metadata states it, at its own precision: `"2027"` as
+ * is, `"2026-11"` -> "Nov 2026", `"2026-11-12"` -> "12 Nov 2026" ("Nov 12, 2026" in en-US),
+ * read as that calendar day (not shifted into the device's zone), like `formatServerDay`.
+ * Anything else is returned as it came. */
+export function formatReleaseDate(value: string, locale: string = getLocale()): string {
+  // A month or day out of range ("2026-13") is no date: shown as it came.
+  const date = parseReleaseDate(value);
+  if (!date?.month) return value;
+  return formatDate(
+    new Date(`${date.start}T12:00:00Z`),
+    date.day ? 'utcDayMonthYear' : 'utcMonthYear',
+    { ...(date.day ? { day: 'numeric' } : {}), month: 'short', year: 'numeric', timeZone: 'UTC' },
+    locale,
+    () => value,
   );
 }
 

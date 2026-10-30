@@ -3,6 +3,7 @@ import { Fragment, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useUpcomingAvailable } from '@/api/hooks';
 import { AccountSection } from '@/components/account/account-section';
 import { HouseholdPage } from '@/components/household/household-page';
 import { JournalScreen } from '@/components/journal/journal-screen';
@@ -11,6 +12,7 @@ import { SettingsContent } from '@/components/settings/settings-content';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { SubNavSections } from '@/components/shell/tab-root-nav';
 import { StatsSection } from '@/components/you/stats/stats-section';
+import { UpcomingContent } from '@/components/upcoming/upcoming-screen';
 import { YearSection } from '@/components/you/year/year-section';
 import { useLayout } from '@/lib/layout';
 import type { CoreYouSection } from '@/lib/paths';
@@ -22,6 +24,8 @@ import type { PlayerModule, YouModuleSection } from '@/modules/registry';
 import {
   isCoreYouSection,
   parseYouSection,
+  UPCOMING_SECTION,
+  youExtraSections,
   youModuleSections,
   youSectionLabelKey,
   youSectionParams,
@@ -69,6 +73,14 @@ const SECTIONS: Record<CoreYouSection, (opts: { phone: boolean }) => ReactNode> 
     ),
 };
 
+/** The Upcoming section (Track U2): the `/upcoming` page's body, under the phone's large
+ * title. */
+const UPCOMING: YouModuleSection = {
+  key: UPCOMING_SECTION,
+  label: (t) => t('upcoming.title'),
+  render: ({ phone }) => <UpcomingContent embedded={phone} />,
+};
+
 /**
  * The You hub (`/you?section=stats|year|journal|settings|household|account`, the Me tab's
  * root; STYLEGUIDE section 2). A phone: the large title names the section ("Your
@@ -77,9 +89,10 @@ const SECTIONS: Record<CoreYouSection, (opts: { phone: boolean }) => ReactNode> 
  * listening, Journal and Household (Settings is the gear, Account the profile menu; an old
  * link to either still renders here). The section is the route's `section` param (`parseYouSection`:
  * absent or unknown is Stats), switched in place with `setParams`; the Journal keeps its
- * own `tab` param beside it. An active module's sections (`youSections`,
- * `src/modules/registry.ts`, none yet) follow the hub's own; `modules` is the list to
- * choose from (the registry; tests pass a fake).
+ * own `tab` param beside it. Upcoming (`section=upcoming`, Track U2, only while a server
+ * offers it: `useUpcomingAvailable`) and then an active module's sections (`youSections`,
+ * `src/modules/registry.ts`, none yet) follow the hub's own (`youExtraSections`); `modules`
+ * is the list to choose from (the registry; tests pass a fake).
  */
 export function YouHub({ modules }: { modules?: readonly PlayerModule[] } = {}) {
   return (
@@ -93,7 +106,13 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   const layout = useLayout();
   const phone = layout === 'phone';
   const params = useRouteParams<{ section?: string }>();
-  const moduleSections = useMemo(() => youModuleSections(active), [active]);
+  // Upcoming only once a server is known to offer it (not a kid there): a link to it while
+  // that is still loading opens Stats.
+  const upcoming = useUpcomingAvailable() === true;
+  const moduleSections = useMemo(
+    () => youExtraSections(upcoming ? UPCOMING : null, youModuleSections(active)),
+    [active, upcoming],
+  );
   const moduleKeys = useMemo(() => [...moduleSections.keys()], [moduleSections]);
   const section = parseYouSection(params.section, moduleKeys);
   const ownSection = isCoreYouSection(section) ? section : null;

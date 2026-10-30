@@ -1,5 +1,6 @@
 {
   "common": {
+    "and": "{{rest}} and {{last}}",
     "cancel": "Cancel",
     "save": "Save",
     "done": "Done",
@@ -471,7 +472,6 @@
       "connected": "{{name}} is connected",
       "title": "Your library is ready.",
       "titleSetup": "Almost there: add a library.",
-      "and": "{{rest}} and {{last}}",
       "booksIn_one": "{{books}} book in {{list}}.",
       "booksIn_other": "{{books}} books in {{list}}.",
       "booksAcross_one": "{{books}} book across {{libraries}} libraries.",
@@ -2001,7 +2001,9 @@
       "emptyAction": "Browse books",
       "errorTitle": "Couldn't load the series"
     },
-    "keepAhead": "Keep ahead offline"
+    "keepAhead": "Keep ahead offline",
+    "out": "Out {{date}}",
+    "ghostOutNote": "Out {{date}}. Not on your servers yet."
   },
   "people": {
     "author": "Author",
@@ -3042,6 +3044,47 @@
     "readalong": {
       "follow": "Follow narration",
       "back": "Back to narration"
+    }
+  },
+  "upcoming": {
+    "title": "Upcoming",
+    "rail": {
+      "title": "Coming up in your series",
+      "sub": "Preorders, new releases and gaps"
+    },
+    "sections": {
+      "preorder": "Coming soon",
+      "released": "Just released",
+      "missing": "Missing from your series"
+    },
+    "out": "Out {{date}}",
+    "released": "Released {{date}}",
+    "firstReleased": "First released {{date}}",
+    "seriesBook": "{{series}}, book {{position}}",
+    "new": "New",
+    "fromServer": "From {{server}}",
+    "pending": {
+      "title": "Checking for releases",
+      "hint": "Your server is checking for releases; this list fills after its first check."
+    },
+    "pendingSome_one": "{{server}} is still running its first check for releases.",
+    "pendingSome_other": "{{server}} are still running their first check for releases.",
+    "stale_one": "{{server}} hasn't checked for releases in over two days, so this list may be out of date.",
+    "stale_other": "{{server}} haven't checked for releases in over two days, so this list may be out of date.",
+    "empty": {
+      "title": "Nothing coming up",
+      "hint": "Nothing coming up in the series you have."
+    },
+    "unavailable": {
+      "title": "No upcoming releases here",
+      "hint": "Your servers don't list upcoming releases."
+    },
+    "error": {
+      "title": "Couldn't load upcoming releases",
+      "hint_one": "{{server}} didn't answer. Nothing is lost: try again in a moment.",
+      "hint_other": "{{server}} didn't answer. Nothing is lost: try again in a moment.",
+      "partial_one": "{{server}} didn't answer, so this list may be missing some releases.",
+      "partial_other": "{{server}} didn't answer, so this list may be missing some releases."
     }
   }
 }

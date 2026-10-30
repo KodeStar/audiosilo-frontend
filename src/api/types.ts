@@ -155,6 +155,14 @@ export type Capabilities = {
    * `readalong` in {@link ServerInfo.bridge}'s `features`. Absent on older servers: treat
    * missing as false and offer no read-along. */
   readalong?: boolean;
+  /** Whether the server lists the caller's upcoming releases (Track U1): `GET /me/upcoming`
+   * ({@link UpcomingResponse}, `client.upcoming`), the preorders, recent releases and missing
+   * volumes in the series they hold, and `release_date` on a `/meta` series work
+   * ({@link BookMetaSeriesWork}). False while community metadata or the job is off (the route
+   * then answers 404), and for a kid's account the route refuses (403 `kid_account`): the
+   * player asks only a connection with the flag whose user is not a kid. Absent on older
+   * servers: treat missing as false and show no Upcoming. */
+  upcoming?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -805,6 +813,10 @@ export type BookMetaSeriesWork = {
    * named like the rail (or the book to be the one the envelope is for), and on older
    * servers. */
   local?: BookRef;
+  /** The work's first release (the earliest across its recordings and marketplaces, Track
+   * U1) at the precision the metadata knows: `"2027"`, `"2026-11"` or `"2026-11-12"`
+   * (`formatReleaseDate`, `releaseIsFuture`). Absent when unknown, and on older servers. */
+  release_date?: string;
 };
 
 /** Which reading order a series records (metaserve's `ordering` enum). Typed
@@ -1848,4 +1860,46 @@ export type OpmlExport = {
   exported: number | null;
   omittedPrivate: number | null;
   omittedUnavailable: number | null;
+};
+
+/** What an upcoming item is (Track U1): a `preorder` (its release date still ahead), a
+ * `released` work (out within the server's `window_days`), or a `missing` volume (a gap
+ * below the highest one held, or the next whole number after it). An unknown kind from a
+ * newer server is shown as missing. */
+export type UpcomingKind = 'preorder' | 'released' | 'missing';
+
+/** The server's upcoming job: `ok`, `pending` before its first successful run
+ * (`generated_at` absent), `stale` after 48 hours without one. */
+export type UpcomingStatus = 'ok' | 'pending' | 'stale';
+
+/** One work the caller lacks in a series they hold (`GET /me/upcoming`). */
+export type UpcomingItem = {
+  kind: UpcomingKind | (string & {});
+  /** The work's first release at its own precision (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`);
+   * absent when unknown. */
+  release_date?: string;
+  /** When the server first listed this work for the series (RFC 3339): the "New" badge. */
+  first_seen_at: string;
+  work: {
+    id: string;
+    title: string;
+    authors: MetaPersonRef[];
+    cover_url?: string;
+    web_url: string;
+  };
+  /** The community series. `position` is text ("10", "2.5", "1-3"). */
+  series: { id: string; name: string; position: string };
+  /** The caller's series view to open by name: `seriesHref(cid, library_id, { name: series,
+   * work: work.id })`. No other DB id. */
+  local: { library_id: number; series: string };
+};
+
+/** `GET /api/v1/me/upcoming` (capability `upcoming`). Items arrive in the server's order:
+ * preorders soonest first, releases newest first, then missing by series and position. */
+export type UpcomingResponse = {
+  status: UpcomingStatus | (string & {});
+  /** The last successful run (RFC 3339); absent while `pending`. */
+  generated_at?: string;
+  window_days: number;
+  items: UpcomingItem[];
 };

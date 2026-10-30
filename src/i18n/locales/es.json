@@ -1,5 +1,6 @@
 {
   "common": {
+    "and": "{{rest}} y {{last}}",
     "cancel": "Cancelar",
     "save": "Guardar",
     "done": "Listo",
@@ -471,7 +472,6 @@
       "connected": "{{name}} está conectado",
       "title": "Tu biblioteca está lista.",
       "titleSetup": "Ya casi está: añade una biblioteca.",
-      "and": "{{rest}} y {{last}}",
       "booksIn_one": "{{books}} libro en {{list}}.",
       "booksIn_other": "{{books}} libros en {{list}}.",
       "booksAcross_one": "{{books}} libro en {{libraries}} bibliotecas.",
@@ -2001,7 +2001,9 @@
       "emptyAction": "Ver los libros",
       "errorTitle": "No se pudieron cargar las series"
     },
-    "keepAhead": "Adelantarse sin conexión"
+    "keepAhead": "Adelantarse sin conexión",
+    "out": "Sale: {{date}}",
+    "ghostOutNote": "Sale: {{date}}. Aún no está en tus servidores."
   },
   "people": {
     "author": "Autor",
@@ -3042,6 +3044,47 @@
     "readalong": {
       "follow": "Seguir la narración",
       "back": "Volver a la narración"
+    }
+  },
+  "upcoming": {
+    "title": "Próximamente",
+    "rail": {
+      "title": "Próximamente en tus series",
+      "sub": "Preventas, novedades y huecos"
+    },
+    "sections": {
+      "preorder": "Muy pronto",
+      "released": "Recién publicados",
+      "missing": "Faltan en tus series"
+    },
+    "out": "Sale: {{date}}",
+    "released": "Publicado: {{date}}",
+    "firstReleased": "Publicado por primera vez: {{date}}",
+    "seriesBook": "{{series}}, libro {{position}}",
+    "new": "Nuevo",
+    "fromServer": "De {{server}}",
+    "pending": {
+      "title": "Buscando novedades",
+      "hint": "Tu servidor está buscando novedades; esta lista se llenará tras su primera búsqueda."
+    },
+    "pendingSome_one": "{{server}} aún está haciendo su primera búsqueda de novedades.",
+    "pendingSome_other": "{{server}} aún están haciendo su primera búsqueda de novedades.",
+    "stale_one": "{{server}} no ha buscado novedades en más de dos días, así que esta lista puede estar desactualizada.",
+    "stale_other": "{{server}} no han buscado novedades en más de dos días, así que esta lista puede estar desactualizada.",
+    "empty": {
+      "title": "Nada a la vista",
+      "hint": "No hay nada próximo en las series que tienes."
+    },
+    "unavailable": {
+      "title": "Sin próximos lanzamientos aquí",
+      "hint": "Tus servidores no muestran próximos lanzamientos."
+    },
+    "error": {
+      "title": "No se pudieron cargar los próximos lanzamientos",
+      "hint_one": "{{server}} no respondió. No se pierde nada: inténtalo de nuevo en un momento.",
+      "hint_other": "{{server}} no respondieron. No se pierde nada: inténtalo de nuevo en un momento.",
+      "partial_one": "{{server}} no respondió, así que a esta lista pueden faltarle lanzamientos.",
+      "partial_other": "{{server}} no respondieron, así que a esta lista pueden faltarle lanzamientos."
     }
   }
 }
