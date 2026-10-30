@@ -75,6 +75,7 @@ async function mount({
   onMessage = jest.fn(),
   onLoadError = jest.fn(),
   onReopen = jest.fn(),
+  onFetch = undefined as (() => void) | undefined,
   placeKnown = undefined as boolean | undefined,
 } = {}) {
   const handle: { current: ReaderHostHandle | null } = { current: null };
@@ -94,6 +95,7 @@ async function mount({
       onMessage={onMessage}
       onLoadError={onLoadError}
       onReopen={onReopen}
+      onFetch={onFetch}
       ref={handle}
     />
   );
@@ -226,6 +228,15 @@ describe('ReaderHost (app)', () => {
     expect(mockLocalEbook).toHaveBeenCalledWith(
       expect.objectContaining({ saved: 'file:///docs/c1/2/A/book.epub' }),
     );
+  });
+
+  it('tells the screen when the file lookup fetches the book into the cache (fe#193)', async () => {
+    const onFetch = jest.fn();
+    await mount({ onFetch });
+    const { onFetch: said } = mockLocalEbook.mock.calls[0][0] as { onFetch: () => void };
+    expect(onFetch).not.toHaveBeenCalled();
+    said();
+    expect(onFetch).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the file it is getting when the server’s size changes (the next open fetches it)', async () => {

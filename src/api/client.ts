@@ -357,6 +357,22 @@ async function readArriving(res: Response, touch: () => void): Promise<ArrayBuff
   return size === bytes.byteLength ? bytes.buffer : bytes.slice(0, size).buffer;
 }
 
+/** A long answer's text (a read-along map), read piece by piece with `touch` called on
+ * each, as `readArriving` does; with no body stream, the whole answer at once. */
+async function readTextArriving(res: Response, touch: () => void): Promise<string> {
+  if (!res.body || typeof TextDecoder === 'undefined') return res.text();
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    touch();
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 /**
  * Thrown when a request exceeds its timeout. Distinct from the `AbortError` a
  * caller-supplied signal raises on cancellation, so the reachability layer can
@@ -410,9 +426,15 @@ const OPML_IMPORT_TIMEOUT_MS = 45_000;
  * however long it takes, and only a stalled download fails. */
 const EBOOK_TIMEOUT_MS = 120_000;
 
-/** The timeout of a read-along map (`readalong`): up to 16 MiB of JSON, and the server may
- * hash the book's ebook first (once, when the scan has not yet). */
+/** The timeout of a read-along map (`readalong`): for the answer (the server may hash the
+ * book's ebook first, once, when the scan has not yet), then restarted by every piece of
+ * the map as it arrives (up to 16 MiB of JSON), so a long book's map on a slow link
+ * arrives however long it takes and only a stalled one fails (fe#193). */
 const READALONG_TIMEOUT_MS = 60_000;
+
+/** A map's whole answer where it cannot be read as it arrives (React Native's fetch hands
+ * over no body stream): 16 MiB at about 90 KB/s. */
+const READALONG_WHOLE_TIMEOUT_MS = 180_000;
 
 /** A read-along answer that is no `audiosilo-readalong/v1` map (`client.readalong`). */
 export class ReadalongMapError extends Error {
@@ -1281,11 +1303,29 @@ export class ApiClient {
     path: string,
     signal?: AbortSignal,
   ): Promise<CheckedReadalongMap> {
-    const data = await this.request<unknown>('GET', `/libraries/${libraryId}/readalong`, {
-      query: { path },
-      signal,
-      timeoutMs: Math.max(this.timeoutMs, READALONG_TIMEOUT_MS),
-    });
+    const headers = { ...this.clientHeaders, ...this.authHeaders() };
+    const streams = Platform.OS === 'web';
+    const data = await this.send(
+      'GET',
+      this.apiUrl(`/libraries/${libraryId}/readalong`, { path }),
+      headers,
+      {
+        signal,
+        timeoutMs: Math.max(
+          this.timeoutMs,
+          streams ? READALONG_TIMEOUT_MS : READALONG_WHOLE_TIMEOUT_MS,
+        ),
+      },
+      async (res, touch) => {
+        if (!res.ok) await readJson<void>(res);
+        const text = await readTextArriving(res, touch);
+        try {
+          return JSON.parse(text) as unknown;
+        } catch {
+          throw new ReadalongMapError();
+        }
+      },
+    );
     const map = parseReadalongMap(data);
     if (!map) throw new ReadalongMapError();
     return map;

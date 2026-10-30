@@ -86,6 +86,7 @@ export function ReaderHost({
   onMessage,
   onLoadError,
   onReopen,
+  onFetch,
   ref,
   ...readalongProps
 }: ReaderHostProps) {
@@ -102,6 +103,7 @@ export function ReaderHost({
     onMessage,
     onLoadError,
     onReopen,
+    onFetch,
   });
   // The WebView's life: a new one after its content process died.
   const [generation, setGeneration] = useState(0);
@@ -135,6 +137,7 @@ export function ReaderHost({
       // The download's copy, when the book is downloaded with its EPUB.
       saved: downloadedEntryOf({ connectionId, libraryId, path })?.manifest.ebookUri,
       signal: abort.signal,
+      onFetch: () => latest.current.onFetch?.(),
     }).catch((e: unknown) => {
       if (!abort.signal.aborted) latest.current.onLoadError(e);
       return null;

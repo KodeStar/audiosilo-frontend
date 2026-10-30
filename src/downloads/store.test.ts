@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book, ChaptersResponse } from '@/api/types';
+import type { KeptReadalong } from '@/downloads/readalong-file';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 
 // The store resolves its file storage from './engine' (Metro picks the per-platform
@@ -81,8 +82,14 @@ jest.mock('@/reader/ebook-file', () => ({
 // A download's read-along map (readalong-file.ts has its own tests): the store's part is
 // WHEN it fetches, keeps and drops one. The pure rules are the real ones.
 const mockFetchReadalong = jest.fn(
-  async (..._a: unknown[]): Promise<string | undefined> => undefined,
+  async (..._a: unknown[]): Promise<KeptReadalong | undefined> => undefined,
 );
+/** A map the download kept, as `fetchReadalongFile` resolves it. */
+const keptMap = (generatedAt: string, ebookSha256 = 'sha-1', bytes = 300): KeptReadalong => ({
+  generatedAt,
+  ebookSha256,
+  bytes,
+});
 const mockRemoveReadalong = jest.fn(async (_ref: unknown) => {});
 jest.mock('@/downloads/readalong-file', () => ({
   ...jest.requireActual('@/downloads/readalong-file'),
@@ -1109,12 +1116,12 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
 
   it('keeps the map beside book.epub, with which map it is', async () => {
     serves(true);
-    mockFetchReadalong.mockResolvedValue('g1');
+    mockFetchReadalong.mockResolvedValue(keptMap('g1'));
     useDownloads
       .getState()
       .download('c1', 2, withEbook({ readalong: { state: 'ready', generated_at: 'g1' } }));
     await settle();
-    expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, expect.any(AbortSignal));
+    expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { signal: expect.any(AbortSignal) });
     expect(entry()?.status).toBe('downloaded');
     expect(entry()?.manifest).toMatchObject({
       ebookUri: 'live:c1:2:A/Book:book.epub',
@@ -1122,9 +1129,20 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
   });
 
+  it("counts the map's bytes in the download's size and keeps the ebook's sha (fe#193)", async () => {
+    serves(true);
+    mockFetchReadalong.mockResolvedValue(keptMap('g1', 'sha-1', 300));
+    useDownloads
+      .getState()
+      .download('c1', 2, withEbook({ readalong: { state: 'ready', generated_at: 'g1' } }));
+    await settle();
+    expect(entry()).toMatchObject({ status: 'downloaded', bytes: 1300, totalBytes: 1400 });
+    expect(entry()?.manifest).toMatchObject({ readalongBytes: 300, ebookSha256: 'sha-1' });
+  });
+
   it('names the map it kept in its book, the seed offline (one made again meanwhile)', async () => {
     serves(true);
-    mockFetchReadalong.mockResolvedValue('g2');
+    mockFetchReadalong.mockResolvedValue(keptMap('g2'));
     useDownloads
       .getState()
       .download('c1', 2, withEbook({ readalong: { state: 'ready', generated_at: 'g1' } }));
@@ -1224,10 +1242,10 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         if (k[0] === 'server') return { capabilities: { readalong: true } };
         return k[0] === 'item' && k[3] === 'A/Book' ? made : undefined;
       });
-      mockFetchReadalong.mockResolvedValue('g2');
+      mockFetchReadalong.mockResolvedValue(keptMap('g2'));
       stop = startReadalongRefresh();
       await settle();
-      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF);
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: undefined });
       expect(entry()?.manifest.readalongGeneratedAt).toBe('g2');
       // The store's own seed (the download's book, naming the map it keeps) changes nothing.
       stop();
@@ -1255,24 +1273,112 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
         if (k[0] === 'server') return { capabilities: { readalong: true } };
         return k[0] === 'item' && k[3] === 'A/Book' ? made : undefined;
       });
-      mockFetchReadalong.mockResolvedValue('g2');
+      mockFetchReadalong.mockResolvedValue(keptMap('g2'));
       await useDownloads.getState().hydrate();
       await settle();
-      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF);
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: undefined });
     });
 
     it('fetches the map again once it was made again, and its book names it (the seed offline)', async () => {
       kept('g1');
-      mockFetchReadalong.mockResolvedValue('g2');
+      mockFetchReadalong.mockResolvedValue(keptMap('g2'));
       answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2', coverage: 0.9 } }));
       await settle();
-      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF);
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: undefined });
       expect(entry()?.manifest.readalongGeneratedAt).toBe('g2');
       expect(entry()?.manifest.book.readalong).toEqual({
         state: 'ready',
         generated_at: 'g2',
         coverage: 0.9,
       });
+    });
+
+    it("asks only for a map of the download's own ebook, keeping its sha and size (fe#193)", async () => {
+      const e = kept('g1');
+      useDownloads.setState({
+        entries: {
+          [key]: {
+            ...e,
+            bytes: 1000,
+            totalBytes: 1000,
+            manifest: { ...e.manifest, ebookSha256: 'sha-1', readalongBytes: 300 },
+          },
+        },
+      });
+      mockFetchReadalong.mockResolvedValue(keptMap('g2', 'sha-1', 500));
+      answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2' } }));
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: 'sha-1' });
+      // The new map's bytes replace the old one's.
+      expect(entry()).toMatchObject({ bytes: 1200, totalBytes: 1200 });
+      expect(entry()?.manifest).toMatchObject({
+        readalongGeneratedAt: 'g2',
+        readalongBytes: 500,
+        ebookSha256: 'sha-1',
+      });
+    });
+
+    it('keeps the map of its own ebook when the one made again is refused', async () => {
+      const e = kept('g1');
+      const mine = { ...e, manifest: { ...e.manifest, ebookSha256: 'sha-1' } };
+      useDownloads.setState({ entries: { [key]: mine } });
+      // fetchReadalongFile refuses a map of another ebook: nothing kept, nothing written.
+      mockFetchReadalong.mockResolvedValue(undefined);
+      answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2' } }));
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: 'sha-1' });
+      expect(entry()).toBe(mine);
+      expect(mockRemoveReadalong).not.toHaveBeenCalled();
+    });
+
+    it("fetches no map for a download that never kept one when the server's ebook changed size", async () => {
+      const e = kept('g1');
+      useDownloads.setState({
+        entries: {
+          [key]: {
+            ...e,
+            manifest: {
+              ...e.manifest,
+              readalongGeneratedAt: undefined,
+              book: { ...e.manifest.book, ebook: { path: 'A/Book/Book.epub', size: 1000 } },
+            },
+          },
+        },
+      });
+      const ebook = { path: 'A/Book/Book.epub', size: 2000 };
+      answer(makeBook({ ebook, readalong: { state: 'ready', generated_at: 'g2' } }));
+      await settle();
+      expect(mockFetchReadalong).not.toHaveBeenCalled();
+      // The same size: fetched, and its ebook's sha kept from then on.
+      mockFetchReadalong.mockResolvedValue(keptMap('g3', 'sha-3'));
+      answer(
+        makeBook({
+          ebook: { ...ebook, size: 1000 },
+          readalong: { state: 'ready', generated_at: 'g3' },
+        }),
+      );
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: undefined });
+      expect(entry()?.manifest).toMatchObject({ readalongGeneratedAt: 'g3', ebookSha256: 'sha-3' });
+    });
+
+    it('takes a dropped map out of the size, keeping the ebook sha', async () => {
+      const e = kept('g1');
+      useDownloads.setState({
+        entries: {
+          [key]: {
+            ...e,
+            bytes: 1300,
+            totalBytes: 1300,
+            manifest: { ...e.manifest, ebookSha256: 'sha-1', readalongBytes: 300 },
+          },
+        },
+      });
+      answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
+      await settle();
+      expect(entry()).toMatchObject({ bytes: 1000, totalBytes: 1000 });
+      expect(entry()?.manifest).toMatchObject({ ebookSha256: 'sha-1' });
+      expect(entry()?.manifest.readalongBytes).toBeUndefined();
     });
 
     it('keeps the map it has when the new one could not be fetched', async () => {

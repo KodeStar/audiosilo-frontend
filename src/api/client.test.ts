@@ -3191,8 +3191,83 @@ describe('read-along (capability readalong, Bridge Phase 3c)', () => {
     expect(apiErrorKind(stale)).toBe('readalong_stale');
   });
 
+  /** A 200 whose JSON body the test feeds in pieces, failing on an abort as a real
+   * download's body does. */
+  function installMapDownload() {
+    let feed!: ReadableStreamDefaultController<Uint8Array>;
+    globalThis.fetch = jest.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({ start: (c) => void (feed = c) });
+      init?.signal?.addEventListener('abort', () =>
+        feed.error(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+      );
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers(), body } as Response);
+    }) as unknown as typeof globalThis.fetch;
+    return {
+      piece: (text: string) => feed.enqueue(new TextEncoder().encode(text)),
+      end: () => feed.close(),
+    };
+  }
+
+  describe('on the web, where the answer streams (fe#193)', () => {
+    const was = Platform.OS;
+    // Made before the switch: a web client reads the page's origin, which jest has none of.
+    let api!: ApiClient;
+    beforeEach(() => {
+      api = client();
+      Platform.OS = 'web';
+      jest.useFakeTimers();
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+      Platform.OS = was;
+    });
+
+    it('lets a long map on a slow link run past the timeout while it keeps arriving', async () => {
+      const download = installMapDownload();
+      const got = api.readalong(1, 'Author/Book');
+      const text = JSON.stringify(map);
+      const third = Math.ceil(text.length / 3);
+      for (let i = 0; i < 3; i++) {
+        await jest.advanceTimersByTimeAsync(50_000);
+        download.piece(text.slice(i * third, (i + 1) * third));
+      }
+      download.end();
+      expect((await got).generated_at).toBe('2026-11-02T10:11:12Z');
+    });
+
+    it('fails a map that stalls as a timeout', async () => {
+      const download = installMapDownload();
+      const got = api.readalong(1, 'Author/Book').catch((e: unknown) => e);
+      download.piece('{"format":');
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(await got).toMatchObject({ name: 'TimeoutError', timeoutMs: 60_000 });
+    });
+  });
+
+  it('gives a whole answer that cannot stream (the app) three minutes', async () => {
+    jest.useFakeTimers();
+    try {
+      installHangingFetch();
+      const got = client()
+        .readalong(1, 'Author/Book')
+        .catch((e: unknown) => e);
+      await jest.advanceTimersByTimeAsync(179_000);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(await got).toMatchObject({ name: 'TimeoutError', timeoutMs: 180_000 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('rejects an answer that is no read-along map', async () => {
     installFetch(() => ({ status: 200, body: { format: 'something/else', sections: [] } }));
+    await expect(client().readalong(1, 'Author/Book')).rejects.toBeInstanceOf(ReadalongMapError);
+    // Nor is an answer that is no JSON at all.
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('<html>'),
+    })) as unknown as typeof globalThis.fetch;
     await expect(client().readalong(1, 'Author/Book')).rejects.toBeInstanceOf(ReadalongMapError);
   });
 
