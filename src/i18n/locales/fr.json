@@ -3076,6 +3076,11 @@
     "unavailable": {
       "title": "Pas de sorties à venir ici",
       "hint": "Vos serveurs ne listent pas les sorties à venir."
+    },
+    "error": {
+      "title": "Impossible de charger les sorties à venir",
+      "hint": "{{server}} n'a pas répondu. Rien n'est perdu : réessayez dans un instant.",
+      "partial": "{{server}} n'a pas répondu, il manque peut-être des sorties dans cette liste."
     }
   }
 }

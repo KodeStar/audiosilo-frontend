@@ -18,7 +18,10 @@ let mockUpcoming: {
   available: boolean | undefined;
   isLoading: boolean;
   statuses: UpcomingServerStatus[];
+  failed: string[];
+  retry: () => void;
 };
+const mockRetry = jest.fn();
 jest.mock('@/api/hooks', () => ({ useUpcomingAll: () => mockUpcoming }));
 
 /* eslint-disable import/first */
@@ -64,6 +67,16 @@ const missing = sourcedUpcoming({
   series: { id: 'gap', name: 'Gapped', position: '2' },
 });
 
+// Nothing in, nothing loading, nobody failed: each case says what differs.
+const idle = {
+  items: [] as SourcedUpcomingItem[],
+  available: undefined as boolean | undefined,
+  isLoading: false,
+  statuses: [] as UpcomingServerStatus[],
+  failed: [] as string[],
+  retry: mockRetry,
+};
+
 beforeAll(() => {
   jest.useFakeTimers({ now: NOW, doNotFake: ['setTimeout'] });
 });
@@ -72,7 +85,7 @@ afterAll(() => jest.useRealTimers());
 beforeEach(() => {
   jest.clearAllMocks();
   mockLabels = {};
-  mockUpcoming = { items: [], available: true, isLoading: false, statuses: [ok()] };
+  mockUpcoming = { ...idle, available: true, statuses: [ok()] };
 });
 
 describe('upcomingDateLabel', () => {
@@ -100,11 +113,11 @@ describe('UpcomingRail', () => {
   it('renders nothing while there is nothing to show', async () => {
     await mount();
     expect(screen.queryByText('Coming up in your series')).toBeNull();
-    mockUpcoming = { items: [], available: undefined, isLoading: true, statuses: [] };
+    mockUpcoming = { ...idle, isLoading: true };
     await mount();
     expect(screen.queryByText('Coming up in your series')).toBeNull();
     // No server offers it (or a kid): nothing either.
-    mockUpcoming = { items: [], available: false, isLoading: false, statuses: [] };
+    mockUpcoming = { ...idle, available: false };
     await mount();
     expect(screen.queryByText('Coming up in your series')).toBeNull();
   });
@@ -118,14 +131,14 @@ describe('UpcomingRail', () => {
     expect(screen.getByText('Beware of Chicken, book 6')).toBeTruthy();
     // Only the preorder was first listed in the last week.
     expect(screen.getAllByTestId('upcoming-new')).toHaveLength(1);
-    fireEvent.press(screen.getByLabelText('See all'));
+    await fireEvent.press(screen.getByLabelText('See all'));
     expect(mockPush).toHaveBeenCalledWith('/upcoming');
   });
 
   it('opens the series page by its local name, pinned to the work', async () => {
     mockUpcoming.items = [preorder];
     await mount();
-    fireEvent.press(screen.getByTestId('upcoming-tile'));
+    await fireEvent.press(screen.getByTestId('upcoming-tile'));
     expect(mockOpenSeries).toHaveBeenCalledWith('a', 3, { name: 'Beware Of Chicken', work: 'p' });
   });
 
@@ -166,10 +179,10 @@ describe('UpcomingContent', () => {
   });
 
   it('stands rows in while it loads', async () => {
-    mockUpcoming = { items: [], available: undefined, isLoading: false, statuses: [] };
+    mockUpcoming = { ...idle };
     await render(<UpcomingContent />);
     expect(screen.getByTestId('upcoming-skeleton', { includeHiddenElements: true })).toBeTruthy();
-    mockUpcoming = { items: [], available: true, isLoading: true, statuses: [] };
+    mockUpcoming = { ...idle, available: true, isLoading: true };
     await render(<UpcomingContent />);
     expect(screen.getByTestId('upcoming-skeleton', { includeHiddenElements: true })).toBeTruthy();
   });
@@ -191,7 +204,7 @@ describe('UpcomingContent', () => {
   });
 
   it('says it is not available where no server offers it', async () => {
-    mockUpcoming = { items: [], available: false, isLoading: false, statuses: [] };
+    mockUpcoming = { ...idle, available: false };
     await render(<UpcomingContent />);
     expect(screen.getByText('No upcoming releases here')).toBeTruthy();
     expect(screen.queryByTestId('upcoming-row')).toBeNull();
@@ -206,5 +219,35 @@ describe('UpcomingContent', () => {
     await render(<UpcomingContent />);
     expect(screen.getByTestId('upcoming-stale').props.children).toMatch(/^Home hasn't checked/);
     expect(screen.getByTestId('upcoming-pending-some').props.children).toMatch(/^Maya is still/);
+  });
+
+  it('says no server answered, with a Retry, never that nothing is coming up', async () => {
+    mockUpcoming = { ...idle, available: true, failed: ['Home'] };
+    await render(<UpcomingContent />);
+    expect(screen.getByText("Couldn't load upcoming releases")).toBeTruthy();
+    expect(screen.queryByText('Nothing coming up')).toBeNull();
+    await fireEvent.press(screen.getByText('Retry'));
+    expect(mockRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('notes a server that did not answer beside the ones that did', async () => {
+    mockUpcoming.items = [missing];
+    mockUpcoming.failed = ['Maya'];
+    await render(<UpcomingContent />);
+    expect(
+      screen.getByText("Maya didn't answer, so this list may be missing some releases."),
+    ).toBeTruthy();
+    expect(screen.getAllByTestId('upcoming-row')).toHaveLength(1);
+  });
+
+  it('keeps the notes over "nothing coming up"', async () => {
+    mockUpcoming.statuses = [
+      { connectionId: 'a', connectionName: 'Home', status: 'stale' },
+      { connectionId: 'b', connectionName: 'Maya', status: 'pending' },
+    ];
+    await render(<UpcomingContent />);
+    expect(screen.getByText('Nothing coming up')).toBeTruthy();
+    expect(screen.getByTestId('upcoming-stale')).toBeTruthy();
+    expect(screen.getByTestId('upcoming-pending-some')).toBeTruthy();
   });
 });

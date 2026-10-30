@@ -11,6 +11,7 @@ import { foldAccents } from '@/lib/names';
 import { bookTitle } from '@/lib/paths';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import { yearOf } from '@/lib/published';
+import { releaseIsFuture } from '@/lib/release-date';
 import {
   bookSeriesNumber,
   bookSeriesSpan,
@@ -24,7 +25,6 @@ import {
   spanEnd,
 } from '@/lib/series-position';
 import type { SeriesView } from '@/lib/series-orderings';
-import { releaseIsFuture } from '@/lib/upcoming';
 
 /**
  * The series page's model (pure, tested): one ordered list of ENTRIES, built from the

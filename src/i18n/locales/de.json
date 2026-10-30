@@ -3076,6 +3076,11 @@
     "unavailable": {
       "title": "Hier keine Neuerscheinungen",
       "hint": "Deine Server listen keine kommenden Erscheinungen."
+    },
+    "error": {
+      "title": "Neuerscheinungen konnten nicht geladen werden",
+      "hint": "{{server}} hat nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
+      "partial": "{{server}} hat nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen."
     }
   }
 }

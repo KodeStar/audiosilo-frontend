@@ -3,7 +3,7 @@ import { t } from 'i18next';
 import { getLocale } from '@/i18n/locale';
 import { parseHhMm } from '@/lib/hhmm';
 import { seriesNumber } from '@/lib/series-position';
-import { parseReleaseDate } from '@/lib/upcoming';
+import { parseReleaseDate } from '@/lib/release-date';
 
 /** "12h 30m" / "45m" / "30s" - compact total-duration label. */
 export function formatDuration(seconds?: number): string {

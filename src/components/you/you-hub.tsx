@@ -89,9 +89,10 @@ const UPCOMING: YouModuleSection = {
  * listening, Journal and Household (Settings is the gear, Account the profile menu; an old
  * link to either still renders here). The section is the route's `section` param (`parseYouSection`:
  * absent or unknown is Stats), switched in place with `setParams`; the Journal keeps its
- * own `tab` param beside it. An active module's sections (`youSections`,
- * `src/modules/registry.ts`, none yet) follow the hub's own; `modules` is the list to
- * choose from (the registry; tests pass a fake).
+ * own `tab` param beside it. Upcoming (`section=upcoming`, Track U2, only while a server
+ * offers it: `useUpcomingAvailable`) and then an active module's sections (`youSections`,
+ * `src/modules/registry.ts`, none yet) follow the hub's own (`youExtraSections`); `modules`
+ * is the list to choose from (the registry; tests pass a fake).
  */
 export function YouHub({ modules }: { modules?: readonly PlayerModule[] } = {}) {
   return (

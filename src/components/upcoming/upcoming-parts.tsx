@@ -30,7 +30,7 @@ export function upcomingDateLabel(
 }
 
 /** "The Expanse, book 10" ("The Expanse" when it has no number). */
-export function upcomingSeriesLine(item: Pick<SourcedUpcomingItem, 'series'>, t: TFunction) {
+function upcomingSeriesLine(item: Pick<SourcedUpcomingItem, 'series'>, t: TFunction) {
   const position = railPositionLabel(item.series.position);
   return position
     ? t('upcoming.seriesBook', { series: item.series.name, position })
@@ -127,8 +127,8 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
   );
 }
 
-/** The Upcoming screen's row: the ghost thumbnail, title, series and number, the date line,
- * the "New" badge and the server. Opens the series page. */
+/** The Upcoming screen's row (an item of its section's list): the ghost thumbnail, title,
+ * series and number, the date line, the "New" badge and the server. Opens the series page. */
 export function UpcomingRow({ first, ...props }: ItemProps & { first?: boolean }) {
   const open = useOpenItem();
   const phone = useLayout() === 'phone';
@@ -136,34 +136,36 @@ export function UpcomingRow({ first, ...props }: ItemProps & { first?: boolean }
   const { seriesLine, date, from, label } = useItemText(props);
   const meta = [date, from].filter(Boolean).join(' · ');
   return (
-    <AnimatedPressable
-      onPress={() => open(item)}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className={cn('flex-row items-center gap-3 py-3', !first && 'border-t border-border')}
-      testID="upcoming-row"
-    >
-      <GhostCover
-        title={item.work.title}
-        position={railPositionLabel(item.series.position)}
-        width={phone ? 56 : 72}
-      />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-          <Text variant="label" className="shrink text-[15px]" numberOfLines={2}>
-            {item.work.title}
-          </Text>
-          {isNew ? <NewBadge /> : null}
-        </View>
-        <Text variant="caption" numberOfLines={1}>
-          {seriesLine}
-        </Text>
-        {meta ? (
+    <View role="listitem" className={cn(!first && 'border-t border-border')}>
+      <AnimatedPressable
+        onPress={() => open(item)}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        className="flex-row items-center gap-3 py-3"
+        testID="upcoming-row"
+      >
+        <GhostCover
+          title={item.work.title}
+          position={railPositionLabel(item.series.position)}
+          width={phone ? 56 : 72}
+        />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+            <Text variant="label" className="shrink text-[15px]" numberOfLines={2}>
+              {item.work.title}
+            </Text>
+            {isNew ? <NewBadge /> : null}
+          </View>
           <Text variant="caption" numberOfLines={1}>
-            {meta}
+            {seriesLine}
           </Text>
-        ) : null}
-      </View>
-    </AnimatedPressable>
+          {meta ? (
+            <Text variant="caption" numberOfLines={1}>
+              {meta}
+            </Text>
+          ) : null}
+        </View>
+      </AnimatedPressable>
+    </View>
   );
 }

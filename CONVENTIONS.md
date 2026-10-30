@@ -1141,10 +1141,15 @@ rules are `src/lib/upcoming.ts`: `upcomingEligibility` (who may be asked, and `a
 true / false / undefined while a server's flags load; `useUpcomingAvailable` reads only that),
 `mergeUpcoming` (tags each item with its connection, keeps the FIRST connection's row of a work
 id, then `compareUpcoming`, the server's order across servers: preorders soonest first, releases
-newest first, then missing by series name and numeric position), `releaseIsFuture` (a date at
-its own precision against the UTC day: "2026" or "2026-10" is ahead only while the whole period
-is) and `isNewUpcoming` (`first_seen_at` within 7 days: the "New" badge). A failed server adds
-nothing; `statuses` carries each answered server's `ok|pending|stale`. Dates show through
+newest first, then missing by series name and numeric position) and `isNewUpcoming`
+(`first_seen_at` within 7 days: the "New" badge); a date's own rules are `src/lib/release-date.ts`
+(`parseReleaseDate`, and `releaseIsFuture`: a date at its own precision against the UTC day,
+"2026" or "2026-10" is ahead only while the whole period is), so `format.ts` and the series model
+never import the feature. A failed server adds no items but is named in `failed` (no answer: it
+failed or waits for the network; `retry` asks it again), so the page shows "Couldn't load" with a
+Retry when no server answered and a note when some did, never "Nothing coming up" for a failure;
+`statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
+empty state). Dates show through
 `formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "12 Nov 2026", read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces

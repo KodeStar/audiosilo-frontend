@@ -3076,6 +3076,11 @@
     "unavailable": {
       "title": "No upcoming releases here",
       "hint": "Your servers don't list upcoming releases."
+    },
+    "error": {
+      "title": "Couldn't load upcoming releases",
+      "hint": "{{server}} didn't answer. Nothing is lost: try again in a moment.",
+      "partial": "{{server}} didn't answer, so this list may be missing some releases."
     }
   }
 }

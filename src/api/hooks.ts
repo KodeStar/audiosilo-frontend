@@ -3190,7 +3190,7 @@ export function useRecentAll(limit = RECENT_LIMIT) {
 // --- Upcoming releases (capability `upcoming`, Track U2) ----------------------------
 
 /** How long a connection's upcoming list is fresh: its job runs once a day. */
-export const UPCOMING_STALE_MS = 15 * 60_000;
+const UPCOMING_STALE_MS = 15 * 60_000;
 
 /** The connections Upcoming may ask and whether there is any (`upcomingEligibility`). */
 function useUpcomingEligibility() {
@@ -3218,14 +3218,19 @@ export function useUpcomingAvailable(): boolean | undefined {
  * every other connection has no query function (`skipToken`), so it is never asked, not
  * even by a manual `refetch`. Each item is tagged with its connection, each work listed
  * once (the first connection's row, in `useApis` order), in the wire's order across
- * servers (`mergeUpcoming`). A server that fails adds nothing. `statuses` holds each
- * answered connection's job status (`pending` before its first run, `stale` after 48 h).
+ * servers (`mergeUpcoming`). A server that fails adds nothing to the list but is named in
+ * `failed` (no answer: its request failed, or waits for the network), so a screen never
+ * reads a failure as "nothing coming up"; `retry` asks each failed one again. `statuses`
+ * holds each answered connection's job status (`pending` before its first run, `stale`
+ * after 48 h).
  */
 export function useUpcomingAll(): {
   items: SourcedUpcomingItem[];
   available: boolean | undefined;
   isLoading: boolean;
   statuses: UpcomingServerStatus[];
+  failed: string[];
+  retry: () => void;
 } {
   const { apis, eligible, available } = useUpcomingEligibility();
   // `combine` re-runs whenever its identity changes, so it is keyed on what it reads (each
@@ -3235,13 +3240,25 @@ export function useUpcomingAll(): {
     apis.map(({ connection: c }) => [c.id, c.name, eligible.has(c.id)] as const),
   );
   const combine = useCallback(
-    (results: { data?: UpcomingResponse; isLoading: boolean }[]) => {
+    (
+      results: {
+        data?: UpcomingResponse;
+        isLoading: boolean;
+        isError: boolean;
+        isPaused: boolean;
+        refetch: () => Promise<unknown>;
+      }[],
+    ) => {
       const conns = JSON.parse(sources) as [string, string, boolean][];
       const answered = conns.flatMap(([connectionId, connectionName, asked], i) => {
         const data = results[i]?.data;
         return asked && data
           ? [{ connectionId, connectionName, items: data.items, status: data.status }]
           : [];
+      });
+      const failed = conns.flatMap(([, connectionName, asked], i) => {
+        const r = results[i];
+        return asked && r && !r.data && (r.isError || r.isPaused) ? [connectionName] : [];
       });
       return {
         items: mergeUpcoming(answered),
@@ -3252,6 +3269,12 @@ export function useUpcomingAll(): {
           connectionName,
           status,
         })),
+        failed,
+        retry: () => {
+          conns.forEach(([, , asked], i) => {
+            if (asked && results[i]?.isError) void results[i].refetch();
+          });
+        },
       };
     },
     [sources, available],

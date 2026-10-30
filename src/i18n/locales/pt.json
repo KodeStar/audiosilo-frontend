@@ -3076,6 +3076,11 @@
     "unavailable": {
       "title": "Sem lançamentos futuros aqui",
       "hint": "Os teus servidores não listam lançamentos futuros."
+    },
+    "error": {
+      "title": "Não foi possível carregar os lançamentos futuros",
+      "hint": "{{server}} não respondeu. Nada se perde: tenta outra vez daqui a pouco.",
+      "partial": "{{server}} não respondeu, por isso podem faltar lançamentos nesta lista."
     }
   }
 }

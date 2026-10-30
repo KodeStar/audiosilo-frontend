@@ -1,10 +1,12 @@
 import type { Capabilities, UpcomingItem, UpcomingStatus } from '@/api/types';
 import { isKidAccount } from '@/lib/account';
+import { parseReleaseDate } from '@/lib/release-date';
 import { seriesPositionValue } from '@/lib/series-position';
 
 /**
- * Upcoming releases (Track U2): the pure rules behind `useUpcomingAll`, the Home rail, the
- * Upcoming screen and the series page's dated ghosts. Framework-free and tested apart.
+ * Upcoming releases (Track U2): the pure rules behind `useUpcomingAll`, the Home rail and
+ * the Upcoming screen (a release date's own rules are `src/lib/release-date.ts`).
+ * Framework-free and tested apart.
  */
 
 /** An upcoming item with the connection it came from. */
@@ -17,38 +19,8 @@ export type UpcomingServerStatus = {
   status: UpcomingStatus | (string & {});
 };
 
-const RELEASE_DATE = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/;
-
-/** A release date the metadata states (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`, a real month and
- * day), split into its parts with its first day (`start`: "2027" -> "2027-01-01"); null for
- * anything else ("2026-13", "Nov 2026"). */
-export function parseReleaseDate(
-  value: string | undefined,
-): { year: string; month?: string; day?: string; start: string } | null {
-  const m = value ? RELEASE_DATE.exec(value) : null;
-  if (!value || !m) return null;
-  const [, year, month, day] = m;
-  const start = `${year}-${month ?? '01'}-${day ?? '01'}`;
-  const date = new Date(`${start}T00:00:00Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, value.length) !== value) {
-    return null;
-  }
-  return { year, month, day, start };
-}
-
-/**
- * Whether a release date is still ahead of `now`, compared at its own precision against
- * the UTC day (the server's rule, `upcoming.releaseIsFuture`): "2027" is ahead in 2026 but
- * "2026" is not, "2026-11" is ahead in October 2026 but not in November, and a book out
- * today is out. An unreadable or absent date is never ahead.
- */
-export function releaseIsFuture(value: string | undefined, now: Date): boolean {
-  if (!value || !parseReleaseDate(value)) return false;
-  return value > now.toISOString().slice(0, value.length);
-}
-
 /** How long an item wears its "New" badge after the server first listed it. */
-export const UPCOMING_NEW_MS = 7 * 86_400_000;
+const UPCOMING_NEW_MS = 7 * 86_400_000;
 
 /** Whether an item is new: its server first listed it (`first_seen_at`) within the last
  * seven days of `now`. */

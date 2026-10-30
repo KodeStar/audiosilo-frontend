@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useUpcomingAll } from '@/api/hooks';
+import { LoadError } from '@/components/library/books/book-states';
 import { useServerFlag } from '@/components/library/cover-tile';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,15 +41,17 @@ function UpcomingSkeleton() {
  * listener's upcoming releases on every server, in three sections (Coming soon, Just
  * released, Missing from your series; an empty one hidden). The states: rows standing in
  * while the first answers load; a server's first check still running ("this list fills
- * after its first check"); nothing coming up; and, where no server offers it (or the
- * listener is a kid there), a quiet "not available" in place of a list that would ask
- * nothing. A stale server, or one still on its first check beside others, is a quiet note
- * over the list. `embedded`: under the hub's own large title (phone), so no heading.
+ * after its first check"); nothing coming up; no server answering (a Retry, never "nothing
+ * coming up"); and, where no server offers it (or the listener is a kid there), a quiet "not
+ * available" in place of a list that would ask nothing. A server that didn't answer beside
+ * others, a stale one, or one still on its first check beside others, is a note over the
+ * list (or over "nothing coming up"). `embedded`: under the hub's own large title (phone), so
+ * no heading.
  */
 export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
   const serverLabel = useServerFlag();
-  const { items, available, isLoading, statuses } = useUpcomingAll();
+  const { items, available, isLoading, statuses, failed, retry } = useUpcomingAll();
   // Counted from when the page opened (its badges stay put while it is open).
   const [now] = useState(() => new Date());
   const pending = statuses.filter((s) => s.status === 'pending').map((s) => s.connectionName);
@@ -65,52 +68,77 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
         hint={t('upcoming.unavailable.hint')}
       />
     );
-  } else if (items.length === 0) {
-    const allPending = statuses.length > 0 && pending.length === statuses.length;
-    body = allPending ? (
-      <EmptyState
-        icon="clock"
-        title={t('upcoming.pending.title')}
-        hint={t('upcoming.pending.hint')}
+  } else if (statuses.length === 0 && failed.length > 0) {
+    // No server answered: never "nothing coming up", which nobody said.
+    body = (
+      <LoadError
+        title={t('upcoming.error.title')}
+        hint={t('upcoming.error.hint', { server: failed.join(', ') })}
+        retryLabel={t('common.retry')}
+        onRetry={retry}
       />
-    ) : (
-      <EmptyState icon="inbox" title={t('upcoming.empty.title')} hint={t('upcoming.empty.hint')} />
     );
   } else {
+    const allPending =
+      items.length === 0 && statuses.length > 0 && pending.length === statuses.length;
     body = (
       <>
+        {failed.length > 0 ? (
+          <LoadError
+            compact
+            title={t('upcoming.error.partial', { server: failed.join(', ') })}
+            retryLabel={t('common.retry')}
+            onRetry={retry}
+          />
+        ) : null}
         {stale.length > 0 ? (
           <Text variant="muted" testID="upcoming-stale">
             {t('upcoming.stale', { server: stale.join(', ') })}
           </Text>
         ) : null}
-        {pending.length > 0 ? (
+        {pending.length > 0 && !allPending ? (
           <Text variant="muted" testID="upcoming-pending-some">
             {t('upcoming.pendingSome', { server: pending.join(', ') })}
           </Text>
         ) : null}
-        {SECTIONS.map(({ key, titleKey }) => {
-          const rows = items.filter((item) => upcomingSectionOf(item) === key);
-          if (rows.length === 0) return null;
-          return (
-            <View key={key} className="gap-1" testID={`upcoming-section-${key}`}>
-              <Text variant="heading" accessibilityRole="header">
-                {t(titleKey)}
-              </Text>
-              <View role="list">
-                {rows.map((item, i) => (
-                  <UpcomingRow
-                    key={item.work.id}
-                    item={item}
-                    first={i === 0}
-                    isNew={isNewUpcoming(item, now)}
-                    server={serverLabel(item.connectionId)}
-                  />
-                ))}
+        {items.length === 0 ? (
+          allPending ? (
+            <EmptyState
+              icon="clock"
+              title={t('upcoming.pending.title')}
+              hint={t('upcoming.pending.hint')}
+            />
+          ) : (
+            <EmptyState
+              icon="inbox"
+              title={t('upcoming.empty.title')}
+              hint={t('upcoming.empty.hint')}
+            />
+          )
+        ) : (
+          SECTIONS.map(({ key, titleKey }) => {
+            const rows = items.filter((item) => upcomingSectionOf(item) === key);
+            if (rows.length === 0) return null;
+            return (
+              <View key={key} className="gap-1" testID={`upcoming-section-${key}`}>
+                <Text variant="heading" accessibilityRole="header">
+                  {t(titleKey)}
+                </Text>
+                <View role="list">
+                  {rows.map((item, i) => (
+                    <UpcomingRow
+                      key={item.work.id}
+                      item={item}
+                      first={i === 0}
+                      isNew={isNewUpcoming(item, now)}
+                      server={serverLabel(item.connectionId)}
+                    />
+                  ))}
+                </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </>
     );
   }

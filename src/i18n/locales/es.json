@@ -3076,6 +3076,11 @@
     "unavailable": {
       "title": "Sin próximos lanzamientos aquí",
       "hint": "Tus servidores no muestran próximos lanzamientos."
+    },
+    "error": {
+      "title": "No se pudieron cargar los próximos lanzamientos",
+      "hint": "{{server}} no respondió. No se pierde nada: inténtalo de nuevo en un momento.",
+      "partial": "{{server}} no respondió, así que a esta lista pueden faltarle lanzamientos."
     }
   }
 }

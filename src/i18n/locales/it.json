@@ -3076,6 +3076,11 @@
     "unavailable": {
       "title": "Nessuna uscita in arrivo qui",
       "hint": "I tuoi server non elencano le uscite in arrivo."
+    },
+    "error": {
+      "title": "Impossibile caricare le uscite in arrivo",
+      "hint": "{{server}} non ha risposto. Non si perde nulla: riprova tra un momento.",
+      "partial": "{{server}} non ha risposto, quindi in questo elenco potrebbero mancare delle uscite."
     }
   }
 }

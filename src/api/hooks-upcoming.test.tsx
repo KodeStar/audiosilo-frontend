@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { Capabilities, ServerInfo, UpcomingResponse } from '@/api/types';
@@ -137,6 +137,7 @@ describe('useUpcomingAll', () => {
     expect(mockClients.off.upcoming).not.toHaveBeenCalled();
     expect(mockClients.kid.upcoming).not.toHaveBeenCalled();
     expect(result.current.statuses.map((s) => s.connectionId)).toEqual(['on']);
+    expect(result.current.failed).toEqual([]);
   });
 
   it('is unavailable, asking nothing, when no connection can have it', async () => {
@@ -160,7 +161,7 @@ describe('useUpcomingAll', () => {
     expect(mockClients.a.upcoming).not.toHaveBeenCalled();
   });
 
-  it('passes each server status through, and a failed server adds nothing', async () => {
+  it('passes each server status through, and a failed server adds nothing but its name', async () => {
     const { result } = await mount(
       [
         { id: 'p', caps: { upcoming: true }, answer: { status: 'pending', items: [] } },
@@ -181,5 +182,12 @@ describe('useUpcomingAll', () => {
     ]);
     expect(result.current.items.map((i) => i.work.id)).toEqual(['old-news']);
     expect(mockClients.x.upcoming).toHaveBeenCalled();
+    expect(result.current.failed).toEqual(['Server x']);
+    // Retry asks the failed server again, and only it.
+    mockClients.x.upcoming.mockResolvedValue({ status: 'ok', window_days: 90, items: [] });
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(result.current.failed).toEqual([]));
+    expect(mockClients.x.upcoming).toHaveBeenCalledTimes(2);
+    expect(mockClients.p.upcoming).toHaveBeenCalledTimes(1);
   });
 });
