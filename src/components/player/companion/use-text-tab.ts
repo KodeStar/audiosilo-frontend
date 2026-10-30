@@ -4,7 +4,7 @@ import { useDownloadedEbook } from '@/downloads/store';
 import { canRead } from '@/reader/can-read';
 import { mayMakeReadalong } from '@/reader/readalong-gating';
 import type { ReaderReadalongMap } from '@/reader/readalong-map';
-import { useBookReadalong } from '@/reader/use-book-readalong';
+import { type ReadalongFailure, useBookReadalong } from '@/reader/use-book-readalong';
 import { useSession } from '@/stores/session';
 
 import type { PlayTarget } from '../use-play-book';
@@ -18,9 +18,10 @@ export type TextTabModel = {
   map: ReaderReadalongMap | null;
   /** The map is on its way (`useBookReadalong`): an admin's tab says so with a spinner. */
   pending: boolean;
-  /** The map's read failed (`useBookReadalong`): the tab says so with Try again (`retry`),
-   * and never offers Make, which would queue a job the book may not need. */
-  failed: boolean;
+  /** Why the map's read failed (`useBookReadalong`), else null: the tab says so (with Try
+   * again, `retry`, only where it can work), and never offers Make, which would queue a job
+   * the book may not need. */
+  failure: ReadalongFailure | null;
   retry: () => void;
   book: Book | undefined;
 };
@@ -39,10 +40,10 @@ export function useTextTab(target: PlayTarget): TextTabModel {
   const ebooks = useCapability('ebooks', connectionId);
   const savedEbook = useDownloadedEbook(connectionId, libraryId, path);
   const readable = canRead(ebooks, book, !!savedEbook);
-  const { map, pending, failed, retry } = useBookReadalong(target, book, readable);
+  const { map, pending, failure, offline, retry } = useBookReadalong(target, book, readable);
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const mayMake = readable && mayMakeReadalong(user, server);
-  const shown = textTab({ map: map !== null, failed, mayMake });
-  return { shown, map, pending, failed, retry, book };
+  const shown = textTab({ map: map !== null, failed: failure !== null, offline, mayMake });
+  return { shown, map, pending, failure, retry, book };
 }

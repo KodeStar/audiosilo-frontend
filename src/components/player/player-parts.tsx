@@ -17,6 +17,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
+import { ConnectionScope } from '@/api/provider';
 import { formatCount, formatSpeed } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
@@ -28,13 +29,16 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { COMPANION_TAB_LABEL, type CompanionTab } from './companion/companion-model';
+import { useTextTab } from './companion/use-text-tab';
 import { ControlPill, type PillLook, pillClass, slopTo44 } from './control-pill';
 import { useEffectsPill } from './effects-settings';
 import { usePlaceSync } from './place-sync';
+import { usePlayingTarget } from './playing-target';
 import { addBookmarkHere } from './player-shortcuts';
 import { usePlayerSheets } from './player-sheets';
 import { playerContext } from './player-view-model';
 import { UndoChip, useUndoVisible } from './undo-chip';
+import type { PlayTarget } from './use-play-book';
 import { useSleepPill } from './use-sleep-countdown';
 import { usePlayingTimeLeft } from './use-time-left';
 
@@ -352,17 +356,18 @@ const CHIPS: { tab: CompanionTab; icon: IconName; community: boolean }[] = [
 ];
 
 /** The phone's way into the companion: Who's who, Story so far (where the server has
- * community data) and Chapters, each opening the companion on that tab and named as the
- * companion names its tabs. One row, centred where it fits and scrolling sideways where
- * it doesn't (a narrow phone, a long translation), so it never wraps the player past the
+ * community data), Text (while the companion shows its Text tab, `useTextTab`: fe#192) and
+ * Chapters, each opening the companion on that tab and named as the companion names its
+ * tabs, in its order. One row, centred where it fits and scrolling sideways where it
+ * doesn't (a narrow phone, a long translation), so it never wraps the player past the
  * fold. */
 export function CompanionChips() {
-  const { t } = useTranslation();
-  const themed = useThemeColors();
   const cid = usePlayer((s) => s.nowPlaying?.connectionId);
   // An episode (Bridge 2d-1) has no community Who's who or Story so far.
   const episode = usePlayer((s) => !!s.nowPlaying?.episode);
   const metadata = useCapability('metadata', cid) === true && !episode;
+  const target = usePlayingTarget();
+  const chips = CHIPS.filter((c) => metadata || !c.community);
   return (
     <ScrollView
       horizontal
@@ -372,25 +377,49 @@ export function CompanionChips() {
       className="w-full"
       contentContainerClassName="grow justify-center gap-2"
     >
-      {CHIPS.filter((c) => metadata || !c.community).map(({ tab, icon }) => {
-        const label = t(COMPANION_TAB_LABEL[tab]);
-        return (
-          <ControlPill
-            key={tab}
-            look="outline"
-            label={label}
-            onPress={() => usePlayerSheets.getState().openCompanion(tab)}
-            hitSlop={ROUND_SLOP}
-            className="h-11 flex-row gap-1.5 px-3"
-          >
-            <Icon name={icon} size={15} color={themed.foreground} />
-            <Text variant="label" numberOfLines={1}>
-              {label}
-            </Text>
-          </ControlPill>
-        );
-      })}
+      {chips
+        .filter((c) => c.community)
+        .map((c) => (
+          <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
+        ))}
+      {target ? (
+        <ConnectionScope connectionId={target.connectionId}>
+          <TextChip target={target} />
+        </ConnectionScope>
+      ) : null}
+      {chips
+        .filter((c) => !c.community)
+        .map((c) => (
+          <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
+        ))}
     </ScrollView>
+  );
+}
+
+/** The Text chip, while the playing book's companion shows a Text tab. */
+function TextChip({ target }: { target: PlayTarget }) {
+  return useTextTab(target).shown ? <CompanionChip tab="text" icon="book" /> : null;
+}
+
+/** One chip: opens the companion on `tab`. */
+function CompanionChip({ tab, icon }: { tab: CompanionTab; icon: IconName }) {
+  const { t } = useTranslation();
+  const themed = useThemeColors();
+  const label = t(COMPANION_TAB_LABEL[tab]);
+  return (
+    <ControlPill
+      look="outline"
+      label={label}
+      onPress={() => usePlayerSheets.getState().openCompanion(tab)}
+      hitSlop={ROUND_SLOP}
+      className="h-11 flex-row gap-1.5 px-3"
+      testID={`player-chip-${tab}`}
+    >
+      <Icon name={icon} size={15} color={themed.foreground} />
+      <Text variant="label" numberOfLines={1}>
+        {label}
+      </Text>
+    </ControlPill>
   );
 }
 

@@ -45,10 +45,17 @@ export function companionTabs(metadata: boolean, text = false): CompanionTab[] {
  * vanishes a moment later) nor for a stale or absent map; for an admin who may make one
  * (`mayMake`: `mayMakeReadalong`, and the book reads with its ebook) always: the map on its
  * way (a job that just made it) is a spinner, no map "Make read-along". A map whose read
- * failed (`failed`: offline, a 5xx) keeps the tab for everyone, saying so with Try again.
+ * failed (`failed`: offline, a 5xx, a refusal) keeps the tab for everyone, saying why. A
+ * server's map waiting for the connection (`offline`: nothing on the device to say) shows no
+ * tab, not even an admin's: nothing can be said or made meanwhile.
  */
-export function textTab(opts: { map: boolean; failed?: boolean; mayMake: boolean }): boolean {
-  return opts.map || opts.failed === true || opts.mayMake;
+export function textTab(opts: {
+  map: boolean;
+  failed?: boolean;
+  offline?: boolean;
+  mayMake: boolean;
+}): boolean {
+  return opts.map || opts.failed === true || (opts.mayMake && opts.offline !== true);
 }
 
 /** The tab to show: the one asked for when it exists, else the first but Text (the

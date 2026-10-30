@@ -19,15 +19,19 @@ jest.mock('@/stores/session', () => ({
 let mockSavedEbook: string | undefined;
 jest.mock('@/downloads/store', () => ({ useDownloadedEbook: () => mockSavedEbook }));
 // The map (`useBookReadalong`'s own tests decide where it comes from).
-let mockMap: { map: object | null; pending: boolean; failed?: boolean; retry?: () => void } = {
-  map: null,
-  pending: false,
+type MockMap = {
+  map: object | null;
+  pending: boolean;
+  failure?: string | null;
+  offline?: boolean;
+  retry?: () => void;
 };
+let mockMap: MockMap = { map: null, pending: false };
 const mockReadable = jest.fn();
 jest.mock('@/reader/use-book-readalong', () => ({
   useBookReadalong: (_ref: unknown, _book: unknown, readable: boolean) => {
     mockReadable(readable);
-    return mockMap;
+    return { failure: null, offline: false, ...mockMap };
   },
 }));
 
@@ -78,8 +82,17 @@ describe('useTextTab', () => {
 
   it("keeps a listener's tab when the map failed to load, with its retry", async () => {
     const retry = jest.fn();
-    mockMap = { map: null, pending: false, failed: true, retry };
-    expect(await tab()).toMatchObject({ shown: true, map: null, failed: true, retry });
+    mockMap = { map: null, pending: false, failure: 'retry', retry };
+    expect(await tab()).toMatchObject({ shown: true, map: null, failure: 'retry', retry });
+    // A refusal Try again can't mend keeps the tab too, saying why.
+    mockMap = { map: null, pending: false, failure: 'denied' };
+    expect(await tab()).toMatchObject({ shown: true, failure: 'denied' });
+  });
+
+  it('shows an admin no tab while the map waits for the connection (fe#192)', async () => {
+    mockUser = ADMIN;
+    mockMap = { map: null, pending: false, offline: true };
+    expect((await tab()).shown).toBe(false);
   });
 
   it('is absent for a listener when the map is stale, and offers an admin Make', async () => {

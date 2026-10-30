@@ -1679,6 +1679,13 @@
       "textFailedHint": "L'ebook ne s'est pas chargé. Vérifiez la connexion et réessayez.",
       "textMapFailedHint": "La lecture synchronisée ne s'est pas chargée. Vérifiez la connexion et réessayez.",
       "textStartHint": "Le lecteur d'ebooks n'a pas démarré. Réessayez.",
+      "textSignedOutHint": "Reconnectez-vous à ce serveur pour charger la lecture synchronisée.",
+      "textDeniedTitle": "Cette lecture synchronisée ne vous est pas accessible",
+      "textDeniedHint": "Le serveur ne partage plus ce livre avec vous.",
+      "textMissingTitle": "Ce livre n'est plus sur le serveur",
+      "textMissingHint": "Il a peut-être été déplacé ou supprimé. Rouvrez-le depuis la bibliothèque.",
+      "textEbookChangedTitle": "La lecture synchronisée concerne un ebook plus récent",
+      "textEbookChangedHint": "L'ebook de cet appareil est plus ancien que celui de la lecture synchronisée. Supprimez le téléchargement et téléchargez à nouveau le livre pour suivre le texte.",
       "textNoServer": "Le texte revient dès qu'il l'est."
     },
     "placeMoved": {

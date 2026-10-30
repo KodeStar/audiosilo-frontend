@@ -244,4 +244,10 @@ describe('textTab', () => {
     expect(textTab({ map: false, mayMake: true })).toBe(true);
     expect(textTab({ map: true, mayMake: true })).toBe(true);
   });
+
+  it("hides an admin's tab while the map waits for the connection, nothing to say (fe#192)", () => {
+    expect(textTab({ map: false, offline: true, mayMake: true })).toBe(false);
+    expect(textTab({ map: true, offline: true, mayMake: true })).toBe(true);
+    expect(textTab({ map: false, failed: true, offline: true, mayMake: true })).toBe(true);
+  });
 });

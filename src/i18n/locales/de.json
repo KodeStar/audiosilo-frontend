@@ -1679,6 +1679,13 @@
       "textFailedHint": "Das E-Book wurde nicht geladen. Prüfe die Verbindung und versuche es erneut.",
       "textMapFailedHint": "Das Mitlesen wurde nicht geladen. Prüfe die Verbindung und versuche es erneut.",
       "textStartHint": "Der E-Book-Reader ist nicht gestartet. Versuche es erneut.",
+      "textSignedOutHint": "Melde dich erneut bei diesem Server an, um das Mitlesen zu laden.",
+      "textDeniedTitle": "Dieses Mitlesen ist für dich nicht freigegeben",
+      "textDeniedHint": "Der Server teilt dieses Buch nicht mehr mit dir.",
+      "textMissingTitle": "Dieses Buch ist nicht mehr auf dem Server",
+      "textMissingHint": "Es wurde vielleicht verschoben oder entfernt. Öffne es erneut aus der Bibliothek.",
+      "textEbookChangedTitle": "Das Mitlesen gehört zu einem neueren E-Book",
+      "textEbookChangedHint": "Das E-Book auf diesem Gerät ist älter als das, aus dem das Mitlesen erstellt wurde. Entferne den Download und lade das Buch erneut herunter, um mitzulesen.",
       "textNoServer": "Der Text ist wieder da, sobald er verbunden ist."
     },
     "placeMoved": {

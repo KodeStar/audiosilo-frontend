@@ -4,13 +4,14 @@ import { View } from 'react-native';
 
 import { useOptionalApi } from '@/api/provider';
 import { MakeReadalongOffer } from '@/components/bridge/make-readalong';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spinner } from '@/components/ui/spinner';
 import { contentKeyOf } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useNarration } from '@/reader/narration';
-import { FollowPill, PageEdges, usePageEdges } from '@/reader/page-edge';
+import { FOLLOW_PILL_ROOM, FollowPill, PageEdges, usePageEdges } from '@/reader/page-edge';
 import type { ReadalongState } from '@/reader/protocol';
 import { cfiAt, type ReaderReadalongMap } from '@/reader/readalong-map';
 import { ReaderHost } from '@/reader/reader-host';
@@ -19,6 +20,7 @@ import {
   type ReaderHostHandle,
   ReaderStartError,
 } from '@/reader/reader-host-types';
+import type { ReadalongFailure } from '@/reader/use-book-readalong';
 import { useReaderAppearance } from '@/reader/use-reader-appearance';
 
 import type { PlayTarget } from '../use-play-book';
@@ -64,16 +66,8 @@ export function TextPanel({
       />
     );
   }
-  if (!map && text.failed) {
-    // The map did not load (offline, the server failed): said, with Try again. Never the
-    // Make offer: a map may well be there, and making it again takes hours.
-    return (
-      <TextFailed
-        testID="companion-text-map-failed"
-        hint={t('player.companion.textMapFailedHint')}
-        onRetry={text.retry}
-      />
-    );
+  if (!map && text.failure) {
+    return <MapFailure target={target} failure={text.failure} onRetry={text.retry} />;
   }
   const stale = book?.readalong?.state === 'stale';
   return (
@@ -93,6 +87,56 @@ function staleHint(reason: string | undefined, stale: boolean) {
   if (reason === 'audio_changed') return 'player.companion.textStaleAudio' as const;
   return 'player.companion.textStaleHint' as const;
 }
+
+/**
+ * Why the map did not load, by `failure` (`ReadalongFailure`). Only a failure that says
+ * nothing about the map (offline, the server failed) offers Try again; a connection that
+ * needs signing in again is the sign-in state (CONNECT-03), a refusal or a book no longer
+ * there say so, and a map made from another ebook than the downloaded one says how to get
+ * it. Never the Make offer: a map may well be there, and making it again takes hours.
+ */
+function MapFailure({
+  target,
+  failure,
+  onRetry,
+}: {
+  target: PlayTarget;
+  failure: ReadalongFailure;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  const signedOut = useSignedOutConnection(target.connectionId);
+  if (signedOut) {
+    return (
+      <View testID="companion-text-signed-out" className="py-4">
+        <SignInAgainState connection={signedOut} />
+      </View>
+    );
+  }
+  if (failure === 'retry') {
+    return (
+      <TextFailed
+        testID="companion-text-map-failed"
+        hint={t('player.companion.textMapFailedHint')}
+        onRetry={onRetry}
+      />
+    );
+  }
+  const [title, hint] = MAP_FAILURE_TEXT[failure];
+  return (
+    <View testID={`companion-text-${failure}`} className="py-4">
+      <EmptyState icon="circle-exclamation" title={t(title)} hint={t(hint)} />
+    </View>
+  );
+}
+
+/** The words for a map failure Try again can't mend. */
+const MAP_FAILURE_TEXT = {
+  signedOut: ['player.companion.textFailedTitle', 'player.companion.textSignedOutHint'],
+  denied: ['player.companion.textDeniedTitle', 'player.companion.textDeniedHint'],
+  missing: ['player.companion.textMissingTitle', 'player.companion.textMissingHint'],
+  ebookChanged: ['player.companion.textEbookChangedTitle', 'player.companion.textEbookChangedHint'],
+} as const satisfies Record<Exclude<ReadalongFailure, 'retry'>, readonly [string, string]>;
 
 function TextEmpty({
   title,
@@ -249,6 +293,7 @@ function ReadAlong({
 
   const show = opened !== null && state === 'ok';
   const rtl = opened?.rtl === true;
+  const pill = show && following === false && narration.narrating;
   return (
     <View
       testID="companion-text"
@@ -259,34 +304,41 @@ function ReadAlong({
       onLayout={edges.onLayout}
     >
       {fontScale !== null ? (
-        <ReaderHost
-          key={attempt}
-          ref={host}
-          api={api}
-          connectionId={connectionId}
-          libraryId={libraryId}
-          path={path}
-          ebookSize={ebookSize}
-          name={title}
-          at={at}
-          theme={theme}
-          fontScale={fontScale}
-          title={t('reader.frameTitle', { title })}
-          onMessage={onMessage}
-          onLoadError={(e) => setFailure(e instanceof ReaderStartError ? 'start' : 'fetch')}
-          onReopen={() => setOpened(null)}
-          readalongMap={map}
-          readalongPosition={narration.readalongPosition}
-          followNarration
-          onSeek={narration.onSeek}
-          onFollowing={setFollowing}
-          onReadalongState={(s) => setSaid({ map, state: s.state })}
-        />
+        // The page ends above the Back to narration pill while it shows (fe#192).
+        <View
+          testID="companion-text-page"
+          className="flex-1"
+          style={pill ? { paddingBottom: FOLLOW_PILL_ROOM } : undefined}
+        >
+          <ReaderHost
+            key={attempt}
+            ref={host}
+            api={api}
+            connectionId={connectionId}
+            libraryId={libraryId}
+            path={path}
+            ebookSize={ebookSize}
+            name={title}
+            at={at}
+            theme={theme}
+            fontScale={fontScale}
+            title={t('reader.frameTitle', { title })}
+            onMessage={onMessage}
+            onLoadError={(e) => setFailure(e instanceof ReaderStartError ? 'start' : 'fetch')}
+            onReopen={() => setOpened(null)}
+            readalongMap={map}
+            readalongPosition={narration.readalongPosition}
+            followNarration
+            onSeek={narration.onSeek}
+            onFollowing={setFollowing}
+            onReadalongState={(s) => setSaid({ map, state: s.state })}
+          />
+        </View>
       ) : null}
       {show ? (
         <>
           <PageEdges host={host} rtl={rtl} narrow={edges.narrow} />
-          {following === false && narration.narrating ? (
+          {pill ? (
             <View
               className="absolute bottom-3 left-0 right-0 items-center"
               pointerEvents="box-none"
