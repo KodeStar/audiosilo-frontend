@@ -1266,6 +1266,14 @@ media GETs only.
   `android/.../res/drawable/ic_notification.xml`). `AudiobookPlayer` (a `ForwardingPlayer`)
   still applies auto-rewind on every `play()` and hides prev/next **only when there's a
   single item** (a chapterless single-file book, so "previous" can't restart it).
+  - **A long MP4-family file plays as one whole-file item** (fe#194, `ClipBudget` in
+    `MediaItems.kt`): Media3's `Mp4Extractor` keeps the file's whole sample table on the Java
+    heap (about 33 bytes per AAC frame: ~120 MB for a 23.5 h m4b), and every clip is its own
+    extractor, two of them alive at each boundary (the next is prepared while the current
+    plays). A file whose two tables plus 64 MB don't fit `Runtime.maxMemory()` drops its
+    clips (no lock-screen chapter scrubber or prev/next chapter for it; the app's chapters
+    are unchanged); other files keep theirs. The module's manifest sets
+    `android:largeHeap="true"`, so books up to about 41 h keep their clips.
   - **The JS store + iOS stay file-based**: the Android module translates between its chapter
     clips and the file-relative `(trackIndex, position)` the bridge reports through
     `TimelineMap` (in `MediaItems.kt`: `fileToItem`/`itemToFile`), built from each item's own
