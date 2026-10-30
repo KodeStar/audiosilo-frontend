@@ -133,17 +133,16 @@ describe('upcomingEligibility', () => {
     );
     expect(r.available).toBe(false);
     // A kid's connection is never asked, so it is not counted as unreadable.
-    expect(r.unreadable).toEqual(['down']);
+    expect(r.unreadable).toEqual(new Set(['down']));
     // Another server still loading keeps it open; one with the flag makes it available.
     const mixed = [
       { id: 'down', user: adult },
       { id: 'b', user: adult },
     ];
     expect(upcomingEligibility(mixed, {}, ['down']).available).toBeUndefined();
-    expect(upcomingEligibility(mixed, { b: caps(true) }, ['down'])).toMatchObject({
-      available: true,
-      unreadable: ['down'],
-    });
+    const withB = upcomingEligibility(mixed, { b: caps(true) }, ['down']);
+    expect(withB.available).toBe(true);
+    expect(withB.unreadable).toEqual(new Set(['down']));
   });
 
   it("is not known while a server's flags are still loading", () => {

@@ -1153,7 +1153,7 @@ failed or waits for the network, or its flags could not be read; `retry` asks it
 included), so the page shows "Couldn't load" with a
 Retry when no server answered and a note when some did, never "Nothing coming up" for a failure;
 `statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
-empty state). A note naming servers joins them with `joinList` ("Home and Maya", `upcoming.and`)
+empty state). A note naming servers joins them with `joinList` ("Home and Maya", `common.and`)
 and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
 `formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "12 Nov 2026", read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"

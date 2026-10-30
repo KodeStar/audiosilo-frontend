@@ -105,16 +105,20 @@ export function upcomingEligibility(
   connections: readonly { id: string; user?: Parameters<typeof isKidAccount>[0] }[],
   caps: Record<string, Capabilities | undefined>,
   failed: readonly string[] = [],
-): { eligible: ReadonlySet<string>; available: boolean | undefined; unreadable: string[] } {
+): {
+  eligible: ReadonlySet<string>;
+  available: boolean | undefined;
+  unreadable: ReadonlySet<string>;
+} {
   const eligible = new Set<string>();
-  const unreadable: string[] = [];
+  const unreadable = new Set<string>();
   let unknown = false;
   for (const c of connections) {
     if (isKidAccount(c.user)) continue;
     const flags = caps[c.id];
     if (flags) {
       if (flags.upcoming) eligible.add(c.id);
-    } else if (failed.includes(c.id)) unreadable.push(c.id);
+    } else if (failed.includes(c.id)) unreadable.add(c.id);
     else unknown = true;
   }
   return {

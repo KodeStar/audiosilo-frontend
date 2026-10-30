@@ -43,8 +43,9 @@ function UpcomingSkeleton() {
  * released, Missing from your series; an empty one hidden). The states: rows standing in
  * while the first answers load; a server's first check still running ("this list fills
  * after its first check"); nothing coming up; no server answering, with its list or its
- * flags (a Retry, never "nothing coming up", nor rows standing in forever); and, where no server offers it (or the listener is a kid there), a quiet "not
- * available" in place of a list that would ask nothing. A server that didn't answer beside
+ * flags (a Retry, never "nothing coming up", nor rows standing in forever); and, where no
+ * server offers it (or the listener is a kid there), a quiet "not available" in place of a
+ * list that would ask nothing. A server that didn't answer beside
  * others, a stale one, or one still on its first check beside others, is a note over the
  * list (or over "nothing coming up"). `embedded`: under the hub's own large title (phone), so
  * no heading.
@@ -59,7 +60,7 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const stale = statuses.filter((s) => s.status === 'stale').map((s) => s.connectionName);
   // Servers named in a note: "Home", "Home and Maya", counted for the verb.
   const servers = (names: readonly string[]) => ({
-    server: joinList(names, (rest, last) => t('upcoming.and', { rest, last })),
+    server: joinList(names, (rest, last) => t('common.and', { rest, last })),
     count: names.length,
   });
 

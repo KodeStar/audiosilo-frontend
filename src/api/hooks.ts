@@ -669,19 +669,14 @@ export function useCapability(
  * known (loading or unreachable): one `/server` read per connection, shared with
  * `useServerInfo`. */
 export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
-  const apis = useApis();
-  return useQueries({
-    queries: apis.map(({ connection, client }) => serverInfoQuery(connection.id, client)),
-    combine: (results) =>
-      Object.fromEntries(results.map((r, i) => [apis[i].connection.id, r.data?.capabilities])),
-  });
+  return useCapabilitiesAllRead().caps;
 }
 
 /**
  * {@link useCapabilitiesAll} with what it can't tell: `failed` lists the connections whose
  * `/server` read has failed with nothing known (an error, or held for the network), which
  * `caps` keeps reading as `undefined` (not known yet), so a screen that waits on the flags
- * can settle; `retry` asks each of them again. The same shared reads.
+ * can settle; `retry` asks each of them again.
  */
 export function useCapabilitiesAllRead(): {
   caps: Record<string, Capabilities | undefined>;
@@ -3268,12 +3263,10 @@ export function useUpcomingAll(): {
 } {
   const { apis, eligible, available, unreadable, retryFlags } = useUpcomingEligibility();
   // `combine` re-runs whenever its identity changes, so it is keyed on what it reads (each
-  // connection, in order, whether it is asked, and whether its flags could not be read):
-  // the merge and sort run per answer, not per render.
+  // connection, in order, and whether it is asked): the merge and sort run per answer, not
+  // per render.
   const sources = JSON.stringify(
-    apis.map(
-      ({ connection: c }) => [c.id, c.name, eligible.has(c.id), unreadable.includes(c.id)] as const,
-    ),
+    apis.map(({ connection: c }) => [c.id, c.name, eligible.has(c.id)] as const),
   );
   const combine = useCallback(
     (
@@ -3285,18 +3278,16 @@ export function useUpcomingAll(): {
         refetch: () => Promise<unknown>;
       }[],
     ) => {
-      const conns = JSON.parse(sources) as [string, string, boolean, boolean][];
+      const conns = JSON.parse(sources) as [string, string, boolean][];
       const answered = conns.flatMap(([connectionId, connectionName, asked], i) => {
         const data = results[i]?.data;
         return asked && data
           ? [{ connectionId, connectionName, items: data.items, status: data.status }]
           : [];
       });
-      // A server whose flags could not be read may have Upcoming too: it didn't answer either.
-      const failed = conns.flatMap(([, connectionName, asked, flagsFailed], i) => {
+      const failed = conns.flatMap(([, connectionName, asked], i) => {
         const r = results[i];
-        const noAnswer = asked && r && !r.data && (r.isError || r.isPaused);
-        return noAnswer || flagsFailed ? [connectionName] : [];
+        return asked && r && !r.data && (r.isError || r.isPaused) ? [connectionName] : [];
       });
       return {
         items: mergeUpcoming(answered),
@@ -3327,10 +3318,15 @@ export function useUpcomingAll(): {
     })),
     combine,
   });
-  // Retry also reads again the flags that could not be read (outside `combine`, whose
-  // identity the flags' fresh `retry` would change every render).
+  // A server whose flags could not be read may have Upcoming too: it didn't answer either,
+  // and Retry reads its flags again (both outside `combine`, which they would re-key every
+  // render).
   return {
     ...all,
+    failed: [
+      ...all.failed,
+      ...apis.flatMap(({ connection: c }) => (unreadable.has(c.id) ? [c.name] : [])),
+    ],
     retry: () => {
       all.retry();
       retryFlags();

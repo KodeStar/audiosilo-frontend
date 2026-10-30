@@ -1,5 +1,6 @@
 {
   "common": {
+    "and": "{{rest}} und {{last}}",
     "cancel": "Abbrechen",
     "save": "Speichern",
     "done": "Fertig",
@@ -471,7 +472,6 @@
       "connected": "{{name}} ist verbunden",
       "title": "Deine Bibliothek ist bereit.",
       "titleSetup": "Fast geschafft: Füge eine Bibliothek hinzu.",
-      "and": "{{rest}} und {{last}}",
       "booksIn_one": "{{books}} Buch in {{list}}.",
       "booksIn_other": "{{books}} Bücher in {{list}}.",
       "booksAcross_one": "{{books}} Buch in {{libraries}} Bibliotheken.",
@@ -3085,7 +3085,6 @@
       "hint_other": "{{server}} haben nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
       "partial_one": "{{server}} hat nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen.",
       "partial_other": "{{server}} haben nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen."
-    },
-    "and": "{{rest}} und {{last}}"
+    }
   }
 }

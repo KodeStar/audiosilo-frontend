@@ -1,5 +1,6 @@
 {
   "common": {
+    "and": "{{rest}} and {{last}}",
     "cancel": "Cancel",
     "save": "Save",
     "done": "Done",
@@ -471,7 +472,6 @@
       "connected": "{{name}} is connected",
       "title": "Your library is ready.",
       "titleSetup": "Almost there: add a library.",
-      "and": "{{rest}} and {{last}}",
       "booksIn_one": "{{books}} book in {{list}}.",
       "booksIn_other": "{{books}} books in {{list}}.",
       "booksAcross_one": "{{books}} book across {{libraries}} libraries.",
@@ -3085,7 +3085,6 @@
       "hint_other": "{{server}} didn't answer. Nothing is lost: try again in a moment.",
       "partial_one": "{{server}} didn't answer, so this list may be missing some releases.",
       "partial_other": "{{server}} didn't answer, so this list may be missing some releases."
-    },
-    "and": "{{rest}} and {{last}}"
+    }
   }
 }
