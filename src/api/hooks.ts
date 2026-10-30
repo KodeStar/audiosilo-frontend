@@ -34,6 +34,12 @@ import { bookDedupKey, dedupBooks, type MergedBook, type SourcedBook } from '@/l
 import { isPodcastLibrary } from '@/lib/library-kind';
 import { parentPath } from '@/lib/paths';
 import {
+  mergeUpcoming,
+  type SourcedUpcomingItem,
+  type UpcomingServerStatus,
+  upcomingEligibility,
+} from '@/lib/upcoming';
+import {
   FOLLOW_REQUEST_POLL_MS,
   isOpenRequest,
   libraryRequests,
@@ -197,6 +203,8 @@ export const qk = {
   allProgressAll: () => ['progress', 'all'] as const,
   /** Prefix matching every connection's recently added list. */
   recentAll: () => ['books', 'recent'] as const,
+  /** The caller's upcoming releases, capability `upcoming` (Track U2). */
+  upcoming: (cid: string) => ['upcoming', cid] as const,
   /** The car's Library tab: a library's newest books, one page (`src/car`). */
   carLibrary: (cid: string, lib: number) => ['car', 'library', cid, lib] as const,
   // The Bridge, capability `bridge` (admin only; Bridge Phase 1a).
@@ -3175,6 +3183,78 @@ export function useRecentAll(limit = RECENT_LIMIT) {
       isLoading: results.some((r) => r.isLoading),
       error: results.find((r) => r.error)?.error ?? null,
     }),
+  });
+}
+
+// --- Upcoming releases (capability `upcoming`, Track U2) ----------------------------
+
+/** How long a connection's upcoming list is fresh: its job runs once a day. */
+export const UPCOMING_STALE_MS = 15 * 60_000;
+
+/** Whether Upcoming can show anything for the person listening: true once one of their
+ * servers advertises `upcoming` for a user who is not a kid, false once none can, undefined
+ * while a server's flags are still loading. Asks nothing beyond the shared `/server` reads. */
+export function useUpcomingAvailable(): boolean | undefined {
+  const apis = useApis();
+  const caps = useCapabilitiesAll();
+  return upcomingEligibility(
+    apis.map((a) => a.connection),
+    caps,
+  ).available;
+}
+
+/**
+ * The listener's upcoming releases on every connection (`GET /me/upcoming`), merged: one
+ * query per connection whose server advertises `upcoming` and whose user is not a kid;
+ * every other connection has no query function (`skipToken`), so it is never asked, not
+ * even by a manual `refetch`. Each item is tagged with its connection, each work listed
+ * once (the first connection's row, in `useApis` order), in the wire's order across
+ * servers (`mergeUpcoming`). A server that fails adds nothing. `statuses` holds each
+ * answered connection's job status (`pending` before its first run, `stale` after 48 h).
+ */
+export function useUpcomingAll(): {
+  items: SourcedUpcomingItem[];
+  available: boolean | undefined;
+  isLoading: boolean;
+  statuses: UpcomingServerStatus[];
+} {
+  const apis = useApis();
+  const caps = useCapabilitiesAll();
+  const { eligible, available } = upcomingEligibility(
+    apis.map((a) => a.connection),
+    caps,
+  );
+  return useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      queryKey: qk.upcoming(connection.id),
+      queryFn: eligible.has(connection.id)
+        ? ({ signal }: { signal: AbortSignal }) => client.upcoming(signal)
+        : skipToken,
+      staleTime: UPCOMING_STALE_MS,
+    })),
+    combine: (results) => {
+      const answered = results.flatMap((r, i) =>
+        r.data && eligible.has(apis[i].connection.id)
+          ? [
+              {
+                connectionId: apis[i].connection.id,
+                connectionName: apis[i].connection.name,
+                data: r.data,
+              },
+            ]
+          : [],
+      );
+      return {
+        items: mergeUpcoming(answered.map((a) => ({ ...a, items: a.data.items }))),
+        available,
+        isLoading: results.some((r) => r.isLoading),
+        statuses: answered.map(({ connectionId, connectionName, data }) => ({
+          connectionId,
+          connectionName,
+          status: data.status,
+        })),
+      };
+    },
   });
 }
 

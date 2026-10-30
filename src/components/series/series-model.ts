@@ -24,6 +24,7 @@ import {
   spanEnd,
 } from '@/lib/series-position';
 import type { SeriesView } from '@/lib/series-orderings';
+import { releaseIsFuture } from '@/lib/upcoming';
 
 /**
  * The series page's model (pure, tested): one ordered list of ENTRIES, built from the
@@ -71,8 +72,12 @@ type EntryFields = {
   started: boolean;
   finished: boolean;
   updatedAt?: string;
-  /** "2012", from the copy's `published`. */
+  /** "2012", from the copy's `published`; a ghost's from its first release once that is
+   * out (`release_date`). */
   year?: string;
+  /** A ghost's first release as the community metadata states it ("2026-11-12", "2027"):
+   * shown as "Out <date>" while it is ahead (`ghostOutDate`). */
+  releaseDate?: string;
   narrator?: string;
   coverColor?: CoverColor;
   coverVersion?: string;
@@ -214,6 +219,8 @@ type Source = {
   progressOf: ProgressLookup;
   /** Books in this series on the listener's OTHER connections. */
   elsewhere?: readonly ElsewhereBook[];
+  /** The clock a ghost's release date is read against (tests); now by default. */
+  now?: Date;
 };
 
 /** An entry with a copy: its facts and the listener's progress in it. */
@@ -297,6 +304,26 @@ function heldByRange(ghost: SeriesEntry, copies: readonly SeriesSpan[]): boolean
 
 const NOTHING = { fraction: 0, started: false, finished: false } as const;
 
+/** A ghost's release fields (Track U2): the date it carries, and its year once it is out
+ * (a ghost has no copy to take one from). */
+function ghostRelease(
+  date: string | undefined,
+  now: Date,
+): Pick<EntryFields, 'releaseDate' | 'year'> {
+  if (!date) return {};
+  return releaseIsFuture(date, now)
+    ? { releaseDate: date }
+    : { releaseDate: date, year: date.slice(0, 4) };
+}
+
+/** The release date a ghost shows as "Out <date>": its own while still ahead of `now`;
+ * none for an entry with a copy, or one already out (its year says that). */
+export function ghostOutDate(entry: SeriesEntry, now: Date): string | undefined {
+  return entry.kind === 'ghost' && releaseIsFuture(entry.releaseDate, now)
+    ? entry.releaseDate
+    : undefined;
+}
+
 function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
   const names = work.authors.map((a) => looseKey(a.name)).filter(Boolean);
   const author = looseKey(book.author);
@@ -375,7 +402,13 @@ export function railEntries(
     if (match) {
       out.push(elsewhereEntry(base, match, src.progressOf));
     } else {
-      out.push({ ...base, kind: 'ghost', title: w.title, ...NOTHING });
+      out.push({
+        ...base,
+        kind: 'ghost',
+        title: w.title,
+        ...NOTHING,
+        ...ghostRelease(w.release_date, src.now ?? new Date()),
+      });
     }
   }
   for (const b of sortSeriesBooks(books)) {

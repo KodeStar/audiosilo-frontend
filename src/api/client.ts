@@ -90,6 +90,7 @@ import type {
   ServerInfo,
   ShareTarget,
   StatsRange,
+  UpcomingResponse,
   UpdateMemberBody,
   User,
   UserStats,
@@ -1727,6 +1728,15 @@ export class ApiClient {
   async houseListening(signal?: AbortSignal): Promise<HouseListening> {
     const r = await this.request<HouseListening>('GET', '/household/listening', { signal });
     return { ...r, listening: r.listening ?? [] };
+  }
+
+  // --- Upcoming releases (capability `upcoming`, Track U1) -------------------
+  /** The caller's preorders, recent releases and missing volumes in the series they hold
+   * (`items` never null). 404 `metadata_off` / `upcoming_off` while off, 403 `kid_account`
+   * for a kid: the flag is false in each case, so a client that honours it never asks. */
+  async upcoming(signal?: AbortSignal): Promise<UpcomingResponse> {
+    const r = await this.request<UpcomingResponse>('GET', '/me/upcoming', { signal });
+    return { ...r, items: r.items ?? [] };
   }
 
   // --- Casting (capability `cast`) -------------------------------------------

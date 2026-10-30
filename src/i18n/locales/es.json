@@ -2001,7 +2001,9 @@
       "emptyAction": "Ver los libros",
       "errorTitle": "No se pudieron cargar las series"
     },
-    "keepAhead": "Adelantarse sin conexión"
+    "keepAhead": "Adelantarse sin conexión",
+    "out": "Sale: {{date}}",
+    "ghostOutNote": "Sale: {{date}}. Aún no está en tus servidores."
   },
   "people": {
     "author": "Autor",
@@ -3042,6 +3044,38 @@
     "readalong": {
       "follow": "Seguir la narración",
       "back": "Volver a la narración"
+    }
+  },
+  "upcoming": {
+    "title": "Próximamente",
+    "rail": {
+      "title": "Próximamente en tus series",
+      "sub": "Preventas, novedades y huecos"
+    },
+    "sections": {
+      "preorder": "Muy pronto",
+      "released": "Recién publicados",
+      "missing": "Faltan en tus series"
+    },
+    "out": "Sale: {{date}}",
+    "released": "Publicado: {{date}}",
+    "firstReleased": "Publicado por primera vez: {{date}}",
+    "seriesBook": "{{series}}, libro {{position}}",
+    "new": "Nuevo",
+    "fromServer": "De {{server}}",
+    "pending": {
+      "title": "Buscando novedades",
+      "hint": "Tu servidor está buscando novedades; esta lista se llenará tras su primera búsqueda."
+    },
+    "pendingSome": "{{server}} aún está haciendo su primera búsqueda de novedades.",
+    "stale": "{{server}} no ha buscado novedades en más de dos días, así que esta lista puede estar desactualizada.",
+    "empty": {
+      "title": "Nada a la vista",
+      "hint": "No hay nada próximo en las series que tienes."
+    },
+    "unavailable": {
+      "title": "Sin próximos lanzamientos aquí",
+      "hint": "Tus servidores no muestran próximos lanzamientos."
     }
   }
 }

@@ -2001,7 +2001,9 @@
       "emptyAction": "Sfoglia i libri",
       "errorTitle": "Impossibile caricare le serie"
     },
-    "keepAhead": "Portati avanti offline"
+    "keepAhead": "Portati avanti offline",
+    "out": "Uscita: {{date}}",
+    "ghostOutNote": "Uscita: {{date}}. Non ancora sui tuoi server."
   },
   "people": {
     "author": "Autore",
@@ -3042,6 +3044,38 @@
     "readalong": {
       "follow": "Segui la narrazione",
       "back": "Torna alla narrazione"
+    }
+  },
+  "upcoming": {
+    "title": "In arrivo",
+    "rail": {
+      "title": "In arrivo nelle tue serie",
+      "sub": "Preordini, novità e lacune"
+    },
+    "sections": {
+      "preorder": "Presto disponibili",
+      "released": "Appena usciti",
+      "missing": "Mancanti nelle tue serie"
+    },
+    "out": "Uscita: {{date}}",
+    "released": "Uscito: {{date}}",
+    "firstReleased": "Prima uscita: {{date}}",
+    "seriesBook": "{{series}}, libro {{position}}",
+    "new": "Nuovo",
+    "fromServer": "Da {{server}}",
+    "pending": {
+      "title": "Ricerca delle uscite",
+      "hint": "Il tuo server sta cercando le uscite; questo elenco si riempie dopo la prima ricerca."
+    },
+    "pendingSome": "{{server}} sta ancora facendo la prima ricerca delle uscite.",
+    "stale": "{{server}} non cerca le uscite da più di due giorni, quindi questo elenco potrebbe non essere aggiornato.",
+    "empty": {
+      "title": "Niente in arrivo",
+      "hint": "Niente in arrivo nelle serie che hai."
+    },
+    "unavailable": {
+      "title": "Nessuna uscita in arrivo qui",
+      "hint": "I tuoi server non elencano le uscite in arrivo."
     }
   }
 }

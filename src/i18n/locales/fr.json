@@ -2001,7 +2001,9 @@
       "emptyAction": "Parcourir les livres",
       "errorTitle": "Impossible de charger les séries"
     },
-    "keepAhead": "Garder de l’avance hors ligne"
+    "keepAhead": "Garder de l’avance hors ligne",
+    "out": "Sortie : {{date}}",
+    "ghostOutNote": "Sortie : {{date}}. Pas encore sur vos serveurs."
   },
   "people": {
     "author": "Auteur",
@@ -3042,6 +3044,38 @@
     "readalong": {
       "follow": "Suivre la narration",
       "back": "Revenir à la narration"
+    }
+  },
+  "upcoming": {
+    "title": "À venir",
+    "rail": {
+      "title": "À venir dans vos séries",
+      "sub": "Précommandes, nouveautés et trous"
+    },
+    "sections": {
+      "preorder": "Bientôt",
+      "released": "Tout juste sortis",
+      "missing": "Manquants dans vos séries"
+    },
+    "out": "Sortie : {{date}}",
+    "released": "Paru : {{date}}",
+    "firstReleased": "Première sortie : {{date}}",
+    "seriesBook": "{{series}}, tome {{position}}",
+    "new": "Nouveau",
+    "fromServer": "Depuis {{server}}",
+    "pending": {
+      "title": "Recherche des sorties",
+      "hint": "Votre serveur recherche les sorties ; cette liste se remplira après sa première recherche."
+    },
+    "pendingSome": "{{server}} effectue encore sa première recherche des sorties.",
+    "stale": "{{server}} n'a pas recherché les sorties depuis plus de deux jours, cette liste n'est peut-être pas à jour.",
+    "empty": {
+      "title": "Rien à venir",
+      "hint": "Rien à venir dans les séries que vous avez."
+    },
+    "unavailable": {
+      "title": "Pas de sorties à venir ici",
+      "hint": "Vos serveurs ne listent pas les sorties à venir."
     }
   }
 }

@@ -1,6 +1,8 @@
 import {
   isCoreYouSection,
   parseYouSection,
+  UPCOMING_SECTION,
+  youExtraSections,
   youModuleSections,
   youSectionLabelKey,
   youSectionParams,
@@ -115,5 +117,37 @@ describe("a module's sections (Bridge Phase 2a)", () => {
   it('tells the two apart', () => {
     expect(isCoreYouSection('account')).toBe(true);
     expect(isCoreYouSection('contribute')).toBe(false);
+  });
+});
+
+describe('youExtraSections (Track U2)', () => {
+  const section = (key: string, label = key) => ({ key, label: () => label, render: () => null });
+  const upcoming = section(UPCOMING_SECTION, 'Upcoming');
+
+  it("puts Upcoming first, while offered, before the modules' sections", () => {
+    const modules = new Map([['contribute', section('contribute')]]);
+    const both = youExtraSections(upcoming, modules);
+    expect([...both.keys()]).toEqual(['upcoming', 'contribute']);
+    expect(both.get('upcoming')).toBe(upcoming);
+    expect(youSectionsFor('desktop', [...both.keys()])).toEqual([
+      'stats',
+      'year',
+      'journal',
+      'household',
+      'upcoming',
+      'contribute',
+    ]);
+    expect([...youExtraSections(null, modules).keys()]).toEqual(['contribute']);
+  });
+
+  it("never lets a module take Upcoming's key", () => {
+    const claim = new Map([['upcoming', section('upcoming', 'A module')]]);
+    expect([...youExtraSections(null, claim).keys()]).toEqual([]);
+    expect(youExtraSections(upcoming, claim).get('upcoming')).toBe(upcoming);
+  });
+
+  it('opens Upcoming by link only while it is offered', () => {
+    expect(parseYouSection('upcoming', ['upcoming'])).toBe('upcoming');
+    expect(parseYouSection('upcoming', [])).toBe('stats');
   });
 });

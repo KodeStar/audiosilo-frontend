@@ -1792,6 +1792,62 @@ describe('ApiClient series books (series_books)', () => {
   });
 });
 
+describe('ApiClient upcoming (Track U2)', () => {
+  // The server's answer shape (audiosilo-server internal/upcoming list.go, CROSS-REPO §8).
+  const body = {
+    status: 'ok',
+    generated_at: '2026-10-30T04:12:00.000Z',
+    window_days: 90,
+    items: [
+      {
+        kind: 'preorder',
+        release_date: '2026-11-12',
+        first_seen_at: '2026-10-29T04:12:00.000Z',
+        work: {
+          id: 'w1',
+          title: 'Book Ten',
+          authors: [{ id: 'a1', name: 'A. Writer' }],
+          cover_url: 'https://meta.example/c.jpg',
+          web_url: 'https://meta.example/works/w1',
+        },
+        series: { id: 'the-series', name: 'The Series', position: '10' },
+        local: { library_id: 3, series: 'The Series' },
+      },
+    ],
+  };
+
+  it('reads GET /me/upcoming with the bearer token, every field round-tripped', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body }));
+    await expect(new ApiClient('https://h', 'tok').upcoming()).resolves.toEqual(body);
+    expect(sent(fetchMock)).toMatchObject({ url: 'https://h/api/v1/me/upcoming', method: 'GET' });
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+  });
+
+  it('reads a pending answer (no generated_at, null items) as an empty list', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: { status: 'pending', window_days: 90, items: null },
+    }));
+    await expect(new ApiClient('https://h', 'tok').upcoming()).resolves.toEqual({
+      status: 'pending',
+      window_days: 90,
+      items: [],
+    });
+  });
+
+  it('rejects a refusal (404 upcoming_off) as an ApiError', async () => {
+    installFetch(() => ({
+      status: 404,
+      body: { error: 'upcoming releases are turned off', code: 'upcoming_off' },
+    }));
+    await expect(new ApiClient('https://h', 'tok').upcoming()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+    });
+  });
+});
+
 describe('ApiClient household and cast (Phase 8)', () => {
   const c = () => new ApiClient('https://h', 'tok');
   // The server's exact answers (audiosilo-server internal/api household_test.go).

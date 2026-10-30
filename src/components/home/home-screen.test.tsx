@@ -157,6 +157,14 @@ jest.mock('./new-episodes-rail', () => ({
   },
 }));
 
+// Coming up in your series has its own tests (Track U2); Home only places it.
+jest.mock('@/components/upcoming/upcoming-rail', () => ({
+  UpcomingRail: () => {
+    const { Text } = jest.requireActual('react-native');
+    return <Text>Upcoming rail</Text>;
+  },
+}));
+
 // Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite.
 let mockModulesOn: Record<string, boolean> = {};
 const mockUseActiveModules = jest.fn();
@@ -460,7 +468,7 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
     expect(house).toBeGreaterThan(rail);
   });
 
-  it('places New episodes between Next in your series and the module rails, skipping started ones', async () => {
+  it('places Coming up and New episodes between Next in your series and the module rails, skipping started ones', async () => {
     mockModulesOn = { contributions: true };
     mockNext = { supported: true, isLoading: true, answers: [] };
     mockProgress.progress = [
@@ -470,8 +478,15 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
     await mountWith([FAKE]);
     const label = 'New episodes: a skip a:1:Now|a:1:Pod/Ep 1.mp3 limit 15';
     expect(screen.getByText(label)).toBeTruthy();
-    const [next, episodes, rail] = order('Next in your series', label, 'Module rail: a');
-    expect(episodes).toBeGreaterThan(next);
+    const [next, upcoming, episodes, rail] = order(
+      'Next in your series',
+      'Upcoming rail',
+      label,
+      'Module rail: a',
+    );
+    // Coming up in your series directly follows Next in your series (Track U2).
+    expect(upcoming).toBeGreaterThan(next);
+    expect(episodes).toBeGreaterThan(upcoming);
     expect(rail).toBeGreaterThan(episodes);
   });
 

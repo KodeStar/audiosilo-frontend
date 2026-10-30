@@ -5,8 +5,9 @@ import type { PlayerModule, YouModuleSection } from '@/modules/registry';
 /**
  * The You hub's rules (`/you?section=stats|year|journal|settings|household|account`, the Me tab's
  * root): pure, so the section a link opens and what each form factor offers are tested
- * apart from the screen. An active module's sections (`youModuleSections`, Bridge Phase 2a)
- * come after the hub's own on every form factor.
+ * apart from the screen. Upcoming (Track U2, while offered) and an active module's sections
+ * (`youModuleSections`, Bridge Phase 2a) come after the hub's own on every form factor
+ * (`youExtraSections`).
  */
 
 export const YOU_SECTIONS: readonly CoreYouSection[] = [
@@ -41,6 +42,24 @@ export function youModuleSections(
       if (s.key.trim() && !isCoreYouSection(s.key) && !out.has(s.key)) out.set(s.key, s);
     }
   }
+  return out;
+}
+
+/** The Upcoming section's key (Track U2): the hub's own, but offered only while one of the
+ * listener's servers lists upcoming releases for them (`useUpcomingAvailable`), so it rides
+ * with the modules' sections, after the hub's fixed ones, and no module can take its key. */
+export const UPCOMING_SECTION = 'upcoming';
+
+/** The hub's optional sections by key, in order: Upcoming when `upcoming` is given (it is
+ * offered), then the active modules' (`youModuleSections`), never one keyed like
+ * Upcoming. Its keys are the `moduleKeys` the rules below take. */
+export function youExtraSections(
+  upcoming: YouModuleSection | null,
+  modules: ReadonlyMap<string, YouModuleSection>,
+): ReadonlyMap<string, YouModuleSection> {
+  const out = new Map<string, YouModuleSection>();
+  if (upcoming) out.set(UPCOMING_SECTION, upcoming);
+  for (const [key, section] of modules) if (key !== UPCOMING_SECTION) out.set(key, section);
   return out;
 }
 

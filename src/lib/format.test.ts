@@ -21,6 +21,7 @@ import {
   formatDuration,
   formatDurationFull,
   formatRelative,
+  formatReleaseDate,
   formatTimeOfDay,
   formatWallClock,
 } from '@/lib/format';
@@ -359,6 +360,24 @@ describe('date formatters', () => {
     expect(formatServerDay('2026-10-20', 'en-GB')).toBe('20 Oct');
     expect(formatDayMonth(new Date(2026, 9, 20, 12), 'en-GB')).toBe('20 Oct');
     expect(formatServerShortDay('2026-10-03', 'en-GB')).toBe('Sat 3 Oct');
+  });
+
+  it('writes a release date at its own precision, as that calendar day', () => {
+    expect(formatReleaseDate('2027', 'en-GB')).toBe('2027');
+    expect(formatReleaseDate('2026-11', 'en-GB')).toBe('Nov 2026');
+    expect(formatReleaseDate('2026-11-12', 'en-GB')).toBe('12 Nov 2026');
+    expect(formatReleaseDate('2026-11-12', 'en-US')).toBe('Nov 12, 2026');
+    // The first and last days are not shifted into the device's zone.
+    expect(formatReleaseDate('2027-01-01', 'en-GB')).toBe('1 Jan 2027');
+    expect(formatReleaseDate('2026-12-31', 'en-GB')).toBe('31 Dec 2026');
+  });
+
+  it('returns anything else as it came', () => {
+    expect(formatReleaseDate('', 'en-GB')).toBe('');
+    expect(formatReleaseDate('Autumn 2026', 'en-GB')).toBe('Autumn 2026');
+    expect(formatReleaseDate('2026-13', 'en-GB')).toBe('2026-13');
+    expect(formatReleaseDate('2026-02-30', 'en-GB')).toBe('2026-02-30');
+    expect(formatReleaseDate('2026-11-12T00:00:00Z', 'en-GB')).toBe('2026-11-12T00:00:00Z');
   });
 
   it("writes an hour of the day on the reader's clock", () => {

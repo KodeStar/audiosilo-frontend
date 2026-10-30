@@ -3,6 +3,7 @@ import { Fragment, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useUpcomingAvailable } from '@/api/hooks';
 import { AccountSection } from '@/components/account/account-section';
 import { HouseholdPage } from '@/components/household/household-page';
 import { JournalScreen } from '@/components/journal/journal-screen';
@@ -11,6 +12,7 @@ import { SettingsContent } from '@/components/settings/settings-content';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { SubNavSections } from '@/components/shell/tab-root-nav';
 import { StatsSection } from '@/components/you/stats/stats-section';
+import { UpcomingContent } from '@/components/upcoming/upcoming-screen';
 import { YearSection } from '@/components/you/year/year-section';
 import { useLayout } from '@/lib/layout';
 import type { CoreYouSection } from '@/lib/paths';
@@ -22,6 +24,8 @@ import type { PlayerModule, YouModuleSection } from '@/modules/registry';
 import {
   isCoreYouSection,
   parseYouSection,
+  UPCOMING_SECTION,
+  youExtraSections,
   youModuleSections,
   youSectionLabelKey,
   youSectionParams,
@@ -69,6 +73,14 @@ const SECTIONS: Record<CoreYouSection, (opts: { phone: boolean }) => ReactNode> 
     ),
 };
 
+/** The Upcoming section (Track U2): the `/upcoming` page's body, under the phone's large
+ * title. */
+const UPCOMING: YouModuleSection = {
+  key: UPCOMING_SECTION,
+  label: (t) => t('upcoming.title'),
+  render: ({ phone }) => <UpcomingContent embedded={phone} />,
+};
+
 /**
  * The You hub (`/you?section=stats|year|journal|settings|household|account`, the Me tab's
  * root; STYLEGUIDE section 2). A phone: the large title names the section ("Your
@@ -93,7 +105,13 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   const layout = useLayout();
   const phone = layout === 'phone';
   const params = useRouteParams<{ section?: string }>();
-  const moduleSections = useMemo(() => youModuleSections(active), [active]);
+  // Upcoming only once a server is known to offer it (not a kid there): a link to it while
+  // that is still loading opens Stats.
+  const upcoming = useUpcomingAvailable() === true;
+  const moduleSections = useMemo(
+    () => youExtraSections(upcoming ? UPCOMING : null, youModuleSections(active)),
+    [active, upcoming],
+  );
   const moduleKeys = useMemo(() => [...moduleSections.keys()], [moduleSections]);
   const section = parseYouSection(params.section, moduleKeys);
   const ownSection = isCoreYouSection(section) ? section : null;

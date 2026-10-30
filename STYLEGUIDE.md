@@ -60,16 +60,17 @@ Desktop
 
 | Destination | Sub-nav sections | Routes |
 |---|---|---|
-| Home | none: greeting, Now card, This week, Continue listening, Next in your series, Listening in the house, Smart shelves, Recently added, Favourites, Recently finished | `#home` |
+| Home | none: greeting, Now card, This week, Continue listening, Next in your series, Coming up in your series, Listening in the house, Smart shelves, Recently added, Favourites, Recently finished | `#home` |
 | Library | Books · Authors · Series · Narrators · Collections · Folders | `#library`, `#series`, `#author`, `#book` |
 | Downloads | none (storage, rules, queue, ready offline) | `#downloads` |
-| You | Stats · Year in listening · Journal · Household | `/you?section=stats\|year\|journal\|household` (the Me tab's root) |
+| You | Stats · Year in listening · Journal · Household (· Upcoming while a server offers it) | `/you?section=stats\|year\|journal\|household\|upcoming` (the Me tab's root); `/upcoming` the same list as a pushed page |
 | Settings (gear) | none: a page pushed on the current tab (Back returns there), with its own grouped section nav | `/settings?section=preferences\|accounts\|<pane>`, `/account?connection=` |
 | Overlays | Full player and Finished rise over the current page | `#player`, `#finished` |
 | Standalone | Onboarding / first run; kids mode replaces the whole app | `#connect` |
 
 - Phone **Me** tab is a hub (`/you?section=`): a large title naming the section ("Your listening") and a
-  scrolling segmented control (Stats · Year · Journal · Settings · Household · Account). On tablet and desktop
+  scrolling segmented control (Stats · Year · Journal · Settings · Household · Account, then Upcoming while one of
+  the listener's servers offers upcoming releases and they are not a kid there). On tablet and desktop
   the same root is the top bar's **You**; its sub-nav offers Stats · Year in listening · Journal · Household
   (v2.5.1; Settings is the gear, Account the profile menu; an old link to either still renders).
   The Journal is a section of the hub (`/journal?tab=` still opens for older links).
@@ -606,6 +607,13 @@ library is ready."**: spines drop onto a plank one by one, with the counts and w
 - **Continue the series**: Home's "Next in your series" uses community series data, not folder order; each card
   says why ("After book 3, which you're 55% into"). Owned next books can be queued, kept ahead offline (Keep 0-3
   ahead) and auto-played; missing ones are ghosts with "Want to listen"; ones on a friend's server open there.
+- **Coming up in your series** (Track U2): preorders, new releases and missing volumes in the series the listener
+  holds, merged across servers, each a ghost cover (never the work's art) with "Book 6", its series line and one
+  date line at the metadata's own precision ("Out 12 Nov 2026", "Released Oct 2026", "First released 2014"), a
+  brand "New" badge for a week after the server first listed it, and the server's name when several are
+  connected. On Home it is a rail after Next in your series that is absent (no skeleton) until it has items; the
+  full list (`/upcoming`, the You hub's Upcoming) is three sections: Coming soon, Just released, Missing from your
+  series. A series page's ghost not out yet says "Out <date>" where it would say "Not in your library".
 - **Cross-server**: Home, Search and Library aggregate across servers; a small "Maya" flag marks a friend's book;
   search de-duplicates with "Also on Maya's Shelf"; content and accounts stay per server.
 - **Reliability shown, not promised**: sync state in the dock and full player; offline banner that never spins;

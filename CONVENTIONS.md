@@ -1129,6 +1129,31 @@ without its label). Never call `client.addBookmark` with a label directly. The s
 fixed-width UTC timestamps with milliseconds (so they compare as strings) and `[]` for an empty
 per-book list (the client still reads an older server's `null` as none).
 
+**Upcoming releases (Track U2; the wire is U1's, CROSS-REPO §8).** One flag, `upcoming` (false
+while community metadata or the server's job is off), and one read, `client.upcoming()` ->
+`GET /me/upcoming` (`UpcomingResponse {status, generated_at?, window_days, items}`, `items` never
+null), plus the additive `release_date?` on a `/meta` series work (`BookMetaSeriesWork`).
+`useUpcomingAll()` (`hooks.ts`) is ONE query per connection (`qk.upcoming(cid)`, 15 min stale)
+in `useApis()` order, and a connection is asked only when its server advertises the flag AND its
+user is not a kid (`isKidAccount`; the route answers a kid 403): every other connection has no
+query function (`skipToken`), so it is never asked, not even by a manual `refetch`. The pure
+rules are `src/lib/upcoming.ts`: `upcomingEligibility` (who may be asked, and `available`:
+true / false / undefined while a server's flags load; `useUpcomingAvailable` reads only that),
+`mergeUpcoming` (tags each item with its connection, keeps the FIRST connection's row of a work
+id, then `compareUpcoming`, the server's order across servers: preorders soonest first, releases
+newest first, then missing by series name and numeric position), `releaseIsFuture` (a date at
+its own precision against the UTC day: "2026" or "2026-10" is ahead only while the whole period
+is) and `isNewUpcoming` (`first_seen_at` within 7 days: the "New" badge). A failed server adds
+nothing; `statuses` carries each answered server's `ok|pending|stale`. Dates show through
+`formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "12 Nov 2026", read in UTC; any
+other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
+(the metadata's one date is a work's FIRST release), no line without a date. Surfaces
+(`src/components/upcoming/`): Home's rail, the `/upcoming` page (`upcomingHref`) and the You
+hub's Upcoming section (below). Every item is a `GhostCover`, never the work's `cover_url`: the
+server can't serve it (`meta_covers` proxies only covers a book's own `/meta` hands out) and the
+web player's CSP refuses another host. A tap opens `seriesHref(connectionId, local.library_id,
+{ name: local.series, work: work.id })`. Kids see none of it (no request, rail, section or list).
+
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived
 from **ONE whole-book POSITION** (`useBookPlace`'s `listening`, also Search's and the series
@@ -1964,7 +1989,7 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   Journal and Household (v2.5.1; Settings is the gear, Account the profile menu). Its sections are `StatsSection`,
   `YearSection`, `JournalScreen`, `SettingsContent`, `HouseholdPage` and `AccountSection` (the
   `SECTIONS` map): Stats, Year, Household and Account are plain columns the hub puts in a
-  `TabPageScroll` (below); the Journal and Settings scroll themselves. An active module's sections follow the hub's own (Slots, under Player modules). The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
+  `TabPageScroll` (below); the Journal and Settings scroll themselves. Upcoming (Track U2; `UpcomingContent`, `embedded` under the phone's title) and then an active module's sections follow the hub's own (`youExtraSections`; Slots, under Player modules): Upcoming only while `useUpcomingAvailable()` is true (a server offers it, not to a kid), else a link to it opens Stats. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
   "You" with a chart (`wideLabelKey`, `wideIcon`).
 - **Settings is a page of the array group** (`/settings?section=`, `settingsHref`), pushed on the
   current tab by the top bar's gear, the profile menu and the palette through `openSettings(section)`
@@ -2056,6 +2081,9 @@ colours `spine-colors.ts` (the cover's colour, else a cloth colour from the titl
 `src/lib/monogram.ts`). Then the entry list with each entry's one action (`entry-actions.tsx`:
 Resume chapter N, Play, `QueueButton`, Open on <server>, View on AudioSilo Meta), the "Keep ahead
 offline" card (the one `keepAhead` setting, only where the device can download) and the CC0 credit.
+A ghost carries its work's `release_date` (Track U2, `EntryFields.releaseDate`): while that is
+ahead (`ghostOutDate`, `releaseIsFuture`) the list line and the bookcase caption say "Out <date>"
+in place of "Not in your library"; once out, the date's year fills the ghost's `year`.
 Series mode cards (`series-card.tsx`) show a `MiniShelf` of the owned spines and fetch their books
 only once on screen, the cards on screen together in one request on `series_books`
 (`useSeriesBooks(..., { batch: true })`; the series page asks plainly and reuses the cache); Search reuses
@@ -2068,7 +2096,9 @@ aggregated over every signed-in server, each book keeping its own connection. Th
 loaded book, else the latest in progress (chapter scale, time left at the book's speed, a finish
 date from `user_stats` when there is enough listening, Who's who / Story so far opening the book
 page on that tab via `?tab=`); This week (`user_stats`) counts the streak in SERVER time; Next in
-your series uses `next_book` (a work without `local` is a ghost opening the series page); smart
+your series uses `next_book` (a work without `local` is a ghost opening the series page); Coming up
+in your series (`UpcomingRail`, Track U2) follows it: the first 12 of `useUpcomingAll`, nothing
+at all (no skeleton) while loading, empty or offered by no server, See all -> `/upcoming`; smart
 shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
 offline queue length without changing progress-sync (decision 7). Offline (v2.5.1 PLAYER-02)
 the Now card leads with the first in-progress book that plays here (`pickNowBook` +

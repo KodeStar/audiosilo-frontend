@@ -2001,7 +2001,9 @@
       "emptyAction": "Browse books",
       "errorTitle": "Couldn't load the series"
     },
-    "keepAhead": "Keep ahead offline"
+    "keepAhead": "Keep ahead offline",
+    "out": "Out {{date}}",
+    "ghostOutNote": "Out {{date}}. Not on your servers yet."
   },
   "people": {
     "author": "Author",
@@ -3042,6 +3044,38 @@
     "readalong": {
       "follow": "Follow narration",
       "back": "Back to narration"
+    }
+  },
+  "upcoming": {
+    "title": "Upcoming",
+    "rail": {
+      "title": "Coming up in your series",
+      "sub": "Preorders, new releases and gaps"
+    },
+    "sections": {
+      "preorder": "Coming soon",
+      "released": "Just released",
+      "missing": "Missing from your series"
+    },
+    "out": "Out {{date}}",
+    "released": "Released {{date}}",
+    "firstReleased": "First released {{date}}",
+    "seriesBook": "{{series}}, book {{position}}",
+    "new": "New",
+    "fromServer": "From {{server}}",
+    "pending": {
+      "title": "Checking for releases",
+      "hint": "Your server is checking for releases; this list fills after its first check."
+    },
+    "pendingSome": "{{server}} is still running its first check for releases.",
+    "stale": "{{server}} hasn't checked for releases in over two days, so this list may be out of date.",
+    "empty": {
+      "title": "Nothing coming up",
+      "hint": "Nothing coming up in the series you have."
+    },
+    "unavailable": {
+      "title": "No upcoming releases here",
+      "hint": "Your servers don't list upcoming releases."
     }
   }
 }

@@ -173,6 +173,7 @@ keep this index in step (one line per topic).
   - The bytes and the place together
   - Read-along
   - Following the narration in the player
+  - Upcoming releases
   - The module's surface
   - Remote moves vs the resume floor
   - The iOS engine is split into files

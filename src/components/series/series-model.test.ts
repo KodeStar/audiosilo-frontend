@@ -6,6 +6,7 @@ import {
   currentEntry,
   defaultSelection,
   type ElsewhereBook,
+  ghostOutDate,
   inSeries,
   localEntries,
   localGaps,
@@ -190,6 +191,38 @@ describe('railEntries', () => {
     const other = { ...maya, author: 'Somebody Else' };
     const entries = railEntries(view, [lw, cw], { ...src, elsewhere: [other] });
     expect(entries[2]).toMatchObject({ kind: 'ghost', title: "Abaddon's Gate" });
+  });
+
+  it('dates a ghost by its first release: "Out" while ahead, its year once out', () => {
+    const now = new Date('2026-10-30T12:00:00Z');
+    const dated = {
+      ...view,
+      works: [
+        work('lw', 'Leviathan Wakes', '1', lw),
+        { ...work('ag', "Abaddon's Gate", '2'), release_date: '2026-11-12' },
+        { ...work('cb', 'Cibola Burn', '3'), release_date: '2014-06' },
+        { ...work('ng', 'Nemesis Games', '4'), release_date: '2026' },
+        work('bb', 'Babylon', '5'),
+      ],
+    };
+    const entries = railEntries(dated, [lw], { ...src, now });
+    expect(entries.map((e) => [e.kind, e.releaseDate, e.year])).toEqual([
+      ['owned', undefined, undefined],
+      ['ghost', '2026-11-12', undefined],
+      ['ghost', '2014-06', '2014'],
+      // A bare year is out once that year has come.
+      ['ghost', '2026', '2026'],
+      ['ghost', undefined, undefined],
+    ]);
+    expect(entries.map((e) => ghostOutDate(e, now))).toEqual([
+      undefined,
+      '2026-11-12',
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    // The same ghost, read once its day has come, is out.
+    expect(ghostOutDate(entries[1], new Date('2026-11-12T00:00:00Z'))).toBeUndefined();
   });
 
   it('keeps a placed book from another library without its row', () => {

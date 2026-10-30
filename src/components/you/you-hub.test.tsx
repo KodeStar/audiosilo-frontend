@@ -68,6 +68,19 @@ jest.mock('@/components/account/account-section', () => {
   };
 });
 
+// Whether a server offers Upcoming to the listener (Track U2): `useUpcomingAvailable` has
+// its own suite; the section's body is the Upcoming page's (its own suite too).
+let mockUpcomingAvailable: boolean | undefined;
+jest.mock('@/api/hooks', () => ({ useUpcomingAvailable: () => mockUpcomingAvailable }));
+jest.mock('@/components/upcoming/upcoming-screen', () => {
+  const { Text } = jest.requireActual('react-native');
+  return {
+    UpcomingContent: ({ embedded }: { embedded?: boolean }) => (
+      <Text>{`upcoming-section embedded=${String(!!embedded)}`}</Text>
+    ),
+  };
+});
+
 // Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite; here a
 // module's flag is on when `mockModulesOn` says so.
 let mockModulesOn: Record<string, boolean> = {};
@@ -98,6 +111,7 @@ const mount = async (params: Record<string, string> = {}) => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockModulesOn = {};
+  mockUpcomingAvailable = false;
   mockLayout = 'phone';
   useSubNav.setState({ slots: {} });
 });
@@ -286,5 +300,46 @@ describe("YouHub with a module's section (Bridge Phase 2a)", () => {
     ]);
     expect(sections?.value).toBe('contribute');
     expect(screen.getByText('contribute-section phone=false')).toBeTruthy();
+  });
+});
+
+describe('YouHub Upcoming (Track U2)', () => {
+  const SIX = ['Stats', 'Year', 'Journal', 'Settings', 'Household', 'Account'];
+  const segments = () => screen.getAllByRole('radio').map((r) => r.props.accessibilityLabel);
+
+  it("follows the hub's own sections while a server offers it, under the large title", async () => {
+    mockUpcomingAvailable = true;
+    await mount({ section: 'upcoming' });
+    expect(segments()).toEqual([...SIX, 'Upcoming']);
+    expect(screen.getByLabelText('Upcoming')).toBeChecked();
+    expect(screen.getByText('upcoming-section embedded=true')).toBeTruthy();
+    expect(screen.getByTestId('you-hub-scroll')).toBeTruthy();
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'Upcoming' });
+  });
+
+  it('is in the wide sub-nav too, with its own heading', async () => {
+    mockUpcomingAvailable = true;
+    mockLayout = 'desktop';
+    await mount({ section: 'upcoming' });
+    const sections = useSubNav.getState().slots['(me)']?.sections;
+    expect(sections?.options.map((o) => o.label)).toEqual([
+      'Stats',
+      'Year in listening',
+      'Journal',
+      'Household',
+      'Upcoming',
+    ]);
+    expect(screen.getByText('upcoming-section embedded=false')).toBeTruthy();
+  });
+
+  it.each([
+    ['no server offers it, or the listener is a kid there', false],
+    ['the servers are still loading', undefined],
+  ])('is gone while %s, and a link to it opens Stats', async (_, available) => {
+    mockUpcomingAvailable = available;
+    await mount({ section: 'upcoming' });
+    expect(segments()).toEqual(SIX);
+    expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
+    expect(screen.queryByText(/upcoming-section/)).toBeNull();
   });
 });
