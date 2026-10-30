@@ -199,6 +199,17 @@ describe('useUpcomingAll', () => {
     expect(result.current.available).toBe(true);
   });
 
+  it('names unreadable and failed servers in their connection order', async () => {
+    const { result } = await mount(
+      [
+        { id: 'down', caps: 'fail' },
+        { id: 'broken', caps: { upcoming: true }, answer: 'fail' },
+      ],
+      useUpcomingAll,
+    );
+    await waitFor(() => expect(result.current.failed).toEqual(['Server down', 'Server broken']));
+  });
+
   it('passes each server status through, and a failed server adds nothing but its name', async () => {
     const { result } = await mount(
       [
