@@ -3101,7 +3101,7 @@
       "kid": "Les comptes enfants ne peuvent pas s'abonner à un calendrier.",
       "loadError": "Impossible de vérifier votre lien de calendrier sur {{server}}. Rien n'a changé.",
       "refused": "{{server}} a refusé. Votre lien de calendrier n'a pas changé.",
-      "failed": "Impossible de joindre {{server}}. Votre lien de calendrier n'a pas changé : réessayez dans un instant.",
+      "failed": "Impossible de joindre {{server}} : la modification n'a peut-être pas été prise en compte. Réessayez dans un instant.",
       "resetConfirm": {
         "title": "Réinitialiser le lien du calendrier ?",
         "message": "L'ancien lien cesse de fonctionner : un calendrier abonné à celui-ci n'est plus mis à jour tant que vous ne vous abonnez pas au nouveau."

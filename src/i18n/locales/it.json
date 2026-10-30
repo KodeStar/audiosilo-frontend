@@ -3101,7 +3101,7 @@
       "kid": "Gli account per bambini non possono iscriversi a un calendario.",
       "loadError": "Impossibile verificare il tuo link del calendario su {{server}}. Non è cambiato nulla.",
       "refused": "{{server}} ha rifiutato. Il tuo link del calendario è rimasto com'era.",
-      "failed": "Impossibile raggiungere {{server}}. Il tuo link del calendario è rimasto com'era: riprova tra un momento.",
+      "failed": "Impossibile raggiungere {{server}}, quindi la modifica potrebbe non essere andata a buon fine. Riprova tra un momento.",
       "resetConfirm": {
         "title": "Reimpostare il link del calendario?",
         "message": "Il vecchio link smette di funzionare: un calendario iscritto non si aggiorna più finché non ti iscrivi con quello nuovo."

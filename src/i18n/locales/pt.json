@@ -3101,7 +3101,7 @@
       "kid": "Contas infantis não podem assinar um calendário.",
       "loadError": "Não foi possível verificar o seu link do calendário em {{server}}. Nada mudou.",
       "refused": "{{server}} recusou. O seu link do calendário continua como estava.",
-      "failed": "Não foi possível contactar {{server}}. O seu link do calendário continua como estava: tente novamente daqui a pouco.",
+      "failed": "Não foi possível contactar {{server}}, por isso a alteração pode não ter sido aplicada. Tente novamente daqui a pouco.",
       "resetConfirm": {
         "title": "Redefinir o link do calendário?",
         "message": "O link antigo deixa de funcionar: um calendário assinado com ele deixa de se atualizar até assinar o novo."

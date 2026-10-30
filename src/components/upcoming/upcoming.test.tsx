@@ -33,8 +33,8 @@ jest.mock('@/api/hooks', () => ({
 }));
 // Each connection's client builds its cover URLs (`upcomingCoverUrl`).
 const mockClient = (cid: string) => ({
-  upcomingCoverUrl: (work: string, o?: { size?: number }) =>
-    `https://${cid}/api/v1/me/upcoming/cover?work=${work}&size=${o?.size}&token=t`,
+  upcomingCoverUrl: (work: string, o?: { size?: number; coverUrl?: string }) =>
+    `https://${cid}/api/v1/me/upcoming/cover?work=${work}&size=${o?.size}&src=${o?.coverUrl}&token=t`,
   authHeaders: () => ({ Authorization: 'Bearer t' }),
 });
 jest.mock('@/api/provider', () => ({
@@ -340,7 +340,7 @@ describe('the cover swap (Track U3)', () => {
     await render(<UpcomingContent />);
     const src = image()!.props.source;
     expect(src.uri).toMatch(
-      /^https:\/\/a\/api\/v1\/me\/upcoming\/cover\?work=c1&size=\d+&token=t$/,
+      /^https:\/\/a\/api\/v1\/me\/upcoming\/cover\?work=c1&size=\d+&src=https:\/\/meta\.example\/c1\.jpg&token=t$/,
     );
     expect(src.headers).toEqual({ Authorization: 'Bearer t' });
     // The ghost stays underneath (it shows while the image loads).

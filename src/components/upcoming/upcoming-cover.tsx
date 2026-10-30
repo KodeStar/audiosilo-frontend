@@ -24,7 +24,10 @@ export function UpcomingCover({ item, width }: { item: SourcedUpcomingItem; widt
   // The device never contacts the cover's host (the web player's CSP would refuse it anyway).
   const uri =
     covers === true && api && item.work.cover_url
-      ? api.upcomingCoverUrl(item.work.id, { size: coverSizeFor(width, PixelRatio.get()) ?? 640 })
+      ? api.upcomingCoverUrl(item.work.id, {
+          size: coverSizeFor(width, PixelRatio.get()) ?? 640,
+          coverUrl: item.work.cover_url,
+        })
       : null;
   // The URI that failed (not a flag), so a recycled tile's next item starts afresh.
   const [failed, setFailed] = useState<string | null>(null);

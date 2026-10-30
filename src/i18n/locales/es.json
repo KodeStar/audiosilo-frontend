@@ -3101,7 +3101,7 @@
       "kid": "Las cuentas infantiles no pueden suscribirse a un calendario.",
       "loadError": "No se pudo comprobar tu enlace de calendario en {{server}}. No ha cambiado nada.",
       "refused": "{{server}} lo ha rechazado. Tu enlace de calendario sigue igual.",
-      "failed": "No se pudo conectar con {{server}}. Tu enlace de calendario sigue igual: inténtalo de nuevo en un momento.",
+      "failed": "No se pudo conectar con {{server}}, así que puede que el cambio no se haya aplicado. Inténtalo de nuevo en un momento.",
       "resetConfirm": {
         "title": "¿Restablecer el enlace de calendario?",
         "message": "El enlace anterior deja de funcionar: un calendario suscrito a él deja de actualizarse hasta que te suscribas con el nuevo."

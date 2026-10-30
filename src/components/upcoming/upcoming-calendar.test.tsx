@@ -284,7 +284,7 @@ describe('UpcomingCalendarCard', () => {
     const buttons = screen.getAllByRole('button', { name: 'Turn off' });
     await fireEvent.press(buttons[buttons.length - 1]);
     expect(await screen.findByTestId('upcoming-calendar-error')).toHaveTextContent(
-      "Couldn't reach Server a. Your calendar link is as it was: try again in a moment.",
+      "Couldn't reach Server a, so the change may not have gone through. Try again in a moment.",
     );
     expect(screen.getByTestId('upcoming-calendar-url')).toBeTruthy();
     await expect(readCalendarLink('a')).resolves.not.toBeNull();

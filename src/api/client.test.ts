@@ -1912,6 +1912,18 @@ describe('ApiClient upcoming calendar and covers (Track U3)', () => {
       'https://h/api/v1/me/upcoming/cover?work=w1',
     );
   });
+
+  it('busts the cache by the cover_url: a changed one is a new URL, the same one stable', () => {
+    const url = (coverUrl: string) => c().upcomingCoverUrl('w1', { size: 320, coverUrl });
+    const first = url('https://meta.example/covers/a.jpg');
+    expect(first).toMatch(
+      /^https:\/\/h\/api\/v1\/me\/upcoming\/cover\?work=w1&size=320&v=[0-9a-f]{8}&token=tok$/,
+    );
+    expect(url('https://meta.example/covers/a.jpg')).toBe(first);
+    expect(url('https://meta.example/covers/b.jpg')).not.toBe(first);
+    // The cover's own address never rides in the URL, only its hash.
+    expect(first).not.toContain('meta.example');
+  });
 });
 
 describe('ApiClient household and cast (Phase 8)', () => {

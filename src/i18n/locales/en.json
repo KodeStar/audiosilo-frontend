@@ -3101,7 +3101,7 @@
       "kid": "Kids' accounts can't subscribe to a calendar.",
       "loadError": "Couldn't check your calendar link on {{server}}. Nothing changed.",
       "refused": "{{server}} refused that. Your calendar link is as it was.",
-      "failed": "Couldn't reach {{server}}. Your calendar link is as it was: try again in a moment.",
+      "failed": "Couldn't reach {{server}}, so the change may not have gone through. Try again in a moment.",
       "resetConfirm": {
         "title": "Reset calendar link?",
         "message": "The old link stops working: a calendar subscribed to it stops updating until you subscribe again with the new one."
