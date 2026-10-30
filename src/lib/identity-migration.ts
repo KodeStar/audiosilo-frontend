@@ -14,6 +14,7 @@ import { personName } from '@/lib/account';
 import { connectionOfKey, contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import { moveCalendarLink } from '@/lib/upcoming-calendar';
 import {
   CAR_BOOKMARKS_KEY,
   CAR_SNAPSHOT_WRITTEN_KEY,
@@ -322,12 +323,16 @@ function remapProfiles(plan: Plan, doc: unknown): unknown {
 
 // --- The run -------------------------------------------------------------------------------
 
-/** Delete each moved-from token no connection still uses, then the plan. Best effort. */
+/** Delete each moved-from token no connection still uses (and move its calendar link, a
+ * credential kept beside it, to the new id), then the plan. Best effort. */
 async function cleanUp(plan: Plan, liveIds: ReadonlySet<string>): Promise<void> {
   await Promise.all(
-    Object.keys(plan)
-      .filter((from) => !liveIds.has(from))
-      .map((from) => deleteSecure(tokenKey(from)).catch(() => undefined)),
+    Object.entries(plan)
+      .filter(([from]) => !liveIds.has(from))
+      .flatMap(([from, to]) => [
+        deleteSecure(tokenKey(from)).catch(() => undefined),
+        moveCalendarLink(from, to),
+      ]),
   );
   await AsyncStorage.removeItem(IDENTITY_PLAN_KEY).catch(() => undefined);
 }

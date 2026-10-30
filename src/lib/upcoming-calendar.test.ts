@@ -10,6 +10,7 @@ import {
   calendarRowState,
   canSubscribeWebcal,
   forgetCalendarLink,
+  moveCalendarLink,
   openWebcal,
   readCalendarLink,
   saveCalendarLink,
@@ -185,6 +186,22 @@ describe('the device copy', () => {
     await expect(readCalendarLink('s.2')).resolves.toBeNull();
     await forgetCalendarLink('s.1');
     await expect(readCalendarLink('s.1')).resolves.toBeNull();
+  });
+
+  it("moves to a connection's new id (the identity migration), keeping one already there", async () => {
+    const link = { url: `https://h${PATH}`, created_at: CREATED };
+    await saveCalendarLink('srv', link);
+    await moveCalendarLink('srv', 'srv.1');
+    await expect(readCalendarLink('srv')).resolves.toBeNull();
+    await expect(readCalendarLink('srv.1')).resolves.toEqual(link);
+    const newer = { url: 'https://h/newer', created_at: '2026-10-31T00:00:00Z' };
+    await saveCalendarLink('old', link);
+    await saveCalendarLink('old.1', newer);
+    await moveCalendarLink('old', 'old.1');
+    await expect(readCalendarLink('old')).resolves.toBeNull();
+    await expect(readCalendarLink('old.1')).resolves.toEqual(newer);
+    await forgetCalendarLink('srv.1');
+    await forgetCalendarLink('old.1');
   });
 
   it('reads anything it did not write as none', async () => {

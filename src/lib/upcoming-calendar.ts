@@ -52,6 +52,19 @@ export async function forgetCalendarLink(connectionId: string): Promise<void> {
   await deleteSecure(calendarLinkKey(connectionId)).catch(() => undefined);
 }
 
+/** Move this device's copy of a connection's calendar link to the id the connection moved
+ * to (the identity migration), keeping one already there. Best-effort, never rejects: the
+ * old key never outlives the move (a copy lost on the way, the row offers Reset). */
+export async function moveCalendarLink(from: string, to: string): Promise<void> {
+  try {
+    const link = await readCalendarLink(from);
+    if (link && !(await readCalendarLink(to))) await saveCalendarLink(to, link);
+  } catch {
+    // Not kept under the new id.
+  }
+  await forgetCalendarLink(from);
+}
+
 /**
  * The full calendar link: the server's `path` on the address a calendar app should fetch
  * it from. That is the server's away address (capability `addresses`: the public one that

@@ -1180,18 +1180,23 @@ it on the server's away address when it has one, else the address in use (a cale
 from anywhere). **The full URL is a credential**: this device keeps its copy per connection in the
 secure store (`calendarLinkKey`, `{url, created_at}` JSON; the keychain/keystore, localStorage on
 the web, like the session token), never AsyncStorage or the startup cache (its query,
-`qk.upcomingCalendarLink`, reads the secure store and is not a startup query). It is forgotten with
-the connection (`removeConnection`, a retired stale identity and the auth reset, in
-`src/stores/session.ts`: so it goes on sign-out even if Upcoming never mounted), on Turn off, and
-replaced on Reset (the mutation stores it before it resolves; a failed storage write still shows it
-for the session). The card (`UpcomingCalendarCard`, under the Upcoming page's list while
+`qk.upcomingCalendarLink`, reads the secure store and is not a startup query; it is `meta.local`, so
+the provider takes its success as saying nothing about the server: no reconnect flag cleared, no
+reachability check). It is forgotten with the connection (`removeConnection`, a retired stale identity
+and the auth reset, in `src/stores/session.ts`: so it goes on sign-out even if Upcoming never
+mounted; and `onConnectionRemoved`, after the list changes, with a mint that lands after its
+connection signed out forgotten rather than kept), moved by the identity migration
+(`moveCalendarLink`), forgotten on Turn off, and replaced on Reset (the mutation stores it before it
+resolves; a failed storage write still shows it for the session). The card (`UpcomingCalendarCard`, under the Upcoming page's list while
 `available`) has one row per connection from `calendarConnections` (flag on, not a kid: a kid is
 never asked; a demo account's row explains and asks nothing) in states from `calendarRowState`:
 loading, error (Retry), none ("Get calendar link"), shown (the URL, Copy everywhere, Subscribe as
 `webcal://` only where `canSubscribeWebcal`: the iOS app and a browser on an Apple device; Reset and
 Turn off, each confirmed), elsewhere (active, no copy here: "Reset it to see it here"). A copy whose
 `created_at` is not the server's, or of an inactive link, is stale and forgotten, but never while the
-row's own mint or delete is pending (status and copy are set one after the other).
+row's own mint or delete is pending. A write sets the copy and the status in one step, after
+cancelling any read of either in flight (sent before the write, its answer would land over it and the
+row would forget the new copy).
 
 **Spoiler gating by listening progress** (`src/components/library/meta-gating.ts`,
 all pure + tested). The listener's position is a 1-based chapter NUMBER derived

@@ -114,6 +114,8 @@ function CalendarRow({
   };
   const confirm = () => {
     const what = asking;
+    // Nothing asked (a second press on a dialog already closing): never a mint by default.
+    if (!what) return;
     setAsking(null);
     void run(() => (what === 'off' ? off.mutateAsync(undefined) : mint.mutateAsync(undefined)));
   };
@@ -126,7 +128,9 @@ function CalendarRow({
       </Text>
     );
   } else if (state.kind === 'loading') {
-    body = <Skeleton testID="upcoming-calendar-loading" className="h-[38px] w-48 rounded-lg" />;
+    body = (
+      <Skeleton testID="upcoming-calendar-loading" className="h-[38px] w-48 rounded-control" />
+    );
   } else if (state.kind === 'error') {
     body = (
       <View className="gap-2">
@@ -162,7 +166,7 @@ function CalendarRow({
             <Text
               selectable
               variant="mono"
-              className="rounded-control bg-muted px-3 py-2.5 text-xs"
+              className="rounded-control bg-muted px-3 py-2.5"
               numberOfLines={3}
               testID="upcoming-calendar-url"
             >

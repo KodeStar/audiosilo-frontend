@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PixelRatio, Platform, View } from 'react-native';
+import { PixelRatio, View } from 'react-native';
 
 import { useCapability } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
@@ -45,7 +45,7 @@ export function UpcomingCover({ item, width }: { item: SourcedUpcomingItem; widt
         className="absolute inset-0 overflow-hidden rounded-cover"
       >
         <CoverImage
-          source={Platform.OS === 'web' ? uri : { uri, headers: api?.authHeaders() }}
+          source={{ uri, headers: api?.authHeaders() }}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
           transition={150}

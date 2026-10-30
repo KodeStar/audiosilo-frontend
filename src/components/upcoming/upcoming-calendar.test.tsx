@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { Linking, Platform } from 'react-native';
 
 import { ApiError } from '@/api/client';
@@ -36,7 +36,7 @@ const mockCopy = jest.fn<Promise<boolean>, [string]>();
 jest.mock('@/lib/clipboard', () => ({ copyText: (s: string) => mockCopy(s) }));
 
 /* eslint-disable import/first */
-import { readCalendarLink, saveCalendarLink } from '@/lib/upcoming-calendar';
+import { forgetCalendarLink, readCalendarLink, saveCalendarLink } from '@/lib/upcoming-calendar';
 import { useSession } from '@/stores/session';
 
 import { UpcomingCalendarCard } from './upcoming-calendar';
@@ -118,8 +118,10 @@ beforeEach(() => {
   mockCopy.mockReset().mockResolvedValue(true);
 });
 
-afterEach(() => {
+afterEach(async () => {
   for (const qc of queryClients.splice(0)) qc.clear();
+  // The secure store outlives a test: no copy a test kept reaches the next one.
+  await Promise.all(Object.keys(mockClients).map((id) => forgetCalendarLink(id)));
   for (const id of Object.keys(mockClients)) delete mockClients[id];
   mockConnections = [];
   useSession.setState({ connections: [] });
@@ -232,6 +234,45 @@ describe('UpcomingCalendarCard', () => {
     await fireEvent.press(buttons[buttons.length - 1]);
     expect(await screen.findByRole('button', { name: 'Get calendar link' })).toBeTruthy();
     expect(mockClients.a.deleteUpcomingCalendar).toHaveBeenCalledTimes(1);
+    await expect(readCalendarLink('a')).resolves.toBeNull();
+  });
+
+  it('keeps a new link over a status read sent before the Reset', async () => {
+    const OLD = '2026-10-01T00:00:00Z';
+    await saveCalendarLink('a', { url: 'https://a/old', created_at: OLD });
+    await mount([{ id: 'a', status: { active: true, created_at: OLD } }]);
+    expect(await screen.findByTestId('upcoming-calendar-url')).toHaveTextContent('https://a/old');
+    // A read of the status in flight (a reconnect's), answered only after the Reset.
+    let answer!: (s: UpcomingCalendarStatus) => void;
+    mockClients.a.upcomingCalendar.mockImplementation(
+      () => new Promise<UpcomingCalendarStatus>((resolve) => (answer = resolve)),
+    );
+    void queryClients[0].invalidateQueries({ queryKey: ['upcomingCalendar', 'a'] });
+    await waitFor(() => expect(mockClients.a.upcomingCalendar).toHaveBeenCalledTimes(2));
+    await fireEvent.press(screen.getByRole('button', { name: 'Reset link' }));
+    const buttons = screen.getAllByRole('button', { name: 'Reset link' });
+    await fireEvent.press(buttons[buttons.length - 1]);
+    expect(await screen.findByTestId('upcoming-calendar-url')).toHaveTextContent(
+      `https://a${PATH}`,
+    );
+    await act(async () => answer({ active: true, created_at: OLD }));
+    expect(screen.getByTestId('upcoming-calendar-url')).toHaveTextContent(`https://a${PATH}`);
+    await expect(readCalendarLink('a')).resolves.toEqual({
+      url: `https://a${PATH}`,
+      created_at: CREATED,
+    });
+  });
+
+  it('forgets a link whose mint lands after the connection signed out', async () => {
+    await mount([{ id: 'a' }]);
+    let minted!: (link: { path: string; created_at: string }) => void;
+    mockClients.a.mintUpcomingCalendar.mockImplementation(
+      () => new Promise((resolve) => (minted = resolve)),
+    );
+    await fireEvent.press(await screen.findByRole('button', { name: 'Get calendar link' }));
+    await act(async () => useSession.setState({ connections: [] }));
+    await act(async () => minted({ path: PATH, created_at: CREATED }));
+    await waitFor(() => expect(queryClients[0].isMutating()).toBe(0));
     await expect(readCalendarLink('a')).resolves.toBeNull();
   });
 
