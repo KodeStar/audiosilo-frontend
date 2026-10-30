@@ -825,9 +825,11 @@ reader follows the narration in the book with it.
   failure while the connection needs signing in again: the sign-in state), `denied` (403),
   `missing` (404 without the code) each with their own words and no Try again; none offers Make
   (a needless multi-hour job). A downloaded EPUB is the book its reader shows, so a server map
-  made from another ebook (`ebookSha256`, `useDownloadedEbookSha`) is never used: the
-  download's copy stands in, else `ebookChanged` ("download the book again", fe#193). A server
-  map waiting for the connection (`paused`, no copy here) is `offline`: neither pending nor
+  made from another ebook (`ebookSha256`, `useDownloadedEbookSha`; with no sha kept, a server
+  ebook of another size than the one downloaded, `useDownloadedEbookSize`, as the refresh takes
+  it) is never used: the download's copy stands in, else `ebookChanged` ("download the book
+  again", fe#193). A server map waiting for the connection (`paused`, no copy here) is
+  `offline` (a map already shown stays meanwhile): neither pending nor
   failed, and the Text tab hides for everyone, an admin too (no spinner, no Make). While another copy of the
   map shown is on its way (the download took it, it was made again), the one shown stays (not
   `pending`): a tab or a reader with a map never loses it in between.

@@ -1129,6 +1129,22 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
   });
 
+  it("asks for the map once the server's flag is known, though it was not when the download began", async () => {
+    // A download resumed at launch: the server's answer lands while the audio transfers.
+    mockGetQueryData.mockImplementation(() => undefined);
+    mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => {
+      if (name !== 'cover.jpg') serves(true);
+      return `live:c1:2:A/Book:${name}`;
+    });
+    mockFetchReadalong.mockResolvedValue(keptMap('g1'));
+    useDownloads
+      .getState()
+      .download('c1', 2, withEbook({ readalong: { state: 'ready', generated_at: 'g1' } }));
+    await settle();
+    expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { signal: expect.any(AbortSignal) });
+    expect(entry()?.manifest.readalongGeneratedAt).toBe('g1');
+  });
+
   it("counts the map's bytes in the download's size and keeps the ebook's sha (fe#193)", async () => {
     serves(true);
     mockFetchReadalong.mockResolvedValue(keptMap('g1', 'sha-1', 300));

@@ -8,6 +8,7 @@ import { fitsEbook } from '@/downloads/readalong-file';
 import {
   readDownloadedReadalong,
   useDownloadedEbookSha,
+  useDownloadedEbookSize,
   useDownloadedReadalong,
 } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
@@ -112,6 +113,7 @@ export function useBookReadalong(
   const serves = useCapability('readalong', connectionId);
   const kept = useDownloadedReadalong(connectionId, libraryId, path);
   const ebookSha = useDownloadedEbookSha(connectionId, libraryId, path);
+  const savedEbookSize = useDownloadedEbookSize(connectionId, libraryId, path);
   const wanted = enabled ? readalongSource({ serves, book, readable, kept }) : null;
   const generatedAt = book?.readalong?.generated_at ?? '';
   // The server's map: when it is the source, or the copy could not be read (`fallback`,
@@ -123,8 +125,15 @@ export function useBookReadalong(
     { enabled: wanted === 'server' || fallback, generatedAt },
     connectionId,
   );
-  // The server's map was made from another ebook than the download's `book.epub`.
-  const foreign = !!ebookSha && server.data !== undefined && !fitsEbook(server.data, ebookSha);
+  // The server's map was made from another ebook than the download's `book.epub`: by the
+  // sha the download kept, else (no map ever kept) by the server's ebook having another size
+  // than the one downloaded, as the background refresh takes it (`refreshReadalong`).
+  const serverSize = book?.ebook?.size;
+  const foreign =
+    server.data !== undefined &&
+    (ebookSha
+      ? !fitsEbook(server.data, ebookSha)
+      : savedEbookSize !== undefined && serverSize !== undefined && serverSize !== savedEbookSize);
   const local = useQuery({
     queryKey: qk.readalongLocal(connectionId, libraryId, path, kept ?? ''),
     queryFn: () => readDownloadedReadalong({ connectionId, libraryId, path }),
@@ -170,18 +179,20 @@ export function useBookReadalong(
   // The server's map held back by the connection (TanStack's `paused`), with no copy here.
   const offline = source === 'server' && data === undefined && server.fetchStatus === 'paused';
   const pending = source !== null && data === undefined && !errored && !offline;
-  // The map last shown for this book, kept while it has one or another is on its way (set
-  // while rendering, React's pattern for state that follows a prop).
+  // The map last shown for this book, kept while it has one or another is on its way, or
+  // waits for the connection (set while rendering, React's pattern for state that follows a
+  // prop).
+  const waiting = pending || offline;
   const bookKey = contentKey(connectionId, libraryId, path);
   const [last, setLast] = useState<{ book: string; map: ReaderReadalongMap } | null>(null);
   if (map && (last?.map !== map || last.book !== bookKey)) setLast({ book: bookKey, map });
-  else if (!map && !pending && last) setLast(null);
-  const held = !map && pending && last?.book === bookKey ? last.map : null;
+  else if (!map && !waiting && last) setLast(null);
+  const held = !map && waiting && last?.book === bookKey ? last.map : null;
   return {
     map: held ?? map,
     pending: !held && pending,
     failure: map ? null : failure,
-    offline: !map && offline,
+    offline: !map && !held && offline,
     retry,
   };
 }

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
 
 import { useCapability, useLibrariesAll } from '@/api/hooks';
+import { ConnectionScope } from '@/api/provider';
 import type { Book } from '@/api/types';
 import { CastButton } from '@/cast/cast-button';
 import {
@@ -17,7 +18,6 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { openUpNext } from '@/components/upnext/up-next-store';
 import { useUpNextBadge } from '@/components/upnext/use-up-next';
-import { ConnectionScope } from '@/api/provider';
 import { formatCount, formatSpeed } from '@/lib/format';
 import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';

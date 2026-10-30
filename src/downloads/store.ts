@@ -1230,8 +1230,11 @@ async function runOne(key: string) {
       ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
     // The book's read-along map (Bridge Phase 3c), beside the EPUB it follows: optional too.
+    // The capability as it is now, not as it was before the audio (a download resumed at
+    // launch can start before the server's answer is cached).
     let readalong: KeptReadalong | undefined;
-    if (wantsReadalong(serves, entry.manifest.book, ebookUri)) {
+    const servesNow = cachedCapability(connectionId, 'readalong');
+    if (wantsReadalong(servesNow, entry.manifest.book, ebookUri)) {
       readalong = await fetchReadalongFile(
         api,
         { connectionId, libraryId, path },
@@ -1415,6 +1418,21 @@ export function useDownloadedEbookSha(
   return useDownloads((s) => {
     const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
     return (m?.ebookUri && m.ebookSha256) || undefined;
+  });
+}
+
+/** The server's size of the EPUB a finished download of the book holds, as its book said
+ * when it was saved (`manifest.book.ebook.size`), else undefined (no EPUB downloaded). With
+ * no `ebookSha256` known, a server ebook of another size is another ebook (fe#193), as
+ * `refreshReadalong` takes it. */
+export function useDownloadedEbookSize(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): number | undefined {
+  return useDownloads((s) => {
+    const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
+    return m?.ebookUri ? m.book.ebook?.size : undefined;
   });
 }
 
