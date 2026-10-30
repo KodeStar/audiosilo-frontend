@@ -339,6 +339,27 @@ describe('progress-row books', () => {
     expect(keptBooks().data).toEqual([expect.objectContaining({ title: 'Leviathan Wakes' })]);
   });
 
+  it('gives no place to a row with no book (an episode), so a book keeps its title', () => {
+    const qc = newClient();
+    const episodes = Array.from({ length: 15 }, (_, i) =>
+      row(`pod/${i}`, `2026-10-2${i % 10}`, true),
+    );
+    qc.setQueryData(['progress', 'all', C], [...episodes, row('a/3', '2026-10-01', true)]);
+    qc.setQueryData(['item', C, 1, 'a/3'], item('a/3', 'Finished'));
+    save(qc);
+    expect(keptBooks().data).toEqual([expect.objectContaining({ title: 'Finished' })]);
+  });
+
+  it('keeps a title this visit saved after its /item left the cache', () => {
+    const qc = newClient();
+    qc.setQueryData(['progress', 'all', C], [row('a/2', '2026-10-03')]);
+    qc.setQueryData(['item', C, 1, 'a/2'], item('a/2', "Caliban's War"));
+    save(qc);
+    qc.removeQueries({ queryKey: ['item', C, 1, 'a/2'], exact: true });
+    save(qc);
+    expect(keptBooks().data).toEqual([expect.objectContaining({ title: "Caliban's War" })]);
+  });
+
   it('restores them for the next visit, which keeps them while its /item is unasked', () => {
     const first = newClient();
     first.setQueryData(['progress', 'all', C], [row('a/2', '2026-10-03')]);

@@ -98,10 +98,10 @@ can never log anyone out (`{ authReset, cacheReset }`):
   `buildId`; the entry does not name `__common`), so each deploy installs a new one: Chrome
   keeps the compiled code of scripts a worker caches while installing, which is most of a warm
   start's speed. The build's hashed files (`_expo/static/`) are served cache-first and never
-  rewritten. Every non-GET request is routed around the worker at install (`addRoutes`, the
-  Static Routing API; elsewhere the fetch handler's early return): in Chrome a keepalive POST
-  sent as a controlled page goes away (the listening span on pagehide) went to the worker
-  first and its network fallback died with the page (v2.5.1 PLAYER-14).
+  rewritten. Every POST, PUT, PATCH and DELETE is routed around the worker at install
+  (`addRoutes`, the Static Routing API; elsewhere the fetch handler's early return): in Chrome
+  a keepalive POST sent as a controlled page goes away (the listening span on pagehide) went
+  to the worker first and its network fallback died with the page (v2.5.1 PLAYER-14).
 - **Web start scripts compiled off the main thread** (`scripts/web-start-chunks.cjs`, wrapped
   around Expo's serializer in `metro.config.js`; web export only, never the dev server, native
   or an export with source maps): every web script starts with V8's compile hint

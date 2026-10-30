@@ -138,10 +138,13 @@ export function snapshot(
       out.push({ key, data: data.pages[0], updatedAt, firstPage: true });
   }
   // Last: the document keeps entries in order while they fit, and the lists come first.
+  // Also put in the cache, the copy the next save falls back to: a book whose `/item` the cache
+  // swept since (no row observing it) keeps its title, and `listedBook` finds it this visit.
   for (const { cid, rows } of progressLists) {
     const books = progressBooks(client, cid, rows);
-    if (books.length > 0)
-      out.push({ key: [PROGRESS_BOOKS, cid], data: books, updatedAt: Date.now() });
+    if (books.length === 0) continue;
+    client.setQueryData([PROGRESS_BOOKS, cid], books);
+    out.push({ key: [PROGRESS_BOOKS, cid], data: books, updatedAt: Date.now() });
   }
   return out;
 }
@@ -162,23 +165,30 @@ function progressBooks(client: QueryClient, cid: string, rows: unknown[]): unkno
         isRecord(r) && typeof r.library_id === 'number' && typeof r.path === 'string',
     )
     .sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
-  const progress = [
-    // Home's own rule (`splitProgress`): started and not finished.
-    ...newest
-      .filter((r) => isInProgress({ finished: r.finished === true, position: Number(r.position) }))
-      .slice(0, IN_PROGRESS_MAX),
-    ...newest.filter((r) => r.finished === true).slice(0, FINISHED_MAX),
-  ];
-  const out: unknown[] = [];
-  for (const r of progress) {
-    const item = client.getQueryData(['item', cid, r.library_id, r.path]);
-    const book = isRecord(item) && item.title ? item : kept.get(bookKey(r.library_id, r.path));
-    if (!book) continue; // kept copies are titled: only titled books are written
-    out.push(
-      Object.fromEntries(BOOK_FIELDS.filter((f) => book[f] !== undefined).map((f) => [f, book[f]])),
-    );
-  }
-  return out;
+  const pick = (finished: boolean, max: number): unknown[] => {
+    const out: unknown[] = [];
+    for (const r of newest) {
+      if (out.length >= max) break;
+      // Home's own rule (`splitProgress`): started and not finished, or finished.
+      const inProgress = isInProgress({
+        finished: r.finished === true,
+        position: Number(r.position),
+      });
+      if (finished ? r.finished !== true : !inProgress) continue;
+      const item = client.getQueryData(['item', cid, r.library_id, r.path]);
+      const book = isRecord(item) && item.title ? item : kept.get(bookKey(r.library_id, r.path));
+      // Kept copies are titled: only titled books are written. A row with none (an episode,
+      // a row never drawn) takes no place, so it never costs a book its title.
+      if (!book) continue;
+      out.push(
+        Object.fromEntries(
+          BOOK_FIELDS.filter((f) => book[f] !== undefined).map((f) => [f, book[f]]),
+        ),
+      );
+    }
+    return out;
+  };
+  return [...pick(false, IN_PROGRESS_MAX), ...pick(true, FINISHED_MAX)];
 }
 
 /** Write `entries` as the document (best-effort): each while the document stays under
@@ -336,6 +346,8 @@ export function startSaving(
   const unsubscribe = client.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success') return;
     const key = event.query.queryKey;
+    // The kept progress-row books are set by the save itself: never a reason to save again.
+    if (key[0] === PROGRESS_BOOKS) return;
     if (!isStartupQuery(key) && !(key[0] === 'item' && onProgressRow(client, key))) return;
     dirty = true;
     if (timer) clearTimeout(timer);
