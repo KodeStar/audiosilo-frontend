@@ -2967,6 +2967,27 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
   });
 });
 
+/** A 200 whose body the test feeds, failing when the request is aborted, as a real
+ * download's body does; `announced` is its Content-Length. */
+function installDownload(announced?: number) {
+  let feed!: ReadableStreamDefaultController<Uint8Array>;
+  globalThis.fetch = jest.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = new ReadableStream<Uint8Array>({ start: (c) => void (feed = c) });
+    init?.signal?.addEventListener('abort', () =>
+      feed.error(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+    );
+    const headers = new Headers(
+      announced === undefined ? {} : { 'Content-Length': String(announced) },
+    );
+    return Promise.resolve({ ok: true, status: 200, headers, body } as unknown as Response);
+  }) as unknown as typeof globalThis.fetch;
+  return {
+    piece: (...bytes: number[]) => feed.enqueue(new Uint8Array(bytes)),
+    text: (text: string) => feed.enqueue(new TextEncoder().encode(text)),
+    end: () => feed.close(),
+  };
+}
+
 describe('reading (capability ebooks, Bridge Phase 3b)', () => {
   const client = () => new ApiClient('https://h', 'tok');
   const call = (m: jest.Mock) => {
@@ -3007,26 +3028,6 @@ describe('reading (capability ebooks, Bridge Phase 3b)', () => {
     installFetch(() => ({ status: 404, body: { error: 'no ebook' } }));
     await expect(client().ebook(1, 'Author/Book')).rejects.toMatchObject({ status: 404 });
   });
-
-  /** A 200 whose body the test feeds, failing when the request is aborted, as a real
-   * download's body does; `announced` is its Content-Length. */
-  function installDownload(announced?: number) {
-    let feed!: ReadableStreamDefaultController<Uint8Array>;
-    globalThis.fetch = jest.fn((_input: RequestInfo | URL, init?: RequestInit) => {
-      const body = new ReadableStream<Uint8Array>({ start: (c) => void (feed = c) });
-      init?.signal?.addEventListener('abort', () =>
-        feed.error(Object.assign(new Error('aborted'), { name: 'AbortError' })),
-      );
-      const headers = new Headers(
-        announced === undefined ? {} : { 'Content-Length': String(announced) },
-      );
-      return Promise.resolve({ ok: true, status: 200, headers, body } as unknown as Response);
-    }) as unknown as typeof globalThis.fetch;
-    return {
-      piece: (...bytes: number[]) => feed.enqueue(new Uint8Array(bytes)),
-      end: () => feed.close(),
-    };
-  }
 
   it('lets a slow ebook download run past the timeout while it keeps arriving', async () => {
     jest.useFakeTimers();
@@ -3191,23 +3192,6 @@ describe('read-along (capability readalong, Bridge Phase 3c)', () => {
     expect(apiErrorKind(stale)).toBe('readalong_stale');
   });
 
-  /** A 200 whose JSON body the test feeds in pieces, failing on an abort as a real
-   * download's body does. */
-  function installMapDownload() {
-    let feed!: ReadableStreamDefaultController<Uint8Array>;
-    globalThis.fetch = jest.fn((_input: RequestInfo | URL, init?: RequestInit) => {
-      const body = new ReadableStream<Uint8Array>({ start: (c) => void (feed = c) });
-      init?.signal?.addEventListener('abort', () =>
-        feed.error(Object.assign(new Error('aborted'), { name: 'AbortError' })),
-      );
-      return Promise.resolve({ ok: true, status: 200, headers: new Headers(), body } as Response);
-    }) as unknown as typeof globalThis.fetch;
-    return {
-      piece: (text: string) => feed.enqueue(new TextEncoder().encode(text)),
-      end: () => feed.close(),
-    };
-  }
-
   describe('on the web, where the answer streams (fe#193)', () => {
     const was = Platform.OS;
     // Made before the switch: a web client reads the page's origin, which jest has none of.
@@ -3223,22 +3207,22 @@ describe('read-along (capability readalong, Bridge Phase 3c)', () => {
     });
 
     it('lets a long map on a slow link run past the timeout while it keeps arriving', async () => {
-      const download = installMapDownload();
+      const download = installDownload();
       const got = api.readalong(1, 'Author/Book');
       const text = JSON.stringify(map);
       const third = Math.ceil(text.length / 3);
       for (let i = 0; i < 3; i++) {
         await jest.advanceTimersByTimeAsync(50_000);
-        download.piece(text.slice(i * third, (i + 1) * third));
+        download.text(text.slice(i * third, (i + 1) * third));
       }
       download.end();
       expect((await got).generated_at).toBe('2026-11-02T10:11:12Z');
     });
 
     it('fails a map that stalls as a timeout', async () => {
-      const download = installMapDownload();
+      const download = installDownload();
       const got = api.readalong(1, 'Author/Book').catch((e: unknown) => e);
-      download.piece('{"format":');
+      download.text('{"format":');
       await jest.advanceTimersByTimeAsync(60_000);
       expect(await got).toMatchObject({ name: 'TimeoutError', timeoutMs: 60_000 });
     });

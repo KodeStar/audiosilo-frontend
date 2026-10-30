@@ -25,7 +25,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { canRead } from './can-read';
 import { hasLocalEbook } from './ebook-file';
 import { useNarration } from './narration';
-import { FOLLOW_PILL_ROOM, FollowPill, PageEdges, turnPage, usePageEdges } from './page-edge';
+import { FollowPill, followPillRoom, PageEdges, turnPage, usePageEdges } from './page-edge';
 import type { ReaderPlace, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
@@ -464,11 +464,7 @@ export function ReaderScreen({
         <View className="relative flex-1" onLayout={edges.onLayout}>
           {ready && !shown ? (
             // The page ends above the follow pill while it shows (fe#192).
-            <View
-              testID="reader-page"
-              className="flex-1"
-              style={followLabel ? { paddingBottom: FOLLOW_PILL_ROOM } : undefined}
-            >
+            <View testID="reader-page" className="flex-1" style={followPillRoom(!!followLabel)}>
               <ReaderHost
                 key={attempt}
                 ref={host}

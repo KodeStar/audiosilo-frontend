@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 
-import { ApiError, apiErrorKind } from '@/api/client';
+import { ApiError, apiErrorKind, isSignedOutError } from '@/api/client';
 import { CapabilityError, qk, useCapability, useReadalong } from '@/api/hooks';
 import type { Book } from '@/api/types';
 import { fitsEbook } from '@/downloads/readalong-file';
@@ -84,8 +84,8 @@ export function readalongNone(error: unknown): boolean {
 /** What a failed map read says (see {@link ReadalongFailure}); null for the server's none. */
 export function readalongFailure(error: unknown): ReadalongFailure | null {
   if (readalongNone(error)) return null;
+  if (isSignedOutError(error)) return 'signedOut';
   if (error instanceof ApiError) {
-    if (error.status === 401) return 'signedOut';
     if (error.status === 403) return 'denied';
     if (error.status === 404) return 'missing';
   }

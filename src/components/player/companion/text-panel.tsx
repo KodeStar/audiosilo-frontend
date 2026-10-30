@@ -11,7 +11,7 @@ import { contentKeyOf } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useNarration } from '@/reader/narration';
-import { FOLLOW_PILL_ROOM, FollowPill, PageEdges, usePageEdges } from '@/reader/page-edge';
+import { FollowPill, followPillRoom, PageEdges, usePageEdges } from '@/reader/page-edge';
 import type { ReadalongState } from '@/reader/protocol';
 import { cfiAt, type ReaderReadalongMap } from '@/reader/readalong-map';
 import { ReaderHost } from '@/reader/reader-host';
@@ -123,11 +123,7 @@ function MapFailure({
     );
   }
   const [title, hint] = MAP_FAILURE_TEXT[failure];
-  return (
-    <View testID={`companion-text-${failure}`} className="py-4">
-      <EmptyState icon="circle-exclamation" title={t(title)} hint={t(hint)} />
-    </View>
-  );
+  return <TextFailed testID={`companion-text-${failure}`} title={t(title)} hint={t(hint)} />;
 }
 
 /** The words for a map failure Try again can't mend. */
@@ -155,24 +151,26 @@ function TextEmpty({
   );
 }
 
-/** The Text tab's "couldn't load", with Try again. */
+/** The Text tab's "couldn't load" (or `title`), with Try again where `onRetry` is given. */
 function TextFailed({
   testID,
+  title,
   hint,
   onRetry,
 }: {
   testID: string;
+  title?: string;
   hint: string;
-  onRetry: () => void;
+  onRetry?: () => void;
 }) {
   const { t } = useTranslation();
   return (
     <View testID={testID} className="py-4">
       <EmptyState
         icon="circle-exclamation"
-        title={t('player.companion.textFailedTitle')}
+        title={title ?? t('player.companion.textFailedTitle')}
         hint={hint}
-        action={{ label: t('reader.tryAgain'), onPress: onRetry }}
+        action={onRetry ? { label: t('reader.tryAgain'), onPress: onRetry } : undefined}
       />
     </View>
   );
@@ -305,11 +303,7 @@ function ReadAlong({
     >
       {fontScale !== null ? (
         // The page ends above the Back to narration pill while it shows (fe#192).
-        <View
-          testID="companion-text-page"
-          className="flex-1"
-          style={pill ? { paddingBottom: FOLLOW_PILL_ROOM } : undefined}
-        >
+        <View testID="companion-text-page" className="flex-1" style={followPillRoom(pill)}>
           <ReaderHost
             key={attempt}
             ref={host}

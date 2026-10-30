@@ -1214,14 +1214,22 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     // Each test's download is its own (`savedAt`): the refresh tries a map once per download
     // and launch, and this module's launch lasts the whole file.
     let saves = 0;
-    const kept = (generatedAt = 'g1') => {
-      const e = downloadedEntry();
+    /** A download keeping the map `generatedAt`, with `patch` (its manifest's fields merged). */
+    const kept = (
+      generatedAt = 'g1',
+      patch: Partial<Omit<DownloadEntry, 'manifest'>> & {
+        manifest?: Partial<DownloadManifest>;
+      } = {},
+    ) => {
+      const { manifest, ...fields } = patch;
+      const e = { ...downloadedEntry(), ...fields };
       e.manifest = {
         ...e.manifest,
         book: { ...e.manifest.book, readalong: { state: 'ready', generated_at: generatedAt } },
         ebookUri: 'live:book.epub',
         readalongGeneratedAt: generatedAt,
         savedAt: `2026-01-02T00:00:00.${String(++saves).padStart(3, '0')}Z`,
+        ...manifest,
       };
       useDownloads.setState({ entries: { [key]: e } });
       return e;
@@ -1294,16 +1302,10 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
 
     it("asks only for a map of the download's own ebook, keeping its sha and size (fe#193)", async () => {
-      const e = kept('g1');
-      useDownloads.setState({
-        entries: {
-          [key]: {
-            ...e,
-            bytes: 1000,
-            totalBytes: 1000,
-            manifest: { ...e.manifest, ebookSha256: 'sha-1', readalongBytes: 300 },
-          },
-        },
+      kept('g1', {
+        bytes: 1000,
+        totalBytes: 1000,
+        manifest: { ebookSha256: 'sha-1', readalongBytes: 300 },
       });
       mockFetchReadalong.mockResolvedValue(keptMap('g2', 'sha-1', 500));
       answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2' } }));
@@ -1319,9 +1321,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
 
     it('keeps the map of its own ebook when the one made again is refused', async () => {
-      const e = kept('g1');
-      const mine = { ...e, manifest: { ...e.manifest, ebookSha256: 'sha-1' } };
-      useDownloads.setState({ entries: { [key]: mine } });
+      const mine = kept('g1', { manifest: { ebookSha256: 'sha-1' } });
       // fetchReadalongFile refuses a map of another ebook: nothing kept, nothing written.
       mockFetchReadalong.mockResolvedValue(undefined);
       answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2' } }));
@@ -1363,16 +1363,10 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
 
     it('takes a dropped map out of the size, keeping the ebook sha', async () => {
-      const e = kept('g1');
-      useDownloads.setState({
-        entries: {
-          [key]: {
-            ...e,
-            bytes: 1300,
-            totalBytes: 1300,
-            manifest: { ...e.manifest, ebookSha256: 'sha-1', readalongBytes: 300 },
-          },
-        },
+      kept('g1', {
+        bytes: 1300,
+        totalBytes: 1300,
+        manifest: { ebookSha256: 'sha-1', readalongBytes: 300 },
       });
       answer(makeBook({ readalong: { state: 'stale', reason: 'ebook_changed' } }));
       await settle();

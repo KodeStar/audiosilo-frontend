@@ -721,7 +721,7 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
       ...manifest,
       readalongGeneratedAt: kept?.generatedAt,
       readalongBytes: kept?.bytes,
-      ebookSha256: manifest.ebookSha256 ?? (kept?.ebookSha256 || undefined),
+      ebookSha256: manifest.ebookSha256 ?? kept?.ebookSha256,
       book: namingReadalong(manifest.book, kept?.generatedAt, book.readalong),
     },
   });
@@ -1255,7 +1255,7 @@ async function runOne(key: string) {
       ebookUri,
       readalongGeneratedAt: readalong?.generatedAt,
       readalongBytes: readalong?.bytes,
-      ebookSha256: readalong?.ebookSha256 || undefined,
+      ebookSha256: readalong?.ebookSha256,
       book: namingReadalong(entry.manifest.book, readalong?.generatedAt),
       savedAt: new Date().toISOString(),
     });

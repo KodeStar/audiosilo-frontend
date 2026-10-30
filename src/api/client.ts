@@ -357,20 +357,11 @@ async function readArriving(res: Response, touch: () => void): Promise<ArrayBuff
   return size === bytes.byteLength ? bytes.buffer : bytes.slice(0, size).buffer;
 }
 
-/** A long answer's text (a read-along map), read piece by piece with `touch` called on
- * each, as `readArriving` does; with no body stream, the whole answer at once. */
+/** A long answer's text (a read-along map): `readArriving`'s bytes, decoded once; with no
+ * body stream, the whole answer at once. */
 async function readTextArriving(res: Response, touch: () => void): Promise<string> {
   if (!res.body || typeof TextDecoder === 'undefined') return res.text();
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let text = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    touch();
-    text += decoder.decode(value, { stream: true });
-  }
-  return text + decoder.decode();
+  return new TextDecoder().decode(await readArriving(res, touch));
 }
 
 /**

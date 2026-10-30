@@ -80,7 +80,7 @@ object MediaItems {
     val itemIndex: Int
     val itemPosMs: Long
     val wholeFiles = ClipBudget.wholeFiles(tracks, clips, heapBytes)
-    if (clips.isNotEmpty() && clips.any { it.fileIndex !in wholeFiles }) {
+    if (clips.any { it.fileIndex !in wholeFiles }) {
       val built = ArrayList<MediaItem>(clips.size)
       val entries = ArrayList<TimelineMap.Entry>(clips.size)
       val placed = HashSet<Int>()
@@ -88,7 +88,7 @@ object MediaItems {
         if (clip.fileIndex in wholeFiles) {
           // One whole-file item, where the file's first clip was; its other clips are dropped.
           if (!placed.add(clip.fileIndex)) continue
-          val t = tracks.getOrNull(clip.fileIndex) ?: tracks.first()
+          val t = tracks[clip.fileIndex] // wholeFiles holds only indexes of tracks
           built.add(toMediaItem(t, clip.fileIndex, book))
           entries.add(TimelineMap.Entry(clip.fileIndex, 0.0, 0.0, t.duration, clip = false))
         } else {

@@ -352,6 +352,7 @@ function EffectsPill() {
 const CHIPS: { tab: CompanionTab; icon: IconName; community: boolean }[] = [
   { tab: 'who', icon: 'users', community: true },
   { tab: 'story', icon: 'book-open', community: true },
+  { tab: 'text', icon: 'book', community: false },
   { tab: 'chapters', icon: 'list', community: false },
 ];
 
@@ -377,21 +378,15 @@ export function CompanionChips() {
       className="w-full"
       contentContainerClassName="grow justify-center gap-2"
     >
-      {chips
-        .filter((c) => c.community)
-        .map((c) => (
+      {chips.map((c) =>
+        c.tab !== 'text' ? (
           <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
-        ))}
-      {target ? (
-        <ConnectionScope connectionId={target.connectionId}>
-          <TextChip target={target} />
-        </ConnectionScope>
-      ) : null}
-      {chips
-        .filter((c) => !c.community)
-        .map((c) => (
-          <CompanionChip key={c.tab} tab={c.tab} icon={c.icon} />
-        ))}
+        ) : target ? (
+          <ConnectionScope key={c.tab} connectionId={target.connectionId}>
+            <TextChip target={target} />
+          </ConnectionScope>
+        ) : null,
+      )}
     </ScrollView>
   );
 }

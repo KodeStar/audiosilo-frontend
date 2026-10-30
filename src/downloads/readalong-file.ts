@@ -1,6 +1,11 @@
 import type { ApiClient } from '@/api/client';
 import type { Book, ReadalongMap } from '@/api/types';
-import { type CheckedReadalongMap, hasSpans, parseReadalongMap } from '@/reader/readalong-map';
+import {
+  type CheckedReadalongMap,
+  hasSpans,
+  parseReadalongMap,
+  utf8Length,
+} from '@/reader/readalong-map';
 
 import { engine } from './engine';
 import type { DownloadManifest } from './types';
@@ -40,8 +45,9 @@ export async function removeReadalongFile(ref: Ref): Promise<void> {
 }
 
 /** A map a download keeps (`fetchReadalongFile`): which one (its `generated_at`), the
- * sha256 of the ebook it was made from, and its size on the device in bytes. */
-export type KeptReadalong = { generatedAt: string; ebookSha256: string; bytes: number };
+ * sha256 of the ebook it was made from (undefined when the map names none), and its size on
+ * the device in bytes. */
+export type KeptReadalong = { generatedAt: string; ebookSha256?: string; bytes: number };
 
 /**
  * Fetch the book's map and keep it in its download folder: what was kept once a map with a
@@ -73,7 +79,11 @@ export async function fetchReadalongFile(
   const text = JSON.stringify(map);
   const saved = await engine.writeText(connectionId, libraryId, path, READALONG_FILE, text);
   return saved
-    ? { generatedAt: map.generated_at, ebookSha256: map.ebook.sha256, bytes: utf8Bytes(text) }
+    ? {
+        generatedAt: map.generated_at,
+        ebookSha256: map.ebook.sha256 || undefined,
+        bytes: utf8Length(text),
+      }
     : undefined;
 }
 
@@ -81,21 +91,6 @@ export async function fetchReadalongFile(
  * map fits). A map that names no ebook never fits a known one. */
 export function fitsEbook(map: Pick<ReadalongMap, 'ebook'>, ebookSha256: string | undefined) {
   return !ebookSha256 || map.ebook.sha256 === ebookSha256;
-}
-
-/** `text`'s length in UTF-8 bytes (what the file takes on the device). */
-function utf8Bytes(text: string): number {
-  let bytes = 0;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    if (c < 0x80) bytes += 1;
-    else if (c < 0x800) bytes += 2;
-    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
-      bytes += 4;
-      i++;
-    } else bytes += 3;
-  }
-  return bytes;
 }
 
 /**

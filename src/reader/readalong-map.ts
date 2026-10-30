@@ -28,7 +28,7 @@ const MAX_HREF = 2048;
 export type CheckedReadalongMap = ReadalongMap & { dropped: number };
 
 /** The UTF-8 length of `s`, counted only as far as `limit` (past it, `limit + 1`). */
-function utf8Length(s: string, limit: number): number {
+export function utf8Length(s: string, limit = Infinity): number {
   if (s.length > limit) return limit + 1;
   let bytes = 0;
   for (let i = 0; i < s.length && bytes <= limit; i++) {
