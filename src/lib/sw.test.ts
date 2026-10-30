@@ -159,6 +159,55 @@ describe('sw.js', () => {
     expect(sw.fetch).toHaveBeenLastCalledWith(expect.objectContaining({ url: READER }));
   });
 
+  // PLAYER-14: Chrome lost a pagehide keepalive POST (the listening span) from a page this
+  // worker controls; every non-GET goes straight to the network instead.
+  it('routes every non-GET request around the worker on install (PLAYER-14)', async () => {
+    const sw = worker({ served: SITE });
+    const addRoutes = jest.fn(async () => {});
+    await sw.dispatch('install', { addRoutes });
+    expect(addRoutes).toHaveBeenCalledTimes(1);
+    const rules = (addRoutes.mock.calls[0] as unknown[])[0];
+    expect(rules).toEqual(
+      ['POST', 'PUT', 'PATCH', 'DELETE'].map((requestMethod) => ({
+        condition: { requestMethod },
+        source: 'network',
+      })),
+    );
+    expect(sw.cached(SCOPE)).toBe(SHELL_HTML);
+  });
+
+  it.each([
+    ['refuses the rules', () => Promise.reject(new TypeError('bad rule'))],
+    [
+      'throws',
+      () => {
+        throw new TypeError('not supported');
+      },
+    ],
+  ])('still installs when the browser %s', async (_, addRoutes) => {
+    const sw = worker({ served: SITE });
+    await sw.dispatch('install', { addRoutes });
+    expect(sw.cached(SCOPE)).toBe(SHELL_HTML);
+    expect(sw.cached(READER)).toBe('<reader>');
+  });
+
+  it('passes a POST through untouched where routes are not supported', async () => {
+    const sw = worker({ served: SITE });
+    await sw.dispatch('install');
+    const res = await sw.dispatch('fetch', {
+      request: {
+        url: 'https://h/api/v1/libraries/1/history',
+        method: 'POST',
+        mode: 'cors',
+        destination: '',
+      },
+    });
+    expect(res).toBeUndefined();
+    expect(sw.fetch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://h/api/v1/libraries/1/history' }),
+    );
+  });
+
   it('answers any other offline navigation with the app shell', async () => {
     const sw = worker({ served: SITE });
     await sw.dispatch('install');

@@ -36,9 +36,38 @@ const CACHEABLE = new Set(['script', 'style', 'font', 'image', 'manifest']);
 // The build's own files, content-hashed: `<base>/_expo/static/...`.
 const BUILD_ASSETS = '/_expo/static/';
 
+// Requests the worker never answers skip it entirely (the Static Routing API, Chrome 123+;
+// elsewhere the fetch handler's own early return still passes them through). This is not only
+// speed: in Chrome a keepalive POST from a page this worker controls, sent as the page goes
+// away (the listening span `endHistory` posts on pagehide, v2.5.1 PLAYER-14), is dispatched
+// here first, and the network fallback dies with the page, so the span never left the
+// browser. Routed to the network up front, it is sent like on a page with no worker.
+const NETWORK_ONLY_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
+/** Registers the network-only routes; a browser without `addRoutes` (or one refusing a rule)
+ * keeps the fetch handler's pass-through, so this never fails the install. */
+function addNetworkRoutes(event) {
+  if (typeof event.addRoutes !== 'function') return Promise.resolve();
+  try {
+    return Promise.resolve(
+      event.addRoutes(
+        NETWORK_ONLY_METHODS.map((requestMethod) => ({
+          condition: { requestMethod },
+          source: 'network',
+        })),
+      ),
+    ).catch(() => {});
+  } catch {
+    return Promise.resolve();
+  }
+}
+
 self.addEventListener('install', (event) => {
+  // Before the precache: `addRoutes` must be called while the install event is dispatched.
+  const routed = addNetworkRoutes(event);
   event.waitUntil(
     (async () => {
+      await routed;
       if (!DEV) {
         // The shell root (offline navigations fall back to it) and the build's chunks,
         // cached while installing so Chrome keeps their compiled code (see precacheBuild),
