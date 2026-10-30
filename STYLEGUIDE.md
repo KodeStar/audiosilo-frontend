@@ -608,12 +608,16 @@ library is ready."**: spines drop onto a plank one by one, with the counts and w
   says why ("After book 3, which you're 55% into"). Owned next books can be queued, kept ahead offline (Keep 0-3
   ahead) and auto-played; missing ones are ghosts with "Want to listen"; ones on a friend's server open there.
 - **Coming up in your series** (Track U2): preorders, new releases and missing volumes in the series the listener
-  holds, merged across servers, each a ghost cover (never the work's art) with "Book 6", its series line and one
+  holds, merged across servers, each a ghost cover with "Book 6" (the work's real cover drawn over it once its
+  server serves one, Track U3; the ghost shows while it loads and when it fails), its series line and one
   date line at the metadata's own precision ("Out Nov 12, 2026", "Released Oct 2026", "First released 2014"; the UI language sets the order), a
   brand "New" badge for a week after the server first listed it, and the server's name when several are
   connected. On Home it is a rail after Next in your series that is absent (no skeleton) until it has items; the
   full list (`/upcoming`, the You hub's Upcoming) is three sections: Coming soon, Just released, Missing from your
   series. A series page's ghost not out yet says "Out <date>" where it would say "Not in your library".
+  Under the list, an "Add to your calendar" card (Track U3): per server, "Get calendar link", then the link (mono,
+  selectable) with Subscribe (Apple devices only), Copy link, Reset link and Turn off (both confirmed); "A link is
+  active. Reset it to see it here" on a device without its copy; a demo account is told it can't.
 - **Cross-server**: Home, Search and Library aggregate across servers; a small "Maya" flag marks a friend's book;
   search de-duplicates with "Also on Maya's Shelf"; content and accounts stay per server.
 - **Reliability shown, not promised**: sync state in the dock and full player; offline banner that never spins;

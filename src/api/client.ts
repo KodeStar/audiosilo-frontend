@@ -90,6 +90,8 @@ import type {
   ServerInfo,
   ShareTarget,
   StatsRange,
+  UpcomingCalendarLink,
+  UpcomingCalendarStatus,
   UpcomingResponse,
   UpdateMemberBody,
   User,
@@ -1737,6 +1739,36 @@ export class ApiClient {
   async upcoming(signal?: AbortSignal): Promise<UpcomingResponse> {
     const r = await this.request<UpcomingResponse>('GET', '/me/upcoming', { signal });
     return { ...r, items: r.items ?? [] };
+  }
+  /** Whether the caller has a calendar link (capability `upcoming_calendar`, Track U3).
+   * Session or API key; 403 `kid_account` for a kid, 404 `metadata_off` / `upcoming_off`
+   * while off. */
+  upcomingCalendar(signal?: AbortSignal) {
+    return this.request<UpcomingCalendarStatus>('GET', '/me/upcoming/calendar', { signal });
+  }
+  /** Make the caller's calendar link (201), revoking their previous one. The session only:
+   * an API key is refused (403), a kid (403 `kid_account`) and a demo account (403
+   * `demo_account`) too. The answer's `path` holds the secret: see
+   * {@link UpcomingCalendarLink}. */
+  mintUpcomingCalendar() {
+    return this.request<UpcomingCalendarLink>('POST', '/me/upcoming/calendar');
+  }
+  /** Turn the caller's calendar link off (204; idempotent). The session only. */
+  deleteUpcomingCalendar() {
+    return this.request<void>('DELETE', '/me/upcoming/calendar');
+  }
+  /** The URL of an upcoming item's community cover served by this server (capability
+   * `upcoming_covers`): a JPEG of the `cover_url` the caller's own `/me/upcoming` list hands
+   * out for `workId` (any other work is a 404), with the media token. `size` defaults to the
+   * server's 320. `version` is appended as `v` purely as a cache buster (the server ignores
+   * it), like {@link coverUrl}'s; `UpcomingCover` passes a hash of the item's `cover_url`. */
+  upcomingCoverUrl(workId: string, opts?: { size?: CoverSize; version?: string }) {
+    return this.apiUrl('/me/upcoming/cover', {
+      work: workId,
+      size: opts?.size,
+      v: opts?.version || undefined,
+      ...this.mediaTokenQuery(),
+    });
   }
 
   // --- Casting (capability `cast`) -------------------------------------------

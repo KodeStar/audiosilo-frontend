@@ -163,6 +163,18 @@ export type Capabilities = {
    * player asks only a connection with the flag whose user is not a kid. Absent on older
    * servers: treat missing as false and show no Upcoming. */
   upcoming?: boolean;
+  /** Whether the server offers a calendar feed of the caller's upcoming releases (Track U3):
+   * `GET`/`POST`/`DELETE /me/upcoming/calendar` ({@link UpcomingCalendarStatus},
+   * {@link UpcomingCalendarLink}) and the secret `releases.ics` link a calendar app
+   * subscribes to. True exactly when `upcoming` is; a kid (403 `kid_account`) and a demo
+   * account (403 `demo_account` on the mint) are refused by the routes, not the flag.
+   * Absent on older servers: treat missing as false and offer no calendar. */
+  upcoming_calendar?: boolean;
+  /** Whether the server serves the community cover of an item on the caller's own upcoming
+   * list (Track U3): `GET /me/upcoming/cover?work=&size=&v=` (`client.upcomingCoverUrl`), a
+   * JPEG, for a work that list hands out with a `cover_url` (anything else is a 404). True
+   * exactly when `upcoming` is. Absent on older servers: draw the ghost cover. */
+  upcoming_covers?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -1902,4 +1914,23 @@ export type UpcomingResponse = {
   generated_at?: string;
   window_days: number;
   items: UpcomingItem[];
+};
+
+/** `GET /api/v1/me/upcoming/calendar` (capability `upcoming_calendar`): whether the caller
+ * has a calendar link, and since when. The link itself is shown once, when it is made
+ * ({@link UpcomingCalendarLink}), and never returned again. */
+export type UpcomingCalendarStatus = {
+  active: boolean;
+  /** When the active link was made (RFC 3339); absent without one. */
+  created_at?: string;
+};
+
+/** `POST /api/v1/me/upcoming/calendar` (201): a new calendar link, which replaces (and
+ * stops) the caller's previous one. `path` is server-relative
+ * (`/api/v1/me/upcoming/releases.ics?token=<secret>`): the player prefixes the address it
+ * reaches the server at. The secret is a credential: kept on the device like the session
+ * token, never logged. */
+export type UpcomingCalendarLink = {
+  path: string;
+  created_at: string;
 };

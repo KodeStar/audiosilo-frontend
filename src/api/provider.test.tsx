@@ -362,6 +362,25 @@ describe('queries and reachability', () => {
     expect(useReachability.getState().online.c1).toBe(false);
   });
 
+  it('takes a query that reads only this device (`meta.local`) as saying nothing of the server', async () => {
+    useReachability.setState({ online: { c1: false } });
+    useSession.setState({
+      connections: [
+        { id: 'c1', name: 'H', serverUrl: 'https://h', token: 't', needsReconnect: 'auth' },
+      ],
+    } as never);
+    await queryClient.fetchQuery({
+      queryKey: qk.upcomingCalendarLink('c1'),
+      queryFn: async () => null,
+      meta: { local: true },
+    });
+    expect(useSession.getState().connections[0].needsReconnect).toBe('auth');
+    expect(serverInfo).not.toHaveBeenCalled();
+    // A server's answer still clears the flag.
+    await queryClient.fetchQuery({ queryKey: qk.libraries('c1'), queryFn: async () => [] });
+    expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
+  });
+
   it('brings a down server back on its own /server answer, with no second check', async () => {
     useReachability.setState({ online: { c1: false } });
     await queryClient.fetchQuery({ queryKey: qk.server('c1'), queryFn: async () => ({}) });

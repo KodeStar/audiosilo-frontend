@@ -102,7 +102,11 @@ export const queryClient = new QueryClient({
     // Dead-token flagging lives on the ApiClient callback (one choke point for every
     // request path). The cache keeps what a per-call callback can't do: clearing a flag,
     // detecting a server reset, and telling reachability what a query learnt.
-    onSuccess: (data, query) => noteQuerySuccess(data, query.queryKey),
+    // A query that reads only this device (`meta.local`: the calendar link's copy) says
+    // nothing about the server: it neither clears a reconnect flag nor marks it reached.
+    onSuccess: (data, query) => {
+      if (query.meta?.local !== true) noteQuerySuccess(data, query.queryKey);
+    },
     onError: (error, query) => noteQueryError(error, query.queryKey),
   }),
   defaultOptions: {

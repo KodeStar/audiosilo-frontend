@@ -3085,6 +3085,31 @@
       "hint_other": "{{server}} n'ont pas répondu. Rien n'est perdu : réessayez dans un instant.",
       "partial_one": "{{server}} n'a pas répondu, il manque peut-être des sorties dans cette liste.",
       "partial_other": "{{server}} n'ont pas répondu, il manque peut-être des sorties dans cette liste."
+    },
+    "calendar": {
+      "title": "Ajouter à votre calendrier",
+      "body": "Abonnez votre app de calendrier aux prochaines sorties de vos séries. Chacune apparaît comme un événement sur toute la journée à sa date de sortie.",
+      "get": "Obtenir le lien du calendrier",
+      "subscribe": "S'abonner",
+      "copy": "Copier le lien",
+      "reset": "Réinitialiser le lien",
+      "turnOff": "Désactiver",
+      "private": "Gardez ce lien privé : toute personne qui l'a peut voir vos prochaines sorties.",
+      "publicNote": "Les services de calendrier qui récupèrent depuis le cloud, comme Google Agenda, ont besoin de l'adresse HTTPS publique de votre serveur.",
+      "elsewhere": "Un lien est actif. Réinitialisez-le pour le voir ici.",
+      "demo": "Les comptes de démonstration ne peuvent pas s'abonner à un calendrier.",
+      "kid": "Les comptes enfants ne peuvent pas s'abonner à un calendrier.",
+      "loadError": "Impossible de vérifier votre lien de calendrier sur {{server}}. Rien n'a changé.",
+      "refused": "{{server}} a refusé. Votre lien de calendrier n'a pas changé.",
+      "failed": "Impossible de joindre {{server}} : la modification n'a peut-être pas été prise en compte. Réessayez dans un instant.",
+      "resetConfirm": {
+        "title": "Réinitialiser le lien du calendrier ?",
+        "message": "L'ancien lien cesse de fonctionner : un calendrier abonné à celui-ci n'est plus mis à jour tant que vous ne vous abonnez pas au nouveau."
+      },
+      "offConfirm": {
+        "title": "Désactiver le lien du calendrier ?",
+        "message": "Le lien cesse de fonctionner : un calendrier abonné à celui-ci n'est plus mis à jour."
+      }
     }
   }
 }

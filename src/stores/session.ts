@@ -11,6 +11,7 @@ import {
 } from '@/lib/known-servers';
 import { connectionIdOf, priorConnection, serverIdOf } from '@/lib/connection-id';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
+import { forgetCalendarLink } from '@/lib/upcoming-calendar';
 import { hostOf } from '@/lib/pairing';
 import { mergeAddresses, sameAddresses, sameUrl } from '@/lib/server-address';
 import { getItem, getItemStrict, removeItem, setItem } from '@/lib/storage';
@@ -118,7 +119,13 @@ export async function resetStaleStorage(): Promise<StorageResetResult> {
     // Best-effort delete of each old connection's token, then every auth key. The scoped
     // cache is folded in: its owning connections are being cleared, so it's now orphaned.
     const meta = (await getItem<PersistedConnection[]>(CONNECTIONS_KEY)) ?? [];
-    await Promise.all(meta.map((m) => deleteSecure(tokenKey(m.id)).catch(() => undefined)));
+    // Each one's calendar link (Track U3) is a credential kept beside its token: it goes too.
+    await Promise.all(
+      meta.flatMap((m) => [
+        deleteSecure(tokenKey(m.id)).catch(() => undefined),
+        forgetCalendarLink(m.id),
+      ]),
+    );
     await Promise.all([
       removeItem(CONNECTIONS_KEY),
       removeItem(DEFAULT_KEY),
@@ -515,7 +522,13 @@ export const useSession = create<SessionState>()((set, get) => ({
     await setSecure(tokenKey(id), token);
     // Best-effort drop each stale identity's dead token. No server revoke - the token is
     // already dead, so there's nothing to call.
-    await Promise.all(stale.map((c) => deleteSecure(tokenKey(c.id)).catch(() => undefined)));
+    // Their calendar links (Track U3) are dead with them.
+    await Promise.all(
+      stale.flatMap((c) => [
+        deleteSecure(tokenKey(c.id)).catch(() => undefined),
+        forgetCalendarLink(c.id),
+      ]),
+    );
     // The default: this connection, unless the caller keeps the current one (which must
     // still be signed in; a retired stale identity can't stay the default).
     const current = get().defaultConnectionId;
@@ -602,7 +615,9 @@ export const useSession = create<SessionState>()((set, get) => ({
     const { connections, defaultConnectionId } = get();
     const next = connections.filter((c) => c.id !== id);
     const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
-    await deleteSecure(tokenKey(id));
+    // The connection's calendar link (Track U3) is a credential like its token: this device
+    // forgets it with the connection (the link itself keeps working until turned off).
+    await Promise.all([deleteSecure(tokenKey(id)), forgetCalendarLink(id)]);
     await persist(next, nextDefault);
     set({ connections: next, ...mirror(next, nextDefault) });
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,

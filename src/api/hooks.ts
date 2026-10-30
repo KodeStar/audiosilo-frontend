@@ -40,6 +40,15 @@ import {
   upcomingEligibility,
 } from '@/lib/upcoming';
 import {
+  calendarConnections,
+  calendarFeedUrl,
+  type CalendarConnection,
+  forgetCalendarLink,
+  readCalendarLink,
+  saveCalendarLink,
+  type StoredCalendarLink,
+} from '@/lib/upcoming-calendar';
+import {
   FOLLOW_REQUEST_POLL_MS,
   isOpenRequest,
   libraryRequests,
@@ -113,6 +122,7 @@ import type {
   RatingValue,
   ServerInfo,
   StatsRange,
+  UpcomingCalendarStatus,
   UpcomingResponse,
   UpdateMemberBody,
 } from './types';
@@ -206,6 +216,10 @@ export const qk = {
   recentAll: () => ['books', 'recent'] as const,
   /** The caller's upcoming releases, capability `upcoming` (Track U2). */
   upcoming: (cid: string) => ['upcoming', cid] as const,
+  /** Whether the caller has a calendar link, capability `upcoming_calendar` (Track U3). */
+  upcomingCalendar: (cid: string) => ['upcomingCalendar', cid] as const,
+  /** This device's copy of that link (the secure store, never the network: Track U3). */
+  upcomingCalendarLink: (cid: string) => ['upcomingCalendarLink', cid] as const,
   /** The car's Library tab: a library's newest books, one page (`src/car`). */
   carLibrary: (cid: string, lib: number) => ['car', 'library', cid, lib] as const,
   // The Bridge, capability `bridge` (admin only; Bridge Phase 1a).
@@ -3333,6 +3347,139 @@ export function useUpcomingAll(): {
       retryFlags();
     },
   };
+}
+
+// --- The upcoming releases calendar (capability `upcoming_calendar`, Track U3) -------
+
+/** The connections the calendar card has a row for: the server offers the calendar and the
+ * user there is not a kid (a kid is never asked). A demo account's row asks nothing. */
+export function useUpcomingCalendarConnections(): CalendarConnection[] {
+  const apis = useApis();
+  const caps = useCapabilitiesAll();
+  return useMemo(
+    () =>
+      calendarConnections(
+        apis.map((a) => a.connection),
+        caps,
+      ),
+    [apis, caps],
+  );
+}
+
+/** Whether the caller has a calendar link on the connection (`GET /me/upcoming/calendar`).
+ * `ready: false` (a demo account, which can't make one) asks nothing. */
+export function useUpcomingCalendar(connectionId: string, ready: boolean) {
+  return useCapabilityQuery(
+    'upcoming_calendar',
+    qk.upcomingCalendar,
+    (api, signal) => api.upcomingCalendar(signal),
+    connectionId,
+    { ready },
+  );
+}
+
+/** This device's copy of the connection's calendar link (the secure store; null for
+ * none). Local: never paused for the network, never stale on its own (the writes below set
+ * it), and `meta.local`, so its answer says nothing about the server (the provider). */
+export function useUpcomingCalendarLink(connectionId: string) {
+  return useQuery({
+    queryKey: qk.upcomingCalendarLink(connectionId),
+    queryFn: () => readCalendarLink(connectionId),
+    staleTime: Infinity,
+    networkMode: 'always',
+    retry: false,
+    meta: { local: true },
+  });
+}
+
+/** Keep (or forget) this device's copy of a connection's link, in storage then in the
+ * cache, with the server's status that goes with it when a write's answer gives one. A
+ * read of either already in flight was sent before this change and would land over it (a
+ * status from before a Reset reads as a copy replaced elsewhere, which the row forgets),
+ * so it is cancelled first, and the two are set in one step, so no render sees the new
+ * copy beside the old status. A copy for a connection signed out meanwhile (the mint was in
+ * flight) is forgotten instead. A storage write that fails still shows the new link for as
+ * long as the app runs: the server shows it only this once. */
+async function storeCalendarLink(
+  qc: QueryClient,
+  cid: string,
+  link: StoredCalendarLink | null,
+  status?: UpcomingCalendarStatus,
+): Promise<void> {
+  await Promise.all([
+    qc.cancelQueries({ queryKey: qk.upcomingCalendarLink(cid), exact: true }),
+    status && qc.cancelQueries({ queryKey: qk.upcomingCalendar(cid), exact: true }),
+  ]);
+  try {
+    if (link) await saveCalendarLink(cid, link);
+    else await forgetCalendarLink(cid);
+  } catch (e) {
+    console.warn('[upcoming] calendar link not kept on this device', e);
+  }
+  if (link && !useSession.getState().connections.some((c) => c.id === cid)) {
+    await forgetCalendarLink(cid);
+    return;
+  }
+  qc.setQueryData(qk.upcomingCalendarLink(cid), link);
+  if (status) qc.setQueryData<UpcomingCalendarStatus>(qk.upcomingCalendar(cid), status);
+}
+
+// A connection's calendar link goes with it (`removeConnection` forgets it before the
+// connection leaves the list; this, after, catches a mint that landed in between).
+onConnectionRemoved((id) => forgetCalendarLink(id));
+
+/** Forget this device's copy of a connection's link: the server's status says it is no
+ * longer the active one (turned off or replaced elsewhere). */
+export function useForgetCalendarLink(connectionId: string) {
+  const qc = useQueryClient();
+  return useCallback(() => storeCalendarLink(qc, connectionId, null), [qc, connectionId]);
+}
+
+/** Make the connection's calendar link (`POST /me/upcoming/calendar`): Get calendar link,
+ * and Reset (the server revokes the previous one in the same step). The answer's path is
+ * put on the address a calendar app should fetch it from (`calendarFeedUrl`) and kept on
+ * this device in place of any earlier copy. */
+export function useMintUpcomingCalendar(connectionId: string) {
+  return useCapabilityMutation(
+    'upcoming_calendar',
+    connectionId,
+    async (api) => {
+      const link = await api.mintUpcomingCalendar();
+      const conn = useSession.getState().connections.find((c) => c.id === connectionId);
+      return {
+        url: calendarFeedUrl(link.path, conn?.addresses, api.baseUrl),
+        created_at: link.created_at,
+      };
+    },
+    ({ qc, cid }, stored: StoredCalendarLink) =>
+      storeCalendarLink(qc, cid, stored, { active: true, created_at: stored.created_at }),
+    rereadCalendarIfUnanswered,
+  );
+}
+
+/** Turn the connection's calendar link off (`DELETE /me/upcoming/calendar`) and forget
+ * this device's copy. */
+export function useDeleteUpcomingCalendar(connectionId: string) {
+  return useCapabilityMutation(
+    'upcoming_calendar',
+    connectionId,
+    (api) => api.deleteUpcomingCalendar(),
+    ({ qc, cid }) => storeCalendarLink(qc, cid, null, { active: false }),
+    rereadCalendarIfUnanswered,
+  );
+}
+
+/** A calendar write with no answer (the network, not a refusal) may still have landed: the
+ * status is read again, so a link replaced or turned off meanwhile shows as such (and this
+ * device's copy of it is forgotten) instead of being offered as live. */
+function rereadCalendarIfUnanswered(
+  { qc, cid }: { qc: QueryClient; cid: string },
+  _vars: unknown,
+  error: unknown,
+) {
+  if (error && !(error instanceof ApiError)) {
+    void qc.invalidateQueries({ queryKey: qk.upcomingCalendar(cid), exact: true });
+  }
 }
 
 export function useFavouritesAll() {

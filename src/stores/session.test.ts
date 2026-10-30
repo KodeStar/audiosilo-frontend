@@ -4,6 +4,7 @@ import { AppState, type AppStateStatus, Platform } from 'react-native';
 
 import { sessionReady } from '@/api/connection-clients';
 import type { User } from '@/api/types';
+import { readCalendarLink, saveCalendarLink } from '@/lib/upcoming-calendar';
 import {
   hasExistingInstall,
   LOCKED_RETRY_MS,
@@ -1065,5 +1066,54 @@ describe('setSession with makeDefault: false (a household member signed in here)
       );
     expect(useSession.getState().connections.map((c) => c.id)).toEqual([id]);
     expect(useSession.getState().defaultConnectionId).toBe(id);
+  });
+});
+
+// A connection's calendar link (Track U3) is a credential kept beside its session token:
+// this device forgets it with the connection, however the connection goes.
+describe('the calendar link goes with its connection', () => {
+  const link = { url: 'https://a/api/v1/me/upcoming/releases.ics?token=s', created_at: 'x' };
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    reset();
+  });
+
+  it('on sign-out (removeConnection), and only that connection', async () => {
+    const a = await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't', user: mkUser('a') });
+    const b = await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://b', serverId: 'srv-b', token: 't', user: mkUser('b') });
+    await saveCalendarLink(a, link);
+    await saveCalendarLink(b, link);
+    await useSession.getState().removeConnection(a);
+    expect(await readCalendarLink(a)).toBeNull();
+    expect(await readCalendarLink(b)).toEqual(link);
+  });
+
+  it('when a re-pair retires a stale identity', async () => {
+    await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://a', serverId: 'srv-a', token: 't1', user: mkUser('a') });
+    await saveCalendarLink('srv-a.1', link);
+    await useSession.getState().setSession({
+      serverUrl: 'https://a',
+      serverId: 'srv-b',
+      token: 't2',
+      user: mkUser('b'),
+      retire: ['srv-a.1'],
+    });
+    expect(await readCalendarLink('srv-a.1')).toBeNull();
+  });
+
+  it('on the auth reset', async () => {
+    await useSession
+      .getState()
+      .setSession({ serverUrl: 'https://a', serverId: 'old-a', token: 't', user: mkUser('a') });
+    await saveCalendarLink('old-a.1', link);
+    await AsyncStorage.removeItem('audiosilo.storageVersion');
+    expect((await resetStaleStorage()).authReset).toBe(true);
+    expect(await readCalendarLink('old-a.1')).toBeNull();
   });
 });

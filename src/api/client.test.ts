@@ -1848,6 +1848,78 @@ describe('ApiClient upcoming (Track U2)', () => {
   });
 });
 
+describe('ApiClient upcoming calendar and covers (Track U3)', () => {
+  const c = () => new ApiClient('https://h', 'tok');
+  // The server's answers (audiosilo-server internal/api, CROSS-REPO §8 "Upcoming releases").
+  const link = {
+    path: '/api/v1/me/upcoming/releases.ics?token=feedsecret',
+    created_at: '2026-10-30T09:00:00.000Z',
+  };
+
+  it('reads GET /me/upcoming/calendar with the bearer token, both answers', async () => {
+    let body: unknown = { active: true, created_at: link.created_at };
+    const fetchMock = installFetch(() => ({ status: 200, body }));
+    await expect(c().upcomingCalendar()).resolves.toEqual(body);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/me/upcoming/calendar',
+      method: 'GET',
+    });
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(headerValue(init, 'Authorization')).toBe('Bearer tok');
+    body = { active: false };
+    await expect(c().upcomingCalendar()).resolves.toEqual({ active: false });
+  });
+
+  it('mints with POST /me/upcoming/calendar (no body), the path round-tripped', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: link }));
+    await expect(c().mintUpcomingCalendar()).resolves.toEqual(link);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/me/upcoming/calendar',
+      method: 'POST',
+      body: undefined,
+    });
+  });
+
+  it.each([
+    [403, 'kid_account'],
+    [403, 'demo_account'],
+    [404, 'upcoming_off'],
+  ])('rejects a refused mint (%i %s) as an ApiError with its code', async (status, code) => {
+    installFetch(() => ({ status, body: { error: 'refused', code } }));
+    const e = await c()
+      .mintUpcomingCalendar()
+      .catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect(e).toMatchObject({ status, code });
+    expect(apiErrorKind(e)).toBe(status === 404 ? 'not_found' : code);
+  });
+
+  it('turns the link off with DELETE /me/upcoming/calendar (204)', async () => {
+    const fetchMock = installFetch(() => ({ status: 204 }));
+    await expect(c().deleteUpcomingCalendar()).resolves.toBeUndefined();
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/me/upcoming/calendar',
+      method: 'DELETE',
+    });
+  });
+
+  it('builds the cover URL with the work, the size and the media token', () => {
+    expect(c().upcomingCoverUrl('w 1/x', { size: 160 })).toBe(
+      'https://h/api/v1/me/upcoming/cover?work=w+1%2Fx&size=160&token=tok',
+    );
+    // No size: the server's default. No token: none in the URL.
+    expect(new ApiClient('https://h').upcomingCoverUrl('w1')).toBe(
+      'https://h/api/v1/me/upcoming/cover?work=w1',
+    );
+  });
+
+  it('appends the version as the cache buster `v`', () => {
+    expect(c().upcomingCoverUrl('w1', { size: 320, version: '0a1b2c3d' })).toBe(
+      'https://h/api/v1/me/upcoming/cover?work=w1&size=320&v=0a1b2c3d&token=tok',
+    );
+  });
+});
+
 describe('ApiClient household and cast (Phase 8)', () => {
   const c = () => new ApiClient('https://h', 'tok');
   // The server's exact answers (audiosilo-server internal/api household_test.go).
