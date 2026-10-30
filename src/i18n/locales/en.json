@@ -3067,8 +3067,10 @@
       "title": "Checking for releases",
       "hint": "Your server is checking for releases; this list fills after its first check."
     },
-    "pendingSome": "{{server}} is still running its first check for releases.",
-    "stale": "{{server}} hasn't checked for releases in over two days, so this list may be out of date.",
+    "pendingSome_one": "{{server}} is still running its first check for releases.",
+    "pendingSome_other": "{{server}} are still running their first check for releases.",
+    "stale_one": "{{server}} hasn't checked for releases in over two days, so this list may be out of date.",
+    "stale_other": "{{server}} haven't checked for releases in over two days, so this list may be out of date.",
     "empty": {
       "title": "Nothing coming up",
       "hint": "Nothing coming up in the series you have."
@@ -3079,8 +3081,11 @@
     },
     "error": {
       "title": "Couldn't load upcoming releases",
-      "hint": "{{server}} didn't answer. Nothing is lost: try again in a moment.",
-      "partial": "{{server}} didn't answer, so this list may be missing some releases."
-    }
+      "hint_one": "{{server}} didn't answer. Nothing is lost: try again in a moment.",
+      "hint_other": "{{server}} didn't answer. Nothing is lost: try again in a moment.",
+      "partial_one": "{{server}} didn't answer, so this list may be missing some releases.",
+      "partial_other": "{{server}} didn't answer, so this list may be missing some releases."
+    },
+    "and": "{{rest}} and {{last}}"
   }
 }

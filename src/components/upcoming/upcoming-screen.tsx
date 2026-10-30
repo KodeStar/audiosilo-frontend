@@ -8,6 +8,7 @@ import { useServerFlag } from '@/components/library/cover-tile';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { joinList } from '@/lib/names';
 import { isNewUpcoming, upcomingSectionOf } from '@/lib/upcoming';
 
 import { UpcomingRow } from './upcoming-parts';
@@ -41,8 +42,8 @@ function UpcomingSkeleton() {
  * listener's upcoming releases on every server, in three sections (Coming soon, Just
  * released, Missing from your series; an empty one hidden). The states: rows standing in
  * while the first answers load; a server's first check still running ("this list fills
- * after its first check"); nothing coming up; no server answering (a Retry, never "nothing
- * coming up"); and, where no server offers it (or the listener is a kid there), a quiet "not
+ * after its first check"); nothing coming up; no server answering, with its list or its
+ * flags (a Retry, never "nothing coming up", nor rows standing in forever); and, where no server offers it (or the listener is a kid there), a quiet "not
  * available" in place of a list that would ask nothing. A server that didn't answer beside
  * others, a stale one, or one still on its first check beside others, is a note over the
  * list (or over "nothing coming up"). `embedded`: under the hub's own large title (phone), so
@@ -56,11 +57,16 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const [now] = useState(() => new Date());
   const pending = statuses.filter((s) => s.status === 'pending').map((s) => s.connectionName);
   const stale = statuses.filter((s) => s.status === 'stale').map((s) => s.connectionName);
+  // Servers named in a note: "Home", "Home and Maya", counted for the verb.
+  const servers = (names: readonly string[]) => ({
+    server: joinList(names, (rest, last) => t('upcoming.and', { rest, last })),
+    count: names.length,
+  });
 
   let body: React.ReactNode;
   if (available === undefined || (isLoading && items.length === 0)) {
     body = <UpcomingSkeleton />;
-  } else if (available === false) {
+  } else if (available === false && failed.length === 0) {
     body = (
       <EmptyState
         icon="book"
@@ -73,7 +79,7 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
     body = (
       <LoadError
         title={t('upcoming.error.title')}
-        hint={t('upcoming.error.hint', { server: failed.join(', ') })}
+        hint={t('upcoming.error.hint', servers(failed))}
         retryLabel={t('common.retry')}
         onRetry={retry}
       />
@@ -86,19 +92,19 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
         {failed.length > 0 ? (
           <LoadError
             compact
-            title={t('upcoming.error.partial', { server: failed.join(', ') })}
+            title={t('upcoming.error.partial', servers(failed))}
             retryLabel={t('common.retry')}
             onRetry={retry}
           />
         ) : null}
         {stale.length > 0 ? (
           <Text variant="muted" testID="upcoming-stale">
-            {t('upcoming.stale', { server: stale.join(', ') })}
+            {t('upcoming.stale', servers(stale))}
           </Text>
         ) : null}
         {pending.length > 0 && !allPending ? (
           <Text variant="muted" testID="upcoming-pending-some">
-            {t('upcoming.pendingSome', { server: pending.join(', ') })}
+            {t('upcoming.pendingSome', servers(pending))}
           </Text>
         ) : null}
         {items.length === 0 ? (

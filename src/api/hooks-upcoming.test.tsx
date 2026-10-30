@@ -48,7 +48,8 @@ const queryClients: QueryClient[] = [];
 
 type Setup = {
   id: string;
-  caps: Partial<Capabilities> | 'pending';
+  /** `fail`: the server's `/server` read fails (unreachable, or refusing). */
+  caps: Partial<Capabilities> | 'pending' | 'fail';
   kid?: boolean;
   answer?: Partial<UpcomingResponse> | 'fail';
 };
@@ -62,6 +63,7 @@ async function mount<T>(setups: Setup[], useHook: () => T) {
   for (const s of setups) {
     const stub: Stub = { serverInfo: jest.fn(), upcoming: jest.fn() };
     if (s.caps === 'pending') stub.serverInfo.mockReturnValue(new Promise(() => {}));
+    else if (s.caps === 'fail') stub.serverInfo.mockRejectedValue(new Error('unreachable'));
     else stub.serverInfo.mockResolvedValue(serverWith(s.id, s.caps));
     if (s.answer === 'fail') stub.upcoming.mockRejectedValue(new Error('down'));
     else stub.upcoming.mockResolvedValue({ status: 'ok', window_days: 90, items: [], ...s.answer });
@@ -159,6 +161,42 @@ describe('useUpcomingAll', () => {
     const { result } = await mount([{ id: 'a', caps: 'pending' }], useUpcomingAvailable);
     expect(result.current).toBeUndefined();
     expect(mockClients.a.upcoming).not.toHaveBeenCalled();
+  });
+
+  // A cold /upcoming link with the one non-kid server unreachable: its flags never arrive,
+  // which must settle (a failure the page can retry), not load forever.
+  it("settles when a server's flags cannot be read and no other can be asked", async () => {
+    const { result } = await mount(
+      [
+        { id: 'down', caps: 'fail' },
+        { id: 'kid', caps: { upcoming: true }, kid: true },
+      ],
+      () => ({ all: useUpcomingAll(), available: useUpcomingAvailable() }),
+    );
+    await waitFor(() => expect(result.current.all.available).toBe(false));
+    expect(result.current.available).toBe(false);
+    expect(result.current.all.isLoading).toBe(false);
+    expect(result.current.all.failed).toEqual(['Server down']);
+    expect(mockClients.down.upcoming).not.toHaveBeenCalled();
+    // Retry reads its flags again; once they say `upcoming`, its list is asked for.
+    mockClients.down.serverInfo.mockResolvedValue(serverWith('down', { upcoming: true }));
+    await act(async () => result.current.all.retry());
+    await waitFor(() => expect(result.current.all.available).toBe(true));
+    await waitFor(() => expect(mockClients.down.upcoming).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.all.failed).toEqual([]));
+  });
+
+  it('names an unreadable server beside one that answers', async () => {
+    const { result } = await mount(
+      [
+        { id: 'on', caps: { upcoming: true }, answer: { items: [upcomingItem({ id: 'w' })] } },
+        { id: 'down', caps: 'fail' },
+      ],
+      useUpcomingAll,
+    );
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.failed).toEqual(['Server down']));
+    expect(result.current.available).toBe(true);
   });
 
   it('passes each server status through, and a failed server adds nothing but its name', async () => {

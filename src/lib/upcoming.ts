@@ -97,19 +97,29 @@ export function mergeUpcoming(
  * Which connections Upcoming may ask (`eligible`: the server advertises `upcoming` and the
  * user there is not a kid, whom the route refuses) and whether there is any (`available`:
  * true as soon as one is, false once every connection is known not to be, undefined while
- * a server's flags are still loading).
+ * a server's flags are still loading). A non-kid connection whose flags could not be read
+ * (`failed`, from `useCapabilitiesAllRead`) is `unreadable`: settled, not loading, so a
+ * page never waits on it forever.
  */
 export function upcomingEligibility(
   connections: readonly { id: string; user?: Parameters<typeof isKidAccount>[0] }[],
   caps: Record<string, Capabilities | undefined>,
-): { eligible: ReadonlySet<string>; available: boolean | undefined } {
+  failed: readonly string[] = [],
+): { eligible: ReadonlySet<string>; available: boolean | undefined; unreadable: string[] } {
   const eligible = new Set<string>();
+  const unreadable: string[] = [];
   let unknown = false;
   for (const c of connections) {
     if (isKidAccount(c.user)) continue;
     const flags = caps[c.id];
-    if (!flags) unknown = true;
-    else if (flags.upcoming) eligible.add(c.id);
+    if (flags) {
+      if (flags.upcoming) eligible.add(c.id);
+    } else if (failed.includes(c.id)) unreadable.push(c.id);
+    else unknown = true;
   }
-  return { eligible, available: eligible.size > 0 ? true : unknown ? undefined : false };
+  return {
+    eligible,
+    available: eligible.size > 0 ? true : unknown ? undefined : false,
+    unreadable,
+  };
 }

@@ -3067,8 +3067,10 @@
       "title": "Ricerca delle uscite",
       "hint": "Il tuo server sta cercando le uscite; questo elenco si riempie dopo la prima ricerca."
     },
-    "pendingSome": "{{server}} sta ancora facendo la prima ricerca delle uscite.",
-    "stale": "{{server}} non cerca le uscite da più di due giorni, quindi questo elenco potrebbe non essere aggiornato.",
+    "pendingSome_one": "{{server}} sta ancora facendo la prima ricerca delle uscite.",
+    "pendingSome_other": "{{server}} stanno ancora facendo la prima ricerca delle uscite.",
+    "stale_one": "{{server}} non cerca le uscite da più di due giorni, quindi questo elenco potrebbe non essere aggiornato.",
+    "stale_other": "{{server}} non cercano le uscite da più di due giorni, quindi questo elenco potrebbe non essere aggiornato.",
     "empty": {
       "title": "Niente in arrivo",
       "hint": "Niente in arrivo nelle serie che hai."
@@ -3079,8 +3081,11 @@
     },
     "error": {
       "title": "Impossibile caricare le uscite in arrivo",
-      "hint": "{{server}} non ha risposto. Non si perde nulla: riprova tra un momento.",
-      "partial": "{{server}} non ha risposto, quindi in questo elenco potrebbero mancare delle uscite."
-    }
+      "hint_one": "{{server}} non ha risposto. Non si perde nulla: riprova tra un momento.",
+      "hint_other": "{{server}} non hanno risposto. Non si perde nulla: riprova tra un momento.",
+      "partial_one": "{{server}} non ha risposto, quindi in questo elenco potrebbero mancare delle uscite.",
+      "partial_other": "{{server}} non hanno risposto, quindi in questo elenco potrebbero mancare delle uscite."
+    },
+    "and": "{{rest}} e {{last}}"
   }
 }

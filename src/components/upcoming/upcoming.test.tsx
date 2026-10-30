@@ -221,6 +221,41 @@ describe('UpcomingContent', () => {
     expect(screen.getByTestId('upcoming-pending-some').props.children).toMatch(/^Maya is still/);
   });
 
+  it('names several servers as a list, with the verb counted', async () => {
+    mockUpcoming.items = [missing];
+    mockUpcoming.failed = ['Home', 'Maya'];
+    mockUpcoming.statuses = [
+      { connectionId: 'a', connectionName: 'Home', status: 'stale' },
+      { connectionId: 'b', connectionName: 'Maya', status: 'stale' },
+      { connectionId: 'c', connectionName: 'Sam', status: 'pending' },
+      { connectionId: 'd', connectionName: 'Jo', status: 'pending' },
+      { connectionId: 'e', connectionName: 'Al', status: 'pending' },
+    ];
+    await render(<UpcomingContent />);
+    expect(screen.getByTestId('upcoming-stale').props.children).toBe(
+      "Home and Maya haven't checked for releases in over two days, so this list may be out of date.",
+    );
+    expect(screen.getByTestId('upcoming-pending-some').props.children).toBe(
+      'Sam, Jo and Al are still running their first check for releases.',
+    );
+    expect(
+      screen.getByText("Home and Maya didn't answer, so this list may be missing some releases."),
+    ).toBeTruthy();
+  });
+
+  // A cold link whose only non-kid server's flags could not be read: the hook says
+  // unavailable with that server failed, and the page offers a Retry, not "not available".
+  it('offers a Retry when the only server could not be read at all', async () => {
+    mockUpcoming = { ...idle, available: false, failed: ['Home'] };
+    await render(<UpcomingContent />);
+    expect(screen.getByText("Couldn't load upcoming releases")).toBeTruthy();
+    expect(
+      screen.getByText("Home didn't answer. Nothing is lost: try again in a moment."),
+    ).toBeTruthy();
+    expect(screen.queryByText('No upcoming releases here')).toBeNull();
+    expect(screen.queryByTestId('upcoming-skeleton', { includeHiddenElements: true })).toBeNull();
+  });
+
   it('says no server answered, with a Retry, never that nothing is coming up', async () => {
     mockUpcoming = { ...idle, available: true, failed: ['Home'] };
     await render(<UpcomingContent />);

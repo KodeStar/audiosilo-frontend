@@ -677,6 +677,34 @@ export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
   });
 }
 
+/**
+ * {@link useCapabilitiesAll} with what it can't tell: `failed` lists the connections whose
+ * `/server` read has failed with nothing known (an error, or held for the network), which
+ * `caps` keeps reading as `undefined` (not known yet), so a screen that waits on the flags
+ * can settle; `retry` asks each of them again. The same shared reads.
+ */
+export function useCapabilitiesAllRead(): {
+  caps: Record<string, Capabilities | undefined>;
+  failed: string[];
+  retry: () => void;
+} {
+  const apis = useApis();
+  return useQueries({
+    queries: apis.map(({ connection, client }) => serverInfoQuery(connection.id, client)),
+    combine: (results) => ({
+      caps: Object.fromEntries(
+        results.map((r, i) => [apis[i].connection.id, r.data?.capabilities]),
+      ),
+      failed: results.flatMap((r, i) =>
+        !r.data && (r.isError || r.isPaused) ? [apis[i].connection.id] : [],
+      ),
+      retry: () => {
+        for (const r of results) if (!r.data && r.isError) void r.refetch();
+      },
+    }),
+  });
+}
+
 /** Whether any server has a capability: true as soon as one does, false once every one
  * is known to lack it, undefined while that is still open. */
 export function anyCapability(
@@ -3192,22 +3220,26 @@ export function useRecentAll(limit = RECENT_LIMIT) {
 /** How long a connection's upcoming list is fresh: its job runs once a day. */
 const UPCOMING_STALE_MS = 15 * 60_000;
 
-/** The connections Upcoming may ask and whether there is any (`upcomingEligibility`). */
+/** The connections Upcoming may ask and whether there is any (`upcomingEligibility`): a
+ * server whose flags could not be read counts as `unreadable`, never as still loading. */
 function useUpcomingEligibility() {
   const apis = useApis();
-  const caps = useCapabilitiesAll();
+  const { caps, failed, retry } = useCapabilitiesAllRead();
   return {
     apis,
+    retryFlags: retry,
     ...upcomingEligibility(
       apis.map((a) => a.connection),
       caps,
+      failed,
     ),
   };
 }
 
 /** Whether Upcoming can show anything for the person listening: true once one of their
- * servers advertises `upcoming` for a user who is not a kid, false once none can, undefined
- * while a server's flags are still loading. Asks nothing beyond the shared `/server` reads. */
+ * servers advertises `upcoming` for a user who is not a kid, false once none can (a server
+ * whose flags could not be read counts as none), undefined while a server's flags are still
+ * loading. Asks nothing beyond the shared `/server` reads. */
 export function useUpcomingAvailable(): boolean | undefined {
   return useUpcomingEligibility().available;
 }
@@ -3220,7 +3252,9 @@ export function useUpcomingAvailable(): boolean | undefined {
  * once (the first connection's row, in `useApis` order), in the wire's order across
  * servers (`mergeUpcoming`). A server that fails adds nothing to the list but is named in
  * `failed` (no answer: its request failed, or waits for the network), so a screen never
- * reads a failure as "nothing coming up"; `retry` asks each failed one again. `statuses`
+ * reads a failure as "nothing coming up"; a server whose `/server` flags could not be read
+ * is named there too (it may have Upcoming), so a cold link settles instead of loading
+ * forever. `retry` asks each failed one again, its flags included. `statuses`
  * holds each answered connection's job status (`pending` before its first run, `stale`
  * after 48 h).
  */
@@ -3232,12 +3266,14 @@ export function useUpcomingAll(): {
   failed: string[];
   retry: () => void;
 } {
-  const { apis, eligible, available } = useUpcomingEligibility();
+  const { apis, eligible, available, unreadable, retryFlags } = useUpcomingEligibility();
   // `combine` re-runs whenever its identity changes, so it is keyed on what it reads (each
-  // connection, in order, and whether it is asked): the merge and sort run per answer, not
-  // per render.
+  // connection, in order, whether it is asked, and whether its flags could not be read):
+  // the merge and sort run per answer, not per render.
   const sources = JSON.stringify(
-    apis.map(({ connection: c }) => [c.id, c.name, eligible.has(c.id)] as const),
+    apis.map(
+      ({ connection: c }) => [c.id, c.name, eligible.has(c.id), unreadable.includes(c.id)] as const,
+    ),
   );
   const combine = useCallback(
     (
@@ -3249,16 +3285,18 @@ export function useUpcomingAll(): {
         refetch: () => Promise<unknown>;
       }[],
     ) => {
-      const conns = JSON.parse(sources) as [string, string, boolean][];
+      const conns = JSON.parse(sources) as [string, string, boolean, boolean][];
       const answered = conns.flatMap(([connectionId, connectionName, asked], i) => {
         const data = results[i]?.data;
         return asked && data
           ? [{ connectionId, connectionName, items: data.items, status: data.status }]
           : [];
       });
-      const failed = conns.flatMap(([, connectionName, asked], i) => {
+      // A server whose flags could not be read may have Upcoming too: it didn't answer either.
+      const failed = conns.flatMap(([, connectionName, asked, flagsFailed], i) => {
         const r = results[i];
-        return asked && r && !r.data && (r.isError || r.isPaused) ? [connectionName] : [];
+        const noAnswer = asked && r && !r.data && (r.isError || r.isPaused);
+        return noAnswer || flagsFailed ? [connectionName] : [];
       });
       return {
         items: mergeUpcoming(answered),
@@ -3279,7 +3317,7 @@ export function useUpcomingAll(): {
     },
     [sources, available],
   );
-  return useQueries({
+  const all = useQueries({
     queries: apis.map(({ connection, client }) => ({
       queryKey: qk.upcoming(connection.id),
       queryFn: eligible.has(connection.id)
@@ -3289,6 +3327,15 @@ export function useUpcomingAll(): {
     })),
     combine,
   });
+  // Retry also reads again the flags that could not be read (outside `combine`, whose
+  // identity the flags' fresh `retry` would change every render).
+  return {
+    ...all,
+    retry: () => {
+      all.retry();
+      retryFlags();
+    },
+  };
 }
 
 export function useFavouritesAll() {

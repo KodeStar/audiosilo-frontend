@@ -3067,8 +3067,10 @@
       "title": "Suche nach Neuerscheinungen",
       "hint": "Dein Server sucht nach Neuerscheinungen; diese Liste füllt sich nach der ersten Suche."
     },
-    "pendingSome": "{{server}} sucht noch zum ersten Mal nach Neuerscheinungen.",
-    "stale": "{{server}} hat seit über zwei Tagen nicht nach Neuerscheinungen gesucht, diese Liste ist vielleicht nicht aktuell.",
+    "pendingSome_one": "{{server}} sucht noch zum ersten Mal nach Neuerscheinungen.",
+    "pendingSome_other": "{{server}} suchen noch zum ersten Mal nach Neuerscheinungen.",
+    "stale_one": "{{server}} hat seit über zwei Tagen nicht nach Neuerscheinungen gesucht, diese Liste ist vielleicht nicht aktuell.",
+    "stale_other": "{{server}} haben seit über zwei Tagen nicht nach Neuerscheinungen gesucht, diese Liste ist vielleicht nicht aktuell.",
     "empty": {
       "title": "Nichts in Sicht",
       "hint": "In deinen Reihen erscheint demnächst nichts."
@@ -3079,8 +3081,11 @@
     },
     "error": {
       "title": "Neuerscheinungen konnten nicht geladen werden",
-      "hint": "{{server}} hat nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
-      "partial": "{{server}} hat nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen."
-    }
+      "hint_one": "{{server}} hat nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
+      "hint_other": "{{server}} haben nicht geantwortet. Nichts geht verloren: versuch es gleich noch einmal.",
+      "partial_one": "{{server}} hat nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen.",
+      "partial_other": "{{server}} haben nicht geantwortet, in dieser Liste fehlen vielleicht Erscheinungen."
+    },
+    "and": "{{rest}} und {{last}}"
   }
 }

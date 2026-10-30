@@ -1138,7 +1138,10 @@ in `useApis()` order, and a connection is asked only when its server advertises 
 user is not a kid (`isKidAccount`; the route answers a kid 403): every other connection has no
 query function (`skipToken`), so it is never asked, not even by a manual `refetch`. The pure
 rules are `src/lib/upcoming.ts`: `upcomingEligibility` (who may be asked, and `available`:
-true / false / undefined while a server's flags load; `useUpcomingAvailable` reads only that),
+true / false / undefined while a server's flags load; a non-kid server whose `/server` read
+failed, from `useCapabilitiesAllRead` (`useCapabilitiesAll` plus `failed` ids and `retry`, the
+same shared reads), is `unreadable`, settled and not loading, so a cold link never waits on it
+forever; `useUpcomingAvailable` reads only `available`),
 `mergeUpcoming` (tags each item with its connection, keeps the FIRST connection's row of a work
 id, then `compareUpcoming`, the server's order across servers: preorders soonest first, releases
 newest first, then missing by series name and numeric position) and `isNewUpcoming`
@@ -1146,10 +1149,12 @@ newest first, then missing by series name and numeric position) and `isNewUpcomi
 (`parseReleaseDate`, and `releaseIsFuture`: a date at its own precision against the UTC day,
 "2026" or "2026-10" is ahead only while the whole period is), so `format.ts` and the series model
 never import the feature. A failed server adds no items but is named in `failed` (no answer: it
-failed or waits for the network; `retry` asks it again), so the page shows "Couldn't load" with a
+failed or waits for the network, or its flags could not be read; `retry` asks it again, flags
+included), so the page shows "Couldn't load" with a
 Retry when no server answered and a note when some did, never "Nothing coming up" for a failure;
 `statuses` carries each answered server's `ok|pending|stale` (its notes show over the list or the
-empty state). Dates show through
+empty state). A note naming servers joins them with `joinList` ("Home and Maya", `upcoming.and`)
+and passes `count`, so its verb is plural (`_one`/`_other`). Dates show through
 `formatReleaseDate` (`src/lib/format.ts`: "2027", "Nov 2026", "12 Nov 2026", read in UTC; any
 other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "First released"
 (the metadata's one date is a work's FIRST release), no line without a date. Surfaces

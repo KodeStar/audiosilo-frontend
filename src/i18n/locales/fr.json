@@ -3067,8 +3067,10 @@
       "title": "Recherche des sorties",
       "hint": "Votre serveur recherche les sorties ; cette liste se remplira après sa première recherche."
     },
-    "pendingSome": "{{server}} effectue encore sa première recherche des sorties.",
-    "stale": "{{server}} n'a pas recherché les sorties depuis plus de deux jours, cette liste n'est peut-être pas à jour.",
+    "pendingSome_one": "{{server}} effectue encore sa première recherche des sorties.",
+    "pendingSome_other": "{{server}} effectuent encore leur première recherche des sorties.",
+    "stale_one": "{{server}} n'a pas recherché les sorties depuis plus de deux jours, cette liste n'est peut-être pas à jour.",
+    "stale_other": "{{server}} n'ont pas recherché les sorties depuis plus de deux jours, cette liste n'est peut-être pas à jour.",
     "empty": {
       "title": "Rien à venir",
       "hint": "Rien à venir dans les séries que vous avez."
@@ -3079,8 +3081,11 @@
     },
     "error": {
       "title": "Impossible de charger les sorties à venir",
-      "hint": "{{server}} n'a pas répondu. Rien n'est perdu : réessayez dans un instant.",
-      "partial": "{{server}} n'a pas répondu, il manque peut-être des sorties dans cette liste."
-    }
+      "hint_one": "{{server}} n'a pas répondu. Rien n'est perdu : réessayez dans un instant.",
+      "hint_other": "{{server}} n'ont pas répondu. Rien n'est perdu : réessayez dans un instant.",
+      "partial_one": "{{server}} n'a pas répondu, il manque peut-être des sorties dans cette liste.",
+      "partial_other": "{{server}} n'ont pas répondu, il manque peut-être des sorties dans cette liste."
+    },
+    "and": "{{rest}} et {{last}}"
   }
 }

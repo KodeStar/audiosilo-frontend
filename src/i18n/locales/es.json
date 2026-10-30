@@ -3067,8 +3067,10 @@
       "title": "Buscando novedades",
       "hint": "Tu servidor está buscando novedades; esta lista se llenará tras su primera búsqueda."
     },
-    "pendingSome": "{{server}} aún está haciendo su primera búsqueda de novedades.",
-    "stale": "{{server}} no ha buscado novedades en más de dos días, así que esta lista puede estar desactualizada.",
+    "pendingSome_one": "{{server}} aún está haciendo su primera búsqueda de novedades.",
+    "pendingSome_other": "{{server}} aún están haciendo su primera búsqueda de novedades.",
+    "stale_one": "{{server}} no ha buscado novedades en más de dos días, así que esta lista puede estar desactualizada.",
+    "stale_other": "{{server}} no han buscado novedades en más de dos días, así que esta lista puede estar desactualizada.",
     "empty": {
       "title": "Nada a la vista",
       "hint": "No hay nada próximo en las series que tienes."
@@ -3079,8 +3081,11 @@
     },
     "error": {
       "title": "No se pudieron cargar los próximos lanzamientos",
-      "hint": "{{server}} no respondió. No se pierde nada: inténtalo de nuevo en un momento.",
-      "partial": "{{server}} no respondió, así que a esta lista pueden faltarle lanzamientos."
-    }
+      "hint_one": "{{server}} no respondió. No se pierde nada: inténtalo de nuevo en un momento.",
+      "hint_other": "{{server}} no respondieron. No se pierde nada: inténtalo de nuevo en un momento.",
+      "partial_one": "{{server}} no respondió, así que a esta lista pueden faltarle lanzamientos.",
+      "partial_other": "{{server}} no respondieron, así que a esta lista pueden faltarle lanzamientos."
+    },
+    "and": "{{rest}} y {{last}}"
   }
 }
