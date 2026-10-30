@@ -25,7 +25,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { canRead } from './can-read';
 import { hasLocalEbook } from './ebook-file';
 import { useNarration } from './narration';
-import { FollowPill, PageEdges, turnPage, usePageEdges } from './page-edge';
+import { FollowPill, followPillRoom, PageEdges, turnPage, usePageEdges } from './page-edge';
 import type { ReaderPlace, TocEntry } from './protocol';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
@@ -114,14 +114,14 @@ export function ReaderScreen({
   const readable = canRead(ebooks, book, !!savedEbook);
   const ebookSize = book?.ebook?.size;
   const localRef = { connectionId, libraryId, path, size: ebookSize, saved: savedEbook };
-  // The app's cache file as it was before this screen's host could write it: the host starts
-  // fetching while the place is looked up (fe#164), and a copy this screen fetched is no
-  // sign the book was read on this device, so it never makes an offline lookup open at a
-  // guessed start. Asked once, as the host first renders (set while rendering, so before
-  // its effects run), and never with a download, whose EPUB answers on its own.
-  const [cachedBefore, setCachedBefore] = useState<Promise<boolean> | null>(null);
+  // The app's cache file counts only when this screen's host did not fetch it: the host
+  // starts fetching while the place is looked up (fe#164), and a copy this screen fetched is
+  // no sign the book was read on this device, so it never makes an offline lookup open at a
+  // guessed start. The host says so as its fetch starts (`onFetch`, fe#193), before any file
+  // of it exists. A download's EPUB answers on its own.
+  const fetchedHere = useRef(false);
   const hasLocalCopy = useLatest(() =>
-    savedEbook || !cachedBefore ? hasLocalEbook(localRef) : cachedBefore,
+    !savedEbook && fetchedHere.current ? Promise.resolve(false) : hasLocalEbook(localRef),
   );
   const place = useReadingPlace(libraryId, path, connectionId, readable, hasLocalCopy);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
@@ -387,10 +387,6 @@ export function ReaderScreen({
   // The host starts before the place is known (fe#164: the EPUB is fetched meanwhile), and
   // hands the book over once it is (`placeKnown`).
   const ready = readable && api !== null && fontScale !== null && ebookSize !== undefined;
-  if (ready && !savedEbook && cachedBefore === null) {
-    // A throw is no copy (as `lookupReadingPlace` takes it), never an unhandled rejection.
-    setCachedBefore(hasLocalEbook(localRef).catch(() => false));
-  }
   const edges = usePageEdges();
   // "Follow narration" (first) or "Back to narration" (after turning away), while the book
   // shows, plays, and its map is this ebook's.
@@ -467,31 +463,37 @@ export function ReaderScreen({
 
         <View className="relative flex-1" onLayout={edges.onLayout}>
           {ready && !shown ? (
-            <ReaderHost
-              key={attempt}
-              ref={host}
-              api={api}
-              connectionId={connectionId}
-              libraryId={libraryId}
-              ebookSize={ebookSize}
-              path={path}
-              name={title}
-              at={at}
-              placeKnown={opening !== null}
-              theme={theme}
-              fontScale={fontScale}
-              title={t('reader.frameTitle', { title })}
-              onMessage={onMessage}
-              onLoadError={onLoadError}
-              // The reader was made again: the edges, the toolbar and the offer wait for
-              // its next `opened`, the spinner shows meanwhile.
-              onReopen={() => setOpened(null)}
-              readalongMap={readalongMap}
-              readalongPosition={narration.readalongPosition}
-              onSeek={narration.onSeek}
-              onFollowing={onFollowing}
-              onReadalongState={(s) => setReadalongOk(s.state === 'ok')}
-            />
+            // The page ends above the follow pill while it shows (fe#192).
+            <View testID="reader-page" className="flex-1" style={followPillRoom(!!followLabel)}>
+              <ReaderHost
+                key={attempt}
+                ref={host}
+                api={api}
+                connectionId={connectionId}
+                libraryId={libraryId}
+                ebookSize={ebookSize}
+                path={path}
+                name={title}
+                at={at}
+                placeKnown={opening !== null}
+                theme={theme}
+                fontScale={fontScale}
+                title={t('reader.frameTitle', { title })}
+                onMessage={onMessage}
+                onLoadError={onLoadError}
+                // The reader was made again: the edges, the toolbar and the offer wait for
+                // its next `opened`, the spinner shows meanwhile.
+                onReopen={() => setOpened(null)}
+                onFetch={() => {
+                  fetchedHere.current = true;
+                }}
+                readalongMap={readalongMap}
+                readalongPosition={narration.readalongPosition}
+                onSeek={narration.onSeek}
+                onFollowing={onFollowing}
+                onReadalongState={(s) => setReadalongOk(s.state === 'ok')}
+              />
+            </View>
           ) : null}
           {show ? <PageEdges host={host} rtl={rtl} narrow={edges.narrow} /> : null}
           {signedOut && (shown === 'signedOut' || shown === 'fetch') ? (

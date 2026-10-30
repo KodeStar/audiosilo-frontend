@@ -43,6 +43,8 @@ import {
 } from './offline-meta';
 import {
   fetchReadalongFile,
+  type KeptReadalong,
+  knowsEbook,
   readalongChange,
   readReadalongFile,
   removeReadalongFile,
@@ -637,8 +639,9 @@ const readalongTried = new Set<string>();
  * Keep downloaded books' read-along maps in step with the server (Bridge Phase 3c): every
  * `/item` answer the server gives for a downloaded book with its EPUB on the device fetches
  * the map again when its `readalong.generated_at` is not the one the download keeps, and
- * drops the kept one when the server has no ready map any more (`readalongChange`; only from
- * a server that serves maps, so an older one never drops anything). Returns the unsubscribe
+ * drops the kept one when the server has no ready map any more, unless a stale one still fits
+ * the download's EPUB (`readalongChange`; only from a server that serves maps, so an older one
+ * never drops anything). Returns the unsubscribe
  * (started once from the root layout).
  *
  * The answers the cache already holds when it starts, and when the launch's `hydrate` has
@@ -687,7 +690,7 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   const change = readalongChange(book, entry.manifest);
   if (change === 'keep') return;
   const key = contentKeyOf(ref);
-  let kept: string | undefined;
+  let kept: KeptReadalong | undefined;
   if (change === 'drop') {
     await removeReadalongFile(ref);
   } else {
@@ -695,8 +698,12 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     const api = resolveClient(ref.connectionId);
     if (readalongTried.has(attempt) || !api) return;
     readalongTried.add(attempt);
-    kept = await fetchReadalongFile(api, ref);
-    // Not fetched: the map kept (if any) stays, and so does what the download says of it.
+    // Only a map of the ebook the download holds (fe#193). Without its sha (no map was kept
+    // yet), an ebook of another size on the server is another ebook: none is fetched.
+    if (!knowsEbook(book, entry.manifest)) return;
+    kept = await fetchReadalongFile(api, ref, { ebookSha256: entry.manifest.ebookSha256 });
+    // Not fetched (or refused): the map kept (if any) stays, and so does what the download
+    // says of it.
     if (!kept) return;
   }
   if (!stillDownloaded(key, entry)) {
@@ -704,12 +711,19 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     if (!useDownloads.getState().entries[key]) await removeReadalongFile(ref);
     return;
   }
-  const { manifest } = useDownloads.getState().entries[key];
+  const cur = useDownloads.getState().entries[key];
+  const { manifest } = cur;
+  // The entry's size follows the map's: the old one's bytes out, the new one's in.
+  const delta = (kept?.bytes ?? 0) - (manifest.readalongBytes ?? 0);
   patchEntry(key, {
+    bytes: Math.max(0, cur.bytes + delta),
+    totalBytes: cur.totalBytes > 0 ? Math.max(0, cur.totalBytes + delta) : cur.totalBytes,
     manifest: {
       ...manifest,
-      readalongGeneratedAt: kept,
-      book: namingReadalong(manifest.book, kept, book.readalong),
+      readalongGeneratedAt: kept?.generatedAt,
+      readalongBytes: kept?.bytes,
+      ebookSha256: manifest.ebookSha256 ?? kept?.ebookSha256,
+      book: namingReadalong(manifest.book, kept?.generatedAt, book.readalong),
     },
   });
   persistSoon();
@@ -1092,9 +1106,12 @@ async function runOne(key: string) {
     const specs = bookFileSpecs(entry.manifest.book, entry.manifest.chapters ?? undefined);
     fileCount = specs.length;
     // The ebook (Bridge Phase 3b-2) is one more step after the audio, and its size counts in
-    // the total: 100% is the whole download, and the bytes kept include it.
+    // the total: 100% is the whole download, and the bytes kept include it. So is the
+    // read-along map the book will likely take (its size counts once it is in, fe#193).
     const ebook = entry.manifest.book.ebook;
-    const steps = specs.length + (ebook ? 1 : 0);
+    const serves = cachedCapability(connectionId, 'readalong');
+    const mapLikely = !!ebook && wantsReadalong(serves, entry.manifest.book, EBOOK_FILE);
+    const steps = specs.length + (ebook ? 1 : 0) + (mapLikely ? 1 : 0);
     const knownTotal = specs.every((s) => s.size > 0)
       ? specs.reduce((sum, s) => sum + s.size, 0) + (ebook?.size ?? 0)
       : 0;
@@ -1208,15 +1225,25 @@ async function runOne(key: string) {
       ebookBytes = ebookUri ? ebookBytes || ebook.size : 0;
     }
     // The book's read-along map (Bridge Phase 3c), beside the EPUB it follows: optional too.
-    let readalong: string | undefined;
-    if (
-      wantsReadalong(cachedCapability(connectionId, 'readalong'), entry.manifest.book, ebookUri)
-    ) {
-      readalong = await fetchReadalongFile(api, { connectionId, libraryId, path }, ctrl.signal);
+    // The capability as it is now, not as it was before the audio (a download resumed at
+    // launch can start before the server's answer is cached).
+    let readalong: KeptReadalong | undefined;
+    const servesNow = cachedCapability(connectionId, 'readalong');
+    if (wantsReadalong(servesNow, entry.manifest.book, ebookUri)) {
+      readalong = await fetchReadalongFile(
+        api,
+        { connectionId, libraryId, path },
+        { signal: ctrl.signal },
+      );
     }
-    const bytes = priorBytes + ebookBytes;
-    // A book that carries on without its ebook (its fetch failed) holds only its audio.
-    const totalBytes = ebook && !ebookUri && knownTotal > 0 ? knownTotal - ebook.size : knownTotal;
+    const mapBytes = readalong?.bytes ?? 0;
+    const bytes = priorBytes + ebookBytes + mapBytes;
+    // A book that carries on without its ebook (its fetch failed) holds only its audio; the
+    // map's size is known only now.
+    const totalBytes =
+      knownTotal > 0
+        ? (ebook && !ebookUri ? knownTotal - ebook.size : knownTotal) + mapBytes
+        : knownTotal;
 
     // With the server's chapters answer when one landed while the files did.
     const manifest = withCachedChapters(entry, {
@@ -1224,8 +1251,10 @@ async function runOne(key: string) {
       files,
       coverUri,
       ebookUri,
-      readalongGeneratedAt: readalong,
-      book: namingReadalong(entry.manifest.book, readalong),
+      readalongGeneratedAt: readalong?.generatedAt,
+      readalongBytes: readalong?.bytes,
+      ebookSha256: readalong?.ebookSha256,
+      book: namingReadalong(entry.manifest.book, readalong?.generatedAt),
       savedAt: new Date().toISOString(),
     });
 
@@ -1370,6 +1399,35 @@ export function useDownloadedReadalong(
   return useDownloads((s) => {
     const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
     return (m?.ebookUri && m.readalongGeneratedAt) || undefined;
+  });
+}
+
+/** The sha256 of the ebook a finished download of the book holds (`manifest.ebookSha256`),
+ * else undefined (no EPUB downloaded, or no map ever kept to say): a map made from another
+ * ebook never reaches the reader of this copy (fe#193). */
+export function useDownloadedEbookSha(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): string | undefined {
+  return useDownloads((s) => {
+    const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
+    return (m?.ebookUri && m.ebookSha256) || undefined;
+  });
+}
+
+/** The server's size of the EPUB a finished download of the book holds, as its book said
+ * when it was saved (`manifest.book.ebook.size`), else undefined (no EPUB downloaded). With
+ * no `ebookSha256` known, a server ebook of another size is another ebook (fe#193), as
+ * `refreshReadalong` takes it. */
+export function useDownloadedEbookSize(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): number | undefined {
+  return useDownloads((s) => {
+    const m = downloadedIn(s.entries, connectionId, libraryId, path)?.manifest;
+    return m?.ebookUri ? m.book.ebook?.size : undefined;
   });
 }
 

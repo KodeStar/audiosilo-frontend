@@ -1679,6 +1679,13 @@
       "textFailedHint": "The ebook didn't load. Check the connection and try again.",
       "textMapFailedHint": "The read-along didn't load. Check the connection and try again.",
       "textStartHint": "The ebook reader didn't start. Try again.",
+      "textSignedOutHint": "Sign in to this server again to load the read-along.",
+      "textDeniedTitle": "This read-along isn't yours to open",
+      "textDeniedHint": "The server no longer shares this book with you.",
+      "textMissingTitle": "This book isn't on the server any more",
+      "textMissingHint": "It may have moved or been removed. Open it from the library again.",
+      "textEbookChangedTitle": "The read-along is for a newer ebook",
+      "textEbookChangedHint": "The ebook on this device is older than the one the read-along was made from. Remove the download and download the book again to follow along.",
       "textNoServer": "The text comes back once it is."
     },
     "placeMoved": {

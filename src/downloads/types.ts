@@ -65,6 +65,15 @@ export type DownloadManifest = {
    * the book has none (or a stale one), when it could not be fetched (optional, like the
    * ebook) and on downloads made before it existed. */
   readalongGeneratedAt?: string;
+  /** The size in bytes of that map on the device (counted in the entry's `bytes` and
+   * `totalBytes`). Absent with no map, and on downloads made before it existed. */
+  readalongBytes?: number;
+  /** The sha256 of the ebook `book.epub` is, as the first map the download kept named it
+   * (fe#193): a map made later from another ebook (the server's was replaced) is refused,
+   * never kept beside this one, and the server's copy of it never reaches the reader of
+   * this download. Kept when the map is dropped (the EPUB stays the same); absent while no
+   * map was ever kept. */
+  ebookSha256?: string;
   savedAt: string;
   /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
    * Only this marker lives here: the payload (an envelope with its characters and recaps

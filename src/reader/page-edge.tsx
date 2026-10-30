@@ -97,6 +97,16 @@ function PageEdge({
   );
 }
 
+/** The room kept at the reader's foot while the follow pill shows (fe#192): the pill (30)
+ * and the space around it, so it never covers the last line of the page. */
+export const FOLLOW_PILL_ROOM = 48;
+
+/** The reader page's style while the follow pill shows (`pill`): `FOLLOW_PILL_ROOM` at its
+ * foot, else none. */
+export function followPillRoom(pill: boolean) {
+  return pill ? { paddingBottom: FOLLOW_PILL_ROOM } : undefined;
+}
+
 /**
  * The read-along's way back to the narration (Bridge Phase 3c): a pill at the foot of the
  * reader while it does not follow the sentence being read, "Follow narration" before it

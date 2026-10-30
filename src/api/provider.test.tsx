@@ -33,6 +33,10 @@ jest.mock('./reachability', () => ({
 
 const seen: ApiConnection[][] = [];
 
+// The app's one query client outlives every test: its queries' garbage-collection timers
+// would keep jest running once the file is done (fe#193).
+afterAll(() => queryClient.clear());
+
 /** Hands every render's `useApis()` to `onApis`; `tick` only re-renders it. */
 function Reader({ onApis }: { tick: number; onApis: (apis: ApiConnection[]) => void }) {
   onApis(useApis());

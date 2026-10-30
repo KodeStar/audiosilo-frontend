@@ -38,6 +38,13 @@ jest.mock('./undo-chip', () => {
   };
 });
 
+// The Text tab's rule (its own tests): whether the playing book's companion shows it.
+let mockTextShown = false;
+jest.mock('./companion/use-text-tab', () => ({ useTextTab: () => ({ shown: mockTextShown }) }));
+jest.mock('@/api/provider', () => ({
+  ConnectionScope: ({ children }: { children: unknown }) => children,
+}));
+
 /* eslint-disable import/first */
 import { useJumpUndo } from '@/playback/jump-undo';
 import { usePlayer } from '@/playback/store';
@@ -143,6 +150,29 @@ describe('touch targets on native', () => {
 });
 
 describe('CompanionChips', () => {
+  afterEach(() => {
+    mockTextShown = false;
+  });
+
+  it('offers a Text chip while the companion shows the Text tab, in its order (fe#192)', async () => {
+    await mountWithPortal(<CompanionChips />);
+    expect(screen.queryByLabelText('Text')).toBeNull();
+    mockTextShown = true;
+    await mountWithPortal(<CompanionChips />);
+    const labels = [
+      'player-chip-who',
+      'player-chip-story',
+      'player-chip-text',
+      'player-chip-chapters',
+    ];
+    for (const id of labels) expect(screen.getByTestId(id)).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Text'));
+    });
+    expect(usePlayerSheets.getState().open).toBe('companion');
+    expectNativeTarget(screen.getByLabelText('Text'));
+  });
+
   it("offers no Who's who or Story so far for a podcast episode", async () => {
     await mountWithPortal(<CompanionChips />);
     expect(screen.getByLabelText("Who's who")).toBeTruthy();

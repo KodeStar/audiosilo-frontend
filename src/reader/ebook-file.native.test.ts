@@ -155,6 +155,20 @@ describe('localEbook', () => {
     expect(files()).toEqual([BOOK]);
   });
 
+  it('says a fetch as it starts, before any file of it, and never for a copy already here (fe#193)', async () => {
+    const files0: string[][] = [];
+    const onFetch = jest.fn(() => files0.push(files()));
+    await localEbook({ ...args, onFetch });
+    expect(onFetch).toHaveBeenCalledTimes(1);
+    expect(files0[0]).toEqual([]);
+    // The cache file is here now, and the download's copy reads as it is: no fetch said.
+    onFetch.mockClear();
+    await localEbook({ ...args, onFetch });
+    mockTree.set(SAVED, 1234);
+    await localEbook({ ...args, saved: SAVED, onFetch });
+    expect(onFetch).not.toHaveBeenCalled();
+  });
+
   it('keeps a copy of another length than the server’s size: it is the book, offline too', async () => {
     // The size is the server's last scan's; the route serves the file as it is now.
     mockDownload.mockImplementation(async () => 1234);

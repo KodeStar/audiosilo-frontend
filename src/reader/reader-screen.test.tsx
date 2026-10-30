@@ -130,6 +130,7 @@ jest.mock('./reading-progress', () => ({
 }));
 
 /* eslint-disable import/first */
+import { FOLLOW_PILL_ROOM } from './page-edge';
 import { ReaderScreen } from './reader-screen';
 /* eslint-enable import/first */
 
@@ -413,24 +414,26 @@ describe('ReaderScreen', () => {
     });
   });
 
-  it("never counts the cache file this screen's own host wrote as a held EPUB (fe#164)", async () => {
-    // No download, no cache file when the screen opens; the host then fetches the EPUB into
-    // the app's cache while the place is still looked up.
-    mockHasLocalEbook.mockResolvedValue(false);
+  it("never counts the cache file this screen's own host fetched as a held EPUB (fe#164, fe#193)", async () => {
+    // No download: the host fetches the EPUB into the app's cache while the place is still
+    // looked up, and says so as the fetch starts.
     await mount();
     await waitFor(() => expect(mockHost).not.toBeNull());
+    await act(async () => mockHost!.onFetch!());
     mockHasLocalEbook.mockResolvedValue(true);
     const hasLocalCopy = mockPlaceArgs[4] as () => Promise<boolean>;
     await expect(hasLocalCopy()).resolves.toBe(false);
   });
 
-  it('still counts a cache file that was there before the screen opened', async () => {
+  it('counts a cache file the host did not fetch, as it is when asked (fe#193)', async () => {
     mockHasLocalEbook.mockResolvedValue(true);
     await mount();
     await waitFor(() => expect(mockHost).not.toBeNull());
-    mockHasLocalEbook.mockResolvedValue(false);
     const hasLocalCopy = mockPlaceArgs[4] as () => Promise<boolean>;
     await expect(hasLocalCopy()).resolves.toBe(true);
+    // Asked again, not a snapshot from the mount: a copy gone since is no copy.
+    mockHasLocalEbook.mockResolvedValue(false);
+    await expect(hasLocalCopy()).resolves.toBe(false);
   });
 
   it('waits, never looking up a place, with the capability unknown and no downloaded EPUB', async () => {
@@ -689,6 +692,17 @@ describe('ReaderScreen', () => {
       expect(mockHost!.onSeek).toBe(mockSeek);
       // The full-screen reader waits for the listener: it never follows by itself.
       expect(mockHost!.followNarration).toBeUndefined();
+    });
+
+    it('ends the page above the follow pill while it shows (fe#192)', async () => {
+      await mount();
+      await opened();
+      const page = () => screen.getByTestId('reader-page');
+      expect(page().props.style).toBeUndefined();
+      await mapOk();
+      expect(page().props.style).toEqual({ paddingBottom: FOLLOW_PILL_ROOM });
+      await follows(true);
+      expect(page().props.style).toBeUndefined();
     });
 
     it('offers Follow narration once the reader takes the map, and follows on a press', async () => {

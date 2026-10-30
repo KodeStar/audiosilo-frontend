@@ -14,21 +14,31 @@ jest.mock('@/api/hooks', () => ({
   useReadalong: (_lib: number, _path: string, opts: { enabled: boolean }) => mockServerMap(opts),
 }));
 let mockKept: string | undefined;
+let mockEbookSha: string | undefined;
+let mockEbookSize: number | undefined;
 const mockReadKept = jest.fn();
 jest.mock('@/downloads/store', () => ({
   useDownloadedReadalong: () => mockKept,
+  useDownloadedEbookSha: () => mockEbookSha,
+  useDownloadedEbookSize: () => mockEbookSize,
   readDownloadedReadalong: (ref: unknown) => mockReadKept(ref),
 }));
 
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 
-import { readalongNone, readalongSource, useBookReadalong } from './use-book-readalong';
+import {
+  readalongFailure,
+  readalongNone,
+  readalongSource,
+  useBookReadalong,
+} from './use-book-readalong';
 /* eslint-enable import/first */
 
 const SPAN = { cfi: 'epubcfi(/6/4!/4/2,/1:0,/1:9)', start: 1, end: 2 };
-const map = (spans = [SPAN]) => ({
+const map = (spans = [SPAN], sha = 'sha-1') => ({
   format: 'audiosilo-readalong/v1',
+  ebook: { file: 'a.epub', sha256: sha },
   sections: [{ href: 'c1.xhtml', spans }],
   dropped: 0,
 });
@@ -80,6 +90,18 @@ describe('readalongNone', () => {
   });
 });
 
+describe('readalongFailure', () => {
+  it('tells a refusal Try again cannot mend from a failure to say', () => {
+    expect(readalongFailure(new ApiError(404, 'x', 'no_readalong'))).toBeNull();
+    expect(readalongFailure(new ApiError(409, 'x', 'readalong_stale'))).toBeNull();
+    expect(readalongFailure(new ApiError(401, 'x'))).toBe('signedOut');
+    expect(readalongFailure(new ApiError(403, 'x'))).toBe('denied');
+    expect(readalongFailure(new ApiError(404, 'x'))).toBe('missing');
+    expect(readalongFailure(new ApiError(503, 'x'))).toBe('retry');
+    expect(readalongFailure(new TypeError('Network request failed'))).toBe('retry');
+  });
+});
+
 describe('useBookReadalong', () => {
   let client: QueryClient;
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -91,6 +113,8 @@ describe('useBookReadalong', () => {
     jest.clearAllMocks();
     mockServes = true;
     mockKept = undefined;
+    mockEbookSha = undefined;
+    mockEbookSize = undefined;
     // One answer per map, as the query gives it (the same object on every render).
     mockServerMap.mockImplementation(({ enabled }: { enabled: boolean }) => ({
       data: enabled ? SERVER_MAP : undefined,
@@ -103,7 +127,7 @@ describe('useBookReadalong', () => {
     expect(result.current).toMatchObject({
       map: { sections: [{ href: 'c1.xhtml', spans: [SPAN] }] },
       pending: false,
-      failed: false,
+      failure: null,
     });
     expect(mockReadKept).not.toHaveBeenCalled();
   });
@@ -154,7 +178,7 @@ describe('useBookReadalong', () => {
       refetch,
     });
     const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
-    expect(result.current).toMatchObject({ map: null, pending: false, failed: true });
+    expect(result.current).toMatchObject({ map: null, pending: false, failure: 'retry' });
     result.current.retry();
     expect(refetch).toHaveBeenCalled();
   });
@@ -166,7 +190,7 @@ describe('useBookReadalong', () => {
     ]) {
       mockServerMap.mockReturnValue({ data: undefined, isError: true, error, refetch: jest.fn() });
       const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
-      expect(result.current).toMatchObject({ map: null, pending: false, failed: false });
+      expect(result.current).toMatchObject({ map: null, pending: false, failure: null });
     }
   });
 
@@ -177,7 +201,7 @@ describe('useBookReadalong', () => {
       wrapper,
     });
     await waitFor(() => expect(result.current.map).not.toBeNull());
-    expect(result.current.failed).toBe(false);
+    expect(result.current.failure).toBeNull();
   });
 
   it('is pending, never failed, while Try again reads the map again', async () => {
@@ -189,7 +213,7 @@ describe('useBookReadalong', () => {
       refetch: jest.fn(),
     });
     const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
-    expect(result.current).toMatchObject({ map: null, pending: true, failed: false });
+    expect(result.current).toMatchObject({ map: null, pending: true, failure: null });
   });
 
   it("says a copy on the device that won't read failed", async () => {
@@ -199,7 +223,7 @@ describe('useBookReadalong', () => {
     const { result } = await renderHook(() => useBookReadalong(REF, { ebook: EBOOK }, true), {
       wrapper,
     });
-    await waitFor(() => expect(result.current.failed).toBe(true));
+    await waitFor(() => expect(result.current.failure).toBe('retry'));
   });
 
   it('keeps the map shown while another copy of it is on its way, never past a stale one', async () => {
@@ -239,6 +263,24 @@ describe('useBookReadalong', () => {
     expect(result.current).toMatchObject({ map: null, pending: true });
   });
 
+  it('keeps the map shown while another copy of it waits for the connection', async () => {
+    mockServerMap.mockImplementation(
+      ({ enabled, generatedAt }: { enabled: boolean; generatedAt: string }) =>
+        enabled && generatedAt === 'g1'
+          ? { data: SERVER_MAP, isError: false }
+          : { data: undefined, isError: false, fetchStatus: enabled ? 'paused' : 'idle' },
+    );
+    const { result, rerender } = await renderHook(
+      ({ book }: { book: Pick<Book, 'ebook' | 'readalong'> }) => useBookReadalong(REF, book, true),
+      { wrapper, initialProps: { book: ready('g1') } },
+    );
+    const first = result.current.map;
+    expect(first).not.toBeNull();
+    // Made again, and its map's fetch is held back by the connection: the one shown stays.
+    await rerender({ book: ready('g2') });
+    expect(result.current).toMatchObject({ map: first, pending: false, offline: false });
+  });
+
   it('keeps no map of another book', async () => {
     mockServerMap.mockImplementation(
       ({ enabled, generatedAt }: { enabled: boolean; generatedAt: string }) => ({
@@ -254,5 +296,92 @@ describe('useBookReadalong', () => {
     expect(result.current.map).not.toBeNull();
     await rerender({ path: 'B/Book', book: ready('g2') });
     expect(result.current).toMatchObject({ map: null, pending: true });
+  });
+  it.each([
+    [401, 'signedOut'],
+    [403, 'denied'],
+    [404, 'missing'],
+  ] as const)(
+    'says a %s refusal as its own failure, not Try again (fe#192)',
+    async (status, failure) => {
+      mockServerMap.mockReturnValue({
+        data: undefined,
+        isError: true,
+        error: new ApiError(status, 'no'),
+        refetch: jest.fn(),
+      });
+      const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+      expect(result.current).toMatchObject({ map: null, pending: false, failure });
+    },
+  );
+
+  it('is neither pending nor failed while the map waits for the connection (fe#192)', async () => {
+    mockServerMap.mockReturnValue({ data: undefined, isError: false, fetchStatus: 'paused' });
+    const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+    expect(result.current).toMatchObject({
+      map: null,
+      pending: false,
+      failure: null,
+      offline: true,
+    });
+  });
+
+  describe("a map of another ebook than the download's (fe#193)", () => {
+    // The server's map, made from the ebook `sha-2` (one object, as the query keeps it).
+    const REMADE = map([SPAN], 'sha-2');
+    beforeEach(() => {
+      mockEbookSha = 'sha-1';
+      mockServerMap.mockImplementation(({ enabled }: { enabled: boolean }) => ({
+        data: enabled ? REMADE : undefined,
+        isError: false,
+      }));
+    });
+
+    it("follows the download's own copy instead", async () => {
+      mockKept = 'g1';
+      mockReadKept.mockResolvedValue(map([{ ...SPAN, start: 7, end: 8 }], 'sha-1'));
+      const { result } = await renderHook(() => useBookReadalong(REF, ready('g2'), true), {
+        wrapper,
+      });
+      await waitFor(() =>
+        expect(result.current.map).toEqual({
+          sections: [{ href: 'c1.xhtml', spans: [{ ...SPAN, start: 7, end: 8 }] }],
+        }),
+      );
+      expect(result.current.failure).toBeNull();
+    });
+
+    it('says the ebook changed when the download kept no copy, never offering Try again', async () => {
+      const { result } = await renderHook(() => useBookReadalong(REF, ready('g2'), true), {
+        wrapper,
+      });
+      expect(result.current).toMatchObject({
+        map: null,
+        pending: false,
+        failure: 'ebookChanged',
+      });
+    });
+
+    it('without a sha kept, takes a server ebook of another size for another ebook', async () => {
+      mockEbookSha = undefined;
+      mockEbookSize = EBOOK.size + 1;
+      const { result } = await renderHook(() => useBookReadalong(REF, ready('g2'), true), {
+        wrapper,
+      });
+      expect(result.current).toMatchObject({ map: null, failure: 'ebookChanged' });
+      // The same size: the server's map is taken.
+      mockEbookSize = EBOOK.size;
+      const same = await renderHook(() => useBookReadalong(REF, ready('g2'), true), { wrapper });
+      expect(same.result.current.map).not.toBeNull();
+    });
+
+    it("takes the server's map of the same ebook", async () => {
+      mockEbookSha = 'sha-2';
+      const { result } = await renderHook(() => useBookReadalong(REF, ready('g2'), true), {
+        wrapper,
+      });
+      expect(result.current.map).not.toBeNull();
+      expect(mockReadKept).not.toHaveBeenCalled();
+    });
   });
 });

@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import java.net.URLDecoder
 
 /** A book's identity (path is the identity, scoped by connection; never a DB id). */
 data class BookRef(val connectionId: String, val libraryId: Long, val path: String)
@@ -62,6 +63,9 @@ object MediaItems {
    * The queue for one book: chapter clips when [clips] is non-empty (the lock screen gets a
    * chapter scrubber and prev/next chapter), else one item per file. The start position is
    * given in FILE coordinates and mapped onto the clip that holds it.
+   *
+   * A file too long to clip within [heapBytes] ([ClipBudget]) plays as one whole-file item
+   * instead of its chapter clips (fe#194); the other files keep theirs.
    */
   fun buildQueue(
     tracks: List<TrackSpec>,
@@ -69,14 +73,31 @@ object MediaItems {
     book: BookRef?,
     startIndex: Int,
     positionInTrack: Double,
+    heapBytes: Long = Runtime.getRuntime().maxMemory(),
   ): BuiltQueue {
     if (tracks.isEmpty()) return BuiltQueue(emptyList(), 0, 0L)
     val items: List<MediaItem>
     val itemIndex: Int
     val itemPosMs: Long
-    if (clips.isNotEmpty()) {
-      items = clips.map { toClipItem(it, tracks, book) }
-      val (idx, ms) = TimelineMap(clips.map { entryFor(it, tracks) }).fileToItem(startIndex, positionInTrack)
+    val wholeFiles = ClipBudget.wholeFiles(tracks, clips, heapBytes)
+    if (clips.any { it.fileIndex !in wholeFiles }) {
+      val built = ArrayList<MediaItem>(clips.size)
+      val entries = ArrayList<TimelineMap.Entry>(clips.size)
+      val placed = HashSet<Int>()
+      for (clip in clips) {
+        if (clip.fileIndex in wholeFiles) {
+          // One whole-file item, where the file's first clip was; its other clips are dropped.
+          if (!placed.add(clip.fileIndex)) continue
+          val t = tracks[clip.fileIndex] // wholeFiles holds only indexes of tracks
+          built.add(toMediaItem(t, clip.fileIndex, book))
+          entries.add(TimelineMap.Entry(clip.fileIndex, 0.0, 0.0, t.duration, clip = false))
+        } else {
+          built.add(toClipItem(clip, tracks, book))
+          entries.add(entryFor(clip, tracks))
+        }
+      }
+      items = built
+      val (idx, ms) = TimelineMap(entries).fileToItem(startIndex, positionInTrack)
       itemIndex = idx
       itemPosMs = ms
     } else {
@@ -183,6 +204,75 @@ object MediaItems {
     val path = e.getString(KEY_PATH) ?: return null
     return BookRef(connection, e.getLong(KEY_LIBRARY), path)
   }
+}
+
+/**
+ * Whether a file's chapter clips fit in the Java heap (fe#194). Each clip is its own media
+ * period, and ExoPlayer prepares the next clip about a buffer's length before the boundary while
+ * the current one still plays, so two extractors over the same file are alive at every chapter
+ * boundary. Media3's Mp4Extractor keeps the whole sample table on the Java heap (offsets,
+ * sizes, timestamps, flags and accumulated sizes: about 33 bytes per sample, plus the stsz box
+ * while parsing), and an MP4 holds one AAC sample per 1024 audio samples. A 23.5 h m4b at
+ * 44.1 kHz (3.65 M samples) needs about 120 MB per extractor, so two of them ran out of the
+ * emulator's 192 MB heap at every boundary. Such a file plays as ONE whole-file item instead:
+ * one extractor for the whole book (the lock screen then scrubs the file, without prev/next
+ * chapter; the app's own chapters are file-based and unchanged).
+ *
+ * Only MP4-family files (m4b, m4a, mp4...) are counted, and a file whose container the URL and
+ * id don't name is counted as MP4: MP3, FLAC, Ogg, WAV, ADTS and Matroska extractors seek
+ * without a per-sample table. Pure Kotlin (unit-tested on the JVM).
+ */
+object ClipBudget {
+  /** AAC frames per second at 48 kHz (1024 samples each): the upper end for audiobooks. */
+  const val SAMPLES_PER_SECOND = 48_000.0 / 1024
+  /** Java heap per MP4 sample while an extractor holds its table (measured ~33, rounded up). */
+  const val BYTES_PER_SAMPLE = 36.0
+  /** Heap kept free for everything else (the app, the loader's sample buffers). */
+  const val RESERVE_BYTES = 64L * 1024 * 1024
+
+  private val LIGHT_CONTAINER = Regex("""\.(mp3|flac|ogg|oga|opus|wav|aac|mka|webm)(?=$|[?&#])""")
+
+  /** The heap one extractor's sample table takes for [t], 0 when its container has none. */
+  fun tableBytes(t: TrackSpec): Long {
+    if (t.duration <= 0.0) return 0L
+    val names = listOf(t.id, decoded(t.url)).map { it.lowercase() }
+    if (names.any { LIGHT_CONTAINER.containsMatchIn(it) }) return 0L
+    return (t.duration * SAMPLES_PER_SECOND * BYTES_PER_SAMPLE).toLong()
+  }
+
+  /** True when two of [t]'s extractors (the playing clip and the next) fit in [heapBytes]. */
+  fun clipsFit(t: TrackSpec, heapBytes: Long): Boolean = 2 * tableBytes(t) + RESERVE_BYTES <= heapBytes
+
+  /**
+   * The file indexes among [clips] that must play as whole-file items. A file whose duration
+   * is unknown (0) is as long as its clips reach into it ([reach]): an unknown length is no
+   * reason to clip a long m4b.
+   */
+  fun wholeFiles(tracks: List<TrackSpec>, clips: List<ClipSpec>, heapBytes: Long): Set<Int> =
+    clips.groupBy { it.fileIndex }.filter { (i, fileClips) ->
+      val t = tracks.getOrNull(i) ?: return@filter false
+      !clipsFit(if (t.duration > 0.0) t else t.copy(duration = reach(fileClips)), heapBytes)
+    }.keys
+
+  /**
+   * How far a file's [clips] reach into it. A clip "to end" (`endInFile <= 0`, the file's last
+   * chapter as the JS sends it) is taken to run as long as the file's longest clip that names
+   * its end, so a book of a few long chapters is not counted a chapter short.
+   */
+  private fun reach(clips: List<ClipSpec>): Double {
+    val longest = clips.filter { it.endInFile > 0.0 }
+      .maxOfOrNull { it.endInFile - it.startInFile }?.coerceAtLeast(0.0) ?: 0.0
+    return clips.maxOf {
+      if (it.endInFile > 0.0) maxOf(it.startInFile, it.endInFile) else it.startInFile + longest
+    }
+  }
+
+  private fun decoded(url: String): String =
+    try {
+      URLDecoder.decode(url, "UTF-8")
+    } catch (_: IllegalArgumentException) {
+      url
+    }
 }
 
 /** Every item of the player's queue, in order. */

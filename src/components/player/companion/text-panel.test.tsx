@@ -26,6 +26,15 @@ jest.mock('@/components/bridge/make-readalong', () => ({
     return <Text testID="make-offer">{`${again ? 'again' : 'first'}:${hasEbook}`}</Text>;
   },
 }));
+// The connection that needs signing in again (the layout's own tests cover the state).
+let mockSignedOut: { id: string; name: string } | undefined;
+jest.mock('@/components/layout/sign-in-again', () => ({
+  useSignedOutConnection: () => mockSignedOut,
+  SignInAgainState: ({ connection }: { connection: { name: string } }) => {
+    const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+    return <Text testID="sign-in-again">{connection.name}</Text>;
+  },
+}));
 // The host is the platform's part (its own tests): here it hands the panel the reader's
 // messages and takes its commands.
 const mockHandle: ReaderHostHandle = {
@@ -52,6 +61,8 @@ jest.mock('@/reader/reader-host', () => {
 });
 
 /* eslint-disable import/first */
+import { FOLLOW_PILL_ROOM } from '@/reader/page-edge';
+
 import { TextPanel } from './text-panel';
 /* eslint-enable import/first */
 
@@ -80,7 +91,7 @@ const model = (p: Partial<TextTabModel> = {}): TextTabModel => ({
   shown: true,
   map: MAP,
   pending: false,
-  failed: false,
+  failure: null,
   retry: jest.fn(),
   book: BOOK,
   ...p,
@@ -108,6 +119,7 @@ describe('TextPanel', () => {
     mockMounts = 0;
     mockApi = {};
     mockNarrating = true;
+    mockSignedOut = undefined;
   });
 
   it('opens the book at the sentence being read, following the narration', async () => {
@@ -156,6 +168,17 @@ describe('TextPanel', () => {
     expect(mockHandle.follow).toHaveBeenCalled();
   });
 
+  it('ends the page above the Back to narration pill while it shows (fe#192)', async () => {
+    await mount();
+    await shows();
+    const page = () => screen.getByTestId('companion-text-page');
+    expect(page().props.style).toBeUndefined();
+    await act(async () => host().onFollowing!(false));
+    expect(page().props.style).toEqual({ paddingBottom: FOLLOW_PILL_ROOM });
+    await act(async () => host().onFollowing!(true));
+    expect(page().props.style).toBeUndefined();
+  });
+
   it('says a part of the book that did not load, and Try again opens it again (fe#164)', async () => {
     await mount();
     await shows();
@@ -177,7 +200,9 @@ describe('TextPanel', () => {
   it('says a map that failed to load, with Try again, and never offers Make', async () => {
     const retry = jest.fn();
     await act(async () => {
-      render(<TextPanel target={TARGET} text={model({ map: null, failed: true, retry })} fill />);
+      render(
+        <TextPanel target={TARGET} text={model({ map: null, failure: 'retry', retry })} fill />,
+      );
     });
     expect(screen.getByText("Couldn't load the text")).toBeTruthy();
     expect(screen.getByText(/The read-along didn't load/)).toBeTruthy();
@@ -185,6 +210,35 @@ describe('TextPanel', () => {
     expect(mockHost).toBeNull();
     await fireEvent.press(screen.getByText('Try again'));
     expect(retry).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['denied', "This read-along isn't yours to open", /no longer shares this book/],
+    ['missing', "This book isn't on the server any more", /moved or been removed/],
+    ['ebookChanged', 'The read-along is for a newer ebook', /download the book again/],
+    ['signedOut', "Couldn't load the text", /Sign in to this server again/],
+  ] as const)(
+    'says a %s map read as its own state, with no Try again and no Make (fe#192, fe#193)',
+    async (failure, title, hint) => {
+      await act(async () => {
+        render(<TextPanel target={TARGET} text={model({ map: null, failure })} fill />);
+      });
+      expect(screen.getByTestId(`companion-text-${failure}`)).toBeTruthy();
+      expect(screen.getByText(title)).toBeTruthy();
+      expect(screen.getByText(hint)).toBeTruthy();
+      expect(screen.queryByText('Try again')).toBeNull();
+      expect(screen.queryByTestId('make-offer')).toBeNull();
+      expect(mockHost).toBeNull();
+    },
+  );
+
+  it('says a connection that needs signing in again as the sign-in state (CONNECT-03)', async () => {
+    mockSignedOut = { id: 'c1', name: 'Hearthside' };
+    await act(async () => {
+      render(<TextPanel target={TARGET} text={model({ map: null, failure: 'retry' })} fill />);
+    });
+    expect(screen.getByTestId('sign-in-again').props.children).toBe('Hearthside');
+    expect(screen.queryByText('Try again')).toBeNull();
   });
 
   it('offers an admin Make read-along for a book with no map yet', async () => {

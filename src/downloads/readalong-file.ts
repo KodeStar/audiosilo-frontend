@@ -1,6 +1,11 @@
 import type { ApiClient } from '@/api/client';
-import type { Book } from '@/api/types';
-import { type CheckedReadalongMap, hasSpans, parseReadalongMap } from '@/reader/readalong-map';
+import type { Book, ReadalongMap } from '@/api/types';
+import {
+  type CheckedReadalongMap,
+  hasSpans,
+  parseReadalongMap,
+  utf8Length,
+} from '@/reader/readalong-map';
 
 import { engine } from './engine';
 import type { DownloadManifest } from './types';
@@ -10,7 +15,9 @@ import type { DownloadManifest } from './types';
 // server's map as the player checked it (`client.readalong`, the Authorization header
 // only), written through `engine.writeText` once it is in hand and has a sentence to
 // follow, and checked again each time it is read (`parseReadalongMap`). The registry marks
-// it by its `generated_at` only (`DownloadManifest.readalongGeneratedAt`).
+// it by its `generated_at` (`DownloadManifest.readalongGeneratedAt`), and keeps the sha256
+// of the ebook it was made from (`ebookSha256`): a map made again from another ebook never
+// joins the download's `book.epub` (fe#193).
 
 /** The map's name in the book's folder (never an audio file's: those are numbered). */
 export const READALONG_FILE = 'readalong.json';
@@ -37,19 +44,29 @@ export async function removeReadalongFile(ref: Ref): Promise<void> {
     .catch(() => {});
 }
 
+/** A map a download keeps (`fetchReadalongFile`): which one (its `generated_at`), the
+ * sha256 of the ebook it was made from (undefined when the map names none), and its size on
+ * the device in bytes. */
+export type KeptReadalong = { generatedAt: string; ebookSha256?: string; bytes: number };
+
 /**
- * Fetch the book's map and keep it in its download folder: its `generated_at` once a map
- * with a sentence to follow is saved, else undefined (the server has none to serve, refused
- * it or could not be reached, sent no map with sentences, or the folder is gone). Nothing is
+ * Fetch the book's map and keep it in its download folder: what was kept once a map with a
+ * sentence to follow is saved, else undefined (the server has none to serve, refused it or
+ * could not be reached, sent no map with sentences, or the folder is gone). Nothing is
  * written until a checked map is in hand, so a map the folder already keeps stays when the
  * fetch fails. Optional, like the EPUB: only a cancel (`signal` aborted) throws.
+ *
+ * `ebookSha256`: the ebook the download's `book.epub` is (fe#193). A map made from another
+ * one (the server's ebook was replaced since the download took its copy) is refused: its
+ * sentences would point into a book the device does not hold.
  */
 export async function fetchReadalongFile(
   api: ApiClient,
   ref: Ref,
-  signal?: AbortSignal,
-): Promise<string | undefined> {
+  opts: { signal?: AbortSignal; ebookSha256?: string } = {},
+): Promise<KeptReadalong | undefined> {
   const { connectionId, libraryId, path } = ref;
+  const { signal, ebookSha256 } = opts;
   let map: CheckedReadalongMap;
   try {
     map = await api.readalong(libraryId, path, signal);
@@ -58,14 +75,22 @@ export async function fetchReadalongFile(
     return undefined;
   }
   if (!map.generated_at || !hasSpans(map) || !engine.writeText) return undefined;
-  const saved = await engine.writeText(
-    connectionId,
-    libraryId,
-    path,
-    READALONG_FILE,
-    JSON.stringify(map),
-  );
-  return saved ? map.generated_at : undefined;
+  if (!fitsEbook(map, ebookSha256)) return undefined;
+  const text = JSON.stringify(map);
+  const saved = await engine.writeText(connectionId, libraryId, path, READALONG_FILE, text);
+  return saved
+    ? {
+        generatedAt: map.generated_at,
+        ebookSha256: map.ebook.sha256 || undefined,
+        bytes: utf8Length(text),
+      }
+    : undefined;
+}
+
+/** Whether a map was made from the ebook `ebookSha256` names (undefined: not known, so any
+ * map fits). A map that names no ebook never fits a known one. */
+export function fitsEbook(map: Pick<ReadalongMap, 'ebook'>, ebookSha256: string | undefined) {
+  return !ebookSha256 || map.ebook.sha256 === ebookSha256;
 }
 
 /**
@@ -88,13 +113,16 @@ export function wantsReadalong(
 /**
  * What a server's answer for a downloaded book (its `/item`) asks of the map the download
  * keeps: `fetch` a map made again (another `generated_at`, or one the download has none of
- * yet), `drop` it when the server has no ready map any more (none, or stale: an ebook or
- * audio that changed; a listener never sees a stale map), else `keep`. Nothing without the
- * book's EPUB on the device.
+ * yet), `drop` it when the server has no ready map any more (none, or a stale one that may
+ * not fit the download's EPUB), else `keep`. A map the server calls stale (its ebook or audio
+ * changed there) stays while it fits the download's own EPUB and audio, which did not change
+ * (fe#193: `knowsEbook`). Nothing without the book's EPUB on the device.
  */
 export function readalongChange(
-  book: Pick<Book, 'readalong'>,
-  manifest: Pick<DownloadManifest, 'ebookUri' | 'readalongGeneratedAt'>,
+  book: Pick<Book, 'readalong' | 'ebook'>,
+  manifest: Pick<DownloadManifest, 'ebookUri' | 'readalongGeneratedAt' | 'ebookSha256'> & {
+    book: Pick<Book, 'ebook'>;
+  },
 ): 'keep' | 'fetch' | 'drop' {
   if (!manifest.ebookUri) return 'keep';
   const ra = book.readalong;
@@ -102,5 +130,19 @@ export function readalongChange(
     ra?.state === 'ready' && typeof ra.generated_at === 'string' ? ra.generated_at : null;
   const have = manifest.readalongGeneratedAt ?? null;
   if (wanted === have) return 'keep';
-  return wanted === null ? 'drop' : 'fetch';
+  if (wanted !== null) return 'fetch';
+  return ra?.state === 'stale' && knowsEbook(book, manifest) ? 'keep' : 'drop';
+}
+
+/**
+ * Whether a map can be paired with the download's own EPUB (fe#193): by the sha256 of the
+ * ebook its first kept map was made from (`ebookSha256`; every map kept since was checked
+ * against it, `fitsEbook`, so a kept map fits), else while the server's ebook keeps the size
+ * the download saved (both unknown: the same).
+ */
+export function knowsEbook(
+  book: Pick<Book, 'ebook'>,
+  manifest: Pick<DownloadManifest, 'ebookSha256'> & { book: Pick<Book, 'ebook'> },
+): boolean {
+  return !!manifest.ebookSha256 || manifest.book.ebook?.size === book.ebook?.size;
 }

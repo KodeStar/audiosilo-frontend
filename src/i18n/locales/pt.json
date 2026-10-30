@@ -1679,6 +1679,13 @@
       "textFailedHint": "O ebook não carregou. Verifica a ligação e tenta de novo.",
       "textMapFailedHint": "A leitura sincronizada não carregou. Verifica a ligação e tenta de novo.",
       "textStartHint": "O leitor de ebooks não arrancou. Tenta de novo.",
+      "textSignedOutHint": "Inicia sessão de novo neste servidor para carregar a leitura sincronizada.",
+      "textDeniedTitle": "Não tens acesso a esta leitura sincronizada",
+      "textDeniedHint": "O servidor já não partilha este livro contigo.",
+      "textMissingTitle": "Este livro já não está no servidor",
+      "textMissingHint": "Pode ter sido movido ou removido. Abre-o de novo a partir da biblioteca.",
+      "textEbookChangedTitle": "A leitura sincronizada é de um ebook mais recente",
+      "textEbookChangedHint": "O ebook neste dispositivo é mais antigo do que aquele de que a leitura sincronizada foi feita. Remove a transferência e transfere o livro de novo para acompanhar o texto.",
       "textNoServer": "O texto volta assim que estiver."
     },
     "placeMoved": {

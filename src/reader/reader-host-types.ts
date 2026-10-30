@@ -88,6 +88,10 @@ export type ReaderHostProps = ReaderReadalongProps & {
   /** Fetching the EPUB failed, or the reader document did not start or keep running (a
    * `ReaderStartError`); the reader shows nothing then. */
   onLoadError: (error: unknown) => void;
+  /** The app's host is fetching the EPUB into its cache: it was not on the device, so the
+   * copy is no sign the book was read here (the screen's offline place lookup, fe#193).
+   * Called before any file of it exists; never on the web, which keeps no cache. */
+  onFetch?: () => void;
   /** The reader document was made again (the app's WebView after its content process
    * died, the web's frame after it reloaded): the book shows again with its next
    * `opened`. */

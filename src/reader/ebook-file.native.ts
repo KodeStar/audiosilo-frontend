@@ -75,7 +75,9 @@ function dropOthers(dir: Directory, keep: string): void {
  * cache file for the server's `size`, fetched when it is not there yet. Resolves with the
  * file's own length, the one the reader is sent. Rejects with an `ApiError` carrying the
  * server's status when it refused (404: no ebook any more), else with the download's own
- * error; a download that fails or is aborted leaves no partial file behind.
+ * error; a download that fails or is aborted leaves no partial file behind. `onFetch` is
+ * called as a fetch starts (the book was not on the device), before any file of it is: a
+ * copy fetched for this open is no sign the book was read here (fe#193).
  */
 export async function localEbook({
   api,
@@ -85,6 +87,7 @@ export async function localEbook({
   size,
   saved,
   signal,
+  onFetch,
 }: {
   api: ApiClient;
   connectionId: string;
@@ -95,9 +98,11 @@ export async function localEbook({
   /** The book download's EPUB (its `manifest.ebookUri`), when it has one. */
   saved?: string;
   signal?: AbortSignal;
+  onFetch?: () => void;
 }): Promise<LocalEbook> {
   const here = existingEbook({ connectionId, libraryId, path, size, saved });
   if (here) return here;
+  onFetch?.();
 
   const dir = cacheDir(connectionId, libraryId, path);
   const file = new File(dir, cacheName(size));

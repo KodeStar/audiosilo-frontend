@@ -744,9 +744,11 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
 - **The bytes and the place together** (fe#164): both hosts start the EPUB's fetch (or its
   local read) as soon as they mount, while the screen still looks the place up, and send the
   book only once `placeKnown` is true (`usePlaceGate`), so the open is never the fetch after
-  the lookup. The offline lookup's "EPUB on this device" counts the app's cache file only as it
-  was when the screen mounted its host (`cachedBefore`): a copy this screen fetched meanwhile
-  never opens a guessed start. The page edges are narrow (`w-6`) by the reader's MEASURED width
+  the lookup. The offline lookup's "EPUB on this device" counts the app's cache file only while
+  this screen's host did not fetch it: `localEbook` calls `onFetch` as a fetch starts, before
+  any file of it exists, and the host passes it on (`ReaderHostProps.onFetch`, fe#193), so a
+  copy this screen fetched never opens a guessed start, and a copy that was there is asked
+  about as it is. The page edges are narrow (`w-6`) by the reader's MEASURED width
   (`narrowPageEdges`: under `TABLET_MIN_WIDTH`, so the companion's column too), clear of the
   text a tap lands on (fe#165).
 
@@ -760,7 +762,9 @@ reader follows the narration in the book with it.
   `readalongBlockKey` (`components/bridge/readalong-model.ts`: from the estimate, `no_ebook`,
   `library_not_writable`, an open generate, detect or read-along job). Generate is held back on
   an open read-along job (`readalong_open`, `bridge-model.ts`).
-- **The map** (`client.readalong`, `useReadalong`): header auth only (never `?token=`), keyed by
+- **The map** (`client.readalong`, `useReadalong`): header auth only (never `?token=`), its
+  timeout restarted by every piece of the answer where it streams (the web: only a stalled map
+  fails), three minutes for a whole answer where it does not (the app's fetch), keyed by
   the map's `generated_at` (`qk.readalong`), no retry (404 `no_readalong`, 409
   `readalong_stale` are final). `parseReadalongMap` checks every span (the server checks only the
   head): a CFI starting `epubcfi(` of at most 1024 UTF-8 bytes, finite `0 <= start <= end`; a bad
@@ -816,8 +820,17 @@ reader follows the narration in the book with it.
   (`useReadalong`); never a stale map, copy or not; a copy that can't be read falls back to the
   server's. Only a map with a sentence (`hasSpans`) reaches the reader. A read that fails for
   any reason but the server's none (404 `no_readalong`, 409 `readalong_stale`: `readalongNone`)
-  is `failed`, never "no read-along": the Text tab stays with a "couldn't load" notice and Try
-  again (`retry`), and never offers Make (a needless multi-hour job). While another copy of the
+  is a `failure`, never "no read-along" (`readalongFailure`, fe#192): `retry` (offline, a 5xx, a
+  copy that won't read) with a "couldn't load" notice and Try again; `signedOut` (401, and any
+  failure while the connection needs signing in again: the sign-in state), `denied` (403),
+  `missing` (404 without the code) each with their own words and no Try again; none offers Make
+  (a needless multi-hour job). A downloaded EPUB is the book its reader shows, so a server map
+  made from another ebook (`ebookSha256`, `useDownloadedEbookSha`; with no sha kept, a server
+  ebook of another size than the one downloaded, `useDownloadedEbookSize`, as the refresh takes
+  it) is never used: the download's copy stands in, else `ebookChanged` ("download the book
+  again", fe#193). A server map waiting for the connection (`paused`, no copy here) is
+  `offline` (a map already shown stays meanwhile): neither pending nor
+  failed, and the Text tab hides for everyone, an admin too (no spinner, no Make). While another copy of the
   map shown is on its way (the download took it, it was made again), the one shown stays (not
   `pending`): a tab or a reader with a map never loses it in between.
   - **The companion's Text tab** (`companion/use-text-tab.ts`, `text-panel.tsx`), right after
@@ -827,7 +840,9 @@ reader follows the narration in the book with it.
     companion opens on unasked (`activeCompanionTab`: the first but Text). One reader per book
     (keyed by it): the playing book changing under an open tab gets its own, and what a reader
     made of a map (`none`) holds only for that map. It opens at the sentence being read (`cfiAt`)
-    with `followNarration`; Back to narration (`FollowPill`) once the listener turned away; the
+    with `followNarration`; Back to narration (`FollowPill`) once the listener turned away (the
+    page then ends `FOLLOW_PILL_ROOM` above the foot, so the pill never covers the last line,
+    here and in the full-screen reader: fe#192); the
     page edges only once the reader answered `ok`; a reader `none` (the map names nothing in
     this ebook) is its own notice with Make again; a section that didn't load (fe#164), a start
     failure or a fetch failure each say so with Try again (a new host). **It never saves the
@@ -1266,6 +1281,15 @@ media GETs only.
   `android/.../res/drawable/ic_notification.xml`). `AudiobookPlayer` (a `ForwardingPlayer`)
   still applies auto-rewind on every `play()` and hides prev/next **only when there's a
   single item** (a chapterless single-file book, so "previous" can't restart it).
+  - **A long MP4-family file plays as one whole-file item** (fe#194, `ClipBudget` in
+    `MediaItems.kt`): Media3's `Mp4Extractor` keeps the file's whole sample table on the Java
+    heap (about 33 bytes per AAC frame: ~120 MB for a 23.5 h m4b), and every clip is its own
+    extractor, two of them alive at each boundary (the next is prepared while the current
+    plays). A file whose two tables plus 64 MB don't fit `Runtime.maxMemory()` drops its
+    clips (no lock-screen chapter scrubber or prev/next chapter for it; the app's chapters
+    are unchanged); other files keep theirs. A file of unknown duration counts as long as its
+    clips reach (the last, "to end", as long as its longest). The module's manifest sets
+    `android:largeHeap="true"`, so books up to about 41 h keep their clips.
   - **The JS store + iOS stay file-based**: the Android module translates between its chapter
     clips and the file-relative `(trackIndex, position)` the bridge reports through
     `TimelineMap` (in `MediaItems.kt`: `fileToItem`/`itemToFile`), built from each item's own
@@ -2222,15 +2246,22 @@ are asked, at most 10,000 rows.
   hand), when the server serves maps (`cachedCapability(cid, 'readalong')`) and the book is not
   known to have only a stale one (`wantsReadalong`). Optional like the EPUB: a failure keeps the
   book, a cancel cancels it. The manifest marks it by `readalongGeneratedAt` (the file is read
-  by name), and its `book.readalong` names the map kept (`namingReadalong`): offline that book
+  by name), counts its bytes (`readalongBytes`, in the entry's `bytes` and `totalBytes`; one
+  progress step while a map is likely), keeps the sha256 of the ebook it was made from
+  (`ebookSha256`, kept when the map is dropped: the EPUB stays), and its `book.readalong` names the map kept (`namingReadalong`): offline that book
   is the item's seed, and `readalongSource` reads the copy only while the book names it or no
   map. `startReadalongRefresh` (the root's services) takes the `/item` answers the cache holds
   when it starts and once the launch's `hydrate` has read the registry (the web starts it after
   paint; the store's seeds name the kept map and change nothing but a map the download could not
   fetch), then watches the server's `/item` answers for a downloaded book: another
   `generated_at` fetches the map again (a failed fetch keeps the copy
-  and the manifest as they were), no ready map (stale or none) drops it (`readalongChange`; the
-  book then says what the server said), once per answer's map per launch (`readalongTried`).
+  and the manifest as they were) only if it was made from the download's own ebook (fe#193:
+  `fitsEbook` against `ebookSha256`; a download that never kept a map asks only while the
+  server's `ebook.size` is the one it saved: `knowsEbook`), so a map of a replaced ebook never
+  joins the old `book.epub` and the matching copy stays, once per answer's map per launch
+  (`readalongTried`). No ready map drops the kept one (`readalongChange`; the book then says
+  what the server said), except a stale one under the same `knowsEbook` rule: it still fits
+  the download's own EPUB and audio, so it stays.
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
@@ -2324,6 +2355,8 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
   The **companion** (`companion/`: Who's who, Story so far, Text, Chapters, Bookmarks, Notes,
   History) is
   a 420 column on desktop, inline under the controls on a tablet, a 78% sheet from chips on a phone
+  (`CompanionChips`: Who's who, Story so far, Text while `useTextTab` shows the tab (fe#192),
+  Chapters)
   (one row, a sideways scroller where it doesn't fit; the phone's column is a flex column whose cover
   slot takes what the rest leaves, `phoneCoverSize`, so the player fits without scrolling);
   gated by `useCompanionData` (the book page's `meta-gating` rules on the live position), one reveal

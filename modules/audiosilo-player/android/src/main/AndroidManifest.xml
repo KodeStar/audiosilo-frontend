@@ -9,7 +9,10 @@
     <provider android:authorities="androidx.car.app.connection" />
   </queries>
 
-  <application>
+  <!-- largeHeap: Media3's MP4 extractor keeps a file's whole sample table on the Java heap
+       (~120 MB for a 23.5 h m4b), which a 192 MB default heap barely holds once (fe#194).
+       MediaItems' ClipBudget sizes chapter clips against whatever heap this gives. -->
+  <application android:largeHeap="true">
     <!-- Android Auto: a media app. -->
     <meta-data
       android:name="com.google.android.gms.car.application"
