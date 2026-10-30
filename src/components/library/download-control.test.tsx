@@ -11,7 +11,7 @@ const mockDownload = () => ({
   supported: true,
   needsTranscode: false,
   status: 'downloaded',
-  error: null,
+  failure: undefined,
   progress: 1,
   bytes: 52_428_800,
   totalBytes: 52_428_800,
@@ -152,10 +152,18 @@ describe('DownloadControl', () => {
     await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
     await fireEvent.press(screen.getByRole('button', { name: 'Download for offline' }));
     expect(start).toHaveBeenCalledTimes(1);
-    mockControlsOverride = { status: 'error', error: 'The server stopped responding.', start };
+    mockControlsOverride = {
+      status: 'error',
+      failure: { kind: 'interrupted', kept: 0 },
+      start,
+    };
     await mountWithPortal(<DownloadControl libraryId={1} path="b" book={book} />);
     expect(screen.getByRole('button', { name: 'Retry download' })).toBeTruthy();
-    expect(screen.getByText('The server stopped responding.')).toBeTruthy();
+    // Worded as the Downloads page words it, never the stored English.
+    expect(
+      screen.getByText('The app closed before it finished. Retry starts it again.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Interrupted')).toBeNull();
   });
 
   it('says why when this browser plays the book transcoded', async () => {

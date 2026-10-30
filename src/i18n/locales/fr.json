@@ -541,7 +541,10 @@
       "storySoFar": "L’histoire jusqu’ici",
       "countOf": "{{chapter}} sur {{total}}",
       "notDownloaded": "Non téléchargé",
-      "notDownloadedHint": "Ce livre n’est pas sur cet appareil. Il se lit dès que vous êtes de nouveau en ligne."
+      "notDownloadedHint": "Ce livre n’est pas sur cet appareil. Il se lit dès que vous êtes de nouveau en ligne.",
+      "notDownloadedServerHint": "Ce livre n’est pas sur cet appareil. Il se lit dès que {{name}} répond de nouveau.",
+      "episodeOfflineHint": "Cet épisode se lit dès que vous êtes de nouveau en ligne.",
+      "episodeServerHint": "Cet épisode se lit dès que {{name}} répond de nouveau."
     },
     "week": {
       "title": "Cette semaine",

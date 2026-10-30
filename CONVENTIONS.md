@@ -432,8 +432,9 @@ them in) or a grown-up, each on "Everything I can listen to" or "Only collection
   the device (the `mayTurnOnKids` exception, `isKidsAccount`). Its shelf is the collections its
   owner shares with it (`kidsShelfMode`; none, or an older server: one library, as before), and
   it plays at 1x by default (`listenerSettings`). The connect gate above keeps the flow out.
-- **The Household page**: the phone You hub's Household segment, and `/household` through
-  `openHousehold()` elsewhere; `/settings?section=household` redirects there. It holds the people
+- **The Household page**: the You hub's Household segment (a phone's, and the wide sub-nav's since
+  v2.5.1), and `/household` through `openHousehold()` elsewhere (the profile menu, Settings, Home's
+  house row); `/settings?section=household` redirects there. It holds the people
   on this device, a card per member (access with Change, the Kids switch, their devices, "Set up
   their own device", Rename, Delete twice confirmed, apart from "Remove from this device"), the
   add dialog, then Listening in the house. My devices offers "Also sign out <names>" for a device
@@ -1304,8 +1305,10 @@ media GETs only.
   holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`), the loaded
   book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
   then it saves the held place). It moves only when the record is from another `device_id`,
-  newer than this device's mirror (a newer unsynced save here wins), not finished, and more than
-  30 s away, and stands back if the listener moved meanwhile (`localMoveCount`). The move goes
+  newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
+  it only read, which a downloaded book's page and its download keep there, does not), not
+  finished, and more than 30 s away, and stands back if the listener moved meanwhile
+  (`localMoveCount`). The move goes
   through `seekBook` and a toast offers Undo. This module is the only place that reconciles a
   loaded book: never call `toggle()` expecting it to look anything up.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is

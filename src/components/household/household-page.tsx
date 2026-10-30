@@ -13,8 +13,8 @@ import { HouseholdMembers } from './members-section';
  * who already has an account", ask at launch), the household members the person listening
  * manages on each server with `household_members` (their cards and "Add someone to your
  * household"), then Listening in the house. A plain column: the `/household` route and the
- * phone You hub's Household segment (`embedded`: the hub's large title already says
- * Household) each scroll it.
+ * You hub's Household segment each scroll it (`embedded` on a phone, where the hub's large
+ * title already says Household).
  */
 export function HouseholdPage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();

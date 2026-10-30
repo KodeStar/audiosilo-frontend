@@ -17,7 +17,12 @@ jest.mock('@/api/provider', () => {
     useOptionalApi: () => ({ item: (...a: unknown[]) => mockItem(...a) }),
   };
 });
-jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
+let mockOnline: Record<string, boolean> = {};
+jest.mock('@/api/reachability', () => ({
+  noteFailure: jest.fn(),
+  useReachability: (sel: (s: { online: Record<string, boolean> }) => unknown) =>
+    sel({ online: mockOnline }),
+}));
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: jest.fn(async () => null),
   saveProgress: jest.fn(async () => {}),
@@ -39,6 +44,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 beforeEach(() => {
   queryClient.clear();
   mockItem.mockReset();
+  mockOnline = {};
   queryClient.setQueryData(
     ['recent', 'c1'],
     [{ library_id: 1, rel_path: PATH, title: "Abaddon's Gate", author: 'James S. A. Corey' }],
@@ -69,4 +75,35 @@ it('waits for the item online, rather than walking the cache', async () => {
   mockItem.mockReturnValue(new Promise(() => {}));
   const { result } = await renderHook(() => useKnownBook(1, PATH), { wrapper });
   expect(result.current).toBeUndefined();
+});
+
+it('keeps the cached copy while a failed item is asked again', async () => {
+  mockItem.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  const { result } = await renderHook(() => useKnownBook(1, PATH), { wrapper });
+  await waitFor(() => expect(result.current?.title).toBe("Abaddon's Gate"));
+
+  // Back in front: the item is asked again, and the answer is slow to come.
+  mockItem.mockReturnValue(new Promise(() => {}));
+  void queryClient.refetchQueries({ queryKey: ['item'] });
+  await waitFor(() => expect(mockItem).toHaveBeenCalledTimes(2));
+  expect(result.current?.title).toBe("Abaddon's Gate");
+});
+
+it('takes it straight away when the server is known to be down', async () => {
+  mockOnline = { c1: false };
+  mockItem.mockReturnValue(new Promise(() => {}));
+  const { result } = await renderHook(() => useKnownBook(1, PATH), { wrapper });
+  expect(result.current?.title).toBe("Abaddon's Gate");
+});
+
+it('finds a book an infinite list holds, and the first copy listed', async () => {
+  onlineManager.setOnline(false);
+  queryClient.clear();
+  queryClient.setQueryData(['books', 'c1', 1], {
+    pages: [{ items: [{ library_id: 1, rel_path: PATH, title: 'First copy' }] }],
+  });
+  queryClient.setQueryData(['shelf', 'c1'], [{ library_id: 1, rel_path: PATH, title: 'Later' }]);
+  queryClient.setQueryData(['recent', 'c2'], [{ library_id: 1, rel_path: PATH, title: 'Not c1' }]);
+  const { result } = await renderHook(() => useKnownBook(1, PATH), { wrapper });
+  await waitFor(() => expect(result.current?.title).toBe('First copy'));
 });

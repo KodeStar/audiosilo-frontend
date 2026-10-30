@@ -541,7 +541,10 @@
       "storySoFar": "A história até agora",
       "countOf": "{{chapter}} de {{total}}",
       "notDownloaded": "Não baixado",
-      "notDownloadedHint": "Este livro não está neste dispositivo. Ele toca quando você voltar a ficar online."
+      "notDownloadedHint": "Este livro não está neste dispositivo. Ele toca quando você voltar a ficar online.",
+      "notDownloadedServerHint": "Este livro não está neste dispositivo. Ele toca quando {{name}} voltar a responder.",
+      "episodeOfflineHint": "Este episódio toca quando você voltar a ficar online.",
+      "episodeServerHint": "Este episódio toca quando {{name}} voltar a responder."
     },
     "week": {
       "title": "Esta semana",

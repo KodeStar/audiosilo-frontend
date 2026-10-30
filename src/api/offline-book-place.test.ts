@@ -35,7 +35,7 @@ jest.mock('@/api/provider', () => {
 /* eslint-disable import/first */
 import { fetchBookProgress } from '@/api/hooks';
 import { setKeptOfflineCheck } from '@/downloads/kept-offline';
-import { loadInitialProgress, saveProgress } from '@/playback/progress-sync';
+import { loadInitialProgress, readMirror, writeMirror } from '@/playback/progress-sync';
 /* eslint-enable import/first */
 
 const BOOK = 'Dresden/Death Masks.m4b';
@@ -102,8 +102,9 @@ describe('a downloaded book offline (PLAYER-01)', () => {
   });
 
   it("never regresses a newer save of this device's own", async () => {
-    // Listened offline past the server's place, then an older server answer is read.
-    await saveProgress(online(null), {
+    // Listened past the server's place (the save is in the mirror, the queue empty: it was
+    // sent), then an older server answer is read.
+    await writeMirror({
       connectionId: 'c1',
       libraryId: 1,
       path: BOOK,
@@ -116,6 +117,7 @@ describe('a downloaded book offline (PLAYER-01)', () => {
     });
     await fetchBookProgress(online(serverPlace), 'c1', 1, BOOK, signal());
 
+    expect((await readMirror('c1', 1, BOOK))?.position).toBe(3700);
     const r = await loadInitialProgress(null, 'c1', 1, BOOK);
     expect(r.kind === 'progress' && r.progress.position).toBe(3700);
   });

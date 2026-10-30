@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { Platform } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useReachability } from '@/api/reachability';
@@ -14,6 +15,9 @@ import { type BookAt, playableHere } from './home-model';
 export function usePlayableHere(): (at: BookAt) => boolean {
   const deviceOnline = useDeviceOnline();
   const online = useReachability((s) => s.online);
+  // Until the launch has read the registry no book reads as downloaded, so none is called
+  // unplayable for it meanwhile.
+  const hydrated = useDownloads((s) => s.hydrated);
   const downloaded = useDownloads(
     useShallow((s) =>
       Object.keys(s.entries).filter((key) => s.entries[key].status === 'downloaded'),
@@ -23,10 +27,13 @@ export function usePlayableHere(): (at: BookAt) => boolean {
   return useCallback(
     (at: BookAt) =>
       playableHere(at, {
-        deviceOnline,
+        // The browser's flag means no network at all. The app's also reads false on a
+        // network with no internet (Android's validation) while a server on that network
+        // answers: there the book's server's own flag decides, as it does for the player.
+        deviceOnline: Platform.OS !== 'web' || deviceOnline,
         online,
-        downloaded: (book) => downloadedKeys.has(contentKeyOf(book)),
+        downloaded: (book) => !hydrated || downloadedKeys.has(contentKeyOf(book)),
       }),
-    [deviceOnline, online, downloadedKeys],
+    [deviceOnline, online, hydrated, downloadedKeys],
   );
 }

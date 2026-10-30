@@ -219,16 +219,38 @@ describe('SleepSheet', () => {
   });
 
   it('arms exactly the end its End of chapter tile counts down to', async () => {
-    // 30.5 s before the end of Part 2 (1214). The sheet counts from 1183 (whole seconds),
-    // where that end is 31 s away, just past the tile's 30 s rule: the press arms the end
-    // the tile showed, never one picked again from a place that has moved on since (which
-    // would stop at the end of Part 3, 1821).
-    loadUnevenBook(1183.5);
+    // 29.8 s before the end of Part 2 (607.25..1214.5). The sheet counts from 1184.25 (whole
+    // seconds into the chapter), where that end is 30.25 s away, just past the tile's 30 s
+    // rule: the press arms the end the tile showed, never one picked again from the live
+    // place (inside the rule there, so it would stop at the end of Part 3, 1821.75).
+    loadUnevenBook(1184.7, 607.25);
     await open();
-    await fireEvent.press(screen.getByLabelText('End of chapter, in 31s'));
+    await fireEvent.press(screen.getByLabelText('End of chapter, in 30s'));
     const state = useSleepTimer.getState();
-    expect(state.pauseAtPosition).toBe(1214);
+    expect(state.pauseAtPosition).toBe(1214.5);
     expect(state.origin).toEqual({ kind: 'chapter' });
+  });
+
+  // v2.5.1 PLAYER-11: the sheet floors the place inside the chapter, as the seek row does,
+  // so a chapter starting at a fractional second reads the same minutes in both.
+  it('reads the minutes left in the chapter as the seek row does', async () => {
+    // Part 2 starts at 100.5 in this book of 360 s chapters; 61.2 s into it the seek row
+    // has 299 s left ("4m"), where flooring the book's place (161) would leave 299.5 s,
+    // which reads "5m".
+    player.patch({
+      nowPlaying: {
+        connectionId: 'srv-1',
+        libraryId: 1,
+        path: 'b.m4b',
+        queue: {
+          chapters: [chapter(0, 0, 100.5), chapter(1, 100.5, 360), chapter(2, 460.5, 360)],
+          total: 820.5,
+        },
+      },
+      bookPosition: 161.7,
+    });
+    await open();
+    expect(screen.getByLabelText(/^This chapter, Part 2, ends .+, 4m$/)).toBeTruthy();
   });
 
   it('measures the rows at the playback speed', async () => {

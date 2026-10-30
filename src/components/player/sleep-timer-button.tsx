@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { chapterLabel } from '@/lib/chapter-label';
-import { formatClock, formatTimeLeftShort, formatTimeOfDay, formatWallClock } from '@/lib/format';
+import { formatClock, formatDuration, formatTimeOfDay, formatWallClock } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { noteInteraction } from '@/playback/last-interaction';
@@ -86,19 +86,19 @@ export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: ()
 }
 
 /**
- * The place the sheet counts from: the live whole-book position floored to whole seconds,
- * as the player's "left in the chapter" does, so the two read the same minutes
- * (`formatTimeLeftShort`, v2.5.1 PLAYER-11), but never below the start of the chapter playing. Chapter ends are
- * rarely whole seconds, so just after a boundary the floored place would still sit in
- * the chapter that has ended: "This chapter" would be that one (a timer armed behind the
- * playhead, which pauses the book at once) and every "N chapters" row would stop a
- * chapter early.
+ * The place the sheet counts from: the live position floored to whole seconds INTO the
+ * chapter playing, as the player's "left in the chapter" floors it, so the two read the
+ * same minutes (v2.5.1 PLAYER-11; chapter starts are rarely whole seconds, and flooring
+ * the book's place instead would put the two half a second apart). Never below the start
+ * of the chapter playing: floored in the book, the place just after a boundary would
+ * still sit in the chapter that has ended, so "This chapter" would be that one (a timer
+ * armed behind the playhead, which pauses the book at once) and every "N chapters" row
+ * would stop a chapter early.
  */
 function selectSheetPosition(s: ReturnType<typeof usePlayer.getState>): number {
   const live = selectBookPosition(s);
-  const floored = Math.floor(live);
   const start = selectCurrentChapter(s)?.book_offset;
-  return start !== undefined && start <= live ? Math.max(floored, start) : floored;
+  return start !== undefined && start <= live ? start + Math.floor(live - start) : Math.floor(live);
 }
 
 /** The body, mounted only while the sheet is open (it follows the position, by the
@@ -158,7 +158,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
                 : t('player.sleepTimer.endOfChapter')
             }
             caption={t('player.sleepTimer.inTime', {
-              time: formatTimeLeftShort(chapterTarget.untilEnd),
+              time: formatDuration(chapterTarget.untilEnd),
             })}
             selected={stopsAt(phase, pauseAtPosition, chapterTarget.position)}
             onPress={() =>
@@ -181,7 +181,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
             const ends = t('player.sleepTimer.endsAt', {
               time: formatWallClock(new Date(now + row.untilEnd * 1000)),
             });
-            const length = formatTimeLeftShort(row.untilEnd);
+            const length = formatDuration(row.untilEnd);
             const selected = stopsAt(phase, pauseAtPosition, row.endPosition);
             return (
               <PressableRow

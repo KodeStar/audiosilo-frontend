@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { useScopedCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
@@ -17,9 +17,11 @@ import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
+import { failureText } from '@/downloads/failure';
 import { useDownloadEntry, useDownloadProgress } from '@/downloads/store';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
+import { useConnectionName } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -58,8 +60,9 @@ export function DownloadControl({
   // Its state only: the ring and the size read the progress in children of their own
   // (`DownloadingButton`, `OnDeviceLabel`), so a running download's ticks redraw them,
   // not this control and its menu (fe#196).
-  const { connectionId, supported, needsTranscode, status, error, start, cancel } =
+  const { connectionId, supported, needsTranscode, status, failure, start, cancel } =
     useDownloadControls(libraryId, path, book, chapterData);
+  const server = useConnectionName(connectionId) || t('downloads.storage.unknownServer');
   const [confirming, setConfirming] = useState(false);
   // Why downloading is off: this browser plays the book through the server's
   // transcoder (its raw files would not play offline), or offline storage is missing.
@@ -154,9 +157,11 @@ export function DownloadControl({
       >
         {words(idleLabel)}
       </Button>
-      {status === 'error' && error ? (
+      {status === 'error' ? (
+        // What went wrong, worded as the Downloads page words it (the stored `error` is
+        // the engine's English).
         <Text variant="caption" className="max-w-[320px] text-destructive" numberOfLines={2}>
-          {error}
+          {failureText(t, { failure }, server, Platform.OS === 'web' ? 'browser' : 'device')}
         </Text>
       ) : null}
     </View>

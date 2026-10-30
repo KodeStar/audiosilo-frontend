@@ -32,6 +32,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { chapterLabel, contradictedTitle, resumeChapterLabel } from '@/lib/chapter-label';
 import { formatDayMonth, formatDuration } from '@/lib/format';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
@@ -40,6 +41,7 @@ import { bookSeriesNumber } from '@/lib/series-position';
 import { useWidth } from '@/lib/use-width';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { timeLeft, timeLeftLabel } from '@/playback/time-left';
+import { useConnectionName } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { BookScale } from './book-scale';
@@ -96,6 +98,18 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   // Offline, a book that isn't downloaded can't start: Resume says so instead of failing.
   const playableHere = usePlayableHere();
   const unplayable = !loaded && !playableHere(at);
+  // Why, as the chrome says it (CONNECT-15): this device has no network, or it has one and
+  // the book's server isn't answering (named). An episode is never downloaded.
+  const deviceOnline = useDeviceOnline();
+  const serverName = useConnectionName(at.connectionId);
+  const byServer = deviceOnline && !!serverName;
+  const unplayableHint = episode
+    ? byServer
+      ? t('home.now.episodeServerHint', { name: serverName })
+      : t('home.now.episodeOfflineHint')
+    : byServer
+      ? t('home.now.notDownloadedServerHint', { name: serverName })
+      : t('home.now.notDownloadedHint');
 
   // Chapter starts recomputed from the file durations, as the book page does (the
   // server's `book_offset` is unreliable on some books).
@@ -215,13 +229,13 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
       <Button
         size="lg"
         variant="outline"
-        icon="download"
-        title={t('home.now.notDownloaded')}
+        icon={episode ? 'play' : 'download'}
+        title={episode ? resumeLabel : t('home.now.notDownloaded')}
         disabled
-        accessibilityHint={t('home.now.notDownloadedHint')}
+        accessibilityHint={unplayableHint}
         className={compact ? 'w-full' : 'self-start'}
       />
-      <Text variant="caption">{t('home.now.notDownloadedHint')}</Text>
+      <Text variant="caption">{unplayableHint}</Text>
     </View>
   ) : (
     <Button

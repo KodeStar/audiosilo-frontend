@@ -59,7 +59,7 @@ import {
 } from './client';
 import { resolveClient } from './connection-clients';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
-import { noteFailure } from './reachability';
+import { noteFailure, useReachability } from './reachability';
 import type {
   AddMemberBody,
   Book,
@@ -862,17 +862,35 @@ export function useBook(
  * data > pages > page > items > book. */
 const LISTED_DEPTH = 5;
 
-function findListed(v: unknown, libraryId: number, path: string, depth: number): Book | undefined {
-  if (depth > LISTED_DEPTH || !v || typeof v !== 'object') return undefined;
+/** Each cached answer's books by `library_id:rel_path`, the first listed of each. An
+ * answer's data is replaced, never changed in place, so it is walked once, however many
+ * rows ask (`listedBook`). */
+const listedIndexes = new WeakMap<object, Map<string, Book>>();
+
+function indexListed(v: unknown, into: Map<string, Book>, depth: number): void {
+  if (depth > LISTED_DEPTH || !v || typeof v !== 'object') return;
   // An array walks the same way: by its indices, and no array is a book.
   const o = v as Record<string, unknown>;
-  if (o.rel_path === path && o.library_id === libraryId && typeof o.title === 'string' && o.title)
-    return o as unknown as Book;
-  for (const k in o) {
-    const found = findListed(o[k], libraryId, path, depth + 1);
-    if (found) return found;
+  if (
+    typeof o.rel_path === 'string' &&
+    typeof o.library_id === 'number' &&
+    typeof o.title === 'string' &&
+    o.title
+  ) {
+    const key = `${o.library_id}:${o.rel_path}`;
+    if (!into.has(key)) into.set(key, o as unknown as Book);
   }
-  return undefined;
+  for (const k in o) indexListed(o[k], into, depth + 1);
+}
+
+function listedIn(data: object): Map<string, Book> {
+  let index = listedIndexes.get(data);
+  if (!index) {
+    index = new Map();
+    indexListed(data, index, 0);
+    listedIndexes.set(data, index);
+  }
+  return index;
 }
 
 /** A book as one of this connection's cached answers lists it (a library page, a shelf,
@@ -880,19 +898,22 @@ function findListed(v: unknown, libraryId: number, path: string, depth: number):
  * PLAYER-02, Home showed folder names). Undefined when none does. */
 export function listedBook(cid: string, libraryId: number, path: string): Book | undefined {
   if (!path) return undefined;
+  const key = `${libraryId}:${path}`;
   for (const query of queryClient.getQueryCache().getAll()) {
-    if (!query.queryKey.includes(cid) || query.state.data === undefined) continue;
-    const found = findListed(query.state.data, libraryId, path, 0);
+    const data = query.state.data;
+    if (!query.queryKey.includes(cid) || !data || typeof data !== 'object') continue;
+    const found = listedIn(data).get(key);
     if (found) return found;
   }
   return undefined;
 }
 
 /**
- * {@link useBook}'s answer, or, while it can't come (the query paused offline, or failed),
- * the book as a cached list of the connection holds it (`listedBook`): a row known only by
- * its path (Home's progress rows, Up next's suggestions) keeps its title and author
- * offline. A downloaded book's own `/item` is seeded from its download, so it answers.
+ * {@link useBook}'s answer, or, while it can't come (the query paused offline, failed, or
+ * its server known to be down), the book as a cached list of the connection holds it
+ * (`listedBook`): a row known only by its path (Home's progress rows, Up next's
+ * suggestions) keeps its title and author offline. A downloaded book's own `/item` is
+ * seeded from its download, so it answers.
  */
 export function useKnownBook(
   libraryId: number,
@@ -902,7 +923,14 @@ export function useKnownBook(
 ): Book | undefined {
   const cid = useCid(connectionId);
   const query = useBook(libraryId, path, connectionId, opts);
-  const stuck = query.data === undefined && (query.isError || query.fetchStatus === 'paused');
+  // A down server's own failure can be a timeout away.
+  const serverDown = useReachability((s) => s.online[cid] === false);
+  // A failed item asked again has no error while it waits (a fetch without data resets it),
+  // so the count of its failures says it failed. `isPaused`, not `fetchStatus`: a refetch
+  // alone redraws no row.
+  const stuck =
+    query.data === undefined &&
+    (query.isError || query.isPaused || query.errorUpdateCount > 0 || serverDown);
   return useMemo(
     () => query.data ?? (stuck ? listedBook(cid, libraryId, path) : undefined),
     [query.data, stuck, cid, libraryId, path],

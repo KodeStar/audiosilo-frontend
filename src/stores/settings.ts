@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 
-import { getItem, persistedDocument, setItem } from '@/lib/storage';
+import { getItemStrict, persistedDocument, setItem, setItemStrict } from '@/lib/storage';
 import { isRecord } from '@/lib/storage-keys';
 import { DEFAULT_VIRTUAL_CHAPTER_INTERVAL } from '@/playback/book-queue';
 
@@ -143,17 +143,21 @@ const MIGRATED_KEY = 'audiosilo.settingsMigrated';
 
 /** Run the migrations the stored document has not had, once (the write-once rule of the
  * theme default in `migrateStorage`): before the store's first read, from the newer of the
- * document's `version` and `MIGRATED_KEY`, then never again for that version. A failure
- * leaves the key as it was, so the next load tries again. */
+ * document's `version` and `MIGRATED_KEY`, then never again for that version. A read or
+ * write that fails rejects before the key is set, so the next load tries again (a marker
+ * read as missing would migrate a deliberate choice again; a document read as missing, or
+ * not saved, would never be migrated). */
 async function migrateOnce(): Promise<void> {
-  const done = await getItem<unknown>(MIGRATED_KEY);
+  const done = await getItemStrict<unknown>(MIGRATED_KEY);
   const ran = typeof done === 'number' ? done : 0;
   if (ran >= SETTINGS_VERSION) return;
-  const raw = await getItem<unknown>(SETTINGS_KEY);
+  const raw = await getItemStrict<unknown>(SETTINGS_KEY);
   if (isRecord(raw)) {
     const doc = raw as Partial<StoredSettings>;
     const migrated = migrateSettings(doc, Math.max(ran, Number(doc.version) || 0));
-    if (migrated !== doc) await setItem(SETTINGS_KEY, { ...migrated, version: SETTINGS_VERSION });
+    if (migrated !== doc) {
+      await setItemStrict(SETTINGS_KEY, { ...migrated, version: SETTINGS_VERSION });
+    }
   }
   await setItem(MIGRATED_KEY, SETTINGS_VERSION);
 }

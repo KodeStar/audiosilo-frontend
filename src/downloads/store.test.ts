@@ -411,7 +411,7 @@ describe('the narrow download selectors', () => {
       renders.progress++;
       return useDownloadProgress('c1', 2, 'A/Book');
     });
-    expect(state.result.current).toEqual({ status: 'downloading', error: undefined });
+    expect(state.result.current).toEqual({ status: 'downloading', failure: undefined });
     const before = { ...renders };
 
     for (const progress of [0.2, 0.4, 0.6]) await patch({ progress, bytes: progress * 100 });
@@ -419,15 +419,16 @@ describe('the narrow download selectors', () => {
     expect(renders.progress).toBe(before.progress + 3);
     expect(numbers.result.current).toMatchObject({ progress: 0.6, bytes: 60 });
 
-    await patch({ status: 'error', error: 'Disk full' });
-    expect(state.result.current).toEqual({ status: 'error', error: 'Disk full' });
+    const full = { kind: 'storage', kept: 0 } as const;
+    await patch({ status: 'error', error: 'Disk full', failure: full });
+    expect(state.result.current).toEqual({ status: 'error', failure: full });
     expect(renders.state).toBe(before.state + 1);
   });
 
   it('answer no state and zero progress for a book with no download', async () => {
     expect((await renderHook(() => useDownloadState('c1', 2, 'None'))).result.current).toEqual({
       status: undefined,
-      error: undefined,
+      failure: undefined,
     });
     expect((await renderHook(() => useDownloadProgress('c1', 2, 'None'))).result.current).toEqual({
       progress: 0,
@@ -827,6 +828,11 @@ describe("a download keeps its server's place", () => {
     useDownloads.setState({ entries: { [downloadKey('c1', 2, 'A/Book')]: downloadedEntry() } });
     expect(isKeptOffline('c1', 2, 'A/Book')).toBe(true);
     expect(isKeptOffline('c2', 2, 'A/Book')).toBe(false);
+    // A download that failed is neither on the device nor on its way.
+    useDownloads.setState({
+      entries: { [downloadKey('c1', 2, 'A/Book')]: downloadedEntry({ status: 'error' }) },
+    });
+    expect(isKeptOffline('c1', 2, 'A/Book')).toBe(false);
   });
 });
 
@@ -1272,6 +1278,15 @@ describe('reviveEntry', () => {
     }));
     mockEngine.verify = async () => true;
     expect(reviveEntry(all, true)?.failure).toEqual({ kind: 'unservable', kept: 1 });
+    // A book with an ebook may have been cut short fetching it (after the audio).
+    const withEbook = {
+      ...all,
+      manifest: {
+        ...all.manifest,
+        book: { ...all.manifest.book, ebook: { path: 'A/Book/Book.epub', size: 1000 } },
+      },
+    };
+    expect(reviveEntry(withEbook, true)?.failure).toEqual({ kind: 'interrupted', kept: 1 });
     mockEngine.verify = undefined;
     expect(reviveEntry(all, true)?.failure).toEqual({ kind: 'interrupted', kept: 1 });
   });
@@ -1693,6 +1708,36 @@ describe("download() waits for the launch's offline check", () => {
     await expect(
       useDownloads.getState().download('c1', 2, threeFileBook(), undefined, 'keep-ahead'),
     ).resolves.toBe('unsupported');
+  });
+
+  it('stops waiting on the check once it is over, when the launch read failed', async () => {
+    client();
+    await seed({ [downloadKey('c1', 2, 'Old/Book')]: downloadedEntry({ path: 'Old/Book' }) });
+    mockEngine.fileExists.mockRejectedValueOnce(new Error('storage gone'));
+    mockEngine.probe = async () => true;
+    await expect(useDownloads.getState().hydrate()).rejects.toThrow('storage gone');
+
+    await expect(useDownloads.getState().download('c1', 2, threeFileBook())).resolves.toBe(
+      'queued',
+    );
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  it('gives up on a book the listener cancelled while it waited for the check', async () => {
+    client();
+    let answer!: (ok: boolean) => void;
+    mockEngine.probe = () => new Promise<boolean>((r) => (answer = r));
+    const hydrated = useDownloads.getState().hydrate();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const outcome = useDownloads.getState().download('c1', 2, threeFileBook());
+    useDownloads.getState().cancel('c1', 2, 'A/Book');
+    answer(true);
+    await expect(outcome).resolves.toBe('declined');
+    await hydrated;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockEngine.downloadFile).not.toHaveBeenCalled();
+    expect(useDownloads.getState().entries).toEqual({});
   });
 
   it('lets it through once the check passes', async () => {

@@ -12,6 +12,13 @@ jest.mock('@/downloads/store', () => ({ useDownloadedCoverUri: () => null }));
 // network, the servers and the downloads.
 let mockPlayable = true;
 jest.mock('./use-playable-here', () => ({ usePlayableHere: () => () => mockPlayable }));
+// Why it can't: the device's network, and the book's server by name.
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/stores/session', () => ({
+  ...jest.requireActual('@/stores/session'),
+  useConnectionName: () => 'Hearthside',
+}));
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => 'desktop',
@@ -137,12 +144,14 @@ beforeEach(() => {
   mockChapterCount = 3;
   mockPush.mockClear();
   mockPlayable = true;
+  mockDeviceOnline = true;
 });
 
 describe('NowCard', () => {
   // v2.5.1 PLAYER-02: offline, Resume on a book that isn't downloaded went nowhere.
   it("says a book isn't downloaded, instead of a Resume that can't start, offline", async () => {
     mockPlayable = false;
+    mockDeviceOnline = false;
     await render(<NowCard at={at} saved={saved} />);
     expect(screen.queryByRole('button', { name: /^Resume/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Not downloaded' })).toBeDisabled();
@@ -151,6 +160,24 @@ describe('NowCard', () => {
     ).toBeTruthy();
     // The rest of the card still says where the listener is.
     expect(screen.getByText("Caliban's War")).toBeTruthy();
+  });
+
+  it('names the server when the device is online and the server is what is away', async () => {
+    mockPlayable = false;
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByRole('button', { name: 'Not downloaded' })).toBeDisabled();
+    expect(screen.getByText(/It plays once Hearthside is answering again\./)).toBeTruthy();
+    expect(screen.queryByText(/back online/)).toBeNull();
+  });
+
+  it('offers no download for an episode that cannot start', async () => {
+    mockPlayable = false;
+    mockEpisode = true;
+    mockDeviceOnline = false;
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.queryByRole('button', { name: 'Not downloaded' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Resume/ })).toBeDisabled();
+    expect(screen.getByText("This episode plays once you're back online.")).toBeTruthy();
   });
 
   it('shows where the listener is in the book and resumes that chapter', async () => {

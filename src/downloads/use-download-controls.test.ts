@@ -8,7 +8,7 @@ jest.mock('@/api/hooks', () => ({ useCapability: () => mockCanTranscode }));
 jest.mock('@/api/provider', () => ({ useScopedCid: () => 'c1' }));
 let mockStatus: string | undefined;
 jest.mock('./store', () => ({
-  useDownloadState: () => ({ status: mockStatus, error: undefined }),
+  useDownloadState: () => ({ status: mockStatus, failure: undefined }),
   useDownloads: Object.assign(
     (select: (s: { supported: boolean }) => unknown) => select({ supported: true }),
     { getState: () => ({ download: jest.fn(), cancel: jest.fn() }) },

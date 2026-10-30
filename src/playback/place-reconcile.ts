@@ -37,9 +37,10 @@ import {
  * never written; the hold ends with the check, or by itself after 5 seconds.
  *
  * It moves only when the server's record was written by another device (`device_id`, which
- * the server stores per record), is newer than anything this device knows for the book
- * (the durable mirror holds every save of this device, queued or not, and every record it
- * read), is not finished, and is more than `MOVE_THRESHOLD_S` from the engine's place. A
+ * the server stores per record), is newer than this device's own last save of the book
+ * (the durable mirror holds every save of this device, queued or not; it also keeps the
+ * records this device read, and those say where the book is, not where this engine is), is
+ * not finished, and is more than `MOVE_THRESHOLD_S` from the engine's place. A
  * seek of the listener's own while the check was out wins (`localMoveCount`). The move is
  * the store's `seekBook` (the resume floor, the undo chip's detection), and a toast says
  * what happened with Undo.
@@ -61,18 +62,21 @@ const timeOf = (iso: string | undefined): number => {
 
 /**
  * Where to move the loaded book, or null to stay. Pure. `mirror` is this device's newest
- * knowledge of the book (its own saves, queued or synced, and records it read).
+ * knowledge of the book (its own saves, queued or synced, and records it read). Only a save
+ * of its own keeps the engine where it is: a record read since (a downloaded book's page
+ * and its download keep the mirror current) is where the book is, not where this engine is.
  */
 export function placeToMoveTo(input: {
   server: Progress | null;
   deviceId: string;
-  mirror: Pick<ProgressSave, 'updated_at'> | null;
+  mirror: Pick<ProgressSave, 'updated_at' | 'device_id'> | null;
   enginePosition: number;
 }): number | null {
   const { server, deviceId, mirror, enginePosition } = input;
   if (!server || server.finished || !(server.position > 0)) return null;
   if (!server.device_id || server.device_id === deviceId) return null;
-  if (mirror && timeOf(server.updated_at) <= timeOf(mirror.updated_at)) return null;
+  const ownSave = mirror?.device_id === deviceId ? mirror : null;
+  if (ownSave && timeOf(server.updated_at) <= timeOf(ownSave.updated_at)) return null;
   if (Math.abs(server.position - enginePosition) <= MOVE_THRESHOLD_S) return null;
   return server.position;
 }

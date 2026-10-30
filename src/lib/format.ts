@@ -15,16 +15,6 @@ export function formatDuration(seconds?: number): string {
   return `${total}s`;
 }
 
-/** "4m" / "1h 5m" / "45s": the time left to an end, to the NEAREST minute from a minute up
- * (3m 57s reads "4m", where {@link formatDuration} cuts it to "3m"), "" when nothing is
- * left. The player's "left in the chapter" and the sleep sheet's chapter times share it, so
- * they read alike (v2.5.1 PLAYER-11). */
-export function formatTimeLeftShort(seconds?: number): string {
-  if (!seconds || seconds <= 0) return '';
-  const total = Math.round(seconds);
-  return total < 60 ? `${total}s` : formatDuration(Math.round(total / 60) * 60);
-}
-
 /** {@link formatDuration} that reads "0m" for nothing, for a figure that is always
  * shown (time listened, a total). */
 export function formatDurationOrZero(seconds?: number): string {

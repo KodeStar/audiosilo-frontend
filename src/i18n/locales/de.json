@@ -541,7 +541,10 @@
       "storySoFar": "Bisher geschehen",
       "countOf": "{{chapter}} von {{total}}",
       "notDownloaded": "Nicht heruntergeladen",
-      "notDownloadedHint": "Dieses Buch ist nicht auf diesem Gerät. Es spielt, sobald du wieder online bist."
+      "notDownloadedHint": "Dieses Buch ist nicht auf diesem Gerät. Es spielt, sobald du wieder online bist.",
+      "notDownloadedServerHint": "Dieses Buch ist nicht auf diesem Gerät. Es spielt, sobald {{name}} wieder antwortet.",
+      "episodeOfflineHint": "Diese Folge spielt, sobald du wieder online bist.",
+      "episodeServerHint": "Diese Folge spielt, sobald {{name}} wieder antwortet."
     },
     "week": {
       "title": "Diese Woche",

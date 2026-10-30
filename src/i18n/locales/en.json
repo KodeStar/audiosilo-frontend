@@ -541,7 +541,10 @@
       "storySoFar": "Story so far",
       "countOf": "{{chapter}} of {{total}}",
       "notDownloaded": "Not downloaded",
-      "notDownloadedHint": "This book isn't on this device. It plays once you're back online."
+      "notDownloadedHint": "This book isn't on this device. It plays once you're back online.",
+      "notDownloadedServerHint": "This book isn't on this device. It plays once {{name}} is answering again.",
+      "episodeOfflineHint": "This episode plays once you're back online.",
+      "episodeServerHint": "This episode plays once {{name}} is answering again."
     },
     "week": {
       "title": "This week",

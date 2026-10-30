@@ -287,6 +287,16 @@ describe('settings store, automatic downloads per platform', () => {
     expect(useSettings.getState().autoDownloadNext).toBe('wifi');
   });
 
+  it('leaves the migration to the next load when this one could not save it', async () => {
+    load('web');
+    await AsyncStorage.setItem(KEY, JSON.stringify({ autoDownloadNext: 'wifi' }));
+    const write = jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('quota'));
+    await useSettings.getState().hydrate();
+    write.mockRestore();
+    expect(await AsyncStorage.getItem('audiosilo.settingsMigrated')).toBeNull();
+    expect(JSON.parse((await AsyncStorage.getItem(KEY))!)).toEqual({ autoDownloadNext: 'wifi' });
+  });
+
   it('keeps a deliberate wifi saved by 2.5.0 (with its version) on the first load', async () => {
     expect(await hydrated('web', { autoDownloadNext: 'wifi', version: 1 })).toBe('wifi');
     expect(await AsyncStorage.getItem('audiosilo.settingsMigrated')).not.toBeNull();

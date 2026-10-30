@@ -352,4 +352,25 @@ describe('startKeepAhead', () => {
     await drain();
     expect(download).not.toHaveBeenCalled();
   });
+
+  it("plans again when the launch's offline check says this browser keeps nothing", async () => {
+    jest.useFakeTimers();
+    const stop = startKeepAhead();
+    // The first plan, and the one its queue read asks for, settled.
+    for (let i = 0; i < 3; i++) {
+      await jest.advanceTimersByTimeAsync(SETTLE_MS);
+      await drain();
+    }
+    expect(useKeepAhead.getState().status).toBe('working');
+
+    // The check answers after the registry was read: the books it was starting are refused.
+    const state = { supported: false, hydrated: true, entries, download };
+    (useDownloads.getState as jest.Mock).mockImplementation(() => state);
+    const registryChanged = (useDownloads.subscribe as jest.Mock).mock.calls.at(-1)?.[0];
+    registryChanged(state, { ...state, supported: true });
+    await jest.advanceTimersByTimeAsync(SETTLE_MS);
+    await drain();
+    expect(useKeepAhead.getState().status).toBe('idle');
+    stop();
+  });
 });

@@ -84,7 +84,8 @@ export function splitProgress(progress: readonly SourcedProgress[]): {
 }
 
 /** The Now card's book: the one loaded in the player, else the most recently played
- * book in progress, else none (the card's empty state). */
+ * book in progress that can play here (`playable`; offline, a downloaded one), else the
+ * most recently played, else none (the card's empty state). */
 export function pickNowBook(
   loaded: BookAt | null,
   inProgress: readonly SourcedProgress[],

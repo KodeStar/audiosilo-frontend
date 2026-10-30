@@ -255,10 +255,10 @@ describe('SeekTimes', () => {
   });
 
   // v2.5.1 PLAYER-11: 5 s into a 6-minute chapter at 1.5x is 3m 57s, which the sleep sheet
-  // reads as "4m": the same minutes here.
-  it('rounds the minutes left as the sleep sheet does', async () => {
+  // (counting from the same whole second) and the status line both read as "3m".
+  it('reads the minutes left as the sleep sheet and the status line do', async () => {
     await render(<SeekTimes elapsed={5} length={360} rate={1.5} />);
-    expect(screen.getByText(/^4m left in the chapter · ends /)).toBeTruthy();
+    expect(screen.getByText(/^3m left in the chapter · ends /)).toBeTruthy();
   });
 
   it('says file for a book without a whole-book timeline', async () => {

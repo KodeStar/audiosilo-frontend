@@ -83,6 +83,13 @@ function stopRun(key: string) {
 // downloading it again clears the mark. Session-only on purpose: memory, not storage.
 const declined = new Set<string>();
 
+// How often each book was cancelled or removed this session: a `download` that waited (for
+// the launch's read and offline check, or for the book's item) gives up on a book the
+// listener stopped meanwhile, instead of fetching it again.
+const stopCounts = new Map<string, number>();
+const stopCount = (key: string) => stopCounts.get(key) ?? 0;
+const noteStopped = (key: string) => stopCounts.set(key, stopCount(key) + 1);
+
 // The launch's read of the saved registry while it runs (`hydrate`, up to its merge). The
 // registry is not known yet, so `download` and `remove` wait for it (a book already on
 // disk would otherwise be fetched over its own files, or removed and then put back by the
@@ -137,13 +144,18 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // real path (no real download needed) and downgrade `supported` if it can't, so
     // the UI hides downloads instead of offering ones that won't play offline. Asked from
     // the start, and applied once the registry is read (which sets `supported` from the
-    // engine): `download` waits for it.
+    // engine): `download` waits for it until it has settled, however the read went (a read
+    // that throws must not leave `download` waiting on a settled check forever).
     const probe = engine.probe;
-    const checked =
+    const checked: Promise<void> | null =
       engine.supported && probe
-        ? Promise.all([probe().catch(() => false), reading]).then(([ok]) => {
-            if (ok !== useDownloads.getState().supported) set({ supported: ok });
-          })
+        ? Promise.all([probe().catch(() => false), reading])
+            .then(([ok]) => {
+              if (ok !== useDownloads.getState().supported) set({ supported: ok });
+            })
+            .finally(() => {
+              if (probing === checked) probing = null;
+            })
         : null;
     probing = checked;
     try {
@@ -157,19 +169,22 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // (and filled in for a download made before it was kept). In the background, once the
     // launch's first screens are up: the registry is usable without it.
     afterLaunch(() => void restoreOfflineMeta(Object.keys(cleaned)).catch(() => {}));
-    if (checked) {
-      await checked;
-      if (probing === checked) probing = null;
-    }
+    if (checked) await checked;
   },
 
   download: (connectionId, libraryId, book, chapterData, origin = 'listener') => {
     if (!engine.supported) return Promise.resolve<DownloadOutcome>('unsupported');
+    const key = downloadKey(connectionId, libraryId, book.rel_path);
+    const stops = stopCount(key);
     // Until the launch has read the registry a book already on disk looks new, and its
     // download would write over (and, offline, lose) the files it has.
     const reading = hydrating ?? probing;
     if (reading)
-      return reading.then(() => get().download(connectionId, libraryId, book, chapterData, origin));
+      return reading.then(() =>
+        stopCount(key) !== stops
+          ? 'declined'
+          : get().download(connectionId, libraryId, book, chapterData, origin),
+      );
     // This browser can't play a download offline (the launch's probe): refused up front,
     // before a byte is fetched. The control says so ("Downloads unavailable").
     if (!get().supported) return Promise.resolve<DownloadOutcome>('unsupported');
@@ -194,6 +209,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
           staleTime: 30_000,
         }),
       ]);
+      if (stopCount(key) !== stops) return 'declined';
       // A lookup that failed decides on what the caller gave, as before.
       return queueBook(
         connectionId,
@@ -207,6 +223,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 
   cancel: (connectionId, libraryId, path) => {
     const key = downloadKey(connectionId, libraryId, path);
+    noteStopped(key);
     declined.add(key);
     stopRun(key);
     void engine.removeBook(connectionId, libraryId, path);
@@ -214,9 +231,10 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   },
 
   remove: async (connectionId, libraryId, path) => {
+    const key = downloadKey(connectionId, libraryId, path);
+    noteStopped(key);
     // An entry the launch is still reading would come back from its merge, its files gone.
     if (hydrating) await hydrating;
-    const key = downloadKey(connectionId, libraryId, path);
     declined.add(key);
     stopRun(key);
     await engine.removeBook(connectionId, libraryId, path);
@@ -225,12 +243,12 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
   },
 }));
 
-// A book with a downloads entry keeps its server's place in the progress mirror as the
-// book's progress is read (`fetchBookProgress`, which can't import this store).
-setKeptOfflineCheck(
-  (connectionId, libraryId, path) =>
-    downloadKey(connectionId, libraryId, path) in useDownloads.getState().entries,
-);
+// A book downloaded here, or on its way, keeps its server's place in the progress mirror
+// as the book's progress is read (`fetchBookProgress`, which can't import this store).
+setKeptOfflineCheck((connectionId, libraryId, path) => {
+  const entry = useDownloads.getState().entries[downloadKey(connectionId, libraryId, path)];
+  return !!entry && entry.status !== 'error';
+});
 
 // --- helpers ---------------------------------------------------------------
 
@@ -419,8 +437,9 @@ function stepAside(key: string) {
  *   the engines can't resume a transfer, but the files it FINISHED are listed as they
  *   land), stays as a failure keeping those files, so Retry fetches only the rest. One
  *   cut short by the app closing says so (`interrupted`), or, on web with every file
- *   saved, that only the check that it plays offline was left (`unservable`: the service
- *   worker that serves it may not control the page, v2.5.1 PLAYER-03);
+ *   saved and no EPUB to fetch, that only the check that it plays offline was left
+ *   (`unservable`: the service worker that serves it may not control the page, v2.5.1
+ *   PLAYER-03);
  * - a failed or cut-short download that finished no file yet (most books are ONE file)
  *   stays too, as a row to retry from the start (v2.5.1 PLAYER-04), its folder emptied by
  *   the caller; a keep-ahead one is dropped instead (keep-ahead plans it again, and never
@@ -452,10 +471,13 @@ export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntr
   if (!allPresent) return null;
   const of = bookFileSpecs(e.manifest.book, e.manifest.chapters ?? undefined).length;
   const kept = Math.min(1, files.length / Math.max(of, files.length));
+  // Only the check was left when every file is saved and no EPUB was still to come (it is
+  // fetched after the audio, and listed only once the download ends).
+  const onlyCheckLeft = kept === 1 && !!engine.verify && !e.manifest.book.ebook;
   const failure: DownloadFailure =
     e.status === 'error' && e.failure
       ? { ...e.failure, kept }
-      : { kind: kept === 1 && engine.verify ? 'unservable' : 'interrupted', kept };
+      : { kind: onlyCheckLeft ? 'unservable' : 'interrupted', kept };
   return {
     ...e,
     status: 'error',
@@ -1213,18 +1235,19 @@ export function useDownloadedEbook(
   );
 }
 
-/** A book's download status (undefined: none) and a failed one's message: what a control
- * needs to pick its state. Shallow-compared, so progress ticks re-render nothing (a book's
- * actions menu, `useDownloadControls`); `useDownloadProgress` carries the numbers. */
+/** A book's download status (undefined: none) and a failed one's cause: what a control
+ * needs to pick its state and say what went wrong (`failureText`). Shallow-compared, so
+ * progress ticks re-render nothing (a book's actions menu, `useDownloadControls`);
+ * `useDownloadProgress` carries the numbers. */
 export function useDownloadState(
   connectionId: string,
   libraryId: number,
   path: string,
-): { status: DownloadStatus | undefined; error: string | undefined } {
+): { status: DownloadStatus | undefined; failure: DownloadFailure | undefined } {
   return useDownloads(
     useShallow((s) => {
       const e = s.entries[downloadKey(connectionId, libraryId, path)];
-      return { status: e?.status, error: e?.error };
+      return { status: e?.status, failure: e?.failure };
     }),
   );
 }
