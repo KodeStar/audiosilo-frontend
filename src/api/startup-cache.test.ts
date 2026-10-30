@@ -9,6 +9,7 @@ jest.mock('@/lib/version', () => ({ APP_VERSION: '9.9.9' }));
 /* eslint-disable import/first */
 import {
   forget,
+  PROGRESS_BOOKS,
   isStartupQuery,
   restore,
   SAVE_DELAY_MS,
@@ -270,6 +271,139 @@ describe('snapshot and restore', () => {
     expect(qc.getQueryData(['progress', 'all', C])).toBeUndefined();
     expect(qc.getQueryState(['progress', 'all', C])?.status).toBe('error');
     unsubscribe();
+  });
+});
+
+// v2.5.1 PLAYER-02: a reload offline still titles the progress rows (Home, Up next), whose
+// books no kept list may name.
+describe('progress-row books', () => {
+  const row = (path: string, updated_at: string, finished = false) => ({
+    library_id: 1,
+    path,
+    position: 10,
+    duration: 100,
+    finished,
+    updated_at,
+  });
+  const item = (path: string, title: string) => ({
+    library_id: 1,
+    rel_path: path,
+    title,
+    author: 'James S. A. Corey',
+    cover_version: 'v1',
+    description: 'not kept',
+    files: [{ path: `${path}/01.mp3` }],
+  });
+  const keptBooks = () =>
+    stored().entries.find((e: { key: unknown[] }) => e.key[0] === PROGRESS_BOOKS);
+
+  it("keeps each progress row's title as its /item named it, newest save first", () => {
+    const qc = newClient();
+    qc.setQueryData(
+      ['progress', 'all', C],
+      [row('a/1', '2026-10-01'), row('a/2', '2026-10-03'), row('a/3', '2026-10-02', true)],
+    );
+    qc.setQueryData(['item', C, 1, 'a/1'], item('a/1', 'Leviathan Wakes'));
+    qc.setQueryData(['item', C, 1, 'a/2'], item('a/2', "Caliban's War"));
+    qc.setQueryData(['item', C, 1, 'a/3'], item('a/3', 'Finished'));
+    save(qc);
+    expect(keptBooks()).toMatchObject({
+      key: [PROGRESS_BOOKS, C],
+      data: [
+        {
+          library_id: 1,
+          rel_path: 'a/2',
+          title: "Caliban's War",
+          author: 'James S. A. Corey',
+          cover_version: 'v1',
+        },
+        { rel_path: 'a/1', title: 'Leviathan Wakes' },
+        // Finished after the unfinished ones: Home's Recently finished.
+        { rel_path: 'a/3', title: 'Finished' },
+      ],
+    });
+    // Only what a row draws: no description, no files.
+    expect(keptBooks().data[0]).not.toHaveProperty('description');
+    expect(keptBooks().data[0]).not.toHaveProperty('files');
+  });
+
+  it('keeps no book Home would not show: unfinished and never started', () => {
+    const qc = newClient();
+    qc.setQueryData(
+      ['progress', 'all', C],
+      [row('a/1', '2026-10-01'), { ...row('a/0', '2026-10-02'), position: 0 }],
+    );
+    qc.setQueryData(['item', C, 1, 'a/1'], item('a/1', 'Leviathan Wakes'));
+    qc.setQueryData(['item', C, 1, 'a/0'], item('a/0', 'Not started'));
+    save(qc);
+    expect(keptBooks().data).toEqual([expect.objectContaining({ title: 'Leviathan Wakes' })]);
+  });
+
+  it('gives no place to a row with no book (an episode), so a book keeps its title', () => {
+    const qc = newClient();
+    const episodes = Array.from({ length: 15 }, (_, i) =>
+      row(`pod/${i}`, `2026-10-2${i % 10}`, true),
+    );
+    qc.setQueryData(['progress', 'all', C], [...episodes, row('a/3', '2026-10-01', true)]);
+    qc.setQueryData(['item', C, 1, 'a/3'], item('a/3', 'Finished'));
+    save(qc);
+    expect(keptBooks().data).toEqual([expect.objectContaining({ title: 'Finished' })]);
+  });
+
+  it('keeps a title this visit saved after its /item left the cache', () => {
+    const qc = newClient();
+    qc.setQueryData(['progress', 'all', C], [row('a/2', '2026-10-03')]);
+    qc.setQueryData(['item', C, 1, 'a/2'], item('a/2', "Caliban's War"));
+    save(qc);
+    qc.removeQueries({ queryKey: ['item', C, 1, 'a/2'], exact: true });
+    save(qc);
+    expect(keptBooks().data).toEqual([expect.objectContaining({ title: "Caliban's War" })]);
+  });
+
+  it('restores them for the next visit, which keeps them while its /item is unasked', () => {
+    const first = newClient();
+    first.setQueryData(['progress', 'all', C], [row('a/2', '2026-10-03')]);
+    first.setQueryData(['item', C, 1, 'a/2'], item('a/2', "Caliban's War"));
+    save(first);
+
+    const next = newClient();
+    restore(next);
+    expect(next.getQueryData([PROGRESS_BOOKS, C])).toEqual([
+      expect.objectContaining({ rel_path: 'a/2', title: "Caliban's War" }),
+    ]);
+    // Never swept as idle: no screen observes it.
+    expect(next.getQueryCache().find({ queryKey: [PROGRESS_BOOKS, C] })?.gcTime).toBe(Infinity);
+    // Saved again with no /item this visit: the kept title stays, a book with no row goes.
+    next.setQueryData(['progress', 'all', C], [row('a/2', '2026-10-04'), row('a/9', '2026-10-05')]);
+    save(next);
+    expect(keptBooks().data).toEqual([expect.objectContaining({ title: "Caliban's War" })]);
+    next.setQueryData(['progress', 'all', C], [row('a/9', '2026-10-05')]);
+    save(next);
+    expect(keptBooks()).toBeUndefined();
+  });
+
+  it('writes after an in-progress book’s /item answers, not any other book’s', async () => {
+    jest.useFakeTimers();
+    try {
+      const qc = newClient();
+      qc.setQueryData(['progress', 'all', C], [row('a/2', '2026-10-03')]);
+      const stop = startSaving(qc);
+      await qc.fetchQuery({
+        queryKey: ['item', C, 1, 'a/7'],
+        queryFn: async () => item('a/7', 'X'),
+      });
+      jest.advanceTimersByTime(SAVE_DELAY_MS);
+      expect(items.has(STARTUP_CACHE_KEY)).toBe(false);
+      await qc.fetchQuery({
+        queryKey: ['item', C, 1, 'a/2'],
+        queryFn: async () => item('a/2', "Caliban's War"),
+      });
+      jest.advanceTimersByTime(SAVE_DELAY_MS);
+      expect(keptBooks().data).toEqual([expect.objectContaining({ title: "Caliban's War" })]);
+      stop();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

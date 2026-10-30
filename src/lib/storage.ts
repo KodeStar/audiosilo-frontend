@@ -37,6 +37,12 @@ export async function setItem(key: string, value: unknown): Promise<void> {
   }
 }
 
+/** `setItem` for a write the caller must know failed (a one-time migration marks itself
+ * done only once its result is saved). A storage error rejects. */
+export async function setItemStrict(key: string, value: unknown): Promise<void> {
+  await AsyncStorage.setItem(key, JSON.stringify(value));
+}
+
 export async function removeItem(key: string): Promise<void> {
   try {
     await AsyncStorage.removeItem(key);

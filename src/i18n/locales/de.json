@@ -539,7 +539,12 @@
       "whosWhoLabel_one": "Wer ist wer, {{count}} Figur bisher kennengelernt",
       "whosWhoLabel_other": "Wer ist wer, {{count}} Figuren bisher kennengelernt",
       "storySoFar": "Bisher geschehen",
-      "countOf": "{{chapter}} von {{total}}"
+      "countOf": "{{chapter}} von {{total}}",
+      "notDownloaded": "Nicht heruntergeladen",
+      "notDownloadedHint": "Dieses Buch ist nicht auf diesem Gerät. Es spielt, sobald du wieder online bist.",
+      "notDownloadedServerHint": "Dieses Buch ist nicht auf diesem Gerät. Es spielt, sobald {{name}} wieder antwortet.",
+      "episodeOfflineHint": "Diese Folge spielt, sobald du wieder online bist.",
+      "episodeServerHint": "Diese Folge spielt, sobald {{name}} wieder antwortet."
     },
     "week": {
       "title": "Diese Woche",
@@ -1009,7 +1014,11 @@
         "wifi": "Im WLAN",
         "always": "Immer"
       },
-      "modeHint": "Lädt ein Buch herunter, sobald du es zu hören beginnst.",
+      "modeHint": {
+        "never": "Nichts wird von selbst heruntergeladen. Lade ein Buch auf seiner Seite herunter.",
+        "wifi": "Lädt ein Buch im WLAN herunter, sobald du es zu hören beginnst.",
+        "always": "Lädt ein Buch über jede Verbindung herunter, sobald du es zu hören beginnst."
+      },
       "webWifi": "Ein Browser kann WLAN nicht von mobilen Daten unterscheiden, daher lädt „Im WLAN“ hier über jede Verbindung herunter.",
       "keepAhead": {
         "label": "Die nächsten Bücher bereithalten",

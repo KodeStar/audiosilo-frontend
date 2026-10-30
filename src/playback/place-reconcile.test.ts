@@ -238,6 +238,10 @@ describe('placeToMoveTo', () => {
     expect(placeToMoveTo({ ...base, mirror: null })).toBe(400);
     // Behind is a place too: the other device went back.
     expect(placeToMoveTo({ ...base, enginePosition: 900 })).toBe(400);
+    // The other device's record, read into the mirror (a downloaded book's page or its
+    // download), is where the book is, not where this engine is.
+    const read = { ...mirrorAt('2026-10-08T10:00:00Z', 400), device_id: 'other-device' };
+    expect(placeToMoveTo({ ...base, mirror: read })).toBe(400);
   });
 
   it("stays for this device's own record, a newer local save, a near place or a finish", () => {
@@ -416,6 +420,14 @@ describe('and when it stays where it is', () => {
     await backInFront();
     expect(seeks()).toEqual([]);
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("moves on when the mirror holds the other device's record this device read", async () => {
+    await loadedAndPaused();
+    // The book page read the server's row for this downloaded book into the mirror.
+    mockMirror = { ...mirrorAt('2026-10-08T10:00:00Z', 400), device_id: 'other-device' };
+    await backInFront();
+    expect(seeks()).toEqual([400]);
   });
 
   it("this device's own record is not another device's", async () => {

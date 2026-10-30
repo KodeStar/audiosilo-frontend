@@ -85,27 +85,24 @@ export function SleepSheet({ visible, onClose }: { visible: boolean; onClose: ()
   );
 }
 
-/** How finely the sleep sheet follows the place: its times are minutes ("in 12m", "ends
- * 22:49"), and the chapter tile's 30-second rule needs no finer than this. */
-const SHEET_POSITION_STEP = 15;
-
 /**
- * The place the sheet counts from: the live whole-book position floored to
- * `SHEET_POSITION_STEP`, but never below the start of the chapter playing. Chapter ends are
- * rarely multiples of 15 s, so just after a boundary the floored place would still sit in
- * the chapter that has ended: "This chapter" would be that one (a timer armed behind the
- * playhead, which pauses the book at once) and every "N chapters" row would stop a
- * chapter early.
+ * The place the sheet counts from: the live position floored to whole seconds INTO the
+ * chapter playing, as the player's "left in the chapter" floors it, so the two read the
+ * same minutes (v2.5.1 PLAYER-11; chapter starts are rarely whole seconds, and flooring
+ * the book's place instead would put the two half a second apart). Never below the start
+ * of the chapter playing: floored in the book, the place just after a boundary would
+ * still sit in the chapter that has ended, so "This chapter" would be that one (a timer
+ * armed behind the playhead, which pauses the book at once) and every "N chapters" row
+ * would stop a chapter early.
  */
 function selectSheetPosition(s: ReturnType<typeof usePlayer.getState>): number {
   const live = selectBookPosition(s);
-  const floored = Math.floor(live / SHEET_POSITION_STEP) * SHEET_POSITION_STEP;
   const start = selectCurrentChapter(s)?.book_offset;
-  return start !== undefined && start <= live ? Math.max(floored, start) : floored;
+  return start !== undefined && start <= live ? start + Math.floor(live - start) : Math.floor(live);
 }
 
-/** The body, mounted only while the sheet is open (it follows the position, by
- * `SHEET_POSITION_STEP`). */
+/** The body, mounted only while the sheet is open (it follows the position, by the
+ * second). */
 function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const phase = useSleepTimer(selectSleepPhase);

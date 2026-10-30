@@ -262,11 +262,12 @@ export async function runKeepAhead(): Promise<void> {
   }
 }
 
-/** The registry's shape that matters to the plan: which books, in which state (not the
- * byte counts, which move on every progress tick). */
+/** The registry's shape that matters to the plan: whether it can keep books here (the
+ * launch's offline check can say no after the registry is read), which books, in which
+ * state (not the byte counts, which move on every progress tick). */
 function registrySignature(): string {
-  const { entries, hydrated } = useDownloads.getState();
-  return `${hydrated}|${statusSignature(entries)}`;
+  const { entries, hydrated, supported } = useDownloads.getState();
+  return `${hydrated}|${supported}|${statusSignature(entries)}`;
 }
 
 function currentSignature(): string {
@@ -339,7 +340,12 @@ export function startKeepAhead(): () => void {
           ),
           watch(registrySignature, (fn) =>
             useDownloads.subscribe((s, prev) => {
-              if (s.entries !== prev.entries || s.hydrated !== prev.hydrated) fn();
+              if (
+                s.entries !== prev.entries ||
+                s.hydrated !== prev.hydrated ||
+                s.supported !== prev.supported
+              )
+                fn();
             }),
           ),
           queryClient.getQueryCache().subscribe((event) => {

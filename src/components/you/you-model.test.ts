@@ -36,9 +36,10 @@ describe('youSectionsFor', () => {
     ]);
   });
 
-  it('offers Stats, Year and Journal where the top bar has the gear and profile menu', () => {
-    expect(youSectionsFor('tablet')).toEqual(['stats', 'year', 'journal']);
-    expect(youSectionsFor('desktop')).toEqual(['stats', 'year', 'journal']);
+  // v2.5.1 PLAYER-12: Household is in the wide strip too.
+  it('offers Stats, Year, Journal and Household where the top bar has the gear and profile menu', () => {
+    expect(youSectionsFor('tablet')).toEqual(['stats', 'year', 'journal', 'household']);
+    expect(youSectionsFor('desktop')).toEqual(['stats', 'year', 'journal', 'household']);
   });
 });
 
@@ -104,6 +105,7 @@ describe("a module's sections (Bridge Phase 2a)", () => {
       'stats',
       'year',
       'journal',
+      'household',
       'contribute',
     ]);
     // None: the very list the hub had before modules.

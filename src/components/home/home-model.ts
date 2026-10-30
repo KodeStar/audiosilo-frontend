@@ -84,10 +84,36 @@ export function splitProgress(progress: readonly SourcedProgress[]): {
 }
 
 /** The Now card's book: the one loaded in the player, else the most recently played
- * book in progress, else none (the card's empty state). */
-export function pickNowBook(loaded: BookAt | null, inProgress: readonly SourcedProgress[]) {
+ * book in progress that can play here (`playable`; offline, a downloaded one), else the
+ * most recently played, else none (the card's empty state). */
+export function pickNowBook(
+  loaded: BookAt | null,
+  inProgress: readonly SourcedProgress[],
+  playable?: (at: BookAt) => boolean,
+) {
   if (loaded) return loaded;
-  return inProgress[0] ? progressAt(inProgress[0]) : null;
+  // Offline, the newest book that can play here (a downloaded one) leads, rather than a
+  // newer one whose Resume would go nowhere (v2.5.1 PLAYER-02); none: the newest still.
+  const lead = playable ? inProgress.find((p) => playable(progressAt(p))) : undefined;
+  const first = lead ?? inProgress[0];
+  return first ? progressAt(first) : null;
+}
+
+/** Whether a book can start here now: the device is online and the book's server isn't
+ * known to be down (`online`, the reachability flags), or the book is downloaded. */
+export function playableHere(
+  at: BookAt,
+  {
+    deviceOnline,
+    online,
+    downloaded,
+  }: {
+    deviceOnline: boolean;
+    online: Readonly<Record<string, boolean>>;
+    downloaded: (at: BookAt) => boolean;
+  },
+): boolean {
+  return (deviceOnline && online[at.connectionId] !== false) || downloaded(at);
 }
 
 export type GreetingPart = 'morning' | 'afternoon' | 'evening';

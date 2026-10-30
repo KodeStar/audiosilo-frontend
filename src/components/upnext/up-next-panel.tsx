@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { useBook } from '@/api/hooks';
+import { useKnownBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
@@ -318,7 +318,8 @@ function SuggestedBook({
   onQueue: () => void;
 }) {
   const { t } = useTranslation();
-  const { data: book } = useBook(libraryId, path, cid);
+  // Offline, a cached list's copy of the book (its `/item` can't answer).
+  const book = useKnownBook(libraryId, path, cid);
   const title = bookTitle(book?.title, path);
   return (
     <View

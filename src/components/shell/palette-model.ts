@@ -148,8 +148,8 @@ const YOU_SECTION_ICON: Record<CoreYouSection, IconName> = {
 /**
  * The palette's Go to: the top bar's destinations (`tabs`, already filtered to what this
  * browser can do) but You, which goes by the sections its sub-nav offers instead
- * (`youSectionsFor`: Your listening, Year in listening, the Journal); then Settings and
- * the Household page.
+ * (`youSectionsFor`: Your listening, Year in listening, the Journal; Household is left to
+ * its own entry); then Settings and the Household page.
  */
 export function buildGoToItems(
   tabs: readonly Pick<Destination, 'name' | 'labelKey' | 'icon'>[],
@@ -165,12 +165,14 @@ export function buildGoToItems(
         icon: d.icon,
         run: () => run.tab(d.name),
       })),
-    ...youSectionsFor('desktop').map((section): PaletteItem => ({
-      id: `go:${section}`,
-      title: t(youTitleKey(section)),
-      icon: YOU_SECTION_ICON[section],
-      run: () => run.you(section),
-    })),
+    ...youSectionsFor('desktop')
+      .filter((section) => section !== 'household')
+      .map((section): PaletteItem => ({
+        id: `go:${section}`,
+        title: t(youTitleKey(section)),
+        icon: YOU_SECTION_ICON[section],
+        run: () => run.you(section),
+      })),
     {
       id: 'go:settings',
       title: t('settings.title'),

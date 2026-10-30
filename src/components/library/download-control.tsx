@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { useScopedCid } from '@/api/provider';
 import type { Book, ChaptersResponse } from '@/api/types';
@@ -17,9 +17,11 @@ import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
+import { failureText } from '@/downloads/failure';
 import { useDownloadEntry, useDownloadProgress } from '@/downloads/store';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
+import { useConnectionName } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -55,10 +57,12 @@ export function DownloadControl({
 }) {
   const themed = useThemeColors();
   const { t } = useTranslation();
-  const { connectionId, supported, needsTranscode, status, error, start, cancel } =
+  // Its state only: the ring and the size read the progress in children of their own
+  // (`DownloadingButton`, `OnDeviceLabel`), so a running download's ticks redraw them,
+  // not this control and its menu (fe#196).
+  const { connectionId, supported, needsTranscode, status, failure, start, cancel } =
     useDownloadControls(libraryId, path, book, chapterData);
-  // The ring and the size: this control redraws with the download's progress.
-  const { progress, totalBytes } = useDownloadProgress(connectionId, libraryId, path);
+  const server = useConnectionName(connectionId) || t('downloads.storage.unknownServer');
   const [confirming, setConfirming] = useState(false);
   // Why downloading is off: this browser plays the book through the server's
   // transcoder (its raw files would not play offline), or offline storage is missing.
@@ -72,11 +76,6 @@ export function DownloadControl({
     />
   );
 
-  const words = (text: string) => (
-    <Text numberOfLines={1} className="shrink" style={tabularNums}>
-      {text}
-    </Text>
-  );
   // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1).
   if (book?.episode) return null;
   if (!supported) {
@@ -111,11 +110,7 @@ export function DownloadControl({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {totalBytes > 0 ? (
-              <DropdownMenuLabel>
-                {t('book.download.onDevice', { size: formatBytes(totalBytes) })}
-              </DropdownMenuLabel>
-            ) : null}
+            <OnDeviceLabel connectionId={connectionId} libraryId={libraryId} path={path} />
             <DropdownMenuItem
               icon="trash"
               variant="destructive"
@@ -131,30 +126,15 @@ export function DownloadControl({
   }
 
   if (status === 'downloading' || status === 'queued') {
-    const said =
-      status === 'queued'
-        ? t('book.download.queuedCancel')
-        : t('book.download.progressCancel', { percent: Math.round(progress * 100) });
     return (
-      <Button
-        variant="outline"
-        size="lg"
-        onPress={cancel}
-        accessibilityLabel={`${said}, ${t('library.download.cancel')}`}
-        className={SHRINKS}
-      >
-        <ProgressRing
-          fraction={status === 'queued' ? 0 : progress}
-          size={18}
-          stroke={2.5}
-          color={themed.foreground}
-          trackColor={themed.border}
-        />
-        {/* A short row says only Cancel: the ring and the progress line under the hero
-            carry the percent, and "52% · Cancel" pushed the row's icons onto a second
-            row at 400. */}
-        {words(short ? t('common.cancel') : said)}
-      </Button>
+      <DownloadingButton
+        connectionId={connectionId}
+        libraryId={libraryId}
+        path={path}
+        queued={status === 'queued'}
+        short={short}
+        onCancel={cancel}
+      />
     );
   }
 
@@ -177,12 +157,89 @@ export function DownloadControl({
       >
         {words(idleLabel)}
       </Button>
-      {status === 'error' && error ? (
+      {status === 'error' ? (
+        // What went wrong, worded as the Downloads page words it (the stored `error` is
+        // the engine's English).
         <Text variant="caption" className="max-w-[320px] text-destructive" numberOfLines={2}>
-          {error}
+          {failureText(t, { failure }, server, Platform.OS === 'web' ? 'browser' : 'device')}
         </Text>
       ) : null}
     </View>
+  );
+}
+
+/** A button's words on one line, giving way (ending in "...") in a tight row. */
+function words(text: string) {
+  return (
+    <Text numberOfLines={1} className="shrink" style={tabularNums}>
+      {text}
+    </Text>
+  );
+}
+
+/** "52% · Cancel" with its ring: the one part of the control that redraws as the download
+ * runs (it reads the progress; `DownloadControl` doesn't). */
+const DownloadingButton = memo(function DownloadingButton({
+  connectionId,
+  libraryId,
+  path,
+  queued,
+  short,
+  onCancel,
+}: {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+  queued: boolean;
+  short?: boolean;
+  onCancel: () => void;
+}) {
+  const themed = useThemeColors();
+  const { t } = useTranslation();
+  const { progress } = useDownloadProgress(connectionId, libraryId, path);
+  const said = queued
+    ? t('book.download.queuedCancel')
+    : t('book.download.progressCancel', { percent: Math.round(progress * 100) });
+  return (
+    <Button
+      variant="outline"
+      size="lg"
+      onPress={onCancel}
+      accessibilityLabel={`${said}, ${t('library.download.cancel')}`}
+      className={SHRINKS}
+    >
+      <ProgressRing
+        fraction={queued ? 0 : progress}
+        size={18}
+        stroke={2.5}
+        color={themed.foreground}
+        trackColor={themed.border}
+      />
+      {/* A short row says only Cancel: the ring and the progress line under the hero
+          carry the percent, and "52% · Cancel" pushed the row's icons onto a second
+          row at 400. */}
+      {words(short ? t('common.cancel') : said)}
+    </Button>
+  );
+});
+
+/** The Downloaded menu's "50 MB on this device" (nothing while the size is unknown). */
+function OnDeviceLabel({
+  connectionId,
+  libraryId,
+  path,
+}: {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+}) {
+  const { t } = useTranslation();
+  const { totalBytes } = useDownloadProgress(connectionId, libraryId, path);
+  if (totalBytes <= 0) return null;
+  return (
+    <DropdownMenuLabel>
+      {t('book.download.onDevice', { size: formatBytes(totalBytes) })}
+    </DropdownMenuLabel>
   );
 }
 

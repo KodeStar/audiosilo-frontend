@@ -203,7 +203,8 @@ function mirrorAsProgress(
     : null;
 }
 
-function progressToSave(
+/** A server's progress row as the save this device keeps for it (the mirror's shape). */
+export function progressToSave(
   connectionId: string,
   libraryId: number,
   path: string,

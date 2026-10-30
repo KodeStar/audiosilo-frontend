@@ -156,11 +156,13 @@ describe('YouHub Household (Phase 8b-1)', () => {
     expect(mockSetParams).toHaveBeenLastCalledWith({ section: 'household', tab: undefined });
   });
 
-  it('is not offered on tablet or desktop, where it is a page; an old link still renders', async () => {
+  // v2.5.1 PLAYER-12: a link to it at 1280 opened a hub with no segment chosen.
+  it('is in the sub-nav on tablet and desktop too, chosen for its link', async () => {
     mockLayout = 'desktop';
     await mount({ section: 'household' });
     const sections = useSubNav.getState().slots['(me)']?.sections;
-    expect(sections?.options.map((o) => o.value)).not.toContain('household');
+    expect(sections?.options.map((o) => o.value)).toContain('household');
+    expect(sections?.value).toBe('household');
     expect(screen.getByText('household-section embedded=false')).toBeTruthy();
   });
 
@@ -197,7 +199,7 @@ describe('YouHub scrolling', () => {
 });
 
 describe('YouHub on tablet and desktop', () => {
-  it('publishes Stats, Year in listening and Journal to the sub-nav', async () => {
+  it('publishes Stats, Year in listening, Journal and Household to the sub-nav', async () => {
     mockLayout = 'desktop';
     await mount({ section: 'year' });
     const sections = useSubNav.getState().slots['(me)']?.sections;
@@ -205,6 +207,7 @@ describe('YouHub on tablet and desktop', () => {
       'Stats',
       'Year in listening',
       'Journal',
+      'Household',
     ]);
     expect(sections?.value).toBe('year');
     // Nothing renders in place.
@@ -269,7 +272,7 @@ describe("YouHub with a module's section (Bridge Phase 2a)", () => {
     expect(screen.queryByText(/contribute-section/)).toBeNull();
   });
 
-  it('follows Journal in the wide sub-nav', async () => {
+  it("follows the hub's own in the wide sub-nav", async () => {
     mockModulesOn = { contributions: true };
     mockLayout = 'desktop';
     await mountWith({ section: 'contribute' });
@@ -278,6 +281,7 @@ describe("YouHub with a module's section (Bridge Phase 2a)", () => {
       'Stats',
       'Year in listening',
       'Journal',
+      'Household',
       'Contribute',
     ]);
     expect(sections?.value).toBe('contribute');

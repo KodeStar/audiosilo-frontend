@@ -20,6 +20,7 @@ jest.mock('@/components/downloads/rules-card', () => {
   return {
     KeepAheadControl: () => <RNText>keep-ahead</RNText>,
     KeepAheadStatusLine: () => null,
+    AutoDownloadHint: ({ mode }: { mode: string }) => <RNText>{`hint-${mode}`}</RNText>,
     useAutoDownloadModes: () => [
       { value: 'never', label: 'Never' },
       { value: 'wifi', label: 'On Wi-Fi' },
@@ -163,7 +164,9 @@ describe('SettingsContent, stacked', () => {
     }
     // Each setting lives in exactly one place.
     expect(screen.getAllByText('Skip back')).toHaveLength(1);
-    expect(screen.getAllByText('Download automatically')).toHaveLength(1);
+    expect(screen.getAllByText('Automatic downloads')).toHaveLength(1);
+    // The rules card's hint for the chosen mode (its own suite covers the words).
+    expect(screen.getAllByText(`hint-${useSettings.getState().autoDownloadNext}`)).toHaveLength(1);
     expect(screen.getAllByText('keep-ahead')).toHaveLength(1);
     // Household is a link to its page, where its pane was.
     expect(screen.getAllByTestId('settings-section-household')).toHaveLength(1);

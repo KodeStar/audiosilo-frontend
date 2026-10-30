@@ -53,6 +53,22 @@ export function useAutoDownloadModes(): SegmentedOption<AutoDownloadMode>[] {
   ];
 }
 
+/** What the chosen automatic-download mode does, under the mode control in the Downloads
+ * page's rules card and in Settings (one wording for one setting). On web, On Wi-Fi says
+ * that a browser can't tell Wi-Fi from mobile data: `canAutoDownload` lets it download on
+ * any connection, so the caveat says so rather than imply a check that can't happen. */
+export function AutoDownloadHint({ mode }: { mode: AutoDownloadMode }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <Text variant="caption">{t(`downloads.rules.modeHint.${mode}`)}</Text>
+      {Platform.OS === 'web' && mode === 'wifi' ? (
+        <Text variant="caption">{t('downloads.rules.webWifi')}</Text>
+      ) : null}
+    </>
+  );
+}
+
 const STATUS_KEY = {
   off: null,
   idle: 'downloads.rules.keepAheadStatus.idle',
@@ -128,12 +144,7 @@ export function RulesCard({ className }: { className?: string }) {
           grow
           accessibilityLabel={t('downloads.rules.mode.label')}
         />
-        <Text variant="caption">{t('downloads.rules.modeHint')}</Text>
-        {/* canAutoDownload lets a browser download on any connection under On Wi-Fi:
-            say so rather than imply a check that can't happen. */}
-        {Platform.OS === 'web' && mode === 'wifi' ? (
-          <Text variant="caption">{t('downloads.rules.webWifi')}</Text>
-        ) : null}
+        <AutoDownloadHint mode={mode} />
       </View>
       <Row
         label={t('downloads.rules.keepAhead.label')}

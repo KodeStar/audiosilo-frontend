@@ -58,6 +58,7 @@ import { HomeSection } from './home-section';
 import { ModuleRails } from './module-rails';
 import { NewEpisodesRail } from './new-episodes-rail';
 import { NowEmpty, NowError, NowOffline } from './home-states';
+import { usePlayableHere } from './use-playable-here';
 import { NextInSeriesRow, ShelfSkeleton } from './next-in-series';
 import { NowCard, NowCardSkeleton } from './now-card';
 import { PreviouslyOnCard } from './previously-on';
@@ -114,7 +115,8 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const loaded: BookAt | null = np
     ? { connectionId: np.connectionId, libraryId: np.libraryId, path: np.path }
     : null;
-  const nowAt = pickNowBook(loaded, inProgress);
+  const playable = usePlayableHere();
+  const nowAt = pickNowBook(loaded, inProgress, playable);
   const nowKey = nowAt ? contentKeyOf(nowAt) : null;
   const nowSaved = nowKey ? progress.find((p) => progressKey(p) === nowKey) : undefined;
   const continuing = inProgress.filter((p) => progressKey(p) !== nowKey);

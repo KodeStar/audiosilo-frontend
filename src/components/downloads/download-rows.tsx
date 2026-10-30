@@ -11,8 +11,9 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { bytesToGo, entryBytes } from '@/downloads/downloads-view';
 import type { AheadBook, SlotState } from '@/downloads/keep-ahead';
+import { failureText } from '@/downloads/failure';
 import { useDownloadEntry } from '@/downloads/store';
-import type { DownloadEntry, DownloadFailure } from '@/downloads/types';
+import type { DownloadEntry } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
@@ -24,41 +25,6 @@ import type { StorageScope } from './storage-card';
 
 const COVER = 52;
 const percent = (fraction: number) => Math.floor(Math.max(0, Math.min(1, fraction)) * 100);
-
-/** What went wrong with a failed download, and whether anything was lost (STYLEGUIDE
- * section 12): the cause from `entry.failure`, then the share kept on the device or
- * that a retry starts over. Entries saved before failures were classified read as
- * "stopped". */
-function failureText(
-  t: TFunction,
-  entry: Pick<DownloadEntry, 'failure'>,
-  server: string,
-  scope: StorageScope,
-): string {
-  const f: DownloadFailure = entry.failure ?? { kind: 'unknown' };
-  const cause = {
-    network: () => t('downloads.failure.network', { server }),
-    server: () => t('downloads.failure.server', { server, status: f.status }),
-    storage: () =>
-      t(
-        scope === 'browser'
-          ? 'downloads.failure.storageBrowser'
-          : 'downloads.failure.storageDevice',
-      ),
-    unservable: () => t('downloads.failure.unservable'),
-    removed: () => t('downloads.failure.removed'),
-    interrupted: () => t('downloads.failure.interrupted'),
-    unknown: () => t('downloads.failure.unknown'),
-  }[f.kind]();
-  // An unservable download is fully saved: the cause already says what to do.
-  if (f.kind === 'unservable' || f.kind === 'removed') return cause;
-  const kept = f.kept ?? 0;
-  const tail =
-    kept > 0
-      ? t('downloads.failure.kept', { percent: percent(kept) })
-      : t('downloads.failure.restart');
-  return `${cause} ${tail}`;
-}
 
 /** A row of the In progress / Ready offline cards: cover, the text column, an optional
  * status column (beside it on tablet and desktop, under the text on a phone) and the

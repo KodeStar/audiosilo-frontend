@@ -98,7 +98,10 @@ can never log anyone out (`{ authReset, cacheReset }`):
   `buildId`; the entry does not name `__common`), so each deploy installs a new one: Chrome
   keeps the compiled code of scripts a worker caches while installing, which is most of a warm
   start's speed. The build's hashed files (`_expo/static/`) are served cache-first and never
-  rewritten.
+  rewritten. Every POST, PUT, PATCH and DELETE is routed around the worker at install
+  (`addRoutes`, the Static Routing API; elsewhere the fetch handler's early return): in Chrome
+  a keepalive POST sent as a controlled page goes away (the listening span on pagehide) went
+  to the worker first and its network fallback died with the page (v2.5.1 PLAYER-14).
 - **Web start scripts compiled off the main thread** (`scripts/web-start-chunks.cjs`, wrapped
   around Expo's serializer in `metro.config.js`; web export only, never the dev server, native
   or an export with source maps): every web script starts with V8's compile hint
@@ -432,8 +435,9 @@ them in) or a grown-up, each on "Everything I can listen to" or "Only collection
   the device (the `mayTurnOnKids` exception, `isKidsAccount`). Its shelf is the collections its
   owner shares with it (`kidsShelfMode`; none, or an older server: one library, as before), and
   it plays at 1x by default (`listenerSettings`). The connect gate above keeps the flow out.
-- **The Household page**: the phone You hub's Household segment, and `/household` through
-  `openHousehold()` elsewhere; `/settings?section=household` redirects there. It holds the people
+- **The Household page**: the You hub's Household segment (a phone's, and the wide sub-nav's since
+  v2.5.1), and `/household` through `openHousehold()` elsewhere (the profile menu, Settings, Home's
+  house row); `/settings?section=household` redirects there. It holds the people
   on this device, a card per member (access with Change, the Kids switch, their devices, "Set up
   their own device", Rename, Delete twice confirmed, apart from "Remove from this device"), the
   add dialog, then Listening in the house. My devices offers "Also sign out <names>" for a device
@@ -841,6 +845,9 @@ one JSON document share `persistedDocument` (`@/lib/storage`): a change made bef
 hydration wins and never clobbers the stored rest. The settings document carries a `version`
 (`SETTINGS_VERSION`, `src/stores/settings.ts`), written with every save and kept out of the
 store: to change a stored value once, bump it and add the step to `migrateSettings`.
+`migrateOnce` runs the steps before the store's first read and records the version it ran
+under its own key (`audiosilo.settingsMigrated`), since an older bundle still open in a
+browser tab saves the document without `version` (fe#196).
 Characters/recaps are the CC BY-SA layer under `work.characters`/`work.recaps`
 (`BookMetaCharacter`/`BookMetaRecap`/`BookMetaPosition` in `types.ts`); pure helpers
 (`roleLabelKey`/`revealFromStart`/`recapDescriptor`/`sortRecaps`/`seriesRails`/
@@ -1288,7 +1295,12 @@ media GETs only.
   **save guard** (`resumeFloor` in `store.ts`) refuses to persist a position far below
   where we resumed unless a deliberate seek lowered the floor - so a slipped restart can't
   overwrite real progress (the server is last-write-wins). This fixed the beta "book
-  restarted from the beginning" report.
+  restarted from the beginning" report. A **downloaded** book's mirror also takes its
+  server's place as the download starts (`keepServerPlace` in `downloads/store.ts`) and on
+  every server answer of `fetchBookProgress` (the registry check reaches the hooks through
+  `downloads/kept-offline.ts`, which has no imports): offline it opens there, never at 0
+  with its first save over the server's place (v2.5.1 PLAYER-01). Keep-newest, so a newer
+  save of this device's own stays.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
@@ -1296,8 +1308,10 @@ media GETs only.
   holds the store, `loadingBook`, is told once that hold is released, `pickUpDue`), the loaded
   book asks its server for its progress, and meanwhile the store holds its saves (`holdSaves`: 5 s at most,
   then it saves the held place). It moves only when the record is from another `device_id`,
-  newer than this device's mirror (a newer unsynced save here wins), not finished, and more than
-  30 s away, and stands back if the listener moved meanwhile (`localMoveCount`). The move goes
+  newer than this device's own last save in its mirror (a newer unsynced save here wins; a record
+  it only read, which a downloaded book's page and its download keep there, does not), not
+  finished, and more than 30 s away, and stands back if the listener moved meanwhile
+  (`localMoveCount`). The move goes
   through `seekBook` and a toast offers Undo. This module is the only place that reconciles a
   loaded book: never call `toggle()` expecting it to look anything up.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
@@ -1802,7 +1816,8 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   (`popTabToRoot`) and `navigate`, so the hub never gets a second copy pushed over it and is never
   looked for in another tab. Inside the hub, sections switch with `setParams` (`youSectionParams`).
   The phone hub sets its large title per section (`navigation.setOptions`; a section then leaves
-  that name out of its own heading); the wide sub-nav keeps "You". Its sections are `StatsSection`,
+  that name out of its own heading); the wide sub-nav keeps "You" and offers Stats, Year,
+  Journal and Household (v2.5.1; Settings is the gear, Account the profile menu). Its sections are `StatsSection`,
   `YearSection`, `JournalScreen`, `SettingsContent`, `HouseholdPage` and `AccountSection` (the
   `SECTIONS` map): Stats, Year, Household and Account are plain columns the hub puts in a
   `TabPageScroll` (below); the Journal and Settings scroll themselves. An active module's sections follow the hub's own (Slots, under Player modules). The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
@@ -1911,7 +1926,15 @@ date from `user_stats` when there is enough listening, Who's who / Story so far 
 page on that tab via `?tab=`); This week (`user_stats`) counts the streak in SERVER time; Next in
 your series uses `next_book` (a work without `local` is a ghost opening the series page); smart
 shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
-offline queue length without changing progress-sync (decision 7).
+offline queue length without changing progress-sync (decision 7). Offline (v2.5.1 PLAYER-02)
+the Now card leads with the first in-progress book that plays here (`pickNowBook` +
+`usePlayableHere`: online, or downloaded on this device), and one that can't shows a disabled
+"Not downloaded" in place of Play. A row known only by path takes its title from
+`useKnownBook`: the book's `/item`, else (only while that query is paused or failed) the copy a
+cached list already holds (`listedBook`, a bounded walk of this connection's cached queries).
+After a reload offline that includes the startup cache's `[PROGRESS_BOOKS, cid]` list: the
+progress rows' books (40 in progress, 15 finished) as their `/item` last named them, rebuilt at
+each save and never asked for, so Up next's and Recently finished's rows keep their titles too.
 
 **Your listening** (`src/components/you/stats/`, rules in `stats-model.ts`): `StatsSection` is the
 You hub's Stats section. It shows one server's own listening in that server's time (the default
@@ -2034,11 +2057,17 @@ are asked, at most 10,000 rows.
   never by the error's text: Android reports a dropped connection as "Software caused connection
   abort", a failure like any other. `runOne` lists each finished file
   in the saved entry as it lands, and launch (`reviveEntry`) keeps a failed or interrupted download
-  whose listed files are all still on disk (an interrupted one says the app closed); anything else is
-  dropped with its folder. No storage format change.
+  whose listed files are all still on disk (an interrupted one says the app closed, or on web with
+  every file saved that only the offline check was left, `unservable`). One that finished no file
+  yet (most books are one M4B) stays as a row to retry from the start, its folder emptied, unless
+  keep-ahead started it (keep-ahead plans it again); anything else is dropped with its folder. No
+  storage format change.
 - **Web**: the service worker now registers in the exported player even when the root layout loads
   after the page's load event (before, offline web playback never worked), and the download-support
   probe waits at most 10 s for a worker (it used to hang, offering downloads that couldn't play).
+  The probe starts with `hydrate`, and `download` waits for its answer (`probing`) and refuses
+  (`unsupported`) while `supported` is false, so no byte is fetched for a download that could
+  never play offline (v2.5.1 PLAYER-03).
 - Removing a download asks first everywhere (`RemoveDownloadConfirm`, with the room it frees).
 - **Changed chapters**: a book's chapters can change on the server after it was downloaded (a
   rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (the

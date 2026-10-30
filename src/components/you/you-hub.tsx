@@ -74,8 +74,8 @@ const SECTIONS: Record<CoreYouSection, (opts: { phone: boolean }) => ReactNode> 
  * root; STYLEGUIDE section 2). A phone: the large title names the section ("Your
  * listening"), then a scrolling segmented control of all six sections, then the section.
  * Tablet and desktop: the top bar's You destination, its sub-nav offering Stats, Year in
- * listening and Journal (Settings is the gear, Household and Account the profile menu; an
- * old link to any of them still renders here). The section is the route's `section` param (`parseYouSection`:
+ * listening, Journal and Household (Settings is the gear, Account the profile menu; an old
+ * link to either still renders here). The section is the route's `section` param (`parseYouSection`:
  * absent or unknown is Stats), switched in place with `setParams`; the Journal keeps its
  * own `tab` param beside it. An active module's sections (`youSections`,
  * `src/modules/registry.ts`, none yet) follow the hub's own; `modules` is the list to

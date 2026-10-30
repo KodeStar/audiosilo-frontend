@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import {
-  useBook,
   useBookMeta,
   useBookmarks,
   useCapability,
   useChapters,
   useIsPodcastLibrary,
+  useKnownBook,
   useMyStats,
   type SourcedProgress,
 } from '@/api/hooks';
@@ -32,6 +32,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { chapterLabel, contradictedTitle, resumeChapterLabel } from '@/lib/chapter-label';
 import { formatDayMonth, formatDuration } from '@/lib/format';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
@@ -40,12 +41,14 @@ import { bookSeriesNumber } from '@/lib/series-position';
 import { useWidth } from '@/lib/use-width';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { timeLeft, timeLeftLabel } from '@/playback/time-left';
+import { useConnectionName } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 
 import { BookScale } from './book-scale';
 import type { BookAt } from './home-model';
 import { dailyPace, estimatedFinish } from './listening';
 import { bookmarkPins, bookScale, chapterPlace, nowCardCompact } from './now-card-model';
+import { usePlayableHere } from './use-playable-here';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -74,7 +77,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
   const play = usePlayBook();
   const { libraryId, path } = at;
 
-  const { data: book } = useBook(libraryId, path);
+  // Offline, a cached list's copy of the book keeps its title (its `/item` can't answer).
+  const book = useKnownBook(libraryId, path);
   // An episode (Bridge 2d-1) is no book. Its library says so before its item has loaded
   // (the progress list carries no `episode`), so no "Resume chapter 1" flashes first.
   const podcastLibrary = useIsPodcastLibrary(libraryId, at.connectionId);
@@ -91,6 +95,21 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     loaded ? Math.floor(selectBookPosition(s) / LIVE_STEP_S) * LIVE_STEP_S : 0,
   );
   const playing = usePlayer((s) => loaded && selectIsPlaying(s));
+  // Offline, a book that isn't downloaded can't start: Resume says so instead of failing.
+  const playableHere = usePlayableHere();
+  const unplayable = !loaded && !playableHere(at);
+  // Why, as the chrome says it (CONNECT-15): this device has no network, or it has one and
+  // the book's server isn't answering (named). An episode is never downloaded.
+  const deviceOnline = useDeviceOnline();
+  const serverName = useConnectionName(at.connectionId);
+  const byServer = deviceOnline && !!serverName;
+  const unplayableHint = episode
+    ? byServer
+      ? t('home.now.episodeServerHint', { name: serverName })
+      : t('home.now.episodeOfflineHint')
+    : byServer
+      ? t('home.now.notDownloadedServerHint', { name: serverName })
+      : t('home.now.notDownloadedHint');
 
   // Chapter starts recomputed from the file durations, as the book page does (the
   // server's `book_offset` is unreliable on some books).
@@ -205,7 +224,20 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
     </View>
   );
 
-  const resumeButton = (
+  const resumeButton = unplayable ? (
+    <View className={compact ? 'w-full gap-1.5' : 'gap-1.5'}>
+      <Button
+        size="lg"
+        variant="outline"
+        icon={episode ? 'play' : 'download'}
+        title={episode ? resumeLabel : t('home.now.notDownloaded')}
+        disabled
+        accessibilityHint={unplayableHint}
+        className={compact ? 'w-full' : 'self-start'}
+      />
+      <Text variant="caption">{unplayableHint}</Text>
+    </View>
+  ) : (
     <Button
       size="lg"
       icon={playing ? 'pause' : 'play'}
