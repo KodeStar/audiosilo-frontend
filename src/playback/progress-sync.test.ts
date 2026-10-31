@@ -675,10 +675,11 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
     const places = await readLocalPlaces();
     // The server moved the seconds to its own file order: still this device's save.
+    // Stamped with the span's end in server time, a moment after the capture.
     const echo = makeProgress({
       position: 4100,
       device_id: 'dev',
-      updated_at: '2026-01-03T00:00:00Z',
+      updated_at: '2026-01-02T00:00:02Z',
     });
     expect(resumeLookupOf(echo, places, 'c1', 1, 'A/Book')).toMatchObject({
       file: { path: 'A/Book/02.mp3', pos: 600 },
@@ -765,5 +766,90 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     expect(m?.answered).toHaveLength(20);
     expect(m?.answered?.[19]).toBe('k24');
     expect(m?.ack_version).toBe(9);
+  });
+});
+
+describe('resume against a newer server row (live verification F1, F2)', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it("a stale file place of this device's never takes it back from its own newer row", async () => {
+    // The browser lost its last 90 s of writes: the mirror is 90 s behind its own row.
+    const stale = {
+      ...save,
+      position: 16890.6,
+      file: 'A/Book/10.mp3',
+      file_pos: 689.3,
+      updated_at: '2026-10-30T12:00:00.000Z',
+    };
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': stale }));
+    const row = makeProgress({
+      position: 16980.6,
+      version: 40,
+      device_id: 'dev',
+      updated_at: '2026-10-30T12:01:30.000Z',
+    });
+    const api = fakeGetApi(async () => row);
+    const r = await loadInitialProgress(api, 'c1', 1, 'A/Book');
+    expect(r).toEqual({ kind: 'progress', progress: row });
+    // Nor does the mirror carry the stale file place onto the row.
+    expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('file');
+  });
+
+  const finishedRow = (over: Partial<Progress> = {}) =>
+    makeProgress({
+      position: 100,
+      finished: true,
+      version: 9,
+      device_id: 'phone',
+      updated_at: '2026-10-30T03:06:39.000Z',
+      finished_at: '2026-10-30T03:05:00.000Z',
+      ...over,
+    });
+  const mine = (over: Partial<ProgressSave> = {}): ProgressSave => ({
+    ...save,
+    position: 59.6,
+    updated_at: '2026-10-30T03:07:31.000Z',
+    ack_version: 7,
+    ...over,
+  });
+  const lookup = async (row: Progress, mirror: ProgressSave, pending?: Set<string>) => {
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': mirror }));
+    const places = await readLocalPlaces();
+    return resumeLookupOf(row, pending ? { ...places, pending } : places, 'c1', 1, 'A/Book');
+  };
+
+  it("another device's finish this device never saw wins over its newer unfinished place", async () => {
+    expect(await lookup(finishedRow(), mine())).toEqual({
+      kind: 'progress',
+      progress: finishedRow(),
+    });
+  });
+
+  it('a finish newer than this device place wins even when its version was seen', async () => {
+    const row = finishedRow({ version: 7, finished_at: '2026-10-30T03:08:00.000Z' });
+    expect(await lookup(row, mine())).toMatchObject({ progress: { finished: true } });
+  });
+
+  it("this device's own later place stands when it saw the finished row (its own restart)", async () => {
+    expect(await lookup(finishedRow(), mine({ ack_version: 9 }))).toMatchObject({
+      progress: { finished: false, position: 59.6 },
+    });
+  });
+
+  it("this device's own place stands while its events wait to be sent", async () => {
+    const r = await lookup(finishedRow(), mine(), new Set(['c1:1:A/Book']));
+    expect(r).toMatchObject({ progress: { finished: false, position: 59.6 } });
+  });
+
+  it('readLocalPlaces names the books with events waiting', async () => {
+    await AsyncStorage.setItem(
+      'audiosilo.listeningOutbox',
+      JSON.stringify([
+        { connectionId: 'c1', event: { id: 'a', kind: 'listen', library_id: 1, path: 'A/Book' } },
+      ]),
+    );
+    expect((await readLocalPlaces()).pending).toEqual(new Set(['c1:1:A/Book']));
   });
 });

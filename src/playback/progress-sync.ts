@@ -185,15 +185,32 @@ export async function loadInitialProgress(
   );
 }
 
-/** This device's own records of where books are: the durable mirror (by `contentKey`) and
- * the offline replay queue. */
-export type LocalPlaces = { mirror: Record<string, ProgressSave>; queue: ProgressSave[] };
+/** This device's own records of where books are: the durable mirror (by `contentKey`), the
+ * offline replay queue, and the books (`contentKey`) with Sync v2 events still waiting to
+ * be sent (the outbox's, and the stored open span's). */
+export type LocalPlaces = {
+  mirror: Record<string, ProgressSave>;
+  queue: ProgressSave[];
+  pending?: Set<string>;
+};
 
-/** Both, read at once: for a reader that looks many books up together (the car snapshot's
- * play specs), two storage reads in all instead of two per book. */
+/** All three, read at once: for a reader that looks many books up together (the car
+ * snapshot's play specs), a few storage reads in all instead of a few per book. */
 export async function readLocalPlaces(): Promise<LocalPlaces> {
-  const [mirror, queue] = await Promise.all([readMirrorMap(), readQueue()]);
-  return { mirror, queue };
+  const [mirror, queue, outbox, span] = await Promise.all([
+    readMirrorMap(),
+    readQueue(),
+    getItem<OutboxEntry[]>(LISTENING_OUTBOX_KEY),
+    getItem<OpenSpan | null>(LISTENING_OPEN_SPAN_KEY),
+  ]);
+  const pending = new Set<string>();
+  for (const e of Array.isArray(outbox) ? outbox : []) {
+    if (typeof e?.connectionId === 'string' && e.event)
+      pending.add(contentKey(e.connectionId, e.event.library_id, e.event.path));
+  }
+  if (span && typeof span.connectionId === 'string')
+    pending.add(contentKey(span.connectionId, span.libraryId, span.path));
+  return { mirror, queue, pending };
 }
 
 /**
@@ -216,7 +233,16 @@ export function resumeLookupOf(
     ) ?? null;
   const fromMirror = mirrorAsProgress(libraryId, path, mirror);
   const fromQueue = mirrorAsProgress(libraryId, path, queued);
-  const best = newest(newest(server ?? null, fromMirror), fromQueue);
+  let best = newest(newest(server ?? null, fromMirror), fromQueue);
+  if (
+    server &&
+    fromMirror &&
+    best === fromMirror &&
+    serverFinishWins(server, fromMirror, mirror?.ack_version) &&
+    !places.pending?.has(contentKey(connectionId, libraryId, path))
+  ) {
+    best = server;
+  }
   if (best) {
     const filed = filePlaceOf(
       best,
@@ -235,26 +261,58 @@ export function resumeLookupOf(
   return { kind: 'failed' }; // never reached the server and no local fallback
 }
 
+/**
+ * Whether the server's finished row beats this device's newer, unfinished mirror record:
+ * the finish is newer than that record, or it is a version this device never acknowledged
+ * (another device's finish, landed after this device last saw the row: the mirror's
+ * "unfinished" is then only not knowing). A finish is a state the server orders on its
+ * own (Sync v2: a listen never unfinishes), so "Listen again" on the finished book starts it
+ * again (`unfinish`, then a `restart` span) rather than resuming the old place. Not when
+ * this device's own unfinish could still be on its way: its queued save wins as before, and
+ * a book with events waiting is left out by the caller.
+ */
+function serverFinishWins(
+  server: Progress,
+  mine: Progress,
+  ackVersion: number | undefined,
+): boolean {
+  if (!server.finished || mine.finished) return false;
+  const finishedAt = server.finished_at ? Date.parse(server.finished_at) : Number.NaN;
+  if (Number.isFinite(finishedAt) && finishedAt > timeOf(mine)) return true;
+  return server.version > (ackVersion ?? 0);
+}
+
+/** How much older (ms) than a record a file place may be and still be that record's: the
+ * server's echo of this device's place is stamped with the span's end in server time,
+ * a moment after the capture that took the file place. */
+const FILE_PLACE_SLACK_MS = 5_000;
+
 /** Whether two records hold the same place (within a second). */
 function samePlace(a: Pick<ProgressSave, 'position'>, b: Pick<ProgressSave, 'position'>): boolean {
   return Math.abs(a.position - b.position) <= 1;
 }
 
-type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished'>;
+type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished' | 'updated_at'>;
 
 /**
  * Whether `record`'s place is the one `filed` holds a file place for: the same place, or a
- * record of the same device in the same finished state (the server's echo of this device's
- * place, whose seconds the server may have moved to its own file order). Not a place moved
- * since (a Mark not finished, which keeps the device and resets the place): that file place
- * is the book's end.
+ * record of the same device in the same finished state that is not newer than `filed` (the
+ * server's echo of this device's place, whose seconds the server may have moved to its own
+ * file order). Not a place moved since (a Mark not finished, which keeps the device and
+ * resets the place): that file place is the book's end. And not a newer record of the same
+ * device: `filed` is then older than this device's own last place (writes lost when a
+ * browser was killed), and resuming at its file place would move the book back.
  */
 function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord): boolean {
+  if (samePlace(record, filed)) return true;
+  if (!record.device_id || record.device_id !== filed.device_id) return false;
+  if (record.finished !== filed.finished) return false;
+  const recordAt = Date.parse(record.updated_at);
+  const filedAt = Date.parse(filed.updated_at);
   return (
-    samePlace(record, filed) ||
-    (!!record.device_id &&
-      record.device_id === filed.device_id &&
-      record.finished === filed.finished)
+    Number.isFinite(recordAt) &&
+    Number.isFinite(filedAt) &&
+    filedAt >= recordAt - FILE_PLACE_SLACK_MS
   );
 }
 

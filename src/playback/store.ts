@@ -597,6 +597,10 @@ function haltAndPersist() {
 // (the load, the hot-swap, an adoption's reload, the resume floor) keep a suspicious place
 // out of a span too: a span then ends where it was last seen.
 
+/** The longest a span stays open (wall clock) before it is cut, online or offline: well
+ * under the server's 24 h bound on one span. */
+const MAX_SPAN_MS = 60 * 60_000;
+
 /** The span being played, else null. */
 let span: OpenSpan | null = null;
 /** Why the next span begins: a book started or resumed (`resume`), a move (`jump`,
@@ -753,7 +757,10 @@ function tickListeningSpan() {
     openListeningSpan();
     return;
   }
-  if (isReachable(span.connectionId)) {
+  // Online, every tick cuts (live sessions). Offline, a span is cut once it has run an
+  // hour of wall clock, so a day of nonstop playing never becomes one span past the
+  // server's 24 h bound (refused `invalid`): a handful of events a day, each a whole hour.
+  if (isReachable(span.connectionId) || Date.now() - Date.parse(span.startedAt) >= MAX_SPAN_MS) {
     cutListeningSpan();
     return;
   }

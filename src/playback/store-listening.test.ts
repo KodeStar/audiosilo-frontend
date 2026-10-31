@@ -111,6 +111,7 @@ jest.mock('@/api/connection-clients', () => ({
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import * as reachability from '@/api/reachability';
 import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
@@ -529,6 +530,29 @@ describe('what a span carries', () => {
     expect(mockAppended.every((e) => e.kind !== 'listen' || Number.isFinite(e.to_pos))).toBe(true);
     const saved = mockWriteMirror.mock.calls.map((c) => (c[0] as { position: number }).position);
     expect(saved.every(Number.isFinite)).toBe(true);
+  });
+});
+
+describe('a long offline run', () => {
+  it('is cut every hour of wall clock, though no server is there to cut it', async () => {
+    const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 1));
+      await settle();
+      for (let i = 0; i < 8 * 60 + 2; i++) {
+        pushSnapshot(snap('playing', 0, 1 + (i % 40)));
+        jest.advanceTimersByTime(15_000);
+        await settle(2);
+      }
+      await settle();
+      // Two hours and half a minute of ticks: two whole-hour spans closed, one still open.
+      expect(mockClosed.map((s) => s.start)).toEqual(['resume', 'continue']);
+      const hours = mockClosed.map((s) => Date.parse(s.endedAt) - Date.parse(s.startedAt));
+      expect(hours.every((ms) => ms >= 60 * 60_000 && ms < 61 * 60_000)).toBe(true);
+    } finally {
+      reach.mockRestore();
+    }
   });
 });
 
