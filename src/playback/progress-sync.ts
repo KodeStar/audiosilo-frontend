@@ -239,7 +239,12 @@ export function resumeLookupOf(
   const best =
     server &&
     newestLocal === fromMirror &&
-    serverFinishWins(server, fromMirror, mirror?.ack_version, places.pending.has(key))
+    serverFinishWins(
+      server,
+      fromMirror,
+      mirror?.ack_version,
+      places.pending.has(key) || queued !== null,
+    )
       ? server
       : newestLocal;
   if (best) {
@@ -267,8 +272,9 @@ export function resumeLookupOf(
  * "unfinished" is then only not knowing). A finish is a state the server orders on its
  * own (Sync v2: a listen never unfinishes), so "Listen again" on the finished book starts it
  * again (`unfinish`, then a `restart` span) rather than resuming the old place. Not when
- * this device's own unfinish could still be on its way: its queued save wins as before, and
- * so does its place while the book has events `waiting` to be sent.
+ * this device's own unfinish could still be on its way: `waiting` while the book has a
+ * queued save (a capture writes the mirror and the queue with one `updated_at`, so the tie
+ * picks the mirror's record) or Sync v2 events still to be sent.
  */
 function serverFinishWins(
   server: Progress,

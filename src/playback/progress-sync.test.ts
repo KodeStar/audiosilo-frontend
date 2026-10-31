@@ -849,6 +849,16 @@ describe('resume against a newer server row (live verification F1, F2)', () => {
     expect(r).toMatchObject({ progress: { finished: false, position: 59.6 } });
   });
 
+  it("this device's queued save stands though the mirror holds the same capture", async () => {
+    // A legacy capture writes the mirror and the queue with one `updated_at`: the tie picks
+    // the mirror's record, and the queued save is still on its way.
+    const queued = mine();
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([queued]));
+    expect(await lookup(finishedRow(), queued)).toMatchObject({
+      progress: { finished: false, position: 59.6 },
+    });
+  });
+
   it('readLocalPlaces names the books with events waiting', async () => {
     await AsyncStorage.setItem(
       'audiosilo.listeningOutbox',
