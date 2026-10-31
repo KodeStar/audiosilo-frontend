@@ -63,32 +63,36 @@ export function usePasswordEditor(connectionId: string) {
     }
     setBusy(false);
     close();
-    if (hasPassword) setChanges((n) => n + 1);
+    // The change has landed; refreshing has_password (and has_recovery, which a change
+    // clears) is best-effort and must not surface as a "could not update the password"
+    // error if /me hiccups. Asked now, beside the devices read below.
+    const refreshUser = api
+      .me()
+      .then((u) => setConnectionUser(connectionId, u))
+      .catch(() => {
+        // ignore - the password change succeeded regardless
+      });
     // What the toast says of the other devices is what the server did: setting a first
     // password ends nothing; a change ends the other sessions on a server since
     // server#281 and none before, with nothing on the wire telling them apart, so the
     // devices read again (which also clears the ended ones from the list) answer. No
     // answer: only this device is sure.
-    const devices = hasPassword ? await readDevicesAgain() : undefined;
-    const body = !hasPassword
-      ? 'account.password.doneBody'
-      : !devices
-        ? 'account.password.doneThisDevice'
-        : devices.some((d) => d.kind === 'session' && !d.current)
-          ? 'account.password.doneBody'
-          : 'account.password.doneSignedOut';
+    let body:
+      | 'account.password.doneBody'
+      | 'account.password.doneThisDevice'
+      | 'account.password.doneSignedOut' = 'account.password.doneBody';
+    if (hasPassword) {
+      setChanges((n) => n + 1);
+      const devices = await readDevicesAgain();
+      if (!devices) body = 'account.password.doneThisDevice';
+      else if (!devices.some((d) => d.kind === 'session' && !d.current))
+        body = 'account.password.doneSignedOut';
+    }
     toast({
       title: t(hasPassword ? 'account.password.doneChanged' : 'account.password.doneSet'),
       description: t(body),
     });
-    // The change has landed; refreshing has_password (and has_recovery, which a change
-    // clears) is best-effort and must not surface as a "could not update the password"
-    // error if /me hiccups.
-    try {
-      await setConnectionUser(connectionId, await api.me());
-    } catch {
-      // ignore - the password change succeeded regardless
-    }
+    await refreshUser;
   };
 
   return {

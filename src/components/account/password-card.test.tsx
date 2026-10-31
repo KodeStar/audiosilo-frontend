@@ -115,37 +115,29 @@ describe('password card and dialog', () => {
     expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Password changed' }));
   });
 
-  it('reads the devices again after a change, and says the others are signed out', async () => {
+  it.each<[string, MyDevice[] | undefined, string]>([
+    [
+      'says the others are signed out',
+      [device({ id: 9, current: true })],
+      'Your other devices are signed out. This one stays signed in.',
+    ],
+    [
+      'says the others stay signed in when the server kept them (an older server)',
+      [device({ id: 9, current: true }), device({ id: 3 })],
+      'Your other devices stay signed in.',
+    ],
+    [
+      'claims only this device when the devices cannot be read',
+      undefined,
+      'This device stays signed in.',
+    ],
+  ])('reads the devices again after a change, and %s', async (_, devices, description) => {
+    mockReadDevices.mockResolvedValue(devices);
     await changePassword();
     await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith({
-        title: 'Password changed',
-        description: 'Your other devices are signed out. This one stays signed in.',
-      }),
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Password changed', description }),
     );
     expect(mockReadDevices).toHaveBeenCalledTimes(1);
-  });
-
-  it('says the others stay signed in when the server kept them (an older server)', async () => {
-    mockReadDevices.mockResolvedValue([device({ id: 9, current: true }), device({ id: 3 })]);
-    await changePassword();
-    await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith({
-        title: 'Password changed',
-        description: 'Your other devices stay signed in.',
-      }),
-    );
-  });
-
-  it('claims only this device when the devices cannot be read', async () => {
-    mockReadDevices.mockResolvedValue(undefined);
-    await changePassword();
-    await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith({
-        title: 'Password changed',
-        description: 'This device stays signed in.',
-      }),
-    );
   });
 
   it('says why a short password from the keyboard is not saved', async () => {

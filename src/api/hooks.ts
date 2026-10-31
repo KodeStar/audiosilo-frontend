@@ -388,6 +388,16 @@ export function addressesQuery(cid: string, client: MaybeClient) {
   });
 }
 
+/** The caller's own signed-in devices (`GET /me/devices`). Ask only a server with
+ * `my_devices` (pass no client otherwise). Read by `useMyDevices` and, after a password
+ * change, by `useReadMyDevicesAgain`. */
+export function myDevicesQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.myDevices(cid),
+    queryFn: client ? ({ signal }) => client.myDevices(signal) : skipToken,
+  });
+}
+
 /** A server's libraries, their names kept on the device as they arrive (an offline book
  * page names its library: `useLibraryName`, PLAYER-09). Every read of `qk.libraries` asks
  * through `librariesQuery`. */
@@ -2305,12 +2315,10 @@ export function useClearListeningGoal(connectionId?: string) {
  * `my_devices`). `enabled: false` asks nothing (its `data` may still be a cached answer:
  * ignore it then). */
 export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } = {}) {
-  return useCapabilityQuery(
-    'my_devices',
-    qk.myDevices,
-    (api, signal) => api.myDevices(signal),
-    connectionId,
-    { ready: opts.enabled !== false },
+  const api = useOptionalApi(connectionId);
+  const supported = useCapability('my_devices', connectionId) === true;
+  return useQuery(
+    myDevicesQuery(useCid(connectionId), supported && opts.enabled !== false ? api : null),
   );
 }
 
@@ -2328,10 +2336,13 @@ export function useReadMyDevicesAgain(
   return useCallback(async () => {
     if (!supported || !api) return undefined;
     try {
+      // Asked once, whatever the online flag says: a held or retried read would hold
+      // back the toast.
       return await qc.fetchQuery({
-        queryKey: qk.myDevices(cid),
-        queryFn: ({ signal }) => api.myDevices(signal),
+        ...myDevicesQuery(cid, api),
         staleTime: 0,
+        networkMode: 'always',
+        retry: false,
       });
     } catch {
       return undefined;
