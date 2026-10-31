@@ -2336,6 +2336,10 @@ export function useReadMyDevicesAgain(
   return useCallback(async () => {
     if (!supported || !api) return undefined;
     try {
+      // A read already under way is dropped, not joined: one the list's hook holds for
+      // the online flag would hold back the toast for good (as `fetchFailFast` drops a
+      // paused one), and one sent before the change may answer with the ended devices.
+      await qc.cancelQueries({ queryKey: qk.myDevices(cid), exact: true });
       // Asked once, whatever the online flag says: a held or retried read would hold
       // back the toast.
       return await qc.fetchQuery({
