@@ -15,9 +15,9 @@ export type BookQueue = {
   /** The audio's own length (seconds): the files' durations summed, from the server's file
    * list. Unlike `total` it never takes a chapter end past the audio, so it is what a Sync v2
    * event sends as its `duration` (the server refuses a span whose length is more than 10 s
-   * off the indexed book's, `duration_mismatch`). 0 (or absent) when unknown: the files' lengths
-   * were estimated from the chapters, or one is missing. */
-  audio?: number;
+   * off the indexed book's, `duration_mismatch`). 0 when unknown: the files' lengths were
+   * estimated from the chapters, or one is missing. */
+  audio: number;
   chapters: Chapter[];
   /** Per-chapter clips for the native engine's lock-screen chapter controls; `[]`
    * when the book has 0/1 chapters (the engine then plays one item per file). */
@@ -62,7 +62,7 @@ export type FileSpec = { path: string; duration: number; size: number };
  * finally the book path itself. This must never resolve to a folder path.
  */
 export function bookFileSpecs(book: Book, chapterData?: ChaptersResponse): FileSpec[] {
-  const files = chapterData?.files?.length ? chapterData.files : (book.files ?? []);
+  const files = bookFileList(book, chapterData);
   if (files.length > 0) {
     return [...files]
       .sort((a, b) => a.seq - b.seq)
@@ -73,6 +73,12 @@ export function bookFileSpecs(book: Book, chapterData?: ChaptersResponse): FileS
     return distinctFilesFromChapters(rawChapters).map((s) => ({ ...s, size: 0 }));
   }
   return [{ path: book.rel_path, duration: book.duration, size: book.size }];
+}
+
+/** The server's file list for a book (the chapters response's, else the book's), `[]` when
+ * neither has one: `bookFileSpecs` then estimates the files from the chapters. */
+function bookFileList(book: Book, chapterData?: ChaptersResponse) {
+  return chapterData?.files?.length ? chapterData.files : (book.files ?? []);
 }
 
 /**
@@ -268,9 +274,8 @@ export function buildBookQueue(
   // furthest chapter end on the book timeline (handles duration === 0 metadata).
   const furthestEnd = chapters.reduce((max, ch) => Math.max(max, chapterEndPosition(ch)), 0);
   const total = Math.max(book.duration > 0 ? book.duration : 0, acc, furthestEnd);
-  const fromFiles = !!(chapterData?.files?.length || book.files?.length);
-  const audio =
-    (fromFiles || rawChapters.length === 0) && specs.every((s) => s.duration > 0) ? acc : 0;
+  const estimated = bookFileList(book, chapterData).length === 0 && rawChapters.length > 0;
+  const audio = !estimated && specs.every((s) => s.duration > 0) ? acc : 0;
 
   // Clips come from the REAL chapters (empty/singleton here → `[]`); computing them
   // before synthesizing is what keeps native playback unchanged for these books.

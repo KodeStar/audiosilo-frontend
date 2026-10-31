@@ -456,6 +456,7 @@ describe('adoptLoaded', () => {
           tracks: [],
           offsets: [],
           total: 0,
+          audio: 0,
           chapters: [],
           chapterClips: [],
           syntheticChapters: false,

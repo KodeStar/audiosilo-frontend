@@ -59,12 +59,20 @@ export function useRemovePerson(): {
     const warned: Connection[] = [];
     const managed: { connection: Connection; owner: string }[] = [];
     const unsynced: { connection: Connection; count: number }[] = [];
-    for (const c of servers) {
-      const count = await unsentListens(c.id).catch(() => 0);
+    // Each server's last send and account read run together (a send may wait on the network).
+    const reads = await Promise.all(
+      servers.map((c) =>
+        Promise.all([
+          unsentListens(c.id).catch(() => 0),
+          freshAccountUser(c.user, clients.get(c.id), (fresh) => {
+            void setConnectionUser(c.id, fresh);
+          }),
+        ]),
+      ),
+    );
+    for (const [i, c] of servers.entries()) {
+      const [count, user] = reads[i];
       if (count > 0) unsynced.push({ connection: c, count });
-      const user = await freshAccountUser(c.user, clients.get(c.id), (fresh) => {
-        void setConnectionUser(c.id, fresh);
-      });
       const owner = managerName(user, { connection: c, people: devicePeople() });
       if (owner) managed.push({ connection: c, owner });
       else if (needsPasswordWarning(user)) warned.push(c);

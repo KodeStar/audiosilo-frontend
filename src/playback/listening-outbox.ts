@@ -134,24 +134,12 @@ export function spanToEvent(span: OpenSpan, id: string = newEventId()): Listenin
   return event;
 }
 
-const isPos = (n: number | undefined): n is number => typeof n === 'number' && Number.isFinite(n);
+const isPos = (n: unknown): n is number => Number.isFinite(n);
 
-/** The numbers an event may carry: all must be finite when present (JSON has no NaN, so a
- * NaN would reach the server as `null`, or be stored as one). */
-const EVENT_NUMBERS = [
-  'from_pos',
-  'to_pos',
-  'from_file_pos',
-  'to_file_pos',
-  'duration',
-  'playback_speed',
-  'base_version',
-] as const;
-
-/** Whether every number in `event` is finite (pure): one that is not is never enqueued. */
+/** Whether every number in `event` is finite (pure): one that is not is never enqueued (JSON
+ * has no NaN, so a NaN would reach the server as `null`, or be stored as one). */
 export function eventIsFinite(event: ListeningEvent): boolean {
-  const fields = event as Partial<Record<(typeof EVENT_NUMBERS)[number], unknown>>;
-  return EVENT_NUMBERS.every((k) => fields[k] === undefined || isPos(fields[k] as number));
+  return Object.values(event).every((v) => typeof v !== 'number' || Number.isFinite(v));
 }
 
 /** Whether a span carries anything: listening, or a deliberate move (pure). */
@@ -318,9 +306,9 @@ const isSpan = (v: unknown): v is OpenSpan =>
   typeof v.libraryId === 'number' &&
   typeof v.path === 'string' &&
   isRecord(v.from) &&
-  isPos(v.from.pos as number) &&
+  isPos(v.from.pos) &&
   isRecord(v.to) &&
-  isPos(v.to.pos as number) &&
+  isPos(v.to.pos) &&
   typeof v.startedAt === 'string' &&
   typeof v.endedAt === 'string';
 

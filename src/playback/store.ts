@@ -462,13 +462,13 @@ async function persist(opts?: { forceFinished?: boolean }) {
     updated_at: new Date().toISOString(),
     // The file place (fe#188), the mirror's only (a PUT never sends it), on both paths: an
     // older capture's file place never outlives the place it was taken at.
-    ...(forceFinished || !end.file ? {} : { file: end.file, file_pos: end.filePos }),
+    ...(forceFinished || !end?.file ? {} : { file: end.file, file_pos: end.filePos }),
   };
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
   // spans below); the capture only keeps this device's mirror.
   if (usesListeningSync(nowPlaying.connectionId)) {
     await writeMirror(save);
-    if (span && sameBook(span, nowPlaying) && !forceFinished && finiteEnd(end)) span.to = end;
+    if (span && sameBook(span, nowPlaying) && !forceFinished && end) span.to = end;
     return;
   }
   await saveProgress(api, save);
@@ -612,20 +612,17 @@ function fileOf(np: NowPlaying, index: number): string | undefined {
   return id?.startsWith(prefix) ? id.slice(prefix.length) : undefined;
 }
 
-/** A place in the loaded book as a span end (its `pos` may not be finite: `finiteEnd`). */
-function endAt(np: NowPlaying, trackIndex: number, positionInTrack: number): SpanEnd {
+/** A place in the loaded book as a span end, or null when it is not one: an engine that
+ * reports NaN (a stream with no length yet) never puts one in a span or an event. */
+function endAt(np: NowPlaying, trackIndex: number, positionInTrack: number): SpanEnd | null {
+  const pos = toBookPosition(np.queue.offsets, trackIndex, positionInTrack);
+  if (!Number.isFinite(pos)) return null;
   const file = fileOf(np, trackIndex);
   return {
-    pos: Math.max(0, toBookPosition(np.queue.offsets, trackIndex, positionInTrack)),
-    ...(file && Number.isFinite(positionInTrack)
-      ? { file, filePos: Math.max(0, positionInTrack) }
-      : {}),
+    pos: Math.max(0, pos),
+    ...(file ? { file, filePos: Math.max(0, positionInTrack) } : {}),
   };
 }
-
-/** Whether a span end is a real place: an engine that reports NaN (a stream with no length
- * yet) never puts one in a span or an event. */
-const finiteEnd = (e: SpanEnd | null | undefined): e is SpanEnd => !!e && Number.isFinite(e.pos);
 
 /** Where the engine is in the loaded book, or null while that place can't be trusted (the
  * persist guards: a load, the hot-swap, an adoption's reload, a slip below the floor). */
@@ -634,7 +631,7 @@ function engineEnd(): SpanEnd | null {
   if (!np || loadingBook || heldBySwap(np, snapshot.trackIndex)) return null;
   if (quietAdopted === contentKeyOf(np)) return null;
   const end = endAt(np, snapshot.trackIndex, snapshot.position);
-  if (!finiteEnd(end) || end.pos < resumeFloor - SLIP_TOLERANCE) return null;
+  if (!end || end.pos < resumeFloor - SLIP_TOLERANCE) return null;
   return end;
 }
 
@@ -660,7 +657,7 @@ function spanAt(
     from: at,
     to: at,
     // The audio's length, not the timeline's: the server checks it against the indexed book.
-    duration: np.queue.audio ?? 0,
+    duration: np.queue.audio,
     speed: usePlayer.getState().rate,
     startedAt: now,
     endedAt: now,
@@ -684,7 +681,7 @@ function openListeningSpan(at?: SpanEnd) {
     closeListeningSpan();
   }
   const here = at ?? engineEnd();
-  if (!finiteEnd(here)) return;
+  if (!here) return;
   const now = new Date().toISOString();
   const start = nextStart;
   nextStart = 'resume';
@@ -720,8 +717,7 @@ function takeSpan(at?: SpanEnd): OpenSpan | null {
   span = null;
   if (!closing) return null;
   const np = usePlayer.getState().nowPlaying;
-  const here = finiteEnd(at) ? at : np && sameBook(closing, np) ? engineEnd() : null;
-  if (here) closing.to = here;
+  closing.to = at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
   closing.endedAt = new Date().toISOString();
   return closing;
 }
@@ -769,21 +765,17 @@ function tickListeningSpan() {
  * did), and the next play begins with the same reason.
  */
 function moveListeningSpan(
-  target: SpanEnd,
+  target: SpanEnd | null,
   opts: { from?: SpanEnd; reason?: ListeningStart } = {},
 ) {
   const np = usePlayer.getState().nowPlaying;
   if (!np || !usesListeningSync(np.connectionId)) return;
-  const from = finiteEnd(opts.from) ? opts.from : undefined;
-  const before = from ?? (span ? (engineEnd() ?? span.to) : engineEnd());
+  const before = opts.from ?? (span ? (engineEnd() ?? span.to) : engineEnd());
+  const closed = closeListeningSpan(before ? { at: before } : {});
   // A place that is not one (NaN) moves nothing: the span just ends where it was.
-  if (!finiteEnd(target)) {
-    closeListeningSpan(before ? { at: before } : {});
-    return;
-  }
+  if (!target) return;
   const reason: ListeningStart =
     opts.reason ?? (before && target.pos < before.pos - 1 ? 'moved_back' : 'jump');
-  const closed = closeListeningSpan(before ? { at: before } : {});
   if (closed && isPlayingState(usePlayer.getState().snapshot.state)) {
     nextStart = reason;
     openListeningSpan(target);
