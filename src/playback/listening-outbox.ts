@@ -136,6 +136,24 @@ export function spanToEvent(span: OpenSpan, id: string = newEventId()): Listenin
 
 const isPos = (n: number | undefined): n is number => typeof n === 'number' && Number.isFinite(n);
 
+/** The numbers an event may carry: all must be finite when present (JSON has no NaN, so a
+ * NaN would reach the server as `null`, or be stored as one). */
+const EVENT_NUMBERS = [
+  'from_pos',
+  'to_pos',
+  'from_file_pos',
+  'to_file_pos',
+  'duration',
+  'playback_speed',
+  'base_version',
+] as const;
+
+/** Whether every number in `event` is finite (pure): one that is not is never enqueued. */
+export function eventIsFinite(event: ListeningEvent): boolean {
+  const fields = event as Partial<Record<(typeof EVENT_NUMBERS)[number], unknown>>;
+  return EVENT_NUMBERS.every((k) => fields[k] === undefined || isPos(fields[k] as number));
+}
+
 /** Whether a span carries anything: listening, or a deliberate move (pure). */
 export function spanSaysSomething(span: OpenSpan): boolean {
   const ms = Date.parse(span.endedAt) - Date.parse(span.startedAt);
@@ -162,7 +180,27 @@ export function finishEvent(
 
 // --- The outbox document ---------------------------------------------------------------
 
-const withOutboxLock = serialQueue();
+/** The browser's Web Locks, shared by every tab of this origin; null where there are none
+ * (native, an old browser: there one tab is all there is, or the current behaviour stands). */
+type LockManager = { request<T>(name: string, job: () => Promise<T>): Promise<T> };
+function sharedLocks(): LockManager | null {
+  const locks = (globalThis.navigator as { locks?: Partial<LockManager> } | undefined)?.locks;
+  return typeof locks?.request === 'function' ? (locks as LockManager) : null;
+}
+
+const tabQueue = serialQueue();
+/**
+ * Run an outbox read-modify-write alone: in this tab (a serial queue) and, on the web, across
+ * every tab (a Web Lock), since the tabs share the stored outbox. Under the shared lock the
+ * stored outbox is read again each time (`readOutbox`), so a tab never writes over events
+ * another tab added or sent.
+ */
+function withOutboxLock<T>(job: () => Promise<T>): Promise<T> {
+  return tabQueue(() => {
+    const locks = sharedLocks();
+    return locks ? locks.request(OUTBOX_KEY, job) : job();
+  });
+}
 /** The outbox as last read or written (the web's `pagehide` reads it synchronously). */
 let outboxCache: OutboxEntry[] | null = null;
 /** Whether the stored outbox has been read this launch. Until it is (a storage read that
@@ -176,14 +214,20 @@ const isEntry = (v: unknown): v is OutboxEntry =>
   isRecord(v.event) &&
   typeof v.event.id === 'string';
 
+const entriesOf = (raw: unknown): OutboxEntry[] => (Array.isArray(raw) ? raw.filter(isEntry) : []);
+
 async function readOutbox(): Promise<OutboxEntry[]> {
-  if (outboxCache && outboxRead) return outboxCache;
+  if (outboxCache && outboxRead && !sharedLocks()) return outboxCache;
   try {
-    const raw = await getItemStrict<unknown>(OUTBOX_KEY);
-    const stored = Array.isArray(raw) ? raw.filter(isEntry) : [];
-    const have = new Set(stored.map((e) => e.event.id));
-    outboxCache = [...stored, ...(outboxCache ?? []).filter((e) => !have.has(e.event.id))];
-    outboxRead = true;
+    const stored = entriesOf(await getItemStrict<unknown>(OUTBOX_KEY));
+    if (outboxRead) {
+      // Read before: storage is the outbox (another tab may have changed it since).
+      outboxCache = stored;
+    } else {
+      const have = new Set(stored.map((e) => e.event.id));
+      outboxCache = [...stored, ...(outboxCache ?? []).filter((e) => !have.has(e.event.id))];
+      outboxRead = true;
+    }
   } catch {
     outboxCache ??= [];
   }
@@ -196,6 +240,33 @@ async function writeOutbox(next: OutboxEntry[]): Promise<void> {
   notify();
 }
 
+/**
+ * Another tab changed the stored outbox (the web's `storage` event, `raw` its new value):
+ * this tab's copy follows, so its count and its `pagehide` send see what is there now.
+ * Nothing before this tab read the stored outbox itself (its first read merges).
+ */
+export function refreshOutboxFrom(raw: string | null): void {
+  if (!outboxRead) return;
+  try {
+    outboxCache = raw ? entriesOf(JSON.parse(raw)) : [];
+  } catch {
+    return;
+  }
+  notify();
+}
+
+const win = globalThis as {
+  addEventListener?: (
+    type: 'storage',
+    listener: (e: { key: string | null; newValue: string | null }) => void,
+  ) => void;
+};
+if (typeof win.addEventListener === 'function') {
+  win.addEventListener('storage', (e) => {
+    if (e.key === OUTBOX_KEY) refreshOutboxFrom(e.newValue);
+  });
+}
+
 /** The outbox for a reader outside the lock: the cache once the stored outbox was read,
  * else read under the lock (a read that brings the stored events in never lands inside a
  * change made without them). */
@@ -204,7 +275,9 @@ function currentOutbox(): Promise<OutboxEntry[]> {
 }
 
 /** Append events (already closed: immutable from here) to a connection's outbox. */
-export async function appendEvents(connectionId: string, events: ListeningEvent[]): Promise<void> {
+export async function appendEvents(connectionId: string, given: ListeningEvent[]): Promise<void> {
+  const events = given.filter(eventIsFinite);
+  if (events.length < given.length) console.warn('[listening] dropped an event with no place');
   if (events.length === 0) return;
   await withOutboxLock(async () => {
     const queue = await readOutbox();
@@ -245,7 +318,9 @@ const isSpan = (v: unknown): v is OpenSpan =>
   typeof v.libraryId === 'number' &&
   typeof v.path === 'string' &&
   isRecord(v.from) &&
+  isPos(v.from.pos as number) &&
   isRecord(v.to) &&
+  isPos(v.to.pos as number) &&
   typeof v.startedAt === 'string' &&
   typeof v.endedAt === 'string';
 

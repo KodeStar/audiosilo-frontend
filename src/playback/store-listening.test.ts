@@ -498,6 +498,38 @@ describe('a span opens whenever the book plays', () => {
   });
 });
 
+describe('what a span carries', () => {
+  it("sends the audio's length, not a timeline a chapter overhangs", async () => {
+    const overhang: ChaptersResponse = {
+      ...chapters,
+      chapters: [...chapters.chapters, { ...chapters.chapters[1], index: 2, start: 50, end: 80 }],
+    };
+    await usePlayer.getState().playBook('c1', 2, book, overhang, undefined);
+    await settle();
+    expect(usePlayer.getState().nowPlaying?.queue.total).toBeGreaterThan(100);
+    pushSnapshot(snap('playing', 0, 5));
+    pushSnapshot(snap('paused', 0, 20));
+    await settle();
+    expect(mockClosed.map((s) => s.duration)).toEqual([100]);
+  });
+
+  it('never takes a place that is not a number', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, Number.NaN));
+    jest.advanceTimersByTime(15_000); // a cut while the engine reports NaN
+    await settle();
+    await usePlayer.getState().seekBook(Number.NaN);
+    pushSnapshot(snap('paused', 0, Number.NaN));
+    await settle();
+    expect(mockClosed.length).toBeGreaterThan(0);
+    const numbers = mockClosed.flatMap((s) => [s.from.pos, s.to.pos, s.from.filePos ?? 0]);
+    expect(numbers.every(Number.isFinite)).toBe(true);
+    expect(mockAppended.every((e) => e.kind !== 'listen' || Number.isFinite(e.to_pos))).toBe(true);
+  });
+});
+
 describe('resume by file (fe#188)', () => {
   it("lands in the saved file at its own seconds, though the server's order moved it", async () => {
     // Saved on the download's old order (10.mp3 first): 10 s into 10.mp3 was book second

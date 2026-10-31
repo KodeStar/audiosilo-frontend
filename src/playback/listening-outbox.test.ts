@@ -41,6 +41,7 @@ import { onConnectionRemoved } from '@/stores/session';
 import {
   appendEvents,
   closeSpan,
+  eventIsFinite,
   COULD_NOT_SYNC_KEEP_MS,
   discardFailed,
   MAX_COULD_NOT_SYNC,
@@ -51,6 +52,7 @@ import {
   type OpenSpan,
   outboxEvents,
   recoverOpenSpan,
+  refreshOutboxFrom,
   resetOutboxForTests,
   spanSaysSomething,
   spanToEvent,
@@ -459,6 +461,34 @@ describe('flushOutbox', () => {
     expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBe(42);
   });
 
+  it('acknowledges the row an unfinish of a book another device finished hands this device', async () => {
+    // The server's unfinish of a finished row takes it for this device (server 0b7ce0f).
+    const deviceId = await getDeviceId();
+    const unfinish = {
+      id: 'u',
+      kind: 'unfinish',
+      library_id: 3,
+      path: 'Author/Book',
+      at: '2026-10-25T08:00:00.000Z',
+      base_version: 9,
+    } as ListeningEvent;
+    await appendEvents('c1', [unfinish]);
+    const row: Progress = {
+      library_id: 3,
+      path: 'Author/Book',
+      position: 61200,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1,
+      version: 10,
+      device_id: deviceId,
+      updated_at: '2026-10-25T08:00:00.000Z',
+    };
+    client(async (body) => answer(body, () => ({ status: 'applied' }), [row]));
+    await flushOutbox('c1');
+    expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBe(10);
+  });
+
   it('one flush in flight per connection; a call meanwhile makes it go round again', async () => {
     await appendEvents('c1', [listen('a')]);
     let release: () => void = () => {};
@@ -616,5 +646,93 @@ describe('fitKeepalive', () => {
     const one = JSON.stringify(entries[0].event).length + 1;
     expect(fitKeepalive(entries, 200 + one * 3)).toHaveLength(3);
     expect(fitKeepalive(entries)).toHaveLength(10);
+  });
+});
+
+describe('a place that is not a number', () => {
+  it('is never enqueued', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(eventIsFinite(listen('a'))).toBe(true);
+    expect(eventIsFinite(listen('b', { to_pos: Number.NaN } as Partial<ListeningEvent>))).toBe(
+      false,
+    );
+    expect(eventIsFinite(listen('c', { from_file_pos: Infinity } as Partial<ListeningEvent>))).toBe(
+      false,
+    );
+    await appendEvents('c1', [
+      listen('a'),
+      listen('b', { to_pos: Number.NaN } as Partial<ListeningEvent>),
+    ]);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a']);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('a stored open span without a place is not recovered', async () => {
+    // JSON keeps NaN as null.
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify(span({ to: { pos: Number.NaN } })));
+    resetOutboxForTests();
+    await recoverOpenSpan();
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+});
+
+describe('several web tabs share the outbox', () => {
+  // Node has Web Locks of its own (a getter on the prototype): shadow it to see the lock taken.
+  const nav = globalThis.navigator as { locks?: unknown };
+  let held: string[] = [];
+  beforeEach(() => {
+    held = [];
+    Object.defineProperty(nav, 'locks', {
+      configurable: true,
+      value: {
+        request: async (name: string, job: () => Promise<unknown>) => {
+          held.push(name);
+          return job();
+        },
+      },
+    });
+  });
+  afterEach(() => {
+    delete nav.locks;
+  });
+
+  it("re-reads the stored outbox under the shared lock, so another tab's events stay", async () => {
+    await appendEvents('c1', [listen('mine')]);
+    // Another tab adds an event to storage after this tab read it.
+    const stored = JSON.parse((await AsyncStorage.getItem(OUTBOX))!) as unknown[];
+    await AsyncStorage.setItem(
+      OUTBOX,
+      JSON.stringify([...stored, { connectionId: 'c1', event: listen('theirs') }]),
+    );
+    await appendEvents('c1', [listen('mine-2')]);
+    const ids = (
+      JSON.parse((await AsyncStorage.getItem(OUTBOX))!) as { event: { id: string } }[]
+    ).map((e) => e.event.id);
+    expect(ids).toEqual(['mine', 'theirs', 'mine-2']);
+    expect(held.every((n) => n === OUTBOX)).toBe(true);
+    expect(held.length).toBeGreaterThan(0);
+  });
+
+  it("another tab's send (removal) is not written back", async () => {
+    await appendEvents('c1', [listen('a'), listen('b')]);
+    // Another tab sent 'a' and wrote the outbox without it.
+    await AsyncStorage.setItem(
+      OUTBOX,
+      JSON.stringify([{ connectionId: 'c1', event: listen('b') }]),
+    );
+    await appendEvents('c1', [listen('c')]);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['b', 'c']);
+  });
+
+  it("follows another tab's change through the storage event", async () => {
+    await appendEvents('c1', [listen('a')]);
+    refreshOutboxFrom(JSON.stringify([]));
+    expect(await outboxEvents('c1')).toEqual([]);
+    refreshOutboxFrom(JSON.stringify([{ connectionId: 'c1', event: listen('x') }]));
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['x']);
+    // Garbage leaves the copy as it was.
+    refreshOutboxFrom('{not json');
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['x']);
   });
 });
