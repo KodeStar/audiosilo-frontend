@@ -527,6 +527,8 @@ describe('what a span carries', () => {
     const numbers = mockClosed.flatMap((s) => [s.from.pos, s.to.pos, s.from.filePos ?? 0]);
     expect(numbers.every(Number.isFinite)).toBe(true);
     expect(mockAppended.every((e) => e.kind !== 'listen' || Number.isFinite(e.to_pos))).toBe(true);
+    const saved = mockWriteMirror.mock.calls.map((c) => (c[0] as { position: number }).position);
+    expect(saved.every(Number.isFinite)).toBe(true);
   });
 });
 

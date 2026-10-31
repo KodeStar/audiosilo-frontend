@@ -437,6 +437,12 @@ async function persist(opts?: { forceFinished?: boolean }) {
   if (saveHold && !forceFinished) return;
   const total = nowPlaying.queue.total;
   let position = toBookPosition(nowPlaying.queue.offsets, snapshot.trackIndex, snapshot.position);
+  // An engine reporting NaN (a stream with no length yet) has no place to save; a finish
+  // still saves (at the book's end).
+  if (!Number.isFinite(position)) {
+    if (!forceFinished) return;
+    position = 0;
+  }
   if (forceFinished) {
     if (total > 0) position = Math.max(position, total); // a completed book reads as 100%
   } else {

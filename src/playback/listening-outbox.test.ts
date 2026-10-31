@@ -725,6 +725,19 @@ describe('several web tabs share the outbox', () => {
     expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['b', 'c']);
   });
 
+  it('keeps an event storage could not take, though the next read is from storage', async () => {
+    await appendEvents('c1', [listen('a')]);
+    // One write fails (a full storage); `Once` puts the mock back as it was.
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('quota'));
+    await appendEvents('c1', [listen('b')]);
+    await appendEvents('c1', [listen('c')]);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a', 'b', 'c']);
+    const ids = (
+      JSON.parse((await AsyncStorage.getItem(OUTBOX))!) as { event: { id: string } }[]
+    ).map((e) => e.event.id);
+    expect(ids).toEqual(['a', 'b', 'c']);
+  });
+
   it("follows another tab's change through the storage event", async () => {
     await appendEvents('c1', [listen('a')]);
     refreshOutboxFrom(JSON.stringify([]));

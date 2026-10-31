@@ -14,7 +14,7 @@ import type {
 } from '@/api/types';
 import { randomUUID } from '@/lib/random';
 import { serialQueue } from '@/lib/serial-queue';
-import { getItem, getItemStrict, setItem } from '@/lib/storage';
+import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import {
   isRecord,
   LISTENING_OPEN_SPAN_KEY as OPEN_SPAN_KEY,
@@ -195,6 +195,9 @@ let outboxCache: OutboxEntry[] | null = null;
  * failed), the cache holds only this launch's events, and nothing is written over the
  * stored ones: each read tries again and puts them first. */
 let outboxRead = false;
+/** Whether this tab's last outbox write failed (a full storage): its copy then holds events
+ * storage does not, so the next read merges them back in rather than taking storage alone. */
+let outboxUnsaved = false;
 
 const isEntry = (v: unknown): v is OutboxEntry =>
   isRecord(v) &&
@@ -208,10 +211,12 @@ async function readOutbox(): Promise<OutboxEntry[]> {
   if (outboxCache && outboxRead && !sharedLocks()) return outboxCache;
   try {
     const stored = entriesOf(await getItemStrict<unknown>(OUTBOX_KEY));
-    if (outboxRead) {
+    if (outboxRead && !outboxUnsaved) {
       // Read before: storage is the outbox (another tab may have changed it since).
       outboxCache = stored;
     } else {
+      // The first read, or a copy storage could not take: the stored events first, then this
+      // tab's own (one sent meanwhile goes again as a `duplicate`).
       const have = new Set(stored.map((e) => e.event.id));
       outboxCache = [...stored, ...(outboxCache ?? []).filter((e) => !have.has(e.event.id))];
       outboxRead = true;
@@ -224,7 +229,14 @@ async function readOutbox(): Promise<OutboxEntry[]> {
 
 async function writeOutbox(next: OutboxEntry[]): Promise<void> {
   outboxCache = next;
-  if (outboxRead) await setItem(OUTBOX_KEY, next);
+  if (outboxRead) {
+    try {
+      await setItemStrict(OUTBOX_KEY, next);
+      outboxUnsaved = false;
+    } catch {
+      outboxUnsaved = true;
+    }
+  }
   notify();
 }
 
@@ -234,7 +246,7 @@ async function writeOutbox(next: OutboxEntry[]): Promise<void> {
  * Nothing before this tab read the stored outbox itself (its first read merges).
  */
 export function refreshOutboxFrom(raw: string | null): void {
-  if (!outboxRead) return;
+  if (!outboxRead || outboxUnsaved) return;
   try {
     outboxCache = raw ? entriesOf(JSON.parse(raw)) : [];
   } catch {
@@ -821,6 +833,7 @@ onConnectionRemoved(async (id) => {
 export function resetOutboxForTests(): void {
   outboxCache = null;
   outboxRead = false;
+  outboxUnsaved = false;
   recovery = null;
   openSpanStored = false;
   rolledBack.clear();
