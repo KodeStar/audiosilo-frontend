@@ -14,7 +14,7 @@ import type {
 } from '@/api/types';
 import { randomUUID } from '@/lib/random';
 import { serialQueue } from '@/lib/serial-queue';
-import { getItem, setItem } from '@/lib/storage';
+import { getItem, getItemStrict, setItem } from '@/lib/storage';
 import {
   isRecord,
   LISTENING_OPEN_SPAN_KEY as OPEN_SPAN_KEY,
@@ -28,6 +28,7 @@ import {
   getDeviceId,
   pendingSaves,
   type ProgressSave,
+  readMirror,
   saveProgress,
 } from './progress-sync';
 
@@ -53,9 +54,10 @@ import {
  * device clock (`sent_at`) set per attempt. Every status but `rejected` removes the event;
  * `rejected` moves it to the couldn't-sync list. A network error or 5xx keeps everything; a
  * 413 or `too_many_events` halves the chunk; a 400 on a batch sends its events one by one
- * once, and one still refused alone is moved to the list. A 404/405 means the server was
- * rolled back to one without the route: the connection's outbox becomes one legacy save per
- * book (`legacySavesOf`) and the player saves by PUT from then on (`usesListeningSync`).
+ * once, and one still refused alone is moved to the list. A 404/405 that the server's own
+ * `/server` confirms (no `listening_sync`) means it was rolled back to one without the route:
+ * the connection's outbox becomes one legacy save per book (`legacySavesOf`) and the player
+ * saves by PUT from then on (`usesListeningSync`).
  */
 
 /** One end of a span: whole-book seconds, and the audio file (rel path) and seconds in it. */
@@ -94,6 +96,9 @@ const MAX_CHUNK = 200;
 const KEEPALIVE_BYTES = 60_000;
 /** A rejected event stays on the couldn't-sync list this long. */
 export const COULD_NOT_SYNC_KEEP_MS = 30 * 24 * 60 * 60_000;
+/** At most this many (the newest) per connection: a book the server keeps refusing adds
+ * one each 15 s cut while it plays. */
+export const MAX_COULD_NOT_SYNC = 100;
 /** A span shorter than this that moved nowhere says nothing (a play stopped at once). */
 const EMPTY_SPAN_MS = 1_000;
 
@@ -160,6 +165,10 @@ export function finishEvent(
 const withOutboxLock = serialQueue();
 /** The outbox as last read or written (the web's `pagehide` reads it synchronously). */
 let outboxCache: OutboxEntry[] | null = null;
+/** Whether the stored outbox has been read this launch. Until it is (a storage read that
+ * failed), the cache holds only this launch's events, and nothing is written over the
+ * stored ones: each read tries again and puts them first. */
+let outboxRead = false;
 
 const isEntry = (v: unknown): v is OutboxEntry =>
   isRecord(v) &&
@@ -168,16 +177,30 @@ const isEntry = (v: unknown): v is OutboxEntry =>
   typeof v.event.id === 'string';
 
 async function readOutbox(): Promise<OutboxEntry[]> {
-  if (outboxCache) return outboxCache;
-  const raw = await getItem<unknown>(OUTBOX_KEY);
-  outboxCache = Array.isArray(raw) ? raw.filter(isEntry) : [];
+  if (outboxCache && outboxRead) return outboxCache;
+  try {
+    const raw = await getItemStrict<unknown>(OUTBOX_KEY);
+    const stored = Array.isArray(raw) ? raw.filter(isEntry) : [];
+    const have = new Set(stored.map((e) => e.event.id));
+    outboxCache = [...stored, ...(outboxCache ?? []).filter((e) => !have.has(e.event.id))];
+    outboxRead = true;
+  } catch {
+    outboxCache ??= [];
+  }
   return outboxCache;
 }
 
 async function writeOutbox(next: OutboxEntry[]): Promise<void> {
   outboxCache = next;
-  await setItem(OUTBOX_KEY, next);
+  if (outboxRead) await setItem(OUTBOX_KEY, next);
   notify();
+}
+
+/** The outbox for a reader outside the lock: the cache once the stored outbox was read,
+ * else read under the lock (a read that brings the stored events in never lands inside a
+ * change made without them). */
+function currentOutbox(): Promise<OutboxEntry[]> {
+  return outboxRead && outboxCache ? Promise.resolve(outboxCache) : withOutboxLock(readOutbox);
 }
 
 /** Append events (already closed: immutable from here) to a connection's outbox. */
@@ -193,7 +216,7 @@ export async function appendEvents(connectionId: string, events: ListeningEvent[
 
 /** The events waiting for `connectionId` (all connections when absent), oldest first. */
 export async function outboxEvents(connectionId?: string): Promise<OutboxEntry[]> {
-  const queue = await readOutbox();
+  const queue = await currentOutbox();
   return connectionId === undefined
     ? [...queue]
     : queue.filter((e) => e.connectionId === connectionId);
@@ -253,10 +276,26 @@ export async function storeOpenSpan(span: OpenSpan | null): Promise<void> {
   });
 }
 
+/**
+ * A span's `base_version` as it closes: the version acknowledged for its book now (its
+ * mirror's `ack_version`), never below the one it opened with. Read at the close: one that
+ * closed before its open's read came back would go with none known (0, a cold start to the
+ * server), and what was acknowledged while it played (an unfinish the server applied, an
+ * offer answered) is what the server resolves it on.
+ */
+async function baseAtClose(span: OpenSpan): Promise<number | undefined> {
+  const mirror = await readMirror(span.connectionId, span.libraryId, span.path).catch(() => null);
+  const acked = mirror?.ack_version;
+  return acked === undefined ? span.baseVersion : Math.max(span.baseVersion ?? 0, acked);
+}
+
 /** Append `span`'s event (when it says something) and clear the stored open span, if any.
  * Run inside `spanOps`. */
 async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
-  if (spanSaysSomething(span)) await appendEvents(span.connectionId, [event ?? spanToEvent(span)]);
+  if (spanSaysSomething(span)) {
+    const closed = event ?? spanToEvent({ ...span, baseVersion: await baseAtClose(span) });
+    await appendEvents(span.connectionId, [closed]);
+  }
   if (!openSpanStored) return;
   await setItem(OPEN_SPAN_KEY, null);
   openSpanStored = false;
@@ -264,9 +303,9 @@ async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<vo
 }
 
 /**
- * Close `span` into its `listen` event (when it says something) and clear the stored open
- * span. `event` is the span's event when the caller made it already (the web's `pagehide`
- * sends it at once).
+ * Close `span` into its `listen` event (when it says something, on the base acknowledged by
+ * now: `baseAtClose`) and clear the stored open span. `event` is the span's event when the
+ * caller made it already (the web's `pagehide` sends it at once).
  */
 export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
   await recoverOpenSpan();
@@ -326,7 +365,10 @@ async function moveToFailed(
     const kept = (s.failed ?? []).filter(
       (f) => stillKept(f, now) && !items.some((i) => i.event.id === f.event.id),
     );
-    return { ...s, failed: [...kept, ...items.map((i) => ({ ...i, at }))] };
+    return {
+      ...s,
+      failed: [...kept, ...items.map((i) => ({ ...i, at }))].slice(-MAX_COULD_NOT_SYNC),
+    };
   });
   await removeEvents(new Set(items.map((i) => i.event.id)));
 }
@@ -389,7 +431,7 @@ export function flushOutbox(connectionId: string): Promise<void> {
 export async function flushAllOutboxes(): Promise<void> {
   if (!sessionReady()) return;
   await recoverOpenSpan();
-  const ids = new Set((await readOutbox()).map((e) => e.connectionId));
+  const ids = new Set((await currentOutbox()).map((e) => e.connectionId));
   await Promise.all([...ids].map((cid) => flushOutbox(cid)));
 }
 
@@ -610,14 +652,23 @@ function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
   });
 }
 
+/**
+ * A 404/405 on the sync route: rolled back only when the server says so, its `/server`
+ * answering without `listening_sync` (anything else answering at the address, a home
+ * address another host holds on this network, keeps the outbox for a later send). The
+ * events go as legacy saves, then leave the outbox (a kill between sends them again).
+ */
 async function rollBack(connectionId: string, client: ApiClient): Promise<void> {
+  const info = await client.serverInfo().catch(() => null);
+  if (!info || info.capabilities?.listening_sync) return;
   rolledBack.add(connectionId);
   void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
-  const mine = await takeConnection(connectionId);
+  const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
   for (const save of legacySavesOf(connectionId, mine, deviceId)) {
     await saveProgress(client, save);
   }
+  await removeEvents(new Set(mine.map((e) => e.event.id)));
 }
 
 // --- The web page going ------------------------------------------------------------------
@@ -706,6 +757,7 @@ onConnectionRemoved(async (id) => {
 /** Test-only: forget what this module holds in memory. */
 export function resetOutboxForTests(): void {
   outboxCache = null;
+  outboxRead = false;
   recovery = null;
   openSpanStored = false;
   rolledBack.clear();

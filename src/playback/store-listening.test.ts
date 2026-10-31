@@ -109,8 +109,11 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 
 /* eslint-disable import/first */
+import { qk } from '@/api/hooks';
+import { queryClient } from '@/api/provider';
 import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
+import type { DownloadEntry } from '@/downloads/types';
 
 import { flushHistoryOnHide, standByPlace, usePlayer } from './store';
 /* eslint-enable import/first */
@@ -370,6 +373,128 @@ describe('with listening_sync', () => {
       },
     ]);
     expect(mockClient.addHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe('a span opens whenever the book plays', () => {
+  const historyBody = (call: number) =>
+    (mockClient.addHistory.mock.calls[call] as unknown[])[2] as {
+      from_pos: number;
+      to_pos: number;
+    };
+
+  it('a play the engine reports while the load holds the place opens its span on the next tick', async () => {
+    (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('playing', 0, 5)); // Android keeps playWhenReady through a load
+    });
+    await start();
+    pushSnapshot(snap('playing', 0, 8));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    pushSnapshot(snap('paused', 0, 25));
+    await settle();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 8, 25]]);
+  });
+
+  it('a server that takes listening events only since the book began gets a span from the next tick', async () => {
+    mockSync = false;
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000); // a PUT save
+    mockSync = true; // its `/server` was read while the book played
+    pushSnapshot(snap('playing', 0, 30));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    pushSnapshot(snap('paused', 0, 40));
+    await settle();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 30, 40]]);
+    // What the PUT path began goes by POST /history, up to where the span took over.
+    expect(mockClient.addHistory).toHaveBeenCalledTimes(1);
+    expect(historyBody(0)).toMatchObject({ from_pos: 5, to_pos: 30 });
+  });
+
+  it('a finished book started again from a place sends unfinish; the row it saw is acknowledged', async () => {
+    const cached = row({
+      position: 100,
+      finished: true,
+      version: 12,
+      device_id: 'phone',
+      updated_at: '2026-02-01T00:00:00Z',
+    });
+    const key = JSON.stringify(qk.progress('c1', 2, folder));
+    (queryClient.getQueryData as jest.Mock).mockImplementation((k: unknown) =>
+      JSON.stringify(k) === key ? cached : undefined,
+    );
+    try {
+      await start(40); // a chapter tap on the book page
+      pushSnapshot(snap('playing', 0, 40));
+      pushSnapshot(snap('paused', 0, 45));
+      await settle();
+    } finally {
+      (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined);
+    }
+    expect(mockAppended).toEqual([
+      expect.objectContaining({ kind: 'unfinish', library_id: 2, path: folder }),
+    ]);
+    expect(mockClosed.map((s) => s.start)).toEqual(['jump']);
+    expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, folder, 12, cached);
+  });
+
+  describe('an adopted book (adoptLoaded)', () => {
+    const downloaded = (): DownloadEntry => ({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: folder,
+      title: 'A Book',
+      status: 'downloaded',
+      progress: 1,
+      bytes: 0,
+      totalBytes: 0,
+      manifest: {
+        book,
+        chapters,
+        files: order.map((relPath) => ({ relPath, localUri: `file:///d/${relPath}` })),
+        coverUri: 'file:///d/cover.jpg',
+        savedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    const loaded = { connectionId: 'c1', libraryId: 2, path: folder, rate: 1 };
+    beforeEach(() => useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded() } }));
+
+    it('a playing one opens its span at once (the store set its `playing`)', async () => {
+      const adopted = await usePlayer
+        .getState()
+        .adoptLoaded({ ...loaded, trackIndex: 1, position: 10, playing: true });
+      expect(adopted).toBe(true);
+      pushSnapshot(snap('playing', 1, 20));
+      pushSnapshot(snap('paused', 1, 20));
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 60, 70]]);
+    });
+
+    it('a paused one reloaded in its order opens its span on its first play', async () => {
+      (queryClient.fetchQuery as jest.Mock).mockRejectedValueOnce(
+        new TypeError('Network request failed'),
+      );
+      // The engine plays 10.mp3 first (an older order): reloaded in the download's, where it
+      // is the second file.
+      const adopted = await usePlayer.getState().adoptLoaded({
+        ...loaded,
+        files: ['A/Folder/10.mp3', 'A/Folder/2.mp3'],
+        trackIndex: 0,
+        position: 10,
+        playing: false,
+      });
+      expect(adopted).toBe(true);
+      expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 10]);
+      pushSnapshot(snap('paused', 1, 10));
+      await settle();
+      pushSnapshot(snap('playing', 1, 10));
+      pushSnapshot(snap('paused', 1, 20));
+      await settle();
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 60, 70]]);
+    });
   });
 });
 

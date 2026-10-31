@@ -240,12 +240,29 @@ function samePlace(a: Pick<ProgressSave, 'position'>, b: Pick<ProgressSave, 'pos
   return Math.abs(a.position - b.position) <= 1;
 }
 
+type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished'>;
+
+/**
+ * Whether `record`'s place is the one `filed` holds a file place for: the same place, or a
+ * record of the same device in the same finished state (the server's echo of this device's
+ * place, whose seconds the server may have moved to its own file order). Not a place moved
+ * since (a Mark not finished, which keeps the device and resets the place): that file place
+ * is the book's end.
+ */
+function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord): boolean {
+  return (
+    samePlace(record, filed) ||
+    (!!record.device_id &&
+      record.device_id === filed.device_id &&
+      record.finished === filed.finished)
+  );
+}
+
 /**
  * The record holding the file place (fe#188) for the newest record `best`: its own when it
- * is a save of this device's (`own`), else the mirror's when it records the same place, or
- * when `best` was written by this same device (the server's echo of this device's save,
- * whose seconds the server may have moved to its own file order). A place of another
- * device has no file place here: it is that device's, in the server's order.
+ * is a save of this device's (`own`), else the mirror's when it holds `best`'s place
+ * (`holdsFilePlace`). A place of another device has no file place here: it is that
+ * device's, in the server's order.
  */
 function filePlaceOf(
   best: Progress,
@@ -254,9 +271,7 @@ function filePlaceOf(
 ): ProgressSave | null {
   if (own?.file) return own;
   if (!mirror?.file) return null;
-  return samePlace(best, mirror) || (!!best.device_id && best.device_id === mirror.device_id)
-    ? mirror
-    : null;
+  return holdsFilePlace(best, mirror) ? mirror : null;
 }
 
 /** The durable local mirror for a book, shaped as a `Progress` - for read paths
@@ -317,8 +332,8 @@ const withMirrorLock = serialQueue();
 
 /** Upsert the durable mirror, keeping the newest record by `updated_at`. The Sync v2
  * fields a capture doesn't carry (`ack_version`, `answered`) are kept from the record it
- * replaces, and so is its file place when the new record is the same place without one (a
- * server row read back after this device's own save). */
+ * replaces, and so is its file place when the new record holds that place without one (a
+ * server row read back after this device's own save: `holdsFilePlace`). */
 export async function writeMirror(save: ProgressSave): Promise<void> {
   await withMirrorLock(async () => {
     const map = await readMirrorMap();
@@ -339,11 +354,7 @@ function mergeKept(save: ProgressSave, existing: ProgressSave | undefined): Prog
     out.ack_version = existing.ack_version;
   if (out.answered === undefined && existing.answered !== undefined)
     out.answered = existing.answered;
-  if (
-    out.file === undefined &&
-    existing.file !== undefined &&
-    (samePlace(save, existing) || (!!save.device_id && save.device_id === existing.device_id))
-  ) {
+  if (out.file === undefined && existing.file !== undefined && holdsFilePlace(save, existing)) {
     out.file = existing.file;
     out.file_pos = existing.file_pos;
   }

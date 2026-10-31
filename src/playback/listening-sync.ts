@@ -1,3 +1,4 @@
+import { networkChecked } from '@/api/address-route';
 import { sessionReady } from '@/api/connection-clients';
 import { onReconnect } from '@/api/reachability';
 import { onForeground } from '@/lib/when-active';
@@ -10,9 +11,9 @@ import { cutListeningSpanNow } from './store';
  * Sync v2's sending triggers (`listening-outbox.ts`), for the life of the app: a span a kill
  * left open is closed and every outbox sent once the session is ready (the launch); the
  * playing span is cut and the outbox sent when its server comes back; every outbox is sent
- * when the app comes to the front, and the playing span is cut when it leaves (native
- * backgrounding: the OS may end the app there). The store sends after each cut and close
- * itself, and the web's `pagehide`/`hidden` are the store's (`watchPageHide`).
+ * when the app comes to the front (once `networkChecked`), and the playing span is cut when
+ * it leaves (native backgrounding: the OS may end the app there). The store sends after each
+ * cut and close itself, and the web's `pagehide`/`hidden` are the store's (`watchPageHide`).
  *
  * Shared like the place reconcile: the root layout starts it and so does the car's headless
  * task; it runs once until the last holder releases it.
@@ -53,9 +54,12 @@ function runListeningSync(): () => void {
       void flushOutbox(cid);
     }),
   );
+  // On the foreground, once the address runner has checked the network: a home address
+  // checked on the network the device was on before it was suspended goes first (the token
+  // must not go to whatever holds that address here).
   stops.push(
     onForeground(
-      () => void flushAllOutboxes(),
+      () => void networkChecked().then(flushAllOutboxes),
       () => cutListeningSpanNow(),
     ),
   );

@@ -138,6 +138,11 @@ export function offerOf(
 
 /** Offers shown this launch (`bookKey|key`): each is shown once, answered or not. */
 const shownOffers = new Set<string>();
+/** A device's places are offered at most once in this long for a book: one that plays on
+ * moves its place (a new key) with each span it sends, a new offer every sync. */
+export const OFFER_REPEAT_MS = 10 * 60_000;
+/** When each device's place was last offered (`bookKey|device_id`). */
+const offeredAt = new Map<string, number>();
 
 /**
  * Offer the loaded book another device's place from `row` (the server's row for it), when
@@ -164,7 +169,12 @@ export async function offerLoadedPlace(
     mirror?.answered,
   );
   if (!offer || shownOffers.has(`${bookKey}|${offer.key}`)) return false;
+  // The key is `device_id|updated_at`; an ISO time has no `|`.
+  const fromDevice = `${bookKey}|${offer.key.slice(0, offer.key.lastIndexOf('|'))}`;
+  const last = offeredAt.get(fromDevice);
+  if (last !== undefined && Date.now() - last < OFFER_REPEAT_MS) return false;
   shownOffers.add(`${bookKey}|${offer.key}`);
+  offeredAt.set(fromDevice, Date.now());
   const answer = () => answerOffer(np.connectionId, np.libraryId, np.path, row, offer.key);
   whenActive(() => {
     const now = usePlayer.getState();

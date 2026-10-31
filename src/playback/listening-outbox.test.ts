@@ -43,6 +43,7 @@ import {
   closeSpan,
   COULD_NOT_SYNC_KEEP_MS,
   discardFailed,
+  MAX_COULD_NOT_SYNC,
   fitKeepalive,
   flushOutbox,
   keptMine,
@@ -59,7 +60,7 @@ import {
   unsentListens,
   usesListeningSync,
 } from './listening-outbox';
-import { getDeviceId, pendingSaves, readMirror } from './progress-sync';
+import { ackVersion, getDeviceId, pendingSaves, readMirror } from './progress-sync';
 /* eslint-enable import/first */
 
 const OUTBOX = 'audiosilo.listeningOutbox';
@@ -103,10 +104,14 @@ function answer(
 }
 
 type SyncFn = (body: ListeningSyncRequest, opts?: { keepalive?: boolean }) => Promise<unknown>;
-function client(sync: SyncFn) {
+function client(
+  sync: SyncFn,
+  serverInfo: () => Promise<unknown> = async () => ({ capabilities: {} }),
+) {
   const c = {
     syncListening: jest.fn(sync),
     saveProgress: jest.fn(async () => ({})),
+    serverInfo: jest.fn(serverInfo),
   };
   (resolveClient as jest.Mock).mockImplementation((cid: string) =>
     cid === 'c1' ? (c as unknown as ApiClient) : null,
@@ -205,6 +210,56 @@ describe('the outbox', () => {
     await storeOpenSpan(span({ start: 'continue' }));
     await recoverOpenSpan();
     expect(await outboxEvents('c1')).toHaveLength(1);
+  });
+
+  it('a span goes on the base acknowledged when it closes, never below the one it opened on', async () => {
+    const row = {
+      library_id: 3,
+      path: 'Author/Book',
+      position: 0,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1,
+      version: 42,
+      device_id: 'other',
+      updated_at: '2026-10-25T07:00:00.000Z',
+    };
+    // Closed before its open's read came back (0), then acknowledged meanwhile (42).
+    await ackVersion('c1', 3, 'Author/Book', 42, row);
+    await closeSpan(span({ baseVersion: 0 }));
+    await closeSpan(span({ baseVersion: 50 }));
+    const events = (await outboxEvents('c1')).map((e) => e.event);
+    expect(events.map((e) => (e.kind === 'listen' ? e.base_version : null))).toEqual([42, 50]);
+  });
+
+  it('a stored outbox that could not be read is never written over', async () => {
+    await AsyncStorage.setItem(
+      OUTBOX,
+      JSON.stringify([{ connectionId: 'c1', event: listen('old') }]),
+    );
+    resetOutboxForTests();
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const original = getItem.getMockImplementation()!;
+    const storedIds = async () =>
+      (JSON.parse((await original(OUTBOX)) as string) as { event: { id: string } }[]).map(
+        (e) => e.event.id,
+      );
+    getItem.mockImplementation(async (key: string) => {
+      if (key === OUTBOX) throw new Error('storage unavailable');
+      return original(key);
+    });
+    try {
+      await appendEvents('c1', [listen('new')]);
+      // Kept in memory meanwhile; the stored one is as it was.
+      expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['new']);
+      expect(await storedIds()).toEqual(['old']);
+    } finally {
+      getItem.mockImplementation(original);
+    }
+    // Read once it can be: the stored events first, then this launch's, written together.
+    await appendEvents('c1', [listen('newer')]);
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['old', 'new', 'newer']);
+    expect(await storedIds()).toEqual(['old', 'new', 'newer']);
   });
 
   it('an event is immutable once a send was tried: a later span is a new event', async () => {
@@ -355,6 +410,20 @@ describe('flushOutbox', () => {
     expect((await syncStateOf('c1')).failed).toEqual([]);
   });
 
+  it("keeps the newest MAX_COULD_NOT_SYNC on the couldn't-sync list", async () => {
+    const count = MAX_COULD_NOT_SYNC + 50;
+    await appendEvents(
+      'c1',
+      Array.from({ length: count }, (_, i) => listen(`r${i}`)),
+    );
+    client(async (body) => answer(body, () => ({ status: 'rejected', reason: 'not_found' })));
+    await flushOutbox('c1');
+    const failed = (await syncStateOf('c1')).failed ?? [];
+    expect(failed).toHaveLength(MAX_COULD_NOT_SYNC);
+    expect(failed[failed.length - 1].event.id).toBe(`r${count - 1}`);
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
   it("keeps a couldn't-sync entry 30 days", async () => {
     const at = '2026-10-01T00:00:00.000Z';
     await AsyncStorage.setItem(
@@ -407,6 +476,27 @@ describe('flushOutbox', () => {
     release();
     await Promise.all([first, second]);
     expect(sent(c).map((b) => b.events.map((e) => e.id))).toEqual([['a'], ['b']]);
+  });
+
+  it('a 404/405 from anything but the rolled-back server keeps the outbox', async () => {
+    await appendEvents('c1', [listen('a')]);
+    // Another host at the address (its `/server` is no AudioSilo answer), or the server
+    // itself still saying it takes listening events.
+    for (const serverInfo of [
+      async () => {
+        throw new ApiError(404, 'not found');
+      },
+      async () => ({ capabilities: { listening_sync: true } }),
+    ]) {
+      const c = client(async () => {
+        throw new ApiError(404, 'not found');
+      }, serverInfo);
+      await flushOutbox('c1');
+      expect(c.serverInfo).toHaveBeenCalled();
+      expect(c.saveProgress).not.toHaveBeenCalled();
+      expect(await outboxEvents('c1')).toHaveLength(1);
+      expect(usesListeningSync('c1')).toBe(true);
+    }
   });
 
   it('a 404/405 (server rolled back) turns the outbox into one legacy save per book', async () => {

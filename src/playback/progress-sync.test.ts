@@ -691,6 +691,33 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     expect(resumeLookupOf(other, places, 'c1', 1, 'A/Book')).not.toHaveProperty('file');
   });
 
+  it("a place this device reset since (Mark not finished) does not keep the end's file place", async () => {
+    // Finished here: the mirror's file place is the last file's end.
+    await writeMirror({
+      ...filed,
+      position: 100,
+      finished: true,
+      file: 'A/Book/03.mp3',
+      file_pos: 590,
+    });
+    // Marked not finished: the row keeps this device as its writer, its place back at 0.
+    const reset = makeProgress({
+      position: 0,
+      finished: false,
+      version: 6,
+      updated_at: '2026-01-03T00:00:00Z',
+    });
+    const r = await loadInitialProgress(
+      fakeGetApi(async () => reset),
+      'c1',
+      1,
+      'A/Book',
+    );
+    expect(r).toMatchObject({ kind: 'progress', progress: { position: 0, finished: false } });
+    expect(r).not.toHaveProperty('file');
+    expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('file');
+  });
+
   it('writeMirror keeps ack_version, answered and the file place across a same-place record', async () => {
     await writeMirror({ ...filed, ack_version: 7, answered: ['phone|x'] });
     await writeMirror({ ...save, position: 3600, updated_at: '2026-01-03T00:00:00Z' });

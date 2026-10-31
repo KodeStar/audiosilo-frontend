@@ -127,7 +127,7 @@ import { useSettings } from '@/stores/settings';
 
 import { queryClient } from '@/api/provider';
 
-import { offerOf, placeToMoveTo, startPlaceReconcile } from './place-reconcile';
+import { OFFER_REPEAT_MS, offerOf, placeToMoveTo, startPlaceReconcile } from './place-reconcile';
 import { LONG_PAUSE_MS, selectBookPosition, selectIsPlaying, usePlayer } from './store';
 /* eslint-enable import/first */
 
@@ -645,6 +645,28 @@ describe('on a server with listening_sync', () => {
     mockToast.mockClear();
     await backInFront();
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('a device playing on is offered once in OFFER_REPEAT_MS, not with each place it sends', async () => {
+    await loadedAndPaused();
+    const playingOn = (updated_at: string, position: number) => async () =>
+      record({
+        device_id: 'this-device',
+        position: 105,
+        version: 9,
+        other_place: { position, device_id: 'tablet', device_name: 'Tablet', updated_at },
+      });
+    mockServer = playingOn('2026-10-08T11:50:00Z', 800);
+    await backInFront();
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    // Its next span moved the place on: a new key, but the same device a moment later.
+    mockServer = playingOn('2026-10-08T11:50:15Z', 815);
+    await backInFront();
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    jest.setSystemTime(Date.now() + OFFER_REPEAT_MS);
+    mockServer = playingOn('2026-10-08T12:00:15Z', 900);
+    await backInFront();
+    expect(mockToast).toHaveBeenCalledTimes(2);
   });
 
   it("another device's newer row still moves the book with Undo (placeToMoveTo unchanged)", async () => {
