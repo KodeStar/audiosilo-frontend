@@ -161,9 +161,11 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           />
         ) : null}
         {/* A kid's account can't pair a device (the server refuses it, 403 kid_account): its
-            owner signs it in, as the password card says. */}
+            owner signs it in, as the password card says. A password change ends the
+            open pairing codes, so it puts away a code on screen (the key). */}
         {!kid ? (
           <PairDeviceCard
+            key={password.changes}
             connectionId={cid}
             serverName={serverName}
             className={cn(beside && 'flex-1')}

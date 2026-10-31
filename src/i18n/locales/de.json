@@ -232,10 +232,12 @@
       "bodySet": "Damit meldest du dich auf einem neuen Gerät oder im Browser an.",
       "bodyNotSet": "Du hast noch kein Passwort festgelegt. Leg eines fest, damit du dich auf einem neuen Gerät anmelden kannst.",
       "dialogSet": "Mindestens {{count}} Zeichen. Deine anderen Geräte bleiben angemeldet.",
-      "dialogChange": "Gib dein aktuelles Passwort und dann das neue ein. Deine anderen Geräte bleiben angemeldet.",
+      "dialogChange": "Gib dein aktuelles Passwort und dann das neue ein. Dieses Gerät bleibt angemeldet; deine anderen Geräte werden eventuell abgemeldet.",
       "doneSet": "Passwort festgelegt",
       "doneChanged": "Passwort geändert",
       "doneBody": "Deine anderen Geräte bleiben angemeldet.",
+      "doneSignedOut": "Deine anderen Geräte sind abgemeldet. Dieses bleibt angemeldet.",
+      "doneThisDevice": "Dieses Gerät bleibt angemeldet.",
       "bodyMember": "{{owner}} hat dieses Konto eingerichtet, daher hat es noch kein Passwort. Leg eines fest, um dich selbst auf einem neuen Gerät anzumelden.",
       "bodyKid": "Ein Kinderkonto hat kein Passwort. {{owner}} meldet es auf einem neuen Gerät an.",
       "bodyKidNoOwner": "Ein Kinderkonto hat kein Passwort. Ein Erwachsener meldet es auf einem neuen Gerät an."

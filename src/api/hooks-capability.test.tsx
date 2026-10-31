@@ -167,6 +167,7 @@ import {
   useSetCollectionItems,
   useSetCollectionShares,
   useSetListeningGoal,
+  useReadMyDevicesAgain,
   useSetQueue,
   useSetRating,
   useShareTargets,
@@ -931,6 +932,52 @@ describe('Phase 1b gated mutations', () => {
     // Not known yet is not "unsupported": the error says which it is.
     expect(error).toMatchObject({ capability: 'queue', unknown: true });
     expect(mockClients.c1.addToQueue).not.toHaveBeenCalled();
+  });
+});
+
+describe('useReadMyDevicesAgain', () => {
+  it('reads the devices again into the list, a fresh cache entry notwithstanding', async () => {
+    const { result, qc } = await mountMutation({ my_devices: true }, 'my_devices', () =>
+      useReadMyDevicesAgain(),
+    );
+    // A just-read list that still shows a device a password change has ended.
+    qc.setQueryData(qk.myDevices('c1'), [
+      { id: 9, current: true },
+      { id: 3, current: false },
+    ]);
+    const now = [{ id: 9, kind: 'session', current: true }];
+    mockClients.c1.myDevices.mockResolvedValueOnce(now as never);
+    let read: unknown;
+    await act(async () => {
+      read = await result.current.m();
+    });
+    expect(read).toEqual(now);
+    expect(mockClients.c1.myDevices).toHaveBeenCalledTimes(1);
+    expect(qc.getQueryData(qk.myDevices('c1'))).toEqual(now);
+  });
+
+  it('asks nothing of a server without my_devices, and answers undefined', async () => {
+    const { result } = await mountMutation(allBut('my_devices'), 'my_devices', () =>
+      useReadMyDevicesAgain(),
+    );
+    let read: unknown = 'unset';
+    await act(async () => {
+      read = await result.current.m();
+    });
+    expect(read).toBeUndefined();
+    expect(mockClients.c1.myDevices).not.toHaveBeenCalled();
+  });
+
+  it('answers undefined when the read fails', async () => {
+    const { result } = await mountMutation({ my_devices: true }, 'my_devices', () =>
+      useReadMyDevicesAgain(),
+    );
+    mockClients.c1.myDevices.mockRejectedValueOnce(new Error('offline'));
+    let read: unknown = 'unset';
+    await act(async () => {
+      read = await result.current.m();
+    });
+    expect(read).toBeUndefined();
   });
 });
 

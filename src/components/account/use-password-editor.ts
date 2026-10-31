@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ApiError } from '@/api/client';
+import { useReadMyDevicesAgain } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { toast } from '@/components/ui/toast';
 import { useSession } from '@/stores/session';
@@ -19,6 +20,7 @@ export const PW_MIN = 8;
 export function usePasswordEditor(connectionId: string) {
   const { t } = useTranslation();
   const api = useOptionalApi(connectionId);
+  const readDevicesAgain = useReadMyDevicesAgain(connectionId);
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user ?? null);
   const setConnectionUser = useSession((s) => s.setConnectionUser);
   const hasPassword = !!user?.has_password;
@@ -28,6 +30,9 @@ export function usePasswordEditor(connectionId: string) {
   const [current, setCurrent] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Counts the changes of an existing password: a server that ends the person's other
+  // sessions on one ends their open pairing codes too, so a code on screen is put away.
+  const [changes, setChanges] = useState(0);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -58,12 +63,27 @@ export function usePasswordEditor(connectionId: string) {
     }
     setBusy(false);
     close();
+    if (hasPassword) setChanges((n) => n + 1);
+    // What the toast says of the other devices is what the server did: setting a first
+    // password ends nothing; a change ends the other sessions on a server since
+    // server#281 and none before, with nothing on the wire telling them apart, so the
+    // devices read again (which also clears the ended ones from the list) answer. No
+    // answer: only this device is sure.
+    const devices = hasPassword ? await readDevicesAgain() : undefined;
+    const body = !hasPassword
+      ? 'account.password.doneBody'
+      : !devices
+        ? 'account.password.doneThisDevice'
+        : devices.some((d) => d.kind === 'session' && !d.current)
+          ? 'account.password.doneBody'
+          : 'account.password.doneSignedOut';
     toast({
       title: t(hasPassword ? 'account.password.doneChanged' : 'account.password.doneSet'),
-      description: t('account.password.doneBody'),
+      description: t(body),
     });
-    // The change has landed; refreshing has_password is best-effort and must not
-    // surface as a "could not update the password" error if /me hiccups.
+    // The change has landed; refreshing has_password (and has_recovery, which a change
+    // clears) is best-effort and must not surface as a "could not update the password"
+    // error if /me hiccups.
     try {
       await setConnectionUser(connectionId, await api.me());
     } catch {
@@ -84,6 +104,7 @@ export function usePasswordEditor(connectionId: string) {
     error,
     canSave,
     save,
+    changes,
   };
 }
 

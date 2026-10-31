@@ -104,6 +104,7 @@ import type {
   Library,
   ListeningGoalStatus,
   MyBookmark,
+  MyDevice,
   MyNote,
   Note,
   NotePatch,
@@ -2311,6 +2312,31 @@ export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } 
     connectionId,
     { ready: opts.enabled !== false },
   );
+}
+
+/** Reads the caller's devices again now (capability `my_devices`), into the list's cache
+ * so the devices list shows the answer: after a password change, which ends the other
+ * sessions on a server since server#281. Resolves to the list, or `undefined` when the
+ * server lists no devices or did not answer (nothing is sure then). */
+export function useReadMyDevicesAgain(
+  connectionId?: string,
+): () => Promise<MyDevice[] | undefined> {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability('my_devices', connectionId) === true;
+  const qc = useQueryClient();
+  return useCallback(async () => {
+    if (!supported || !api) return undefined;
+    try {
+      return await qc.fetchQuery({
+        queryKey: qk.myDevices(cid),
+        queryFn: ({ signal }) => api.myDevices(signal),
+        staleTime: 0,
+      });
+    } catch {
+      return undefined;
+    }
+  }, [api, cid, qc, supported]);
 }
 
 /** Sign out one of the caller's devices (capability `my_devices`); resolves to

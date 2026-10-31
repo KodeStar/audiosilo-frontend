@@ -232,10 +232,12 @@
       "bodySet": "Usala per accedere da un nuovo dispositivo o da un browser.",
       "bodyNotSet": "Non hai ancora una password. Impostane una per poter accedere da un nuovo dispositivo.",
       "dialogSet": "Almeno {{count}} caratteri. Gli altri tuoi dispositivi restano connessi.",
-      "dialogChange": "Inserisci la password attuale, poi quella nuova. Gli altri tuoi dispositivi restano connessi.",
+      "dialogChange": "Inserisci la password attuale, poi quella nuova. Questo dispositivo resta connesso; gli altri tuoi dispositivi potrebbero essere disconnessi.",
       "doneSet": "Password impostata",
       "doneChanged": "Password cambiata",
       "doneBody": "Gli altri tuoi dispositivi restano connessi.",
+      "doneSignedOut": "Gli altri tuoi dispositivi sono stati disconnessi. Questo resta connesso.",
+      "doneThisDevice": "Questo dispositivo resta connesso.",
       "bodyMember": "{{owner}} ha creato questo account, quindi non ha ancora una password. Impostane una per accedere in autonomia da un nuovo dispositivo.",
       "bodyKid": "Un account per bambini non ha password. {{owner}} lo collega su un nuovo dispositivo.",
       "bodyKidNoOwner": "Un account per bambini non ha password. Un adulto lo collega su un nuovo dispositivo."

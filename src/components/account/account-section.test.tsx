@@ -21,6 +21,7 @@ jest.mock('@/api/hooks', () => {
         ? { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true }
         : { data: undefined, isPending: true, isError: false, isSuccess: false },
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
+    useReadMyDevicesAgain: () => async () => undefined,
     // Gated like the real hook: nothing without the flag.
     useServerAddresses: (cid: string) => ({
       data: mockCaps[cid]?.addresses ? mockAddresses[cid] : undefined,
@@ -33,9 +34,17 @@ jest.mock('@/api/hooks', () => {
 
 const mockLogout = jest.fn(async () => {});
 const mockMe = jest.fn();
+const mockPair = jest.fn();
+const mockSetPassword = jest.fn(async () => {});
 jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({ logout: mockLogout, me: mockMe, pair: jest.fn() }),
+  useOptionalApi: () => ({
+    logout: mockLogout,
+    me: mockMe,
+    pair: mockPair,
+    setPassword: mockSetPassword,
+  }),
 }));
+jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 
 type Conn = {
   id: string;
@@ -253,6 +262,31 @@ describe('AccountSection', () => {
     });
     await mountWithPortal(<AccountSection connectionId="c1" />);
     expect(screen.getByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
+  });
+
+  it('puts away a pairing code on screen once the password is changed (it ended the code)', async () => {
+    mockPair.mockResolvedValue({
+      server_name: 'Home',
+      base_url: 'https://home.example',
+      pairing_token: 'tok',
+      uri: 'audiosilo://connect?token=tok',
+      web_url: 'https://home.example/web/connect?token=tok',
+      qr_png_data_uri: 'data:image/png;base64,AA==',
+      links: { web: 'https://home.example/web', admin: 'https://home.example/admin' },
+    });
+    mockMe.mockResolvedValue(user());
+    await mountWithPortal(<AccountSection connectionId="c1" />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Show a pairing code' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Show a pairing code' })).toBeNull(),
+    );
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Change password' }));
+    await fireEvent.changeText(screen.getByLabelText('Current password'), 'oldpassword');
+    await fireEvent.changeText(screen.getByLabelText('New password'), 'newpassword');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockSetPassword).toHaveBeenCalled());
+    expect(await screen.findByRole('button', { name: 'Show a pairing code' })).toBeTruthy();
   });
 
   it('switches between signed-in servers when no server is given', async () => {

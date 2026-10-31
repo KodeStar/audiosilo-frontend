@@ -232,10 +232,12 @@
       "bodySet": "Utilisez-le pour vous connecter sur un nouvel appareil ou dans un navigateur.",
       "bodyNotSet": "Vous n'avez pas encore de mot de passe. Définissez-en un pour pouvoir vous connecter sur un nouvel appareil.",
       "dialogSet": "Au moins {{count}} caractères. Vos autres appareils restent connectés.",
-      "dialogChange": "Saisissez votre mot de passe actuel, puis le nouveau. Vos autres appareils restent connectés.",
+      "dialogChange": "Saisissez votre mot de passe actuel, puis le nouveau. Cet appareil reste connecté. Vos autres appareils peuvent être déconnectés.",
       "doneSet": "Mot de passe défini",
       "doneChanged": "Mot de passe modifié",
       "doneBody": "Vos autres appareils restent connectés.",
+      "doneSignedOut": "Vos autres appareils sont déconnectés. Celui-ci reste connecté.",
+      "doneThisDevice": "Cet appareil reste connecté.",
       "bodyMember": "{{owner}} a créé ce compte, il n'a donc pas encore de mot de passe. Définissez-en un pour vous connecter vous-même sur un nouvel appareil.",
       "bodyKid": "Un compte enfant n'a pas de mot de passe. {{owner}} le connecte sur un nouvel appareil.",
       "bodyKidNoOwner": "Un compte enfant n'a pas de mot de passe. Un adulte le connecte sur un nouvel appareil."
