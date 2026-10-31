@@ -232,10 +232,12 @@
       "bodySet": "Úsala para iniciar sesión en un dispositivo nuevo o en un navegador.",
       "bodyNotSet": "Aún no tienes contraseña. Crea una para poder iniciar sesión en un dispositivo nuevo.",
       "dialogSet": "Al menos {{count}} caracteres. Tus otros dispositivos siguen con la sesión iniciada.",
-      "dialogChange": "Escribe tu contraseña actual y luego la nueva. Tus otros dispositivos siguen con la sesión iniciada.",
+      "dialogChange": "Escribe tu contraseña actual y luego la nueva. Este dispositivo sigue con la sesión iniciada; puede que se cierre la sesión en tus otros dispositivos.",
       "doneSet": "Contraseña creada",
       "doneChanged": "Contraseña cambiada",
       "doneBody": "Tus otros dispositivos siguen con la sesión iniciada.",
+      "doneSignedOut": "Se ha cerrado la sesión en tus otros dispositivos. Este sigue con la sesión iniciada.",
+      "doneThisDevice": "Este dispositivo sigue con la sesión iniciada.",
       "bodyMember": "{{owner}} configuró esta cuenta, así que aún no tiene contraseña. Crea una para iniciar sesión por tu cuenta en un dispositivo nuevo.",
       "bodyKid": "Una cuenta infantil no tiene contraseña. {{owner}} inicia su sesión en un dispositivo nuevo.",
       "bodyKidNoOwner": "Una cuenta infantil no tiene contraseña. Un adulto inicia su sesión en un dispositivo nuevo."

@@ -232,10 +232,12 @@
       "bodySet": "Sign in with it on a new device or in a browser.",
       "bodyNotSet": "You haven't set a password. Set one so you can sign in on a new device.",
       "dialogSet": "At least {{count}} characters. Your other devices stay signed in.",
-      "dialogChange": "Enter your current password, then the new one. Your other devices stay signed in.",
+      "dialogChange": "Enter your current password, then the new one. This device stays signed in; your other devices may be signed out.",
       "doneSet": "Password set",
       "doneChanged": "Password changed",
       "doneBody": "Your other devices stay signed in.",
+      "doneSignedOut": "Your other devices are signed out. This one stays signed in.",
+      "doneThisDevice": "This device stays signed in.",
       "bodyMember": "{{owner}} set up this account, so it has no password yet. Set one to sign in on a new device yourself.",
       "bodyKid": "A kid's account has no password. {{owner}} signs it in on a new device.",
       "bodyKidNoOwner": "A kid's account has no password. A grown-up signs it in on a new device."

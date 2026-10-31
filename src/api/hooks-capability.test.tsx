@@ -1,5 +1,6 @@
 import {
   type InfiniteData,
+  onlineManager,
   QueryClient,
   QueryClientProvider,
   useInfiniteQuery,
@@ -167,6 +168,7 @@ import {
   useSetCollectionItems,
   useSetCollectionShares,
   useSetListeningGoal,
+  useReadMyDevicesAgain,
   useSetQueue,
   useSetRating,
   useShareTargets,
@@ -931,6 +933,107 @@ describe('Phase 1b gated mutations', () => {
     // Not known yet is not "unsupported": the error says which it is.
     expect(error).toMatchObject({ capability: 'queue', unknown: true });
     expect(mockClients.c1.addToQueue).not.toHaveBeenCalled();
+  });
+});
+
+describe('useReadMyDevicesAgain', () => {
+  it('reads the devices again into the list, a fresh cache entry notwithstanding', async () => {
+    const { result, qc } = await mountMutation({ my_devices: true }, 'my_devices', () =>
+      useReadMyDevicesAgain(),
+    );
+    // A just-read list that still shows a device a password change has ended.
+    qc.setQueryData(qk.myDevices('c1'), [
+      { id: 9, current: true },
+      { id: 3, current: false },
+    ]);
+    const now = [{ id: 9, kind: 'session', current: true }];
+    mockClients.c1.myDevices.mockResolvedValueOnce(now as never);
+    let read: unknown;
+    await act(async () => {
+      read = await result.current.m();
+    });
+    expect(read).toEqual(now);
+    expect(mockClients.c1.myDevices).toHaveBeenCalledTimes(1);
+    expect(qc.getQueryData(qk.myDevices('c1'))).toEqual(now);
+  });
+
+  it('joins no read the list holds offline: it asks again, and answers', async () => {
+    const r = await mount({ c1: { my_devices: true } }, () => ({
+      list: useMyDevices(),
+      m: useReadMyDevicesAgain(),
+      known: useCapability('my_devices'),
+    }));
+    await waitFor(() => expect(r.result.current.list.isSuccess).toBe(true));
+    const qc = queryClients[queryClients.length - 1];
+    onlineManager.setOnline(false);
+    try {
+      // The list's own read again, held for the online flag (paused).
+      void qc.refetchQueries({ queryKey: qk.myDevices('c1') });
+      await waitFor(() => expect(qc.getQueryState(qk.myDevices('c1'))?.fetchStatus).toBe('paused'));
+      const now = [{ id: 9, kind: 'session', current: true }];
+      mockClients.c1.myDevices.mockResolvedValueOnce(now as never);
+      let read: unknown;
+      await act(async () => {
+        read = await r.result.current.m();
+      });
+      expect(read).toEqual(now);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('drops a read sent before the change and answers with its own', async () => {
+    const r = await mount({ c1: { my_devices: true } }, () => ({
+      list: useMyDevices(),
+      m: useReadMyDevicesAgain(),
+      known: useCapability('my_devices'),
+    }));
+    await waitFor(() => expect(r.result.current.list.isSuccess).toBe(true));
+    const qc = queryClients[queryClients.length - 1];
+    // A read of the list still under way, sent before the change landed.
+    const before = [
+      { id: 9, kind: 'session', current: true },
+      { id: 3, kind: 'session', current: false },
+    ];
+    let answerBefore: (v: unknown) => void = () => {};
+    mockClients.c1.myDevices.mockImplementationOnce(
+      () => new Promise((resolve) => (answerBefore = resolve)) as never,
+    );
+    void qc.refetchQueries({ queryKey: qk.myDevices('c1') });
+    await waitFor(() => expect(qc.getQueryState(qk.myDevices('c1'))?.fetchStatus).toBe('fetching'));
+    const now = [{ id: 9, kind: 'session', current: true }];
+    mockClients.c1.myDevices.mockResolvedValueOnce(now as never);
+    let read: unknown;
+    await act(async () => {
+      read = await r.result.current.m();
+    });
+    answerBefore(before);
+    expect(read).toEqual(now);
+    await waitFor(() => expect(qc.getQueryData(qk.myDevices('c1'))).toEqual(now));
+  });
+
+  it('asks nothing of a server without my_devices, and answers undefined', async () => {
+    const { result } = await mountMutation(allBut('my_devices'), 'my_devices', () =>
+      useReadMyDevicesAgain(),
+    );
+    let read: unknown = 'unset';
+    await act(async () => {
+      read = await result.current.m();
+    });
+    expect(read).toBeUndefined();
+    expect(mockClients.c1.myDevices).not.toHaveBeenCalled();
+  });
+
+  it('answers undefined when the read fails', async () => {
+    const { result } = await mountMutation({ my_devices: true }, 'my_devices', () =>
+      useReadMyDevicesAgain(),
+    );
+    mockClients.c1.myDevices.mockRejectedValueOnce(new Error('offline'));
+    let read: unknown = 'unset';
+    await act(async () => {
+      read = await result.current.m();
+    });
+    expect(read).toBeUndefined();
   });
 });
 

@@ -1,11 +1,14 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
-import type { User } from '@/api/types';
+import type { MyDevice, User } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 const mockApi = { setPassword: jest.fn(), me: jest.fn() };
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => mockApi }));
+// The devices read again after a change (`undefined`: no list, or no answer).
+const mockReadDevices = jest.fn<Promise<MyDevice[] | undefined>, []>();
+jest.mock('@/api/hooks', () => ({ useReadMyDevicesAgain: () => mockReadDevices }));
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 
@@ -34,6 +37,28 @@ function Harness() {
   );
 }
 
+const device = (over: Partial<MyDevice>): MyDevice => ({
+  id: 1,
+  kind: 'session',
+  name: 'Phone',
+  client: null,
+  created_at: '2026-10-01T00:00:00.000Z',
+  last_seen: null,
+  last_ip: '',
+  current: false,
+  ...over,
+});
+
+/** Changes an existing password through the dialog. */
+async function changePassword() {
+  mockUser = user({ has_password: true });
+  await mountWithPortal(<Harness />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Change password' }));
+  await fireEvent.changeText(screen.getByLabelText('Current password'), 'oldpassword');
+  await fireEvent.changeText(screen.getByLabelText('New password'), 'newpassword');
+  await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+}
+
 const user = (over: Partial<User>): User => ({
   id: 1,
   username: 'chris',
@@ -48,6 +73,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockApi.setPassword.mockResolvedValue(undefined);
   mockApi.me.mockResolvedValue(user({ has_password: true }));
+  mockReadDevices.mockResolvedValue([device({ id: 9, current: true })]);
 });
 
 describe('password card and dialog', () => {
@@ -65,6 +91,8 @@ describe('password card and dialog', () => {
       title: 'Password set',
       description: 'Your other devices stay signed in.',
     });
+    // A first password ends no session: nothing to read again.
+    expect(mockReadDevices).not.toHaveBeenCalled();
     // has_password is refreshed on this connection.
     await waitFor(() =>
       expect(mockSetConnectionUser).toHaveBeenCalledWith('c', expect.objectContaining({})),
@@ -85,6 +113,31 @@ describe('password card and dialog', () => {
       expect(mockApi.setPassword).toHaveBeenCalledWith('newpassword', 'oldpassword'),
     );
     expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Password changed' }));
+  });
+
+  it.each<[string, MyDevice[] | undefined, string]>([
+    [
+      'says the others are signed out',
+      [device({ id: 9, current: true })],
+      'Your other devices are signed out. This one stays signed in.',
+    ],
+    [
+      'says the others stay signed in when the server kept them (an older server)',
+      [device({ id: 9, current: true }), device({ id: 3 })],
+      'Your other devices stay signed in.',
+    ],
+    [
+      'claims only this device when the devices cannot be read',
+      undefined,
+      'This device stays signed in.',
+    ],
+  ])('reads the devices again after a change, and %s', async (_, devices, description) => {
+    mockReadDevices.mockResolvedValue(devices);
+    await changePassword();
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Password changed', description }),
+    );
+    expect(mockReadDevices).toHaveBeenCalledTimes(1);
   });
 
   it('says why a short password from the keyboard is not saved', async () => {

@@ -104,6 +104,7 @@ import type {
   Library,
   ListeningGoalStatus,
   MyBookmark,
+  MyDevice,
   MyNote,
   Note,
   NotePatch,
@@ -384,6 +385,16 @@ export function addressesQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.addresses(cid),
     queryFn: client ? ({ signal }) => client.addresses(signal) : skipToken,
+  });
+}
+
+/** The caller's own signed-in devices (`GET /me/devices`). Ask only a server with
+ * `my_devices` (pass no client otherwise). Read by `useMyDevices` and, after a password
+ * change, by `useReadMyDevicesAgain`. */
+export function myDevicesQuery(cid: string, client: MaybeClient) {
+  return queryOptions({
+    queryKey: qk.myDevices(cid),
+    queryFn: client ? ({ signal }) => client.myDevices(signal) : skipToken,
   });
 }
 
@@ -2304,13 +2315,43 @@ export function useClearListeningGoal(connectionId?: string) {
  * `my_devices`). `enabled: false` asks nothing (its `data` may still be a cached answer:
  * ignore it then). */
 export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } = {}) {
-  return useCapabilityQuery(
-    'my_devices',
-    qk.myDevices,
-    (api, signal) => api.myDevices(signal),
-    connectionId,
-    { ready: opts.enabled !== false },
+  const api = useOptionalApi(connectionId);
+  const supported = useCapability('my_devices', connectionId) === true;
+  return useQuery(
+    myDevicesQuery(useCid(connectionId), supported && opts.enabled !== false ? api : null),
   );
+}
+
+/** Reads the caller's devices again now (capability `my_devices`), into the list's cache
+ * so the devices list shows the answer: after a password change, which ends the other
+ * sessions on a server since server#281. Resolves to the list, or `undefined` when the
+ * server lists no devices or did not answer (nothing is sure then). */
+export function useReadMyDevicesAgain(
+  connectionId?: string,
+): () => Promise<MyDevice[] | undefined> {
+  const api = useOptionalApi(connectionId);
+  const cid = useCid(connectionId);
+  const supported = useCapability('my_devices', connectionId) === true;
+  const qc = useQueryClient();
+  return useCallback(async () => {
+    if (!supported || !api) return undefined;
+    try {
+      // A read already under way is dropped, not joined: one the list's hook holds for
+      // the online flag would hold back the toast for good (as `fetchFailFast` drops a
+      // paused one), and one sent before the change may answer with the ended devices.
+      await qc.cancelQueries({ queryKey: qk.myDevices(cid), exact: true });
+      // Asked once, whatever the online flag says: a held or retried read would hold
+      // back the toast.
+      return await qc.fetchQuery({
+        ...myDevicesQuery(cid, api),
+        staleTime: 0,
+        networkMode: 'always',
+        retry: false,
+      });
+    } catch {
+      return undefined;
+    }
+  }, [api, cid, qc, supported]);
 }
 
 /** Sign out one of the caller's devices (capability `my_devices`); resolves to

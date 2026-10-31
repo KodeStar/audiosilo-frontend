@@ -232,10 +232,12 @@
       "bodySet": "Use-a para iniciar sessão num novo dispositivo ou num navegador.",
       "bodyNotSet": "Ainda não definiu uma palavra-passe. Defina uma para poder iniciar sessão num novo dispositivo.",
       "dialogSet": "Pelo menos {{count}} caracteres. Os seus outros dispositivos mantêm a sessão iniciada.",
-      "dialogChange": "Introduza a palavra-passe atual e depois a nova. Os seus outros dispositivos mantêm a sessão iniciada.",
+      "dialogChange": "Introduza a palavra-passe atual e depois a nova. Este dispositivo mantém a sessão iniciada; a sessão pode ser terminada nos seus outros dispositivos.",
       "doneSet": "Palavra-passe definida",
       "doneChanged": "Palavra-passe alterada",
       "doneBody": "Os seus outros dispositivos mantêm a sessão iniciada.",
+      "doneSignedOut": "A sessão foi terminada nos seus outros dispositivos. Este mantém a sessão iniciada.",
+      "doneThisDevice": "Este dispositivo mantém a sessão iniciada.",
       "bodyMember": "{{owner}} configurou esta conta, por isso ainda não tem palavra-passe. Defina uma para iniciar sessão por conta própria num novo dispositivo.",
       "bodyKid": "Uma conta de criança não tem palavra-passe. {{owner}} inicia a sessão da conta num novo dispositivo.",
       "bodyKidNoOwner": "Uma conta de criança não tem palavra-passe. Um adulto inicia a sessão da conta num novo dispositivo."
