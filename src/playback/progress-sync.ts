@@ -117,28 +117,31 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
-/** What waits to reach a server: the legacy queue's saves, and Sync v2's listens (the
- * outbox's events plus the open span while its server can't be reached), all of them or
- * only `connectionId`'s. Read from storage only (no outbox import: it imports this). */
-export async function pendingSaves(
-  connectionId?: string,
-): Promise<{ saves: number; listens: number }> {
-  const [queue, outbox, span] = await Promise.all([
-    readQueue(),
+/** Sync v2's stored backlog: the outbox's events and the open span, read from storage only
+ * (no outbox import: it imports this). Not an array: none; a span with no connection: none. */
+async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; span: OpenSpan | null }> {
+  const [outbox, span] = await Promise.all([
     getItem<OutboxEntry[]>(LISTENING_OUTBOX_KEY),
     getItem<OpenSpan | null>(LISTENING_OPEN_SPAN_KEY),
   ]);
+  return {
+    outbox: Array.isArray(outbox) ? outbox : [],
+    span: span && typeof span.connectionId === 'string' ? span : null,
+  };
+}
+
+/** What waits to reach a server: the legacy queue's saves, and Sync v2's listens (the
+ * outbox's events plus the open span while its server can't be reached), all of them or
+ * only `connectionId`'s. */
+export async function pendingSaves(
+  connectionId?: string,
+): Promise<{ saves: number; listens: number }> {
+  const [queue, { outbox, span }] = await Promise.all([readQueue(), readListeningBacklog()]);
   const mine = (e: { connectionId?: unknown } | null | undefined) =>
     !!e && (connectionId === undefined || e.connectionId === connectionId);
   const saves = Array.isArray(queue) ? queue.filter(mine).length : 0;
-  let listens = Array.isArray(outbox) ? outbox.filter(mine).length : 0;
-  if (
-    span &&
-    mine(span) &&
-    typeof span.connectionId === 'string' &&
-    !isReachable(span.connectionId)
-  )
-    listens++;
+  let listens = outbox.filter(mine).length;
+  if (span && mine(span) && !isReachable(span.connectionId)) listens++;
   return { saves, listens };
 }
 
@@ -191,25 +194,23 @@ export async function loadInitialProgress(
 export type LocalPlaces = {
   mirror: Record<string, ProgressSave>;
   queue: ProgressSave[];
-  pending?: Set<string>;
+  pending: Set<string>;
 };
 
 /** All three, read at once: for a reader that looks many books up together (the car
  * snapshot's play specs), a few storage reads in all instead of a few per book. */
 export async function readLocalPlaces(): Promise<LocalPlaces> {
-  const [mirror, queue, outbox, span] = await Promise.all([
+  const [mirror, queue, { outbox, span }] = await Promise.all([
     readMirrorMap(),
     readQueue(),
-    getItem<OutboxEntry[]>(LISTENING_OUTBOX_KEY),
-    getItem<OpenSpan | null>(LISTENING_OPEN_SPAN_KEY),
+    readListeningBacklog(),
   ]);
   const pending = new Set<string>();
-  for (const e of Array.isArray(outbox) ? outbox : []) {
+  for (const e of outbox) {
     if (typeof e?.connectionId === 'string' && e.event)
       pending.add(contentKey(e.connectionId, e.event.library_id, e.event.path));
   }
-  if (span && typeof span.connectionId === 'string')
-    pending.add(contentKey(span.connectionId, span.libraryId, span.path));
+  if (span) pending.add(contentKey(span.connectionId, span.libraryId, span.path));
   return { mirror, queue, pending };
 }
 
@@ -226,23 +227,21 @@ export function resumeLookupOf(
   libraryId: number,
   path: string,
 ): ResumeLookup {
-  const mirror = places.mirror[contentKey(connectionId, libraryId, path)] ?? null;
+  const key = contentKey(connectionId, libraryId, path);
+  const mirror = places.mirror[key] ?? null;
   const queued =
     places.queue.find(
       (s) => s.connectionId === connectionId && s.libraryId === libraryId && s.path === path,
     ) ?? null;
   const fromMirror = mirrorAsProgress(libraryId, path, mirror);
   const fromQueue = mirrorAsProgress(libraryId, path, queued);
-  let best = newest(newest(server ?? null, fromMirror), fromQueue);
-  if (
+  const newestLocal = newest(newest(server ?? null, fromMirror), fromQueue);
+  const best =
     server &&
-    fromMirror &&
-    best === fromMirror &&
-    serverFinishWins(server, fromMirror, mirror?.ack_version) &&
-    !places.pending?.has(contentKey(connectionId, libraryId, path))
-  ) {
-    best = server;
-  }
+    newestLocal === fromMirror &&
+    serverFinishWins(server, fromMirror, mirror?.ack_version, places.pending.has(key))
+      ? server
+      : newestLocal;
   if (best) {
     const filed = filePlaceOf(
       best,
@@ -269,14 +268,15 @@ export function resumeLookupOf(
  * own (Sync v2: a listen never unfinishes), so "Listen again" on the finished book starts it
  * again (`unfinish`, then a `restart` span) rather than resuming the old place. Not when
  * this device's own unfinish could still be on its way: its queued save wins as before, and
- * a book with events waiting is left out by the caller.
+ * so does its place while the book has events `waiting` to be sent.
  */
 function serverFinishWins(
   server: Progress,
-  mine: Progress,
+  mine: Progress | null,
   ackVersion: number | undefined,
+  waiting: boolean,
 ): boolean {
-  if (!server.finished || mine.finished) return false;
+  if (!mine || waiting || !server.finished || mine.finished) return false;
   const finishedAt = server.finished_at ? Date.parse(server.finished_at) : Number.NaN;
   if (Number.isFinite(finishedAt) && finishedAt > timeOf(mine)) return true;
   return server.version > (ackVersion ?? 0);

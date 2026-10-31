@@ -817,7 +817,13 @@ describe('resume against a newer server row (live verification F1, F2)', () => {
   const lookup = async (row: Progress, mirror: ProgressSave, pending?: Set<string>) => {
     await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': mirror }));
     const places = await readLocalPlaces();
-    return resumeLookupOf(row, pending ? { ...places, pending } : places, 'c1', 1, 'A/Book');
+    return resumeLookupOf(
+      row,
+      { ...places, pending: pending ?? places.pending },
+      'c1',
+      1,
+      'A/Book',
+    );
   };
 
   it("another device's finish this device never saw wins over its newer unfinished place", async () => {
