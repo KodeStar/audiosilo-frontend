@@ -188,6 +188,7 @@ keep this index in step (one line per topic).
   - Never navigate while the app is in the background
   - Never restart an in-progress book from 0
   - A loaded book picks up another device's place
+  - Listening sync
   - Stall → error watchdog lives in shared JS
   - Why not interpret engine events
   - A browser autoplay refusal is a pause, not an error

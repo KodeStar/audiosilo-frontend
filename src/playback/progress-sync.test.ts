@@ -7,15 +7,19 @@ import type { Progress } from '@/api/types';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
+  ackVersion,
   flushConnection,
   flushQueue,
   loadInitialProgress,
+  answerOffer,
   mirroredProgress,
   pendingSaveCount,
   type ProgressSave,
   readLocalPlaces,
+  readMirror as readMirrorOf,
   resumeLookupOf,
   saveProgress,
+  writeMirror,
 } from '@/playback/progress-sync';
 
 // babel-jest hoists jest.mock above the imports, so the module under test sees the
@@ -642,5 +646,226 @@ describe('readLocalPlaces / resumeLookupOf', () => {
       kind: 'progress',
       progress: row,
     });
+  });
+});
+
+describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const filed = {
+    ...save,
+    position: 3600,
+    file: 'A/Book/02.mp3',
+    file_pos: 600,
+    updated_at: '2026-01-02T00:00:00Z',
+  };
+
+  it("resume carries this device's file place with its own newest save", async () => {
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+    expect(resumeLookupOf(undefined, await readLocalPlaces(), 'c1', 1, 'A/Book')).toEqual({
+      kind: 'progress',
+      progress: expect.objectContaining({ position: 3600 }),
+      file: { path: 'A/Book/02.mp3', pos: 600 },
+    });
+  });
+
+  it("the server's echo of this device's save keeps the file place; another device's does not", async () => {
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+    const places = await readLocalPlaces();
+    // The server moved the seconds to its own file order: still this device's save.
+    // Stamped with the span's end in server time, a moment after the capture.
+    const echo = makeProgress({
+      position: 4100,
+      device_id: 'dev',
+      updated_at: '2026-01-02T00:00:02Z',
+    });
+    expect(resumeLookupOf(echo, places, 'c1', 1, 'A/Book')).toMatchObject({
+      file: { path: 'A/Book/02.mp3', pos: 600 },
+    });
+    const other = makeProgress({
+      position: 9000,
+      device_id: 'phone',
+      updated_at: '2026-01-03T00:00:00Z',
+    });
+    expect(resumeLookupOf(other, places, 'c1', 1, 'A/Book')).not.toHaveProperty('file');
+  });
+
+  it("a place this device reset since (Mark not finished) does not keep the end's file place", async () => {
+    // Finished here: the mirror's file place is the last file's end.
+    await writeMirror({
+      ...filed,
+      position: 100,
+      finished: true,
+      file: 'A/Book/03.mp3',
+      file_pos: 590,
+    });
+    // Marked not finished: the row keeps this device as its writer, its place back at 0.
+    const reset = makeProgress({
+      position: 0,
+      finished: false,
+      version: 6,
+      updated_at: '2026-01-03T00:00:00Z',
+    });
+    const r = await loadInitialProgress(
+      fakeGetApi(async () => reset),
+      'c1',
+      1,
+      'A/Book',
+    );
+    expect(r).toMatchObject({ kind: 'progress', progress: { position: 0, finished: false } });
+    expect(r).not.toHaveProperty('file');
+    expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('file');
+  });
+
+  it('writeMirror keeps ack_version, answered and the file place across a same-place record', async () => {
+    await writeMirror({ ...filed, ack_version: 7, answered: ['phone|x'] });
+    await writeMirror({ ...save, position: 3600, updated_at: '2026-01-03T00:00:00Z' });
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+      ack_version: 7,
+      answered: ['phone|x'],
+      file: 'A/Book/02.mp3',
+      file_pos: 600,
+    });
+    // Another device's place elsewhere drops the file place.
+    await writeMirror({
+      ...save,
+      position: 9000,
+      device_id: 'phone',
+      updated_at: '2026-01-04T00:00:00Z',
+    });
+    const m = await readMirrorOf('c1', 1, 'A/Book');
+    expect(m).not.toHaveProperty('file');
+    expect(m?.ack_version).toBe(7);
+  });
+
+  it('ackVersion never lowers; it creates the record from the row when none exists', async () => {
+    const row = makeProgress({ position: 50, version: 4 });
+    await ackVersion('c1', 1, 'A/Book', 4, row);
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(4);
+    await ackVersion('c1', 1, 'A/Book', 2);
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(4);
+    await ackVersion('c1', 1, 'A/Book', 9);
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(9);
+    // No record and no row: nothing.
+    await ackVersion('c1', 1, 'Else', 3);
+    expect(await readMirrorOf('c1', 1, 'Else')).toBeNull();
+  });
+
+  it('answerOffer acknowledges the row (never lower) and notes each offer once, the newest 20', async () => {
+    await writeMirror(save);
+    const row = makeProgress({ version: 5 });
+    await answerOffer('c1', 1, 'A/Book', row, 'phone|a');
+    await answerOffer('c1', 1, 'A/Book', row, 'phone|a');
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.answered).toEqual(['phone|a']);
+    expect((await readMirrorOf('c1', 1, 'A/Book'))?.ack_version).toBe(5);
+    await ackVersion('c1', 1, 'A/Book', 9);
+    for (let i = 0; i < 25; i++) await answerOffer('c1', 1, 'A/Book', row, `k${i}`);
+    const m = await readMirrorOf('c1', 1, 'A/Book');
+    expect(m?.answered).toHaveLength(20);
+    expect(m?.answered?.[19]).toBe('k24');
+    expect(m?.ack_version).toBe(9);
+  });
+});
+
+describe('resume against a newer server row (live verification F1, F2)', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it("a stale file place of this device's never takes it back from its own newer row", async () => {
+    // The browser lost its last 90 s of writes: the mirror is 90 s behind its own row.
+    const stale = {
+      ...save,
+      position: 16890.6,
+      file: 'A/Book/10.mp3',
+      file_pos: 689.3,
+      updated_at: '2026-10-30T12:00:00.000Z',
+    };
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': stale }));
+    const row = makeProgress({
+      position: 16980.6,
+      version: 40,
+      device_id: 'dev',
+      updated_at: '2026-10-30T12:01:30.000Z',
+    });
+    const api = fakeGetApi(async () => row);
+    const r = await loadInitialProgress(api, 'c1', 1, 'A/Book');
+    expect(r).toEqual({ kind: 'progress', progress: row });
+    // Nor does the mirror carry the stale file place onto the row.
+    expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('file');
+  });
+
+  const finishedRow = (over: Partial<Progress> = {}) =>
+    makeProgress({
+      position: 100,
+      finished: true,
+      version: 9,
+      device_id: 'phone',
+      updated_at: '2026-10-30T03:06:39.000Z',
+      finished_at: '2026-10-30T03:05:00.000Z',
+      ...over,
+    });
+  const mine = (over: Partial<ProgressSave> = {}): ProgressSave => ({
+    ...save,
+    position: 59.6,
+    updated_at: '2026-10-30T03:07:31.000Z',
+    ack_version: 7,
+    ...over,
+  });
+  const lookup = async (row: Progress, mirror: ProgressSave, pending?: Set<string>) => {
+    await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': mirror }));
+    const places = await readLocalPlaces();
+    return resumeLookupOf(
+      row,
+      { ...places, pending: pending ?? places.pending },
+      'c1',
+      1,
+      'A/Book',
+    );
+  };
+
+  it("another device's finish this device never saw wins over its newer unfinished place", async () => {
+    expect(await lookup(finishedRow(), mine())).toEqual({
+      kind: 'progress',
+      progress: finishedRow(),
+    });
+  });
+
+  it('a finish newer than this device place wins even when its version was seen', async () => {
+    const row = finishedRow({ version: 7, finished_at: '2026-10-30T03:08:00.000Z' });
+    expect(await lookup(row, mine())).toMatchObject({ progress: { finished: true } });
+  });
+
+  it("this device's own later place stands when it saw the finished row (its own restart)", async () => {
+    expect(await lookup(finishedRow(), mine({ ack_version: 9 }))).toMatchObject({
+      progress: { finished: false, position: 59.6 },
+    });
+  });
+
+  it("this device's own place stands while its events wait to be sent", async () => {
+    const r = await lookup(finishedRow(), mine(), new Set(['c1:1:A/Book']));
+    expect(r).toMatchObject({ progress: { finished: false, position: 59.6 } });
+  });
+
+  it("this device's queued save stands though the mirror holds the same capture", async () => {
+    // A legacy capture writes the mirror and the queue with one `updated_at`: the tie picks
+    // the mirror's record, and the queued save is still on its way.
+    const queued = mine();
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([queued]));
+    expect(await lookup(finishedRow(), queued)).toMatchObject({
+      progress: { finished: false, position: 59.6 },
+    });
+  });
+
+  it('readLocalPlaces names the books with events waiting', async () => {
+    await AsyncStorage.setItem(
+      'audiosilo.listeningOutbox',
+      JSON.stringify([
+        { connectionId: 'c1', event: { id: 'a', kind: 'listen', library_id: 1, path: 'A/Book' } },
+      ]),
+    );
+    expect((await readLocalPlaces()).pending).toEqual(new Set(['c1:1:A/Book']));
   });
 });

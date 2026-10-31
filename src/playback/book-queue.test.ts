@@ -242,6 +242,46 @@ describe('buildBookQueue', () => {
   });
 });
 
+describe("buildBookQueue's audio length (Sync v2's event duration)", () => {
+  it("is the files' durations summed, though a chapter overhangs the audio", () => {
+    const book = makeBook({
+      rel_path: 'A/Book',
+      is_folder: true,
+      files: [
+        { rel_path: 'A/Book/01.mp3', seq: 1, duration: 60, format: 'mp3', size: 5 },
+        { rel_path: 'A/Book/02.mp3', seq: 2, duration: 100, format: 'mp3', size: 10 },
+      ],
+      chapters: [chapter({ file_index: 1, file_path: 'A/Book/02.mp3', start: 0, end: 140 })],
+    });
+    const q = buildBookQueue(fakeApi, 2, book);
+    expect(q.total).toBe(200); // the timeline reaches the chapter's end
+    expect(q.audio).toBe(160); // the audio does not
+  });
+
+  it('is the single file book duration when there is no file list', () => {
+    const q = buildBookQueue(fakeApi, 2, makeBook({ rel_path: 'A/one.m4b', duration: 300 }));
+    expect(q.audio).toBe(300);
+  });
+
+  it('is unknown (0) when the files were estimated from the chapters or one has no length', () => {
+    const fromChapters = makeBook({
+      rel_path: 'A/Book',
+      is_folder: true,
+      chapters: [chapter({ file_path: 'p1.mp3', start: 0, end: 50 })],
+    });
+    expect(buildBookQueue(fakeApi, 2, fromChapters).audio).toBe(0);
+    const unknown = makeBook({
+      rel_path: 'A/Book',
+      is_folder: true,
+      files: [
+        { rel_path: 'A/Book/01.mp3', seq: 1, duration: 60, format: 'mp3', size: 5 },
+        { rel_path: 'A/Book/02.mp3', seq: 2, duration: 0, format: 'mp3', size: 10 },
+      ],
+    });
+    expect(buildBookQueue(fakeApi, 2, unknown).audio).toBe(0);
+  });
+});
+
 describe('buildChapterClips', () => {
   const spec = (path: string, duration = 0): FileSpec => ({ path, duration, size: 0 });
 

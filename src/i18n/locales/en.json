@@ -205,7 +205,9 @@
         "message_one": "This deletes {{count}} downloaded book on this device and any progress that hasn't synced yet.",
         "message_other": "This deletes {{count}} downloaded books on this device and any progress that hasn't synced yet.",
         "signOut": "This signs this device out of {{name}}. Your listening stays on the server: sign in again to get it back here.",
-        "last": "It's the only server on this device, so AudioSilo goes back to its first step."
+        "last": "It's the only server on this device, so AudioSilo goes back to its first step.",
+        "unsynced_one": "{{count}} listen hasn't synced to {{name}} and will be lost.",
+        "unsynced_other": "{{count}} listens haven't synced to {{name}} and will be lost."
       }
     },
     "signOut": {
@@ -216,7 +218,10 @@
       "setPassword": "Set a password",
       "confirm": "Sign out anyway",
       "downloadsWarning_one": "Signing out also deletes {{count}} book downloaded from this server on this device.",
-      "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device."
+      "downloadsWarning_other": "Signing out also deletes {{count}} books downloaded from this server on this device.",
+      "unsyncedTitle": "Listens not synced",
+      "unsynced_one": "{{count}} listen hasn't synced to {{server}}. Sign out anyway?",
+      "unsynced_other": "{{count}} listens haven't synced to {{server}}. Sign out anyway?"
     },
     "switcher": "Server",
     "none": "Sign in to a server to see its account.",
@@ -304,6 +309,29 @@
     "danger": {
       "title": "Sign out of {{server}}",
       "body": "Removes this server's downloads from this device. Your progress stays on the server."
+    },
+    "listeningSync": {
+      "title": "Listening sync",
+      "waiting_one": "{{count}} listen waiting to sync",
+      "waiting_other": "{{count}} listens waiting to sync",
+      "allSynced": "Everything you listened to is on {{server}}.",
+      "lastSynced": "Last synced {{when}}",
+      "neverSynced": "Not synced from this device yet",
+      "failedTitle": "Couldn't sync",
+      "failedBody": "{{server}} didn't take these. They're kept here for 30 days.",
+      "span": "{{from}} to {{to}}",
+      "finished": "Marked finished",
+      "unfinished": "Marked not finished",
+      "discard": "Discard",
+      "discardLabel": "Discard {{what}}",
+      "reason": {
+        "duration_mismatch": "This copy of the book is a different length from the server's.",
+        "too_old": "It's more than 90 days old.",
+        "no_access": "You can't open this book on the server any more.",
+        "not_found": "The book isn't on the server any more.",
+        "unknown_kind": "The server doesn't know this kind of listen.",
+        "invalid": "The server couldn't read it."
+      }
     }
   },
   "annotations": {
@@ -522,7 +550,9 @@
     "sync": {
       "local": "Saved on this device, will sync",
       "synced": "Progress synced {{when}}",
-      "syncedShort": "Synced {{when}}"
+      "syncedShort": "Synced {{when}}",
+      "listens_one": "{{count}} listen waiting to sync",
+      "listens_other": "{{count}} listens waiting to sync"
     },
     "now": {
       "seriesBook": "{{series}}, book {{position}}",
@@ -1313,6 +1343,12 @@
       "speed": "Speed",
       "started": "Started",
       "finished": "Finished"
+    },
+    "placeOffer": {
+      "device": "On {{device}}: {{place}}",
+      "unknown": "On another device: {{place}}",
+      "play": "Play from there",
+      "playLabel": "Play from {{place}}"
     }
   },
   "bridge": {
@@ -1700,6 +1736,12 @@
     "startFailed": {
       "offline": "Can't reach {{server}} right now.",
       "audio": "Its audio didn't load from the server."
+    },
+    "placeOffer": {
+      "device": "On {{device}} you were at {{place}}. Jump there?",
+      "unknown": "On another device you were at {{place}}. Jump there?",
+      "jump": "Jump",
+      "stay": "Stay"
     }
   },
   "reconnect": {
@@ -2153,7 +2195,8 @@
     "history": {
       "jump": "Jump",
       "jumpLabel": "Jump to {{time}}",
-      "span": "{{from}} to {{to}}"
+      "span": "{{from}} to {{to}}",
+      "waiting": "Waiting to sync"
     }
   },
   "addresses": {

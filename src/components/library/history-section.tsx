@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -11,6 +12,7 @@ import { Text } from '@/components/ui/text';
 import { formatClock, formatShortDay, formatWallClock } from '@/lib/format';
 import {
   groupSessions,
+  type ListeningSession,
   type ListeningSpan,
   localDayStart,
   sessionMinutes,
@@ -18,6 +20,7 @@ import {
 } from '@/lib/listening-sessions';
 import { useDayLabel, useToday } from '@/lib/use-day-label';
 import { cn } from '@/lib/utils';
+import { usePendingListens } from '@/playback/use-listening-sync';
 import { tabularNums } from '@/theme/tabular-nums';
 
 /**
@@ -29,6 +32,10 @@ import { tabularNums } from '@/theme/tabular-nums';
  * page and the player share), the minutes listened, and Jump to where it ended. The rows
  * read the sessions the Journal's Diary reads (`@/lib/listening-sessions`), so the two
  * agree. No speed or device: a history row carries neither.
+ *
+ * Sync v2: this device's listening still waiting in the outbox (`usePendingListens`, a
+ * span played offline) shows among them as its own sessions, marked "Waiting to sync",
+ * until the server's rows replace them.
  *
  * Inline on the book screen it renders nothing when empty; a caller that passes
  * `emptyLabel` (the tabs, the companion) gets an empty state, a loading skeleton and a
@@ -60,8 +67,21 @@ export function HistorySection({
   const dayLabel = useDayLabel(formatShortDay);
   const nameAt = useChapterNamer({ connectionId: cid, libraryId, path });
   const jumpTo = useJumpTo();
+  const waiting = usePendingListens(cid, libraryId, path);
+  const waitingSessions = useMemo(
+    () =>
+      groupSessions(
+        waiting
+          .map((e) => {
+            const span = toSpan({ ...e, id: 0, connectionId: cid, connectionName: '' });
+            return span && { ...span, key: `waiting\n${e.id}` };
+          })
+          .filter((s): s is ListeningSpan => s !== null),
+      ),
+    [waiting, cid],
+  );
 
-  if (!history || history.length === 0) {
+  if ((!history || history.length === 0) && waitingSessions.length === 0) {
     if (!emptyLabel) return null;
     if (!history) {
       return isError ? (
@@ -81,11 +101,15 @@ export function HistorySection({
   const jump = (position: number) =>
     onJump ? onJump(position) : jumpTo({ connectionId: cid, libraryId, path }, position);
   // One row per listening session (the server records a span per pause), as the Diary.
-  const sessions = groupSessions(
-    history
+  const synced = groupSessions(
+    (history ?? [])
       .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
       .filter((s): s is ListeningSpan => s !== null),
   );
+  const sessions: (ListeningSession & { waiting?: true })[] = [
+    ...waitingSessions.map((s) => ({ ...s, waiting: true as const })),
+    ...synced,
+  ].sort((a, b) => b.start - a.start);
 
   return (
     <View className="overflow-hidden rounded-card border border-border bg-card">
@@ -118,6 +142,7 @@ export function HistorySection({
               </Text>
               <Text variant="caption" style={tabularNums}>
                 {t('journal.minutes', { count: sessionMinutes(s) })}
+                {s.waiting ? ` · ${t('journal.history.waiting')}` : null}
               </Text>
             </View>
             <Button

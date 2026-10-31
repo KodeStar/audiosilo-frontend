@@ -7,10 +7,14 @@ import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 import {
+  LISTENING_OPEN_SPAN_KEY,
+  LISTENING_OUTBOX_KEY,
   PROGRESS_MIRROR_KEY as MIRROR_KEY,
   PROGRESS_QUEUE_KEY as QUEUE_KEY,
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
+
+import type { OpenSpan, OutboxEntry } from './listening-outbox';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
@@ -36,6 +40,12 @@ export async function getDeviceId(): Promise<string> {
   return id;
 }
 
+/** The device id once `getDeviceId` has read it this launch, else "" (a synchronous read
+ * for the web's `pagehide`, which can't wait). */
+export function cachedDeviceId(): string {
+  return deviceIdCache ?? '';
+}
+
 export type ProgressSave = {
   /** Which connection (one user on one server) this save belongs to (never replay it
    * against another). */
@@ -49,6 +59,19 @@ export type ProgressSave = {
   device_id: string;
   /** Set at capture time so offline replays reconcile correctly by timestamp. */
   updated_at: string;
+  /** The playing audio file (its rel path) and the seconds into it, captured with the
+   * whole-book `position`: a resume finds the file in the queue's order and plays from the
+   * same place in it, so a place saved on a download's older file order is not read
+   * through the new one (fe#188). Mirror only: the legacy PUT never sends it. */
+  file?: string;
+  file_pos?: number;
+  /** Sync v2: the server version of this book's progress this device has acknowledged
+   * (`listening-outbox.ts`'s ack rule); a listening span sends it as its `base_version`.
+   * Mirror only; kept across captures (`writeMirror`). */
+  ack_version?: number;
+  /** Sync v2: the other places (`device_id|updated_at`) the listener has answered (Jump or
+   * Stay), so an offer never comes back. Mirror only; kept across captures. */
+  answered?: string[];
 };
 
 /**
@@ -62,7 +85,15 @@ export type ProgressSave = {
  *    caller must fail safe rather than restart at 0.
  */
 export type ResumeLookup =
-  { kind: 'progress'; progress: Progress } | { kind: 'empty' } | { kind: 'failed' };
+  | {
+      kind: 'progress';
+      progress: Progress;
+      /** The file place of this device's own save when that save is the newest record: a
+       * resume plays that file from `pos` when the queue holds it (fe#188). */
+      file?: { path: string; pos: number };
+    }
+  | { kind: 'empty' }
+  | { kind: 'failed' };
 
 /** Newest of two progress records by `updated_at` (last-write-wins, same rule the
  * server uses); ties keep the first argument. */
@@ -86,14 +117,39 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
-/** How many saves wait in the offline replay queue (read-only: Home's sync pill), or
- * only `connectionId`'s (the player's sync line: another server's backlog is not this
- * book's). */
+/** Sync v2's stored backlog: the outbox's events and the open span, read from storage only
+ * (no outbox import: it imports this). Not an array: none; a span with no connection: none. */
+async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; span: OpenSpan | null }> {
+  const [outbox, span] = await Promise.all([
+    getItem<OutboxEntry[]>(LISTENING_OUTBOX_KEY),
+    getItem<OpenSpan | null>(LISTENING_OPEN_SPAN_KEY),
+  ]);
+  return {
+    outbox: Array.isArray(outbox) ? outbox : [],
+    span: span && typeof span.connectionId === 'string' ? span : null,
+  };
+}
+
+/** What waits to reach a server: the legacy queue's saves, and Sync v2's listens (the
+ * outbox's events plus the open span while its server can't be reached), all of them or
+ * only `connectionId`'s. */
+export async function pendingSaves(
+  connectionId?: string,
+): Promise<{ saves: number; listens: number }> {
+  const [queue, { outbox, span }] = await Promise.all([readQueue(), readListeningBacklog()]);
+  const mine = (e: { connectionId?: unknown } | null | undefined) =>
+    !!e && (connectionId === undefined || e.connectionId === connectionId);
+  const saves = Array.isArray(queue) ? queue.filter(mine).length : 0;
+  let listens = outbox.filter(mine).length;
+  if (span && mine(span) && !isReachable(span.connectionId)) listens++;
+  return { saves, listens };
+}
+
+/** How many saves and listens wait to sync (read-only: Home's sync pill), or only
+ * `connectionId`'s (the player's sync line: another server's backlog is not this book's). */
 export async function pendingSaveCount(connectionId?: string): Promise<number> {
-  const queue = await readQueue();
-  if (!Array.isArray(queue)) return 0;
-  if (connectionId === undefined) return queue.length;
-  return queue.filter((s) => s.connectionId === connectionId).length;
+  const { saves, listens } = await pendingSaves(connectionId);
+  return saves + listens;
 }
 
 export async function loadInitialProgress(
@@ -132,15 +188,30 @@ export async function loadInitialProgress(
   );
 }
 
-/** This device's own records of where books are: the durable mirror (by `contentKey`) and
- * the offline replay queue. */
-export type LocalPlaces = { mirror: Record<string, ProgressSave>; queue: ProgressSave[] };
+/** This device's own records of where books are: the durable mirror (by `contentKey`), the
+ * offline replay queue, and the books (`contentKey`) with Sync v2 events still waiting to
+ * be sent (the outbox's, and the stored open span's). */
+export type LocalPlaces = {
+  mirror: Record<string, ProgressSave>;
+  queue: ProgressSave[];
+  pending: Set<string>;
+};
 
-/** Both, read at once: for a reader that looks many books up together (the car snapshot's
- * play specs), two storage reads in all instead of two per book. */
+/** All three, read at once: for a reader that looks many books up together (the car
+ * snapshot's play specs), a few storage reads in all instead of a few per book. */
 export async function readLocalPlaces(): Promise<LocalPlaces> {
-  const [mirror, queue] = await Promise.all([readMirrorMap(), readQueue()]);
-  return { mirror, queue };
+  const [mirror, queue, { outbox, span }] = await Promise.all([
+    readMirrorMap(),
+    readQueue(),
+    readListeningBacklog(),
+  ]);
+  const pending = new Set<string>();
+  for (const e of outbox) {
+    if (typeof e?.connectionId === 'string' && e.event)
+      pending.add(contentKey(e.connectionId, e.event.library_id, e.event.path));
+  }
+  if (span) pending.add(contentKey(span.connectionId, span.libraryId, span.path));
+  return { mirror, queue, pending };
 }
 
 /**
@@ -156,18 +227,115 @@ export function resumeLookupOf(
   libraryId: number,
   path: string,
 ): ResumeLookup {
-  const mirror = places.mirror[contentKey(connectionId, libraryId, path)] ?? null;
+  const key = contentKey(connectionId, libraryId, path);
+  const mirror = places.mirror[key] ?? null;
   const queued =
     places.queue.find(
       (s) => s.connectionId === connectionId && s.libraryId === libraryId && s.path === path,
     ) ?? null;
-  const best = newest(
-    newest(server ?? null, mirrorAsProgress(libraryId, path, mirror)),
-    mirrorAsProgress(libraryId, path, queued),
-  );
-  if (best) return { kind: 'progress', progress: best };
+  const fromMirror = mirrorAsProgress(libraryId, path, mirror);
+  const fromQueue = mirrorAsProgress(libraryId, path, queued);
+  const newestLocal = newest(newest(server ?? null, fromMirror), fromQueue);
+  const best =
+    server &&
+    newestLocal === fromMirror &&
+    serverFinishWins(
+      server,
+      fromMirror,
+      mirror?.ack_version,
+      places.pending.has(key) || queued !== null,
+    )
+      ? server
+      : newestLocal;
+  if (best) {
+    const filed = filePlaceOf(
+      best,
+      best === server ? null : best === fromQueue ? queued : mirror,
+      mirror,
+    );
+    return {
+      kind: 'progress',
+      progress: best,
+      ...(filed?.file && typeof filed.file_pos === 'number'
+        ? { file: { path: filed.file, pos: filed.file_pos } }
+        : {}),
+    };
+  }
   if (server !== undefined) return { kind: 'empty' }; // server reachable + nothing anywhere = truly new
   return { kind: 'failed' }; // never reached the server and no local fallback
+}
+
+/**
+ * Whether the server's finished row beats this device's newer, unfinished mirror record:
+ * the finish is newer than that record, or it is a version this device never acknowledged
+ * (another device's finish, landed after this device last saw the row: the mirror's
+ * "unfinished" is then only not knowing). A finish is a state the server orders on its
+ * own (Sync v2: a listen never unfinishes), so "Listen again" on the finished book starts it
+ * again (`unfinish`, then a `restart` span) rather than resuming the old place. Not when
+ * this device's own unfinish could still be on its way: `waiting` while the book has a
+ * queued save (a capture writes the mirror and the queue with one `updated_at`, so the tie
+ * picks the mirror's record) or Sync v2 events still to be sent.
+ */
+function serverFinishWins(
+  server: Progress,
+  mine: Progress | null,
+  ackVersion: number | undefined,
+  waiting: boolean,
+): boolean {
+  if (!mine || waiting || !server.finished || mine.finished) return false;
+  const finishedAt = server.finished_at ? Date.parse(server.finished_at) : Number.NaN;
+  if (Number.isFinite(finishedAt) && finishedAt > timeOf(mine)) return true;
+  return server.version > (ackVersion ?? 0);
+}
+
+/** How much older (ms) than a record a file place may be and still be that record's: the
+ * server's echo of this device's place is stamped with the span's end in server time,
+ * a moment after the capture that took the file place. */
+const FILE_PLACE_SLACK_MS = 5_000;
+
+/** Whether two records hold the same place (within a second). */
+function samePlace(a: Pick<ProgressSave, 'position'>, b: Pick<ProgressSave, 'position'>): boolean {
+  return Math.abs(a.position - b.position) <= 1;
+}
+
+type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished' | 'updated_at'>;
+
+/**
+ * Whether `record`'s place is the one `filed` holds a file place for: the same place, or a
+ * record of the same device in the same finished state that is not newer than `filed` (the
+ * server's echo of this device's place, whose seconds the server may have moved to its own
+ * file order). Not a place moved since (a Mark not finished, which keeps the device and
+ * resets the place): that file place is the book's end. And not a newer record of the same
+ * device: `filed` is then older than this device's own last place (writes lost when a
+ * browser was killed), and resuming at its file place would move the book back.
+ */
+function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord): boolean {
+  if (samePlace(record, filed)) return true;
+  if (!record.device_id || record.device_id !== filed.device_id) return false;
+  if (record.finished !== filed.finished) return false;
+  const recordAt = Date.parse(record.updated_at);
+  const filedAt = Date.parse(filed.updated_at);
+  return (
+    Number.isFinite(recordAt) &&
+    Number.isFinite(filedAt) &&
+    filedAt >= recordAt - FILE_PLACE_SLACK_MS
+  );
+}
+
+/**
+ * The record holding the file place (fe#188) for the newest record `best`: its own when it
+ * is a save of this device's (`own`), else the mirror's when it holds `best`'s place
+ * (`holdsFilePlace`). A place of another device has no file place here: it is that
+ * device's, in the server's order.
+ */
+function filePlaceOf(
+  best: Progress,
+  own: ProgressSave | null,
+  mirror: ProgressSave | null,
+): ProgressSave | null {
+  if (own?.file) return own;
+  if (!mirror?.file) return null;
+  return holdsFilePlace(best, mirror) ? mirror : null;
 }
 
 /** The durable local mirror for a book, shaped as a `Progress` - for read paths
@@ -226,17 +394,105 @@ export function progressToSave(
 // Serialize mirror read-modify-write so concurrent saves can't clobber each other.
 const withMirrorLock = serialQueue();
 
-/** Upsert the durable mirror, keeping the newest record by `updated_at`. */
+/** Upsert the durable mirror, keeping the newest record by `updated_at`. The Sync v2
+ * fields a capture doesn't carry (`ack_version`, `answered`) are kept from the record it
+ * replaces, and so is its file place when the new record holds that place without one (a
+ * server row read back after this device's own save: `holdsFilePlace`). */
 export async function writeMirror(save: ProgressSave): Promise<void> {
   await withMirrorLock(async () => {
     const map = await readMirrorMap();
     const key = contentKey(save.connectionId, save.libraryId, save.path);
     const existing = map[key];
     if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
-      map[key] = save;
+      map[key] = mergeKept(save, existing);
       await setItem(MIRROR_KEY, map);
     }
   });
+}
+
+/** `save` with what the mirror keeps across records (see `writeMirror`). */
+function mergeKept(save: ProgressSave, existing: ProgressSave | undefined): ProgressSave {
+  if (!existing) return save;
+  const out: ProgressSave = { ...save };
+  if (out.ack_version === undefined && existing.ack_version !== undefined)
+    out.ack_version = existing.ack_version;
+  if (out.answered === undefined && existing.answered !== undefined)
+    out.answered = existing.answered;
+  if (out.file === undefined && existing.file !== undefined && holdsFilePlace(save, existing)) {
+    out.file = existing.file;
+    out.file_pos = existing.file_pos;
+  }
+  return out;
+}
+
+/**
+ * Change a book's mirror record in place (Sync v2: its acknowledged version, the offers
+ * answered), creating it from `row` when there is none yet. Nothing when there is neither.
+ */
+export async function updateMirror(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  change: (save: ProgressSave) => ProgressSave,
+  row?: Progress | null,
+): Promise<void> {
+  await withMirrorLock(async () => {
+    const map = await readMirrorMap();
+    const key = contentKey(connectionId, libraryId, path);
+    const base = map[key] ?? (row ? progressToSave(connectionId, libraryId, path, row) : null);
+    if (!base) return;
+    const next = change(base);
+    if (next === map[key]) return; // unchanged (an acknowledgement already known)
+    map[key] = next;
+    await setItem(MIRROR_KEY, map);
+  });
+}
+
+/** Acknowledge `version` of a book's server row (Sync v2): the next span sends it as its
+ * `base_version`. Never lowers a known acknowledgement. */
+export function ackVersion(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  version: number,
+  row?: Progress | null,
+): Promise<void> {
+  return updateMirror(
+    connectionId,
+    libraryId,
+    path,
+    (s) =>
+      s.ack_version !== undefined && s.ack_version >= version ? s : { ...s, ack_version: version },
+    row,
+  );
+}
+
+/** At most this many answered offers are kept per book (the newest). */
+const MAX_ANSWERED = 20;
+
+/** Answer an offer of another place (Jump, Stay, the book page's "Play from there"): the
+ * row's version acknowledged (never lowered) and the offer's `key` (`device_id|updated_at`)
+ * noted, the newest `MAX_ANSWERED` kept, in one change of the mirror. */
+export function answerOffer(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  row: Progress,
+  key: string,
+): Promise<void> {
+  return updateMirror(
+    connectionId,
+    libraryId,
+    path,
+    (s) => {
+      const acked = Math.max(s.ack_version ?? row.version, row.version);
+      const answered = s.answered?.includes(key)
+        ? s.answered
+        : [...(s.answered ?? []), key].slice(-MAX_ANSWERED);
+      return { ...s, ack_version: acked, answered };
+    },
+    row,
+  );
 }
 
 export async function readMirror(

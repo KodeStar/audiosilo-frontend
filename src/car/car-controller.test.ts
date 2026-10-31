@@ -75,10 +75,12 @@ jest.mock('@/components/player/start-book', () => ({
 }));
 
 // The device's own places (the mirror, the offline queue): read once per build.
-const mockLocalPlaces: { mirror: Record<string, unknown>; queue: unknown[] } = {
-  mirror: {},
-  queue: [],
-};
+const mockLocalPlaces: { mirror: Record<string, unknown>; queue: unknown[]; pending: Set<string> } =
+  {
+    mirror: {},
+    queue: [],
+    pending: new Set(),
+  };
 const mockReadLocalPlaces = jest.fn(async () => mockLocalPlaces);
 jest.mock('@/playback/progress-sync', () => ({
   readLocalPlaces: () => mockReadLocalPlaces(),

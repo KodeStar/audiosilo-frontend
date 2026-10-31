@@ -23,6 +23,14 @@ export const PROGRESS_QUEUE_KEY = 'audiosilo.progressQueue';
 export const READING_MIRROR_KEY = 'audiosilo.readingMirror';
 /** The offline queue of ebook reading-place saves, each with a `connectionId`. */
 export const READING_QUEUE_KEY = 'audiosilo.readingQueue';
+/** The listening outbox (Sync v2, `src/playback/listening-outbox.ts`): an array of closed
+ * listening events waiting to be sent, each with a `connectionId`. */
+export const LISTENING_OUTBOX_KEY = 'audiosilo.listeningOutbox';
+/** The one listening span being played (with its `connectionId`), or null: rewritten each
+ * 15 s tick so a span a kill left open is closed at the next launch. */
+export const LISTENING_OPEN_SPAN_KEY = 'audiosilo.listeningOpenSpan';
+/** Per connection id: when its outbox last synced and the events it couldn't sync. */
+export const LISTENING_SYNC_KEY = 'audiosilo.listeningSync';
 /** Each connection's kept `/server` answer for offline reading, keyed by connection id. */
 export const OFFLINE_SERVERS_KEY = 'audiosilo.offlineServers';
 /** Web: the last answers the first screens paint from (`src/api/startup-cache.ts`), each

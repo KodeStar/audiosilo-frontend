@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import type { ApiClient } from '@/api/client';
 import type { User } from '@/api/types';
 import { useOptionalApi } from '@/api/provider';
+import { unsentListens } from '@/playback/listening-outbox';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
 import { accountFlagsKnown, needsPasswordWarning } from '@/lib/account';
 import { useSession } from '@/stores/session';
@@ -66,6 +67,10 @@ export async function freshAccountUser(
  * once before deciding rather than guessing. When the server is unreachable we fall
  * back to whatever we have and don't warn - offline there's no way to set a password
  * anyway, so a warning would be a dead end.
+ *
+ * Before that, Sync v2's listens: the outbox gets a last send, and any still unsent are
+ * confirmed first ("3 listens haven't synced to Home. Sign out anyway?", `unsynced`):
+ * signing out purges them. A confirm, not a block (the watch's rule is the block).
  */
 export function useSignOut(connectionId: string) {
   const api = useOptionalApi(connectionId);
@@ -73,6 +78,8 @@ export function useSignOut(connectionId: string) {
   const setConnectionUser = useSession((s) => s.setConnectionUser);
   const removeConnection = useSession((s) => s.removeConnection);
   const [confirmVisible, setConfirmVisible] = useState(false);
+  /** Listens not synced to this server (the confirm shows while > 0). */
+  const [unsynced, setUnsynced] = useState(0);
 
   const signOut = useCallback(async () => {
     setConfirmVisible(false);
@@ -85,7 +92,7 @@ export function useSignOut(connectionId: string) {
     await signOutConnection(connectionId, api, removeConnection);
   }, [api, connectionId, removeConnection]);
 
-  const requestSignOut = useCallback(async () => {
+  const warnOrSignOut = useCallback(async () => {
     const current = await freshAccountUser(user, api, (fresh) => {
       void setConnectionUser(connectionId, fresh);
     });
@@ -93,5 +100,26 @@ export function useSignOut(connectionId: string) {
     else void signOut();
   }, [user, api, connectionId, setConnectionUser, signOut]);
 
-  return { confirmVisible, setConfirmVisible, signOut, requestSignOut };
+  const requestSignOut = useCallback(async () => {
+    const unsent = await unsentListens(connectionId).catch(() => 0);
+    if (unsent > 0) setUnsynced(unsent);
+    else await warnOrSignOut();
+  }, [connectionId, warnOrSignOut]);
+
+  /** Sign out anyway, the unsynced listens confirmed (then the password warning, if any). */
+  const confirmUnsynced = useCallback(async () => {
+    setUnsynced(0);
+    await warnOrSignOut();
+  }, [warnOrSignOut]);
+  const cancelUnsynced = useCallback(() => setUnsynced(0), []);
+
+  return {
+    confirmVisible,
+    setConfirmVisible,
+    signOut,
+    requestSignOut,
+    unsynced,
+    confirmUnsynced,
+    cancelUnsynced,
+  };
 }

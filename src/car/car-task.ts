@@ -1,5 +1,6 @@
 import { startAddressRouting } from '@/api/address-runner';
 import { bootstrapPlayback } from '@/lib/bootstrap';
+import { startListeningSync } from '@/playback/listening-sync';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 
@@ -67,12 +68,13 @@ async function startCarStack(): Promise<void> {
 
 let controllersStarted = false;
 
-/** The address pick and the place reconcile, once per runtime (marked started only once both
+/** The address pick, the place reconcile and the listening sync, once per runtime (marked started only once both
  * are, so a start that threw is tried again; each is a shared start). */
 function startAppControllers() {
   if (controllersStarted) return;
   startAddressRouting();
   startPlaceReconcile();
+  startListeningSync();
   controllersStarted = true;
 }
 

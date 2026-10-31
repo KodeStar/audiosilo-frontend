@@ -96,6 +96,7 @@ import {
 import { BookSkeleton } from './book-skeleton';
 import { BookTabPanel } from './book-tab-panel';
 import { HeroActions } from './hero-actions';
+import { ListeningOfferLine } from './listening-offer';
 
 /** How long the page trusts its book's bookmarks and notes (the tab counts and pins):
  * every write invalidates them, so this only bounds another device's new ones. */
@@ -608,6 +609,13 @@ function BookPage() {
           footer={
             <>
               <DownloadProgress libraryId={libraryId} path={relPath} />
+              <ListeningOfferLine
+                target={target}
+                row={progress}
+                here={resumePosition}
+                chapters={chapterData?.chapters ?? []}
+                onPlay={(position) => play({ at: { position } })}
+              />
               <GenerateStatus model={generate} />
               {generate.covered ? <GenerateCovered onOpen={openCharacters} /> : null}
               <TranscodeNote

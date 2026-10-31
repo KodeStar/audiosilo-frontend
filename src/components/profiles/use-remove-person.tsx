@@ -17,6 +17,7 @@ import { DialogIcon } from '@/components/ui/dialog';
 import { Text } from '@/components/ui/text';
 import { managerName, needsPasswordWarning } from '@/lib/account';
 import { clearPin } from '@/lib/profile-pin';
+import { unsentListens } from '@/playback/listening-outbox';
 import { connectionsOfProfile, deleteProfile, devicePeople, type Profile } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
@@ -32,7 +33,9 @@ import { type Connection, useSession } from '@/stores/session';
  * other connections on each of their servers read their household again (the members'
  * devices, the list's device counts, `member_sign_ins`; `removeConnection`'s hook in
  * hooks.ts does it, for every way a connection leaves): the owner's page must not keep
- * showing this device under the member. The way out of a forgotten PIN.
+ * showing this device under the member. The way out of a forgotten PIN. Listens this device
+ * has not yet synced to one of their servers (Sync v2) are named per server, as signing out
+ * and removing a server name them: they go with the sign-out.
  */
 export function useRemovePerson(): {
   request: (profile: Profile, name: string) => Promise<void>;
@@ -47,6 +50,7 @@ export function useRemovePerson(): {
     servers: Connection[];
     warned: Connection[];
     managed: { connection: Connection; owner: string }[];
+    unsynced: { connection: Connection; count: number }[];
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -54,15 +58,26 @@ export function useRemovePerson(): {
     const servers = connectionsOfProfile(useSession.getState().connections, profile.connectionIds);
     const warned: Connection[] = [];
     const managed: { connection: Connection; owner: string }[] = [];
-    for (const c of servers) {
-      const user = await freshAccountUser(c.user, clients.get(c.id), (fresh) => {
-        void setConnectionUser(c.id, fresh);
-      });
+    const unsynced: { connection: Connection; count: number }[] = [];
+    // Each server's last send and account read run together (a send may wait on the network).
+    const reads = await Promise.all(
+      servers.map((c) =>
+        Promise.all([
+          unsentListens(c.id).catch(() => 0),
+          freshAccountUser(c.user, clients.get(c.id), (fresh) => {
+            void setConnectionUser(c.id, fresh);
+          }),
+        ]),
+      ),
+    );
+    for (const [i, c] of servers.entries()) {
+      const [count, user] = reads[i];
+      if (count > 0) unsynced.push({ connection: c, count });
       const owner = managerName(user, { connection: c, people: devicePeople() });
       if (owner) managed.push({ connection: c, owner });
       else if (needsPasswordWarning(user)) warned.push(c);
     }
-    setPending({ profile, name, servers, warned, managed });
+    setPending({ profile, name, servers, warned, managed, unsynced });
   };
 
   const remove = async () => {
@@ -96,6 +111,16 @@ export function useRemovePerson(): {
             {pending?.managed.map(({ connection: c, owner }) => (
               <Text key={c.id} variant="muted" testID={`remove-person-member-${c.id}`}>
                 {t('profiles.remove.member', { name: pending.name, server: c.name, owner })}
+              </Text>
+            ))}
+            {pending?.unsynced.map(({ connection: c, count }) => (
+              <Text
+                key={c.id}
+                variant="muted"
+                className="text-destructive"
+                testID={`remove-person-unsynced-${c.id}`}
+              >
+                {t('account.connections.removeConfirm.unsynced', { count, name: c.name })}
               </Text>
             ))}
             {pending?.warned.map((c) => (

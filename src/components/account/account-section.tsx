@@ -26,6 +26,7 @@ import { ApiKeyCreatedModal } from './api-key-created-modal';
 import { ApiKeysSection, ApiKeysUnavailable } from './api-keys-section';
 import { DevicesSection } from './devices-section';
 import { IdentityCard } from './identity-card';
+import { ListeningSyncCard } from './listening-sync-card';
 import { PairDeviceCard } from './pair-device-card';
 import { PasswordCard, PasswordDialog } from './password-card';
 import { SignOutConfirm } from './sign-out-confirm';
@@ -179,6 +180,12 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         <DevicesSection connectionId={cid} serverName={serverName} />
       ) : null}
 
+      <ListeningSyncCard
+        connectionId={cid}
+        serverName={serverName}
+        supported={caps?.listening_sync === true}
+      />
+
       {demo || kid ? null : apiKeysEnabled ? (
         <ApiKeysSection manager={apiKeys} />
       ) : caps?.api_keys === false ? (
@@ -218,6 +225,16 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           signOut.setConfirmVisible(false);
           password.openEditor();
         }}
+      />
+      <ConfirmDialog
+        visible={signOut.unsynced > 0}
+        title={t('account.signOut.unsyncedTitle')}
+        message={t('account.signOut.unsynced', { count: signOut.unsynced, server: serverName })}
+        confirmLabel={t('account.signOut.confirm')}
+        confirmIcon="logout"
+        destructive
+        onConfirm={() => void signOut.confirmUnsynced()}
+        onCancel={signOut.cancelUnsynced}
       />
       <ApiKeyCreatedModal created={apiKeys.created} onClose={apiKeys.dismissCreated} />
       <ConfirmDialog

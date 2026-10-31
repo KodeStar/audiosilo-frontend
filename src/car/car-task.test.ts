@@ -18,6 +18,9 @@ jest.mock('@/playback/place-reconcile', () => ({
     return () => undefined;
   }),
 }));
+jest.mock('@/playback/listening-sync', () => ({
+  startListeningSync: jest.fn(() => () => undefined),
+}));
 jest.mock('./car-controller', () => ({
   startCarSync: jest.fn(() => {
     calls.push('start');

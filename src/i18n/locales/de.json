@@ -205,7 +205,9 @@
         "message_one": "Dadurch wird {{count}} auf diesem Gerät heruntergeladenes Buch gelöscht, ebenso wie noch nicht synchronisierter Fortschritt.",
         "message_other": "Dadurch werden {{count}} auf diesem Gerät heruntergeladene Bücher gelöscht, ebenso wie noch nicht synchronisierter Fortschritt.",
         "signOut": "Dadurch wird dieses Gerät von {{name}} abgemeldet. Dein Hörfortschritt bleibt auf dem Server: Melde dich wieder an, um ihn hier zurückzubekommen.",
-        "last": "Es ist der einzige Server auf diesem Gerät, daher kehrt AudioSilo zum ersten Schritt zurück."
+        "last": "Es ist der einzige Server auf diesem Gerät, daher kehrt AudioSilo zum ersten Schritt zurück.",
+        "unsynced_one": "{{count}} Hörsitzung wurde noch nicht mit {{name}} synchronisiert und geht verloren.",
+        "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{name}} synchronisiert und gehen verloren."
       }
     },
     "signOut": {
@@ -216,7 +218,10 @@
       "setPassword": "Passwort festlegen",
       "confirm": "Trotzdem abmelden",
       "downloadsWarning_one": "Beim Abmelden wird außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladenes Buch gelöscht.",
-      "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht."
+      "downloadsWarning_other": "Beim Abmelden werden außerdem {{count}} von diesem Server auf dieses Gerät heruntergeladene Bücher gelöscht.",
+      "unsyncedTitle": "Nicht synchronisiertes Hören",
+      "unsynced_one": "{{count}} Hörsitzung wurde noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?",
+      "unsynced_other": "{{count}} Hörsitzungen wurden noch nicht mit {{server}} synchronisiert. Trotzdem abmelden?"
     },
     "switcher": "Server",
     "none": "Melde dich bei einem Server an, um sein Konto zu sehen.",
@@ -304,6 +309,29 @@
     "danger": {
       "title": "Von {{server}} abmelden",
       "body": "Entfernt die Downloads dieses Servers von diesem Gerät. Dein Fortschritt bleibt auf dem Server."
+    },
+    "listeningSync": {
+      "title": "Hör-Synchronisierung",
+      "waiting_one": "{{count}} Hörsitzung wartet auf Synchronisierung",
+      "waiting_other": "{{count}} Hörsitzungen warten auf Synchronisierung",
+      "allSynced": "Alles, was du gehört hast, ist auf {{server}}.",
+      "lastSynced": "Zuletzt synchronisiert {{when}}",
+      "neverSynced": "Von diesem Gerät noch nicht synchronisiert",
+      "failedTitle": "Nicht synchronisiert",
+      "failedBody": "{{server}} hat diese nicht angenommen. Sie bleiben 30 Tage hier.",
+      "span": "{{from}} bis {{to}}",
+      "finished": "Als beendet markiert",
+      "unfinished": "Als nicht beendet markiert",
+      "discard": "Verwerfen",
+      "discardLabel": "{{what}} verwerfen",
+      "reason": {
+        "duration_mismatch": "Diese Kopie des Buchs ist anders lang als die auf dem Server.",
+        "too_old": "Es ist älter als 90 Tage.",
+        "no_access": "Du kannst dieses Buch auf dem Server nicht mehr öffnen.",
+        "not_found": "Das Buch ist nicht mehr auf dem Server.",
+        "unknown_kind": "Der Server kennt diese Art von Hörsitzung nicht.",
+        "invalid": "Der Server konnte es nicht lesen."
+      }
     }
   },
   "annotations": {
@@ -522,7 +550,9 @@
     "sync": {
       "local": "Auf diesem Gerät gespeichert, wird synchronisiert",
       "synced": "Fortschritt synchronisiert {{when}}",
-      "syncedShort": "Synchronisiert {{when}}"
+      "syncedShort": "Synchronisiert {{when}}",
+      "listens_one": "{{count}} Hörsitzung wartet auf Synchronisierung",
+      "listens_other": "{{count}} Hörsitzungen warten auf Synchronisierung"
     },
     "now": {
       "seriesBook": "{{series}}, Band {{position}}",
@@ -1313,6 +1343,12 @@
       "speed": "Tempo",
       "started": "Begonnen",
       "finished": "Beendet"
+    },
+    "placeOffer": {
+      "device": "Auf {{device}}: {{place}}",
+      "unknown": "Auf einem anderen Gerät: {{place}}",
+      "play": "Dort weiterhören",
+      "playLabel": "Ab {{place}} abspielen"
     }
   },
   "bridge": {
@@ -1700,6 +1736,12 @@
     "startFailed": {
       "offline": "{{server}} ist gerade nicht erreichbar.",
       "audio": "Der Ton wurde nicht vom Server geladen."
+    },
+    "placeOffer": {
+      "device": "Auf {{device}} warst du bei {{place}}. Dorthin springen?",
+      "unknown": "Auf einem anderen Gerät warst du bei {{place}}. Dorthin springen?",
+      "jump": "Springen",
+      "stay": "Bleiben"
     }
   },
   "reconnect": {
@@ -2153,7 +2195,8 @@
     "history": {
       "jump": "Springen",
       "jumpLabel": "Zu {{time}} springen",
-      "span": "{{from}} bis {{to}}"
+      "span": "{{from}} bis {{to}}",
+      "waiting": "Wartet auf Synchronisierung"
     }
   },
   "addresses": {

@@ -54,6 +54,28 @@ describe('toast / ToastHost', () => {
     expect(screen.queryByText('Back where you were')).toBeNull();
   });
 
+  it('tells onClose when closed by hand (an answer), not when its action runs or it times out', async () => {
+    await mountHost();
+    const onClose = jest.fn();
+    const onPress = jest.fn();
+    await act(async () => {
+      toast({ title: 'Offer', action: { label: 'Jump', onPress }, onClose, closeLabel: 'Stay' });
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Stay' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
+
+    await act(async () => {
+      toast({ title: 'Offer 2', action: { label: 'Jump', onPress }, onClose });
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Jump' }));
+    await act(async () => {
+      toast({ title: 'Offer 3', onClose });
+      jest.advanceTimersByTime(8000);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('can be dismissed by hand (a translated label)', async () => {
     await mountHost();
     await act(async () => {

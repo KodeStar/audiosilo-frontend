@@ -25,6 +25,9 @@ import {
   DRIFT_STORAGE_KEY,
   isRecord,
   LIBRARY_SELECTION_KEY,
+  LISTENING_OPEN_SPAN_KEY,
+  LISTENING_OUTBOX_KEY,
+  LISTENING_SYNC_KEY,
   OFFLINE_SERVERS_KEY,
   PROFILES_KEY,
   PROGRESS_MIRROR_KEY,
@@ -90,6 +93,9 @@ export const ID_DOCUMENTS = {
   progressQueue: PROGRESS_QUEUE_KEY,
   readingMirror: READING_MIRROR_KEY,
   readingQueue: READING_QUEUE_KEY,
+  listeningOutbox: LISTENING_OUTBOX_KEY,
+  listeningOpenSpan: LISTENING_OPEN_SPAN_KEY,
+  listeningSync: LISTENING_SYNC_KEY,
   offlineServers: OFFLINE_SERVERS_KEY,
   carBookmarks: CAR_BOOKMARKS_KEY,
   librarySelection: LIBRARY_SELECTION_KEY,
@@ -220,6 +226,14 @@ const connectionRecords = (plan: Plan, doc: unknown): unknown =>
 const connectionList = (plan: Plan, doc: unknown): unknown =>
   Array.isArray(doc) ? doc.map((s: unknown) => withConnectionId(plan, s)) : doc;
 
+/** A record keyed by connection id. */
+function byConnectionId(plan: Plan, doc: unknown): unknown {
+  if (!isRecord(doc)) return doc;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(doc)) out[mapId(plan, k) as string] = v;
+  return out;
+}
+
 /** Each document rewritten through `plan` (`undefined` = absent, left alone). */
 export const rewrite = {
   connections(plan: Plan, doc: unknown): unknown {
@@ -252,12 +266,12 @@ export const rewrite = {
   // The ebook reader's place mirror and queue have the progress mirror's and queue's shapes.
   readingMirror: connectionRecords,
   readingQueue: connectionList,
-  offlineServers(plan: Plan, doc: unknown): unknown {
-    if (!isRecord(doc)) return doc;
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(doc)) out[mapId(plan, k) as string] = v;
-    return out;
-  },
+  // The listening outbox: an array of events with a `connectionId`; the open span: one
+  // record with a `connectionId` (or null); the sync state: keyed by connection id.
+  listeningOutbox: connectionList,
+  listeningOpenSpan: withConnectionId<unknown>,
+  listeningSync: byConnectionId,
+  offlineServers: byConnectionId,
   carBookmarks: connectionList,
   librarySelection(plan: Plan, doc: unknown): unknown {
     if (!isRecord(doc) || !isRecord(doc.selection)) return doc;
