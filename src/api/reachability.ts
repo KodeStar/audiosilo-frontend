@@ -249,18 +249,37 @@ onConnectionRemoved((id) => {
  * route yet, and the next regular probe is up to 20 s away. */
 export const REJOIN_RETRY_MS = 4_000;
 let rejoinRetry: ReturnType<typeof setTimeout> | null = null;
+/** The last network state acted on (`deviceNetworkChanged`), as a key. */
+let lastNetwork: string | null = null;
+
+/** Ask every connection marked down again now. One whose check is still out (sent before
+ * the network came back, it can wait out its whole timeout) is asked once more as soon as
+ * that check ends (`recheckReachability`), not at the next regular probe. */
+function recheckDown(): void {
+  for (const [cid, up] of Object.entries(useReachability.getState().online)) {
+    if (!up) recheckReachability(cid);
+  }
+}
 
 /**
- * The app's network state changed (native; the web has `online`/`offline` below). Losing
+ * The app's network state changed (native; the web has `online`/`offline` below): its
+ * connected, type or internet-reachable state (a repeat of the last one is nothing). Losing
  * the network has every connection still marked up checked at once: with no network the
  * check fails at once, so the server is marked down now, not at the next request that
  * fails (the playing span is then kept on the device, not cut into sends that cannot
- * leave it). The network coming back probes every connection marked down at once and
- * again shortly after (`REJOIN_RETRY_MS`), so what waits to sync (the listening outbox,
- * the progress queue: `onReconnect`) goes as soon as the server answers, with the app
- * idle in the foreground too (W2 F2), not at the next 20 s probe.
+ * leave it). The network coming back asks every connection marked down at once and again
+ * shortly after (`recheckDown`, `REJOIN_RETRY_MS`), so what waits to sync (the listening
+ * outbox, the progress queue: `onReconnect`) goes as soon as the server answers, with the
+ * app idle in the foreground too (W2 F2), not at the next 20 s probe.
  */
-export function deviceNetworkChanged(state: Pick<Network.NetworkState, 'isConnected'>): void {
+export function deviceNetworkChanged(
+  state: Pick<Network.NetworkState, 'isConnected' | 'type' | 'isInternetReachable'>,
+): void {
+  // Only a change: Android also reports each change of a network's capabilities (signal,
+  // bandwidth), often in bursts, and those must not probe a server that is down each time.
+  const key = `${state.isConnected}|${state.type}|${state.isInternetReachable}`;
+  if (key === lastNetwork) return;
+  lastNetwork = key;
   if (state.isConnected === false) {
     for (const c of useSession.getState().connections) {
       if (isReachable(c.id)) void checkReachability(c.id);
@@ -269,11 +288,11 @@ export function deviceNetworkChanged(state: Pick<Network.NetworkState, 'isConnec
   }
   if (state.isConnected !== true) return;
   if (!anyOffline(useReachability.getState().online)) return;
-  void runProbe();
+  recheckDown();
   if (rejoinRetry) clearTimeout(rejoinRetry);
   rejoinRetry = setTimeout(() => {
     rejoinRetry = null;
-    void runProbe();
+    recheckDown();
   }, REJOIN_RETRY_MS);
 }
 

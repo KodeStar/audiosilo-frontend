@@ -35,15 +35,16 @@ import {
   readMirror,
   saveProgress,
 } from './progress-sync';
+import { wallClockSeconds } from './rate';
 
 export type { OpenSpan, SpanEnd } from './open-span-doc';
 
 /**
  * Sync v2's listening outbox (Track W1, CROSS-REPO section 25): on a server with
- * `listening_sync`, the player records listening as events instead of saving a place. A
- * span of playing is one `listen` event (whole-book seconds on this device's timeline, plus
- * each end's audio file and in-file seconds, fe#188), and marking the book finished or not is
- * a `finish`/`unfinish`. Events wait here, append-only, until their server answers for them
+ * `listening_sync` (or one not yet known: `usesListeningSync`), the player records listening
+ * as events instead of saving a place. A span of playing is one `listen` event (whole-book
+ * seconds on this device's timeline, plus each end's audio file and in-file seconds,
+ * fe#188), and marking the book finished or not is a `finish`/`unfinish`. Events wait here, append-only, until their server answers for them
  * (`POST /me/listening/sync`); the server resolves each against the stored place by its
  * `base_version` (this device's acknowledged version), so an old offline span never moves a
  * further place back.
@@ -53,17 +54,21 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  * - `audiosilo.listeningOpenSpan`: the span being played (one per web tab playing),
  *   stored every few seconds, so a span a kill left open is closed at its last stored
  *   values on the next launch (`recoverOpenSpan`).
- * - `audiosilo.listeningSync`: per connection, when it last synced and the events the server
- *   rejected (the "couldn't sync" list, kept 30 days or until discarded).
+ * - `audiosilo.listeningSync`: per connection, when it last synced, the events it couldn't
+ *   sync (the "couldn't sync" list: rejected, `too_large` or `too_old`, kept 30 days or until
+ *   discarded), its server's clock skew (`clockSkewMs`) and its last answered
+ *   `listening_sync` (`listeningSync`).
  *
  * Sending (`flushOutbox`): one request in flight per connection, chunks of 200 events, the
  * device clock (`sent_at`) set per attempt. Every status but `rejected` removes the event;
  * `rejected` moves it to the couldn't-sync list. A network error or 5xx keeps everything; a
- * 413 or `too_many_events` halves the chunk; a 400 on a batch sends its events one by one
- * once, and one still refused alone is moved to the list. A 404/405 that the server's own
- * `/server` confirms (no `listening_sync`) means it was rolled back to one without the route:
- * the connection's outbox becomes one legacy save per book (`legacySavesOf`) and the player
- * saves by PUT from then on (`usesListeningSync`).
+ * 413 or `too_many_events` halves the chunk, and one event alone still 413 is moved to the
+ * list (`too_large`); a 400 on a batch sends its events one by one once, and one still
+ * refused alone is moved to the list. An event older than 89 days is moved to the list
+ * unsent (`too_old`, `giveUpOld`). A 404/405 that the server's own `/server` confirms (no
+ * `listening_sync`) means it was rolled back to one without the route: the connection's
+ * outbox becomes one legacy save per book (`legacySavesOf`) and the player saves by PUT from
+ * then on (`usesListeningSync`).
  */
 
 /** An event waiting for its server. */
@@ -107,7 +112,7 @@ export const GIVE_UP_AGE_MS = 89 * 24 * 60 * 60_000;
 // --- Building events -------------------------------------------------------------------
 
 /** A new event id (a UUID: the server takes 1-64 of `[A-Za-z0-9_-]`). */
-const newEventId = (): string => randomUUID();
+export const newEventId = (): string => randomUUID();
 
 /**
  * A span's start as its event claims it (pure): its own, unless the span ran longer than
@@ -119,8 +124,7 @@ function claimedStart(span: OpenSpan, endedAt: string): string {
   const ended = Date.parse(endedAt);
   const started = Date.parse(span.startedAt);
   if (!(ended - started > MAX_EVENT_SPAN_MS)) return span.startedAt;
-  const speed = span.speed > 0 ? span.speed : 1;
-  const played = (Math.abs(span.to.pos - span.from.pos) / speed) * 1000;
+  const played = wallClockSeconds(Math.abs(span.to.pos - span.from.pos), span.speed) * 1000;
   const wall = Math.min(MAX_EVENT_SPAN_MS, Math.max(1000, Number.isFinite(played) ? played : 0));
   return new Date(ended - wall).toISOString();
 }
@@ -327,6 +331,9 @@ let tabId = randomUUID();
 /** A span stored by another tab within this long is that tab's, still playing (it stores
  * its span every 5 s while it plays); one older was left by a tab that closed or crashed. */
 export const LIVE_SPAN_MS = 30_000;
+/** The same for a tab still on a build before the span list (its span has no `owner`): it
+ * rewrites its span only every 15 s, and only while it plays offline. */
+const OLD_BUILD_LIVE_MS = LIVE_SPAN_MS + 15_000;
 /** A web tab found another tab's live span at launch: it looks again once that would have
  * gone stale. */
 let staleCheck: ReturnType<typeof setTimeout> | null = null;
@@ -347,11 +354,17 @@ function bare({ owner: _owner, keptAt: _keptAt, ...span }: StoredSpan): OpenSpan
 
 /** Whether a stored span was left by a tab or launch no longer playing it. In the app every
  * span a launch finds is a previous launch's; on the web another tab's is left alone while
- * it is live (`LIVE_SPAN_MS`). */
+ * it is live (`LIVE_SPAN_MS`), and so is the span of a tab still on an older build while
+ * its end is recent (`OLD_BUILD_LIVE_MS`): each sweep of a span that tab goes on rewriting
+ * would send it again under a new id. A keep further in the future than that (the clock
+ * set back since) is no sign of life either. */
 function leftBehind(span: StoredSpan, now: number): boolean {
   if (span.owner === tabId) return false;
-  if (Platform.OS !== 'web' || span.owner === undefined) return true;
-  return !(typeof span.keptAt === 'number' && now - span.keptAt < LIVE_SPAN_MS);
+  if (Platform.OS !== 'web') return true;
+  const oldBuild = span.owner === undefined;
+  const keptAt = oldBuild ? Date.parse(span.endedAt) : span.keptAt;
+  if (typeof keptAt !== 'number' || !Number.isFinite(keptAt)) return true;
+  return Math.abs(now - keptAt) >= (oldBuild ? OLD_BUILD_LIVE_MS : LIVE_SPAN_MS);
 }
 
 /** Close every span left behind into the outbox. Run inside `spanOps`. Returns whether a
@@ -361,7 +374,10 @@ async function closeLeftBehind(): Promise<boolean> {
   const now = Date.now();
   const left = spans.filter((s) => leftBehind(s, now));
   for (const s of left) await appendClosed(bare(s));
-  if (left.length > 0) await writeSpans(spans.filter((s) => !left.includes(s)));
+  if (left.length > 0) {
+    await writeSpans(spans.filter((s) => !left.includes(s)));
+    notify(); // an offline span counted while stored is now an event
+  }
   return spans.some((s) => s.owner !== tabId && !left.includes(s));
 }
 
@@ -395,16 +411,59 @@ export function recoverOpenSpan(): Promise<void> {
   return recovery;
 }
 
-/** Keep the span being played (every few seconds while it plays; null clears it). */
-export async function storeOpenSpan(span: OpenSpan | null): Promise<void> {
+/** The span this tab stored last, to tell when another tab has taken it (`takenFrom`). */
+let lastStored: OpenSpan | null = null;
+/** The span this tab's keep moved to a new id (`goingOnFrom`), and the id it had: a keep or
+ * a close of it still under that id (one already queued) goes as the new one. */
+let wentOn: { from: string; span: OpenSpan } | null = null;
+
+/** `span` under the id a keep moved it to (`wentOn`), else as it is. */
+function asStored(span: OpenSpan): OpenSpan {
+  if (!wentOn || wentOn.from !== span.id) return span;
+  const { id, from, startedAt, start } = wentOn.span;
+  return { ...span, id, from, startedAt, start };
+}
+
+/** The copy of `span` another tab took, else null: this tab's last stored copy of it is
+ * gone from `spans` though no close of this tab cleared it. That tab found it left behind
+ * (this tab's keeps stood still for `LIVE_SPAN_MS`: the computer slept, the tab was frozen)
+ * and closed it into an event at the copy's values, under its id. */
+function takenFrom(spans: StoredSpan[], span: OpenSpan): OpenSpan | null {
+  if (!openSpanStored || span.id === undefined || lastStored?.id !== span.id) return null;
+  return spans.some((s) => s.owner === tabId) ? null : lastStored;
+}
+
+/** `span` going on from where the copy another tab closed ended (`taken`), as an event of
+ * its own: under the copy's id, what played since would be answered `duplicate`. */
+function goingOnFrom(span: OpenSpan, taken: OpenSpan): OpenSpan {
+  return {
+    ...span,
+    id: newEventId(),
+    from: taken.to,
+    startedAt: taken.endedAt,
+    start: 'continue',
+  };
+}
+
+/** Keep the span being played (every few seconds while it plays; null clears it). Returns
+ * the span as stored when it goes on under a new id (another tab took its last copy:
+ * `takenFrom`), for the caller to play on with; else null. */
+export async function storeOpenSpan(span: OpenSpan | null): Promise<OpenSpan | null> {
   await recoverOpenSpan();
-  await spanOps(async () => {
-    const others = (await readSpans()).filter((s) => s.owner !== tabId);
-    await writeSpans(span ? [...others, { ...span, owner: tabId, keptAt: Date.now() }] : others);
+  return spanOps(async () => {
+    const spans = await readSpans();
+    const current = span && asStored(span);
+    const taken = current && takenFrom(spans, current);
+    const kept = current && taken ? goingOnFrom(current, taken) : current;
+    if (kept && taken && span?.id !== undefined) wentOn = { from: span.id, span: kept };
+    const others = spans.filter((s) => s.owner !== tabId);
+    await writeSpans(kept ? [...others, { ...kept, owner: tabId, keptAt: Date.now() }] : others);
+    lastStored = kept;
     // The pending count changes only when a span comes or goes, not with each rewrite.
     const was = openSpanStored;
-    openSpanStored = span !== null;
+    openSpanStored = kept !== null;
     if (was !== openSpanStored) notify();
+    return taken ? kept : null;
   });
 }
 
@@ -429,12 +488,18 @@ async function appendClosed(span: OpenSpan, event?: ListeningSpanEvent): Promise
 }
 
 /** Append `span`'s event (when it says something) and clear this tab's stored open span,
- * if any. Run inside `spanOps`. */
+ * if any. Run inside `spanOps`. A span that went on under a new id (`wentOn`), or whose last
+ * stored copy another tab took (`takenFrom`), closes as what played since. */
 async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
-  await appendClosed(span, event);
+  const current = asStored(span);
+  const taken = openSpanStored ? takenFrom(await readSpans(), current) : null;
+  const closing = taken ? goingOnFrom(current, taken) : current;
+  await appendClosed(closing, closing === span ? event : undefined);
+  if (wentOn && (wentOn.from === span.id || wentOn.span.id === span.id)) wentOn = null;
   if (!openSpanStored) return;
   await writeSpans((await readSpans()).filter((s) => s.owner !== tabId));
   openSpanStored = false;
+  lastStored = null;
   notify();
 }
 
@@ -444,9 +509,20 @@ async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<vo
  * caller made it already (the web's `pagehide` sends it at once).
  */
 export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
-  await recoverOpenSpan();
-  await spanOps(() => closeInto(span, event));
+  const waiting = spanSaysSomething(span) ? (event ?? spanToEvent(span)) : null;
+  if (waiting) queuedCloses.set(waiting.id, { connectionId: span.connectionId, event: waiting });
+  try {
+    await recoverOpenSpan();
+    await spanOps(() => closeInto(span, event));
+  } finally {
+    if (waiting) queuedCloses.delete(waiting.id);
+  }
 }
+
+/** Closes still waiting their turn (`closeSpan`), by event id. The web's `pagehide` sends
+ * them too: a close queued behind a lock may never run once the page is going (a
+ * `localStorage` lease waits on a timer, which an unloading page never fires). */
+const queuedCloses = new Map<string, OutboxEntry>();
 
 /** This tab's stored open span (tests), else the first one stored. */
 export async function storedOpenSpan(): Promise<OpenSpan | null> {
@@ -567,8 +643,9 @@ async function loadKnownFlags(): Promise<void> {
   }
 }
 let flagsLoaded: Promise<void> | null = null;
-/** The kept flags, read at most once per launch (the launch triggers wait on it). */
-export function knownFlagsLoaded(): Promise<void> {
+/** The kept flags, read at most once per launch (started at launch: `watchListeningFlags`).
+ * A decision made before they land reads the cached `/server`, else counts as yes. */
+function knownFlagsLoaded(): Promise<void> {
   flagsLoaded ??= loadKnownFlags();
   return flagsLoaded;
 }
@@ -631,20 +708,25 @@ export function flushOutbox(connectionId: string): Promise<void> {
 /** Send every connection's outbox (a launch, the foreground). */
 export async function flushAllOutboxes(): Promise<void> {
   if (!sessionReady()) return;
+  const recovered = recovery !== null;
   await recoverOpenSpan();
-  // The web: another tab's span may have been left since (that tab closed or crashed).
-  if (Platform.OS === 'web') await sweepLeftBehind().catch(() => undefined);
+  // The web: another tab's span may have been left since (that tab closed or crashed). The
+  // launch's first call has just looked (the recovery).
+  if (Platform.OS === 'web' && recovered) await sweepLeftBehind().catch(() => undefined);
   const ids = new Set((await currentOutbox()).map((e) => e.connectionId));
   await Promise.all([...ids].map((cid) => flushOutbox(cid)));
 }
 
 /**
- * The listens that haven't reached `connectionId`'s server, after a last send while it is
- * reachable (sign-out and removing a server confirm when any are left).
+ * What hasn't reached `connectionId`'s server, after a last send while it is reachable
+ * (sign-out and removing a server confirm when any is left): its events, a waiting finish
+ * or unfinish too, since removal drops them all. A span another tab left (closed before its
+ * close landed) goes into the outbox first, so it is sent or counted, not dropped unseen.
  */
 export async function unsentListens(connectionId: string): Promise<number> {
+  await sweepLeftBehind().catch(() => undefined);
   if (isReachable(connectionId)) await flushOutbox(connectionId);
-  return (await pendingSaves(connectionId)).listens;
+  return (await pendingSaves(connectionId)).events;
 }
 
 /** A batch's envelope with this attempt's clock. */
@@ -924,7 +1006,8 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
 // --- The web page going ------------------------------------------------------------------
 
 /**
- * Web `pagehide`: send what waits (plus `extra`, the span closed this moment) in one
+ * Web `pagehide`: send what waits (the outbox, the closes still queued: `queuedCloses`;
+ * plus `extra`, the span closed this moment) in one
  * keepalive request per connection, as much as fits in `KEEPALIVE_BYTES`. Synchronous up to
  * the requests (the page is going); an answer that still arrives is applied as usual, and
  * anything unanswered stays in the outbox (a resend is a `duplicate`).
@@ -933,7 +1016,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
   if (!sessionReady()) return;
   const byConnection = new Map<string, OutboxEntry[]>();
   const seen = new Set<string>();
-  for (const entry of [...(outboxCache ?? []), ...extra]) {
+  for (const entry of [...(outboxCache ?? []), ...queuedCloses.values(), ...extra]) {
     if (seen.has(entry.event.id)) continue;
     seen.add(entry.event.id);
     const list = byConnection.get(entry.connectionId) ?? [];
@@ -1013,6 +1096,9 @@ export function resetOutboxForTests(): void {
   outboxUnsaved = false;
   recovery = null;
   openSpanStored = false;
+  lastStored = null;
+  wentOn = null;
+  queuedCloses.clear();
   tabId = randomUUID();
   if (staleCheck) clearTimeout(staleCheck);
   staleCheck = null;

@@ -79,6 +79,8 @@ import {
   storedOpenSpan,
   storeOpenSpan,
   noteListeningSyncFlag,
+  onOutboxChange,
+  sendOnPageHide,
   syncStateOf,
   unsentListens,
   usesListeningSync,
@@ -305,10 +307,10 @@ describe('the outbox', () => {
     await appendEvents('c1', [listen('a'), listen('b')]);
     await appendEvents('c2', [listen('c')]);
     await storeOpenSpan(span());
-    expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 2 });
+    expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 2, events: 2 });
     (reachability.isReachable as jest.Mock).mockReturnValue(false);
-    expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 3 });
-    expect(await pendingSaves()).toEqual({ saves: 0, listens: 4 });
+    expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 3, events: 3 });
+    expect(await pendingSaves()).toEqual({ saves: 0, listens: 4, events: 4 });
   });
 
   it('removing a connection purges its events, open span and sync state', async () => {
@@ -955,7 +957,15 @@ describe('the waiting count', () => {
       { id: 'f', kind: 'finish', library_id: 3, path: 'Author/Book', at: span().endedAt },
       { id: 'u', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: span().endedAt },
     ]);
-    expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 1 });
+    expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 1, events: 3 });
+  });
+
+  it('the removal warnings count a finish waiting alone: removal would drop it', async () => {
+    (reachability.isReachable as jest.Mock).mockReturnValue(false);
+    await appendEvents('c1', [
+      { id: 'f', kind: 'finish', library_id: 3, path: 'Author/Book', at: span().endedAt },
+    ]);
+    expect(await unsentListens('c1')).toBe(1);
   });
 });
 
@@ -989,6 +999,86 @@ describe('open spans of several web tabs', () => {
     // Its listen counts as waiting only offline, the other tab's too.
     (reachability.isReachable as jest.Mock).mockReturnValue(false);
     expect((await pendingSaves('c1')).listens).toBe(2);
+  });
+
+  it('closes a span kept further ahead than a live one (the clock set back since)', async () => {
+    const ahead = { ...span({ id: 'ahead' }), owner: 'tab-a', keptAt: Date.now() + LIVE_SPAN_MS };
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([ahead]));
+    const changed = jest.fn();
+    const off = onOutboxChange(changed);
+    await recoverOpenSpan();
+    off();
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['ahead']);
+    expect(await storedOpenSpan()).toBeNull();
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it('leaves the span of a tab on an older build alone while it keeps it (every 15 s)', async () => {
+    const old = span({ endedAt: new Date(Date.now() - 20_000).toISOString() });
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify(old));
+    await recoverOpenSpan();
+    expect(await outboxEvents('c1')).toEqual([]);
+    expect(await storedOpenSpan()).toEqual(old);
+  });
+
+  it('a span left by another tab is sent before a removal warning counts: removal drops it', async () => {
+    await recoverOpenSpan();
+    // That tab closed after this one's recovery, before its own close landed.
+    const left = { ...span({ id: 'left' }), owner: 'tab-b', keptAt: Date.now() - LIVE_SPAN_MS };
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([left]));
+    const c = client(async (body) => answer(body));
+    expect(await unsentListens('c1')).toBe(0);
+    expect(sent(c).flatMap((b) => b.events.map((e) => e.id))).toEqual(['left']);
+  });
+
+  it('a span whose last copy another tab took plays on under a new id from that copy', async () => {
+    await recoverOpenSpan();
+    const playing = span({ id: 'mine' });
+    expect(await storeOpenSpan(playing)).toBeNull();
+    // This tab's keeps stood still (the computer slept): another tab sent its copy.
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([]));
+    const later = { ...playing, to: { pos: 17000 }, endedAt: '2026-10-25T07:40:00.000Z' };
+    const kept = await storeOpenSpan(later);
+    expect(kept).toMatchObject({
+      from: playing.to,
+      to: later.to,
+      startedAt: playing.endedAt,
+      start: 'continue',
+    });
+    expect(kept?.id).not.toBe('mine');
+    expect(await storedOpenSpan()).toEqual(kept);
+    // A close still under the old id (queued before the keep) goes as the new span.
+    await closeSpan({ ...later, endedAt: '2026-10-25T07:41:00.000Z' });
+    expect((await outboxEvents('c1')).map((e) => e.event)).toEqual([
+      expect.objectContaining({
+        id: kept?.id,
+        from_pos: 16800,
+        to_pos: 17000,
+        started_at: playing.endedAt,
+        start: 'continue',
+      }),
+    ]);
+  });
+
+  it('a close finds its last copy taken: what played since goes as its own event', async () => {
+    await recoverOpenSpan();
+    const playing = span({ id: 'mine' });
+    await storeOpenSpan(playing);
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([]));
+    await closeSpan({ ...playing, to: { pos: 17000 }, endedAt: '2026-10-25T07:40:00.000Z' });
+    const [event] = (await outboxEvents('c1')).map((e) => e.event);
+    expect(event).toMatchObject({ from_pos: 16800, to_pos: 17000, start: 'continue' });
+    expect(event.id).not.toBe('mine');
+  });
+
+  it('the page going sends the closes still queued behind the lock too', async () => {
+    await recoverOpenSpan();
+    const c = client(async (body) => answer(body));
+    const closing = closeSpan(span({ id: 'queued' }));
+    sendOnPageHide([], 'dev');
+    expect(sent(c).map((b) => b.events.map((e) => e.id))).toEqual([['queued']]);
+    expect(c.syncListening.mock.calls[0][1]).toEqual({ keepalive: true });
+    await closing;
   });
 
   it('a span stored before W2 (one bare span, no owner) is recovered', async () => {

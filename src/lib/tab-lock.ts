@@ -53,7 +53,7 @@ function leaseStorage(): LeaseStorage | null {
 export const LEASE_MS = 5_000;
 /** How long a tab waits after writing its lease before reading it back: another tab that
  * wrote at the same moment has written by then, and only the last write holds. */
-export const LEASE_SETTLE_MS = 30;
+const LEASE_SETTLE_MS = 30;
 /** How long a tab waits before trying again while another holds the lease (plus up to as
  * much again at random, so two tabs do not keep colliding). */
 const LEASE_RETRY_MS = 25;

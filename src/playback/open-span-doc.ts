@@ -38,7 +38,7 @@ export type StoredSpan = OpenSpan & { owner?: string; keptAt?: number };
 export const isPos = (n: unknown): n is number => Number.isFinite(n);
 
 /** Whether `v` is a stored span with a place (JSON keeps NaN as null). */
-export function isSpan(v: unknown): v is StoredSpan {
+function isSpan(v: unknown): v is StoredSpan {
   return (
     isRecord(v) &&
     typeof v.connectionId === 'string' &&

@@ -10,9 +10,12 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 // captured, its pure event builders are the real ones.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
+let remoteMove: (trackIndex: number, position: number) => void = () => {};
 const mockSvc = {
   onRemoteSeek: jest.fn(),
-  onRemoteMove: jest.fn(),
+  onRemoteMove: jest.fn((cb: (trackIndex: number, position: number) => void) => {
+    remoteMove = cb;
+  }),
   onRateChange: jest.fn(),
   onSilenceSaved: jest.fn(),
   setup: jest.fn(async () => {}),
@@ -67,12 +70,13 @@ const mockClosed: OpenSpan[] = [];
 const mockAppended: ListeningEvent[] = [];
 const mockSendOnPageHide = jest.fn((..._a: unknown[]) => {});
 const mockFlushOutbox = jest.fn(async (..._a: unknown[]) => {});
-const mockStoreOpenSpan = jest.fn(async (..._a: unknown[]) => {});
+const mockStoreOpenSpan = jest.fn(async (..._a: unknown[]): Promise<OpenSpan | null> => null);
 jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
     spanToEvent: actual.spanToEvent,
     finishEvent: actual.finishEvent,
+    newEventId: actual.newEventId,
     usesListeningSync: () => mockSync,
     closeSpan: jest.fn(async (span: OpenSpan) => {
       mockClosed.push(structuredClone(span));
@@ -581,6 +585,25 @@ describe('the open span is kept every 5 s', () => {
     await settle();
     expect(stored().at(-1)).toEqual(['continue', 16, 23]);
     expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 1, 16]]);
+  });
+
+  // A native lock-screen move: the engine's landed place reaches the store before the move.
+  it('never moves the span back: a remote move landing as the keep is due ends where it was', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 1));
+    await settle();
+    pushSnapshot(snap('playing', 0, 6));
+    jest.advanceTimersByTime(5_000);
+    await settle();
+    jest.advanceTimersByTime(4_950); // the next keep is due (within its slack)
+    pushSnapshot(snap('playing', 0, 2)); // landed 4 s back: the keep runs on this snapshot
+    remoteMove(0, 2);
+    await settle();
+    expect(stored().at(-1)).toEqual(['resume', 1, 6]);
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 1, 6]]);
+    pushSnapshot(snap('paused', 0, 3));
+    await settle();
+    expect(mockClosed.at(-1)).toMatchObject({ start: 'moved_back', from: { pos: 2 } });
   });
 
   it('stops with the playing: a pause stores nothing more', async () => {

@@ -131,12 +131,27 @@ async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; spans: O
 }
 
 /** Each connection's server clock ahead of this device's (ms), as last measured by a sync
- * answer (`noteClockSkew`) or read from the stored sync state (`readLocalPlaces`). */
+ * answer (`noteClockSkew`) or read from the stored sync state (`readLocalPlaces`,
+ * `knownSkew`). */
 const clockSkews = new Map<string, number>();
 
 /** A sync answer measured how far ahead of this device's clock `connectionId`'s server is. */
 export function noteClockSkew(connectionId: string, skewMs: number): void {
   if (Number.isFinite(skewMs)) clockSkews.set(connectionId, skewMs);
+}
+
+/** Connections whose stored skew was looked for this launch (`knownSkew`). */
+const skewLooked = new Set<string>();
+
+/** `connectionId`'s server clock skew for a merge (ms): this launch's measurement, else the
+ * stored sync state's (read once per connection a launch, so the first merge of a launch,
+ * before any sync answer, has it too), else 0. */
+async function knownSkew(connectionId: string): Promise<number> {
+  if (!clockSkews.has(connectionId) && !skewLooked.has(connectionId)) {
+    skewLooked.add(connectionId);
+    await readClockSkews().catch(() => undefined);
+  }
+  return clockSkews.get(connectionId) ?? 0;
 }
 
 /** Every connection's known server clock skew: the stored sync state's, this launch's
@@ -158,19 +173,21 @@ async function readClockSkews(): Promise<Record<string, number>> {
 }
 
 /** What waits to reach a server: the legacy queue's saves, and Sync v2's listens (the
- * outbox's events plus the open span while its server can't be reached), all of them or
- * only `connectionId`'s. */
+ * outbox's `listen` events plus the open spans while their server can't be reached), all of
+ * them or only `connectionId`'s. `events` counts a waiting finish or unfinish too: what
+ * removing the connection would drop (`unsentListens`). */
 export async function pendingSaves(
   connectionId?: string,
-): Promise<{ saves: number; listens: number }> {
+): Promise<{ saves: number; listens: number; events: number }> {
   const [queue, { outbox, spans }] = await Promise.all([readQueue(), readListeningBacklog()]);
   const mine = (e: { connectionId?: unknown } | null | undefined) =>
     !!e && (connectionId === undefined || e.connectionId === connectionId);
   const saves = Array.isArray(queue) ? queue.filter(mine).length : 0;
+  const waiting = outbox.filter(mine);
   // Listens only: a finish or unfinish waiting is not listening (fe#208).
-  let listens = outbox.filter((e) => mine(e) && e.event?.kind === 'listen').length;
-  for (const span of spans) if (mine(span) && !isReachable(span.connectionId)) listens++;
-  return { saves, listens };
+  const listens = waiting.filter((e) => e.event?.kind === 'listen').length;
+  const open = spans.filter((span) => mine(span) && !isReachable(span.connectionId)).length;
+  return { saves, listens: listens + open, events: waiting.length + open };
 }
 
 /** How many saves and listens wait to sync (read-only: Home's sync pill), or only
@@ -343,9 +360,11 @@ type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished' | 'u
  * browser was killed), and resuming at its file place would move the book back.
  *
  * `record` may be a server row (server clock) and `filed` a capture (this device's clock),
- * so the slack is widened by how far apart the two clocks are known to be (`skewMs`, from
- * the sync answers' `server_time`): a device more than 5 s slow kept its file place only
- * by luck before (fe#208). Either sign: a mirror record may hold either clock.
+ * so the slack is widened by how far the server's clock is known to be ahead (`skewMs`,
+ * from the sync answers' `server_time`): a device more than 5 s slow kept its file place
+ * only by luck before (fe#208). Only that way: a server behind stamps its echo before the
+ * capture anyway, and widening for it too would keep the stale file place of a mirror
+ * that lost writes.
  */
 function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord, skewMs = 0): boolean {
   if (samePlace(record, filed)) return true;
@@ -356,7 +375,7 @@ function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord, skewMs = 0): bo
   return (
     Number.isFinite(recordAt) &&
     Number.isFinite(filedAt) &&
-    filedAt >= recordAt - FILE_PLACE_SLACK_MS - Math.abs(skewMs)
+    filedAt >= recordAt - FILE_PLACE_SLACK_MS - Math.max(0, skewMs)
   );
 }
 
@@ -443,14 +462,19 @@ export async function writeMirror(save: ProgressSave): Promise<void> {
     const key = contentKey(save.connectionId, save.libraryId, save.path);
     const existing = map[key];
     if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
-      map[key] = mergeKept(save, existing);
+      map[key] = mergeKept(save, existing, existing ? await knownSkew(save.connectionId) : 0);
       await setItem(MIRROR_KEY, map);
     }
   });
 }
 
-/** `save` with what the mirror keeps across records (see `writeMirror`). */
-function mergeKept(save: ProgressSave, existing: ProgressSave | undefined): ProgressSave {
+/** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock
+ * `skewMs` ahead of this device's. */
+function mergeKept(
+  save: ProgressSave,
+  existing: ProgressSave | undefined,
+  skewMs: number,
+): ProgressSave {
   if (!existing) return save;
   const out: ProgressSave = { ...save };
   if (out.ack_version === undefined && existing.ack_version !== undefined)
@@ -460,7 +484,7 @@ function mergeKept(save: ProgressSave, existing: ProgressSave | undefined): Prog
   if (
     out.file === undefined &&
     existing.file !== undefined &&
-    holdsFilePlace(save, existing, clockSkews.get(save.connectionId) ?? 0)
+    holdsFilePlace(save, existing, skewMs)
   ) {
     out.file = existing.file;
     out.file_pos = existing.file_pos;
@@ -743,6 +767,7 @@ export async function flushConnection(connectionId: string): Promise<void> {
 // server's own record), so drop its mirror records and queued saves here.
 onConnectionRemoved(async (id) => {
   clockSkews.delete(id);
+  skewLooked.delete(id);
   // The mirror and queue take independent locks and touch disjoint storage keys, so
   // purge them concurrently rather than serializing the two storage round-trips.
   await Promise.all([

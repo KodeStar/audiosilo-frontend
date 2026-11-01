@@ -11,6 +11,8 @@ jest.mock('expo-network', () => ({
 }));
 
 /* eslint-disable import/first */
+import type { NetworkStateType } from 'expo-network';
+
 import { ApiError, NetworkError, TimeoutError } from '@/api/client';
 import {
   anyOffline,
@@ -20,6 +22,7 @@ import {
   noteFailure,
   noteSuccess,
   onReconnect,
+  REJOIN_RETRY_MS,
   serverStatus,
   useReachability,
 } from '@/api/reachability';
@@ -306,6 +309,7 @@ describe('the device network (native)', () => {
     mockResolveClient.mockReset();
     useReachability.setState({ online: {} });
     useSession.setState({ connections: [{ id: 'c1' }, { id: 'c2' }] as never });
+    deviceNetworkChanged({}); // a state of its own: each test's first event is a change
   });
 
   afterEach(() => {
@@ -360,11 +364,49 @@ describe('the device network (native)', () => {
     expect(serverInfo).toHaveBeenCalledTimes(1);
     expect(isReachable('c1')).toBe(false);
     // Well before the 20 s probe.
-    await jest.advanceTimersByTimeAsync(4_000);
+    await jest.advanceTimersByTimeAsync(REJOIN_RETRY_MS);
     expect(serverInfo).toHaveBeenCalledTimes(2);
     expect(isReachable('c1')).toBe(true);
     expect(handler).toHaveBeenCalledWith('c1');
     off();
+  });
+
+  it("a repeat of the same state asks nothing (Android's capability bursts)", async () => {
+    await markDown('c1');
+    const serverInfo = jest.fn(async () => {
+      throw new NetworkError(new Error('still away'));
+    });
+    mockResolveClient.mockReturnValue({ baseUrl: 'https://h', serverInfo });
+    const wifi = { isConnected: true, type: 'WIFI' as NetworkStateType };
+    deviceNetworkChanged(wifi);
+    await jest.advanceTimersByTimeAsync(REJOIN_RETRY_MS);
+    expect(serverInfo).toHaveBeenCalledTimes(2);
+    deviceNetworkChanged(wifi);
+    deviceNetworkChanged({ ...wifi });
+    await jest.advanceTimersByTimeAsync(REJOIN_RETRY_MS);
+    expect(serverInfo).toHaveBeenCalledTimes(2);
+    // Another network is a change.
+    deviceNetworkChanged({ isConnected: true, type: 'CELLULAR' as NetworkStateType });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(serverInfo).toHaveBeenCalledTimes(3);
+  });
+
+  it('a check still out when the network comes back is asked again as it ends', async () => {
+    await markDown('c1');
+    let fail: (e: Error) => void = () => {};
+    const serverInfo = jest
+      .fn()
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => (fail = reject)))
+      .mockImplementation(async () => ({}));
+    mockResolveClient.mockReturnValue({ baseUrl: 'https://h', serverInfo });
+    void checkReachability('c1'); // sent on the old network: waits out its timeout
+    deviceNetworkChanged({ isConnected: true });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(serverInfo).toHaveBeenCalledTimes(1);
+    fail(new NetworkError(new Error('timed out on the old network')));
+    await jest.advanceTimersByTimeAsync(0);
+    expect(serverInfo).toHaveBeenCalledTimes(2);
+    expect(isReachable('c1')).toBe(true);
   });
 
   it('asks nothing on a network change while every server is up', async () => {

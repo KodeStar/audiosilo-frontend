@@ -112,7 +112,7 @@ export function knownPlatform(platform: string | undefined): KnownPlatform | nul
 }
 
 /** Whether a platform is a watch's. */
-export const isWatchPlatform = (platform: string | undefined): boolean =>
+const isWatchPlatform = (platform: string | undefined): boolean =>
   (WATCH_PLATFORMS as readonly (string | undefined)[]).includes(platform);
 
 /** A device row's glyph: an API key is a key; a browser is a laptop; a watch is the neutral

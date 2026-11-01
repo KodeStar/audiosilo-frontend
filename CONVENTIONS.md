@@ -195,7 +195,8 @@ an injected `onAuthError` callback whenever a request produces an `ApiError` wit
 api-key/demo restriction - NOT a dead token, so flagging it would false-positive the
 reconnect prompt for a scoped user browsing outside their share). That check is reliable
 because `ApiClient` only throws `ApiError` for a real HTTP response; a network/offline
-failure throws `TimeoutError`/a raw fetch rejection with no status - so a 401 inherently
+failure throws `TimeoutError` or `NetworkError` (a `TypeError`, the fetch's rejection as its
+`cause`) with no status - so a 401 inherently
 proves "server answered, token rejected", cleanly distinct from offline (the reachability
 layer relies on the same invariant; the full rationale + the server-source citations live
 on the `onAuthError` constructor doc in `client.ts`). The callback is injected wherever a per-connection client is
@@ -318,8 +319,10 @@ server switcher when several are signed in). It is a non-scrolling column: the h
 `my_devices`), password (hidden for demo; set/change in a dialog that lifts above the keyboard), pair
 another device (`api.pair()`: QR, a 10-minute countdown from arrival, Copy link on web, Share on
 native), "At home and away" (`addresses`, above), signed-in devices (`my_devices`; sessions only,
-each with a glyph from `deviceGlyph`: laptop for a browser, tablet when its name says so, else
-phone), personal API keys (`api_keys`; a notice when the flag is false; hidden for demo), sign out
+each with a glyph from `deviceGlyph`: laptop for a browser, a neutral drive for a watch
+(`watchos`/`wearos`, named Apple Watch or Wear OS), tablet when its name says so, else phone, or
+the neutral drive when no app is reported and the name names no phone), personal API keys
+(`api_keys`; a notice when the flag is false; hidden for demo), sign out
 of the server. **The current device's row never offers a sign-out** (`canRevoke` refuses
 `current`); this device signs out only through `useSignOut` (teardown first). Pure helpers in
 `account-model.ts`.
@@ -1546,14 +1549,16 @@ media GETs only.
     next opens at the target with `jump`, or `moved_back` when it is behind), stop, a book switch
     and the end (then one `finish`). It is cut (closed, a `continue` span opening where it ended)
     on the 15 s tick while its server is reachable, a rate change, a reconnect, backgrounding
-    (`listening-sync.ts`) and the web page hiding; offline the tick only rewrites the stored open
-    span, and either way a span is cut after an hour of wall clock (`MAX_SPAN_MS`; the server
-    refuses one over 24 h). A move while paused is sent at once as a span that moved nowhere. A
+    (`listening-sync.ts`) and the web page hiding; offline the tick leaves it open (the 5 s keep
+    below stores it), and either way a span is cut after an hour of wall clock (`MAX_SPAN_MS`;
+    the server refuses one over 24 h). A move while paused is sent at once as a span that moved nowhere. A
     finished book started again sends `unfinish` first, then a `restart` span; an explicit 0 is
     `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
     (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
-    twice it is one event. An event never claims more than 23 h of wall clock
+    twice it is one event. The keep never moves the span's end back (a native lock-screen
+    move's landed place reaches the store before the move, which ends the span at its last
+    place). An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
@@ -1564,7 +1569,11 @@ media GETs only.
     immutable once there), `audiosilo.listeningOpenSpan` (a list, one span per web tab
     playing, each with its `owner` and `keptAt`; a bare span is the pre-W2 form; a kill's
     leftover is closed into the outbox at the next launch, `recoverOpenSpan`, and on the web
-    another tab's span is left to it while it is live, 30 s), `audiosilo.listeningSync` (per
+    another tab's span is left to it while it is live, 30 s either side of now (a tab on an
+    older build, no `owner`, while its `endedAt` is under 45 s old); a tab whose last copy
+    another tab took that way plays on under a new id from where the copy ended,
+    `takenFrom`/`goingOnFrom`, so what it played since is not a `duplicate`),
+    `audiosilo.listeningSync` (per
     connection: `lastSyncAt`, the couldn't-sync list, 30 days, at most 100, `clockSkewMs` from the
     answers' `server_time`, and `listeningSync`). The three documents' read-modify-writes run
     under `tabLock` (`src/lib/tab-lock.ts`: Web Locks, else a `localStorage` lease on plain
@@ -1578,7 +1587,8 @@ media GETs only.
     refuses 90), so none holds its book pending forever. Every status but `rejected` removes
     the event; `rejected` moves it to the list. Triggers: the launch (after `recoverOpenSpan`),
     a reconnect, the foreground, each closed span; the web `pagehide` sends what waits (up to
-    ~60 KB) with `keepalive`. A 404/405 that a fresh `/server` confirms is a rollback: one legacy
+    ~60 KB, the closes still queued behind a lock too: a lease's timer never fires on a page
+    going) with `keepalive`. A 404/405 that a fresh `/server` confirms is a rollback: one legacy
     PUT per book (`legacySavesOf`), the outbox dropped, the PUT path from then on.
   - *The ack rule* (`ackVersion` in `progress-sync.ts`, never lowered): a sync answer's row that
     is this device's own after a non-rejected event of the batch for that book (`keptMine`), a
@@ -1592,19 +1602,22 @@ media GETs only.
     (`OFFER_REPEAT_MS`: a device that plays on sends a new key every span), and an answered key
     never again.
   - *Resume.* `resumeLookupOf` takes a file place only when it is not older than the record it
-    is for (5 s slack plus the connection's known clock skew, `holdsFilePlace`, also in the
-    mirror merge): a mirror that lost writes
-    never resumes at its stale file. A finished server row beats this device's newer unfinished
-    mirror record when the finish is newer than it or is a version this device never
+    is for (5 s slack, plus how far the connection's server clock is known to be ahead,
+    `holdsFilePlace`; the mirror merge reads the stored skew before a launch's first merge,
+    `knownSkew`): a mirror that lost writes never resumes at its stale file. A finished server
+    row beats this device's newer unfinished mirror record when the finish is newer than it or is a version this device never
     acknowledged, unless the book has events waiting (`LocalPlaces.pending`): Listen again then
     starts the book again.
   - *Reachability.* The client turns every fetch rejection that is not a caller's cancel into a
     `NetworkError` (a `TypeError`): the app's fetch is Expo's, which rejects with a plain `Error`,
     so an offline phone was never marked unreachable and its spans were cut, not kept (W2 F1).
-    Native reachability follows the system network (`deviceNetworkChanged` in reachability.ts): losing it checks every
-    server at once, getting it back probes the ones down at once and 4 s later, so the outbox goes
-    out with the app idle in the foreground (F2).
-  - *Surfaces.* Home's pill counts listens waiting (`pendingSaves`, listen events only), the account's Listening sync
+    Native reachability follows the system network (`deviceNetworkChanged` in reachability.ts,
+    a change of connected, type or internet-reachable only: Android repeats capability changes):
+    losing it checks every server at once, getting it back asks the ones down at once and 4 s
+    later (`recheckReachability`, so a check still out from the old network runs again as it
+    ends), and the outbox goes out with the app idle in the foreground (F2).
+  - *Surfaces.* Home's pill counts listens waiting (`pendingSaves`, listen events only; the
+    removal warnings count every event, a finish too: `unsentListens`), the account's Listening sync
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
     book History's "Waiting to sync" rows (`usePendingListens`).

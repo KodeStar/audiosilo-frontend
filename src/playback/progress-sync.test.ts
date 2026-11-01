@@ -766,15 +766,42 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       });
     });
 
-    it("this launch's measurement counts too, and so does a server behind the device", async () => {
+    it("this launch's measurement counts too, and writeMirror's merge keeps it", async () => {
       await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
-      noteClockSkew('c1', -20_000);
+      noteClockSkew('c1', 20_000);
       expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).toMatchObject({
         file: { path: 'A/Book/02.mp3', pos: 600 },
       });
-      // writeMirror's merge keeps the file place over the echo the same way.
       await writeMirror({ ...save, position: 4100, updated_at: '2026-01-02T00:00:22Z' });
       expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ file: 'A/Book/02.mp3' });
+    });
+
+    it('a server behind the device widens nothing: its echo comes before the capture', async () => {
+      await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+      noteClockSkew('c1', -20_000);
+      // A row 22 s after the capture by a server 20 s behind is 42 s newer: the mirror lost
+      // writes, and its file place is stale.
+      expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).not.toHaveProperty(
+        'file',
+      );
+    });
+
+    it('a cold launch merges with the stored skew before any sync answer', async () => {
+      const cid = 'c-cold';
+      const mine = { ...filed, connectionId: cid };
+      await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ [`${cid}:1:A/Book`]: mine }));
+      await AsyncStorage.setItem(
+        'audiosilo.listeningSync',
+        JSON.stringify({ [cid]: { clockSkewMs: 20_000 } }),
+      );
+      const r = await loadInitialProgress(
+        fakeGetApi(async () => echo),
+        cid,
+        1,
+        'A/Book',
+      );
+      expect(r).toMatchObject({ file: { path: 'A/Book/02.mp3', pos: 600 } });
+      expect(await readMirrorOf(cid, 1, 'A/Book')).toMatchObject({ file: 'A/Book/02.mp3' });
     });
 
     it('still drops a file place older than the skew allows', async () => {
