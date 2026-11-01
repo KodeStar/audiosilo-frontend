@@ -356,7 +356,7 @@ function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord, skewMs = 0): bo
   return (
     Number.isFinite(recordAt) &&
     Number.isFinite(filedAt) &&
-    filedAt >= recordAt - FILE_PLACE_SLACK_MS - Math.abs(Number.isFinite(skewMs) ? skewMs : 0)
+    filedAt >= recordAt - FILE_PLACE_SLACK_MS - Math.abs(skewMs)
   );
 }
 

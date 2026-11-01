@@ -775,13 +775,12 @@ function tickListeningSpan() {
   // server's 24 h bound (refused `invalid`): a handful of events a day, each a whole hour.
   if (isReachable(span.connectionId) || Date.now() - Date.parse(span.startedAt) >= MAX_SPAN_MS) {
     cutListeningSpan();
-    return;
   }
-  keepOpenSpan();
+  // Offline the span stays open: `spanKeeper` stores it.
 }
 
-/** Bring the open span up to where the engine is now and store it (`OPEN_SPAN_KEEP_MS`, and
- * each offline tick), so a kill loses only what played since. */
+/** Bring the open span up to where the engine is now and store it (`OPEN_SPAN_KEEP_MS`), so
+ * a kill loses only what played since. */
 function keepOpenSpan() {
   if (!span) return;
   const np = usePlayer.getState().nowPlaying;

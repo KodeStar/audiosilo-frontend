@@ -16,7 +16,7 @@ import type {
 } from '@/api/types';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
-import { tabLock } from '@/lib/tab-lock';
+import { hasWebLocks, tabLock } from '@/lib/tab-lock';
 import {
   isRecord,
   LISTENING_OPEN_SPAN_KEY as OPEN_SPAN_KEY,
@@ -25,7 +25,7 @@ import {
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
-import { type OpenSpan, type StoredSpan, storedSpans } from './open-span-doc';
+import { isPos, type OpenSpan, type StoredSpan, storedSpans } from './open-span-doc';
 import {
   ackVersion,
   getDeviceId,
@@ -154,8 +154,6 @@ export function spanToEvent(span: OpenSpan, id: string = newEventId()): Listenin
   return event;
 }
 
-const isPos = (n: unknown): n is number => Number.isFinite(n);
-
 /** Whether every number in `event` is finite (pure): one that is not is never enqueued (JSON
  * has no NaN, so a NaN would reach the server as `null`, or be stored as one). */
 export function eventIsFinite(event: ListeningEvent): boolean {
@@ -191,9 +189,7 @@ export function finishEvent(
 /** Whether other tabs may share this storage (the web, or a runtime with Web Locks): the
  * stored documents are then read again under their lock each time, never from a copy. */
 function sharedAcrossTabs(): boolean {
-  if (Platform.OS === 'web') return true;
-  const locks = (globalThis.navigator as { locks?: { request?: unknown } } | undefined)?.locks;
-  return typeof locks?.request === 'function';
+  return Platform.OS === 'web' || hasWebLocks();
 }
 
 /**
@@ -369,16 +365,20 @@ async function closeLeftBehind(): Promise<boolean> {
   return spans.some((s) => s.owner !== tabId && !left.includes(s));
 }
 
+/** Close the spans left behind (`closeLeftBehind`) and, while another tab's live one is
+ * still stored, look again once it would be stale. */
+function sweepLeftBehind(): Promise<void> {
+  return spanOps(closeLeftBehind).then((live) => {
+    if (live) checkAgainLater();
+  });
+}
+
 /** On the web, look again for spans left behind once another tab's live one would be stale. */
 function checkAgainLater(): void {
   if (staleCheck) return;
   staleCheck = setTimeout(() => {
     staleCheck = null;
-    void spanOps(closeLeftBehind)
-      .then((live) => {
-        if (live) checkAgainLater();
-      })
-      .catch(() => undefined);
+    sweepLeftBehind().catch(() => undefined);
   }, LIVE_SPAN_MS);
 }
 
@@ -389,11 +389,9 @@ function checkAgainLater(): void {
  * again once it would be stale).
  */
 export function recoverOpenSpan(): Promise<void> {
-  recovery ??= spanOps(closeLeftBehind)
-    .then((live) => {
-      if (live) checkAgainLater();
-    })
-    .catch((e: unknown) => console.warn('[listening] could not recover the open span', e));
+  recovery ??= sweepLeftBehind().catch((e: unknown) =>
+    console.warn('[listening] could not recover the open span', e),
+  );
   return recovery;
 }
 
@@ -635,7 +633,7 @@ export async function flushAllOutboxes(): Promise<void> {
   if (!sessionReady()) return;
   await recoverOpenSpan();
   // The web: another tab's span may have been left since (that tab closed or crashed).
-  if (Platform.OS === 'web') await spanOps(closeLeftBehind).catch(() => undefined);
+  if (Platform.OS === 'web') await sweepLeftBehind().catch(() => undefined);
   const ids = new Set((await currentOutbox()).map((e) => e.connectionId));
   await Promise.all([...ids].map((cid) => flushOutbox(cid)));
 }

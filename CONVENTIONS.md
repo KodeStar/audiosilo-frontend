@@ -1601,7 +1601,7 @@ media GETs only.
   - *Reachability.* The client turns every fetch rejection that is not a caller's cancel into a
     `NetworkError` (a `TypeError`): the app's fetch is Expo's, which rejects with a plain `Error`,
     so an offline phone was never marked unreachable and its spans were cut, not kept (W2 F1).
-    Native reachability follows the system network (`watchDeviceNetwork`): losing it checks every
+    Native reachability follows the system network (`deviceNetworkChanged` in reachability.ts): losing it checks every
     server at once, getting it back probes the ones down at once and 4 s later, so the outbox goes
     out with the app idle in the foreground (F2).
   - *Surfaces.* Home's pill counts listens waiting (`pendingSaves`, listen events only), the account's Listening sync

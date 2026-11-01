@@ -665,7 +665,7 @@ export class ApiClient {
         // No answer. A caller's cancel stays what the platform threw (an `AbortError`);
         // our timeout is handled below; anything else is a `NetworkError` on every
         // platform (see the class).
-        if (timedOut || opts.signal?.aborted || e instanceof NetworkError) throw e;
+        if (timedOut || opts.signal?.aborted) throw e;
         throw new NetworkError(e);
       }
       this.onAnswer?.();

@@ -25,6 +25,9 @@ export function tabLock(name: string): <T>(job: () => Promise<T>) => Promise<T> 
 
 type LockManager = { request<T>(name: string, job: () => Promise<T>): Promise<T> };
 
+/** Whether this runtime has the browser's Web Locks (a secure-context browser). */
+export const hasWebLocks = (): boolean => webLocks() !== null;
+
 /** The browser's Web Locks, or null where there are none (native, plain http). */
 function webLocks(): LockManager | null {
   const locks = (globalThis.navigator as { locks?: Partial<LockManager> } | undefined)?.locks;

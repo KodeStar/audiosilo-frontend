@@ -277,28 +277,20 @@ export function deviceNetworkChanged(state: Pick<Network.NetworkState, 'isConnec
   }, REJOIN_RETRY_MS);
 }
 
-/** Follow the app's network state (`deviceNetworkChanged`); returns the unsubscribe. A
- * platform without network events follows nothing (the probe loop still runs). */
-export function watchDeviceNetwork(): () => void {
+// Native: follow the app's network state (`deviceNetworkChanged`) for the life of the app.
+// A platform without network events follows nothing (the probe loop still runs).
+if (Platform.OS !== 'web') {
   try {
-    const sub = Network.addNetworkStateListener(deviceNetworkChanged);
-    return () => {
-      sub.remove();
-      if (rejoinRetry) clearTimeout(rejoinRetry);
-      rejoinRetry = null;
-    };
+    Network.addNetworkStateListener(deviceNetworkChanged);
   } catch {
-    return () => undefined;
+    // no network events
   }
 }
-
-// Native: the app's network state, for the life of the app.
-if (Platform.OS !== 'web') watchDeviceNetwork();
 
 // Web only: the browser's own connectivity signal flips state instantly (a probe
 // confirms each server itself, not just the NIC). `offline` marks every known
 // connection down; `online` re-probes them. Native follows the system's network state
-// (`watchDeviceNetwork`) and the probe loop.
+// (`deviceNetworkChanged`) and the probe loop.
 if (
   Platform.OS === 'web' &&
   typeof window !== 'undefined' &&

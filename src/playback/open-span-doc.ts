@@ -35,7 +35,7 @@ export type OpenSpan = {
  * last stored (ms, device clock). Both absent on a span stored before W2. */
 export type StoredSpan = OpenSpan & { owner?: string; keptAt?: number };
 
-const isPos = (n: unknown): n is number => Number.isFinite(n);
+export const isPos = (n: unknown): n is number => Number.isFinite(n);
 
 /** Whether `v` is a stored span with a place (JSON keeps NaN as null). */
 export function isSpan(v: unknown): v is StoredSpan {

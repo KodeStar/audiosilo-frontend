@@ -101,7 +101,8 @@ export function lastSeen(device: Pick<MyDevice, 'current' | 'last_seen'>, now: n
 
 /** The platforms a device row names (`X-AudioSilo-Client`'s platform, lower case): the
  * app's three, and a watch app's two (`audiosilo-watch/<ver> (watchos|wearos)`, Track W). */
-const KNOWN_PLATFORMS = ['ios', 'android', 'web', 'watchos', 'wearos'] as const;
+const WATCH_PLATFORMS = ['watchos', 'wearos'] as const;
+const KNOWN_PLATFORMS = ['ios', 'android', 'web', ...WATCH_PLATFORMS] as const;
 export type KnownPlatform = (typeof KNOWN_PLATFORMS)[number];
 
 export function knownPlatform(platform: string | undefined): KnownPlatform | null {
@@ -112,7 +113,7 @@ export function knownPlatform(platform: string | undefined): KnownPlatform | nul
 
 /** Whether a platform is a watch's. */
 export const isWatchPlatform = (platform: string | undefined): boolean =>
-  platform === 'watchos' || platform === 'wearos';
+  (WATCH_PLATFORMS as readonly (string | undefined)[]).includes(platform);
 
 /** A device row's glyph: an API key is a key; a browser is a laptop; a watch is the neutral
  * drive (no watch glyph is vendored; never a phone, though "Pixel Watch" names a phone's
