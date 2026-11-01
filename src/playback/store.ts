@@ -23,6 +23,7 @@ import {
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
+import { randomUUID } from '@/lib/random';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
@@ -564,13 +565,22 @@ const saveLoop = engineTicker(() => {
   void persist();
   tickListeningSpan();
 }, SAVE_INTERVAL_MS);
+/** How often the open span is written to storage while playing, online or offline: a
+ * kill (a force-stop, the OS ending the app) loses at most this much listening, since
+ * `recoverOpenSpan` closes what was stored at the next launch. Without it an online span
+ * lived only in memory between two 15 s cuts (W2 F1). */
+const OPEN_SPAN_KEEP_MS = 5_000;
+const spanKeeper = engineTicker(() => keepOpenSpan(), OPEN_SPAN_KEEP_MS);
 /** Re-based on every start: the first save comes 15 s after playing starts. */
 function startSaveLoop() {
   saveLoop.stop();
   saveLoop.start();
+  spanKeeper.stop();
+  spanKeeper.start();
 }
 function stopSaveLoop() {
   saveLoop.stop();
+  spanKeeper.stop();
 }
 
 /** Capture the current position then stop the periodic save loop - shared by the
@@ -592,8 +602,9 @@ function haltAndPersist() {
 // the server is reachable, a speed change, the server coming back, the app going to the
 // background and the web page hiding; it is CLOSED on a pause (any settling out of
 // `playing`), a move (the new place opens the next span with the move's reason), a stop, a
-// book switch and the end. Offline, a tick only rewrites the open span (kept in storage, so
-// a day offline is a handful of events and a kill loses nothing). The persist guards above
+// book switch and the end. Offline, a tick only rewrites the open span, so a day offline is
+// a handful of events. Online or offline, the open span is stored every 5 s
+// (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that. The persist guards above
 // (the load, the hot-swap, an adoption's reload, the resume floor) keep a suspicious place
 // out of a span too: a span then ends where it was last seen.
 
@@ -673,6 +684,8 @@ function spanAt(
     endedAt: now,
     start,
     baseVersion,
+    // Its event's id, chosen now: a span closed twice is one event (`OpenSpan.id`).
+    id: randomUUID(),
   };
 }
 
@@ -764,6 +777,15 @@ function tickListeningSpan() {
     cutListeningSpan();
     return;
   }
+  keepOpenSpan();
+}
+
+/** Bring the open span up to where the engine is now and store it (`OPEN_SPAN_KEEP_MS`, and
+ * each offline tick), so a kill loses only what played since. */
+function keepOpenSpan() {
+  if (!span) return;
+  const np = usePlayer.getState().nowPlaying;
+  if (!np || !sameBook(span, np)) return;
   const here = engineEnd();
   if (here) span.to = here;
   span.endedAt = new Date().toISOString();

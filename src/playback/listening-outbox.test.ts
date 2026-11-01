@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 import { ApiError, type ApiClient } from '@/api/client';
 import type {
@@ -40,6 +41,7 @@ import { onConnectionRemoved } from '@/stores/session';
 
 import {
   appendEvents,
+  clockSkewOf,
   closeSpan,
   eventIsFinite,
   COULD_NOT_SYNC_KEEP_MS,
@@ -47,6 +49,9 @@ import {
   MAX_COULD_NOT_SYNC,
   fitKeepalive,
   flushOutbox,
+  GIVE_UP_AGE_MS,
+  LIVE_SPAN_MS,
+  MAX_EVENT_SPAN_MS,
   keptMine,
   legacySavesOf,
   type OpenSpan,
@@ -747,5 +752,209 @@ describe('several web tabs share the outbox', () => {
     // Garbage leaves the copy as it was.
     refreshOutboxFrom('{not json');
     expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['x']);
+  });
+});
+
+// fe#208 and W2 F1.
+describe('a span is one event, however often it is closed', () => {
+  it('takes the id it was given when it opened', () => {
+    expect(spanToEvent(span({ id: 'span-1' })).id).toBe('span-1');
+  });
+
+  it('a span recovered after its close was written goes once (a kill before the clear)', async () => {
+    const s = span({ id: 'span-2' });
+    await closeSpan(s);
+    // The stored copy was not cleared (a kill between the outbox write and the clear).
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify(s));
+    resetOutboxForTests();
+    await recoverOpenSpan();
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['span-2']);
+  });
+});
+
+describe('a span whose timers stood still', () => {
+  it('never claims more than MAX_EVENT_SPAN_MS of wall clock (the server refuses 24 h)', () => {
+    const long = span({
+      startedAt: '2026-10-20T07:00:00.000Z',
+      endedAt: '2026-10-22T07:00:00.000Z',
+      from: { pos: 100 },
+      to: { pos: 1300 },
+      speed: 1.5,
+    });
+    const event = spanToEvent(long);
+    expect(event.ended_at).toBe('2026-10-22T07:00:00.000Z');
+    // 1200 s of audio at 1.5x took 800 s to play.
+    expect(Date.parse(event.ended_at) - Date.parse(event.started_at)).toBe(800_000);
+    // One that covered more than the bound keeps the bound.
+    const most = spanToEvent({ ...long, to: { pos: 400_000 }, speed: 1 });
+    expect(Date.parse(most.ended_at) - Date.parse(most.started_at)).toBe(MAX_EVENT_SPAN_MS);
+    // An ordinary span is untouched.
+    expect(spanToEvent(span()).started_at).toBe(span().startedAt);
+  });
+});
+
+describe('giving up', () => {
+  it(`moves an event older than ${GIVE_UP_AGE_MS / 86_400_000} days to the list unsent (too_old)`, async () => {
+    const old = new Date(Date.now() - GIVE_UP_AGE_MS - 60_000).toISOString();
+    await appendEvents('c1', [
+      listen('old', { started_at: old, ended_at: old } as Partial<ListeningEvent>),
+      { id: 'old-finish', kind: 'finish', library_id: 3, path: 'Author/Book', at: old },
+      listen('new'),
+    ]);
+    const c = client(async (body) => answer(body));
+    await flushOutbox('c1');
+    expect(sent(c).flatMap((b) => b.events.map((e) => e.id))).toEqual(['new']);
+    expect((await syncStateOf('c1')).failed?.map((f) => [f.event.id, f.reason])).toEqual([
+      ['old', 'too_old'],
+      ['old-finish', 'too_old'],
+    ]);
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  it('a single event the server still finds too big goes to the list as too_large', async () => {
+    await appendEvents('c1', [listen('big')]);
+    client(async () => {
+      throw new ApiError(413, 'request body too large');
+    });
+    await flushOutbox('c1');
+    expect((await syncStateOf('c1')).failed?.map((f) => [f.event.id, f.reason])).toEqual([
+      ['big', 'too_large'],
+    ]);
+  });
+});
+
+describe('the server clock', () => {
+  it('clockSkewOf measures from the middle of the request', () => {
+    const sentAt = Date.parse('2026-10-25T07:41:00.000Z');
+    expect(clockSkewOf('2026-10-25T07:41:21.000Z', sentAt, sentAt + 2_000)).toBe(20_000);
+    expect(clockSkewOf('not a time', sentAt, sentAt)).toBeUndefined();
+    expect(clockSkewOf(undefined, sentAt, sentAt)).toBeUndefined();
+  });
+
+  it("keeps each sync answer's measurement in the sync state", async () => {
+    await appendEvents('c1', [listen('a')]);
+    client(async (body) => ({
+      ...answer(body),
+      server_time: new Date(Date.now() + 30_000).toISOString(),
+    }));
+    await flushOutbox('c1');
+    const stored = JSON.parse((await AsyncStorage.getItem(SYNC))!) as {
+      c1: { clockSkewMs: number };
+    };
+    expect(stored.c1.clockSkewMs).toBeGreaterThan(29_000);
+    expect(stored.c1.clockSkewMs).toBeLessThan(31_000);
+  });
+});
+
+describe('the waiting count', () => {
+  it('counts listens, not finish or unfinish', async () => {
+    await appendEvents('c1', [
+      listen('a'),
+      { id: 'f', kind: 'finish', library_id: 3, path: 'Author/Book', at: span().endedAt },
+      { id: 'u', kind: 'unfinish', library_id: 3, path: 'Author/Book', at: span().endedAt },
+    ]);
+    expect(await pendingSaves('c1')).toEqual({ saves: 0, listens: 1 });
+  });
+});
+
+describe('open spans of several web tabs', () => {
+  const os = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = 'web';
+  });
+  afterEach(() => {
+    Platform.OS = os;
+  });
+
+  const stored = async () => JSON.parse((await AsyncStorage.getItem(OPEN_SPAN))!) as OpenSpan[];
+
+  it("leaves another tab's live span alone at launch, and closes one left behind", async () => {
+    const live = { ...span({ id: 'live' }), owner: 'tab-a', keptAt: Date.now() };
+    const left = { ...span({ id: 'left' }), owner: 'tab-b', keptAt: Date.now() - LIVE_SPAN_MS - 1 };
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([live, left]));
+    await recoverOpenSpan();
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['left']);
+    expect((await stored()).map((s) => s.id)).toEqual(['live']);
+  });
+
+  it("stores and clears this tab's span beside another tab's", async () => {
+    const theirs = { ...span({ id: 'theirs' }), owner: 'tab-a', keptAt: Date.now() };
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([theirs]));
+    await storeOpenSpan(span({ id: 'mine' }));
+    expect((await stored()).map((s) => s.id)).toEqual(['theirs', 'mine']);
+    await closeSpan(span({ id: 'mine' }));
+    expect((await stored()).map((s) => s.id)).toEqual(['theirs']);
+    // Its listen counts as waiting only offline, the other tab's too.
+    (reachability.isReachable as jest.Mock).mockReturnValue(false);
+    expect((await pendingSaves('c1')).listens).toBe(2);
+  });
+
+  it('a span stored before W2 (one bare span, no owner) is recovered', async () => {
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify(span({ id: 'legacy' })));
+    await recoverOpenSpan();
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['legacy']);
+  });
+
+  it("the app recovers every span it finds: they are a previous launch's", async () => {
+    Platform.OS = os;
+    const fresh = { ...span({ id: 'previous' }), owner: 'launch-1', keptAt: Date.now() };
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([fresh]));
+    await recoverOpenSpan();
+    expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['previous']);
+  });
+});
+
+describe('a plain-http web player (no Web Locks)', () => {
+  const nav = globalThis.navigator as { locks?: unknown };
+  const os = Platform.OS;
+  const g = globalThis as { localStorage?: unknown };
+  const had = Object.getOwnPropertyDescriptor(g, 'localStorage');
+  let leases: Map<string, string>;
+  beforeEach(() => {
+    Platform.OS = 'web';
+    Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });
+    leases = new Map();
+    const setItem = jest.fn((k: string, v: string) => void leases.set(k, v));
+    Object.defineProperty(g, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (k: string) => leases.get(k) ?? null,
+        setItem,
+        removeItem: (k: string) => void leases.delete(k),
+      },
+    });
+  });
+  afterEach(() => {
+    Platform.OS = os;
+    delete nav.locks;
+    if (had) Object.defineProperty(g, 'localStorage', had);
+    else delete g.localStorage;
+  });
+
+  it("takes a lease and re-reads the stored outbox, so another tab's event stays", async () => {
+    await appendEvents('c1', [listen('mine')]);
+    const before = JSON.parse((await AsyncStorage.getItem(OUTBOX))!) as unknown[];
+    await AsyncStorage.setItem(
+      OUTBOX,
+      JSON.stringify([...before, { connectionId: 'c1', event: listen('theirs') }]),
+    );
+    await appendEvents('c1', [listen('mine-2')]);
+    const ids = (
+      JSON.parse((await AsyncStorage.getItem(OUTBOX))!) as { event: { id: string } }[]
+    ).map((e) => e.event.id);
+    expect(ids).toEqual(['mine', 'theirs', 'mine-2']);
+    const storage = g.localStorage as { setItem: jest.Mock };
+    expect(storage.setItem).toHaveBeenCalledWith(
+      `audiosilo-lock:${OUTBOX}`,
+      expect.stringContaining('token'),
+    );
+    // Released when done.
+    expect(leases.has(`audiosilo-lock:${OUTBOX}`)).toBe(false);
+  });
+
+  it('the sync state takes its lease too', async () => {
+    await discardFailed('c1', 'x');
+    const storage = g.localStorage as { setItem: jest.Mock };
+    expect(storage.setItem).toHaveBeenCalledWith(`audiosilo-lock:${SYNC}`, expect.any(String));
   });
 });

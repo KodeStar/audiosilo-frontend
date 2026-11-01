@@ -35,6 +35,9 @@ export type ToastOptions = {
   /** Called when the listener closes the toast with its close button (an answer: "Stay"
    * beside a "Jump"), never when it times out or its action is pressed. */
   onClose?: () => void;
+  /** Called when the toast dismisses itself after `duration` (nobody answered it), never
+   * when it is closed, its action pressed, or it is pushed off the stack. */
+  onTimeout?: () => void;
   /** The close button's label for assistive tech (default "Dismiss"). */
   closeLabel?: string;
 };
@@ -73,7 +76,10 @@ export function toast(options: ToastOptions): number {
   });
   timers.set(
     id,
-    setTimeout(() => dismissToast(id), duration),
+    setTimeout(() => {
+      dismissToast(id);
+      options.onTimeout?.();
+    }, duration),
   );
   return id;
 }

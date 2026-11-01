@@ -12,7 +12,9 @@ import {
   flushQueue,
   loadInitialProgress,
   answerOffer,
+  ignoreOffer,
   mirroredProgress,
+  noteClockSkew,
   pendingSaveCount,
   type ProgressSave,
   readLocalPlaces,
@@ -738,6 +740,62 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
     const m = await readMirrorOf('c1', 1, 'A/Book');
     expect(m).not.toHaveProperty('file');
     expect(m?.ack_version).toBe(7);
+  });
+
+  // fe#208: the echo is stamped in server time, the capture in this device's time.
+  describe("a device whose clock is behind the server's", () => {
+    afterEach(() => noteClockSkew('c1', 0));
+    // 20 s slow: the server stamps its echo of the 00:00:00 capture 00:00:22.
+    const echo = makeProgress({
+      position: 4100,
+      device_id: 'dev',
+      updated_at: '2026-01-02T00:00:22Z',
+    });
+
+    it('keeps its file place once a sync answer measured the skew (stored)', async () => {
+      await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+      expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).not.toHaveProperty(
+        'file',
+      );
+      await AsyncStorage.setItem(
+        'audiosilo.listeningSync',
+        JSON.stringify({ c1: { clockSkewMs: 20_000 } }),
+      );
+      expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).toMatchObject({
+        file: { path: 'A/Book/02.mp3', pos: 600 },
+      });
+    });
+
+    it("this launch's measurement counts too, and so does a server behind the device", async () => {
+      await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+      noteClockSkew('c1', -20_000);
+      expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).toMatchObject({
+        file: { path: 'A/Book/02.mp3', pos: 600 },
+      });
+      // writeMirror's merge keeps the file place over the echo the same way.
+      await writeMirror({ ...save, position: 4100, updated_at: '2026-01-02T00:00:22Z' });
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({ file: 'A/Book/02.mp3' });
+    });
+
+    it('still drops a file place older than the skew allows', async () => {
+      await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ 'c1:1:A/Book': filed }));
+      noteClockSkew('c1', 20_000);
+      const later = makeProgress({ ...echo, updated_at: '2026-01-02T00:01:00Z' });
+      expect(resumeLookupOf(later, await readLocalPlaces(), 'c1', 1, 'A/Book')).not.toHaveProperty(
+        'file',
+      );
+    });
+  });
+
+  it('ignoreOffer notes the offer without acknowledging anything', async () => {
+    await writeMirror({ ...save, ack_version: 3 });
+    const row = makeProgress({ version: 9 });
+    await ignoreOffer('c1', 1, 'A/Book', row, 'watch|a');
+    await ignoreOffer('c1', 1, 'A/Book', row, 'watch|a');
+    expect(await readMirrorOf('c1', 1, 'A/Book')).toMatchObject({
+      ack_version: 3,
+      answered: ['watch|a'],
+    });
   });
 
   it('ackVersion never lowers; it creates the record from the row when none exists', async () => {

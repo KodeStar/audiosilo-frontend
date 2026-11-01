@@ -16,6 +16,7 @@ import {
   answerOffer,
   cachedDeviceId,
   getDeviceId,
+  ignoreOffer,
   readMirror,
   type ProgressSave,
 } from './progress-sync';
@@ -200,6 +201,12 @@ export async function offerLoadedPlace(
         void answer().then(() => {
           if (selectBookKey(usePlayer.getState()) === bookKey) standByPlace();
         });
+      },
+      // Not answered: noted, so the same place is not offered again (no acknowledgement).
+      onTimeout: () => {
+        void ignoreOffer(np.connectionId, np.libraryId, np.path, row, offer.key).catch(
+          () => undefined,
+        );
       },
       duration: 12_000,
     });

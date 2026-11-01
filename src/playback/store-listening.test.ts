@@ -67,6 +67,7 @@ const mockClosed: OpenSpan[] = [];
 const mockAppended: ListeningEvent[] = [];
 const mockSendOnPageHide = jest.fn((..._a: unknown[]) => {});
 const mockFlushOutbox = jest.fn(async (..._a: unknown[]) => {});
+const mockStoreOpenSpan = jest.fn(async (..._a: unknown[]) => {});
 jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
@@ -76,7 +77,7 @@ jest.mock('./listening-outbox', () => {
     closeSpan: jest.fn(async (span: OpenSpan) => {
       mockClosed.push(structuredClone(span));
     }),
-    storeOpenSpan: jest.fn(async () => {}),
+    storeOpenSpan: (...a: unknown[]) => mockStoreOpenSpan(...a),
     appendEvents: jest.fn(async (_cid: string, events: ListeningEvent[]) => {
       mockAppended.push(...events);
     }),
@@ -553,6 +554,45 @@ describe('a long offline run', () => {
     } finally {
       reach.mockRestore();
     }
+  });
+});
+
+// W2 F1: a force-stop between two 15 s cuts lost the open span, which lived only in memory.
+describe('the open span is kept every 5 s', () => {
+  const stored = () =>
+    mockStoreOpenSpan.mock.calls.map((c) => {
+      const span = c[0] as OpenSpan;
+      return [span.start, span.from.pos, span.to.pos];
+    });
+
+  it('online too, up to where the engine is, from the span the last cut opened', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 1));
+    await settle();
+    pushSnapshot(snap('playing', 0, 6));
+    jest.advanceTimersByTime(5_000);
+    await settle();
+    expect(stored()).toEqual([['resume', 1, 6]]);
+    pushSnapshot(snap('playing', 0, 16));
+    jest.advanceTimersByTime(10_000); // the 15 s cut, then the next span is kept
+    await settle();
+    pushSnapshot(snap('playing', 0, 23));
+    jest.advanceTimersByTime(5_000);
+    await settle();
+    expect(stored().at(-1)).toEqual(['continue', 16, 23]);
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 1, 16]]);
+  });
+
+  it('stops with the playing: a pause stores nothing more', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 1));
+    await settle();
+    pushSnapshot(snap('paused', 0, 3));
+    await settle();
+    mockStoreOpenSpan.mockClear();
+    jest.advanceTimersByTime(20_000);
+    await settle();
+    expect(mockStoreOpenSpan).not.toHaveBeenCalled();
   });
 });
 

@@ -76,6 +76,26 @@ describe('toast / ToastHost', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('tells onTimeout only when it dismisses itself, never when answered', async () => {
+    await mountHost();
+    const onTimeout = jest.fn();
+    const onPress = jest.fn();
+    await act(async () => {
+      toast({ title: 'Offer', action: { label: 'Jump', onPress }, onClose: jest.fn(), onTimeout });
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Jump' }));
+    await act(async () => {
+      jest.advanceTimersByTime(10_000);
+    });
+    expect(onTimeout).not.toHaveBeenCalled();
+    await act(async () => {
+      toast({ title: 'Offer 2', duration: 12_000, onTimeout });
+      jest.advanceTimersByTime(12_000);
+    });
+    expect(onTimeout).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Offer 2')).toBeNull();
+  });
+
   it('can be dismissed by hand (a translated label)', async () => {
     await mountHost();
     await act(async () => {

@@ -272,7 +272,9 @@
       "platform": {
         "ios": "iOS",
         "android": "Android",
-        "web": "Browser"
+        "web": "Browser",
+        "watchos": "Apple Watch",
+        "wearos": "Wear OS"
       },
       "seen": {
         "minute_one": "zuletzt vor {{count}} Minute gesehen",
@@ -327,6 +329,7 @@
       "reason": {
         "duration_mismatch": "Diese Kopie des Buchs ist anders lang als die auf dem Server.",
         "too_old": "Es ist älter als 90 Tage.",
+        "too_large": "Es ist zu groß, als dass der Server es annehmen könnte.",
         "no_access": "Du kannst dieses Buch auf dem Server nicht mehr öffnen.",
         "not_found": "Das Buch ist nicht mehr auf dem Server.",
         "unknown_kind": "Der Server kennt diese Art von Hörsitzung nicht.",

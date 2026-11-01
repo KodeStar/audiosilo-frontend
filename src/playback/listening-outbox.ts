@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { cachedCapability, qk } from '@/api/hooks';
@@ -7,14 +9,13 @@ import type {
   ListeningEvent,
   ListeningFinishEvent,
   ListeningSpanEvent,
-  ListeningStart,
   ListeningSyncResponse,
   ListeningSyncResult,
   Progress,
 } from '@/api/types';
 import { randomUUID } from '@/lib/random';
-import { serialQueue } from '@/lib/serial-queue';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
+import { tabLock } from '@/lib/tab-lock';
 import {
   isRecord,
   LISTENING_OPEN_SPAN_KEY as OPEN_SPAN_KEY,
@@ -23,14 +24,18 @@ import {
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { type OpenSpan, type StoredSpan, storedSpans } from './open-span-doc';
 import {
   ackVersion,
   getDeviceId,
+  noteClockSkew,
   pendingSaves,
   type ProgressSave,
   readMirror,
   saveProgress,
 } from './progress-sync';
+
+export type { OpenSpan, SpanEnd } from './open-span-doc';
 
 /**
  * Sync v2's listening outbox (Track W1, CROSS-REPO section 25): on a server with
@@ -44,9 +49,9 @@ import {
  *
  * - `audiosilo.listeningOutbox`: the closed events, each with its `connectionId`. An event is
  *   immutable once it is here (the store closes spans into new ones; nothing merges).
- * - `audiosilo.listeningOpenSpan`: the one span being played, rewritten each offline tick,
- *   so a span a kill left open is closed at its last stored values on the next launch
- *   (`recoverOpenSpan`).
+ * - `audiosilo.listeningOpenSpan`: the span being played (one per web tab playing),
+ *   stored every few seconds, so a span a kill left open is closed at its last stored
+ *   values on the next launch (`recoverOpenSpan`).
  * - `audiosilo.listeningSync`: per connection, when it last synced and the events the server
  *   rejected (the "couldn't sync" list, kept 30 days or until discarded).
  *
@@ -60,35 +65,19 @@ import {
  * saves by PUT from then on (`usesListeningSync`).
  */
 
-/** One end of a span: whole-book seconds, and the audio file (rel path) and seconds in it. */
-export type SpanEnd = { pos: number; file?: string; filePos?: number };
-
-/** A span being played (store.ts keeps it in memory and here while offline). */
-export type OpenSpan = {
-  connectionId: string;
-  libraryId: number;
-  path: string;
-  from: SpanEnd;
-  to: SpanEnd;
-  /** The device's length of the book (0 = unknown). */
-  duration: number;
-  speed: number;
-  /** ISO, device clock. */
-  startedAt: string;
-  endedAt: string;
-  start: ListeningStart;
-  /** The version acknowledged when the span opened (absent: none known, last write wins). */
-  baseVersion?: number;
-};
-
 /** An event waiting for its server. */
 export type OutboxEntry = { connectionId: string; event: ListeningEvent };
 
 /** An event its server rejected, kept to show (the account's couldn't-sync list). */
 export type CouldNotSync = { event: ListeningEvent; reason: string; at: string };
 
-/** What the account card shows of one connection's sync. */
-export type ConnectionSyncState = { lastSyncAt?: string; failed?: CouldNotSync[] };
+/** What the account card shows of one connection's sync, and its server's clock: how far
+ * ahead of this device's it was at the last sync answer (ms, `clockSkewMs`). */
+export type ConnectionSyncState = {
+  lastSyncAt?: string;
+  failed?: CouldNotSync[];
+  clockSkewMs?: number;
+};
 
 /** At most this many events per request (the server takes 500). */
 const MAX_CHUNK = 200;
@@ -101,23 +90,51 @@ export const COULD_NOT_SYNC_KEEP_MS = 30 * 24 * 60 * 60_000;
 export const MAX_COULD_NOT_SYNC = 100;
 /** A span shorter than this that moved nowhere says nothing (a play stopped at once). */
 const EMPTY_SPAN_MS = 1_000;
+/** The longest wall time an event's span may claim: under the server's 24 h bound (a span
+ * longer is refused `invalid`). The store cuts a span every hour, but only its tick does,
+ * and a JS runtime whose timers stood still (a frozen tab, a suspended app) can close one
+ * that ran longer (fe#208). */
+export const MAX_EVENT_SPAN_MS = 23 * 60 * 60_000;
+/** An event older than this is given up without a send: the server refuses one older
+ * than 90 days (`too_old`), so it could only ever wait (keeping its book pending, which
+ * holds off another device's finish there) or be refused. A day short of the server's
+ * bound, so a device clock a little behind never sends one that is refused. */
+export const GIVE_UP_AGE_MS = 89 * 24 * 60 * 60_000;
 
 // --- Building events -------------------------------------------------------------------
 
 /** A new event id (a UUID: the server takes 1-64 of `[A-Za-z0-9_-]`). */
 const newEventId = (): string => randomUUID();
 
-/** A span as its `listen` event (pure). Each end's file pair is sent only whole. */
+/**
+ * A span's start as its event claims it (pure): its own, unless the span ran longer than
+ * `MAX_EVENT_SPAN_MS` of wall clock (timers that stood still). The start is then moved up
+ * to as long before the end as the audio it covered takes to play (at least a second, at
+ * most the bound): the listening the server counts stays, the impossible wall time goes.
+ */
+function claimedStart(span: OpenSpan, endedAt: string): string {
+  const ended = Date.parse(endedAt);
+  const started = Date.parse(span.startedAt);
+  if (!(ended - started > MAX_EVENT_SPAN_MS)) return span.startedAt;
+  const speed = span.speed > 0 ? span.speed : 1;
+  const played = (Math.abs(span.to.pos - span.from.pos) / speed) * 1000;
+  const wall = Math.min(MAX_EVENT_SPAN_MS, Math.max(1000, Number.isFinite(played) ? played : 0));
+  return new Date(ended - wall).toISOString();
+}
+
+/** A span as its `listen` event (pure), with the id it took when it opened (else `id`).
+ * Each end's file pair is sent only whole. */
 export function spanToEvent(span: OpenSpan, id: string = newEventId()): ListeningSpanEvent {
+  const endedAt = span.endedAt < span.startedAt ? span.startedAt : span.endedAt;
   const event: ListeningSpanEvent = {
-    id,
+    id: span.id ?? id,
     kind: 'listen',
     library_id: span.libraryId,
     path: span.path,
     from_pos: Math.max(0, span.from.pos),
     to_pos: Math.max(0, span.to.pos),
-    started_at: span.startedAt,
-    ended_at: span.endedAt < span.startedAt ? span.startedAt : span.endedAt,
+    started_at: claimedStart(span, endedAt),
+    ended_at: endedAt,
     start: span.start,
   };
   if (span.from.file && isPos(span.from.filePos)) {
@@ -168,27 +185,21 @@ export function finishEvent(
 
 // --- The outbox document ---------------------------------------------------------------
 
-/** The browser's Web Locks, shared by every tab of this origin; null where there are none
- * (native, an old browser: there one tab is all there is, or the current behaviour stands). */
-type LockManager = { request<T>(name: string, job: () => Promise<T>): Promise<T> };
-function sharedLocks(): LockManager | null {
-  const locks = (globalThis.navigator as { locks?: Partial<LockManager> } | undefined)?.locks;
-  return typeof locks?.request === 'function' ? (locks as LockManager) : null;
+/** Whether other tabs may share this storage (the web, or a runtime with Web Locks): the
+ * stored documents are then read again under their lock each time, never from a copy. */
+function sharedAcrossTabs(): boolean {
+  if (Platform.OS === 'web') return true;
+  const locks = (globalThis.navigator as { locks?: { request?: unknown } } | undefined)?.locks;
+  return typeof locks?.request === 'function';
 }
 
-const tabQueue = serialQueue();
 /**
- * Run an outbox read-modify-write alone: in this tab (a serial queue) and, on the web, across
- * every tab (a Web Lock), since the tabs share the stored outbox. Under the shared lock the
- * stored outbox is read again each time (`readOutbox`), so a tab never writes over events
- * another tab added or sent.
+ * Run an outbox read-modify-write alone: in this tab and across every tab of the web player
+ * (`tabLock`: Web Locks, else a `localStorage` lease on plain http), since the tabs share the
+ * stored outbox. Under it the stored outbox is read again each time (`readOutbox`), so a tab
+ * never writes over events another tab added or sent.
  */
-function withOutboxLock<T>(job: () => Promise<T>): Promise<T> {
-  return tabQueue(() => {
-    const locks = sharedLocks();
-    return locks ? locks.request(OUTBOX_KEY, job) : job();
-  });
-}
+const withOutboxLock = tabLock(OUTBOX_KEY);
 /** The outbox as last read or written (the web's `pagehide` reads it synchronously). */
 let outboxCache: OutboxEntry[] | null = null;
 /** Whether the stored outbox has been read this launch. Until it is (a storage read that
@@ -208,7 +219,7 @@ const isEntry = (v: unknown): v is OutboxEntry =>
 const entriesOf = (raw: unknown): OutboxEntry[] => (Array.isArray(raw) ? raw.filter(isEntry) : []);
 
 async function readOutbox(): Promise<OutboxEntry[]> {
-  if (outboxCache && outboxRead && !sharedLocks()) return outboxCache;
+  if (outboxCache && outboxRead && !sharedAcrossTabs()) return outboxCache;
   try {
     const stored = entriesOf(await getItemStrict<unknown>(OUTBOX_KEY));
     if (outboxRead && !outboxUnsaved) {
@@ -306,44 +317,89 @@ async function removeEvents(ids: Set<string>): Promise<void> {
 
 // --- The open span ---------------------------------------------------------------------
 
-/** One after another: a cut's close and the next span's write never cross. */
-const spanOps = serialQueue();
+/** One after another, in this tab and across tabs (`tabLock`): a cut's close and the next
+ * span's write never cross, and two tabs never write over each other's span. */
+const spanOps = tabLock(OPEN_SPAN_KEY);
 let recovery: Promise<void> | null = null;
-/** Whether this launch stored an open span (only offline ticks do): a close clears it then. */
+/** Whether this tab (the app: this launch) has a span of its own stored: a close clears it. */
 let openSpanStored = false;
+/** Who this tab is (the app: this launch), for the spans it stores. */
+let tabId = randomUUID();
+/** A span stored by another tab within this long is that tab's, still playing (it stores
+ * its span every 5 s while it plays); one older was left by a tab that closed or crashed. */
+export const LIVE_SPAN_MS = 30_000;
+/** A web tab found another tab's live span at launch: it looks again once that would have
+ * gone stale. */
+let staleCheck: ReturnType<typeof setTimeout> | null = null;
 
-const isSpan = (v: unknown): v is OpenSpan =>
-  isRecord(v) &&
-  typeof v.connectionId === 'string' &&
-  typeof v.libraryId === 'number' &&
-  typeof v.path === 'string' &&
-  isRecord(v.from) &&
-  isPos(v.from.pos) &&
-  isRecord(v.to) &&
-  isPos(v.to.pos) &&
-  typeof v.startedAt === 'string' &&
-  typeof v.endedAt === 'string';
+async function readSpans(): Promise<StoredSpan[]> {
+  return storedSpans(await getItem<unknown>(OPEN_SPAN_KEY));
+}
+
+/** Write the stored spans (none: cleared). */
+async function writeSpans(spans: StoredSpan[]): Promise<void> {
+  await setItem(OPEN_SPAN_KEY, spans.length > 0 ? spans : null);
+}
+
+/** A stored span without the bookkeeping. */
+function bare({ owner: _owner, keptAt: _keptAt, ...span }: StoredSpan): OpenSpan {
+  return span;
+}
+
+/** Whether a stored span was left by a tab or launch no longer playing it. In the app every
+ * span a launch finds is a previous launch's; on the web another tab's is left alone while
+ * it is live (`LIVE_SPAN_MS`). */
+function leftBehind(span: StoredSpan, now: number): boolean {
+  if (span.owner === tabId) return false;
+  if (Platform.OS !== 'web' || span.owner === undefined) return true;
+  return !(typeof span.keptAt === 'number' && now - span.keptAt < LIVE_SPAN_MS);
+}
+
+/** Close every span left behind into the outbox. Run inside `spanOps`. Returns whether a
+ * live span of another tab is still stored. */
+async function closeLeftBehind(): Promise<boolean> {
+  const spans = await readSpans();
+  const now = Date.now();
+  const left = spans.filter((s) => leftBehind(s, now));
+  for (const s of left) await appendClosed(bare(s));
+  if (left.length > 0) await writeSpans(spans.filter((s) => !left.includes(s)));
+  return spans.some((s) => s.owner !== tabId && !left.includes(s));
+}
+
+/** On the web, look again for spans left behind once another tab's live one would be stale. */
+function checkAgainLater(): void {
+  if (staleCheck) return;
+  staleCheck = setTimeout(() => {
+    staleCheck = null;
+    void spanOps(closeLeftBehind)
+      .then((live) => {
+        if (live) checkAgainLater();
+      })
+      .catch(() => undefined);
+  }, LIVE_SPAN_MS);
+}
 
 /**
- * Close a span a kill left open (the stored open span, at its last stored values) into the
+ * Close a span a kill left open (a stored open span, at its last stored values) into the
  * outbox. Once per launch, before this launch's first span is written: every span write
- * waits on it.
+ * waits on it. On the web a span another tab is still playing is left to it (looked at
+ * again once it would be stale).
  */
 export function recoverOpenSpan(): Promise<void> {
-  recovery ??= spanOps(async () => {
-    const raw = await getItem<unknown>(OPEN_SPAN_KEY);
-    if (!isSpan(raw)) return;
-    openSpanStored = true;
-    await closeInto(raw);
-  }).catch((e: unknown) => console.warn('[listening] could not recover the open span', e));
+  recovery ??= spanOps(closeLeftBehind)
+    .then((live) => {
+      if (live) checkAgainLater();
+    })
+    .catch((e: unknown) => console.warn('[listening] could not recover the open span', e));
   return recovery;
 }
 
-/** Keep the span being played (offline ticks; null clears it). */
+/** Keep the span being played (every few seconds while it plays; null clears it). */
 export async function storeOpenSpan(span: OpenSpan | null): Promise<void> {
   await recoverOpenSpan();
   await spanOps(async () => {
-    await setItem(OPEN_SPAN_KEY, span);
+    const others = (await readSpans()).filter((s) => s.owner !== tabId);
+    await writeSpans(span ? [...others, { ...span, owner: tabId, keptAt: Date.now() }] : others);
     // The pending count changes only when a span comes or goes, not with each rewrite.
     const was = openSpanStored;
     openSpanStored = span !== null;
@@ -364,15 +420,19 @@ async function baseAtClose(span: OpenSpan): Promise<number | undefined> {
   return acked === undefined ? span.baseVersion : Math.max(span.baseVersion ?? 0, acked);
 }
 
-/** Append `span`'s event (when it says something) and clear the stored open span, if any.
- * Run inside `spanOps`. */
+/** Append `span`'s event, when it says something (on the base acknowledged by now). */
+async function appendClosed(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
+  if (!spanSaysSomething(span)) return;
+  const closed = event ?? spanToEvent({ ...span, baseVersion: await baseAtClose(span) });
+  await appendEvents(span.connectionId, [closed]);
+}
+
+/** Append `span`'s event (when it says something) and clear this tab's stored open span,
+ * if any. Run inside `spanOps`. */
 async function closeInto(span: OpenSpan, event?: ListeningSpanEvent): Promise<void> {
-  if (spanSaysSomething(span)) {
-    const closed = event ?? spanToEvent({ ...span, baseVersion: await baseAtClose(span) });
-    await appendEvents(span.connectionId, [closed]);
-  }
+  await appendClosed(span, event);
   if (!openSpanStored) return;
-  await setItem(OPEN_SPAN_KEY, null);
+  await writeSpans((await readSpans()).filter((s) => s.owner !== tabId));
   openSpanStored = false;
   notify();
 }
@@ -387,15 +447,17 @@ export async function closeSpan(span: OpenSpan, event?: ListeningSpanEvent): Pro
   await spanOps(() => closeInto(span, event));
 }
 
-/** The stored open span (tests, the pending count). */
+/** This tab's stored open span (tests), else the first one stored. */
 export async function storedOpenSpan(): Promise<OpenSpan | null> {
-  const raw = await getItem<unknown>(OPEN_SPAN_KEY);
-  return isSpan(raw) ? raw : null;
+  const spans = await readSpans();
+  const span = spans.find((s) => s.owner === tabId) ?? spans[0];
+  return span ? bare(span) : null;
 }
 
 // --- Per-connection sync state ---------------------------------------------------------
 
-const withStateLock = serialQueue();
+/** The sync state's read-modify-writes, in this tab and across tabs (`tabLock`). */
+const withStateLock = tabLock(SYNC_KEY);
 
 /** Whether a couldn't-sync entry is still kept (30 days). */
 const stillKept = (f: CouldNotSync, now: number) => now - Date.parse(f.at) < COULD_NOT_SYNC_KEEP_MS;
@@ -506,6 +568,8 @@ export function flushOutbox(connectionId: string): Promise<void> {
 export async function flushAllOutboxes(): Promise<void> {
   if (!sessionReady()) return;
   await recoverOpenSpan();
+  // The web: another tab's span may have been left since (that tab closed or crashed).
+  if (Platform.OS === 'web') await spanOps(closeLeftBehind).catch(() => undefined);
   const ids = new Set((await currentOutbox()).map((e) => e.connectionId));
   await Promise.all([...ids].map((cid) => flushOutbox(cid)));
 }
@@ -533,12 +597,33 @@ async function flushOnce(connectionId: string): Promise<void> {
   const client = resolveClient(connectionId);
   // A connection gone: its events are purged with it (`onConnectionRemoved`).
   if (!client) return;
+  await giveUpOld(connectionId);
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const pending = await outboxEvents(connectionId);
     if (pending.length === 0) return;
     const chunk = pending.slice(0, chunkSizes.get(connectionId) ?? MAX_CHUNK);
     if ((await sendChunk(connectionId, client, chunk)) === 'stop') return;
   }
+}
+
+/** When an event happened (its end), ms. */
+function eventTime(event: ListeningEvent): number {
+  return Date.parse(event.kind === 'listen' ? event.ended_at : event.at);
+}
+
+/**
+ * Move a connection's events older than `GIVE_UP_AGE_MS` to the couldn't-sync list
+ * (`too_old`, the server's own reason): never answered (a server that kept failing, or
+ * gone that long), they could only wait on, keeping their book pending (fe#208).
+ */
+async function giveUpOld(connectionId: string, now = Date.now()): Promise<void> {
+  const old = (await outboxEvents(connectionId)).filter(
+    (e) => now - eventTime(e.event) > GIVE_UP_AGE_MS,
+  );
+  await moveToFailed(
+    connectionId,
+    old.map((e) => ({ event: e.event, reason: 'too_old' })),
+  );
 }
 
 /** What one request's outcome asks of the flush. */
@@ -551,6 +636,7 @@ async function sendChunk(
 ): Promise<Next> {
   try {
     const deviceId = await getDeviceId();
+    const sentAt = Date.now();
     const answer = await client.syncListening(
       syncBody(
         chunk.map((e) => e.event),
@@ -558,7 +644,7 @@ async function sendChunk(
       ),
     );
     noteSuccess(connectionId);
-    await applyAnswer(connectionId, chunk, answer);
+    await applyAnswer(connectionId, chunk, answer, { sentAt, answeredAt: Date.now() });
     return 'more';
   } catch (e) {
     if (!(e instanceof ApiError)) {
@@ -575,7 +661,8 @@ async function sendChunk(
         chunkSizes.set(connectionId, Math.max(1, Math.floor(chunk.length / 2)));
         return 'more';
       }
-      await moveToFailed(connectionId, [{ event: chunk[0].event, reason: 'invalid' }]);
+      // One event alone is still too big: the server can never take it.
+      await moveToFailed(connectionId, [{ event: chunk[0].event, reason: 'too_large' }]);
       return 'more';
     }
     if (e.status === 400) return sendOneByOne(connectionId, client, chunk);
@@ -638,10 +725,26 @@ export function keptMine(
   });
 }
 
+/**
+ * How far ahead of this device's clock the server's was, from an answer's `server_time`
+ * and when the request went and its answer came (the middle of the two; pure). Undefined
+ * when the answer carries no readable time.
+ */
+export function clockSkewOf(
+  serverTime: string | undefined,
+  sentAt: number,
+  answeredAt: number,
+): number | undefined {
+  const server = serverTime ? Date.parse(serverTime) : Number.NaN;
+  if (!Number.isFinite(server)) return undefined;
+  return Math.round(server - (sentAt + answeredAt) / 2);
+}
+
 async function applyAnswer(
   connectionId: string,
   sent: OutboxEntry[],
   answer: ListeningSyncResponse,
+  timing?: { sentAt: number; answeredAt: number },
 ) {
   const results = new Map((answer.results ?? []).map((r) => [r.id, r]));
   const done = new Set<string>();
@@ -654,7 +757,13 @@ async function applyAnswer(
   }
   await removeEvents(done);
   await moveToFailed(connectionId, rejected);
-  await updateState(connectionId, (s) => ({ ...s, lastSyncAt: new Date().toISOString() }));
+  const skew = timing && clockSkewOf(answer.server_time, timing.sentAt, timing.answeredAt);
+  if (skew !== undefined) noteClockSkew(connectionId, skew);
+  await updateState(connectionId, (s) => ({
+    ...s,
+    lastSyncAt: new Date().toISOString(),
+    ...(skew !== undefined ? { clockSkewMs: skew } : {}),
+  }));
 
   const rows = answer.progress ?? [];
   const deviceId = await getDeviceId();
@@ -820,10 +929,11 @@ onConnectionRemoved(async (id) => {
   await Promise.all([
     takeConnection(id),
     spanOps(async () => {
-      const span = await storedOpenSpan();
-      if (span?.connectionId !== id) return;
-      await setItem(OPEN_SPAN_KEY, null);
-      openSpanStored = false;
+      const spans = await readSpans();
+      const kept = spans.filter((s) => s.connectionId !== id);
+      if (kept.length === spans.length) return;
+      await writeSpans(kept);
+      if (!kept.some((s) => s.owner === tabId)) openSpanStored = false;
     }),
     updateState(id, () => null),
   ]);
@@ -836,6 +946,9 @@ export function resetOutboxForTests(): void {
   outboxUnsaved = false;
   recovery = null;
   openSpanStored = false;
+  tabId = randomUUID();
+  if (staleCheck) clearTimeout(staleCheck);
+  staleCheck = null;
   rolledBack.clear();
   chunkSizes.clear();
   inFlight.clear();
