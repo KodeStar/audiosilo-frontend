@@ -5,6 +5,7 @@ import {
   ApiError,
   apiErrorKind,
   isPlainSeriesQuery,
+  NetworkError,
   PodcastFetchPendingError,
   ReadalongMapError,
   SERIES_BATCH_MAX_QUERY_BYTES,
@@ -870,6 +871,46 @@ describe('ApiClient', () => {
     ) as unknown as typeof globalThis.fetch;
     await expect(c.serverInfo()).rejects.toBeInstanceOf(TypeError);
     expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  // W2 F1: the app's fetch is Expo's, which rejects with a plain `Error` (`FetchError`), so
+  // reachability never saw an offline phone as one.
+  it('surfaces any fetch rejection as a NetworkError (a TypeError), its cause kept', async () => {
+    const fetchError = new Error('fetch failed: Unable to resolve host');
+    globalThis.fetch = jest.fn(() => Promise.reject(fetchError)) as unknown as typeof fetch;
+    const onAnswer = jest.fn();
+    const c = new ApiClient('https://h', 'tok', undefined, undefined, onAnswer);
+    const got = await c.serverInfo().catch((e: unknown) => e);
+    expect(got).toBeInstanceOf(NetworkError);
+    expect(got).toBeInstanceOf(TypeError);
+    expect(got).toMatchObject({ name: 'NetworkError', cause: fetchError });
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  it("keeps a caller's cancel as the platform threw it, never a NetworkError", async () => {
+    const controller = new AbortController();
+    const cancelled = new Error('fetch failed: The operation was aborted.');
+    globalThis.fetch = jest.fn(() => {
+      controller.abort();
+      return Promise.reject(cancelled);
+    }) as unknown as typeof fetch;
+    const got = await new ApiClient('https://h', 'tok')
+      .serverInfo(controller.signal)
+      .catch((e: unknown) => e);
+    expect(got).toBe(cancelled);
+  });
+
+  it('keeps an answer that could not be read as it is (an answer, not a NetworkError)', async () => {
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: () => Promise.reject(new Error('body stream broke')),
+      } as unknown as Response),
+    ) as unknown as typeof fetch;
+    const got = await new ApiClient('https://h', 'tok').serverInfo().catch((e: unknown) => e);
+    expect(got).not.toBeInstanceOf(NetworkError);
   });
 
   // --- Client identification header -------------------------------------------

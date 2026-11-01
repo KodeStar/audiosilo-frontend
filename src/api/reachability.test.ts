@@ -2,12 +2,20 @@ const mockResolveClient = jest.fn();
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (cid: string) => mockResolveClient(cid),
 }));
+const mockNetworkListeners: ((s: { isConnected?: boolean }) => void)[] = [];
+jest.mock('expo-network', () => ({
+  addNetworkStateListener: (cb: (s: { isConnected?: boolean }) => void) => {
+    mockNetworkListeners.push(cb);
+    return { remove: () => mockNetworkListeners.splice(mockNetworkListeners.indexOf(cb), 1) };
+  },
+}));
 
 /* eslint-disable import/first */
-import { ApiError, TimeoutError } from '@/api/client';
+import { ApiError, NetworkError, TimeoutError } from '@/api/client';
 import {
   anyOffline,
   checkReachability,
+  deviceNetworkChanged,
   isReachable,
   noteFailure,
   noteSuccess,
@@ -15,6 +23,7 @@ import {
   serverStatus,
   useReachability,
 } from '@/api/reachability';
+import { useSession } from '@/stores/session';
 /* eslint-enable import/first */
 
 /** A client whose `/server` never answers. */
@@ -287,5 +296,97 @@ describe('the offline probe', () => {
     expect(serverInfo).toHaveBeenCalled();
     expect(mockResolveClient).not.toHaveBeenCalled();
     expect(r.isReachable('c1')).toBe(true);
+  });
+});
+
+// W2 F1/F2: the app's own network state, and the client's NetworkError.
+describe('the device network (native)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockResolveClient.mockReset();
+    useReachability.setState({ online: {} });
+    useSession.setState({ connections: [{ id: 'c1' }, { id: 'c2' }] as never });
+  });
+
+  afterEach(() => {
+    useReachability.setState({ online: {} });
+    useSession.setState({ connections: [] });
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('counts a NetworkError as no answer: a check, then down', async () => {
+    mockResolveClient.mockReturnValue(deadClient());
+    noteFailure('c1', new NetworkError(new Error('fetch failed: offline')));
+    await jest.advanceTimersByTimeAsync(0);
+    expect(isReachable('c1')).toBe(false);
+  });
+
+  it('follows the system network from the start (a listener at import)', () => {
+    expect(mockNetworkListeners.length).toBeGreaterThan(0);
+  });
+
+  it('checks every connection still up when the network goes, marking them down', async () => {
+    mockResolveClient.mockImplementation(() => ({
+      baseUrl: 'https://h',
+      serverInfo: async () => {
+        throw new NetworkError(new Error('offline'));
+      },
+    }));
+    deviceNetworkChanged({ isConnected: false });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(isReachable('c1')).toBe(false);
+    expect(isReachable('c2')).toBe(false);
+  });
+
+  it('leaves a server up whose check answers though the system says offline', async () => {
+    mockResolveClient.mockReturnValue({ baseUrl: 'https://h', serverInfo: async () => ({}) });
+    deviceNetworkChanged({ isConnected: false });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(isReachable('c1')).toBe(true);
+  });
+
+  it('probes the servers marked down as soon as the network is back, and once more soon after', async () => {
+    await markDown('c1');
+    const handler = jest.fn();
+    const off = onReconnect(handler);
+    const serverInfo = jest.fn(async () => {
+      if (serverInfo.mock.calls.length < 2) throw new NetworkError(new Error('not routed yet'));
+      return {};
+    });
+    mockResolveClient.mockReturnValue({ baseUrl: 'https://h', serverInfo });
+    deviceNetworkChanged({ isConnected: true });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(serverInfo).toHaveBeenCalledTimes(1);
+    expect(isReachable('c1')).toBe(false);
+    // Well before the 20 s probe.
+    await jest.advanceTimersByTimeAsync(4_000);
+    expect(serverInfo).toHaveBeenCalledTimes(2);
+    expect(isReachable('c1')).toBe(true);
+    expect(handler).toHaveBeenCalledWith('c1');
+    off();
+  });
+
+  it('asks nothing on a network change while every server is up', async () => {
+    const serverInfo = jest.fn(async () => ({}));
+    mockResolveClient.mockReturnValue({ baseUrl: 'https://h', serverInfo });
+    deviceNetworkChanged({ isConnected: true });
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(serverInfo).not.toHaveBeenCalled();
+  });
+
+  it('asks the new address when its connection moved while a check got no answer', async () => {
+    const home = {
+      baseUrl: 'http://192.168.1.5:8080',
+      serverInfo: jest.fn(async () => {
+        throw new NetworkError(new Error('gone'));
+      }),
+    };
+    const away = { baseUrl: 'https://h', serverInfo: jest.fn(async () => ({})) };
+    mockResolveClient.mockReturnValueOnce(home).mockReturnValue(away);
+    await checkReachability('c1');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(away.serverInfo).toHaveBeenCalledTimes(1);
+    expect(isReachable('c1')).toBe(true);
   });
 });
