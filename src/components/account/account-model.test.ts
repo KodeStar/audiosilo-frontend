@@ -132,7 +132,9 @@ describe('lastSeen', () => {
 });
 
 describe('platforms and glyphs', () => {
-  it('knows the three app platforms only', () => {
+  it("knows the three app platforms and a watch app's two", () => {
+    expect(knownPlatform('watchos')).toBe('watchos');
+    expect(knownPlatform('wearos')).toBe('wearos');
     expect(knownPlatform('ios')).toBe('ios');
     expect(knownPlatform('android')).toBe('android');
     expect(knownPlatform('web')).toBe('web');
@@ -156,6 +158,17 @@ describe('platforms and glyphs', () => {
     expect(deviceGlyph({ kind: 'session', name: 'Kitchen', client: undefined })).toBe('hard-drive');
     // A reported app is a phone whatever its name.
     expect(deviceGlyph({ kind: 'session', name: 'Kitchen', client: ios })).toBe('mobile');
+  });
+
+  it('a watch is never drawn as a phone (no watch glyph is vendored)', () => {
+    const wear = { app: 'audiosilo-watch', version: '0.1.0', platform: 'wearos' };
+    const watch = { app: 'audiosilo-watch', version: '0.1.0', platform: 'watchos' };
+    expect(deviceGlyph({ kind: 'session', name: 'Pixel Watch 3', client: wear })).toBe(
+      'hard-drive',
+    );
+    expect(deviceGlyph({ kind: 'session', name: "Chris's Watch", client: watch })).toBe(
+      'hard-drive',
+    );
   });
 });
 

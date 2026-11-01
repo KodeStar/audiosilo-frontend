@@ -191,6 +191,23 @@ describe('DevicesSection', () => {
     expect(row.getByText('App not reported yet · not seen since it signed in')).toBeTruthy();
   });
 
+  it('names a watch by its platform: Apple Watch, Wear OS (Track W)', async () => {
+    const watch = (id: number, platform: string) =>
+      device({ id, name: 'Watch', client: { app: 'audiosilo-watch', version: '0.1.0', platform } });
+    mockDevices = loaded([here, watch(30, 'watchos'), watch(31, 'wearos')]);
+    await mount();
+    expect(
+      within(screen.getByTestId('device-30')).getByText(
+        'audiosilo-watch 0.1.0 · Apple Watch · last seen 2 hours ago',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('device-31')).getByText(
+        'audiosilo-watch 0.1.0 · Wear OS · last seen 2 hours ago',
+      ),
+    ).toBeTruthy();
+  });
+
   it('gives the sign-out a real 44 pt frame on native', async () => {
     Platform.OS = 'ios';
     await mount();
