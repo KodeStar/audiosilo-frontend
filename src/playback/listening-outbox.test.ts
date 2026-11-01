@@ -29,8 +29,23 @@ jest.mock('@/api/hooks', () => ({
     server: (cid: string) => ['server', cid],
   },
 }));
+type CacheEvent = {
+  type: string;
+  query: { queryKey: readonly unknown[]; state: { data?: unknown } };
+  action: { type: string; manual?: boolean };
+};
+const mockCacheListeners: ((e: CacheEvent) => void)[] = [];
 jest.mock('@/api/provider', () => ({
-  queryClient: { setQueryData: jest.fn(), invalidateQueries: jest.fn(async () => {}) },
+  queryClient: {
+    setQueryData: jest.fn(),
+    invalidateQueries: jest.fn(async () => {}),
+    getQueryCache: () => ({
+      subscribe: (cb: (e: CacheEvent) => void) => {
+        mockCacheListeners.push(cb);
+        return () => {};
+      },
+    }),
+  },
 }));
 
 /* eslint-disable import/first */
@@ -63,9 +78,11 @@ import {
   spanToEvent,
   storedOpenSpan,
   storeOpenSpan,
+  noteListeningSyncFlag,
   syncStateOf,
   unsentListens,
   usesListeningSync,
+  watchListeningFlags,
 } from './listening-outbox';
 import { ackVersion, getDeviceId, pendingSaves, readMirror } from './progress-sync';
 /* eslint-enable import/first */
@@ -576,17 +593,102 @@ describe('flushOutbox', () => {
 });
 
 describe('usesListeningSync', () => {
-  it('only when the cached /server says listening_sync: true', () => {
+  it('follows the cached /server; unknown records events (the outbox), W2 F3', () => {
     mockCaps = { listening_sync: true };
     expect(usesListeningSync('c1')).toBe(true);
     mockCaps = { listening_sync: false };
     expect(usesListeningSync('c1')).toBe(false);
     mockCaps = {};
     expect(usesListeningSync('c1')).toBe(false);
-    mockCaps = undefined; // unknown: the PUT path
-    expect(usesListeningSync('c1')).toBe(false);
+    mockCaps = undefined; // unknown: events wait in the outbox (a 404 turns them into PUTs)
+    expect(usesListeningSync('c1')).toBe(true);
   });
 });
+
+// W2 F3: after an offline cold launch the query cache is empty, and the PUT path took over.
+describe("a connection's listening_sync across launches", () => {
+  const storedFlag = async (cid: string) =>
+    (
+      JSON.parse((await AsyncStorage.getItem(SYNC)) ?? '{}') as Record<
+        string,
+        { listeningSync?: boolean }
+      >
+    )[cid]?.listeningSync;
+  const serverAnswer = (cid: string, listening_sync: boolean, manual = false) => {
+    for (const cb of mockCacheListeners) {
+      cb({
+        type: 'updated',
+        query: { queryKey: ['server', cid], state: { data: { capabilities: { listening_sync } } } },
+        action: { type: 'success', manual },
+      });
+    }
+  };
+
+  it("keeps the flag its server answered, and a cold launch reads it before the server's answer", async () => {
+    watchListeningFlags();
+    serverAnswer('c1', true);
+    await settleState();
+    expect(await storedFlag('c1')).toBe(true);
+    // A cold launch: nothing cached, and the kept flag wins over a seeded copy saying no.
+    resetOutboxForTests();
+    mockCaps = { listening_sync: false };
+    watchListeningFlags();
+    await settleState();
+    expect(usesListeningSync('c1')).toBe(true);
+  });
+
+  it('a server that says no now is the PUT path, kept too', async () => {
+    noteListeningSyncFlag('c1', true);
+    watchListeningFlags();
+    serverAnswer('c1', false);
+    await settleState();
+    expect(usesListeningSync('c1')).toBe(false);
+    expect(await storedFlag('c1')).toBe(false);
+    resetOutboxForTests();
+    mockCaps = undefined;
+    watchListeningFlags();
+    await settleState();
+    expect(usesListeningSync('c1')).toBe(false);
+  });
+
+  it('a copy seeded into the cache (setQueryData) says nothing', async () => {
+    watchListeningFlags();
+    serverAnswer('c1', false, true);
+    await settleState();
+    expect(await storedFlag('c1')).toBeUndefined();
+  });
+
+  it('a sync answer keeps yes; a confirmed rollback keeps no', async () => {
+    await appendEvents('c1', [listen('a')]);
+    client(async (body) => answer(body));
+    await flushOutbox('c1');
+    expect(await storedFlag('c1')).toBe(true);
+    await appendEvents('c1', [listen('b')]);
+    client(
+      async () => {
+        throw new ApiError(404, 'not found');
+      },
+      async () => ({ capabilities: {} }),
+    );
+    await flushOutbox('c1');
+    await settleState();
+    expect(await storedFlag('c1')).toBe(false);
+  });
+
+  it('events recorded while the flag is unknown wait in the outbox and go by sync', async () => {
+    mockCaps = undefined;
+    expect(usesListeningSync('c1')).toBe(true);
+    await appendEvents('c1', [listen('offline')]);
+    const c = client(async (body) => answer(body));
+    await flushOutbox('c1');
+    expect(sent(c).flatMap((b) => b.events.map((e) => e.id))).toEqual(['offline']);
+  });
+});
+
+/** Let the sync state's queued writes land. */
+async function settleState() {
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+}
 
 describe('legacySavesOf', () => {
   it('the newest listen end per book; finished only by a finish not older than it', () => {

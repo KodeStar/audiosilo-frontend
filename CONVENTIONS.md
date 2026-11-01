@@ -1534,9 +1534,12 @@ media GETs only.
   acknowledges the row it moved to. This module is the only place that reconciles a
   loaded book: never call `toggle()` expecting it to look anything up.
 - **Listening sync** (Sync v2, Track W1, capability `listening_sync`; CROSS-REPO section 25).
-  - *The path.* `usesListeningSync(cid)` (`listening-outbox.ts`): the cached `/server` says
-    `listening_sync: true` and the connection was not rolled back this session. Unknown or false:
-    the PUT save loop and `POST /history`, unchanged. On the sync path `persist` only writes the
+  - *The path.* `usesListeningSync(cid)` (`listening-outbox.ts`): the flag the connection's
+    server last answered to a `/server` request (kept in the sync state as `listeningSync`, so
+    an offline cold launch knows it: W2 F3; a copy seeded with `setQueryData` says nothing),
+    else the cached `/server`'s, else unknown, which records events (a 404 that a fresh
+    `/server` confirms turns them into PUTs); never after a rollback this session. False: the
+    PUT save loop and `POST /history`, unchanged. On the sync path `persist` only writes the
     mirror (with the file place `file`/`file_pos`, fe#188) and the place reaches the server as
     listen spans; `POST /history` is not sent (the server writes history from spans).
   - *Spans* (`store.ts`). One opens on the move to `playing` and closes on a pause, a move (the
@@ -1548,22 +1551,31 @@ media GETs only.
     refuses one over 24 h). A move while paused is sent at once as a span that moved nowhere. A
     finished book started again sends `unfinish` first, then a `restart` span; an explicit 0 is
     `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
-    (`standByPlace`). Each end carries whole-book seconds and its file and in-file seconds;
+    (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
+    so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
+    twice it is one event. An event never claims more than 23 h of wall clock
+    (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
     is not a finite number never reaches a span or an event (`finiteEnd`, `eventIsFinite`).
     `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start).
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
-    immutable once there), `audiosilo.listeningOpenSpan` (the span being played, written by
-    offline ticks; a kill's leftover is closed into the outbox at the next launch,
-    `recoverOpenSpan`), `audiosilo.listeningSync` (per connection: `lastSyncAt` and the
-    couldn't-sync list, 30 days, at most 100). On the web the outbox's read-modify-writes run
-    under a Web Lock and re-read storage, and a tab's copy follows the `storage` event.
+    immutable once there), `audiosilo.listeningOpenSpan` (a list, one span per web tab
+    playing, each with its `owner` and `keptAt`; a bare span is the pre-W2 form; a kill's
+    leftover is closed into the outbox at the next launch, `recoverOpenSpan`, and on the web
+    another tab's span is left to it while it is live, 30 s), `audiosilo.listeningSync` (per
+    connection: `lastSyncAt`, the couldn't-sync list, 30 days, at most 100, `clockSkewMs` from the
+    answers' `server_time`, and `listeningSync`). The three documents' read-modify-writes run
+    under `tabLock` (`src/lib/tab-lock.ts`: Web Locks, else a `localStorage` lease on plain
+    http, fe#208); on the web they re-read storage, and a tab's outbox copy follows the
+    `storage` event.
   - *Sending* (`flushOutbox`). One request in flight per connection, chunks of 200, `sent_at` set
-    at each attempt. A 413 or `too_many_events` halves the chunk; another 400 resends that chunk
-    one event at a time once, and an event still refused alone goes to the couldn't-sync list
-    (`invalid`); a network error or 5xx keeps everything. Every status but `rejected` removes
+    at each attempt. A 413 or `too_many_events` halves the chunk (one event alone still 413:
+    `too_large`); another 400 resends that chunk one event at a time once, and an event still
+    refused alone goes to the couldn't-sync list (`invalid`); a network error or 5xx keeps
+    everything. An event older than 89 days goes to the list as `too_old` unsent (the server
+    refuses 90), so none holds its book pending forever. Every status but `rejected` removes
     the event; `rejected` moves it to the list. Triggers: the launch (after `recoverOpenSpan`),
     a reconnect, the foreground, each closed span; the web `pagehide` sends what waits (up to
     ~60 KB) with `keepalive`. A 404/405 that a fresh `/server` confirms is a rollback: one legacy
@@ -1572,19 +1584,27 @@ media GETs only.
     is this device's own after a non-rejected event of the batch for that book (`keptMine`), a
     resume from a server row (version > 0), the reconcile's auto-move, and an answered offer
     (Jump, Stay, the book page's "Play from there"; `answerOffer` also notes the
-    `device_id|updated_at` key, the newest 20 kept).
+    `device_id|updated_at` key, the newest 20 kept). An offer toast that times out notes its key
+    only (`ignoreOffer`, no acknowledgement).
   - *Offers.* `offerOf` (above) feeds the player's toast (on the reconcile check and on each sync
     answer, `onSyncAnswer`) and the book page's line (`listening-offer.tsx`). Throttles: a key is
     shown once a launch (`shownOffers`), a device's places at most once in 10 minutes per book
     (`OFFER_REPEAT_MS`: a device that plays on sends a new key every span), and an answered key
     never again.
   - *Resume.* `resumeLookupOf` takes a file place only when it is not older than the record it
-    is for (5 s slack, `holdsFilePlace`, also in the mirror merge): a mirror that lost writes
+    is for (5 s slack plus the connection's known clock skew, `holdsFilePlace`, also in the
+    mirror merge): a mirror that lost writes
     never resumes at its stale file. A finished server row beats this device's newer unfinished
     mirror record when the finish is newer than it or is a version this device never
     acknowledged, unless the book has events waiting (`LocalPlaces.pending`): Listen again then
     starts the book again.
-  - *Surfaces.* Home's pill counts listens waiting (`pendingSaves`), the account's Listening sync
+  - *Reachability.* The client turns every fetch rejection that is not a caller's cancel into a
+    `NetworkError` (a `TypeError`): the app's fetch is Expo's, which rejects with a plain `Error`,
+    so an offline phone was never marked unreachable and its spans were cut, not kept (W2 F1).
+    Native reachability follows the system network (`watchDeviceNetwork`): losing it checks every
+    server at once, getting it back probes the ones down at once and 4 s later, so the outbox goes
+    out with the app idle in the foreground (F2).
+  - *Surfaces.* Home's pill counts listens waiting (`pendingSaves`, listen events only), the account's Listening sync
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
     book History's "Waiting to sync" rows (`usePendingListens`).

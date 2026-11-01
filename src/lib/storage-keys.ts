@@ -26,8 +26,9 @@ export const READING_QUEUE_KEY = 'audiosilo.readingQueue';
 /** The listening outbox (Sync v2, `src/playback/listening-outbox.ts`): an array of closed
  * listening events waiting to be sent, each with a `connectionId`. */
 export const LISTENING_OUTBOX_KEY = 'audiosilo.listeningOutbox';
-/** The one listening span being played (with its `connectionId`), or null: rewritten each
- * 15 s tick so a span a kill left open is closed at the next launch. */
+/** The listening spans being played (one per web tab playing, each with its `connectionId`
+ * and `owner`; a bare span before W2), or null: rewritten every 5 s while one plays, so a
+ * span a kill left open is closed at the next launch. */
 export const LISTENING_OPEN_SPAN_KEY = 'audiosilo.listeningOpenSpan';
 /** Per connection id: when its outbox last synced and the events it couldn't sync. */
 export const LISTENING_SYNC_KEY = 'audiosilo.listeningSync';

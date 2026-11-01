@@ -56,7 +56,10 @@ jest.mock('@/api/provider', () => ({
   queryClient: {
     invalidateQueries: jest.fn(),
     setQueryData: jest.fn(),
-    getQueryData: jest.fn(() => undefined),
+    // A server without listening_sync: the place is saved by PUT.
+    getQueryData: jest.fn((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
     fetchQuery: jest.fn(async () => ({})),
   },
 }));

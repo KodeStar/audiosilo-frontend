@@ -71,7 +71,10 @@ jest.mock('@/api/provider', () => ({
     setQueryData: jest.fn(),
     setQueryDefaults: jest.fn(),
     fetchQuery: jest.fn(async () => ({})),
-    getQueryData: jest.fn(() => undefined),
+    // A server without listening_sync (the PUT path), unless a test says otherwise.
+    getQueryData: jest.fn((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
     cancelQueries: jest.fn(async () => {}),
   },
 }));
@@ -580,7 +583,11 @@ describe('on a server with listening_sync', () => {
       key[0] === 'server' ? { capabilities: { listening_sync: true } } : undefined,
     );
   });
-  afterEach(() => (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined));
+  afterEach(() =>
+    (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
+  );
 
   type Toast = {
     title: string;

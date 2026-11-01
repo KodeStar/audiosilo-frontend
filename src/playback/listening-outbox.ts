@@ -12,6 +12,7 @@ import type {
   ListeningSyncResponse,
   ListeningSyncResult,
   Progress,
+  ServerInfo,
 } from '@/api/types';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
@@ -77,6 +78,8 @@ export type ConnectionSyncState = {
   lastSyncAt?: string;
   failed?: CouldNotSync[];
   clockSkewMs?: number;
+  /** Its server's `listening_sync` as last answered (`noteListeningSyncFlag`). */
+  listeningSync?: boolean;
 };
 
 /** At most this many events per request (the server takes 500). */
@@ -524,12 +527,75 @@ export function discardFailed(connectionId: string, eventId: string): Promise<vo
 const rolledBack = new Set<string>();
 
 /**
- * Whether listening on `connectionId` is recorded as events: its cached `/server` says
- * `listening_sync: true` and the route has not been found missing since. False or unknown:
- * today's PUT progress + POST history, unchanged.
+ * Each connection's `listening_sync` as its server last said it in an answer to a
+ * `/server` request (never a copy seeded into the cache), kept in the sync state
+ * (`ConnectionSyncState.listeningSync`) so a cold launch that can't reach the server still
+ * knows it (W2 F3: an offline cold launch had only the empty query cache, read that as
+ * "no", and saved the offline listening by PUT, last write wins, whole-book seconds, no
+ * history).
+ */
+const knownFlags = new Map<string, boolean>();
+
+/**
+ * Whether listening on `connectionId` is recorded as events. The flag its server last
+ * answered (this launch, else as kept from before), else the cached `/server`'s, and
+ * unknown counts as yes: an event waits in the outbox until a server without the route
+ * answers 404 and a fresh `/server` confirms it (`rollBack`), which turns the events into
+ * PUT saves. False (the server said so, or it rolled back this launch): today's PUT
+ * progress + POST history, unchanged.
  */
 export function usesListeningSync(connectionId: string): boolean {
-  return !rolledBack.has(connectionId) && cachedCapability(connectionId, 'listening_sync') === true;
+  watchListeningFlags();
+  if (rolledBack.has(connectionId)) return false;
+  return knownFlags.get(connectionId) ?? cachedCapability(connectionId, 'listening_sync') ?? true;
+}
+
+/** A `/server` answer told `connectionId`'s flag: kept in memory and in the sync state. */
+export function noteListeningSyncFlag(connectionId: string, flag: boolean): void {
+  if (knownFlags.get(connectionId) === flag) return;
+  knownFlags.set(connectionId, flag);
+  void updateState(connectionId, (s) =>
+    s.listeningSync === flag ? s : { ...s, listeningSync: flag },
+  ).catch(() => undefined);
+}
+
+/** Read the kept flags (once at start; this launch's answers win over them). */
+async function loadKnownFlags(): Promise<void> {
+  const all = await readState().catch(() => ({}) as Record<string, ConnectionSyncState>);
+  for (const [cid, state] of Object.entries(all)) {
+    if (typeof state?.listeningSync === 'boolean' && !knownFlags.has(cid)) {
+      knownFlags.set(cid, state.listeningSync);
+    }
+  }
+}
+let flagsLoaded: Promise<void> | null = null;
+/** The kept flags, read at most once per launch (the launch triggers wait on it). */
+export function knownFlagsLoaded(): Promise<void> {
+  flagsLoaded ??= loadKnownFlags();
+  return flagsLoaded;
+}
+
+let watching = false;
+/**
+ * Follow every `/server` answer the query cache gets from a request (a seeded copy, a
+ * `setQueryData`, is `manual` and says nothing new): its flag is the connection's. Started
+ * by `startListeningSync` at launch (and by the first `usesListeningSync`), not at import:
+ * the query client may not exist yet then (an import cycle through the provider). Reads the
+ * kept flags too.
+ */
+export function watchListeningFlags(): void {
+  void knownFlagsLoaded();
+  if (watching) return;
+  const cache = (queryClient as Partial<typeof queryClient> | undefined)?.getQueryCache?.();
+  if (!cache) return; // a test's stand-in client: nothing to follow
+  watching = true;
+  cache.subscribe((e) => {
+    if (e.type !== 'updated' || e.action.type !== 'success' || e.action.manual) return;
+    const [kind, cid] = e.query.queryKey;
+    if (kind !== qk.server('')[0] || typeof cid !== 'string') return;
+    const caps = (e.query.state.data as Partial<ServerInfo> | undefined)?.capabilities;
+    if (caps) noteListeningSyncFlag(cid, caps.listening_sync === true);
+  });
 }
 
 // --- Sending ---------------------------------------------------------------------------
@@ -644,6 +710,7 @@ async function sendChunk(
       ),
     );
     noteSuccess(connectionId);
+    noteListeningSyncFlag(connectionId, true);
     await applyAnswer(connectionId, chunk, answer, { sentAt, answeredAt: Date.now() });
     return 'more';
   } catch (e) {
@@ -846,6 +913,7 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
   const info = await client.serverInfo().catch(() => null);
   if (!info || info.capabilities?.listening_sync) return;
   rolledBack.add(connectionId);
+  noteListeningSyncFlag(connectionId, false);
   void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
@@ -926,6 +994,7 @@ export function onOutboxChange(listener: () => void): () => void {
 onConnectionRemoved(async (id) => {
   chunkSizes.delete(id);
   rolledBack.delete(id);
+  knownFlags.delete(id);
   await Promise.all([
     takeConnection(id),
     spanOps(async () => {
@@ -950,6 +1019,8 @@ export function resetOutboxForTests(): void {
   if (staleCheck) clearTimeout(staleCheck);
   staleCheck = null;
   rolledBack.clear();
+  knownFlags.clear();
+  flagsLoaded = null;
   chunkSizes.clear();
   inFlight.clear();
   flushAgain.clear();
