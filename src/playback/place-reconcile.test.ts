@@ -57,9 +57,11 @@ jest.mock('./progress-sync', () => ({
     await mockAckVersion(cid, lib, path, row.version, row);
     await mockMarkAnswered(cid, lib, path, key, row);
   },
+  ignoreOffer: (...a: unknown[]) => mockIgnoreOffer(...a),
   cachedDeviceId: () => 'this-device',
   writeMirror: jest.fn(async () => {}),
 }));
+const mockIgnoreOffer = jest.fn(async (..._a: unknown[]) => {});
 const mockAckVersion = jest.fn(async (..._a: unknown[]) => {});
 const mockMarkAnswered = jest.fn(async (..._a: unknown[]) => {});
 
@@ -69,7 +71,10 @@ jest.mock('@/api/provider', () => ({
     setQueryData: jest.fn(),
     setQueryDefaults: jest.fn(),
     fetchQuery: jest.fn(async () => ({})),
-    getQueryData: jest.fn(() => undefined),
+    // A server without listening_sync (the PUT path), unless a test says otherwise.
+    getQueryData: jest.fn((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
     cancelQueries: jest.fn(async () => {}),
   },
 }));
@@ -578,12 +583,17 @@ describe('on a server with listening_sync', () => {
       key[0] === 'server' ? { capabilities: { listening_sync: true } } : undefined,
     );
   });
-  afterEach(() => (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined));
+  afterEach(() =>
+    (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
+  );
 
   type Toast = {
     title: string;
     action: { onPress: () => void };
     onClose: () => void;
+    onTimeout: () => void;
     closeLabel: string;
   };
   const lastToast = () => mockToast.mock.calls[mockToast.mock.calls.length - 1][0] as Toast;
@@ -645,6 +655,35 @@ describe('on a server with listening_sync', () => {
     mockToast.mockClear();
     await backInFront();
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('an offer nobody answers is noted when its toast times out, with nothing acknowledged', async () => {
+    await loadedAndPaused();
+    mockServer = async () =>
+      record({
+        device_id: 'this-device',
+        position: 105,
+        version: 8,
+        other_place: {
+          position: 700,
+          device_id: 'watch3',
+          device_name: 'Watch',
+          updated_at: '2026-10-08T11:40:00Z',
+        },
+      });
+    await backInFront();
+    mockAckVersion.mockClear();
+    lastToast().onTimeout();
+    await settle();
+    expect(mockIgnoreOffer).toHaveBeenCalledWith(
+      'c1',
+      2,
+      'A/Book.m4b',
+      expect.objectContaining({ version: 8 }),
+      'watch3|2026-10-08T11:40:00Z',
+    );
+    expect(mockAckVersion).not.toHaveBeenCalled();
+    expect(seeks()).toEqual([]);
   });
 
   it('a device playing on is offered once in OFFER_REPEAT_MS, not with each place it sends', async () => {

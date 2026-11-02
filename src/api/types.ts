@@ -181,6 +181,11 @@ export type Capabilities = {
    * `device_name` / `other_place` on {@link Progress}. Absent on older servers: treat missing
    * as false and save by `PUT /libraries/{id}/progress` + `POST .../history` as before. */
   listening_sync?: boolean;
+  /** Whether the server makes small copies of a book's audio files for a watch (Track W2:
+   * `GET /libraries/{id}/stream?rendition=watch`, `POST`/`GET /libraries/{id}/renditions`);
+   * which kinds is `ServerInfo.renditions`. True when the server has ffmpeg and a data dir.
+   * Absent on older servers. No consumer yet (the watch app, W3). */
+  renditions?: boolean;
 };
 
 /** A server's two addresses (capability `addresses`). Either may be absent. `home` is
@@ -200,6 +205,9 @@ export type ServerInfo = {
   api: string;
   capabilities: Capabilities;
   auth: { methods: string[] };
+  /** The rendition kinds the server makes (`["watch"]`; `[]` when `capabilities.renditions`
+   * is false). Absent on older servers. */
+  renditions?: string[];
   /** Present when the server runs in public demo mode (instant throwaway accounts). */
   demo?: { enabled: boolean };
   /** The online Bridge's version and the job families it offers (`sidecars`: generating

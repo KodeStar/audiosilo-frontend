@@ -17,6 +17,7 @@ import { tabularNums } from '@/theme/tabular-nums';
 const REASONS = [
   'duration_mismatch',
   'too_old',
+  'too_large',
   'no_access',
   'not_found',
   'unknown_kind',

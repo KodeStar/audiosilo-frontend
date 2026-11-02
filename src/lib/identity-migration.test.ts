@@ -266,6 +266,34 @@ describe('migrateConnectionIdentity', () => {
     expect(resolveConnectionId('srvB')).toBe('srvB.7');
   });
 
+  it("moves Sync v2's documents: the outbox, the open spans (a list) and the sync state", async () => {
+    await seedLegacyInstall();
+    const span = (connectionId: string, path: string) => ({ connectionId, libraryId: 1, path });
+    await set('audiosilo.listeningOutbox', [{ connectionId: 'srvA', event: { id: 'e1' } }]);
+    await set('audiosilo.listeningOpenSpan', [span('srvA', 'Book/One'), span('srvB', 'Two')]);
+    await set('audiosilo.listeningSync', { srvB: { lastSyncAt: 'x' } });
+    await migrateConnectionIdentity(deps());
+    expect(await get('audiosilo.listeningOutbox')).toEqual([
+      { connectionId: 'srvA.3', event: { id: 'e1' } },
+    ]);
+    expect(await get('audiosilo.listeningOpenSpan')).toEqual([
+      span('srvA.3', 'Book/One'),
+      span('srvB.7', 'Two'),
+    ]);
+    expect(await get('audiosilo.listeningSync')).toEqual({ 'srvB.7': { lastSyncAt: 'x' } });
+  });
+
+  it('moves an open span stored before W2 (one record)', async () => {
+    await seedLegacyInstall();
+    await set('audiosilo.listeningOpenSpan', { connectionId: 'srvB', libraryId: 1, path: 'Two' });
+    await migrateConnectionIdentity(deps());
+    expect(await get('audiosilo.listeningOpenSpan')).toEqual({
+      connectionId: 'srvB.7',
+      libraryId: 1,
+      path: 'Two',
+    });
+  });
+
   it('nobody is signed out: a hydrate afterwards finds every connection with its token', async () => {
     await seedLegacyInstall();
     await migrateConnectionIdentity(deps());

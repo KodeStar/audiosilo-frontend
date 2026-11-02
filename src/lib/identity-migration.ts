@@ -266,10 +266,12 @@ export const rewrite = {
   // The ebook reader's place mirror and queue have the progress mirror's and queue's shapes.
   readingMirror: connectionRecords,
   readingQueue: connectionList,
-  // The listening outbox: an array of events with a `connectionId`; the open span: one
-  // record with a `connectionId` (or null); the sync state: keyed by connection id.
+  // The listening outbox: an array of events with a `connectionId`; the open spans: an
+  // array of spans with a `connectionId` (one per web tab; before W2 one record, or null);
+  // the sync state: keyed by connection id.
   listeningOutbox: connectionList,
-  listeningOpenSpan: withConnectionId<unknown>,
+  listeningOpenSpan: (plan: Plan, doc: unknown): unknown =>
+    Array.isArray(doc) ? connectionList(plan, doc) : withConnectionId(plan, doc),
   listeningSync: byConnectionId,
   offlineServers: byConnectionId,
   carBookmarks: connectionList,

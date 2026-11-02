@@ -7,14 +7,17 @@ import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 import {
+  isRecord,
   LISTENING_OPEN_SPAN_KEY,
   LISTENING_OUTBOX_KEY,
+  LISTENING_SYNC_KEY,
   PROGRESS_MIRROR_KEY as MIRROR_KEY,
   PROGRESS_QUEUE_KEY as QUEUE_KEY,
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
-import type { OpenSpan, OutboxEntry } from './listening-outbox';
+import type { OutboxEntry } from './listening-outbox';
+import { type OpenSpan, storedSpans } from './open-span-doc';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
@@ -117,32 +120,74 @@ async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
 }
 
-/** Sync v2's stored backlog: the outbox's events and the open span, read from storage only
- * (no outbox import: it imports this). Not an array: none; a span with no connection: none. */
-async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; span: OpenSpan | null }> {
-  const [outbox, span] = await Promise.all([
+/** Sync v2's stored backlog: the outbox's events and the open spans (one per web tab
+ * playing), read from storage only (no outbox import: it imports this). Not an array: none. */
+async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; spans: OpenSpan[] }> {
+  const [outbox, spans] = await Promise.all([
     getItem<OutboxEntry[]>(LISTENING_OUTBOX_KEY),
-    getItem<OpenSpan | null>(LISTENING_OPEN_SPAN_KEY),
+    getItem<unknown>(LISTENING_OPEN_SPAN_KEY),
   ]);
-  return {
-    outbox: Array.isArray(outbox) ? outbox : [],
-    span: span && typeof span.connectionId === 'string' ? span : null,
-  };
+  return { outbox: Array.isArray(outbox) ? outbox : [], spans: storedSpans(spans) };
+}
+
+/** Each connection's server clock ahead of this device's (ms), as last measured by a sync
+ * answer (`noteClockSkew`) or read from the stored sync state (`readLocalPlaces`,
+ * `knownSkew`). */
+const clockSkews = new Map<string, number>();
+
+/** A sync answer measured how far ahead of this device's clock `connectionId`'s server is. */
+export function noteClockSkew(connectionId: string, skewMs: number): void {
+  if (Number.isFinite(skewMs)) clockSkews.set(connectionId, skewMs);
+}
+
+/** Connections whose stored skew was looked for this launch (`knownSkew`). */
+const skewLooked = new Set<string>();
+
+/** `connectionId`'s server clock skew for a merge (ms): this launch's measurement, else the
+ * stored sync state's (read once per connection a launch, so the first merge of a launch,
+ * before any sync answer, has it too), else 0. */
+async function knownSkew(connectionId: string): Promise<number> {
+  if (!clockSkews.has(connectionId) && !skewLooked.has(connectionId)) {
+    skewLooked.add(connectionId);
+    await readClockSkews().catch(() => undefined);
+  }
+  return clockSkews.get(connectionId) ?? 0;
+}
+
+/** Every connection's known server clock skew: the stored sync state's, this launch's
+ * measurements over it. */
+async function readClockSkews(): Promise<Record<string, number>> {
+  const raw = await getItem<unknown>(LISTENING_SYNC_KEY);
+  const out: Record<string, number> = {};
+  if (isRecord(raw)) {
+    for (const [cid, state] of Object.entries(raw)) {
+      const skew = isRecord(state) ? state.clockSkewMs : undefined;
+      if (typeof skew === 'number' && Number.isFinite(skew)) {
+        out[cid] = skew;
+        if (!clockSkews.has(cid)) clockSkews.set(cid, skew);
+      }
+    }
+  }
+  for (const [cid, skew] of clockSkews) out[cid] = skew;
+  return out;
 }
 
 /** What waits to reach a server: the legacy queue's saves, and Sync v2's listens (the
- * outbox's events plus the open span while its server can't be reached), all of them or
- * only `connectionId`'s. */
+ * outbox's `listen` events plus the open spans while their server can't be reached), all of
+ * them or only `connectionId`'s. `events` counts a waiting finish or unfinish too: what
+ * removing the connection would drop (`unsentListens`). */
 export async function pendingSaves(
   connectionId?: string,
-): Promise<{ saves: number; listens: number }> {
-  const [queue, { outbox, span }] = await Promise.all([readQueue(), readListeningBacklog()]);
+): Promise<{ saves: number; listens: number; events: number }> {
+  const [queue, { outbox, spans }] = await Promise.all([readQueue(), readListeningBacklog()]);
   const mine = (e: { connectionId?: unknown } | null | undefined) =>
     !!e && (connectionId === undefined || e.connectionId === connectionId);
   const saves = Array.isArray(queue) ? queue.filter(mine).length : 0;
-  let listens = outbox.filter(mine).length;
-  if (span && mine(span) && !isReachable(span.connectionId)) listens++;
-  return { saves, listens };
+  const waiting = outbox.filter(mine);
+  // Listens only: a finish or unfinish waiting is not listening (fe#208).
+  const listens = waiting.filter((e) => e.event?.kind === 'listen').length;
+  const open = spans.filter((span) => mine(span) && !isReachable(span.connectionId)).length;
+  return { saves, listens: listens + open, events: waiting.length + open };
 }
 
 /** How many saves and listens wait to sync (read-only: Home's sync pill), or only
@@ -195,23 +240,26 @@ export type LocalPlaces = {
   mirror: Record<string, ProgressSave>;
   queue: ProgressSave[];
   pending: Set<string>;
+  /** Each connection's server clock ahead of this device's (ms), where known. */
+  skews?: Record<string, number>;
 };
 
 /** All three, read at once: for a reader that looks many books up together (the car
  * snapshot's play specs), a few storage reads in all instead of a few per book. */
 export async function readLocalPlaces(): Promise<LocalPlaces> {
-  const [mirror, queue, { outbox, span }] = await Promise.all([
+  const [mirror, queue, { outbox, spans }, skews] = await Promise.all([
     readMirrorMap(),
     readQueue(),
     readListeningBacklog(),
+    readClockSkews(),
   ]);
   const pending = new Set<string>();
   for (const e of outbox) {
     if (typeof e?.connectionId === 'string' && e.event)
       pending.add(contentKey(e.connectionId, e.event.library_id, e.event.path));
   }
-  if (span) pending.add(contentKey(span.connectionId, span.libraryId, span.path));
-  return { mirror, queue, pending };
+  for (const span of spans) pending.add(contentKey(span.connectionId, span.libraryId, span.path));
+  return { mirror, queue, pending, skews };
 }
 
 /**
@@ -252,6 +300,7 @@ export function resumeLookupOf(
       best,
       best === server ? null : best === fromQueue ? queued : mirror,
       mirror,
+      places.skews?.[connectionId] ?? 0,
     );
     return {
       kind: 'progress',
@@ -290,7 +339,8 @@ function serverFinishWins(
 
 /** How much older (ms) than a record a file place may be and still be that record's: the
  * server's echo of this device's place is stamped with the span's end in server time,
- * a moment after the capture that took the file place. */
+ * a moment after the capture that took the file place. Widened by the connection's known
+ * clock skew (`holdsFilePlace`). */
 const FILE_PLACE_SLACK_MS = 5_000;
 
 /** Whether two records hold the same place (within a second). */
@@ -308,8 +358,15 @@ type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished' | 'u
  * resets the place): that file place is the book's end. And not a newer record of the same
  * device: `filed` is then older than this device's own last place (writes lost when a
  * browser was killed), and resuming at its file place would move the book back.
+ *
+ * `record` may be a server row (server clock) and `filed` a capture (this device's clock),
+ * so the slack is widened by how far the server's clock is known to be ahead (`skewMs`,
+ * from the sync answers' `server_time`): a device more than 5 s slow kept its file place
+ * only by luck before (fe#208). Only that way: a server behind stamps its echo before the
+ * capture anyway, and widening for it too would keep the stale file place of a mirror
+ * that lost writes.
  */
-function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord): boolean {
+function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord, skewMs = 0): boolean {
   if (samePlace(record, filed)) return true;
   if (!record.device_id || record.device_id !== filed.device_id) return false;
   if (record.finished !== filed.finished) return false;
@@ -318,7 +375,7 @@ function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord): boolean {
   return (
     Number.isFinite(recordAt) &&
     Number.isFinite(filedAt) &&
-    filedAt >= recordAt - FILE_PLACE_SLACK_MS
+    filedAt >= recordAt - FILE_PLACE_SLACK_MS - Math.max(0, skewMs)
   );
 }
 
@@ -332,10 +389,11 @@ function filePlaceOf(
   best: Progress,
   own: ProgressSave | null,
   mirror: ProgressSave | null,
+  skewMs: number,
 ): ProgressSave | null {
   if (own?.file) return own;
   if (!mirror?.file) return null;
-  return holdsFilePlace(best, mirror) ? mirror : null;
+  return holdsFilePlace(best, mirror, skewMs) ? mirror : null;
 }
 
 /** The durable local mirror for a book, shaped as a `Progress` - for read paths
@@ -404,21 +462,30 @@ export async function writeMirror(save: ProgressSave): Promise<void> {
     const key = contentKey(save.connectionId, save.libraryId, save.path);
     const existing = map[key];
     if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
-      map[key] = mergeKept(save, existing);
+      map[key] = mergeKept(save, existing, existing ? await knownSkew(save.connectionId) : 0);
       await setItem(MIRROR_KEY, map);
     }
   });
 }
 
-/** `save` with what the mirror keeps across records (see `writeMirror`). */
-function mergeKept(save: ProgressSave, existing: ProgressSave | undefined): ProgressSave {
+/** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock
+ * `skewMs` ahead of this device's. */
+function mergeKept(
+  save: ProgressSave,
+  existing: ProgressSave | undefined,
+  skewMs: number,
+): ProgressSave {
   if (!existing) return save;
   const out: ProgressSave = { ...save };
   if (out.ack_version === undefined && existing.ack_version !== undefined)
     out.ack_version = existing.ack_version;
   if (out.answered === undefined && existing.answered !== undefined)
     out.answered = existing.answered;
-  if (out.file === undefined && existing.file !== undefined && holdsFilePlace(save, existing)) {
+  if (
+    out.file === undefined &&
+    existing.file !== undefined &&
+    holdsFilePlace(save, existing, skewMs)
+  ) {
     out.file = existing.file;
     out.file_pos = existing.file_pos;
   }
@@ -486,11 +553,32 @@ export function answerOffer(
     path,
     (s) => {
       const acked = Math.max(s.ack_version ?? row.version, row.version);
-      const answered = s.answered?.includes(key)
-        ? s.answered
-        : [...(s.answered ?? []), key].slice(-MAX_ANSWERED);
-      return { ...s, ack_version: acked, answered };
+      return { ...s, ack_version: acked, answered: withAnswered(s.answered, key) };
     },
+    row,
+  );
+}
+
+/** `answered` with `key` noted (the newest `MAX_ANSWERED` kept). */
+function withAnswered(answered: string[] | undefined, key: string): string[] {
+  return answered?.includes(key) ? answered : [...(answered ?? []), key].slice(-MAX_ANSWERED);
+}
+
+/** An offer nobody answered (its toast timed out): its `key` is noted so it is not offered
+ * again, and nothing is acknowledged, so this device's next spans still never move the
+ * other device's place back (fe#208). */
+export function ignoreOffer(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  row: Progress,
+  key: string,
+): Promise<void> {
+  return updateMirror(
+    connectionId,
+    libraryId,
+    path,
+    (s) => (s.answered?.includes(key) ? s : { ...s, answered: withAnswered(s.answered, key) }),
     row,
   );
 }
@@ -678,6 +766,8 @@ export async function flushConnection(connectionId: string): Promise<void> {
 // Removing a connection orphans its scoped state (signing in again starts from the
 // server's own record), so drop its mirror records and queued saves here.
 onConnectionRemoved(async (id) => {
+  clockSkews.delete(id);
+  skewLooked.delete(id);
   // The mirror and queue take independent locks and touch disjoint storage keys, so
   // purge them concurrently rather than serializing the two storage round-trips.
   await Promise.all([

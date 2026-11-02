@@ -272,7 +272,9 @@
       "platform": {
         "ios": "iOS",
         "android": "Android",
-        "web": "Browser"
+        "web": "Browser",
+        "watchos": "Apple Watch",
+        "wearos": "Wear OS"
       },
       "seen": {
         "minute_one": "visto {{count}} minuto fa",
@@ -327,6 +329,7 @@
       "reason": {
         "duration_mismatch": "Questa copia del libro ha una durata diversa da quella del server.",
         "too_old": "Risale a più di 90 giorni fa.",
+        "too_large": "È troppo grande perché il server lo accetti.",
         "no_access": "Non puoi più aprire questo libro sul server.",
         "not_found": "Il libro non è più sul server.",
         "unknown_kind": "Il server non conosce questo tipo di ascolto.",

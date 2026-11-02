@@ -99,14 +99,25 @@ export function lastSeen(device: Pick<MyDevice, 'current' | 'last_seen'>, now: n
   return { kind: 'never' };
 }
 
-/** The platforms a device row names (`X-AudioSilo-Client`'s platform, lower case). */
-export type KnownPlatform = 'ios' | 'android' | 'web';
+/** The platforms a device row names (`X-AudioSilo-Client`'s platform, lower case): the
+ * app's three, and a watch app's two (`audiosilo-watch/<ver> (watchos|wearos)`, Track W). */
+const WATCH_PLATFORMS = ['watchos', 'wearos'] as const;
+const KNOWN_PLATFORMS = ['ios', 'android', 'web', ...WATCH_PLATFORMS] as const;
+export type KnownPlatform = (typeof KNOWN_PLATFORMS)[number];
 
 export function knownPlatform(platform: string | undefined): KnownPlatform | null {
-  return platform === 'ios' || platform === 'android' || platform === 'web' ? platform : null;
+  return (KNOWN_PLATFORMS as readonly (string | undefined)[]).includes(platform)
+    ? (platform as KnownPlatform)
+    : null;
 }
 
-/** A device row's glyph: an API key is a key; a browser is a laptop; an app is a phone,
+/** Whether a platform is a watch's. */
+const isWatchPlatform = (platform: string | undefined): boolean =>
+  (WATCH_PLATFORMS as readonly (string | undefined)[]).includes(platform);
+
+/** A device row's glyph: an API key is a key; a browser is a laptop; a watch is the neutral
+ * drive (no watch glyph is vendored; never a phone, though "Pixel Watch" names a phone's
+ * maker); an app is a phone,
  * or a tablet when its name says so ("iPad", "Galaxy Tab", "Pixel Tablet"). The platform
  * header doesn't tell a phone from a tablet, so the name the device signed in with does.
  * A device that hasn't said which app it is ("App not reported yet") is a phone or a
@@ -118,6 +129,7 @@ export function deviceGlyph(device: {
 }): IconName {
   if (device.kind === 'api') return 'key';
   if (device.client?.platform === 'web') return 'laptop';
+  if (isWatchPlatform(device.client?.platform)) return 'hard-drive';
   const name = device.name ?? '';
   if (/\b(ipad|tablet|tab)\b/i.test(name)) return 'tablet';
   if (knownPlatform(device.client?.platform)) return 'mobile';

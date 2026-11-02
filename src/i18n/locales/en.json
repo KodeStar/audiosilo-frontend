@@ -272,7 +272,9 @@
       "platform": {
         "ios": "iOS",
         "android": "Android",
-        "web": "Browser"
+        "web": "Browser",
+        "watchos": "Apple Watch",
+        "wearos": "Wear OS"
       },
       "seen": {
         "minute_one": "last seen {{count}} minute ago",
@@ -327,6 +329,7 @@
       "reason": {
         "duration_mismatch": "This copy of the book is a different length from the server's.",
         "too_old": "It's more than 90 days old.",
+        "too_large": "It's too big for the server to take.",
         "no_access": "You can't open this book on the server any more.",
         "not_found": "The book isn't on the server any more.",
         "unknown_kind": "The server doesn't know this kind of listen.",

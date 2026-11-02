@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { useReachability } from '@/api/reachability';
 import type { ListeningSpanEvent } from '@/api/types';
 
 import {
@@ -52,8 +53,13 @@ function useOutboxRead<T>(
 /** One connection's listening sync: the waiting count, the last sync and the
  * couldn't-sync list, kept current as the outbox changes. */
 export function useListeningSync(connectionId: string | undefined): ListeningSyncView {
+  // The open span counts only while its server can't be reached: read again as that flips
+  // (the span is stored online too, so going offline changes nothing in the outbox).
+  const reachable = useReachability((s) =>
+    connectionId ? (s.online[connectionId] ?? true) : true,
+  );
   return useOutboxRead(
-    connectionId ?? null,
+    connectionId ? `${connectionId}|${reachable}` : null,
     async () => {
       const cid = connectionId as string;
       const [{ listens }, state] = await Promise.all([pendingSaves(cid), syncStateOf(cid)]);

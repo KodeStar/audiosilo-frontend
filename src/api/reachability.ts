@@ -1,7 +1,8 @@
+import * as Network from 'expo-network';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 
-import { type Connection, onConnectionRemoved } from '@/stores/session';
+import { type Connection, onConnectionRemoved, useSession } from '@/stores/session';
 
 import { type ApiClient, TimeoutError } from './client';
 import { resolveClient } from './connection-clients';
@@ -114,7 +115,8 @@ function setOnline(connectionId: string, online: boolean) {
 }
 
 /** Whether a failed request got no answer from its server: our timeout, or the fetch
- * itself rejecting (a `TypeError`: "Failed to fetch", "Network request failed"). Strict,
+ * itself rejecting (a `TypeError`: the client's `NetworkError` on every platform, the
+ * browser's "Failed to fetch"). Strict,
  * so a caller that sees every kind of failure (the query cache) never reads a capability
  * gate or a cancelled read as a dead server. */
 function isUnreachableError(e: unknown): boolean {
@@ -189,6 +191,11 @@ export async function checkReachability(connectionId: string): Promise<void> {
   if (now && now.baseUrl === client.baseUrl) {
     if (answered) setOnline(connectionId, true);
     else if ((answers.get(connectionId) ?? 0) === answersBefore) setOnline(connectionId, false);
+  } else if (now && !answered && isReachable(connectionId)) {
+    // Moved to another address while it waited (the address runner left home as the
+    // network went): what it found says nothing of the new address, so ask that one.
+    void checkReachability(connectionId);
+    return;
   }
   // A query succeeded while this one waited (a Retry that got through, a check sent before
   // the network came back): ask again now, not at the next probe.
@@ -237,9 +244,72 @@ onConnectionRemoved((id) => {
   if (!anyOffline(rest)) stopProbe();
 });
 
+/** After the device's network comes back, the connections still down are probed once
+ * more this long after the first probe: a network that has only just joined may not
+ * route yet, and the next regular probe is up to 20 s away. */
+export const REJOIN_RETRY_MS = 4_000;
+let rejoinRetry: ReturnType<typeof setTimeout> | null = null;
+/** The last network state acted on (`deviceNetworkChanged`), as a key. */
+let lastNetwork: string | null = null;
+
+/** Ask every connection marked down again now. One whose check is still out (sent before
+ * the network came back, it can wait out its whole timeout) is asked once more as soon as
+ * that check ends (`recheckReachability`), not at the next regular probe. */
+function recheckDown(): void {
+  for (const [cid, up] of Object.entries(useReachability.getState().online)) {
+    if (!up) recheckReachability(cid);
+  }
+}
+
+/**
+ * The app's network state changed (native; the web has `online`/`offline` below): its
+ * connected, type or internet-reachable state (a repeat of the last one is nothing). Losing
+ * the network has every connection still marked up checked at once: with no network the
+ * check fails at once, so the server is marked down now, not at the next request that
+ * fails (the playing span is then kept on the device, not cut into sends that cannot
+ * leave it). The network coming back asks every connection marked down at once and again
+ * shortly after (`recheckDown`, `REJOIN_RETRY_MS`), so what waits to sync (the listening
+ * outbox, the progress queue: `onReconnect`) goes as soon as the server answers, with the
+ * app idle in the foreground too (W2 F2), not at the next 20 s probe.
+ */
+export function deviceNetworkChanged(
+  state: Pick<Network.NetworkState, 'isConnected' | 'type' | 'isInternetReachable'>,
+): void {
+  // Only a change: Android also reports each change of a network's capabilities (signal,
+  // bandwidth), often in bursts, and those must not probe a server that is down each time.
+  const key = `${state.isConnected}|${state.type}|${state.isInternetReachable}`;
+  if (key === lastNetwork) return;
+  lastNetwork = key;
+  if (state.isConnected === false) {
+    for (const c of useSession.getState().connections) {
+      if (isReachable(c.id)) void checkReachability(c.id);
+    }
+    return;
+  }
+  if (state.isConnected !== true) return;
+  if (!anyOffline(useReachability.getState().online)) return;
+  recheckDown();
+  if (rejoinRetry) clearTimeout(rejoinRetry);
+  rejoinRetry = setTimeout(() => {
+    rejoinRetry = null;
+    recheckDown();
+  }, REJOIN_RETRY_MS);
+}
+
+// Native: follow the app's network state (`deviceNetworkChanged`) for the life of the app.
+// A platform without network events follows nothing (the probe loop still runs).
+if (Platform.OS !== 'web') {
+  try {
+    Network.addNetworkStateListener(deviceNetworkChanged);
+  } catch {
+    // no network events
+  }
+}
+
 // Web only: the browser's own connectivity signal flips state instantly (a probe
 // confirms each server itself, not just the NIC). `offline` marks every known
-// connection down; `online` re-probes them. Native relies on the probe loop.
+// connection down; `online` re-probes them. Native follows the system's network state
+// (`deviceNetworkChanged`) and the probe loop.
 if (
   Platform.OS === 'web' &&
   typeof window !== 'undefined' &&

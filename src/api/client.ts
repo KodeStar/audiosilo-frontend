@@ -381,6 +381,23 @@ export class TimeoutError extends Error {
   }
 }
 
+/**
+ * Thrown when a request got no answer at all: the fetch itself failed (no network, the
+ * address refused or unroutable, DNS, TLS), not a caller's cancel and not our timeout.
+ * A `TypeError`, like the browser's own "Failed to fetch", whatever the platform's fetch
+ * rejected with: the app's global fetch is Expo's (`expo/fetch`), which rejects with a
+ * plain `Error` (`FetchError`, "fetch failed: ..."), so without this the reachability
+ * layer (`isUnreachableError`) never saw an offline phone as one (W2 F1). The original
+ * rejection is its `cause`.
+ */
+export class NetworkError extends TypeError {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'NetworkError';
+    (this as { cause?: unknown }).cause = cause;
+  }
+}
+
 type QueryValue = string | number | boolean | undefined | null;
 /** A list value is sent as the key repeated once per item (`name=A&name=B`). */
 type Query = Record<string, QueryValue | readonly QueryValue[]>;
@@ -538,7 +555,7 @@ export class ApiClient {
    * one as dead would spuriously tell a correctly-logged-in shared user to reconnect
    * just for hitting a forbidden path - the exact false-positive this feature exists to
    * prevent. And because this class only throws `ApiError` for a real HTTP response (a
-   * network/offline failure surfaces as `TimeoutError` or a raw fetch rejection, with
+   * network/offline failure surfaces as `TimeoutError` or `NetworkError`, with
    * no status), a 401 `ApiError` inherently proves "server responded, token refused" -
    * cleanly distinct from offline (the reachability layer relies on the same invariant).
    *
@@ -634,14 +651,23 @@ export class ApiClient {
     }
 
     try {
-      const res = await fetch(url, {
-        method,
-        headers,
-        // A raw body (an OPML upload) goes as it is; anything else is JSON.
-        body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
-        signal: controller.signal,
-        ...(opts.keepalive ? { keepalive: true } : {}),
-      });
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method,
+          headers,
+          // A raw body (an OPML upload) goes as it is; anything else is JSON.
+          body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
+          signal: controller.signal,
+          ...(opts.keepalive ? { keepalive: true } : {}),
+        });
+      } catch (e) {
+        // No answer. A caller's cancel stays what the platform threw (an `AbortError`);
+        // our timeout is handled below; anything else is a `NetworkError` on every
+        // platform (see the class).
+        if (timedOut || opts.signal?.aborted) throw e;
+        throw new NetworkError(e);
+      }
       this.onAnswer?.();
       return await read(res, touch);
     } catch (e) {

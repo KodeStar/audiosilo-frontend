@@ -94,7 +94,10 @@ jest.mock('@/api/provider', () => ({
     // The downloads store's offline cache rules (`releaseOfflineBook` on a removal).
     setQueryDefaults: jest.fn(),
     fetchQuery: (...a: unknown[]) => mockFetchQuery(...a),
-    getQueryData: jest.fn(() => undefined),
+    // A server without listening_sync (the PUT path), unless a test says otherwise.
+    getQueryData: jest.fn((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
     cancelQueries: jest.fn(async () => {}),
   },
 }));
@@ -1484,10 +1487,18 @@ describe('a downloaded book re-ordered on its server', () => {
     // The server's answer, in its new order, sits in the query cache.
     const chaptersKey = JSON.stringify(qk.chapters('c1', 2, folder));
     (queryClient.getQueryData as jest.Mock).mockImplementation((k: unknown) =>
-      JSON.stringify(k) === chaptersKey ? chaptersIn(serverOrder) : undefined,
+      JSON.stringify(k) === chaptersKey
+        ? chaptersIn(serverOrder)
+        : (k as unknown[])[0] === 'server'
+          ? { capabilities: {} }
+          : undefined,
     );
   });
-  afterEach(() => (queryClient.getQueryData as jest.Mock).mockImplementation(() => undefined));
+  afterEach(() =>
+    (queryClient.getQueryData as jest.Mock).mockImplementation((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
+  );
 
   it("takes the server's order once a start plays it", async () => {
     await usePlayer.getState().playBook('c1', 2, book, chaptersIn(serverOrder), 0);

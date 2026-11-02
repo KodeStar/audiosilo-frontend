@@ -53,6 +53,7 @@ import {
   closeSpan,
   finishEvent,
   flushOutbox,
+  newEventId,
   type OpenSpan,
   type OutboxEntry,
   sendOnPageHide,
@@ -564,13 +565,22 @@ const saveLoop = engineTicker(() => {
   void persist();
   tickListeningSpan();
 }, SAVE_INTERVAL_MS);
+/** How often the open span is written to storage while playing, online or offline: a
+ * kill (a force-stop, the OS ending the app) loses at most this much listening, since
+ * `recoverOpenSpan` closes what was stored at the next launch. Without it an online span
+ * lived only in memory between two 15 s cuts (W2 F1). */
+const OPEN_SPAN_KEEP_MS = 5_000;
+const spanKeeper = engineTicker(() => keepOpenSpan(), OPEN_SPAN_KEEP_MS);
 /** Re-based on every start: the first save comes 15 s after playing starts. */
 function startSaveLoop() {
   saveLoop.stop();
   saveLoop.start();
+  spanKeeper.stop();
+  spanKeeper.start();
 }
 function stopSaveLoop() {
   saveLoop.stop();
+  spanKeeper.stop();
 }
 
 /** Capture the current position then stop the periodic save loop - shared by the
@@ -592,10 +602,11 @@ function haltAndPersist() {
 // the server is reachable, a speed change, the server coming back, the app going to the
 // background and the web page hiding; it is CLOSED on a pause (any settling out of
 // `playing`), a move (the new place opens the next span with the move's reason), a stop, a
-// book switch and the end. Offline, a tick only rewrites the open span (kept in storage, so
-// a day offline is a handful of events and a kill loses nothing). The persist guards above
-// (the load, the hot-swap, an adoption's reload, the resume floor) keep a suspicious place
-// out of a span too: a span then ends where it was last seen.
+// book switch and the end. Offline, a tick leaves the span open (cut only after an hour,
+// `MAX_SPAN_MS`), so a day offline is a handful of events. Online or offline, the open span
+// is stored every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that. The persist
+// guards above (the load, the hot-swap, an adoption's reload, the resume floor) keep a
+// suspicious place out of a span too: a span then ends where it was last seen.
 
 /** The longest a span stays open (wall clock) before it is cut, online or offline: well
  * under the server's 24 h bound on one span. */
@@ -673,6 +684,8 @@ function spanAt(
     endedAt: now,
     start,
     baseVersion,
+    // Its event's id, chosen now: a span closed twice is one event (`OpenSpan.id`).
+    id: newEventId(),
   };
 }
 
@@ -762,12 +775,34 @@ function tickListeningSpan() {
   // server's 24 h bound (refused `invalid`): a handful of events a day, each a whole hour.
   if (isReachable(span.connectionId) || Date.now() - Date.parse(span.startedAt) >= MAX_SPAN_MS) {
     cutListeningSpan();
-    return;
   }
+  // Offline the span stays open: `spanKeeper` stores it.
+}
+
+/** Bring the open span up to where the engine is now and store it (`OPEN_SPAN_KEEP_MS`), so
+ * a kill loses only what played since. */
+function keepOpenSpan() {
+  const kept = span;
+  if (!kept) return;
+  const np = usePlayer.getState().nowPlaying;
+  if (!np || !sameBook(kept, np)) return;
   const here = engineEnd();
-  if (here) span.to = here;
-  span.endedAt = new Date().toISOString();
-  void storeOpenSpan({ ...span });
+  // Never back: the native lock screen's landed place reaches the store before its move
+  // does (`onRemoteMove`), which then ends the span at its last place, `span.to`.
+  if (here && here.pos >= kept.to.pos - 1) kept.to = here;
+  kept.endedAt = new Date().toISOString();
+  void storeOpenSpan({ ...kept }).then((stored) => {
+    // Another tab took its last copy (and sent it): it plays on under the new id it was
+    // stored with, so what played since is an event of its own.
+    if (stored && span === kept) {
+      Object.assign(kept, {
+        id: stored.id,
+        from: stored.from,
+        startedAt: stored.startedAt,
+        start: stored.start,
+      });
+    }
+  });
 }
 
 /**

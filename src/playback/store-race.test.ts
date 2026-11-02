@@ -61,7 +61,10 @@ jest.mock('@/api/provider', () => ({
     setQueryData: jest.fn(),
     setQueryDefaults: jest.fn(),
     fetchQuery: jest.fn(async () => ({})),
-    getQueryData: jest.fn(() => undefined),
+    // A server without listening_sync (the PUT path), unless a test says otherwise.
+    getQueryData: jest.fn((k: readonly unknown[]) =>
+      k?.[0] === 'server' ? { capabilities: {} } : undefined,
+    ),
     cancelQueries: jest.fn(async () => {}),
   },
 }));
