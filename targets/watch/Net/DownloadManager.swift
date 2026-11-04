@@ -10,6 +10,10 @@ import Foundation
 struct ItemCache: Codable, Equatable {
   var book: Book
   var chapters: ChaptersResponse?
+
+  static func load(_ ref: BookRef) -> ItemCache? { JSONFile<ItemCache>(url: Files.item(ref)).read() }
+  func save(_ ref: BookRef) { JSONFile<ItemCache>(url: Files.item(ref)).write(self) }
+  var timeline: Timeline { Timeline(book: book, chapters: chapters) }
 }
 
 struct DownloadedFile: Codable, Equatable {
@@ -36,13 +40,15 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
 
   var id: String { ref.key }
   var doneCount: Int { files.filter(\.done).count }
+  /// The bytes on the watch (each file's size, set when it lands).
+  var bytes: Int64 { files.compactMap(\.bytes).reduce(0, +) }
 }
 
 @MainActor
 final class DownloadManager: ObservableObject {
   @Published private(set) var records: [DownloadRecord]
-  /// Bytes written so far per file being downloaded (`book|path`), for the rows.
-  @Published private(set) var written: [String: Int64] = [:]
+  /// The files this launch handed to the background session (`DownloadTaskTag.key`).
+  private var handedOff: Set<String> = []
 
   private let index = JSONFile<[DownloadRecord]>(url: Files.downloadsIndex)
   /// The client for the account's current address, nil when signed out.
@@ -87,9 +93,6 @@ final class DownloadManager: ObservableObject {
     folder(of: r).appendingPathComponent(file.local)
   }
 
-  /// Bytes on the watch for a book.
-  func size(_ r: DownloadRecord) -> Int64 { Files.size(of: folder(of: r)) }
-
   // MARK: - Queueing
 
   /// Queue a book (the Download button, the phone's `book`). A failed one is tried again; one
@@ -113,7 +116,7 @@ final class DownloadManager: ObservableObject {
   func resumeAll() {
     active = true
     Task {
-      let flying = Set(await BackgroundDownloads.shared.inFlight().map { "\($0.book)|\($0.path)" })
+      let flying = Set(await BackgroundDownloads.shared.inFlight().map(\.key))
       for r in records where r.state != .ready && r.state != .failed {
         process(r.id, inFlight: flying)
       }
@@ -132,9 +135,7 @@ final class DownloadManager: ObservableObject {
   func remove(_ ref: BookRef) {
     guard let r = record(ref) else { return }
     willRemove?(ref)
-    working[r.id]?.cancel()
-    working[r.id] = nil
-    runs[r.id] = nil
+    stopWork(r.id)
     BackgroundDownloads.shared.cancel(book: r.id)
     try? FileManager.default.removeItem(at: folder(of: r))
     try? FileManager.default.removeItem(at: Files.item(ref))
@@ -148,6 +149,13 @@ final class DownloadManager: ObservableObject {
   }
 
   // MARK: - Preparing
+
+  /// Cancel a book's run (a new one may start at once: `process` skips a book with one).
+  private func stopWork(_ key: String) {
+    working[key]?.cancel()
+    working[key] = nil
+    runs[key] = nil
+  }
 
   private func process(_ key: String, inFlight: Set<String> = []) {
     guard active, working[key] == nil else { return }
@@ -184,8 +192,9 @@ final class DownloadManager: ObservableObject {
       if records.first(where: { $0.id == key })?.files.isEmpty ?? true {
         let book = try await api.item(ref)
         let chapters = try? await api.chapters(ref)
-        JSONFile<ItemCache>(url: Files.item(ref)).write(ItemCache(book: book, chapters: chapters))
-        let timeline = Timeline(book: book, chapters: chapters)
+        let cache = ItemCache(book: book, chapters: chapters)
+        cache.save(ref)
+        let timeline = cache.timeline
         update(key) { rec in
           rec.title = book.title.isEmpty ? rec.title : book.title
           rec.author = book.author ?? rec.author
@@ -204,7 +213,7 @@ final class DownloadManager: ObservableObject {
           markIfDone(key)
           return
         case .failed:
-          fail(key, "A file of this book can't be made for the watch.")
+          fail(key, RenditionPlan.message(.failed(retryAfter: nil)) ?? "")
           return
         case .poll(let after):
           try await Task.sleep(nanoseconds: UInt64(after * 1e9))
@@ -217,19 +226,18 @@ final class DownloadManager: ObservableObject {
     } catch is CancellationError {
       // Backgrounded: carried on at the next foreground.
     } catch let e as APIError {
-      switch RenditionPlan.refusal(e) {
-      case .retry(let after):
+      let refusal = RenditionPlan.refusal(e)
+      if case .retry(let after) = refusal {
         update(key) { $0.message = "Waiting for the server" }
         try? await Task.sleep(nanoseconds: UInt64(after * 1e9))
         if !Task.isCancelled {
+          // This run is the one in `working`: clear it so the next can start.
           working[key] = nil
           runs[key] = nil
           process(key)
         }
-      case .failed: fail(key, "A file of this book can't be made for the watch.")
-      case .unavailable: fail(key, "This server can't make books for the watch now.")
-      case .signedOut: fail(key, "Signed out. Set up the watch again from your iPhone.")
-      case .gone: fail(key, "This book is no longer on the server.")
+      } else if let message = RenditionPlan.message(refusal) {
+        fail(key, message)
       }
     } catch {
       // No answer: it waits for the next foreground.
@@ -241,14 +249,12 @@ final class DownloadManager: ObservableObject {
   private func checkSpace(_ key: String, _ answer: RenditionsAnswer) -> Bool {
     guard let r = records.first(where: { $0.id == key }), let free = Files.freeBytes() else { return true }
     let done = Set(r.files.filter(\.done).map(\.path))
-    let durations = (JSONFile<ItemCache>(url: Files.item(r.ref)).read()).map { cache in
-      Dictionary(Timeline(book: cache.book, chapters: cache.chapters).files.map { ($0.path, $0.duration) },
-                 uniquingKeysWith: { a, _ in a })
+    let durations = ItemCache.load(r.ref).map { cache in
+      Dictionary(cache.timeline.files.map { ($0.path, $0.duration) }, uniquingKeysWith: { a, _ in a })
     } ?? [:]
     let needed = RenditionPlan.neededBytes(answer.files.filter { !done.contains($0.path) }, durations: durations)
     if RenditionPlan.fits(needed: needed, free: free) { return true }
-    let f = ByteCountFormatter()
-    fail(key, "Not enough space on this watch: it needs \(f.string(fromByteCount: needed)) and keeps 200 MB free; \(f.string(fromByteCount: free)) is free.")
+    fail(key, "Not enough space on this watch: it needs \(Labels.bytes(needed)) and keeps \(Labels.bytes(RenditionPlan.HEADROOM_BYTES)) free; \(Labels.bytes(free)) is free.")
     return false
   }
 
@@ -256,16 +262,15 @@ final class DownloadManager: ObservableObject {
     guard let r = records.first(where: { $0.id == key }),
           let f = r.files.first(where: { $0.path == file.path }), !f.done
     else { return }
-    let tagKey = "\(key)|\(file.path)"
-    if inFlight.contains(tagKey) || written[tagKey] != nil { return }
+    let tag = DownloadTaskTag(book: key, path: file.path)
+    if inFlight.contains(tag.key) || handedOff.contains(tag.key) { return }
     guard let request = try? api.renditionDownload(libraryId: r.ref.libraryId, file: file.path) else { return }
-    written[tagKey] = 0
+    handedOff.insert(tag.key)
     update(key) { rec in
       rec.state = .downloading
       if let i = rec.files.firstIndex(where: { $0.path == file.path }) { rec.files[i].bytes = file.bytes }
     }
-    BackgroundDownloads.shared.start(request, tag: DownloadTaskTag(book: key, path: file.path), expectedBytes: file.bytes,
-                                     resumeData: resumeData.removeValue(forKey: tagKey))
+    BackgroundDownloads.shared.start(request, tag: tag, expectedBytes: file.bytes, resumeData: resumeData.removeValue(forKey: tag.key))
   }
 
   private func markIfDone(_ key: String) {
@@ -281,10 +286,8 @@ final class DownloadManager: ObservableObject {
 
   private func handle(_ e: DownloadEvent) {
     switch e {
-    case .progress(let tag, let n, _):
-      written["\(tag.book)|\(tag.path)"] = n
     case .finished(let tag, let staged):
-      written["\(tag.book)|\(tag.path)"] = nil
+      handedOff.remove(tag.key)
       guard let r = records.first(where: { $0.id == tag.book }),
             let i = r.files.firstIndex(where: { $0.path == tag.path })
       else {
@@ -306,23 +309,19 @@ final class DownloadManager: ObservableObject {
         fail(tag.book, "The watch could not keep a file of this book.")
       }
     case .refused(let tag, let error):
-      written["\(tag.book)|\(tag.path)"] = nil
-      switch RenditionPlan.refusal(error) {
-      case .retry:
+      handedOff.remove(tag.key)
+      let refusal = RenditionPlan.refusal(error)
+      if case .retry = refusal {
         // Not ready after all (`rendition_pending`): poll again.
-        working[tag.book]?.cancel()
-        working[tag.book] = nil
-        runs[tag.book] = nil
+        stopWork(tag.book)
         update(tag.book) { $0.state = .preparing }
         process(tag.book)
-      case .signedOut: fail(tag.book, "Signed out. Set up the watch again from your iPhone.")
-      case .gone: fail(tag.book, "This book is no longer on the server.")
-      case .failed, .unavailable: fail(tag.book, "A file of this book can't be made for the watch.")
+      } else if let message = RenditionPlan.message(refusal) {
+        fail(tag.book, message)
       }
     case .failed(let tag, let data):
-      let tagKey = "\(tag.book)|\(tag.path)"
-      written[tagKey] = nil
-      if let data { resumeData[tagKey] = data }
+      handedOff.remove(tag.key)
+      if let data { resumeData[tag.key] = data }
       update(tag.book) { $0.message = "Waiting for a connection" }
     }
   }

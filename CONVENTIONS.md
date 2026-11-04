@@ -1858,8 +1858,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
 
 - **The watch is Swift, not JS.** Nothing under `targets/watch/` is bundled by Metro; it is a
   hand port of the rules it shares with the player, so a change to one of these rules changes
-  both sides with tests on both: the timeline (`book-queue.ts` -> `Core/Timeline.swift`, the
-  native module's `ChapterClips.swift` copied), spans and the outbox (`listening-sync.ts`,
+  both sides with tests on both: the timeline (`book-queue.ts` -> `Core/Timeline.swift`; the
+  watch navigates whole-book chapters, `Core/PlayerRules.swift`, not clips), spans and the outbox (`listening-sync.ts`,
   `listening-outbox.ts` -> `Core/SpanRecorder.swift`, `Core/Outbox.swift`), acks and offers
   (`progress-sync.ts`, `place-reconcile.ts` -> `Core/AckAndOffer.swift`), the address rule and
   `pairingFallback` (-> `Core/AddressPicker.swift`) and the identity header (`client-id.ts` ->

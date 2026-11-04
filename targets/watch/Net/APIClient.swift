@@ -74,9 +74,7 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
   static func check(_ response: URLResponse, _ data: Data?) throws {
     guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
     guard !(200..<300).contains(http.statusCode) else { return }
-    let body = data.flatMap { try? Wire.decoder.decode(APIErrorBody.self, from: $0) }
-    let retry = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
-    throw APIError(status: http.statusCode, code: body?.code, message: body?.error, retryAfter: retry)
+    throw APIError(status: http.statusCode, body: data, retryAfterHeader: http.value(forHTTPHeaderField: "Retry-After"))
   }
 
   private func json<B: Encodable>(_ body: B) throws -> Data { try Wire.encoder.encode(body) }

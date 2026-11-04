@@ -67,6 +67,11 @@ enum ChapterNav {
     return chapters[i - 1].bookOffset
   }
 
+  /// A chapter's title, "Part 2" for one without (synthetic ones).
+  static func title(_ ch: Chapter, index i: Int) -> String {
+    ch.title.trimmingCharacters(in: .whitespaces).isEmpty ? "Part \(i + 1)" : ch.title
+  }
+
   /// Next chapter's start, nil at the last one.
   static func next(_ chapters: [Chapter], _ position: Double) -> Double? {
     guard let i = index(chapters, position), i + 1 < chapters.count else { return nil }
@@ -97,8 +102,7 @@ struct NowPlayingTimes: Equatable {
     let duration = max(0, end - ch.bookOffset)
     let into = max(0, position - ch.bookOffset)
     let elapsed = duration > 0 ? min(into, duration) : into
-    let title = ch.title.trimmingCharacters(in: .whitespaces).isEmpty ? "Part \(i + 1)" : ch.title
-    return NowPlayingTimes(chapterIndex: i, title: title, elapsed: elapsed, duration: duration)
+    return NowPlayingTimes(chapterIndex: i, title: ChapterNav.title(ch, index: i), elapsed: elapsed, duration: duration)
   }
 }
 
@@ -108,6 +112,12 @@ struct LocalPlace: Codable, Equatable, Sendable {
   var file: String?
   var filePos: Double?
   var at: Date
+}
+
+extension LocalPlace {
+  init(_ end: SpanEnd, at: Date) {
+    self.init(position: end.pos, file: end.file, filePos: end.filePos, at: at)
+  }
 }
 
 /// Where a book starts when it is loaded, and how its first span begins.

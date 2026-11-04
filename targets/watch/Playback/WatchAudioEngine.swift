@@ -66,7 +66,6 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private var wantsPlay = false
   /// When the place last moved while playing (where a late-noticed stop ends its span).
   private var lastAdvance = Date()
-  private var nowPlayingChapter: Int?
 
   init(spans: SpanRecorder, places: PlaceStore) {
     self.spans = spans
@@ -120,7 +119,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
 
   private func savePlace() {
     guard let b = book, let end = spanEnd() else { return }
-    places.set(b.ref, LocalPlace(position: end.pos, file: end.file, filePos: end.filePos, at: Date()))
+    places.set(b.ref, LocalPlace(end, at: Date()))
   }
 
   // MARK: - Loading
@@ -134,7 +133,6 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     let place = next.timeline.resumePlace(position: plan.position, file: plan.file, filePos: plan.filePos)
     position = next.timeline.bookPosition(index: place.index, positionInTrack: place.positionInTrack)
     rebuild(from: place.index, at: place.positionInTrack)
-    nowPlayingChapter = nil
     refreshTimes(force: true)
   }
 
@@ -266,8 +264,8 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     guard let b = book else { return }
     let to = Skips.target(position: target, by: 0, total: b.timeline.total)
     let place = b.timeline.locate(to)
-    spans.move(b.playing, to: b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack),
-               from: spanEnd(), reason: reason, playing: playing, speed: rate)
+    let target = b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack)
+    spans.move(b.playing, to: target, from: spanEnd(), reason: reason, playing: playing, speed: rate)
     if let w = where_(), w.index == place.index, pendingSeek == nil, player.currentItem?.status == .readyToPlay {
       player.seek(to: CMTime(seconds: place.positionInTrack, preferredTimescale: 600), toleranceBefore: .zero,
                   toleranceAfter: .zero)
@@ -279,8 +277,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
       }
     }
     position = to
-    places.set(b.ref, LocalPlace(position: to, file: b.timeline.files[safe: place.index]?.path,
-                                 filePos: place.positionInTrack, at: Date()))
+    if let target { places.set(b.ref, LocalPlace(target, at: Date())) }
     lastKeep = Date()
     lastCut = Date()
     refreshTimes(force: true)
@@ -358,16 +355,18 @@ final class WatchAudioEngine: NSObject, ObservableObject {
         return
       }
     }
+    var moved = false
     if now.timeIntervalSince(lastKeep) >= Spans.OPEN_SPAN_KEEP {
       lastKeep = now
       spans.keep(at: spanEnd())
-      savePlace()
+      moved = true
     }
     if now.timeIntervalSince(lastCut) >= Spans.CUT_INTERVAL {
       lastCut = now
       spans.tick(b.playing, at: spanEnd(), playing: true, reachable: reachable(), speed: rate)
-      savePlace()
+      moved = true
     }
+    if moved { savePlace() }
   }
 
   @objc private func itemEnded(_ note: Notification) {
@@ -449,10 +448,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     guard let b = book else { return }
     let t = NowPlayingTimes.of(chapters: b.timeline.chapters, position: position, total: b.timeline.total,
                                bookTitle: b.title)
-    let chapterChanged = t.chapterIndex != nowPlayingChapter
-    times = t
+    let chapterChanged = t.chapterIndex != times?.chapterIndex
+    if t != times { times = t }
     guard force || chapterChanged else { return }
-    nowPlayingChapter = t.chapterIndex
     var info: [String: Any] = [
       MPMediaItemPropertyTitle: t.title,
       MPMediaItemPropertyAlbumTitle: b.title,
@@ -480,7 +478,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
       guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
       return self?.command { engine in
         // The scrubber is the chapter's: its start plus the time asked for.
-        let start = engine.book.flatMap { b in ChapterNav.index(b.timeline.chapters, engine.position).map { b.timeline.chapters[$0].bookOffset } } ?? 0
+        let start = engine.book.flatMap { b in engine.times?.chapterIndex.map { b.timeline.chapters[$0].bookOffset } } ?? 0
         engine.seek(to: start + e.positionTime)
       } ?? .commandFailed
     }
@@ -507,8 +505,4 @@ private final class Once: @unchecked Sendable {
     lock.unlock()
     if first { f() }
   }
-}
-
-extension Array {
-  subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }

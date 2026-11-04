@@ -63,6 +63,17 @@ enum RenditionPlan {
     case gone
   }
 
+  /// What a book's row says after a refusal; nil for `retry`, which waits instead.
+  static func message(_ r: Refusal) -> String? {
+    switch r {
+    case .retry: return nil
+    case .failed: return "A file of this book can't be made for the watch."
+    case .unavailable: return "This server can't make books for the watch now."
+    case .signedOut: return "Signed out. Set up the watch again from your iPhone."
+    case .gone: return "This book is no longer on the server."
+    }
+  }
+
   static func refusal(_ e: APIError) -> Refusal {
     let retry = max(MIN_POLL, e.retryAfter ?? DEFAULT_POLL)
     switch (e.status, e.code) {

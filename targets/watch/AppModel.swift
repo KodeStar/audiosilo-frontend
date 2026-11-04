@@ -142,9 +142,9 @@ final class AppModel: ObservableObject {
       await checkServer()
       guard phase == .ready else { return }
       await flush()
-      if client() != nil {
+      if let api = client() {
         downloads.resumeAll()
-        if let api = client() { await library.refresh(api) }
+        await library.refresh(api)
       }
     }
   }
@@ -235,8 +235,7 @@ final class AppModel: ObservableObject {
       engine.play()
       return
     }
-    guard let cache = JSONFile<ItemCache>(url: Files.item(record.ref)).read() else { return }
-    let timeline = Timeline(book: cache.book, chapters: cache.chapters)
+    guard let timeline = ItemCache.load(record.ref)?.timeline else { return }
     let byPath = Dictionary(record.files.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
     let urls = timeline.files.compactMap { f in byPath[f.path].map { downloads.localURL(record, file: $0) } }
     guard urls.count == timeline.files.count, !urls.isEmpty else { return }
@@ -439,7 +438,7 @@ final class AppModel: ObservableObject {
   func publishState() {
     let books = downloads.records.map { r in
       WatchStateBook(ref: r.ref, title: r.title, state: r.state,
-                     bytes: r.state == .ready ? r.files.compactMap(\.bytes).reduce(0, +) : nil)
+                     bytes: r.state == .ready ? r.bytes : nil)
     }
     PhoneLink.shared.publish(WatchState(
       signedIn: account != nil, serverId: account?.serverId, userId: account?.userId, appVersion: appVersion,

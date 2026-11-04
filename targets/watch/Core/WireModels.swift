@@ -82,6 +82,14 @@ struct APIError: Error, Equatable, Sendable {
   var retryAfter: Double?
 }
 
+extension APIError {
+  /// A refused answer: its status, its JSON error body (when it parses) and its `Retry-After`.
+  init(status: Int, body: Data?, retryAfterHeader: String?) {
+    let parsed = body.flatMap { try? Wire.decoder.decode(APIErrorBody.self, from: $0) }
+    self.init(status: status, code: parsed?.code, message: parsed?.error, retryAfter: retryAfterHeader.flatMap(Double.init))
+  }
+}
+
 // MARK: - Books
 
 struct BookFile: Codable, Equatable, Sendable {
@@ -225,11 +233,6 @@ enum ListeningEvent: Codable, Equatable, Sendable {
     case .listen(let e): return BookRef(libraryId: e.libraryId, path: e.path)
     case .finish(let e): return BookRef(libraryId: e.libraryId, path: e.path)
     }
-  }
-
-  var isListen: Bool {
-    if case .listen = self { return true }
-    return false
   }
 
   /// When it happened: a span's end, a finish's `at`.

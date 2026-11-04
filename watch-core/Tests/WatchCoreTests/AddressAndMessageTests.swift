@@ -188,6 +188,14 @@ final class RenditionPlanTests: XCTestCase {
     XCTAssertEqual(RenditionPlan.refusal(APIError(status: 401)), .signedOut)
   }
 
+  func testARefusalReadsFromItsBodyAndRetryAfter() {
+    let e = APIError(status: 503, body: Data(#"{"error":"not yet","code":"rendition_pending"}"#.utf8), retryAfterHeader: "15")
+    XCTAssertEqual(e, APIError(status: 503, code: "rendition_pending", message: "not yet", retryAfter: 15))
+    XCTAssertEqual(APIError(status: 500, body: Data("<html>".utf8), retryAfterHeader: "soon"), APIError(status: 500))
+    XCTAssertNil(RenditionPlan.message(.retry(after: 5)))
+    XCTAssertEqual(RenditionPlan.message(.unavailable), "This server can't make books for the watch now.")
+  }
+
   func testADownloadSucceedsOnlyOn200Or206() {
     XCTAssertTrue(RenditionPlan.downloadSucceeded(status: 200))
     XCTAssertTrue(RenditionPlan.downloadSucceeded(status: 206))

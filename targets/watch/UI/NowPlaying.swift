@@ -23,7 +23,7 @@ struct NowPlayingView: View {
             HStack {
               Text(Labels.clock(t.elapsed))
               Spacer()
-              Text("-" + Labels.clock(max(0, t.duration - t.elapsed) / engine.rate))
+              Text("-" + Labels.clock(Skips.timeLeft(position: t.elapsed, total: t.duration, rate: engine.rate)))
             }
             .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
           }
@@ -87,14 +87,14 @@ struct ChaptersView: View {
   var body: some View {
     List {
       if let book = engine.book {
-        let current = ChapterNav.index(book.timeline.chapters, engine.position)
+        let current = engine.times?.chapterIndex
         ForEach(Array(book.timeline.chapters.enumerated()), id: \.offset) { i, ch in
           Button {
             engine.seek(to: ch.bookOffset)
             dismiss()
           } label: {
             HStack {
-              Text(ch.title.isEmpty ? "Part \(i + 1)" : ch.title).lineLimit(2)
+              Text(ChapterNav.title(ch, index: i)).lineLimit(2)
               Spacer()
               if i == current { Image(systemName: "speaker.wave.2.fill").foregroundStyle(.secondary) }
             }

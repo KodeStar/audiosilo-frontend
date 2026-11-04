@@ -228,7 +228,7 @@ struct BookOnWatchRow: View {
       Text(record.title).lineLimit(2)
       switch record.state {
       case .ready:
-        Text(Labels.bytes(downloads.size(record))).font(.footnote).foregroundStyle(.secondary)
+        Text(Labels.bytes(record.bytes)).font(.footnote).foregroundStyle(.secondary)
       case .downloading:
         Text("Downloading \(record.doneCount) of \(record.files.count) files").font(.footnote).foregroundStyle(.secondary)
       default:

@@ -29,14 +29,14 @@ enum BackgroundSync {
     return .answered(answer)
   }
 
-  /// The tag as a task description, and back.
-  static func describe(_ tag: SyncUploadTag) -> String? {
+  /// A task's tag as its `taskDescription` (JSON), and back (the upload's and the downloads').
+  static func describe<T: Encodable>(_ tag: T) -> String? {
     (try? JSONEncoder().encode(tag)).flatMap { String(data: $0, encoding: .utf8) }
   }
 
-  static func tag(_ description: String?) -> SyncUploadTag? {
+  static func tag<T: Decodable>(_ description: String?, as: T.Type = T.self) -> T? {
     guard let d = description?.data(using: .utf8) else { return nil }
-    return try? JSONDecoder().decode(SyncUploadTag.self, from: d)
+    return try? JSONDecoder().decode(T.self, from: d)
   }
 
   /// Whether an upload's answer belongs to the account signed in now.

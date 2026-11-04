@@ -63,36 +63,8 @@ func chapterBookOffset(_ files: [FileSpec], _ ch: Chapter) -> Double {
   return acc + ch.start
 }
 
-private func fileIndexOf(_ specs: [FileSpec], _ ch: Chapter) -> Int? {
-  if let i = specs.firstIndex(where: { $0.path == ch.filePath }) { return i }
-  return ch.fileIndex >= 0 && ch.fileIndex < specs.count ? ch.fileIndex : nil
-}
-
-/// Per-chapter clips for Now Playing's chapter controls: `[]` for 0 or 1 chapters, for a
-/// chapter no file maps to, for a non-final in-file chapter with no length, or when a file has
-/// no chapter (file mode is the safe fallback). A file's last chapter clips to its end (0).
-func buildChapterClips(_ specs: [FileSpec], _ chapters: [Chapter]) -> [ChapterClip] {
-  if chapters.count <= 1 { return [] }
-  let indices = chapters.map { fileIndexOf(specs, $0) }
-  var clips: [ChapterClip] = []
-  var covered = Set<Int>()
-  for (i, ch) in chapters.enumerated() {
-    guard let fileIndex = indices[i] else { return [] }
-    let lastInFile = i + 1 >= chapters.count || indices[i + 1] != fileIndex
-    if !lastInFile && ch.end <= ch.start { return [] }
-    clips.append(
-      ChapterClip(
-        fileIndex: fileIndex,
-        startInFile: max(0, ch.start),
-        endInFile: lastInFile ? 0 : max(0, ch.end),
-        title: ch.title))
-    covered.insert(fileIndex)
-  }
-  return covered.count == specs.count ? clips : []
-}
-
 /// Evenly spaced chapters for a long chapterless single file (`ceil(total / interval)` of them,
-/// the last ending at `total`); `[]` below 1.5 intervals. Never made into clips.
+/// the last ending at `total`); `[]` below 1.5 intervals.
 func synthesizeChapters(_ filePath: String, _ total: Double, _ interval: Double = DEFAULT_VIRTUAL_CHAPTER_INTERVAL)
   -> [Chapter]
 {
@@ -110,15 +82,6 @@ func synthesizeChapters(_ filePath: String, _ total: Double, _ interval: Double 
 /// chapter of no length).
 func chapterEndPosition(_ ch: Chapter) -> Double {
   ch.bookOffset + max(0, ch.end - ch.start)
-}
-
-/// The chapter at a whole-book position (the first one before every chapter); nil with none.
-func chapterAt(_ chapters: [Chapter], _ position: Double) -> Chapter? {
-  var current: Chapter?
-  for ch in chapters {
-    if position >= ch.bookOffset { current = ch } else { break }
-  }
-  return current ?? chapters.first
 }
 
 /// The nearest chapter end more than `minSeconds` of wall clock ahead (the sleep timer's end of
@@ -168,7 +131,6 @@ struct Timeline: Equatable, Sendable {
   /// unknown (estimated from the chapters, or a file without one). A span event's `duration`.
   var audio: Double
   var chapters: [Chapter]
-  var chapterClips: [ChapterClip]
   var syntheticChapters: Bool
 
   init(book: Book, chapters chapterData: ChaptersResponse? = nil,
@@ -191,7 +153,6 @@ struct Timeline: Equatable, Sendable {
     let total = max(book.duration > 0 ? book.duration : 0, acc, furthest)
     let estimated = bookFileList(book, chapterData).isEmpty && !raw.isEmpty
     let audio = !estimated && specs.allSatisfy({ $0.duration > 0 }) ? acc : 0
-    let clips = buildChapterClips(specs, chapters)
     let synthetic =
       specs.count == 1 && chapters.count <= 1
       ? synthesizeChapters(specs[0].path, total, virtualChapterInterval) : []
@@ -200,7 +161,6 @@ struct Timeline: Equatable, Sendable {
     self.total = total
     self.audio = audio
     self.chapters = synthetic.isEmpty ? chapters : synthetic
-    self.chapterClips = clips
     self.syntheticChapters = !synthetic.isEmpty
   }
 

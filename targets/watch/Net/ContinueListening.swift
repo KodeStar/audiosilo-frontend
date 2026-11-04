@@ -36,10 +36,9 @@ final class ContinueListening: ObservableObject {
       let picked = ContinueOrder.inProgress(try await api.allProgress(), limit: Self.LIMIT)
       var next: [ContinueRow] = []
       for p in picked {
-        let cacheFile = JSONFile<ItemCache>(url: Files.item(p.ref))
-        var book = cacheFile.read()?.book
+        var book = ItemCache.load(p.ref)?.book
         if book == nil, let fetched = try? await api.item(p.ref) {
-          cacheFile.write(ItemCache(book: fetched, chapters: nil))
+          ItemCache(book: fetched, chapters: nil).save(p.ref)
           book = fetched
         }
         next.append(ContinueRow(ref: p.ref, title: book?.title ?? (p.path as NSString).lastPathComponent,
@@ -50,7 +49,7 @@ final class ContinueListening: ObservableObject {
       problem = ""
       file.write(next)
     } catch let e as APIError where e.status == 401 {
-      problem = "Signed out. Set up the watch again from your iPhone."
+      problem = RenditionPlan.message(.signedOut) ?? ""
     } catch {
       problem = "Can't reach your server."
     }

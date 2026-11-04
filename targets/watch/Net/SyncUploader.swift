@@ -14,7 +14,7 @@ struct SyncUploadAnswer {
 
 final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
   static let shared = SyncUploader()
-  static let identifier = (Bundle.main.bundleIdentifier ?? "app.audiosilo.watchkitapp") + ".sync"
+  static let identifier = BackgroundSession.identifier(".sync")
 
   /// Told of every finished upload, on the main queue (answers that came before it was set wait).
   var handler: ((SyncUploadAnswer) -> Void)? {
@@ -24,17 +24,10 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
   private let lock = NSLock()
   private var bodies: [Int: Data] = [:]
   private var waiting: [SyncUploadAnswer] = []
-  private var wakeDone: (() -> Void)?
-  private var finishedEarly = false
+  private let backgroundWake = BackgroundWake()
 
-  private lazy var session: URLSession = {
-    let c = URLSessionConfiguration.background(withIdentifier: Self.identifier)
-    c.isDiscretionary = false
-    c.sessionSendsLaunchEvents = true
-    c.allowsExpensiveNetworkAccess = true
-    c.allowsConstrainedNetworkAccess = true
-    return URLSession(configuration: c, delegate: self, delegateQueue: nil)
-  }()
+  private lazy var session: URLSession = URLSession(configuration: BackgroundSession.configuration(Self.identifier), delegate: self,
+                                        delegateQueue: nil)
 
   /// Reconnect at launch, so an upload a previous launch started reports here.
   func attach() { _ = session }
@@ -71,17 +64,7 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
   /// A background wake for this session: resolves once the system's events are delivered.
   func wake() async {
     attach()
-    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-      lock.lock()
-      if finishedEarly {
-        finishedEarly = false
-        lock.unlock()
-        c.resume()
-        return
-      }
-      wakeDone = { c.resume() }
-      lock.unlock()
-    }
+    await backgroundWake.wait()
   }
 
   private static func removeOldBodies(keeping: URL?) {
@@ -116,7 +99,7 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
     let body = bodies.removeValue(forKey: task.taskIdentifier)
     lock.unlock()
     if (error as? URLError)?.code == .cancelled { return }
-    guard let tag = BackgroundSync.tag(task.taskDescription) else { return }
+    guard let tag = BackgroundSync.tag(task.taskDescription, as: SyncUploadTag.self) else { return }
     let status = error == nil ? (task.response as? HTTPURLResponse)?.statusCode : nil
     let answer = SyncUploadAnswer(tag: tag, outcome: BackgroundSync.outcome(status: status, body: body))
     lock.lock()
@@ -126,12 +109,7 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
   }
 
   func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-    lock.lock()
-    let done = wakeDone
-    wakeDone = nil
-    if done == nil { finishedEarly = true }
-    lock.unlock()
-    // Let the answers reach the main actor first.
-    DispatchQueue.main.async { done?() }
+    // The answers reach the main actor first (both go through the main queue).
+    backgroundWake.finished()
   }
 }

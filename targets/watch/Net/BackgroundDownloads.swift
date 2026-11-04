@@ -12,6 +12,9 @@ import Foundation
 struct DownloadTaskTag: Codable, Equatable {
   var book: String
   var path: String
+
+  /// `book|path`: one file of one book.
+  var key: String { "\(book)|\(path)" }
 }
 
 /// What a finished task brought.
@@ -22,29 +25,18 @@ enum DownloadEvent {
   case refused(DownloadTaskTag, APIError)
   /// No answer, or the transfer broke; `resumeData` resumes it.
   case failed(DownloadTaskTag, resumeData: Data?)
-  case progress(DownloadTaskTag, written: Int64, expected: Int64)
 }
 
 final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
   static let shared = BackgroundDownloads()
-  static let identifier = (Bundle.main.bundleIdentifier ?? "app.audiosilo.watchkitapp") + ".downloads"
+  static let identifier = BackgroundSession.identifier(".downloads")
 
   /// Told of every event, on the main queue.
   var handler: ((DownloadEvent) -> Void)?
-  /// The system's completion for a background wake (`urlSessionDidFinishEvents`).
-  private var wakeDone: (() -> Void)?
-  /// The events were delivered before `wake` waited for them.
-  private var finishedEarly = false
-  private let lock = NSLock()
+  private let backgroundWake = BackgroundWake()
 
-  private lazy var session: URLSession = {
-    let c = URLSessionConfiguration.background(withIdentifier: Self.identifier)
-    c.isDiscretionary = false
-    c.sessionSendsLaunchEvents = true
-    c.allowsExpensiveNetworkAccess = true
-    c.allowsConstrainedNetworkAccess = true
-    return URLSession(configuration: c, delegate: self, delegateQueue: nil)
-  }()
+  private lazy var session: URLSession = URLSession(configuration: BackgroundSession.configuration(Self.identifier), delegate: self,
+                                        delegateQueue: nil)
 
   /// Reconnect to the session at launch, so a previous launch's events arrive.
   func attach() { _ = session }
@@ -52,7 +44,7 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
   /// Start (or resume) one file's download.
   func start(_ request: URLRequest, tag: DownloadTaskTag, expectedBytes: Int64?, resumeData: Data?) {
     let task = resumeData.map { session.downloadTask(withResumeData: $0) } ?? session.downloadTask(with: request)
-    task.taskDescription = (try? String(data: JSONEncoder().encode(tag), encoding: .utf8)) ?? nil
+    task.taskDescription = BackgroundSync.describe(tag)
     if let b = expectedBytes, b > 0 { task.countOfBytesClientExpectsToReceive = b }
     task.resume()
   }
@@ -72,22 +64,11 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
   /// A background wake for this session: resolves once the system's events are delivered.
   func wake() async {
     attach()
-    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-      lock.lock()
-      if finishedEarly {
-        finishedEarly = false
-        lock.unlock()
-        c.resume()
-        return
-      }
-      wakeDone = { c.resume() }
-      lock.unlock()
-    }
+    await backgroundWake.wait()
   }
 
   private static func tag(_ task: URLSessionTask) -> DownloadTaskTag? {
-    guard let d = task.taskDescription?.data(using: .utf8) else { return nil }
-    return try? JSONDecoder().decode(DownloadTaskTag.self, from: d)
+    BackgroundSync.tag(task.taskDescription, as: DownloadTaskTag.self)
   }
 
   private func emit(_ e: DownloadEvent) {
@@ -100,10 +81,8 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
     guard let tag = Self.tag(downloadTask) else { return }
     let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? -1
     guard RenditionPlan.downloadSucceeded(status: status) else {
-      let body = try? Data(contentsOf: location)
-      let parsed = body.flatMap { try? Wire.decoder.decode(APIErrorBody.self, from: $0) }
-      let retry = (downloadTask.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
-      emit(.refused(tag, APIError(status: status, code: parsed?.code, message: parsed?.error, retryAfter: retry)))
+      let retry = (downloadTask.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")
+      emit(.refused(tag, APIError(status: status, body: try? Data(contentsOf: location), retryAfterHeader: retry)))
       return
     }
     // The system deletes `location` when this returns: move it now.
@@ -118,13 +97,6 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
     }
   }
 
-  func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
-                  totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64)
-  {
-    guard let tag = Self.tag(downloadTask) else { return }
-    emit(.progress(tag, written: totalBytesWritten, expected: totalBytesExpectedToWrite))
-  }
-
   func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
     guard let error, let tag = Self.tag(task) else { return }
     if (error as? URLError)?.code == .cancelled, (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] == nil {
@@ -134,11 +106,6 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
   }
 
   func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-    lock.lock()
-    let done = wakeDone
-    wakeDone = nil
-    if done == nil { finishedEarly = true }
-    lock.unlock()
-    DispatchQueue.main.async { done?() }
+    backgroundWake.finished()
   }
 }

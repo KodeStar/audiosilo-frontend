@@ -240,7 +240,7 @@ final class BackgroundSyncTests: XCTestCase {
   func testTheTagRoundTripsAndAppliesOnlyToItsAccount() {
     let tag = SyncUploadTag(accountId: "s.1", ids: ["a", "b"])
     XCTAssertEqual(BackgroundSync.tag(BackgroundSync.describe(tag)), tag)
-    XCTAssertNil(BackgroundSync.tag("not json"))
+    XCTAssertNil(BackgroundSync.tag("not json", as: SyncUploadTag.self))
     XCTAssertTrue(BackgroundSync.applies(tag, accountId: "s.1"))
     XCTAssertFalse(BackgroundSync.applies(tag, accountId: "s.2"))
     XCTAssertFalse(BackgroundSync.applies(tag, accountId: nil))

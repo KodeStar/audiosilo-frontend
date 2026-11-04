@@ -17,6 +17,8 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   private var waiting: [PhoneMessage] = []
   private var lastState: [String: Any]?
+  /// The state last handed over (an unchanged one is not sent again).
+  private var published: WatchState?
 
   func activate() {
     guard WCSession.isSupported() else { return }
@@ -27,9 +29,10 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   /// Send the watch's state to the phone (the latest wins; sent once the session is active).
   func publish(_ state: WatchState) {
-    let plist = PhoneMessages.encode(state)
     DispatchQueue.main.async {
-      self.lastState = plist
+      guard state != self.published else { return }
+      self.published = state
+      self.lastState = PhoneMessages.encode(state)
       self.sendState()
     }
   }

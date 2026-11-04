@@ -1,5 +1,4 @@
-// Ported from src/playback/book-queue.test.ts and the ChapterClips half of
-// modules/audiosilo-player/ios/SelfCheck/main.swift.
+// Ported from src/playback/book-queue.test.ts.
 import XCTest
 
 @testable import WatchCore
@@ -83,14 +82,13 @@ final class TimelineBuildTests: XCTestCase {
     XCTAssertEqual(t.chapters[1].bookOffset, 50)
   }
 
-  func testSynthesizesChaptersForALongChapterlessSingleFileWithoutClips() {
+  func testSynthesizesChaptersForALongChapterlessSingleFile() {
     let t = Timeline(book: makeBook(relPath: "big.mp3", duration: 5400))
     XCTAssertEqual(t.offsets, [0])
     XCTAssertEqual(t.chapters.map(\.bookOffset), [0, 1800, 3600])
     XCTAssertTrue(t.chapters.allSatisfy { $0.filePath == "big.mp3" })
     XCTAssertEqual(t.total, 5400)
     XCTAssertTrue(t.syntheticChapters)
-    XCTAssertEqual(t.chapterClips, [])
   }
 
   func testDoesNotSynthesizeForAShortSingleFile() {
@@ -105,7 +103,6 @@ final class TimelineBuildTests: XCTestCase {
     let t = Timeline(book: makeBook(relPath: "A/single.m4b", duration: 5400), chapters: data)
     XCTAssertEqual(t.chapters.count, 3)
     XCTAssertTrue(t.syntheticChapters)
-    XCTAssertEqual(t.chapterClips, [])
   }
 
   func testLeavesARealMultiChapterBookUntouched() {
@@ -117,7 +114,6 @@ final class TimelineBuildTests: XCTestCase {
     let t = Timeline(book: makeBook(relPath: "A/single.m4b", duration: 5400), chapters: data)
     XCTAssertEqual(t.chapters.map(\.title), ["One", "Two", "Three"])
     XCTAssertFalse(t.syntheticChapters)
-    XCTAssertEqual(t.chapterClips.count, 3)
   }
 
   func testDoesNotSynthesizeForAMultiFileBook() {
@@ -154,71 +150,6 @@ final class TimelineBuildTests: XCTestCase {
       file("A/Book/01.mp3", seq: 1, duration: 60), file("A/Book/02.mp3", seq: 2, duration: 0),
     ])
     XCTAssertEqual(Timeline(book: unknown).audio, 0)
-  }
-}
-
-final class BuildChapterClipsTests: XCTestCase {
-  func clip(_ f: Int, _ s: Double, _ e: Double) -> ChapterClip {
-    ChapterClip(fileIndex: f, startInFile: s, endInFile: e, title: "ch")
-  }
-
-  func testEmptyForZeroOrOneChapter() {
-    XCTAssertEqual(buildChapterClips([spec("a.m4b")], []), [])
-    XCTAssertEqual(buildChapterClips([spec("a.m4b")], [ch(filePath: "a.m4b")]), [])
-  }
-
-  func testSplitsASingleFileLastClipsToEnd() {
-    let chapters = [
-      ch(index: 0, filePath: "a.m4b", start: 0, end: 100), ch(index: 1, filePath: "a.m4b", start: 100, end: 200),
-      ch(index: 2, filePath: "a.m4b", start: 200, end: 300),
-    ]
-    XCTAssertEqual(buildChapterClips([spec("a.m4b", 300)], chapters), [clip(0, 0, 100), clip(0, 100, 200), clip(0, 200, 0)])
-  }
-
-  func testOneChapterPerFileIsAWholeFileClipEach() {
-    let chapters = [ch(index: 0, filePath: "p1.mp3", start: 0, end: 60), ch(index: 1, fileIndex: 1, filePath: "p2.mp3", start: 0, end: 90)]
-    XCTAssertEqual(buildChapterClips([spec("p1.mp3", 60), spec("p2.mp3", 90)], chapters), [clip(0, 0, 0), clip(1, 0, 0)])
-  }
-
-  func testMultiFileWithEmbeddedChapters() {
-    let chapters = [
-      ch(index: 0, filePath: "p1.m4b", start: 0, end: 100), ch(index: 1, filePath: "p1.m4b", start: 100, end: 200),
-      ch(index: 2, fileIndex: 1, filePath: "p2.m4b", start: 0, end: 120),
-      ch(index: 3, fileIndex: 1, filePath: "p2.m4b", start: 120, end: 200),
-    ]
-    XCTAssertEqual(buildChapterClips([spec("p1.m4b", 200), spec("p2.m4b", 200)], chapters),
-                   [clip(0, 0, 100), clip(0, 100, 0), clip(1, 0, 120), clip(1, 120, 0)])
-  }
-
-  func testResolvesFileIndexByPath() {
-    let chapters = [ch(index: 0, fileIndex: 1, filePath: "p2.mp3", start: 0, end: 50), ch(index: 1, fileIndex: 0, filePath: "p1.mp3", start: 0, end: 30)]
-    XCTAssertEqual(buildChapterClips([spec("p2.mp3", 50), spec("p1.mp3", 30)], chapters).map(\.fileIndex), [0, 1])
-  }
-
-  func testEmptyWhenAChapterMapsToNoFile() {
-    let chapters = [ch(index: 0, filePath: "a.m4b", start: 0, end: 50), ch(index: 1, fileIndex: 9, filePath: "ghost.m4b", start: 50, end: 100)]
-    XCTAssertEqual(buildChapterClips([spec("a.m4b", 100)], chapters), [])
-  }
-
-  func testEmptyWhenANonFinalChapterHasNoSpan() {
-    let chapters = [
-      ch(index: 0, filePath: "a.m4b", start: 0, end: 100), ch(index: 1, filePath: "a.m4b", start: 100, end: 0),
-      ch(index: 2, filePath: "a.m4b", start: 200, end: 300),
-    ]
-    XCTAssertEqual(buildChapterClips([spec("a.m4b", 300)], chapters), [])
-  }
-
-  func testEmptyWhenAFileHasNoChapter() {
-    let chapters = [ch(index: 0, filePath: "p1.mp3", start: 0, end: 30), ch(index: 1, filePath: "p1.mp3", start: 30, end: 60)]
-    XCTAssertEqual(buildChapterClips([spec("p1.mp3", 60), spec("p2.mp3", 90)], chapters), [])
-  }
-
-  func testTimelineClipsAgreeWithItsChapters() {
-    let data = ChaptersResponse(duration: 200, files: [file("A/single.m4b", seq: 1, duration: 200)], chapters: [
-      ch(index: 0, filePath: "A/single.m4b", start: 0, end: 100), ch(index: 1, filePath: "A/single.m4b", start: 100, end: 200),
-    ])
-    XCTAssertEqual(Timeline(book: makeBook(relPath: "A/single.m4b", duration: 200), chapters: data).chapterClips,
-                   [clip(0, 0, 100), clip(0, 100, 0)])
   }
 }
 
@@ -261,9 +192,9 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
 
   func testChapterAtClampsBelowTheFirst() {
     let chapters = [ch(index: 0, bookOffset: 0), ch(index: 1, bookOffset: 50)]
-    XCTAssertEqual(chapterAt(chapters, 75)?.index, 1)
-    XCTAssertEqual(chapterAt(chapters, -5)?.index, 0)
-    XCTAssertNil(chapterAt([], 10))
+    XCTAssertEqual(ChapterNav.index(chapters, 75), 1)
+    XCTAssertEqual(ChapterNav.index(chapters, -5), 0)
+    XCTAssertNil(ChapterNav.index([], 10))
   }
 
   func testSpanEndCarriesTheFileAndRefusesNaN() {
@@ -328,40 +259,5 @@ final class NextChapterEndTests: XCTestCase {
     let broken = [ch(index: 0, start: 200, end: 50, bookOffset: 100)]
     XCTAssertEqual(chapterEndPosition(broken[0]), 100)
     XCTAssertEqual(nextChapterEnd(broken, 0, rate: 1, minSeconds: 30)?.endPosition, 100)
-  }
-}
-
-final class ChapterClipsTests: XCTestCase {
-  let clips = ChapterClips([
-    ChapterClip(fileIndex: 0, startInFile: 0, endInFile: 100, title: "One"),
-    ChapterClip(fileIndex: 0, startInFile: 100, endInFile: 250, title: "Two"),
-    ChapterClip(fileIndex: 0, startInFile: 250, endInFile: 0, title: "Three"),
-    ChapterClip(fileIndex: 1, startInFile: 0, endInFile: 0, title: "Four"),
-  ])
-
-  func testActivity() {
-    XCTAssertTrue(clips.isActive)
-    XCTAssertFalse(ChapterClips([ChapterClip(fileIndex: 0, startInFile: 0, endInFile: 0, title: "x")]).isActive)
-    XCTAssertFalse(ChapterClips().isActive)
-  }
-
-  func testIndex() {
-    XCTAssertEqual(clips.index(fileIndex: 0, position: 0), 0)
-    XCTAssertEqual(clips.index(fileIndex: 0, position: 99.9), 0)
-    XCTAssertEqual(clips.index(fileIndex: 0, position: 100), 1)
-    XCTAssertEqual(clips.index(fileIndex: 0, position: 4000), 2)
-    XCTAssertEqual(clips.index(fileIndex: 1, position: 12), 3)
-    XCTAssertNil(clips.index(fileIndex: 7, position: 0))
-  }
-
-  func testScrubberNextPrevious() {
-    XCTAssertEqual(clips.filePosition(clip: 1, chapterTime: 30, fileDuration: 400), ClipTarget(fileIndex: 0, position: 130))
-    XCTAssertEqual(clips.filePosition(clip: 1, chapterTime: 500, fileDuration: 400), ClipTarget(fileIndex: 0, position: 249.999))
-    XCTAssertEqual(clips.filePosition(clip: 2, chapterTime: 500, fileDuration: nil), ClipTarget(fileIndex: 0, position: 750))
-    XCTAssertEqual(clips.next(from: 2), ClipTarget(fileIndex: 1, position: 0))
-    XCTAssertNil(clips.next(from: 3))
-    XCTAssertEqual(clips.previous(from: 1, position: 104), ClipTarget(fileIndex: 0, position: 100))
-    XCTAssertEqual(clips.previous(from: 1, position: 102), ClipTarget(fileIndex: 0, position: 0))
-    XCTAssertEqual(clips.previous(from: 0, position: 1), ClipTarget(fileIndex: 0, position: 0))
   }
 }
