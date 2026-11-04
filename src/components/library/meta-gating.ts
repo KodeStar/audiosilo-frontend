@@ -18,8 +18,9 @@ import { chapterBookOffset } from '@/playback/book-queue';
  * A work's positions are numbered on its own scale, and `/meta` answers them translated
  * onto this book's chapters when the book splits finer than it (CROSS-REPO section 17), so
  * the comparison is like with like. Otherwise it sends the work's own numbers (a book no
- * finer than the scale, whose reveals only come late; a work stating no scale; an older
- * server): there it is deliberately approximate; `finished` is the escape hatch.
+ * finer than the scale, whose reveals come late unless its tracks are far from even; a work
+ * stating no scale; an older server): there it is deliberately approximate; `finished` is
+ * the escape hatch.
  */
 export type ListeningProgress = { chapter: number; finished: boolean };
 
@@ -142,6 +143,9 @@ function startsAllAlike(starts: readonly number[]): boolean {
  * listener has not started - callers treat 0 as "only from-the-start entries". Also 0
  * when the starts say nothing about a place (`startsAllAlike`): a book whose every chapter
  * came back at offset 0 must not read as being in its last chapter, which reveals it all.
+ * Past the last start, a run of starts alike at the end is one chapter's worth of place, the
+ * run's first: files of unknown length after the last known one ([0, 3600, 3600, 3600]), or
+ * markers of no length. The same walk as the server's `meta.ChapterAt`.
  *
  * Deliberately NOT `book-queue.ts`'s `chapterAt`: that one falls back to
  * `chapters[0]` (the player must always be *somewhere*), which here would claim
@@ -153,6 +157,9 @@ export function chapterNumberAt(starts: readonly number[], position: number): nu
   for (let i = 0; i < starts.length; i++) {
     if (position >= starts[i]) n = i + 1;
     else break;
+  }
+  if (n === starts.length) {
+    while (n > 1 && starts[n - 1] === starts[n - 2]) n--;
   }
   return n;
 }

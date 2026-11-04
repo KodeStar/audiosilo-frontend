@@ -49,6 +49,13 @@ describe('chapterNumberAt', () => {
     expect(chapterNumberAt([0, 0, NaN], 150)).toBe(0);
   });
 
+  it('reads a run of starts alike at the end as its first chapter, never the last', () => {
+    expect(chapterNumberAt([0, 100, 100, 100], 150)).toBe(2); // files of unknown length
+    expect(chapterNumberAt([0, 50, 100, 100], 150)).toBe(3);
+    expect(chapterNumberAt([0, 100, 100, 100], 50)).toBe(1);
+    expect(chapterNumberAt([0, 50, 100], 150)).toBe(3);
+  });
+
   it('keeps every other shape of list a place can be read from', () => {
     expect(chapterNumberAt([0, 100, 100, 200], 150)).toBe(3); // a zero-length marker
     expect(chapterNumberAt([0], 150)).toBe(1); // a lone chapter

@@ -1241,7 +1241,7 @@ book's chapters when the book splits finer than the work's `position_scale` (the
 holds the end of two units (keys carry an index) and a label names this book's chapter. A book
 no finer, a work with no scale, or an older server sends the *work's* logical chapters, which
 needn't match the local edition: there the comparison is deliberately approximate. Starts that
-say nothing about a place (every chapter at offset 0) read as chapter 0, never the last chapter. Not-yet-reached entries are **not rendered**; each tab
+say nothing about a place (every chapter at offset 0) read as chapter 0, never the last chapter, and a run of starts alike at the end reads as its first. Not-yet-reached entries are **not rendered**; each tab
 footers a quiet "N hidden to avoid spoilers" + **Show anyway** toggle that renders
 them marked with a `Spoiler` chip. The reveal is ONE piece of state held by the
 **screen** and passed to both tabs (`showSpoilers`/`onToggleSpoilers`) - revealing in

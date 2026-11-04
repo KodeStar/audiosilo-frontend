@@ -150,21 +150,24 @@ describe('Story so far', () => {
 
   it("shows two recaps on one chapter, as a long track holding two units' ends sends them", async () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const onOne: BookMetaRecap[] = [
-      { through: { chapter: 2 }, text: 'Act one.' },
-      { through: { chapter: 2 }, text: 'Act two.' },
-      { through: { chapter: 3 }, text: 'Act three.' },
-      { through: { chapter: 3 }, text: 'Act four.' },
-    ];
-    useCompanion.getState().setRevealed('a:1:Tolkien/The Hobbit', true);
-    await mount(
-      <StoryPanel data={data({ recaps: onOne, listening: { chapter: 3, finished: false } })} />,
-    );
-    for (const text of ['Act one.', 'Act two.', 'Act three.', 'Act four.']) {
-      expect(screen.getByText(text)).toBeTruthy();
+    try {
+      const onOne: BookMetaRecap[] = [
+        { through: { chapter: 2 }, text: 'Act one.' },
+        { through: { chapter: 2 }, text: 'Act two.' },
+        { through: { chapter: 3 }, text: 'Act three.' },
+        { through: { chapter: 3 }, text: 'Act four.' },
+      ];
+      useCompanion.getState().setRevealed('a:1:Tolkien/The Hobbit', true);
+      await mount(
+        <StoryPanel data={data({ recaps: onOne, listening: { chapter: 3, finished: false } })} />,
+      );
+      for (const text of ['Act one.', 'Act two.', 'Act three.', 'Act four.']) {
+        expect(screen.getByText(text)).toBeTruthy();
+      }
+      expect(error.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+    } finally {
+      error.mockRestore();
     }
-    expect(error.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
-    error.mockRestore();
   });
 
   it('keeps the whole-book summary behind its spoiler row while the book is unfinished', async () => {
