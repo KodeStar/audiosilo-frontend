@@ -104,8 +104,10 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
           head is the all-generated chip's place. */}
       {marks.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
       <LayoutAnimationConfig skipEntering>
-        {story.parts.map((r) => (
-          <Animated.View key={`${r.scope ?? 'book'}-${r.through.chapter}`} entering={ARRIVE}>
+        {/* The index too: a recording coarser than the work's scale puts two recaps on one
+            chapter. */}
+        {story.parts.map((r, i) => (
+          <Animated.View key={`${r.scope ?? 'book'}-${r.through.chapter}-${i}`} entering={ARRIVE}>
             <StoryPart recap={r} />
           </Animated.View>
         ))}
@@ -128,8 +130,8 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
         <GeneratedChip testID="hidden-recaps-generated-mark" />
       ) : null}
       {shown
-        ? story.hidden.map((r) => (
-            <StoryPart key={`h-${r.scope ?? 'book'}-${r.through.chapter}`} recap={r} spoiler />
+        ? story.hidden.map((r, i) => (
+            <StoryPart key={`h-${r.scope ?? 'book'}-${r.through.chapter}-${i}`} recap={r} spoiler />
           ))
         : null}
       {marks.credit ? <Attribution attribution={data.attribution} className="mt-1" /> : null}

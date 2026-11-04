@@ -15,9 +15,10 @@ import { chapterBookOffset } from '@/playback/book-queue';
  * about position: a 1-based chapter NUMBER (0 = not started / unknown), plus
  * whether the book is finished (which reveals everything).
  *
- * The meta layer's chapter numbers are the *work's* logical chapters and need not
- * line up with the local edition's chapter count - the comparison is numeric and
- * deliberately approximate; `finished` is the escape hatch.
+ * A work's positions are numbered on its own scale, and `/meta` answers them translated
+ * onto this book's chapters when the two differ (CROSS-REPO section 17), so the
+ * comparison is like with like. An older server, or a work stating no scale, sends the
+ * work's own numbers: there it is deliberately approximate; `finished` is the escape hatch.
  */
 export type ListeningProgress = { chapter: number; finished: boolean };
 

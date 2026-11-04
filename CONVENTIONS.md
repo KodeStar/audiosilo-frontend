@@ -1235,9 +1235,12 @@ on `qk.progress` would have `provider.tsx`'s `QueryCache.onSuccess` immediately
 `clearNeedsReconnect()` the banner that same request just raised. A character shows when `reveal.chapter <= max(current, 1)` (an
 unstarted book still shows the from-the-start cast); a recap when
 `through.chapter === 0` or `through.chapter < current` (a chapter is only "done"
-once you're past it); `finished` reveals everything. Meta chapter numbers are the
-*work's* logical chapters and needn't match the local edition - the comparison is
-deliberately approximate. Not-yet-reached entries are **not rendered**; each tab
+once you're past it); `finished` reveals everything. `/meta` answers the numbers on this
+book's chapters when the work states a `position_scale` of another length (the server's
+`meta.OnRecording`, CROSS-REPO section 17), so two recaps can share a chapter on a coarse
+recording (keys carry an index) and a label names this book's chapter. A work with no scale,
+or an older server, sends the *work's* logical chapters, which needn't match the local edition:
+there the comparison is deliberately approximate. Not-yet-reached entries are **not rendered**; each tab
 footers a quiet "N hidden to avoid spoilers" + **Show anyway** toggle that renders
 them marked with a `Spoiler` chip. The reveal is ONE piece of state held by the
 **screen** and passed to both tabs (`showSpoilers`/`onToggleSpoilers`) - revealing in

@@ -126,6 +126,25 @@ describe('recapIsVisible', () => {
   });
 });
 
+// A 43-track Hamlet whose sidecar is on 5 acts, as `/meta` answers it once translated
+// onto the recording (the server's internal/meta OnRecording): the gate is unchanged and
+// holds. The work's own numbers, on an older server, are what leaked.
+describe('positions translated onto the recording', () => {
+  const place = { finished: false };
+  it('hides Act 5 at track 6', () => {
+    expect(recapIsVisible(recap(43), { ...place, chapter: 6 })).toBe(false);
+    expect(characterIsVisible(character('fortinbras', 43), { ...place, chapter: 6 })).toBe(false);
+    expect(recapIsVisible(recap(5), { ...place, chapter: 6 })).toBe(true);
+  });
+
+  it('shows Act 1 once the listener has got past it', () => {
+    expect(characterIsVisible(character('hamlet', 10), { ...place, chapter: 9 })).toBe(false);
+    expect(characterIsVisible(character('hamlet', 10), { ...place, chapter: 10 })).toBe(true);
+    expect(recapIsVisible(recap(10), { ...place, chapter: 10 })).toBe(false);
+    expect(recapIsVisible(recap(10), { ...place, chapter: 11 })).toBe(true);
+  });
+});
+
 describe('splitting', () => {
   it('partitions characters into reached and held back, preserving order', () => {
     const cast = [character('a', 1), character('b', 8), character('c', 3)];
