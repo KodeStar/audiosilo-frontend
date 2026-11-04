@@ -203,6 +203,7 @@ keep this index in step (one line per topic).
   - Android Auto
   - CarPlay and the UIScene life cycle
   - Tokens on a locked phone
+  - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, the watch scheme)
   - A route, not a second player (decision 7)
   - The receiver never gets the session token
   - Generations

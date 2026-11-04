@@ -1851,6 +1851,42 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   nothing may treat the empty connection list as real (the offline queue keeps its saves, car
   bookmarks are kept, the car snapshot isn't rewritten as signed out).
 
+**Apple Watch app (Track W3a, `targets/watch/`)**: a standalone SwiftUI watchOS 11 app added by
+`@bacons/apple-targets` (exact pin, LAST in `app.json` plugins: it edits only the Xcode project, so
+`withCarPlay`'s AppDelegate rewrite is untouched). It has its own token, `device_id`, outbox and
+downloads and talks to the server directly; the phone only hands it a pairing token and books.
+
+- **The watch is Swift, not JS.** Nothing under `targets/watch/` is bundled by Metro; it is a
+  hand port of the rules it shares with the player, so a change to one of these rules changes
+  both sides with tests on both: the timeline (`book-queue.ts` -> `Core/Timeline.swift`, the
+  native module's `ChapterClips.swift` copied), spans and the outbox (`listening-sync.ts`,
+  `listening-outbox.ts` -> `Core/SpanRecorder.swift`, `Core/Outbox.swift`), acks and offers
+  (`progress-sync.ts`, `place-reconcile.ts` -> `Core/AckAndOffer.swift`), the address rule and
+  `pairingFallback` (-> `Core/AddressPicker.swift`) and the identity header (`client-id.ts` ->
+  `Core/ClientHeader.swift`, `audiosilo-watch/<ver> (watchos)`). The Swift tests carry the TS test
+  vectors.
+- **Core is Foundation only.** `targets/watch/Core/` imports nothing but Foundation (no SwiftUI,
+  WatchKit, AVFoundation, WatchConnectivity), so `watch-core/` (a SwiftPM package whose
+  `Sources/WatchCore` is a symlink to it) runs its XCTest on macOS: `npm run test:watch` (skips
+  without `swift`), CI `.github/workflows/watch.yml`. Net/, Storage/, Phone/, Playback/ and UI/
+  are the platform shell around it and are only compiled by Xcode.
+- **One WatchConnectivity delegate.** `Phone/PhoneLink.swift` is the only `WCSessionDelegate`,
+  activated at launch before anything else; messages are versioned (`v: 1`) and decoded in
+  `Core/PhoneMessages.swift`. Every file under `targets/watch/` is compiled into the watch target
+  (a synchronized group), so keep notes and fixtures out of it.
+- **Downloads are the watch rendition**, prepared and polled in the foreground
+  (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
+  (`Net/BackgroundDownloads.swift`, the one session, reattached at launch) after a free-space
+  check (the rendition's bytes plus 200 MB). The token lives in the keychain
+  `AfterFirstUnlockThisDeviceOnly`; ATS allows only local networking (no arbitrary loads).
+- **The watch scheme** (`plugins/withWatchScheme.js`, a finalized mod): apple-targets makes no
+  scheme, and the one Xcode makes up also builds the iPhone app, so every pod compiled for
+  watchOS and failed. The plugin writes a shared `AudioSiloWatch` scheme with only the watch
+  target. Build: `npx expo prebuild -p ios --clean`, then
+  `xcodebuild -workspace ios/AudioSilo.xcworkspace -scheme AudioSiloWatch -sdk watchsimulator build`.
+  `targets/watch/Assets.xcassets` is regenerated from the config's `icon` at prebuild (prettier
+  ignores it).
+
 **Chromecast (Phase 8, capability `cast`, `src/cast/`)**: react-native-google-cast 4.9.1 on
 native (the Default Media Receiver; `plugins/withCast.js`, listed before `withCarPlay`, pins the
 Cast framework and keeps the SDK's own notification on Android, whose foreground service keeps the
