@@ -104,8 +104,8 @@ export function StoryPanel({ data, generate }: { data: CompanionData; generate?:
           head is the all-generated chip's place. */}
       {marks.list ? <GeneratedChip testID="recaps-generated-mark" /> : null}
       <LayoutAnimationConfig skipEntering>
-        {/* The index too: a recording coarser than the work's scale puts two recaps on one
-            chapter. */}
+        {/* The index too: a long track holding the end of two of the work's units puts two
+            recaps on one chapter. */}
         {story.parts.map((r, i) => (
           <Animated.View key={`${r.scope ?? 'book'}-${r.through.chapter}-${i}`} entering={ARRIVE}>
             <StoryPart recap={r} />

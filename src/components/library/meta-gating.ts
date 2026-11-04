@@ -16,9 +16,10 @@ import { chapterBookOffset } from '@/playback/book-queue';
  * whether the book is finished (which reveals everything).
  *
  * A work's positions are numbered on its own scale, and `/meta` answers them translated
- * onto this book's chapters when the two differ (CROSS-REPO section 17), so the
- * comparison is like with like. An older server, or a work stating no scale, sends the
- * work's own numbers: there it is deliberately approximate; `finished` is the escape hatch.
+ * onto this book's chapters when the book splits finer than it (CROSS-REPO section 17), so
+ * the comparison is like with like. Otherwise it sends the work's own numbers (a book no
+ * finer than the scale, whose reveals only come late; a work stating no scale; an older
+ * server): there it is deliberately approximate; `finished` is the escape hatch.
  */
 export type ListeningProgress = { chapter: number; finished: boolean };
 
@@ -120,16 +121,34 @@ export function recapMarks(
 const NO_PROGRESS: ListeningProgress = { chapter: 0, finished: false };
 
 /**
+ * Whether chapter starts say nothing about a place: several chapters the walk can reach,
+ * every one at the same start. Out of order doesn't do that (the walk stops at the first
+ * start past the position), and a NaN start, a file after one of unknown length, is never
+ * reached. The same test as the server's `meta.startsAllAlike`.
+ */
+function startsAllAlike(starts: readonly number[]): boolean {
+  let reachable = 0;
+  for (const start of starts) {
+    if (Number.isNaN(start)) break;
+    if (start !== starts[0]) return false;
+    reachable++;
+  }
+  return reachable > 1;
+}
+
+/**
  * 1-based ordinal of the chapter containing `position`, given each chapter's
  * whole-book start offset (ascending). 0 when there are no chapters or the
- * listener has not started - callers treat 0 as "only from-the-start entries".
+ * listener has not started - callers treat 0 as "only from-the-start entries". Also 0
+ * when the starts say nothing about a place (`startsAllAlike`): a book whose every chapter
+ * came back at offset 0 must not read as being in its last chapter, which reveals it all.
  *
  * Deliberately NOT `book-queue.ts`'s `chapterAt`: that one falls back to
  * `chapters[0]` (the player must always be *somewhere*), which here would claim
  * chapter 1 has been reached on a book nobody has started.
  */
 export function chapterNumberAt(starts: readonly number[], position: number): number {
-  if (starts.length === 0 || position <= 0) return 0;
+  if (starts.length === 0 || position <= 0 || startsAllAlike(starts)) return 0;
   let n = 0;
   for (let i = 0; i < starts.length; i++) {
     if (position >= starts[i]) n = i + 1;

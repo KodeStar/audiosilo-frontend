@@ -42,6 +42,20 @@ describe('chapterNumberAt', () => {
     expect(chapterNumberAt(starts, 250)).toBe(3);
     expect(chapterNumberAt(starts, 9999)).toBe(3);
   });
+
+  it('reads starts all alike as not started, never as the end', () => {
+    expect(chapterNumberAt([0, 0, 0], 150)).toBe(0);
+    expect(chapterNumberAt([100, 100], 150)).toBe(0);
+    expect(chapterNumberAt([0, 0, NaN], 150)).toBe(0);
+  });
+
+  it('keeps every other shape of list a place can be read from', () => {
+    expect(chapterNumberAt([0, 100, 100, 200], 150)).toBe(3); // a zero-length marker
+    expect(chapterNumberAt([0], 150)).toBe(1); // a lone chapter
+    expect(chapterNumberAt([0, 200, 100], 150)).toBe(1); // stops at the first past it
+    expect(chapterNumberAt([0, 100, NaN], 150)).toBe(2); // a file of unknown length
+    expect(chapterNumberAt([0, NaN], 150)).toBe(1);
+  });
 });
 
 describe('listeningProgressFor', () => {
@@ -126,22 +140,33 @@ describe('recapIsVisible', () => {
   });
 });
 
-// A 43-track Hamlet whose sidecar is on 5 acts, as `/meta` answers it once translated
-// onto the recording (the server's internal/meta OnRecording): the gate is unchanged and
-// holds. The work's own numbers, on an older server, are what leaked.
+// A 43-track Hamlet whose sidecar is on 5 acts, as `/meta` answers it once translated onto
+// the recording (the server's internal/meta OnRecording): reveals at each act's start
+// (1, 10, 19, 27, 36), throughs at each act's end (9, 18, 26, 35, 43). The gate is unchanged
+// and holds. The work's own numbers, on an older server, are what leaked.
 describe('positions translated onto the recording', () => {
-  const place = { finished: false };
-  it('hides Act 5 at track 6', () => {
-    expect(recapIsVisible(recap(43), { ...place, chapter: 6 })).toBe(false);
-    expect(characterIsVisible(character('fortinbras', 43), { ...place, chapter: 6 })).toBe(false);
-    expect(recapIsVisible(recap(5), { ...place, chapter: 6 })).toBe(true);
+  const at = (chapter: number, finished = false) => ({ chapter, finished });
+
+  it('hides the Act 5 recap at track 6, where the raw number leaked', () => {
+    expect(recapIsVisible(recap(43), at(6))).toBe(false);
+    expect(recapIsVisible(recap(5), at(6))).toBe(true);
   });
 
-  it('shows Act 1 once the listener has got past it', () => {
-    expect(characterIsVisible(character('hamlet', 10), { ...place, chapter: 9 })).toBe(false);
-    expect(characterIsVisible(character('hamlet', 10), { ...place, chapter: 10 })).toBe(true);
-    expect(recapIsVisible(recap(10), { ...place, chapter: 10 })).toBe(false);
-    expect(recapIsVisible(recap(10), { ...place, chapter: 11 })).toBe(true);
+  it('shows the Act 1 cast from the start', () => {
+    expect(characterIsVisible(character('hamlet', 1), at(0))).toBe(true);
+    expect(characterIsVisible(character('hamlet', 1), at(1))).toBe(true);
+  });
+
+  it('shows an Act 5 character only from the track starting Act 5', () => {
+    expect(characterIsVisible(character('fortinbras', 36), at(35))).toBe(false);
+    expect(characterIsVisible(character('fortinbras', 36), at(36))).toBe(true);
+  });
+
+  it('shows the Act 1 recap once Act 1 is over, and Act 5 only when finished', () => {
+    expect(recapIsVisible(recap(9), at(9))).toBe(false);
+    expect(recapIsVisible(recap(9), at(10))).toBe(true);
+    expect(recapIsVisible(recap(43), at(43))).toBe(false);
+    expect(recapIsVisible(recap(43), at(43, true))).toBe(true);
   });
 });
 

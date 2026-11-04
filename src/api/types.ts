@@ -709,7 +709,7 @@ export type BookMetaPosition = { chapter: number };
 
 /** The scale a work's positions are numbered on: its length in `unit`s (5 acts, 44
  * chapters). Present only while the numbers beside it are still on it; a `/meta` answer
- * about a book of another length has them translated onto that book and omits it. `partial`:
+ * about a book split finer than that has them translated onto that book and omits it. `partial`:
  * the sidecar stops short of `length` on purpose. Nothing in the player reads it: its gate
  * compares the numbers it is sent. */
 export type BookMetaPositionScale = { length: number; unit: string; partial?: boolean };

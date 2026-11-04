@@ -148,7 +148,7 @@ describe('Story so far', () => {
     expect(screen.getByText('1 more part of the story is hidden')).toBeTruthy();
   });
 
-  it('shows two recaps on one chapter, as a recording coarser than the scale sends them', async () => {
+  it("shows two recaps on one chapter, as a long track holding two units' ends sends them", async () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
     const onOne: BookMetaRecap[] = [
       { through: { chapter: 2 }, text: 'Act one.' },
