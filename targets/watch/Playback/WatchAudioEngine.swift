@@ -67,6 +67,10 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private var pendingSeek: Double?
   /// The deferred seek was asked for (an item's status can be delivered twice).
   private var seekAsked = false
+  /// A rebuilt queue's first item has not landed yet (ready, and at its place). Until then the
+  /// player's status says nothing: asked to play a new item, it drops to rate 0 by itself for a
+  /// few ms and comes back (`controlChanged`).
+  private var settling = false
   /// One per item in the queue: a file further on can fail too.
   private var statusObservations: [NSKeyValueObservation] = []
   private var controlObservation: NSKeyValueObservation?
@@ -125,9 +129,10 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   /// Read here, not as observed: a rebuild pauses the player and starts it again in one go, and
-  /// only a player still paused now was stopped. A deferred seek holds it paused on purpose.
+  /// only a player still paused now was stopped. Not while a rebuilt queue settles: a deferred
+  /// seek holds it paused on purpose, and it dips to rate 0 by itself while the item loads.
   private func controlChanged() {
-    guard playing, pendingSeek == nil, player.currentItem != nil, player.timeControlStatus == .paused, player.rate == 0
+    guard playing, !settling, player.currentItem != nil, player.timeControlStatus == .paused, player.rate == 0
     else { return }
     systemPausedAt = Date()
     pause(stoppedAt: lastAdvance)
@@ -183,6 +188,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     statusObservations = []
     ended = false
     seekAsked = false
+    settling = true
     player.pause()
     player.removeAllItems()
     items = b.urls[index...].map { url in
@@ -215,14 +221,16 @@ final class WatchAudioEngine: NSObject, ObservableObject {
               // This queue's seek only: a rebuild meanwhile has its own `pendingSeek`.
               guard let self, let item, item === self.items.first else { return }
               self.pendingSeek = nil
+              self.settling = false
               // Only now, so the audio begins at the place, not at the file's start.
               if self.playing { self.startPlayer() }
             }
           }
         }
-      } else if playing {
+      } else {
+        settling = false
         // A rate set before the item was ready can be dropped (the phone's reassertRateWhenReady).
-        startPlayer()
+        if playing { startPlayer() }
       }
     case .failed:
       // AVQueuePlayer skips a failed file by itself, which would carry the listener past it. One
@@ -346,6 +354,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     player.removeAllItems()
     items = []
     pendingSeek = nil
+    settling = false
     ended = false
     book = nil
     times = nil
@@ -360,6 +369,8 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     let to = Skips.target(position: target, by: 0, total: b.timeline.total)
     let place = b.timeline.locate(to)
     let target = b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack)
+    // Previous at the book's start: nothing moves, so no span and no newer time on the place.
+    if reason == nil, Spans.movesNowhere(from: spanEnd(), to: target) { return }
     // Moved back into a book that played to its end: it is finished on the server and a listen
     // never unfinishes, so the next play sends the `unfinish` (its reason stays the move's).
     if ended { spans.prepareStart(spans.nextStart, unfinish: true) }
@@ -509,6 +520,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     player.removeAllItems()
     items = []
     pendingSeek = nil
+    settling = false
     pause(stoppedAt: nil)
     problem = "This book can't be played. Remove it from the watch and download it again."
   }

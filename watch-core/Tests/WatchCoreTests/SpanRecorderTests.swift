@@ -278,6 +278,72 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(listens.map(\.start), [.jump])
   }
 
+  // A stop right behind a move: its still event can come back `older` when sent apart from the
+  // span before it, so the next span carries the move, as after a move made while paused.
+  func testAMoveNothingWasHeardAfterGivesTheNextSpanItsReason() {
+    let r = recorder()
+    r.open(book, at: at(80), speed: 1)
+    clock.advance(10)
+    r.move(book, to: at(10), from: at(90), playing: true, speed: 1)
+    r.close(at: at(10), stoppedAt: clock.now)
+    XCTAssertEqual(listens.map(\.start), [.resume, .movedBack])
+    XCTAssertEqual(r.nextStart, .movedBack)
+    clock.advance(30)
+    r.open(book, at: at(10), speed: 1)
+    XCTAssertEqual(r.span?.start, .movedBack)
+    XCTAssertEqual(r.nextStart, .resume, "taken once")
+  }
+
+  func testAMoveHeardForASecondSaysItAllItself() {
+    let r = recorder()
+    r.prepareStart(.jump)
+    r.open(book, at: at(80), speed: 1)
+    clock.advance(1)
+    r.close(at: at(81))
+    r.open(book, at: at(81), speed: 1)
+    XCTAssertEqual(r.span?.start, .resume)
+  }
+
+  func testAnEmptySpanThatWasNoMoveLeavesTheNextSpanAlone() {
+    let r = recorder()
+    r.open(book, at: at(5), speed: 1)
+    r.close(at: at(5))
+    XCTAssertTrue(emitted.isEmpty)
+    XCTAssertEqual(r.nextStart, .resume)
+  }
+
+  func testACutRightBehindAMoveKeepsTheMovesReason() {
+    let r = recorder()
+    r.prepareStart(.movedBack)
+    r.open(book, at: at(10), speed: 1)
+    r.cut(book, at: at(10), playing: true, speed: 1.5)
+    XCTAssertEqual(r.span?.start, .movedBack)
+    clock.advance(15)
+    r.cut(book, at: at(25), playing: true, speed: 1.5)
+    XCTAssertEqual(r.span?.start, .continue)
+  }
+
+  func testAnotherBooksMoveIsNotCarriedToTheBookOpening() {
+    let r = recorder()
+    r.prepareStart(.jump)
+    r.open(book, at: at(10), speed: 1)
+    let other = PlayingBook(ref: BookRef(libraryId: 2, path: "A/Other"), audioDuration: 50)
+    r.open(other, at: at(1, "A/Other/1.mp3"), speed: 1)
+    XCTAssertEqual(r.span?.path, "A/Other")
+    XCTAssertEqual(r.span?.start, .resume)
+    XCTAssertEqual(r.nextStart, .resume)
+  }
+
+  // Previous at the book's start, every press: not a move.
+  func testAMoveToWhereThePlaceIsMovesNowhere() {
+    XCTAssertTrue(Spans.movesNowhere(from: at(0), to: at(0)))
+    XCTAssertTrue(Spans.movesNowhere(from: at(180.004), to: at(180)), "a seek lands a hair off")
+    XCTAssertFalse(Spans.movesNowhere(from: at(0.5), to: at(0)))
+    XCTAssertFalse(Spans.movesNowhere(from: nil, to: at(0)))
+    XCTAssertFalse(Spans.movesNowhere(from: at(0), to: nil))
+    XCTAssertFalse(Spans.movesNowhere(from: at(.nan), to: at(0)))
+  }
+
   // The open span is kept every 5 s.
   func testTheKeepStoresTheSpanUpToWhereTheEngineIs() {
     let r = recorder()

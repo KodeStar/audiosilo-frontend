@@ -101,6 +101,24 @@ enum Spans {
     }
     return span.start == .jump || span.start == .movedBack || span.start == .restart
   }
+
+  /// A deliberate move nothing was heard after (a stop right behind a seek): all it says is the
+  /// move, like a move made while paused. Stamped ms after the span before it, its event can lose
+  /// to that span's when they are sent apart (`not_applied/older`; two batches' clock shifts
+  /// differ by their latency), so the next span must carry the move too.
+  static func isBareMove(_ span: OpenSpan) -> Bool {
+    guard span.endedAt.timeIntervalSince(span.startedAt) < EMPTY_SPAN, abs(span.to.pos - span.from.pos) < 1 else {
+      return false
+    }
+    return saysSomething(span)
+  }
+
+  /// A move to where the place already is moves nothing (Previous at the book's start). A place
+  /// that is not one is not this: `abs(.nan)` compares false.
+  static func movesNowhere(from: SpanEnd?, to: SpanEnd?) -> Bool {
+    guard let from, let to else { return false }
+    return abs(to.pos - from.pos) < ChapterNav.AT_START
+  }
 }
 
 /// Where the open span is kept between launches (Files.swift's `open-span.json`; a memory
@@ -179,12 +197,11 @@ final class SpanRecorder {
   /// Playing began (or goes on after a cut) at `at`.
   func open(_ book: PlayingBook, at: SpanEnd, speed: Double) {
     recover()
-    if let s = span {
-      if s.ref == book.ref { return }
-      close(at: nil)
-    }
-    let now = clock()
+    if let s = span, s.ref == book.ref { return }
+    // Taken first: closing another book's span may leave that book's move in `nextStart`.
     let start = nextStart
+    close(at: nil)
+    let now = clock()
     nextStart = .resume
     let base = acks.ackVersion(book.ref) ?? 0
     if finishSent == book.ref { finishSent = nil }
@@ -212,13 +229,15 @@ final class SpanRecorder {
     closing.endedAt = max(closing.startedAt, min(now, stoppedAt ?? now))
     append(closing)
     store.save(nil)
+    // Like a paused move: the next play begins with the same reason (`isBareMove`).
+    if Spans.isBareMove(closing) { nextStart = closing.start }
     return closing
   }
 
   /// Cut the span (close it, a span opening where it ended for `start`) while playing.
   func cut(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double, start: ListeningStart = .continue) {
     guard let closed = close(at: at), playing else { return }
-    nextStart = start
+    nextStart = Spans.isBareMove(closed) ? closed.start : start
     open(book, at: closed.to, speed: speed)
   }
 
