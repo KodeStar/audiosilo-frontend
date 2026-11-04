@@ -45,3 +45,7 @@ example
 
 # local native module build output (Gradle)
 modules/*/android/build/
+
+# the watch core's SwiftPM build output (npm run test:watch)
+watch-core/.build/
+watch-core/.swiftpm/

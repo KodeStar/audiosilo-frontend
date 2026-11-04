@@ -21,7 +21,8 @@
           "UIInterfaceOrientationLandscapeRight"
         ]
       },
-      "bundleIdentifier": "app.audiosilo"
+      "bundleIdentifier": "app.audiosilo",
+      "appleTeamId": "US24B82C3S"
     },
     "android": {
       "adaptiveIcon": {
@@ -110,7 +111,9 @@
             }
           ]
         }
-      ]
+      ],
+      "./plugins/withWatchScheme",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,

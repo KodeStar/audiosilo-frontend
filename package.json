@@ -72,6 +72,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@bacons/apple-targets": "5.0.0",
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
@@ -102,6 +103,7 @@
     "reader:build": "node scripts/build-reader.mjs",
     "reader:check": "node scripts/build-reader.mjs --check",
     "format": "prettier --check .",
+    "test:watch": "sh scripts/test-watch.sh",
     "postinstall": "patch-package --error-on-fail"
   },
   "license": "AGPL-3.0-only",
