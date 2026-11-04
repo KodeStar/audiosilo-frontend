@@ -180,6 +180,25 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(un.kind, "unfinish")
     XCTAssertEqual(un.baseVersion, 41)
     XCTAssertEqual(listens.map(\.start), [.restart])
+    // Paused and played again: the unfinish went once.
+    r.open(book, at: at(6), speed: 1)
+    clock.advance(5)
+    r.close(at: at(11))
+    XCTAssertEqual(finishes.map(\.kind), ["unfinish"])
+  }
+
+  func testAnUnfinishOwedByABookThatNeverPlayedIsNotCarriedToTheNext() {
+    let other = PlayingBook(ref: BookRef(libraryId: 2, path: "B/Other"), audioDuration: 100)
+    let r = recorder()
+    // A finished book loaded to start again, never played (the speaker declined), then another
+    // book loaded and played.
+    r.prepareStart(.restart, unfinish: true)
+    r.prepareStart(.resume)
+    r.open(other, at: at(30, "B/Other/1.mp3"), speed: 1)
+    clock.advance(6)
+    r.close(at: at(36, "B/Other/1.mp3"))
+    XCTAssertEqual(finishes.count, 0)
+    XCTAssertEqual(listens.map(\.start), [.resume])
   }
 
   func testTheNaturalEndClosesTheSpanThenSendsFinishOnce() {

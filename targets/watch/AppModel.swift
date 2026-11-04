@@ -45,10 +45,20 @@ final class AppModel: ObservableObject {
     case ready
   }
 
+  /// A pair message for another account, on Home until it is settled (decision 9).
+  enum PendingReplace: Equatable {
+    /// Listening waited when it came: sync it (or discard it), then switch, or keep this account.
+    case waiting
+    /// Signing in to the other account: nothing plays until it is done, so no listening made
+    /// meanwhile is dropped with this account's.
+    case switching
+    /// It did not happen (an expired sign-in, a refusal, no answer): why, in plain words.
+    case failed(String)
+  }
+
   @Published private(set) var phase: Phase
   @Published private(set) var account: Account?
-  /// A pair message for another account while events wait (decision 9): the count waiting.
-  @Published private(set) var replaceBlocked: Int?
+  @Published private(set) var pendingReplace: PendingReplace?
   @Published private(set) var server: ServerInfo?
   @Published var offerPrompt: OfferPrompt?
   /// Bumped whenever the outbox or its state changes (Sync status reads the outbox).
@@ -67,6 +77,10 @@ final class AppModel: ObservableObject {
   private let offers = OfferThrottle()
   /// The pair message a blocked replace waits on.
   private var pendingPair: PairMessage?
+  /// Books the phone sent for `pendingPair`'s account, queued once that sign-in succeeds.
+  private var pendingBooks: [BookMessage] = []
+  /// The phone's messages, handled one at a time in order (`receive`).
+  private var inbox: Task<Void, Never>?
   private let afterEmit = Relay()
   private var retryTimer: Timer?
 
@@ -143,7 +157,8 @@ final class AppModel: ObservableObject {
       guard phase == .ready else { return }
       await flush()
       if let api = client() {
-        downloads.resumeAll()
+        // Not when the app went to the background meanwhile (the downloads were paused).
+        if inForeground { downloads.resumeAll() }
         await library.refresh(api)
       }
     }
@@ -165,7 +180,10 @@ final class AppModel: ObservableObject {
   /// Ask the server whether it can serve the watch (kept for offline launches).
   func checkServer() async {
     guard let a = account else { return }
-    guard let info = try? await APIClient(base: router.base(for: a), token: nil).serverInfo() else { return }
+    guard let info = try? await APIClient(base: router.base(for: a), token: nil).serverInfo(),
+      // Signed out (or switched) while it was asked: the answer is no longer this account's.
+      account?.accountId == a.accountId
+    else { return }
     server = info
     ServerCache.save(info)
     phase = info.supportsWatch ? .ready : .tooOld(version: info.version)
@@ -192,9 +210,12 @@ final class AppModel: ObservableObject {
     publishState()
   }
 
-  /// Decision 10: the outbox's first chunk, with `clock_offset`, for the system to send.
+  /// Decision 10: the outbox's first chunk, with `clock_offset`, for the system to send. Never
+  /// to the home address, whatever the pick: the system may send it on another network, where
+  /// nothing runs the `server_id` probe first (a home-only server syncs in the foreground).
   private func uploadInBackground() {
-    guard phase == .ready, let a = account, let api = client(), let body = outbox.backgroundBody() else { return }
+    guard phase == .ready, let a = account, let token = Keychain.token(), let body = outbox.backgroundBody() else { return }
+    let api = APIClient(base: AddressPicker.fallback(serverURL: a.serverURL, addresses: a.addresses), token: token)
     SyncUploader.shared.enqueue(body, api: api, accountId: a.accountId)
   }
 
@@ -228,37 +249,52 @@ final class AppModel: ObservableObject {
   // MARK: - Playing
 
   /// Play a book on the watch: pull its row first (a few seconds at most), resume by the
-  /// Core rule, and offer another device's place when that rule keeps this one.
+  /// Core rule, and offer another device's place when that rule keeps this one. With no
+  /// answer, the server's place kept for it stands in (the last Continue listening refresh's,
+  /// or the one read when its download started), so an in-progress book never opens at 0
+  /// offline (the phone's keepServerPlace).
   func play(_ record: DownloadRecord) async {
-    guard record.state == .ready else { return }
+    guard record.state == .ready, pendingReplace != .switching, let who = account?.accountId else { return }
     if engine.loadedBook == record.ref {
       engine.play()
       return
     }
-    guard let timeline = ItemCache.load(record.ref)?.timeline else { return }
+    guard let cache = ItemCache.load(record.ref) else { return }
+    let timeline = cache.timeline
     let byPath = Dictionary(record.files.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
     let urls = timeline.files.compactMap { f in byPath[f.path].map { downloads.localURL(record, file: $0) } }
     guard urls.count == timeline.files.count, !urls.isEmpty else { return }
-    let row = await pull(record.ref)
+    let pulled = await pull(record.ref)
+    // A switch (or a sign-out) began meanwhile: this account's book no longer plays.
+    guard account?.accountId == who, pendingReplace != .switching else { return }
+    let row: ProgressRow?
+    switch pulled {
+    case .answered(let r): row = r  // nil: the server has no place for it
+    case .noAnswer: row = [library.keptPlace(record.ref), cache.serverPlace].compactMap { $0 }.max { $0.version < $1.version }
+    }
     let plan = Resume.plan(local: places.place(record.ref), row: row, deviceId: Files.deviceId,
                            ackVersion: acks.ackVersion(record.ref), total: timeline.total)
     if plan.tookRow, let row { acks.ackResume(row) }
     engine.load(LoadedBook(ref: record.ref, title: record.title, author: record.author, timeline: timeline, urls: urls),
                 plan: plan)
-    if !plan.tookRow, let row { checkOffer([row]) }
+    // Offered only from the server's answer, never from a kept place.
+    if !plan.tookRow, case .answered(let r?) = pulled { checkOffer([r]) }
     engine.play()
   }
 
-  /// The book's row from the server, nil offline (waits `PULL_TIMEOUT` at most).
-  private func pull(_ ref: BookRef) async -> ProgressRow? {
-    guard let api = client() else { return nil }
-    return await withTaskGroup(of: ProgressRow?.self) { group in
-      group.addTask { try? await api.progress(ref) }
+  /// The book's row from the server (`.answered(nil)`: it has none), or `.noAnswer` offline
+  /// (waits `PULL_TIMEOUT` at most).
+  private func pull(_ ref: BookRef) async -> PulledRow {
+    guard let api = client() else { return .noAnswer }
+    return await withTaskGroup(of: PulledRow.self) { group in
+      group.addTask {
+        do { return .answered(try await api.progress(ref)) } catch { return .noAnswer }
+      }
       group.addTask {
         try? await Task.sleep(nanoseconds: UInt64(Self.PULL_TIMEOUT * 1_000_000_000))
-        return nil
+        return .noAnswer
       }
-      let first = await group.next() ?? nil
+      let first = await group.next() ?? .noAnswer
       group.cancelAll()
       return first
     }
@@ -288,15 +324,39 @@ final class AppModel: ObservableObject {
     if engine.loadedBook == p.ref { engine.stay() }
   }
 
+  /// The offer closed with neither (swiped away): not offered again, nothing acknowledged (the
+  /// phone's toast timing out, `ignoreOffer`). After Jump or Stay its key is noted already.
+  func ignore(_ p: OfferPrompt) {
+    acks.ignoreOffer(p.ref, key: p.offer.key)
+  }
+
   // MARK: - Messages from the phone
 
+  /// The phone's messages, one at a time in order (the listener's switch queues the same way):
+  /// a `book` that follows its `pair` (the phone sends both to a watch not signed in to that
+  /// connection) is handled once that sign-in is done.
   private func receive(_ m: PhoneMessage) {
+    serially { await self.handle(m) }
+  }
+
+  private func serially(_ work: @escaping @MainActor () async -> Void) {
+    let previous = inbox
+    inbox = Task {
+      await previous?.value
+      await work()
+    }
+  }
+
+  private func handle(_ m: PhoneMessage) async {
     switch m {
-    case .pair(let p): Task { await signIn(p) }
+    case .pair(let p): await signIn(p)
     case .book(let b):
-      // Only for the account this watch is signed in to.
-      guard account?.accountId == b.accountId, phase == .ready else { return }
-      downloads.enqueue(b.ref, title: b.title, author: b.author)
+      if account?.accountId == b.accountId, phase == .ready {
+        downloads.enqueue(b.ref, title: b.title, author: b.author)
+      } else if pendingPair?.accountId == b.accountId {
+        // For the account a blocked replace waits on: queued once that sign-in succeeds.
+        pendingBooks.append(b)
+      }
     }
   }
 
@@ -304,24 +364,44 @@ final class AppModel: ObservableObject {
   /// pairingFallback's rule), keep the token in the keychain, then gate on the server.
   /// `discard`: the listener chose to drop what waits to replace the account.
   func signIn(_ p: PairMessage, discard: Bool = false) async {
-    if account != nil && account?.accountId != p.accountId {
+    let another = account != nil && account?.accountId != p.accountId
+    // An expired pairing token is never tried, and stops nothing.
+    if p.expired(now: Date()) {
+      if account == nil {
+        phase = .setup(.expired)
+      } else if another {
+        pendingReplace = .failed("That sign-in has expired. Send again from your iPhone.")
+        pendingPair = nil
+        pendingBooks = []
+      }
+      return
+    }
+    if another {
       // The open span goes into the outbox before the rule is asked.
       engine.stop()
     }
     let change = AccountRules.change(current: account?.accountId, incoming: p.accountId, unsent: outbox.unsentCount,
                                      discard: discard)
-    if case .blocked(let n) = change {
-      replaceBlocked = n
+    if case .blocked = change {
+      pendingReplace = .waiting
       pendingPair = p
+      pendingBooks.removeAll { $0.accountId != p.accountId }
       return
     }
-    replaceBlocked = nil
+    let held = pendingBooks.filter { $0.accountId == p.accountId }
+    pendingBooks = []
     pendingPair = nil
-    if p.expired(now: Date()) {
-      if account == nil { phase = .setup(.expired) }
-      return
-    }
+    pendingReplace = change == .replace ? .switching : nil
     if account == nil { phase = .setup(.signingIn) }
+    /// Why it failed: on the setup screen, or on Home when it was replacing another account
+    /// (a same-account refresh fails quietly: its sign-in stands).
+    func failed(_ message: String) {
+      if account == nil {
+        phase = .setup(.failed(message))
+      } else if change == .replace {
+        pendingReplace = .failed(message)
+      }
+    }
     struct WrongServer: Error {}
     let deviceName = WKInterfaceDevice.current().name
     do {
@@ -335,40 +415,55 @@ final class AppModel: ObservableObject {
         isTimeout: APIClient.isTimeout, probe: APIClient.probeServerId)
       if change == .replace { forgetAccount() }
       guard Keychain.setToken(session.token) else {
-        if account == nil { phase = .setup(.failed("The watch could not keep its sign-in.")) }
+        failed("The watch could not keep its sign-in.")
         return
       }
       let a = Account(
         serverId: p.serverId, serverName: p.serverName, userId: p.userId,
         userName: p.userName.isEmpty ? session.user.username : p.userName, serverURL: p.serverURL,
-        addresses: session.addresses ?? p.addresses, signedInAt: Date())
+        addresses: AddressPicker.merge(prior: p.addresses, fresh: session.addresses), signedInAt: Date())
       Account.save(a)
       account = a
       router.start(at: AddressPicker.isOwn(base, serverURL: a.serverURL, addresses: a.addresses) ? base : nil)
       phase = .ready
+      pendingReplace = nil
       publishState()
-      becameActive()
-    } catch let e as APIError {
-      if account == nil {
-        phase = .setup(.failed(e.status == 401 || e.status == 404 ? "That sign-in has expired. Send again from your iPhone." : "Your server refused the sign-in (\(e.status))."))
+      for b in held { downloads.enqueue(b.ref, title: b.title, author: b.author) }
+      if WKApplication.shared().applicationState == .background {
+        // A message delivered in the background (background audio, a wake): no foreground
+        // timers and no home pick (dropped as on going to the background); the front runs
+        // becameActive when the listener raises the watch.
+        router.leaveHome(a)
+        Task {
+          await checkServer()
+          await backgroundRefresh()
+        }
+      } else {
+        becameActive()
       }
+    } catch let e as APIError {
+      failed(e.status == 401 || e.status == 404 ? "That sign-in has expired. Send again from your iPhone." : "Your server refused the sign-in (\(e.status)).")
     } catch is WrongServer {
-      if account == nil { phase = .setup(.failed("Another server answered. Send again from your iPhone.")) }
+      failed("Another server answered. Send again from your iPhone.")
     } catch {
-      if account == nil { phase = .setup(.failed("Can't reach your server. Send again from your iPhone when the watch is online.")) }
+      failed("Can't reach your server. Send again from your iPhone when the watch is online.")
     }
   }
 
-  /// Replace the account after all, dropping the listening that waits (an explicit choice).
-  func replaceDiscarding() async {
-    guard let p = pendingPair else { return }
-    await signIn(p, discard: true)
+  /// Switch to the account the blocked pair message is for: `discard` drops the listening that
+  /// waits (an explicit choice); without it, the switch is blocked again if listening waits.
+  func replace(discard: Bool) {
+    serially {
+      guard let p = self.pendingPair else { return }
+      await self.signIn(p, discard: discard)
+    }
   }
 
-  /// Keep this account (the blocked pair message is dropped).
+  /// Keep this account (the blocked pair message, and its books, are dropped).
   func keepAccount() {
     pendingPair = nil
-    replaceBlocked = nil
+    pendingBooks = []
+    pendingReplace = nil
   }
 
   /// Sign out (decision 9): stops the player first (its span closes), then blocked while
@@ -390,6 +485,8 @@ final class AppModel: ObservableObject {
     engine.stop()
     downloads.removeAll()
     library.clear()
+    // Continue listening's item caches too (removeAll takes only the downloaded books').
+    try? FileManager.default.removeItem(at: Files.items)
     acks.clear()
     places.clear()
     outbox.discardAll()
@@ -398,6 +495,9 @@ final class AppModel: ObservableObject {
     ServerCache.save(nil)
     server = nil
     offerPrompt = nil
+    pendingReplace = nil
+    pendingPair = nil
+    pendingBooks = []
     Keychain.setToken(nil)
     Account.save(nil)
     account = nil
@@ -425,7 +525,7 @@ final class AppModel: ObservableObject {
       }
       Task {
         if let pair { await signIn(pair) }
-        if let json = env["AUDIOSILO_DEBUG_BOOK"], let m = PhoneMessages.decodeJSON(json) { receive(m) }
+        if let json = env["AUDIOSILO_DEBUG_BOOK"], let m = PhoneMessages.decodeJSON(json) { await handle(m) }
         if env["AUDIOSILO_DEBUG_PLAY"] == "1", let r = downloads.records.first(where: { $0.state == .ready }) {
           await play(r)
         }
@@ -450,4 +550,11 @@ final class AppModel: ObservableObject {
 /// A late-bound callback (the span recorder's emit runs before `self` exists).
 private final class Relay {
   var call: (() -> Void)?
+}
+
+/// What the pull before play got: the server's answer, which may be no row at all, or none
+/// (offline, or slower than `PULL_TIMEOUT`). Only no answer lets a kept place stand in.
+private enum PulledRow: Sendable {
+  case answered(ProgressRow?)
+  case noAnswer
 }

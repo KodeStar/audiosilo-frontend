@@ -48,6 +48,17 @@ final class AckStore {
     file?.write(books)
   }
 
+  /// An offer closed with neither Jump nor Stay: its key is noted so it is not offered again,
+  /// and nothing is acknowledged, so this watch's next spans still never move the other
+  /// device's place back (the phone's `ignoreOffer`, fe#208).
+  func ignoreOffer(_ ref: BookRef, key: String) {
+    var b = books[ref.key] ?? BookAck()
+    guard !b.answered.contains(key) else { return }
+    b.answered = Array((b.answered + [key]).suffix(Self.MAX_ANSWERED))
+    books[ref.key] = b
+    file?.write(books)
+  }
+
   /// Resuming from a server row (pull before play): a version above 0 is acknowledged, so the
   /// first span goes on what this device saw. Auto-moving to another device's place is the same.
   func ackResume(_ row: ProgressRow) {

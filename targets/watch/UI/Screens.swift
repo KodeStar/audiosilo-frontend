@@ -26,7 +26,6 @@ struct RootView: View {
 }
 
 struct SetupView: View {
-  @EnvironmentObject var model: AppModel
   let status: AppModel.SetupStatus
 
   var body: some View {
@@ -62,7 +61,7 @@ struct TooOldView: View {
         VStack(alignment: .leading, spacing: 8) {
           Text("This server is too old for the watch app (needs 2.6 or later).")
           if let version { Text("Your server: \(version)").font(.footnote).foregroundStyle(.secondary) }
-          Button("Try again") { Task { await model.checkServer(); model.becameActive() } }
+          Button("Try again") { model.becameActive() }
           NavigationLink("Sign out") { SignOutView() }
         }
       }
@@ -77,7 +76,7 @@ struct HomeView: View {
   var body: some View {
     NavigationStack {
       List {
-        if model.replaceBlocked != nil { ReplaceBlockedSection() }
+        if let pending = model.pendingReplace { ReplaceSection(state: pending) }
         if let book = engine.book {
           Section("Now playing") {
             NavigationLink { NowPlayingView(engine: engine) } label: {
@@ -102,22 +101,41 @@ struct HomeView: View {
   }
 }
 
-/// A pair message for another account came while listening waits (decision 9).
-struct ReplaceBlockedSection: View {
+/// A pair message for another account (decision 9): blocked while listening waits (the count
+/// is live, so once it has synced the switch is one tap), switching, or why it did not happen.
+struct ReplaceSection: View {
   @EnvironmentObject var model: AppModel
+  let state: AppModel.PendingReplace
   @State private var confirming = false
 
   var body: some View {
+    let _ = model.syncRevision
+    let waiting = model.outbox.unsentCount
     Section {
-      Text("Another account wants this watch, but \(model.replaceBlocked ?? 0) listening updates have not synced yet.")
-        .font(.footnote)
-      Button(model.syncing ? "Syncing" : "Sync now") { Task { await model.flush() } }
-        .disabled(model.syncing)
-      Button("Discard and switch", role: .destructive) { confirming = true }
-      Button("Keep this account") { model.keepAccount() }
+      switch state {
+      case .waiting where waiting > 0:
+        Text("Another account wants this watch, but \(waiting) listening updates have not synced yet.")
+          .font(.footnote)
+        Button(model.syncing ? "Syncing" : "Sync now") { Task { await model.flush() } }
+          .disabled(model.syncing)
+        Button("Discard and switch", role: .destructive) { confirming = true }
+        Button("Keep this account") { model.keepAccount() }
+      case .waiting:
+        Text("Another account wants this watch.").font(.footnote)
+        Button("Switch") { model.replace(discard: false) }
+        Button("Keep this account") { model.keepAccount() }
+      case .switching:
+        HStack {
+          ProgressView()
+          Text("Switching accounts")
+        }
+      case .failed(let message):
+        Text(message).font(.footnote)
+        Button("OK") { model.keepAccount() }
+      }
     }
     .confirmationDialog("Discard listening not synced yet?", isPresented: $confirming) {
-      Button("Discard and switch", role: .destructive) { Task { await model.replaceDiscarding() } }
+      Button("Discard and switch", role: .destructive) { model.replace(discard: true) }
       Button("Cancel", role: .cancel) {}
     }
   }
@@ -193,10 +211,10 @@ struct OnThisWatchView: View {
         Group {
           if r.state == .ready {
             NavigationLink { NowPlayingView(engine: engine, start: r) } label: {
-              BookOnWatchRow(record: r, downloads: downloads)
+              BookOnWatchRow(record: r)
             }
           } else {
-            Button { removing = r } label: { BookOnWatchRow(record: r, downloads: downloads) }
+            Button { removing = r } label: { BookOnWatchRow(record: r) }
           }
         }
         .swipeActions {
@@ -221,7 +239,6 @@ struct OnThisWatchView: View {
 
 struct BookOnWatchRow: View {
   let record: DownloadRecord
-  @ObservedObject var downloads: DownloadManager
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
@@ -256,6 +273,8 @@ struct OfferSheet: View {
         Button("Stay here") { model.stay(prompt) }
       }
     }
+    // Swiped away unanswered: not offered again on the next launch either.
+    .onDisappear { model.ignore(prompt) }
   }
 }
 
@@ -270,7 +289,8 @@ struct SpeakerSheet: View {
         Text("Others nearby will hear it. Connect headphones to listen privately.")
           .font(.footnote).foregroundStyle(.secondary)
         Button("Play on speaker") { engine.confirmSpeaker() }
-        Button("Not now", role: .cancel) { engine.declineSpeaker() }
+        // Closing the sheet declines (RootView's onDismiss), however it is closed.
+        Button("Not now", role: .cancel) { engine.speakerPrompt = false }
       }
     }
   }

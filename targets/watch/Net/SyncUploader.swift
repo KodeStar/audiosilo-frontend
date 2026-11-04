@@ -24,6 +24,8 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
   private let lock = NSLock()
   private var bodies: [Int: Data] = [:]
   private var waiting: [SyncUploadAnswer] = []
+  /// The newest snapshot's number (its body file is `sync-upload-<number>.json`); 0 after cancelAll.
+  private var newest: UInt64 = 0
   private let backgroundWake = BackgroundWake()
 
   private lazy var session: URLSession = URLSession(configuration: BackgroundSession.configuration(Self.identifier), delegate: self,
@@ -39,26 +41,43 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
       var request = try? api.request("POST", "/me/listening/sync")
     else { return }
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    // A background upload goes from a file; each snapshot has its own (the system copies it).
-    let file = Files.root.appendingPathComponent("sync-upload-\(UUID().uuidString).json")
+    // A background upload goes from a file; each snapshot has its own (the system copies it),
+    // numbered in order, so a callback can tell it was overtaken and never deletes a newer body.
+    lock.lock()
+    let number = max(UInt64(Date().timeIntervalSince1970 * 1_000_000), newest + 1)
+    lock.unlock()
+    let file = Self.body(number)
     guard (try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])) != nil else {
       return
     }
+    lock.lock()
+    newest = number
+    lock.unlock()
     session.getAllTasks { tasks in
+      self.lock.lock()
+      let overtaken = self.newest != number
+      self.lock.unlock()
+      // A newer snapshot (or a sign-out) came meanwhile: its own callback does the work.
+      guard !overtaken else { return }
       for t in tasks { t.cancel() }
+      // A missing body raises (NSInvalidArgumentException) on a background session.
+      guard FileManager.default.fileExists(atPath: file.path) else { return }
       let task = self.session.uploadTask(with: request, fromFile: file)
       task.taskDescription = tagText
       task.countOfBytesClientExpectsToSend = Int64(data.count)
       task.countOfBytesClientExpectsToReceive = 64 * 1024
       task.resume()
-      Self.removeOldBodies(keeping: file)
+      Self.removeBodies(before: number)
     }
   }
 
   /// Forget any upload (signed out).
   func cancelAll() {
+    lock.lock()
+    newest = 0
+    lock.unlock()
     session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
-    Self.removeOldBodies(keeping: nil)
+    Self.removeBodies(before: .max)
   }
 
   /// A background wake for this session: resolves once the system's events are delivered.
@@ -67,11 +86,17 @@ final class SyncUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable 
     await backgroundWake.wait()
   }
 
-  private static func removeOldBodies(keeping: URL?) {
+  private static func body(_ number: UInt64) -> URL {
+    Files.root.appendingPathComponent("sync-upload-\(number).json")
+  }
+
+  /// Deletes the bodies older than `number` (and any not named by a number).
+  private static func removeBodies(before number: UInt64) {
     let fm = FileManager.default
     let names = (try? fm.contentsOfDirectory(atPath: Files.root.path)) ?? []
-    for n in names where n.hasPrefix("sync-upload-") && n != keeping?.lastPathComponent {
-      try? fm.removeItem(at: Files.root.appendingPathComponent(n))
+    for n in names where n.hasPrefix("sync-upload-") && n.hasSuffix(".json") {
+      let own = UInt64(n.dropFirst("sync-upload-".count).dropLast(".json".count))
+      if (own ?? 0) < number { try? fm.removeItem(at: Files.root.appendingPathComponent(n)) }
     }
   }
 

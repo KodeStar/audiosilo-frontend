@@ -167,9 +167,11 @@ final class SpanRecorder {
 
   /// The next span's reason and whether an `unfinish` goes first: an explicit 0 is a restart,
   /// an explicit place a jump; a finished book started again is unfinished, then `restart`.
+  /// Set per load (the phone's `unfinishDue`): one owed by a book that never played is not
+  /// carried to the next.
   func prepareStart(_ start: ListeningStart, unfinish: Bool = false) {
     nextStart = start
-    if unfinish { unfinishDue = true }
+    unfinishDue = unfinish
   }
 
   /// Playing began (or goes on after a cut) at `at`.

@@ -91,7 +91,12 @@ final class Outbox {
   /// The couldn't-sync list, entries past 30 days left out.
   func couldNotSync(now: Date? = nil) -> [CouldNotSync] {
     let t = now ?? clock()
-    return state.failed.filter { t.timeIntervalSince($0.at) < Self.COULD_NOT_SYNC_KEEP }
+    return state.failed.filter { Self.stillKept($0, now: t) }
+  }
+
+  /// Whether a couldn't-sync entry is still kept (30 days).
+  private static func stillKept(_ f: CouldNotSync, now: Date) -> Bool {
+    now.timeIntervalSince(f.at) < COULD_NOT_SYNC_KEEP
   }
 
   /// Take one event off the couldn't-sync list.
@@ -105,6 +110,8 @@ final class Outbox {
     events = []
     state = SyncState()
     chunkSize = Self.MAX_CHUNK
+    // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
+    lastFlushFailed = false
     saveEvents()
     saveState()
   }
@@ -130,7 +137,7 @@ final class Outbox {
     guard !items.isEmpty else { return }
     let now = clock()
     let ids = Set(items.map(\.event.id))
-    let kept = state.failed.filter { now.timeIntervalSince($0.at) < Self.COULD_NOT_SYNC_KEEP && !ids.contains($0.event.id) }
+    let kept = state.failed.filter { Self.stillKept($0, now: now) && !ids.contains($0.event.id) }
     state.failed = Array((kept + items.map { CouldNotSync(event: $0.event, reason: $0.reason, at: now) }).suffix(Self.MAX_COULD_NOT_SYNC))
     saveState()
     remove(ids)
@@ -268,6 +275,8 @@ final class Outbox {
   /// foreground send answered meanwhile has gone). No skew: the request's times are unknown.
   func applyBackground(_ answer: SyncResponse, sentIds: [String]) {
     let byId = Dictionary(events.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    // The server answered: reachable again, though no foreground flush has run since one failed.
+    lastFlushFailed = false
     apply(answer, sent: sentIds.compactMap { byId[$0] }, sentAt: nil, answeredAt: nil)
   }
 }

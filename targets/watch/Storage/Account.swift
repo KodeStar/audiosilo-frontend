@@ -13,7 +13,7 @@ struct Account: Codable, Equatable {
   var signedInAt: Date
 
   /// `<server_id>.<user_id>`, the phone's connection id for the same account.
-  var accountId: String { "\(serverId).\(userId)" }
+  var accountId: String { accountIdOf(serverId: serverId, userId: userId) }
 
   private static let file = JSONFile<Account>(url: Files.account)
 

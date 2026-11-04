@@ -4,6 +4,11 @@
 // over property-list dictionaries, so decoding works on `[String: Any]`.
 import Foundation
 
+/// `<server_id>.<user_id>`: the account a message names and the watch is signed in to (the
+/// phone's connection id, `connectionIdOf` in src/lib/connection-id.ts). The one spelling, so
+/// the ids compared and the background upload's tag always agree.
+func accountIdOf(serverId: String, userId: Int) -> String { "\(serverId).\(userId)" }
+
 /// `pair`: sign the watch in (the phone minted the pairing token with `POST /auth/pair
 /// {"ttl_seconds":600}`).
 struct PairMessage: Equatable, Sendable {
@@ -20,8 +25,8 @@ struct PairMessage: Equatable, Sendable {
   var expiresAt: Date
   var phoneName: String
 
-  /// The account this message signs in (`<server_id>.<user_id>`, the phone's connection id).
-  var accountId: String { "\(serverId).\(userId)" }
+  /// The account this message signs in.
+  var accountId: String { accountIdOf(serverId: serverId, userId: userId) }
 
   func expired(now: Date) -> Bool { now >= expiresAt }
 }
@@ -34,7 +39,7 @@ struct BookMessage: Equatable, Sendable {
   var title: String
   var author: String?
 
-  var accountId: String { "\(serverId).\(userId)" }
+  var accountId: String { accountIdOf(serverId: serverId, userId: userId) }
 }
 
 enum PhoneMessage: Equatable, Sendable {

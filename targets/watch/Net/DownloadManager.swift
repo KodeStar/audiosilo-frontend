@@ -10,6 +10,9 @@ import Foundation
 struct ItemCache: Codable, Equatable {
   var book: Book
   var chapters: ChaptersResponse?
+  /// The server's place when the download started (the phone's keepServerPlace): what an
+  /// offline first play opens at when Continue listening does not list the book.
+  var serverPlace: ProgressRow?
 
   static func load(_ ref: BookRef) -> ItemCache? { JSONFile<ItemCache>(url: Files.item(ref)).read() }
   func save(_ ref: BookRef) { JSONFile<ItemCache>(url: Files.item(ref)).write(self) }
@@ -115,12 +118,7 @@ final class DownloadManager: ObservableObject {
   /// The app came to the foreground (or signed in): carry on with every book not done.
   func resumeAll() {
     active = true
-    Task {
-      let flying = Set(await BackgroundDownloads.shared.inFlight().map(\.key))
-      for r in records where r.state != .ready && r.state != .failed {
-        process(r.id, inFlight: flying)
-      }
-    }
+    for r in records where r.state != .ready && r.state != .failed { process(r.id) }
   }
 
   /// The app went to the background: the polling stops (the background session goes on).
@@ -137,6 +135,13 @@ final class DownloadManager: ObservableObject {
     willRemove?(ref)
     stopWork(r.id)
     BackgroundDownloads.shared.cancel(book: r.id)
+    // A cancelled task brings no event: forget its hand-off and resume data here, or the same
+    // book downloaded again would skip those files (and resume with this sign-in's request).
+    for f in r.files {
+      let k = DownloadTaskTag(book: r.id, path: f.path).key
+      handedOff.remove(k)
+      resumeData[k] = nil
+    }
     try? FileManager.default.removeItem(at: folder(of: r))
     try? FileManager.default.removeItem(at: Files.item(ref))
     records.removeAll { $0.id == r.id }
@@ -157,12 +162,12 @@ final class DownloadManager: ObservableObject {
     runs[key] = nil
   }
 
-  private func process(_ key: String, inFlight: Set<String> = []) {
+  private func process(_ key: String) {
     guard active, working[key] == nil else { return }
     let run = UUID()
     runs[key] = run
     working[key] = Task { [weak self] in
-      await self?.run(key, inFlight: inFlight)
+      await self?.run(key)
       // Only this run's own entry: a retry may have started the next one already.
       if self?.runs[key] == run {
         self?.working[key] = nil
@@ -178,7 +183,7 @@ final class DownloadManager: ObservableObject {
     }
   }
 
-  private func run(_ key: String, inFlight: Set<String>) async {
+  private func run(_ key: String) async {
     guard let r0 = records.first(where: { $0.id == key }), let api = client() else { return }
     let ref = r0.ref
     if r0.files.isEmpty || r0.state == .queued {
@@ -192,7 +197,10 @@ final class DownloadManager: ObservableObject {
       if records.first(where: { $0.id == key })?.files.isEmpty ?? true {
         let book = try await api.item(ref)
         let chapters = try? await api.chapters(ref)
-        let cache = ItemCache(book: book, chapters: chapters)
+        let serverPlace = try? await api.progress(ref)
+        // A cancelled `/chapters` is not "no chapters": kept so, they would never be read again.
+        try Task.checkCancellation()
+        let cache = ItemCache(book: book, chapters: chapters, serverPlace: serverPlace)
         cache.save(ref)
         let timeline = cache.timeline
         update(key) { rec in
@@ -207,7 +215,11 @@ final class DownloadManager: ObservableObject {
       guard checkSpace(key, answer) else { return }
       while !Task.isCancelled {
         let step = RenditionPlan.step(answer)
-        for f in step.ready { startFile(key, f, api: api, inFlight: inFlight) }
+        if !step.ready.isEmpty {
+          // What the session carries now, a previous launch's transfers too: never handed twice.
+          let inFlight = Set(await BackgroundDownloads.shared.inFlight().map(\.key))
+          for f in step.ready { startFile(key, f, api: api, inFlight: inFlight) }
+        }
         switch step.action {
         case .done:
           markIfDone(key)
@@ -223,8 +235,9 @@ final class DownloadManager: ObservableObject {
           answer = try await api.prepareRenditions(ref)
         }
       }
-    } catch is CancellationError {
-      // Backgrounded: carried on at the next foreground.
+    } catch let e where e is CancellationError || Task.isCancelled {
+      // Backgrounded (or removed): carried on at the next foreground. A cancelled request
+      // throws URLError(.cancelled), not CancellationError.
     } catch let e as APIError {
       let refusal = RenditionPlan.refusal(e)
       if case .retry(let after) = refusal {
@@ -294,7 +307,7 @@ final class DownloadManager: ObservableObject {
         try? FileManager.default.removeItem(at: staged)  // removed meanwhile
         return
       }
-      let dest = folder(of: r).appendingPathComponent(r.files[i].local)
+      let dest = localURL(r, file: r.files[i])
       try? FileManager.default.createDirectory(at: folder(of: r), withIntermediateDirectories: true)
       try? FileManager.default.removeItem(at: dest)
       do {
@@ -321,6 +334,7 @@ final class DownloadManager: ObservableObject {
       }
     case .failed(let tag, let data):
       handedOff.remove(tag.key)
+      guard records.contains(where: { $0.id == tag.book }) else { return }  // removed meanwhile
       if let data { resumeData[tag.key] = data }
       update(tag.book) { $0.message = "Waiting for a connection" }
     }

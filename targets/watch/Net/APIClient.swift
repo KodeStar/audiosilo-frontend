@@ -39,11 +39,8 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
 
   func url(_ path: String, query: [String: String] = [:]) -> URL? {
     guard var c = URLComponents(string: base + "/api/v1" + path) else { return nil }
-    if !query.isEmpty {
-      c.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
-      // `+` is a space to the server's query parser: send it encoded.
-      c.percentEncodedQuery = c.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-    }
+    // Encoded by hand: `queryItems` would leave `;` and `+` raw (QueryString).
+    if !query.isEmpty { c.percentEncodedQuery = QueryString.encode(query) }
     return c.url
   }
 

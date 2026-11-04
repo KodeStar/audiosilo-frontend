@@ -268,6 +268,24 @@ final class OutboxTests: XCTestCase {
     XCTAssertEqual(o.state.clockSkewMs, 12_500, "no skew from a request whose times are unknown")
   }
 
+  // `lastFlushFailed` is what the 15 s cut and Sync status read: a background answer, or
+  // discarding what waits, ends the failed state a foreground flush left.
+  func testABackgroundAnswerOrADiscardEndsAFailedFlush() async {
+    let o = outbox()
+    o.append([listen("a")])
+    await o.flush(via: FakeTransport { _ in throw NoAnswer() })
+    XCTAssertTrue(o.lastFlushFailed)
+    o.applyBackground(SyncResponse(serverTime: nil, results: [SyncResult(id: "a", status: "applied")], progress: nil),
+                      sentIds: ["a"])
+    XCTAssertTrue(o.events.isEmpty)
+    XCTAssertFalse(o.lastFlushFailed)
+    o.append([listen("b")])
+    await o.flush(via: FakeTransport { _ in throw APIError(status: 503) })
+    XCTAssertTrue(o.lastFlushFailed)
+    o.discardAll()
+    XCTAssertFalse(o.lastFlushFailed)
+  }
+
   func testTheBodyEncodesExactlyOneClock() throws {
     let fg = SyncRequest(deviceId: "d", sentAt: "2026-10-25T08:00:00.000Z", clockOffset: nil, events: [])
     let bg = SyncRequest(deviceId: "d", sentAt: nil, clockOffset: -3, events: [])
@@ -340,6 +358,24 @@ final class AckAndOfferTests: XCTestCase {
     XCTAssertEqual(reread.ackVersion(ref), 13)
     XCTAssertEqual(reread.answered(ref).count, AckStore.MAX_ANSWERED)
     XCTAssertEqual(reread.answered(ref).last, "k29")
+  }
+
+  // An offer swiped away unanswered (the phone's ignoreOffer): noted, nothing acknowledged.
+  func testIgnoringAnOfferNotesTheKeyAndAcksNothing() {
+    let acks = AckStore(url: nil)
+    acks.ack(ref, version: 4)
+    let key = "other-device|2026-10-08T10:00:00Z"
+    acks.ignoreOffer(ref, key: key)
+    acks.ignoreOffer(ref, key: key)
+    XCTAssertEqual(acks.answered(ref), [key])
+    XCTAssertEqual(acks.ackVersion(ref), 4, "nothing acknowledged")
+    XCTAssertNil(Offers.offerOf(progressRow(version: 5), deviceId: "this-device", ackVersion: 4, enginePosition: 105,
+                                answered: acks.answered(ref)), "not offered again")
+    // Jump or Stay noted it already: closing the sheet after either changes nothing.
+    acks.answerOffer(ref, row: row(version: 9), key: "k2")
+    acks.ignoreOffer(ref, key: "k2")
+    XCTAssertEqual(acks.answered(ref), [key, "k2"])
+    XCTAssertEqual(acks.ackVersion(ref), 9)
   }
 
   func progressRow(position: Double = 400, finished: Bool = false, version: Int = 3, device: String = "other-device",

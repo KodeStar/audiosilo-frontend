@@ -49,22 +49,30 @@ enum Skips {
 enum ChapterNav {
   /// Previous restarts the chapter when more than this far into it (the phone's lock screen rule).
   static let RESTART_THRESHOLD: Double = 3
+  /// Next skips a start this close ahead, so a press right after a move doesn't land on the same
+  /// start (the phone's `nextSegmentStart`).
+  static let NEXT_SLACK: Double = 1.5
+  /// A place this little short of a start is at it: a seek lands a hair before the start it was
+  /// asked for (CMTime rounds down), and still reads as that chapter (the phone's 0.01).
+  static let AT_START: Double = 0.01
 
   /// The index of the chapter at `position` (the first before every chapter); nil with none.
   static func index(_ chapters: [Chapter], _ position: Double) -> Int? {
     guard !chapters.isEmpty else { return nil }
     var current = 0
     for (i, ch) in chapters.enumerated() {
-      if position >= ch.bookOffset { current = i } else { break }
+      if position + AT_START >= ch.bookOffset { current = i } else { break }
     }
     return current
   }
 
-  /// Previous chapter: this one's start when more than 3 s in (or at the first), else the one before.
+  /// Previous chapter: this one's start when more than 3 s in, else the one before's (0 before
+  /// the first; the phone's `previousSegmentStart`).
   static func previous(_ chapters: [Chapter], _ position: Double) -> Double? {
-    guard let i = index(chapters, position) else { return nil }
-    if position - chapters[i].bookOffset > RESTART_THRESHOLD || i == 0 { return chapters[i].bookOffset }
-    return chapters[i - 1].bookOffset
+    guard !chapters.isEmpty else { return nil }
+    let current = chapters.last { $0.bookOffset <= position + AT_START }?.bookOffset ?? 0
+    if position - current > RESTART_THRESHOLD { return current }
+    return chapters.last { $0.bookOffset < current - AT_START }?.bookOffset ?? 0
   }
 
   /// A chapter's title, "Part 2" for one without (synthetic ones).
@@ -72,10 +80,9 @@ enum ChapterNav {
     ch.title.trimmingCharacters(in: .whitespaces).isEmpty ? "Part \(i + 1)" : ch.title
   }
 
-  /// Next chapter's start, nil at the last one.
+  /// Next chapter's start: the first more than `NEXT_SLACK` ahead, nil at the last one.
   static func next(_ chapters: [Chapter], _ position: Double) -> Double? {
-    guard let i = index(chapters, position), i + 1 < chapters.count else { return nil }
-    return chapters[i + 1].bookOffset
+    chapters.first { $0.bookOffset > position + NEXT_SLACK }?.bookOffset
   }
 }
 

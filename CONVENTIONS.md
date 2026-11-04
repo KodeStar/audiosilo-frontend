@@ -1861,8 +1861,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   both sides with tests on both: the timeline (`book-queue.ts` -> `Core/Timeline.swift`; the
   watch navigates whole-book chapters, `Core/PlayerRules.swift`, not clips), spans and the outbox (`listening-sync.ts`,
   `listening-outbox.ts` -> `Core/SpanRecorder.swift`, `Core/Outbox.swift`), acks and offers
-  (`progress-sync.ts`, `place-reconcile.ts` -> `Core/AckAndOffer.swift`), the address rule and
-  `pairingFallback` (-> `Core/AddressPicker.swift`) and the identity header (`client-id.ts` ->
+  (`progress-sync.ts`, `place-reconcile.ts` -> `Core/AckAndOffer.swift`), the address rule,
+  `mergeAddresses` and `pairingFallback` (-> `Core/AddressPicker.swift`) and the identity header (`client-id.ts` ->
   `Core/ClientHeader.swift`, `audiosilo-watch/<ver> (watchos)`). The Swift tests carry the TS test
   vectors.
 - **Core is Foundation only.** `targets/watch/Core/` imports nothing but Foundation (no SwiftUI,
@@ -1877,8 +1877,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
   (`Net/BackgroundDownloads.swift`, the one session, reattached at launch) after a free-space
-  check (the rendition's bytes plus 200 MB). The token lives in the keychain
+  check (the rendition's bytes plus 200 MB). A transfer's resume data is used only while it
+  would send the same URL and token (else the file starts again), and the server's place is kept
+  when a download starts. The token lives in the keychain
   `AfterFirstUnlockThisDeviceOnly`; ATS allows only local networking (no arbitrary loads).
+  Query strings are encoded by hand (`Core/QueryString.swift`): `URLComponents` leaves `;` and
+  `+` raw, and Go drops a pair holding a raw `;`, so a book path with one would arrive as none.
 - **The watch scheme** (`plugins/withWatchScheme.js`, a finalized mod): apple-targets makes no
   scheme, and the one Xcode makes up also builds the iPhone app, so every pod compiled for
   watchOS and failed. The plugin writes a shared `AudioSiloWatch` scheme with only the watch
@@ -1893,22 +1897,32 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   `watch.speakerConfirmed` in UserDefaults). Speed, skips (15 / 30), chapter moves, Now Playing
   times, the resume rule and the sleep timer are Core (`PlayerRules.swift`, `SleepTimer.swift`):
   the engine carries them out. A pause the system makes (suspended, headphones gone) is a pause,
-  its span ending when the audio last moved.
+  its span ending when the audio last moved. A book starts again (an `unfinish`, then a
+  `restart` span) only after it played to its end: a queue a failed file emptied plays on from
+  the place, since the server applies a `restart` as a move to 0.
 - **Spans and sending** follow the phone's rules exactly (CROSS-REPO section 25): open on play,
   close on pause / move / stop / end (then one `finish`) / sleep, cut every 15 s while the last
   sync answered (else after an hour), on a rate change and on going to the background; kept every
   5 s; a kill's open span is recovered at launch. Play pulls the book's row first (5 s at most) and
-  resumes by `Resume.plan`; another device's place is offered (Jump / Stay) under `offerOf` and
-  the throttles. The outbox is sent at launch, on the foreground, after each closed span and every
+  resumes by `Resume.plan`; with no answer the server's place kept for the book stands in (the
+  last Continue listening refresh's, or the one read when its download started: the phone's
+  `keepServerPlace`), so an in-progress book never opens at 0 offline. Another device's place is
+  offered (Jump / Stay) under `offerOf` and the throttles, only from a live answer; an offer
+  swiped away is noted unacknowledged and not offered again (the phone's `ignoreOffer`). The outbox is sent at launch, on the foreground, after each closed span and every
   60 s while events wait (the reconnect trigger). Going to the background cuts the span and hands
   the outbox's first chunk, with `clock_offset`, to the background upload session
   (`Net/SyncUploader.swift`, decision 10), plus a best-effort `.appRefresh("sync")` flush; an
   upload's answer is applied on wake like a foreground one, only for the account it was sent for.
-  The background upload goes to the away (or paired) address, never a home one (the home pick is
-  dropped on backgrounding), so a server with only a home address syncs in the foreground.
+  The background upload goes to the away (or paired) address, never a home one (it is built on
+  `AddressPicker.fallback`; the home pick, and a home probe still in flight, are dropped on
+  backgrounding), so a server with only a home address syncs in the foreground.
 - **Signing out and replacing the account** (decision 9, `Core/AccountRules.swift`): the player
   stops first (its span closes into the outbox), then both are blocked while events wait, unless
-  the listener taps Discard (a confirmation); Sync now is offered beside it.
+  the listener taps Discard (a confirmation); Sync now is offered beside it. A blocked replace
+  stays on Home with the live count and becomes a plain Switch once nothing waits; nothing plays
+  while the switch signs in, and an expired or failed switch says why there. The phone's messages
+  are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in (one
+  for a blocked replace's account is queued once it succeeds).
 - **DEBUG launch variables (simulator only, compiled out of release).** The watch simulator has
   no phone and simctl cannot tap, so in DEBUG builds the launch environment stands in:
   `AUDIOSILO_DEBUG_PAIR` (a v1 `pair` message as JSON: sign in), `AUDIOSILO_DEBUG_BOOK` (a v1

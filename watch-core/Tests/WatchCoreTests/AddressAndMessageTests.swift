@@ -64,6 +64,38 @@ final class AddressPickerTests: XCTestCase {
     XCTAssertFalse(AddressPicker.isOwn("http://evil", serverURL: "https://paired", addresses: addrs))
   }
 
+  // mergeAddresses (src/lib/server-address.test.ts).
+  func testMergeKeepsWhatItKnewWhenNothingWasSaid() {
+    XCTAssertEqual(AddressPicker.merge(prior: ServerAddresses(home: addrs.home), fresh: nil), ServerAddresses(home: addrs.home))
+    XCTAssertNil(AddressPicker.merge(prior: nil, fresh: nil))
+  }
+
+  func testMergeTakesANewHomeAndAway() {
+    XCTAssertEqual(AddressPicker.merge(prior: ServerAddresses(home: "http://10.0.0.2"), fresh: addrs), addrs)
+  }
+
+  func testMergeKeepsTheKnownHomeWhenTheAnswerLacksOne() {
+    // An exchange read through the away address (or a reverse proxy): the server cannot derive home.
+    XCTAssertEqual(AddressPicker.merge(prior: addrs, fresh: ServerAddresses(away: addrs.away)), addrs)
+  }
+
+  func testMergeDropsAnAwayAddressTheServerNoLongerHas() {
+    XCTAssertEqual(AddressPicker.merge(prior: addrs, fresh: ServerAddresses()), ServerAddresses(home: addrs.home))
+    XCTAssertNil(AddressPicker.merge(prior: ServerAddresses(away: addrs.away), fresh: ServerAddresses()))
+  }
+
+  func testMergeDropsAKeptHomeThatBecameTheAwayAddress() {
+    XCTAssertEqual(AddressPicker.merge(prior: ServerAddresses(home: addrs.away), fresh: ServerAddresses(away: addrs.away)),
+                   ServerAddresses(away: addrs.away))
+    XCTAssertEqual(AddressPicker.merge(prior: nil, fresh: ServerAddresses(home: "https://books.example.com/", away: addrs.away)),
+                   ServerAddresses(away: addrs.away))
+  }
+
+  func testMergeTreatsAnEmptyAddressAsAbsent() {
+    XCTAssertEqual(AddressPicker.merge(prior: addrs, fresh: ServerAddresses(home: "", away: addrs.away)), ServerAddresses(away: addrs.away))
+    XCTAssertNil(AddressPicker.merge(prior: nil, fresh: ServerAddresses(home: "", away: "")))
+  }
+
   // pairingFallback's rule.
   let base = "https://192.168.0.5:8443"
   let home = "http://192.168.0.5:8443"

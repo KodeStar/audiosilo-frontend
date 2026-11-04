@@ -83,10 +83,22 @@ struct APIError: Error, Equatable, Sendable {
 }
 
 extension APIError {
+  /// The longest wait a `Retry-After` is taken for: any longer is this long (a wait the watch
+  /// sleeps for in nanoseconds must fit a UInt64; the phone takes any).
+  static let MAX_RETRY_AFTER: Double = 3600
+
   /// A refused answer: its status, its JSON error body (when it parses) and its `Retry-After`.
   init(status: Int, body: Data?, retryAfterHeader: String?) {
     let parsed = body.flatMap { try? Wire.decoder.decode(APIErrorBody.self, from: $0) }
-    self.init(status: status, code: parsed?.code, message: parsed?.error, retryAfter: retryAfterHeader.flatMap(Double.init))
+    self.init(status: status, code: parsed?.code, message: parsed?.error,
+              retryAfter: retryAfterHeader.flatMap(Self.retryAfterSeconds))
+  }
+
+  /// A `Retry-After` header in seconds when it reads as a finite, non-negative number (the
+  /// phone's rule: a date or anything else reads as none), at most `MAX_RETRY_AFTER`.
+  static func retryAfterSeconds(_ header: String) -> Double? {
+    guard let n = Double(header.trimmingCharacters(in: .whitespaces)), n.isFinite, n >= 0 else { return nil }
+    return min(n, MAX_RETRY_AFTER)
   }
 }
 
@@ -304,8 +316,8 @@ struct SyncResponse: Codable, Equatable, Sendable {
 
 /// One audio file's watch rendition: `path` is the original file (as `/stream` takes it).
 struct RenditionFile: Codable, Equatable, Sendable {
-  /// ready | pending | failed | missing
   var path: String
+  /// ready | pending | failed | missing
   var state: String
   var bytes: Int64?
   var retryAfterSeconds: Double?

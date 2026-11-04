@@ -66,11 +66,13 @@ struct NowPlayingView: View {
         }
       }
     }
-    .navigationTitle("Now Playing")
+    .navigationTitle("Now playing")
     .task {
       guard let start, !started else { return }
       started = true
-      if engine.loadedBook != start.ref || !engine.playing { await model.play(start) }
+      // Its own task: leaving the screen cancels `.task`, which would cut the pull before play
+      // short (the book would still load and play, from a stale place and with no offer).
+      if engine.loadedBook != start.ref || !engine.playing { await Task { await model.play(start) }.value }
     }
   }
 

@@ -50,10 +50,11 @@ final class AddressRouter: ObservableObject {
 
   /// Going to the background: the watch may join another network before it is back, where
   /// another box can hold the same private address, so a home pick is dropped until the next
-  /// probe proves it again (the token never goes to a home address checked elsewhere).
+  /// probe proves it again (the token never goes to a home address checked elsewhere). A probe
+  /// still in flight is dropped too, or its answer would land home after this.
   func leaveHome(_ account: Account) {
-    guard let c = current, let home = account.addresses?.home, AddressPicker.sameURL(c, home) else { return }
     generation += 1
+    guard let c = current, let home = account.addresses?.home, AddressPicker.sameURL(c, home) else { return }
     current = AddressPicker.fallback(serverURL: account.serverURL, addresses: account.addresses)
   }
 

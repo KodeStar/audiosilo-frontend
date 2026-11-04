@@ -2,7 +2,8 @@
 // on while the app is suspended and wakes it when they finish (`backgroundTask(.urlSession)`,
 // W0 check 2: 300 MB in about 8 minutes standalone). Auth is a header (Bearer, never
 // `?token=`). A transfer that fails with resume data is resumed from it (the system sends the
-// Range / If-Range for the bytes it has). A task that got a 503 or 422 still "finishes", with
+// Range / If-Range for the bytes it has) while the address and token are still the same; else it
+// starts again. A task that got a 503 or 422 still "finishes", with
 // the JSON error as its file, so the status is checked in `didFinishDownloadingTo`.
 //
 // One delegate for the app's one background session; the DownloadManager sets `handler`.
@@ -43,10 +44,26 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
 
   /// Start (or resume) one file's download.
   func start(_ request: URLRequest, tag: DownloadTaskTag, expectedBytes: Int64?, resumeData: Data?) {
-    let task = resumeData.map { session.downloadTask(withResumeData: $0) } ?? session.downloadTask(with: request)
+    let task = resumeData.flatMap { resumed($0, sending: request) } ?? session.downloadTask(with: request)
     task.taskDescription = BackgroundSync.describe(tag)
     if let b = expectedBytes, b > 0 { task.countOfBytesClientExpectsToReceive = b }
     task.resume()
+  }
+
+  /// A task from resume data only when it sends what `request` does. Resume data replays its
+  /// own request: a transfer begun at the home address would go on there from another network
+  /// (CROSS-REPO section 7: the token only to a home address proved on this one), or with a
+  /// token since replaced. Else it is cancelled untagged (the delegate ignores it).
+  private func resumed(_ data: Data, sending request: URLRequest) -> URLSessionDownloadTask? {
+    let task = session.downloadTask(withResumeData: data)
+    let auth = "Authorization"
+    if let was = task.originalRequest, was.url == request.url,
+       was.value(forHTTPHeaderField: auth) == request.value(forHTTPHeaderField: auth)
+    {
+      return task
+    }
+    task.cancel()
+    return nil
   }
 
   /// The files in flight, by tag.

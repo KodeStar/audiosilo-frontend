@@ -60,12 +60,17 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   /// A rebuilt queue reports a pause on the way; one before this is not the system's.
   private var ignorePausesUntil = Date.distantPast
   private var timeObserver: Any?
+  /// The item and interruption observers (blocks on the main queue).
+  private var observers: [NSObjectProtocol] = []
   private var lastTick = Date()
   private var lastKeep = Date()
   private var lastCut = Date()
   private var wantsPlay = false
   /// When the place last moved while playing (where a late-noticed stop ends its span).
   private var lastAdvance = Date()
+  /// The book played to its end: the next play starts it again. Only then: a queue emptied by a
+  /// file that failed plays on from the place.
+  private var ended = false
 
   init(spans: SpanRecorder, places: PlaceStore) {
     self.spans = spans
@@ -80,10 +85,20 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     ) { [weak self] _ in
       MainActor.assumeIsolated { self?.tick() }
     }
+    // On the main queue: AVPlayerItem may post its notifications on another thread, where
+    // `MainActor.assumeIsolated` would trap.
     let nc = NotificationCenter.default
-    nc.addObserver(self, selector: #selector(itemEnded(_:)), name: .AVPlayerItemDidPlayToEndTime, object: nil)
-    nc.addObserver(self, selector: #selector(itemFailed(_:)), name: .AVPlayerItemFailedToPlayToEndTime, object: nil)
-    nc.addObserver(self, selector: #selector(interrupted(_:)), name: AVAudioSession.interruptionNotification, object: nil)
+    observers = [
+      nc.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] n in
+        MainActor.assumeIsolated { self?.itemEnded(n) }
+      },
+      nc.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { [weak self] n in
+        MainActor.assumeIsolated { self?.itemFailed(n) }
+      },
+      nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
+        MainActor.assumeIsolated { self?.interrupted(n) }
+      },
+    ]
     // The system can pause the player itself (the app suspended, headphones gone): a pause
     // like any other, so the span closes where the audio stopped.
     controlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
@@ -140,6 +155,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private func rebuild(from index: Int, at seconds: Double) {
     guard let b = book, b.urls.indices.contains(index) else { return }
     statusObservation = nil
+    ended = false
     ignorePausesUntil = Date().addingTimeInterval(1)
     player.removeAllItems()
     items = b.urls[index...].map { url in
@@ -161,9 +177,15 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     switch item.status {
     case .readyToPlay:
       if let s = pendingSeek {
-        item.seek(to: CMTime(seconds: s, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) {
-          [weak self] _ in
-          DispatchQueue.main.async { MainActor.assumeIsolated { self?.pendingSeek = nil } }
+        item.seek(to: CMTime(seconds: s, preferredTimescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero) {
+          [weak self, weak item] _ in
+          DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+              // This queue's seek only: a rebuild meanwhile has its own `pendingSeek`.
+              guard let self, let item, item === self.items.first else { return }
+              self.pendingSeek = nil
+            }
+          }
         }
       }
       statusObservation = nil
@@ -178,11 +200,16 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   /// Play: the session first (the route picker may show), the speaker asked about once.
   func play() {
     guard let b = book, !playing, !starting else { return }
-    if player.items().isEmpty || Skips.atEnd(position: position, total: b.timeline.total) {
+    if ended {
       // Played to the end: start again (an `unfinish`, then a `restart` span).
       spans.prepareStart(.restart, unfinish: true)
       position = 0
       rebuild(from: 0, at: 0)
+    } else if player.items().isEmpty {
+      // The queue emptied short of the end (a file failed): try again from the place, a plain
+      // resume (never a restart, which the server would apply as a move to 0).
+      let place = b.timeline.locate(position)
+      rebuild(from: place.index, at: place.positionInTrack)
     }
     starting = true
     Task {
@@ -266,8 +293,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     let place = b.timeline.locate(to)
     let target = b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack)
     spans.move(b.playing, to: target, from: spanEnd(), reason: reason, playing: playing, speed: rate)
+    ended = false
     if let w = where_(), w.index == place.index, pendingSeek == nil, player.currentItem?.status == .readyToPlay {
-      player.seek(to: CMTime(seconds: place.positionInTrack, preferredTimescale: 600), toleranceBefore: .zero,
+      player.seek(to: CMTime(seconds: place.positionInTrack, preferredTimescale: 1000), toleranceBefore: .zero,
                   toleranceAfter: .zero)
     } else {
       rebuild(from: place.index, at: place.positionInTrack)
@@ -369,29 +397,26 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     if moved { savePlace() }
   }
 
-  @objc private func itemEnded(_ note: Notification) {
-    MainActor.assumeIsolated {
-      guard let item = note.object as? AVPlayerItem, let i = items.firstIndex(of: item), let b = book else { return }
-      guard firstIndex + i == b.timeline.files.count - 1 else { return }
-      // The book's end: its last span closed, then one `finish`.
-      let last = b.timeline.files.count - 1
-      let lastDuration = b.timeline.files[last].duration
-      let end = b.timeline.spanEnd(index: last, positionInTrack: lastDuration > 0 ? lastDuration : item.currentTime().seconds)
-      wantsPlay = false
-      playing = false
-      spans.finish(b.playing, at: end)
-      position = b.timeline.total
-      places.set(b.ref, LocalPlace(position: b.timeline.total, file: nil, filePos: nil, at: Date()))
-      sleep = nil
-      refreshTimes(force: true)
-    }
+  private func itemEnded(_ note: Notification) {
+    guard let item = note.object as? AVPlayerItem, let i = items.firstIndex(of: item), let b = book else { return }
+    guard firstIndex + i == b.timeline.files.count - 1 else { return }
+    // The book's end: its last span closed, then one `finish`.
+    let last = b.timeline.files.count - 1
+    let lastDuration = b.timeline.files[last].duration
+    let end = b.timeline.spanEnd(index: last, positionInTrack: lastDuration > 0 ? lastDuration : item.currentTime().seconds)
+    wantsPlay = false
+    playing = false
+    ended = true
+    spans.finish(b.playing, at: end)
+    position = b.timeline.total
+    places.set(b.ref, LocalPlace(position: b.timeline.total, file: nil, filePos: nil, at: Date()))
+    sleep = nil
+    refreshTimes(force: true)
   }
 
-  @objc private func itemFailed(_ note: Notification) {
-    MainActor.assumeIsolated {
-      guard let item = note.object as? AVPlayerItem, items.contains(item) else { return }
-      fail()
-    }
+  private func itemFailed(_ note: Notification) {
+    guard let item = note.object as? AVPlayerItem, items.contains(item) else { return }
+    fail()
   }
 
   private func fail() {
@@ -399,22 +424,20 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     problem = "This book can't be played. Remove it from the watch and download it again."
   }
 
-  @objc private func interrupted(_ note: Notification) {
+  private func interrupted(_ note: Notification) {
     guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
       let type = AVAudioSession.InterruptionType(rawValue: raw)
     else { return }
     let resume = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
       .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
-    MainActor.assumeIsolated {
-      switch type {
-      case .began:
-        let was = wantsPlay
-        pause()
-        wantsPlay = was
-      case .ended:
-        if wantsPlay && resume { wantsPlay = false; play() } else { wantsPlay = false }
-      @unknown default: break
-      }
+    switch type {
+    case .began:
+      let was = wantsPlay
+      pause()
+      wantsPlay = was
+    case .ended:
+      if wantsPlay && resume { wantsPlay = false; play() } else { wantsPlay = false }
+    @unknown default: break
     }
   }
 

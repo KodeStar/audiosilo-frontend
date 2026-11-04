@@ -1,5 +1,5 @@
 // Which address the watch talks to, ports of the phone's `src/lib/server-address.ts`
-// (`chooseAddress`, `pickAddress`), `src/lib/url-host.ts` (`urlEndpoint`) and
+// (`chooseAddress`, `pickAddress`, `mergeAddresses`), `src/lib/url-host.ts` (`urlEndpoint`) and
 // `src/components/connect/connect-model.ts` (`withFallback`, `pairingFallback`). CROSS-REPO
 // section 7: a home address is used only after a tokenless `GET <home>/api/v1/server` answered
 // this account's `server_id`; NEVER does a token (session or pairing) go to a home address
@@ -76,6 +76,20 @@ enum AddressPicker {
   static func pick(serverURL: String, addresses: ServerAddresses?, serverId: String, probe: ServerIdProbe) async -> String {
     guard let home = addresses?.home else { return serverURL }
     return choose(serverURL: serverURL, addresses: addresses, serverId: serverId, homeServerId: await probe(home))
+  }
+
+  /// What the watch keeps after the server told it `fresh`, given what it knew before (the
+  /// phone's `mergeAddresses`). Nil `fresh` keeps `prior`. Otherwise `away` is the server's
+  /// configuration (absent = none) while `home` falls back to `prior`'s: a server with no home
+  /// address configured derives it from the request, so an answer read through the away address
+  /// cannot know it. A home that became the away address is dropped; empty counts as absent.
+  static func merge(prior: ServerAddresses?, fresh: ServerAddresses?) -> ServerAddresses? {
+    guard let fresh else { return prior }
+    let away = fresh.away.flatMap { $0.isEmpty ? nil : $0 }
+    var home = (fresh.home ?? prior?.home).flatMap { $0.isEmpty ? nil : $0 }
+    if let h = home, let a = away, sameURL(h, a) { home = nil }
+    if home == nil && away == nil { return nil }
+    return ServerAddresses(home: home, away: away)
   }
 
   /// Whether `url` is one of the account's own addresses (a pick that no longer is one falls

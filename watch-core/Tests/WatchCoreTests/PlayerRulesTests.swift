@@ -60,6 +60,31 @@ final class ChapterNavTests: XCTestCase {
     XCTAssertEqual(ChapterNav.next(chapters, 0), 600)
     XCTAssertEqual(ChapterNav.next(chapters, 700), 1200)
     XCTAssertNil(ChapterNav.next(chapters, 1300))
+    // A start under 1.5 s ahead is skipped (the phone's slack).
+    XCTAssertEqual(ChapterNav.next(chapters, 599), 1200)
+  }
+
+  // A seek lands a hair short of the start it asked for (CMTime rounds down: 1234.567 at
+  // timescale 600 is 1234.5666...): it is that chapter, and Next goes on from it.
+  func testASeekLandingJustShortOfAStartIsThatChapter() {
+    let odd = [ch(0, 0, 1234.567), ch(1, 1234.567, 1165.433), ch(2, 2400, 600)]
+    let landed = 740_740.0 / 600
+    XCTAssertLessThan(landed, 1234.567)
+    XCTAssertEqual(ChapterNav.index(odd, landed), 1)
+    XCTAssertEqual(NowPlayingTimes.of(chapters: odd, position: landed, total: 3000, bookTitle: "B").chapterIndex, 1)
+    // Next twice moves on twice.
+    let first = ChapterNav.next(odd, 10)
+    XCTAssertEqual(first, 1234.567)
+    XCTAssertEqual(ChapterNav.next(odd, landed), 2400)
+    // Previous right after landing goes to the chapter before.
+    XCTAssertEqual(ChapterNav.previous(odd, landed), 0)
+  }
+
+  func testPreviousBeforeTheFirstChapterGoesToTheStart() {
+    let late = [ch(0, 30, 600), ch(1, 630, 600)]
+    XCTAssertEqual(ChapterNav.previous(late, 10), 0)
+    XCTAssertEqual(ChapterNav.previous(late, 31), 0)
+    XCTAssertEqual(ChapterNav.previous(late, 40), 30)
   }
 
   func testNowPlayingShowsTheChaptersTitleAndTimesWithinIt() {

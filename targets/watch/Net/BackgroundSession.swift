@@ -23,8 +23,9 @@ enum BackgroundSession {
 /// came before the wait began.
 final class BackgroundWake: @unchecked Sendable {
   private let lock = NSLock()
-  /// The system's completion for a background wake.
-  private var wakeDone: (() -> Void)?
+  /// The wakes waiting (the system can hand over a second before the first's events are in;
+  /// each one's background task completes only when its wait returns).
+  private var waiting: [CheckedContinuation<Void, Never>] = []
   /// The events were delivered before `wait` waited for them.
   private var finishedEarly = false
 
@@ -37,19 +38,19 @@ final class BackgroundWake: @unchecked Sendable {
         c.resume()
         return
       }
-      wakeDone = { c.resume() }
+      waiting.append(c)
       lock.unlock()
     }
   }
 
-  /// `urlSessionDidFinishEvents`: resolve the wait on the main queue, after what the delegate
-  /// already handed it.
+  /// `urlSessionDidFinishEvents`: resolve every wait on the main queue, after what the
+  /// delegate already handed it.
   func finished() {
     lock.lock()
-    let done = wakeDone
-    wakeDone = nil
-    if done == nil { finishedEarly = true }
+    let done = waiting
+    waiting = []
+    if done.isEmpty { finishedEarly = true }
     lock.unlock()
-    DispatchQueue.main.async { done?() }
+    DispatchQueue.main.async { done.forEach { $0.resume() } }
   }
 }
