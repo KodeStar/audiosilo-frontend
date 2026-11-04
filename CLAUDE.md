@@ -103,6 +103,7 @@ npm run ios / npm run android
 npx tsc --noEmit            # typecheck (strict; must stay clean)
 npm run lint                # eslint flat config (eslint-config-expo + prettier)
 npm test                    # colour-token drift + generator tests + style guards (scripts/check-styles.cjs), then jest-expo (npm test -- --coverage for coverage)
+npm run test:watch          # the watch app's Core tests (SwiftPM, watch-core/; skips without swift)
 npm run format              # prettier --check . (CI-gated; fails on unformatted files)
 npx prettier --write .      # auto-fix formatting locally before committing
 npx expo export -p web      # bundle smoke test (run after meaningful changes)
@@ -265,7 +266,9 @@ src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemePr
 src/lib/            storage (+ storage-keys), secure-store, bootstrap (launch steps), storage + identity migrations, connection-id, profile-pin, sha256, native-intent, device, paths, format, register-sw
 reader/             the reader document's source + vendored foliate-js; `npm run reader:build` -> public/reader.html + src/reader/reader-html.native.ts
 modules/audiosilo-player/   the native playback module (ios/ Swift, android/ Kotlin, src/ its TS surface)
-plugins/            config plugins: withCast, withCarPlay, withWidgetsNoPush, withXcode26SwiftUICoreFix
+targets/watch/      the Apple Watch app (Swift, not bundled by Metro): Core/ (Foundation-only ports of the player's rules), Net/, Storage/, Phone/, Playback/, UI/
+watch-core/         SwiftPM package over targets/watch/Core (a symlink), so its tests run on the host
+plugins/            config plugins: withCast, withCarPlay, withWidgetsNoPush, withWatchScheme, withXcode26SwiftUICoreFix
 index.ts            app entry: registers the car task, then expo-router/entry
 ```
 

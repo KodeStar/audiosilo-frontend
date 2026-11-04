@@ -49,6 +49,9 @@ struct DownloadRecord: Codable, Equatable, Identifiable {
 
 @MainActor
 final class DownloadManager: ObservableObject {
+  /// A staged file this old has lost its event.
+  private static let STAGING_KEEP: TimeInterval = 10 * 60
+
   @Published private(set) var records: [DownloadRecord]
   /// The files this launch handed to the background session (`DownloadTaskTag.key`).
   private var handedOff: Set<String> = []
@@ -56,13 +59,16 @@ final class DownloadManager: ObservableObject {
   private let index = JSONFile<[DownloadRecord]>(url: Files.downloadsIndex)
   /// The client for the account's current address, nil when signed out.
   var client: () -> APIClient? = { nil }
+  /// The account's home address, nil when it has none.
+  var homeAddress: () -> String? = { nil }
   /// Told whenever the list changes (watch-state).
   var onChange: (() -> Void)?
   /// Removing the book that is playing stops it first and closes its span.
   var willRemove: ((BookRef) -> Void)?
 
-  /// Whether the app is in the foreground: the rendition polling runs only then.
-  private(set) var active = true
+  /// Whether the app is in the foreground: the rendition polling runs only then. False until it
+  /// first gets there (a launch for a background wake polls nothing).
+  private(set) var active = false
   private var working: [String: Task<Void, Never>] = [:]
   /// Which run `working` holds per book.
   private var runs: [String: UUID] = [:]
@@ -118,6 +124,7 @@ final class DownloadManager: ObservableObject {
   /// The app came to the foreground (or signed in): carry on with every book not done.
   func resumeAll() {
     active = true
+    sweepStaging(olderThan: Self.STAGING_KEEP)
     for r in records where r.state != .ready && r.state != .failed { process(r.id) }
   }
 
@@ -151,6 +158,19 @@ final class DownloadManager: ObservableObject {
   /// Remove every book (the account was replaced).
   func removeAll() {
     for r in records { remove(r.ref) }
+    sweepStaging(olderThan: 0)
+  }
+
+  /// A staged file whose event never came (a kill just after the move): nothing else removes it.
+  /// Not at launch: an event still on its way holds a staged file.
+  private func sweepStaging(olderThan age: TimeInterval) {
+    let fm = FileManager.default
+    let key = URLResourceKey.contentModificationDateKey
+    let files = (try? fm.contentsOfDirectory(at: Files.staging, includingPropertiesForKeys: [key])) ?? []
+    for file in files {
+      let written = (try? file.resourceValues(forKeys: [key]).contentModificationDate) ?? .distantPast
+      if Date().timeIntervalSince(written) >= age { try? fm.removeItem(at: file) }
+    }
   }
 
   // MARK: - Preparing
@@ -162,11 +182,15 @@ final class DownloadManager: ObservableObject {
     runs[key] = nil
   }
 
-  private func process(_ key: String) {
+  /// Start a book's run (`after` seconds from now: a refusal's wait), unless it has one.
+  private func process(_ key: String, after wait: TimeInterval = 0) {
     guard active, working[key] == nil else { return }
     let run = UUID()
     runs[key] = run
     working[key] = Task { [weak self] in
+      if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+      // Cancelled while it waited: whoever cancelled it has cleared its entries.
+      if Task.isCancelled { return }
       await self?.run(key)
       // Only this run's own entry: a retry may have started the next one already.
       if self?.runs[key] == run {
@@ -184,8 +208,14 @@ final class DownloadManager: ObservableObject {
   }
 
   private func run(_ key: String) async {
-    guard let r0 = records.first(where: { $0.id == key }), let api = client() else { return }
+    guard let r0 = records.first(where: { $0.id == key }), client() != nil else { return }
     let ref = r0.ref
+    /// Read for every request: a run can outlast the pick it began on (the watch left home), and
+    /// the token must not go on following that address. Signed out meanwhile, the run is over.
+    func current() throws -> APIClient {
+      guard let api = client() else { throw CancellationError() }
+      return api
+    }
     if r0.files.isEmpty || r0.state == .queued {
       update(key) {
         $0.state = .preparing
@@ -195,10 +225,15 @@ final class DownloadManager: ObservableObject {
     do {
       // The item and chapters first: the timeline orders the files and lasts offline.
       if records.first(where: { $0.id == key })?.files.isEmpty ?? true {
-        let book = try await api.item(ref)
-        let chapters = try? await api.chapters(ref)
-        let serverPlace = try? await api.progress(ref)
-        // A cancelled `/chapters` is not "no chapters": kept so, they would never be read again.
+        let book = try await current().item(ref)
+        // Kept as "no chapters", a passing failure would stay in the book's timeline for good.
+        let chapters: ChaptersResponse?
+        do {
+          chapters = try await current().chapters(ref)
+        } catch let e as APIError where RenditionPlan.meansNoChapters(e) {
+          chapters = nil
+        }
+        let serverPlace = try? await current().progress(ref)
         try Task.checkCancellation()
         let cache = ItemCache(book: book, chapters: chapters, serverPlace: serverPlace)
         cache.save(ref)
@@ -211,13 +246,15 @@ final class DownloadManager: ObservableObject {
           }
         }
       }
-      var answer = try await api.prepareRenditions(ref)
+      var answer = try await current().prepareRenditions(ref)
       guard checkSpace(key, answer) else { return }
       while !Task.isCancelled {
+        guard answerCovers(key, answer) else { return }
         let step = RenditionPlan.step(answer)
         if !step.ready.isEmpty {
           // What the session carries now, a previous launch's transfers too: never handed twice.
-          let inFlight = Set(await BackgroundDownloads.shared.inFlight().map(\.key))
+          let inFlight = await BackgroundDownloads.shared.inFlight()
+          let api = try current()
           for f in step.ready { startFile(key, f, api: api, inFlight: inFlight) }
         }
         switch step.action {
@@ -228,11 +265,11 @@ final class DownloadManager: ObservableObject {
           fail(key, RenditionPlan.message(.failed(retryAfter: nil)) ?? "")
           return
         case .poll(let after):
-          try await Task.sleep(nanoseconds: UInt64(after * 1e9))
-          answer = try await api.renditionStatus(ref)
+          try await Task.sleep(for: .seconds(after))
+          answer = try await current().renditionStatus(ref)
         case .prepareAgain(let after):
-          try await Task.sleep(nanoseconds: UInt64(after * 1e9))
-          answer = try await api.prepareRenditions(ref)
+          try await Task.sleep(for: .seconds(after))
+          answer = try await current().prepareRenditions(ref)
         }
       }
     } catch let e where e is CancellationError || Task.isCancelled {
@@ -242,7 +279,7 @@ final class DownloadManager: ObservableObject {
       let refusal = RenditionPlan.refusal(e)
       if case .retry(let after) = refusal {
         update(key) { $0.message = "Waiting for the server" }
-        try? await Task.sleep(nanoseconds: UInt64(after * 1e9))
+        try? await Task.sleep(for: .seconds(after))
         if !Task.isCancelled {
           // This run is the one in `working`: clear it so the next can start.
           working[key] = nil
@@ -258,26 +295,50 @@ final class DownloadManager: ObservableObject {
     }
   }
 
-  /// Refuse a book that would not leave 200 MB free.
+  /// An answer that does not hold the book's files can never finish: the book changed on the
+  /// server since its item was read. Try again reads the item afresh.
+  private func answerCovers(_ key: String, _ answer: RenditionsAnswer) -> Bool {
+    guard let r = records.first(where: { $0.id == key }) else { return false }
+    if RenditionPlan.covers(answer, wanted: r.files.map(\.path)) { return true }
+    update(key) { $0.files = [] }
+    fail(key, "This book changed on the server. Try again.")
+    return false
+  }
+
+  /// Refuse a book that would not leave 200 MB free. Only for what is still to come: a file
+  /// landed or already with the session (its bytes are noted when handed over) has its space.
   private func checkSpace(_ key: String, _ answer: RenditionsAnswer) -> Bool {
     guard let r = records.first(where: { $0.id == key }), let free = Files.freeBytes() else { return true }
-    let done = Set(r.files.filter(\.done).map(\.path))
+    let handed = Set(r.files.filter { $0.done || $0.bytes != nil }.map(\.path))
     let durations = ItemCache.load(r.ref).map { cache in
       Dictionary(cache.timeline.files.map { ($0.path, $0.duration) }, uniquingKeysWith: { a, _ in a })
     } ?? [:]
-    let needed = RenditionPlan.neededBytes(answer.files.filter { !done.contains($0.path) }, durations: durations)
+    let needed = RenditionPlan.neededBytes(answer.files.filter { !handed.contains($0.path) }, durations: durations)
     if RenditionPlan.fits(needed: needed, free: free) { return true }
     fail(key, "Not enough space on this watch: it needs \(Labels.bytes(needed)) and keeps \(Labels.bytes(RenditionPlan.HEADROOM_BYTES)) free; \(Labels.bytes(free)) is free.")
     return false
   }
 
-  private func startFile(_ key: String, _ file: RenditionFile, api: APIClient, inFlight: Set<String>) {
+  private func startFile(_ key: String, _ file: RenditionFile, api: APIClient, inFlight: [String: URLSessionTask]) {
     guard let r = records.first(where: { $0.id == key }),
           let f = r.files.first(where: { $0.path == file.path }), !f.done
     else { return }
     let tag = DownloadTaskTag(book: key, path: file.path)
-    if inFlight.contains(tag.key) || handedOff.contains(tag.key) { return }
     guard let request = try? api.renditionDownload(libraryId: r.ref.libraryId, file: file.path) else { return }
+    if let task = inFlight[tag.key] {
+      let auth = "Authorization"
+      let keeps = RenditionPlan.keepsTransfer(
+        url: task.originalRequest?.url?.absoluteString, authorization: task.originalRequest?.value(forHTTPHeaderField: auth),
+        wantedURL: request.url?.absoluteString, wantedAuthorization: request.value(forHTTPHeaderField: auth),
+        home: homeAddress())
+      if keeps { return }
+      // A plain cancel brings no event (the delegate reads it as removed by hand).
+      task.cancel()
+      handedOff.remove(tag.key)
+      resumeData[tag.key] = nil
+    } else if handedOff.contains(tag.key) {
+      return
+    }
     handedOff.insert(tag.key)
     update(key) { rec in
       rec.state = .downloading
@@ -319,16 +380,18 @@ final class DownloadManager: ObservableObject {
         }
         markIfDone(tag.book)
       } catch {
+        try? FileManager.default.removeItem(at: staged)
         fail(tag.book, "The watch could not keep a file of this book.")
       }
     case .refused(let tag, let error):
       handedOff.remove(tag.key)
       let refusal = RenditionPlan.refusal(error)
-      if case .retry = refusal {
-        // Not ready after all (`rendition_pending`): poll again.
+      if case .retry(let after) = refusal {
+        // Not ready after all (`rendition_pending`): poll again, after the server's wait (the
+        // next answer can say ready at once, and refuse again).
         stopWork(tag.book)
         update(tag.book) { $0.state = .preparing }
-        process(tag.book)
+        process(tag.book, after: after)
       } else if let message = RenditionPlan.message(refusal) {
         fail(tag.book, message)
       }

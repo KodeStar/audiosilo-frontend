@@ -64,7 +64,8 @@ final class AppModel: ObservableObject {
   /// Bumped whenever the outbox or its state changes (Sync status reads the outbox).
   @Published private(set) var syncRevision = 0
   @Published private(set) var syncing = false
-  @Published private(set) var inForeground = true
+  /// False until the scene first becomes active: a launch for a background wake is not in front.
+  @Published private(set) var inForeground = false
 
   let router = AddressRouter()
   let library = ContinueListening()
@@ -83,6 +84,8 @@ final class AppModel: ObservableObject {
   private var inbox: Task<Void, Never>?
   private let afterEmit = Relay()
   private var retryTimer: Timer?
+  /// The newest ask to play: one still pulling its row when another came goes no further.
+  private var playGeneration = 0
 
   private init() {
     let acks = self.acks
@@ -108,7 +111,12 @@ final class AppModel: ObservableObject {
     }
     relay.call = { [weak self] in self?.spanClosed() }
     engine.reachable = { [weak self] in !(self?.outbox.lastFlushFailed ?? true) }
+    engine.onPickedUp = { [weak self] in
+      guard let self else { return }
+      Task { await self.reconcileLoaded() }
+    }
     downloads.client = { [weak self] in self?.client() }
+    downloads.homeAddress = { [weak self] in self?.account?.addresses?.home }
     downloads.willRemove = { [weak self] ref in
       // Removing the playing book stops it and closes its span first (decision 8).
       if self?.engine.loadedBook == ref { self?.engine.stop() }
@@ -154,11 +162,16 @@ final class AppModel: ObservableObject {
     Task {
       await router.repick(a)
       await checkServer()
-      guard phase == .ready else { return }
+      await refreshAddresses(of: a)
+      // Before the gate: a server without the watch rendition still takes the listening.
       await flush()
+      guard phase == .ready else { return }
       if let api = client() {
         // Not when the app went to the background meanwhile (the downloads were paused).
-        if inForeground { downloads.resumeAll() }
+        if inForeground {
+          downloads.resumeAll()
+          if !engine.playing && !engine.starting { await reconcileLoaded() }
+        }
         await library.refresh(api)
       }
     }
@@ -189,7 +202,29 @@ final class AppModel: ObservableObject {
     phase = info.supportsWatch ? .ready : .tooOld(version: info.version)
   }
 
+  /// Keep what the server says its addresses are now (the phone's `refreshAddresses`): one moved
+  /// since the pairing would otherwise go on failing here. Quiet on any failure.
+  private func refreshAddresses(of a: Account) async {
+    guard server?.capabilities?.addresses == true, let api = client(), let fresh = try? await api.addresses(),
+      // Signed out or switched while it was asked: the answer is no longer this account's.
+      var now = account, now.accountId == a.accountId
+    else { return }
+    let merged = AddressPicker.merge(prior: now.addresses, fresh: fresh)
+    guard merged != now.addresses else { return }
+    now.addresses = merged
+    Account.save(now)
+    account = now
+    // Not in the background: leaving home dropped the home pick, and no probe runs there.
+    if inForeground { await router.repick(now) }
+  }
+
   // MARK: - Sync
+
+  /// Whether what waits can be sent. The listening needs only Sync v2: a server without the watch
+  /// rendition (`.tooOld`, ffmpeg gone) still takes it, so it is not held until it is discarded.
+  private var canSync: Bool {
+    account != nil && (phase == .ready || server?.capabilities?.listeningSync == true)
+  }
 
   /// A span closed into the outbox: send it. In the background (audio keeps the app running)
   /// it is tried the same way, and what still waits goes to the background upload.
@@ -202,7 +237,7 @@ final class AppModel: ObservableObject {
 
   /// Send what waits now (one flush at a time; the outbox coalesces calls).
   func flush() async {
-    guard phase == .ready, let api = client(), outbox.unsentCount > 0 else { return }
+    guard canSync, let api = client(), outbox.unsentCount > 0 else { return }
     syncing = true
     await outbox.flush(via: api)
     syncing = false
@@ -214,9 +249,11 @@ final class AppModel: ObservableObject {
   /// to the home address, whatever the pick: the system may send it on another network, where
   /// nothing runs the `server_id` probe first (a home-only server syncs in the foreground).
   private func uploadInBackground() {
-    guard phase == .ready, let a = account, let token = Keychain.token(), let body = outbox.backgroundBody() else { return }
-    let api = APIClient(base: AddressPicker.fallback(serverURL: a.serverURL, addresses: a.addresses), token: token)
-    SyncUploader.shared.enqueue(body, api: api, accountId: a.accountId)
+    guard canSync, let a = account, let token = Keychain.token(),
+      let base = AddressPicker.unattended(serverURL: a.serverURL, addresses: a.addresses),
+      let body = outbox.backgroundBody()
+    else { return }
+    SyncUploader.shared.enqueue(body, api: APIClient(base: base, token: token), accountId: a.accountId)
   }
 
   /// A background upload's answer (a later wake, or while running): applied like a foreground one.
@@ -230,7 +267,7 @@ final class AppModel: ObservableObject {
 
   /// The best-effort refresh task (decision 10): flush, else leave the background upload.
   func backgroundRefresh() async {
-    guard phase == .ready, outbox.unsentCount > 0 else { return }
+    guard canSync, outbox.unsentCount > 0 else { return }
     await flush()
     if outbox.unsentCount > 0 {
       uploadInBackground()
@@ -255,6 +292,8 @@ final class AppModel: ObservableObject {
   /// offline (the phone's keepServerPlace).
   func play(_ record: DownloadRecord) async {
     guard record.state == .ready, pendingReplace != .switching, let who = account?.accountId else { return }
+    playGeneration += 1
+    let mine = playGeneration
     if engine.loadedBook == record.ref {
       engine.play()
       return
@@ -265,18 +304,22 @@ final class AppModel: ObservableObject {
     let urls = timeline.files.compactMap { f in byPath[f.path].map { downloads.localURL(record, file: $0) } }
     guard urls.count == timeline.files.count, !urls.isEmpty else { return }
     let pulled = await pull(record.ref)
-    // A switch (or a sign-out) began meanwhile: this account's book no longer plays.
-    guard account?.accountId == who, pendingReplace != .switching else { return }
+    // Asked to play something else (or the same book again), a switch or a sign-out, or the book
+    // removed meanwhile: this one no longer plays.
+    guard mine == playGeneration, account?.accountId == who, pendingReplace != .switching,
+      downloads.record(record.ref)?.state == .ready
+    else { return }
     let row: ProgressRow?
     switch pulled {
     case .answered(let r): row = r  // nil: the server has no place for it
     case .noAnswer: row = [library.keptPlace(record.ref), cache.serverPlace].compactMap { $0 }.max { $0.version < $1.version }
     }
-    let plan = Resume.plan(local: places.place(record.ref), row: row, deviceId: Files.deviceId,
-                           ackVersion: acks.ackVersion(record.ref), total: timeline.total)
+    let local = places.place(record.ref)
+    let plan = Resume.plan(local: local, row: row, deviceId: Files.deviceId, ackVersion: acks.ackVersion(record.ref),
+                           total: timeline.total, waiting: outbox.events.contains { $0.ref == record.ref })
     if plan.tookRow, let row { acks.ackResume(row) }
     engine.load(LoadedBook(ref: record.ref, title: record.title, author: record.author, timeline: timeline, urls: urls),
-                plan: plan)
+                plan: plan, savedSpeed: Resume.savedSpeed(plan, local: local, row: row))
     // Offered only from the server's answer, never from a kept place.
     if !plan.tookRow, case .answered(let r?) = pulled { checkOffer([r]) }
     engine.play()
@@ -291,7 +334,7 @@ final class AppModel: ObservableObject {
         do { return .answered(try await api.progress(ref)) } catch { return .noAnswer }
       }
       group.addTask {
-        try? await Task.sleep(nanoseconds: UInt64(Self.PULL_TIMEOUT * 1_000_000_000))
+        try? await Task.sleep(for: .seconds(Self.PULL_TIMEOUT))
         return .noAnswer
       }
       let first = await group.next() ?? .noAnswer
@@ -300,9 +343,20 @@ final class AppModel: ObservableObject {
     }
   }
 
-  /// Offer another device's place for the loaded book (Offers.offerOf + the throttles).
+  /// Ask the server about the loaded book, which plays from the engine's place with no pull of
+  /// its own: on coming to the foreground while it is not playing, and when it plays again after
+  /// a long pause (the phone's `reconcileLoadedPlace`). Offers only, never moves it.
+  private func reconcileLoaded() async {
+    guard let ref = engine.loadedBook, case .answered(let row?) = await pull(ref), engine.loadedBook == ref else { return }
+    checkOffer([row])
+  }
+
+  /// Offer another device's place for the loaded book (Offers.offerOf + the throttles). Not over
+  /// the speaker question: it comes again with the next answer.
   private func checkOffer(_ rows: [ProgressRow]) {
-    guard let ref = engine.loadedBook, offerPrompt == nil, let row = rows.first(where: { $0.ref == ref }) else { return }
+    guard let ref = engine.loadedBook, offerPrompt == nil, !engine.speakerPrompt,
+      let row = rows.first(where: { $0.ref == ref })
+    else { return }
     guard let offer = Offers.offerOf(row, deviceId: Files.deviceId, ackVersion: acks.ackVersion(ref),
                                      enginePosition: engine.position, answered: acks.answered(ref)),
       offers.shouldShow(offer, for: ref, now: Date())
@@ -344,6 +398,17 @@ final class AppModel: ObservableObject {
     inbox = Task {
       await previous?.value
       await work()
+    }
+  }
+
+  /// Until the messages the phone has handed over are handled (a background wake for them).
+  func messagesHandled() async {
+    // What the delegate hopped to the main queue joins the inbox first.
+    await Task.yield()
+    var last: Task<Void, Never>?
+    while let tail = inbox, tail != last {
+      last = tail
+      await tail.value
     }
   }
 
@@ -413,7 +478,16 @@ final class AppModel: ObservableObject {
           return s
         },
         isTimeout: APIClient.isTimeout, probe: APIClient.probeServerId)
-      if change == .replace { forgetAccount() }
+      if change == .replace {
+        // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
+        // again for the same account keeps its old token, as the phone does.
+        let leaving = client()
+        forgetAccount()
+        if let leaving { Task { try? await leaving.logout() } }
+      } else if change == .signIn, Account.load()?.accountId != p.accountId {
+        // The token was lost, and what is here is another account's: never sent under this one.
+        forgetAccount()
+      }
       guard Keychain.setToken(session.token) else {
         failed("The watch could not keep its sign-in.")
         return
@@ -429,7 +503,7 @@ final class AppModel: ObservableObject {
       pendingReplace = nil
       publishState()
       for b in held { downloads.enqueue(b.ref, title: b.title, author: b.author) }
-      if WKApplication.shared().applicationState == .background {
+      if !inForeground {
         // A message delivered in the background (background audio, a wake): no foreground
         // timers and no home pick (dropped as on going to the background); the front runs
         // becameActive when the listener raises the watch.

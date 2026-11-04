@@ -4,7 +4,8 @@ import Foundation
 
 enum ContinueOrder {
   static func inProgress(_ all: [ProgressRow], limit: Int) -> [ProgressRow] {
-    let time = { (r: ProgressRow) in ISOTime.parse(r.updatedAt)?.timeIntervalSince1970 ?? 0 }
-    return Array(all.filter { !$0.finished && $0.position > 0 }.sorted { time($0) > time($1) }.prefix(limit))
+    let started = all.filter { !$0.finished && $0.position > 0 }
+    let timed = started.map { (row: $0, time: ISOTime.parse($0.updatedAt)?.timeIntervalSince1970 ?? 0) }
+    return timed.sorted { $0.time > $1.time }.prefix(limit).map(\.row)
   }
 }

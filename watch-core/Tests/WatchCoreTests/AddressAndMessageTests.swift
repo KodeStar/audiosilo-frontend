@@ -48,6 +48,30 @@ final class AddressPickerTests: XCTestCase {
     XCTAssertEqual(AddressPicker.choose(serverURL: "https://paired", addresses: nil, serverId: "srv", homeServerId: "srv"), "https://paired")
   }
 
+  // No pick yet (a launch, before the probe): the token does not go home unproven while another
+  // address is known.
+  func testWithNoPickHomeIsNotUsedWhileAnotherIsKnown() {
+    let lan = "http://192.168.1.10:8080"
+    let away = "https://books.example"
+    XCTAssertEqual(AddressPicker.unproven(serverURL: lan, addresses: ServerAddresses(home: lan, away: away)), away)
+    XCTAssertEqual(AddressPicker.unproven(serverURL: away, addresses: ServerAddresses(home: lan, away: nil)), away)
+    // Nothing else is known: the phone's rule, the paired URL.
+    XCTAssertEqual(AddressPicker.unproven(serverURL: lan, addresses: ServerAddresses(home: lan, away: nil)), lan)
+    XCTAssertEqual(AddressPicker.unproven(serverURL: away, addresses: nil), away)
+  }
+
+  // The system may send it from another network, where the same private address can be another
+  // box: never to a home address.
+  func testASendTheSystemMakesLaterNeverGoesHome() {
+    let lan = "http://192.168.1.10:8080"
+    let away = "https://books.example"
+    XCTAssertEqual(AddressPicker.unattended(serverURL: lan, addresses: ServerAddresses(home: lan, away: away)), away)
+    XCTAssertEqual(AddressPicker.unattended(serverURL: away, addresses: ServerAddresses(home: lan, away: nil)), away)
+    XCTAssertEqual(AddressPicker.unattended(serverURL: away, addresses: nil), away)
+    XCTAssertNil(AddressPicker.unattended(serverURL: lan, addresses: ServerAddresses(home: lan, away: nil)))
+    XCTAssertNil(AddressPicker.unattended(serverURL: lan + "/", addresses: ServerAddresses(home: lan, away: nil)))
+  }
+
   func testPickProbesHomeWithNoTokenOnlyWhenThereIsOne() async {
     let log = ProbeLog(["http://192.168.0.5:8080": "srv"])
     let url = await AddressPicker.pick(serverURL: "https://paired", addresses: addrs, serverId: "srv", probe: log.probe)
@@ -228,6 +252,46 @@ final class RenditionPlanTests: XCTestCase {
     XCTAssertEqual(RenditionPlan.message(.unavailable), "This server can't make books for the watch now.")
   }
 
+  func testAnAnswerMustHoldEveryFileTheTimelinePlays() {
+    func files(_ paths: String...) -> RenditionsAnswer {
+      RenditionsAnswer(kind: "watch", files: paths.map { RenditionFile(path: $0, state: "ready") })
+    }
+    XCTAssertTrue(RenditionPlan.covers(files("a", "b"), wanted: ["a", "b"]))
+    XCTAssertTrue(RenditionPlan.covers(files("b", "a", "extra"), wanted: ["a", "b"]))
+    XCTAssertFalse(RenditionPlan.covers(files(), wanted: ["a"]))
+    XCTAssertFalse(RenditionPlan.covers(files("a"), wanted: ["a", "b"]))
+    XCTAssertFalse(RenditionPlan.covers(files("other"), wanted: ["a"]))
+    XCTAssertFalse(RenditionPlan.covers(files("a"), wanted: []))
+  }
+
+  func testOnlyARealRefusalMeansNoChapters() {
+    XCTAssertTrue(RenditionPlan.meansNoChapters(APIError(status: 404)))
+    XCTAssertTrue(RenditionPlan.meansNoChapters(APIError(status: 403)))
+    XCTAssertTrue(RenditionPlan.meansNoChapters(APIError(status: 400)))
+    XCTAssertFalse(RenditionPlan.meansNoChapters(APIError(status: 503)))
+    XCTAssertFalse(RenditionPlan.meansNoChapters(APIError(status: 500)))
+    XCTAssertFalse(RenditionPlan.meansNoChapters(APIError(status: 429)))
+    XCTAssertFalse(RenditionPlan.meansNoChapters(APIError(status: 408)))
+    XCTAssertFalse(RenditionPlan.meansNoChapters(APIError(status: 401)))
+  }
+
+  func testATransferInFlightGoesOnUnlessItWouldKeepSendingTheTokenHome() {
+    let home = "http://192.168.1.10:8080"
+    let away = "https://books.example"
+    func file(_ base: String) -> String { base + "/api/v1/libraries/1/stream?path=a" }
+    func keeps(_ from: String, _ to: String, auth: String = "t", wanted: String = "t", home h: String? = home) -> Bool {
+      RenditionPlan.keepsTransfer(url: file(from), authorization: auth, wantedURL: file(to), wantedAuthorization: wanted, home: h)
+    }
+    XCTAssertTrue(keeps(away, away))
+    XCTAssertTrue(keeps(away, home), "the pick came home: away goes on working")
+    XCTAssertTrue(keeps(home, home))
+    XCTAssertFalse(keeps(home, away), "the pick left home")
+    XCTAssertFalse(keeps(away, away, auth: "old"), "signed in again since")
+    XCTAssertTrue(keeps(home, away, home: nil), "no home address known")
+    XCTAssertFalse(RenditionPlan.keepsTransfer(url: file(home), authorization: nil, wantedURL: file(home),
+                                               wantedAuthorization: "t", home: home))
+  }
+
   func testADownloadSucceedsOnlyOn200Or206() {
     XCTAssertTrue(RenditionPlan.downloadSucceeded(status: 200))
     XCTAssertTrue(RenditionPlan.downloadSucceeded(status: 206))
@@ -375,5 +439,50 @@ final class ContinueOrderTests: XCTestCase {
     ]
     XCTAssertEqual(ContinueOrder.inProgress(rows, limit: 10).map(\.path), ["new", "mid", "old"])
     XCTAssertEqual(ContinueOrder.inProgress(rows, limit: 2).map(\.path), ["new", "mid"])
+  }
+}
+
+final class BackgroundWakeTests: XCTestCase {
+  func testAWaitResolvesWhenTheEventsArrive() async {
+    let wake = BackgroundWake()
+    let waiting = Task { await wake.wait(timeout: 30) }
+    // Delivered only after the wait is in place, or it would be the early path.
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    let began = Date()
+    wake.finished()
+    await waiting.value
+    XCTAssertLessThan(Date().timeIntervalSince(began), 5)
+  }
+
+  func testAWaitWhoseEventsNeverComeGivesUp() async {
+    let wake = BackgroundWake()
+    let began = Date()
+    await wake.wait(timeout: 0.05)
+    XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(began), 0.05)
+  }
+
+  func testEventsJustBeforeAWaitCountOlderOnesDoNot() async {
+    let clock = Clock()
+    let wake = BackgroundWake(clock: { clock.now })
+    wake.finished()
+    var began = Date()
+    await wake.wait(timeout: 30)
+    XCTAssertLessThan(Date().timeIntervalSince(began), 5, "a cold launch delivers them before the wait")
+
+    wake.finished()
+    clock.advance(BackgroundWake.EARLY_WINDOW + 1)
+    began = Date()
+    await wake.wait(timeout: 0.05)
+    XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(began), 0.05, "an earlier wake's events")
+  }
+
+  func testEveryWakeWaitingResolves() async {
+    let wake = BackgroundWake()
+    let first = Task { await wake.wait(timeout: 30) }
+    let second = Task { await wake.wait(timeout: 30) }
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    wake.finished()
+    await first.value
+    await second.value
   }
 }

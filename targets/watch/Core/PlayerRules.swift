@@ -16,6 +16,13 @@ enum PlaybackSpeed {
     return min(MAX, max(MIN, rate))
   }
 
+  /// The speed a book plays at when it loads: its own saved speed when it has one, else the
+  /// listener's default, in the range (the phone's `bookSpeed`: a 3x saved elsewhere plays at 2x).
+  static func book(saved: Double?, defaultRate: Double) -> Double {
+    if let saved, saved > 0 { return clamp(saved) }
+    return clamp(defaultRate > 0 ? defaultRate : 1)
+  }
+
   /// A speed as it reads on a button: "1x", "1.25x".
   static func label(_ rate: Double) -> String {
     let r = (clamp(rate) * 100).rounded() / 100
@@ -93,7 +100,8 @@ struct NowPlayingTimes: Equatable {
   var elapsed: Double
   var duration: Double
 
-  /// `fallbackTitle` for a chapter without a title (synthetic ones: "Part 2").
+  /// The chapter at `position` and the times within it (`ChapterNav.title` names one without a
+  /// title), else the whole book.
   static func of(chapters: [Chapter], position: Double, total: Double, bookTitle: String) -> NowPlayingTimes {
     guard let i = ChapterNav.index(chapters, position) else {
       return NowPlayingTimes(chapterIndex: nil, title: bookTitle, elapsed: max(0, position), duration: max(0, total))
@@ -119,11 +127,13 @@ struct LocalPlace: Codable, Equatable, Sendable {
   var file: String?
   var filePos: Double?
   var at: Date
+  /// The speed the book plays at here (a book keeps its own, as on the phone).
+  var speed: Double?
 }
 
 extension LocalPlace {
-  init(_ end: SpanEnd, at: Date) {
-    self.init(position: end.pos, file: end.file, filePos: end.filePos, at: at)
+  init(_ end: SpanEnd, at: Date, speed: Double? = nil) {
+    self.init(position: end.pos, file: end.file, filePos: end.filePos, at: at, speed: speed)
   }
 }
 
@@ -145,17 +155,27 @@ enum Resume {
   /// newer one from another device at a version this watch has not seen; the server's when the
   /// watch has none. A place at the end (or a finished row taken) starts again from 0 with an
   /// `unfinish` and a `restart` span. A place the watch keeps over the row may still be offered
-  /// (`Offers.offerOf`).
-  static func plan(local: LocalPlace?, row: ProgressRow?, deviceId: String, ackVersion: Int?, total: Double)
-    -> ResumePlan
+  /// (`Offers.offerOf`). `waiting`: the book has events still to send (this watch's own unfinish
+  /// may be among them, so the server's finished row is not news).
+  static func plan(local: LocalPlace?, row: ProgressRow?, deviceId: String, ackVersion: Int?, total: Double,
+                   waiting: Bool = false) -> ResumePlan
   {
     var take: ResumePlan
-    if let row, shouldTake(row, local: local, deviceId: deviceId, ackVersion: ackVersion) {
+    if let row, shouldTake(row, local: local, deviceId: deviceId, ackVersion: ackVersion)
+      || finishWins(row, local: local, ackVersion: ackVersion, waiting: waiting)
+    {
       take = ResumePlan(position: row.position, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: true)
       if row.finished { return restart(tookRow: true) }
     } else if let local {
       take = ResumePlan(position: local.position, file: local.file, filePos: local.filePos, start: .resume,
                         unfinish: false, tookRow: false)
+      // Finished on the server, this place newer and nothing of this watch's on its way (moved
+      // back into the book after its end, not played then). A listen never unfinishes, so the
+      // first span goes after an `unfinish`, as a deliberate move.
+      if row?.finished == true, !waiting {
+        take.unfinish = true
+        take.start = .jump
+      }
     } else {
       take = ResumePlan(position: 0, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: false)
     }
@@ -173,6 +193,22 @@ enum Resume {
     guard let device = row.deviceId, !device.isEmpty, device != deviceId else { return false }
     guard row.version > (ackVersion ?? 0), let updated = ISOTime.parse(row.updatedAt) else { return false }
     return updated > local.at
+  }
+
+  /// The phone's `serverFinishWins`: the server's finished row beats a newer place here when the
+  /// finish is newer than that place, or at a version this watch never acknowledged (another
+  /// device's finish, which the place here only did not know of). A finish is a state the server
+  /// orders on its own, so the book starts again rather than resuming the old place.
+  private static func finishWins(_ row: ProgressRow, local: LocalPlace?, ackVersion: Int?, waiting: Bool) -> Bool {
+    guard let local, !waiting, row.finished else { return false }
+    if let finished = row.finishedAt.flatMap(ISOTime.parse), finished > local.at { return true }
+    return row.version > (ackVersion ?? 0)
+  }
+
+  /// The speed saved for the book `plan` resumes: the row's when it was taken, else this watch's
+  /// own, else the row's; nil for a book with none (it plays at the listener's default).
+  static func savedSpeed(_ plan: ResumePlan, local: LocalPlace?, row: ProgressRow?) -> Double? {
+    plan.tookRow ? row?.playbackSpeed : (local?.speed ?? row?.playbackSpeed)
   }
 
   private static func restart(tookRow: Bool) -> ResumePlan {

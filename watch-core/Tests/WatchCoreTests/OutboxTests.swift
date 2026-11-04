@@ -28,6 +28,26 @@ final class FakeTransport: ListeningSyncTransport {
 
 struct NoAnswer: Error {}
 
+/// A transport that holds each request until the test lets it go.
+@MainActor
+final class HeldTransport: ListeningSyncTransport {
+  var bodies: [SyncRequest] = []
+  private var held: [CheckedContinuation<SyncResponse, Error>] = []
+
+  func syncListening(_ request: SyncRequest) async throws -> SyncResponse {
+    bodies.append(request)
+    return try await withCheckedThrowingContinuation { held.append($0) }
+  }
+
+  /// Until a request has come in.
+  func requestArrives() async {
+    while held.isEmpty { await Task.yield() }
+  }
+
+  func reply(_ r: SyncResponse) { held.removeFirst().resume(returning: r) }
+  func refuse(_ e: Error) { held.removeFirst().resume(throwing: e) }
+}
+
 func answer(_ body: SyncRequest, serverTime: String = "2026-10-25T07:41:03.480Z",
             status: (ListeningEvent) -> SyncResult? = { _ in nil }, progress: [ProgressRow] = []) -> SyncResponse
 {
@@ -284,6 +304,158 @@ final class OutboxTests: XCTestCase {
     XCTAssertTrue(o.lastFlushFailed)
     o.discardAll()
     XCTAssertFalse(o.lastFlushFailed)
+  }
+
+  // Offline, the retry timer's attempts must not read as reachable: the 15 s cut reads this flag,
+  // and each cut sends another event and another attempt.
+  func testAFailedFlushStaysFailedUntilTheServerAnswers() async {
+    let o = outbox()
+    o.append([listen("a")])
+    await o.flush(via: FakeTransport { _ in throw NoAnswer() })
+    XCTAssertTrue(o.lastFlushFailed)
+    let t = HeldTransport()
+    let retry = Task { await o.flush(via: t) }
+    await t.requestArrives()
+    XCTAssertTrue(o.lastFlushFailed, "a retry in flight is no answer yet")
+    t.refuse(NoAnswer())
+    await retry.value
+    XCTAssertTrue(o.lastFlushFailed)
+    let again = Task { await o.flush(via: t) }
+    await t.requestArrives()
+    XCTAssertTrue(o.lastFlushFailed)
+    t.reply(answer(t.bodies[1]))
+    await again.value
+    XCTAssertFalse(o.lastFlushFailed)
+    XCTAssertTrue(o.events.isEmpty)
+  }
+
+  func testOldEventsGivenUpLeaveNothingFailed() async {
+    let o = outbox()
+    o.append([listen("a")])
+    await o.flush(via: FakeTransport { _ in throw NoAnswer() })
+    XCTAssertTrue(o.lastFlushFailed)
+    clock.now = clock.now.addingTimeInterval(Outbox.GIVE_UP_AGE + 3600)
+    await o.flush(via: FakeTransport())
+    XCTAssertTrue(o.events.isEmpty)
+    XCTAssertFalse(o.lastFlushFailed)
+  }
+
+  // The caller that was coalesced may hold a newer address or token (a repick, a sign-in again).
+  func testACallDuringAFlushSendsTheNextRoundThroughItsOwnTransport() async {
+    let o = outbox()
+    o.append([listen("a")])
+    let first = HeldTransport()
+    let running = Task { await o.flush(via: first) }
+    await first.requestArrives()
+    o.append([listen("b")])
+    let newer = FakeTransport()
+    let coalesced = Task { await o.flush(via: newer) }
+    await Task.yield()
+    first.reply(answer(first.bodies[0]))
+    await running.value
+    await coalesced.value
+    XCTAssertEqual(newer.bodies.flatMap { $0.events.map(\.id) }, ["b"])
+    XCTAssertEqual(first.bodies.count, 1)
+    XCTAssertTrue(o.events.isEmpty)
+  }
+
+  func testACallRightAfterAFlushEndsStartsAnother() async {
+    let o = outbox()
+    o.append([listen("a")])
+    await o.flush(via: FakeTransport())
+    o.append([listen("b")])
+    let t = FakeTransport()
+    await o.flush(via: t)
+    XCTAssertEqual(t.bodies.flatMap { $0.events.map(\.id) }, ["b"])
+    XCTAssertTrue(o.events.isEmpty)
+  }
+
+  // Signing out while a request is out: its answer is no longer this outbox's.
+  func testAnAnswerAfterADiscardIsDropped() async {
+    let o = outbox()
+    o.append([listen("a")])
+    let t = HeldTransport()
+    let flush = Task { await o.flush(via: t) }
+    await t.requestArrives()
+    o.discardAll()
+    var told = false
+    o.onAnswer = { _ in told = true }
+    t.reply(answer(t.bodies[0], progress: [row(version: 9)]))
+    await flush.value
+    XCTAssertNil(o.state.lastSyncAt)
+    XCTAssertNil(o.state.clockSkewMs)
+    XCTAssertNil(acks.ackVersion(BookRef(libraryId: 3, path: "Author/Book")))
+    XCTAssertFalse(told)
+  }
+
+  func testAFailureAfterADiscardIsDropped() async {
+    for failure in [APIError(status: 503) as Error, APIError(status: 400) as Error, NoAnswer() as Error] {
+      let o = outbox()
+      o.append([listen("a"), listen("b")])
+      let t = HeldTransport()
+      let flush = Task { await o.flush(via: t) }
+      await t.requestArrives()
+      o.discardAll()
+      t.refuse(failure)
+      await flush.value
+      XCTAssertFalse(o.lastFlushFailed)
+      XCTAssertTrue(o.couldNotSync().isEmpty)
+      XCTAssertEqual(t.bodies.count, 1, "nothing more is sent")
+    }
+  }
+
+  func testAFlushAfterADiscardSendsTheNewAccountsEventsThroughItsTransport() async {
+    let o = outbox()
+    o.append([listen("a")])
+    let old = HeldTransport()
+    let running = Task { await o.flush(via: old) }
+    await old.requestArrives()
+    o.discardAll()
+    o.append([listen("b")])
+    let fresh = FakeTransport()
+    let next = Task { await o.flush(via: fresh) }
+    await Task.yield()
+    old.reply(answer(old.bodies[0]))
+    await running.value
+    await next.value
+    XCTAssertEqual(fresh.bodies.flatMap { $0.events.map(\.id) }, ["b"])
+    XCTAssertTrue(o.events.isEmpty)
+  }
+
+  // An outbox that can't be read now (a build's format, or locked until the first unlock) holds
+  // listening: the next save must not write over it.
+  func testAnUnreadableOutboxIsSetAsideAndJoinsOnceItReads() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let main = dir.appendingPathComponent("outbox.json")
+    try Data("not this build's format".utf8).write(to: main)
+    let unreadable = outbox(dir)
+    XCTAssertTrue(unreadable.events.isEmpty)
+    unreadable.append([listen("new")])
+    let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+    let aside = try XCTUnwrap(names.first { $0.hasPrefix("outbox-unread-") })
+    XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent(aside), encoding: .utf8), "not this build's format")
+    // It stays aside while it can't be read.
+    XCTAssertEqual(outbox(dir).events.map(\.id), ["new"])
+    XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: dir.path).contains(aside))
+    // It reads now: it joins (an id already waiting once), and is gone.
+    JSONFile<[ListeningEvent]>(url: dir.appendingPathComponent(aside)).write([listen("old"), listen("new")])
+    let joined = outbox(dir)
+    XCTAssertEqual(joined.events.map(\.id), ["old", "new"])
+    XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: dir.path).contains(aside))
+    XCTAssertEqual(outbox(dir).events.map(\.id), ["old", "new"], "kept in the outbox itself")
+  }
+
+  func testADiscardRemovesWhatWasSetAside() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try Data("damaged".utf8).write(to: dir.appendingPathComponent("outbox.json"))
+    let o = outbox(dir)
+    o.discardAll()
+    let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+    XCTAssertFalse(names.contains { $0.hasPrefix("outbox-unread-") }, "never joined to the next account's")
   }
 
   func testTheBodyEncodesExactlyOneClock() throws {

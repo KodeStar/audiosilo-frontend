@@ -12,10 +12,12 @@ final class AddressRouter: ObservableObject {
   private var generation = 0
   private var timer: Timer?
 
-  /// The address for `account` now: the pick while it is still one of its own, else the paired URL.
+  /// The address for `account` now: the pick while it is still one of its own. With none (a
+  /// launch, before the probe), what a home that did not answer leaves: never a home address
+  /// unproven while another is known.
   func base(for account: Account) -> String {
     if let c = current, AddressPicker.isOwn(c, serverURL: account.serverURL, addresses: account.addresses) { return c }
-    return account.serverURL
+    return AddressPicker.unproven(serverURL: account.serverURL, addresses: account.addresses)
   }
 
   /// Start on the address the sign-in answered at (already proven: the exchange checked it).

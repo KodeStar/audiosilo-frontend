@@ -36,6 +36,12 @@ struct AudioSiloWatchApp: App {
       // A background upload of the outbox finished: its answer is applied (AppModel).
       await SyncUploader.shared.wake()
     }
+    .backgroundTask(.watchConnectivity) {
+      // A message from the phone woke the app: stay up until it is delivered and handled (a
+      // `pair` signs in over the network).
+      await PhoneLink.shared.contentDelivered()
+      await AppModel.shared.messagesHandled()
+    }
     .backgroundTask(.appRefresh(AppModel.refreshTask)) {
       // Decision 10's best-effort refresh: send what waits.
       await AppModel.shared.backgroundRefresh()

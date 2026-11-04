@@ -106,6 +106,13 @@
     "test:watch": "sh scripts/test-watch.sh",
     "postinstall": "patch-package --error-on-fail"
   },
+  "expo": {
+    "autolinking": {
+      "exclude": [
+        "@bacons/apple-targets"
+      ]
+    }
+  },
   "license": "AGPL-3.0-only",
   "private": true
 }

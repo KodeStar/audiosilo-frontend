@@ -10,6 +10,10 @@
 // the chunk, and one event alone still 413 is listed `too_large`; a 400 on a batch sends its
 // events one by one once, and one refused alone is listed `invalid`. Before sending, an event
 // older than 89 days is listed `too_old` unsent.
+//
+// `lastFlushFailed` says the last ANSWER: true from a failed attempt until the server next answers,
+// also while a retry is in flight (it is what the 15 s cut reads, so offline the span stays open).
+// A file that exists but can't be read is moved aside, never overwritten (`restoredEvents`).
 import Foundation
 
 /// An event the server would not take, kept to show (the couldn't-sync list).
@@ -50,12 +54,18 @@ final class Outbox {
 
   private(set) var events: [ListeningEvent]
   private(set) var state: SyncState
-  /// The last flush ended without an answer (offline, or the server failed).
+  /// The server has not answered since a flush failed (offline, or the server failed).
   private(set) var lastFlushFailed = false
 
+  private let directory: URL?
   private var chunkSize = Outbox.MAX_CHUNK
   private var running: Task<Void, Never>?
   private var again = false
+  /// The transport the newest `flush` call brought: each chunk goes through it.
+  private var transport: ListeningSyncTransport?
+  /// Bumped by `discardAll`: an answer or a failure of a request sent before it says nothing
+  /// about what waits now, and ends that flush.
+  private var discards = 0
 
   /// Told of every answer's progress rows (the offer check).
   var onAnswer: (([ProgressRow]) -> Void)?
@@ -64,16 +74,50 @@ final class Outbox {
 
   /// `directory` nil keeps everything in memory (tests).
   init(directory: URL?, acks: AckStore, deviceId: String, clock: @escaping () -> Date = Date.init) {
+    self.directory = directory
     eventsFile = directory.map { JSONFile(url: $0.appendingPathComponent("outbox.json")) }
     stateFile = directory.map { JSONFile(url: $0.appendingPathComponent("sync-state.json")) }
     self.acks = acks
     self.deviceId = deviceId
     self.clock = clock
-    events = eventsFile?.read() ?? []
+    events = directory.map(Self.restoredEvents) ?? []
     state = stateFile?.read() ?? SyncState()
   }
 
   // MARK: - The document
+
+  private static let ASIDE_PREFIX = "outbox-unread-"
+
+  private static func asideFiles(in directory: URL) -> [URL] {
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+    return names.filter { $0.hasPrefix(ASIDE_PREFIX) }.map(directory.appendingPathComponent)
+  }
+
+  /// What waited at the last launch. A file that exists but can't be read (damaged, or locked
+  /// until the watch's first unlock) is moved aside, so the next save never writes over that
+  /// listening, and joins what waits at a later launch if it reads by then.
+  private static func restoredEvents(in directory: URL) -> [ListeningEvent] {
+    let fm = FileManager.default
+    let main = JSONFile<[ListeningEvent]>(url: directory.appendingPathComponent("outbox.json"))
+    let current = main.read()
+    if current == nil, fm.fileExists(atPath: main.url.path) {
+      try? fm.moveItem(at: main.url, to: directory.appendingPathComponent(ASIDE_PREFIX + UUID().uuidString + ".json"))
+    }
+    var have = Set((current ?? []).map(\.id))
+    var older: [ListeningEvent] = []
+    var joined: [URL] = []
+    for url in asideFiles(in: directory) {
+      guard let more = JSONFile<[ListeningEvent]>(url: url).read() else { continue }
+      older += more.filter { have.insert($0.id).inserted }
+      joined.append(url)
+    }
+    let events = older + (current ?? [])
+    guard !joined.isEmpty else { return events }
+    main.write(events)
+    // Gone only once they are safely in the outbox (a full disk: tried again next launch).
+    if main.read()?.count == events.count { joined.forEach { try? fm.removeItem(at: $0) } }
+    return events
+  }
 
   /// Append closed events (immutable from here); one with a number that is not one, or an id
   /// already waiting, is dropped.
@@ -107,11 +151,16 @@ final class Outbox {
 
   /// Drop everything (the listener chose to discard what waits, then signed out).
   func discardAll() {
+    discards += 1
+    transport = nil
+    again = false
     events = []
     state = SyncState()
     chunkSize = Self.MAX_CHUNK
     // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
     lastFlushFailed = false
+    // Never joined to another account's outbox at a later launch.
+    if let directory { Self.asideFiles(in: directory).forEach { try? FileManager.default.removeItem(at: $0) } }
     saveEvents()
     saveState()
   }
@@ -156,8 +205,10 @@ final class Outbox {
 
   // MARK: - Sending
 
-  /// Send what waits. One flush at a time: a call while one runs makes it go round once more.
+  /// Send what waits. One flush at a time: a call while one runs makes it go round once more,
+  /// through the transport that call brought (the address or the token may have changed).
   func flush(via transport: ListeningSyncTransport) async {
+    self.transport = transport
     if let running {
       again = true
       await running.value
@@ -166,21 +217,27 @@ final class Outbox {
     let task = Task { @MainActor in
       repeat {
         again = false
-        await flushOnce(transport)
+        await flushOnce()
       } while again
+      // In the same step that last read `again`: a call can't slip in between and be lost.
+      running = nil
+      self.transport = nil
     }
     running = task
     await task.value
-    running = nil
   }
 
   private enum Next { case more, stop }
 
-  private func flushOnce(_ transport: ListeningSyncTransport) async {
+  private func flushOnce() async {
     giveUpOld()
-    lastFlushFailed = false
     for _ in 0..<Self.MAX_ROUNDS {
-      if events.isEmpty { return }
+      if events.isEmpty {
+        // Nothing waits, so nothing failed.
+        lastFlushFailed = false
+        return
+      }
+      guard let transport else { return }
       let chunk = Array(events.prefix(chunkSize))
       if await sendChunk(chunk, transport) == .stop { return }
     }
@@ -191,12 +248,15 @@ final class Outbox {
   }
 
   private func sendChunk(_ chunk: [ListeningEvent], _ transport: ListeningSyncTransport) async -> Next {
+    let sentBefore = discards
     do {
       let sentAt = clock()
       let answer = try await transport.syncListening(body(chunk))
+      guard sentBefore == discards else { return .stop }
       apply(answer, sent: chunk, sentAt: sentAt, answeredAt: clock())
       return .more
     } catch let e as APIError {
+      guard sentBefore == discards else { return .stop }
       if e.status == 413 || e.code == "too_many_events" {
         if chunk.count > 1 {
           chunkSize = max(1, chunk.count / 2)
@@ -210,6 +270,7 @@ final class Outbox {
       lastFlushFailed = true
       return .stop
     } catch {
+      guard sentBefore == discards else { return .stop }
       lastFlushFailed = true
       return .stop
     }
@@ -220,13 +281,17 @@ final class Outbox {
       moveToFailed([(chunk[0], "invalid")])
       return .more
     }
+    let sentBefore = discards
     for event in chunk {
       do {
         let answer = try await transport.syncListening(body([event]))
+        guard sentBefore == discards else { return .stop }
         apply(answer, sent: [event], sentAt: nil, answeredAt: nil)
       } catch let e as APIError where e.status == 400 {
+        guard sentBefore == discards else { return .stop }
         moveToFailed([(event, "invalid")])
       } catch {
+        guard sentBefore == discards else { return .stop }
         lastFlushFailed = true
         return .stop
       }
@@ -238,6 +303,8 @@ final class Outbox {
   /// list), the skew is measured when the request's times are known, and a row that kept this
   /// device's event has its version acknowledged.
   func apply(_ answer: SyncResponse, sent: [ListeningEvent], sentAt: Date?, answeredAt: Date?) {
+    // The server answered: reachable, so the 15 s cuts run again.
+    lastFlushFailed = false
     let results = Dictionary((answer.results ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     var done = Set<String>()
     var rejected: [(event: ListeningEvent, reason: String)] = []
@@ -275,8 +342,6 @@ final class Outbox {
   /// foreground send answered meanwhile has gone). No skew: the request's times are unknown.
   func applyBackground(_ answer: SyncResponse, sentIds: [String]) {
     let byId = Dictionary(events.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    // The server answered: reachable again, though no foreground flush has run since one failed.
-    lastFlushFailed = false
     apply(answer, sent: sentIds.compactMap { byId[$0] }, sentAt: nil, answeredAt: nil)
   }
 }

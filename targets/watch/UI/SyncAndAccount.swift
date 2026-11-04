@@ -18,8 +18,7 @@ struct SyncStatusView: View {
           Text("Can't reach your server. Listening is kept here and sent when it can be.")
             .font(.footnote).foregroundStyle(.secondary)
         }
-        Button(model.syncing ? "Syncing" : "Sync now") { Task { await model.flush() } }
-          .disabled(model.syncing || model.outbox.unsentCount == 0)
+        SyncNowButton()
       }
       if !failed.isEmpty {
         Section("Couldn't sync") {
@@ -48,9 +47,19 @@ struct SyncStatusView: View {
   }
 }
 
+/// Sends what waits now (shown where listening waits: Sync status, Sign out, a blocked replace).
+struct SyncNowButton: View {
+  @EnvironmentObject var model: AppModel
+
+  var body: some View {
+    let _ = model.syncRevision
+    Button(model.syncing ? "Syncing" : "Sync now") { Task { await model.flush() } }
+      .disabled(model.syncing || model.outbox.unsentCount == 0)
+  }
+}
+
 struct SignOutView: View {
   @EnvironmentObject var model: AppModel
-  @State private var blocked: Int?
   @State private var confirmDiscard = false
 
   var body: some View {
@@ -62,16 +71,13 @@ struct SignOutView: View {
         }
         let waiting = model.outbox.unsentCount
         if waiting > 0 {
-          Text("\(waiting) listening updates have not synced yet. Sync them first, or discard them to sign out.")
+          Text("\(Labels.updates(waiting)) not synced yet. Sync first, or discard to sign out.")
             .font(.footnote).foregroundStyle(.secondary)
-          Button(model.syncing ? "Syncing" : "Sync now") { Task { await model.flush() } }
-            .disabled(model.syncing)
+          SyncNowButton()
           Button("Discard and sign out", role: .destructive) { confirmDiscard = true }
         } else {
-          Button("Sign out", role: .destructive) { blocked = model.signOut(discard: false).unsent }
-        }
-        if let blocked, blocked > 0 {
-          Text("Not signed out: \(blocked) listening updates are still waiting.").font(.footnote)
+          // Blocked (stopping the player closed a span), the count above takes over at once.
+          Button("Sign out", role: .destructive) { model.signOut(discard: false) }
         }
         Text("Signing out removes the books on this watch.").font(.footnote).foregroundStyle(.secondary)
       }
@@ -81,14 +87,6 @@ struct SignOutView: View {
       Button("Discard and sign out", role: .destructive) { model.signOut(discard: true) }
       Button("Cancel", role: .cancel) {}
     }
-  }
-}
-
-extension SignOutGate {
-  /// The count waiting when blocked, else nil.
-  var unsent: Int? {
-    if case .blocked(let n) = self { return n }
-    return nil
   }
 }
 

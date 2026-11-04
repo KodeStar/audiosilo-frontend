@@ -6,6 +6,10 @@
 // starts again. A task that got a 503 or 422 still "finishes", with
 // the JSON error as its file, so the status is checked in `didFinishDownloadingTo`.
 //
+// While suspended, a task begun at the home address goes on there with its token, on whatever
+// network the system finds: cancelled and started again when the app next sees the pick has left
+// home (`RenditionPlan.keepsTransfer`, DownloadManager), not before.
+//
 // One delegate for the app's one background session; the DownloadManager sets `handler`.
 import Foundation
 
@@ -66,9 +70,13 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
     return nil
   }
 
-  /// The files in flight, by tag.
-  func inFlight() async -> [DownloadTaskTag] {
-    await session.allTasks.compactMap(Self.tag)
+  /// The transfers going on, by `DownloadTaskTag.key` (one being cancelled no longer is one).
+  func inFlight() async -> [String: URLSessionTask] {
+    var going: [String: URLSessionTask] = [:]
+    for task in await session.allTasks where task.state == .running || task.state == .suspended {
+      if let tag = Self.tag(task) { going[tag.key] = task }
+    }
+    return going
   }
 
   /// Cancel every task of a book.
@@ -103,9 +111,8 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate, @unchecke
       return
     }
     // The system deletes `location` when this returns: move it now.
-    let staging = Files.downloads.appendingPathComponent(".staging", isDirectory: true)
-    try? FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
-    let staged = staging.appendingPathComponent(UUID().uuidString + ".m4a")
+    try? FileManager.default.createDirectory(at: Files.staging, withIntermediateDirectories: true)
+    let staged = Files.staging.appendingPathComponent(UUID().uuidString + ".m4a")
     do {
       try FileManager.default.moveItem(at: location, to: staged)
       emit(.finished(tag, staged: staged))

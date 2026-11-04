@@ -87,6 +87,11 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
     return try await send(request("POST", "/auth/exchange", body: json(Body(pairingToken: pairingToken, deviceName: deviceName))))
   }
 
+  /// `GET /addresses`: the server's addresses as seen from here (capability `addresses`).
+  func addresses() async throws -> ServerAddresses {
+    try await send(request("GET", "/addresses"))
+  }
+
   func allProgress() async throws -> [ProgressRow] {
     let list: ProgressList = try await send(request("GET", "/me/progress"))
     return list.progress ?? []

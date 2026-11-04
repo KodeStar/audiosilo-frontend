@@ -64,6 +64,21 @@ enum AddressPicker {
     addresses?.away ?? serverURL
   }
 
+  /// The address before anything was probed: what a home that did not answer leaves, so the
+  /// token never goes to a home address unproven while another is known.
+  static func unproven(serverURL: String, addresses: ServerAddresses?) -> String {
+    addresses?.home == nil ? serverURL : fallback(serverURL: serverURL, addresses: addresses)
+  }
+
+  /// The address for a request the system sends later, on whatever network the watch has joined
+  /// by then, where nothing can run the probe first: away, else the paired URL; nil when that is
+  /// the home address itself (paired on the home network: it syncs in the foreground).
+  static func unattended(serverURL: String, addresses: ServerAddresses?) -> String? {
+    let url = fallback(serverURL: serverURL, addresses: addresses)
+    if let home = addresses?.home, sameURL(url, home) { return nil }
+    return url
+  }
+
   /// The pick, given what home answered (`homeServerId`, nil for no answer): home only on this
   /// account's own `server_id`; no home address keeps the paired URL.
   static func choose(serverURL: String, addresses: ServerAddresses?, serverId: String, homeServerId: String?) -> String {

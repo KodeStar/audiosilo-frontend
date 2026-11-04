@@ -8,6 +8,8 @@ import WatchConnectivity
 
 final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   static let shared = PhoneLink()
+  /// How long a wake for the phone's messages waits for the session to hand them over.
+  static let WAKE_LIMIT: TimeInterval = 20
 
   /// Told of every message the contract knows, on the main queue. Messages that arrive before
   /// it is set wait for it.
@@ -25,6 +27,17 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
     let s = WCSession.default
     s.delegate = self
     s.activate()
+  }
+
+  /// A wake for the phone's messages (`backgroundTask(.watchConnectivity)`): until the session
+  /// holds no more of them, `WAKE_LIMIT` at most.
+  func contentDelivered() async {
+    guard WCSession.isSupported() else { return }
+    let s = WCSession.default
+    let giveUpAt = Date().addingTimeInterval(Self.WAKE_LIMIT)
+    while Date() < giveUpAt, s.activationState != .activated || s.hasContentPending {
+      try? await Task.sleep(for: .milliseconds(200))
+    }
   }
 
   /// Send the watch's state to the phone (the latest wins; sent once the session is active).

@@ -11,9 +11,12 @@
 //   open-span.json     the span being played (SpanRecorder)
 //   places.json        this watch's own place per book (PlaceStore)
 //   sync-upload-*.json the background upload's body (SyncUploader)
+//   outbox-unread-*.json an outbox that could not be read, kept aside (Outbox)
+//   continue.json      Continue listening's last rows (ContinueListening)
 //   downloads.json     the books on this watch (DownloadManager)
 //   items/             each book's item + chapters, kept for offline playback
 //   downloads/<id>/    each book's rendition files
+//   downloads/.staging/ a finished file on its way to its book's folder (BackgroundDownloads)
 import Foundation
 
 enum Files {
@@ -30,6 +33,7 @@ enum Files {
   static var openSpan: URL { root.appendingPathComponent("open-span.json") }
   static var places: URL { root.appendingPathComponent("places.json") }
   static var downloadsIndex: URL { root.appendingPathComponent("downloads.json") }
+  static var continueRows: URL { root.appendingPathComponent("continue.json") }
   static var items: URL { root.appendingPathComponent("items", isDirectory: true) }
 
   /// The books' audio, excluded from backup.
@@ -41,6 +45,9 @@ enum Files {
     try? dir.setResourceValues(values)
     return dir
   }()
+
+  /// Where a finished file waits to be moved to its book's folder.
+  static var staging: URL { downloads.appendingPathComponent(".staging", isDirectory: true) }
 
   /// This watch's `device_id`, made once and kept.
   static let deviceId: String = {
@@ -71,16 +78,9 @@ enum Files {
     return (attrs?[.systemFreeSize] as? NSNumber)?.int64Value
   }
 
-  /// A file's or folder's size on disk (bytes).
+  /// A file's size on disk (bytes).
   static func size(of url: URL) -> Int64 {
-    let fm = FileManager.default
-    var isDir: ObjCBool = false
-    guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return 0 }
-    if !isDir.boolValue {
-      return (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-    }
-    let files = (try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-    return files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+    (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
   }
 }
 

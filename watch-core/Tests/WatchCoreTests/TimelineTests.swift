@@ -190,7 +190,7 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
     XCTAssertEqual(toBookPosition(offsets, 1, 10), 70)
   }
 
-  func testChapterAtClampsBelowTheFirst() {
+  func testTheChapterIndexClampsBelowTheFirst() {
     let chapters = [ch(index: 0, bookOffset: 0), ch(index: 1, bookOffset: 50)]
     XCTAssertEqual(ChapterNav.index(chapters, 75), 1)
     XCTAssertEqual(ChapterNav.index(chapters, -5), 0)

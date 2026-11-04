@@ -9,6 +9,8 @@ struct NowPlayingView: View {
   var start: DownloadRecord?
   /// The book is started once, not on every return from Chapters, Speed or Sleep.
   @State private var started = false
+  /// The start is over, whatever came of it: no book loaded now is not "still starting".
+  @State private var startFinished = false
 
   var body: some View {
     ScrollView {
@@ -37,7 +39,7 @@ struct NowPlayingView: View {
                 Image(systemName: engine.playing ? "pause.fill" : "play.fill")
               }
             }
-            .accessibilityLabel(engine.playing ? "Pause" : "Play")
+            .accessibilityLabel(engine.playing || engine.starting ? "Pause" : "Play")
             Button { engine.skip(Skips.FORWARD) } label: { Image(systemName: "goforward.30") }
               .accessibilityLabel("Forward 30 seconds")
           }
@@ -59,8 +61,10 @@ struct NowPlayingView: View {
           }
           NavigationLink("Speed \(PlaybackSpeed.label(engine.rate))") { SpeedView(engine: engine) }
           NavigationLink(sleepLabel) { SleepView(engine: engine) }
-        } else if start != nil {
+        } else if start != nil && !startFinished {
           ProgressView()
+        } else if start != nil {
+          Text("This book can't start now. Go back and try again.").font(.footnote).foregroundStyle(.secondary)
         } else {
           Text("Nothing playing").foregroundStyle(.secondary)
         }
@@ -73,6 +77,7 @@ struct NowPlayingView: View {
       // Its own task: leaving the screen cancels `.task`, which would cut the pull before play
       // short (the book would still load and play, from a stale place and with no offer).
       if engine.loadedBook != start.ref || !engine.playing { await Task { await model.play(start) }.value }
+      startFinished = true
     }
   }
 

@@ -63,6 +63,35 @@ enum RenditionPlan {
     case gone
   }
 
+  /// Whether a renditions answer holds every file the book's timeline plays (`wanted`, by path).
+  /// One that does not (none at all, or other files: the book changed on the server since its
+  /// item was read) can never finish, so it is said rather than waited on for good.
+  static func covers(_ answer: RenditionsAnswer, wanted: [String]) -> Bool {
+    let have = Set(answer.files.map(\.path))
+    return !wanted.isEmpty && wanted.allSatisfy(have.contains)
+  }
+
+  /// Whether a refused `/chapters` means the book has none to give. Not a passing failure or a
+  /// lost sign-in: kept as "no chapters", those would stay in the book's timeline for good.
+  static func meansNoChapters(_ e: APIError) -> Bool {
+    switch refusal(e) {
+    case .retry, .signedOut: return false
+    case .failed, .unavailable, .gone: return true
+    }
+  }
+
+  /// Whether a transfer in flight may go on for a file the watch would now ask for with `wanted`:
+  /// not with another token, and not at the account's home address when the watch's pick has left
+  /// it. The system would go on sending the token there from whatever network the watch is on,
+  /// with no probe first (CROSS-REPO section 7).
+  static func keepsTransfer(url: String?, authorization: String?, wantedURL: String?, wantedAuthorization: String?,
+                            home: String?) -> Bool
+  {
+    guard authorization == wantedAuthorization else { return false }
+    guard let home = home.flatMap(URLEndpoint.init), url.flatMap(URLEndpoint.init) == home else { return true }
+    return wantedURL.flatMap(URLEndpoint.init) == home
+  }
+
   /// What a book's row says after a refusal; nil for `retry`, which waits instead.
   static func message(_ r: Refusal) -> String? {
     switch r {

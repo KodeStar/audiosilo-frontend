@@ -4,8 +4,8 @@
 // recorder turns it into `listen`, `finish` and `unfinish` events for the outbox.
 //
 // A span OPENS when playing starts; it is CUT (closed into an event, a `continue` span opening
-// at once) every 15 s while the server is reachable, on a rate change, reconnect and going to
-// the background; offline it stays open and is cut only after an hour (`MAX_SPAN`). It is
+// at once) every 15 s while the server is reachable, on a rate change and on going to the
+// background; offline it stays open and is cut only after an hour (`MAX_SPAN`). It is
 // CLOSED on a pause, a move (the next span opens with the move's reason), a stop, a book switch
 // and the end (then one `finish`). The open span is stored every 5 s (`OPEN_SPAN_KEEP`) with its
 // id fixed at open, and one a kill left is closed into the outbox at the next launch.
@@ -125,7 +125,7 @@ final class SpanRecorder {
   private(set) var nextStart: ListeningStart = .resume
   /// A finished book started again owes an `unfinish` before its first span.
   private var unfinishDue = false
-  /// The book whose `finish` was sent (the natural end and "mark finished" send one between them).
+  /// The book whose `finish` was sent: one per end, until it plays again.
   private var finishSent: BookRef?
   private var recovered = false
 
@@ -146,8 +146,10 @@ final class SpanRecorder {
     guard !recovered else { return }
     recovered = true
     if let left = store.load() {
-      store.save(nil)
+      // In this order, as in `close`: a kill between the two sends the span twice under its one
+      // id (`duplicate`), the other way round it would lose the span.
       append(left)
+      store.save(nil)
     }
   }
 
@@ -208,8 +210,8 @@ final class SpanRecorder {
     if let at { closing.to = at }
     let now = clock()
     closing.endedAt = max(closing.startedAt, min(now, stoppedAt ?? now))
-    store.save(nil)
     append(closing)
+    store.save(nil)
     return closing
   }
 
@@ -267,7 +269,7 @@ final class SpanRecorder {
     nextStart = why
   }
 
-  /// The book's last span closed, then its `finish`, once (the natural end, "Mark finished").
+  /// The book's last span closed, then its `finish`, once.
   func finish(_ book: PlayingBook, at: SpanEnd?) {
     close(at: at)
     if finishSent == book.ref { return }

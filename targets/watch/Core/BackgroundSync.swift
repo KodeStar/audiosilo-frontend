@@ -44,3 +44,60 @@ enum BackgroundSync {
     tag.accountId == accountId && !tag.ids.isEmpty
   }
 }
+
+/// One background session's wake (`backgroundTask(.urlSession)`): `wait` resolves at
+/// `urlSessionDidFinishEvents`, also when those events came just before the wait began (a cold
+/// launch delivers them before the task's closure runs), and at the latest after its timeout, so
+/// a wake whose events never come does not hold the task until the system expires it.
+final class BackgroundWake: @unchecked Sendable {
+  static let TIMEOUT: TimeInterval = 20
+  /// Events this recent count for a wait that begins now; older ones were an earlier wake's.
+  static let EARLY_WINDOW: TimeInterval = 30
+
+  private let lock = NSLock()
+  private let clock: () -> Date
+  /// The wakes waiting (the system can hand over a second before the first's events are in;
+  /// each one's background task completes only when its wait returns).
+  private var waiting: [UUID: CheckedContinuation<Void, Never>] = [:]
+  /// When the events were delivered with nobody waiting.
+  private var finishedEarlyAt: Date?
+
+  init(clock: @escaping () -> Date = Date.init) {
+    self.clock = clock
+  }
+
+  func wait(timeout: TimeInterval = BackgroundWake.TIMEOUT) async {
+    let id = UUID()
+    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+      lock.lock()
+      let early = finishedEarlyAt.map { clock().timeIntervalSince($0) < Self.EARLY_WINDOW } ?? false
+      finishedEarlyAt = nil
+      if early {
+        lock.unlock()
+        c.resume()
+        return
+      }
+      waiting[id] = c
+      lock.unlock()
+      DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { self.giveUp(id) }
+    }
+  }
+
+  private func giveUp(_ id: UUID) {
+    lock.lock()
+    let c = waiting.removeValue(forKey: id)
+    lock.unlock()
+    c?.resume()
+  }
+
+  /// `urlSessionDidFinishEvents`: resolve every wait on the main queue, after what the
+  /// delegate already handed it.
+  func finished() {
+    lock.lock()
+    let done = Array(waiting.values)
+    waiting = [:]
+    if done.isEmpty { finishedEarlyAt = clock() }
+    lock.unlock()
+    DispatchQueue.main.async { done.forEach { $0.resume() } }
+  }
+}

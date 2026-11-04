@@ -58,6 +58,29 @@ final class SpanRecorderTests: XCTestCase {
     emitted.compactMap { if case .finish(let e) = $0 { return e } else { return nil } }
   }
 
+  // The stored span goes only once its event is kept: a kill between the two sends the span
+  // twice under its one id (`duplicate`), the other way round it would be lost.
+  func testTheStoredSpanStaysUntilItsEventIsKept() {
+    var storedAtEmit: [OpenSpan?] = []
+    let r = SpanRecorder(store: store, acks: acks, clock: { [unowned self] in clock.now }, newId: { "e" },
+                         emit: { [unowned self] _ in storedAtEmit.append(store.stored) })
+    r.open(book, at: at(5), speed: 1)
+    clock.advance(10)
+    r.close(at: at(15))
+    XCTAssertNotNil(storedAtEmit[0])
+    XCTAssertNil(store.stored)
+
+    storedAtEmit = []
+    store.stored = OpenSpan(libraryId: 2, path: "A/Folder", from: at(5), to: at(15), duration: 100, speed: 1,
+                            startedAt: clock.now, endedAt: clock.now.addingTimeInterval(10), start: .resume,
+                            baseVersion: 0, id: "left")
+    let next = SpanRecorder(store: store, acks: acks, clock: { [unowned self] in clock.now }, newId: { "e" },
+                            emit: { [unowned self] _ in storedAtEmit.append(store.stored) })
+    next.recover()
+    XCTAssertNotNil(storedAtEmit[0])
+    XCTAssertNil(store.stored)
+  }
+
   func testAPlayToAPauseIsOneSpanWithBothFilePlaces() {
     acks.ack(folder, version: 41)
     let r = recorder()

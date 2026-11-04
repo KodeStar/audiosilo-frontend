@@ -9,6 +9,28 @@ struct RootView: View {
   @EnvironmentObject var model: AppModel
   @ObservedObject var engine: WatchAudioEngine
 
+  /// One sheet at a time, offer first: a second `.sheet` is dropped while the first is up.
+  private enum Prompt: Identifiable {
+    case offer(OfferPrompt)
+    case speaker
+
+    var id: String {
+      switch self {
+      case .offer(let p): return p.id
+      case .speaker: return "speaker"
+      }
+    }
+  }
+
+  private var prompt: Binding<Prompt?> {
+    Binding(
+      get: { model.offerPrompt.map(Prompt.offer) ?? (engine.speakerPrompt ? .speaker : nil) },
+      set: { next in
+        guard next == nil else { return }
+        if model.offerPrompt != nil { model.offerPrompt = nil } else { engine.speakerPrompt = false }
+      })
+  }
+
   var body: some View {
     Group {
       switch model.phase {
@@ -17,11 +39,12 @@ struct RootView: View {
       case .ready: HomeView(engine: engine)
       }
     }
-    .sheet(item: $model.offerPrompt) { p in OfferSheet(prompt: p) }
-    .sheet(isPresented: $engine.speakerPrompt, onDismiss: {
-      // Closed without an answer: the same as Not now.
-      if !engine.playing { engine.declineSpeaker() }
-    }) { SpeakerSheet(engine: engine) }
+    .sheet(item: prompt) { p in
+      switch p {
+      case .offer(let offer): OfferSheet(prompt: offer)
+      case .speaker: SpeakerSheet(engine: engine)
+      }
+    }
   }
 }
 
@@ -59,7 +82,13 @@ struct TooOldView: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 8) {
-          Text("This server is too old for the watch app (needs 2.6 or later).")
+          // Blocked by listening still to send, it would go unseen here (a replace stays on Home).
+          if let pending = model.pendingReplace { ReplaceSection(state: pending) }
+          if model.server?.capabilities?.listeningSync == true {
+            Text("This server can't make books for the watch. It needs ffmpeg.")
+          } else {
+            Text("This server is too old for the watch app (needs 2.6 or later).")
+          }
           if let version { Text("Your server: \(version)").font(.footnote).foregroundStyle(.secondary) }
           Button("Try again") { model.becameActive() }
           NavigationLink("Sign out") { SignOutView() }
@@ -114,10 +143,9 @@ struct ReplaceSection: View {
     Section {
       switch state {
       case .waiting where waiting > 0:
-        Text("Another account wants this watch, but \(waiting) listening updates have not synced yet.")
+        Text("Another account wants this watch, but \(Labels.updates(waiting)) not synced yet.")
           .font(.footnote)
-        Button(model.syncing ? "Syncing" : "Sync now") { Task { await model.flush() } }
-          .disabled(model.syncing)
+        SyncNowButton()
         Button("Discard and switch", role: .destructive) { confirming = true }
         Button("Keep this account") { model.keepAccount() }
       case .waiting:
@@ -289,10 +317,11 @@ struct SpeakerSheet: View {
         Text("Others nearby will hear it. Connect headphones to listen privately.")
           .font(.footnote).foregroundStyle(.secondary)
         Button("Play on speaker") { engine.confirmSpeaker() }
-        // Closing the sheet declines (RootView's onDismiss), however it is closed.
         Button("Not now", role: .cancel) { engine.speakerPrompt = false }
       }
     }
+    // Closing the sheet declines, however it is closed.
+    .onDisappear { if !engine.playing { engine.declineSpeaker() } }
   }
 }
 
@@ -305,6 +334,11 @@ enum Labels {
     case .ready: return "On this watch"
     case .failed: return "Couldn't download"
     }
+  }
+
+  /// "1 listening update has", "2 listening updates have".
+  static func updates(_ n: Int) -> String {
+    n == 1 ? "1 listening update has" : "\(n) listening updates have"
   }
 
   static func bytes(_ n: Int64) -> String { ByteCountFormatter.string(fromByteCount: n, countStyle: .file) }

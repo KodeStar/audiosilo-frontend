@@ -15,6 +15,8 @@ struct ContinueRow: Codable, Equatable, Identifiable {
   /// The row's version and the device that wrote it, so the kept place follows Resume.plan's rule.
   var version: Int?
   var deviceId: String?
+  /// The book's own speed, for the same offline first play.
+  var playbackSpeed: Double?
 
   var id: String { ref.key }
   var fraction: Double { duration > 0 ? min(1, position / duration) : 0 }
@@ -29,33 +31,43 @@ final class ContinueListening: ObservableObject {
   /// Why the last refresh failed ("" when it did not).
   @Published private(set) var problem = ""
 
-  private let file = JSONFile<[ContinueRow]>(url: Files.root.appendingPathComponent("continue.json"))
+  private let file = JSONFile<[ContinueRow]>(url: Files.continueRows)
+  /// Bumped by each refresh and by `clear`: an answer an older one was waiting for (an account
+  /// since signed out or replaced, or just an older read) is dropped.
+  private var generation = 0
 
   init() { rows = file.read() ?? [] }
 
   func refresh(_ api: APIClient) async {
+    generation += 1
+    let mine = generation
     loading = true
-    defer { loading = false }
+    defer { if mine == generation { loading = false } }
     do {
-      let picked = ContinueOrder.inProgress(try await api.allProgress(), limit: Self.LIMIT)
+      let all = try await api.allProgress()
       var next: [ContinueRow] = []
-      for p in picked {
+      for p in ContinueOrder.inProgress(all, limit: Self.LIMIT) {
+        guard mine == generation else { return }
         var book = ItemCache.load(p.ref)?.book
         if book == nil, let fetched = try? await api.item(p.ref) {
+          guard mine == generation else { return }
           ItemCache(book: fetched, chapters: nil).save(p.ref)
           book = fetched
         }
         next.append(ContinueRow(ref: p.ref, title: book?.title ?? (p.path as NSString).lastPathComponent,
                                 author: book?.author, position: p.position,
                                 duration: p.duration > 0 ? p.duration : (book?.duration ?? 0), updatedAt: p.updatedAt,
-                                version: p.version, deviceId: p.deviceId))
+                                version: p.version, deviceId: p.deviceId, playbackSpeed: p.playbackSpeed))
       }
+      guard mine == generation else { return }
       rows = next
       problem = ""
       file.write(next)
     } catch let e as APIError where e.status == 401 {
+      guard mine == generation else { return }
       problem = RenditionPlan.message(.signedOut) ?? ""
     } catch {
+      guard mine == generation else { return }
       problem = "Can't reach your server."
     }
   }
@@ -66,11 +78,13 @@ final class ContinueListening: ObservableObject {
   func keptPlace(_ ref: BookRef) -> ProgressRow? {
     rows.first { $0.ref == ref }.map { r in
       ProgressRow(libraryId: r.ref.libraryId, path: r.ref.path, position: r.position, duration: r.duration, finished: false,
-                  version: r.version ?? 0, deviceId: r.deviceId, updatedAt: r.updatedAt)
+                  playbackSpeed: r.playbackSpeed, version: r.version ?? 0, deviceId: r.deviceId, updatedAt: r.updatedAt)
     }
   }
 
   func clear() {
+    generation += 1
+    loading = false
     rows = []
     problem = ""
     file.write(nil)

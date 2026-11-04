@@ -21,14 +21,21 @@ enum Keychain {
     return String(data: data, encoding: .utf8)
   }
 
-  /// Store the token (nil deletes it). Returns whether it was kept.
+  /// Store the token (nil deletes it). Returns whether it was kept. An existing token is
+  /// updated in place: one that could not be replaced stays, so a failed sign-in again loses
+  /// nothing.
   @discardableResult
   static func setToken(_ token: String?) -> Bool {
-    SecItemDelete(query as CFDictionary)
-    guard let token else { return true }
-    var q = query
-    q[kSecValueData as String] = Data(token.utf8)
-    q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
+    guard let token else {
+      let status = SecItemDelete(query as CFDictionary)
+      return status == errSecSuccess || status == errSecItemNotFound
+    }
+    let values: [String: Any] = [
+      kSecValueData as String: Data(token.utf8),
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+    let updated = SecItemUpdate(query as CFDictionary, values as CFDictionary)
+    guard updated == errSecItemNotFound else { return updated == errSecSuccess }
+    return SecItemAdd(query.merging(values) { _, new in new } as CFDictionary, nil) == errSecSuccess
   }
 }

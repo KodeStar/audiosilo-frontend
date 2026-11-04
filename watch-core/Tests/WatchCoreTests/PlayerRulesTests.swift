@@ -24,6 +24,17 @@ final class SpeedAndSkipTests: XCTestCase {
     XCTAssertEqual(PlaybackSpeed.PRESETS, [0.8, 1, 1.1, 1.2, 1.25, 1.3, 1.5, 2])
   }
 
+  // The phone's `bookSpeed` vectors (time-left.test.ts): a book keeps its own speed, a 3x saved
+  // elsewhere plays at 2x, and a book with none plays at the listener's default.
+  func testABooksOwnSpeedElseTheDefault() {
+    XCTAssertEqual(PlaybackSpeed.book(saved: 1.5, defaultRate: 1.2), 1.5)
+    XCTAssertEqual(PlaybackSpeed.book(saved: 3, defaultRate: 1), 2)
+    XCTAssertEqual(PlaybackSpeed.book(saved: nil, defaultRate: 1.2), 1.2)
+    XCTAssertEqual(PlaybackSpeed.book(saved: 0, defaultRate: 1.2), 1.2)
+    XCTAssertEqual(PlaybackSpeed.book(saved: nil, defaultRate: 0), 1)
+    XCTAssertEqual(PlaybackSpeed.book(saved: .nan, defaultRate: 1.5), 1.5)
+  }
+
   func testLabelsASpeed() {
     XCTAssertEqual(PlaybackSpeed.label(1), "1x")
     XCTAssertEqual(PlaybackSpeed.label(2), "2x")
@@ -158,6 +169,62 @@ final class ResumeTests: XCTestCase {
     let end = Resume.plan(local: local, row: nil, deviceId: "watch", ackVersion: nil, total: 1800)
     XCTAssertEqual(end.start, .restart)
     XCTAssertEqual(end.position, 0)
+  }
+
+  // The phone's `serverFinishWins`.
+  func testAFinishNewerThanThePlaceHereStartsTheBookAgain() {
+    let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
+    var r = row(position: 1800, finished: true, version: 5, device: "watch")
+    r.finishedAt = "2026-10-25T08:30:00Z"
+    let p = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800)
+    XCTAssertEqual(p, ResumePlan(position: 0, file: nil, filePos: nil, start: .restart, unfinish: true, tookRow: true))
+  }
+
+  func testAFinishAtAVersionNotSeenHereStartsTheBookAgain() {
+    let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
+    var r = row(position: 1800, finished: true, version: 6, updatedAt: "2026-10-25T07:00:00.000Z")
+    r.finishedAt = "2026-10-25T07:00:00Z"
+    let p = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800)
+    XCTAssertEqual(p, ResumePlan(position: 0, file: nil, filePos: nil, start: .restart, unfinish: true, tookRow: true))
+  }
+
+  func testAFinishedRowWithThisWatchsEventsWaitingLeavesThePlaceHere() {
+    let local = LocalPlace(position: 300, file: "a.mp3", filePos: 300, at: at)
+    var r = row(position: 1800, finished: true, version: 6, device: "watch")
+    r.finishedAt = "2026-10-25T08:30:00Z"
+    let p = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800, waiting: true)
+    XCTAssertEqual(p, ResumePlan(position: 300, file: "a.mp3", filePos: 300, start: .resume, unfinish: false, tookRow: false))
+  }
+
+  // Moved back into a book after its end and never played then: a listen never unfinishes, so
+  // the first span goes after an `unfinish`.
+  func testAPlaceNewerThanASeenFinishUnfinishesFirst() {
+    let local = LocalPlace(position: 300, file: "a.mp3", filePos: 300, at: at)
+    var r = row(position: 1800, finished: true, version: 5, device: "watch", updatedAt: "2026-10-25T07:00:00.000Z")
+    r.finishedAt = "2026-10-25T07:00:00Z"
+    let p = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800)
+    XCTAssertEqual(p, ResumePlan(position: 300, file: "a.mp3", filePos: 300, start: .jump, unfinish: true, tookRow: false))
+  }
+
+  func testTheSpeedFollowsThePlaceTaken() {
+    var r = row()
+    r.playbackSpeed = 1.5
+    let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at, speed: 1.2)
+    let took = ResumePlan(position: 900, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: true)
+    let kept = ResumePlan(position: 300, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: false)
+    XCTAssertEqual(Resume.savedSpeed(took, local: local, row: r), 1.5)
+    XCTAssertEqual(Resume.savedSpeed(kept, local: local, row: r), 1.2)
+    let noSpeedHere = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
+    XCTAssertEqual(Resume.savedSpeed(kept, local: noSpeedHere, row: r), 1.5)
+    XCTAssertNil(Resume.savedSpeed(kept, local: nil, row: nil))
+  }
+
+  func testAPlaceKeepsItsSpeedAcrossAWrite() throws {
+    let place = LocalPlace(SpanEnd(pos: 12, file: "a.mp3", filePos: 12), at: at, speed: 1.3)
+    let data = try JSONEncoder().encode(place)
+    XCTAssertEqual(try JSONDecoder().decode(LocalPlace.self, from: data).speed, 1.3)
+    let older = #"{"position":12,"at":0}"#
+    XCTAssertNil(try JSONDecoder().decode(LocalPlace.self, from: Data(older.utf8)).speed)
   }
 
   func testAPlaceThatIsNotANumberIsTheStart() {
