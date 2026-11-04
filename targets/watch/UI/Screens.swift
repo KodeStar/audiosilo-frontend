@@ -1,17 +1,27 @@
-// The watch's screens (pass 1): Setup, the "server too old" screen, Continue listening with a
-// Download button per row, and On this watch (size, remove). PASS 2 adds Now Playing, Sync
-// status, the offer sheet and Sign out.
+// The watch's screens: Setup, the "server too old" screen, Home (Now playing, Continue
+// listening with a Download button per row, On this watch, Sync, Sign out), and On this watch
+// (play, size, remove). Now Playing is NowPlaying.swift; Sync status and Sign out are
+// SyncAndAccount.swift. The offer sheet and the speaker question sit on the root, so they show
+// over any screen.
 import SwiftUI
 
 struct RootView: View {
   @EnvironmentObject var model: AppModel
+  @ObservedObject var engine: WatchAudioEngine
 
   var body: some View {
-    switch model.phase {
-    case .setup(let status): SetupView(status: status)
-    case .tooOld(let version): TooOldView(version: version)
-    case .ready: HomeView()
+    Group {
+      switch model.phase {
+      case .setup(let status): SetupView(status: status)
+      case .tooOld(let version): TooOldView(version: version)
+      case .ready: HomeView(engine: engine)
+      }
     }
+    .sheet(item: $model.offerPrompt) { p in OfferSheet(prompt: p) }
+    .sheet(isPresented: $engine.speakerPrompt, onDismiss: {
+      // Closed without an answer: the same as Not now.
+      if !engine.playing { engine.declineSpeaker() }
+    }) { SpeakerSheet(engine: engine) }
   }
 }
 
@@ -47,11 +57,14 @@ struct TooOldView: View {
   let version: String?
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 8) {
-        Text("This server is too old for the watch app (needs 2.6 or later).")
-        if let version { Text("Your server: \(version)").font(.footnote).foregroundStyle(.secondary) }
-        Button("Try again") { Task { await model.checkServer(); model.becameActive() } }
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("This server is too old for the watch app (needs 2.6 or later).")
+          if let version { Text("Your server: \(version)").font(.footnote).foregroundStyle(.secondary) }
+          Button("Try again") { Task { await model.checkServer(); model.becameActive() } }
+          NavigationLink("Sign out") { SignOutView() }
+        }
       }
     }
   }
@@ -59,22 +72,53 @@ struct TooOldView: View {
 
 struct HomeView: View {
   @EnvironmentObject var model: AppModel
+  @ObservedObject var engine: WatchAudioEngine
 
   var body: some View {
     NavigationStack {
       List {
-        if let blocked = model.replaceBlocked {
-          Text("\(blocked) listening not synced yet. Connect to your server before switching accounts.")
-            .font(.footnote)
+        if model.replaceBlocked != nil { ReplaceBlockedSection() }
+        if let book = engine.book {
+          Section("Now playing") {
+            NavigationLink { NowPlayingView(engine: engine) } label: {
+              VStack(alignment: .leading, spacing: 2) {
+                Text(book.title).lineLimit(2)
+                Text(engine.playing ? "Playing" : "Paused").font(.footnote).foregroundStyle(.secondary)
+              }
+            }
+          }
         }
         Section("Continue listening") {
           ContinueSection(library: model.library, downloads: model.downloads)
         }
         Section {
-          NavigationLink("On this watch") { OnThisWatchView(downloads: model.downloads) }
+          NavigationLink("On this watch") { OnThisWatchView(downloads: model.downloads, engine: engine) }
+          NavigationLink("Sync") { SyncStatusView(router: model.router) }
+          NavigationLink("Sign out") { SignOutView() }
         }
       }
       .navigationTitle("AudioSilo")
+    }
+  }
+}
+
+/// A pair message for another account came while listening waits (decision 9).
+struct ReplaceBlockedSection: View {
+  @EnvironmentObject var model: AppModel
+  @State private var confirming = false
+
+  var body: some View {
+    Section {
+      Text("Another account wants this watch, but \(model.replaceBlocked ?? 0) listening updates have not synced yet.")
+        .font(.footnote)
+      Button(model.syncing ? "Syncing" : "Sync now") { Task { await model.flush() } }
+        .disabled(model.syncing)
+      Button("Discard and switch", role: .destructive) { confirming = true }
+      Button("Keep this account") { model.keepAccount() }
+    }
+    .confirmationDialog("Discard listening not synced yet?", isPresented: $confirming) {
+      Button("Discard and switch", role: .destructive) { Task { await model.replaceDiscarding() } }
+      Button("Cancel", role: .cancel) {}
     }
   }
 }
@@ -123,7 +167,11 @@ struct DownloadButton: View {
         model.downloads.enqueue(row.ref, title: row.title, author: row.author)
       }
     case .ready?:
-      Label("On this watch", systemImage: "checkmark.circle").font(.footnote)
+      if let record {
+        NavigationLink { NowPlayingView(engine: model.engine, start: record) } label: {
+          Label("Play", systemImage: "play.fill")
+        }
+      }
     case let state?:
       Text(Labels.state(state)).font(.footnote).foregroundStyle(.secondary)
     }
@@ -132,6 +180,7 @@ struct DownloadButton: View {
 
 struct OnThisWatchView: View {
   @ObservedObject var downloads: DownloadManager
+  @ObservedObject var engine: WatchAudioEngine
   @State private var removing: DownloadRecord?
 
   var body: some View {
@@ -141,7 +190,21 @@ struct OnThisWatchView: View {
           .font(.footnote).foregroundStyle(.secondary)
       }
       ForEach(downloads.records) { r in
-        Button { removing = r } label: { BookOnWatchRow(record: r, downloads: downloads) }
+        Group {
+          if r.state == .ready {
+            NavigationLink { NowPlayingView(engine: engine, start: r) } label: {
+              BookOnWatchRow(record: r, downloads: downloads)
+            }
+          } else {
+            Button { removing = r } label: { BookOnWatchRow(record: r, downloads: downloads) }
+          }
+        }
+        .swipeActions {
+          Button(role: .destructive) { removing = r } label: { Label("Remove", systemImage: "trash") }
+        }
+      }
+      if !downloads.records.isEmpty {
+        Text("Swipe a book to remove it.").font(.footnote).foregroundStyle(.secondary)
       }
     }
     .navigationTitle("On this watch")
@@ -178,6 +241,41 @@ struct BookOnWatchRow: View {
   }
 }
 
+/// Another device is somewhere else in the playing book: go there, or keep this place.
+struct OfferSheet: View {
+  @EnvironmentObject var model: AppModel
+  let prompt: OfferPrompt
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 8) {
+        let who = prompt.offer.deviceName.isEmpty ? "Another device" : prompt.offer.deviceName
+        Text("\(who) is at \(Labels.clock(prompt.offer.position)).")
+        Text("You are at \(Labels.clock(model.engine.position)).").font(.footnote).foregroundStyle(.secondary)
+        Button("Jump there") { model.jump(prompt) }
+        Button("Stay here") { model.stay(prompt) }
+      }
+    }
+  }
+}
+
+/// Decision 11: the watch's own speaker, said yes to once.
+struct SpeakerSheet: View {
+  @ObservedObject var engine: WatchAudioEngine
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Play on the watch speaker?")
+        Text("Others nearby will hear it. Connect headphones to listen privately.")
+          .font(.footnote).foregroundStyle(.secondary)
+        Button("Play on speaker") { engine.confirmSpeaker() }
+        Button("Not now", role: .cancel) { engine.declineSpeaker() }
+      }
+    }
+  }
+}
+
 enum Labels {
   static func state(_ s: WatchStateBook.State) -> String {
     switch s {
@@ -190,4 +288,11 @@ enum Labels {
   }
 
   static func bytes(_ n: Int64) -> String { ByteCountFormatter.string(fromByteCount: n, countStyle: .file) }
+
+  /// Seconds as "1:02:03" or "2:03".
+  static func clock(_ seconds: Double) -> String {
+    let s = Int(max(0, seconds.isFinite ? seconds : 0))
+    let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+    return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+  }
 }

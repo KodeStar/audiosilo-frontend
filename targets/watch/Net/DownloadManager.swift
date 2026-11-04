@@ -49,7 +49,7 @@ final class DownloadManager: ObservableObject {
   var client: () -> APIClient? = { nil }
   /// Told whenever the list changes (watch-state).
   var onChange: (() -> Void)?
-  /// Removing the book that is playing stops it first and closes its span (pass 2's player).
+  /// Removing the book that is playing stops it first and closes its span.
   var willRemove: ((BookRef) -> Void)?
 
   /// Whether the app is in the foreground: the rendition polling runs only then.

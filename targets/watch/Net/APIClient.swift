@@ -127,7 +127,13 @@ final class APIClient: ListeningSyncTransport, @unchecked Sendable {
     try request("GET", "/libraries/\(libraryId)/stream", query: ["path": file, "rendition": "watch", "download": "1"])
   }
 
-  /// `POST /me/listening/sync` (foreground; pass 2's SyncUploader does the background upload).
+  /// `POST /auth/logout`: end this watch's token on the server (signing out).
+  func logout() async throws {
+    let (data, response) = try await session.data(for: request("POST", "/auth/logout", timeout: Self.PROBE_TIMEOUT * 2))
+    try Self.check(response, data)
+  }
+
+  /// `POST /me/listening/sync` (foreground; SyncUploader does the background upload).
   func syncListening(_ body: SyncRequest) async throws -> SyncResponse {
     try await send(request("POST", "/me/listening/sync", body: json(body)))
   }

@@ -8,7 +8,9 @@
 //   acks.json          acknowledged versions + answered offers (AckStore)
 //   outbox.json        events waiting (Outbox)
 //   sync-state.json    last sync, couldn't-sync list, clock skew (Outbox)
-//   open-span.json     the span being played (SpanRecorder, pass 2's player)
+//   open-span.json     the span being played (SpanRecorder)
+//   places.json        this watch's own place per book (PlaceStore)
+//   sync-upload-*.json the background upload's body (SyncUploader)
 //   downloads.json     the books on this watch (DownloadManager)
 //   items/             each book's item + chapters, kept for offline playback
 //   downloads/<id>/    each book's rendition files
@@ -26,6 +28,7 @@ enum Files {
   static var server: URL { root.appendingPathComponent("server.json") }
   static var acks: URL { root.appendingPathComponent("acks.json") }
   static var openSpan: URL { root.appendingPathComponent("open-span.json") }
+  static var places: URL { root.appendingPathComponent("places.json") }
   static var downloadsIndex: URL { root.appendingPathComponent("downloads.json") }
   static var items: URL { root.appendingPathComponent("items", isDirectory: true) }
 

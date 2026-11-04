@@ -1,0 +1,514 @@
+// The watch's player: one AVQueuePlayer over a downloaded book's watch rendition files, built
+// from a file index (the phone engine's model, `modules/audiosilo-player/ios/AudioEngine.swift`),
+// with a seek deferred until the first item is ready. The session is `.playback` /
+// `.spokenAudio` / `.longFormAudio`, so watchOS routes it to Bluetooth (the route picker shows
+// when needed, W0); the built-in speaker plays only after a one-time confirmation (decision 11).
+// Now Playing shows the chapter (title, times within it); the remote commands are play, pause,
+// skip 15 / 30, previous / next chapter and the chapter scrubber.
+//
+// Every position is whole-book seconds (Timeline). The engine tells the SpanRecorder what
+// happens: a span opens on play; closes on pause, a move, a stop, the end (then `finish`) and the
+// sleep timer; is cut every 15 s while the server is reachable (else after an hour), on a rate
+// change and on going to the background; and is kept every 5 s. The rules are Core's
+// (SpanRecorder, PlayerRules, SleepTimer); this file carries them out.
+import AVFoundation
+import Foundation
+import MediaPlayer
+
+/// A downloaded book ready to play.
+struct LoadedBook: Equatable {
+  var ref: BookRef
+  var title: String
+  var author: String?
+  var timeline: Timeline
+  /// The local file per timeline file, in order.
+  var urls: [URL]
+
+  var playing: PlayingBook { PlayingBook(ref: ref, audioDuration: timeline.audio) }
+}
+
+@MainActor
+final class WatchAudioEngine: NSObject, ObservableObject {
+  static let TICK: TimeInterval = 0.5
+  private static let speedKey = "watch.playbackSpeed"
+  private static let speakerKey = "watch.speakerConfirmed"
+
+  @Published private(set) var book: LoadedBook?
+  @Published private(set) var playing = false
+  /// Starting: the session is being activated (the route picker may be up).
+  @Published private(set) var starting = false
+  @Published private(set) var position: Double = 0
+  @Published private(set) var rate: Double
+  @Published private(set) var sleep: SleepTimer?
+  @Published private(set) var times: NowPlayingTimes?
+  /// The route is the watch's own speaker and the listener has not said yes to it yet.
+  @Published var speakerPrompt = false
+  @Published private(set) var problem: String?
+
+  /// Whether the server answered the last sync (the 15 s cut runs only then).
+  var reachable: () -> Bool = { true }
+
+  private let spans: SpanRecorder
+  private let places: PlaceStore
+  private let player = AVQueuePlayer()
+  /// The queue's items, in order; `items[0]` is file `firstIndex`.
+  private var items: [AVPlayerItem] = []
+  private var firstIndex = 0
+  private var pendingSeek: Double?
+  private var statusObservation: NSKeyValueObservation?
+  private var controlObservation: NSKeyValueObservation?
+  /// A rebuilt queue reports a pause on the way; one before this is not the system's.
+  private var ignorePausesUntil = Date.distantPast
+  private var timeObserver: Any?
+  private var lastTick = Date()
+  private var lastKeep = Date()
+  private var lastCut = Date()
+  private var wantsPlay = false
+  /// When the place last moved while playing (where a late-noticed stop ends its span).
+  private var lastAdvance = Date()
+  private var nowPlayingChapter: Int?
+
+  init(spans: SpanRecorder, places: PlaceStore) {
+    self.spans = spans
+    self.places = places
+    let saved = UserDefaults.standard.double(forKey: Self.speedKey)
+    rate = PlaybackSpeed.clamp(saved > 0 ? saved : 1)
+    super.init()
+    player.actionAtItemEnd = .advance
+    player.automaticallyWaitsToMinimizeStalling = false
+    timeObserver = player.addPeriodicTimeObserver(
+      forInterval: CMTime(seconds: Self.TICK, preferredTimescale: 600), queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.tick() }
+    }
+    let nc = NotificationCenter.default
+    nc.addObserver(self, selector: #selector(itemEnded(_:)), name: .AVPlayerItemDidPlayToEndTime, object: nil)
+    nc.addObserver(self, selector: #selector(itemFailed(_:)), name: .AVPlayerItemFailedToPlayToEndTime, object: nil)
+    nc.addObserver(self, selector: #selector(interrupted(_:)), name: AVAudioSession.interruptionNotification, object: nil)
+    // The system can pause the player itself (the app suspended, headphones gone): a pause
+    // like any other, so the span closes where the audio stopped.
+    controlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
+      let status = p.timeControlStatus
+      DispatchQueue.main.async { MainActor.assumeIsolated { self?.controlChanged(status) } }
+    }
+    setUpRemoteCommands()
+  }
+
+  private func controlChanged(_ status: AVPlayer.TimeControlStatus) {
+    guard status == .paused, playing, Date() >= ignorePausesUntil, player.currentItem != nil else { return }
+    pause(stoppedAt: lastAdvance)
+  }
+
+  var loadedBook: BookRef? { book?.ref }
+
+  // MARK: - The place
+
+  /// The file playing and the seconds into it.
+  private func where_() -> (index: Int, positionInTrack: Double)? {
+    guard let item = player.currentItem, let i = items.firstIndex(of: item) else { return nil }
+    if let pending = pendingSeek, i == 0 { return (firstIndex, pending) }
+    let t = item.currentTime().seconds
+    return (firstIndex + i, t.isFinite ? t : 0)
+  }
+
+  /// The place now as a span end (nil when the engine reports nothing that is a number).
+  private func spanEnd() -> SpanEnd? {
+    guard let b = book else { return nil }
+    let w = where_() ?? b.timeline.locate(position)
+    return b.timeline.spanEnd(index: w.index, positionInTrack: w.positionInTrack)
+  }
+
+  private func savePlace() {
+    guard let b = book, let end = spanEnd() else { return }
+    places.set(b.ref, LocalPlace(position: end.pos, file: end.file, filePos: end.filePos, at: Date()))
+  }
+
+  // MARK: - Loading
+
+  /// Load `book` at `plan`'s place (a book already playing is stopped first, its span closed).
+  func load(_ next: LoadedBook, plan: ResumePlan) {
+    if book != nil { stop() }
+    book = next
+    problem = nil
+    spans.prepareStart(plan.start, unfinish: plan.unfinish)
+    let place = next.timeline.resumePlace(position: plan.position, file: plan.file, filePos: plan.filePos)
+    position = next.timeline.bookPosition(index: place.index, positionInTrack: place.positionInTrack)
+    rebuild(from: place.index, at: place.positionInTrack)
+    nowPlayingChapter = nil
+    refreshTimes(force: true)
+  }
+
+  /// Replace the queue with the files from `index` on, `seconds` into the first.
+  private func rebuild(from index: Int, at seconds: Double) {
+    guard let b = book, b.urls.indices.contains(index) else { return }
+    statusObservation = nil
+    ignorePausesUntil = Date().addingTimeInterval(1)
+    player.removeAllItems()
+    items = b.urls[index...].map { url in
+      let item = AVPlayerItem(url: url)
+      item.audioTimePitchAlgorithm = .timeDomain
+      return item
+    }
+    firstIndex = index
+    for item in items { player.insert(item, after: nil) }
+    pendingSeek = seconds > 0 ? seconds : nil
+    guard let first = items.first else { return }
+    statusObservation = first.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+      DispatchQueue.main.async { MainActor.assumeIsolated { self?.itemStatus(item) } }
+    }
+  }
+
+  private func itemStatus(_ item: AVPlayerItem) {
+    guard item === items.first else { return }
+    switch item.status {
+    case .readyToPlay:
+      if let s = pendingSeek {
+        item.seek(to: CMTime(seconds: s, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) {
+          [weak self] _ in
+          DispatchQueue.main.async { MainActor.assumeIsolated { self?.pendingSeek = nil } }
+        }
+      }
+      statusObservation = nil
+    case .failed:
+      fail()
+    default: break
+    }
+  }
+
+  // MARK: - Transport
+
+  /// Play: the session first (the route picker may show), the speaker asked about once.
+  func play() {
+    guard let b = book, !playing, !starting else { return }
+    if player.items().isEmpty || Skips.atEnd(position: position, total: b.timeline.total) {
+      // Played to the end: start again (an `unfinish`, then a `restart` span).
+      spans.prepareStart(.restart, unfinish: true)
+      position = 0
+      rebuild(from: 0, at: 0)
+    }
+    starting = true
+    Task {
+      let ok = await activateSession()
+      starting = false
+      guard ok, book != nil else { return }
+      if onBuiltInSpeaker() && !UserDefaults.standard.bool(forKey: Self.speakerKey) {
+        speakerPrompt = true
+        return
+      }
+      startPlaying()
+    }
+  }
+
+  /// The listener said yes to the watch's speaker (once, kept).
+  func confirmSpeaker() {
+    UserDefaults.standard.set(true, forKey: Self.speakerKey)
+    speakerPrompt = false
+    startPlaying()
+  }
+
+  func declineSpeaker() {
+    speakerPrompt = false
+    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+  }
+
+  private func startPlaying() {
+    guard let b = book, !playing else { return }
+    if let s = sleep {
+      sleep = s.resumed(at: Date())
+    }
+    wantsPlay = true
+    ignorePausesUntil = Date().addingTimeInterval(1)
+    player.defaultRate = Float(rate)
+    player.play()
+    player.rate = Float(rate)
+    playing = true
+    let now = Date()
+    lastTick = now
+    lastKeep = now
+    lastCut = now
+    lastAdvance = now
+    if let at = spanEnd() { spans.open(b.playing, at: at, speed: rate) }
+    refreshTimes(force: true)
+  }
+
+  func pause() { pause(stoppedAt: nil) }
+
+  private func pause(stoppedAt: Date?) {
+    guard playing else { return }
+    wantsPlay = false
+    player.pause()
+    playing = false
+    spans.close(at: spanEnd(), stoppedAt: stoppedAt)
+    savePlace()
+    sleep?.paused(at: Date())
+    refreshTimes(force: true)
+  }
+
+  func toggle() { playing ? pause() : play() }
+
+  /// Stop and unload (removing the playing book, signing out, another book loading).
+  func stop() {
+    if playing { pause() } else { savePlace() }
+    spans.close(at: nil)
+    statusObservation = nil
+    player.removeAllItems()
+    items = []
+    pendingSeek = nil
+    book = nil
+    times = nil
+    sleep = nil
+    MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+  }
+
+  /// Move to `target` (whole-book seconds). `reason` nil: a jump, or moved back when behind.
+  func seek(to target: Double, reason: ListeningStart? = nil) {
+    guard let b = book else { return }
+    let to = Skips.target(position: target, by: 0, total: b.timeline.total)
+    let place = b.timeline.locate(to)
+    spans.move(b.playing, to: b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack),
+               from: spanEnd(), reason: reason, playing: playing, speed: rate)
+    if let w = where_(), w.index == place.index, pendingSeek == nil, player.currentItem?.status == .readyToPlay {
+      player.seek(to: CMTime(seconds: place.positionInTrack, preferredTimescale: 600), toleranceBefore: .zero,
+                  toleranceAfter: .zero)
+    } else {
+      rebuild(from: place.index, at: place.positionInTrack)
+      if playing {
+        player.play()
+        player.rate = Float(rate)
+      }
+    }
+    position = to
+    places.set(b.ref, LocalPlace(position: to, file: b.timeline.files[safe: place.index]?.path,
+                                 filePos: place.positionInTrack, at: Date()))
+    lastKeep = Date()
+    lastCut = Date()
+    refreshTimes(force: true)
+  }
+
+  func skip(_ delta: Double) {
+    seek(to: Skips.target(position: position, by: delta, total: book?.timeline.total ?? 0))
+  }
+
+  func previousChapter() {
+    guard let b = book, let to = ChapterNav.previous(b.timeline.chapters, position) else { return skip(-Skips.BACK) }
+    seek(to: to)
+  }
+
+  func nextChapter() {
+    guard let b = book, let to = ChapterNav.next(b.timeline.chapters, position) else { return }
+    seek(to: to)
+  }
+
+  func setRate(_ r: Double) {
+    let next = PlaybackSpeed.clamp(r)
+    guard next != rate else { return }
+    if let b = book { spans.cut(b.playing, at: spanEnd(), playing: playing, speed: next) }
+    rate = next
+    UserDefaults.standard.set(next, forKey: Self.speedKey)
+    player.defaultRate = Float(next)
+    if playing { player.rate = Float(next) }
+    refreshTimes(force: true)
+  }
+
+  func setSleep(_ mode: SleepMode?) {
+    guard let mode, let b = book else {
+      sleep = nil
+      return
+    }
+    sleep = SleepTimer.arm(mode, position: position, rate: rate, chapters: b.timeline.chapters, total: b.timeline.total)
+    if !playing { sleep?.paused(at: Date()) }
+  }
+
+  /// Going to the background: the span is cut (Sync v2's trigger), and the place kept.
+  func cutForBackground() {
+    guard let b = book else { return }
+    if playing { spans.cut(b.playing, at: spanEnd(), playing: true, speed: rate) }
+    savePlace()
+  }
+
+  /// An offer answered with Stay: the next span is a deliberate move.
+  func stay() {
+    guard let b = book else { return }
+    spans.standBy(b.playing, at: spanEnd(), playing: playing, speed: rate)
+  }
+
+  // MARK: - Ticks
+
+  private func tick() {
+    guard let b = book else { return }
+    let now = Date()
+    let wall = now.timeIntervalSince(lastTick)
+    lastTick = now
+    if let w = where_() {
+      let p = b.timeline.bookPosition(index: w.index, positionInTrack: w.positionInTrack)
+      if p.isFinite {
+        if playing && p != position { lastAdvance = now }
+        position = p
+      }
+    }
+    refreshTimes(force: false)
+    guard playing else { return }
+    if var s = sleep {
+      s.played(wall)
+      sleep = s
+      if s.due(position: position) {
+        sleep = nil
+        pause()
+        return
+      }
+    }
+    if now.timeIntervalSince(lastKeep) >= Spans.OPEN_SPAN_KEEP {
+      lastKeep = now
+      spans.keep(at: spanEnd())
+      savePlace()
+    }
+    if now.timeIntervalSince(lastCut) >= Spans.CUT_INTERVAL {
+      lastCut = now
+      spans.tick(b.playing, at: spanEnd(), playing: true, reachable: reachable(), speed: rate)
+      savePlace()
+    }
+  }
+
+  @objc private func itemEnded(_ note: Notification) {
+    MainActor.assumeIsolated {
+      guard let item = note.object as? AVPlayerItem, let i = items.firstIndex(of: item), let b = book else { return }
+      guard firstIndex + i == b.timeline.files.count - 1 else { return }
+      // The book's end: its last span closed, then one `finish`.
+      let last = b.timeline.files.count - 1
+      let lastDuration = b.timeline.files[last].duration
+      let end = b.timeline.spanEnd(index: last, positionInTrack: lastDuration > 0 ? lastDuration : item.currentTime().seconds)
+      wantsPlay = false
+      playing = false
+      spans.finish(b.playing, at: end)
+      position = b.timeline.total
+      places.set(b.ref, LocalPlace(position: b.timeline.total, file: nil, filePos: nil, at: Date()))
+      sleep = nil
+      refreshTimes(force: true)
+    }
+  }
+
+  @objc private func itemFailed(_ note: Notification) {
+    MainActor.assumeIsolated {
+      guard let item = note.object as? AVPlayerItem, items.contains(item) else { return }
+      fail()
+    }
+  }
+
+  private func fail() {
+    if playing { pause() }
+    problem = "This book can't be played. Remove it from the watch and download it again."
+  }
+
+  @objc private func interrupted(_ note: Notification) {
+    guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+      let type = AVAudioSession.InterruptionType(rawValue: raw)
+    else { return }
+    let resume = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
+      .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
+    MainActor.assumeIsolated {
+      switch type {
+      case .began:
+        let was = wantsPlay
+        pause()
+        wantsPlay = was
+      case .ended:
+        if wantsPlay && resume { wantsPlay = false; play() } else { wantsPlay = false }
+      @unknown default: break
+      }
+    }
+  }
+
+  // MARK: - The session
+
+  private func activateSession() async -> Bool {
+    let s = AVAudioSession.sharedInstance()
+    do {
+      try s.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio, options: [])
+    } catch {
+      problem = "The watch could not start its audio."
+      return false
+    }
+    let ok: Bool = await withCheckedContinuation { c in
+      let once = Once()
+      s.activate(options: []) { ok, _ in once.run { c.resume(returning: ok) } }
+      // The route picker can wait for an answer: give up after a minute.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 60) { once.run { c.resume(returning: false) } }
+    }
+    if !ok { problem = "Choose where to listen (headphones or the watch speaker), then play again." } else { problem = nil }
+    return ok
+  }
+
+  private func onBuiltInSpeaker() -> Bool {
+    AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+  }
+
+  // MARK: - Now Playing
+
+  private func refreshTimes(force: Bool) {
+    guard let b = book else { return }
+    let t = NowPlayingTimes.of(chapters: b.timeline.chapters, position: position, total: b.timeline.total,
+                               bookTitle: b.title)
+    let chapterChanged = t.chapterIndex != nowPlayingChapter
+    times = t
+    guard force || chapterChanged else { return }
+    nowPlayingChapter = t.chapterIndex
+    var info: [String: Any] = [
+      MPMediaItemPropertyTitle: t.title,
+      MPMediaItemPropertyAlbumTitle: b.title,
+      MPNowPlayingInfoPropertyElapsedPlaybackTime: t.elapsed,
+      MPMediaItemPropertyPlaybackDuration: t.duration,
+      MPNowPlayingInfoPropertyPlaybackRate: playing ? rate : 0,
+      MPNowPlayingInfoPropertyDefaultPlaybackRate: rate,
+    ]
+    if let a = b.author, !a.isEmpty { info[MPMediaItemPropertyArtist] = a }
+    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+  }
+
+  private func setUpRemoteCommands() {
+    let c = MPRemoteCommandCenter.shared()
+    c.playCommand.addTarget { [weak self] _ in self?.command { $0.play() } ?? .commandFailed }
+    c.pauseCommand.addTarget { [weak self] _ in self?.command { $0.pause() } ?? .commandFailed }
+    c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.command { $0.toggle() } ?? .commandFailed }
+    c.skipBackwardCommand.preferredIntervals = [NSNumber(value: Skips.BACK)]
+    c.skipBackwardCommand.addTarget { [weak self] _ in self?.command { $0.skip(-Skips.BACK) } ?? .commandFailed }
+    c.skipForwardCommand.preferredIntervals = [NSNumber(value: Skips.FORWARD)]
+    c.skipForwardCommand.addTarget { [weak self] _ in self?.command { $0.skip(Skips.FORWARD) } ?? .commandFailed }
+    c.previousTrackCommand.addTarget { [weak self] _ in self?.command { $0.previousChapter() } ?? .commandFailed }
+    c.nextTrackCommand.addTarget { [weak self] _ in self?.command { $0.nextChapter() } ?? .commandFailed }
+    c.changePlaybackPositionCommand.addTarget { [weak self] e in
+      guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+      return self?.command { engine in
+        // The scrubber is the chapter's: its start plus the time asked for.
+        let start = engine.book.flatMap { b in ChapterNav.index(b.timeline.chapters, engine.position).map { b.timeline.chapters[$0].bookOffset } } ?? 0
+        engine.seek(to: start + e.positionTime)
+      } ?? .commandFailed
+    }
+  }
+
+  private nonisolated func command(_ run: @escaping @MainActor (WatchAudioEngine) -> Void) -> MPRemoteCommandHandlerStatus {
+    MainActor.assumeIsolated {
+      guard book != nil else { return .noActionableNowPlayingItem }
+      run(self)
+      return .success
+    }
+  }
+}
+
+/// Runs its closure once (a continuation resumed by whichever comes first).
+private final class Once: @unchecked Sendable {
+  private let lock = NSLock()
+  private var done = false
+
+  func run(_ f: () -> Void) {
+    lock.lock()
+    let first = !done
+    done = true
+    lock.unlock()
+    if first { f() }
+  }
+}
+
+extension Array {
+  subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
+}
