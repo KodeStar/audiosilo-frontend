@@ -78,6 +78,23 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertNil(store.stored, "the close clears the stored span")
   }
 
+  func testAStopNoticedLateEndsTheSpanWhenTheAudioStopped() {
+    let r = recorder()
+    r.open(book, at: at(5), speed: 1)
+    let stopped = clock.now.addingTimeInterval(20)
+    clock.advance(3600)  // the app was suspended; the system had paused the player
+    r.close(at: at(25), stoppedAt: stopped)
+    XCTAssertEqual(listens[0].endedAt, "2026-10-25T07:00:20.000Z")
+    // Never after now, never before the start.
+    r.open(book, at: at(25), speed: 1)
+    r.close(at: at(26), stoppedAt: clock.now.addingTimeInterval(-7200))
+    XCTAssertEqual(listens[1].endedAt, listens[1].startedAt)
+    r.open(book, at: at(26), speed: 1)
+    clock.advance(10)
+    r.close(at: at(36), stoppedAt: clock.now.addingTimeInterval(60))
+    XCTAssertEqual(ISOTime.parse(listens[2].endedAt), clock.now)
+  }
+
   func testTheTickCutsWhileReachableAndTheNextContinues() {
     let r = recorder()
     r.open(book, at: at(5), speed: 1)

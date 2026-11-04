@@ -76,6 +76,14 @@ enum PhoneMessages {
     }
   }
 
+  /// A message given as JSON text (the DEBUG simulator sign-in's `AUDIOSILO_DEBUG_PAIR`).
+  static func decodeJSON(_ text: String) -> PhoneMessage? {
+    guard let data = text.data(using: .utf8),
+      let m = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    else { return nil }
+    return decode(m)
+  }
+
   private static func decodePair(_ m: [String: Any]) -> PairMessage? {
     guard let serverId = nonEmpty(m["server_id"]), let userId = int(m["user_id"]),
           let base = httpURL(m["base_url"]), let token = nonEmpty(m["pairing_token"]),

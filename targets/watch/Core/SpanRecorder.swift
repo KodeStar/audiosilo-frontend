@@ -1,6 +1,6 @@
 // Listening spans (Sync v2), a port of the span half of the phone's `src/playback/store.ts`
 // and the event building in `listening-outbox.ts` (CROSS-REPO section 25, "Listening sync" in
-// CONVENTIONS.md). The engine (pass 2's WatchAudioEngine) tells the recorder what happens; the
+// CONVENTIONS.md). The engine (WatchAudioEngine) tells the recorder what happens; the
 // recorder turns it into `listen`, `finish` and `unfinish` events for the outbox.
 //
 // A span OPENS when playing starts; it is CUT (closed into an event, a `continue` span opening
@@ -197,12 +197,15 @@ final class SpanRecorder {
   }
 
   /// Close the open span at `at` (nil: where it was last seen) into the outbox. Returns it.
+  /// `stoppedAt`: when the audio stopped, for a stop noticed late (the system paused the
+  /// player while the app was suspended); never after now, never before the span's start.
   @discardableResult
-  func close(at: SpanEnd?) -> OpenSpan? {
+  func close(at: SpanEnd?, stoppedAt: Date? = nil) -> OpenSpan? {
     guard var closing = span else { return nil }
     span = nil
     if let at { closing.to = at }
-    closing.endedAt = clock()
+    let now = clock()
+    closing.endedAt = max(closing.startedAt, min(now, stoppedAt ?? now))
     store.save(nil)
     append(closing)
     return closing

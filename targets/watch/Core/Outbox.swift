@@ -57,7 +57,7 @@ final class Outbox {
   private var running: Task<Void, Never>?
   private var again = false
 
-  /// Told of every answer's progress rows (the offer check, pass 2).
+  /// Told of every answer's progress rows (the offer check).
   var onAnswer: (([ProgressRow]) -> Void)?
   /// Told whenever the events or the state change (watch-state, Sync status).
   var onChange: (() -> Void)?
@@ -252,7 +252,7 @@ final class Outbox {
     onAnswer?(rows)
   }
 
-  // MARK: - The background upload (decision 10; pass 2's SyncUploader sends it)
+  // MARK: - The background upload (decision 10; SyncUploader sends it)
 
   /// The first chunk as a body built now to be sent later: `clock_offset` (the last measured
   /// skew) instead of `sent_at`. Nil with nothing waiting.
