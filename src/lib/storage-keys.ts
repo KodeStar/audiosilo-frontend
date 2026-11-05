@@ -48,6 +48,8 @@ export const LIBRARY_SELECTION_KEY = 'audiosilo.librarySelection';
 export const TIME_SAVED_KEY = 'audiosilo.timeSaved';
 /** The drift-offs, keyed by `contentKey`. */
 export const DRIFT_STORAGE_KEY = 'audiosilo.driftOffs';
+/** What the phone sent its watch (`src/watch/watch-ledger.ts`): by watch, then by account. */
+export const WATCH_LEDGER_KEY = 'audiosilo.watchLedger';
 /** `{ [legacyId]: newId }`, recorded by the identity migration (never wiped by a reset). */
 export const CONNECTION_ALIASES_KEY = 'audiosilo.connectionAliases';
 /** The profiles document (`src/stores/profiles.ts`; the identity migration writes the first). */

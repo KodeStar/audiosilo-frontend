@@ -14,6 +14,7 @@
 //   outbox-unread-*.json an outbox that could not be read, kept aside (Outbox)
 //   continue.json      Continue listening's last rows (ContinueListening)
 //   downloads.json     the books on this watch (DownloadManager)
+//   held-books.json    books from the phone not taken yet, or given up on (HeldBooks)
 //   items/             each book's item + chapters, kept for offline playback
 //   downloads/<id>/    each book's rendition files
 //   downloads/.staging/ a finished file on its way to its book's folder (BackgroundDownloads)
@@ -33,6 +34,7 @@ enum Files {
   static var openSpan: URL { root.appendingPathComponent("open-span.json") }
   static var places: URL { root.appendingPathComponent("places.json") }
   static var downloadsIndex: URL { root.appendingPathComponent("downloads.json") }
+  static var heldBooks: URL { root.appendingPathComponent("held-books.json") }
   static var continueRows: URL { root.appendingPathComponent("continue.json") }
   static var items: URL { root.appendingPathComponent("items", isDirectory: true) }
 

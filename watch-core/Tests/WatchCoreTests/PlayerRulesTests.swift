@@ -40,6 +40,10 @@ final class SpeedAndSkipTests: XCTestCase {
     XCTAssertEqual(PlaybackSpeed.label(2), "2x")
     XCTAssertEqual(PlaybackSpeed.label(1.25), "1.25x")
     XCTAssertEqual(PlaybackSpeed.label(0.8), "0.8x")
+    XCTAssertEqual(PlaybackSpeed.sentenceLabel(2), "2×")
+    XCTAssertEqual(PlaybackSpeed.sentenceLabel(1.25), "1.25×")
+    XCTAssertTrue(PlaybackSpeed.isNormal(1.004))
+    XCTAssertFalse(PlaybackSpeed.isNormal(1.1))
   }
 
   func testASkipStaysInsideTheBook() {
@@ -56,6 +60,50 @@ final class SpeedAndSkipTests: XCTestCase {
     XCTAssertTrue(Skips.atEnd(position: 1796, total: 1800))
     XCTAssertFalse(Skips.atEnd(position: 1790, total: 1800))
     XCTAssertFalse(Skips.atEnd(position: 0, total: 0))
+  }
+
+  func testTheFiguresAreAudioTimeAndAddUpToTheLength() {
+    // A 4-minute chapter, whatever the speed: the figures take none.
+    XCTAssertTrue(Skips.figures(position: 0, length: 240) == (0, 240))
+    XCTAssertTrue(Skips.figures(position: 240, length: 240) == (240, 0))
+    XCTAssertTrue(Skips.figures(position: 80, length: 240) == (80, 160))
+    for position in stride(from: 0.0, through: 240.4, by: 0.37) {
+      let f = Skips.figures(position: position, length: 240.4)
+      XCTAssertEqual(f.elapsed + f.left, 240, "at \(position)")
+      XCTAssertEqual(f.elapsed, f.elapsed.rounded())
+    }
+  }
+
+  func testTheFiguresStayInsideTheLength() {
+    XCTAssertTrue(Skips.figures(position: 300, length: 240) == (240, 0))
+    XCTAssertTrue(Skips.figures(position: -5, length: 240) == (0, 240))
+    XCTAssertTrue(Skips.figures(position: .nan, length: 240) == (0, 240))
+  }
+
+  func testTheWallClockLineSaysTheSpeedAndIsAbsentAtNormalSpeed() {
+    XCTAssertEqual(Skips.wallClockLine(position: 0, total: 240, rate: 2), "2m left at 2×")
+    XCTAssertEqual(Skips.wallClockLine(position: 0, total: 3600, rate: 1.25), "48m left at 1.25×")
+    XCTAssertEqual(Skips.wallClockLine(position: 0, total: 3600, rate: 0.8), "1h 15m left at 0.8×")
+    XCTAssertEqual(Skips.wallClockLine(position: 210, total: 240, rate: 2), "15s left at 2×")
+    XCTAssertNil(Skips.wallClockLine(position: 0, total: 240, rate: 1))
+    XCTAssertNil(Skips.wallClockLine(position: 0, total: 240, rate: 1.004), "1x as it is shown")
+  }
+
+  func testTheWallClockLineIsAbsentWithNothingLeftOrNoLength() {
+    XCTAssertNil(Skips.wallClockLine(position: 240, total: 240, rate: 2))
+    XCTAssertNil(Skips.wallClockLine(position: 300, total: 240, rate: 2))
+    XCTAssertNil(Skips.wallClockLine(position: 0, total: 0, rate: 2))
+  }
+
+  func testTheCompactDurationIsThePhones() {
+    // formatDuration's cases, src/lib/format.ts.
+    XCTAssertEqual(Skips.compactDuration(45000), "12h 30m")
+    XCTAssertEqual(Skips.compactDuration(7200), "2h")
+    XCTAssertEqual(Skips.compactDuration(2700), "45m")
+    XCTAssertEqual(Skips.compactDuration(30), "30s")
+    XCTAssertEqual(Skips.compactDuration(0.4), "0s")
+    XCTAssertNil(Skips.compactDuration(0))
+    XCTAssertNil(Skips.compactDuration(.nan))
   }
 }
 

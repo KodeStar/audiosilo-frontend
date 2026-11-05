@@ -260,6 +260,27 @@
       "kid": "Un account bambini non può associare un dispositivo. La persona che lo gestisce configura i suoi dispositivi da Famiglia.",
       "refused": "{{server}} non ha creato nessun codice. Riprova più tardi."
     },
+    "watch": {
+      "title": "Apple Watch",
+      "install": "Installa AudioSilo sull'orologio dall'app Watch di questo iPhone, poi torna qui.",
+      "setupBody": "Collega l'orologio a {{server}} senza digitare nulla, poi porta con te i libri e lascia il telefono a casa.",
+      "setUp": "Configura Apple Watch",
+      "sendAgain": "Invia di nuovo",
+      "sent": "Inviato. Apri AudioSilo sull'orologio per completare l'accesso.",
+      "expired": "L'accesso è scaduto prima di arrivare all'orologio. Sull'orologio non è cambiato nulla. Tienilo vicino e invia di nuovo.",
+      "signedInAs": "Accesso effettuato come {{user}} su {{server}}",
+      "otherAccount": "L'orologio ha effettuato l'accesso a un altro account. Configurarlo per {{server}} sostituisce quell'account dopo la sincronizzazione dei suoi ascolti.",
+      "serverCannot": "{{server}} non può preparare libri per un orologio. Serve la versione 2.6 o successiva, con ffmpeg.",
+      "sendFailed": "Impossibile raggiungere l'orologio. Non è stato inviato nulla, quindi riprova.",
+      "waiting_one": "{{count}} ascolto in attesa sull'orologio",
+      "waiting_other": "{{count}} ascolti in attesa sull'orologio",
+      "allSynced": "Tutto ciò che viene dall'orologio è sincronizzato",
+      "couldntSync_one": "{{count}} ascolto non è stato sincronizzato. Vedi Sync sull'orologio.",
+      "couldntSync_other": "{{count}} ascolti non sono stati sincronizzati. Vedi Sync sull'orologio.",
+      "lastSynced": "Ultima sincronizzazione {{when}}",
+      "neverSynced": "L'orologio non è ancora stato sincronizzato",
+      "booksLink": "Libri sul tuo orologio"
+    },
     "devices": {
       "title": "Dispositivi connessi",
       "sub": "Disconnetti un dispositivo perso o venduto",
@@ -941,6 +962,10 @@
       "download": "Scarica per l’ascolto offline",
       "removeDownload": "Rimuovi download",
       "cancelDownload": "Annulla download",
+      "sendToWatch": "Invia all'orologio",
+      "sentToWatch": "Inviato all'orologio",
+      "sentToWatchPair": "Se AudioSilo non è aperto sull'orologio, aprilo per completare l'accesso.",
+      "sentToWatchShow": "Mostra",
       "markFinished": "Segna come finito",
       "markUnfinished": "Segna come non finito",
       "moreInSeries": "Altro di questa serie",
@@ -1138,6 +1163,40 @@
     "orphans": {
       "title": "Non connesso",
       "body": "Download di un account non più connesso su questo dispositivo. Accedi di nuovo per ascoltarli, oppure rimuovili per liberare spazio."
+    },
+    "watch": {
+      "title": "Sul tuo Apple Watch",
+      "empty": "Ancora nessun libro sul tuo orologio. Scegli Invia all'orologio nella pagina di un libro.",
+      "notHere": "Il tuo orologio non usa questo account",
+      "otherAccount": "Ha effettuato l'accesso a un altro account, i cui libri non sono elencati qui. Per usarlo con {{server}}, configuralo nella pagina del tuo account.",
+      "signedOut": "Non ha ancora effettuato l'accesso a {{server}}. Configuralo nella pagina del tuo account.",
+      "openAccount": "Vai al tuo account",
+      "sendAgain": "Invia di nuovo",
+      "sendAgainLabel": "Invia di nuovo {{title}} al tuo orologio",
+      "removeLabel": "Rimuovi {{title}} dal tuo orologio",
+      "dismiss": "Non mostrare più",
+      "dismissLabel": "Non mostrare più {{title}} qui",
+      "remove": {
+        "title": "Rimuovere dal tuo orologio?",
+        "message": "{{title}} viene tolto dal tuo orologio e si ferma se è in riproduzione. Il punto in cui sei nel libro viene conservato. Invialo di nuovo per riaverlo.",
+        "confirm": "Rimuovi"
+      },
+      "phase": {
+        "undelivered": "Inviato, non ancora consegnato",
+        "delivered": "Consegnato. Apri AudioSilo sul tuo orologio.",
+        "waiting-sign-in": "Consegnato. Parte quando il tuo orologio avrà effettuato l'accesso qui.",
+        "send-failed": "Impossibile raggiungere il tuo orologio. Invialo di nuovo.",
+        "stale": "Il tuo orologio non lo ha preso in 7 giorni. Invialo di nuovo se lo vuoi ancora.",
+        "queued": "In attesa sul tuo orologio",
+        "preparing": "In preparazione sul server. Può richiedere qualche minuto.",
+        "downloading": "Download sul tuo orologio",
+        "ready": "Sul tuo orologio",
+        "failed": "Download non riuscito. Invialo di nuovo per riprovare.",
+        "removing-undelivered": "Verrà rimosso quando il tuo orologio sarà a portata",
+        "removing": "Rimozione in corso. Apri AudioSilo sul tuo orologio per finire.",
+        "remove-failed": "Impossibile raggiungere il tuo orologio per rimuoverlo. Riprova.",
+        "remove-refused": "Non rimosso: il tuo orologio non ha effettuato l'accesso a questo account."
+      }
     }
   },
   "search": {

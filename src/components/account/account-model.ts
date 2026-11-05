@@ -111,13 +111,18 @@ export function knownPlatform(platform: string | undefined): KnownPlatform | nul
     : null;
 }
 
+/** The app a device row names: the client's own, except that a watch app reads as AudioSilo like
+ * the phone's (its `audiosilo-watch` identifier is for the server), the platform saying which. */
+export function clientAppName(app: string): string {
+  return app === 'audiosilo-watch' ? 'AudioSilo' : app;
+}
+
 /** Whether a platform is a watch's. */
 const isWatchPlatform = (platform: string | undefined): boolean =>
   (WATCH_PLATFORMS as readonly (string | undefined)[]).includes(platform);
 
-/** A device row's glyph: an API key is a key; a browser is a laptop; a watch is the neutral
- * drive (no watch glyph is vendored; never a phone, though "Pixel Watch" names a phone's
- * maker); an app is a phone,
+/** A device row's glyph: an API key is a key; a browser is a laptop; a watch is a watch (never
+ * a phone, though "Pixel Watch" names a phone's maker); an app is a phone,
  * or a tablet when its name says so ("iPad", "Galaxy Tab", "Pixel Tablet"). The platform
  * header doesn't tell a phone from a tablet, so the name the device signed in with does.
  * A device that hasn't said which app it is ("App not reported yet") is a phone or a
@@ -129,7 +134,7 @@ export function deviceGlyph(device: {
 }): IconName {
   if (device.kind === 'api') return 'key';
   if (device.client?.platform === 'web') return 'laptop';
-  if (isWatchPlatform(device.client?.platform)) return 'hard-drive';
+  if (isWatchPlatform(device.client?.platform)) return 'watch';
   const name = device.name ?? '';
   if (/\b(ipad|tablet|tab)\b/i.test(name)) return 'tablet';
   if (knownPlatform(device.client?.platform)) return 'mobile';

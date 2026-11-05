@@ -33,6 +33,7 @@ import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
+import { useSendToWatch } from '@/watch/use-watch';
 
 import { AddToCollectionDialog } from '../collections/collection-dialogs';
 import { useQueueActions } from '../use-queue-actions';
@@ -41,7 +42,8 @@ import { bookStatus, unfinishedPosition } from './books-view';
 /** The keys of `useBookActions`' own items (a screen's `extra` brings its own, as a
  * module's `bookActions` do through the book page's `extra`). Closed on purpose: it stays so
  * until a module needs one of its own here (Bridge Phase 2d). */
-export type BookActionKey = 'play' | 'queue' | 'collect' | 'download' | 'finish' | 'series';
+export type BookActionKey =
+  'play' | 'queue' | 'collect' | 'download' | 'watch' | 'finish' | 'series';
 
 /** One entry of a book's actions menu. `group` starts a new section (a separator). */
 export type BookAction<K extends string = string> = {
@@ -75,8 +77,9 @@ function playabilityUnknown(book: Book): boolean {
 /**
  * What can be done to a book from a list, each only where its server and this platform
  * allow it (a capability still unknown hides its item): Play or Resume, Add to / Remove
- * from Up next, Add to collection..., Download for offline / Remove download, Mark as
- * finished / not finished, More in this series. `openCollect` opens the Add to
+ * from Up next, Add to collection..., Download for offline / Remove download, Send to watch
+ * (iOS, a paired watch with the app, `useSendToWatch`), Mark as finished / not finished, More
+ * in this series. `openCollect` opens the Add to
  * collection dialog and `confirmRemove` the remove-download confirm, both rendered by
  * the caller (`BookActionsMenu`): removing a download asks first, as everywhere.
  *
@@ -108,6 +111,7 @@ export function useBookActions(
   const podcastLibrary = useIsPodcastLibrary(libraryId, connectionId);
   const episode = podcastLibrary || !!(known ?? book).episode;
   const status = bookStatus(progress);
+  const sendToWatch = useSendToWatch(connectionId, libraryId);
 
   const failed = (e: unknown) => {
     if (e instanceof CapabilityError) return;
@@ -205,6 +209,14 @@ export function useBookActions(
       ...DOWNLOAD_ACTION[state],
       label: t(DOWNLOAD_ACTION[state].label),
       onPress: run,
+    });
+  }
+  if (sendToWatch && !episode) {
+    out.push({
+      key: 'watch',
+      icon: 'watch',
+      label: t('library.bookActions.sendToWatch'),
+      onPress: () => sendToWatch(book),
     });
   }
   if (status === 'finished') {

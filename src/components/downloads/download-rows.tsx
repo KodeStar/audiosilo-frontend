@@ -23,13 +23,27 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import type { StorageScope } from './storage-card';
 
-const COVER = 52;
+export const COVER = 52;
 const percent = (fraction: number) => Math.floor(Math.max(0, Math.min(1, fraction)) * 100);
+
+/** A section of the page: its heading and, beside it, how many or how much. */
+export function SectionHead({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <View className="flex-row flex-wrap items-baseline gap-x-3 gap-y-1">
+      <Text variant="heading">{title}</Text>
+      {sub ? (
+        <Text variant="muted" style={tabularNums}>
+          {sub}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 /** A row of the In progress / Ready offline cards: cover, the text column, an optional
  * status column (beside it on tablet and desktop, under the text on a phone) and the
  * actions. Rows are separated by hairlines, as in the prototype's list cards. */
-function RowFrame({
+export function RowFrame({
   cover,
   title,
   meta,
@@ -65,7 +79,7 @@ function RowFrame({
   );
 }
 
-function sizeMeta(t: TFunction, server: string, bytes: number, keptAhead: boolean): string {
+export function sizeMeta(t: TFunction, server: string, bytes: number, keptAhead: boolean): string {
   const parts = [
     keptAhead ? t('downloads.row.keptAhead') : null,
     bytes > 0 ? t('downloads.row.meta', { server, size: formatBytes(bytes) }) : server,
@@ -180,7 +194,7 @@ export function ActiveRow({
 
 /** A row's small button: its words (with the icon too when `withIcon`), or only its
  * icon (a phone, a failed row's cancel) in a 44 wide square. */
-function RowAction({
+export function RowAction({
   iconOnly,
   withIcon,
   icon,

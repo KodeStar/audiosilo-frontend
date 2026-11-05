@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { AccountListRow } from './account-list-row';
 import {
   canRevoke,
+  clientAppName,
   deviceGlyph,
   knownPlatform,
   lastSeen,
@@ -42,11 +43,11 @@ export function deviceName(d: MyDevice, t: TFunction): string {
   return d.name.trim() || t('account.devices.unnamed');
 }
 
-/** "AudioSilo 1.4.2 · iOS · last seen 2 hours ago". */
+/** "AudioSilo 1.4.2 · iOS · last seen 2 hours ago", a watch "AudioSilo 1.4.2 · Apple Watch · ...". */
 export function deviceDetail(d: MyDevice, t: TFunction, now: number): string {
   const parts: string[] = [];
   if (d.client) {
-    parts.push(`${d.client.app} ${d.client.version}`.trim());
+    parts.push(`${clientAppName(d.client.app)} ${d.client.version}`.trim());
     const p = knownPlatform(d.client.platform);
     if (p) parts.push(t(`account.devices.platform.${p}`));
     else if (d.client.platform) parts.push(d.client.platform);

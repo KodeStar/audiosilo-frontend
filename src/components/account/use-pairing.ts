@@ -75,7 +75,7 @@ export function usePairingCode(
 /** What a pairing code `POST /auth/pair` could not make says (`usePairingCode`),
  * translated: too many tries (429), a kid's account (403 `kid_account`), any other answer
  * the server refused with (it was reached: never "couldn't reach"), else no answer. */
-function pairingError(e: unknown, server: string, t: TFunction): string {
+export function pairingError(e: unknown, server: string, t: TFunction): string {
   const kind = apiErrorKind(e);
   if (kind === 'too_many') return t('common.tooManyTries');
   if (kind === 'kid_account') return t('account.pair.kid');

@@ -260,6 +260,27 @@
       "kid": "Uma conta infantil não pode associar um dispositivo. A pessoa que a gere configura os dispositivos dela a partir de Casa.",
       "refused": "{{server}} não criou nenhum código. Tente novamente mais tarde."
     },
+    "watch": {
+      "title": "Apple Watch",
+      "install": "Instala o AudioSilo no teu relógio a partir da app Watch deste iPhone e volta aqui.",
+      "setupBody": "Inicia sessão no {{server}} a partir do relógio sem escrever nada, depois leva livros contigo e deixa o telefone em casa.",
+      "setUp": "Configurar o Apple Watch",
+      "sendAgain": "Enviar de novo",
+      "sent": "Enviado. Abre o AudioSilo no teu relógio para terminar de iniciar sessão.",
+      "expired": "O início de sessão expirou antes de chegar ao teu relógio. Nada mudou no relógio. Mantém-no por perto e envia de novo.",
+      "signedInAs": "Sessão iniciada como {{user}} em {{server}}",
+      "otherAccount": "O teu relógio tem sessão iniciada noutra conta. Configurá-lo para {{server}} substitui essa conta depois de o que ouviste estar sincronizado.",
+      "serverCannot": "{{server}} não consegue preparar livros para um relógio. Precisa da versão 2.6 ou posterior, com ffmpeg.",
+      "sendFailed": "Não foi possível contactar o teu relógio. Nada foi enviado, por isso tenta de novo.",
+      "waiting_one": "{{count}} audição pendente no teu relógio",
+      "waiting_other": "{{count}} audições pendentes no teu relógio",
+      "allSynced": "Tudo o que veio do teu relógio está sincronizado",
+      "couldntSync_one": "{{count}} audição não foi sincronizada. Vê Sync no relógio.",
+      "couldntSync_other": "{{count}} audições não foram sincronizadas. Vê Sync no relógio.",
+      "lastSynced": "Última sincronização {{when}}",
+      "neverSynced": "O teu relógio ainda não foi sincronizado",
+      "booksLink": "Livros no teu relógio"
+    },
     "devices": {
       "title": "Dispositivos com sessão iniciada",
       "sub": "Termine a sessão de um dispositivo perdido ou vendido",
@@ -941,6 +962,10 @@
       "download": "Transferir para ouvir offline",
       "removeDownload": "Remover download",
       "cancelDownload": "Cancelar transferência",
+      "sendToWatch": "Enviar para o relógio",
+      "sentToWatch": "Enviado para o teu relógio",
+      "sentToWatchPair": "Se o AudioSilo não estiver aberto no teu relógio, abre-o para terminar de iniciar sessão.",
+      "sentToWatchShow": "Ver",
       "markFinished": "Marcar como terminado",
       "markUnfinished": "Marcar como não terminado",
       "moreInSeries": "Mais desta série",
@@ -1138,6 +1163,40 @@
     "orphans": {
       "title": "Sem sessão iniciada",
       "body": "Transferências de uma conta que já não tem sessão iniciada neste dispositivo. Inicie sessão nela outra vez para as ouvir, ou remova-as para libertar espaço."
+    },
+    "watch": {
+      "title": "No teu Apple Watch",
+      "empty": "Ainda não há livros no teu relógio. Escolhe Enviar para o relógio na página de um livro.",
+      "notHere": "O teu relógio não está nesta conta",
+      "otherAccount": "Tem sessão iniciada noutra conta, e os livros dessa conta não aparecem aqui. Para o usares com {{server}}, configura-o na página da tua conta.",
+      "signedOut": "Ainda não tem sessão iniciada em {{server}}. Configura-o na página da tua conta.",
+      "openAccount": "Ir para a tua conta",
+      "sendAgain": "Enviar de novo",
+      "sendAgainLabel": "Enviar {{title}} de novo para o teu relógio",
+      "removeLabel": "Remover {{title}} do teu relógio",
+      "dismiss": "Deixar de mostrar",
+      "dismissLabel": "Deixar de mostrar {{title}} aqui",
+      "remove": {
+        "title": "Remover do teu relógio?",
+        "message": "{{title}} sai do teu relógio e para se estiver a tocar lá. O teu ponto no livro é mantido. Envia-o de novo para o recuperares.",
+        "confirm": "Remover"
+      },
+      "phase": {
+        "undelivered": "Enviado, ainda não entregue",
+        "delivered": "Entregue. Abre o AudioSilo no teu relógio.",
+        "waiting-sign-in": "Entregue. Começa quando o teu relógio tiver sessão iniciada aqui.",
+        "send-failed": "Não foi possível contactar o teu relógio. Envia-o de novo.",
+        "stale": "O teu relógio não o recebeu em 7 dias. Envia-o de novo se ainda o quiseres.",
+        "queued": "À espera no teu relógio",
+        "preparing": "A preparar no servidor. Pode demorar alguns minutos.",
+        "downloading": "A transferir para o teu relógio",
+        "ready": "No teu relógio",
+        "failed": "Não foi possível transferir. Envia-o de novo para tentar outra vez.",
+        "removing-undelivered": "Será removido quando o teu relógio estiver ao alcance",
+        "removing": "A remover. Abre o AudioSilo no teu relógio para terminar.",
+        "remove-failed": "Não foi possível contactar o teu relógio para o remover. Tenta de novo.",
+        "remove-refused": "Não removido: o teu relógio não tem sessão iniciada nesta conta."
+      }
     }
   },
   "search": {

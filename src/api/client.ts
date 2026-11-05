@@ -722,8 +722,15 @@ export class ApiClient {
   logout() {
     return this.request<void>('POST', '/auth/logout');
   }
-  pair() {
-    return this.request<PairingPayload>('POST', '/auth/pair');
+  /** A pairing token for another device. `ttlSeconds` (30..600) asks for a shorter or an explicit
+   * life; left out, no body is sent and the token gets the server's full 10 minutes. */
+  pair(options?: { ttlSeconds?: number }) {
+    const ttl = options?.ttlSeconds;
+    return this.request<PairingPayload>(
+      'POST',
+      '/auth/pair',
+      ttl === undefined ? undefined : { body: { ttl_seconds: ttl } },
+    ).then(withCleanAddresses);
   }
   /** The server's home and away addresses (capability `addresses`; `{}` when it has
    * neither), cleaned (`cleanAddresses`). Lets a paired device learn an address

@@ -4,6 +4,7 @@ import {
   accountParentKey,
   ACTIVE_NOW_MS,
   canRevoke,
+  clientAppName,
   deviceGlyph,
   knownPlatform,
   lastSeen,
@@ -132,6 +133,11 @@ describe('lastSeen', () => {
 });
 
 describe('platforms and glyphs', () => {
+  it('a watch app reads as AudioSilo; any other client keeps its name', () => {
+    expect(clientAppName('audiosilo-watch')).toBe('AudioSilo');
+    expect(clientAppName('Heimdall')).toBe('Heimdall');
+  });
+
   it("knows the three app platforms and a watch app's two", () => {
     expect(knownPlatform('watchos')).toBe('watchos');
     expect(knownPlatform('wearos')).toBe('wearos');
@@ -160,15 +166,11 @@ describe('platforms and glyphs', () => {
     expect(deviceGlyph({ kind: 'session', name: 'Kitchen', client: ios })).toBe('mobile');
   });
 
-  it('a watch is never drawn as a phone (no watch glyph is vendored)', () => {
+  it('a watch is drawn as a watch, never a phone', () => {
     const wear = { app: 'audiosilo-watch', version: '0.1.0', platform: 'wearos' };
     const watch = { app: 'audiosilo-watch', version: '0.1.0', platform: 'watchos' };
-    expect(deviceGlyph({ kind: 'session', name: 'Pixel Watch 3', client: wear })).toBe(
-      'hard-drive',
-    );
-    expect(deviceGlyph({ kind: 'session', name: "Chris's Watch", client: watch })).toBe(
-      'hard-drive',
-    );
+    expect(deviceGlyph({ kind: 'session', name: 'Pixel Watch 3', client: wear })).toBe('watch');
+    expect(deviceGlyph({ kind: 'session', name: "Chris's Watch", client: watch })).toBe('watch');
   });
 });
 

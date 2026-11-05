@@ -260,6 +260,27 @@
       "kid": "Un compte enfant ne peut pas associer d'appareil. La personne qui le gère configure ses appareils depuis Foyer.",
       "refused": "{{server}} n'a pas créé de code. Réessayez plus tard."
     },
+    "watch": {
+      "title": "Apple Watch",
+      "install": "Installez AudioSilo sur votre montre depuis l'app Watch de cet iPhone, puis revenez ici.",
+      "setupBody": "Connectez votre montre à {{server}} sans rien saisir, puis emportez des livres et laissez le téléphone à la maison.",
+      "setUp": "Configurer l'Apple Watch",
+      "sendAgain": "Renvoyer",
+      "sent": "Envoyé. Ouvrez AudioSilo sur votre montre pour terminer la connexion.",
+      "expired": "La connexion a expiré avant d'atteindre votre montre. Rien n'a changé sur la montre. Gardez-la à proximité et renvoyez.",
+      "signedInAs": "Connecté en tant que {{user}} sur {{server}}",
+      "otherAccount": "Votre montre est connectée à un autre compte. La configurer pour {{server}} remplace ce compte une fois ses écoutes synchronisées.",
+      "serverCannot": "{{server}} ne peut pas préparer de livres pour une montre. Il lui faut la version 2.6 ou ultérieure, avec ffmpeg.",
+      "sendFailed": "Impossible de joindre votre montre. Rien n'a été envoyé, réessayez.",
+      "waiting_one": "{{count}} écoute en attente sur votre montre",
+      "waiting_other": "{{count}} écoutes en attente sur votre montre",
+      "allSynced": "Tout ce qui vient de votre montre est synchronisé",
+      "couldntSync_one": "{{count}} écoute n'a pas pu être synchronisée. Voir Sync sur la montre.",
+      "couldntSync_other": "{{count}} écoutes n'ont pas pu être synchronisées. Voir Sync sur la montre.",
+      "lastSynced": "Dernière synchronisation {{when}}",
+      "neverSynced": "Votre montre n'a pas encore été synchronisée",
+      "booksLink": "Livres sur votre montre"
+    },
     "devices": {
       "title": "Appareils connectés",
       "sub": "Déconnectez un appareil perdu ou vendu",
@@ -941,6 +962,10 @@
       "download": "Télécharger pour hors ligne",
       "removeDownload": "Supprimer le téléchargement",
       "cancelDownload": "Annuler le téléchargement",
+      "sendToWatch": "Envoyer à la montre",
+      "sentToWatch": "Envoyé à votre montre",
+      "sentToWatchPair": "Si AudioSilo n'est pas ouvert sur votre montre, ouvrez-le pour terminer la connexion.",
+      "sentToWatchShow": "Afficher",
       "markFinished": "Marquer comme terminé",
       "markUnfinished": "Marquer comme non terminé",
       "moreInSeries": "Plus dans cette série",
@@ -1138,6 +1163,40 @@
     "orphans": {
       "title": "Non connecté",
       "body": "Téléchargements d'un compte qui n'est plus connecté sur cet appareil. Reconnectez-vous à ce compte pour les écouter, ou supprimez-les pour libérer de la place."
+    },
+    "watch": {
+      "title": "Sur votre Apple Watch",
+      "empty": "Aucun livre sur votre montre pour l'instant. Choisissez Envoyer à la montre sur la page d'un livre.",
+      "notHere": "Votre montre n'utilise pas ce compte",
+      "otherAccount": "Elle est connectée à un autre compte, dont les livres ne sont pas listés ici. Pour l'utiliser avec {{server}}, configurez-la sur la page de votre compte.",
+      "signedOut": "Elle n'est pas encore connectée à {{server}}. Configurez-la sur la page de votre compte.",
+      "openAccount": "Aller à votre compte",
+      "sendAgain": "Envoyer de nouveau",
+      "sendAgainLabel": "Envoyer de nouveau {{title}} à votre montre",
+      "removeLabel": "Retirer {{title}} de votre montre",
+      "dismiss": "Ne plus afficher",
+      "dismissLabel": "Ne plus afficher {{title}} ici",
+      "remove": {
+        "title": "Retirer de votre montre ?",
+        "message": "{{title}} est retiré de votre montre et s'arrête s'il y est en lecture. Votre position dans le livre est conservée. Envoyez-le de nouveau pour le récupérer.",
+        "confirm": "Retirer"
+      },
+      "phase": {
+        "undelivered": "Envoyé, pas encore livré",
+        "delivered": "Livré. Ouvrez AudioSilo sur votre montre.",
+        "waiting-sign-in": "Livré. Il démarrera une fois votre montre connectée ici.",
+        "send-failed": "Impossible de joindre votre montre. Envoyez-le de nouveau.",
+        "stale": "Votre montre ne l'a pas pris en 7 jours. Envoyez-le de nouveau si vous le voulez toujours.",
+        "queued": "En attente sur votre montre",
+        "preparing": "Préparation sur le serveur. Cela peut prendre quelques minutes.",
+        "downloading": "Téléchargement sur votre montre",
+        "ready": "Sur votre montre",
+        "failed": "Téléchargement impossible. Envoyez-le de nouveau pour réessayer.",
+        "removing-undelivered": "Sera retiré dès que votre montre sera à portée",
+        "removing": "Retrait en cours. Ouvrez AudioSilo sur votre montre pour terminer.",
+        "remove-failed": "Impossible de joindre votre montre pour le retirer. Réessayez.",
+        "remove-refused": "Pas retiré : votre montre n'est pas connectée à ce compte."
+      }
     }
   },
   "search": {

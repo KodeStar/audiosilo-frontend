@@ -204,7 +204,7 @@ keep this index in step (one line per topic).
   - Android Auto
   - CarPlay and the UIScene life cycle
   - Tokens on a locked phone
-  - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, the watch scheme, the player, spans and background sync, sign-out, DEBUG launch variables)
+  - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, the watch scheme, the player, spans and background sync, sign-out, the phone's side `modules/audiosilo-watch` + `src/watch/`, the watch in Downloads and `remove`, DEBUG launch variables)
   - A route, not a second player (decision 7)
   - The receiver never gets the session token
   - Generations
@@ -256,6 +256,7 @@ src/playback/       PlaybackService + web/native engines, store, book-queue, boo
 src/car/            CarPlay + Android Auto JS: snapshot model, car sync controller, headless task, native seam
 src/cast/           Chromecast: the routed service, the cast engine, cast tokens, native + web drivers
 src/widgets/        iOS widget + sleep timer Live Activity ('widget' functions, model, sync)
+src/watch/          the phone's side of the watch: message model, link (no-op off iOS), store, Send to watch
 src/downloads/      offline downloads: native/web engines + store (sibling of playback)
 src/reader/         the ebook reader's hosts (web iframe, app WebView), EPUB file + chunks, protocol, reading place queue
 src/modules/        player modules (Bridge Phase 2a): the registry (empty) + the slot wrapper; NOT the root modules/
@@ -266,6 +267,7 @@ src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemePr
 src/lib/            storage (+ storage-keys), secure-store, bootstrap (launch steps), storage + identity migrations, connection-id, profile-pin, sha256, native-intent, device, paths, format, register-sw
 reader/             the reader document's source + vendored foliate-js; `npm run reader:build` -> public/reader.html + src/reader/reader-html.native.ts
 modules/audiosilo-player/   the native playback module (ios/ Swift, android/ Kotlin, src/ its TS surface)
+modules/audiosilo-watch/    the phone's WatchConnectivity link (apple only: the single WCSessionDelegate)
 targets/watch/      the Apple Watch app (Swift, not bundled by Metro): Core/ (Foundation-only ports of the player's rules), Net/, Storage/, Phone/, Playback/, UI/
 watch-core/         SwiftPM package over targets/watch/Core (a symlink), so its tests run on the host
 plugins/            config plugins: withCast, withCarPlay, withWidgetsNoPush, withWatchScheme, withXcode26SwiftUICoreFix

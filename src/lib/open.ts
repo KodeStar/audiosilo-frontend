@@ -7,6 +7,7 @@ import {
   type BookTab,
   collectionHref,
   type CoreYouSection,
+  downloadsHref,
   findShowsHref,
   type FindShowsSection,
   householdHref,
@@ -59,6 +60,8 @@ export function pushInShell(href: Href, state: NavState | undefined = currentNav
 const ME_TAB = '(me)';
 /** The Library tab's group: its root is the browse modes. */
 const LIBRARY_TAB = '(library)';
+/** The Downloads tab's group. */
+const OFFLINE_TAB = '(offline)';
 
 /**
  * Open `href`, a tab's ROOT with its params (the You hub on a section), as THAT tab's root:
@@ -90,6 +93,14 @@ export function openYou(
  */
 export function openLibraryRoot(href: Href, state: NavState | undefined = currentNavState()) {
   openTabRoot(href, LIBRARY_TAB, state);
+}
+
+/** The Downloads page, as its tab's root, on the watch's section for `watchConnection`. */
+export function openDownloads(
+  watchConnection: string,
+  state: NavState | undefined = currentNavState(),
+) {
+  openTabRoot(downloadsHref(watchConnection, Date.now()), OFFLINE_TAB, state);
 }
 
 /** The Journal (across every server): the You hub's Journal section, on `tab`. */

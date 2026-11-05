@@ -1858,7 +1858,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   nothing may treat the empty connection list as real (the offline queue keeps its saves, car
   bookmarks are kept, the car snapshot isn't rewritten as signed out).
 
-**Apple Watch app (Track W3a, `targets/watch/`)**: a standalone SwiftUI watchOS 11 app added by
+**Apple Watch app (Track W3a, `targets/watch/`; the phone's side, W3b, is the last bullets)**: a standalone SwiftUI watchOS 11 app added by
 `@bacons/apple-targets` (exact pin, LAST in `app.json` plugins: it edits only the Xcode project, so
 `withCarPlay`'s AppDelegate rewrite is untouched). It has its own token, `device_id`, outbox and
 downloads and talks to the server directly; the phone only hands it a pairing token and books.
@@ -1880,7 +1880,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
 - **One WatchConnectivity delegate.** `Phone/PhoneLink.swift` is the only `WCSessionDelegate`,
   activated at launch before anything else; messages are versioned (`v: 1`) and decoded in
   `Core/PhoneMessages.swift`. Every file under `targets/watch/` is compiled into the watch target
-  (a synchronized group), so keep notes and fixtures out of it.
+  (a synchronized group), so keep notes and fixtures out of it. `watch-state` goes once per launch
+  whatever it says (not before the first unlock, when nothing kept can be read), then on a change,
+  and counts as sent only when `updateApplicationContext` took it (`Core/StatePublication.swift`):
+  a refusal goes again at activation, `becameActive`, a reachability or companion change, or with
+  the next changed state, never on a timer. Content identical to the session's last
+  context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
   (`Net/BackgroundDownloads.swift`, the one session, reattached at launch) after a free-space
@@ -1911,7 +1916,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   picker shows when needed); the built-in speaker plays only after a one-time yes (decision 11,
   `watch.speakerConfirmed` in UserDefaults). Speed, skips (15 / 30), chapter moves, Now Playing
   times, the resume rule and the sleep timer are Core (`PlayerRules.swift`, `SleepTimer.swift`):
-  the engine carries them out. A book keeps its own speed (`PlaybackSpeed.book`, the phone's
+  the engine carries them out. Beside the bar both figures are audio time and add up to the
+  chapter (`Skips.figures`, the phone's seek bar); away from 1x one more line says the wall-clock
+  time left in the phone's phrase (`Skips.wallClockLine`, `formatTimeLeft`), and at 1x nothing does. A book keeps its own speed (`PlaybackSpeed.book`, the phone's
   `bookSpeed`: the row's when its place was taken, else this watch's own, else the speed last
   chosen here), so a span never writes another book's speed onto its row. A pause the system makes
   (suspended, headphones gone) is a pause, its span ending when the audio last moved; the status
@@ -1977,13 +1984,102 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   A replace ends the old token on its server, as Sign out does (a sign-in again for the same
   account keeps it, as the phone does); a sign-in with no token kept but another account's files
   left behind forgets them first, so they are never sent under the new token. The phone's messages
-  are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in (one
-  for a blocked replace's account is queued once it succeeds).
+  are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in. A book
+  that can't be taken yet (signing in, a failed sign-in, a too-old server, another account) is held
+  on disk the moment it arrives, ahead of any sign-in still running (`Core/HeldBooks.swift`,
+  `held-books.json`: 20 books, 7 days) and queued through the Download button's path once its account
+  is ready and its server has said it serves the watch; its row goes only once a record not failed is
+  safely in the download index. One that ages out, goes over the cap or whose account the
+  listener refused (Keep this account) is given up on and kept 7 more days. `watch-state` has no
+  account per book, so a row goes there (`queued`, then `failed`) only under its own account, and the
+  watch's own screens show all of them. Leaving an account (sign-out, a replace that succeeded)
+  deletes its rows, given up on or not, so no titles of it stay on the watch's screens; a blocked or
+  failed sign-in changes nothing.
+- **The phone's side (Track W3b, `modules/audiosilo-watch`, `src/watch/`)**: an apple-only local
+  module. `ios/WatchLink.swift` is the phone's only `WCSessionDelegate` (nothing else may set
+  `WCSession.default.delegate`), activated by `AudiosiloWatchAppDelegateSubscriber`
+  (`appDelegateSubscribers` in `expo-module.config.json`), never by editing the AppDelegate
+  text, so `withCarPlay` stays untouched and a CarPlay-first or background launch activates it
+  too. Every session property means something only once activated, so `getSnapshot` and the
+  sends wait for it (`whenActivated`, 5 s at most, then "no watch"). The state is the session's
+  `receivedApplicationContext`, else a copy for a cold start in `watchDirectoryURL`, the folder
+  the system keeps for this very watch (never `UserDefaults`: a watch paired while the app was
+  not running would read the last one's sign-in).
+  The messages are built and parsed in `src/watch/watch-model.ts`, the other half of
+  `Core/PhoneMessages.swift`: a field changed here changes there, with tests on both. Plain
+  property lists only (`addresses: {}`, never a null: the native side rejects the rest).
+  JS reaches the module only through `src/watch/link.ios.ts`; `link.ts` is the no-op for web and
+  Android (Wear OS comes in behind the same `WatchLink`, W4). `watchLink.supported` is read once
+  at load, so `useSendToWatch` and the account card cost a platform without a watch nothing.
+  - **Order is the rule of `pair` then `book`.** The watch handles messages in order and holds a
+    book for an account it does not hold yet, so `sendPair` answers only once the pair is ahead of
+    what follows (the watch replied to `sendMessage`, or it fell back to `transferUserInfo`, FIFO
+    with the books; after 10 s with no reply it transfers too: a second copy is harmless, its
+    token is single use and the watch ignores a failed sign-in again for an account it holds).
+  - **A token can run out in transit.** Each send mints a new one (`POST /auth/pair
+    {"ttl_seconds":600}`), `expires_at` counts from before the request (the server truncates its own to whole
+    seconds, so this can run under a second later; only the watch's exchange decides), and a new pair cancels an undelivered older one and moves the queued books
+    behind itself. The card says `sent` until the pair's time is up, then `expired` with Send
+    again; a book sent while a pair has over a minute left follows it rather than minting another.
+    `pairUntil` holds only that last pair: one for another account replaces it, as it does on the
+    native side, and the watch saying it signed in ends it (its token is used, so nothing may
+    follow it later). Two sends at once for a connection share one pair (`setUpWatch`).
+  - **Who sees what** (`watch-model.ts`): the card for a paired watch and an account that can use
+    one (not a kid's, 403 `kid_account`; not a demo's), with Install in place of its button until
+    the app is on the watch; the book action `'watch'` needs the app installed and `watch` in the
+    server's `renditions`, never on an episode; the Downloads section needs the app installed and
+    an account that can use one. A client can't tell an API key session (no such
+    connection is made by the app): the server's 403 reads as the pairing refusal. The card keeps
+    set-up, signed in as and what waits; the books are in Downloads (a link), and the Send to watch
+    toast links there too (`openDownloads`, `?watch=<connection id>`: not `?connection=`, which
+    scopes content, and this page is every server's; `&at=` tells one link from the next, so each
+    scrolls to the section; both are the tab's `rootParams`, or the focus clears them).
+  - **The watch in Downloads (W3c, `src/watch/watch-rows.ts`, `watch-ledger.ts`,
+    `components/downloads/watch-section.tsx`).** The watch only says what it holds now, and
+    `transferUserInfo` answers nothing, so the phone keeps a ledger (`audiosilo.watchLedger`) by
+    watch and then by `<server_id>.<user_id>`, keyed `(library_id, path)`. The watch is named by
+    `watch_id`, a UUID in a file in `watchDirectoryURL`, which the system keeps for that watch and
+    deletes with it (or with the app), so a row can't show for another watch or survive the app
+    leaving this one; with no id there is no ledger, only what the watch lists. `watch-state` wins
+    over the ledger and is shown only for the account it names (it has no account per book). The
+    snapshot's `outstanding` holds the undelivered `book`s and `remove`s, never a `pair` (it holds a
+    token), which tells "not delivered yet" from "delivered, open AudioSilo on your watch"; one the
+    system reports failed stays listed (`failed`) for the run, or it would read as delivered. A row
+    is written when Send is tapped (`handed_over: false`, so a kill mid-send can't read as
+    delivered), put back if the send fails, and stops claiming progress after 7 days (`WATCH_HOLD_MS`,
+    the watch's own hold limit) with Send again. Once seen in `watch-state`, a book that leaves it is
+    gone, so the row goes (removed by hand on the watch, or the watch left that account).
+  - **`remove` (phone to watch, `transferUserInfo`, no server or wire change).** The row says
+    removing until `watch-state` drops it, surviving a restart, and never claims it finished while
+    the message is outstanding. There is no reply: a `remove` delivered while the watch says it is
+    signed out or on another account reads as refused (`remove_refused`, the row explains and can be
+    dismissed), and this heals itself if that was only a sign-in still running. Delivered, the row
+    offers Remove again through the same confirm (`rowActions`): the watch keeps a `remove` not yet
+    handled only in memory, so a kill loses it. The repeat is the same message and restarts the row's
+    hold limit; it does nothing to a book already gone, but has no way to tell a copy that came back
+    on the watch since, and stops and removes that one. A book's sends and
+    Removes go one at a time, in the order asked (`send.ts`, `inTurn`), or a Remove tapped while a
+    send waits for its pair would overtake that `book`. `sendPair` moves what is still queued when it
+    settles (never a snapshot from before its reply: that would send a delivered one twice, and put
+    an older one behind a newer) behind itself, in their order. On the watch (`AppModel.receive`,
+    `HeldBooks.noteRemove`/`finishRemove`) it is handled in its turn behind any sign-in, by
+    `downloads.remove` (the hand path: `willRemove` stops a playing book so its span closes), only
+    for the signed-in account. Refused, it changes nothing, so a held book of that account still
+    comes if it signs in. Since a `book` is held the moment it arrives, a `remove`'s ticket keeps the
+    two apart: it clears only the row it arrived after, and until the record has gone (stopping a
+    playing book publishes with it still there) that record settles no row, so a book sent again
+    right after a Remove stands.
+  - **Home on the watch** lists what is held, queued, preparing or downloading (On the way) above On
+    this watch and Continue listening, so a sent book is in plain sight. A book shows once: Continue
+    listening leaves out what On the way lists. "Preparing on the server" says the wrist can go
+    down because the server's encode runs under its own lifetime (`renditionsOfBook` queues every
+    file under `baseCtx`, `FileCache.Queue`), while the watch polls and starts files only in the
+    foreground, so the download itself waits for the app.
 - **DEBUG launch variables (simulator only, compiled out of release).** The watch simulator has
   no phone and simctl cannot tap, so in DEBUG builds the launch environment stands in:
   `AUDIOSILO_DEBUG_PAIR` (a v1 `pair` message as JSON: sign in), `AUDIOSILO_DEBUG_BOOK` (a v1
-  `book` message: queue a download) and `AUDIOSILO_DEBUG_PLAY=1` (play the first book on the
-  watch). A verifier against a scratch server (plain HTTP, reachable from the Mac):
+  `book` message: queue a download), `AUDIOSILO_DEBUG_REMOVE` (a v1 `remove` message: as if the
+  phone sent it) and `AUDIOSILO_DEBUG_PLAY=1` (play the first book on the watch). A verifier against a scratch server (plain HTTP, reachable from the Mac):
   ```sh
   W=<watch simulator udid>      # xcrun simctl list devices available | grep -A6 watchOS
   APP=<derived data>/Build/Products/Debug-watchsimulator/AudioSiloWatch.app

@@ -1,7 +1,7 @@
 import { store } from 'expo-router/build/global-state/router-store';
 import { renderRouter } from 'expo-router/testing-library';
 
-import { openJournal, openSettings, openYou } from '@/lib/open';
+import { openDownloads, openJournal, openSettings, openYou } from '@/lib/open';
 import { playerHref } from '@/lib/paths';
 import { popTabToRoot } from '@/lib/root-stack';
 import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
@@ -79,6 +79,25 @@ it('opens the hub from over the full player in the one shell underneath', async 
   expect(rootRoutes()).toEqual(['(app)']);
   expect(routeInfo().segments).toEqual(['(app)', '(me)', 'you']);
   expect(routeInfo().params).toEqual({ section: 'journal', tab: 'bookmarks' });
+});
+
+it('opens Downloads for the watch from another tab, its link kept, each link in place', async () => {
+  // The Send to watch toast and the account card: `tabStackListeners` clears any param a root
+  // does not own as it comes into focus, so it would land with neither.
+  await mount('/library');
+  await nav(() => router.push('/book/1?connection=c&path=x'));
+  await nav(() => openDownloads('srv.7'));
+  expect(routeInfo().segments).toEqual(['(app)', '(offline)', 'downloads']);
+  expect(routeInfo().params).toMatchObject({ watch: 'srv.7', at: expect.any(String) });
+  expect(tabStack('(offline)')).toEqual(['downloads']);
+  expect(tabStack('(library)')).toEqual(['library/index', 'book/[libraryId]']);
+
+  await nav(() => router.push('/account?connection=c'));
+  await nav(() => openDownloads('two.9'));
+  expect(routeInfo().params).toMatchObject({ watch: 'two.9' });
+  expect(tabStack('(offline)')).toEqual(['downloads']);
+  await nav(() => openDownloads('two.9'));
+  expect(tabStack('(offline)')).toEqual(['downloads']);
 });
 
 it('pushes Settings on the current tab, and only moves the pane when already there', async () => {

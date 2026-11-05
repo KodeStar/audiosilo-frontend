@@ -64,8 +64,8 @@ export type HeroActionsProps = {
  * The hero's actions (the prototype's `hero-actions`): the primary (ink: Resume chapter
  * N, Start listening, Listen again, Pause), the download, Up next (Play next / Add to the
  * end, capability `queue`), favourite, Add to collection (capability `collections`) and
- * the book menu (mark finished or not, more in this series; on a phone Add to collection
- * too), Read for a book with an ebook (`canRead`), and for an admin "Generate
+ * the book menu (Send to watch where offered, mark finished or not, more in this series; on a
+ * phone Add to collection too), Read for a book with an ebook (`canRead`), and for an admin "Generate
  * characters and recaps" (or Regenerate in the menu) where the page offers it. Nothing
  * here is pink: the hero's one pink thing is the progress bar. An active module's
  * `bookActions` (none yet) follow in the book menu.

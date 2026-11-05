@@ -198,12 +198,12 @@ describe('DevicesSection', () => {
     await mount();
     expect(
       within(screen.getByTestId('device-30')).getByText(
-        'audiosilo-watch 0.1.0 · Apple Watch · last seen 2 hours ago',
+        'AudioSilo 0.1.0 · Apple Watch · last seen 2 hours ago',
       ),
     ).toBeTruthy();
     expect(
       within(screen.getByTestId('device-31')).getByText(
-        'audiosilo-watch 0.1.0 · Wear OS · last seen 2 hours ago',
+        'AudioSilo 0.1.0 · Wear OS · last seen 2 hours ago',
       ),
     ).toBeTruthy();
   });

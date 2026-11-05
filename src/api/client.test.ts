@@ -71,6 +71,28 @@ describe('ApiClient', () => {
     });
   });
 
+  it('pair sends no body by default, and ttl_seconds when asked for', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { pairing_token: 'p' } }));
+    const api = new ApiClient('https://x', 'tok');
+    await api.pair();
+    expect(fetchMock.mock.calls[0][0]).toBe('https://x/api/v1/auth/pair');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
+    await api.pair({ ttlSeconds: 600 });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ ttl_seconds: 600 });
+    await api.pair({});
+    expect(fetchMock.mock.calls[2][1].body).toBeUndefined();
+  });
+
+  it('pair cleans the addresses it answers with', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: { pairing_token: 'p', addresses: { home: 'nas.local', away: 'https://b.example/' } },
+    }));
+    const payload = await new ApiClient('https://x', 'tok').pair();
+    expect(payload.addresses).toEqual({ away: 'https://b.example' });
+  });
+
   it('sends the bearer token and parses the JSON body', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { name: 'AudioSilo' } }));
     const info = await new ApiClient('https://h', 'tok').serverInfo();

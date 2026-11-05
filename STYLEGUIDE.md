@@ -62,7 +62,7 @@ Desktop
 |---|---|---|
 | Home | none: greeting, Now card, This week, Continue listening, Next in your series, Coming up in your series, Listening in the house, Smart shelves, Recently added, Favourites, Recently finished | `#home` |
 | Library | Books · Authors · Series · Narrators · Collections · Folders | `#library`, `#series`, `#author`, `#book` |
-| Downloads | none (storage, rules, queue, ready offline) | `#downloads` |
+| Downloads | none (storage, rules, queue, the Apple Watch on iOS, ready offline) | `#downloads` |
 | You | Stats · Year in listening · Journal · Household (· Upcoming while a server offers it) | `/you?section=stats\|year\|journal\|household\|upcoming` (the Me tab's root); `/upcoming` the same list as a pushed page |
 | Settings (gear) | none: a page pushed on the current tab (Back returns there), with its own grouped section nav | `/settings?section=preferences\|accounts\|<pane>`, `/account?connection=` |
 | Overlays | Full player and Finished rise over the current page | `#player`, `#finished` |

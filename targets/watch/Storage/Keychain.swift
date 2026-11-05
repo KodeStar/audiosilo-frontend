@@ -12,13 +12,19 @@ enum Keychain {
     [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
   }
 
-  static func token() -> String? {
+  static func token() -> String? { read().token }
+
+  /// False before the watch's first unlock: `token()` says nil then, a token kept or not.
+  static var readable: Bool { read().status != errSecInteractionNotAllowed }
+
+  private static func read() -> (status: OSStatus, token: String?) {
     var q = query
     q[kSecReturnData as String] = true
     q[kSecMatchLimit as String] = kSecMatchLimitOne
     var out: AnyObject?
-    guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
-    return String(data: data, encoding: .utf8)
+    let status = SecItemCopyMatching(q as CFDictionary, &out)
+    guard status == errSecSuccess, let data = out as? Data else { return (status, nil) }
+    return (status, String(data: data, encoding: .utf8))
   }
 
   /// Store the token (nil deletes it). Returns whether it was kept. An existing token is

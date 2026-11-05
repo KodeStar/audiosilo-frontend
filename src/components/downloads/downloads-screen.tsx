@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAllProgressAll } from '@/api/hooks';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -31,13 +32,15 @@ import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
+import { watchLink } from '@/watch/link';
 
-import { ActiveRow, PlannedRow, ReadyRow } from './download-rows';
+import { ActiveRow, PlannedRow, ReadyRow, SectionHead } from './download-rows';
 import { DownloadsEmpty, DownloadsSkeleton, DownloadsUnsupported } from './downloads-states';
 import { RemoveDownloadConfirm } from './remove-download-confirm';
 import { RulesCard } from './rules-card';
 import { StorageCard } from './storage-card';
 import { useStorage } from './use-storage';
+import { WatchSection } from './watch-section';
 
 type Planned = KeepAheadSlot & { state: 'waiting' | 'no-space' | 'later' };
 const isPlanned = (s: KeepAheadSlot): s is Planned =>
@@ -47,19 +50,6 @@ const isPlanned = (s: KeepAheadSlot): s is Planned =>
 function webUnsupportedReason() {
   const secure = typeof window !== 'undefined' && window.isSecureContext !== false;
   return unsupportedReason({ secure, caches: typeof caches !== 'undefined' });
-}
-
-function SectionHead({ title, sub }: { title: string; sub?: string }) {
-  return (
-    <View className="flex-row flex-wrap items-baseline gap-x-3 gap-y-1">
-      <Text variant="heading">{title}</Text>
-      {sub ? (
-        <Text variant="muted" style={tabularNums}>
-          {sub}
-        </Text>
-      ) : null}
-    </View>
-  );
 }
 
 /** The listener's place in each book, keyed like the registry, for the ready rows. */
@@ -89,7 +79,8 @@ const CARDS_BESIDE_MIN = 716;
 /**
  * The Downloads tab (Stacks prototype `Downloads`): what is on this device and how much
  * room it takes per server, the automatic download rules, the browser's limits (web),
- * what is downloading or waiting, and the books ready offline grouped by server.
+ * what is downloading or waiting, what is on a paired Apple Watch (iOS) and the books ready
+ * offline grouped by server.
  */
 export function DownloadsScreen() {
   const { t } = useTranslation();
@@ -99,6 +90,8 @@ export function DownloadsScreen() {
   const paddingBottom = useMiniPlayerInset();
   const { openBook, openPlayer } = useOpen();
   const { press } = useTabPress();
+  const scroller = useRef<ScrollView>(null);
+  const reducedMotion = useReducedMotion();
 
   // The page re-renders when a download starts, lands, fails or goes; a running row
   // follows its own progress (`ActiveRow`).
@@ -193,6 +186,7 @@ export function DownloadsScreen() {
 
   return (
     <ScrollView
+      ref={scroller}
       className="flex-1"
       contentContainerClassName="p-4 lg:px-8"
       contentContainerStyle={{ paddingBottom }}
@@ -264,6 +258,12 @@ export function DownloadsScreen() {
               ))}
             </Card>
           </View>
+        ) : null}
+
+        {watchLink.supported ? (
+          <WatchSection
+            onReveal={(y) => scroller.current?.scrollTo({ y, animated: !reducedMotion })}
+          />
         ) : null}
 
         {ready.length > 0 ? (
