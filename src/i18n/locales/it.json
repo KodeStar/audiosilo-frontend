@@ -972,7 +972,7 @@
       "cancelDownload": "Annulla download",
       "sendToWatch": "Invia all'orologio",
       "sentToWatch": "Inviato all'orologio",
-      "sentToWatchPair": "Apri AudioSilo sull'orologio per completare l'accesso.",
+      "sentToWatchPair": "Se AudioSilo non è aperto sull'orologio, aprilo per completare l'accesso.",
       "markFinished": "Segna come finito",
       "markUnfinished": "Segna come non finito",
       "moreInSeries": "Altro di questa serie",

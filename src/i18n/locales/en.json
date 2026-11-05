@@ -972,7 +972,7 @@
       "cancelDownload": "Cancel download",
       "sendToWatch": "Send to watch",
       "sentToWatch": "Sent to your watch",
-      "sentToWatchPair": "Open AudioSilo on your watch to finish signing in.",
+      "sentToWatchPair": "If AudioSilo isn't open on your watch, open it to finish signing in.",
       "markFinished": "Mark as finished",
       "markUnfinished": "Mark as not finished",
       "moreInSeries": "More in this series",

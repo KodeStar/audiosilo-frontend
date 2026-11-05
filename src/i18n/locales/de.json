@@ -972,7 +972,7 @@
       "cancelDownload": "Download abbrechen",
       "sendToWatch": "An Uhr senden",
       "sentToWatch": "An deine Uhr gesendet",
-      "sentToWatchPair": "Öffne AudioSilo auf deiner Uhr, um die Anmeldung abzuschließen.",
+      "sentToWatchPair": "Falls AudioSilo auf deiner Uhr nicht geöffnet ist, öffne es, um die Anmeldung abzuschließen.",
       "markFinished": "Als abgeschlossen markieren",
       "markUnfinished": "Als nicht abgeschlossen markieren",
       "moreInSeries": "Mehr aus dieser Reihe",

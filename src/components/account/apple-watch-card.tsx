@@ -111,11 +111,11 @@ function WatchSyncLines({ state, now }: { state: WatchState; now: number }) {
   const { t, i18n } = useTranslation();
   return (
     <>
-      <Text variant="caption">
-        {state.unsent_events > 0
-          ? t('account.watch.waiting', { count: state.unsent_events })
-          : t('account.watch.allSynced')}
-      </Text>
+      {state.unsent_events > 0 ? (
+        <Text variant="caption">{t('account.watch.waiting', { count: state.unsent_events })}</Text>
+      ) : state.last_sync_at ? (
+        <Text variant="caption">{t('account.watch.allSynced')}</Text>
+      ) : null}
       {state.couldnt_sync > 0 ? (
         <Text variant="caption">
           {t('account.watch.couldntSync', { count: state.couldnt_sync })}

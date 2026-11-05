@@ -35,8 +35,10 @@ const inFlight = new Map<string, Promise<void>>();
 /**
  * Sign the watch in to `connection`: a new single-use pairing token each time, so a send again
  * never reuses one that may have run out or been used on the way. The expiry the watch gets
- * counts from before the request, so it is never later than the server's own. A second call while
- * one is on its way joins it: two tokens would sign the watch in twice, leaving a session behind.
+ * counts from before the request, but the server truncates its own to whole seconds, so this one
+ * can run under a second later: only a hint, since the watch's exchange is what decides. A second
+ * call while one is on its way joins it: two tokens would sign the watch in twice, leaving a
+ * session behind.
  */
 export function setUpWatch(api: Pick<ApiClient, 'pair'>, connection: Connection): Promise<void> {
   const running = inFlight.get(connection.id);

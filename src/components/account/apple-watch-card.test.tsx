@@ -126,11 +126,28 @@ describe('AppleWatchCard', () => {
     expect(screen.getByText('Send again')).toBeTruthy();
   });
 
-  it('says so when the watch has no books and nothing waits', async () => {
+  it('says only that it has not synced yet on a freshly signed-in watch', async () => {
     await mount({ ...installed, state: here });
     expect(screen.getByText(/No books on your watch yet/)).toBeTruthy();
-    expect(screen.getByText('Everything from your watch has synced')).toBeTruthy();
     expect(screen.getByText('Not synced from your watch yet')).toBeTruthy();
+    expect(screen.queryByText('Everything from your watch has synced')).toBeNull();
+  });
+
+  it('says everything has synced once a sync has happened and nothing waits', async () => {
+    await mount({
+      ...installed,
+      state: { ...here, last_sync_at: new Date(Date.now() - 120_000).toISOString() },
+    });
+    expect(screen.getByText('Everything from your watch has synced')).toBeTruthy();
+    expect(screen.getByText(/^Last synced /)).toBeTruthy();
+    expect(screen.queryByText('Not synced from your watch yet')).toBeNull();
+  });
+
+  it('counts what waits on a watch that has not synced yet', async () => {
+    await mount({ ...installed, state: { ...here, unsent_events: 2 } });
+    expect(screen.getByText('2 listens waiting on your watch')).toBeTruthy();
+    expect(screen.getByText('Not synced from your watch yet')).toBeTruthy();
+    expect(screen.queryByText('Everything from your watch has synced')).toBeNull();
   });
 
   it('names another account, offering to set up here', async () => {

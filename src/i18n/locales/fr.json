@@ -972,7 +972,7 @@
       "cancelDownload": "Annuler le téléchargement",
       "sendToWatch": "Envoyer à la montre",
       "sentToWatch": "Envoyé à votre montre",
-      "sentToWatchPair": "Ouvrez AudioSilo sur votre montre pour terminer la connexion.",
+      "sentToWatchPair": "Si AudioSilo n'est pas ouvert sur votre montre, ouvrez-le pour terminer la connexion.",
       "markFinished": "Marquer comme terminé",
       "markUnfinished": "Marquer comme non terminé",
       "moreInSeries": "Plus dans cette série",

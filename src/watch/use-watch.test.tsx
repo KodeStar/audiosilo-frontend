@@ -82,14 +82,15 @@ describe('useSendToWatch', () => {
     expect(result.current).toBeNull();
   });
 
-  it('says what is left to do when it had to sign the watch in', async () => {
+  it('says what may be left to do when it had to sign the watch in', async () => {
     const { result } = await mount();
     await act(async () => result.current!(book));
     expect(mockSendPair).toHaveBeenCalledTimes(1);
     expect(mockSendBook).toHaveBeenCalledTimes(1);
+    // True whether the watch app is closed or open and already signing in: the phone can't tell yet.
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Sent to your watch',
-      description: 'Open AudioSilo on your watch to finish signing in.',
+      description: "If AudioSilo isn't open on your watch, open it to finish signing in.",
     });
   });
 

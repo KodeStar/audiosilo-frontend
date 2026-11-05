@@ -76,7 +76,7 @@ describe('setUpWatch', () => {
     expect(useWatchStore.getState().pairUntil['srv.7']).toBe(NOW + 600_000);
   });
 
-  it('counts the expiry from before the request, never later than the server', async () => {
+  it('counts the expiry from before the request, not from the answer', async () => {
     api.pair.mockImplementation(async () => {
       jest.setSystemTime(NOW + 5_000);
       return payload;
