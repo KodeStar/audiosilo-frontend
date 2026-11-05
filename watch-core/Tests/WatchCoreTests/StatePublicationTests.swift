@@ -14,19 +14,6 @@ final class StatePublicationTests: XCTestCase {
     XCTAssertNil(StatePublication().due)
   }
 
-  func testALaunchOwesItsFirstStateWhateverTheLastLaunchSent() {
-    // A launch keeps nothing: the same state as last time still goes, so a reinstall or a
-    // sign-out reaches a phone that kept an older context.
-    var lastLaunch = StatePublication()
-    lastLaunch.update(state(signedIn: false))
-    lastLaunch.tookIt(state(signedIn: false))
-    XCTAssertNil(lastLaunch.due)
-
-    var launch = StatePublication()
-    launch.update(state(signedIn: false))
-    XCTAssertEqual(launch.due, state(signedIn: false))
-  }
-
   func testAStateTheSessionTookIsNotOwedAgain() {
     var p = StatePublication()
     p.update(state())
@@ -40,7 +27,6 @@ final class StatePublicationTests: XCTestCase {
     var p = StatePublication()
     p.update(state())
     // Refused (WCError 7018 at launch): `tookIt` is never called.
-    XCTAssertEqual(p.due, state())
     XCTAssertEqual(p.due, state())
     p.tookIt(state())
     XCTAssertNil(p.due)

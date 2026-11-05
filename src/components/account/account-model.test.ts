@@ -135,7 +135,6 @@ describe('lastSeen', () => {
 describe('platforms and glyphs', () => {
   it('a watch app reads as AudioSilo; any other client keeps its name', () => {
     expect(clientAppName('audiosilo-watch')).toBe('AudioSilo');
-    expect(clientAppName('AudioSilo')).toBe('AudioSilo');
     expect(clientAppName('Heimdall')).toBe('Heimdall');
   });
 

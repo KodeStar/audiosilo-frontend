@@ -6,7 +6,7 @@ import Foundation
 
 struct StatePublication: Sendable {
   /// The state to report: the latest wins.
-  private(set) var latest: WatchState?
+  private var latest: WatchState?
   /// The one the session last took, this launch.
   private var handedOver: WatchState?
 
@@ -17,8 +17,7 @@ struct StatePublication: Sendable {
     latest = state
   }
 
-  /// The session took `state`. That includes content identical to its last context: it then
-  /// returns success and sends nothing, the counterpart already holds or will get that context.
+  /// The session took `state`.
   mutating func tookIt(_ state: WatchState) {
     handedOver = state
   }
