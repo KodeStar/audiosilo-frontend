@@ -49,6 +49,7 @@ struct RootView: View {
 }
 
 struct SetupView: View {
+  @EnvironmentObject var model: AppModel
   let status: AppModel.SetupStatus
 
   var body: some View {
@@ -68,6 +69,7 @@ struct SetupView: View {
         case .failed(let message):
           Text(message)
         }
+        HeldBookRows(books: model.heldBooks)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -90,6 +92,7 @@ struct TooOldView: View {
             Text("This server is too old for the watch app (needs 2.6 or later).")
           }
           if let version { Text("Your server: \(version)").font(.footnote).foregroundStyle(.secondary) }
+          HeldBookRows(books: model.heldBooks)
           Button("Try again") { model.becameActive() }
           NavigationLink("Sign out") { SignOutView() }
         }
@@ -225,6 +228,7 @@ struct DownloadButton: View {
 }
 
 struct OnThisWatchView: View {
+  @EnvironmentObject var model: AppModel
   @ObservedObject var downloads: DownloadManager
   @ObservedObject var engine: WatchAudioEngine
   @State private var removing: DownloadRecord?
@@ -251,6 +255,9 @@ struct OnThisWatchView: View {
       }
       if !downloads.records.isEmpty {
         Text("Swipe a book to remove it.").font(.footnote).foregroundStyle(.secondary)
+      }
+      if !model.heldBooks.isEmpty {
+        Section("From your iPhone") { HeldBookRows(books: model.heldBooks) }
       }
     }
     .navigationTitle("On this watch")
@@ -281,6 +288,22 @@ struct BookOnWatchRow: View {
       }
       if let message = record.message, record.state != .ready {
         Text(message).font(.footnote).foregroundStyle(.secondary)
+      }
+    }
+  }
+}
+
+/// Books the phone sent that are not on the watch: waiting until it can take them, or given up on
+/// (Core/HeldBooks.swift). Shown for every account: `watch-state` can only name the signed-in one's.
+struct HeldBookRows: View {
+  let books: [HeldBook]
+
+  var body: some View {
+    ForEach(books) { held in
+      VStack(alignment: .leading, spacing: 3) {
+        Text(held.book.title).lineLimit(2)
+        Text(held.waiting ? "Waiting until this watch can take it" : "Not delivered. Send it again from your iPhone.")
+          .font(.footnote).foregroundStyle(.secondary)
       }
     }
   }

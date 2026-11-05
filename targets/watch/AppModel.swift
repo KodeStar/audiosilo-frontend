@@ -4,7 +4,8 @@
 // the outbox is sent at launch, on coming to the foreground and after each closed span, and in
 // the background as a background URLSession upload with `clock_offset` (decision 10) plus a
 // best-effort refresh task. Signing out or replacing the account is blocked while events wait,
-// unless the listener discards them (decision 9).
+// unless the listener discards them (decision 9). A book from the phone that can't be taken yet
+// is held on disk until its account is ready (Core/HeldBooks.swift).
 import Foundation
 import WatchKit
 
@@ -61,6 +62,8 @@ final class AppModel: ObservableObject {
   @Published private(set) var pendingReplace: PendingReplace?
   @Published private(set) var server: ServerInfo?
   @Published var offerPrompt: OfferPrompt?
+  /// What `held` holds, for the screens (`publishState` keeps it current).
+  @Published private(set) var heldBooks: [HeldBook] = []
   /// Bumped whenever the outbox or its state changes (Sync status reads the outbox).
   @Published private(set) var syncRevision = 0
   @Published private(set) var syncing = false
@@ -72,14 +75,13 @@ final class AppModel: ObservableObject {
   let downloads = DownloadManager()
   let acks = AckStore(url: Files.acks)
   let places = PlaceStore(url: Files.places)
+  private let held = HeldBooks(url: Files.heldBooks)
   let outbox: Outbox
   let spans: SpanRecorder
   let engine: WatchAudioEngine
   private let offers = OfferThrottle()
   /// The pair message a blocked replace waits on.
   private var pendingPair: PairMessage?
-  /// Books the phone sent for `pendingPair`'s account, queued once that sign-in succeeds.
-  private var pendingBooks: [BookMessage] = []
   /// The phone's messages, handled one at a time in order (`receive`).
   private var inbox: Task<Void, Never>?
   private let afterEmit = Relay()
@@ -134,6 +136,8 @@ final class AppModel: ObservableObject {
     PhoneLink.shared.onMessage = { [weak self] m in self?.receive(m) }
     // A span a kill left open goes into the outbox before anything else (sent on becoming active).
     spans.recover()
+    // Held across a kill: aged, and queued if a sign-in finished just before it.
+    releaseHeld()
     #if DEBUG
       debugSignIn()
     #endif
@@ -150,6 +154,7 @@ final class AppModel: ObservableObject {
   /// Launch and every return to the foreground.
   func becameActive() {
     inForeground = true
+    releaseHeld()
     guard let a = account else { return }
     router.startRechecks { [weak self] in self?.account }
     retryTimer?.invalidate()
@@ -200,6 +205,8 @@ final class AppModel: ObservableObject {
     server = info
     ServerCache.save(info)
     phase = info.supportsWatch ? .ready : .tooOld(version: info.version)
+    // A server that was too old may serve the watch now.
+    releaseHeld()
   }
 
   /// Keep what the server says its addresses are now (the phone's `refreshAddresses`): one moved
@@ -416,13 +423,24 @@ final class AppModel: ObservableObject {
     switch m {
     case .pair(let p): await signIn(p)
     case .book(let b):
-      if account?.accountId == b.accountId, phase == .ready {
+      if HeldBooks.accepts(b, accountId: account?.accountId, ready: phase == .ready) {
         downloads.enqueue(b.ref, title: b.title, author: b.author)
-      } else if pendingPair?.accountId == b.accountId {
-        // For the account a blocked replace waits on: queued once that sign-in succeeds.
-        pendingBooks.append(b)
+      } else {
+        // The phone has said "Sent": it waits for its account to be ready (`releaseHeld`).
+        held.hold(b, now: Date())
       }
+      publishState()
     }
+  }
+
+  /// Queue what waits for the account, if it is ready, and age the rest. Through the Download
+  /// button's path; `publishState` then settles what is on the watch out of the list.
+  private func releaseHeld() {
+    guard !held.books.isEmpty else { return }
+    for b in held.due(accountId: account?.accountId, ready: phase == .ready, now: Date()) {
+      downloads.enqueue(b.ref, title: b.title, author: b.author)
+    }
+    publishState()
   }
 
   /// Sign in from a `pair` message: exchange its token (base_url, then away, then home under
@@ -437,7 +455,6 @@ final class AppModel: ObservableObject {
       } else if another {
         pendingReplace = .failed("That sign-in has expired. Send again from your iPhone.")
         pendingPair = nil
-        pendingBooks = []
       }
       return
     }
@@ -450,11 +467,8 @@ final class AppModel: ObservableObject {
     if case .blocked = change {
       pendingReplace = .waiting
       pendingPair = p
-      pendingBooks.removeAll { $0.accountId != p.accountId }
       return
     }
-    let held = pendingBooks.filter { $0.accountId == p.accountId }
-    pendingBooks = []
     pendingPair = nil
     pendingReplace = change == .replace ? .switching : nil
     if account == nil { phase = .setup(.signingIn) }
@@ -502,7 +516,7 @@ final class AppModel: ObservableObject {
       phase = .ready
       pendingReplace = nil
       publishState()
-      for b in held { downloads.enqueue(b.ref, title: b.title, author: b.author) }
+      releaseHeld()
       if !inForeground {
         // A message delivered in the background (background audio, a wake): no foreground
         // timers and no home pick (dropped as on going to the background); the front runs
@@ -533,11 +547,12 @@ final class AppModel: ObservableObject {
     }
   }
 
-  /// Keep this account (the blocked pair message, and its books, are dropped).
+  /// Keep this account: the blocked pair message is dropped, and its books can't come now.
   func keepAccount() {
+    if let p = pendingPair { held.giveUp(accountId: p.accountId, now: Date()) }
     pendingPair = nil
-    pendingBooks = []
     pendingReplace = nil
+    publishState()
   }
 
   /// Sign out (decision 9): stops the player first (its span closes), then blocked while
@@ -557,6 +572,8 @@ final class AppModel: ObservableObject {
   /// Drop everything of the account (decision 9 was checked first).
   private func forgetAccount() {
     engine.stop()
+    // Definitely gone now (a blocked or failed replace never gets here): what waits for it can't come.
+    held.giveUp(accountId: account?.accountId ?? Account.load()?.accountId, now: Date())
     downloads.removeAll()
     library.clear()
     // Continue listening's item caches too (removeAll takes only the downloaded books').
@@ -571,7 +588,6 @@ final class AppModel: ObservableObject {
     offerPrompt = nil
     pendingReplace = nil
     pendingPair = nil
-    pendingBooks = []
     Keychain.setToken(nil)
     Account.save(nil)
     account = nil
@@ -610,10 +626,13 @@ final class AppModel: ObservableObject {
   // MARK: - The phone's view of the watch
 
   func publishState() {
+    let who = account?.accountId
+    held.settle(accountId: who, onWatch: downloads.records.map(\.ref), now: Date())
+    if heldBooks != held.books { heldBooks = held.books }
     let books = downloads.records.map { r in
       WatchStateBook(ref: r.ref, title: r.title, state: r.state,
                      bytes: r.state == .ready ? r.bytes : nil)
-    }
+    } + held.stateRows(accountId: who)
     PhoneLink.shared.publish(WatchState(
       signedIn: account != nil, serverId: account?.serverId, userId: account?.userId, appVersion: appVersion,
       books: books, unsentEvents: outbox.unsentCount, couldntSync: outbox.couldNotSync().count,

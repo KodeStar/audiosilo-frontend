@@ -31,8 +31,9 @@ struct PairMessage: Equatable, Sendable {
   func expired(now: Date) -> Bool { now >= expiresAt }
 }
 
-/// `book`: queue a book for download, like the watch's own Download button.
-struct BookMessage: Equatable, Sendable {
+/// `book`: queue a book for download, like the watch's own Download button. Codable only for
+/// `HeldBooks`'s file; the wire form is the dictionary below.
+struct BookMessage: Codable, Equatable, Sendable {
   var serverId: String
   var userId: Int
   var ref: BookRef

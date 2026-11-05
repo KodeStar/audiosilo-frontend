@@ -1970,8 +1970,13 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   A replace ends the old token on its server, as Sign out does (a sign-in again for the same
   account keeps it, as the phone does); a sign-in with no token kept but another account's files
   left behind forgets them first, so they are never sent under the new token. The phone's messages
-  are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in (one
-  for a blocked replace's account is queued once it succeeds).
+  are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in. A book
+  that can't be taken yet (signing in, a failed sign-in, a too-old server, another account) is held
+  on disk (`Core/HeldBooks.swift`, `held-books.json`: 20 books, 7 days) and queued through the Download
+  button's path once its account is ready; one that can't come is given up on and kept 7 more days.
+  `watch-state` has no account per book, so a row goes there (`queued`, then `failed`) only under its
+  own account, and the watch's own screens show all of them. A blocked or failed sign-in gives up
+  nothing; only leaving the account (sign-out, a replace that succeeded) or Keep this account does.
 - **The phone's side (Track W3b, `modules/audiosilo-watch`, `src/watch/`)**: an apple-only local
   module. `ios/WatchLink.swift` is the phone's only `WCSessionDelegate` (nothing else may set
   `WCSession.default.delegate`), activated by `AudiosiloWatchAppDelegateSubscriber`
@@ -1988,8 +1993,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   JS reaches the module only through `src/watch/link.ios.ts`; `link.ts` is the no-op for web and
   Android (Wear OS comes in behind the same `WatchLink`, W4). `watchLink.supported` is read once
   at load, so `useSendToWatch` and the account card cost a platform without a watch nothing.
-  - **Order is the rule of `pair` then `book`.** The watch handles messages in order and drops a
-    book for an account it does not hold, so `sendPair` answers only once the pair is ahead of
+  - **Order is the rule of `pair` then `book`.** The watch handles messages in order and holds a
+    book for an account it does not hold yet, so `sendPair` answers only once the pair is ahead of
     what follows (the watch replied to `sendMessage`, or it fell back to `transferUserInfo`, FIFO
     with the books; after 10 s with no reply it transfers too: a second copy is harmless, its
     token is single use and the watch ignores a failed sign-in again for an account it holds).
