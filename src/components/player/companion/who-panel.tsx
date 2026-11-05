@@ -60,7 +60,7 @@ export function WhoPanel({ data, generate }: { data: CompanionData; generate?: R
           const fresh = justMet.includes(c.id);
           return (
             <Animated.View key={c.id} entering={fresh ? REVEAL : undefined}>
-              <CharacterCard character={c} justMet={fresh} />
+              <CharacterCard character={c} justMet={fresh} chapterCount={data.chapterCount} />
             </Animated.View>
           );
         })}
@@ -72,7 +72,11 @@ export function WhoPanel({ data, generate }: { data: CompanionData; generate?: R
         shown={shown}
         onToggle={() => setRevealed(data.key, !shown)}
       />
-      {shown ? hidden.map((c) => <CharacterCard key={c.id} character={c} spoiler />) : null}
+      {shown
+        ? hidden.map((c) => (
+            <CharacterCard key={c.id} chapterCount={data.chapterCount} character={c} spoiler />
+          ))
+        : null}
       <Attribution attribution={communityCredit(data, 'characters')} className="mt-2" />
     </View>
   );

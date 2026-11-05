@@ -90,6 +90,28 @@ describe("Who's who", () => {
     expect(screen.getByText('From chapter 5')).toBeTruthy();
   });
 
+  it('reads a reveal past the last chapter as near the end, not a chapter the book lacks', async () => {
+    const late: BookMetaCharacter = { id: 'late', name: 'Late', reveal: { chapter: 7 } };
+    const finished = { chapter: 6, finished: true };
+    await mount(
+      <WhoPanel data={data({ characters: [late], listening: finished, chapterCount: 6 })} />,
+    );
+    expect(screen.getByText('Near the end')).toBeTruthy();
+    expect(screen.queryByText('From chapter 7')).toBeNull();
+  });
+
+  it('keeps the number where the chapters are not known, or it is one the book has', async () => {
+    const late: BookMetaCharacter = { id: 'late', name: 'Late', reveal: { chapter: 7 } };
+    const finished = { chapter: 7, finished: true };
+    await mount(<WhoPanel data={data({ characters: [late], listening: finished })} />);
+    expect(screen.getByText('From chapter 7')).toBeTruthy();
+    await mount(
+      <WhoPanel data={data({ characters: [late], listening: finished, chapterCount: 7 })} />,
+    );
+    expect(screen.getAllByText('From chapter 7').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Near the end')).toBeNull();
+  });
+
   it('keeps a description behind its own tap (it is written for the whole book)', async () => {
     await mount(<WhoPanel data={data()} />);
     expect(screen.queryByText('A hobbit.')).toBeNull();

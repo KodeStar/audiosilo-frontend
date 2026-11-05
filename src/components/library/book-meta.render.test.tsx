@@ -120,6 +120,19 @@ const recaps: BookMetaRecap[] = [
 ];
 
 describe('BookMetaCharactersTab', () => {
+  it('reads a reveal past the last chapter as near the end once shown', async () => {
+    const late: BookMetaCharacter = { id: 'late', name: 'Late', reveal: { chapter: 7 } };
+    await mount(
+      <CharactersTab
+        characters={[late]}
+        progress={{ chapter: 6, finished: true }}
+        chapterCount={6}
+      />,
+    );
+    expect(screen.getByText('Near the end')).toBeTruthy();
+    expect(screen.queryByText('From chapter 7')).toBeNull();
+  });
+
   it('hides characters the listener has not reached, then reveals them on request', async () => {
     await mount(
       <CharactersTab characters={characters} progress={{ chapter: 1, finished: false }} />,

@@ -10,6 +10,7 @@ import {
   metaEnabledFor,
   recapIsVisible,
   recapMarks,
+  revealIsPastEnd,
   splitCharacters,
   splitRecaps,
 } from './meta-gating';
@@ -126,6 +127,19 @@ describe('characterIsVisible', () => {
 
   it('reveals everyone on a finished book', () => {
     expect(characterIsVisible(character('a', 40), p(1, true))).toBe(true);
+  });
+});
+
+describe('revealIsPastEnd', () => {
+  it('is true only past a known last chapter', () => {
+    expect(revealIsPastEnd(character('late', 7), 6)).toBe(true);
+    expect(revealIsPastEnd(character('last', 6), 6)).toBe(false);
+    expect(revealIsPastEnd(character('early', 2), 6)).toBe(false);
+  });
+
+  it('says nothing when the count is not known', () => {
+    expect(revealIsPastEnd(character('late', 7), undefined)).toBe(false);
+    expect(revealIsPastEnd(character('late', 7), 0)).toBe(false);
   });
 });
 

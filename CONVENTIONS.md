@@ -1240,8 +1240,8 @@ book's chapters when the book splits finer than the work's `position_scale` (the
 `meta.OnRecording`, CROSS-REPO section 17), so two recaps can share a chapter when a long track
 holds the end of two units (keys carry an index), a label names this book's chapter, and a reveal
 can be one past the last chapter when its unit starts inside a long last track: no place reaches
-it, so it waits for the finish (its label, once shown, can name a chapter the book lacks, as on a
-coarser book). A book
+it, so it waits for the finish, and its label reads "Near the end" (`revealIsPastEnd`), since
+"From chapter 7" would name a chapter a 6-track book lacks. A book
 no finer, a work with no scale, or an older server sends the *work's* logical chapters, which
 needn't match the local edition: there the comparison is deliberately approximate. Starts that
 say nothing about a place (every chapter at offset 0) read as chapter 0, never the last chapter, and a run of starts alike at the end reads as its first. Not-yet-reached entries are **not rendered**; each tab

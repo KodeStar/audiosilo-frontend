@@ -45,6 +45,8 @@ export type BookTabPanelProps = {
   community: {
     work?: BookMetaWork;
     gate: ListeningProgress;
+    /** The book's chapters, for a character's "From chapter N" (`CharacterCard`). */
+    chapterCount?: number;
     summaryVisible: boolean;
     showSpoilers: boolean;
     onToggleSpoilers: () => void;
@@ -117,6 +119,7 @@ export function BookTabPanel({
           <BookMetaCharactersTab
             characters={characters}
             progress={community.gate}
+            chapterCount={community.chapterCount}
             showSpoilers={community.showSpoilers}
             onToggleSpoilers={community.onToggleSpoilers}
             previousBooks={community.previousBooks}

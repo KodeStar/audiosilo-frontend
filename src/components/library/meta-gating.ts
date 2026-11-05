@@ -219,6 +219,17 @@ export function characterIsVisible(c: BookMetaCharacter, p: ListeningProgress): 
 }
 
 /**
+ * Whether a reveal is past the book's last chapter: the server's answer when the
+ * character's unit starts inside a long last track, or a book coarser than the work's
+ * scale. No place reaches it, so it waits for the finish, and "From chapter 7" would name a
+ * chapter a 6-track book doesn't have. False when the count isn't known (0 or absent: no
+ * chapters yet, or another book's numbers).
+ */
+export function revealIsPastEnd(c: BookMetaCharacter, chapterCount: number | undefined): boolean {
+  return !!chapterCount && c.reveal.chapter > chapterCount;
+}
+
+/**
  * Whether a recap has been reached. A recap covering "up to chapter N" is only
  * safe once chapter N is *behind* you, so the test is strict (`<`); the chapter-0
  * recaps (prior books / before this book) are always safe.
