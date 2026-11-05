@@ -423,13 +423,9 @@ final class AppModel: ObservableObject {
     switch m {
     case .pair(let p): await signIn(p)
     case .book(let b):
-      if HeldBooks.accepts(b, accountId: account?.accountId, ready: phase == .ready) {
-        downloads.enqueue(b.ref, title: b.title, author: b.author)
-      } else {
-        // The phone has said "Sent": it waits for its account to be ready (`releaseHeld`).
-        held.hold(b, now: Date())
-      }
-      publishState()
+      // The phone has said "Sent": queued now if its account is ready, else it waits for that.
+      held.hold(b, now: Date())
+      releaseHeld()
     }
   }
 
@@ -516,11 +512,11 @@ final class AppModel: ObservableObject {
       phase = .ready
       pendingReplace = nil
       publishState()
-      releaseHeld()
       if !inForeground {
         // A message delivered in the background (background audio, a wake): no foreground
         // timers and no home pick (dropped as on going to the background); the front runs
         // becameActive when the listener raises the watch.
+        releaseHeld()
         router.leaveHome(a)
         Task {
           await checkServer()

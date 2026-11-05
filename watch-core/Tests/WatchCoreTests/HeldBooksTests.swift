@@ -24,15 +24,6 @@ final class HeldBooksTests: XCTestCase {
     return dir.appendingPathComponent("held-books.json")
   }
 
-  // MARK: - Accepting
-
-  func testAcceptsOnlyTheAccountSignedInAndReady() {
-    XCTAssertTrue(HeldBooks.accepts(bookA(), accountId: A, ready: true))
-    XCTAssertFalse(HeldBooks.accepts(bookA(), accountId: A, ready: false), "signing in, or a server too old")
-    XCTAssertFalse(HeldBooks.accepts(bookA(), accountId: B, ready: true), "another account")
-    XCTAssertFalse(HeldBooks.accepts(bookA(), accountId: nil, ready: true), "signed out")
-  }
-
   // MARK: - Held, then released
 
   func testHeldThenReleasedOnReady() {

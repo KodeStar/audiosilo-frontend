@@ -41,13 +41,8 @@ final class HeldBooks {
     books = file?.read() ?? []
   }
 
-  /// Whether a book can be queued now rather than held: signed in to its account and ready.
-  static func accepts(_ book: BookMessage, accountId: String?, ready: Bool) -> Bool {
-    ready && accountId == book.accountId
-  }
-
-  /// Keep a book that can't be accepted yet. Sent again, it replaces its earlier row (one given up
-  /// on too) and waits afresh.
+  /// Keep a book until it is on the watch. Sent again, it replaces its earlier row (one given up on
+  /// too) and waits afresh.
   func hold(_ book: BookMessage, now: Date) {
     let row = HeldBook(book: book, heldAt: now)
     commit(books.filter { $0.id != row.id } + [row], now: now)
@@ -57,13 +52,14 @@ final class HeldBooks {
   /// `settle` sees them on the watch, so a kill between the two loses nothing.
   func due(accountId: String?, ready: Bool, now: Date) -> [BookMessage] {
     commit(books, now: now)
-    guard ready, let accountId else { return [] }
+    guard ready else { return [] }
     return books.filter { $0.waiting && $0.book.accountId == accountId }.map(\.book)
   }
 
   /// Age what is here and forget what `accountId` now has on the watch (`onWatch`, whichever way it
   /// got there: nothing is left to hold, or to report as not delivered).
   func settle(accountId: String?, onWatch: [BookRef], now: Date) {
+    guard !books.isEmpty else { return }
     let here = Set(onWatch)
     commit(books.filter { !($0.book.accountId == accountId && here.contains($0.book.ref)) }, now: now)
   }
@@ -75,13 +71,12 @@ final class HeldBooks {
   }
 
   /// The listener refused this account (Keep this account): its books can't come.
-  func giveUp(accountId: String?, now: Date) {
-    commit(books.map { row in
-      guard row.waiting, row.book.accountId == accountId else { return row }
-      var gaveUp = row
-      gaveUp.gaveUpAt = now
-      return gaveUp
-    }, now: now)
+  func giveUp(accountId: String, now: Date) {
+    var rows = books
+    for i in rows.indices where rows[i].waiting && rows[i].book.accountId == accountId {
+      rows[i].gaveUpAt = now
+    }
+    commit(rows, now: now)
   }
 
   /// The rows for `watch-state`, which names `accountId` (signed out names none, so none).
@@ -101,16 +96,10 @@ final class HeldBooks {
       if now.timeIntervalSince(row.heldAt) >= Self.MAX_AGE { row.gaveUpAt = now }
       return row
     }
-    var over = rows.filter(\.waiting).count - Self.MAX_BOOKS
-    for i in rows.indices where over > 0 && rows[i].waiting {
-      rows[i].gaveUpAt = now
-      over -= 1
-    }
-    let gaveUp = rows.filter { !$0.waiting }.sorted { ($0.gaveUpAt ?? now) < ($1.gaveUpAt ?? now) }
-    if gaveUp.count > Self.MAX_BOOKS {
-      let dropped = Set(gaveUp.prefix(gaveUp.count - Self.MAX_BOOKS).map(\.id))
-      rows.removeAll { dropped.contains($0.id) }
-    }
+    for i in rows.indices.filter({ rows[$0].waiting }).dropLast(Self.MAX_BOOKS) { rows[i].gaveUpAt = now }
+    let gaveUp = rows.compactMap { row in row.gaveUpAt.map { (at: $0, id: row.id) } }.sorted { $0.at < $1.at }
+    let dropped = Set(gaveUp.dropLast(Self.MAX_BOOKS).map(\.id))
+    rows.removeAll { dropped.contains($0.id) }
     guard rows != books else { return }
     books = rows
     file?.write(rows.isEmpty ? nil : rows)
