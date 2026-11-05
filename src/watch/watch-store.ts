@@ -1,11 +1,10 @@
 import { create } from 'zustand';
 
-import { connectionIdOf } from '@/lib/connection-id';
 import { onForeground } from '@/lib/when-active';
 
 import { watchLink } from './link';
 import { applyWatchStatus, followConnectionRemovals, hydrateLedger } from './watch-ledger';
-import { NO_WATCH, type WatchStatus } from './watch-model';
+import { accountOnWatch, NO_WATCH, type WatchStatus } from './watch-model';
 
 type WatchStore = {
   status: WatchStatus;
@@ -23,9 +22,7 @@ export const useWatchStore = create<WatchStore>(() => ({ status: NO_WATCH, pairU
  * token is used: kept, it would read as still on its way once the watch leaves that account (a
  * book would follow it and only be held), then as having run out when it never did. */
 function setStatus(status: WatchStatus): void {
-  const { state } = status;
-  const here =
-    state?.signed_in && state.server_id ? connectionIdOf(state.server_id, state.user_id) : null;
+  const here = accountOnWatch(status.state);
   useWatchStore.setState((s) => ({
     status,
     pairUntil: here !== null && Object.hasOwn(s.pairUntil, here) ? {} : s.pairUntil,

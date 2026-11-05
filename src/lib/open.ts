@@ -97,7 +97,7 @@ export function openLibraryRoot(href: Href, state: NavState | undefined = curren
 
 /** The Downloads page, as its tab's root, on the watch's section for `watchConnection`. */
 export function openDownloads(
-  watchConnection?: string,
+  watchConnection: string,
   state: NavState | undefined = currentNavState(),
 ) {
   openTabRoot(downloadsHref(watchConnection), OFFLINE_TAB, state);

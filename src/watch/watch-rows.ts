@@ -1,7 +1,11 @@
-import { connectionIdOf } from '@/lib/connection-id';
 import { isRecord } from '@/lib/storage-keys';
 
-import type { WatchBook, WatchStatus, WatchTransfer } from './watch-model';
+import {
+  accountOnWatch,
+  type WatchBook,
+  type WatchStatus,
+  type WatchTransfer,
+} from './watch-model';
 
 /**
  * What the phone sent its watch and what it shows for it, pure: the rules of the Downloads page's
@@ -35,7 +39,8 @@ export type LedgerRow = {
 
 type BookId = { library_id: number; path: string };
 
-const sameBook = (a: BookId, b: BookId) => a.library_id === b.library_id && a.path === b.path;
+export const sameBook = (a: BookId, b: BookId) =>
+  a.library_id === b.library_id && a.path === b.path;
 
 /** A stored row, null if it can't be read. */
 export function parseLedgerRow(raw: unknown): LedgerRow | null {
@@ -73,14 +78,6 @@ export function dropRow(rows: readonly LedgerRow[], book: BookId): LedgerRow[] {
   return rows.filter((r) => !sameBook(r, book));
 }
 
-/** The account the watch says it is signed in to, null when none. */
-function accountOnWatch(status: Pick<WatchStatus, 'state'>): string | null {
-  const { state } = status;
-  return state?.signed_in && state.server_id
-    ? connectionIdOf(state.server_id, state.user_id)
-    : null;
-}
-
 function transferOf(
   transfers: readonly WatchTransfer[],
   type: WatchTransfer['type'],
@@ -103,7 +100,7 @@ export function reconcileRows(
 ): readonly LedgerRow[] {
   // Never told anything: nothing can be concluded.
   if (!status.state) return rows;
-  const here = accountOnWatch(status) === account;
+  const here = accountOnWatch(status.state) === account;
   const listed = here ? status.state.books : [];
   const out: LedgerRow[] = [];
   let changed = false;
@@ -124,7 +121,7 @@ function settleRow(
 ): LedgerRow | null {
   const removeSent = transferOf(transfers, 'remove', account, row);
   const bookSent = transferOf(transfers, 'book', account, row);
-  if (here && listed.some((b) => sameBook(b, row))) {
+  if (listed.some((b) => sameBook(b, row))) {
     // On the watch: seen, and any refusal is over (it signed in, and the book came after all).
     if (row.seen && !row.remove_refused) return row;
     const { remove_refused: _refused, ...rest } = row;
@@ -217,7 +214,7 @@ function unlistedPhase(
   if (sent || !row.handed_over) return 'undelivered';
   // Signed out or on another account, it is held there until this account signs in; never told
   // anything, the app has yet to open at all.
-  return status.state && accountOnWatch(status) !== account ? 'waiting-sign-in' : 'delivered';
+  return status.state && accountOnWatch(status.state) !== account ? 'waiting-sign-in' : 'delivered';
 }
 
 /**
@@ -231,7 +228,7 @@ export function watchRows(
   status: Pick<WatchStatus, 'state' | 'transfers'>,
   now: number,
 ): WatchRow[] {
-  const here = accountOnWatch(status) === account;
+  const here = accountOnWatch(status.state) === account;
   const listed = here ? (status.state?.books ?? []) : [];
   const out: WatchRow[] = listed.map((book) => {
     const row = rows.find((r) => sameBook(r, book));

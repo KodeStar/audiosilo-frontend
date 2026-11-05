@@ -131,10 +131,7 @@ enum PhoneMessages {
   }
 
   private static func decodeRemove(_ m: [String: Any]) -> RemoveMessage? {
-    guard let serverId = nonEmpty(m["server_id"]), let userId = int(m["user_id"]),
-          let lib = int(m["library_id"]), let path = nonEmpty(m["path"])
-    else { return nil }
-    return RemoveMessage(serverId: serverId, userId: userId, ref: BookRef(libraryId: lib, path: path))
+    decodeBook(m).map { RemoveMessage(serverId: $0.serverId, userId: $0.userId, ref: $0.ref) }
   }
 
   /// `watch-state` as a property list (no nils: WatchConnectivity takes plist types only).

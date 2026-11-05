@@ -6,7 +6,14 @@ import { isRecord, WATCH_LEDGER_KEY } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
 import type { WatchStatus } from './watch-model';
-import { dropRow, type LedgerRow, parseLedgerRow, putRow, reconcileRows } from './watch-rows';
+import {
+  dropRow,
+  type LedgerRow,
+  parseLedgerRow,
+  putRow,
+  reconcileRows,
+  sameBook,
+} from './watch-rows';
 
 /**
  * What this phone sent, by watch and then by account (`<server_id>.<user_id>`): a row belongs to
@@ -77,8 +84,9 @@ export function noteSending(
   book: Book,
   now: number,
 ): LedgerRow | undefined {
-  const rows = useWatchLedger.getState().ledger[watchId]?.[account] ?? [];
-  const before = rows.find((r) => r.library_id === book.library_id && r.path === book.path);
+  const before = ledgerRows(useWatchLedger.getState().ledger, watchId, account).find((r) =>
+    sameBook(r, book),
+  );
   changeRows(watchId, account, (r) =>
     putRow(r, {
       library_id: book.library_id,
@@ -95,9 +103,7 @@ export function noteSending(
 /** The native link took the `book`. */
 export function noteHandedOver(watchId: string, account: string, book: Book): void {
   changeRows(watchId, account, (rows) =>
-    rows.map((r) =>
-      r.library_id === book.library_id && r.path === book.path ? { ...r, handed_over: true } : r,
-    ),
+    rows.map((r) => (sameBook(r, book) ? { ...r, handed_over: true } : r)),
   );
 }
 
@@ -123,7 +129,7 @@ export function noteRemoving(watchId: string, account: string, book: Book, now: 
       handed_over: true,
       seen: true,
     };
-    const before = rows.find((r) => r.library_id === book.library_id && r.path === book.path);
+    const before = rows.find((r) => sameBook(r, book));
     const { remove_refused: _refused, ...row } = before ?? fresh;
     return putRow(rows, { ...row, remove_at: now });
   });
@@ -148,16 +154,16 @@ export function applyWatchStatus(status: Pick<WatchStatus, 'watchId' | 'state' |
 export function followConnectionRemovals(): void {
   onConnectionRemoved((id) => {
     const gone = parseConnectionId(id);
-    const { ledger } = useWatchLedger.getState();
-    for (const [watchId, accounts] of Object.entries(ledger)) {
-      for (const account of Object.keys(accounts)) {
-        const named = parseConnectionId(account);
-        if (
-          named.serverId === gone.serverId &&
-          (gone.userId === undefined || named.userId === gone.userId)
-        ) {
-          changeRows(watchId, account, () => []);
-        }
+    const isGone = (account: string) => {
+      const named = parseConnectionId(account);
+      return (
+        named.serverId === gone.serverId &&
+        (gone.userId === undefined || named.userId === gone.userId)
+      );
+    };
+    for (const [watchId, accounts] of Object.entries(useWatchLedger.getState().ledger)) {
+      for (const account of Object.keys(accounts).filter(isGone)) {
+        changeRows(watchId, account, () => []);
       }
     }
   });

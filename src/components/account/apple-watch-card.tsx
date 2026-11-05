@@ -85,29 +85,29 @@ export function AppleWatchCard({ connectionId }: { connectionId: string }) {
       {server && !serves ? (
         <Text variant="caption">{t('account.watch.serverCannot', { server: serverName })}</Text>
       ) : null}
-      <View className="flex-row flex-wrap gap-2">
-        {status !== 'install' && serves ? (
-          <Button
-            variant="outline"
-            icon="watch"
-            title={t(
-              status === 'setup' || status === 'other-account'
-                ? 'account.watch.setUp'
-                : 'account.watch.sendAgain',
-            )}
-            loading={sending}
-            onPress={() => void send()}
-          />
-        ) : null}
-        {status !== 'install' ? (
+      {status !== 'install' ? (
+        <View className="flex-row flex-wrap gap-2">
+          {serves ? (
+            <Button
+              variant="outline"
+              icon="watch"
+              title={t(
+                status === 'setup' || status === 'other-account'
+                  ? 'account.watch.setUp'
+                  : 'account.watch.sendAgain',
+              )}
+              loading={sending}
+              onPress={() => void send()}
+            />
+          ) : null}
           <Button
             variant="ghost"
             icon="download"
             title={t('account.watch.booksLink')}
             onPress={() => openDownloads(connectionId)}
           />
-        ) : null}
-      </View>
+        </View>
+      ) : null}
       <FormError error={error} />
     </Card>
   );

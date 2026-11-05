@@ -37,10 +37,11 @@ jest.mock('@/lib/open', () => ({ openDownloads: (c: string) => mockOpenDownloads
 
 /* eslint-disable import/first */
 import { useSendToWatch, useWatchStatus } from './use-watch';
+import { NO_WATCH } from './watch-model';
 import { useWatchStore } from './watch-store';
 /* eslint-enable import/first */
 
-const installed = { paired: true, installed: true, state: null, watchId: null, transfers: [] };
+const installed = { ...NO_WATCH, paired: true, installed: true };
 const book = { rel_path: 'A/B', title: 'B', author: 'A' };
 
 beforeEach(() => {

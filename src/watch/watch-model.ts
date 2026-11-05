@@ -264,6 +264,13 @@ export function watchAccountOf(connection: WatchAccount): string {
   return connectionIdOf(serverIdOf(connection), connection.user.id);
 }
 
+/** The account the watch says it is signed in to (`<server_id>.<user_id>`), null when none. */
+export function accountOnWatch(state: WatchState | null): string | null {
+  return state?.signed_in && state.server_id
+    ? connectionIdOf(state.server_id, state.user_id)
+    : null;
+}
+
 /** Whether the watch says it is signed in to this very connection (`<server_id>.<user_id>`). */
 export function signedInHere(state: WatchState | null, connection: WatchAccount): boolean {
   return (

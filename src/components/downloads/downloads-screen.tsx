@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, ScrollView, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAllProgressAll } from '@/api/hooks';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -90,6 +91,7 @@ export function DownloadsScreen() {
   const { openBook, openPlayer } = useOpen();
   const { press } = useTabPress();
   const scroller = useRef<ScrollView>(null);
+  const reducedMotion = useReducedMotion();
 
   // The page re-renders when a download starts, lands, fails or goes; a running row
   // follows its own progress (`ActiveRow`).
@@ -259,7 +261,9 @@ export function DownloadsScreen() {
         ) : null}
 
         {watchLink.supported ? (
-          <WatchSection onReveal={(y) => scroller.current?.scrollTo({ y, animated: true })} />
+          <WatchSection
+            onReveal={(y) => scroller.current?.scrollTo({ y, animated: !reducedMotion })}
+          />
         ) : null}
 
         {ready.length > 0 ? (

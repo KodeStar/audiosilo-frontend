@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -63,8 +63,9 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
   const pairUntil = useWatchStore((s) => (connection ? s.pairUntil[connection.id] : undefined));
   const ledger = useWatchLedger((s) => s.ledger);
   const visible = !!connection && watchSectionVisible(watch, connection.user);
-  // A sent row stops claiming progress after 7 days, with nothing else to say so.
-  const now = useNow(60_000, visible);
+  // A sent row stops claiming progress after 7 days, with nothing else to say so: no hurry, each
+  // tick builds the rows anew. A pair on its way is what the minute is for, as on the account card.
+  const now = useNow(pairUntil === undefined ? 3_600_000 : 60_000, visible);
   const [removing, setRemoving] = useState<WatchRow | null>(null);
   const [y, setY] = useState<number | null>(null);
   const revealed = useRef<unknown>(undefined);
@@ -80,7 +81,6 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
   const account = watchAccountOf(connection);
   const rows = watchRows(ledgerRows(ledger, watch.watchId, account), account, watch, now);
   const status = watchCardStatus(watch, connection, pairUntil, now);
-  const server = connection.name;
 
   return (
     <View className="gap-3" testID="downloads-watch" onLayout={(e) => setY(e.nativeEvent.layout.y)}>
@@ -96,9 +96,8 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
               key={`${row.library_id}:${row.path}`}
               row={row}
               connection={connection}
-              server={server}
               first={i === 0}
-              onRemove={() => setRemoving(row)}
+              onRemove={setRemoving}
             />
           ))}
         </Card>
@@ -115,8 +114,8 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
         onCancel={() => setRemoving(null)}
         onConfirm={() => {
           if (removing) {
-            removeFromWatch(connection, removing.library_id, removing).catch((e: unknown) =>
-              toast({ title: watchErrorText(e, server, t) }),
+            removeFromWatch(connection, removing).catch((e: unknown) =>
+              toast({ title: watchErrorText(e, connection.name, t) }),
             );
           }
           setRemoving(null);
@@ -162,90 +161,102 @@ const PHASE_TONE: Partial<Record<WatchRowPhase, string>> = {
   'remove-refused': 'text-warning',
 };
 
-function WatchBookRow({
-  row,
-  connection,
-  server,
-  first,
-  onRemove,
-}: {
-  row: WatchRow;
-  connection: Connection;
-  server: string;
-  first: boolean;
-  onRemove: () => void;
-}) {
-  const { t } = useTranslation();
-  const phone = useLayout() === 'phone';
-  const api = useOptionalApi(connection.id);
-  const actions = rowActions(row.phase);
-  const sendAgain = () => {
-    if (!api) return;
-    sendBookToWatch(api, connection, row.library_id, {
-      rel_path: row.path,
-      title: row.title,
-      author: row.author ?? '',
-    }).catch((e: unknown) => toast({ title: watchErrorText(e, server, t) }));
-  };
-  const forget = () => {
-    const account = watchAccountOf(connection);
-    const { watchId } = useWatchStore.getState().status;
-    if (watchId) forgetRow(watchId, account, row);
-  };
-  return (
-    <RowFrame
-      first={first}
-      cover={
-        <BookCover
-          connectionId={connection.id}
-          libraryId={row.library_id}
-          path={row.path}
-          width={COVER}
-          title={row.title}
-        />
-      }
-      title={row.title}
-      meta={sizeMeta(t, server, row.phase === 'ready' ? (row.bytes ?? 0) : 0, false)}
-      status={
-        <Text variant="caption" className={cn(PHASE_TONE[row.phase])}>
-          {t(`downloads.watch.phase.${row.phase}`)}
-        </Text>
-      }
-      actions={
-        <>
-          {actions.sendAgain && api ? (
-            <RowAction
-              variant="outline"
-              icon="rotate"
-              withIcon
-              iconOnly={phone}
-              title={t('downloads.watch.sendAgain')}
-              accessibilityLabel={t('downloads.watch.sendAgainLabel', { title: row.title })}
-              onPress={sendAgain}
-            />
-          ) : null}
-          {actions.remove ? (
-            <RowAction
-              variant="ghost"
-              icon="trash"
-              iconOnly={phone || actions.sendAgain}
-              title={t('downloads.watch.remove.confirm')}
-              accessibilityLabel={t('downloads.watch.removeLabel', { title: row.title })}
-              onPress={onRemove}
-            />
-          ) : null}
-          {actions.dismiss ? (
-            <RowAction
-              variant="ghost"
-              icon="close"
-              iconOnly={phone}
-              title={t('downloads.watch.dismiss')}
-              accessibilityLabel={t('downloads.watch.dismissLabel', { title: row.title })}
-              onPress={forget}
-            />
-          ) : null}
-        </>
-      }
-    />
-  );
-}
+/** The watch's news builds every row anew (a count of events waiting, a minute going by), so a row
+ * that says the same stays as it is. `onRemove` is the section's state setter, always the same. */
+const WatchBookRow = memo(
+  function WatchBookRow({
+    row,
+    connection,
+    first,
+    onRemove,
+  }: {
+    row: WatchRow;
+    connection: Connection;
+    first: boolean;
+    onRemove: (row: WatchRow) => void;
+  }) {
+    const { t } = useTranslation();
+    const server = connection.name;
+    const phone = useLayout() === 'phone';
+    const api = useOptionalApi(connection.id);
+    const actions = rowActions(row.phase);
+    const sendAgain = () => {
+      if (!api) return;
+      sendBookToWatch(api, connection, row.library_id, {
+        rel_path: row.path,
+        title: row.title,
+        author: row.author ?? '',
+      }).catch((e: unknown) => toast({ title: watchErrorText(e, server, t) }));
+    };
+    const forget = () => {
+      const account = watchAccountOf(connection);
+      const { watchId } = useWatchStore.getState().status;
+      if (watchId) forgetRow(watchId, account, row);
+    };
+    return (
+      <RowFrame
+        first={first}
+        cover={
+          <BookCover
+            connectionId={connection.id}
+            libraryId={row.library_id}
+            path={row.path}
+            width={COVER}
+            title={row.title}
+          />
+        }
+        title={row.title}
+        meta={sizeMeta(t, server, row.phase === 'ready' ? (row.bytes ?? 0) : 0, false)}
+        status={
+          <Text variant="caption" className={cn(PHASE_TONE[row.phase])}>
+            {t(`downloads.watch.phase.${row.phase}`)}
+          </Text>
+        }
+        actions={
+          <>
+            {actions.sendAgain && api ? (
+              <RowAction
+                variant="outline"
+                icon="rotate"
+                withIcon
+                iconOnly={phone}
+                title={t('downloads.watch.sendAgain')}
+                accessibilityLabel={t('downloads.watch.sendAgainLabel', { title: row.title })}
+                onPress={sendAgain}
+              />
+            ) : null}
+            {actions.remove ? (
+              <RowAction
+                variant="ghost"
+                icon="trash"
+                iconOnly={phone || actions.sendAgain}
+                title={t('downloads.watch.remove.confirm')}
+                accessibilityLabel={t('downloads.watch.removeLabel', { title: row.title })}
+                onPress={() => onRemove(row)}
+              />
+            ) : null}
+            {actions.dismiss ? (
+              <RowAction
+                variant="ghost"
+                icon="close"
+                iconOnly={phone}
+                title={t('downloads.watch.dismiss')}
+                accessibilityLabel={t('downloads.watch.dismissLabel', { title: row.title })}
+                onPress={forget}
+              />
+            ) : null}
+          </>
+        }
+      />
+    );
+  },
+  (a, b) =>
+    a.first === b.first &&
+    a.connection === b.connection &&
+    a.row.library_id === b.row.library_id &&
+    a.row.path === b.row.path &&
+    a.row.title === b.row.title &&
+    a.row.author === b.row.author &&
+    a.row.bytes === b.row.bytes &&
+    a.row.phase === b.row.phase,
+);

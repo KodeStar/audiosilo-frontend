@@ -201,8 +201,8 @@ struct ContinueSection: View {
   /// Less what On the way lists (a book shows once on Home; its state is there).
   private var rows: [ContinueRow] {
     let who = model.account?.accountId
-    let coming = downloads.records.filter(\.state.onTheWay).map(\.ref)
-      + HeldBooks.waiting(model.heldBooks, accountId: who, records: []).filter { $0.book.accountId == who }.map(\.book.ref)
+    let coming = Set(downloads.records.filter(\.state.onTheWay).map(\.ref))
+      .union(model.heldBooks.filter { $0.waiting && $0.book.accountId == who }.map(\.book.ref))
     return library.rows.filter { !coming.contains($0.ref) }
   }
 

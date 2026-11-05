@@ -102,19 +102,13 @@ export async function sendBookToWatch(
  */
 export async function removeFromWatch(
   connection: Connection,
-  libraryId: number,
-  book: { path: string; title: string },
+  book: { library_id: number; path: string; title: string },
 ): Promise<void> {
-  const message = buildRemoveMessage(connection, libraryId, book.path);
+  const message = buildRemoveMessage(connection, book.library_id, book.path);
   await watchLink.sendRemove(message).catch(refused);
   const { watchId } = useWatchStore.getState().status;
   if (watchId) {
-    noteRemoving(
-      watchId,
-      watchAccountOf(connection),
-      { library_id: libraryId, path: book.path, title: book.title },
-      Date.now(),
-    );
+    noteRemoving(watchId, watchAccountOf(connection), book, Date.now());
   }
   await refreshWatch();
 }

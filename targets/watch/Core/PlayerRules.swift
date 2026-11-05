@@ -66,7 +66,7 @@ enum Skips {
   /// The line under the figures: "2m left at 2×", the phone's `formatTimeLeft`. Nil at normal speed,
   /// where the figures already say it, and with nothing left.
   static func wallClockLine(position: Double, total: Double, rate: Double) -> String? {
-    guard !PlaybackSpeed.isNormal(rate), total > 0,
+    guard !PlaybackSpeed.isNormal(rate),
       let time = compactDuration(timeLeft(position: position, total: total, rate: rate))
     else { return nil }
     return "\(time) left at \(PlaybackSpeed.sentenceLabel(rate))"

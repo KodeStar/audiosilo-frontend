@@ -21,6 +21,7 @@ jest.mock('@/lib/device', () => ({ getDeviceName: () => 'iPhone' }));
 /* eslint-disable import/first */
 import { removeFromWatch, sendBookToWatch, setUpWatch, WatchSendError } from './send';
 import { ledgerRows, useWatchLedger } from './watch-ledger';
+import { NO_WATCH } from './watch-model';
 import { refreshWatch, useWatchStore } from './watch-store';
 /* eslint-enable import/first */
 
@@ -54,7 +55,7 @@ const signedInStatus = (userId: number) => ({
     couldnt_sync: 0,
   },
 });
-const blank = { paired: true, installed: true, state: null, watchId: null, transfers: [] };
+const blank = { ...NO_WATCH, paired: true, installed: true };
 
 let api: { pair: jest.Mock };
 
@@ -292,7 +293,7 @@ describe('the ledger', () => {
       ...here,
       transfers: [{ type: 'remove', account: 'srv.7', library_id: 3, path: 'A/B', failed: false }],
     });
-    await removeFromWatch(connection, 3, { path: 'A/B', title: 'B' });
+    await removeFromWatch(connection, { library_id: 3, path: 'A/B', title: 'B' });
     expect(mockSendRemove).toHaveBeenCalledWith({
       v: 1,
       type: 'remove',
@@ -309,14 +310,14 @@ describe('the ledger', () => {
     const before = rows();
     mockSendRemove.mockRejectedValue(new Error('ERR_NO_WATCH'));
     await expect(
-      removeFromWatch(connection, 3, { path: 'A/B', title: 'B' }),
+      removeFromWatch(connection, { library_id: 3, path: 'A/B', title: 'B' }),
     ).rejects.toBeInstanceOf(WatchSendError);
     expect(rows()).toEqual(before);
   });
 
   it('starts afresh when a book is sent again after a Remove', async () => {
     await sendBookToWatch(api, connection, 3, book);
-    await removeFromWatch(connection, 3, { path: 'A/B', title: 'B' });
+    await removeFromWatch(connection, { library_id: 3, path: 'A/B', title: 'B' });
     await sendBookToWatch(api, connection, 3, book);
     expect(rows()).toHaveLength(1);
     expect(rows()[0].remove_at).toBeUndefined();
