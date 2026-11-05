@@ -169,6 +169,13 @@ describe('positions translated onto the recording', () => {
     expect(characterIsVisible(character('fortinbras', 36), at(36))).toBe(true);
   });
 
+  // One past the last chapter: the unit starts inside a long last track, so no chapter
+  // starts at or past it. No place reaches it, as on a book coarser than the scale.
+  it('holds a reveal past the last chapter until the book is finished', () => {
+    expect(characterIsVisible(character('late', 44), at(43))).toBe(false);
+    expect(characterIsVisible(character('late', 44), at(43, true))).toBe(true);
+  });
+
   it('shows the Act 1 recap once Act 1 is over, and Act 5 only when finished', () => {
     expect(recapIsVisible(recap(9), at(9))).toBe(false);
     expect(recapIsVisible(recap(9), at(10))).toBe(true);
