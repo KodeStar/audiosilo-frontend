@@ -370,11 +370,12 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     let place = b.timeline.locate(to)
     let target = b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
-    if reason == nil, Spans.movesNowhere(from: spanEnd(), to: target) { return }
+    let from = spanEnd()
+    if reason == nil, Spans.movesNowhere(from: from, to: target) { return }
     // Moved back into a book that played to its end: it is finished on the server and a listen
     // never unfinishes, so the next play sends the `unfinish` (its reason stays the move's).
     if ended { spans.prepareStart(spans.nextStart, unfinish: true) }
-    spans.move(b.playing, to: target, from: spanEnd(), reason: reason, playing: playing, speed: rate)
+    spans.move(b.playing, to: target, from: from, reason: reason, playing: playing, speed: rate)
     ended = false
     if let w = where_(), w.index == place.index, pendingSeek == nil, player.currentItem?.status == .readyToPlay {
       player.seek(to: CMTime(seconds: place.positionInTrack, preferredTimescale: 1000), toleranceBefore: .zero,
