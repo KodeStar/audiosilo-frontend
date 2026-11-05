@@ -20,10 +20,12 @@ import { addressKind, mergeAddresses } from '@/lib/server-address';
 import { APP_VERSION } from '@/lib/version';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { watchLink } from '@/watch/link';
 
 import { resolveAccountCid, signedInSessions } from './account-model';
 import { ApiKeyCreatedModal } from './api-key-created-modal';
 import { ApiKeysSection, ApiKeysUnavailable } from './api-keys-section';
+import { AppleWatchCard } from './apple-watch-card';
 import { DevicesSection } from './devices-section';
 import { IdentityCard } from './identity-card';
 import { ListeningSyncCard } from './listening-sync-card';
@@ -45,8 +47,8 @@ const CARDS_BESIDE_MIN = 680;
 
 /**
  * One server's account page body (the Stacks prototype's `Account`): who is signed in,
- * the password, pairing another device, the signed-in devices, personal API keys and
- * signing out. Every block is gated on its capability, so an older server shows less,
+ * the password, pairing another device, the Apple Watch (iOS, a paired watch), the signed-in
+ * devices, personal API keys and signing out. Every block is gated on its capability, so an older server shows less,
  * quietly.
  *
  * - `/account?connection=<cid>` passes its `connectionId`: that server only.
@@ -173,6 +175,8 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
           />
         ) : null}
       </View>
+
+      {watchLink.supported ? <AppleWatchCard connectionId={cid} serverName={serverName} /> : null}
 
       <AccountAddresses cid={cid} caps={caps} />
 

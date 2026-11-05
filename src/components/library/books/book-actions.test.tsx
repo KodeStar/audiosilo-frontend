@@ -54,6 +54,8 @@ const mockOpenSeries = jest.fn();
 jest.mock('@/lib/open', () => ({ useOpen: () => ({ openSeries: mockOpenSeries }) }));
 const mockPlay = jest.fn();
 jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
+let mockSendToWatch: jest.Mock | null = null;
+jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
@@ -222,6 +224,42 @@ describe('useBookActions', () => {
     expect(mockDownload).toHaveBeenCalledWith('c', 1, b, undefined);
     find('series')!.onPress();
     expect(mockOpenSeries).toHaveBeenCalledWith('c', 1, { name: 'Series' });
+  });
+});
+
+// Track W3b: who may send is `useSendToWatch`'s (watch-model.test.ts); it is here when offered.
+describe('useBookActions, Send to watch', () => {
+  beforeEach(() => {
+    mockCaps = ALL;
+    mockQueueSupported = true;
+    mockDownloadsSupported = true;
+    mockSendToWatch = jest.fn();
+  });
+  afterEach(() => {
+    mockSendToWatch = null;
+    mockPodcastLibrary = false;
+  });
+
+  it('sits after the download and sends this book', async () => {
+    const b = book();
+    const { list, find } = await actions(b);
+    const keys = list.map((a) => a.key);
+    expect(keys.indexOf('watch')).toBe(keys.indexOf('download') + 1);
+    expect(find('watch')!.label).toBe('Send to watch');
+    find('watch')!.onPress();
+    expect(mockSendToWatch).toHaveBeenCalledWith(b);
+  });
+
+  it('is not there where it is not offered', async () => {
+    mockSendToWatch = null;
+    const { find } = await actions(book());
+    expect(find('watch')).toBeUndefined();
+  });
+
+  it('is not offered for a podcast episode', async () => {
+    mockPodcastLibrary = true;
+    const { find } = await actions(book());
+    expect(find('watch')).toBeUndefined();
   });
 });
 

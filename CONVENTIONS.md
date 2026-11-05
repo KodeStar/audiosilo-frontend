@@ -1851,7 +1851,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   nothing may treat the empty connection list as real (the offline queue keeps its saves, car
   bookmarks are kept, the car snapshot isn't rewritten as signed out).
 
-**Apple Watch app (Track W3a, `targets/watch/`)**: a standalone SwiftUI watchOS 11 app added by
+**Apple Watch app (Track W3a, `targets/watch/`; the phone's side, W3b, is the last bullets)**: a standalone SwiftUI watchOS 11 app added by
 `@bacons/apple-targets` (exact pin, LAST in `app.json` plugins: it edits only the Xcode project, so
 `withCarPlay`'s AppDelegate rewrite is untouched). It has its own token, `device_id`, outbox and
 downloads and talks to the server directly; the phone only hands it a pairing token and books.
@@ -1972,6 +1972,37 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   left behind forgets them first, so they are never sent under the new token. The phone's messages
   are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in (one
   for a blocked replace's account is queued once it succeeds).
+- **The phone's side (Track W3b, `modules/audiosilo-watch`, `src/watch/`)**: an apple-only local
+  module. `ios/WatchLink.swift` is the phone's only `WCSessionDelegate` (nothing else may set
+  `WCSession.default.delegate`), activated by `AudiosiloWatchAppDelegateSubscriber`
+  (`appDelegateSubscribers` in `expo-module.config.json`), never by editing the AppDelegate
+  text, so `withCarPlay` stays untouched and a CarPlay-first or background launch activates it
+  too. Every session property means something only once activated, so `isPaired`,
+  `isWatchAppInstalled`, `getWatchState` and the sends wait for it (`whenActivated`, 5 s at
+  most, then "no watch"). After a cold start the state is what arrived while running, else the
+  session's `receivedApplicationContext`, else a `UserDefaults` copy (dropped when the listener
+  switches watches).
+  The messages are built and parsed in `src/watch/watch-model.ts`, the other half of
+  `Core/PhoneMessages.swift`: a field changed here changes there, with tests on both. Plain
+  property lists only (`addresses: {}`, never a null: the native side rejects the rest).
+  JS reaches the module only through `src/watch/link.ios.ts`; `link.ts` is the no-op for web and
+  Android (Wear OS comes in behind the same `WatchLink`, W4). `watchLink.supported` is read once
+  at load, so `useSendToWatch` and the account card cost a platform without a watch nothing.
+  - **Order is the rule of `pair` then `book`.** The watch handles messages in order and drops a
+    book for an account it does not hold, so `sendPair` answers only once the pair is ahead of
+    what follows (the watch replied to `sendMessage`, or it fell back to `transferUserInfo`, FIFO
+    with the books; after 10 s with no reply it transfers too: a second copy is harmless, its
+    token is single use and the watch ignores a failed sign-in again for an account it holds).
+  - **A token can run out in transit.** Each send mints a new one (`POST /auth/pair
+    {"ttl_seconds":600}`), `expires_at` counts from before the request so it is never later than
+    the server's, and a new pair cancels an undelivered older one and moves the queued books
+    behind itself. The card says `sent` until the pair's time is up, then `expired` with Send
+    again; a book sent while a pair has over a minute left follows it rather than minting another.
+  - **Who sees what** (`watch-model.ts`): the card for a paired watch and an account that can use
+    one (not a kid's, 403 `kid_account`; not a demo's), with Install in place of its button until
+    the app is on the watch; the book action `'watch'` needs the app installed and `watch` in the
+    server's `renditions`, never on an episode. A client can't tell an API key session (no such
+    connection is made by the app): the server's 403 reads as the pairing refusal.
 - **DEBUG launch variables (simulator only, compiled out of release).** The watch simulator has
   no phone and simctl cannot tap, so in DEBUG builds the launch environment stands in:
   `AUDIOSILO_DEBUG_PAIR` (a v1 `pair` message as JSON: sign in), `AUDIOSILO_DEBUG_BOOK` (a v1

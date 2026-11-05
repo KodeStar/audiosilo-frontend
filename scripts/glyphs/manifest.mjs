@@ -93,4 +93,5 @@ export const GLYPHS = [
   ['flame', 'light', 'faFlame'],
   ['target', 'light', 'faBullseyeArrow'],
   ['gauge', 'light', 'faGauge'],
+  ['watch', 'light', 'faWatch'],
 ];
