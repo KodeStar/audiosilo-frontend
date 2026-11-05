@@ -507,6 +507,7 @@ function BookPage() {
           community={{
             work: metaWork,
             gate,
+            chapterCount: chapters.length,
             summaryVisible,
             showSpoilers,
             onToggleSpoilers: () => setShowSpoilers((v) => !v),

@@ -34,6 +34,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import {
   type ListeningProgress,
   recapDescriptor,
+  revealIsPastEnd,
   type RecapMarks,
   sortRecaps,
   type Split,
@@ -327,10 +328,13 @@ export function CharacterCard({
   character,
   spoiler,
   justMet,
+  chapterCount,
 }: {
   character: BookMetaCharacter;
   spoiler?: boolean;
   justMet?: boolean;
+  /** This book's chapters, so a reveal past the last reads "Near the end" (`revealIsPastEnd`). */
+  chapterCount?: number;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -368,7 +372,9 @@ export function CharacterCard({
               <Text variant="caption" className="mt-1">
                 {fromStart
                   ? t('book.meta.revealFromStart')
-                  : t('book.meta.revealFromChapter', { chapter: character.reveal.chapter })}
+                  : revealIsPastEnd(character, chapterCount)
+                    ? t('book.meta.revealNearEnd')
+                    : t('book.meta.revealFromChapter', { chapter: character.reveal.chapter })}
               </Text>
             </View>
             <View className="flex-row items-center gap-2">
@@ -672,9 +678,12 @@ export function BookMetaCharactersTab({
   onToggleSpoilers,
   previousBooks = [],
   coverFor = noCommunityCover,
+  chapterCount,
 }: SpoilerReveal & {
   characters: BookMetaCharacter[];
   progress: ListeningProgress;
+  /** This book's chapters (`CharacterCard`). */
+  chapterCount?: number;
   /** Earlier books of the series, for the catch-up block (see `previousWorks`). */
   previousBooks?: BookMetaSeriesWork[];
   /** Where their community covers load from (`useCommunityCover`); without it each
@@ -686,7 +695,12 @@ export function BookMetaCharactersTab({
   return (
     <View className="gap-2">
       {rows.map(({ item, spoiler }) => (
-        <CharacterCard key={item.id} character={item} spoiler={spoiler} />
+        <CharacterCard
+          key={item.id}
+          character={item}
+          spoiler={spoiler}
+          chapterCount={chapterCount}
+        />
       ))}
       <HiddenNotice count={split.hidden.length} shown={showSpoilers} onToggle={onToggleSpoilers} />
       <PreviousBooksSection

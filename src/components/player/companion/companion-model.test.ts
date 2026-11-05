@@ -82,6 +82,11 @@ describe('whoOrder', () => {
 });
 
 describe('newlyMet', () => {
+  it('never announces a reveal past the last chapter: no place reaches it', () => {
+    const late: BookMetaCharacter[] = [{ id: 'late', name: 'Late', reveal: { chapter: 7 } }];
+    expect(newlyMet(late, 5, 6)).toEqual([]);
+  });
+
   it('is who the later place reveals that the earlier did not', () => {
     expect(newlyMet(cast, 1, 2).map((c) => c.id)).toEqual(['Bobbie']);
     expect(newlyMet(cast, 2, 5).map((c) => c.id)).toEqual(['Avasarala']);

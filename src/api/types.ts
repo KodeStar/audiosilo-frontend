@@ -702,9 +702,17 @@ export type ChaptersResponse = {
 /** A person referenced by the metadata service (author or narrator). */
 export type MetaPersonRef = { id: string; name: string };
 
-/** A spoiler position on the work's own (edition-independent) timeline. `chapter`
- * is the logical book chapter; 0 means front matter / prior-book knowledge. */
+/** A spoiler position. `chapter` is this book's chapter in a `/meta` answer the server
+ * translated (`BookMetaPositionScale`), else the work's own logical chapter (the
+ * edition-independent timeline); 0 means front matter / prior-book knowledge on either. */
 export type BookMetaPosition = { chapter: number };
+
+/** The scale a work's positions are numbered on: its length in `unit`s (5 acts, 44
+ * chapters). Present only while the numbers beside it are still on it; a `/meta` answer
+ * about a book split finer than that has them translated onto that book and omits it. `partial`:
+ * the sidecar stops short of `length` on purpose. Nothing in the player reads it: its gate
+ * compares the numbers it is sent. */
+export type BookMetaPositionScale = { length: number; unit: string; partial?: boolean };
 
 /** A community-authored, spoiler-tagged character entry (the CC BY-SA layer).
  * `reveal` is where the character is first disclosed in the work. */
@@ -752,6 +760,8 @@ export type BookMetaWork = {
   recaps?: BookMetaRecap[];
   /** Whole-work catch-up summary. Both fields reveal the ending - gate them. */
   recap_summary?: BookMetaRecapSummary;
+  /** What `characters` and `recaps` are numbered on, when not this book's chapters. */
+  position_scale?: BookMetaPositionScale;
   /** The community-written description (CC BY-SA), separate from `description`.
    * Absent on most works and on older servers. */
   community_description?: BookMetaCommunityDescription;

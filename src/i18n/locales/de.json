@@ -1226,6 +1226,7 @@
       "alsoKnownAs": "Auch {{names}}",
       "revealFromStart": "Von Anfang an",
       "revealFromChapter": "Ab Kapitel {{chapter}}",
+      "revealNearEnd": "Gegen Ende",
       "storySoFar": "Was bisher geschah",
       "recapSeriesPrior": "Bisher, in früheren Büchern",
       "recapBeforeBook": "Vor diesem Buch",

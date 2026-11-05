@@ -90,6 +90,28 @@ describe("Who's who", () => {
     expect(screen.getByText('From chapter 5')).toBeTruthy();
   });
 
+  it('reads a reveal past the last chapter as near the end, not a chapter the book lacks', async () => {
+    const late: BookMetaCharacter = { id: 'late', name: 'Late', reveal: { chapter: 7 } };
+    const finished = { chapter: 6, finished: true };
+    await mount(
+      <WhoPanel data={data({ characters: [late], listening: finished, chapterCount: 6 })} />,
+    );
+    expect(screen.getByText('Near the end')).toBeTruthy();
+    expect(screen.queryByText('From chapter 7')).toBeNull();
+  });
+
+  it('keeps the number where the chapters are not known, or it is one the book has', async () => {
+    const late: BookMetaCharacter = { id: 'late', name: 'Late', reveal: { chapter: 7 } };
+    const finished = { chapter: 7, finished: true };
+    await mount(<WhoPanel data={data({ characters: [late], listening: finished })} />);
+    expect(screen.getByText('From chapter 7')).toBeTruthy();
+    await mount(
+      <WhoPanel data={data({ characters: [late], listening: finished, chapterCount: 7 })} />,
+    );
+    expect(screen.getAllByText('From chapter 7').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Near the end')).toBeNull();
+  });
+
   it('keeps a description behind its own tap (it is written for the whole book)', async () => {
     await mount(<WhoPanel data={data()} />);
     expect(screen.queryByText('A hobbit.')).toBeNull();
@@ -146,6 +168,28 @@ describe('Story so far', () => {
     expect(screen.getByText('So far, riddles.')).toBeTruthy();
     expect(screen.queryByText('The dragon wakes.')).toBeNull();
     expect(screen.getByText('1 more part of the story is hidden')).toBeTruthy();
+  });
+
+  it("shows two recaps on one chapter, as a long track holding two units' ends sends them", async () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const onOne: BookMetaRecap[] = [
+        { through: { chapter: 2 }, text: 'Act one.' },
+        { through: { chapter: 2 }, text: 'Act two.' },
+        { through: { chapter: 3 }, text: 'Act three.' },
+        { through: { chapter: 3 }, text: 'Act four.' },
+      ];
+      useCompanion.getState().setRevealed('a:1:Tolkien/The Hobbit', true);
+      await mount(
+        <StoryPanel data={data({ recaps: onOne, listening: { chapter: 3, finished: false } })} />,
+      );
+      for (const text of ['Act one.', 'Act two.', 'Act three.', 'Act four.']) {
+        expect(screen.getByText(text)).toBeTruthy();
+      }
+      expect(error.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+    } finally {
+      error.mockRestore();
+    }
   });
 
   it('keeps the whole-book summary behind its spoiler row while the book is unfinished', async () => {

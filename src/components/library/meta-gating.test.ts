@@ -10,6 +10,7 @@ import {
   metaEnabledFor,
   recapIsVisible,
   recapMarks,
+  revealIsPastEnd,
   splitCharacters,
   splitRecaps,
 } from './meta-gating';
@@ -41,6 +42,27 @@ describe('chapterNumberAt', () => {
     expect(chapterNumberAt(starts, 100)).toBe(2);
     expect(chapterNumberAt(starts, 250)).toBe(3);
     expect(chapterNumberAt(starts, 9999)).toBe(3);
+  });
+
+  it('reads starts all alike as not started, never as the end', () => {
+    expect(chapterNumberAt([0, 0, 0], 150)).toBe(0);
+    expect(chapterNumberAt([100, 100], 150)).toBe(0);
+    expect(chapterNumberAt([0, 0, NaN], 150)).toBe(0);
+  });
+
+  it('reads a run of starts alike at the end as its first chapter, never the last', () => {
+    expect(chapterNumberAt([0, 100, 100, 100], 150)).toBe(2); // files of unknown length
+    expect(chapterNumberAt([0, 50, 100, 100], 150)).toBe(3);
+    expect(chapterNumberAt([0, 100, 100, 100], 50)).toBe(1);
+    expect(chapterNumberAt([0, 50, 100], 150)).toBe(3);
+  });
+
+  it('keeps every other shape of list a place can be read from', () => {
+    expect(chapterNumberAt([0, 100, 100, 200], 150)).toBe(3); // a zero-length marker
+    expect(chapterNumberAt([0], 150)).toBe(1); // a lone chapter
+    expect(chapterNumberAt([0, 200, 100], 150)).toBe(1); // stops at the first past it
+    expect(chapterNumberAt([0, 100, NaN], 150)).toBe(2); // a file of unknown length
+    expect(chapterNumberAt([0, NaN], 150)).toBe(1);
   });
 });
 
@@ -108,6 +130,19 @@ describe('characterIsVisible', () => {
   });
 });
 
+describe('revealIsPastEnd', () => {
+  it('is true only past a known last chapter', () => {
+    expect(revealIsPastEnd(character('late', 7), 6)).toBe(true);
+    expect(revealIsPastEnd(character('last', 6), 6)).toBe(false);
+    expect(revealIsPastEnd(character('early', 2), 6)).toBe(false);
+  });
+
+  it('says nothing when the count is not known', () => {
+    expect(revealIsPastEnd(character('late', 7), undefined)).toBe(false);
+    expect(revealIsPastEnd(character('late', 7), 0)).toBe(false);
+  });
+});
+
 describe('recapIsVisible', () => {
   const p = (chapter: number, finished = false) => ({ chapter, finished });
 
@@ -123,6 +158,43 @@ describe('recapIsVisible', () => {
 
   it('shows everything on a finished book', () => {
     expect(recapIsVisible(recap(12), p(2, true))).toBe(true);
+  });
+});
+
+// A 43-track Hamlet whose sidecar is on 5 acts, as `/meta` answers it once translated onto
+// the recording (the server's internal/meta OnRecording): reveals at each act's start
+// (1, 10, 19, 27, 36), throughs at each act's end (9, 18, 26, 35, 43). The gate is unchanged
+// and holds. The work's own numbers, on an older server, are what leaked.
+describe('positions translated onto the recording', () => {
+  const at = (chapter: number, finished = false) => ({ chapter, finished });
+
+  it('hides the Act 5 recap at track 6, where the raw number leaked', () => {
+    expect(recapIsVisible(recap(43), at(6))).toBe(false);
+    expect(recapIsVisible(recap(5), at(6))).toBe(true);
+  });
+
+  it('shows the Act 1 cast from the start', () => {
+    expect(characterIsVisible(character('hamlet', 1), at(0))).toBe(true);
+    expect(characterIsVisible(character('hamlet', 1), at(1))).toBe(true);
+  });
+
+  it('shows an Act 5 character only from the track starting Act 5', () => {
+    expect(characterIsVisible(character('fortinbras', 36), at(35))).toBe(false);
+    expect(characterIsVisible(character('fortinbras', 36), at(36))).toBe(true);
+  });
+
+  // One past the last chapter: the unit starts inside a long last track, so no chapter
+  // starts at or past it. No place reaches it, as on a book coarser than the scale.
+  it('holds a reveal past the last chapter until the book is finished', () => {
+    expect(characterIsVisible(character('late', 44), at(43))).toBe(false);
+    expect(characterIsVisible(character('late', 44), at(43, true))).toBe(true);
+  });
+
+  it('shows the Act 1 recap once Act 1 is over, and Act 5 only when finished', () => {
+    expect(recapIsVisible(recap(9), at(9))).toBe(false);
+    expect(recapIsVisible(recap(9), at(10))).toBe(true);
+    expect(recapIsVisible(recap(43), at(43))).toBe(false);
+    expect(recapIsVisible(recap(43), at(43, true))).toBe(true);
   });
 });
 

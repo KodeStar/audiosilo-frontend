@@ -41,6 +41,8 @@ export type CompanionData = {
   /** Where the listener is, for the gate: ONE whole-book position (the live one while
    * this book is loaded, never below the saved one) on the corrected chapter starts. */
   listening: ListeningProgress;
+  /** The book's chapters, for a character's "From chapter N" (`CharacterCard`). */
+  chapterCount?: number;
 };
 
 const NO_CHARACTERS: BookMetaCharacter[] = [];
@@ -81,5 +83,6 @@ export function useCompanionData(target: PlayTarget): CompanionData {
     title: book?.title,
     metaKnown,
     listening,
+    chapterCount: chapterStarts.length,
   };
 }
