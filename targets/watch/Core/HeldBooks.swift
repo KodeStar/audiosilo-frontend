@@ -8,6 +8,11 @@
 //
 // `watch-state` has no account per book: its books read as the account it names. So a row is
 // reported only under its own account, and the watch's own screens show the rest.
+//
+// A `remove` is handled in its turn (a sign-in may run ahead of it), but a book is held the moment
+// it arrives, so a book sent again right after a `remove` is already here when that turn comes.
+// The ticket keeps them apart: a `remove` clears only the row it arrived after, and until it is
+// handled a book's record, about to go, settles no row.
 import Foundation
 
 struct HeldBook: Codable, Equatable, Identifiable, Sendable {
@@ -19,6 +24,12 @@ struct HeldBook: Codable, Equatable, Identifiable, Sendable {
 
   var id: String { "\(book.accountId)|\(book.ref.key)" }
   var waiting: Bool { gaveUpAt == nil }
+}
+
+/// A `remove` from when it arrived until its turn: the row it found then, if any.
+struct RemoveTicket: Equatable, Sendable {
+  var message: RemoveMessage
+  var row: HeldBook?
 }
 
 @MainActor
@@ -35,6 +46,9 @@ final class HeldBooks {
   private let file: JSONFile<[HeldBook]>?
   /// In the order they arrived.
   private(set) var books: [HeldBook]
+  /// The books of the `remove`s not handled yet. Not on disk: they arrived with the app running
+  /// and go with it, and the phone stops saying "removing" after 7 days and offers it again.
+  private var removing: [BookRef] = []
 
   /// `url` nil keeps them in memory (tests).
   init(url: URL?) {
@@ -61,7 +75,7 @@ final class HeldBooks {
   /// got there: nothing is left to hold, or to report as not delivered).
   func settle(accountId: String?, onWatch: [BookRef], now: Date) {
     guard !books.isEmpty else { return }
-    let here = Set(onWatch)
+    let here = Set(onWatch).subtracting(removing)
     commit(books.filter { !($0.book.accountId == accountId && here.contains($0.book.ref)) }, now: now)
   }
 
@@ -78,6 +92,33 @@ final class HeldBooks {
       rows[i].gaveUpAt = now
     }
     commit(rows, now: now)
+  }
+
+  /// A `remove` arrived: note it, and which row it is about, for when its turn comes.
+  func noteRemove(_ message: RemoveMessage) -> RemoveTicket {
+    removing.append(message.ref)
+    let row = books.first { $0.book.accountId == message.accountId && $0.book.ref == message.ref }
+    return RemoveTicket(message: message, row: row)
+  }
+
+  /// A `remove`'s turn, with the watch signed in to `accountId`: true when the book goes too. Its
+  /// own account only: signed out or on another account nothing changes, so its book still comes if
+  /// that account signs in, as the phone's row says. The row it found goes, waiting or given up on;
+  /// one sent again since has another `heldAt`, and stays.
+  func finishRemove(_ ticket: RemoveTicket, accountId: String?, now: Date) -> Bool {
+    if let i = removing.firstIndex(of: ticket.message.ref) { removing.remove(at: i) }
+    guard ticket.message.accountId == accountId else { return false }
+    if let row = ticket.row {
+      commit(books.filter { !($0.id == row.id && $0.heldAt == row.heldAt) }, now: now)
+    }
+    return true
+  }
+
+  /// The rows Home lists as on their way: those still waiting, less one of this account's beside
+  /// a record of it (it speaks for that record until it settles, and the record has the detail).
+  static func waiting(_ rows: [HeldBook], accountId: String?, records: [BookRef]) -> [HeldBook] {
+    let here = Set(records)
+    return rows.filter { $0.waiting && !($0.book.accountId == accountId && here.contains($0.book.ref)) }
   }
 
   /// The rows for `watch-state`, which names `accountId` (signed out names none, so none).

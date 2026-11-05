@@ -1,5 +1,5 @@
 // The phone-watch message contract (W3 plan, "The phone-watch message contract"): the watch
-// receives `pair` and `book` from the phone (W3b sends them) and sends `watch-state`. Every
+// receives `pair`, `book` and `remove` from the phone and sends `watch-state`. Every
 // message carries `v: 1`; an unknown type or a newer version is ignored. WatchConnectivity hands
 // over property-list dictionaries, so decoding works on `[String: Any]`.
 import Foundation
@@ -43,14 +43,30 @@ struct BookMessage: Codable, Equatable, Sendable {
   var accountId: String { accountIdOf(serverId: serverId, userId: userId) }
 }
 
+/// `remove`: take a book off the watch, as removing it by hand does. Only for the account the
+/// watch is signed in to (`HeldBooks.finishRemove`).
+struct RemoveMessage: Equatable, Sendable {
+  var serverId: String
+  var userId: Int
+  var ref: BookRef
+
+  var accountId: String { accountIdOf(serverId: serverId, userId: userId) }
+}
+
 enum PhoneMessage: Equatable, Sendable {
   case pair(PairMessage)
   case book(BookMessage)
+  case remove(RemoveMessage)
 }
 
 /// One book on the watch, as `watch-state` reports it.
 struct WatchStateBook: Equatable, Sendable {
-  enum State: String, Codable, Sendable { case queued, preparing, downloading, ready, failed }
+  enum State: String, Codable, Sendable {
+    case queued, preparing, downloading, ready, failed
+
+    /// Still on its way to the watch: what Home lists above Continue listening.
+    var onTheWay: Bool { self == .queued || self == .preparing || self == .downloading }
+  }
   var ref: BookRef
   var title: String
   var state: State
@@ -78,6 +94,7 @@ enum PhoneMessages {
     switch type {
     case "pair": return decodePair(m).map(PhoneMessage.pair)
     case "book": return decodeBook(m).map(PhoneMessage.book)
+    case "remove": return decodeRemove(m).map(PhoneMessage.remove)
     default: return nil
     }
   }
@@ -111,6 +128,13 @@ enum PhoneMessages {
     return BookMessage(
       serverId: serverId, userId: userId, ref: BookRef(libraryId: lib, path: path),
       title: m["title"] as? String ?? path, author: nonEmpty(m["author"]))
+  }
+
+  private static func decodeRemove(_ m: [String: Any]) -> RemoveMessage? {
+    guard let serverId = nonEmpty(m["server_id"]), let userId = int(m["user_id"]),
+          let lib = int(m["library_id"]), let path = nonEmpty(m["path"])
+    else { return nil }
+    return RemoveMessage(serverId: serverId, userId: userId, ref: BookRef(libraryId: lib, path: path))
   }
 
   /// `watch-state` as a property list (no nils: WatchConnectivity takes plist types only).

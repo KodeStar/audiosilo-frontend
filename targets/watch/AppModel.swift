@@ -397,13 +397,20 @@ final class AppModel: ObservableObject {
   /// a `book` that follows its `pair` (the phone sends both to a watch not signed in to that
   /// connection) is handled once that sign-in is done.
   private func receive(_ m: PhoneMessage) {
-    // On disk now, not when its turn comes: a sign-in ahead of it can take a while, and the phone
-    // has said "Sent", so a kill meanwhile must not lose it.
-    if case .book(let b) = m {
+    switch m {
+    case .pair(let p):
+      serially { await self.signIn(p) }
+    case .book(let b):
+      // On disk now, not when its turn comes: a sign-in ahead of it can take a while, and the phone
+      // has said "Sent", so a kill meanwhile must not lose it.
       held.hold(b, now: Date())
       publishState()
+      // Queued now if its account is ready, else it waits for that.
+      serially { self.releaseHeld() }
+    case .remove(let r):
+      let ticket = held.noteRemove(r)
+      serially { self.remove(ticket) }
     }
-    serially { await self.handle(m) }
   }
 
   private func serially(_ work: @escaping @MainActor () async -> Void) {
@@ -425,13 +432,13 @@ final class AppModel: ObservableObject {
     }
   }
 
-  private func handle(_ m: PhoneMessage) async {
-    switch m {
-    case .pair(let p): await signIn(p)
-    case .book:
-      // Held already (`receive`): queued now if its account is ready, else it waits for that.
-      releaseHeld()
+  /// A `remove`'s turn: the same path as removing by hand, so the playing book stops and its span
+  /// closes first (`downloads.willRemove`). Refused for any account but this one (`finishRemove`).
+  private func remove(_ ticket: RemoveTicket) {
+    if held.finishRemove(ticket, accountId: account?.accountId, now: Date()) {
+      downloads.remove(ticket.message.ref)
     }
+    publishState()
   }
 
   /// Queue what waits for the account, if it is ready, and age the rest. Through the Download
@@ -609,6 +616,7 @@ final class AppModel: ObservableObject {
     ///   it (ignored when already signed in to that account). `scripts/watch-debug-pair.mjs`
     ///   mints one.
     /// - `AUDIOSILO_DEBUG_BOOK`: a v1 `book` message as JSON, queued like the Download button.
+    /// - `AUDIOSILO_DEBUG_REMOVE`: a v1 `remove` message as JSON, taken as if the phone had sent it.
     /// - `AUDIOSILO_DEBUG_PLAY=1`: play the first book on the watch once signed in.
     private func debugSignIn() {
       let env = ProcessInfo.processInfo.environment
@@ -623,6 +631,10 @@ final class AppModel: ObservableObject {
       Task {
         if let pair { await signIn(pair) }
         if let json = env["AUDIOSILO_DEBUG_BOOK"], let m = PhoneMessages.decodeJSON(json) {
+          receive(m)
+          await messagesHandled()
+        }
+        if let json = env["AUDIOSILO_DEBUG_REMOVE"], let m = PhoneMessages.decodeJSON(json) {
           receive(m)
           await messagesHandled()
         }

@@ -1,6 +1,6 @@
-// The watch's screens: Setup, the "server too old" screen, Home (Now playing, Continue
-// listening with a Download button per row, On this watch, Sync, Sign out), and On this watch
-// (play, size, remove). Now Playing is NowPlaying.swift; Sync status and Sign out are
+// The watch's screens: Setup, the "server too old" screen, Home (Now playing, what is on its way
+// here, On this watch, Continue listening with a Download button per row, Sync, Sign out), and On
+// this watch (play, size, remove). Now Playing is NowPlaying.swift; Sync status and Sign out are
 // SyncAndAccount.swift. The offer sheet and the speaker question sit on the root, so they show
 // over any screen.
 import SwiftUI
@@ -119,11 +119,14 @@ struct HomeView: View {
             }
           }
         }
+        OnTheWaySection(downloads: model.downloads)
+        Section {
+          NavigationLink("On this watch") { OnThisWatchView(downloads: model.downloads, engine: engine) }
+        }
         Section("Continue listening") {
           ContinueSection(library: model.library, downloads: model.downloads)
         }
         Section {
-          NavigationLink("On this watch") { OnThisWatchView(downloads: model.downloads, engine: engine) }
           NavigationLink("Sync") { SyncStatusView(router: model.router) }
           NavigationLink("Sign out") { SignOutView() }
         }
@@ -172,10 +175,36 @@ struct ReplaceSection: View {
   }
 }
 
+/// Books coming to the watch, so one just sent is in plain sight: those held for an account and
+/// those preparing or downloading. Once finished a book is under On this watch.
+struct OnTheWaySection: View {
+  @EnvironmentObject var model: AppModel
+  @ObservedObject var downloads: DownloadManager
+
+  var body: some View {
+    let records = downloads.records.filter(\.state.onTheWay)
+    let rows = HeldBooks.waiting(model.heldBooks, accountId: model.account?.accountId, records: records.map(\.ref))
+    if !records.isEmpty || !rows.isEmpty {
+      Section("On the way") {
+        ForEach(records) { BookOnWatchRow(record: $0) }
+        ForEach(rows) { HeldBookRow(held: $0) }
+      }
+    }
+  }
+}
+
 struct ContinueSection: View {
   @EnvironmentObject var model: AppModel
   @ObservedObject var library: ContinueListening
   @ObservedObject var downloads: DownloadManager
+
+  /// Less what On the way lists (a book shows once on Home; its state is there).
+  private var rows: [ContinueRow] {
+    let who = model.account?.accountId
+    let coming = downloads.records.filter(\.state.onTheWay).map(\.ref)
+      + HeldBooks.waiting(model.heldBooks, accountId: who, records: []).filter { $0.book.accountId == who }.map(\.book.ref)
+    return library.rows.filter { !coming.contains($0.ref) }
+  }
 
   var body: some View {
     if library.rows.isEmpty {
@@ -185,7 +214,7 @@ struct ContinueSection: View {
       if !library.problem.isEmpty {
         Text(library.problem).font(.footnote).foregroundStyle(.secondary)
       }
-      ForEach(library.rows) { row in
+      ForEach(rows) { row in
         VStack(alignment: .leading, spacing: 4) {
           Text(row.title).font(.body).lineLimit(2)
           if let author = row.author, !author.isEmpty {
@@ -286,6 +315,11 @@ struct BookOnWatchRow: View {
       default:
         Text(Labels.state(record.state)).font(.footnote).foregroundStyle(.secondary)
       }
+      // Only once its files are known: the server is asked straight after, and until then it has
+      // nothing to carry on with.
+      if record.state == .preparing, !record.files.isEmpty {
+        Text(Labels.PREPARING_HINT).font(.footnote).foregroundStyle(.secondary)
+      }
       if let message = record.message, record.state != .ready {
         Text(message).font(.footnote).foregroundStyle(.secondary)
       }
@@ -299,12 +333,18 @@ struct HeldBookRows: View {
   @EnvironmentObject var model: AppModel
 
   var body: some View {
-    ForEach(model.heldBooks) { held in
-      VStack(alignment: .leading, spacing: 3) {
-        Text(held.book.title).lineLimit(2)
-        Text(held.waiting ? "Waiting until this watch can take it" : "Not delivered. Send it again from your iPhone.")
-          .font(.footnote).foregroundStyle(.secondary)
-      }
+    ForEach(model.heldBooks) { HeldBookRow(held: $0) }
+  }
+}
+
+struct HeldBookRow: View {
+  let held: HeldBook
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(held.book.title).lineLimit(2)
+      Text(held.waiting ? "Waiting until this watch can take it" : "Not delivered. Send it again from your iPhone.")
+        .font(.footnote).foregroundStyle(.secondary)
     }
   }
 }
@@ -349,6 +389,12 @@ struct SpeakerSheet: View {
 }
 
 enum Labels {
+  /// The server's encode runs under its own lifetime, whoever is polling (handlers_renditions.go
+  /// `renditionsOfBook`, media/filecache.go `Queue`); the watch polls and starts the files only in
+  /// the foreground (`DownloadManager.active`), so the download waits for the app.
+  static let PREPARING_HINT =
+    "This can take a few minutes. You can lower your wrist: your server keeps going, and the download starts when AudioSilo is open again."
+
   static func state(_ s: WatchStateBook.State) -> String {
     switch s {
     case .queued: return "Waiting to download"

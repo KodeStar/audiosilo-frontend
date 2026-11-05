@@ -282,4 +282,102 @@ final class HeldBooksTests: XCTestCase {
     try Data("not json".utf8).write(to: url)
     XCTAssertEqual(HeldBooks(url: url).books, [])
   }
+
+  // MARK: - remove
+
+  private func removeA(_ path: String = "A/One") -> RemoveMessage {
+    RemoveMessage(serverId: "srv-a", userId: 1, ref: BookRef(libraryId: 1, path: path))
+  }
+
+  func testRemoveForTheSignedInAccountGoesAndClearsItsRow() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    let ticket = held.noteRemove(removeA())
+    XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0))
+    XCTAssertEqual(held.books, [])
+    XCTAssertEqual(held.due(accountId: A, ready: true, now: t0), [], "it never starts")
+  }
+
+  func testRemoveClearsARowGivenUpOn() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    held.giveUp(accountId: A, now: t0)
+    XCTAssertEqual(held.stateRows(accountId: A).map(\.state), [.failed])
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertEqual(held.stateRows(accountId: A), [])
+  }
+
+  func testRemoveWithNoRowStillTakesTheBook() {
+    let held = HeldBooks(url: nil)
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+  }
+
+  func testRemoveIsRefusedSignedOutOrOnAnotherAccountAndChangesNothing() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA()), accountId: nil, now: t0), "signed out")
+    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA()), accountId: B, now: t0), "another account")
+    XCTAssertEqual(held.books.count, 1, "still held")
+    XCTAssertEqual(held.due(accountId: A, ready: true, now: t0), [bookA()])
+  }
+
+  func testRemoveLeavesAnotherAccountsRowForTheSameBook() {
+    let held = HeldBooks(url: nil)
+    let same = BookMessage(serverId: "srv-b", userId: 2, ref: bookA().ref, title: "One", author: nil)
+    held.hold(same, now: t0)
+    held.hold(bookA(), now: t0)
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertEqual(held.books.map(\.book.accountId), [B])
+  }
+
+  func testABookSentAgainAfterARemoveSurvivesItsTurn() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    let ticket = held.noteRemove(removeA())
+    // Held the moment it arrives, ahead of the remove's turn.
+    held.hold(bookA(), now: t0.addingTimeInterval(1))
+    XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0.addingTimeInterval(1)))
+    XCTAssertEqual(held.due(accountId: A, ready: true, now: t0.addingTimeInterval(1)), [bookA()])
+  }
+
+  func testABookFirstSentAfterARemoveSurvivesItsTurn() {
+    let held = HeldBooks(url: nil)
+    let ticket = held.noteRemove(removeA())
+    held.hold(bookA(), now: t0)
+    XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0))
+    XCTAssertEqual(held.books.count, 1)
+  }
+
+  func testARecordAboutToGoSettlesNoRow() {
+    let held = HeldBooks(url: nil)
+    let ticket = held.noteRemove(removeA())
+    held.hold(bookA(), now: t0)
+    // The old record is still in the index: settled against it, the book sent again would be lost.
+    held.settle(accountId: A, onWatch: [bookA().ref], now: t0)
+    XCTAssertEqual(held.books.count, 1)
+    XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0))
+    held.settle(accountId: A, onWatch: [bookA().ref], now: t0)
+    XCTAssertEqual(held.books, [], "its turn over, the record speaks for it again")
+  }
+
+  // MARK: - Home's On the way
+
+  func testHomeListsWaitingRowsOnceEach() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA("A/Beside"), now: t0)
+    held.hold(bookA("A/Alone"), now: t0)
+    held.hold(bookB("B/Other"), now: t0)
+    held.hold(bookA("A/GivenUp"), now: t0.addingTimeInterval(-HeldBooks.MAX_AGE))
+    held.settle(accountId: A, onWatch: [], now: t0)
+    let rows = HeldBooks.waiting(held.books, accountId: A, records: [bookA("A/Beside").ref, bookB("B/Other").ref])
+    XCTAssertEqual(rows.map(\.book.ref.path), ["A/Alone", "B/Other"],
+                   "not one beside its record, not one given up on; a record is this account's alone")
+  }
+
+  func testOnlyWhatIsStillComingIsOnTheWay() {
+    let coming: [WatchStateBook.State] = [.queued, .preparing, .downloading]
+    XCTAssertTrue(coming.allSatisfy(\.onTheWay))
+    XCTAssertFalse(WatchStateBook.State.ready.onTheWay)
+    XCTAssertFalse(WatchStateBook.State.failed.onTheWay)
+  }
 }

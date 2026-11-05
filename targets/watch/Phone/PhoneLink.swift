@@ -1,5 +1,5 @@
 // The watch's ONE `WCSessionDelegate` (nothing else may set `WCSession.default.delegate`):
-// `pair` and `book` in (sendMessage while reachable, transferUserInfo otherwise, delivered
+// `pair`, `book` and `remove` in (sendMessage while reachable, transferUserInfo otherwise, delivered
 // even when the app was closed), `watch-state` out (updateApplicationContext, the latest only).
 // No sync relay through the phone (decision 2): with the phone in reach watchOS already routes
 // the watch's own URLSession through it. Activated at launch, before any message can arrive.

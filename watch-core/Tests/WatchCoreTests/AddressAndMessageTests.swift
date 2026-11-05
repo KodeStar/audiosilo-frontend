@@ -325,6 +325,23 @@ final class PhoneMessagesTests: XCTestCase {
     XCTAssertFalse(p.expired(now: ISOTime.parse("2026-11-04T12:09:59Z")!))
   }
 
+  func testDecodesARemoveMessage() {
+    let remove: [String: Any] = ["v": 1, "type": "remove", "server_id": "srv", "user_id": 7, "library_id": 3, "path": "A/B"]
+    XCTAssertEqual(
+      PhoneMessages.decode(remove),
+      .remove(RemoveMessage(serverId: "srv", userId: 7, ref: BookRef(libraryId: 3, path: "A/B"))))
+    guard case .remove(let r) = PhoneMessages.decode(remove) else { return XCTFail("not a remove") }
+    XCTAssertEqual(r.accountId, "srv.7")
+    var newer = remove
+    newer["v"] = 2
+    XCTAssertNil(PhoneMessages.decode(newer))
+    for key in ["server_id", "user_id", "library_id", "path"] {
+      var broken = remove
+      broken.removeValue(forKey: key)
+      XCTAssertNil(PhoneMessages.decode(broken), key)
+    }
+  }
+
   func testIgnoresANewerVersionAnUnknownTypeAndAMalformedOne() {
     var newer = pair
     newer["v"] = 2
