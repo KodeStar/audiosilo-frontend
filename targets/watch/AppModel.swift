@@ -142,8 +142,10 @@ final class AppModel: ObservableObject {
       debugSignIn()
     #endif
     // Once per launch whatever it says (it goes when the session activates): nothing else may
-    // change this launch, and the phone can still hold what an earlier install told it.
-    publishState()
+    // change this launch, and the phone can still hold what an earlier install told it. Not before
+    // the first unlock: nothing kept here reads yet, so "signed out, no books" would be a guess, and
+    // on that word the phone drops the rows it keeps for this watch.
+    if Keychain.readable { publishState() }
   }
 
   /// The client for the account's address now, with its token; nil when signed out.

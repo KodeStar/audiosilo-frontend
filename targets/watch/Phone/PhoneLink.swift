@@ -42,7 +42,7 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// Send the watch's state to the phone (the latest wins; sent once the session is active).
   func publish(_ state: WatchState) {
     DispatchQueue.main.async {
-      self.publication.update(state)
+      guard self.publication.update(state) else { return }
       self.sendState()
     }
   }

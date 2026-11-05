@@ -13,8 +13,12 @@ struct StatePublication: Sendable {
   /// What to send now, nil when the session already holds the latest (or there is none yet).
   var due: WatchState? { latest == handedOver ? nil : latest }
 
-  mutating func update(_ state: WatchState) {
-    latest = state
+  /// Whether it is news: an unchanged state is no moment to try a refused send again, however
+  /// often a download reports one.
+  @discardableResult
+  mutating func update(_ state: WatchState) -> Bool {
+    defer { latest = state }
+    return state != latest
   }
 
   /// The session took `state`.

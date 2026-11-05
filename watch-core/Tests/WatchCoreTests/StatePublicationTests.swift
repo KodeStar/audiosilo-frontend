@@ -41,6 +41,15 @@ final class StatePublicationTests: XCTestCase {
     XCTAssertEqual(p.due, state(unsent: 3))
   }
 
+  func testOnlyAChangedStateIsNews() {
+    var p = StatePublication()
+    XCTAssertTrue(p.update(state(unsent: 1)))
+    // Refused, so still owed, but the same state again is no reason to try.
+    XCTAssertFalse(p.update(state(unsent: 1)))
+    XCTAssertEqual(p.due, state(unsent: 1))
+    XCTAssertTrue(p.update(state(unsent: 2)))
+  }
+
   func testAChangeBackAfterARefusalOwesNothing() {
     // The session still holds what it last took, and that is the latest again.
     var p = StatePublication()
