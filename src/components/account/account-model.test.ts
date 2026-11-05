@@ -4,6 +4,7 @@ import {
   accountParentKey,
   ACTIVE_NOW_MS,
   canRevoke,
+  clientAppName,
   deviceGlyph,
   knownPlatform,
   lastSeen,
@@ -132,6 +133,12 @@ describe('lastSeen', () => {
 });
 
 describe('platforms and glyphs', () => {
+  it('a watch app reads as AudioSilo; any other client keeps its name', () => {
+    expect(clientAppName('audiosilo-watch')).toBe('AudioSilo');
+    expect(clientAppName('AudioSilo')).toBe('AudioSilo');
+    expect(clientAppName('Heimdall')).toBe('Heimdall');
+  });
+
   it("knows the three app platforms and a watch app's two", () => {
     expect(knownPlatform('watchos')).toBe('watchos');
     expect(knownPlatform('wearos')).toBe('wearos');

@@ -141,6 +141,9 @@ final class AppModel: ObservableObject {
     #if DEBUG
       debugSignIn()
     #endif
+    // Once per launch whatever it says (it goes when the session activates): nothing else may
+    // change this launch, and the phone can still hold what an earlier install told it.
+    publishState()
   }
 
   /// The client for the account's address now, with its token; nil when signed out.
@@ -154,6 +157,7 @@ final class AppModel: ObservableObject {
   /// Launch and every return to the foreground.
   func becameActive() {
     inForeground = true
+    PhoneLink.shared.retryState()
     releaseHeld()
     guard let a = account else { return }
     router.startRechecks { [weak self] in self?.account }

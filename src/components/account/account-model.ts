@@ -111,6 +111,12 @@ export function knownPlatform(platform: string | undefined): KnownPlatform | nul
     : null;
 }
 
+/** The app a device row names: the client's own, except that a watch app reads as AudioSilo like
+ * the phone's (its `audiosilo-watch` identifier is for the server), the platform saying which. */
+export function clientAppName(app: string): string {
+  return app === 'audiosilo-watch' ? 'AudioSilo' : app;
+}
+
 /** Whether a platform is a watch's. */
 const isWatchPlatform = (platform: string | undefined): boolean =>
   (WATCH_PLATFORMS as readonly (string | undefined)[]).includes(platform);

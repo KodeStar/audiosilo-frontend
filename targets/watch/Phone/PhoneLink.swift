@@ -18,9 +18,8 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   }
 
   private var waiting: [PhoneMessage] = []
-  private var lastState: [String: Any]?
-  /// The state last handed over (an unchanged one is not sent again).
-  private var published: WatchState?
+  /// What the phone is still owed (main queue only).
+  private var publication = StatePublication()
 
   func activate() {
     guard WCSession.isSupported() else { return }
@@ -43,16 +42,27 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// Send the watch's state to the phone (the latest wins; sent once the session is active).
   func publish(_ state: WatchState) {
     DispatchQueue.main.async {
-      guard state != self.published else { return }
-      self.published = state
-      self.lastState = PhoneMessages.encode(state)
+      self.publication.update(state)
       self.sendState()
     }
   }
 
+  /// A natural moment for a state the session has not taken yet: its activation, a return to the
+  /// foreground, a reachability or companion change. No timer.
+  func retryState() {
+    DispatchQueue.main.async { self.sendState() }
+  }
+
   private func sendState() {
-    guard let plist = lastState, WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
-    try? WCSession.default.updateApplicationContext(plist)
+    guard let state = publication.due, WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
+    do {
+      // Content identical to the session's last context returns success and sends nothing, so it
+      // needs no case of its own. A refusal (WCError 7018, the companion not known yet) throws.
+      try WCSession.default.updateApplicationContext(PhoneMessages.encode(state))
+      publication.tookIt(state)
+    } catch {
+      // Still due: `retryState` tries again.
+    }
   }
 
   private func receive(_ dict: [String: Any]) {
@@ -73,7 +83,15 @@ final class PhoneLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   // MARK: - WCSessionDelegate
 
   func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-    DispatchQueue.main.async { self.sendState() }
+    retryState()
+  }
+
+  func sessionReachabilityDidChange(_ session: WCSession) {
+    retryState()
+  }
+
+  func sessionCompanionAppInstalledDidChange(_ session: WCSession) {
+    retryState()
   }
 
   func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {

@@ -1873,7 +1873,11 @@ downloads and talks to the server directly; the phone only hands it a pairing to
 - **One WatchConnectivity delegate.** `Phone/PhoneLink.swift` is the only `WCSessionDelegate`,
   activated at launch before anything else; messages are versioned (`v: 1`) and decoded in
   `Core/PhoneMessages.swift`. Every file under `targets/watch/` is compiled into the watch target
-  (a synchronized group), so keep notes and fixtures out of it.
+  (a synchronized group), so keep notes and fixtures out of it. `watch-state` goes once per launch
+  whatever it says, then on a change, and counts as sent only when `updateApplicationContext` took
+  it (`Core/StatePublication.swift`): a refusal goes again at activation, `becameActive`, or a
+  reachability or companion change, never on a timer. Content identical to the session's last
+  context returns success and sends nothing (seen in the watchOS 26.5 framework), so it is no error.
 - **Downloads are the watch rendition**, prepared and polled in the foreground
   (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
   (`Net/BackgroundDownloads.swift`, the one session, reattached at launch) after a free-space
