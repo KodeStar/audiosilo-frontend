@@ -1,0 +1,34 @@
+# The Apple Watch app's core (targets/watch/Core) built and tested on the host with SwiftPM
+# (watch-core/), on a macOS runner: the Linux `ci` job has no Swift toolchain, so its
+# `npm run test:watch` would only skip. No simulator or signing needed.
+name: watch
+
+on:
+  pull_request:
+    paths:
+      - 'targets/watch/**'
+      - 'watch-core/**'
+      - 'scripts/test-watch.sh'
+      - '.github/workflows/watch.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'targets/watch/**'
+      - 'watch-core/**'
+      - 'scripts/test-watch.sh'
+      - '.github/workflows/watch.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Test the watch core
+        run: sh scripts/test-watch.sh

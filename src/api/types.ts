@@ -184,7 +184,7 @@ export type Capabilities = {
   /** Whether the server makes small copies of a book's audio files for a watch (Track W2:
    * `GET /libraries/{id}/stream?rendition=watch`, `POST`/`GET /libraries/{id}/renditions`);
    * which kinds is `ServerInfo.renditions`. True when the server has ffmpeg and a data dir.
-   * Absent on older servers. No consumer yet (the watch app, W3). */
+   * Absent on older servers. The watch app reads the kinds (`targets/watch/Core/WireModels.swift`). */
   renditions?: boolean;
 };
 

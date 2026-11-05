@@ -1851,6 +1851,149 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   nothing may treat the empty connection list as real (the offline queue keeps its saves, car
   bookmarks are kept, the car snapshot isn't rewritten as signed out).
 
+**Apple Watch app (Track W3a, `targets/watch/`)**: a standalone SwiftUI watchOS 11 app added by
+`@bacons/apple-targets` (exact pin, LAST in `app.json` plugins: it edits only the Xcode project, so
+`withCarPlay`'s AppDelegate rewrite is untouched). It has its own token, `device_id`, outbox and
+downloads and talks to the server directly; the phone only hands it a pairing token and books.
+
+- **The watch is Swift, not JS.** Nothing under `targets/watch/` is bundled by Metro; it is a
+  hand port of the rules it shares with the player, so a change to one of these rules changes
+  both sides with tests on both: the timeline (`book-queue.ts` -> `Core/Timeline.swift`; the
+  watch navigates whole-book chapters, `Core/PlayerRules.swift`, not clips), spans and the outbox (`listening-sync.ts`,
+  `listening-outbox.ts` -> `Core/SpanRecorder.swift`, `Core/Outbox.swift`), acks and offers
+  (`progress-sync.ts`, `place-reconcile.ts` -> `Core/AckAndOffer.swift`), the address rule,
+  `mergeAddresses` and `pairingFallback` (-> `Core/AddressPicker.swift`) and the identity header (`client-id.ts` ->
+  `Core/ClientHeader.swift`, `audiosilo-watch/<ver> (watchos)`). The Swift tests carry the TS test
+  vectors.
+- **Core is Foundation only.** `targets/watch/Core/` imports nothing but Foundation (no SwiftUI,
+  WatchKit, AVFoundation, WatchConnectivity), so `watch-core/` (a SwiftPM package whose
+  `Sources/WatchCore` is a symlink to it) runs its XCTest on macOS: `npm run test:watch` (skips
+  without `swift`), CI `.github/workflows/watch.yml`. Net/, Storage/, Phone/, Playback/ and UI/
+  are the platform shell around it and are only compiled by Xcode.
+- **One WatchConnectivity delegate.** `Phone/PhoneLink.swift` is the only `WCSessionDelegate`,
+  activated at launch before anything else; messages are versioned (`v: 1`) and decoded in
+  `Core/PhoneMessages.swift`. Every file under `targets/watch/` is compiled into the watch target
+  (a synchronized group), so keep notes and fixtures out of it.
+- **Downloads are the watch rendition**, prepared and polled in the foreground
+  (`Core/RenditionPlan.swift`), each ready file fetched by the background `URLSession`
+  (`Net/BackgroundDownloads.swift`, the one session, reattached at launch) after a free-space
+  check (the rendition's bytes plus 200 MB, for what is not yet landed or with the session). A
+  transfer's resume data is used only while it would send the same URL and token (else the file
+  starts again), and a transfer in flight is cancelled and asked for again when the app sees it
+  would go on with another token, or at the home address after the pick left home
+  (`RenditionPlan.keepsTransfer`; a run re-reads the client per request). A suspended watch's
+  live task at home can't be reached until then. A rendition list that does not hold the book's
+  files fails the book (the book changed; Try again reads the item afresh), and a refused
+  download waits the server's `Retry-After` before asking again. The server's place is kept when
+  a download starts; a passing failure of `/chapters` retries, only a real refusal is "no
+  chapters". The token lives in the keychain
+  `AfterFirstUnlockThisDeviceOnly`; ATS allows only local networking (no arbitrary loads).
+  Query strings are encoded by hand (`Core/QueryString.swift`): `URLComponents` leaves `;` and
+  `+` raw, and Go drops a pair holding a raw `;`, so a book path with one would arrive as none.
+- **The watch scheme** (`plugins/withWatchScheme.js`, a finalized mod): apple-targets makes no
+  scheme, and the one Xcode makes up also builds the iPhone app, so every pod compiled for
+  watchOS and failed. The plugin writes a shared `AudioSiloWatch` scheme with only the watch
+  target. Build: `npx expo prebuild -p ios --clean`, then
+  `xcodebuild -workspace ios/AudioSilo.xcworkspace -scheme AudioSiloWatch -sdk watchsimulator build`.
+  `targets/watch/Assets.xcassets` is regenerated from the config's `icon` at prebuild (prettier
+  ignores it).
+- **The player** (`Playback/WatchAudioEngine.swift`): one `AVQueuePlayer` over the book's
+  downloaded files from a file index, a seek deferred until the first item is ready and the player
+  started only once it landed (so the audio begins at the place), positions whole-book (Timeline).
+  The session is `.playback`/`.spokenAudio`/`.longFormAudio` (the route
+  picker shows when needed); the built-in speaker plays only after a one-time yes (decision 11,
+  `watch.speakerConfirmed` in UserDefaults). Speed, skips (15 / 30), chapter moves, Now Playing
+  times, the resume rule and the sleep timer are Core (`PlayerRules.swift`, `SleepTimer.swift`):
+  the engine carries them out. A book keeps its own speed (`PlaybackSpeed.book`, the phone's
+  `bookSpeed`: the row's when its place was taken, else this watch's own, else the speed last
+  chosen here), so a span never writes another book's speed onto its row. A pause the system makes
+  (suspended, headphones gone) is a pause, its span ending when the audio last moved; the status
+  is read when the observation is delivered, not as observed (a rebuild pauses and restarts in
+  one go), and not at all while a rebuilt queue settles (`settling`, until its first item is ready
+  and at its place). The player starts only as the queue lands, seek or no seek: asked to play an
+  item not ready, `AVQueuePlayer` drops to rate 0 by itself for some ms, which read as a stop halted
+  a chapter hop across files. The status is read again a second after landing (a pause the system
+  made while settling shows nothing), and a queue playing that has not landed after 30 s stops the
+  book as a failed file does, its span ending where the audio last moved. An interruption resumes
+  in either order of `began` and the system's pause. Pausing
+  while a play still asks for the session ends that play. A file that fails stops the book at the
+  last known place, the one further on when its turn comes (`AVQueuePlayer` would skip it
+  silently), and Play tries it again. A place is kept only as the book plays or moves, stamped
+  when that happened (`stoppedAt` for a late-noticed stop): a later stamp would read as newer than
+  another device's real place. A book starts again (an `unfinish`, then a
+  `restart` span) only after it played to its end: a queue a failed file emptied plays on from
+  the place, since the server applies a `restart` as a move to 0. Moved back after its end, the
+  next play sends the `unfinish` too (a listen never unfinishes).
+- **Spans and sending** follow the phone's rules exactly (CROSS-REPO section 25): open on play,
+  close on pause / move / stop / end (then one `finish`) / sleep, cut every 15 s while the last
+  sync answered (else after an hour), on a rate change and on going to the background; kept every
+  5 s; a kill's open span is recovered at launch. Beyond the phone's rules: a deliberate move
+  nothing was heard after (`Spans.isBareMove`, a stop under a second behind a seek) gives the next
+  span its reason, as a paused move does, since its event can come back `not_applied/older` when
+  sent apart from the span before it; a move to where the place already is
+  (`Spans.movesNowhere`, Previous at the book's start) is no move, so no event. Play pulls the
+  book's row first (5 s at most) and
+  resumes by `Resume.plan`; with no answer the server's place kept for the book stands in (the
+  last Continue listening refresh's, or the one read when its download started: the phone's
+  `keepServerPlace`), so an in-progress book never opens at 0 offline. The server's finished row
+  beats a newer place here under the phone's `serverFinishWins` (the finish is newer, or at a
+  version not seen here, and none of this watch's events wait). Another device's place is
+  offered (Jump / Stay) under `offerOf` and the throttles, only from a live answer, also for a
+  loaded book when the app comes to the foreground with it not playing and when it plays again
+  after a minute's pause; an offer
+  swiped away is noted unacknowledged and not offered again (the phone's `ignoreOffer`). One sheet
+  at a time on the root: an offer first, then the speaker question. The outbox is sent at launch, on the foreground, after each closed span and every
+  60 s while events wait (the reconnect trigger). `lastFlushFailed` (what the 15 s cut reads) stays
+  true from a failed attempt until the server next answers, also while a retry is in flight, or
+  offline each attempt would restart the cuts. A flush call while one runs brings its transport
+  to the next round, and `discardAll` ends a request's say (`discards`): its answer or failure
+  is dropped. An `outbox.json` that can't be read is moved aside, never overwritten, and joins
+  once it reads; a discard removes it. The listening needs only Sync v2 (`canSync`): a server
+  without the watch rendition (`.tooOld`, ffmpeg gone) still takes it. Going to the background cuts the span and hands
+  the outbox's first chunk, with `clock_offset`, to the background upload session
+  (`Net/SyncUploader.swift`, decision 10), plus a best-effort `.appRefresh("sync")` flush; an
+  upload's answer is applied on wake like a foreground one, only for the account it was sent for.
+  The background upload goes to the away (or paired) address, never a home one (it is built on
+  `AddressPicker.unattended`, nil when the paired URL is the home address; the home pick, and a
+  home probe still in flight, are dropped on backgrounding), so a server with only a home address
+  syncs in the foreground. With no pick yet the client uses `AddressPicker.unproven`, never a home
+  address while another is known. `GET /addresses` is read at each foreground under the capability
+  (`mergeAddresses`, the phone's `refreshAddresses`). A launch for a background wake is not in
+  the foreground until the scene says so (`inForeground`, `DownloadManager.active`: no polling),
+  and a wake for the phone's messages (`.backgroundTask(.watchConnectivity)`) stays up until they
+  are delivered and handled. A wake's wait gives up after 20 s (`BackgroundWake`).
+- **Signing out and replacing the account** (decision 9, `Core/AccountRules.swift`): the player
+  stops first (its span closes into the outbox), then both are blocked while events wait, unless
+  the listener taps Discard (a confirmation); Sync now is offered beside it. A blocked replace
+  stays on Home (or the too-old screen) with the live count and becomes a plain Switch once nothing
+  waits; nothing plays while the switch signs in, and an expired or failed switch says why there.
+  A replace ends the old token on its server, as Sign out does (a sign-in again for the same
+  account keeps it, as the phone does); a sign-in with no token kept but another account's files
+  left behind forgets them first, so they are never sent under the new token. The phone's messages
+  are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in (one
+  for a blocked replace's account is queued once it succeeds).
+- **DEBUG launch variables (simulator only, compiled out of release).** The watch simulator has
+  no phone and simctl cannot tap, so in DEBUG builds the launch environment stands in:
+  `AUDIOSILO_DEBUG_PAIR` (a v1 `pair` message as JSON: sign in), `AUDIOSILO_DEBUG_BOOK` (a v1
+  `book` message: queue a download) and `AUDIOSILO_DEBUG_PLAY=1` (play the first book on the
+  watch). A verifier against a scratch server (plain HTTP, reachable from the Mac):
+  ```sh
+  W=<watch simulator udid>      # xcrun simctl list devices available | grep -A6 watchOS
+  APP=<derived data>/Build/Products/Debug-watchsimulator/AudioSiloWatch.app
+  xcrun simctl boot $W; xcrun simctl install $W $APP
+  PAIR=$(node scripts/watch-debug-pair.mjs http://127.0.0.1:8080 admin '<password>')  # single use
+  SIMCTL_CHILD_AUDIOSILO_DEBUG_PAIR="$PAIR" xcrun simctl launch --terminate-running-process $W app.audiosilo.watchkitapp
+  BOOK='{"v":1,"type":"book","server_id":"<id>","user_id":1,"library_id":1,"path":"<book rel path>","title":"<title>"}'
+  SIMCTL_CHILD_AUDIOSILO_DEBUG_BOOK="$BOOK" xcrun simctl launch --terminate-running-process $W app.audiosilo.watchkitapp
+  xcrun simctl spawn $W defaults write app.audiosilo.watchkitapp watch.speakerConfirmed -bool YES  # skip the speaker question
+  SIMCTL_CHILD_AUDIOSILO_DEBUG_PLAY=1 xcrun simctl launch --terminate-running-process $W app.audiosilo.watchkitapp
+  xcrun simctl io $W screenshot shot.png
+  ```
+  The server's `listening_events` table shows each span (`start`, `base_version`, `status`); the
+  watch's files are under `xcrun simctl get_app_container $W app.audiosilo.watchkitapp data`,
+  `Library/Application Support/AudioSilo/`. The simulator may send the app to the background
+  after about a minute without input, and then stop its audio (a real watch plays on).
+
 **Chromecast (Phase 8, capability `cast`, `src/cast/`)**: react-native-google-cast 4.9.1 on
 native (the Default Media Receiver; `plugins/withCast.js`, listed before `withCarPlay`, pins the
 Cast framework and keeps the SDK's own notification on Android, whose foreground service keeps the

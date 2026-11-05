@@ -1002,7 +1002,9 @@ describe('open spans of several web tabs', () => {
   });
 
   it('closes a span kept further ahead than a live one (the clock set back since)', async () => {
-    const ahead = { ...span({ id: 'ahead' }), owner: 'tab-a', keptAt: Date.now() + LIVE_SPAN_MS };
+    // Well past the limit: real timers run on, so exactly LIVE_SPAN_MS is live after 1 ms.
+    const keptAt = Date.now() + LIVE_SPAN_MS + 60_000;
+    const ahead = { ...span({ id: 'ahead' }), owner: 'tab-a', keptAt };
     await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([ahead]));
     const changed = jest.fn();
     const off = onOutboxChange(changed);
