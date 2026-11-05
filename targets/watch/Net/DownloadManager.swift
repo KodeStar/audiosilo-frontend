@@ -53,6 +53,8 @@ final class DownloadManager: ObservableObject {
   private static let STAGING_KEEP: TimeInterval = 10 * 60
 
   @Published private(set) var records: [DownloadRecord]
+  /// False when the last write of the index failed (a full disk): `records` would not survive a kill.
+  private(set) var indexSaved = true
   /// The files this launch handed to the background session (`DownloadTaskTag.key`).
   private var handedOff: Set<String> = []
 
@@ -89,7 +91,7 @@ final class DownloadManager: ObservableObject {
   }
 
   private func save() {
-    index.write(records)
+    indexSaved = index.write(records)
     onChange?()
   }
 

@@ -24,18 +24,21 @@ struct JSONFile<T: Codable> {
   }
 
   /// Store `value` (nil removes the file). Readable after the first unlock, so a background
-  /// wake on a locked watch can still write.
-  func write(_ value: T?) {
+  /// wake on a locked watch can still write. False when it could not be stored.
+  @discardableResult
+  func write(_ value: T?) -> Bool {
     guard let value else {
       try? FileManager.default.removeItem(at: url)
-      return
+      return true
     }
     do {
       try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       let data = try Self.encoder.encode(value)
       try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+      return true
     } catch {
       // A full disk: the memory copy goes on; the next write tries again.
+      return false
     }
   }
 }

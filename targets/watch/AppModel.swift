@@ -397,6 +397,12 @@ final class AppModel: ObservableObject {
   /// a `book` that follows its `pair` (the phone sends both to a watch not signed in to that
   /// connection) is handled once that sign-in is done.
   private func receive(_ m: PhoneMessage) {
+    // On disk now, not when its turn comes: a sign-in ahead of it can take a while, and the phone
+    // has said "Sent", so a kill meanwhile must not lose it.
+    if case .book(let b) = m {
+      held.hold(b, now: Date())
+      publishState()
+    }
     serially { await self.handle(m) }
   }
 
@@ -422,18 +428,21 @@ final class AppModel: ObservableObject {
   private func handle(_ m: PhoneMessage) async {
     switch m {
     case .pair(let p): await signIn(p)
-    case .book(let b):
-      // The phone has said "Sent": queued now if its account is ready, else it waits for that.
-      held.hold(b, now: Date())
+    case .book:
+      // Held already (`receive`): queued now if its account is ready, else it waits for that.
       releaseHeld()
     }
   }
 
   /// Queue what waits for the account, if it is ready, and age the rest. Through the Download
-  /// button's path; `publishState` then settles what is on the watch out of the list.
+  /// button's path; `publishState` then settles what is on the watch out of the list. Ready needs
+  /// the server's own word: a sign-in sets `.ready` before `checkServer` has asked, and a server
+  /// too old for the watch would turn a held book into a failed download ("no longer on the
+  /// server", its 404). `checkServer` releases them once it has answered.
   private func releaseHeld() {
     guard !held.books.isEmpty else { return }
-    for b in held.due(accountId: account?.accountId, ready: phase == .ready, now: Date()) {
+    let ready = phase == .ready && server?.supportsWatch == true
+    for b in held.due(accountId: account?.accountId, ready: ready, now: Date()) {
       downloads.enqueue(b.ref, title: b.title, author: b.author)
     }
     publishState()
@@ -500,6 +509,8 @@ final class AppModel: ObservableObject {
       }
       guard Keychain.setToken(session.token) else {
         failed("The watch could not keep its sign-in.")
+        // The account may be gone already (above): the phone is told, and its titles leave.
+        publishState()
         return
       }
       let a = Account(
@@ -611,7 +622,10 @@ final class AppModel: ObservableObject {
       }
       Task {
         if let pair { await signIn(pair) }
-        if let json = env["AUDIOSILO_DEBUG_BOOK"], let m = PhoneMessages.decodeJSON(json) { await handle(m) }
+        if let json = env["AUDIOSILO_DEBUG_BOOK"], let m = PhoneMessages.decodeJSON(json) {
+          receive(m)
+          await messagesHandled()
+        }
         if env["AUDIOSILO_DEBUG_PLAY"] == "1", let r = downloads.records.first(where: { $0.state == .ready }) {
           await play(r)
         }
@@ -623,12 +637,18 @@ final class AppModel: ObservableObject {
 
   func publishState() {
     let who = account?.accountId
-    held.settle(accountId: who, onWatch: downloads.records.map(\.ref), now: Date())
+    // A row goes only for a record a kill can't lose (a full disk keeps it in memory alone), and
+    // not for a failed one: sent again, that book still wants the retry `enqueue` gives it.
+    let onWatch = downloads.indexSaved ? downloads.records.filter { $0.state != .failed }.map(\.ref) : []
+    held.settle(accountId: who, onWatch: onWatch, now: Date())
     if heldBooks != held.books { heldBooks = held.books }
-    let books = downloads.records.map { r in
+    let rows = held.stateRows(accountId: who)
+    // One entry per book: a row kept beside its record speaks for it until it settles.
+    let rowRefs = Set(rows.map(\.ref))
+    let books = downloads.records.filter { !rowRefs.contains($0.ref) }.map { r in
       WatchStateBook(ref: r.ref, title: r.title, state: r.state,
                      bytes: r.state == .ready ? r.bytes : nil)
-    } + held.stateRows(accountId: who)
+    } + rows
     PhoneLink.shared.publish(WatchState(
       signedIn: account != nil, serverId: account?.serverId, userId: account?.userId, appVersion: appVersion,
       books: books, unsentEvents: outbox.unsentCount, couldntSync: outbox.couldNotSync().count,

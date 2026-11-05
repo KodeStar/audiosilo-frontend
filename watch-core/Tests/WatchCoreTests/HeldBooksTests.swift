@@ -16,6 +16,7 @@ private func bookB(_ path: String = "B/One", title: String = "One") -> BookMessa
   BookMessage(serverId: "srv-b", userId: 2, ref: BookRef(libraryId: 1, path: path), title: title, author: nil)
 }
 
+@MainActor
 final class HeldBooksTests: XCTestCase {
   private func tempURL() throws -> URL {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -263,6 +264,17 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     held.settle(accountId: A, onWatch: [bookA().ref], now: t0)
     XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+  }
+
+  // What `publishState` asks before it lets a row go for a download record.
+  func testAWriteSaysWhetherItLanded() throws {
+    let url = try tempURL()
+    let file = JSONFile<[String]>(url: url)
+    XCTAssertTrue(file.write(["one"]))
+    XCTAssertTrue(file.write(nil))
+    // A file where its folder should be: nothing can land there.
+    try Data().write(to: url)
+    XCTAssertFalse(JSONFile<[String]>(url: url.appendingPathComponent("under")).write(["one"]))
   }
 
   func testAnUnreadableFileReadsAsNothing() throws {

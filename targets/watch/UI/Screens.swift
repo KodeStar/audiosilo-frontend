@@ -91,9 +91,10 @@ struct TooOldView: View {
             Text("This server is too old for the watch app (needs 2.6 or later).")
           }
           if let version { Text("Your server: \(version)").font(.footnote).foregroundStyle(.secondary) }
-          HeldBookRows()
           Button("Try again") { model.becameActive() }
           NavigationLink("Sign out") { SignOutView() }
+          // Below the buttons: up to 40 rows would push them far down a small watch.
+          HeldBookRows()
         }
       }
     }

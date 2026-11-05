@@ -1972,8 +1972,10 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   left behind forgets them first, so they are never sent under the new token. The phone's messages
   are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in. A book
   that can't be taken yet (signing in, a failed sign-in, a too-old server, another account) is held
-  on disk (`Core/HeldBooks.swift`, `held-books.json`: 20 books, 7 days) and queued through the Download
-  button's path once its account is ready; one that ages out, goes over the cap or whose account the
+  on disk the moment it arrives, ahead of any sign-in still running (`Core/HeldBooks.swift`,
+  `held-books.json`: 20 books, 7 days) and queued through the Download button's path once its account
+  is ready and its server has said it serves the watch; its row goes only once a record not failed is
+  safely in the download index. One that ages out, goes over the cap or whose account the
   listener refused (Keep this account) is given up on and kept 7 more days. `watch-state` has no
   account per book, so a row goes there (`queued`, then `failed`) only under its own account, and the
   watch's own screens show all of them. Leaving an account (sign-out, a replace that succeeded)

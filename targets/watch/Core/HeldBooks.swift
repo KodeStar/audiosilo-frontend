@@ -21,6 +21,7 @@ struct HeldBook: Codable, Equatable, Identifiable, Sendable {
   var waiting: Bool { gaveUpAt == nil }
 }
 
+@MainActor
 final class HeldBooks {
   /// How many books wait at once, and how many given up on are kept. The listener sends books one
   /// by one by hand, so more than this is a loop or a mistake; the oldest waiting is given up on.
