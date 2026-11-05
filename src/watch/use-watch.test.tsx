@@ -30,14 +30,17 @@ let mockUser: Partial<User> = { id: 7, username: 'ada' };
 jest.mock('@/stores/session', () => ({
   useSession: (select: (s: unknown) => unknown) =>
     select({ connections: [{ id: 'srv.7', serverId: 'srv', name: 'Hearthside', user: mockUser }] }),
+  onConnectionRemoved: () => () => {},
 }));
+const mockOpenDownloads = jest.fn();
+jest.mock('@/lib/open', () => ({ openDownloads: (c: string) => mockOpenDownloads(c) }));
 
 /* eslint-disable import/first */
 import { useSendToWatch, useWatchStatus } from './use-watch';
 import { useWatchStore } from './watch-store';
 /* eslint-enable import/first */
 
-const installed = { paired: true, installed: true, state: null };
+const installed = { paired: true, installed: true, state: null, watchId: null, transfers: [] };
 const book = { rel_path: 'A/B', title: 'B', author: 'A' };
 
 beforeEach(() => {
@@ -56,7 +59,7 @@ describe('useWatchStatus', () => {
     const { result } = await renderHook(() => useWatchStatus());
     await act(async () => {});
     expect(mockRead).toHaveBeenCalledTimes(1);
-    const next = { paired: true, installed: false, state: null };
+    const next = { ...installed, installed: false };
     await act(async () => mockListener?.(next));
     expect(result.current).toEqual(next);
   });
@@ -91,6 +94,7 @@ describe('useSendToWatch', () => {
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Sent to your watch',
       description: "If AudioSilo isn't open on your watch, open it to finish signing in.",
+      action: { label: 'Show', onPress: expect.any(Function) },
     });
   });
 
@@ -110,7 +114,14 @@ describe('useSendToWatch', () => {
     const { result } = await mount();
     await act(async () => result.current!(book));
     expect(mockSendPair).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith({ title: 'Sent to your watch', description: 'B' });
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Sent to your watch',
+      description: 'B',
+      action: { label: 'Show', onPress: expect.any(Function) },
+    });
+    // The toast's link goes to this connection's section in Downloads.
+    mockToast.mock.calls[0][0].action.onPress();
+    expect(mockOpenDownloads).toHaveBeenCalledWith('srv.7');
   });
 
   it('says the watch was not reached when the link fails, not the server', async () => {

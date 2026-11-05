@@ -7,6 +7,7 @@ import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import { pairingError } from '@/components/account/use-pairing';
 import { toast } from '@/components/ui/toast';
+import { openDownloads } from '@/lib/open';
 import { useSession } from '@/stores/session';
 
 import { watchLink } from './link';
@@ -46,6 +47,10 @@ function useSendToWatchLinked(connectionId: string, libraryId: number): SendToWa
         toast({
           title: t('library.bookActions.sentToWatch'),
           description: signInLeft ? t('library.bookActions.sentToWatchPair') : book.title,
+          action: {
+            label: t('library.bookActions.sentToWatchShow'),
+            onPress: () => openDownloads(connectionId),
+          },
         });
       } catch (e) {
         toast({ title: watchErrorText(e, connection.name, t) });

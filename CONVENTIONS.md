@@ -1904,7 +1904,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   picker shows when needed); the built-in speaker plays only after a one-time yes (decision 11,
   `watch.speakerConfirmed` in UserDefaults). Speed, skips (15 / 30), chapter moves, Now Playing
   times, the resume rule and the sleep timer are Core (`PlayerRules.swift`, `SleepTimer.swift`):
-  the engine carries them out. A book keeps its own speed (`PlaybackSpeed.book`, the phone's
+  the engine carries them out. Beside the bar both figures are audio time and add up to the
+  chapter (`Skips.figures`, the phone's seek bar); away from 1x one more line says the wall-clock
+  time left in the phone's phrase (`Skips.wallClockLine`, `formatTimeLeft`), and at 1x nothing does. A book keeps its own speed (`PlaybackSpeed.book`, the phone's
   `bookSpeed`: the row's when its place was taken, else this watch's own, else the speed last
   chosen here), so a span never writes another book's speed onto its row. A pause the system makes
   (suspended, headphones gone) is a pause, its span ending when the audio last moved; the status
@@ -2013,13 +2015,50 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   - **Who sees what** (`watch-model.ts`): the card for a paired watch and an account that can use
     one (not a kid's, 403 `kid_account`; not a demo's), with Install in place of its button until
     the app is on the watch; the book action `'watch'` needs the app installed and `watch` in the
-    server's `renditions`, never on an episode. A client can't tell an API key session (no such
-    connection is made by the app): the server's 403 reads as the pairing refusal.
+    server's `renditions`, never on an episode; the Downloads section needs the app installed and
+    an account that can use one. A client can't tell an API key session (no such
+    connection is made by the app): the server's 403 reads as the pairing refusal. The card keeps
+    set-up, signed in as and what waits; the books are in Downloads (a link), and the Send to watch
+    toast links there too (`openDownloads`, `?watch=<connection id>`: not `?connection=`, which
+    scopes content, and this page is every server's).
+  - **The watch in Downloads (W3c, `src/watch/watch-rows.ts`, `watch-ledger.ts`,
+    `components/downloads/watch-section.tsx`).** The watch only says what it holds now, and
+    `transferUserInfo` answers nothing, so the phone keeps a ledger (`audiosilo.watchLedger`) by
+    watch and then by `<server_id>.<user_id>`, keyed `(library_id, path)`. The watch is named by
+    `watch_id`, a UUID in a file in `watchDirectoryURL`, which the system keeps for that watch and
+    deletes with it (or with the app), so a row can't show for another watch or survive the app
+    leaving this one; with no id there is no ledger, only what the watch lists. `watch-state` wins
+    over the ledger and is shown only for the account it names (it has no account per book). The
+    snapshot's `outstanding` holds the undelivered `book`s and `remove`s, never a `pair` (it holds a
+    token), which tells "not delivered yet" from "delivered, open AudioSilo on your watch"; one the
+    system reports failed stays listed (`failed`) for the run, or it would read as delivered. A row
+    is written when Send is tapped (`handed_over: false`, so a kill mid-send can't read as
+    delivered), put back if the send fails, and stops claiming progress after 7 days (`WATCH_HOLD_MS`,
+    the watch's own hold limit) with Send again. Once seen in `watch-state`, a book that leaves it is
+    gone, so the row goes (removed by hand on the watch, or the watch left that account).
+  - **`remove` (phone to watch, `transferUserInfo`, no server or wire change).** The row says
+    removing until `watch-state` drops it, surviving a restart, and never claims it finished while
+    the message is outstanding. There is no reply: a `remove` delivered while the watch says it is
+    signed out or on another account reads as refused (`remove_refused`, the row explains and can be
+    dismissed), and this heals itself if that was only a sign-in still running. `sendPair` moves
+    queued `remove`s behind itself with the books, in their order. On the watch (`AppModel.receive`,
+    `HeldBooks.noteRemove`/`finishRemove`) it is handled in its turn behind any sign-in, by
+    `downloads.remove` (the hand path: `willRemove` stops a playing book so its span closes), only
+    for the signed-in account. Refused, it changes nothing, so a held book of that account still
+    comes if it signs in. Since a `book` is held the moment it arrives, a `remove`'s ticket keeps the
+    two apart: it clears only the row it arrived after, and until its turn the old record settles no
+    row, so a book sent again right after a Remove stands.
+  - **Home on the watch** lists what is held, queued, preparing or downloading (On the way) above On
+    this watch and Continue listening, so a sent book is in plain sight. A book shows once: Continue
+    listening leaves out what On the way lists. "Preparing on the server" says the wrist can go
+    down because the server's encode runs under its own lifetime (`renditionsOfBook` queues every
+    file under `baseCtx`, `FileCache.Queue`), while the watch polls and starts files only in the
+    foreground, so the download itself waits for the app.
 - **DEBUG launch variables (simulator only, compiled out of release).** The watch simulator has
   no phone and simctl cannot tap, so in DEBUG builds the launch environment stands in:
   `AUDIOSILO_DEBUG_PAIR` (a v1 `pair` message as JSON: sign in), `AUDIOSILO_DEBUG_BOOK` (a v1
-  `book` message: queue a download) and `AUDIOSILO_DEBUG_PLAY=1` (play the first book on the
-  watch). A verifier against a scratch server (plain HTTP, reachable from the Mac):
+  `book` message: queue a download), `AUDIOSILO_DEBUG_REMOVE` (a v1 `remove` message: as if the
+  phone sent it) and `AUDIOSILO_DEBUG_PLAY=1` (play the first book on the watch). A verifier against a scratch server (plain HTTP, reachable from the Mac):
   ```sh
   W=<watch simulator udid>      # xcrun simctl list devices available | grep -A6 watchOS
   APP=<derived data>/Build/Products/Debug-watchsimulator/AudioSiloWatch.app

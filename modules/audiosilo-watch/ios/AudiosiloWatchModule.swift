@@ -52,7 +52,12 @@ public class AudiosiloWatchModule: Module {
     }
 
     AsyncFunction("sendBook") { (message: [String: Any], promise: Promise) in
-      WatchLink.shared.sendBook(message) { Self.settle(promise, $0) }
+      WatchLink.shared.transfer(message) { Self.settle(promise, $0) }
+    }
+
+    // Behind any `book` sent before it, and ahead of one sent after.
+    AsyncFunction("sendRemove") { (message: [String: Any], promise: Promise) in
+      WatchLink.shared.transfer(message) { Self.settle(promise, $0) }
     }
   }
 

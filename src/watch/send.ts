@@ -3,11 +3,14 @@ import { getDeviceName } from '@/lib/device';
 import type { Connection } from '@/stores/session';
 
 import { watchLink } from './link';
+import { noteHandedOver, noteRemoving, noteSending, restoreRow } from './watch-ledger';
 import {
   bookNeedsPair,
   buildBookMessage,
   buildPairMessage,
+  buildRemoveMessage,
   signedInHere,
+  watchAccountOf,
   WATCH_PAIR_TTL_SECONDS,
   type WatchableBook,
 } from './watch-model';
@@ -60,11 +63,58 @@ export async function sendBookToWatch(
   libraryId: number,
   book: WatchableBook,
 ): Promise<{ signInLeft: boolean }> {
-  await refreshWatch();
-  const { status, pairUntil } = useWatchStore.getState();
-  if (bookNeedsPair(status.state, connection, pairUntil[connection.id], Date.now())) {
-    await setUpWatch(api, connection);
+  // The row appears now, whatever the sign-in ahead of it takes. Up to 5 s go by when the session
+  // has yet to answer, so with no watch named yet the row waits for that.
+  const account = watchAccountOf(connection);
+  const row = {
+    library_id: libraryId,
+    path: book.rel_path,
+    title: book.title,
+    author: book.author,
+  };
+  let watchId = useWatchStore.getState().status.watchId;
+  let before = watchId ? noteSending(watchId, account, row, Date.now()) : undefined;
+  try {
+    await refreshWatch();
+    const { status, pairUntil } = useWatchStore.getState();
+    if (!watchId && status.watchId) {
+      watchId = status.watchId;
+      before = noteSending(watchId, account, row, Date.now());
+    }
+    if (bookNeedsPair(status.state, connection, pairUntil[connection.id], Date.now())) {
+      await setUpWatch(api, connection);
+    }
+    await watchLink.sendBook(buildBookMessage(connection, libraryId, book)).catch(refused);
+    // Read first: with the transfer in the answer, the row can't read as delivered in between.
+    await refreshWatch();
+    if (watchId) noteHandedOver(watchId, account, row);
+    return { signInLeft: !signedInHere(status.state, connection) };
+  } catch (e) {
+    if (watchId) restoreRow(watchId, account, row, before);
+    throw e;
   }
-  await watchLink.sendBook(buildBookMessage(connection, libraryId, book)).catch(refused);
-  return { signInLeft: !signedInHere(status.state, connection) };
+}
+
+/**
+ * Ask the watch to take a book off. It answers only by no longer listing it (or, on another
+ * account, by naming that one), so the row says "removing" until then, here and after a restart.
+ * A send again after this comes behind it, in order, and stands.
+ */
+export async function removeFromWatch(
+  connection: Connection,
+  libraryId: number,
+  book: { path: string; title: string },
+): Promise<void> {
+  const message = buildRemoveMessage(connection, libraryId, book.path);
+  await watchLink.sendRemove(message).catch(refused);
+  const { watchId } = useWatchStore.getState().status;
+  if (watchId) {
+    noteRemoving(
+      watchId,
+      watchAccountOf(connection),
+      { library_id: libraryId, path: book.path, title: book.title },
+      Date.now(),
+    );
+  }
+  await refreshWatch();
 }

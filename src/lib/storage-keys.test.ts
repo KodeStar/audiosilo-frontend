@@ -22,6 +22,7 @@ describe('storage keys', () => {
       LIBRARY_SELECTION_KEY: 'audiosilo.librarySelection',
       TIME_SAVED_KEY: 'audiosilo.timeSaved',
       DRIFT_STORAGE_KEY: 'audiosilo.driftOffs',
+      WATCH_LEDGER_KEY: 'audiosilo.watchLedger',
       CONNECTION_ALIASES_KEY: 'audiosilo.connectionAliases',
       PROFILES_KEY: 'audiosilo.profiles',
     });

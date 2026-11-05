@@ -4,14 +4,18 @@ import {
   bookNeedsPair,
   buildBookMessage,
   buildPairMessage,
+  buildRemoveMessage,
   NO_WATCH,
+  parseTransfers,
   parseWatchState,
   sendToWatchVisible,
   serverServesWatch,
   signedInHere,
+  watchAccountOf,
   type WatchState,
   watchCardStatus,
   watchCardVisible,
+  watchSectionVisible,
 } from './watch-model';
 
 const connection = {
@@ -268,5 +272,66 @@ describe('watchCardStatus', () => {
   it('names another account as such', () => {
     const elsewhere = { ...installed, state: { ...signedIn, user_id: 8 } };
     expect(watchCardStatus(elsewhere, connection, undefined, now)).toBe('other-account');
+  });
+});
+
+describe('the remove message', () => {
+  it('names the account and the book by path, and nothing else', () => {
+    expect(buildRemoveMessage(connection, 3, 'A/B')).toEqual({
+      v: 1,
+      type: 'remove',
+      server_id: 'srv',
+      user_id: 7,
+      library_id: 3,
+      path: 'A/B',
+    });
+  });
+});
+
+describe('parseTransfers', () => {
+  const book = { type: 'book', server_id: 'srv', user_id: 7, library_id: 3, path: 'A/B' };
+
+  it('reads what is undelivered, and what failed', () => {
+    expect(parseTransfers([book, { ...book, type: 'remove', failed: true }])).toEqual([
+      { type: 'book', account: 'srv.7', library_id: 3, path: 'A/B', failed: false },
+      { type: 'remove', account: 'srv.7', library_id: 3, path: 'A/B', failed: true },
+    ]);
+  });
+
+  it('leaves out what it cannot read, and takes anything for none', () => {
+    expect(parseTransfers(null)).toEqual([]);
+    expect(parseTransfers('x')).toEqual([]);
+    expect(
+      parseTransfers([
+        { ...book, type: 'pair' },
+        { ...book, user_id: undefined },
+        { ...book, path: 3 },
+        7,
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe('watchSectionVisible', () => {
+  const account = { id: 7 };
+  const installed = { paired: true, installed: true };
+
+  it('needs a paired watch with the app on it', () => {
+    expect(watchSectionVisible(installed, account)).toBe(true);
+    expect(watchSectionVisible({ paired: true, installed: false }, account)).toBe(false);
+    expect(watchSectionVisible(NO_WATCH, account)).toBe(false);
+  });
+
+  it('is not for a kid, a demo or an account with no user id yet', () => {
+    expect(watchSectionVisible(installed, { id: 7, member_kind: 'kid' })).toBe(false);
+    expect(watchSectionVisible(installed, { id: 7, is_demo: true })).toBe(false);
+    expect(watchSectionVisible(installed, { id: 0 })).toBe(false);
+  });
+});
+
+describe('watchAccountOf', () => {
+  it('is the same id for either form of a connection id', () => {
+    expect(watchAccountOf({ id: 'srv.7', user: { id: 7, username: 'a' } })).toBe('srv.7');
+    expect(watchAccountOf({ id: 'srv', user: { id: 7, username: 'a' } })).toBe('srv.7');
   });
 });

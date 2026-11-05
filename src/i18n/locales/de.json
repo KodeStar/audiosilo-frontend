@@ -272,8 +272,6 @@
       "otherAccount": "Deine Uhr ist bei einem anderen Konto angemeldet. Die Einrichtung für {{server}} ersetzt dieses Konto, sobald sein Hörverlauf synchronisiert ist.",
       "serverCannot": "{{server}} kann keine Bücher für eine Uhr vorbereiten. Dafür braucht es Version 2.6 oder neuer mit ffmpeg.",
       "sendFailed": "Deine Uhr war nicht erreichbar. Es wurde nichts gesendet, versuche es also noch einmal.",
-      "booksTitle": "Auf deiner Uhr",
-      "noBooks": "Noch keine Bücher auf deiner Uhr. Wähle An Uhr senden auf der Seite eines Buchs.",
       "waiting_one": "{{count}} Hörabschnitt wartet auf deiner Uhr",
       "waiting_other": "{{count}} Hörabschnitte warten auf deiner Uhr",
       "allSynced": "Alles von deiner Uhr ist synchronisiert",
@@ -281,13 +279,7 @@
       "couldntSync_other": "{{count}} Hörabschnitte konnten nicht synchronisiert werden. Siehe Sync auf der Uhr.",
       "lastSynced": "Zuletzt synchronisiert {{when}}",
       "neverSynced": "Von deiner Uhr noch nicht synchronisiert",
-      "bookState": {
-        "queued": "Wartet",
-        "preparing": "Wird vorbereitet",
-        "downloading": "Wird geladen",
-        "ready": "Auf der Uhr",
-        "failed": "Laden fehlgeschlagen"
-      }
+      "booksLink": "Bücher auf deiner Uhr"
     },
     "devices": {
       "title": "Angemeldete Geräte",
@@ -973,6 +965,7 @@
       "sendToWatch": "An Uhr senden",
       "sentToWatch": "An deine Uhr gesendet",
       "sentToWatchPair": "Falls AudioSilo auf deiner Uhr nicht geöffnet ist, öffne es, um die Anmeldung abzuschließen.",
+      "sentToWatchShow": "Anzeigen",
       "markFinished": "Als abgeschlossen markieren",
       "markUnfinished": "Als nicht abgeschlossen markieren",
       "moreInSeries": "Mehr aus dieser Reihe",
@@ -1170,6 +1163,40 @@
     "orphans": {
       "title": "Nicht angemeldet",
       "body": "Downloads eines Kontos, das auf diesem Gerät nicht mehr angemeldet ist. Melde dich dort wieder an, um sie abzuspielen, oder entferne sie, um Platz zu schaffen."
+    },
+    "watch": {
+      "title": "Auf deiner Apple Watch",
+      "empty": "Noch keine Bücher auf deiner Uhr. Wähle An Uhr senden auf der Seite eines Buchs.",
+      "notHere": "Deine Uhr nutzt dieses Konto nicht",
+      "otherAccount": "Sie ist bei einem anderen Konto angemeldet, und dessen Bücher werden hier nicht aufgeführt. Um sie mit {{server}} zu nutzen, richte sie auf deiner Kontoseite ein.",
+      "signedOut": "Sie ist noch nicht bei {{server}} angemeldet. Richte sie auf deiner Kontoseite ein.",
+      "openAccount": "Zu deinem Konto",
+      "sendAgain": "Erneut senden",
+      "sendAgainLabel": "{{title}} erneut an deine Uhr senden",
+      "removeLabel": "{{title}} von deiner Uhr entfernen",
+      "dismiss": "Nicht mehr anzeigen",
+      "dismissLabel": "{{title}} hier nicht mehr anzeigen",
+      "remove": {
+        "title": "Von deiner Uhr entfernen?",
+        "message": "{{title}} wird von deiner Uhr entfernt und stoppt, falls es dort läuft. Deine Stelle im Buch bleibt erhalten. Sende es erneut, um es zurückzuholen.",
+        "confirm": "Entfernen"
+      },
+      "phase": {
+        "undelivered": "Gesendet, noch nicht zugestellt",
+        "delivered": "Zugestellt. Öffne AudioSilo auf deiner Uhr.",
+        "waiting-sign-in": "Zugestellt. Es startet, sobald deine Uhr hier angemeldet ist.",
+        "send-failed": "Deine Uhr war nicht erreichbar. Sende es erneut.",
+        "stale": "Deine Uhr hat es in 7 Tagen nicht übernommen. Sende es erneut, falls du es noch möchtest.",
+        "queued": "Wartet auf deiner Uhr",
+        "preparing": "Wird auf dem Server vorbereitet. Das kann einige Minuten dauern.",
+        "downloading": "Wird auf deine Uhr geladen",
+        "ready": "Auf deiner Uhr",
+        "failed": "Download fehlgeschlagen. Sende es erneut, um es noch einmal zu versuchen.",
+        "removing-undelivered": "Wird entfernt, sobald deine Uhr in Reichweite ist",
+        "removing": "Wird entfernt. Öffne AudioSilo auf deiner Uhr, um es abzuschließen.",
+        "remove-failed": "Deine Uhr war zum Entfernen nicht erreichbar. Versuche es erneut.",
+        "remove-refused": "Nicht entfernt: Deine Uhr ist nicht bei diesem Konto angemeldet."
+      }
     }
   },
   "search": {

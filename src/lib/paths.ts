@@ -102,6 +102,14 @@ export function accountHref(connectionId: string): Href {
   return { pathname: '/account', params: { connection: connectionId } };
 }
 
+/** The Downloads tab's root, on the watch's section for `watchConnection` when given. Not
+ * `?connection=`: that scopes content, and the rest of this page is every server's. */
+export function downloadsHref(watchConnection?: string): Href {
+  return watchConnection
+    ? { pathname: '/downloads', params: { watch: watchConnection } }
+    : '/downloads';
+}
+
 /** A place in a book to start or jump to: a whole-book position (seconds), or a file by
  * index (its durations may be unknown, so a position can't address it). Neither: the
  * saved place. */

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
 import type { User } from '@/api/types';
-import type { WatchState, WatchStatus } from '@/watch/watch-model';
+import { NO_WATCH, type WatchState, type WatchStatus } from '@/watch/watch-model';
 import { useWatchStore } from '@/watch/watch-store';
 
 const mockRead = jest.fn();
@@ -14,6 +14,7 @@ jest.mock('@/watch/link', () => ({
     subscribe: () => {},
     sendPair: (m: unknown) => mockSendPair(m),
     sendBook: jest.fn(),
+    sendRemove: jest.fn(),
   },
 }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'iPhone' }));
@@ -37,13 +38,17 @@ jest.mock('@/stores/session', () => ({
         },
       ],
     }),
+  onConnectionRemoved: () => () => {},
 }));
+
+const mockOpenDownloads = jest.fn();
+jest.mock('@/lib/open', () => ({ openDownloads: (c: string) => mockOpenDownloads(c) }));
 
 /* eslint-disable import/first */
 import { AppleWatchCard } from './apple-watch-card';
 /* eslint-enable import/first */
 
-const installed: WatchStatus = { paired: true, installed: true, state: null };
+const installed: WatchStatus = { ...NO_WATCH, paired: true, installed: true };
 const here: WatchState = {
   signed_in: true,
   server_id: 'srv',
@@ -69,7 +74,7 @@ beforeEach(() => {
 
 describe('AppleWatchCard', () => {
   it('is not there without a paired watch', async () => {
-    await mount({ paired: false, installed: false, state: null });
+    await mount(NO_WATCH);
     expect(screen.queryByTestId('apple-watch-card')).toBeNull();
   });
 
@@ -83,7 +88,7 @@ describe('AppleWatchCard', () => {
   });
 
   it('asks to install the app first, with nothing to press', async () => {
-    await mount({ paired: true, installed: false, state: null });
+    await mount({ ...NO_WATCH, paired: true });
     expect(screen.getByText(/Install AudioSilo on your watch/)).toBeTruthy();
     expect(screen.queryByText('Set up Apple Watch')).toBeNull();
   });
@@ -135,14 +140,31 @@ describe('AppleWatchCard', () => {
     expect(screen.getByText('2 listens waiting on your watch')).toBeTruthy();
     expect(screen.getByText(/1 listen couldn't sync/)).toBeTruthy();
     expect(screen.getByText(/^Last synced /)).toBeTruthy();
-    expect(screen.getByText('Ready book')).toBeTruthy();
-    expect(screen.getByText('Downloading')).toBeTruthy();
     expect(screen.getByText('Send again')).toBeTruthy();
+  });
+
+  it('leaves the books to Downloads, and links there', async () => {
+    await mount({
+      ...installed,
+      state: {
+        ...here,
+        books: [
+          { library_id: 1, path: 'A/B', title: 'Ready book', state: 'ready', bytes: 1048576 },
+        ],
+      },
+    });
+    expect(screen.queryByText('Ready book')).toBeNull();
+    await act(async () => fireEvent.press(screen.getByText('Books on your watch')));
+    expect(mockOpenDownloads).toHaveBeenCalledWith('srv.7');
+  });
+
+  it('has no link to Downloads before the app is on the watch', async () => {
+    await mount({ ...NO_WATCH, paired: true });
+    expect(screen.queryByText('Books on your watch')).toBeNull();
   });
 
   it('says only that it has not synced yet on a freshly signed-in watch', async () => {
     await mount({ ...installed, state: here });
-    expect(screen.getByText(/No books on your watch yet/)).toBeTruthy();
     expect(screen.getByText('Not synced from your watch yet')).toBeTruthy();
     expect(screen.queryByText('Everything from your watch has synced')).toBeNull();
   });

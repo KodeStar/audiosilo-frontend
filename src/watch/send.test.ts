@@ -5,6 +5,7 @@ import type { Connection } from '@/stores/session';
 const mockRead = jest.fn();
 const mockSendPair = jest.fn();
 const mockSendBook = jest.fn();
+const mockSendRemove = jest.fn();
 jest.mock('./link', () => ({
   watchLink: {
     supported: true,
@@ -12,12 +13,14 @@ jest.mock('./link', () => ({
     subscribe: () => {},
     sendPair: (m: unknown) => mockSendPair(m),
     sendBook: (m: unknown) => mockSendBook(m),
+    sendRemove: (m: unknown) => mockSendRemove(m),
   },
 }));
 jest.mock('@/lib/device', () => ({ getDeviceName: () => 'iPhone' }));
 
 /* eslint-disable import/first */
-import { sendBookToWatch, setUpWatch, WatchSendError } from './send';
+import { removeFromWatch, sendBookToWatch, setUpWatch, WatchSendError } from './send';
+import { ledgerRows, useWatchLedger } from './watch-ledger';
 import { refreshWatch, useWatchStore } from './watch-store';
 /* eslint-enable import/first */
 
@@ -40,6 +43,8 @@ const NOW = Date.UTC(2026, 10, 5, 12, 0, 0);
 const signedInStatus = (userId: number) => ({
   paired: true,
   installed: true,
+  watchId: null,
+  transfers: [],
   state: {
     signed_in: true,
     server_id: 'srv',
@@ -49,7 +54,7 @@ const signedInStatus = (userId: number) => ({
     couldnt_sync: 0,
   },
 });
-const blank = { paired: true, installed: true, state: null };
+const blank = { paired: true, installed: true, state: null, watchId: null, transfers: [] };
 
 let api: { pair: jest.Mock };
 
@@ -228,5 +233,93 @@ describe('sendBookToWatch', () => {
     mockRead.mockRejectedValue(new Error('no session'));
     await sendBookToWatch(api, connection, 3, book);
     expect(mockSendPair).not.toHaveBeenCalled();
+  });
+});
+
+describe('the ledger', () => {
+  const W = 'watch-1';
+  const here = { ...signedInStatus(7), watchId: W };
+  const rows = () => ledgerRows(useWatchLedger.getState().ledger, W, 'srv.7');
+
+  beforeEach(() => {
+    useWatchLedger.setState({ ledger: {} });
+    useWatchStore.setState({ status: here, pairUntil: {} });
+    mockRead.mockResolvedValue(here);
+    mockSendRemove.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('holds the row from the moment Send is tapped, not yet handed over', async () => {
+    let release = () => {};
+    mockSendBook.mockReturnValue(new Promise<void>((r) => (release = r)));
+    const sending = sendBookToWatch(api, connection, 3, book);
+    expect(rows()).toMatchObject([{ library_id: 3, path: 'A/B', title: 'B', handed_over: false }]);
+    await Promise.resolve();
+    release();
+    await sending;
+    expect(rows()).toMatchObject([{ path: 'A/B', handed_over: true, sent_at: NOW }]);
+  });
+
+  it('takes the row back when nothing was sent', async () => {
+    mockSendBook.mockRejectedValue(new Error('ERR_NO_WATCH'));
+    await expect(sendBookToWatch(api, connection, 3, book)).rejects.toBeInstanceOf(WatchSendError);
+    expect(rows()).toEqual([]);
+  });
+
+  it('puts back what was there when a send again fails', async () => {
+    await sendBookToWatch(api, connection, 3, book);
+    const before = rows();
+    mockSendBook.mockRejectedValue(new Error('ERR_NO_WATCH'));
+    await expect(sendBookToWatch(api, connection, 3, book)).rejects.toBeInstanceOf(WatchSendError);
+    expect(rows()).toEqual(before);
+  });
+
+  it('keeps no row when the watch cannot be named', async () => {
+    useWatchStore.setState({ status: signedInStatus(7) });
+    mockRead.mockResolvedValue(signedInStatus(7));
+    await sendBookToWatch(api, connection, 3, book);
+    expect(useWatchLedger.getState().ledger).toEqual({});
+  });
+
+  it('names the row once the session has answered, on a cold start', async () => {
+    useWatchStore.setState({ status: blank });
+    await sendBookToWatch(api, connection, 3, book);
+    expect(rows()).toMatchObject([{ path: 'A/B', handed_over: true }]);
+  });
+
+  it('sends a remove and says so, the row kept while it is on its way', async () => {
+    await sendBookToWatch(api, connection, 3, book);
+    mockRead.mockResolvedValue({
+      ...here,
+      transfers: [{ type: 'remove', account: 'srv.7', library_id: 3, path: 'A/B', failed: false }],
+    });
+    await removeFromWatch(connection, 3, { path: 'A/B', title: 'B' });
+    expect(mockSendRemove).toHaveBeenCalledWith({
+      v: 1,
+      type: 'remove',
+      server_id: 'srv',
+      user_id: 7,
+      library_id: 3,
+      path: 'A/B',
+    });
+    expect(rows()).toMatchObject([{ path: 'A/B', remove_at: NOW }]);
+  });
+
+  it('notes nothing when the link refuses a remove', async () => {
+    await sendBookToWatch(api, connection, 3, book);
+    const before = rows();
+    mockSendRemove.mockRejectedValue(new Error('ERR_NO_WATCH'));
+    await expect(
+      removeFromWatch(connection, 3, { path: 'A/B', title: 'B' }),
+    ).rejects.toBeInstanceOf(WatchSendError);
+    expect(rows()).toEqual(before);
+  });
+
+  it('starts afresh when a book is sent again after a Remove', async () => {
+    await sendBookToWatch(api, connection, 3, book);
+    await removeFromWatch(connection, 3, { path: 'A/B', title: 'B' });
+    await sendBookToWatch(api, connection, 3, book);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].remove_at).toBeUndefined();
+    expect(rows()[0].handed_over).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import type { Book, PairingPayload, ServerAddresses, User } from '@/api/types';
 import { isKidAccount } from '@/lib/account';
-import { serverIdOf, usableUserId } from '@/lib/connection-id';
+import { connectionIdOf, serverIdOf, usableUserId } from '@/lib/connection-id';
 import { mergeAddresses } from '@/lib/server-address';
 import { isRecord } from '@/lib/storage-keys';
 
@@ -49,6 +49,15 @@ type BookMessage = {
   author?: string;
 };
 
+type RemoveMessage = {
+  v: typeof WATCH_MESSAGE_VERSION;
+  type: 'remove';
+  server_id: string;
+  user_id: number;
+  library_id: number;
+  path: string;
+};
+
 const WATCH_BOOK_STATES = ['queued', 'preparing', 'downloading', 'ready', 'failed'] as const;
 type WatchBookState = (typeof WATCH_BOOK_STATES)[number];
 
@@ -71,10 +80,33 @@ export type WatchState = {
   last_sync_at?: string;
 };
 
-/** What the phone knows of its watch. With no watch link (web, Android) never `paired`. */
-export type WatchStatus = { paired: boolean; installed: boolean; state: WatchState | null };
+/** A `book` or `remove` the session still holds, or (`failed`) could not deliver. */
+export type WatchTransfer = {
+  type: 'book' | 'remove';
+  /** `<server_id>.<user_id>`, the account it names. */
+  account: string;
+  library_id: number;
+  path: string;
+  failed: boolean;
+};
 
-export const NO_WATCH: WatchStatus = { paired: false, installed: false, state: null };
+/** What the phone knows of its watch. With no watch link (web, Android) never `paired`.
+ * `watchId` names this very watch, null where there is no app on it to name. */
+export type WatchStatus = {
+  paired: boolean;
+  installed: boolean;
+  state: WatchState | null;
+  watchId: string | null;
+  transfers: WatchTransfer[];
+};
+
+export const NO_WATCH: WatchStatus = {
+  paired: false,
+  installed: false,
+  state: null,
+  watchId: null,
+  transfers: [],
+};
 
 /** The platform's way to the watch (`link.ts`, `link.ios.ts`; W4 adds Wear OS behind it). */
 export type WatchLink = {
@@ -85,6 +117,7 @@ export type WatchLink = {
   /** Answers once the pair is ahead of anything sent after it. */
   sendPair: (message: PairMessage) => Promise<void>;
   sendBook: (message: BookMessage) => Promise<void>;
+  sendRemove: (message: RemoveMessage) => Promise<void>;
 };
 
 /** Where there is no way to a watch. */
@@ -94,6 +127,7 @@ export const NO_WATCH_LINK: WatchLink = {
   subscribe: () => {},
   sendPair: async () => {},
   sendBook: async () => {},
+  sendRemove: async () => {},
 };
 
 type WatchConnection = {
@@ -151,6 +185,22 @@ export function buildBookMessage(
   };
 }
 
+/** The `remove` message for one of `connection`'s books (phone to watch only). */
+export function buildRemoveMessage(
+  connection: WatchAccount,
+  libraryId: number,
+  path: string,
+): RemoveMessage {
+  return {
+    v: WATCH_MESSAGE_VERSION,
+    type: 'remove',
+    server_id: serverIdOf(connection),
+    user_id: connection.user.id,
+    library_id: libraryId,
+    path,
+  };
+}
+
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 const count = (v: unknown): number => (typeof v === 'number' && v > 0 ? v : 0);
@@ -181,6 +231,37 @@ export function parseWatchState(raw: unknown): WatchState | null {
     couldnt_sync: count(raw.couldnt_sync),
     last_sync_at: str(raw.last_sync_at),
   };
+}
+
+/** The snapshot's `outstanding`; an entry that doesn't name a book of an account is left out. */
+export function parseTransfers(raw: unknown): WatchTransfer[] {
+  const out: WatchTransfer[] = [];
+  for (const t of Array.isArray(raw) ? raw : []) {
+    if (
+      !isRecord(t) ||
+      (t.type !== 'book' && t.type !== 'remove') ||
+      typeof t.server_id !== 'string' ||
+      typeof t.user_id !== 'number' ||
+      typeof t.library_id !== 'number' ||
+      typeof t.path !== 'string'
+    ) {
+      continue;
+    }
+    out.push({
+      type: t.type,
+      account: connectionIdOf(t.server_id, t.user_id),
+      library_id: t.library_id,
+      path: t.path,
+      failed: t.failed === true,
+    });
+  }
+  return out;
+}
+
+/** The account a connection is on the watch (`<server_id>.<user_id>`), the id a ledger row and a
+ * transfer go by whichever form the connection's own id is in. */
+export function watchAccountOf(connection: WatchAccount): string {
+  return connectionIdOf(serverIdOf(connection), connection.user.id);
 }
 
 /** Whether the watch says it is signed in to this very connection (`<server_id>.<user_id>`). */
@@ -217,6 +298,15 @@ export function watchCardVisible(status: Pick<WatchStatus, 'paired'>, user: Watc
   return status.paired && accountCanUseWatch(user);
 }
 
+/** The Downloads page's section: a paired watch with the app on it and an account that can use
+ * one. */
+export function watchSectionVisible(
+  status: Pick<WatchStatus, 'paired' | 'installed'>,
+  user: WatchUser,
+): boolean {
+  return status.paired && status.installed && accountCanUseWatch(user);
+}
+
 /** Whether the server can make what a watch plays (`renditions` holds `watch`). */
 export function serverServesWatch(renditions: readonly string[] | undefined): boolean {
   return !!renditions?.includes(WATCH_RENDITION);
@@ -229,12 +319,10 @@ export function sendToWatchVisible(
   user: WatchUser,
   renditions: readonly string[] | undefined,
 ): boolean {
-  return (
-    status.paired && status.installed && accountCanUseWatch(user) && serverServesWatch(renditions)
-  );
+  return watchSectionVisible(status, user) && serverServesWatch(renditions);
 }
 
-type WatchCardStatus =
+export type WatchCardStatus =
   /** The watch has no AudioSilo yet. */
   | 'install'
   /** Nothing sent, and the watch is signed in to nothing. */
@@ -249,7 +337,7 @@ type WatchCardStatus =
 
 /** What the card says. `pairUntil`: when the pair last sent for this connection runs out. */
 export function watchCardStatus(
-  status: WatchStatus,
+  status: Pick<WatchStatus, 'installed' | 'state'>,
   connection: WatchAccount,
   pairUntil: number | undefined,
   now: number,

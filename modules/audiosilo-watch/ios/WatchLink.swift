@@ -1,5 +1,5 @@
-// The phone's ONE `WCSessionDelegate` (nothing else may set `WCSession.default.delegate`): `pair`
-// and `book` out, the watch's `watch-state` in. The other end is targets/watch/Phone/PhoneLink.swift
+// The phone's ONE `WCSessionDelegate` (nothing else may set `WCSession.default.delegate`): `pair`,
+// `book` and `remove` out, the watch's `watch-state` in. The other end is targets/watch/Phone/PhoneLink.swift
 // and targets/watch/Core/PhoneMessages.swift; the messages are built in src/watch/watch-model.ts.
 // WatchConnectivity carries only these: with the phone in reach the watch's own URLSession already
 // rides it, so there is no sync relay here.
@@ -34,6 +34,9 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   private var waiting: [() -> Void] = []
   private var activating = false
+  /// The `book`s and `remove`s the system could not deliver, this run: it answers once and forgets
+  /// them, so they would read as delivered. They stay until sent again or the watch changes.
+  private var failedTransfers: [[String: Any]] = []
 
   /// Idempotent. Runs on the main queue.
   func activate() {
@@ -97,8 +100,33 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
     return stateCopy.flatMap { NSDictionary(contentsOf: $0) as? [String: Any] }
   }
 
+  /// Names this very watch for the phone's ledger of what it sent: a file in the folder the system
+  /// keeps for it and deletes with it, so another watch (or the app taken off this one) starts empty.
+  /// Nil with no folder (no app on the watch) or if it can't be written.
+  private var watchId: String? {
+    guard active, let folder = WCSession.default.watchDirectoryURL else { return nil }
+    let file = folder.appendingPathComponent("watch-id")
+    if let id = try? String(contentsOf: file, encoding: .utf8), !id.isEmpty { return id }
+    let id = UUID().uuidString
+    do {
+      try id.write(to: file, atomically: true, encoding: .utf8)
+      return id
+    } catch {
+      return nil
+    }
+  }
+
+  /// The `book`s and `remove`s not delivered yet, then those that failed. The rows' names only:
+  /// a `pair` carries a token, and nothing here needs it.
+  private var outstanding: [[String: Any]] {
+    guard active else { return [] }
+    return WCSession.default.outstandingUserInfoTransfers.compactMap { Self.row(of: $0.userInfo) }
+      + failedTransfers.map { $0.merging(["failed": true]) { _, new in new } }
+  }
+
   func snapshot() -> [String: Any] {
-    var out: [String: Any] = ["paired": isPaired, "installed": isWatchAppInstalled]
+    var out: [String: Any] = ["paired": isPaired, "installed": isWatchAppInstalled, "outstanding": outstanding]
+    if let id = watchId { out["watch_id"] = id }
     if let state = watchState { out["state"] = state }
     return out
   }
@@ -122,9 +150,10 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
       let finish = {
         guard !settled else { return }
         settled = true
-        for book in queued where Self.type(of: book.userInfo) == "book" {
-          book.cancel()
-          session.transferUserInfo(book.userInfo)
+        // In their order: a `remove` and a `book` sent again must reach the watch as they were sent.
+        for transfer in queued where Self.row(of: transfer.userInfo) != nil {
+          transfer.cancel()
+          session.transferUserInfo(transfer.userInfo)
         }
         done(.success(()))
       }
@@ -143,17 +172,29 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
     }
   }
 
-  /// `book`: always `transferUserInfo`, delivered in order and when the watch app is closed.
-  func sendBook(_ message: [String: Any], done: @escaping (Result<Void, WatchLinkError>) -> Void) {
+  /// `book` and `remove`: always `transferUserInfo`, delivered in order and when the watch app is
+  /// closed.
+  func transfer(_ message: [String: Any], done: @escaping (Result<Void, WatchLinkError>) -> Void) {
     whenActivated {
       guard Self.isPropertyList(message) else { return done(.failure(.badMessage)) }
       guard self.isWatchAppInstalled else { return done(.failure(.noWatch)) }
+      if let row = Self.row(of: message) { self.failedTransfers.removeAll { Self.same($0, row) } }
       WCSession.default.transferUserInfo(message)
       done(.success(()))
     }
   }
 
   private static func type(of message: [String: Any]) -> String? { message["type"] as? String }
+
+  /// What a `book` or `remove` names, nil for anything else.
+  private static func row(of message: [String: Any]) -> [String: Any]? {
+    guard let type = type(of: message), type == "book" || type == "remove" else { return nil }
+    return message.filter { ["type", "server_id", "user_id", "library_id", "path"].contains($0.key) }
+  }
+
+  private static func same(_ a: [String: Any], _ b: [String: Any]) -> Bool {
+    (a as NSDictionary).isEqual(to: b)
+  }
 
   private static func isPropertyList(_ message: [String: Any]) -> Bool {
     PropertyListSerialization.propertyList(message, isValidFor: .binary)
@@ -179,6 +220,7 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// The listener switched to another watch: the session must be activated again to reach it.
   func sessionDidDeactivate(_ session: WCSession) {
     DispatchQueue.main.async {
+      self.failedTransfers = []
       session.activate()
       self.notify()
     }
@@ -187,6 +229,22 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// Paired, or the watch app installed, changed.
   func sessionWatchStateDidChange(_ session: WCSession) {
     DispatchQueue.main.async { self.notify() }
+  }
+
+  /// A `book` or `remove` went, or could not. One moved behind a new `pair` (`sendPair`) has a copy
+  /// still on its way, so a report on the first is no failure.
+  func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
+    DispatchQueue.main.async {
+      if error != nil, let row = Self.row(of: userInfoTransfer.userInfo),
+        !session.outstandingUserInfoTransfers.contains(where: {
+          Self.row(of: $0.userInfo).map { Self.same($0, row) } ?? false
+        })
+      {
+        self.failedTransfers.removeAll { Self.same($0, row) }
+        self.failedTransfers.append(row)
+      }
+      self.notify()
+    }
   }
 
   func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {

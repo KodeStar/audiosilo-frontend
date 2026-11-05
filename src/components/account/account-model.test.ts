@@ -160,15 +160,11 @@ describe('platforms and glyphs', () => {
     expect(deviceGlyph({ kind: 'session', name: 'Kitchen', client: ios })).toBe('mobile');
   });
 
-  it('a watch is never drawn as a phone (no watch glyph is vendored)', () => {
+  it('a watch is drawn as a watch, never a phone', () => {
     const wear = { app: 'audiosilo-watch', version: '0.1.0', platform: 'wearos' };
     const watch = { app: 'audiosilo-watch', version: '0.1.0', platform: 'watchos' };
-    expect(deviceGlyph({ kind: 'session', name: 'Pixel Watch 3', client: wear })).toBe(
-      'hard-drive',
-    );
-    expect(deviceGlyph({ kind: 'session', name: "Chris's Watch", client: watch })).toBe(
-      'hard-drive',
-    );
+    expect(deviceGlyph({ kind: 'session', name: 'Pixel Watch 3', client: wear })).toBe('watch');
+    expect(deviceGlyph({ kind: 'session', name: "Chris's Watch", client: watch })).toBe('watch');
   });
 });
 

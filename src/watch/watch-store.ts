@@ -4,6 +4,7 @@ import { connectionIdOf } from '@/lib/connection-id';
 import { onForeground } from '@/lib/when-active';
 
 import { watchLink } from './link';
+import { applyWatchStatus, followConnectionRemovals, hydrateLedger } from './watch-ledger';
 import { NO_WATCH, type WatchStatus } from './watch-model';
 
 type WatchStore = {
@@ -29,6 +30,7 @@ function setStatus(status: WatchStatus): void {
     status,
     pairUntil: here !== null && Object.hasOwn(s.pairUntil, here) ? {} : s.pairUntil,
   }));
+  applyWatchStatus(status);
 }
 
 /** Read the watch's status afresh. It is what the session kept after a cold start, waiting for
@@ -47,10 +49,15 @@ let started = false;
 export function startWatchLink(): void {
   if (started) return;
   started = true;
+  followConnectionRemovals();
   watchLink.subscribe(setStatus);
   // Paired or installed can change while the app is away, with no event reaching it.
   onForeground(() => void refreshWatch());
-  void refreshWatch();
+  // The ledger first: nothing can be sent before the first answer, so no row is laid over one not
+  // read yet. An event that came meanwhile found no rows to settle.
+  void hydrateLedger()
+    .catch(() => {})
+    .then(refreshWatch);
 }
 
 /** A pair went out. The native link has cancelled any older one still undelivered, this

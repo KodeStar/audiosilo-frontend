@@ -1,11 +1,19 @@
 import AudiosiloWatch, { type NativeWatchSnapshot } from '../../modules/audiosilo-watch';
 
-import { NO_WATCH_LINK, parseWatchState, type WatchLink, type WatchStatus } from './watch-model';
+import {
+  NO_WATCH_LINK,
+  parseTransfers,
+  parseWatchState,
+  type WatchLink,
+  type WatchStatus,
+} from './watch-model';
 
-const statusOf = ({ paired, installed, state }: NativeWatchSnapshot): WatchStatus => ({
-  paired,
-  installed,
-  state: parseWatchState(state),
+const statusOf = (snapshot: NativeWatchSnapshot): WatchStatus => ({
+  paired: snapshot.paired,
+  installed: snapshot.installed,
+  state: parseWatchState(snapshot.state),
+  watchId: snapshot.watch_id ?? null,
+  transfers: parseTransfers(snapshot.outstanding),
 });
 
 const native = AudiosiloWatch?.isSupported() ? AudiosiloWatch : null;
@@ -20,5 +28,6 @@ export const watchLink: WatchLink = native
       },
       sendPair: (message) => native.sendPair(message),
       sendBook: (message) => native.sendBook(message),
+      sendRemove: (message) => native.sendRemove(message),
     }
   : NO_WATCH_LINK;

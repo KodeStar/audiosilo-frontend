@@ -272,8 +272,6 @@
       "otherAccount": "Your watch is signed in to another account. Setting it up for {{server}} replaces that account once its listening has synced.",
       "serverCannot": "{{server}} can't prepare books for a watch. It needs version 2.6 or later, with ffmpeg.",
       "sendFailed": "Couldn't reach your watch. Nothing was sent, so try again.",
-      "booksTitle": "On your watch",
-      "noBooks": "No books on your watch yet. Choose Send to watch on a book's page.",
       "waiting_one": "{{count}} listen waiting on your watch",
       "waiting_other": "{{count}} listens waiting on your watch",
       "allSynced": "Everything from your watch has synced",
@@ -281,13 +279,7 @@
       "couldntSync_other": "{{count}} listens couldn't sync. See Sync on the watch.",
       "lastSynced": "Last synced {{when}}",
       "neverSynced": "Not synced from your watch yet",
-      "bookState": {
-        "queued": "Waiting",
-        "preparing": "Preparing",
-        "downloading": "Downloading",
-        "ready": "On the watch",
-        "failed": "Couldn't download"
-      }
+      "booksLink": "Books on your watch"
     },
     "devices": {
       "title": "Signed-in devices",
@@ -973,6 +965,7 @@
       "sendToWatch": "Send to watch",
       "sentToWatch": "Sent to your watch",
       "sentToWatchPair": "If AudioSilo isn't open on your watch, open it to finish signing in.",
+      "sentToWatchShow": "Show",
       "markFinished": "Mark as finished",
       "markUnfinished": "Mark as not finished",
       "moreInSeries": "More in this series",
@@ -1170,6 +1163,40 @@
     "orphans": {
       "title": "Not signed in",
       "body": "Downloads of an account that is no longer signed in on this device. Sign in to it again to play them, or remove them to free the room."
+    },
+    "watch": {
+      "title": "On your Apple Watch",
+      "empty": "No books on your watch yet. Choose Send to watch on a book's page.",
+      "notHere": "Your watch isn't on this account",
+      "otherAccount": "It's signed in to another account, and that account's books aren't listed here. To use it with {{server}}, set it up on your account page.",
+      "signedOut": "It isn't signed in to {{server}} yet. Set it up on your account page.",
+      "openAccount": "Go to your account",
+      "sendAgain": "Send again",
+      "sendAgainLabel": "Send {{title}} to your watch again",
+      "removeLabel": "Remove {{title}} from your watch",
+      "dismiss": "Stop showing",
+      "dismissLabel": "Stop showing {{title}} here",
+      "remove": {
+        "title": "Remove from your watch?",
+        "message": "{{title}} comes off your watch, and stops if it's playing there. Your place in the book is kept. Send it again to get it back.",
+        "confirm": "Remove"
+      },
+      "phase": {
+        "undelivered": "Sent, not delivered yet",
+        "delivered": "Delivered. Open AudioSilo on your watch.",
+        "waiting-sign-in": "Delivered. It starts once your watch is signed in here.",
+        "send-failed": "Couldn't reach your watch. Send it again.",
+        "stale": "Your watch hasn't taken this in 7 days. Send it again if you still want it.",
+        "queued": "Waiting on your watch",
+        "preparing": "Preparing on the server. This can take a few minutes.",
+        "downloading": "Downloading to your watch",
+        "ready": "On your watch",
+        "failed": "Couldn't download. Send it again to retry.",
+        "removing-undelivered": "Removing once your watch is in reach",
+        "removing": "Removing. Open AudioSilo on your watch to finish.",
+        "remove-failed": "Couldn't reach your watch to remove this. Try again.",
+        "remove-refused": "Not removed: your watch isn't signed in to this account."
+      }
     }
   },
   "search": {
