@@ -113,7 +113,7 @@ function WatchSyncLines({ state, now }: { state: WatchState; now: number }) {
     <>
       {state.unsent_events > 0 ? (
         <Text variant="caption">{t('account.watch.waiting', { count: state.unsent_events })}</Text>
-      ) : state.last_sync_at ? (
+      ) : state.last_sync_at && state.couldnt_sync === 0 ? (
         <Text variant="caption">{t('account.watch.allSynced')}</Text>
       ) : null}
       {state.couldnt_sync > 0 ? (

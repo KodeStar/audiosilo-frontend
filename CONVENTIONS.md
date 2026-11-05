@@ -2003,8 +2003,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     with the books; after 10 s with no reply it transfers too: a second copy is harmless, its
     token is single use and the watch ignores a failed sign-in again for an account it holds).
   - **A token can run out in transit.** Each send mints a new one (`POST /auth/pair
-    {"ttl_seconds":600}`), `expires_at` counts from before the request so it is never later than
-    the server's, and a new pair cancels an undelivered older one and moves the queued books
+    {"ttl_seconds":600}`), `expires_at` counts from before the request (the server truncates its own to whole
+    seconds, so this can run under a second later; only the watch's exchange decides), and a new pair cancels an undelivered older one and moves the queued books
     behind itself. The card says `sent` until the pair's time is up, then `expired` with Send
     again; a book sent while a pair has over a minute left follows it rather than minting another.
     `pairUntil` holds only that last pair: one for another account replaces it, as it does on the

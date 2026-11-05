@@ -103,6 +103,20 @@ describe('AppleWatchCard', () => {
     expect(screen.getByText('Send again')).toBeTruthy();
   });
 
+  it('does not say everything synced while a listen could not sync', async () => {
+    await mount({
+      ...installed,
+      state: {
+        ...here,
+        unsent_events: 0,
+        couldnt_sync: 1,
+        last_sync_at: new Date(Date.now() - 120_000).toISOString(),
+      },
+    });
+    expect(screen.getByText(/1 listen couldn't sync/)).toBeTruthy();
+    expect(screen.queryByText('Everything from your watch has synced')).toBeNull();
+  });
+
   it('shows who, the books, what waits and the last sync once signed in here', async () => {
     await mount({
       ...installed,
