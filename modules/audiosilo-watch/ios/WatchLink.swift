@@ -31,8 +31,6 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// second copy does no harm: its token is single use, and the watch ignores a failed sign-in
   /// again for an account it holds.
   private static let REPLY_WAIT: TimeInterval = 10
-  /// The latest `watch-state`, kept beside the session's own copy for a cold start.
-  private static let STATE_KEY = "audiosilo.watch.lastState"
 
   private var waiting: [() -> Void] = []
   private var activating = false
@@ -55,8 +53,15 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
         work()
         return
       }
-      self.waiting.append(work)
-      DispatchQueue.main.asyncAfter(deadline: .now() + Self.ACTIVATION_WAIT) { self.drain() }
+      // Its own deadline, so a question asked late is not cut short by an earlier one's.
+      var ran = false
+      let once = {
+        guard !ran else { return }
+        ran = true
+        work()
+      }
+      self.waiting.append(once)
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.ACTIVATION_WAIT, execute: once)
     }
   }
 
@@ -75,13 +80,21 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   private var isPaired: Bool { active && WCSession.default.isPaired }
   private var isWatchAppInstalled: Bool { isPaired && WCSession.default.isWatchAppInstalled }
 
+  /// Where the latest `watch-state` is copied for a cold start: the folder the system keeps for
+  /// this very watch and deletes with it, so a watch paired while the app was not running never
+  /// reads the last one's sign-in (no `sessionDidDeactivate` would have told this app).
+  private var stateCopy: URL? {
+    guard active else { return nil }
+    return WCSession.default.watchDirectoryURL?.appendingPathComponent("last-state.plist")
+  }
+
   /// The watch's latest `watch-state`, or nil if it has sent none: what the session keeps for this
   /// watch, else the copy kept here (a cold start).
   private var watchState: [String: Any]? {
     if active, !WCSession.default.receivedApplicationContext.isEmpty {
       return WCSession.default.receivedApplicationContext
     }
-    return UserDefaults.standard.dictionary(forKey: Self.STATE_KEY)
+    return stateCopy.flatMap { NSDictionary(contentsOf: $0) as? [String: Any] }
   }
 
   func snapshot() -> [String: Any] {
@@ -154,6 +167,8 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
     DispatchQueue.main.async {
+      // One that did not activate is tried again by the next question (`whenActivated`).
+      self.activating = activationState == .activated
       self.drain()
       self.notify()
     }
@@ -161,11 +176,9 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   func sessionDidBecomeInactive(_ session: WCSession) {}
 
-  /// The listener switched to another watch: what is kept was the old one's, and the session must
-  /// be activated again to reach the new one.
+  /// The listener switched to another watch: the session must be activated again to reach it.
   func sessionDidDeactivate(_ session: WCSession) {
     DispatchQueue.main.async {
-      UserDefaults.standard.removeObject(forKey: Self.STATE_KEY)
       session.activate()
       self.notify()
     }
@@ -178,7 +191,7 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
     DispatchQueue.main.async {
-      UserDefaults.standard.set(applicationContext, forKey: Self.STATE_KEY)
+      if let file = self.stateCopy { (applicationContext as NSDictionary).write(to: file, atomically: true) }
       self.notify()
     }
   }

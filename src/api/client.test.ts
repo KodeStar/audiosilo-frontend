@@ -84,6 +84,15 @@ describe('ApiClient', () => {
     expect(fetchMock.mock.calls[2][1].body).toBeUndefined();
   });
 
+  it('pair cleans the addresses it answers with', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: { pairing_token: 'p', addresses: { home: 'nas.local', away: 'https://b.example/' } },
+    }));
+    const payload = await new ApiClient('https://x', 'tok').pair();
+    expect(payload.addresses).toEqual({ away: 'https://b.example' });
+  });
+
   it('sends the bearer token and parses the JSON body', async () => {
     const fetchMock = installFetch(() => ({ status: 200, body: { name: 'AudioSilo' } }));
     const info = await new ApiClient('https://h', 'tok').serverInfo();

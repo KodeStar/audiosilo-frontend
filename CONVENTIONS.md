@@ -1979,8 +1979,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   text, so `withCarPlay` stays untouched and a CarPlay-first or background launch activates it
   too. Every session property means something only once activated, so `getSnapshot` and the
   sends wait for it (`whenActivated`, 5 s at most, then "no watch"). The state is the session's
-  `receivedApplicationContext`, else a `UserDefaults` copy for a cold start (dropped when the
-  listener switches watches).
+  `receivedApplicationContext`, else a copy for a cold start in `watchDirectoryURL`, the folder
+  the system keeps for this very watch (never `UserDefaults`: a watch paired while the app was
+  not running would read the last one's sign-in).
   The messages are built and parsed in `src/watch/watch-model.ts`, the other half of
   `Core/PhoneMessages.swift`: a field changed here changes there, with tests on both. Plain
   property lists only (`addresses: {}`, never a null: the native side rejects the rest).
@@ -1997,6 +1998,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     the server's, and a new pair cancels an undelivered older one and moves the queued books
     behind itself. The card says `sent` until the pair's time is up, then `expired` with Send
     again; a book sent while a pair has over a minute left follows it rather than minting another.
+    `pairUntil` holds only that last pair: one for another account replaces it, as it does on the
+    native side, and the watch saying it signed in ends it (its token is used, so nothing may
+    follow it later). Two sends at once for a connection share one pair (`setUpWatch`).
   - **Who sees what** (`watch-model.ts`): the card for a paired watch and an account that can use
     one (not a kid's, 403 `kid_account`; not a demo's), with Install in place of its button until
     the app is on the watch; the book action `'watch'` needs the app installed and `watch` in the

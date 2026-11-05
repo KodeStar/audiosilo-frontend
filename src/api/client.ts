@@ -730,7 +730,7 @@ export class ApiClient {
       'POST',
       '/auth/pair',
       ttl === undefined ? undefined : { body: { ttl_seconds: ttl } },
-    );
+    ).then(withCleanAddresses);
   }
   /** The server's home and away addresses (capability `addresses`; `{}` when it has
    * neither), cleaned (`cleanAddresses`). Lets a paired device learn an address

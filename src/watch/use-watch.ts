@@ -42,10 +42,10 @@ function useSendToWatchLinked(connectionId: string, libraryId: number): SendToWa
   return (book) => {
     void (async () => {
       try {
-        const { paired } = await sendBookToWatch(api, connection, libraryId, book);
+        const { signInLeft } = await sendBookToWatch(api, connection, libraryId, book);
         toast({
           title: t('library.bookActions.sentToWatch'),
-          description: paired ? t('library.bookActions.sentToWatchPair') : book.title,
+          description: signInLeft ? t('library.bookActions.sentToWatchPair') : book.title,
         });
       } catch (e) {
         toast({ title: watchErrorText(e, connection.name, t) });

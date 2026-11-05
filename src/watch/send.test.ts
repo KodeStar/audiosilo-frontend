@@ -18,7 +18,7 @@ jest.mock('@/lib/device', () => ({ getDeviceName: () => 'iPhone' }));
 
 /* eslint-disable import/first */
 import { sendBookToWatch, setUpWatch, WatchSendError } from './send';
-import { useWatchStore } from './watch-store';
+import { refreshWatch, useWatchStore } from './watch-store';
 /* eslint-enable import/first */
 
 const connection = {
@@ -109,7 +109,7 @@ describe('setUpWatch', () => {
 describe('sendBookToWatch', () => {
   it('sends only the book to a watch signed in here', async () => {
     mockRead.mockResolvedValue(signedInStatus(7));
-    await expect(sendBookToWatch(api, connection, 3, book)).resolves.toEqual({ paired: false });
+    await expect(sendBookToWatch(api, connection, 3, book)).resolves.toEqual({ signInLeft: false });
     expect(api.pair).not.toHaveBeenCalled();
     expect(mockSendPair).not.toHaveBeenCalled();
     expect(mockSendBook.mock.calls[0][0]).toMatchObject({
@@ -135,7 +135,7 @@ describe('sendBookToWatch', () => {
     await jest.advanceTimersByTimeAsync(0);
     expect(order).toEqual(['pair']);
     release();
-    await expect(sending).resolves.toEqual({ paired: true });
+    await expect(sending).resolves.toEqual({ signInLeft: true });
     expect(order).toEqual(['pair', 'book']);
   });
 
@@ -154,9 +154,60 @@ describe('sendBookToWatch', () => {
 
   it('does not mint again for the next book while a pair is on its way', async () => {
     await sendBookToWatch(api, connection, 3, book);
-    await expect(sendBookToWatch(api, connection, 3, book)).resolves.toEqual({ paired: false });
+    // The sign-in is still to do on the watch, so the listener is told again.
+    await expect(sendBookToWatch(api, connection, 3, book)).resolves.toEqual({ signInLeft: true });
     expect(api.pair).toHaveBeenCalledTimes(1);
     expect(mockSendBook).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares one pair between two books sent at once, both behind it', async () => {
+    let release!: () => void;
+    mockSendPair.mockImplementation(() => new Promise<void>((resolve) => (release = resolve)));
+    const both = Promise.all([
+      sendBookToWatch(api, connection, 3, book),
+      sendBookToWatch(api, connection, 3, { ...book, rel_path: 'A/C' }),
+    ]);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockSendBook).not.toHaveBeenCalled();
+    release();
+    await both;
+    expect(api.pair).toHaveBeenCalledTimes(1);
+    expect(mockSendPair).toHaveBeenCalledTimes(1);
+    expect(mockSendBook).toHaveBeenCalledTimes(2);
+  });
+
+  it('mints again after a failed pair: a refusal is not shared with the next send', async () => {
+    api.pair.mockRejectedValueOnce(new ApiError(500, 'no'));
+    await expect(sendBookToWatch(api, connection, 3, book)).rejects.toBeInstanceOf(ApiError);
+    await sendBookToWatch(api, connection, 3, book);
+    expect(api.pair).toHaveBeenCalledTimes(2);
+    expect(mockSendBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('mints again after a pair for another account took the place of this one', async () => {
+    const other = { ...connection, id: 'srv.8', user: { id: 8, username: 'bo' } } as Connection;
+    await sendBookToWatch(api, connection, 3, book);
+    await sendBookToWatch(api, other, 3, book);
+    expect(Object.keys(useWatchStore.getState().pairUntil)).toEqual(['srv.8']);
+    await sendBookToWatch(api, connection, 3, book);
+    expect(api.pair).toHaveBeenCalledTimes(3);
+  });
+
+  it('mints again once the watch signed in with the pair and has since left the account', async () => {
+    await sendBookToWatch(api, connection, 3, book);
+    mockRead.mockResolvedValue(signedInStatus(7));
+    await refreshWatch();
+    expect(useWatchStore.getState().pairUntil).toEqual({});
+    mockRead.mockResolvedValue(blank);
+    await sendBookToWatch(api, connection, 3, book);
+    expect(api.pair).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a pair on its way while the watch still says it is signed in elsewhere', async () => {
+    await sendBookToWatch(api, connection, 3, book);
+    mockRead.mockResolvedValue(signedInStatus(8));
+    await refreshWatch();
+    expect(useWatchStore.getState().pairUntil['srv.7']).toBe(NOW + 600_000);
   });
 
   it('mints again once the pair sent has run out', async () => {
