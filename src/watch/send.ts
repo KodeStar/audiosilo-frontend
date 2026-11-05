@@ -48,9 +48,9 @@ export function setUpWatch(api: Pick<ApiClient, 'pair'>, connection: Connection)
 
 /**
  * Queue a book on the watch, bringing a `pair` first if it is not signed in to this connection
- * (the watch drops a book for an account it does not hold). `signInLeft`: the watch has not said
- * it is signed in here, so the listener has a step left on it, whether this book brought the pair
- * or follows one already on its way.
+ * (the watch only holds a book for an account it is not signed in to, until it is). `signInLeft`:
+ * the watch has not said it is signed in here, so the listener has a step left on it, whether this
+ * book brought the pair or follows one already on its way.
  */
 export async function sendBookToWatch(
   api: Pick<ApiClient, 'pair'>,

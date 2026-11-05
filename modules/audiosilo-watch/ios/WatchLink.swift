@@ -108,7 +108,7 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// `pair`: `sendMessage` when the watch is reachable, else (or if that fails) `transferUserInfo`,
   /// which survives the watch app being closed. When `done` runs the pair is ahead of any `book`
   /// sent after it, which the watch needs: it handles messages in order, and a book for an account
-  /// it is not signed in to is dropped.
+  /// it is not signed in to is only held until it is.
   func sendPair(_ message: [String: Any], done: @escaping (Result<Void, WatchLinkError>) -> Void) {
     whenActivated {
       guard Self.isPropertyList(message) else { return done(.failure(.badMessage)) }

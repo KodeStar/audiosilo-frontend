@@ -572,8 +572,8 @@ final class AppModel: ObservableObject {
   /// Drop everything of the account (decision 9 was checked first).
   private func forgetAccount() {
     engine.stop()
-    // Definitely gone now (a blocked or failed replace never gets here): what waits for it can't come.
-    held.giveUp(accountId: account?.accountId ?? Account.load()?.accountId, now: Date())
+    // Definitely gone now (a blocked or failed replace never gets here): no titles of it stay.
+    held.forget(accountId: account?.accountId ?? Account.load()?.accountId, now: Date())
     downloads.removeAll()
     library.clear()
     // Continue listening's item caches too (removeAll takes only the downloaded books').

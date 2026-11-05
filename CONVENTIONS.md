@@ -1973,10 +1973,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   are handled one at a time, in order, so a `book` after its `pair` waits for that sign-in. A book
   that can't be taken yet (signing in, a failed sign-in, a too-old server, another account) is held
   on disk (`Core/HeldBooks.swift`, `held-books.json`: 20 books, 7 days) and queued through the Download
-  button's path once its account is ready; one that can't come is given up on and kept 7 more days.
-  `watch-state` has no account per book, so a row goes there (`queued`, then `failed`) only under its
-  own account, and the watch's own screens show all of them. A blocked or failed sign-in gives up
-  nothing; only leaving the account (sign-out, a replace that succeeded) or Keep this account does.
+  button's path once its account is ready; one that ages out, goes over the cap or whose account the
+  listener refused (Keep this account) is given up on and kept 7 more days. `watch-state` has no
+  account per book, so a row goes there (`queued`, then `failed`) only under its own account, and the
+  watch's own screens show all of them. Leaving an account (sign-out, a replace that succeeded)
+  deletes its rows, given up on or not, so no titles of it stay on the watch's screens; a blocked or
+  failed sign-in changes nothing.
 - **The phone's side (Track W3b, `modules/audiosilo-watch`, `src/watch/`)**: an apple-only local
   module. `ios/WatchLink.swift` is the phone's only `WCSessionDelegate` (nothing else may set
   `WCSession.default.delegate`), activated by `AudiosiloWatchAppDelegateSubscriber`

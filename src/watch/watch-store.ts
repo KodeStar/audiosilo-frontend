@@ -20,7 +20,7 @@ export const useWatchStore = create<WatchStore>(() => ({ status: NO_WATCH, pairU
 
 /** Take what the watch says. A pair for the account it says it is signed in to has landed and its
  * token is used: kept, it would read as still on its way once the watch leaves that account (a
- * book would follow it and be dropped), then as having run out when it never did. */
+ * book would follow it and only be held), then as having run out when it never did. */
 function setStatus(status: WatchStatus): void {
   const { state } = status;
   const here =

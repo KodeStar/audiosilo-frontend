@@ -111,6 +111,26 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertEqual(held.due(accountId: B, ready: true, now: t0), [bookB()])
   }
 
+  func testLeavingAnAccountDeletesItsRowsWaitingOrGivenUpOn() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA("A/Waiting"), now: t0)
+    held.hold(bookA("A/GivenUp"), now: t0.addingTimeInterval(-HeldBooks.MAX_AGE))
+    held.settle(accountId: nil, onWatch: [], now: t0)
+    held.hold(bookB(), now: t0)
+    XCTAssertEqual(held.books.filter { !$0.waiting }.map(\.book.ref.path), ["A/GivenUp"])
+    held.forget(accountId: A, now: t0)
+    XCTAssertEqual(held.books.map(\.book), [bookB()], "only the account left")
+    XCTAssertTrue(held.books[0].waiting)
+    XCTAssertEqual(held.stateRows(accountId: A), [])
+  }
+
+  func testLeavingWithNoAccountTouchesNothing() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    held.forget(accountId: nil, now: t0)
+    XCTAssertEqual(held.books.count, 1)
+  }
+
   func testTheSamePathOnAnotherServerIsAnotherBook() {
     let held = HeldBooks(url: nil)
     let sameRef = BookMessage(serverId: "srv-b", userId: 2, ref: bookA().ref, title: "Other", author: nil)

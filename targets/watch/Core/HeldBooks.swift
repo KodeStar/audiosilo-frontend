@@ -2,8 +2,9 @@
 // background, so a book arriving during its sign-in, after that sign-in failed, or for an account
 // the watch does not hold is a normal case, and the phone has already said "Sent". Each one waits
 // here, on disk, until its account reaches ready; the phone's "Send again" is the way out of a
-// failed sign-in. One that can no longer come (too old, over the cap, its account left or refused)
-// is given up on and kept a while, so it is seen rather than lost silently.
+// failed sign-in. One that can no longer come (too old, over the cap, its account refused) is given
+// up on and kept a while, so it is seen rather than lost silently. An account the watch has left
+// takes its rows with it, so no titles of that account stay on the watch's screens.
 //
 // `watch-state` has no account per book: its books read as the account it names. So a row is
 // reported only under its own account, and the watch's own screens show the rest.
@@ -67,8 +68,13 @@ final class HeldBooks {
     commit(books.filter { !($0.book.accountId == accountId && here.contains($0.book.ref)) }, now: now)
   }
 
-  /// The watch has definitely left this account, or the listener refused it: its books can't come.
-  /// Never for a sign-in that is blocked or failed: those can still end on this account.
+  /// The watch has left this account (sign-out, a replace that succeeded): all its rows go, given
+  /// up on or not. Never for a sign-in that is blocked or failed: those can still end here.
+  func forget(accountId: String?, now: Date) {
+    commit(books.filter { $0.book.accountId != accountId }, now: now)
+  }
+
+  /// The listener refused this account (Keep this account): its books can't come.
   func giveUp(accountId: String?, now: Date) {
     commit(books.map { row in
       guard row.waiting, row.book.accountId == accountId else { return row }
