@@ -29,7 +29,13 @@ import {
   watchCardStatus,
   watchSectionVisible,
 } from '@/watch/watch-model';
-import { rowActions, type WatchRow, type WatchRowPhase, watchRows } from '@/watch/watch-rows';
+import {
+  rowActions,
+  sameBook,
+  type WatchRow,
+  type WatchRowPhase,
+  watchRows,
+} from '@/watch/watch-rows';
 import { useWatchStore } from '@/watch/watch-store';
 
 import { COVER, RowAction, RowFrame, SectionHead, sizeMeta } from './download-rows';
@@ -114,8 +120,11 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
         destructive
         onCancel={() => setRemoving(null)}
         onConfirm={() => {
-          if (removing) {
-            removeFromWatch(connection, removing).catch((e: unknown) =>
+          // The watch's news may have moved the row while this was open. Gone, it has nothing to
+          // remove, and a `remove` left on its way would take the book if it came back.
+          const current = removing && rows.find((r) => sameBook(r, removing));
+          if (current && rowActions(current.phase).remove) {
+            removeFromWatch(connection, current).catch((e: unknown) =>
               toast({ title: watchErrorText(e, connection.name, t) }),
             );
           }

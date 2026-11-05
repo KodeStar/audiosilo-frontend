@@ -267,6 +267,19 @@ describe('WatchSection', () => {
       expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();
     });
 
+    it('sends nothing when the book has gone while the confirm was open', async () => {
+      await mount({ ...base, state: listed }, [row({ seen: true, remove_at: NOW - 1000 })]);
+      await act(async () =>
+        fireEvent.press(screen.getByLabelText('Remove Sent book from your watch')),
+      );
+      await act(async () => {
+        useWatchStore.setState({ status: base });
+        useWatchLedger.setState({ ledger: {} });
+      });
+      await act(async () => fireEvent.press(screen.getByText('Remove')));
+      expect(mockSendRemove).not.toHaveBeenCalled();
+    });
+
     it('sends nothing when the confirm is cancelled', async () => {
       await mount({ ...base, state: listed }, [row({ seen: true })]);
       await act(async () =>

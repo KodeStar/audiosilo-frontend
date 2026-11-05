@@ -2041,7 +2041,11 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     removing until `watch-state` drops it, surviving a restart, and never claims it finished while
     the message is outstanding. There is no reply: a `remove` delivered while the watch says it is
     signed out or on another account reads as refused (`remove_refused`, the row explains and can be
-    dismissed), and this heals itself if that was only a sign-in still running. A book's sends and
+    dismissed), and this heals itself if that was only a sign-in still running. Delivered, the row
+    offers Remove again through the same confirm (`rowActions`): the watch keeps a `remove` not yet
+    handled only in memory, so a kill loses it. The repeat is the same message and restarts the row's
+    hold limit; it does nothing to a book already gone, but has no way to tell a copy that came back
+    on the watch since, and stops and removes that one. A book's sends and
     Removes go one at a time, in the order asked (`send.ts`, `inTurn`), or a Remove tapped while a
     send waits for its pair would overtake that `book`. `sendPair` moves what is still queued when it
     settles (never a snapshot from before its reply: that would send a delivered one twice, and put

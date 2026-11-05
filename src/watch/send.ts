@@ -136,7 +136,8 @@ export function sendBookToWatch(
  * account, by naming that one), so the row says "removing" until then, here and after a restart.
  * A send again after this comes behind it, in order, and stands. Asked again from a delivered row,
  * it sends the same message and starts the row's hold limit over: the first may have died with the
- * watch app, and if it did not, the repeat finds the book gone and does nothing.
+ * watch app. If it did not, the repeat finds the book gone and does nothing, unless the book is back
+ * on the watch by then (its own Download button): the message can't tell, so that copy goes too.
  */
 export function removeFromWatch(
   connection: Connection,
