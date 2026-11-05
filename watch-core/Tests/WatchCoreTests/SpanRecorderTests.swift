@@ -323,6 +323,14 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(r.span?.start, .continue)
   }
 
+  func testStayRightBehindAMoveIsStillAJump() {
+    let r = recorder()
+    r.prepareStart(.movedBack)
+    r.open(book, at: at(10), speed: 1)
+    r.standBy(book, at: at(10), playing: true, speed: 1)
+    XCTAssertEqual(r.span?.start, .jump)
+  }
+
   func testAnotherBooksMoveIsNotCarriedToTheBookOpening() {
     let r = recorder()
     r.prepareStart(.jump)

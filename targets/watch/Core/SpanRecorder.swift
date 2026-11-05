@@ -234,8 +234,8 @@ final class SpanRecorder {
   /// Cut the span (close it, a span opening where it ended for `start`) while playing.
   func cut(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double, start: ListeningStart = .continue) {
     guard let closed = close(at: at), playing else { return }
-    // A bare move's reason is already there (`close`).
-    if !Spans.isBareMove(closed) { nextStart = start }
+    // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
+    if start != .continue || !Spans.isBareMove(closed) { nextStart = start }
     open(book, at: closed.to, speed: speed)
   }
 

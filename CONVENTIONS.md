@@ -1910,8 +1910,12 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   (suspended, headphones gone) is a pause, its span ending when the audio last moved; the status
   is read when the observation is delivered, not as observed (a rebuild pauses and restarts in
   one go), and not at all while a rebuilt queue settles (`settling`, until its first item is ready
-  and at its place): asked to play a new item, `AVQueuePlayer` drops to rate 0 by itself for some
-  ms and comes back, which read as a stop would halt a chapter hop across files. An interruption resumes in either order of `began` and the system's pause. Pausing
+  and at its place). The player starts only as the queue lands, seek or no seek: asked to play an
+  item not ready, `AVQueuePlayer` drops to rate 0 by itself for some ms, which read as a stop halted
+  a chapter hop across files. The status is read again a second after landing (a pause the system
+  made while settling shows nothing), and a queue playing that has not landed after 30 s stops the
+  book as a failed file does, its span ending where the audio last moved. An interruption resumes
+  in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
   last known place, the one further on when its turn comes (`AVQueuePlayer` would skip it
   silently), and Play tries it again. A place is kept only as the book plays or moves, stamped
@@ -1927,7 +1931,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   nothing was heard after (`Spans.isBareMove`, a stop under a second behind a seek) gives the next
   span its reason, as a paused move does, since its event can come back `not_applied/older` when
   sent apart from the span before it; a move to where the place already is
-  (`Spans.movesNowhere`, Previous at the book's start) is no move, so no event. Play pulls the book's row first (5 s at most) and
+  (`Spans.movesNowhere`, Previous at the book's start) is no move, so no event. Play pulls the
+  book's row first (5 s at most) and
   resumes by `Resume.plan`; with no answer the server's place kept for the book stands in (the
   last Continue listening refresh's, or the one read when its download started: the phone's
   `keepServerPlace`), so an in-progress book never opens at 0 offline. The server's finished row
