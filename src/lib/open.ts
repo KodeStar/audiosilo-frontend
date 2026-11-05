@@ -100,7 +100,7 @@ export function openDownloads(
   watchConnection: string,
   state: NavState | undefined = currentNavState(),
 ) {
-  openTabRoot(downloadsHref(watchConnection), OFFLINE_TAB, state);
+  openTabRoot(downloadsHref(watchConnection, Date.now()), OFFLINE_TAB, state);
 }
 
 /** The Journal (across every server): the You hub's Journal section, on `tab`. */

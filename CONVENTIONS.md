@@ -2020,7 +2020,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     connection is made by the app): the server's 403 reads as the pairing refusal. The card keeps
     set-up, signed in as and what waits; the books are in Downloads (a link), and the Send to watch
     toast links there too (`openDownloads`, `?watch=<connection id>`: not `?connection=`, which
-    scopes content, and this page is every server's).
+    scopes content, and this page is every server's; `&at=` tells one link from the next, so each
+    scrolls to the section; both are the tab's `rootParams`, or the focus clears them).
   - **The watch in Downloads (W3c, `src/watch/watch-rows.ts`, `watch-ledger.ts`,
     `components/downloads/watch-section.tsx`).** The watch only says what it holds now, and
     `transferUserInfo` answers nothing, so the phone keeps a ledger (`audiosilo.watchLedger`) by
@@ -2040,14 +2041,18 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     removing until `watch-state` drops it, surviving a restart, and never claims it finished while
     the message is outstanding. There is no reply: a `remove` delivered while the watch says it is
     signed out or on another account reads as refused (`remove_refused`, the row explains and can be
-    dismissed), and this heals itself if that was only a sign-in still running. `sendPair` moves
-    queued `remove`s behind itself with the books, in their order. On the watch (`AppModel.receive`,
+    dismissed), and this heals itself if that was only a sign-in still running. A book's sends and
+    Removes go one at a time, in the order asked (`send.ts`, `inTurn`), or a Remove tapped while a
+    send waits for its pair would overtake that `book`. `sendPair` moves what is still queued when it
+    settles (never a snapshot from before its reply: that would send a delivered one twice, and put
+    an older one behind a newer) behind itself, in their order. On the watch (`AppModel.receive`,
     `HeldBooks.noteRemove`/`finishRemove`) it is handled in its turn behind any sign-in, by
     `downloads.remove` (the hand path: `willRemove` stops a playing book so its span closes), only
     for the signed-in account. Refused, it changes nothing, so a held book of that account still
     comes if it signs in. Since a `book` is held the moment it arrives, a `remove`'s ticket keeps the
-    two apart: it clears only the row it arrived after, and until its turn the old record settles no
-    row, so a book sent again right after a Remove stands.
+    two apart: it clears only the row it arrived after, and until the record has gone (stopping a
+    playing book publishes with it still there) that record settles no row, so a book sent again
+    right after a Remove stands.
   - **Home on the watch** lists what is held, queued, preparing or downloading (On the way) above On
     this watch and Continue listening, so a sent book is in plain sight. A book shows once: Continue
     listening leaves out what On the way lists. "Preparing on the server" says the wrist can go

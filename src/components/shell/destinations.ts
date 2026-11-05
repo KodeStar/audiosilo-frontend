@@ -103,6 +103,8 @@ export const TABS: readonly Destination[] = [
     icon: 'download',
     sf: 'arrow.down.circle',
     md: 'download',
+    // The link to the watch's section (`downloadsHref`), which comes from another tab.
+    rootParams: ['watch', 'at'],
   },
   {
     // The You hub (`/you?section=`, src/components/you/you-hub.tsx): "Me" on the phone's

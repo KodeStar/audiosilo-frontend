@@ -152,7 +152,9 @@ export function applyWatchStatus(status: Pick<WatchStatus, 'watchId' | 'state' |
 /** A removed account's rows go with it. A legacy connection id names only a server: every account
  * of that one. */
 export function followConnectionRemovals(): void {
-  onConnectionRemoved((id) => {
+  onConnectionRemoved(async (id) => {
+    // What is kept first, or its rows come back with it.
+    await hydrateLedger();
     const gone = parseConnectionId(id);
     const isGone = (account: string) => {
       const named = parseConnectionId(account);

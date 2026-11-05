@@ -51,13 +51,30 @@ export function setUpWatch(api: Pick<ApiClient, 'pair'>, connection: Connection)
   return sending;
 }
 
-/**
- * Queue a book on the watch, bringing a `pair` first if it is not signed in to this connection
- * (the watch only holds a book for an account it is not signed in to, until it is). `signInLeft`:
- * the watch has not said it is signed in here, so the listener has a step left on it, whether this
- * book brought the pair or follows one already on its way.
- */
-export async function sendBookToWatch(
+/** What is under way per book: its sends and Removes go one at a time, in the order asked. A send
+ * can wait 10 s for its pair, and a Remove tapped meanwhile would reach the watch ahead of the `book`
+ * it is about: the book would come all the same, under a row saying "removing". */
+const underWay = new Map<string, Promise<unknown>>();
+
+function inTurn<T>(
+  connection: Connection,
+  libraryId: number,
+  path: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const key = `${watchAccountOf(connection)}:${libraryId}:${path}`;
+  const ahead = underWay.get(key);
+  // Nothing ahead: at once, so a row appears the moment Send is tapped.
+  const run = ahead ? ahead.then(work, work) : work();
+  underWay.set(key, run);
+  const done = () => {
+    if (underWay.get(key) === run) underWay.delete(key);
+  };
+  void run.then(done, done);
+  return run;
+}
+
+async function sendBook(
   api: Pick<ApiClient, 'pair'>,
   connection: Connection,
   libraryId: number,
@@ -77,9 +94,11 @@ export async function sendBookToWatch(
   try {
     await refreshWatch();
     const { status, pairUntil } = useWatchStore.getState();
-    if (!watchId && status.watchId) {
+    // Named for the first time, or another watch now: the row goes where the book goes.
+    if (status.watchId !== watchId) {
+      if (watchId) restoreRow(watchId, account, row, before);
       watchId = status.watchId;
-      before = noteSending(watchId, account, row, Date.now());
+      before = watchId ? noteSending(watchId, account, row, Date.now()) : undefined;
     }
     if (bookNeedsPair(status.state, connection, pairUntil[connection.id], Date.now())) {
       await setUpWatch(api, connection);
@@ -96,19 +115,38 @@ export async function sendBookToWatch(
 }
 
 /**
+ * Queue a book on the watch, bringing a `pair` first if it is not signed in to this connection
+ * (the watch only holds a book for an account it is not signed in to, until it is). `signInLeft`:
+ * the watch has not said it is signed in here, so the listener has a step left on it, whether this
+ * book brought the pair or follows one already on its way.
+ */
+export function sendBookToWatch(
+  api: Pick<ApiClient, 'pair'>,
+  connection: Connection,
+  libraryId: number,
+  book: WatchableBook,
+): Promise<{ signInLeft: boolean }> {
+  return inTurn(connection, libraryId, book.rel_path, () =>
+    sendBook(api, connection, libraryId, book),
+  );
+}
+
+/**
  * Ask the watch to take a book off. It answers only by no longer listing it (or, on another
  * account, by naming that one), so the row says "removing" until then, here and after a restart.
  * A send again after this comes behind it, in order, and stands.
  */
-export async function removeFromWatch(
+export function removeFromWatch(
   connection: Connection,
   book: { library_id: number; path: string; title: string },
 ): Promise<void> {
-  const message = buildRemoveMessage(connection, book.library_id, book.path);
-  await watchLink.sendRemove(message).catch(refused);
-  const { watchId } = useWatchStore.getState().status;
-  if (watchId) {
-    noteRemoving(watchId, watchAccountOf(connection), book, Date.now());
-  }
-  await refreshWatch();
+  return inTurn(connection, book.library_id, book.path, async () => {
+    const message = buildRemoveMessage(connection, book.library_id, book.path);
+    await watchLink.sendRemove(message).catch(refused);
+    const { watchId } = useWatchStore.getState().status;
+    if (watchId) {
+      noteRemoving(watchId, watchAccountOf(connection), book, Date.now());
+    }
+    await refreshWatch();
+  });
 }

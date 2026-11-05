@@ -52,6 +52,10 @@ const phase = (
 describe('watchRows: sent, and not listed', () => {
   it('has not been delivered while the link has not got it, or the session still holds it', () => {
     expect(phase(sent({ handed_over: false }), state())).toBe('undelivered');
+    // The app died sending it (read back at launch): nothing is on its way, and it can be sent again.
+    const cut = parseLedgerRow({ ...sent(), handed_over: false });
+    expect(cut?.send_cut_off).toBe(true);
+    expect(phase(cut as LedgerRow, state())).toBe('send-failed');
     expect(phase(sent(), state(), [transfer('book')])).toBe('undelivered');
   });
 
@@ -301,6 +305,7 @@ describe('the rows as stored', () => {
       title: 't',
       sent_at: 1,
       handed_over: false,
+      send_cut_off: true,
     });
   });
 

@@ -5,6 +5,7 @@ import {
   authorHref,
   bookHref,
   collectionHref,
+  downloadsHref,
   findShowsHref,
   finishedHref,
   libraryHref,
@@ -26,6 +27,15 @@ import {
   yearHref,
   youHref,
 } from '@/lib/paths';
+
+describe('downloadsHref', () => {
+  it("names the watch's connection apart from ?connection=, and tells one link from the next", () => {
+    expect(downloadsHref('srv.7', 1000)).toEqual({
+      pathname: '/downloads',
+      params: { watch: 'srv.7', at: '1000' },
+    });
+  });
+});
 
 describe('connectionParam', () => {
   afterEach(() => setConnectionAliases({}));

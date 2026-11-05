@@ -144,14 +144,15 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
       let session = WCSession.default
       // A pair not yet delivered holds an older token, and a watch still has to sign in for the
       // books queued behind it: this one takes its place, and they follow it.
-      let queued = session.outstandingUserInfoTransfers
-      queued.filter { Self.type(of: $0.userInfo) == "pair" }.forEach { $0.cancel() }
+      session.outstandingUserInfoTransfers.filter { Self.type(of: $0.userInfo) == "pair" }.forEach { $0.cancel() }
       var settled = false
       let finish = {
         guard !settled else { return }
         settled = true
-        // In their order: a `remove` and a `book` sent again must reach the watch as they were sent.
-        for transfer in queued where Self.row(of: transfer.userInfo) != nil {
+        // As they stand now, up to `REPLY_WAIT` on: one delivered meanwhile must not go twice, and one
+        // sent meanwhile stays behind those ahead of it. A `remove` and a `book` sent again must reach
+        // the watch as they were sent.
+        for transfer in session.outstandingUserInfoTransfers where Self.row(of: transfer.userInfo) != nil {
           transfer.cancel()
           session.transferUserInfo(transfer.userInfo)
         }

@@ -36,13 +36,12 @@ import { COVER, RowAction, RowFrame, SectionHead, sizeMeta } from './download-ro
 
 /** Whose books the section shows: the connection named by a link here (the Send to watch toast, the
  * account card) while the person holds it, else their default one. */
-function useSectionConnection(): Connection | null {
-  const { watch } = useRouteParams<{ watch?: string }>();
+function useSectionConnection(linked: string | undefined): Connection | null {
   const connections = useProfileConnections();
   const defaultId = useSession((s) => s.defaultConnectionId);
   const id = resolveAccountCid(
     undefined,
-    typeof watch === 'string' ? watch : null,
+    linked ?? null,
     connections.map((c) => c.id),
     defaultId,
   );
@@ -52,14 +51,15 @@ function useSectionConnection(): Connection | null {
 /**
  * The Downloads page's "On your Apple Watch" (iOS, with the app on a paired watch; never a kid's or
  * a demo's account): what the phone sent, and what the watch says it holds, for one account on this
- * watch. Rules in `src/watch/watch-rows.ts`. `onReveal` scrolls the page to it, once, when a link
+ * watch. Rules in `src/watch/watch-rows.ts`. `onReveal` scrolls the page to it, once per link that
  * brought the listener here.
  */
 export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
   const { t } = useTranslation();
   const watch = useWatchStatus();
-  const connection = useSectionConnection();
-  const { watch: linked } = useRouteParams<{ watch?: string }>();
+  const params = useRouteParams<{ watch?: string; at?: string }>();
+  const linked = typeof params.watch === 'string' ? params.watch : undefined;
+  const connection = useSectionConnection(linked);
   const pairUntil = useWatchStore((s) => (connection ? s.pairUntil[connection.id] : undefined));
   const ledger = useWatchLedger((s) => s.ledger);
   const visible = !!connection && watchSectionVisible(watch, connection.user);
@@ -68,13 +68,14 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
   const now = useNow(pairUntil === undefined ? 3_600_000 : 60_000, visible);
   const [removing, setRemoving] = useState<WatchRow | null>(null);
   const [y, setY] = useState<number | null>(null);
-  const revealed = useRef<unknown>(undefined);
+  const link = linked ? `${linked}:${params.at}` : null;
+  const revealed = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!linked || y === null || revealed.current === linked) return;
-    revealed.current = linked;
+    if (!link || y === null || revealed.current === link) return;
+    revealed.current = link;
     onReveal(y);
-  }, [linked, y, onReveal]);
+  }, [link, y, onReveal]);
 
   if (!connection || !visible) return null;
 

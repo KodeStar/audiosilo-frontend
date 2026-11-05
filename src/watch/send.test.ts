@@ -315,6 +315,53 @@ describe('the ledger', () => {
     expect(rows()).toEqual(before);
   });
 
+  it('holds a Remove tapped during a send, so it reaches the watch behind that book', async () => {
+    let release = () => {};
+    mockSendBook.mockReturnValue(new Promise<void>((r) => (release = r)));
+    const sending = sendBookToWatch(api, connection, 3, book);
+    const removing = removeFromWatch(connection, { library_id: 3, path: 'A/B', title: 'B' });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockSendBook).toHaveBeenCalledTimes(1);
+    expect(mockSendRemove).not.toHaveBeenCalled();
+    mockRead.mockResolvedValue({
+      ...here,
+      transfers: [{ type: 'remove', account: 'srv.7', library_id: 3, path: 'A/B', failed: false }],
+    });
+    release();
+    await Promise.all([sending, removing]);
+    expect(mockSendRemove).toHaveBeenCalledTimes(1);
+    expect(rows()).toMatchObject([{ path: 'A/B', handed_over: true, remove_at: NOW }]);
+  });
+
+  it('still sends the Remove after a send that failed', async () => {
+    mockSendBook.mockRejectedValue(new Error('ERR_NO_WATCH'));
+    const sending = sendBookToWatch(api, connection, 3, book);
+    const removing = removeFromWatch(connection, { library_id: 3, path: 'A/B', title: 'B' });
+    await expect(sending).rejects.toBeInstanceOf(WatchSendError);
+    await removing;
+    expect(mockSendRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a send tapped during a Remove, so it comes behind it and stands', async () => {
+    let release = () => {};
+    mockSendRemove.mockReturnValue(new Promise<void>((r) => (release = r)));
+    const removing = removeFromWatch(connection, { library_id: 3, path: 'A/B', title: 'B' });
+    const sending = sendBookToWatch(api, connection, 3, book);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockSendBook).not.toHaveBeenCalled();
+    release();
+    await Promise.all([removing, sending]);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].remove_at).toBeUndefined();
+  });
+
+  it('puts the row on the watch the session names now, not the one it last named', async () => {
+    useWatchStore.setState({ status: { ...here, watchId: 'watch-before' } });
+    await sendBookToWatch(api, connection, 3, book);
+    expect(ledgerRows(useWatchLedger.getState().ledger, 'watch-before', 'srv.7')).toEqual([]);
+    expect(rows()).toMatchObject([{ path: 'A/B', handed_over: true }]);
+  });
+
   it('starts afresh when a book is sent again after a Remove', async () => {
     await sendBookToWatch(api, connection, 3, book);
     await removeFromWatch(connection, { library_id: 3, path: 'A/B', title: 'B' });

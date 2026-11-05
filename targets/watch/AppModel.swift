@@ -435,7 +435,7 @@ final class AppModel: ObservableObject {
   /// A `remove`'s turn: the same path as removing by hand, so the playing book stops and its span
   /// closes first (`downloads.willRemove`). Refused for any account but this one (`finishRemove`).
   private func remove(_ ticket: RemoveTicket) {
-    if held.finishRemove(ticket, accountId: account?.accountId, now: Date()) {
+    held.finishRemove(ticket, accountId: account?.accountId, now: Date()) {
       downloads.remove(ticket.message.ref)
     }
     publishState()

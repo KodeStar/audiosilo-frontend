@@ -25,7 +25,7 @@ jest.mock('@/api/hooks', () => ({ useServerInfo: () => ({ data: { renditions: ['
 jest.mock('@/api/provider', () => ({
   useOptionalApi: () => ({ pair: async () => ({ base_url: 'https://b', pairing_token: 't' }) }),
 }));
-let mockParams: { watch?: string } = {};
+let mockParams: { watch?: string; at?: string } = {};
 jest.mock('@/lib/route-params', () => ({ useRouteParams: () => mockParams }));
 const mockPushInShell = jest.fn();
 jest.mock('@/lib/open', () => ({
@@ -337,6 +337,20 @@ describe('WatchSection', () => {
         }),
       );
       expect(onReveal).toHaveBeenCalledTimes(1);
+    });
+
+    it('scrolls again for the next link, to the same connection too', async () => {
+      mockParams = { watch: 'srv.7', at: '1' };
+      const onReveal = await mount(base);
+      const section = screen.getByTestId('downloads-watch');
+      const laidOut = (y: number) =>
+        fireEvent(section, 'layout', { nativeEvent: { layout: { x: 0, y, width: 1, height: 1 } } });
+      await act(async () => laidOut(420));
+      expect(onReveal).toHaveBeenCalledTimes(1);
+      mockParams = { watch: 'srv.7', at: '2' };
+      await act(async () => laidOut(421));
+      expect(onReveal).toHaveBeenCalledTimes(2);
+      expect(onReveal).toHaveBeenLastCalledWith(421);
     });
 
     it('does not scroll without a link', async () => {

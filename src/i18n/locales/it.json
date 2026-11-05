@@ -1192,7 +1192,7 @@
         "downloading": "Download sul tuo orologio",
         "ready": "Sul tuo orologio",
         "failed": "Download non riuscito. Invialo di nuovo per riprovare.",
-        "removing-undelivered": "Verrà rimosso quando l'orologio sarà nel raggio",
+        "removing-undelivered": "Verrà rimosso quando il tuo orologio sarà a portata",
         "removing": "Rimozione in corso. Apri AudioSilo sul tuo orologio per finire.",
         "remove-failed": "Impossibile raggiungere il tuo orologio per rimuoverlo. Riprova.",
         "remove-refused": "Non rimosso: il tuo orologio non ha effettuato l'accesso a questo account."

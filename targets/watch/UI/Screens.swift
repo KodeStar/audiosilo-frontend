@@ -316,8 +316,8 @@ struct BookOnWatchRow: View {
         Text(Labels.state(record.state)).font(.footnote).foregroundStyle(.secondary)
       }
       // Only once its files are known: the server is asked straight after, and until then it has
-      // nothing to carry on with.
-      if record.state == .preparing, !record.files.isEmpty {
+      // nothing to carry on with. Not beside a message: the server has not taken it yet.
+      if record.state == .preparing, !record.files.isEmpty, record.message == nil {
         Text(Labels.PREPARING_HINT).font(.footnote).foregroundStyle(.secondary)
       }
       if let message = record.message, record.state != .ready {

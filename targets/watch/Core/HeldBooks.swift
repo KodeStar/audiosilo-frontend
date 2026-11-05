@@ -101,16 +101,20 @@ final class HeldBooks {
     return RemoveTicket(message: message, row: row)
   }
 
-  /// A `remove`'s turn, with the watch signed in to `accountId`: true when the book goes too. Its
-  /// own account only: signed out or on another account nothing changes, so its book still comes if
-  /// that account signs in, as the phone's row says. The row it found goes, waiting or given up on;
-  /// one sent again since has another `heldAt`, and stays.
-  func finishRemove(_ ticket: RemoveTicket, accountId: String?, now: Date) -> Bool {
-    if let i = removing.firstIndex(of: ticket.message.ref) { removing.remove(at: i) }
+  /// A `remove`'s turn, with the watch signed in to `accountId`: true when the book goes too, which
+  /// `takeBook` sees to. Its own account only: signed out or on another account nothing changes, so
+  /// its book still comes if that account signs in, as the phone's row says. The row it found goes,
+  /// waiting or given up on; one sent again since has another `heldAt`, and stays. The ticket closes
+  /// only after `takeBook`: stopping a playing book publishes with its record still here, and that
+  /// must settle no row.
+  @discardableResult
+  func finishRemove(_ ticket: RemoveTicket, accountId: String?, now: Date, takeBook: () -> Void = {}) -> Bool {
+    defer { if let i = removing.firstIndex(of: ticket.message.ref) { removing.remove(at: i) } }
     guard ticket.message.accountId == accountId else { return false }
     if let row = ticket.row {
       commit(books.filter { !($0.id == row.id && $0.heldAt == row.heldAt) }, now: now)
     }
+    takeBook()
     return true
   }
 

@@ -29,6 +29,9 @@ export type LedgerRow = {
   /** The native link took the `book`. False while a pair is minted and sent ahead of it, and if the
    * app died meanwhile: the row can't say it was delivered. */
   handed_over: boolean;
+  /** Read at launch not handed over: the app died sending it and nothing carries that on, so it is
+   * not on its way, whatever it says. Sent again, it starts afresh. */
+  send_cut_off?: boolean;
   /** The watch has listed it since it was sent: its going from the list means it went. */
   seen?: boolean;
   /** Epoch ms of the last Remove, while no answer has come. */
@@ -60,6 +63,7 @@ export function parseLedgerRow(raw: unknown): LedgerRow | null {
     ...(typeof raw.author === 'string' ? { author: raw.author } : {}),
     sent_at: raw.sent_at,
     handed_over: raw.handed_over === true,
+    ...(raw.handed_over !== true ? { send_cut_off: true } : {}),
     ...(raw.seen === true ? { seen: true } : {}),
     ...(typeof raw.remove_at === 'number' ? { remove_at: raw.remove_at } : {}),
     ...(raw.remove_refused === true ? { remove_refused: true } : {}),
@@ -211,7 +215,8 @@ function unlistedPhase(
   const sent = transferOf(status.transfers, 'book', account, row);
   if (sent?.failed) return 'send-failed';
   if (now - row.sent_at >= WATCH_HOLD_MS) return 'stale';
-  if (sent || !row.handed_over) return 'undelivered';
+  if (sent) return 'undelivered';
+  if (!row.handed_over) return row.send_cut_off ? 'send-failed' : 'undelivered';
   // Signed out or on another account, it is held there until this account signs in; never told
   // anything, the app has yet to open at all.
   return status.state && accountOnWatch(status.state) !== account ? 'waiting-sign-in' : 'delivered';

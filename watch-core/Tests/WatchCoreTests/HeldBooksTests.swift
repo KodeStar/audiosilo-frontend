@@ -360,6 +360,27 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertEqual(held.books, [], "its turn over, the record speaks for it again")
   }
 
+  func testStoppingThePlayingBookOnItsTurnSettlesNoRow() {
+    let held = HeldBooks(url: nil)
+    let ticket = held.noteRemove(removeA())
+    held.hold(bookA(), now: t0)
+    var taken = false
+    // Stopping it closes its span, which publishes with its record still in the index.
+    XCTAssertTrue(held.finishRemove(ticket, accountId: A, now: t0) {
+      taken = true
+      held.settle(accountId: A, onWatch: [bookA().ref], now: t0)
+    })
+    XCTAssertTrue(taken)
+    XCTAssertEqual(held.books.count, 1, "the book sent again stands")
+  }
+
+  func testARefusedRemoveTakesNoBook() {
+    let held = HeldBooks(url: nil)
+    XCTAssertFalse(held.finishRemove(held.noteRemove(removeA()), accountId: B, now: t0) {
+      XCTFail("another account's book stays")
+    })
+  }
+
   // MARK: - Home's On the way
 
   func testHomeListsWaitingRowsOnceEach() {

@@ -4,9 +4,9 @@ import { WATCH_LEDGER_KEY } from '@/lib/storage-keys';
 
 import type { LedgerRow } from './watch-rows';
 
-const mockRemoved: ((id: string) => void)[] = [];
+const mockRemoved: ((id: string) => void | Promise<void>)[] = [];
 jest.mock('@/stores/session', () => ({
-  onConnectionRemoved: (fn: (id: string) => void) => {
+  onConnectionRemoved: (fn: (id: string) => void | Promise<void>) => {
     mockRemoved.push(fn);
     return () => {};
   },
@@ -169,10 +169,22 @@ describe('the ledger', () => {
     m.noteSending(W, A, book, 100);
     m.noteSending('watch-2', A, book, 100);
     m.noteSending(W, 'srv.8', book, 100);
-    mockRemoved[0]('srv.7');
+    await mockRemoved[0]('srv.7');
     expect(rows(m)).toEqual([]);
     expect(rows(m, 'watch-2')).toEqual([]);
     expect(rows(m, W, 'srv.8')).toHaveLength(1);
+  });
+
+  it('drops the rows of a connection removed before the ledger was read', async () => {
+    await AsyncStorage.setItem(
+      WATCH_LEDGER_KEY,
+      JSON.stringify({ [W]: { [A]: [{ ...book, sent_at: 1, handed_over: true }] } }),
+    );
+    const m = load();
+    m.followConnectionRemovals();
+    await mockRemoved[0](A);
+    expect(rows(m)).toEqual([]);
+    expect(JSON.parse((await AsyncStorage.getItem(WATCH_LEDGER_KEY)) ?? '{}')).toEqual({ [W]: {} });
   });
 
   it('takes a legacy connection id for every account of that server', async () => {
@@ -181,7 +193,7 @@ describe('the ledger', () => {
     m.followConnectionRemovals();
     m.noteSending(W, A, book, 100);
     m.noteSending(W, 'other.7', book, 100);
-    mockRemoved[0]('srv');
+    await mockRemoved[0]('srv');
     expect(rows(m)).toEqual([]);
     expect(rows(m, W, 'other.7')).toHaveLength(1);
   });
