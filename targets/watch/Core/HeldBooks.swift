@@ -47,7 +47,7 @@ final class HeldBooks {
   /// In the order they arrived.
   private(set) var books: [HeldBook]
   /// The books of the `remove`s not handled yet. Not on disk: they arrived with the app running
-  /// and go with it, and the phone stops saying "removing" after 7 days and offers it again.
+  /// and go with it, and the phone's row offers Remove again.
   private var removing: [BookRef] = []
 
   /// `url` nil keeps them in memory (tests).

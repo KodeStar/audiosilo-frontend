@@ -160,7 +160,7 @@ export type WatchRowPhase =
   | WatchBook['state']
   /** The `remove` has not reached the watch yet. */
   | 'removing-undelivered'
-  /** Delivered; the watch app has to open to carry it out, and it can offer Remove again. */
+  /** Delivered; the watch app has to open to carry it out. */
   | 'removing'
   /** The system could not deliver it. */
   | 'remove-failed'

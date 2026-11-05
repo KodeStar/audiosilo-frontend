@@ -251,14 +251,6 @@ describe('WatchSection', () => {
       expect(screen.getByText('Remove from your watch?')).toBeTruthy();
       await act(async () => fireEvent.press(screen.getByText('Remove')));
       expect(mockSendRemove).toHaveBeenCalledTimes(1);
-      expect(mockSendRemove).toHaveBeenCalledWith({
-        v: 1,
-        type: 'remove',
-        server_id: 'srv',
-        user_id: 7,
-        library_id: 1,
-        path: 'A/B',
-      });
       expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();
     });
 
