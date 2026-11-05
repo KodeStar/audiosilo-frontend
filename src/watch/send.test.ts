@@ -9,7 +9,7 @@ jest.mock('./link', () => ({
   watchLink: {
     supported: true,
     read: () => mockRead(),
-    subscribe: () => () => {},
+    subscribe: () => {},
     sendPair: (m: unknown) => mockSendPair(m),
     sendBook: (m: unknown) => mockSendBook(m),
   },
@@ -44,7 +44,6 @@ const signedInStatus = (userId: number) => ({
     signed_in: true,
     server_id: 'srv',
     user_id: userId,
-    app_version: '2.6.0',
     books: [],
     unsent_events: 0,
     couldnt_sync: 0,

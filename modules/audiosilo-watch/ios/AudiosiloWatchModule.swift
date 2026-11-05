@@ -42,45 +42,30 @@ public class AudiosiloWatchModule: Module {
 
     Function("isSupported") { () -> Bool in WCSession.isSupported() }
 
-    AsyncFunction("isPaired") { (promise: Promise) in
-      WatchLink.shared.whenActivated { promise.resolve(WatchLink.shared.isPaired) }
+    AsyncFunction("getSnapshot") { (promise: Promise) in
+      WatchLink.shared.whenActivated { promise.resolve(WatchLink.shared.snapshot()) }
     }
 
-    AsyncFunction("isWatchAppInstalled") { (promise: Promise) in
-      WatchLink.shared.whenActivated { promise.resolve(WatchLink.shared.isWatchAppInstalled) }
-    }
-
-    // The latest `watch-state`, null when the watch has sent none.
-    AsyncFunction("getWatchState") { (promise: Promise) in
-      WatchLink.shared.whenActivated { promise.resolve(WatchLink.shared.watchState) }
-    }
-
-    // Answers "message" or "transfer": how it went. A `book` sent once this answered is behind it.
+    // A `book` sent once this answered is behind it.
     AsyncFunction("sendPair") { (message: [String: Any], promise: Promise) in
-      WatchLink.shared.sendPair(message) { result in
-        switch result {
-        case .success(let how): promise.resolve(how)
-        case .failure(let error): promise.reject(Self.exception(error))
-        }
-      }
+      WatchLink.shared.sendPair(message) { Self.settle(promise, $0) }
     }
 
     AsyncFunction("sendBook") { (message: [String: Any], promise: Promise) in
-      WatchLink.shared.sendBook(message) { result in
-        switch result {
-        case .success: promise.resolve()
-        case .failure(let error): promise.reject(Self.exception(error))
-        }
-      }
+      WatchLink.shared.sendBook(message) { Self.settle(promise, $0) }
     }
   }
 
-  private static func exception(_ error: WatchLinkError) -> Exception {
-    switch error {
-    case .noWatch:
-      return Exception(name: "ERR_NO_WATCH", description: "No paired watch with the app installed")
-    case .badMessage:
-      return Exception(name: "ERR_BAD_MESSAGE", description: "The message is not a property list")
+  private static func settle(_ promise: Promise, _ result: Result<Void, WatchLinkError>) {
+    switch result {
+    case .success:
+      promise.resolve()
+    case .failure(.noWatch):
+      promise.reject(
+        Exception(name: "ERR_NO_WATCH", description: "No paired watch with the app installed"))
+    case .failure(.badMessage):
+      promise.reject(
+        Exception(name: "ERR_BAD_MESSAGE", description: "The message is not a property list"))
     }
   }
 }

@@ -1977,11 +1977,10 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   `WCSession.default.delegate`), activated by `AudiosiloWatchAppDelegateSubscriber`
   (`appDelegateSubscribers` in `expo-module.config.json`), never by editing the AppDelegate
   text, so `withCarPlay` stays untouched and a CarPlay-first or background launch activates it
-  too. Every session property means something only once activated, so `isPaired`,
-  `isWatchAppInstalled`, `getWatchState` and the sends wait for it (`whenActivated`, 5 s at
-  most, then "no watch"). After a cold start the state is what arrived while running, else the
-  session's `receivedApplicationContext`, else a `UserDefaults` copy (dropped when the listener
-  switches watches).
+  too. Every session property means something only once activated, so `getSnapshot` and the
+  sends wait for it (`whenActivated`, 5 s at most, then "no watch"). The state is the session's
+  `receivedApplicationContext`, else a `UserDefaults` copy for a cold start (dropped when the
+  listener switches watches).
   The messages are built and parsed in `src/watch/watch-model.ts`, the other half of
   `Core/PhoneMessages.swift`: a field changed here changes there, with tests on both. Plain
   property lists only (`addresses: {}`, never a null: the native side rejects the rest).

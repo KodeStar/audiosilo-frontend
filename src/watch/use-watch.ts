@@ -1,17 +1,17 @@
 import type { TFunction } from 'i18next';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 
 import { useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
-import type { Book } from '@/api/types';
 import { pairingError } from '@/components/account/use-pairing';
 import { toast } from '@/components/ui/toast';
 import { useSession } from '@/stores/session';
 
 import { watchLink } from './link';
 import { sendBookToWatch, WatchSendError } from './send';
-import { sendToWatchVisible, type WatchStatus } from './watch-model';
+import { sendToWatchVisible, type WatchableBook, type WatchStatus } from './watch-model';
 import { startWatchLink, useWatchStore } from './watch-store';
 
 /** The watch as this phone knows it, followed while the app runs. */
@@ -25,15 +25,20 @@ export function watchErrorText(e: unknown, server: string, t: TFunction): string
   return e instanceof WatchSendError ? t('account.watch.sendFailed') : pairingError(e, server, t);
 }
 
-type SendToWatch = (book: Pick<Book, 'rel_path' | 'title' | 'author'>) => void;
+type SendToWatch = (book: WatchableBook) => void;
 
 function useSendToWatchLinked(connectionId: string, libraryId: number): SendToWatch | null {
   const { t } = useTranslation();
-  const status = useWatchStatus();
+  useEffect(startWatchLink, []);
+  // Only what a row needs, so the watch's own news (a book's progress, events waiting) re-renders
+  // no book row.
+  const link = useWatchStore(
+    useShallow((s) => ({ paired: s.status.paired, installed: s.status.installed })),
+  );
   const connection = useSession((s) => s.connections.find((c) => c.id === connectionId) ?? null);
   const renditions = useServerInfo(connectionId).data?.renditions;
   const api = useOptionalApi(connectionId);
-  if (!api || !connection || !sendToWatchVisible(status, connection.user, renditions)) return null;
+  if (!api || !connection || !sendToWatchVisible(link, connection.user, renditions)) return null;
   return (book) => {
     void (async () => {
       try {

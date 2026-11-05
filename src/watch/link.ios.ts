@@ -1,6 +1,6 @@
 import AudiosiloWatch, { type NativeWatchSnapshot } from '../../modules/audiosilo-watch';
 
-import { NO_WATCH, parseWatchState, type WatchLink, type WatchStatus } from './watch-model';
+import { NO_WATCH_LINK, parseWatchState, type WatchLink, type WatchStatus } from './watch-model';
 
 const statusOf = ({ paired, installed, state }: NativeWatchSnapshot): WatchStatus => ({
   paired,
@@ -8,28 +8,17 @@ const statusOf = ({ paired, installed, state }: NativeWatchSnapshot): WatchStatu
   state: parseWatchState(state),
 });
 
+const native = AudiosiloWatch?.isSupported() ? AudiosiloWatch : null;
+
 /** Apple Watch, through `modules/audiosilo-watch` (WatchConnectivity). */
-export const watchLink: WatchLink = {
-  supported: AudiosiloWatch?.isSupported() === true,
-  read: async () => {
-    if (!AudiosiloWatch) return NO_WATCH;
-    const [paired, installed, state] = await Promise.all([
-      AudiosiloWatch.isPaired(),
-      AudiosiloWatch.isWatchAppInstalled(),
-      AudiosiloWatch.getWatchState(),
-    ]);
-    return statusOf({ paired, installed, state });
-  },
-  subscribe: (listener) => {
-    const subscription = AudiosiloWatch?.addListener('watchState', (snapshot) =>
-      listener(statusOf(snapshot)),
-    );
-    return () => subscription?.remove();
-  },
-  sendPair: async (message) => {
-    await AudiosiloWatch?.sendPair(message);
-  },
-  sendBook: async (message) => {
-    await AudiosiloWatch?.sendBook(message);
-  },
-};
+export const watchLink: WatchLink = native
+  ? {
+      supported: true,
+      read: async () => statusOf(await native.getSnapshot()),
+      subscribe: (listener) => {
+        native.addListener('watchState', (snapshot) => listener(statusOf(snapshot)));
+      },
+      sendPair: (message) => native.sendPair(message),
+      sendBook: (message) => native.sendBook(message),
+    }
+  : NO_WATCH_LINK;

@@ -36,7 +36,6 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   private var waiting: [() -> Void] = []
   private var activating = false
-  private var latest: [String: Any]?
 
   /// Idempotent. Runs on the main queue.
   func activate() {
@@ -73,13 +72,12 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   // MARK: - What the module reads (after `whenActivated`, on the main queue)
 
-  var isPaired: Bool { active && WCSession.default.isPaired }
-  var isWatchAppInstalled: Bool { isPaired && WCSession.default.isWatchAppInstalled }
+  private var isPaired: Bool { active && WCSession.default.isPaired }
+  private var isWatchAppInstalled: Bool { isPaired && WCSession.default.isWatchAppInstalled }
 
-  /// The watch's latest `watch-state`, or nil if it has sent none: what arrived while running,
-  /// else what the session kept for this watch, else the copy kept here (a cold start).
-  var watchState: [String: Any]? {
-    if let latest { return latest }
+  /// The watch's latest `watch-state`, or nil if it has sent none: what the session keeps for this
+  /// watch, else the copy kept here (a cold start).
+  private var watchState: [String: Any]? {
     if active, !WCSession.default.receivedApplicationContext.isEmpty {
       return WCSession.default.receivedApplicationContext
     }
@@ -95,10 +93,10 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   // MARK: - Sending
 
   /// `pair`: `sendMessage` when the watch is reachable, else (or if that fails) `transferUserInfo`,
-  /// which survives the watch app being closed. `done` gets how it went; when it runs the pair is
-  /// ahead of any `book` sent after it, which the watch needs: it handles messages in order, and a
-  /// book for an account it is not signed in to is dropped.
-  func sendPair(_ message: [String: Any], done: @escaping (Result<String, WatchLinkError>) -> Void) {
+  /// which survives the watch app being closed. When `done` runs the pair is ahead of any `book`
+  /// sent after it, which the watch needs: it handles messages in order, and a book for an account
+  /// it is not signed in to is dropped.
+  func sendPair(_ message: [String: Any], done: @escaping (Result<Void, WatchLinkError>) -> Void) {
     whenActivated {
       guard Self.isPropertyList(message) else { return done(.failure(.badMessage)) }
       guard self.isWatchAppInstalled else { return done(.failure(.noWatch)) }
@@ -108,28 +106,27 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
       let queued = session.outstandingUserInfoTransfers
       queued.filter { Self.type(of: $0.userInfo) == "pair" }.forEach { $0.cancel() }
       var settled = false
-      let finish = { (how: String) in
+      let finish = {
         guard !settled else { return }
         settled = true
         for book in queued where Self.type(of: book.userInfo) == "book" {
           book.cancel()
           session.transferUserInfo(book.userInfo)
         }
-        done(.success(how))
+        done(.success(()))
       }
       let transfer = {
+        guard !settled else { return }
         session.transferUserInfo(message)
-        finish("transfer")
+        finish()
       }
       guard session.isReachable else { return transfer() }
       session.sendMessage(message, replyHandler: { _ in
-        DispatchQueue.main.async { finish("message") }
+        DispatchQueue.main.async(execute: finish)
       }, errorHandler: { _ in
-        DispatchQueue.main.async { if !settled { transfer() } }
+        DispatchQueue.main.async(execute: transfer)
       })
-      DispatchQueue.main.asyncAfter(deadline: .now() + Self.REPLY_WAIT) {
-        if !settled { transfer() }
-      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.REPLY_WAIT, execute: transfer)
     }
   }
 
@@ -168,7 +165,6 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
   /// be activated again to reach the new one.
   func sessionDidDeactivate(_ session: WCSession) {
     DispatchQueue.main.async {
-      self.latest = nil
       UserDefaults.standard.removeObject(forKey: Self.STATE_KEY)
       session.activate()
       self.notify()
@@ -182,7 +178,6 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
 
   func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
     DispatchQueue.main.async {
-      self.latest = applicationContext
       UserDefaults.standard.set(applicationContext, forKey: Self.STATE_KEY)
       self.notify()
     }

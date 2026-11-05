@@ -32,7 +32,6 @@ const signedIn: WatchState = {
   signed_in: true,
   server_id: 'srv',
   user_id: 7,
-  app_version: '2.6.0',
   books: [],
   unsent_events: 0,
   couldnt_sync: 0,
@@ -123,7 +122,6 @@ describe('parseWatchState', () => {
       signed_in: true,
       server_id: 'srv',
       user_id: 7,
-      app_version: '2.6.0',
       books: [
         { library_id: 1, path: 'A/B', title: 'B', state: 'ready', bytes: 1024 },
         { library_id: 1, path: 'A/C', title: 'C', state: 'downloading' },
@@ -145,7 +143,7 @@ describe('parseWatchState', () => {
       couldnt_sync: 0,
     });
     expect(state?.signed_in).toBe(false);
-    expect(state).not.toHaveProperty('server_id');
+    expect(state?.server_id).toBeUndefined();
   });
 
   it('ignores a newer version, another type and anything not a message', () => {
@@ -211,7 +209,7 @@ describe('visibility', () => {
     expect(watchCardVisible(installed, { id: 7, member_kind: 'kid' })).toBe(false);
     expect(watchCardVisible(installed, { id: 7, is_demo: true })).toBe(false);
     expect(watchCardVisible(installed, { id: 7, member_kind: 'grownup' })).toBe(true);
-    expect(watchCardVisible(installed, null)).toBe(false);
+    expect(watchCardVisible(installed, { id: 0 })).toBe(false);
   });
 
   it('offers Send to watch only with the app installed and the rendition advertised', () => {

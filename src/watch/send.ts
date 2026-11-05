@@ -1,5 +1,4 @@
 import type { ApiClient } from '@/api/client';
-import type { Book } from '@/api/types';
 import { getDeviceName } from '@/lib/device';
 import type { Connection } from '@/stores/session';
 
@@ -9,19 +8,16 @@ import {
   buildBookMessage,
   buildPairMessage,
   WATCH_PAIR_TTL_SECONDS,
+  type WatchableBook,
 } from './watch-model';
 import { notePairSent, refreshWatch, useWatchStore } from './watch-store';
 
 /** The watch link refused a message (no ApiError: the server was never the problem). */
 export class WatchSendError extends Error {}
 
-async function deliver(send: () => Promise<void>): Promise<void> {
-  try {
-    await send();
-  } catch (e) {
-    throw new WatchSendError(e instanceof Error ? e.message : String(e));
-  }
-}
+const refused = (cause: unknown): never => {
+  throw new WatchSendError('The watch link refused the message', { cause });
+};
 
 /**
  * Sign the watch in to `connection`: a new single-use pairing token each time, so a send again
@@ -33,7 +29,7 @@ export async function setUpWatch(api: Pick<ApiClient, 'pair'>, connection: Conne
   const payload = await api.pair({ ttlSeconds: WATCH_PAIR_TTL_SECONDS });
   const expiresAt = asked + WATCH_PAIR_TTL_SECONDS * 1000;
   const message = buildPairMessage(payload, connection, getDeviceName(), expiresAt);
-  await deliver(() => watchLink.sendPair(message));
+  await watchLink.sendPair(message).catch(refused);
   notePairSent(connection.id, expiresAt);
 }
 
@@ -46,12 +42,12 @@ export async function sendBookToWatch(
   api: Pick<ApiClient, 'pair'>,
   connection: Connection,
   libraryId: number,
-  book: Pick<Book, 'rel_path' | 'title' | 'author'>,
+  book: WatchableBook,
 ): Promise<{ paired: boolean }> {
   await refreshWatch();
   const { status, pairUntil } = useWatchStore.getState();
   const paired = bookNeedsPair(status.state, connection, pairUntil[connection.id], Date.now());
   if (paired) await setUpWatch(api, connection);
-  await deliver(() => watchLink.sendBook(buildBookMessage(connection, libraryId, book)));
+  await watchLink.sendBook(buildBookMessage(connection, libraryId, book)).catch(refused);
   return { paired };
 }

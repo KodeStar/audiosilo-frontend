@@ -1,14 +1,15 @@
 import type { Book, PairingPayload, ServerAddresses, User } from '@/api/types';
 import { isKidAccount } from '@/lib/account';
-import { serverIdOf } from '@/lib/connection-id';
+import { serverIdOf, usableUserId } from '@/lib/connection-id';
 import { mergeAddresses } from '@/lib/server-address';
+import { isRecord } from '@/lib/storage-keys';
 
 /**
  * The phone's side of the phone-watch message contract and the rules around it, pure. The
  * watch's side is targets/watch/Core/PhoneMessages.swift: a field changed here changes there,
  * with tests on both. Every message carries `v: 1`; a newer one is ignored.
  */
-export const WATCH_MESSAGE_VERSION = 1;
+const WATCH_MESSAGE_VERSION = 1;
 
 /** The pairing token's life when it is minted for a watch: the most the server gives, since a
  * `transferUserInfo` waits until the watch is in reach. */
@@ -21,7 +22,7 @@ const PAIR_REUSE_MARGIN_MS = 60_000;
 /** The server's rendition kind for a watch (`ServerInfo.renditions`). */
 const WATCH_RENDITION = 'watch';
 
-export type PairMessage = {
+type PairMessage = {
   v: typeof WATCH_MESSAGE_VERSION;
   type: 'pair';
   server_id: string;
@@ -37,7 +38,7 @@ export type PairMessage = {
   phone_name: string;
 };
 
-export type BookMessage = {
+type BookMessage = {
   v: typeof WATCH_MESSAGE_VERSION;
   type: 'book';
   server_id: string;
@@ -48,8 +49,8 @@ export type BookMessage = {
   author?: string;
 };
 
-export const WATCH_BOOK_STATES = ['queued', 'preparing', 'downloading', 'ready', 'failed'] as const;
-export type WatchBookState = (typeof WATCH_BOOK_STATES)[number];
+const WATCH_BOOK_STATES = ['queued', 'preparing', 'downloading', 'ready', 'failed'] as const;
+type WatchBookState = (typeof WATCH_BOOK_STATES)[number];
 
 export type WatchBook = {
   library_id: number;
@@ -64,7 +65,6 @@ export type WatchState = {
   signed_in: boolean;
   server_id?: string;
   user_id?: number;
-  app_version: string;
   books: WatchBook[];
   unsent_events: number;
   couldnt_sync: number;
@@ -80,11 +80,20 @@ export const NO_WATCH: WatchStatus = { paired: false, installed: false, state: n
 export type WatchLink = {
   supported: boolean;
   read: () => Promise<WatchStatus>;
-  /** Told of every change while subscribed; the way back is the unsubscribe. */
-  subscribe: (listener: (status: WatchStatus) => void) => () => void;
+  /** Told of every change, for as long as the app runs. */
+  subscribe: (listener: (status: WatchStatus) => void) => void;
   /** Answers once the pair is ahead of anything sent after it. */
   sendPair: (message: PairMessage) => Promise<void>;
   sendBook: (message: BookMessage) => Promise<void>;
+};
+
+/** Where there is no way to a watch. */
+export const NO_WATCH_LINK: WatchLink = {
+  supported: false,
+  read: async () => NO_WATCH,
+  subscribe: () => {},
+  sendPair: async () => {},
+  sendBook: async () => {},
 };
 
 type WatchConnection = {
@@ -95,6 +104,9 @@ type WatchConnection = {
   user: Pick<User, 'id' | 'username'>;
   addresses?: ServerAddresses;
 };
+type WatchAccount = Pick<WatchConnection, 'id' | 'serverId' | 'user'>;
+type WatchUser = Pick<User, 'id' | 'is_demo' | 'member_kind'>;
+export type WatchableBook = Pick<Book, 'rel_path' | 'title' | 'author'>;
 
 /** The `pair` message for `connection`, from a token just minted (`POST /auth/pair`).
  * `expiresAt` is epoch ms. */
@@ -123,9 +135,9 @@ export function buildPairMessage(
 /** The `book` message for one of `connection`'s books. No nulls or undefined values:
  * WatchConnectivity takes property lists only. */
 export function buildBookMessage(
-  connection: Pick<WatchConnection, 'id' | 'serverId' | 'user'>,
+  connection: WatchAccount,
   libraryId: number,
-  book: Pick<Book, 'rel_path' | 'title' | 'author'>,
+  book: WatchableBook,
 ): BookMessage {
   return {
     v: WATCH_MESSAGE_VERSION,
@@ -139,43 +151,40 @@ export function buildBookMessage(
   };
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 const count = (v: unknown): number => (typeof v === 'number' && v > 0 ? v : 0);
 
 /** A received `watch-state`; null for anything else or a newer version. A state a newer watch
  * app names reads as `queued`, a book without its ids is left out. */
 export function parseWatchState(raw: unknown): WatchState | null {
-  if (!isObject(raw) || raw.v !== WATCH_MESSAGE_VERSION || raw.type !== 'watch-state') return null;
+  if (!isRecord(raw) || raw.v !== WATCH_MESSAGE_VERSION || raw.type !== 'watch-state') return null;
   const books: WatchBook[] = [];
   for (const b of Array.isArray(raw.books) ? raw.books : []) {
-    if (!isObject(b) || typeof b.library_id !== 'number' || typeof b.path !== 'string') continue;
+    if (!isRecord(b) || typeof b.library_id !== 'number' || typeof b.path !== 'string') continue;
     books.push({
       library_id: b.library_id,
       path: b.path,
-      title: typeof b.title === 'string' ? b.title : b.path,
+      title: str(b.title) ?? b.path,
       state: (WATCH_BOOK_STATES as readonly unknown[]).includes(b.state)
         ? (b.state as WatchBookState)
         : 'queued',
-      ...(typeof b.bytes === 'number' ? { bytes: b.bytes } : {}),
+      bytes: num(b.bytes),
     });
   }
   return {
     signed_in: raw.signed_in === true,
-    ...(typeof raw.server_id === 'string' ? { server_id: raw.server_id } : {}),
-    ...(typeof raw.user_id === 'number' ? { user_id: raw.user_id } : {}),
-    app_version: typeof raw.app_version === 'string' ? raw.app_version : '',
+    server_id: str(raw.server_id),
+    user_id: num(raw.user_id),
     books,
     unsent_events: count(raw.unsent_events),
     couldnt_sync: count(raw.couldnt_sync),
-    ...(typeof raw.last_sync_at === 'string' ? { last_sync_at: raw.last_sync_at } : {}),
+    last_sync_at: str(raw.last_sync_at),
   };
 }
 
 /** Whether the watch says it is signed in to this very connection (`<server_id>.<user_id>`). */
-export function signedInHere(
-  state: WatchState | null,
-  connection: Pick<WatchConnection, 'id' | 'serverId' | 'user'>,
-): boolean {
+export function signedInHere(state: WatchState | null, connection: WatchAccount): boolean {
   return (
     !!state?.signed_in &&
     state.server_id === serverIdOf(connection) &&
@@ -188,7 +197,7 @@ export function signedInHere(
  * sent runs out, epoch ms. */
 export function bookNeedsPair(
   state: WatchState | null,
-  connection: Pick<WatchConnection, 'id' | 'serverId' | 'user'>,
+  connection: WatchAccount,
   pairUntil: number | undefined,
   now: number,
 ): boolean {
@@ -199,15 +208,12 @@ export function bookNeedsPair(
 /** Whether this account can sign a watch in: a kid's can't pair (403 `kid_account`), nor can a
  * demo's. A connection saved without a numeric user id can't be named to the watch until the
  * account page has read `/me`. */
-function accountCanUseWatch(user: Pick<User, 'id' | 'is_demo' | 'member_kind'> | null | undefined) {
-  return !!user && Number.isInteger(user.id) && !user.is_demo && !isKidAccount(user);
+function accountCanUseWatch(user: WatchUser) {
+  return usableUserId(user) !== null && !user.is_demo && !isKidAccount(user);
 }
 
 /** The account page's Apple Watch card: a paired watch and an account that can use one. */
-export function watchCardVisible(
-  status: WatchStatus,
-  user: Pick<User, 'id' | 'is_demo' | 'member_kind'> | null | undefined,
-): boolean {
+export function watchCardVisible(status: Pick<WatchStatus, 'paired'>, user: WatchUser): boolean {
   return status.paired && accountCanUseWatch(user);
 }
 
@@ -219,8 +225,8 @@ export function serverServesWatch(renditions: readonly string[] | undefined): bo
 /** The book action Send to watch: a paired watch with the app installed, a server that serves
  * it (`renditions`, unknown while `/server` is) and an account that can use one. */
 export function sendToWatchVisible(
-  status: WatchStatus,
-  user: Pick<User, 'id' | 'is_demo' | 'member_kind'> | null | undefined,
+  status: Pick<WatchStatus, 'paired' | 'installed'>,
+  user: WatchUser,
   renditions: readonly string[] | undefined,
 ): boolean {
   return (
@@ -228,7 +234,7 @@ export function sendToWatchVisible(
   );
 }
 
-export type WatchCardStatus =
+type WatchCardStatus =
   /** The watch has no AudioSilo yet. */
   | 'install'
   /** Nothing sent, and the watch is signed in to nothing. */
@@ -244,7 +250,7 @@ export type WatchCardStatus =
 /** What the card says. `pairUntil`: when the pair last sent for this connection runs out. */
 export function watchCardStatus(
   status: WatchStatus,
-  connection: Pick<WatchConnection, 'id' | 'serverId' | 'user'>,
+  connection: WatchAccount,
   pairUntil: number | undefined,
   now: number,
 ): WatchCardStatus {

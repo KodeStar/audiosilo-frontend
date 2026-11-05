@@ -18,6 +18,7 @@ import { useWatchStatus, watchErrorText } from '@/watch/use-watch';
 import {
   serverServesWatch,
   type WatchBook,
+  type WatchState,
   watchCardStatus,
   watchCardVisible,
 } from '@/watch/watch-model';
@@ -29,27 +30,23 @@ import { useWatchStore } from '@/watch/watch-store';
  * (a `pair` message), Send again does it once more. Once the watch says it is signed in here,
  * who as, the books on it, the listening it still has to send and when it last synced.
  */
-export function AppleWatchCard({
-  connectionId,
-  serverName,
-}: {
-  connectionId: string;
-  serverName: string;
-}) {
-  const { t, i18n } = useTranslation();
+export function AppleWatchCard({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
   const watch = useWatchStatus();
   const connection = useSession((s) => s.connections.find((c) => c.id === connectionId) ?? null);
   const api = useOptionalApi(connectionId);
   const { data: server } = useServerInfo(connectionId);
   const pairUntil = useWatchStore((s) => s.pairUntil[connectionId]);
+  const visible = !!connection && watchCardVisible(watch, connection.user);
   // Quicker while a pair is out: the card says when it has run out.
-  const now = useNow(pairUntil === undefined ? 60_000 : 15_000);
+  const now = useNow(pairUntil === undefined ? 60_000 : 15_000, visible);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!connection || !watchCardVisible(watch, connection.user)) return null;
+  if (!connection || !visible) return null;
 
+  const serverName = connection.name;
   const status = watchCardStatus(watch, connection, pairUntil, now);
-  const state = watch.state;
+  const here = status === 'signed-in' ? watch.state : null;
   const serves = serverServesWatch(server?.renditions);
 
   const send = async () => {
@@ -84,42 +81,9 @@ export function AppleWatchCard({
           {t('account.watch.title')}
         </Text>
         <Text variant="muted">{body}</Text>
-        {status === 'signed-in' && state ? (
-          <>
-            <Text variant="caption">
-              {state.unsent_events > 0
-                ? t('account.watch.waiting', { count: state.unsent_events })
-                : t('account.watch.allSynced')}
-            </Text>
-            {state.couldnt_sync > 0 ? (
-              <Text variant="caption">
-                {t('account.watch.couldntSync', { count: state.couldnt_sync })}
-              </Text>
-            ) : null}
-            <Text variant="caption">
-              {state.last_sync_at
-                ? t('account.watch.lastSynced', {
-                    when: formatRelative(state.last_sync_at, i18n.language || 'en', now),
-                  })
-                : t('account.watch.neverSynced')}
-            </Text>
-          </>
-        ) : null}
+        {here ? <WatchSyncLines state={here} now={now} /> : null}
       </View>
-      {status === 'signed-in' && state ? (
-        state.books.length > 0 ? (
-          <View className="gap-2">
-            <Text variant="label">{t('account.watch.booksTitle')}</Text>
-            <View className="overflow-hidden rounded-card border border-border">
-              {state.books.map((book, i) => (
-                <WatchBookRow key={`${book.library_id}:${book.path}`} book={book} first={i === 0} />
-              ))}
-            </View>
-          </View>
-        ) : (
-          <Text variant="caption">{t('account.watch.noBooks')}</Text>
-        )
-      ) : null}
+      {here ? <WatchBooks books={here.books} /> : null}
       {server && !serves ? (
         <Text variant="caption">{t('account.watch.serverCannot', { server: serverName })}</Text>
       ) : null}
@@ -139,6 +103,47 @@ export function AppleWatchCard({
       ) : null}
       <FormError error={error} />
     </Card>
+  );
+}
+
+/** What the watch still has to send, and when it last synced. */
+function WatchSyncLines({ state, now }: { state: WatchState; now: number }) {
+  const { t, i18n } = useTranslation();
+  return (
+    <>
+      <Text variant="caption">
+        {state.unsent_events > 0
+          ? t('account.watch.waiting', { count: state.unsent_events })
+          : t('account.watch.allSynced')}
+      </Text>
+      {state.couldnt_sync > 0 ? (
+        <Text variant="caption">
+          {t('account.watch.couldntSync', { count: state.couldnt_sync })}
+        </Text>
+      ) : null}
+      <Text variant="caption">
+        {state.last_sync_at
+          ? t('account.watch.lastSynced', {
+              when: formatRelative(state.last_sync_at, i18n.language || 'en', now),
+            })
+          : t('account.watch.neverSynced')}
+      </Text>
+    </>
+  );
+}
+
+function WatchBooks({ books }: { books: WatchBook[] }) {
+  const { t } = useTranslation();
+  if (books.length === 0) return <Text variant="caption">{t('account.watch.noBooks')}</Text>;
+  return (
+    <View className="gap-2">
+      <Text variant="label">{t('account.watch.booksTitle')}</Text>
+      <View className="overflow-hidden rounded-card border border-border">
+        {books.map((book, i) => (
+          <WatchBookRow key={`${book.library_id}:${book.path}`} book={book} first={i === 0} />
+        ))}
+      </View>
+    </View>
   );
 }
 

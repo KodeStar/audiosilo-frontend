@@ -176,7 +176,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         ) : null}
       </View>
 
-      {watchLink.supported ? <AppleWatchCard connectionId={cid} serverName={serverName} /> : null}
+      {watchLink.supported ? <AppleWatchCard connectionId={cid} /> : null}
 
       <AccountAddresses cid={cid} caps={caps} />
 

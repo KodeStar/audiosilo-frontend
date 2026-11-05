@@ -11,7 +11,7 @@ jest.mock('@/watch/link', () => ({
   watchLink: {
     supported: true,
     read: () => mockRead(),
-    subscribe: () => () => {},
+    subscribe: () => {},
     sendPair: (m: unknown) => mockSendPair(m),
     sendBook: jest.fn(),
   },
@@ -48,7 +48,6 @@ const here: WatchState = {
   signed_in: true,
   server_id: 'srv',
   user_id: 7,
-  app_version: '2.6.0',
   books: [],
   unsent_events: 0,
   couldnt_sync: 0,
@@ -57,7 +56,7 @@ const here: WatchState = {
 async function mount(status: WatchStatus, pairUntil: Record<string, number> = {}) {
   mockRead.mockResolvedValue(status);
   useWatchStore.setState({ status, pairUntil });
-  await render(<AppleWatchCard connectionId="srv.7" serverName="Hearthside" />);
+  await render(<AppleWatchCard connectionId="srv.7" />);
   await act(async () => {});
 }
 

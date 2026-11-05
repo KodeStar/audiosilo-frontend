@@ -12,7 +12,6 @@ jest.mock('./link', () => ({
     read: () => mockRead(),
     subscribe: (l: (s: unknown) => void) => {
       mockListener = l;
-      return () => {};
     },
     sendPair: (m: unknown) => mockSendPair(m),
     sendBook: (m: unknown) => mockSendBook(m),
@@ -101,7 +100,6 @@ describe('useSendToWatch', () => {
         signed_in: true,
         server_id: 'srv',
         user_id: 7,
-        app_version: '',
         books: [],
         unsent_events: 0,
         couldnt_sync: 0,

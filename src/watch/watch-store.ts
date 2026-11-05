@@ -1,5 +1,6 @@
-import { AppState } from 'react-native';
 import { create } from 'zustand';
+
+import { onForeground } from '@/lib/when-active';
 
 import { watchLink } from './link';
 import { NO_WATCH, type WatchStatus } from './watch-model';
@@ -27,15 +28,13 @@ export async function refreshWatch(): Promise<void> {
 
 let started = false;
 
-/** Follow the watch (one call does it, the first screen that asks). Nothing without a link. */
+/** Follow the watch (one call does it, the first screen that asks). */
 export function startWatchLink(): void {
-  if (started || !watchLink.supported) return;
+  if (started) return;
   started = true;
   watchLink.subscribe((status) => useWatchStore.setState({ status }));
   // Paired or installed can change while the app is away, with no event reaching it.
-  AppState.addEventListener('change', (state) => {
-    if (state === 'active') void refreshWatch();
-  });
+  onForeground(() => void refreshWatch());
   void refreshWatch();
 }
 
