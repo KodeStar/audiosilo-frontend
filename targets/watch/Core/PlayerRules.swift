@@ -24,9 +24,17 @@ enum PlaybackSpeed {
   }
 
   /// A speed as it reads on a button: "1x", "1.25x".
-  static func label(_ rate: Double) -> String {
+  static func label(_ rate: Double) -> String { number(rate) + "x" }
+
+  /// A speed as a sentence says it, the phone's `formatSpeed`: "2×", "1.25×".
+  static func sentenceLabel(_ rate: Double) -> String { number(rate) + "×" }
+
+  /// Whether a speed reads as normal speed (the phone's `isNormalSpeed`): two decimals, as shown.
+  static func isNormal(_ rate: Double) -> Bool { (clamp(rate) * 100).rounded() == 100 }
+
+  private static func number(_ rate: Double) -> String {
     let r = (clamp(rate) * 100).rounded() / 100
-    return r == r.rounded() ? "\(Int(r))x" : "\(r)x"
+    return r == r.rounded() ? "\(Int(r))" : "\(r)"
   }
 }
 
@@ -42,9 +50,35 @@ enum Skips {
     return max(0, p)
   }
 
-  /// Wall-clock seconds left in the book at `rate`.
+  /// Wall-clock seconds left to `total` at `rate`.
   static func timeLeft(position: Double, total: Double, rate: Double) -> Double {
     wallClockSeconds(max(0, total - position), rate: rate)
+  }
+
+  /// The two figures beside the bar, the phone's seek bar: both audio time, whatever the speed, in
+  /// whole seconds that add up to the length (each rounded alone, they can read a second short).
+  static func figures(position: Double, length: Double) -> (elapsed: Double, left: Double) {
+    let whole = length.rounded()
+    let elapsed = min(whole, (position.isFinite ? max(0, position) : 0).rounded(.down))
+    return (elapsed, whole - elapsed)
+  }
+
+  /// The line under the figures: "2m left at 2×", the phone's `formatTimeLeft`. Nil at normal speed,
+  /// where the figures already say it, and with nothing left.
+  static func wallClockLine(position: Double, total: Double, rate: Double) -> String? {
+    guard !PlaybackSpeed.isNormal(rate), total > 0,
+      let time = compactDuration(timeLeft(position: position, total: total, rate: rate))
+    else { return nil }
+    return "\(time) left at \(PlaybackSpeed.sentenceLabel(rate))"
+  }
+
+  /// "12h 30m", "45m", "30s", nil for nothing: the phone's `formatDuration`.
+  static func compactDuration(_ seconds: Double) -> String? {
+    guard seconds.isFinite, seconds > 0 else { return nil }
+    let total = Int(seconds.rounded())
+    let h = total / 3600, m = (total % 3600) / 60
+    if h > 0 { return m > 0 ? "\(h)h \(m)m" : "\(h)h" }
+    return m > 0 ? "\(m)m" : "\(total)s"
   }
 
   /// Whether a place is the book's end (within `FINISHED_TOLERANCE`).

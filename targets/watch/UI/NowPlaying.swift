@@ -22,12 +22,16 @@ struct NowPlayingView: View {
           }
           if let t = engine.times, t.duration > 0 {
             ProgressView(value: min(t.elapsed, t.duration), total: t.duration)
+            let figures = Skips.figures(position: t.elapsed, length: t.duration)
             HStack {
-              Text(Labels.clock(t.elapsed))
+              Text(Labels.clock(figures.elapsed))
               Spacer()
-              Text("-" + Labels.clock(Skips.timeLeft(position: t.elapsed, total: t.duration, rate: engine.rate)))
+              Text("-" + Labels.clock(figures.left))
             }
             .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+            if let line = Skips.wallClockLine(position: t.elapsed, total: t.duration, rate: engine.rate) {
+              Text(line).font(.footnote.monospacedDigit()).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
           }
           HStack {
             Button { engine.skip(-Skips.BACK) } label: { Image(systemName: "gobackward.15") }
