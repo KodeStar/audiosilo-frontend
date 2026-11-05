@@ -134,7 +134,9 @@ export function sendBookToWatch(
 /**
  * Ask the watch to take a book off. It answers only by no longer listing it (or, on another
  * account, by naming that one), so the row says "removing" until then, here and after a restart.
- * A send again after this comes behind it, in order, and stands.
+ * A send again after this comes behind it, in order, and stands. Asked again from a delivered row,
+ * it sends the same message and starts the row's hold limit over: the first may have died with the
+ * watch app, and if it did not, the repeat finds the book gone and does nothing.
  */
 export function removeFromWatch(
   connection: Connection,

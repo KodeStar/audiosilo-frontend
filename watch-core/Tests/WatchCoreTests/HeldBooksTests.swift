@@ -312,6 +312,33 @@ final class HeldBooksTests: XCTestCase {
     XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
   }
 
+  func testARepeatedRemoveChangesNothingMore() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    held.hold(bookA("A/Two"), now: t0)
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    let left = held.books
+    // The phone's Remove again, when the first did get here. `downloads.remove` then finds no record.
+    XCTAssertTrue(held.finishRemove(held.noteRemove(removeA()), accountId: A, now: t0))
+    XCTAssertEqual(held.books, left)
+  }
+
+  func testABookSentBehindARepeatedRemoveStands() {
+    let held = HeldBooks(url: nil)
+    held.hold(bookA(), now: t0)
+    let first = held.noteRemove(removeA())
+    let repeated = held.noteRemove(removeA())
+    let later = t0.addingTimeInterval(1)
+    held.hold(bookA(), now: later)
+    XCTAssertTrue(held.finishRemove(first, accountId: A, now: later))
+    // The repeat is still to come, so the record it is about settles no row yet.
+    held.settle(accountId: A, onWatch: [bookA().ref], now: later)
+    XCTAssertTrue(held.finishRemove(repeated, accountId: A, now: later))
+    XCTAssertEqual(held.due(accountId: A, ready: true, now: later), [bookA()])
+    held.settle(accountId: A, onWatch: [bookA().ref], now: later)
+    XCTAssertEqual(held.books, [], "both turns over, the record speaks for it again")
+  }
+
   func testRemoveIsRefusedSignedOutOrOnAnotherAccountAndChangesNothing() {
     let held = HeldBooks(url: nil)
     held.hold(bookA(), now: t0)

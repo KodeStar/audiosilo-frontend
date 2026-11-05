@@ -160,7 +160,7 @@ export type WatchRowPhase =
   | WatchBook['state']
   /** The `remove` has not reached the watch yet. */
   | 'removing-undelivered'
-  /** Delivered; the watch app has to open to carry it out. */
+  /** Delivered; the watch app has to open to carry it out, and it can offer Remove again. */
   | 'removing'
   /** The system could not deliver it. */
   | 'remove-failed'
@@ -176,16 +176,19 @@ export type WatchRow = {
   phase: WatchRowPhase;
 };
 
-/** The row's actions. A row removing has none: it is on its way, and it says so. */
+/**
+ * The row's actions. A `remove` still with the system has none: it is on its way, and it says so.
+ * Delivered, it can offer Remove again: the watch keeps what it has yet to handle only in memory, so
+ * a kill loses it, and the row would otherwise sit with no way out until the hold limit.
+ */
 export function rowActions(phase: WatchRowPhase): {
   remove: boolean;
   sendAgain: boolean;
   dismiss: boolean;
 } {
-  const removing = phase === 'removing' || phase === 'removing-undelivered';
   const refused = phase === 'remove-refused';
   return {
-    remove: !removing && !refused,
+    remove: phase !== 'removing-undelivered' && !refused,
     sendAgain: phase === 'stale' || phase === 'send-failed' || phase === 'failed',
     dismiss: refused,
   };

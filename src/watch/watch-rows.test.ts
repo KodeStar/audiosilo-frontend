@@ -170,8 +170,11 @@ describe('watchRows: removing', () => {
 });
 
 describe('rowActions', () => {
-  it('offers nothing while removing', () => {
-    expect(rowActions('removing')).toEqual({ remove: false, sendAgain: false, dismiss: false });
+  it('offers Remove again once delivered: the watch may have lost it, and nothing else would move it', () => {
+    expect(rowActions('removing')).toEqual({ remove: true, sendAgain: false, dismiss: false });
+  });
+
+  it('offers nothing while the remove is still on its way', () => {
     expect(rowActions('removing-undelivered')).toEqual({
       remove: false,
       sendAgain: false,

@@ -315,6 +315,40 @@ describe('the ledger', () => {
     expect(rows()).toEqual(before);
   });
 
+  describe('asked again, with the watch still listing the book', () => {
+    const target = { library_id: 3, path: 'A/B', title: 'B' };
+
+    beforeEach(async () => {
+      mockRead.mockResolvedValue({
+        ...here,
+        state: {
+          ...here.state,
+          books: [{ library_id: 3, path: 'A/B', title: 'B', state: 'ready', bytes: 5 }],
+        },
+      });
+      await sendBookToWatch(api, connection, 3, book);
+      await removeFromWatch(connection, target);
+    });
+
+    it('sends the same message, and the row goes on removing from the new one', async () => {
+      const first = rows()[0];
+      expect(first.remove_at).toBe(NOW);
+      jest.setSystemTime(NOW + 60_000);
+      await removeFromWatch(connection, target);
+      expect(mockSendRemove).toHaveBeenCalledTimes(2);
+      expect(mockSendRemove.mock.calls[1]).toEqual(mockSendRemove.mock.calls[0]);
+      expect(rows()).toEqual([{ ...first, remove_at: NOW + 60_000 }]);
+    });
+
+    it('leaves the row as it was when the link refuses', async () => {
+      const before = rows();
+      expect(before).toHaveLength(1);
+      mockSendRemove.mockRejectedValue(new Error('ERR_NO_WATCH'));
+      await expect(removeFromWatch(connection, target)).rejects.toBeInstanceOf(WatchSendError);
+      expect(rows()).toEqual(before);
+    });
+  });
+
   it('holds a Remove tapped during a send, so it reaches the watch behind that book', async () => {
     let release = () => {};
     mockSendBook.mockReturnValue(new Promise<void>((r) => (release = r)));

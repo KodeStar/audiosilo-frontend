@@ -239,7 +239,40 @@ describe('WatchSection', () => {
         path: 'A/B',
       });
       expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();
-      expect(screen.queryByLabelText('Remove Sent book from your watch')).toBeNull();
+    });
+
+    it('offers Remove again on a delivered row, through the confirm, and goes on removing', async () => {
+      await mount({ ...base, state: listed }, [row({ seen: true, remove_at: NOW - 1000 })]);
+      expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();
+      await act(async () =>
+        fireEvent.press(screen.getByLabelText('Remove Sent book from your watch')),
+      );
+      expect(mockSendRemove).not.toHaveBeenCalled();
+      expect(screen.getByText('Remove from your watch?')).toBeTruthy();
+      await act(async () => fireEvent.press(screen.getByText('Remove')));
+      expect(mockSendRemove).toHaveBeenCalledTimes(1);
+      expect(mockSendRemove).toHaveBeenCalledWith({
+        v: 1,
+        type: 'remove',
+        server_id: 'srv',
+        user_id: 7,
+        library_id: 1,
+        path: 'A/B',
+      });
+      expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();
+    });
+
+    it('goes on saying removing when the link refuses the repeat', async () => {
+      mockSendRemove.mockRejectedValue(new Error('ERR_NO_WATCH'));
+      await mount({ ...base, state: listed }, [row({ seen: true, remove_at: NOW - 1000 })]);
+      await act(async () =>
+        fireEvent.press(screen.getByLabelText('Remove Sent book from your watch')),
+      );
+      await act(async () => fireEvent.press(screen.getByText('Remove')));
+      expect(mockToast).toHaveBeenCalledWith({
+        title: "Couldn't reach your watch. Nothing was sent, so try again.",
+      });
+      expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();
     });
 
     it('sends nothing when the confirm is cancelled', async () => {
@@ -273,6 +306,7 @@ describe('WatchSection', () => {
         row({ seen: true, remove_at: NOW }),
       ]);
       expect(screen.getByText('Removing once your watch is in reach')).toBeTruthy();
+      expect(screen.queryByLabelText('Remove Sent book from your watch')).toBeNull();
     });
 
     it('says the link failed, without claiming anything', async () => {
