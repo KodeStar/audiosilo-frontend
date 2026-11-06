@@ -111,6 +111,15 @@ describe('SmartShelves layout', () => {
     expect(rowIds()).toEqual([['progress', 'short', 'narrator', 'added']]);
   });
 
+  it('reads three columns from a measured 608 tablet row', async () => {
+    mockLayout = 'tablet';
+    await render(<SmartShelves shelves={FOUR.slice(0, 3)} />);
+    // The tablet default (two) splits three as two and one; the measured row fits three.
+    expect(rowIds()).toEqual([['progress', 'short'], ['narrator']]);
+    await measure(608);
+    expect(rowIds()).toEqual([['progress', 'short', 'narrator']]);
+  });
+
   it('still opens each shelf', async () => {
     await render(<SmartShelves shelves={FOUR} />);
     await fireEvent.press(screen.getByTestId('smart-shelf-narrator'));

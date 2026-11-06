@@ -2487,10 +2487,11 @@ at all (no skeleton) while loading, empty or offered by no server, See all -> `/
 shelves link to Library Books with the URL params above. Their cards sit in explicit rows
 (`shelfRows` + `shelfColumns`, `smart-shelves-model.ts`, from the row's `useWidth`), each card an
 equal share of its row; never one `flex-wrap` row of percentage widths, which Yoga squashed into
-one row on native (#213). The sync pill reads progress-sync's offline queue length without changing progress-sync (decision 7). Offline (v2.5.1 PLAYER-02)
-the Now card leads with the first in-progress book that plays here (`pickNowBook` +
-`usePlayableHere`: online, or downloaded on this device), and one that can't shows a disabled
-"Not downloaded" in place of Play. A row known only by path takes its title from
+one row on native (#213). The sync pill reads progress-sync's offline queue length without
+changing progress-sync (decision 7). Offline (v2.5.1 PLAYER-02) the Now card leads with the
+first in-progress book that plays here (`pickNowBook` + `usePlayableHere`: online, or
+downloaded on this device), and one that can't shows a disabled "Not downloaded" in place of
+Play. A row known only by path takes its title from
 `useKnownBook`: the book's `/item`, else (only while that query is paused or failed) the copy a
 cached list already holds (`listedBook`, a bounded walk of this connection's cached queries).
 After a reload offline that includes the startup cache's `[PROGRESS_BOOKS, cid]` list: the

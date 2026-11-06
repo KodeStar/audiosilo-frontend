@@ -65,6 +65,14 @@ describe('shelfRows', () => {
     expect(sizes(4, 3)).toEqual([2, 2]);
     expect(sizes(5, 4)).toEqual([3, 2]);
     expect(sizes(3, 3)).toEqual([3]);
+    // Rows differ by at most one, the fuller first, whatever the count.
+    expect(sizes(10, 4)).toEqual([4, 3, 3]);
+    expect(sizes(13, 4)).toEqual([4, 3, 3, 3]);
+  });
+
+  it('never loops on a column count below one', () => {
+    expect(sizes(3, 0)).toEqual([1, 1, 1]);
+    expect(sizes(3, Number.NaN)).toEqual([1, 1, 1]);
   });
 
   it('keeps the order and handles no shelves', () => {
