@@ -27,7 +27,7 @@ updates:
       # releases inside the pin are fine; minor and major moves happen only as
       # part of an Expo SDK upgrade, done with `npx expo install --fix` - never
       # by dependabot. The packages the SDK pins to an EXACT version (react,
-      # react-dom, react-native, reanimated, svg, worklets, flash-list - see
+      # react-dom, react-native, reanimated, svg, worklets, flash-list, webview - see
       # node_modules/expo/bundledNativeModules.json) are ignored outright, patches
       # included: React Native's renderer is built against one exact react, and
       # dependabot moving react 19.2.3 -> 19.2.8 inside a "patch" group is how
@@ -84,12 +84,11 @@ updates:
       - dependency-name: react-native-web
       - dependency-name: react-native-worklets
       # @shopify/flash-list is another EXACT SDK pin (2.0.2): 2.3.3 arrived in a
-      # minor-and-patch group and failed jest on its ESM build.
+      # minor-and-patch group and failed jest on its ESM build (#212).
       - dependency-name: '@shopify/flash-list'
+      # react-native-webview is an EXACT SDK pin too (13.16.1): even the 13.16.2
+      # patch fails tsc on its types (#224), as 14.0.1 did (#191).
       - dependency-name: react-native-webview
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
       # Already past the SDK's 5.x (6.x came in as its own major, #94), so like
       # async-storage it takes patches only.
       - dependency-name: react-native-view-shot
