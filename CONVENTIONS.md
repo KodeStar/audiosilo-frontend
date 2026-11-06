@@ -2484,7 +2484,10 @@ page on that tab via `?tab=`); This week (`user_stats`) counts the streak in SER
 your series uses `next_book` (a work without `local` is a ghost opening the series page); Coming up
 in your series (`UpcomingRail`, Track U2) follows it: the first 12 of `useUpcomingAll`, nothing
 at all (no skeleton) while loading, empty or offered by no server, See all -> `/upcoming`; smart
-shelves link to Library Books with the URL params above. The sync pill reads progress-sync's
+shelves link to Library Books with the URL params above. Their cards sit in explicit rows (`shelfRows` +
+`shelfColumns`, `smart-shelves-model.ts`: two on a phone, else as many as fit at 180 wide up to
+four, measured with `onLayout`, the form factor's default before it), each card `flex: 1` from a
+zero basis; never one `flex-wrap` row of percentage widths, which Yoga squashed into one row (#213). The sync pill reads progress-sync's
 offline queue length without changing progress-sync (decision 7). Offline (v2.5.1 PLAYER-02)
 the Now card leads with the first in-progress book that plays here (`pickNowBook` +
 `usePlayableHere`: online, or downloaded on this device), and one that can't shows a disabled
