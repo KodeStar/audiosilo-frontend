@@ -54,8 +54,6 @@ beforeEach(() => {
   mockOpenNarrator.mockReset();
 });
 
-// #213: one wrapping row of percentage-wide cards squashed into a single row on native.
-// The cards now sit in explicit rows, each an equal share of its row.
 describe('SmartShelves layout', () => {
   it('puts four shelves two by two on a phone, from the first frame', async () => {
     await render(<SmartShelves shelves={FOUR} />);

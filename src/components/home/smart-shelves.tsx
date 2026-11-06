@@ -1,8 +1,7 @@
 import { router } from 'expo-router';
 import type { TFunction } from 'i18next';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type LayoutChangeEvent, View } from 'react-native';
+import { View } from 'react-native';
 
 import { BookCover } from '@/components/library/book-cover';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -11,6 +10,7 @@ import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
+import { useWidth } from '@/lib/use-width';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { type SmartShelf, smartShelfHref } from './home-model';
@@ -57,25 +57,21 @@ function shelfText(shelf: SmartShelf, t: TFunction): { title: string; sub: strin
  * The cards sit in explicit rows (`shelfRows`), each card an equal share of its row
  * (`flex: 1` from a zero basis), never one wrapping row of percentage widths: Yoga
  * squashed those into a single row on native (#213). The row count comes from the
- * measured width (`shelfColumns`); before the first layout it is the form factor's
- * default, so the first frame is already a grid.
+ * measured width (`shelfColumns`, read before the first paint on the web, `useWidth`);
+ * before native's first layout it is the form factor's default, so the first frame is
+ * already a grid.
  */
 export function SmartShelves({ shelves }: { shelves: readonly SmartShelf[] }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const layout = useLayout();
   const { openNarrator } = useOpen();
-  const [width, setWidth] = useState(0);
-  const onLayout = (e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width));
+  const { ref, width, onLayout } = useWidth();
   const rows = shelfRows(shelves, shelfColumns(layout, width));
   return (
-    <View testID="smart-shelves" onLayout={onLayout} style={{ gap: SHELF_GAP }}>
-      {rows.map((row) => (
-        <View
-          key={row.map((s) => s.id).join(':')}
-          testID="smart-shelves-row"
-          style={{ flexDirection: 'row', gap: SHELF_GAP }}
-        >
+    <View ref={ref} testID="smart-shelves" onLayout={onLayout} style={{ gap: SHELF_GAP }}>
+      {rows.map((row, r) => (
+        <View key={r} testID="smart-shelves-row" style={{ flexDirection: 'row', gap: SHELF_GAP }}>
           {row.map((shelf) => {
             const { title, sub } = shelfText(shelf, t);
             const open = () => {
