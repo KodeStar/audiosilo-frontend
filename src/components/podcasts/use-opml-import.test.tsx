@@ -239,7 +239,30 @@ describe('useOpmlImport', () => {
       expect(result.current.retries).toEqual({});
     });
 
-    it('says why a follow by address was refused, and the row stays as it was', async () => {
+    it.each(['privacy_conflict', 'kid_account', 'demo_account', 'module_off', 'no_library_access'])(
+      'never retries the same %s refusal',
+      async (code) => {
+        const one = { ...failed(1, 'https://example.com/...'), error: { code, message: '' } };
+        const { result } = await started([one]);
+        expect(result.current.canRetryRow(one)).toBe(false);
+        await act(async () => result.current.retryRow(one));
+        expect(mockClient.followPodcastByUrl).not.toHaveBeenCalled();
+      },
+    );
+
+    it('removes retry eligibility after a permanent refusal of a transient row retry', async () => {
+      const one = failed(1, 'https://example.com/...');
+      const { result } = await started([one]);
+      const { ApiError } = jest.requireActual('@/api/client');
+      mockClient.followPodcastByUrl.mockRejectedValue(new ApiError(409, 'x', 'privacy_conflict'));
+      await act(async () => result.current.retryRow(one));
+      await act(async () => jest.advanceTimersByTimeAsync(0));
+      const next = result.current.retries[1];
+      expect(next.kind).toBe('answered');
+      if (next.kind === 'answered') expect(result.current.canRetryRow(next.row)).toBe(false);
+    });
+
+    it('keeps the latest refusal and says why a follow by address failed', async () => {
       const one = failed(1, 'https://example.com/...');
       const { result } = await started([one]);
       const { ApiError } = jest.requireActual('@/api/client');
@@ -247,7 +270,10 @@ describe('useOpmlImport', () => {
       await act(async () => result.current.retryRow(one));
       await act(async () => jest.advanceTimersByTimeAsync(0));
       expect(mockToast).toHaveBeenCalledTimes(1);
-      expect(result.current.retries[1]).toBeUndefined();
+      expect(result.current.retries[1]).toMatchObject({
+        kind: 'answered',
+        row: { status: 'error' },
+      });
     });
   });
 });

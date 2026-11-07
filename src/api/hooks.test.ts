@@ -291,6 +291,9 @@ describe('anyCapability', () => {
     expect(anyCapability({ a: {} as never, b: undefined }, 'queue')).toBeUndefined();
     expect(anyCapability({ a: {} as never, b: {} as never }, 'queue')).toBe(false);
     expect(anyCapability({}, 'queue')).toBeUndefined();
+    expect(anyCapability({ a: undefined, b: undefined }, 'queue', ['a', 'b'])).toBe(false);
+    expect(anyCapability({ a: undefined, b: undefined }, 'queue', ['a'])).toBeUndefined();
+    expect(anyCapability({ a: { queue: true } as never, b: undefined }, 'queue', ['b'])).toBe(true);
   });
 });
 

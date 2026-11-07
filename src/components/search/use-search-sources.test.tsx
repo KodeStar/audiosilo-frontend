@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { BookMeta, Capabilities, Progress } from '@/api/types';
@@ -192,5 +192,38 @@ describe('useCharacterSources', () => {
     } finally {
       mockA.bookMeta.mockImplementation(community);
     }
+  });
+});
+
+describe('unreadable search capabilities', () => {
+  it('settles all failed flags with an error and recovers on Retry', async () => {
+    mockA.serverInfo.mockRejectedValueOnce(new Error('offline'));
+    mockB.serverInfo.mockRejectedValueOnce(new Error('offline'));
+    const { result } = await mount(() => ({
+      people: usePeopleSources(true),
+      characters: useCharacterSources(true),
+    }));
+    await waitFor(() => expect(result.current.people.supported).toBe(false));
+    await waitFor(() => expect(result.current.characters.isLoading).toBe(false));
+    expect(result.current.people.isLoading).toBe(false);
+    expect(result.current.people.isError).toBe(true);
+    expect(result.current.characters.supported).toBe(false);
+    expect(result.current.characters.isError).toBe(true);
+    expect(mockA.authors).not.toHaveBeenCalled();
+    expect(mockA.bookMeta).not.toHaveBeenCalled();
+    await act(async () => result.current.people.retry());
+    await waitFor(() => expect(result.current.people.authors).toHaveLength(1));
+    await waitFor(() => expect(result.current.characters.books).toHaveLength(2));
+    expect(result.current.people.isError).toBe(false);
+    expect(result.current.characters.isError).toBe(false);
+  });
+
+  it('preserves successful server results beside a failed flag read', async () => {
+    mockB.serverInfo.mockRejectedValueOnce(new Error('offline'));
+    const { result } = await mount(() => usePeopleSources(true));
+    await waitFor(() => expect(result.current.authors).toHaveLength(1));
+    expect(result.current.supported).toBe(true);
+    expect(result.current.isError).toBe(true);
+    expect(result.current.isLoading).toBe(false);
   });
 });

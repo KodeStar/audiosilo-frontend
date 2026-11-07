@@ -5,6 +5,14 @@ every session. CLAUDE.md keeps a one-line index of these topics.
 
 ## Architecture & conventions
 
+**Server display names** (`src/lib/server-display-name.ts`): account switchers, account rows,
+profile menus and the phone's Apple Watch card append the paired host and port only when another
+saved server has the same name. Multiple accounts on one server do not create a collision. Servers
+sharing a host use their full address. Stable connection and server ids never change. The phone
+sends this same label in the existing `pair.server_name`, so the watch's account text agrees after
+Set up or Send again. A label change on an already paired watch takes Send again; no token is
+minted silently just to refresh a label.
+
 **Path is identity, scoped by connection.** All content is addressed by
 `(library_id, rel_path)`, never a DB id, and every content call passes
 `?path=<rel_path>`. But the app is **multi-connection** (signed in to several
@@ -817,7 +825,11 @@ reader follows the narration in the book with it.
   (`selectPlacedBookKey`); its `readalongPosition()` reads the whole-book place, rate and
   playing, and the host is told at once (`syncPosition()`) on play, pause, a rate change or a
   jump (`narrationMoved`: past `NARRATION_JUMP_S` of where the clock would be); a tap's
-  `onSeek` is the store's `seekBook`, only while placed. `useBookReadalong(ref, book, readable)`
+  `onSeek` is the store's `seekBook`, only while placed. The full-screen reader's toolbar
+  has Play/Pause while this book is placed, using the shared store's `toggle`; its press
+  rechecks the target, so a book that changed meanwhile is never controlled accidentally.
+  Pausing leaves Follow narration active and saves no reading place.
+  `useBookReadalong(ref, book, readable)`
   (`use-book-readalong.ts`) picks the map's source (`readalongSource`): the download's copy
   while the server's book names it or names none (a list row, offline), else the server's
   (`useReadalong`); never a stale map, copy or not; a copy that can't be read falls back to the
@@ -827,11 +839,21 @@ reader follows the narration in the book with it.
   copy that won't read) with a "couldn't load" notice and Try again; `signedOut` (401, and any
   failure while the connection needs signing in again: the sign-in state), `denied` (403),
   `missing` (404 without the code) each with their own words and no Try again; none offers Make
-  (a needless multi-hour job). A downloaded EPUB is the book its reader shows, so a server map
-  made from another ebook (`ebookSha256`, `useDownloadedEbookSha`; with no sha kept, a server
-  ebook of another size than the one downloaded, `useDownloadedEbookSize`, as the refresh takes
-  it) is never used: the download's copy stands in, else `ebookChanged` ("download the book
-  again", fe#193). A server map waiting for the connection (`paused`, no copy here) is
+  (a needless multi-hour job). Before the host selects a file, download metadata
+  (`useDownloadedEbookSha`, else `useDownloadedEbookSize`) checks the map's fit (fe#193).
+  Both hosts then report the actual selected EPUB's source, byte length and SHA-256 through
+  `onEbook`; maps remain withheld until `readalongEbookSha256` matches those bytes (F35).
+  A download that cannot be read falls back to the server file, whose identity supersedes
+  the unreadable download's record. Both local and server maps must fit that selected
+  EPUB, including a replacement of the same size; a mismatched map is `ebookChanged`.
+  The Text tab can mount its host without a map (`selectingEbook`) while only download
+  metadata rejected one, so it learns which EPUB actually reads before settling that failure.
+  Its host keys itself by `ebookSelectionKey` (the book and its kept-map/digest/size
+  metadata), so a new download of the same target selects a fresh file before using the
+  new map. The full-screen reader keeps its already-selected file until it reopens.
+  A local map read uses `meta: { local: true }`, so a disk success neither clears
+  `needsReconnect` nor probes a server marked down (frontend#206).
+  A server map waiting for the connection (`paused`, no copy here) is
   `offline` (a map already shown stays meanwhile): neither pending nor
   failed, and the Text tab hides for everyone, an admin too (no spinner, no Make). While another copy of the
   map shown is on its way (the download took it, it was made again), the one shown stays (not
@@ -1148,7 +1170,8 @@ forever; `useUpcomingAvailable` reads only `available`),
 `mergeUpcoming` (tags each item with its connection, keeps the FIRST connection's row of a work
 id, then `compareUpcoming`, the server's order across servers: preorders soonest first, releases
 newest first, then missing by series name and numeric position) and `isNewUpcoming`
-(`first_seen_at` within 7 days: the "New" badge); a date's own rules are `src/lib/release-date.ts`
+(`first_seen_at` within 7 days for preorders and just-released items: the "New" badge, never for
+back-catalogue gaps); a date's own rules are `src/lib/release-date.ts`
 (`parseReleaseDate`, and `releaseIsFuture`: a date at its own precision against the UTC day,
 "2026" or "2026-10" is ahead only while the whole period is), so `format.ts` and the series model
 never import the feature. A failed server adds no items but is named in `failed` (no answer: it
@@ -1165,7 +1188,8 @@ other text as it came) and `upcomingDateLabel` by kind: "Out", "Released", "Firs
 hub's Upcoming section (below). Every item is `UpcomingCover` (`upcoming-cover.tsx`, Track U3): a
 `GhostCover` with the work's real cover drawn over it only when the item's OWN connection (the one
 whose row won the merge) advertises `upcoming_covers === true` (never while unknown) and the item
-has a `cover_url`; the image is `client.upcomingCoverUrl(work.id, { size, version })` ->
+has a `cover_url`; the absence note says "Not on <server>", only about that source server
+(the list does not discover holdings across connected servers). The image is `client.upcomingCoverUrl(work.id, { size, version })` ->
 `GET /me/upcoming/cover?work=&size=&v=` with the media token (the server serves only a cover the
 caller's own list hands out right now; anything else is a 404; `v` is the caller's `fnv1a(cover_url)`, a
 cache buster the server ignores: it caches the image for a day and its job can change a work's
@@ -1197,7 +1221,8 @@ resolves; a failed storage write still shows it for the session). The card (`Upc
 never asked; a demo account's row explains and asks nothing) in states from `calendarRowState`:
 loading, error (Retry), none ("Get calendar link"), shown (the URL, Copy everywhere, Subscribe as
 `webcal://` only where `canSubscribeWebcal`: the iOS app and a browser on an Apple device; Reset and
-Turn off, each confirmed), elsewhere (active, no copy here: "Reset it to see it here"). A copy whose
+Turn off, each confirmed), elsewhere (active, no copy here: the link is shown only on the creating device; Reset replaces it
+and stops existing subscriptions from updating until they use the new link). A copy whose
 `created_at` is not the server's, or of an inactive link, is stale and forgotten, but never while the
 row's own mint or delete is pending. A write sets the copy and the status in one step, after
 cancelling any read of either in flight (sent before the write, its answer would land over it and the
@@ -1928,7 +1953,11 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   item not ready, `AVQueuePlayer` drops to rate 0 by itself for some ms, which read as a stop halted
   a chapter hop across files. The status is read again a second after landing (a pause the system
   made while settling shows nothing), and a queue playing that has not landed after 30 s stops the
-  book as a failed file does, its span ending where the audio last moved. An interruption resumes
+  book with retry guidance, its span ending where the audio last moved. The deadline and delayed
+  status recheck carry a playback generation (`Core/PlaybackAttempt.swift`): a pause, resume or
+  rebuilt queue invalidates them, and each resumed play gets its own full settling interval.
+  Audio-session and start refusals also ask for another Play; only confirmed file-format or parse
+  failures suggest removing the download and fetching it again. An interruption resumes
   in either order of `began` and the system's pause. Pausing
   while a play still asks for the session ends that play. A file that fails stops the book at the
   last known place, the one further on when its turn comes (`AVQueuePlayer` would skip it
@@ -2890,4 +2919,3 @@ under their empty state).
   route's `?connection=`, the wide `WideTop` the focused page's) and selects only which servers are
   down; the words are `offlineBannerText` (CONNECT-15): no network on the device says offline, else
   the one server down by name (only the listening person's servers), else "some servers offline".
-

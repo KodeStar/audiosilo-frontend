@@ -167,6 +167,21 @@ describe('UpcomingRail', () => {
     expect(mockPush).toHaveBeenCalledWith('/upcoming');
   });
 
+  it('names only the source server as missing, including the cover name', async () => {
+    mockUpcoming.items = [preorder];
+    await mount();
+    expect(screen.getAllByText('Not on a')).toHaveLength(2);
+    expect(screen.getByTestId('upcoming-tile').props.accessibilityLabel).toContain('Not on a');
+    expect(screen.getByRole('image').props.accessibilityLabel).toContain('Not on a');
+    expect(screen.queryByText('Not in your library')).toBeNull();
+  });
+
+  it('never gives a freshly discovered back-catalogue gap a New badge', async () => {
+    mockUpcoming.items = [{ ...missing, first_seen_at: new Date(NOW).toISOString() }];
+    await mount();
+    expect(screen.queryByTestId('upcoming-new')).toBeNull();
+  });
+
   it('opens the series page by its local name, pinned to the work', async () => {
     mockUpcoming.items = [preorder];
     await mount();
@@ -201,7 +216,7 @@ describe('UpcomingContent', () => {
     mockLabels = { b: 'Maya' };
     await render(<UpcomingContent />);
     expect(screen.getByTestId('upcoming-section-released')).toBeTruthy();
-    expect(screen.getByText(`Released ${formatReleaseDate('2026-10')} · From Maya`)).toBeTruthy();
+    expect(screen.getByText(`Released ${formatReleaseDate('2026-10')} · Not on Maya`)).toBeTruthy();
   });
 
   it('leaves out the heading under the hub title (embedded)', async () => {
@@ -219,13 +234,13 @@ describe('UpcomingContent', () => {
     expect(screen.getByTestId('upcoming-skeleton', { includeHiddenElements: true })).toBeTruthy();
   });
 
-  it("says the server's first check is still running", async () => {
+  it("says the server's first full check is queued", async () => {
     mockUpcoming.statuses = [{ ...ok(), status: 'pending' }];
     await render(<UpcomingContent />);
-    expect(screen.getByText('Checking for releases')).toBeTruthy();
+    expect(screen.getByText('First full check pending')).toBeTruthy();
     expect(
       screen.getByText(
-        'Your server is checking for releases; this list fills after its first check.',
+        "Your server's first full check for releases is queued. This list may grow after that check.",
       ),
     ).toBeTruthy();
   });
@@ -242,6 +257,16 @@ describe('UpcomingContent', () => {
     expect(screen.queryByTestId('upcoming-row')).toBeNull();
   });
 
+  it('describes a pending full check above populated light-pass rows', async () => {
+    mockUpcoming.items = [preorder];
+    mockUpcoming.statuses = [{ ...ok(), status: 'pending' }];
+    await render(<UpcomingContent />);
+    expect(screen.getByTestId('upcoming-row')).toBeTruthy();
+    expect(screen.getByTestId('upcoming-pending-some').props.children).toBe(
+      "a hasn't completed its first full check for releases yet.",
+    );
+  });
+
   it('notes a stale server and one still on its first check over the list', async () => {
     mockUpcoming.items = [missing];
     mockUpcoming.statuses = [
@@ -250,7 +275,9 @@ describe('UpcomingContent', () => {
     ];
     await render(<UpcomingContent />);
     expect(screen.getByTestId('upcoming-stale').props.children).toMatch(/^Home hasn't checked/);
-    expect(screen.getByTestId('upcoming-pending-some').props.children).toMatch(/^Maya is still/);
+    expect(screen.getByTestId('upcoming-pending-some').props.children).toMatch(
+      /^Maya hasn't completed/,
+    );
   });
 
   it('names several servers as a list, with the verb counted', async () => {
@@ -268,7 +295,7 @@ describe('UpcomingContent', () => {
       "Home and Maya haven't checked for releases in over two days, so this list may be out of date.",
     );
     expect(screen.getByTestId('upcoming-pending-some').props.children).toBe(
-      'Sam, Jo and Al are still running their first check for releases.',
+      "Sam, Jo and Al haven't completed their first full checks for releases yet.",
     );
     expect(
       screen.getByText("Home and Maya didn't answer, so this list may be missing some releases."),

@@ -49,7 +49,9 @@
         "title": "Non c'è niente in riproduzione",
         "body": "Scegli un libro per iniziare l'ascolto."
       }
-    }
+    },
+    "scrollPrevious": "Scorri alle sezioni precedenti",
+    "scrollNext": "Scorri ad altre sezioni"
   },
   "settings": {
     "title": "Impostazioni",
@@ -355,7 +357,9 @@
         "not_found": "Il libro non è più sul server.",
         "unknown_kind": "Il server non conosce questo tipo di ascolto.",
         "invalid": "Il server non è riuscito a leggerlo."
-      }
+      },
+      "failed_one": "Impossibile sincronizzare {{count}} evento di ascolto",
+      "failed_other": "Impossibile sincronizzare {{count}} eventi di ascolto"
     }
   },
   "annotations": {
@@ -3043,8 +3047,8 @@
         "stoppedBusy": "Il tuo server è rimasto occupato. Riprova più tardi.",
         "stoppedCantAct": "Interrotto, perché ora un'altra persona ascolta su questo dispositivo.",
         "rateLimited": "Si può importare circa una volta ogni 30 secondi. Nuovo tentativo tra {{seconds}} s.",
-        "doneFailed_one": "Fatto. {{count}} programma non è stato aggiunto. Puoi riprovare qui sotto.",
-        "doneFailed_other": "Fatto. {{count}} programmi non sono stati aggiunti. Puoi riprovare con ognuno qui sotto."
+        "doneFailed_one": "Importazione terminata. {{count}} programma non è stato aggiunto. Vedi il suo stato qui sotto.",
+        "doneFailed_other": "Importazione terminata. {{count}} programmi non sono stati aggiunti. Vedi i loro stati qui sotto."
       },
       "fail": {
         "notOpml": "Questo file non è una lista OPML.",
@@ -3170,13 +3174,13 @@
     "firstReleased": "Prima uscita: {{date}}",
     "seriesBook": "{{series}}, libro {{position}}",
     "new": "Nuovo",
-    "fromServer": "Da {{server}}",
+    "fromServer": "Non su {{server}}",
     "pending": {
-      "title": "Ricerca delle uscite",
-      "hint": "Il tuo server sta cercando le uscite; questo elenco si riempie dopo la prima ricerca."
+      "title": "Prima verifica completa in attesa",
+      "hint": "La prima verifica completa delle uscite è in programma sul server. Dopo la verifica, l’elenco potrebbe crescere."
     },
-    "pendingSome_one": "{{server}} sta ancora facendo la prima ricerca delle uscite.",
-    "pendingSome_other": "{{server}} stanno ancora facendo la prima ricerca delle uscite.",
+    "pendingSome_one": "{{server}} non ha ancora completato la prima verifica completa delle uscite.",
+    "pendingSome_other": "{{server}} non hanno ancora completato le prime verifiche complete delle uscite.",
     "stale_one": "{{server}} non cerca le uscite da più di due giorni, quindi questo elenco potrebbe non essere aggiornato.",
     "stale_other": "{{server}} non cercano le uscite da più di due giorni, quindi questo elenco potrebbe non essere aggiornato.",
     "empty": {
@@ -3204,7 +3208,7 @@
       "turnOff": "Disattiva",
       "private": "Tieni privato questo link: chiunque lo abbia può vedere le tue prossime uscite.",
       "publicNote": "I servizi di calendario che leggono dal cloud, come Google Calendar, richiedono l'indirizzo HTTPS pubblico del tuo server.",
-      "elsewhere": "Un link è attivo. Reimpostalo per vederlo qui.",
+      "elsewhere": "È attivo un link del calendario. È visibile solo sul dispositivo che lo ha creato. Reimpostarlo sostituisce il link e gli abbonamenti esistenti smettono di aggiornarsi finché non ti abboni con il nuovo link.",
       "demo": "Gli account demo non possono iscriversi a un calendario.",
       "kid": "Gli account per bambini non possono iscriversi a un calendario.",
       "loadError": "Impossibile verificare il tuo link del calendario su {{server}}. Non è cambiato nulla.",

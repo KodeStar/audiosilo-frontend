@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { engine } from '@/downloads/engine';
 import { downloadedEntryOf } from '@/downloads/store';
@@ -6,6 +6,7 @@ import { BASE_URL } from '@/lib/base-url';
 import { useLatestRef } from '@/lib/use-latest';
 
 import { acceptReaderMessage, type HostChannel, type HostMessage } from './protocol';
+import { ebookSha256 } from './ebook-identity';
 import type { ReaderHostProps } from './reader-host-types';
 import { startReaderSession } from './reader-session';
 import { usePlaceGate } from './use-place-gate';
@@ -52,6 +53,7 @@ export function ReaderHost({
   onMessage,
   onLoadError,
   onReopen,
+  onEbook,
   ref,
   ...readalongProps
 }: ReaderHostProps) {
@@ -67,9 +69,23 @@ export function ReaderHost({
     onMessage,
     onLoadError,
     onReopen,
+    onEbook,
+    readalongEbookSha256: readalongProps.readalongEbookSha256,
   });
 
-  const readalong = useReaderReadalong(channel, readalongProps, false);
+  const [ebookSha, setEbookSha] = useState<string | null>(null);
+  const selectedSha = useRef<string | null>(null);
+  const readalong = useReaderReadalong(
+    channel,
+    {
+      ...readalongProps,
+      readalongMap:
+        onEbook && ebookSha !== readalongProps.readalongEbookSha256
+          ? null
+          : readalongProps.readalongMap,
+    },
+    false,
+  );
   useReaderControls(channel, ref, theme, fontScale, readalong);
 
   // One reader session per book: the channel, the window listener and the book's bytes. The
@@ -79,6 +95,9 @@ export function ReaderHost({
     // An open the reader has had: posted, not just held until its first `ready`.
     let delivered = false;
     let fetching: AbortController | null = null;
+    const mapFits = () =>
+      !latest.current.onEbook ||
+      (selectedSha.current !== null && selectedSha.current === latest.current.readalongEbookSha256);
     const session = startReaderSession({
       post: (message: HostMessage, transfer: Transferable[]) => {
         if (message.type === 'open') delivered = true;
@@ -94,18 +113,41 @@ export function ReaderHost({
         latest.current.onReopen?.();
         openBook();
       },
-      readalong,
+      readalong: {
+        ...readalong,
+        // A reloaded document must not receive the previous EPUB's map while its
+        // replacement is being read. React's state update has not rendered yet here.
+        documentReady: () => {
+          if (mapFits()) readalong.documentReady();
+        },
+      },
     });
     channel.current = session.channel;
     const openBook = () => {
       fetching?.abort();
+      selectedSha.current = null;
+      setEbookSha(null);
+      const publishEbook = latest.current.onEbook;
       const abort = new AbortController();
       fetching = abort;
       downloadedEbook(connectionId, libraryId, path)
         .catch(() => null)
-        .then((saved) => saved ?? latest.current.api.ebook(libraryId, path, abort.signal))
+        .then(async (saved) => ({
+          book: saved ?? (await latest.current.api.ebook(libraryId, path, abort.signal)),
+          source: saved ? ('download' as const) : ('server' as const),
+        }))
         // The bytes are in: the book goes over once the screen knows where it opens.
-        .then(async (book) => {
+        .then(async ({ book, source }) => {
+          if (abort.signal.aborted) return book;
+          if (publishEbook) {
+            const sha256 = ebookSha256(book);
+            selectedSha.current = sha256;
+            setEbookSha(sha256);
+            publishEbook({ source, size: book.byteLength, sha256 });
+            // The same bytes and map may keep their React identities across a reload,
+            // so send them explicitly once this new document's file is identified.
+            if (mapFits()) readalong.documentReady();
+          }
           await placeGate();
           return book;
         })

@@ -15,6 +15,7 @@ import { touchTarget } from '@/components/ui/touch-target';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
 import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { accountHref } from '@/lib/paths';
+import { serverDisplayName } from '@/lib/server-display-name';
 import { cn } from '@/lib/utils';
 import { unsentListens } from '@/playback/listening-outbox';
 import { teardownBeforeTokenRevoke } from '@/playback/store';
@@ -60,7 +61,13 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
     void unsentListens(c.id)
       .catch(() => 0)
       .then((unsynced) =>
-        setPendingRemoval({ connection: c, downloadCount: count, last, unsynced }),
+        setPendingRemoval({
+          connection: c,
+          name: serverDisplayName(c, useSession.getState().connections),
+          downloadCount: count,
+          last,
+          unsynced,
+        }),
       );
   };
 
@@ -68,7 +75,7 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
     <ConfirmDialog
       visible={pendingRemoval !== null}
       title={t('account.connections.removeConfirm.title', {
-        name: pendingRemoval?.connection.name ?? '',
+        name: pendingRemoval?.name ?? '',
       })}
       message={removeMessage(pendingRemoval, t)}
       confirmLabel={t('account.connections.removeConfirm.confirm')}
@@ -88,6 +95,7 @@ export function useConnectionRemoval(): { onRemove: (c: Connection) => void; dia
 
 type PendingRemoval = {
   connection: Connection;
+  name: string;
   downloadCount: number;
   last: boolean;
   /** Sync v2 listens still not on the server (lost with it). */
@@ -102,13 +110,13 @@ function removeMessage(pending: PendingRemoval | null, t: TFunction): string {
   const parts = [
     pending.downloadCount > 0
       ? t('account.connections.removeConfirm.message', { count: pending.downloadCount })
-      : t('account.connections.removeConfirm.signOut', { name: pending.connection.name }),
+      : t('account.connections.removeConfirm.signOut', { name: pending.name }),
   ];
   if (pending.unsynced > 0) {
     parts.push(
       t('account.connections.removeConfirm.unsynced', {
         count: pending.unsynced,
-        name: pending.connection.name,
+        name: pending.name,
       }),
     );
   }
@@ -127,43 +135,47 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
   const { t } = useTranslation();
   // The person listening's servers (Phase 8 profiles): Settings > Servers is theirs.
   const connections = useProfileConnections();
+  const savedConnections = useSession((s) => s.connections);
   const { frameClass, hitSlop } = touchTarget(REMOVE_REM, REMOVE_REM);
 
   return (
     <View className="gap-2">
       <View className="gap-2">
-        {connections.map((c) => (
-          <RowSurface key={c.id} className="flex-row items-center gap-1 pr-1">
-            <AnimatedPressable
-              onPress={() => router.push(accountHref(c.id))}
-              accessibilityRole="button"
-              accessibilityLabel={t('account.connections.manage', { name: c.name })}
-              className="flex-1 flex-row items-center gap-3 rounded-xl px-3 py-3"
-            >
-              <Icon name="server" size={18} color={themed.mutedForeground} />
-              <View className="flex-1">
-                <Text variant="label" numberOfLines={1}>
-                  {c.name}
-                </Text>
-                <Text variant="caption" numberOfLines={1}>
-                  {c.user.username} · {c.serverUrl}
-                </Text>
-              </View>
-              <Icon name="chevron-right" size={16} color={themed.mutedForeground} />
-            </AnimatedPressable>
-            <AnimatedPressable
-              onPress={() => onRemove(c)}
-              hitSlop={hitSlop}
-              accessibilityRole="button"
-              accessibilityLabel={t('account.connections.remove', { name: c.name })}
-              className={cn('items-center justify-center', frameClass)}
-            >
-              <View className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10">
-                <Icon name="trash" size={16} color={themed.destructive} />
-              </View>
-            </AnimatedPressable>
-          </RowSurface>
-        ))}
+        {connections.map((c) => {
+          const name = serverDisplayName(c, savedConnections);
+          return (
+            <RowSurface key={c.id} className="flex-row items-center gap-1 pr-1">
+              <AnimatedPressable
+                onPress={() => router.push(accountHref(c.id))}
+                accessibilityRole="button"
+                accessibilityLabel={t('account.connections.manage', { name })}
+                className="flex-1 flex-row items-center gap-3 rounded-xl px-3 py-3"
+              >
+                <Icon name="server" size={18} color={themed.mutedForeground} />
+                <View className="flex-1">
+                  <Text variant="label" numberOfLines={2}>
+                    {name}
+                  </Text>
+                  <Text variant="caption" numberOfLines={1}>
+                    {c.user.username} · {c.serverUrl}
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={16} color={themed.mutedForeground} />
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => onRemove(c)}
+                hitSlop={hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel={t('account.connections.remove', { name })}
+                className={cn('items-center justify-center', frameClass)}
+              >
+                <View className="h-9 w-9 items-center justify-center rounded-full active:bg-destructive/10">
+                  <Icon name="trash" size={16} color={themed.destructive} />
+                </View>
+              </AnimatedPressable>
+            </RowSurface>
+          );
+        })}
         {/* The served web player reaches only its own server. */}
         {onlyOwnServer(
           servedOrigin(),

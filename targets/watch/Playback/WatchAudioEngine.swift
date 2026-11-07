@@ -92,6 +92,10 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private var pausedAt: Date?
   /// Which `play` a session activation is for: a pause or a stop meanwhile ends that one.
   private var startToken = 0
+  /// Deadlines and delayed status reads belong to one uninterrupted play of this queue.
+  private var playbackAttempt = PlaybackAttempt()
+  /// Cleared when audio first moves, so a refused start says to retry without calling a file damaged.
+  private var awaitingAudio = false
   /// When the place last moved while playing (where a late-noticed stop ends its span).
   private var lastAdvance = Date()
   /// The book played to its end: the next play starts it again. Only then: a queue emptied by a
@@ -139,7 +143,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     guard playing, !settling, player.currentItem != nil, player.timeControlStatus == .paused, player.rate == 0
     else { return }
     systemPausedAt = Date()
+    let refusedStart = awaitingAudio
     pause(stoppedAt: lastAdvance)
+    if refusedStart { problem = PlaybackFailure.audioStart.message }
   }
 
   var loadedBook: BookRef? { book?.ref }
@@ -189,6 +195,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   /// Replace the queue with the files from `index` on, `seconds` into the first.
   private func rebuild(from index: Int, at seconds: Double) {
     guard let b = book, b.urls.indices.contains(index) else { return }
+    playbackAttempt.advance()
     statusObservations = []
     ended = false
     seekAsked = false
@@ -208,31 +215,39 @@ final class WatchAudioEngine: NSObject, ObservableObject {
         DispatchQueue.main.async { MainActor.assumeIsolated { self?.itemStatus(item) } }
       }
     }
-    watchSettling(items.first)
+    if playing { watchSettling() }
   }
 
   /// The first item is ready and at its place: the player starts only now, so the audio begins
   /// there. A pause the system made meanwhile showed nothing, and a start it refuses may change no
   /// status, so the status is read again shortly after: never playing in silence with a span open.
   private func landed() {
+    guard settling else { return }
     settling = false
     guard playing else { return }
     startPlayer()
+    recheckStart()
+  }
+
+  private func recheckStart() {
+    let token = playbackAttempt.generation
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.LANDED_RECHECK) { [weak self] in
-      MainActor.assumeIsolated { self?.controlChanged() }
+      MainActor.assumeIsolated {
+        guard let self, self.playbackAttempt.accepts(token) else { return }
+        self.controlChanged()
+      }
     }
   }
 
-  /// A queue that never lands (no status, no seek answer) stops the book like a file that failed,
-  /// its span ending where the audio last moved: nothing was heard. Not playing, nothing is wrong
-  /// yet, and the watch goes on for the play that may come.
-  private func watchSettling(_ first: AVPlayerItem?) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + Self.SETTLE_LIMIT) { [weak self, weak first] in
+  /// A queue that never lands (no status, no seek answer) can be retried. A resumed play gets
+  /// a fresh deadline even when the first item is unchanged.
+  private func watchSettling() {
+    let token = playbackAttempt.generation
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.SETTLE_LIMIT) { [weak self] in
       MainActor.assumeIsolated {
-        guard let self, self.settling, let first, first === self.items.first else { return }
-        guard self.playing else { return self.watchSettling(first) }
+        guard let self, self.playbackAttempt.timedOut(token, settling: self.settling, playing: self.playing) else { return }
         self.pause(stoppedAt: self.lastAdvance)
-        self.fail()
+        self.fail(.settling)
       }
     }
   }
@@ -263,7 +278,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
       // AVQueuePlayer skips a failed file by itself, which would carry the listener past it. One
       // further on waits its turn (the file playing may have hours left: `itemEnded`).
       let current = player.currentItem.flatMap { items.firstIndex(of: $0) } ?? items.count
-      if i <= current { fail() }
+      if i <= current { fail(fileFailure(item.error)) }
     default: break
     }
   }
@@ -324,9 +339,15 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     let now = Date()
     let pickedUp = pausedAt.map { now.timeIntervalSince($0) >= Self.PICKED_UP_AFTER } ?? false
     pausedAt = nil
+    playbackAttempt.advance()
     playing = true
     // A queue still settling starts when it lands.
-    if !settling { startPlayer() }
+    if settling {
+      watchSettling()
+    } else {
+      startPlayer()
+      recheckStart()
+    }
     lastTick = now
     lastKeep = now
     lastCut = now
@@ -337,6 +358,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   private func startPlayer() {
+    awaitingAudio = true
     player.defaultRate = Float(rate)
     player.play()
     player.rate = Float(rate)
@@ -357,6 +379,8 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   private func pause(stoppedAt: Date?) {
+    playbackAttempt.advance()
+    awaitingAudio = false
     guard playing else { return }
     player.pause()
     playing = false
@@ -486,7 +510,10 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     if let w = where_() {
       let p = b.timeline.bookPosition(index: w.index, positionInTrack: w.positionInTrack)
       if p.isFinite {
-        if playing && p != position { lastAdvance = now }
+        if playing && p != position {
+          lastAdvance = now
+          awaitingAudio = false
+        }
         position = p
       }
     }
@@ -519,7 +546,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     guard let item = note.object as? AVPlayerItem, let i = items.firstIndex(of: item), let b = book else { return }
     guard firstIndex + i == b.timeline.files.count - 1 else {
       // The next file failed before its turn: the player would skip it (`itemStatus`).
-      if items.indices.contains(i + 1), items[i + 1].status == .failed { fail() }
+      if items.indices.contains(i + 1), items[i + 1].status == .failed { fail(fileFailure(items[i + 1].error)) }
       return
     }
     // The book's end: its last span closed, then one `finish`.
@@ -538,12 +565,13 @@ final class WatchAudioEngine: NSObject, ObservableObject {
 
   private func itemFailed(_ note: Notification) {
     guard let item = note.object as? AVPlayerItem, items.contains(item) else { return }
-    fail()
+    let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error ?? item.error
+    fail(fileFailure(error))
   }
 
   /// The queue goes first: the place then comes from the last tick, not from wherever the player
   /// skipped to, and a play tries the file again from there (`play`).
-  private func fail() {
+  private func fail(_ failure: PlaybackFailure) {
     cancelStart()
     statusObservations = []
     player.removeAllItems()
@@ -551,7 +579,17 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     pendingSeek = nil
     settling = false
     pause(stoppedAt: nil)
-    problem = "This book can't be played. Remove it from the watch and download it again."
+    problem = failure.message
+  }
+
+  /// Only parsing failures establish that a downloaded file cannot be read. Other player and
+  /// session failures can be temporary and keep the book for another Play.
+  private func fileFailure(_ error: Error?) -> PlaybackFailure {
+    guard let error = error as NSError?, error.domain == AVFoundationErrorDomain else { return .audioStart }
+    switch AVError.Code(rawValue: error.code) {
+    case .fileFormatNotRecognized, .fileFailedToParse: return .damagedDownload
+    default: return .audioStart
+    }
   }
 
   private func interrupted(_ note: Notification) {
@@ -582,7 +620,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     do {
       try s.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio, options: [])
     } catch {
-      return "The watch could not start its audio."
+      return PlaybackFailure.audioStart.message
     }
     let ok: Bool = await withCheckedContinuation { c in
       let once = Once()

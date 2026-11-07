@@ -46,8 +46,14 @@ const mockLocalEbook = jest.fn(async (_a: unknown) => ({
   uri: 'file:///cache/book.epub',
   size: CHUNK_BYTES + 5,
 }));
+const mockIdentifyEbook = jest.fn(async (_file: unknown, source: string) => ({
+  source,
+  size: CHUNK_BYTES + 5,
+  sha256: 'sha-server',
+}));
 jest.mock('./ebook-file.native', () => ({
   localEbook: (a: unknown) => mockLocalEbook(a),
+  identifyEbook: (file: unknown, source: string) => mockIdentifyEbook(file, source),
   chunkReader: (uri: string) => async (position: number, length: number) =>
     `${uri}@${position}+${length}`,
 }));
@@ -76,6 +82,7 @@ async function mount({
   onLoadError = jest.fn(),
   onReopen = jest.fn(),
   onFetch = undefined as (() => void) | undefined,
+  onEbook = undefined as ReaderHostProps['onEbook'],
   placeKnown = undefined as boolean | undefined,
 } = {}) {
   const handle: { current: ReaderHostHandle | null } = { current: null };
@@ -96,6 +103,7 @@ async function mount({
       onLoadError={onLoadError}
       onReopen={onReopen}
       onFetch={onFetch}
+      onEbook={onEbook}
       ref={handle}
     />
   );
@@ -150,9 +158,56 @@ function fakeAppState() {
 beforeEach(() => {
   mockViews.length = 0;
   jest.clearAllMocks();
+  mockIdentifyEbook.mockImplementation(async (_file, source) => ({
+    source,
+    size: CHUNK_BYTES + 5,
+    sha256: 'sha-server',
+  }));
 });
 
 describe('ReaderHost (app)', () => {
+  it('reports the actual server EPUB after a downloaded file cannot be read', async () => {
+    const saved = 'file:///downloads/book.epub';
+    mockDownloaded.mockReturnValueOnce({ manifest: { ebookUri: saved } });
+    mockLocalEbook.mockResolvedValueOnce({ uri: saved, size: CHUNK_BYTES + 5 });
+    mockIdentifyEbook.mockRejectedValueOnce(new Error('EIO'));
+    const onEbook = jest.fn();
+    await mount({ onEbook });
+    await waitFor(() =>
+      expect(onEbook).toHaveBeenCalledWith({
+        source: 'server',
+        size: CHUNK_BYTES + 5,
+        sha256: 'sha-server',
+      }),
+    );
+    expect(onEbook).toHaveBeenCalledTimes(1);
+    expect(mockLocalEbook).toHaveBeenLastCalledWith(expect.objectContaining({ saved: undefined }));
+  });
+
+  it('publishes no EPUB identity when the selected file cannot be read', async () => {
+    mockIdentifyEbook.mockRejectedValueOnce(new Error('EIO'));
+    const onEbook = jest.fn();
+    const host = await mount({ onEbook });
+    await waitFor(() => expect(host.onLoadError).toHaveBeenCalled());
+    expect(onEbook).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a file identity after its session was closed', async () => {
+    let identify!: (value: { source: string; size: number; sha256: string }) => void;
+    mockIdentifyEbook.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          identify = resolve;
+        }),
+    );
+    const onEbook = jest.fn();
+    const host = await mount({ onEbook });
+    await waitFor(() => expect(mockIdentifyEbook).toHaveBeenCalled());
+    await host.unmount();
+    await act(async () => identify({ source: 'server', size: 4, sha256: 'late' }));
+    expect(onEbook).not.toHaveBeenCalled();
+  });
+
   it('loads the reader as an HTML source with every file access setting off', async () => {
     await mount();
     const { props } = latest();

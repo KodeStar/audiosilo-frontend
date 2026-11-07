@@ -50,11 +50,15 @@ jest.mock('./use-book-readalong', () => ({
   }),
 }));
 let mockNarrating = false;
+let mockPlaying = true;
+const mockToggle = jest.fn();
 const mockSeek = jest.fn();
 const mockPosition = jest.fn(() => ({ t: 12, rate: 1, playing: true }));
 jest.mock('./narration', () => ({
   useNarration: () => ({
     narrating: mockNarrating,
+    playing: mockPlaying,
+    toggle: mockToggle,
     readalongPosition: mockPosition,
     onSeek: mockSeek,
   }),
@@ -211,6 +215,7 @@ describe('ReaderScreen', () => {
     mockSignedOut = undefined;
     mockMap = null;
     mockNarrating = false;
+    mockPlaying = true;
   });
 
   describe('saving the place', () => {
@@ -682,6 +687,24 @@ describe('ReaderScreen', () => {
       await opened();
       expect(mockHost!.readalongMap).toBeNull();
       expect(screen.queryByTestId('readalong-follow')).toBeNull();
+      expect(screen.queryByLabelText('Pause')).toBeNull();
+      expect(screen.queryByLabelText('Play')).toBeNull();
+    });
+
+    it('pauses and resumes this book through the shared player without saving a following place', async () => {
+      const view = await mount();
+      await opened(CFI_A);
+      await mapOk();
+      await follows(true);
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await fireEvent.press(screen.getByLabelText('Pause'));
+      expect(mockToggle).toHaveBeenCalledTimes(1);
+      mockPlaying = false;
+      await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+      await fireEvent.press(screen.getByLabelText('Play'));
+      expect(mockToggle).toHaveBeenCalledTimes(2);
+      await view.unmount();
+      expect(saveReaderPlace).not.toHaveBeenCalled();
     });
 
     it('hands the host the map, the narration and the seek while this book plays', async () => {

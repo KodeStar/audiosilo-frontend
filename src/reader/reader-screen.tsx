@@ -131,12 +131,11 @@ export function ReaderScreen({
   // the player holds. The map is asked for and goes to the reader only then: another book
   // playing has nothing to follow here.
   const narration = useNarration({ connectionId, libraryId, path }, host);
-  const readalongMap = useBookReadalong(
-    { connectionId, libraryId, path },
-    book,
-    readable,
-    narration.narrating,
-  ).map;
+  const {
+    map: readalongMap,
+    ebookSha256: mapEbookSha,
+    onEbook,
+  } = useBookReadalong({ connectionId, libraryId, path }, book, readable, narration.narrating);
   // What the reader made of the map, and whether it follows the narration (null: it never
   // has, for this map).
   const [readalongOk, setReadalongOk] = useState(false);
@@ -433,6 +432,17 @@ export function ReaderScreen({
           </View>
           {show ? (
             <>
+              {narration.narrating ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  icon={narration.playing ? 'pause' : 'play'}
+                  accessibilityLabel={t(
+                    narration.playing ? 'player.controls.pause' : 'player.controls.play',
+                  )}
+                  onPress={narration.toggle}
+                />
+              ) : null}
               <Button
                 variant="ghost"
                 size="icon"
@@ -488,6 +498,8 @@ export function ReaderScreen({
                   fetchedHere.current = true;
                 }}
                 readalongMap={readalongMap}
+                readalongEbookSha256={mapEbookSha}
+                onEbook={onEbook}
                 readalongPosition={narration.readalongPosition}
                 onSeek={narration.onSeek}
                 onFollowing={onFollowing}

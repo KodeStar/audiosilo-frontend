@@ -10,6 +10,7 @@ import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
 import { formatRelative } from '@/lib/format';
 import { openDownloads } from '@/lib/open';
+import { serverDisplayName } from '@/lib/server-display-name';
 import { useNow } from '@/lib/use-now';
 import { useSession } from '@/stores/session';
 import { setUpWatch } from '@/watch/send';
@@ -32,7 +33,8 @@ import { useWatchStore } from '@/watch/watch-store';
 export function AppleWatchCard({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   const watch = useWatchStatus();
-  const connection = useSession((s) => s.connections.find((c) => c.id === connectionId) ?? null);
+  const connections = useSession((s) => s.connections);
+  const connection = connections.find((c) => c.id === connectionId) ?? null;
   const api = useOptionalApi(connectionId);
   const { data: server } = useServerInfo(connectionId);
   const pairUntil = useWatchStore((s) => s.pairUntil[connectionId]);
@@ -43,7 +45,7 @@ export function AppleWatchCard({ connectionId }: { connectionId: string }) {
   const [error, setError] = useState<string | null>(null);
   if (!connection || !visible) return null;
 
-  const serverName = connection.name;
+  const serverName = serverDisplayName(connection, connections);
   const status = watchCardStatus(watch, connection, pairUntil, now);
   const here = status === 'signed-in' ? watch.state : null;
   const serves = serverServesWatch(server?.renditions);

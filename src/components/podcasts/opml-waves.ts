@@ -85,6 +85,19 @@ export const isRunning = (status: WaveStatus) => RUNNING.has(status.kind);
  * left to send). */
 const canRetry = (status: WaveStatus) => !isRunning(status) && status.kind !== 'done';
 
+/** Refusals that repeating the same import or feed request cannot resolve. */
+export function canRetryImportFailure(code: string | null): boolean {
+  return ![
+    'privacy_conflict',
+    'invalid_feed_url',
+    'module_off',
+    'kid_account',
+    'demo_account',
+    'no_library_access',
+    'not_podcast_library',
+  ].includes(code ?? '');
+}
+
 /** Whether an import row is on its way: queued by this upload or an earlier one. */
 export const isQueuedRow = (r: Pick<OpmlImportRow, 'status'>) =>
   r.status === 'queued' || r.status === 'already_queued';
@@ -97,7 +110,8 @@ export const unavailableRows = (rows: readonly Pick<OpmlImportRow, 'status'>[]) 
 /** Whether Try again applies to an import: as `canRetry`, or done with rows that could
  * not be added right now (they need a person, so no automatic wave asks again). */
 export const canRetryImport = ({ status, rows }: WaveState) =>
-  canRetry(status) || (status.kind === 'done' && unavailableRows(rows) > 0);
+  (status.kind !== 'failed' || canRetryImportFailure(status.code)) &&
+  (canRetry(status) || (status.kind === 'done' && unavailableRows(rows) > 0));
 
 /** The rows of `before` with `next`'s answers over them, by `outline_index`. A row this
  * import followed or queued earlier that a later wave answers `already_following` (its

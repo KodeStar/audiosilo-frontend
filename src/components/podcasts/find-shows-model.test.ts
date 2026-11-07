@@ -6,6 +6,7 @@ import { golden2c3 } from '@/testing/podcast-fixtures-2c3';
 import { artworkRetryDelay } from './artwork-retry';
 import {
   availableSections,
+  canRetryImportRow,
   checkErrorKey,
   cleanSearchText,
   exportErrorKey,
@@ -374,7 +375,7 @@ describe('an import row that could not be added (BRIDGE-01)', () => {
         { status: 'error' },
         { status: 'cancelled' },
       ]),
-    ).toBe(2);
+    ).toBe(3);
   });
 });
 
@@ -383,5 +384,29 @@ describe('artworkRetryDelay', () => {
     expect(artworkRetryDelay(0)).toBeNull();
     expect([1, 2, 3].map(artworkRetryDelay)).toEqual([3_000, 10_000, 30_000]);
     expect(artworkRetryDelay(4)).toBeNull();
+  });
+});
+
+describe('canRetryImportRow', () => {
+  it.each([
+    'privacy_conflict',
+    'kid_account',
+    'demo_account',
+    'module_off',
+    'no_library_access',
+    'not_podcast_library',
+    'invalid_feed_url',
+  ])('refuses an unchanged %s request', (code) => {
+    expect(canRetryImportRow({ status: 'error', error: { code, message: '' } })).toBe(false);
+  });
+  it.each(['recently_failed', 'dns', 'bridge_unavailable'])(
+    'allows a transient %s failure',
+    (code) => {
+      expect(canRetryImportRow({ status: 'error', error: { code, message: '' } })).toBe(true);
+    },
+  );
+  it('allows cancelled rows, but never already added rows', () => {
+    expect(canRetryImportRow({ status: 'cancelled', error: null })).toBe(true);
+    expect(canRetryImportRow({ status: 'followed', error: null })).toBe(false);
   });
 });

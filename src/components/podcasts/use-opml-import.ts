@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { apiErrorKind } from '@/api/client';
 import { CapabilityError, myPodcastsQuery, qk, useFollowPodcastByUrl } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
 import type { OpmlImportRow } from '@/api/types';
@@ -10,7 +11,7 @@ import { FOLLOW_REQUEST_POLL_MS } from '@/lib/podcast-requests';
 import { onForeground } from '@/lib/when-active';
 import { mayActFor } from '@/stores/profiles';
 
-import { followByUrlErrorKey, OPML_MAX_BYTES } from './find-shows-model';
+import { canRetryImportRow, followByUrlErrorKey, OPML_MAX_BYTES } from './find-shows-model';
 import { opmlText, outlineFeeds, rowFeedUrl } from './opml-feeds';
 import type { PickedOpml } from './opml-pick';
 import { isQueuedRow, OpmlWaves, type WaveState } from './opml-waves';
@@ -43,7 +44,7 @@ export type OpmlImport = ReturnType<typeof useOpmlImport>;
  * memory here only). It reads the follow requests through the shared cache entry (so the
  * Shows mode's notice moves too), pauses in the background, checks `mayActFor` before
  * each upload, and reads the library's shows again after each wave. A file over 1 MiB is
- * refused here, before any upload. A row that could not be added has its own Try again
+ * refused here, before any upload. A retryable failed or cancelled row has its own Try again
  * (`retryRow`): a single follow by the address the list holds at that place
  * (`rowFeedUrl`), which the server always tries again (a wave never does: it answers a
  * feed that failed within the hour `recently_failed`).
@@ -169,14 +170,13 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
       const feedUrl = rowFeedUrl(feeds, row);
       const index = row.outline_index;
       const key = `${list}:${index}`;
-      if (!feedUrl || retrying.current.has(key)) return;
+      if (!canRetryImportRow(row) || !feedUrl || retrying.current.has(key)) return;
       retrying.current.add(key);
-      const settle = (next: RowRetry | null) => {
-        if (next?.kind !== 'busy') retrying.current.delete(key);
+      const settle = (next: RowRetry) => {
+        if (next.kind !== 'busy') retrying.current.delete(key);
         setRetryState((r) => {
           if (r.list !== list) return r;
-          const { [index]: _, ...rest } = r.rows;
-          return { list, rows: next ? { ...rest, [index]: next } : rest };
+          return { list, rows: { ...r.rows, [index]: next } };
         });
       };
       settle({ kind: 'busy' });
@@ -196,7 +196,15 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
                 : { ...row, status: 'queued', request_id: answer.request.id, error: null },
           }),
         (e: unknown) => {
-          settle(null);
+          settle({
+            kind: 'answered',
+            row: {
+              ...row,
+              status: 'error',
+              request_id: null,
+              error: { code: apiErrorKind(e), message: '' },
+            },
+          });
           if (currentList.current === list && !(e instanceof CapabilityError))
             toast({ title: t(followByUrlErrorKey(e)) });
         },
@@ -219,11 +227,9 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     retry: useCallback(() => waves.current?.retry(), []),
     /** The rows followed again by hand, by `outline_index` (`withRetries`). */
     retries,
-    /** Whether a row has a Try again of its own: it could not be added and the list holds
-     * its address. */
+    /** Whether retrying the same address can help and the list holds its address. */
     canRetryRow: useCallback(
-      (row: OpmlImportRow) =>
-        (row.status === 'error' || row.status === 'cancelled') && !!rowFeedUrl(feeds, row),
+      (row: OpmlImportRow) => canRetryImportRow(row) && !!rowFeedUrl(feeds, row),
       [feeds],
     ),
     retryRow,

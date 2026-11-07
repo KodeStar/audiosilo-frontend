@@ -43,6 +43,24 @@ const signedIn: WatchState = {
 const account = { id: 7 };
 
 describe('buildPairMessage', () => {
+  it('carries the collision-only display label without changing watch account identity', () => {
+    const other = {
+      ...connection,
+      id: 'other.7',
+      serverId: 'other',
+      serverUrl: 'https://other.example',
+    };
+    const message = buildPairMessage(payload, connection, 'iPhone', 0, [connection, other]);
+    expect(message.server_name).toBe('Hearthside (paired.example)');
+    expect(message.server_id).toBe('srv');
+    expect(message.user_id).toBe(7);
+    expect(message.server_url).toBe('https://paired.example');
+    const sameServer = { ...connection, id: 'srv.8', user: { id: 8, username: 'sam' } };
+    expect(
+      buildPairMessage(payload, connection, 'iPhone', 0, [connection, sameServer]).server_name,
+    ).toBe('Hearthside');
+  });
+
   it('carries the fields the watch decodes, the addresses merged', () => {
     const at = Date.UTC(2026, 10, 5, 12, 0, 0);
     expect(buildPairMessage(payload, connection, "Ada's iPhone", at)).toEqual({

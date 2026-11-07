@@ -2,6 +2,7 @@ import { useBook, useCapability, useServerInfo } from '@/api/hooks';
 import type { Book } from '@/api/types';
 import { useDownloadedEbook } from '@/downloads/store';
 import { canRead } from '@/reader/can-read';
+import type { OpenedEbook } from '@/reader/ebook-identity';
 import { mayMakeReadalong } from '@/reader/readalong-gating';
 import type { ReaderReadalongMap } from '@/reader/readalong-map';
 import { type ReadalongFailure, useBookReadalong } from '@/reader/use-book-readalong';
@@ -12,6 +13,10 @@ import { textTab } from './companion-model';
 
 /** The companion's Text tab for the playing book (see `useTextTab`). */
 export type TextTabModel = {
+  ebookSha256?: string;
+  ebookSelectionKey?: string;
+  onEbook?: (ebook: OpenedEbook) => void;
+  selectingEbook?: boolean;
   /** The tab shows (`textTab`). */
   shown: boolean;
   /** The map to follow, or null (none: the admin's Make offer shows instead). */
@@ -40,10 +45,31 @@ export function useTextTab(target: PlayTarget): TextTabModel {
   const ebooks = useCapability('ebooks', connectionId);
   const savedEbook = useDownloadedEbook(connectionId, libraryId, path);
   const readable = canRead(ebooks, book, !!savedEbook);
-  const { map, pending, failure, offline, retry } = useBookReadalong(target, book, readable);
+  const {
+    map,
+    pending,
+    failure,
+    offline,
+    retry,
+    ebookSha256,
+    onEbook,
+    selectingEbook,
+    ebookSelectionKey,
+  } = useBookReadalong(target, book, readable, true, { reselectOnDownloadChange: true });
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const mayMake = readable && mayMakeReadalong(user, server);
   const shown = textTab({ map: map !== null, failed: failure !== null, offline, mayMake });
-  return { shown, map, pending, failure, retry, book };
+  return {
+    shown,
+    map,
+    pending,
+    failure,
+    retry,
+    book,
+    ebookSha256,
+    onEbook,
+    selectingEbook,
+    ebookSelectionKey,
+  };
 }

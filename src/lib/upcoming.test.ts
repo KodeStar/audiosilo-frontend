@@ -7,15 +7,30 @@ const NOW = new Date('2026-10-30T15:00:00Z');
 
 describe('isNewUpcoming', () => {
   it('is new for seven days after the server first listed it', () => {
-    expect(isNewUpcoming({ first_seen_at: '2026-10-30T04:00:00Z' }, NOW)).toBe(true);
-    expect(isNewUpcoming({ first_seen_at: '2026-10-23T15:00:01Z' }, NOW)).toBe(true);
-    expect(isNewUpcoming({ first_seen_at: '2026-10-23T15:00:00Z' }, NOW)).toBe(false);
-    expect(isNewUpcoming({ first_seen_at: '2026-09-01T00:00:00Z' }, NOW)).toBe(false);
+    expect(isNewUpcoming({ kind: 'preorder', first_seen_at: '2026-10-30T04:00:00Z' }, NOW)).toBe(
+      true,
+    );
+    expect(isNewUpcoming({ kind: 'preorder', first_seen_at: '2026-10-23T15:00:01Z' }, NOW)).toBe(
+      true,
+    );
+    expect(isNewUpcoming({ kind: 'preorder', first_seen_at: '2026-10-23T15:00:00Z' }, NOW)).toBe(
+      false,
+    );
+    expect(isNewUpcoming({ kind: 'preorder', first_seen_at: '2026-09-01T00:00:00Z' }, NOW)).toBe(
+      false,
+    );
+  });
+
+  it('never marks back-catalogue gaps or unknown kinds New', () => {
+    for (const kind of ['missing', 'unknown']) {
+      expect(isNewUpcoming({ kind, first_seen_at: NOW.toISOString() }, NOW)).toBe(false);
+    }
+    expect(isNewUpcoming({ kind: 'released', first_seen_at: NOW.toISOString() }, NOW)).toBe(true);
   });
 
   it('is not new without a readable time', () => {
-    expect(isNewUpcoming({ first_seen_at: '' }, NOW)).toBe(false);
-    expect(isNewUpcoming({ first_seen_at: 'yesterday' }, NOW)).toBe(false);
+    expect(isNewUpcoming({ kind: 'preorder', first_seen_at: '' }, NOW)).toBe(false);
+    expect(isNewUpcoming({ kind: 'preorder', first_seen_at: 'yesterday' }, NOW)).toBe(false);
   });
 });
 

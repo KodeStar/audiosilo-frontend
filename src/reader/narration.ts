@@ -61,11 +61,18 @@ export function useNarration(
   host: RefObject<ReaderHostHandle | null>,
 ): {
   narrating: boolean;
+  playing: boolean;
+  toggle: () => void;
   readalongPosition: () => ReadalongPosition | null;
   onSeek: (t: number) => void;
 } {
   const key = target ? contentKey(target.connectionId, target.libraryId, target.path) : null;
   const narrating = usePlayer((s) => key !== null && selectPlacedBookKey(s) === key);
+  const playing = usePlayer(selectIsPlaying);
+  const toggle = useCallback(() => {
+    const s = usePlayer.getState();
+    if (key !== null && selectPlacedBookKey(s) === key) void s.toggle();
+  }, [key]);
 
   useEffect(() => {
     if (key === null) return;
@@ -95,7 +102,7 @@ export function useNarration(
     [key, host],
   );
   return useMemo(
-    () => ({ narrating, readalongPosition, onSeek }),
-    [narrating, readalongPosition, onSeek],
+    () => ({ narrating, playing, toggle, readalongPosition, onSeek }),
+    [narrating, playing, toggle, readalongPosition, onSeek],
   );
 }

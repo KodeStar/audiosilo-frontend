@@ -196,7 +196,11 @@ describe('UpcomingCalendarCard', () => {
   it('says a link is active elsewhere when this device has none, and forgets a replaced copy', async () => {
     await saveCalendarLink('a', { url: `https://a${PATH}`, created_at: CREATED });
     await mount([{ id: 'a', status: { active: true, created_at: '2026-10-31T08:00:00Z' } }]);
-    expect(await screen.findByText('A link is active. Reset it to see it here.')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'A calendar link is active. It is shown only on the device that created it. Reset replaces the link and stops existing subscriptions from updating until you subscribe with the new link.',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByTestId('upcoming-calendar-url')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull();
     await waitFor(async () => expect(await readCalendarLink('a')).toBeNull());

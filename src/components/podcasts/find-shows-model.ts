@@ -6,7 +6,7 @@ import { FIND_SHOWS_SECTIONS, type FindShowsSection } from '@/lib/paths';
 import { isOpenRequest, requestShow } from '@/lib/podcast-requests';
 import { utf8 } from '@/lib/sha256';
 
-import { isQueuedRow } from './opml-waves';
+import { canRetryImportFailure, isQueuedRow } from './opml-waves';
 import { requestReasonKey } from './podcast-model';
 
 /**
@@ -304,10 +304,17 @@ export function liveImportRows(
   });
 }
 
-/** How many rows of an import could not be added (`error`, a follow that ended without
- * the show): each has its own Try again. */
+/** Whether repeating the same feed request can help. Privacy and account refusals need
+ * a change outside this row; cancelled or transient failures can be tried again. */
+export function canRetryImportRow(row: Pick<OpmlImportRow, 'status' | 'error'>): boolean {
+  if (row.status === 'cancelled') return true;
+  if (row.status !== 'error') return false;
+  return canRetryImportFailure(row.error?.code ?? null);
+}
+
+/** How many rows of an import failed or were cancelled without adding the show. */
 export const failedRows = (rows: readonly Pick<OpmlImportRow, 'status'>[]) =>
-  rows.filter((r) => r.status === 'error').length;
+  rows.filter((r) => r.status === 'error' || r.status === 'cancelled').length;
 
 /** Whether any row of an import is still being added. */
 export const stillAdding = (rows: readonly OpmlImportRow[]) => rows.some(isQueuedRow);

@@ -53,7 +53,10 @@ jest.mock('@/stores/profiles', () => ({
   ],
 }));
 jest.mock('@/stores/session', () => ({
-  useSession: (select: (s: unknown) => unknown) => select({ defaultConnectionId: mockDefaultId }),
+  useSession: Object.assign(
+    (select: (s: unknown) => unknown) => select({ defaultConnectionId: mockDefaultId }),
+    { getState: () => ({ connections: [connectionOf('srv.7', 'srv', 'Hearthside', mockUser)] }) },
+  ),
   onConnectionRemoved: () => () => {},
 }));
 

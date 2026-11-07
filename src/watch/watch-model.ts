@@ -2,6 +2,7 @@ import type { Book, PairingPayload, ServerAddresses, User } from '@/api/types';
 import { isKidAccount } from '@/lib/account';
 import { connectionIdOf, serverIdOf, usableUserId } from '@/lib/connection-id';
 import { mergeAddresses } from '@/lib/server-address';
+import { serverDisplayName } from '@/lib/server-display-name';
 import { isRecord } from '@/lib/storage-keys';
 
 /**
@@ -149,12 +150,16 @@ export function buildPairMessage(
   connection: WatchConnection,
   phoneName: string,
   expiresAt: number,
+  connections: readonly WatchConnection[] = [connection],
 ): PairMessage {
   return {
     v: WATCH_MESSAGE_VERSION,
     type: 'pair',
     server_id: serverIdOf(connection),
-    server_name: payload.server_name || connection.name,
+    server_name: serverDisplayName(
+      { ...connection, name: payload.server_name || connection.name },
+      connections,
+    ),
     user_id: connection.user.id,
     user_name: connection.user.username,
     base_url: payload.base_url,

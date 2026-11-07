@@ -255,9 +255,9 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
         icon="users"
         onPress={() => openBook(at.connectionId, libraryId, path, 'characters')}
         accessibilityLabel={t('home.now.whosWhoLabel', { count: met })}
-        className={compact ? 'flex-1 px-3' : undefined}
+        className={compact ? 'h-auto min-h-[46px] w-full px-3 py-2.5' : undefined}
       >
-        <Text numberOfLines={1}>{t('home.now.whosWho')}</Text>
+        <Text className="shrink">{t('home.now.whosWho')}</Text>
         <Text className="text-muted-foreground" style={tabularNums}>
           {met}
         </Text>
@@ -269,10 +269,11 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
         size="lg"
         variant={compact ? 'outline' : 'ghost'}
         icon="book-open"
-        title={t('home.now.storySoFar')}
         onPress={() => openBook(at.connectionId, libraryId, path, 'recaps')}
-        className={compact ? 'flex-1 px-3' : undefined}
-      />
+        className={compact ? 'h-auto min-h-[46px] w-full px-3 py-2.5' : undefined}
+      >
+        <Text className="shrink">{t('home.now.storySoFar')}</Text>
+      </Button>
     ) : null,
   ].filter(Boolean);
 
@@ -309,7 +310,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
           {statsRow}
           <View className="gap-2">
             {resumeButton}
-            {companion.length > 0 ? <View className="flex-row gap-2">{companion}</View> : null}
+            {companion.length > 0 ? <View className="gap-2">{companion}</View> : null}
           </View>
         </>
       ) : (

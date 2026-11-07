@@ -50,6 +50,19 @@ beforeEach(() => {
 });
 
 describe('ConnectionsSection', () => {
+  it('distinguishes same-name account rows and their accessible actions', async () => {
+    const first = useSession.getState().connections[0];
+    useSession.setState({
+      connections: [first, { ...first, id: 'c2', serverUrl: 'https://other.example' }],
+    });
+    const onRemove = jest.fn();
+    await render(<ConnectionsSection onRemove={onRemove} />);
+    expect(screen.getByText('Hearthside (books.example)')).toBeTruthy();
+    expect(screen.getByText('Hearthside (other.example)')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Remove Hearthside (other.example)'));
+    expect(onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: 'c2' }));
+  });
+
   it("lists only the person listening's servers (Settings > Servers is theirs)", async () => {
     useSession.setState({
       connections: [

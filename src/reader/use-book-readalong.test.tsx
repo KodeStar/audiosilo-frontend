@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import type { Book } from '@/api/types';
@@ -141,6 +141,9 @@ describe('useBookReadalong', () => {
     });
     await waitFor(() => expect(result.current.map).not.toBeNull());
     expect(mockReadKept).toHaveBeenCalledWith(REF);
+    expect(
+      client.getQueryCache().find({ queryKey: ['readalongLocal', 'c1', 1, 'A/Book', 'g1'] })?.meta,
+    ).toEqual({ local: true });
     expect(mockServerMap).not.toHaveBeenCalledWith({ enabled: true, generatedAt: '' });
   });
 
@@ -382,6 +385,100 @@ describe('useBookReadalong', () => {
       });
       expect(result.current.map).not.toBeNull();
       expect(mockReadKept).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the EPUB actually opened after an unreadable download (F35)', () => {
+    beforeEach(() => {
+      mockKept = 'g1';
+      mockEbookSha = 'sha-old';
+      mockEbookSize = EBOOK.size;
+      mockReadKept.mockResolvedValue(map([SPAN], 'sha-old'));
+    });
+
+    it('refuses both maps of the unreadable download when the same-size server EPUB replaced it', async () => {
+      const old = map([SPAN], 'sha-old');
+      mockServerMap.mockImplementation(({ enabled }: { enabled: boolean }) => ({
+        data: enabled ? old : undefined,
+        isError: false,
+      }));
+      const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+      await waitFor(() => expect(result.current.map).not.toBeNull());
+      await act(async () =>
+        result.current.onEbook({ source: 'server', size: EBOOK.size, sha256: 'sha-new' }),
+      );
+      await waitFor(() =>
+        expect(result.current).toMatchObject({ map: null, failure: 'ebookChanged' }),
+      );
+    });
+
+    it('allows a matching server map despite the unreadable download identity', async () => {
+      mockKept = undefined;
+      const matching = map([{ ...SPAN, start: 7, end: 8 }], 'sha-new');
+      mockServerMap.mockImplementation(({ enabled }: { enabled: boolean }) => ({
+        data: enabled ? matching : undefined,
+        isError: false,
+      }));
+      const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+      expect(result.current).toMatchObject({ map: null, selectingEbook: true });
+      await act(async () =>
+        result.current.onEbook({ source: 'server', size: EBOOK.size, sha256: 'sha-new' }),
+      );
+      await waitFor(() =>
+        expect(result.current).toMatchObject({
+          map: { sections: matching.sections },
+          failure: null,
+          ebookSha256: 'sha-new',
+          selectingEbook: false,
+        }),
+      );
+    });
+
+    it('keeps a matching local map with a cached server EPUB while offline', async () => {
+      mockServes = undefined;
+      const { result } = await renderHook(() => useBookReadalong(REF, { ebook: EBOOK }, true), {
+        wrapper,
+      });
+      await waitFor(() => expect(result.current.map).not.toBeNull());
+      await act(async () =>
+        result.current.onEbook({ source: 'server', size: EBOOK.size, sha256: 'sha-old' }),
+      );
+      expect(result.current).toMatchObject({
+        map: { sections: map([SPAN], 'sha-old').sections },
+        failure: null,
+      });
+    });
+
+    it('selects a same-target redownload again without reusing the old host identity', async () => {
+      mockKept = undefined;
+      const matching = map([SPAN], 'sha-new');
+      mockServerMap.mockImplementation(({ enabled }: { enabled: boolean }) => ({
+        data: enabled ? matching : undefined,
+        isError: false,
+      }));
+      const { result, rerender } = await renderHook(
+        () => useBookReadalong(REF, ready(), true, true, { reselectOnDownloadChange: true }),
+        { wrapper },
+      );
+      await act(async () =>
+        result.current.onEbook({ source: 'download', size: EBOOK.size, sha256: 'sha-old' }),
+      );
+      expect(result.current.failure).toBe('ebookChanged');
+      const previous = result.current.ebookSelectionKey;
+      const oldSelection = result.current.onEbook;
+      mockEbookSha = 'sha-new';
+      await rerender(undefined);
+      expect(result.current.ebookSelectionKey).not.toBe(previous);
+      expect(result.current.failure).toBeNull();
+      // A late answer from the old selection cannot reject the new session's map.
+      await act(async () =>
+        oldSelection({ source: 'download', size: EBOOK.size, sha256: 'sha-old' }),
+      );
+      expect(result.current.failure).toBeNull();
+      await act(async () =>
+        result.current.onEbook({ source: 'download', size: EBOOK.size, sha256: 'sha-new' }),
+      );
+      expect(result.current.map).not.toBeNull();
     });
   });
 });

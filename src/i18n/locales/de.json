@@ -49,7 +49,9 @@
         "title": "Es läuft nichts",
         "body": "Wähle ein Buch, um mit dem Hören zu beginnen."
       }
-    }
+    },
+    "scrollPrevious": "Zu vorherigen Bereichen scrollen",
+    "scrollNext": "Zu weiteren Bereichen scrollen"
   },
   "settings": {
     "title": "Einstellungen",
@@ -355,7 +357,9 @@
         "not_found": "Das Buch ist nicht mehr auf dem Server.",
         "unknown_kind": "Der Server kennt diese Art von Hörsitzung nicht.",
         "invalid": "Der Server konnte es nicht lesen."
-      }
+      },
+      "failed_one": "{{count}} Hörereignis konnte nicht synchronisiert werden",
+      "failed_other": "{{count}} Hörereignisse konnten nicht synchronisiert werden"
     }
   },
   "annotations": {
@@ -3043,8 +3047,8 @@
         "stoppedBusy": "Dein Server blieb ausgelastet. Versuch es später noch einmal.",
         "stoppedCantAct": "Gestoppt, weil jetzt jemand anderes auf diesem Gerät hört.",
         "rateLimited": "Ein Import ist etwa alle 30 Sekunden möglich. Neuer Versuch in {{seconds}} s.",
-        "doneFailed_one": "Fertig. {{count}} Sendung konnte nicht hinzugefügt werden. Du kannst es unten noch einmal versuchen.",
-        "doneFailed_other": "Fertig. {{count}} Sendungen konnten nicht hinzugefügt werden. Du kannst es unten bei jeder noch einmal versuchen."
+        "doneFailed_one": "Import abgeschlossen. {{count}} Sendung wurde nicht hinzugefügt. Den Status findest du unten.",
+        "doneFailed_other": "Import abgeschlossen. {{count}} Sendungen wurden nicht hinzugefügt. Die Status findest du unten."
       },
       "fail": {
         "notOpml": "Diese Datei ist keine OPML-Liste.",
@@ -3170,13 +3174,13 @@
     "firstReleased": "Erstmals erschienen: {{date}}",
     "seriesBook": "{{series}}, Band {{position}}",
     "new": "Neu",
-    "fromServer": "Von {{server}}",
+    "fromServer": "Nicht auf {{server}}",
     "pending": {
-      "title": "Suche nach Neuerscheinungen",
-      "hint": "Dein Server sucht nach Neuerscheinungen; diese Liste füllt sich nach der ersten Suche."
+      "title": "Erste vollständige Prüfung ausstehend",
+      "hint": "Die erste vollständige Prüfung auf neue Veröffentlichungen ist eingeplant. Danach kann diese Liste wachsen."
     },
-    "pendingSome_one": "{{server}} sucht noch zum ersten Mal nach Neuerscheinungen.",
-    "pendingSome_other": "{{server}} suchen noch zum ersten Mal nach Neuerscheinungen.",
+    "pendingSome_one": "{{server}} hat die erste vollständige Prüfung auf Veröffentlichungen noch nicht abgeschlossen.",
+    "pendingSome_other": "{{server}} haben ihre ersten vollständigen Prüfungen auf Veröffentlichungen noch nicht abgeschlossen.",
     "stale_one": "{{server}} hat seit über zwei Tagen nicht nach Neuerscheinungen gesucht, diese Liste ist vielleicht nicht aktuell.",
     "stale_other": "{{server}} haben seit über zwei Tagen nicht nach Neuerscheinungen gesucht, diese Liste ist vielleicht nicht aktuell.",
     "empty": {
@@ -3204,7 +3208,7 @@
       "turnOff": "Ausschalten",
       "private": "Halte diesen Link privat: Wer ihn hat, sieht deine anstehenden Erscheinungen.",
       "publicNote": "Kalenderdienste, die aus der Cloud abrufen, wie Google Kalender, brauchen die öffentliche HTTPS-Adresse deines Servers.",
-      "elsewhere": "Ein Link ist aktiv. Setze ihn zurück, um ihn hier zu sehen.",
+      "elsewhere": "Ein Kalenderlink ist aktiv. Er wird nur auf dem Gerät angezeigt, das ihn erstellt hat. Zurücksetzen ersetzt den Link. Bestehende Abonnements werden erst wieder aktualisiert, wenn du den neuen Link abonnierst.",
       "demo": "Demo-Konten können keinen Kalender abonnieren.",
       "kid": "Kinderkonten können keinen Kalender abonnieren.",
       "loadError": "Dein Kalenderlink auf {{server}} konnte nicht geprüft werden. Nichts wurde geändert.",

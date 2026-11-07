@@ -25,19 +25,24 @@ jest.mock('@/api/hooks', () => ({
 const mockPair = jest.fn();
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({ pair: mockPair }) }));
 let mockUser: Partial<User> = { id: 7, username: 'ada' };
+let mockOtherConnections: ReturnType<typeof mockConnections> = [];
+function mockConnections() {
+  return [
+    {
+      id: 'srv.7',
+      serverId: 'srv',
+      serverUrl: 'https://books.example',
+      name: 'Hearthside',
+      user: mockUser,
+    },
+  ];
+}
 jest.mock('@/stores/session', () => ({
-  useSession: (select: (s: unknown) => unknown) =>
-    select({
-      connections: [
-        {
-          id: 'srv.7',
-          serverId: 'srv',
-          serverUrl: 'https://books.example',
-          name: 'Hearthside',
-          user: mockUser,
-        },
-      ],
-    }),
+  useSession: Object.assign(
+    (select: (s: unknown) => unknown) =>
+      select({ connections: [...mockConnections(), ...mockOtherConnections] }),
+    { getState: () => ({ connections: [...mockConnections(), ...mockOtherConnections] }) },
+  ),
   onConnectionRemoved: () => () => {},
 }));
 
@@ -68,11 +73,33 @@ async function mount(status: WatchStatus, pairUntil: Record<string, number> = {}
 beforeEach(() => {
   mockServer = { renditions: ['watch'] };
   mockUser = { id: 7, username: 'ada' };
+  mockOtherConnections = [];
   mockPair.mockReset().mockResolvedValue({ base_url: 'https://b', pairing_token: 't' });
   mockSendPair.mockReset().mockResolvedValue(undefined);
 });
 
 describe('AppleWatchCard', () => {
+  it('identifies a same-name server in its body and the watch account message', async () => {
+    mockOtherConnections = [
+      {
+        ...mockConnections()[0],
+        id: 'other.7',
+        serverId: 'other',
+        serverUrl: 'https://other.example',
+      },
+    ];
+    await mount(installed);
+    expect(screen.getByText(/Hearthside \(books.example\)/)).toBeTruthy();
+    await fireEvent.press(screen.getByText('Set up Apple Watch'));
+    expect(mockSendPair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        server_name: 'Hearthside (books.example)',
+        server_id: 'srv',
+        user_id: 7,
+      }),
+    );
+  });
+
   it('is not there without a paired watch', async () => {
     await mount(NO_WATCH);
     expect(screen.queryByTestId('apple-watch-card')).toBeNull();

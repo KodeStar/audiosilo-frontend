@@ -255,6 +255,24 @@ describe('NowCard', () => {
     expect(screen.getByText('finish at your pace')).toBeTruthy();
   });
 
+  it('stacks companion actions at phone width and allows the full label to wrap', async () => {
+    mockCaps = { metadata: true };
+    await render(<NowCard at={at} saved={saved} />);
+    await fireEvent(screen.getByTestId('now-card'), 'layout', {
+      nativeEvent: { layout: { width: 358, height: 400 } },
+    });
+    const who = screen.getByRole('button', { name: "Who's who, 2 characters met so far" });
+    const story = screen.getByRole('button', { name: 'Story so far' });
+    expect(who.props.className).toContain('w-full');
+    expect(story.props.className).toContain('w-full');
+    expect(who.props.className).toContain('h-auto');
+    expect(screen.getByText("Who's who").props.numberOfLines).toBeUndefined();
+    await fireEvent.press(who);
+    expect(mockPush).toHaveBeenCalledWith(
+      expect.objectContaining({ params: expect.objectContaining({ tab: 'characters' }) }),
+    );
+  });
+
   it('counts only the characters met so far, and only with community metadata', async () => {
     await render(<NowCard at={at} saved={saved} />);
     expect(screen.queryByText("Who's who")).toBeNull();

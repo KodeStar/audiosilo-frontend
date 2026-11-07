@@ -31,6 +31,7 @@ export function GhostCover({
   position,
   width,
   server,
+  note: noteOverride,
   className,
 }: {
   title: string;
@@ -39,12 +40,15 @@ export function GhostCover({
   width: number;
   /** The connected server that has it (the `info` variant), if any. */
   server?: string;
+  /** A source-specific absence note, when only one server's holdings are known. */
+  note?: string;
   className?: string;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const elsewhere = !!server;
-  const note = elsewhere ? t('covers.onServer', { server }) : t('covers.notInLibrary');
+  const note =
+    noteOverride ?? (elsewhere ? t('covers.onServer', { server }) : t('covers.notInLibrary'));
   const has = position !== undefined && position !== '';
   const small = width < 100;
   // Type scales with the cover (the prototype's container units), with readable floors.

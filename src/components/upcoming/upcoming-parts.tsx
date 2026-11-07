@@ -48,7 +48,7 @@ function useOpenItem() {
     });
 }
 
-/** The "New" badge (first listed in the last seven days). */
+/** The "New" badge for a preorder or release first listed in the last seven days. */
 function NewBadge({ className }: { className?: string }) {
   const { t } = useTranslation();
   return (
@@ -60,19 +60,19 @@ function NewBadge({ className }: { className?: string }) {
 
 type ItemProps = {
   item: SourcedUpcomingItem;
-  /** First listed within the last seven days (`isNewUpcoming`). */
+  /** A preorder or release first listed within seven days (`isNewUpcoming`). */
   isNew: boolean;
   /** The server it came from, when more than one is connected (`useServerFlag`). */
   server?: string;
 };
 
 /** An item's lines, worked out once per render: the series line, the date line, the
- * server line (when several are connected), and what it says to a screen reader. */
+ * source server's absence line, and what it says to a screen reader. */
 function useItemText({ item, isNew, server }: ItemProps) {
   const { t } = useTranslation();
   const seriesLine = upcomingSeriesLine(item, t);
   const date = upcomingDateLabel(item, t);
-  const from = server ? t('upcoming.fromServer', { server }) : '';
+  const from = t('upcoming.fromServer', { server: server ?? item.connectionName });
   const label = [item.work.title, seriesLine, date, isNew ? t('upcoming.new') : '', from]
     .filter(Boolean)
     .join(', ');
@@ -81,9 +81,9 @@ function useItemText({ item, isNew, server }: ItemProps) {
 
 /**
  * The Home rail's tile: the work's community cover when its server serves it, else a ghost
- * cover (`UpcomingCover`: never fake art, the book is on none of the listener's servers),
- * the title, the series and number, the date line, and the server when several are
- * connected. Opens the series page.
+ * cover (`UpcomingCover`: the book is absent on its source server),
+ * the title, the series and number, the date line, and the source server's absence note.
+ * Opens the series page.
  */
 export function UpcomingTile({ width, ...props }: ItemProps & { width: number }) {
   const open = useOpenItem();

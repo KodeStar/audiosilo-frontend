@@ -303,6 +303,19 @@ describe('OpmlWaves', () => {
     }
   });
 
+  it.each(['kid_account', 'demo_account', 'module_off', 'no_library_access', 'privacy_conflict'])(
+    'does not upload the same list again after %s',
+    async (code) => {
+      const t = setup([new ApiError(403, 'x', code), answer([])]);
+      t.waves.start();
+      await flush();
+      t.waves.retry();
+      await flush();
+      expect(t.last().status).toEqual({ kind: 'failed', code });
+      expect(t.upload).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('re-queues a failed private request with the next wave', async () => {
     const privateQueued = row(5, 'queued', { private: true, request_id: 81 });
     const t = setup(

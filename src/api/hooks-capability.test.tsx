@@ -106,9 +106,13 @@ function makeClient() {
 }
 type StubClient = ReturnType<typeof makeClient>;
 const mockClients: Record<string, ReturnType<typeof makeClient>> = {};
+let mockReadAll = false;
 jest.mock('@/api/provider', () => ({
   useApi: (id?: string) => mockClients[id ?? 'c1'],
-  useApis: () => [],
+  useApis: () =>
+    mockReadAll
+      ? Object.entries(mockClients).map(([id, client]) => ({ connection: { id }, client }))
+      : [],
   useCid: (id?: string) => id ?? 'c1',
   useOptionalApi: (id?: string) => mockClients[id ?? 'c1'] ?? null,
 }));
@@ -139,6 +143,7 @@ import {
   useAuthors,
   useBookMeta,
   useCapability,
+  useCapabilitiesAllRead,
   useClearListeningGoal,
   useCollection,
   useCollections,
@@ -1927,6 +1932,56 @@ describe('Phase 4 cache updates', () => {
       qk.myNotes('c1'),
     ]) {
       expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    }
+  });
+});
+
+describe('aggregate capability reads', () => {
+  beforeEach(() => {
+    mockReadAll = true;
+  });
+  afterEach(() => {
+    mockReadAll = false;
+  });
+  it('settles failed reads and retries only the unknown server', async () => {
+    const { result } = await mount(
+      { on: { metadata: true }, down: {} },
+      useCapabilitiesAllRead,
+      () => mockClients.down.serverInfo.mockRejectedValue(new Error('offline')),
+    );
+    await waitFor(() => expect(result.current.failed).toEqual(['down']));
+    expect(result.current.caps.on?.metadata).toBe(true);
+    mockClients.down.serverInfo.mockResolvedValue(serverWith('down', { metadata: true }));
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(result.current.failed).toEqual([]));
+    expect(result.current.caps.down?.metadata).toBe(true);
+    expect(mockClients.on.serverInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps cached flags when a background refresh fails', async () => {
+    const { result } = await mount({ on: { metadata: true } }, useCapabilitiesAllRead);
+    await waitFor(() => expect(result.current.caps.on?.metadata).toBe(true));
+    mockClients.on.serverInfo.mockRejectedValue(new Error('offline'));
+    await act(async () => {
+      await queryClients[queryClients.length - 1].refetchQueries({ queryKey: qk.server('on') });
+    });
+    expect(result.current.caps.on?.metadata).toBe(true);
+    expect(result.current.failed).toEqual([]);
+  });
+
+  it('settles paused first reads as failures until the network returns', async () => {
+    onlineManager.setOnline(false);
+    try {
+      const { result } = await mount({ down: {} }, useCapabilitiesAllRead);
+      await waitFor(() => expect(result.current.failed).toEqual(['down']));
+      expect(mockClients.down.serverInfo).not.toHaveBeenCalled();
+      await act(async () => result.current.retry());
+      expect(mockClients.down.serverInfo).not.toHaveBeenCalled();
+      await act(async () => onlineManager.setOnline(true));
+      await waitFor(() => expect(result.current.failed).toEqual([]));
+      expect(result.current.caps.down).toBeDefined();
+    } finally {
+      onlineManager.setOnline(true);
     }
   });
 });

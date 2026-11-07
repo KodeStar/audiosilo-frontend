@@ -41,7 +41,8 @@ const WAIT_KEY = {
 
 /** The status line of an import (`now` for a countdown). A done import is done only once
  * nothing is still being added; rows that could not be added are counted (those that need
- * a person first, then those that failed, each with its own Try again). */
+ * a person first, then those that failed or were cancelled). Row actions say which can
+ * be tried again. */
 function statusLine(
   status: WaveStatus,
   rows: readonly OpmlImportRow[],

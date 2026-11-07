@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, ScrollView, StyleSheet } from 'react-native';
 
 import { SegmentedControl } from './toggle-group';
 
@@ -111,15 +111,40 @@ describe('SegmentedControl', () => {
     await fireEvent(scroller, 'layout', { nativeEvent: { layout: { width: 350, height: 36 } } });
     await fireEvent(scroller, 'contentSizeChange', 451, 36);
     expect(fade('right')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Scroll to more sections' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scroll to previous sections' })).toBeNull();
     expect(fade('left')).toBeNull();
     // Scrolled to the end: the start has more now, the end none.
     await fireEvent.scroll(scroller, { nativeEvent: { contentOffset: { x: 101, y: 0 } } });
     expect(fade('left')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Scroll to previous sections' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scroll to more sections' })).toBeNull();
     expect(fade('right')).toBeNull();
     // Room for every segment: no fade at all.
     await fireEvent(scroller, 'layout', { nativeEvent: { layout: { width: 460, height: 36 } } });
     await fireEvent.scroll(scroller, { nativeEvent: { contentOffset: { x: 0, y: 0 } } });
     expect(fade('left')).toBeNull();
     expect(fade('right')).toBeNull();
+  });
+
+  it('keeps a selected end section in view and lets the arrow reveal the start', async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+    try {
+      await mount(
+        <SegmentedControl options={[...options]} value="books" onChange={jest.fn()} scrollable />,
+      );
+      const scroller = screen.getByTestId('segment-scroller');
+      await fireEvent(scroller, 'layout', { nativeEvent: { layout: { width: 350, height: 36 } } });
+      await fireEvent(scroller, 'contentSizeChange', 650, 36);
+      await fireEvent(screen.getByRole('radio', { name: 'Books' }), 'layout', {
+        nativeEvent: { layout: { x: 550, width: 100, height: 30 } },
+      });
+      expect(scrollTo).toHaveBeenCalledWith({ x: 300, animated: expect.any(Boolean) });
+      await fireEvent.scroll(scroller, { nativeEvent: { contentOffset: { x: 300, y: 0 } } });
+      await fireEvent.press(screen.getByRole('button', { name: 'Scroll to previous sections' }));
+      expect(scrollTo).toHaveBeenLastCalledWith({ x: 0, animated: expect.any(Boolean) });
+    } finally {
+      scrollTo.mockRestore();
+    }
   });
 });
