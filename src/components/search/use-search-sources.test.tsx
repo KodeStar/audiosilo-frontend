@@ -196,6 +196,36 @@ describe('useCharacterSources', () => {
 });
 
 describe('unreadable search capabilities', () => {
+  it.each([true, false])(
+    'retries a failed library read (flags also failed: %s)',
+    async (flagsFailed) => {
+      if (flagsFailed) mockA.serverInfo.mockRejectedValueOnce(new Error('offline'));
+      mockA.libraries.mockRejectedValueOnce(new Error('offline'));
+      const { result } = await mount(() => usePeopleSources(true));
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      await act(async () => result.current.retry());
+      await waitFor(() => expect(result.current.authors).toHaveLength(1));
+      expect(result.current.isError).toBe(false);
+      expect(mockB.libraries).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([true, false])(
+    'retries failed listening progress (flags also failed: %s)',
+    async (flagsFailed) => {
+      if (flagsFailed) mockA.serverInfo.mockRejectedValueOnce(new Error('offline'));
+      mockA.allProgress.mockRejectedValueOnce(new Error('offline'));
+      const { result } = await mount(() => useCharacterSources(true));
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      await act(async () => result.current.retry());
+      await waitFor(() => expect(result.current.books).toHaveLength(2));
+      expect(result.current.isError).toBe(false);
+      expect(mockB.allProgress).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('settles all failed flags with an error and recovers on Retry', async () => {
     mockA.serverInfo.mockRejectedValueOnce(new Error('offline'));
     mockB.serverInfo.mockRejectedValueOnce(new Error('offline'));

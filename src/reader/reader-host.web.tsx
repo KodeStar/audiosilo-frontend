@@ -75,16 +75,15 @@ export function ReaderHost({
 
   const [ebookSha, setEbookSha] = useState<string | null>(null);
   const selectedSha = useRef<string | null>(null);
+  const withholdMap = !!onEbook && ebookSha !== readalongProps.readalongEbookSha256;
   const readalong = useReaderReadalong(
     channel,
     {
       ...readalongProps,
-      readalongMap:
-        onEbook && ebookSha !== readalongProps.readalongEbookSha256
-          ? null
-          : readalongProps.readalongMap,
+      readalongMap: withholdMap ? null : readalongProps.readalongMap,
     },
     false,
+    withholdMap && !!readalongProps.readalongMap,
   );
   useReaderControls(channel, ref, theme, fontScale, readalong);
 

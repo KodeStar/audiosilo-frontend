@@ -158,7 +158,7 @@ function fakeAppState() {
 beforeEach(() => {
   mockViews.length = 0;
   jest.clearAllMocks();
-  mockIdentifyEbook.mockImplementation(async (_file, source) => ({
+  mockIdentifyEbook.mockReset().mockImplementation(async (_file, source) => ({
     source,
     size: CHUNK_BYTES + 5,
     sha256: 'sha-server',
@@ -329,8 +329,8 @@ describe('ReaderHost (app)', () => {
     await say({ type: 'ready' });
     await waitFor(() => expect(latest().posted[0]).toMatchObject({ type: 'open' }));
     expect(latest().posted[0]).toMatchObject({ at: { cfi: 'epubcfi(/6/8!/4/2)', fraction: 0.4 } });
-    // The book's file is found once, not again for the new WebView.
-    expect(mockLocalEbook).toHaveBeenCalledTimes(1);
+    // The new document selects its file again while preserving the reading place.
+    expect(mockLocalEbook).toHaveBeenCalledTimes(2);
   });
 
   it('gives up after the renderer dies again and again (Android), saying so', async () => {
@@ -569,6 +569,36 @@ describe('ReaderHost (app) read-along', () => {
     expect(types().filter((t) => t === 'readalong' || t === 'position')).toEqual([]);
   });
 
+  it.each(['sha-server', 'sha-replaced'])(
+    'identifies the EPUB again before sending a reloaded document its map (%s)',
+    async (sha256) => {
+      const onEbook = jest.fn();
+      await mountAlong({ onEbook, readalongMap: small, readalongEbookSha256: 'sha-server' });
+      await say({ type: 'ready' });
+      await waitFor(() =>
+        expect(latest().posted).toContainEqual({ type: 'readalong', map: small }),
+      );
+      let identified!: (value: { source: string; size: number; sha256: string }) => void;
+      mockIdentifyEbook.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            identified = resolve;
+          }),
+      );
+      await act(async () => latest().props.onContentProcessDidTerminate());
+      await say({ type: 'ready' });
+      expect(latest().posted).not.toContainEqual({ type: 'readalong', map: small });
+      await act(async () => identified({ source: 'server', size: CHUNK_BYTES + 5, sha256 }));
+      await waitFor(() => expect(types()).toContain('open'));
+      expect(onEbook).toHaveBeenLastCalledWith({ source: 'server', size: CHUNK_BYTES + 5, sha256 });
+      if (sha256 === 'sha-server') {
+        expect(latest().posted).toContainEqual({ type: 'readalong', map: small });
+      } else {
+        expect(latest().posted).not.toContainEqual({ type: 'readalong', map: small });
+      }
+    },
+  );
+
   it('sends a small map whole once ready, the place, and follow when asked to follow', async () => {
     await mountAlong({ readalongMap: small, followNarration: true });
     expect(latest().posted).toEqual([]);
@@ -650,7 +680,12 @@ describe('ReaderHost (app) read-along', () => {
   });
 
   it('a WebView made again gets the map and follows as the last one last said', async () => {
-    await mountAlong({ readalongMap: small, followNarration: true });
+    await mountAlong({
+      onEbook: jest.fn(),
+      readalongMap: small,
+      readalongEbookSha256: 'sha-server',
+      followNarration: true,
+    });
     await say({ type: 'ready' });
     // The reader stopped following (the person turned the page away), then died.
     await say({ type: 'following', value: false });

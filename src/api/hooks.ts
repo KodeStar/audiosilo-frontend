@@ -3577,6 +3577,10 @@ export function useAllProgressAll({
        * before it answered): not loading, and not "no progress". */
       offline: results.some((r) => !r.data && r.isPaused),
       error: results.find((r) => r.error)?.error ?? null,
+      /** Ask again only for the servers whose progress failed. */
+      retry: () => {
+        for (const r of results) if (r.isError) void r.refetch();
+      },
     }),
   });
 }

@@ -851,6 +851,9 @@ reader follows the narration in the book with it.
   Its host keys itself by `ebookSelectionKey` (the book and its kept-map/digest/size
   metadata), so a new download of the same target selects a fresh file before using the
   new map. The full-screen reader keeps its already-selected file until it reopens.
+  A replacement native WebView selects and identifies the file again before taking a map;
+  its document generation cannot reuse the previous document's EPUB digest.
+  Withholding a map during identification preserves the reader's last Follow narration choice.
   A local map read uses `meta: { local: true }`, so a disk success neither clears
   `needsReconnect` nor probes a server marked down (frontend#206).
   A server map waiting for the connection (`paused`, no copy here) is
@@ -2897,7 +2900,9 @@ under their empty state).
   books with characters, "from the start" until they arrive). The pure `search-model.ts`
   (`matchNamed`, `matchCharacters`, `listeningIn`) is where spoiler safety lives: an unmet character
   is only ever counted ("2 more matches after your place in the book", i18next `_one`/`_other`), never
-  named, also not via an alias, and a name met in any book is not counted again.
+  named, also not via an alias, and a name met in any book is not counted again. Failed capability,
+  library and listening-progress reads surface the group's failure; Retry asks those failed reads
+  again along with its result queries, preserving successful servers' cached data.
 - **Profile menu** (`profile-menu.tsx`, tablet/desktop top bar): each server with its state
   (`serverStatus` in `src/api/reachability.ts`, also the top bar's server line and the dock's
   saved-locally line: needs signing in again > offline > signed in as), opening its account screen;

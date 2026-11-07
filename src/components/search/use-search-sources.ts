@@ -55,7 +55,12 @@ export type PeopleSources = {
 export function usePeopleSources(enabled: boolean): PeopleSources {
   const { clients } = useApiRegistry();
   const { caps, failed: capabilityFailures, retry: retryCapabilities } = useCapabilitiesAllRead();
-  const { libraries, isLoading: librariesLoading } = useLibrariesAll();
+  const {
+    libraries,
+    isLoading: librariesLoading,
+    error: librariesError,
+    retry: retryLibraries,
+  } = useLibrariesAll();
   const slots = useMemo(() => {
     const out: { kind: BrowseKind; source: ListSource }[] = [];
     for (const lib of libraries) {
@@ -117,9 +122,10 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
         series,
         supported: anyCapability(caps, 'browse_people', capabilityFailures),
         isLoading: (enabled && librariesLoading) || results.some((r) => r.isLoading),
-        isError: failed.length > 0 || capabilityFailures.length > 0,
+        isError: !!librariesError || failed.length > 0 || capabilityFailures.length > 0,
         retry: () => {
           retryCapabilities();
+          retryLibraries();
           failed.forEach((r) => void r.refetch());
         },
       };
@@ -151,7 +157,12 @@ export function useCharacterSources(
 ): CharacterSources {
   const { clients } = useApiRegistry();
   const { caps, failed: capabilityFailures, retry: retryCapabilities } = useCapabilitiesAllRead();
-  const { progress, isLoading: progressLoading } = useAllProgressAll({
+  const {
+    progress,
+    isLoading: progressLoading,
+    error: progressError,
+    retry: retryProgress,
+  } = useAllProgressAll({
     enabled,
     refetchOnMount: refetchProgress,
   });
@@ -222,9 +233,10 @@ export function useCharacterSources(
     books,
     supported: anyCapability(caps, 'metadata', capabilityFailures),
     isLoading: pending,
-    isError: failed.length > 0 || capabilityFailures.length > 0,
+    isError: !!progressError || failed.length > 0 || capabilityFailures.length > 0,
     retry: () => {
       retryCapabilities();
+      retryProgress();
       failed.forEach((m) => void m.refetch());
     },
   };

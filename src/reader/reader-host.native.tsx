@@ -114,7 +114,7 @@ export function ReaderHost({
   const lastPlace = useRef<ReaderPlace | undefined>(undefined);
   // When this WebView last said `opened` (null before it did), for the reload budget.
   const openedAt = useRef<number | null>(null);
-  // The book's local file, found once per book.
+  // The book's local file, selected for each reader document.
   const book = useRef<Promise<LocalEbook | null> | null>(null);
   // What the WebView's messages are handed to (this generation's session).
   const received = useRef<(message: ReaderMessage) => void>(() => {});
@@ -123,28 +123,35 @@ export function ReaderHost({
   const endSession = useRef(() => {});
 
   const bookKey = contentKey(connectionId, libraryId, path);
-  const [selected, setSelected] = useState<{ book: string; sha256: string } | null>(null);
-  const ebookSha = selected?.book === bookKey ? selected.sha256 : null;
+  const [selected, setSelected] = useState<{
+    book: string;
+    generation: number;
+    sha256: string;
+  } | null>(null);
+  const ebookSha =
+    selected?.book === bookKey && selected.generation === generation ? selected.sha256 : null;
+  const withholdMap = !!onEbook && ebookSha !== readalongProps.readalongEbookSha256;
   const readalong = useReaderReadalong(
     channel,
     {
       ...readalongProps,
-      readalongMap:
-        onEbook && ebookSha !== readalongProps.readalongEbookSha256
-          ? null
-          : readalongProps.readalongMap,
+      readalongMap: withholdMap ? null : readalongProps.readalongMap,
     },
     true,
+    withholdMap && !!readalongProps.readalongMap,
   );
   useReaderControls(channel, ref, theme, fontScale, readalong);
 
+  useEffect(() => {
+    lastPlace.current = undefined;
+  }, [bookKey]);
+
   // The book's file, fetched into the cache when it is not on the device: started at once,
-  // while the WebView loads. A failure is said at once (null to whoever waits on it). One
-  // file per mount: a size the server changes meanwhile is fetched on the next open.
+  // while the WebView loads. A failure is said at once (null to whoever waits on it). A
+  // new document selects and identifies the file again: its path may have been replaced.
   useEffect(() => {
     const abort = new AbortController();
     const publishEbook = latest.current.onEbook;
-    lastPlace.current = undefined;
     const saved = downloadedEntryOf({ connectionId, libraryId, path })?.manifest.ebookUri;
     const find = (saved?: string) =>
       localEbook({
@@ -171,7 +178,7 @@ export function ReaderHost({
           identity = await identifyEbook(file, 'server');
         }
         if (abort.signal.aborted) return null;
-        setSelected({ book: bookKey, sha256: identity.sha256 });
+        setSelected({ book: bookKey, generation, sha256: identity.sha256 });
         publishEbook(identity);
         return { ...file, size: identity.size };
       })
@@ -180,7 +187,7 @@ export function ReaderHost({
         return null;
       });
     return () => abort.abort();
-  }, [connectionId, libraryId, path, bookKey, latest]);
+  }, [connectionId, libraryId, path, bookKey, generation, latest]);
 
   // One reader session per WebView: the channel, the start timeout and the transfers.
   useEffect(() => {

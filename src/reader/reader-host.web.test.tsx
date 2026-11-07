@@ -170,37 +170,51 @@ async function mountInPage({
 }
 
 describe('ReaderHost (web) in a page', () => {
-  it('withholds the previous map on reload and sends it again once the same EPUB is identified', async () => {
-    const book = new Uint8Array([1, 2, 3, 4]).buffer;
-    let fetched!: (book: ArrayBuffer) => void;
-    const ebook = jest
-      .fn()
-      .mockResolvedValueOnce(book)
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            fetched = resolve;
-          }),
-      );
-    const host = await mountInPage({
-      ebook,
-      onEbook: jest.fn(),
-      readalong: { readalongMap: { sections: [] }, readalongEbookSha256: ebookSha256(book) },
-    });
-    const maps = () =>
-      host.posted.mock.calls.filter(
-        ([message]) =>
-          (message as { type: string; map?: unknown }).type === 'readalong' &&
-          (message as { map?: unknown }).map !== null,
-      );
-    await host.say({ type: 'ready' });
-    expect(maps()).toHaveLength(1);
-    await host.say({ type: 'ready' });
-    expect(maps()).toHaveLength(1);
-    await act(async () => fetched(book));
-    expect(maps()).toHaveLength(2);
-    await host.unmount();
-  });
+  it.each([true, false])(
+    'withholds the map on reload and preserves following=%s',
+    async (following) => {
+      const book = new Uint8Array([1, 2, 3, 4]).buffer;
+      let fetched!: (book: ArrayBuffer) => void;
+      const ebook = jest
+        .fn()
+        .mockResolvedValueOnce(book)
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              fetched = resolve;
+            }),
+        );
+      const host = await mountInPage({
+        ebook,
+        onEbook: jest.fn(),
+        readalong: {
+          readalongMap: { sections: [] },
+          readalongEbookSha256: ebookSha256(book),
+          followNarration: !following,
+        },
+      });
+      const maps = () =>
+        host.posted.mock.calls.filter(
+          ([message]) =>
+            (message as { type: string; map?: unknown }).type === 'readalong' &&
+            (message as { map?: unknown }).map !== null,
+        );
+      await host.say({ type: 'ready' });
+      expect(maps()).toHaveLength(1);
+      await host.say({ type: 'following', value: following });
+      await host.say({ type: 'ready' });
+      expect(maps()).toHaveLength(1);
+      const before = host.posted.mock.calls.length;
+      await act(async () => fetched(book));
+      expect(maps()).toHaveLength(2);
+      expect(
+        host.posted.mock.calls
+          .slice(before)
+          .some(([message]) => (message as { type: string }).type === 'follow'),
+      ).toBe(following);
+      await host.unmount();
+    },
+  );
 
   it('identifies the server fallback bytes and withholds the old download map', async () => {
     const book = new Uint8Array([1, 2, 3, 4]).buffer;
