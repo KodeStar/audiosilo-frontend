@@ -7,7 +7,6 @@ import { MakeReadalongOffer } from '@/components/bridge/make-readalong';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spinner } from '@/components/ui/spinner';
-import { contentKeyOf } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useNarration } from '@/reader/narration';
@@ -57,7 +56,7 @@ export function TextPanel({
       <ReadAlong
         // One per book: the playing book changes under an open tab (Up next, the car), and
         // a reader document says `ready` once, so the next book needs its own.
-        key={text.ebookSelectionKey ?? contentKeyOf(target)}
+        key={text.ebookSelectionKey}
         target={target}
         ebookSize={book.ebook.size}
         map={map}

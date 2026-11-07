@@ -85,17 +85,27 @@ export const isRunning = (status: WaveStatus) => RUNNING.has(status.kind);
  * left to send). */
 const canRetry = (status: WaveStatus) => !isRunning(status) && status.kind !== 'done';
 
+/** The refusals the podcast routes give a caller who may not use them here (by error
+ * code): the module off, a kid's or the demo account, no grant on the library. Each has its
+ * own copy (`accountRefusalKey`). */
+export const ACCOUNT_REFUSALS = [
+  'module_off',
+  'kid_account',
+  'demo_account',
+  'no_library_access',
+  'not_podcast_library',
+] as const;
+export type AccountRefusal = (typeof ACCOUNT_REFUSALS)[number];
+
+const PERMANENT_REFUSALS: readonly string[] = [
+  'privacy_conflict',
+  'invalid_feed_url',
+  ...ACCOUNT_REFUSALS,
+];
+
 /** Refusals that repeating the same import or feed request cannot resolve. */
 export function canRetryImportFailure(code: string | null): boolean {
-  return ![
-    'privacy_conflict',
-    'invalid_feed_url',
-    'module_off',
-    'kid_account',
-    'demo_account',
-    'no_library_access',
-    'not_podcast_library',
-  ].includes(code ?? '');
+  return !PERMANENT_REFUSALS.includes(code ?? '');
 }
 
 /** Whether an import row is on its way: queued by this upload or an earlier one. */

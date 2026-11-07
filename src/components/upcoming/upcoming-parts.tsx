@@ -62,17 +62,15 @@ type ItemProps = {
   item: SourcedUpcomingItem;
   /** A preorder or release first listed within seven days (`isNewUpcoming`). */
   isNew: boolean;
-  /** The server it came from, when more than one is connected (`useServerFlag`). */
-  server?: string;
 };
 
 /** An item's lines, worked out once per render: the series line, the date line, the
  * source server's absence line, and what it says to a screen reader. */
-function useItemText({ item, isNew, server }: ItemProps) {
+function useItemText({ item, isNew }: ItemProps) {
   const { t } = useTranslation();
   const seriesLine = upcomingSeriesLine(item, t);
   const date = upcomingDateLabel(item, t);
-  const from = t('upcoming.fromServer', { server: server ?? item.connectionName });
+  const from = t('upcoming.fromServer', { server: item.connectionName });
   const label = [item.work.title, seriesLine, date, isNew ? t('upcoming.new') : '', from]
     .filter(Boolean)
     .join(', ');

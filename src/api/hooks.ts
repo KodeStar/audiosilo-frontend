@@ -732,10 +732,9 @@ export function anyCapability(
   flag: keyof Capabilities,
   failed: readonly string[] = [],
 ): boolean | undefined {
-  const values = Object.values(caps);
-  if (values.some((c) => c?.[flag])) return true;
-  return values.length > 0 &&
-    Object.entries(caps).every(([cid, c]) => c !== undefined || failed.includes(cid))
+  const entries = Object.entries(caps);
+  if (entries.some(([, c]) => c?.[flag])) return true;
+  return entries.length > 0 && entries.every(([cid, c]) => c !== undefined || failed.includes(cid))
     ? false
     : undefined;
 }

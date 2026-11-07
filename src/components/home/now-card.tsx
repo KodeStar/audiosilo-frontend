@@ -246,6 +246,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
       className={compact ? 'w-full' : undefined}
     />
   );
+  // Compact: full width, and tall enough to wrap a long label.
+  const companionClass = compact ? 'h-auto min-h-[46px] w-full px-3 py-2.5' : undefined;
   const companion = [
     characters.length > 0 ? (
       <Button
@@ -255,7 +257,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
         icon="users"
         onPress={() => openBook(at.connectionId, libraryId, path, 'characters')}
         accessibilityLabel={t('home.now.whosWhoLabel', { count: met })}
-        className={compact ? 'h-auto min-h-[46px] w-full px-3 py-2.5' : undefined}
+        className={companionClass}
       >
         <Text className="shrink">{t('home.now.whosWho')}</Text>
         <Text className="text-muted-foreground" style={tabularNums}>
@@ -270,7 +272,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
         variant={compact ? 'outline' : 'ghost'}
         icon="book-open"
         onPress={() => openBook(at.connectionId, libraryId, path, 'recaps')}
-        className={compact ? 'h-auto min-h-[46px] w-full px-3 py-2.5' : undefined}
+        className={companionClass}
       >
         <Text className="shrink">{t('home.now.storySoFar')}</Text>
       </Button>

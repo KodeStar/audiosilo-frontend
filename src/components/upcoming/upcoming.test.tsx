@@ -9,10 +9,6 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openSeries: (...a: unknown[]) => mockOpenSeries(...a) }),
 }));
-let mockLabels: Record<string, string> = {};
-jest.mock('@/components/library/cover-tile', () => ({
-  useServerFlag: () => (cid: string) => mockLabels[cid],
-}));
 let mockUpcoming: {
   items: SourcedUpcomingItem[];
   available: boolean | undefined;
@@ -114,7 +110,6 @@ afterAll(() => jest.useRealTimers());
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockLabels = {};
   mockCovers = {};
   mockCalendarRows = [];
   mockUpcoming = { ...idle, available: true, statuses: [ok()] };
@@ -212,8 +207,7 @@ describe('UpcomingContent', () => {
   });
 
   it('names the server when several are connected', async () => {
-    mockUpcoming.items = [preorder, released];
-    mockLabels = { b: 'Maya' };
+    mockUpcoming.items = [preorder, { ...released, connectionName: 'Maya' }];
     await render(<UpcomingContent />);
     expect(screen.getByTestId('upcoming-section-released')).toBeTruthy();
     expect(screen.getByText(`Released ${formatReleaseDate('2026-10')} · Not on Maya`)).toBeTruthy();

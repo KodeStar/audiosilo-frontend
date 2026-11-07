@@ -1,4 +1,5 @@
-import { hexOfWords, sha256, wordsOf } from '@/lib/sha256';
+import { toHex } from '@/lib/random';
+import { sha256 } from '@/lib/sha256';
 
 /** The EPUB selected for this reader session, independent of its download record. */
 export type OpenedEbook = {
@@ -9,5 +10,5 @@ export type OpenedEbook = {
 
 /** Hash the bytes handed to the web reader, including on plain HTTP LAN servers. */
 export function ebookSha256(bytes: ArrayBuffer): string {
-  return hexOfWords(wordsOf(sha256(new Uint8Array(bytes))));
+  return toHex(sha256(new Uint8Array(bytes)));
 }

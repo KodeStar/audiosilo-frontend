@@ -68,7 +68,10 @@ export function useNarration(
 } {
   const key = target ? contentKey(target.connectionId, target.libraryId, target.path) : null;
   const narrating = usePlayer((s) => key !== null && selectPlacedBookKey(s) === key);
-  const playing = usePlayer(selectIsPlaying);
+  // This book playing: another book's play and pause don't re-render the reader.
+  const playing = usePlayer(
+    (s) => key !== null && selectPlacedBookKey(s) === key && selectIsPlaying(s),
+  );
   const toggle = useCallback(() => {
     const s = usePlayer.getState();
     if (key !== null && selectPlacedBookKey(s) === key) void s.toggle();

@@ -15,6 +15,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 import { Button } from './button';
 import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { FOCUS_RING_CLASS, Text, TextClassContext } from './text';
+import { slopTo44 } from './touch-target';
 
 /**
  * The Stacks segmented control (STYLEGUIDE.md section 8: "muted track + raised card for
@@ -225,6 +226,8 @@ function SegmentScroller<T extends string>({
   }, []);
 
   const overflow = content - viewport > 1;
+  const moreLeft = overflow && x > 1;
+  const moreRight = overflow && x + viewport < content - 1;
   const scroll = (direction: -1 | 1) =>
     ref.current?.scrollTo({
       x: Math.max(0, Math.min(content - viewport, x + direction * (viewport - FADE))),
@@ -253,25 +256,25 @@ function SegmentScroller<T extends string>({
           );
         })}
       </ScrollView>
-      {overflow && x > 1 ? <EdgeFade side="left" /> : null}
-      {overflow && x + viewport < content - 1 ? <EdgeFade side="right" /> : null}
-      {overflow && x > 1 ? (
+      {moreLeft ? <EdgeFade side="left" /> : null}
+      {moreRight ? <EdgeFade side="right" /> : null}
+      {moreLeft ? (
         <Button
           variant="outline"
           size="sm"
           icon="chevron-left"
-          hitSlop={{ top: 7, bottom: 7, left: 8, right: 8 }}
+          hitSlop={ARROW_SLOP}
           accessibilityLabel={t('common.scrollPrevious')}
           onPress={() => scroll(-1)}
           className="absolute left-0 top-0 w-7 px-0"
         />
       ) : null}
-      {overflow && x + viewport < content - 1 ? (
+      {moreRight ? (
         <Button
           variant="outline"
           size="sm"
           icon="chevron-right"
-          hitSlop={{ top: 7, bottom: 7, left: 8, right: 8 }}
+          hitSlop={ARROW_SLOP}
           accessibilityLabel={t('common.scrollNext')}
           onPress={() => scroll(1)}
           className="absolute right-0 top-0 w-7 px-0"
@@ -280,6 +283,9 @@ function SegmentScroller<T extends string>({
     </View>
   );
 }
+
+/** A scroll arrow (`w-7`, a 30 px tall `sm` button) grown to a 44 pt touch target. */
+const ARROW_SLOP = { top: 7, bottom: 7, left: slopTo44(1.75), right: slopTo44(1.75) };
 
 function EdgeFade({ side }: { side: 'left' | 'right' }) {
   const id = useDomId('fade');

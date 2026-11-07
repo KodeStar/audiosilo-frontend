@@ -4,7 +4,6 @@ import { View } from 'react-native';
 
 import { useUpcomingAll } from '@/api/hooks';
 import { LoadError } from '@/components/library/books/book-states';
-import { useServerFlag } from '@/components/library/cover-tile';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -54,7 +53,6 @@ function UpcomingSkeleton() {
  */
 export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
-  const serverLabel = useServerFlag();
   const { items, available, isLoading, statuses, failed, retry } = useUpcomingAll();
   // Counted from when the page opened (its badges stay put while it is open).
   const [now] = useState(() => new Date());
@@ -140,7 +138,6 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
                       item={item}
                       first={i === 0}
                       isNew={isNewUpcoming(item, now)}
-                      server={serverLabel(item.connectionId)}
                     />
                   ))}
                 </View>

@@ -6,7 +6,7 @@ import { FIND_SHOWS_SECTIONS, type FindShowsSection } from '@/lib/paths';
 import { isOpenRequest, requestShow } from '@/lib/podcast-requests';
 import { utf8 } from '@/lib/sha256';
 
-import { canRetryImportFailure, isQueuedRow } from './opml-waves';
+import { type AccountRefusal, canRetryImportFailure, isQueuedRow } from './opml-waves';
 import { requestReasonKey } from './podcast-model';
 
 /**
@@ -98,24 +98,21 @@ export function searchErrorCopy(e: unknown): { key: ParseKeys; seconds?: number 
   }
 }
 
-/** The refusals any of these routes can give a caller who may not use them here (by
- * error code): the module off, a kid's or the demo account, no grant on the library. Null
- * for others. */
+/** Each account refusal's copy (`ACCOUNT_REFUSALS`). */
+const ACCOUNT_REFUSAL_KEYS: Record<AccountRefusal, ParseKeys> = {
+  module_off: 'podcasts.find.refusal.moduleOff',
+  kid_account: 'podcasts.find.refusal.kid',
+  demo_account: 'podcasts.find.refusal.demo',
+  no_library_access: 'podcasts.find.refusal.noAccess',
+  not_podcast_library: 'podcasts.find.refusal.notPodcastLibrary',
+};
+
+/** The copy for a refusal any of these routes can give a caller who may not use them here
+ * (`ACCOUNT_REFUSALS`, by error code). Null for others. */
 function accountRefusalKey(code: string | null): ParseKeys | null {
-  switch (code) {
-    case 'module_off':
-      return 'podcasts.find.refusal.moduleOff';
-    case 'kid_account':
-      return 'podcasts.find.refusal.kid';
-    case 'demo_account':
-      return 'podcasts.find.refusal.demo';
-    case 'no_library_access':
-      return 'podcasts.find.refusal.noAccess';
-    case 'not_podcast_library':
-      return 'podcasts.find.refusal.notPodcastLibrary';
-    default:
-      return null;
-  }
+  return code !== null && Object.hasOwn(ACCOUNT_REFUSAL_KEYS, code)
+    ? ACCOUNT_REFUSAL_KEYS[code as AccountRefusal]
+    : null;
 }
 
 /** A refused follow by address (a result's Follow, a pasted address). */

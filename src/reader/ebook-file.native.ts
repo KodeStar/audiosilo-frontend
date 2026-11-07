@@ -5,6 +5,7 @@ import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
 import { ApiError, type ApiClient } from '@/api/client';
 import { classifyDownloadError } from '@/downloads/failure';
 import { pathSlug } from '@/lib/path-slug';
+import { toHex } from '@/lib/random';
 
 import type { ChunkReader } from './book-chunks';
 import type { EbookFileRef } from './ebook-file';
@@ -49,7 +50,7 @@ export async function identifyEbook(
   return {
     source,
     size: bytes.byteLength,
-    sha256: Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join(''),
+    sha256: toHex(hash),
   };
 }
 

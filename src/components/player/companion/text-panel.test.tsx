@@ -94,6 +94,10 @@ const model = (p: Partial<TextTabModel> = {}): TextTabModel => ({
   failure: null,
   retry: jest.fn(),
   book: BOOK,
+  ebookSha256: undefined,
+  ebookSelectionKey: 'selection',
+  onEbook: jest.fn(),
+  selectingEbook: false,
   ...p,
 });
 
@@ -354,7 +358,9 @@ describe('TextPanel', () => {
     await shows();
     const other = { ...TARGET, path: 'B/Book' };
     await act(async () => {
-      view.rerender(<TextPanel target={other} text={model()} fill />);
+      view.rerender(
+        <TextPanel target={other} text={model({ ebookSelectionKey: 'B/Book' })} fill />,
+      );
     });
     // A reader document says `ready` once: the next book gets a new one, from its start.
     expect(mockMounts).toBe(2);
