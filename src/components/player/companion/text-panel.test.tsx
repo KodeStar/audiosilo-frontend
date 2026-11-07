@@ -94,6 +94,10 @@ const model = (p: Partial<TextTabModel> = {}): TextTabModel => ({
   failure: null,
   retry: jest.fn(),
   book: BOOK,
+  ebookSha256: undefined,
+  ebookSelectionKey: 'selection',
+  onEbook: jest.fn(),
+  selectingEbook: false,
   ...p,
 });
 
@@ -134,6 +138,77 @@ describe('TextPanel', () => {
       followNarration: true,
     });
     expect(host().onSeek).toBe(mockSeek);
+  });
+
+  it.each([true, false])(
+    'selects the actual EPUB before settling a download mismatch (matching: %s)',
+    async (matching) => {
+      const onEbook = jest.fn();
+      const view = await render(
+        <TextPanel
+          target={TARGET}
+          text={model({ map: null, failure: 'ebookChanged', selectingEbook: true, onEbook })}
+          fill
+        />,
+      );
+      await waitFor(() => expect(mockHost).not.toBeNull());
+      expect(host().readalongMap).toBeNull();
+      expect(host().at).toBeUndefined();
+      await act(async () => host().onEbook!({ source: 'server', size: 7, sha256: 'sha-new' }));
+      expect(onEbook).toHaveBeenCalledWith({ source: 'server', size: 7, sha256: 'sha-new' });
+      // The model settles the host's identity against the map, without sending a wrong map.
+      await view.rerender(
+        <TextPanel
+          target={TARGET}
+          text={model({
+            map: matching ? MAP : null,
+            failure: matching ? null : 'ebookChanged',
+            selectingEbook: false,
+            ebookSha256: matching ? 'sha-new' : undefined,
+            onEbook,
+          })}
+          fill
+        />,
+      );
+      if (matching) {
+        expect(mockMounts).toBe(1);
+        expect(host().readalongMap).toBe(MAP);
+        expect(host().readalongEbookSha256).toBe('sha-new');
+        await shows();
+        expect(screen.getByLabelText('Next page')).toBeTruthy();
+      } else {
+        expect(screen.getByTestId('companion-text-ebookChanged')).toBeTruthy();
+        expect(screen.queryByTestId('companion-text')).toBeNull();
+        expect(screen.queryByTestId('companion-text-pending')).toBeNull();
+      }
+    },
+  );
+
+  it('shows a retryable failure when the EPUB cannot be selected', async () => {
+    await mount(
+      model({ map: null, failure: 'ebookChanged', selectingEbook: true, onEbook: jest.fn() }),
+    );
+    await act(async () => host().onLoadError(new Error('EIO')));
+    expect(screen.getByTestId('companion-text-failed')).toBeTruthy();
+    expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
+  it('remounts the host before a changed same-target download can take a new map', async () => {
+    const view = await render(
+      <TextPanel target={TARGET} text={model({ ebookSelectionKey: 'download-1' })} fill />,
+    );
+    await waitFor(() => expect(mockMounts).toBe(1));
+    await shows();
+    await view.rerender(
+      <TextPanel
+        target={TARGET}
+        text={model({ ebookSelectionKey: 'download-2', ebookSha256: 'sha-new' })}
+        fill
+      />,
+    );
+    await waitFor(() => expect(mockMounts).toBe(2));
+    expect(screen.queryByLabelText('Next page')).toBeNull();
+    expect(host().readalongEbookSha256).toBe('sha-new');
   });
 
   it('shows the page edges once the reader took the map, and no pill while it follows', async () => {
@@ -283,7 +358,9 @@ describe('TextPanel', () => {
     await shows();
     const other = { ...TARGET, path: 'B/Book' };
     await act(async () => {
-      view.rerender(<TextPanel target={other} text={model()} fill />);
+      view.rerender(
+        <TextPanel target={other} text={model({ ebookSelectionKey: 'B/Book' })} fill />,
+      );
     });
     // A reader document says `ready` once: the next book gets a new one, from its start.
     expect(mockMounts).toBe(2);

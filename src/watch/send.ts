@@ -1,6 +1,6 @@
 import type { ApiClient } from '@/api/client';
 import { getDeviceName } from '@/lib/device';
-import type { Connection } from '@/stores/session';
+import { useSession, type Connection } from '@/stores/session';
 
 import { watchLink } from './link';
 import { noteHandedOver, noteRemoving, noteSending, restoreRow } from './watch-ledger';
@@ -27,7 +27,13 @@ async function mintAndSendPair(api: Pick<ApiClient, 'pair'>, connection: Connect
   const asked = Date.now();
   const payload = await api.pair({ ttlSeconds: WATCH_PAIR_TTL_SECONDS });
   const expiresAt = asked + WATCH_PAIR_TTL_SECONDS * 1000;
-  const message = buildPairMessage(payload, connection, getDeviceName(), expiresAt);
+  const message = buildPairMessage(
+    payload,
+    connection,
+    getDeviceName(),
+    expiresAt,
+    useSession.getState().connections,
+  );
   await watchLink.sendPair(message).catch(refused);
   notePairSent(connection.id, expiresAt);
 }

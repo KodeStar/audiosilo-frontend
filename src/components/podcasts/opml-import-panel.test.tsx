@@ -240,7 +240,7 @@ describe('OpmlImportPanel', () => {
     expect(within(screen.getByTestId('opml-row-3')).getByText("Couldn't add")).toBeTruthy();
     // Not "All done." with a row that could not be added (R-4).
     expect(screen.getByTestId('opml-status').props.children).toBe(
-      "Done. 1 show couldn't be added. You can try it again below.",
+      "Import finished. 1 show wasn't added. See its status below.",
     );
     expect(screen.getByTestId('opml-summary').props.children).toBe(
       '2 of 3 shows followed or being added',
@@ -308,6 +308,58 @@ describe('OpmlImportPanel', () => {
     expect(screen.queryByTestId('opml-row-retry-1')).toBeNull();
     expect(screen.getByTestId('opml-status').props.children).toBe('All done.');
   });
+
+  it('counts cancelled rows without claiming every show was added', async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          state: state({ kind: 'done' }, [
+            row(1, { status: 'cancelled' }),
+            row(2, { status: 'cancelled' }),
+          ]),
+        })}
+        connectionId="c1"
+        libraryId={7}
+      />,
+    );
+    expect(screen.getByTestId('opml-status').props.children).toBe(
+      "Import finished. 2 shows weren't added. See their statuses below.",
+    );
+    expect(screen.queryByText('All done.')).toBeNull();
+  });
+
+  it('makes no retry promise for permanent privacy refusals', async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          state: state({ kind: 'done' }, [
+            row(1, { status: 'error', error: { code: 'privacy_conflict', message: '' } }),
+          ]),
+        })}
+        connectionId="c1"
+        libraryId={7}
+      />,
+    );
+    expect(screen.getByTestId('opml-status').props.children).toBe(
+      "Import finished. 1 show wasn't added. See its status below.",
+    );
+    expect(screen.queryByTestId('opml-row-retry-1')).toBeNull();
+  });
+
+  it.each(['kid_account', 'demo_account', 'module_off', 'no_library_access'])(
+    'offers another file without repeating a whole-import %s refusal',
+    async (code) => {
+      await render(
+        <OpmlImportPanel
+          opml={importer({ state: state({ kind: 'failed', code }) })}
+          connectionId="c1"
+          libraryId={7}
+        />,
+      );
+      expect(screen.getByTestId('opml-choose')).toBeTruthy();
+      expect(screen.queryByTestId('opml-retry')).toBeNull();
+    },
+  );
 
   it('counts the shows that could not be added and offers Try again for them', async () => {
     const opml = importer({

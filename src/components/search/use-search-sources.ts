@@ -7,7 +7,7 @@ import {
   chaptersQuery,
   qk,
   useAllProgressAll,
-  useCapabilitiesAll,
+  useCapabilitiesAllRead,
   useLibrariesAll,
 } from '@/api/hooks';
 import { useApiRegistry } from '@/api/provider';
@@ -54,8 +54,13 @@ export type PeopleSources = {
  */
 export function usePeopleSources(enabled: boolean): PeopleSources {
   const { clients } = useApiRegistry();
-  const caps = useCapabilitiesAll();
-  const { libraries, isLoading: librariesLoading } = useLibrariesAll();
+  const { caps, failed: capabilityFailures, retry: retryCapabilities } = useCapabilitiesAllRead();
+  const {
+    libraries,
+    isLoading: librariesLoading,
+    error: librariesError,
+    retry: retryLibraries,
+  } = useLibrariesAll();
   const slots = useMemo(() => {
     const out: { kind: BrowseKind; source: ListSource }[] = [];
     for (const lib of libraries) {
@@ -115,10 +120,14 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
         authors,
         narrators,
         series,
-        supported: anyCapability(caps, 'browse_people'),
+        supported: anyCapability(caps, 'browse_people', capabilityFailures),
         isLoading: (enabled && librariesLoading) || results.some((r) => r.isLoading),
-        isError: failed.length > 0,
-        retry: () => failed.forEach((r) => void r.refetch()),
+        isError: !!librariesError || failed.length > 0 || capabilityFailures.length > 0,
+        retry: () => {
+          retryCapabilities();
+          retryLibraries();
+          failed.forEach((r) => void r.refetch());
+        },
       };
     },
   });
@@ -147,8 +156,13 @@ export function useCharacterSources(
   { refetchProgress = true }: { refetchProgress?: boolean } = {},
 ): CharacterSources {
   const { clients } = useApiRegistry();
-  const caps = useCapabilitiesAll();
-  const { progress, isLoading: progressLoading } = useAllProgressAll({
+  const { caps, failed: capabilityFailures, retry: retryCapabilities } = useCapabilitiesAllRead();
+  const {
+    progress,
+    isLoading: progressLoading,
+    error: progressError,
+    retry: retryProgress,
+  } = useAllProgressAll({
     enabled,
     refetchOnMount: refetchProgress,
   });
@@ -217,9 +231,13 @@ export function useCharacterSources(
   const failed = metas.filter((m) => m.isError);
   return {
     books,
-    supported: anyCapability(caps, 'metadata'),
+    supported: anyCapability(caps, 'metadata', capabilityFailures),
     isLoading: pending,
-    isError: failed.length > 0,
-    retry: () => failed.forEach((m) => void m.refetch()),
+    isError: !!progressError || failed.length > 0 || capabilityFailures.length > 0,
+    retry: () => {
+      retryCapabilities();
+      retryProgress();
+      failed.forEach((m) => void m.refetch());
+    },
   };
 }

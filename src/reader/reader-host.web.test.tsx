@@ -7,6 +7,8 @@ import { act, type ReactNode } from 'react';
 
 import type { ApiClient } from '@/api/client';
 
+import { ebookSha256 } from './ebook-identity';
+import type { OpenedEbook } from './ebook-identity';
 import { READER_START_MS, type ReaderReadalongProps, ReaderStartError } from './reader-host-types';
 import { READER_URL, ReaderHost } from './reader-host.web';
 
@@ -106,6 +108,7 @@ async function mountInPage({
   onMessage = jest.fn(),
   onLoadError = jest.fn(),
   onReopen = jest.fn(),
+  onEbook,
   readalong = {},
   placeKnown,
 }: {
@@ -113,6 +116,7 @@ async function mountInPage({
   onMessage?: jest.Mock;
   onLoadError?: jest.Mock;
   onReopen?: jest.Mock;
+  onEbook?: (ebook: OpenedEbook) => void;
   readalong?: ReaderReadalongProps;
   placeKnown?: boolean;
 } = {}) {
@@ -134,6 +138,7 @@ async function mountInPage({
         onMessage={onMessage}
         onLoadError={onLoadError}
         onReopen={onReopen}
+        onEbook={onEbook}
         placeKnown={known}
         at={{ cfi: 'epubcfi(/6/2!/4/2)' }}
         {...readalong}
@@ -165,6 +170,76 @@ async function mountInPage({
 }
 
 describe('ReaderHost (web) in a page', () => {
+  it.each([true, false])(
+    'withholds the map on reload and preserves following=%s',
+    async (following) => {
+      const book = new Uint8Array([1, 2, 3, 4]).buffer;
+      let fetched!: (book: ArrayBuffer) => void;
+      const ebook = jest
+        .fn()
+        .mockResolvedValueOnce(book)
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              fetched = resolve;
+            }),
+        );
+      const host = await mountInPage({
+        ebook,
+        onEbook: jest.fn(),
+        readalong: {
+          readalongMap: { sections: [] },
+          readalongEbookSha256: ebookSha256(book),
+          followNarration: !following,
+        },
+      });
+      const maps = () =>
+        host.posted.mock.calls.filter(
+          ([message]) =>
+            (message as { type: string; map?: unknown }).type === 'readalong' &&
+            (message as { map?: unknown }).map !== null,
+        );
+      await host.say({ type: 'ready' });
+      expect(maps()).toHaveLength(1);
+      await host.say({ type: 'following', value: following });
+      const reloadedAt = host.posted.mock.calls.length;
+      await host.say({ type: 'ready' });
+      expect(maps()).toHaveLength(1);
+      // No null map either: the document would answer `readalong: none`, which a Text tab
+      // takes for a map naming nothing in this ebook.
+      expect(
+        host.posted.mock.calls
+          .slice(reloadedAt)
+          .some(([message]) => (message as { type: string }).type === 'readalong'),
+      ).toBe(false);
+      const before = host.posted.mock.calls.length;
+      await act(async () => fetched(book));
+      expect(maps()).toHaveLength(2);
+      expect(
+        host.posted.mock.calls
+          .slice(before)
+          .some(([message]) => (message as { type: string }).type === 'follow'),
+      ).toBe(following);
+      await host.unmount();
+    },
+  );
+
+  it('identifies the server fallback bytes and withholds the old download map', async () => {
+    const book = new Uint8Array([1, 2, 3, 4]).buffer;
+    mockDownloaded.mockReturnValueOnce({ manifest: { ebookUri: 'https://h/web/_offline/b' } });
+    mockReadFile.mockRejectedValueOnce(new Error('cache gone'));
+    const onEbook = jest.fn();
+    const host = await mountInPage({
+      ebook: jest.fn(async () => book),
+      onEbook,
+      readalong: { readalongMap: { sections: [] }, readalongEbookSha256: 'sha-old' },
+    });
+    await host.say({ type: 'ready' });
+    expect(onEbook).toHaveBeenCalledWith({ source: 'server', size: 4, sha256: ebookSha256(book) });
+    expect(host.types()).toEqual(['open']);
+    await host.unmount();
+  });
+
   it('opens the book once when it arrives before the reader is ready', async () => {
     const host = await mountInPage();
     await host.say({ type: 'ready' });

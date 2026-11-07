@@ -13,6 +13,7 @@ func accountIdOf(serverId: String, userId: Int) -> String { "\(serverId).\(userI
 /// {"ttl_seconds":600}`).
 struct PairMessage: Equatable, Sendable {
   var serverId: String
+  /// The phone's display label, including the address only for colliding saved server names.
   var serverName: String
   var userId: Int
   var userName: String

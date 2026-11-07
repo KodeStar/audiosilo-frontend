@@ -13,6 +13,7 @@ import {
 } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
 
+import type { OpenedEbook } from './ebook-identity';
 import { readalongReady } from './readalong-gating';
 import { hasSpans, type ReaderReadalongMap, readerMapOf } from './readalong-map';
 
@@ -57,6 +58,16 @@ export type ReadalongFailure = 'retry' | 'signedOut' | 'denied' | 'missing' | 'e
 
 /** A book's map as a reader host takes it (see `useBookReadalong`). */
 export type BookReadalongMap = {
+  /** The map's EPUB digest, used by the host to withhold it until the file is identified. */
+  ebookSha256: string | undefined;
+  /** The host's selection session. Companion hosts key themselves by it when a download
+   * changes; a full-screen reader keeps the file it already opened. */
+  ebookSelectionKey: string;
+  /** The host's actual file selection, bound to this book. */
+  onEbook: (ebook: OpenedEbook) => void;
+  /** The recorded download identity rejected the map before a host selected its file.
+   * Mount the host without a map so an unreadable download can fall back to the server. */
+  selectingEbook: boolean;
   /** The map's sections and spans for the reader (`readerMapOf`; memoised per map), or
    * null: none to follow (no map, a stale one, one with no sentence, or its read failed). */
   map: ReaderReadalongMap | null;
@@ -99,22 +110,42 @@ export function readalongFailure(error: unknown): ReadalongFailure | null {
  * `readalongSource`. `readable` is `canRead`'s answer for the book; `enabled: false` asks
  * nothing (a surface not on screen). While another copy of the map shown is on its way (the
  * book's download took it, it was made again), that one stays: a tab or a reader that has a
- * map never loses it in between. A downloaded EPUB is the book its reader shows, so a map
- * of the server's made from another ebook (`ebookSha256` differs) is never used: the copy
- * the download kept stands in, else it is `ebookChanged` (fe#193).
+ * map never loses it in between. Download metadata checks the fit before the host selects
+ * its file; `onEbook` then supplies the actual bytes' identity, including a server fallback
+ * after an unreadable download. Neither local nor server maps may describe another EPUB.
  */
 export function useBookReadalong(
   ref: { connectionId: string; libraryId: number; path: string },
   book: Pick<Book, 'ebook' | 'readalong'> | undefined,
   readable: boolean,
   enabled = true,
+  options: { reselectOnDownloadChange?: boolean } = {},
 ): BookReadalongMap {
   const { connectionId, libraryId, path } = ref;
+  const bookKey = contentKey(connectionId, libraryId, path);
   const serves = useCapability('readalong', connectionId);
   const kept = useDownloadedReadalong(connectionId, libraryId, path);
-  const ebookSha = useDownloadedEbookSha(connectionId, libraryId, path);
+  const savedSha = useDownloadedEbookSha(connectionId, libraryId, path);
   const savedEbookSize = useDownloadedEbookSize(connectionId, libraryId, path);
-  const wanted = enabled ? readalongSource({ serves, book, readable, kept }) : null;
+  const ebookSelectionKey = options.reselectOnDownloadChange
+    ? JSON.stringify([bookKey, kept, savedSha, savedEbookSize])
+    : bookKey;
+  const [opened, setOpened] = useState<(OpenedEbook & { book: string }) | null>(null);
+  const actual = opened?.book === ebookSelectionKey ? opened : null;
+  const onEbook = useCallback(
+    (ebook: OpenedEbook) => setOpened({ ...ebook, book: ebookSelectionKey }),
+    [ebookSelectionKey],
+  );
+  const ebookSha = actual?.sha256 ?? savedSha;
+  const wanted = enabled
+    ? readalongSource({
+        serves,
+        book,
+        readable,
+        kept:
+          actual?.source === 'server' && readalongReady(serves, book, readable) ? undefined : kept,
+      })
+    : null;
   const generatedAt = book?.readalong?.generated_at ?? '';
   // The server's map: when it is the source, or the copy could not be read (`fallback`,
   // known only once the copy's read below settled: kept as state, set while rendering).
@@ -125,9 +156,8 @@ export function useBookReadalong(
     { enabled: wanted === 'server' || fallback, generatedAt },
     connectionId,
   );
-  // The server's map was made from another ebook than the download's `book.epub`: by the
-  // sha the download kept, else (no map ever kept) by the server's ebook having another size
-  // than the one downloaded, as the background refresh takes it (`refreshReadalong`).
+  // The selected EPUB's digest takes precedence over the download record. Before selection,
+  // use the recorded digest, else a changed server size (`refreshReadalong`, fe#193).
   const serverSize = book?.ebook?.size;
   const foreign =
     server.data !== undefined &&
@@ -142,11 +172,13 @@ export function useBookReadalong(
     retry: false,
     // It reads the device, so it runs offline too.
     networkMode: 'always',
+    meta: { local: true },
   });
-  // A copy that could not be read (gone, damaged, a read that threw) gives way to the
+  // A copy that could not be read or does not fit the selected EPUB gives way to the
   // server's, when it has the map ready; else a copy that is gone is none, one whose read
   // threw a failure to say (`retry`).
-  const copyUnread = local.isError || (local.isSuccess && local.data === null);
+  const copyForeign = !!actual && !!local.data && !fitsEbook(local.data, actual.sha256);
+  const copyUnread = local.isError || (local.isSuccess && local.data === null) || copyForeign;
   const unread = wanted === 'local' && copyUnread;
   const wantFallback = unread && readalongReady(serves, book, readable);
   if (wantFallback !== fallback) setFallback(wantFallback);
@@ -157,12 +189,13 @@ export function useBookReadalong(
       : local.isError
         ? 'local'
         : null;
-  // The server's map of another ebook never reaches this download's reader: the copy the
-  // download kept (of its own ebook) instead, else nothing (`ebookChanged`).
-  const ebookChanged = source === 'server' && foreign && (!kept || copyUnread);
+  // A foreign server map gives way to a matching local map, else `ebookChanged`.
+  const ebookChanged =
+    (source === 'server' && foreign && (!kept || copyUnread)) ||
+    (copyForeign && unread && !wantFallback);
   if (source === 'server' && foreign) source = ebookChanged ? null : 'local';
   const read = source === 'local' ? local : source === 'server' ? server : null;
-  const data = read?.data;
+  const data = ebookChanged ? undefined : read?.data;
   // Not while Try again reads it again: on its way meanwhile (`pending`).
   const errored = read?.isError === true && !read.isFetching;
   // A device copy's read never says "none": it is `retry`.
@@ -183,13 +216,24 @@ export function useBookReadalong(
   // waits for the connection (set while rendering, React's pattern for state that follows a
   // prop).
   const waiting = pending || offline;
-  const bookKey = contentKey(connectionId, libraryId, path);
-  const [last, setLast] = useState<{ book: string; map: ReaderReadalongMap } | null>(null);
-  if (map && (last?.map !== map || last.book !== bookKey)) setLast({ book: bookKey, map });
+  const [last, setLast] = useState<{
+    book: string;
+    map: ReaderReadalongMap;
+    sha256: string | undefined;
+  } | null>(null);
+  if (map && (last?.map !== map || last.book !== bookKey))
+    setLast({ book: bookKey, map, sha256: data?.ebook.sha256 });
   else if (!map && !waiting && last) setLast(null);
-  const held = !map && waiting && last?.book === bookKey ? last.map : null;
+  const held =
+    !map && waiting && last?.book === bookKey && (!actual || last.sha256 === actual.sha256)
+      ? last
+      : null;
   return {
-    map: held ?? map,
+    map: held?.map ?? map,
+    ebookSha256: held?.sha256 ?? data?.ebook.sha256,
+    ebookSelectionKey,
+    onEbook,
+    selectingEbook: actual === null && ebookChanged,
     pending: !held && pending,
     failure: map ? null : failure,
     offline: !map && !held && offline,

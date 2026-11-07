@@ -17,6 +17,7 @@ import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
 import { addressKind, mergeAddresses } from '@/lib/server-address';
+import { serverDisplayName } from '@/lib/server-display-name';
 import { APP_VERSION } from '@/lib/version';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -63,6 +64,7 @@ export function AccountSection({ connectionId }: { connectionId?: string }) {
   // The servers of the person listening (Phase 8 profiles); a link to another person's
   // account is gated by the route's ContentScope first.
   const connections = useProfileConnections();
+  const savedConnections = useSession((s) => s.connections);
   const defaultId = useSession((s) => s.defaultConnectionId);
   const [picked, setPicked] = useState<string | null>(null);
   const cid = resolveAccountCid(
@@ -89,7 +91,10 @@ export function AccountSection({ connectionId }: { connectionId?: string }) {
         <SegmentedControl
           scrollable
           accessibilityLabel={t('account.switcher')}
-          options={connections.map((c) => ({ value: c.id, label: c.name }))}
+          options={connections.map((c) => ({
+            value: c.id,
+            label: serverDisplayName(c, savedConnections),
+          }))}
           value={cid}
           onChange={setPicked}
           className="max-w-full self-start"
@@ -107,9 +112,10 @@ export function AccountSection({ connectionId }: { connectionId?: string }) {
 
 function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const { t } = useTranslation();
-  const connection = useSession((s) => s.connections.find((c) => c.id === cid) ?? null);
+  const connections = useSession((s) => s.connections);
+  const connection = connections.find((c) => c.id === cid) ?? null;
   const user = connection?.user ?? null;
-  const serverName = connection?.name ?? '';
+  const serverName = connection ? serverDisplayName(connection, connections) : '';
   const { data: server } = useServerInfo(cid);
   const caps = server?.capabilities;
   const demo = !!user?.is_demo;

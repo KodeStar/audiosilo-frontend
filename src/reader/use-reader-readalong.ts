@@ -38,6 +38,8 @@ export function useReaderReadalong(
   channel: RefObject<HostChannel | null>,
   props: ReaderReadalongProps,
   chunked: boolean,
+  // A map held back while identifying the EPUB has not gone away: keep the follow choice.
+  withheld = false,
 ): ReaderReadalong {
   const latest = useLatestRef(props);
   // What the reader last said of following (null: nothing yet for this map).
@@ -99,9 +101,13 @@ export function useReaderReadalong(
 
   const map = props.readalongMap ?? null;
   useEffect(() => {
+    // Nothing is sent while a map is held back: a null map would have the document answer
+    // `readalong: none` (a Text tab would take that as a map naming nothing in this ebook)
+    // and stop following. The map goes once the EPUB is identified.
+    if (withheld) return;
     if (!map) following.current = null;
     link.sendMap();
-  }, [link, map]);
+  }, [link, map, withheld]);
 
   const hasMap = map !== null;
   useEffect(() => {

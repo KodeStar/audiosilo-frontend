@@ -19,6 +19,7 @@ import { Text } from '@/components/ui/text';
 import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
 import { openHousehold, openJournal, openSettings } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
+import { serverDisplayName } from '@/lib/server-display-name';
 import { cn } from '@/lib/utils';
 import { useActiveProfile, useProfileConnections, useProfiles } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
@@ -41,6 +42,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
   const user = useSession((s) => s.user);
   // The person listening: their servers only (Phase 8).
   const connections = useProfileConnections();
+  const savedConnections = useSession((s) => s.connections);
   const defaultId = useSession((s) => s.defaultConnectionId);
   const online = useReachability((s) => s.online);
   const profiles = useProfiles((s) => s.profiles);
@@ -124,7 +126,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
               className="py-1.5"
             >
               <View className="flex-1">
-                <Text numberOfLines={1}>{c.name}</Text>
+                <Text numberOfLines={2}>{serverDisplayName(c, savedConnections)}</Text>
                 <Text numberOfLines={1} className="text-xs text-muted-foreground">
                   {statusLine(c)}
                 </Text>
@@ -153,7 +155,9 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
           {defaultConnection ? (
             <DropdownMenuItem icon="user" onPress={() => router.push(accountHref(defaultId))}>
               <Text numberOfLines={1}>
-                {t('shell.profile.accountOn', { name: defaultConnection.name })}
+                {t('shell.profile.accountOn', {
+                  name: serverDisplayName(defaultConnection, savedConnections),
+                })}
               </Text>
             </DropdownMenuItem>
           ) : null}

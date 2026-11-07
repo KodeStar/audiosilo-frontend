@@ -27,9 +27,23 @@ jest.mock('@/api/hooks', () => ({
 const mockPair = jest.fn();
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({ pair: mockPair }) }));
 let mockUser: Partial<User> = { id: 7, username: 'ada' };
+function mockSessionState() {
+  return {
+    connections: [
+      {
+        id: 'srv.7',
+        serverId: 'srv',
+        name: 'Hearthside',
+        serverUrl: 'https://books.example',
+        user: mockUser,
+      },
+    ],
+  };
+}
 jest.mock('@/stores/session', () => ({
-  useSession: (select: (s: unknown) => unknown) =>
-    select({ connections: [{ id: 'srv.7', serverId: 'srv', name: 'Hearthside', user: mockUser }] }),
+  useSession: Object.assign((select: (s: unknown) => unknown) => select(mockSessionState()), {
+    getState: mockSessionState,
+  }),
   onConnectionRemoved: () => () => {},
 }));
 const mockOpenDownloads = jest.fn();

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PixelRatio, View } from 'react-native';
 
 import { useCapability } from '@/api/hooks';
@@ -12,12 +13,13 @@ import type { SourcedUpcomingItem } from '@/lib/upcoming';
 
 /**
  * An upcoming item's cover (Track U3): the ghost cover (STYLEGUIDE section 8: the book is
- * on none of the listener's servers), with the work's real community cover drawn over it
+ * absent on the item's source server), with the work's real community cover drawn over it
  * once its server serves one (`GET /me/upcoming/cover`). The ghost stays underneath, so it shows
  * while the image loads, and alone when there is none or it fails to load. Sized like the
  * ghost (square, `width`).
  */
 export function UpcomingCover({ item, width }: { item: SourcedUpcomingItem; width: number }) {
+  const { t } = useTranslation();
   const api = useOptionalApi(item.connectionId);
   const covers = useCapability('upcoming_covers', item.connectionId);
   // From the item's own server (the connection whose row won the merge), only when it serves
@@ -39,6 +41,7 @@ export function UpcomingCover({ item, width }: { item: SourcedUpcomingItem; widt
       title={item.work.title}
       position={railPositionLabel(item.series.position)}
       width={width}
+      note={t('upcoming.fromServer', { server: item.connectionName })}
     />
   );
   if (!uri || failed === uri) return ghost;

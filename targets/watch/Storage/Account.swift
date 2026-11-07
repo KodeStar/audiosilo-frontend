@@ -4,6 +4,7 @@ import Foundation
 
 struct Account: Codable, Equatable {
   var serverId: String
+  /// The phone's server label, including its address when saved server names collide.
   var serverName: String
   var userId: Int
   var userName: String

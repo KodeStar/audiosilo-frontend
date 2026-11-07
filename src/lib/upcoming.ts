@@ -22,9 +22,13 @@ export type UpcomingServerStatus = {
 /** How long an item wears its "New" badge after the server first listed it. */
 const UPCOMING_NEW_MS = 7 * 86_400_000;
 
-/** Whether an item is new: its server first listed it (`first_seen_at`) within the last
- * seven days of `now`. */
-export function isNewUpcoming(item: Pick<UpcomingItem, 'first_seen_at'>, now: Date): boolean {
+/** Whether a preorder or release was first listed within the last seven days. Back-catalogue
+ * gaps never wear New, even when a server has only just discovered them. */
+export function isNewUpcoming(
+  item: Pick<UpcomingItem, 'first_seen_at' | 'kind'>,
+  now: Date,
+): boolean {
+  if (item.kind !== 'preorder' && item.kind !== 'released') return false;
   const seen = Date.parse(item.first_seen_at);
   if (Number.isNaN(seen)) return false;
   const age = now.getTime() - seen;

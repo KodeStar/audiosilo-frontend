@@ -85,6 +85,29 @@ export const isRunning = (status: WaveStatus) => RUNNING.has(status.kind);
  * left to send). */
 const canRetry = (status: WaveStatus) => !isRunning(status) && status.kind !== 'done';
 
+/** The refusals the podcast routes give a caller who may not use them here (by error
+ * code): the module off, a kid's or the demo account, no grant on the library. Each has its
+ * own copy (`accountRefusalKey`). */
+export const ACCOUNT_REFUSALS = [
+  'module_off',
+  'kid_account',
+  'demo_account',
+  'no_library_access',
+  'not_podcast_library',
+] as const;
+export type AccountRefusal = (typeof ACCOUNT_REFUSALS)[number];
+
+const PERMANENT_REFUSALS: readonly string[] = [
+  'privacy_conflict',
+  'invalid_feed_url',
+  ...ACCOUNT_REFUSALS,
+];
+
+/** Refusals that repeating the same import or feed request cannot resolve. */
+export function canRetryImportFailure(code: string | null): boolean {
+  return !PERMANENT_REFUSALS.includes(code ?? '');
+}
+
 /** Whether an import row is on its way: queued by this upload or an earlier one. */
 export const isQueuedRow = (r: Pick<OpmlImportRow, 'status'>) =>
   r.status === 'queued' || r.status === 'already_queued';
@@ -97,7 +120,8 @@ export const unavailableRows = (rows: readonly Pick<OpmlImportRow, 'status'>[]) 
 /** Whether Try again applies to an import: as `canRetry`, or done with rows that could
  * not be added right now (they need a person, so no automatic wave asks again). */
 export const canRetryImport = ({ status, rows }: WaveState) =>
-  canRetry(status) || (status.kind === 'done' && unavailableRows(rows) > 0);
+  (status.kind !== 'failed' || canRetryImportFailure(status.code)) &&
+  (canRetry(status) || (status.kind === 'done' && unavailableRows(rows) > 0));
 
 /** The rows of `before` with `next`'s answers over them, by `outline_index`. A row this
  * import followed or queued earlier that a later wave answers `already_following` (its

@@ -118,4 +118,15 @@ describe('useNarration', () => {
     await act(async () => result.current.onSeek(5));
     expect(player.spies.seekBook).not.toHaveBeenCalled();
   });
+
+  it('toggles the same placed book, rechecking the target when pressed', async () => {
+    player.patch({ nowPlaying: nowPlaying() });
+    const { result } = await renderHook(() => useNarration(BOOK, host));
+    const toggle = result.current.toggle;
+    await act(async () => toggle());
+    expect(player.spies.toggle).toHaveBeenCalledTimes(1);
+    await act(async () => player.patch({ nowPlaying: nowPlaying('B/Other') }));
+    await act(async () => toggle());
+    expect(player.spies.toggle).toHaveBeenCalledTimes(1);
+  });
 });

@@ -71,9 +71,14 @@ export function ListeningSyncCard({
   if (!supported && sync.waiting === 0 && sync.failed.length === 0) return null;
 
   const status =
-    sync.waiting > 0
-      ? t('account.listeningSync.waiting', { count: sync.waiting })
-      : t('account.listeningSync.allSynced', { server: serverName });
+    [
+      sync.waiting > 0 ? t('account.listeningSync.waiting', { count: sync.waiting }) : '',
+      sync.failed.length > 0
+        ? t('account.listeningSync.failed', { count: sync.failed.length })
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' · ') || t('account.listeningSync.allSynced', { server: serverName });
   const last = sync.lastSyncAt
     ? t('account.listeningSync.lastSynced', {
         when: formatRelative(sync.lastSyncAt, i18n.language || 'en', now),

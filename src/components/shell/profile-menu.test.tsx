@@ -74,6 +74,20 @@ describe('ProfileMenu', () => {
     await fireEvent.press(screen.getByLabelText('Servers and account, chris'));
   }
 
+  it('identifies same-name servers in the menu and default account link', async () => {
+    const [first, second] = useSession.getState().connections;
+    useSession.setState({
+      connections: [
+        { ...first, serverUrl: 'https://home.example' },
+        { ...second, name: first.name, serverUrl: 'https://away.example' },
+      ],
+    });
+    await open();
+    expect(screen.getByText('Hearthside (home.example)')).toBeTruthy();
+    expect(screen.getByText('Hearthside (away.example)')).toBeTruthy();
+    expect(screen.getByText('Account on Hearthside (home.example)')).toBeTruthy();
+  });
+
   it('lists every server with its state, then add, account and appearance', async () => {
     await open();
     expect(screen.getByText('Servers')).toBeTruthy();

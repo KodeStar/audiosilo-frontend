@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 
 import { useUpcomingAll } from '@/api/hooks';
 import { HomeSection } from '@/components/home/home-section';
-import { useServerFlag } from '@/components/library/cover-tile';
 import { ShelfRow } from '@/components/library/shelf-row';
 import { upcomingHref } from '@/lib/paths';
 import { isNewUpcoming, type SourcedUpcomingItem } from '@/lib/upcoming';
@@ -25,7 +24,6 @@ const itemKey = (item: SourcedUpcomingItem) => item.work.id;
  */
 export function UpcomingRail() {
   const { t } = useTranslation();
-  const serverLabel = useServerFlag();
   const { items } = useUpcomingAll();
   // Counted from when Home opened (a long-open Home keeps its badges steady).
   const [now] = useState(() => new Date());
@@ -41,12 +39,7 @@ export function UpcomingRail() {
         keyExtractor={itemKey}
         accessibilityLabel={t('upcoming.rail.title')}
         renderItem={(item, width) => (
-          <UpcomingTile
-            item={item}
-            isNew={isNewUpcoming(item, now)}
-            server={serverLabel(item.connectionId)}
-            width={width}
-          />
+          <UpcomingTile item={item} isNew={isNewUpcoming(item, now)} width={width} />
         )}
       />
     </HomeSection>

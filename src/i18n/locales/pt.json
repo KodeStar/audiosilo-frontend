@@ -49,7 +49,9 @@
         "title": "Nada está a tocar",
         "body": "Escolha um livro para começar a ouvir."
       }
-    }
+    },
+    "scrollPrevious": "Deslocar para as secções anteriores",
+    "scrollNext": "Deslocar para mais secções"
   },
   "settings": {
     "title": "Definições",
@@ -355,7 +357,9 @@
         "not_found": "O livro já não está no servidor.",
         "unknown_kind": "O servidor não conhece este tipo de audição.",
         "invalid": "O servidor não a conseguiu ler."
-      }
+      },
+      "failed_one": "Não foi possível sincronizar {{count}} evento de audição",
+      "failed_other": "Não foi possível sincronizar {{count}} eventos de audição"
     }
   },
   "annotations": {
@@ -3043,8 +3047,8 @@
         "stoppedBusy": "Seu servidor continuou ocupado. Tente mais tarde.",
         "stoppedCantAct": "Parado, porque agora outra pessoa está ouvindo neste dispositivo.",
         "rateLimited": "É possível importar mais ou menos uma vez a cada 30 segundos. Nova tentativa em {{seconds}} s.",
-        "doneFailed_one": "Pronto. {{count}} programa não pôde ser adicionado. Você pode tentar de novo abaixo.",
-        "doneFailed_other": "Pronto. {{count}} programas não puderam ser adicionados. Você pode tentar cada um de novo abaixo."
+        "doneFailed_one": "Importação terminada. {{count}} programa não foi adicionado. Consulta o estado abaixo.",
+        "doneFailed_other": "Importação terminada. {{count}} programas não foram adicionados. Consulta os estados abaixo."
       },
       "fail": {
         "notOpml": "Esse arquivo não é uma lista OPML.",
@@ -3170,13 +3174,13 @@
     "firstReleased": "Primeira edição: {{date}}",
     "seriesBook": "{{series}}, livro {{position}}",
     "new": "Novo",
-    "fromServer": "De {{server}}",
+    "fromServer": "Não está em {{server}}",
     "pending": {
-      "title": "A procurar lançamentos",
-      "hint": "O teu servidor está a procurar lançamentos; esta lista enche-se após a primeira procura."
+      "title": "Primeira verificação completa pendente",
+      "hint": "A primeira verificação completa de lançamentos está agendada no servidor. A lista pode crescer depois dessa verificação."
     },
-    "pendingSome_one": "{{server}} ainda está a fazer a primeira procura de lançamentos.",
-    "pendingSome_other": "{{server}} ainda estão a fazer a primeira procura de lançamentos.",
+    "pendingSome_one": "{{server}} ainda não concluiu a primeira verificação completa de lançamentos.",
+    "pendingSome_other": "{{server}} ainda não concluíram as primeiras verificações completas de lançamentos.",
     "stale_one": "{{server}} não procura lançamentos há mais de dois dias, por isso esta lista pode estar desatualizada.",
     "stale_other": "{{server}} não procuram lançamentos há mais de dois dias, por isso esta lista pode estar desatualizada.",
     "empty": {
@@ -3204,7 +3208,7 @@
       "turnOff": "Desativar",
       "private": "Mantenha este link privado: quem o tiver pode ver os seus próximos lançamentos.",
       "publicNote": "Serviços de calendário que buscam a partir da nuvem, como o Google Agenda, precisam do endereço HTTPS público do seu servidor.",
-      "elsewhere": "Há um link ativo. Redefina-o para vê-lo aqui.",
+      "elsewhere": "Existe uma ligação de calendário ativa. Só é apresentada no dispositivo que a criou. Repor substitui a ligação e as subscrições existentes deixam de atualizar até subscreveres a nova ligação.",
       "demo": "Contas de demonstração não podem assinar um calendário.",
       "kid": "Contas infantis não podem assinar um calendário.",
       "loadError": "Não foi possível verificar o seu link do calendário em {{server}}. Nada mudou.",

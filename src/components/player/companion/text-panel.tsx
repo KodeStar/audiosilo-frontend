@@ -7,7 +7,6 @@ import { MakeReadalongOffer } from '@/components/bridge/make-readalong';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spinner } from '@/components/ui/spinner';
-import { contentKeyOf } from '@/lib/content-key';
 import { bookTitle } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 import { useNarration } from '@/reader/narration';
@@ -52,15 +51,17 @@ export function TextPanel({
       </View>
     );
   }
-  if (map && book?.ebook) {
+  if ((map || text.selectingEbook) && book?.ebook) {
     return (
       <ReadAlong
         // One per book: the playing book changes under an open tab (Up next, the car), and
         // a reader document says `ready` once, so the next book needs its own.
-        key={contentKeyOf(target)}
+        key={text.ebookSelectionKey}
         target={target}
         ebookSize={book.ebook.size}
         map={map}
+        ebookSha256={text.ebookSha256}
+        onEbook={text.onEbook}
         title={title ?? ''}
         fill={fill}
       />
@@ -194,12 +195,16 @@ function ReadAlong({
   map,
   title,
   fill,
+  ebookSha256,
+  onEbook,
 }: {
   target: PlayTarget;
   ebookSize: number;
-  map: ReaderReadalongMap;
+  map: ReaderReadalongMap | null;
   title: string;
   fill: boolean;
+  ebookSha256?: string;
+  onEbook?: TextTabModel['onEbook'];
 }) {
   const { t } = useTranslation();
   const { connectionId, libraryId, path } = target;
@@ -212,7 +217,7 @@ function ReadAlong({
   // Where it opens: the sentence being read when the tab opened (then it follows on).
   const [at] = useState(() => {
     const p = narration.readalongPosition();
-    const cfi = p ? cfiAt(map, p.t) : undefined;
+    const cfi = p && map ? cfiAt(map, p.t) : undefined;
     return cfi ? { cfi } : undefined;
   });
 
@@ -220,7 +225,7 @@ function ReadAlong({
   // What the reader made of the map, for that map: one the book's made again is judged again
   // (a `none` would otherwise outlast it, its reader gone).
   const [said, setSaid] = useState<{
-    map: ReaderReadalongMap;
+    map: ReaderReadalongMap | null;
     state: ReadalongState['state'];
   } | null>(null);
   const state = said?.map === map ? said.state : null;
@@ -321,11 +326,15 @@ function ReadAlong({
             onLoadError={(e) => setFailure(e instanceof ReaderStartError ? 'start' : 'fetch')}
             onReopen={() => setOpened(null)}
             readalongMap={map}
+            readalongEbookSha256={ebookSha256}
+            onEbook={onEbook}
             readalongPosition={narration.readalongPosition}
             followNarration
             onSeek={narration.onSeek}
             onFollowing={setFollowing}
-            onReadalongState={(s) => setSaid({ map, state: s.state })}
+            onReadalongState={(s) => {
+              if (map) setSaid({ map, state: s.state });
+            }}
           />
         </View>
       ) : null}

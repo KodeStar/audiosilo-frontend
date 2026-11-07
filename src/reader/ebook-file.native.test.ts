@@ -9,6 +9,12 @@ import { pathSlug } from '@/lib/path-slug';
 const mockTree = new Map<string, number | 'dir'>();
 type MockOptions = { headers?: Record<string, string>; signal?: AbortSignal; sessionType?: string };
 const mockDownload = jest.fn(async (_url: string, _dest: string, _opts: MockOptions) => 1000);
+const mockBytes = jest.fn(async (_uri: string) => new Uint8Array([97, 98, 99]));
+jest.mock('expo-crypto', () => ({
+  CryptoDigestAlgorithm: { SHA256: 'sha256' },
+  digest: (algorithm: string, bytes: Uint8Array) =>
+    Promise.resolve(jest.requireActual('node:crypto').createHash(algorithm).update(bytes).digest()),
+}));
 jest.mock('expo-file-system', () => {
   const join = (parts: unknown[]) =>
     parts
@@ -29,6 +35,9 @@ jest.mock('expo-file-system', () => {
     get size() {
       const v = mockTree.get(this.uri);
       return typeof v === 'number' ? v : null;
+    }
+    bytes() {
+      return mockBytes(this.uri);
     }
     delete() {
       if (!this.exists) throw new Error(`nothing at ${this.uri}`);
@@ -89,6 +98,7 @@ import {
   chunkReader,
   clearEbookCache,
   hasLocalEbook,
+  identifyEbook,
   localEbook,
 } from './ebook-file.native';
 /* eslint-enable import/first */
@@ -113,6 +123,16 @@ beforeEach(() => {
   mockTree.clear();
   jest.clearAllMocks();
   mockDownload.mockImplementation(async () => 1000);
+  mockBytes.mockResolvedValue(new Uint8Array([97, 98, 99]));
+});
+
+it('identifies the selected native file by its actual bytes and length', async () => {
+  await expect(identifyEbook({ uri: SAVED, size: 999 }, 'download')).resolves.toEqual({
+    source: 'download',
+    size: 3,
+    sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+  });
+  expect(mockBytes).toHaveBeenCalledWith(SAVED);
 });
 
 describe('localEbook', () => {

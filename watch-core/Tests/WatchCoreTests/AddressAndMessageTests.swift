@@ -325,6 +325,17 @@ final class PhoneMessagesTests: XCTestCase {
     XCTAssertFalse(p.expired(now: ISOTime.parse("2026-11-04T12:09:59Z")!))
   }
 
+  func testKeepsThePhonesDisambiguatedDisplayNameSeparateFromAccountIdentity() {
+    for name in ["Home", "Home (books.example.com)", "Home (\(String(repeating: "a", count: 63)).books.example.com:8443)"] {
+      var message = pair
+      message["server_name"] = name
+      guard case .pair(let p) = PhoneMessages.decode(message) else { return XCTFail("not a pair") }
+      XCTAssertEqual(p.serverName, name)
+      XCTAssertEqual(p.accountId, "srv.7")
+      XCTAssertEqual(p.serverURL, "https://books.example.com")
+    }
+  }
+
   func testDecodesARemoveMessage() {
     let remove: [String: Any] = ["v": 1, "type": "remove", "server_id": "srv", "user_id": 7, "library_id": 3, "path": "A/B"]
     XCTAssertEqual(

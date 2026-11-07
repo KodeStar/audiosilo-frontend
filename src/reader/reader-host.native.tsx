@@ -3,11 +3,12 @@ import { AppState } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { downloadedEntryOf } from '@/downloads/store';
+import { contentKey } from '@/lib/content-key';
 import { useLatestRef } from '@/lib/use-latest';
 import { whenActive } from '@/lib/when-active';
 
 import { sendInChunks } from './book-chunks';
-import { chunkReader, type LocalEbook, localEbook } from './ebook-file.native';
+import { chunkReader, identifyEbook, type LocalEbook, localEbook } from './ebook-file.native';
 import {
   type HostChannel,
   type HostMessage,
@@ -87,6 +88,7 @@ export function ReaderHost({
   onLoadError,
   onReopen,
   onFetch,
+  onEbook,
   ref,
   ...readalongProps
 }: ReaderHostProps) {
@@ -104,6 +106,7 @@ export function ReaderHost({
     onLoadError,
     onReopen,
     onFetch,
+    onEbook,
   });
   // The WebView's life: a new one after its content process died.
   const [generation, setGeneration] = useState(0);
@@ -111,7 +114,7 @@ export function ReaderHost({
   const lastPlace = useRef<ReaderPlace | undefined>(undefined);
   // When this WebView last said `opened` (null before it did), for the reload budget.
   const openedAt = useRef<number | null>(null);
-  // The book's local file, found once per book.
+  // The book's local file, selected for each reader document.
   const book = useRef<Promise<LocalEbook | null> | null>(null);
   // What the WebView's messages are handed to (this generation's session).
   const received = useRef<(message: ReaderMessage) => void>(() => {});
@@ -119,31 +122,72 @@ export function ReaderHost({
   // WebView dies (its new one may wait for the app to come back).
   const endSession = useRef(() => {});
 
-  const readalong = useReaderReadalong(channel, readalongProps, true);
+  const bookKey = contentKey(connectionId, libraryId, path);
+  const [selected, setSelected] = useState<{
+    book: string;
+    generation: number;
+    sha256: string;
+  } | null>(null);
+  const ebookSha =
+    selected?.book === bookKey && selected.generation === generation ? selected.sha256 : null;
+  const withholdMap = !!onEbook && ebookSha !== readalongProps.readalongEbookSha256;
+  const readalong = useReaderReadalong(
+    channel,
+    {
+      ...readalongProps,
+      readalongMap: withholdMap ? null : readalongProps.readalongMap,
+    },
+    true,
+    withholdMap && !!readalongProps.readalongMap,
+  );
   useReaderControls(channel, ref, theme, fontScale, readalong);
 
+  useEffect(() => {
+    lastPlace.current = undefined;
+  }, [bookKey]);
+
   // The book's file, fetched into the cache when it is not on the device: started at once,
-  // while the WebView loads. A failure is said at once (null to whoever waits on it). One
-  // file per mount: a size the server changes meanwhile is fetched on the next open.
+  // while the WebView loads. A failure is said at once (null to whoever waits on it). A
+  // new document selects and identifies the file again: its path may have been replaced.
   useEffect(() => {
     const abort = new AbortController();
-    lastPlace.current = undefined;
-    book.current = localEbook({
-      api: latest.current.api,
-      connectionId,
-      libraryId,
-      path,
-      size: latest.current.ebookSize,
-      // The download's copy, when the book is downloaded with its EPUB.
-      saved: downloadedEntryOf({ connectionId, libraryId, path })?.manifest.ebookUri,
-      signal: abort.signal,
-      onFetch: () => latest.current.onFetch?.(),
-    }).catch((e: unknown) => {
-      if (!abort.signal.aborted) latest.current.onLoadError(e);
-      return null;
-    });
+    const publishEbook = latest.current.onEbook;
+    const saved = downloadedEntryOf({ connectionId, libraryId, path })?.manifest.ebookUri;
+    const find = (saved?: string) =>
+      localEbook({
+        api: latest.current.api,
+        connectionId,
+        libraryId,
+        path,
+        size: latest.current.ebookSize,
+        // The download's copy, when the book is downloaded with its EPUB.
+        saved,
+        signal: abort.signal,
+        onFetch: () => latest.current.onFetch?.(),
+      });
+    book.current = find(saved)
+      .then(async (selected) => {
+        if (!publishEbook) return selected;
+        let file = selected;
+        let identity;
+        try {
+          identity = await identifyEbook(file, file.uri === saved ? 'download' : 'server');
+        } catch (error) {
+          if (file.uri !== saved || abort.signal.aborted) throw error;
+          file = await find();
+          identity = await identifyEbook(file, 'server');
+        }
+        if (abort.signal.aborted) return null;
+        setSelected({ book: bookKey, generation, sha256: identity.sha256 });
+        publishEbook(identity);
+        return { ...file, size: identity.size };
+      })
+      .catch((e: unknown) => {
+        if (!abort.signal.aborted) latest.current.onLoadError(e);
+        return null;
+      });
     return () => abort.abort();
-  }, [connectionId, libraryId, path, latest]);
+  }, [connectionId, libraryId, path, bookKey, generation, latest]);
 
   // One reader session per WebView: the channel, the start timeout and the transfers.
   useEffect(() => {

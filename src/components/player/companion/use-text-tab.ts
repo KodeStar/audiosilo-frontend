@@ -3,26 +3,17 @@ import type { Book } from '@/api/types';
 import { useDownloadedEbook } from '@/downloads/store';
 import { canRead } from '@/reader/can-read';
 import { mayMakeReadalong } from '@/reader/readalong-gating';
-import type { ReaderReadalongMap } from '@/reader/readalong-map';
-import { type ReadalongFailure, useBookReadalong } from '@/reader/use-book-readalong';
+import { type BookReadalongMap, useBookReadalong } from '@/reader/use-book-readalong';
 import { useSession } from '@/stores/session';
 
 import type { PlayTarget } from '../use-play-book';
 import { textTab } from './companion-model';
 
-/** The companion's Text tab for the playing book (see `useTextTab`). */
-export type TextTabModel = {
+/** The companion's Text tab for the playing book (see `useTextTab`): the book's
+ * read-along (`useBookReadalong`, but `offline`, which only decides `shown`), and: */
+export type TextTabModel = Omit<BookReadalongMap, 'offline'> & {
   /** The tab shows (`textTab`). */
   shown: boolean;
-  /** The map to follow, or null (none: the admin's Make offer shows instead). */
-  map: ReaderReadalongMap | null;
-  /** The map is on its way (`useBookReadalong`): an admin's tab says so with a spinner. */
-  pending: boolean;
-  /** Why the map's read failed (`useBookReadalong`), else null: the tab says so (with Try
-   * again, `retry`, only where it can work), and never offers Make, which would queue a job
-   * the book may not need. */
-  failure: ReadalongFailure | null;
-  retry: () => void;
   book: Book | undefined;
 };
 
@@ -40,10 +31,17 @@ export function useTextTab(target: PlayTarget): TextTabModel {
   const ebooks = useCapability('ebooks', connectionId);
   const savedEbook = useDownloadedEbook(connectionId, libraryId, path);
   const readable = canRead(ebooks, book, !!savedEbook);
-  const { map, pending, failure, offline, retry } = useBookReadalong(target, book, readable);
+  const { offline, ...readalong } = useBookReadalong(target, book, readable, true, {
+    reselectOnDownloadChange: true,
+  });
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const mayMake = readable && mayMakeReadalong(user, server);
-  const shown = textTab({ map: map !== null, failed: failure !== null, offline, mayMake });
-  return { shown, map, pending, failure, retry, book };
+  const shown = textTab({
+    map: readalong.map !== null,
+    failed: readalong.failure !== null,
+    offline,
+    mayMake,
+  });
+  return { ...readalong, shown, book };
 }

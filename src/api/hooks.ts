@@ -719,21 +719,24 @@ export function useCapabilitiesAllRead(): {
         !r.data && (r.isError || r.isPaused) ? [apis[i].connection.id] : [],
       ),
       retry: () => {
-        for (const r of results) if (!r.data && r.isError) void r.refetch();
+        for (const r of results) if (!r.data && (r.isError || r.isPaused)) void r.refetch();
       },
     }),
   });
 }
 
 /** Whether any server has a capability: true as soon as one does, false once every one
- * is known to lack it, undefined while that is still open. */
+ * has settled without it (including failed reads), undefined during an active first read. */
 export function anyCapability(
   caps: Record<string, Capabilities | undefined>,
   flag: keyof Capabilities,
+  failed: readonly string[] = [],
 ): boolean | undefined {
-  const values = Object.values(caps);
-  if (values.some((c) => c?.[flag])) return true;
-  return values.length > 0 && values.every((c) => c !== undefined) ? false : undefined;
+  const entries = Object.entries(caps);
+  if (entries.some(([, c]) => c?.[flag])) return true;
+  return entries.length > 0 && entries.every(([cid, c]) => c !== undefined || failed.includes(cid))
+    ? false
+    : undefined;
 }
 
 /** Rejection of a capability-gated mutation on a server that does not advertise its
@@ -3573,6 +3576,10 @@ export function useAllProgressAll({
        * before it answered): not loading, and not "no progress". */
       offline: results.some((r) => !r.data && r.isPaused),
       error: results.find((r) => r.error)?.error ?? null,
+      /** Ask again only for the servers whose progress failed. */
+      retry: () => {
+        for (const r of results) if (r.isError) void r.refetch();
+      },
     }),
   });
 }

@@ -4,9 +4,12 @@ import { readAsStringAsync } from 'expo-file-system/legacy';
 import { ApiError, type ApiClient } from '@/api/client';
 import { classifyDownloadError } from '@/downloads/failure';
 import { pathSlug } from '@/lib/path-slug';
+import { expoCrypto, toHex } from '@/lib/random';
+import { sha256 } from '@/lib/sha256';
 
 import type { ChunkReader } from './book-chunks';
 import type { EbookFileRef } from './ebook-file';
+import type { OpenedEbook } from './ebook-identity';
 
 /**
  * Where the app's reader finds a book's EPUB (Bridge Phase 3b-2): a local file it reads in
@@ -35,6 +38,26 @@ const cacheName = (size: number) => `book-${size}.epub`;
 
 /** A book's EPUB as a local file. */
 export type LocalEbook = { uri: string; size: number };
+
+/** Identify the actual selected file. Reading a download that throws lets the host try
+ * the server copy before it publishes any identity or transfers any chunks. */
+export async function identifyEbook(
+  file: LocalEbook,
+  source: OpenedEbook['source'],
+): Promise<OpenedEbook> {
+  const bytes = await new File(file.uri).bytes();
+  // expo-crypto's native digest, taken lazily (`expoCrypto`: this module is on the launch
+  // path through the downloads store), else the pure-JS one.
+  const native = expoCrypto();
+  const hash = native
+    ? new Uint8Array(await native.digest(native.CryptoDigestAlgorithm.SHA256, bytes))
+    : sha256(bytes);
+  return {
+    source,
+    size: bytes.byteLength,
+    sha256: toHex(hash),
+  };
+}
 
 function sizeOf(file: File): number {
   try {

@@ -142,6 +142,7 @@ CONVENTIONS.md`, then Read that range). When you add or change a rule, edit it t
 keep this index in step (one line per topic).
 
 - **Architecture & conventions**
+  - Server display names
   - `AUTH_STORAGE_VERSION`
   - `CACHE_STORAGE_VERSION`
   - Startup cache (web)

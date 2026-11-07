@@ -46,8 +46,14 @@ const mockLocalEbook = jest.fn(async (_a: unknown) => ({
   uri: 'file:///cache/book.epub',
   size: CHUNK_BYTES + 5,
 }));
+const mockIdentifyEbook = jest.fn(async (_file: unknown, source: string) => ({
+  source,
+  size: CHUNK_BYTES + 5,
+  sha256: 'sha-server',
+}));
 jest.mock('./ebook-file.native', () => ({
   localEbook: (a: unknown) => mockLocalEbook(a),
+  identifyEbook: (file: unknown, source: string) => mockIdentifyEbook(file, source),
   chunkReader: (uri: string) => async (position: number, length: number) =>
     `${uri}@${position}+${length}`,
 }));
@@ -76,6 +82,7 @@ async function mount({
   onLoadError = jest.fn(),
   onReopen = jest.fn(),
   onFetch = undefined as (() => void) | undefined,
+  onEbook = undefined as ReaderHostProps['onEbook'],
   placeKnown = undefined as boolean | undefined,
 } = {}) {
   const handle: { current: ReaderHostHandle | null } = { current: null };
@@ -96,6 +103,7 @@ async function mount({
       onLoadError={onLoadError}
       onReopen={onReopen}
       onFetch={onFetch}
+      onEbook={onEbook}
       ref={handle}
     />
   );
@@ -150,9 +158,56 @@ function fakeAppState() {
 beforeEach(() => {
   mockViews.length = 0;
   jest.clearAllMocks();
+  mockIdentifyEbook.mockReset().mockImplementation(async (_file, source) => ({
+    source,
+    size: CHUNK_BYTES + 5,
+    sha256: 'sha-server',
+  }));
 });
 
 describe('ReaderHost (app)', () => {
+  it('reports the actual server EPUB after a downloaded file cannot be read', async () => {
+    const saved = 'file:///downloads/book.epub';
+    mockDownloaded.mockReturnValueOnce({ manifest: { ebookUri: saved } });
+    mockLocalEbook.mockResolvedValueOnce({ uri: saved, size: CHUNK_BYTES + 5 });
+    mockIdentifyEbook.mockRejectedValueOnce(new Error('EIO'));
+    const onEbook = jest.fn();
+    await mount({ onEbook });
+    await waitFor(() =>
+      expect(onEbook).toHaveBeenCalledWith({
+        source: 'server',
+        size: CHUNK_BYTES + 5,
+        sha256: 'sha-server',
+      }),
+    );
+    expect(onEbook).toHaveBeenCalledTimes(1);
+    expect(mockLocalEbook).toHaveBeenLastCalledWith(expect.objectContaining({ saved: undefined }));
+  });
+
+  it('publishes no EPUB identity when the selected file cannot be read', async () => {
+    mockIdentifyEbook.mockRejectedValueOnce(new Error('EIO'));
+    const onEbook = jest.fn();
+    const host = await mount({ onEbook });
+    await waitFor(() => expect(host.onLoadError).toHaveBeenCalled());
+    expect(onEbook).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a file identity after its session was closed', async () => {
+    let identify!: (value: { source: string; size: number; sha256: string }) => void;
+    mockIdentifyEbook.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          identify = resolve;
+        }),
+    );
+    const onEbook = jest.fn();
+    const host = await mount({ onEbook });
+    await waitFor(() => expect(mockIdentifyEbook).toHaveBeenCalled());
+    await host.unmount();
+    await act(async () => identify({ source: 'server', size: 4, sha256: 'late' }));
+    expect(onEbook).not.toHaveBeenCalled();
+  });
+
   it('loads the reader as an HTML source with every file access setting off', async () => {
     await mount();
     const { props } = latest();
@@ -274,8 +329,8 @@ describe('ReaderHost (app)', () => {
     await say({ type: 'ready' });
     await waitFor(() => expect(latest().posted[0]).toMatchObject({ type: 'open' }));
     expect(latest().posted[0]).toMatchObject({ at: { cfi: 'epubcfi(/6/8!/4/2)', fraction: 0.4 } });
-    // The book's file is found once, not again for the new WebView.
-    expect(mockLocalEbook).toHaveBeenCalledTimes(1);
+    // The new document selects its file again while preserving the reading place.
+    expect(mockLocalEbook).toHaveBeenCalledTimes(2);
   });
 
   it('gives up after the renderer dies again and again (Android), saying so', async () => {
@@ -514,6 +569,36 @@ describe('ReaderHost (app) read-along', () => {
     expect(types().filter((t) => t === 'readalong' || t === 'position')).toEqual([]);
   });
 
+  it.each(['sha-server', 'sha-replaced'])(
+    'identifies the EPUB again before sending a reloaded document its map (%s)',
+    async (sha256) => {
+      const onEbook = jest.fn();
+      await mountAlong({ onEbook, readalongMap: small, readalongEbookSha256: 'sha-server' });
+      await say({ type: 'ready' });
+      await waitFor(() =>
+        expect(latest().posted).toContainEqual({ type: 'readalong', map: small }),
+      );
+      let identified!: (value: { source: string; size: number; sha256: string }) => void;
+      mockIdentifyEbook.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            identified = resolve;
+          }),
+      );
+      await act(async () => latest().props.onContentProcessDidTerminate());
+      await say({ type: 'ready' });
+      expect(latest().posted).not.toContainEqual({ type: 'readalong', map: small });
+      await act(async () => identified({ source: 'server', size: CHUNK_BYTES + 5, sha256 }));
+      await waitFor(() => expect(types()).toContain('open'));
+      expect(onEbook).toHaveBeenLastCalledWith({ source: 'server', size: CHUNK_BYTES + 5, sha256 });
+      if (sha256 === 'sha-server') {
+        expect(latest().posted).toContainEqual({ type: 'readalong', map: small });
+      } else {
+        expect(latest().posted).not.toContainEqual({ type: 'readalong', map: small });
+      }
+    },
+  );
+
   it('sends a small map whole once ready, the place, and follow when asked to follow', async () => {
     await mountAlong({ readalongMap: small, followNarration: true });
     expect(latest().posted).toEqual([]);
@@ -595,7 +680,12 @@ describe('ReaderHost (app) read-along', () => {
   });
 
   it('a WebView made again gets the map and follows as the last one last said', async () => {
-    await mountAlong({ readalongMap: small, followNarration: true });
+    await mountAlong({
+      onEbook: jest.fn(),
+      readalongMap: small,
+      readalongEbookSha256: 'sha-server',
+      followNarration: true,
+    });
     await say({ type: 'ready' });
     // The reader stopped following (the person turned the page away), then died.
     await say({ type: 'following', value: false });

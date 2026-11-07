@@ -139,6 +139,15 @@ beforeEach(() => {
 });
 
 describe('AccountSection: at home and away', () => {
+  it('distinguishes same-name server options and keeps their connection ids for switching', async () => {
+    mockSession.connections[1].name = 'Hearthside';
+    await mountWithPortal(<AccountSection />);
+    expect(screen.getByRole('radio', { name: 'Hearthside (books.example)' })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Hearthside (maya.local:8080)' }));
+    expect(screen.getByText('chris2')).toBeTruthy();
+    expect(mockSession.connections.map((c) => c.id)).toEqual(['c1', 'c2']);
+  });
+
   const HOME = 'http://192.168.1.20:8080';
   const AWAY = 'https://books.example';
   const withAddresses = (addresses?: ServerAddresses) => {

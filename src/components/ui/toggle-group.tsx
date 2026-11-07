@@ -1,5 +1,6 @@
 import * as ToggleGroupPrimitive from '@rn-primitives/toggle-group';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, Platform, ScrollView, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -11,8 +12,10 @@ import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { Button } from './button';
 import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { FOCUS_RING_CLASS, Text, TextClassContext } from './text';
+import { slopTo44 } from './touch-target';
 
 /**
  * The Stacks segmented control (STYLEGUIDE.md section 8: "muted track + raised card for
@@ -120,7 +123,7 @@ export function SegmentedControl<T extends string>({
    * no width to divide, and a flex-1 segment in one collapses to nothing). */
   grow?: boolean;
   /** Scroll horizontally when the options don't fit (long labels, many options): the
-   * chosen segment is kept in view and a fade marks the side with more. */
+   * chosen segment is kept in view and scroll arrows mark the sides with more. */
   scrollable?: boolean;
   /** Wrap onto more lines instead (a long list such as the languages). */
   wrap?: boolean;
@@ -173,7 +176,7 @@ const FADE = 28;
  * an 834 wide tablet), and a chosen segment could sit cut off at the edge. So it:
  * - scrolls the chosen segment fully into view (clear of the fade) when it changes or
  *   first lays out;
- * - fades the side(s) that have more, in the track's own colour;
+ * - fades the side(s) that have more, with labelled scroll arrows;
  * - on the web, turns a mouse wheel's vertical scroll into a horizontal one while the
  *   pointer is over it (a mouse can't scroll sideways otherwise).
  */
@@ -184,6 +187,7 @@ function SegmentScroller<T extends string>({
   value: T;
   children: (onItemLayout: (value: T, e: LayoutChangeEvent) => void) => ReactNode;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<ScrollView>(null);
   const reduced = useReducedMotion();
   const [layouts, setLayouts] = useState<Partial<Record<string, { x: number; width: number }>>>({});
@@ -222,6 +226,13 @@ function SegmentScroller<T extends string>({
   }, []);
 
   const overflow = content - viewport > 1;
+  const moreLeft = overflow && x > 1;
+  const moreRight = overflow && x + viewport < content - 1;
+  const scroll = (direction: -1 | 1) =>
+    ref.current?.scrollTo({
+      x: Math.max(0, Math.min(content - viewport, x + direction * (viewport - FADE))),
+      animated: !reduced,
+    });
   return (
     <View className="relative min-w-0">
       <ScrollView
@@ -245,11 +256,36 @@ function SegmentScroller<T extends string>({
           );
         })}
       </ScrollView>
-      {overflow && x > 1 ? <EdgeFade side="left" /> : null}
-      {overflow && x + viewport < content - 1 ? <EdgeFade side="right" /> : null}
+      {moreLeft ? <EdgeFade side="left" /> : null}
+      {moreRight ? <EdgeFade side="right" /> : null}
+      {moreLeft ? (
+        <Button
+          variant="outline"
+          size="sm"
+          icon="chevron-left"
+          hitSlop={ARROW_SLOP}
+          accessibilityLabel={t('common.scrollPrevious')}
+          onPress={() => scroll(-1)}
+          className="absolute left-0 top-0 w-7 px-0"
+        />
+      ) : null}
+      {moreRight ? (
+        <Button
+          variant="outline"
+          size="sm"
+          icon="chevron-right"
+          hitSlop={ARROW_SLOP}
+          accessibilityLabel={t('common.scrollNext')}
+          onPress={() => scroll(1)}
+          className="absolute right-0 top-0 w-7 px-0"
+        />
+      ) : null}
     </View>
   );
 }
+
+/** A scroll arrow (`w-7`, a 30 px tall `sm` button) grown to a 44 pt touch target. */
+const ARROW_SLOP = { top: 7, bottom: 7, left: slopTo44(1.75), right: slopTo44(1.75) };
 
 function EdgeFade({ side }: { side: 'left' | 'right' }) {
   const id = useDomId('fade');

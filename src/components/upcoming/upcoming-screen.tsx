@@ -4,7 +4,6 @@ import { View } from 'react-native';
 
 import { useUpcomingAll } from '@/api/hooks';
 import { LoadError } from '@/components/library/books/book-states';
-import { useServerFlag } from '@/components/library/cover-tile';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -42,8 +41,8 @@ function UpcomingSkeleton() {
  * The Upcoming page's body (Track U2; `/upcoming`, and the You hub's Upcoming section): the
  * listener's upcoming releases on every server, in three sections (Coming soon, Just
  * released, Missing from your series; an empty one hidden). The states: rows standing in
- * while the first answers load; a server's first check still running ("this list fills
- * after its first check"); nothing coming up; no server answering, with its list or its
+ * while the first answers load; a server waiting for its first full check; nothing coming
+ * up; no server answering, with its list or its
  * flags (a Retry, never "nothing coming up", nor rows standing in forever); and, where no
  * server offers it (or the listener is a kid there), a quiet "not available" in place of a
  * list that would ask nothing. A server that didn't answer beside
@@ -54,7 +53,6 @@ function UpcomingSkeleton() {
  */
 export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
-  const serverLabel = useServerFlag();
   const { items, available, isLoading, statuses, failed, retry } = useUpcomingAll();
   // Counted from when the page opened (its badges stay put while it is open).
   const [now] = useState(() => new Date());
@@ -140,7 +138,6 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
                       item={item}
                       first={i === 0}
                       isNew={isNewUpcoming(item, now)}
-                      server={serverLabel(item.connectionId)}
                     />
                   ))}
                 </View>

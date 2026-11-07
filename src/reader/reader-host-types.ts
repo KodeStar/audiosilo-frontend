@@ -2,6 +2,7 @@ import type { Ref } from 'react';
 
 import type { ApiClient } from '@/api/client';
 
+import type { OpenedEbook } from './ebook-identity';
 import type {
   GotoTarget,
   ReadalongPosition,
@@ -41,6 +42,9 @@ export type ReaderReadalongProps = {
    * none. Sent to every new reader document, and again when it changes (by identity), so
    * keep it memoised. */
   readalongMap?: ReaderReadalongMap | null;
+  /** Digest of the EPUB the map describes. A host with `onEbook` withholds maps until
+   * this matches the bytes it selected, including during a server fallback. */
+  readalongEbookSha256?: string;
   /** The narration's place now (whole-book seconds, speed, playing), or null while there is
    * none (another book playing): read once a second while a map is in, and on
    * `syncPosition()`. */
@@ -92,6 +96,9 @@ export type ReaderHostProps = ReaderReadalongProps & {
    * copy is no sign the book was read here (the screen's offline place lookup, fe#193).
    * Called before any file of it exists; never on the web, which keeps no cache. */
   onFetch?: () => void;
+  /** The EPUB actually selected for this session. Never the unreadable download's
+   * recorded identity when the host falls back to the server's file. */
+  onEbook?: (ebook: OpenedEbook) => void;
   /** The reader document was made again (the app's WebView after its content process
    * died, the web's frame after it reloaded): the book shows again with its next
    * `opened`. */

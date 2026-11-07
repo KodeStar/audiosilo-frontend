@@ -49,7 +49,9 @@
         "title": "Nothing is playing",
         "body": "Choose a book to start listening."
       }
-    }
+    },
+    "scrollPrevious": "Scroll to previous sections",
+    "scrollNext": "Scroll to more sections"
   },
   "settings": {
     "title": "Settings",
@@ -355,7 +357,9 @@
         "not_found": "The book isn't on the server any more.",
         "unknown_kind": "The server doesn't know this kind of listen.",
         "invalid": "The server couldn't read it."
-      }
+      },
+      "failed_one": "{{count}} listening event couldn't sync",
+      "failed_other": "{{count}} listening events couldn't sync"
     }
   },
   "annotations": {
@@ -3043,8 +3047,8 @@
         "stoppedBusy": "Your server stayed busy. Try again later.",
         "stoppedCantAct": "Stopped, because someone else is listening on this device now.",
         "rateLimited": "Imports can run about once every 30 seconds. Trying again in {{seconds}} s.",
-        "doneFailed_one": "Done. {{count}} show couldn't be added. You can try it again below.",
-        "doneFailed_other": "Done. {{count}} shows couldn't be added. You can try each one again below."
+        "doneFailed_one": "Import finished. {{count}} show wasn't added. See its status below.",
+        "doneFailed_other": "Import finished. {{count}} shows weren't added. See their statuses below."
       },
       "fail": {
         "notOpml": "That file isn't an OPML list.",
@@ -3170,13 +3174,13 @@
     "firstReleased": "First released {{date}}",
     "seriesBook": "{{series}}, book {{position}}",
     "new": "New",
-    "fromServer": "From {{server}}",
+    "fromServer": "Not on {{server}}",
     "pending": {
-      "title": "Checking for releases",
-      "hint": "Your server is checking for releases; this list fills after its first check."
+      "title": "First full check pending",
+      "hint": "Your server's first full check for releases is queued. This list may grow after that check."
     },
-    "pendingSome_one": "{{server}} is still running its first check for releases.",
-    "pendingSome_other": "{{server}} are still running their first check for releases.",
+    "pendingSome_one": "{{server}} hasn't completed its first full check for releases yet.",
+    "pendingSome_other": "{{server}} haven't completed their first full checks for releases yet.",
     "stale_one": "{{server}} hasn't checked for releases in over two days, so this list may be out of date.",
     "stale_other": "{{server}} haven't checked for releases in over two days, so this list may be out of date.",
     "empty": {
@@ -3204,7 +3208,7 @@
       "turnOff": "Turn off",
       "private": "Keep this link private: anyone who has it can see your upcoming releases.",
       "publicNote": "Calendar services that fetch from the cloud, like Google Calendar, need your server's public HTTPS address.",
-      "elsewhere": "A link is active. Reset it to see it here.",
+      "elsewhere": "A calendar link is active. It is shown only on the device that created it. Reset replaces the link and stops existing subscriptions from updating until you subscribe with the new link.",
       "demo": "Demo accounts can't subscribe to a calendar.",
       "kid": "Kids' accounts can't subscribe to a calendar.",
       "loadError": "Couldn't check your calendar link on {{server}}. Nothing changed.",
