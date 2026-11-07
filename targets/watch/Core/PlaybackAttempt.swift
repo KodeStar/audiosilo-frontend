@@ -28,4 +28,30 @@ enum PlaybackFailure {
     case .damagedDownload: return "This download can't be read. Remove it from the watch and download it again."
     }
   }
+
+  /// A player item's failure. Only a file that is gone, or whose audio cannot be parsed or
+  /// decoded, is a damaged download (another Play fails the same way); other player and session
+  /// failures can be temporary and keep the book for another Play. AVFoundation often wraps the
+  /// cause, so the underlying error is read too.
+  static func ofItemError(_ error: Error?) -> PlaybackFailure {
+    var next = error.map { $0 as NSError }
+    var depth = 0
+    while let e = next, depth < 4 {
+      if damaged(domain: e.domain, code: e.code) { return .damagedDownload }
+      next = e.userInfo[NSUnderlyingErrorKey] as? NSError
+      depth += 1
+    }
+    return .audioStart
+  }
+
+  private static func damaged(domain: String, code: Int) -> Bool {
+    switch domain {
+    // fileFormatNotRecognized, fileFailedToParse, decodeFailed.
+    case "AVFoundationErrorDomain": return [-11828, -11829, -11821].contains(code)
+    case NSURLErrorDomain: return code == NSURLErrorFileDoesNotExist
+    case NSCocoaErrorDomain: return code == NSFileReadNoSuchFileError || code == NSFileNoSuchFileError
+    case NSPOSIXErrorDomain: return code == Int(ENOENT)
+    default: return false
+    }
+  }
 }

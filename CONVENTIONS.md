@@ -853,7 +853,8 @@ reader follows the narration in the book with it.
   new map. The full-screen reader keeps its already-selected file until it reopens.
   A replacement native WebView selects and identifies the file again before taking a map;
   its document generation cannot reuse the previous document's EPUB digest.
-  Withholding a map during identification preserves the reader's last Follow narration choice.
+  Withholding a map during identification preserves the reader's last Follow narration choice
+  and sends the document nothing (a null map would be answered `readalong: none`).
   A local map read uses `meta: { local: true }`, so a disk success neither clears
   `needsReconnect` nor probes a server marked down (frontend#206).
   A server map waiting for the connection (`paused`, no copy here) is

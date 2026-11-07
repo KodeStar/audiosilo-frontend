@@ -1,11 +1,11 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { readAsStringAsync } from 'expo-file-system/legacy';
-import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
 
 import { ApiError, type ApiClient } from '@/api/client';
 import { classifyDownloadError } from '@/downloads/failure';
 import { pathSlug } from '@/lib/path-slug';
-import { toHex } from '@/lib/random';
+import { expoCrypto, toHex } from '@/lib/random';
+import { sha256 } from '@/lib/sha256';
 
 import type { ChunkReader } from './book-chunks';
 import type { EbookFileRef } from './ebook-file';
@@ -46,7 +46,12 @@ export async function identifyEbook(
   source: OpenedEbook['source'],
 ): Promise<OpenedEbook> {
   const bytes = await new File(file.uri).bytes();
-  const hash = new Uint8Array(await digest(CryptoDigestAlgorithm.SHA256, bytes));
+  // expo-crypto's native digest, taken lazily (`expoCrypto`: this module is on the launch
+  // path through the downloads store), else the pure-JS one.
+  const native = expoCrypto();
+  const hash = native
+    ? new Uint8Array(await native.digest(native.CryptoDigestAlgorithm.SHA256, bytes))
+    : sha256(bytes);
   return {
     source,
     size: bytes.byteLength,

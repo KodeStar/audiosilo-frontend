@@ -112,11 +112,9 @@ export function UpcomingTile({ width, ...props }: ItemProps & { width: number })
             {date}
           </Text>
         ) : null}
-        {from ? (
-          <Text variant="caption" numberOfLines={1}>
-            {from}
-          </Text>
-        ) : null}
+        <Text variant="caption" numberOfLines={1}>
+          {from}
+        </Text>
       </View>
     </AnimatedPressable>
   );

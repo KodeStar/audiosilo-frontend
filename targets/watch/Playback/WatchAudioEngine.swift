@@ -278,7 +278,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
       // AVQueuePlayer skips a failed file by itself, which would carry the listener past it. One
       // further on waits its turn (the file playing may have hours left: `itemEnded`).
       let current = player.currentItem.flatMap { items.firstIndex(of: $0) } ?? items.count
-      if i <= current { fail(fileFailure(item.error)) }
+      if i <= current { fail(PlaybackFailure.ofItemError(item.error)) }
     default: break
     }
   }
@@ -546,7 +546,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     guard let item = note.object as? AVPlayerItem, let i = items.firstIndex(of: item), let b = book else { return }
     guard firstIndex + i == b.timeline.files.count - 1 else {
       // The next file failed before its turn: the player would skip it (`itemStatus`).
-      if items.indices.contains(i + 1), items[i + 1].status == .failed { fail(fileFailure(items[i + 1].error)) }
+      if items.indices.contains(i + 1), items[i + 1].status == .failed { fail(PlaybackFailure.ofItemError(items[i + 1].error)) }
       return
     }
     // The book's end: its last span closed, then one `finish`.
@@ -566,7 +566,7 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   private func itemFailed(_ note: Notification) {
     guard let item = note.object as? AVPlayerItem, items.contains(item) else { return }
     let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error ?? item.error
-    fail(fileFailure(error))
+    fail(PlaybackFailure.ofItemError(error))
   }
 
   /// The queue goes first: the place then comes from the last tick, not from wherever the player
@@ -580,16 +580,6 @@ final class WatchAudioEngine: NSObject, ObservableObject {
     settling = false
     pause(stoppedAt: nil)
     problem = failure.message
-  }
-
-  /// Only parsing failures establish that a downloaded file cannot be read. Other player and
-  /// session failures can be temporary and keep the book for another Play.
-  private func fileFailure(_ error: Error?) -> PlaybackFailure {
-    guard let error = error as NSError?, error.domain == AVFoundationErrorDomain else { return .audioStart }
-    switch AVError.Code(rawValue: error.code) {
-    case .fileFormatNotRecognized, .fileFailedToParse: return .damagedDownload
-    default: return .audioStart
-    }
   }
 
   private func interrupted(_ note: Notification) {

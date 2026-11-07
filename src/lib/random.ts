@@ -10,9 +10,9 @@ let loaded: ExpoCrypto | null | undefined;
  * `crypto`), native only when the binary carries the `ExpoCrypto` module. Required lazily
  * behind that check, like expo-widgets in `widget-sync.ios.ts`: importing it on a binary
  * without the module throws at load, and the launch path (the identity migration) uses
- * these.
+ * these. Never import `expo-crypto` statically: take it from here.
  */
-function expoCrypto(): ExpoCrypto | null {
+export function expoCrypto(): ExpoCrypto | null {
   if (loaded !== undefined) return loaded;
   try {
     loaded =

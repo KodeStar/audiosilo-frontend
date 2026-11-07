@@ -202,8 +202,16 @@ describe('ReaderHost (web) in a page', () => {
       await host.say({ type: 'ready' });
       expect(maps()).toHaveLength(1);
       await host.say({ type: 'following', value: following });
+      const reloadedAt = host.posted.mock.calls.length;
       await host.say({ type: 'ready' });
       expect(maps()).toHaveLength(1);
+      // No null map either: the document would answer `readalong: none`, which a Text tab
+      // takes for a map naming nothing in this ebook.
+      expect(
+        host.posted.mock.calls
+          .slice(reloadedAt)
+          .some(([message]) => (message as { type: string }).type === 'readalong'),
+      ).toBe(false);
       const before = host.posted.mock.calls.length;
       await act(async () => fetched(book));
       expect(maps()).toHaveLength(2);

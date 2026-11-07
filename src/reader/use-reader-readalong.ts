@@ -101,7 +101,11 @@ export function useReaderReadalong(
 
   const map = props.readalongMap ?? null;
   useEffect(() => {
-    if (!map && !withheld) following.current = null;
+    // Nothing is sent while a map is held back: a null map would have the document answer
+    // `readalong: none` (a Text tab would take that as a map naming nothing in this ebook)
+    // and stop following. The map goes once the EPUB is identified.
+    if (withheld) return;
+    if (!map) following.current = null;
     link.sendMap();
   }, [link, map, withheld]);
 

@@ -38,4 +38,22 @@ final class PlaybackAttemptTests: XCTestCase {
     }
     XCTAssertTrue(PlaybackFailure.damagedDownload.message.contains("download it again"))
   }
+
+  func testOnlyAMissingOrUnreadableFileIsADamagedDownload() {
+    let unparsable = NSError(domain: "AVFoundationErrorDomain", code: -11829)
+    let undecodable = NSError(domain: "AVFoundationErrorDomain", code: -11821)
+    let missing = NSError(domain: NSURLErrorDomain, code: NSURLErrorFileDoesNotExist)
+    let wrappedMissing = NSError(
+      domain: "AVFoundationErrorDomain", code: -11800,
+      userInfo: [NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT))])
+    for error in [unparsable, undecodable, missing, wrappedMissing] {
+      XCTAssertEqual(PlaybackFailure.ofItemError(error), .damagedDownload, "\(error)")
+    }
+    let refused = NSError(domain: "AVFoundationErrorDomain", code: -11800)
+    let sessionDenied = NSError(domain: "NSOSStatusErrorDomain", code: 561_017_449)
+    for error in [refused, sessionDenied] {
+      XCTAssertEqual(PlaybackFailure.ofItemError(error), .audioStart, "\(error)")
+    }
+    XCTAssertEqual(PlaybackFailure.ofItemError(nil), .audioStart)
+  }
 }
