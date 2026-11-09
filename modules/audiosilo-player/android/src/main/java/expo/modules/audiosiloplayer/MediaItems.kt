@@ -109,13 +109,13 @@ object MediaItems {
     return BuiltQueue(items, itemIndex.coerceIn(0, maxOf(0, items.size - 1)), itemPosMs)
   }
 
-  /** A whole-file item (a multi-file book without chapter clips). */
   /** A downloaded book's play spec as the queue Media3 starts (a car play, a resumption). */
   fun startPositionOf(spec: CarPlaySpec): MediaItemsWithStartPosition {
     val queue = buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
     return MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs)
   }
 
+  /** A whole-file item (a multi-file book without chapter clips). */
   fun toMediaItem(t: TrackSpec, fileIndex: Int, book: BookRef?): MediaItem {
     val metadata = MediaMetadata.Builder()
       .setTitle(t.title)

@@ -207,7 +207,6 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   override fun onCreate() {
     super.onCreate()
-    CarSnapshotStore.init(this)
     // The car snapshot is read off the main thread; until it is in, the buttons carry their
     // English labels (as before the first snapshot), and the layout is re-set once it is.
     CarSnapshotStore.preload(this) { handler.post { refreshLayout() } }
@@ -544,7 +543,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
         NotificationManagerCompat.IMPORTANCE_LOW,
       ).setName(getString(DefaultMediaNotificationProvider.DEFAULT_CHANNEL_NAME_RESOURCE_ID)).build(),
     )
-    val title = snapshot()?.resumable()?.title ?: applicationInfo.loadLabel(packageManager).toString()
+    // peek: the receiver that started us loaded the snapshot; never a disk read here.
+    val title = CarSnapshotStore.peek()?.resumable()?.title ?: applicationInfo.loadLabel(packageManager).toString()
     val notification = NotificationCompat.Builder(this, DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(title)
@@ -579,7 +579,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
       object : FutureCallback<MediaItemsWithStartPosition> {
         override fun onSuccess(result: MediaItemsWithStartPosition) = endButtonStart(failed = false)
 
-        override fun onFailure(t: Throwable) = endButtonStart(failed = true)
+        // A JS-routed resumption superseded by a newer one (failPendingPlay) fails too: the
+        // newer one, still pending, keeps the start (its own answer or the timeout ends it).
+        override fun onFailure(t: Throwable) {
+          if (pendingPlay == null) endButtonStart(failed = true)
+        }
       },
       ContextCompat.getMainExecutor(this),
     )
@@ -748,6 +752,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   override fun onDestroy() {
     if (PlayerBridge.service === this) PlayerBridge.service = null
+    // The pendingPlay failed below reaches watchResumption after this: nothing left to end.
+    buttonStart = false
     handler.removeCallbacksAndMessages(null)
     pendingPlay?.setException(IllegalStateException("Service stopped"))
     pendingPlay = null

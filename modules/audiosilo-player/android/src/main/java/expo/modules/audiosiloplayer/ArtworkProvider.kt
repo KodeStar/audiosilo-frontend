@@ -20,12 +20,7 @@ import java.io.FileNotFoundException
  * browsing controller's package (`grantUriPermission`, `android:grantUriPermissions`).
  */
 class ArtworkProvider : ContentProvider() {
-  override fun onCreate(): Boolean {
-    // Providers start before any receiver or service in a fresh process: hand the snapshot
-    // store the app context (the media button receiver needs it, see ResumptionReceiver).
-    context?.let { CarSnapshotStore.init(it) }
-    return true
-  }
+  override fun onCreate(): Boolean = true
 
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
     if (mode != "r") throw SecurityException("Read only")

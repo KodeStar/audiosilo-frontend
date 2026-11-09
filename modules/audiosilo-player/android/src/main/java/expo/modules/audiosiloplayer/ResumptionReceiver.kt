@@ -21,8 +21,6 @@ import androidx.media3.session.MediaButtonReceiver
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 class ResumptionReceiver : MediaButtonReceiver() {
-  override fun shouldStartForegroundService(context: Context, intent: Intent): Boolean {
-    CarSnapshotStore.init(context)
-    return CarSnapshotStore.get(context)?.resumable() != null
-  }
+  override fun shouldStartForegroundService(context: Context, intent: Intent): Boolean =
+    CarSnapshotStore.get(context)?.resumable() != null
 }

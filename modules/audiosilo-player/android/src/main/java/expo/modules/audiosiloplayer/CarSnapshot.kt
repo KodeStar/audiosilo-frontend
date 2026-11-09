@@ -226,19 +226,9 @@ object CarSnapshotStore {
   @Volatile private var current: Loaded? = null
   private val lock = Any()
 
-  /** Application context, set by the first component that runs in the process (the artwork
-   * provider's onCreate runs before any receiver), for callers without one. */
-  @Volatile var appContext: Context? = null
-    private set
-
-  fun init(context: Context) {
-    if (appContext == null) appContext = context.applicationContext
-  }
-
   /** Validates [json], writes it atomically and makes it current. Throws on invalid JSON. Not on
    * the main thread (it syncs the file). */
   fun write(context: Context, json: String) {
-    init(context)
     val snapshot = CarSnapshot.parse(json)
     synchronized(lock) {
       val dir = context.filesDir
@@ -258,7 +248,6 @@ object CarSnapshotStore {
   /** The current snapshot (read from disk once per process), or null when JS never wrote one. */
   fun get(context: Context): CarSnapshot? {
     current?.let { return it.snapshot }
-    init(context)
     synchronized(lock) {
       current?.let { return it.snapshot }
       val loaded = Loaded(read(context))
