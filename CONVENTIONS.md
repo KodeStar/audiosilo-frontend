@@ -1366,7 +1366,13 @@ media GETs only.
 - **Android: a `MediaLibraryService` with chapter controls (Audible parity)**
   (`AudiosiloPlayerService.kt` + `AudiosiloPlayerModule.kt` and helpers). The service is a
   Media3 `MediaLibraryService` (Android Auto browses it too, Car below) whose session player is
-  `AudiobookPlayer`; the module drives it through a `MediaController`. Each **chapter is a
+  `AudiobookPlayer`; the module drives it through a `MediaController`. **Media3 is 1.9.0, and the
+  module's `media3Version` must be what the APP resolves**: Gradle takes the highest Media3 any
+  dependency asks for (expo-camera's CameraX 1.6 pulls 1.9.0) while the module compiles against
+  its own declaration, so a lower one compiles and then breaks at run time (on 1.5.1 our
+  `ResumptionReceiver` override was never called and resumption crashed the app). The module's
+  `strictly` constraints make the app graph fail to resolve when anything asks for another
+  Media3: bump `media3Version` with it and adapt the code. Each **chapter is a
   clipped `MediaItem`** (`MediaItem.ClippingConfiguration`, built from the `chapters` arg to
   `load`), so the system scrubber is **chapter-relative** and `COMMAND_SEEK_TO_*_MEDIA_ITEM`
   give **prev/next chapter**. The **skip buttons** seek by the listener's skip lengths
@@ -1378,8 +1384,8 @@ media GETs only.
   `COMMAND_SEEK_BACK/FORWARD` - those map to the legacy `ACTION_REWIND`/`FAST_FORWARD` that
   the modern Android media UI silently ignores (`dumpsys media_session` showed
   `custom actions=[]` and no buttons). **Register them with `setCustomLayout`, NOT
-  `setMediaButtonPreferences`**: the slot-based preferences API caps the 1.5.1 notification
-  at 3 actions (drops the secondary slots - `dumpsys notification` showed `actions=3`),
+  `setMediaButtonPreferences`**: the slot-based preferences API capped the notification (on
+  1.5.1) at 3 actions (drops the secondary slots - `dumpsys notification` showed `actions=3`),
   whereas `setCustomLayout` makes the provider emit standard `[prev, play, next]` (auto, when
   the seek-to-prev/next commands are available) **+** the custom skip buttons = all 5
   actions, alongside the draggable chapter scrubber → the full lock-screen row
@@ -1447,7 +1453,7 @@ media GETs only.
   suspends when locked) and only for a source Web Audio can hear: same-origin, or another
   origin's loaded in CORS mode (see "Server media loads in CORS mode on web"; a cross-origin
   element WITHOUT CORS routed through Web Audio plays zeroes). **Smart speed is Android only**: `NarrationSilenceProcessor` (a
-  vendored port of Media3 1.11.1's silence skipper; 1.5.1's keeps a quarter of the padding)
+  vendored port of Media3 1.11.1's silence skipper; 1.9.0's still keeps a quarter of the padding)
   heads `AudiosiloAudioChain` (silence → Sonic → boost, so skipped frames are book time and the
   boost's attack and release are real time). The switches reach the service as
   `audiosilo.SET_EFFECTS` and persist in SharedPreferences, so a service started without JS
@@ -1795,8 +1801,13 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   anything else emits `onCarPlayRequest` and completes with the module's next `load` (10 s, then
   `labels.unavailable`). Voice ("play X on AudioSilo") goes through `playFromSearch`; there is
   no search button. `ResumptionReceiver` refuses to start the foreground service when nothing
-  is resumable (one that doesn't start playback within seconds crashes the app,
-  `ForegroundServiceDidNotStartInTimeException`); `CarConnectionMonitor` reads the Auto host's
+  is resumable (one that doesn't reach `startForeground` within seconds crashes the app,
+  `ForegroundServiceDidNotStartInTimeException`); a media button start that does go ahead goes
+  into the foreground AT ONCE with a placeholder under Media3's notification id (Media3's own
+  replaces it when the book plays; a JS-routed resumption can take 10 s), and a failed
+  resumption removes it and stops the service (`onStartCommand`, `watchResumption`).
+  `onPlaybackResumption(…, isForPlayback = false)` (System UI's card after a reboot) answers from
+  the play spec with no side effect; `CarConnectionMonitor` reads the Auto host's
   connection provider (Media3 only notices a legacy controller leaving by timeout).
   - **Headless JS.** When the service needs JS (a car play, a book playing with no JS that
     must save, a pending bookmark, Auto connecting), `JsRuntime.ensure` starts the app's

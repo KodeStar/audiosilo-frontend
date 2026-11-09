@@ -76,7 +76,7 @@ object AudioEffects {
     )
 
   /**
-   * ExoPlayer's default renderers with our chain in the sink. The sink is built as 1.5.1's
+   * ExoPlayer's default renderers with our chain in the sink. The sink is built as 1.9.0's
    * `DefaultRenderersFactory.buildAudioSink` builds it (same float-output and AudioTrack
    * playback-params flags, both off by default; default offload support and buffer sizes), so
    * nothing but the processors changes. Keep float output OFF: with it on, the sink skips the
@@ -90,7 +90,7 @@ object AudioEffects {
     ): AudioSink =
       DefaultAudioSink.Builder(context)
         .setEnableFloatOutput(enableFloatOutput)
-        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+        .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
         .setAudioProcessorChain(newChain())
         .build()
   }

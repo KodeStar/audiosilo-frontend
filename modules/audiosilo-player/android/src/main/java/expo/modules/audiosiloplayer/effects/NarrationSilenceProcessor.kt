@@ -20,16 +20,15 @@
  * (https://github.com/androidx/media/blob/1.11.1/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/SilenceSkippingAudioProcessor.java),
  * Apache License 2.0. The algorithm, its states and its arithmetic are unchanged.
  *
- * Why vendored: the app pins Media3 1.5.1, whose copy of this class sizes its "maybe silence"
- * buffer in FRAMES but uses it as BYTES (androidx/media#3271), so in stereo it keeps a quarter
- * of the intended padding around every word, and it computes its fades per byte instead of per
- * frame. 1.11.1 carries both fixes. DefaultAudioProcessorChain only accepts Media3's own final
+ * Why vendored: the Media3 the app runs (1.9.0; 1.5.1 when this was vendored) sizes its copy's
+ * "maybe silence" buffer in FRAMES but uses it as BYTES (androidx/media#3271), so in stereo it
+ * keeps a quarter of the intended padding around every word, and it computes its fades per byte
+ * instead of per frame. 1.11.1 carries both fixes. DefaultAudioProcessorChain only accepts Media3's own final
  * class, so AudiosiloAudioChain installs this one instead (as Pocket Casts does).
  *
  * Changes from the 1.11.1 source:
  *  - Java -> Kotlin; Guava's checkArgument/checkState -> Kotlin require/check (their messages are
  *    lazy lambdas, so nothing allocates on the audio thread unless a check fails).
- *  - onFlush(StreamMetadata) -> onFlush(): 1.5.1's BaseAudioProcessor has no StreamMetadata.
  *  - Util.EMPTY_BYTE_ARRAY -> a local empty array (keeps Util's static init out of JVM tests).
  *  - Narration defaults (see the companion) instead of Media3's podcast-ish ones.
  *  - A monotonic count of the book time the skipped frames were worth ([savedUs], optionally
@@ -157,7 +156,7 @@ class NarrationSilenceProcessor(
     }
   }
 
-  override fun onFlush() {
+  override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
     if (isActive()) {
       bytesPerFrame = inputAudioFormat.channelCount * 2
       // androidx/media#3271: the buffer is sized in BYTES (frames x bytesPerFrame). Divided by

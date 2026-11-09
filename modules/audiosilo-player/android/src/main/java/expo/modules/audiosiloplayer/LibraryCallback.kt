@@ -178,14 +178,27 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
   /**
    * A play with an empty player (Bluetooth, the car's play button, the system's resumption
    * card): the snapshot's first Continue listening book, when it is downloaded (has a play
-   * spec). Media3 1.5.1 only asks on a play command, so merely connecting Auto never plays.
+   * spec). Media3 asks with [isForPlayback] true only for a play command, so merely connecting
+   * Auto never plays. With false (System UI's resumption card after a reboot) it only wants the
+   * item to show: answered from the spec with no side effect (no JS boot, no car request).
+   * A failed play resumption releases a foreground start ([AudiosiloPlayerService.watchResumption]).
    */
   override fun onPlaybackResumption(
     mediaSession: MediaSession,
     controller: MediaSession.ControllerInfo,
+    isForPlayback: Boolean,
   ): ListenableFuture<MediaItemsWithStartPosition> {
     val item = service.snapshot()?.resumable()
-      ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
-    return service.playFromCar(item.id, requirePlaySpec = true)
+    if (!isForPlayback) {
+      val spec = item?.play ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
+      val queue = MediaItems.buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
+      return Futures.immediateFuture(MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs))
+    }
+    val result = if (item == null) {
+      Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
+    } else {
+      service.playFromCar(item.id, requirePlaySpec = true)
+    }
+    return service.watchResumption(result)
   }
 }
