@@ -187,6 +187,7 @@ keep this index in step (one line per topic).
   - Android: a `MediaLibraryService` with chapter controls (Audible parity)
   - Smart speed and Voice boost
   - The download hot-swap plays on from intent, not from `playing`
+  - Native counts go through `nativeNumber`
   - Downloads store absolute file URIs
   - Stream the file, not the book
   - Whole-book timeline

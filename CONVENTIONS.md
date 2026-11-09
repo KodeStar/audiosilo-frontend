@@ -1477,6 +1477,12 @@ media GETs only.
   the resume floor moving with it; while that moves the track index, `persist` and
   `onRemoteMove` refuse a place at another index of that book (`swapHold`) until the download's
   queue is committed, which on a load is before the rate and the play.
+- **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
+  bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
+  where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /
+  `availableDiskSpace` and a download task's progress are `Int64`; Android sends a `Long` as a
+  number. Read such a value through it at the call into the module (and keep our own modules'
+  Swift on `Int`/`Double`, which arrive as numbers).
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`

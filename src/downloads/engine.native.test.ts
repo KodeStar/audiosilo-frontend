@@ -7,10 +7,19 @@ const mockFailMove = { uri: null as string | null };
 // `File.createDownloadTask`, answering like the server's ebook route: it takes the
 // Authorization header only (never `?token=`), so a download without it fails as Android
 // reports a 401.
+// Progress comes as iOS sends it since SDK 58: Swift Int64 counts arrive as bigints.
 const mockDownloadTask = jest.fn(
-  (_url: string, dest: { uri: string }, opts: { headers?: Record<string, string> }) => ({
+  (
+    _url: string,
+    dest: { uri: string },
+    opts: {
+      headers?: Record<string, string>;
+      onProgress?: (p: { bytesWritten: bigint; totalBytes: bigint }) => void;
+    },
+  ) => ({
     downloadAsync: async () => {
       if (opts.headers?.Authorization !== 'Bearer t') throw new Error('HTTP 401');
+      opts.onProgress?.({ bytesWritten: BigInt(2), totalBytes: BigInt(4) });
       mockTree.set(dest.uri, 'epub');
       return { uri: dest.uri };
     },
@@ -69,6 +78,11 @@ jest.mock('expo-file-system', () => {
       const v = mockTree.get(this.uri);
       return v !== undefined && v !== 'dir';
     }
+    // iOS's Int64, a bigint since SDK 58: the content's length stands in for the bytes.
+    get size() {
+      const v = mockTree.get(this.uri);
+      return BigInt(v === undefined || v === 'dir' ? 0 : v.length);
+    }
   }
   class MockDirectory extends Entry {
     get exists() {
@@ -85,7 +99,15 @@ jest.mock('expo-file-system', () => {
         .map(([k, v]) => (v === 'dir' ? new MockDirectory(k) : new MockFile(k)));
     }
   }
-  return { File: MockFile, Directory: MockDirectory, Paths: { document: 'file:///docs' } };
+  return {
+    File: MockFile,
+    Directory: MockDirectory,
+    Paths: {
+      document: 'file:///docs',
+      totalDiskSpace: BigInt(64_000_000_000),
+      availableDiskSpace: BigInt(12_000_000_000),
+    },
+  };
 });
 
 /* eslint-disable import/first */
@@ -228,6 +250,38 @@ describe('engine.native downloadFile', () => {
     // Saved under the uri the store keeps (and relocates to).
     expect(uri).toBe(engine.localUri!('srv', 1, 'A/Book', 'book.epub'));
     expect(mockTree.get(uri)).toBe('epub');
+  });
+
+  it('reports progress as numbers when the module sends bigints (iOS Int64)', async () => {
+    const onProgress = jest.fn();
+    await engine.downloadFile(
+      'srv',
+      1,
+      'A/Book',
+      'book.epub',
+      'https://h/ebook',
+      onProgress,
+      undefined,
+      {
+        Authorization: 'Bearer t',
+      },
+    );
+    expect(onProgress).toHaveBeenCalledWith(2, 4);
+  });
+});
+
+describe('engine.native storage', () => {
+  it('sums file sizes that arrive as bigints', async () => {
+    seed({ 'srv/1/Book-abc/0.mp3': 'abcd', 'srv/2/Other-def/0.m4b': 'xy' });
+    await expect(engine.totalBytesUsed()).resolves.toBe(6);
+  });
+
+  it('reads the disk space bigints as numbers', async () => {
+    await expect(engine.storageEstimate!()).resolves.toEqual({
+      scope: 'device',
+      capacity: 64_000_000_000,
+      free: 12_000_000_000,
+    });
   });
 });
 
