@@ -1,13 +1,16 @@
 import { renderRouter } from 'expo-router/testing-library';
 
-import { nav, realRouteTree, rootState, routeInfo, router } from '@/testing/route-tree';
+import {
+  nav,
+  realRouteTree,
+  rootRoutes,
+  routeInfo,
+  router,
+  stackRoutes,
+} from '@/testing/route-tree';
 
 // Its own file: each test starts cold (see route-tree-cold.test.tsx).
-const rootRoutes = () => (rootState()?.routes[0]?.state?.routes ?? []).map((r) => r.name);
-const connectRoutes = () =>
-  (
-    rootState()?.routes[0]?.state?.routes.find((r) => r.name === 'connect')?.state?.routes ?? []
-  ).map((r) => r.name);
+const connectRoutes = () => stackRoutes('connect');
 
 const mount = (url: string) =>
   renderRouter(realRouteTree(), { initialUrl: url }) as unknown as Promise<unknown>;

@@ -5,7 +5,7 @@ import type { ComponentType } from 'react';
 import { Text } from 'react-native';
 
 import { TAB_STACK_SETTINGS, TABS, tabStackListeners } from '@/components/shell/destinations';
-import type { NavState } from '@/lib/root-stack';
+import { currentNavState } from '@/lib/root-stack';
 import { navigationRef } from '@/lib/router-ref';
 
 // Node's fs/path, typed by hand: the app's tsconfig carries no Node types.
@@ -84,17 +84,26 @@ export function realRouteTree(): Record<string, RouteModule> {
 }
 
 /** The router's whole navigation state now (expo-router's `__root` route first), or
- * undefined before it is ready. */
-export const rootState = (): NavState | undefined =>
-  navigationRef.isReady() ? (navigationRef.getRootState() as NavState) : undefined;
+ * undefined before it is ready: the app's own reader (`root-stack.ts`). */
+export const rootState = currentNavState;
+
+const names = (routes: { name: string }[] | undefined): string[] =>
+  (routes ?? []).map((r) => r.name);
+
+/** The root stack's route names (under expo-router's `__root`). */
+export const rootRoutes = (): string[] => names(rootState()?.routes[0]?.state?.routes);
+
+/** The route names on root route `parent`'s stack (`connect`), empty before it has a state. */
+export const stackRoutes = (parent: string): string[] =>
+  names(rootState()?.routes[0]?.state?.routes.find((r) => r.name === parent)?.state?.routes);
 
 /** The route names on the shell's `tab` stack (`(me)`), empty before it has a state. */
 export const tabStack = (tab: string): string[] =>
-  (
+  names(
     rootState()
       ?.routes[0]?.state?.routes.find((r) => r.name === '(app)')
-      ?.state?.routes.find((r) => r.name === tab)?.state?.routes ?? []
-  ).map((r) => r.name);
+      ?.state?.routes.find((r) => r.name === tab)?.state?.routes,
+  );
 
 /** Where the router is now: its route info, read off the container the way the router's
  * own testing library does (`renderRouter`'s helpers sit on a result the tests drop). */

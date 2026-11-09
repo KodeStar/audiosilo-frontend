@@ -7,9 +7,10 @@ import {
   nav,
   navigationRef,
   realRouteTree,
-  rootState,
+  rootRoutes,
   routeInfo,
   router,
+  tabStack,
 } from '@/testing/route-tree';
 
 // The You hub is the Me tab's ROOT: every way in (the palette, the profile menu, a book
@@ -19,17 +20,6 @@ import {
 
 const mount = (initialUrl: string) =>
   renderRouter(realRouteTree(), { initialUrl }) as unknown as Promise<unknown>;
-
-type Route = { name: string; params?: object; state?: { routes: Route[] } };
-const shell = () =>
-  ((rootState()?.routes[0] as Route | undefined)?.state?.routes ?? []).find(
-    (r) => r.name === '(app)',
-  );
-/** The routes of the shell's `tab` stack. */
-const tabStack = (tab: string) =>
-  (shell()?.state?.routes.find((r) => r.name === tab)?.state?.routes ?? []).map((r) => r.name);
-const rootRoutes = () =>
-  ((rootState()?.routes[0] as Route | undefined)?.state?.routes ?? []).map((r) => r.name);
 
 it('opens the hub from another tab on its root, keeping that tab as it was', async () => {
   await mount('/library');

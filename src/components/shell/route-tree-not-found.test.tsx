@@ -1,6 +1,6 @@
 import { renderRouter } from 'expo-router/testing-library';
 
-import { nav, realRouteTree, rootState, routeInfo, router } from '@/testing/route-tree';
+import { nav, realRouteTree, rootRoutes, routeInfo, router } from '@/testing/route-tree';
 
 // An address the app has no page for (a mistyped or old `/web/...` link) lands on the
 // app's own `+not-found` page, never Expo Router's "Unmatched Route" (CONNECT-02).
@@ -23,7 +23,6 @@ it('still opens a real page', async () => {
 
 it("goes Home onto the anchored shell under it, never a second one (its Home button's `dismissTo`)", async () => {
   await mount('/nope');
-  const rootRoutes = () => (rootState()!.routes[0].state?.routes ?? []).map((r) => r.name);
   expect(rootRoutes()).toEqual(['(app)', '+not-found']);
   await nav(() => router.dismissTo('/'));
   expect(rootRoutes()).toEqual(['(app)']);

@@ -7,7 +7,7 @@ import { fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 import { finishedHref } from '@/lib/paths';
 import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { useSession } from '@/stores/session';
-import { nav, realRouteTree, rootState, routeInfo, router } from '@/testing/route-tree';
+import { nav, realRouteTree, rootRoutes, routeInfo, router, tabStack } from '@/testing/route-tree';
 
 // The credits' View details, pressed on the REAL `/finished` screen over the real route
 // tree: the book's page opens in the ONE app shell under the credits, in the tab the
@@ -46,17 +46,6 @@ jest.mock('@/playback/store', () => {
     usePlayer: create(() => ({ nowPlaying: null, snapshot: { state: 'idle' }, rate: 1 })),
   };
 });
-
-type Route = { name: string; state?: { index?: number; routes: Route[] } };
-/** The root stack's routes (under expo-router's `__root`). */
-const rootRoutes = () =>
-  ((rootState()?.routes[0] as Route | undefined)?.state?.routes ?? []).map((r) => r.name);
-/** The routes of the shell's `tab` stack. */
-const tabStack = (tab: string) => {
-  const shell = (rootState()?.routes[0] as Route).state!.routes[0];
-  const stack = shell.state?.routes.find((r) => r.name === tab);
-  return (stack?.state?.routes ?? []).map((r) => r.name);
-};
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
