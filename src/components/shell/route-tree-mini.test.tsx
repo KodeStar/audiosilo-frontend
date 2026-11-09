@@ -11,7 +11,8 @@ import { nav, realRouteTree, router } from '@/testing/route-tree';
 jest.mock('expo-router/native-tabs', () => {
   const { JsTabs } = jest.requireActual('@/testing/route-tree');
   const Stub = () => null;
-  const NativeTabs = Object.assign(JsTabs, {
+  // A component of its own: assigning onto JsTabs would change the shared export.
+  const NativeTabs = Object.assign(() => <JsTabs />, {
     Trigger: Object.assign(Stub, { Icon: Stub, Label: Stub }),
     BottomAccessory: Stub,
   });

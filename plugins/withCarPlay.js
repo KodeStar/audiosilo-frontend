@@ -70,7 +70,7 @@ function applySceneManifest(infoPlist) {
 // The SDK 58 template's anchors, each matched exactly (whitespace aside).
 const TEMPLATE_IMPORT = /^import ReactAppDependencyProvider$/m;
 const TEMPLATE_CLASS = /^class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider \{$/m;
-const TEMPLATE_FACTORY = /^(\s*)reactNativeFactory = factory\n/m;
+const TEMPLATE_FACTORY = /^\s*reactNativeFactory = factory\n/m;
 // The template's note that its SceneDelegate starts React Native: not true once patched.
 const TEMPLATE_SCENE_NOTE =
   /^\s*\/\/ The window is created and React Native is started by `SceneDelegate`[^\n]*\n(\s*\/\/[^\n]*\n)?/m;

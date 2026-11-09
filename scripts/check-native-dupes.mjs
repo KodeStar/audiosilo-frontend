@@ -21,6 +21,11 @@ export const SINGLETONS = [
   'react-native-gesture-handler',
   '@shopify/flash-list',
   'react-native-webview',
+  'react-native-view-shot',
+  'react-native-google-cast',
+  '@react-native-async-storage/async-storage',
+  'expo',
+  '@expo/ui',
   'expo-modules-core',
 ];
 

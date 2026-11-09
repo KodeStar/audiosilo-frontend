@@ -37,7 +37,9 @@ class JsdomEnvironment extends TestEnvironment {
     const global = this.global;
     const define = global.Object.defineProperties;
     global.Object.defineProperties = function defineProperties(target, props) {
-      if (target === global && props && 'window' in props && global.window === global) {
+      // Only that no-op (`window` as the global itself): any other redefinition still
+      // throws as jsdom makes it, so a test that relies on one fails loudly.
+      if (target === global && props?.window?.value === global && global.window === global) {
         const { window: _window, ...rest } = props;
         return define.call(this, target, rest);
       }
