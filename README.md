@@ -52,7 +52,7 @@ npm test -- --coverage      # …with coverage
 npx prettier --write .      # auto-fix formatting before committing
 ```
 
-Tests use **jest-expo** (jest 29) + **@testing-library/react-native** 14, with
+Tests use **jest-expo** (Jest 30) + **@testing-library/react-native** 14, with
 in-memory mocks for `expo-secure-store` and AsyncStorage in
 [`jest.setup.ts`](jest.setup.ts). Initial coverage targets the framework-free
 logic: the API client, pairing parser, playback queue/timeline math, the offline

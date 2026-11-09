@@ -22,20 +22,20 @@ updates:
     ignore:
       # This is an Expo SDK app: the SDK pins the versions of these packages -
       # its native modules, and react, typescript, jest and their types
-      # (`npx expo install --check` reports any drift) - and a native module
-      # bumped past its pin can build and still crash on a device. Patch
-      # releases inside the pin are fine; minor and major moves happen only as
-      # part of an Expo SDK upgrade, done with `npx expo install --fix` - never
+      # (`npx expo install --check` reports any drift, and CI runs it) - and a
+      # native module bumped past its pin can build and still crash on a device.
+      # Patch releases inside the pin are fine; minor and major moves happen only
+      # as part of an Expo SDK upgrade, done with `npx expo install --fix` - never
       # by dependabot. The packages the SDK pins to an EXACT version (react,
-      # react-dom, react-native, reanimated, svg, worklets, flash-list, webview - see
-      # node_modules/expo/bundledNativeModules.json) are ignored outright, patches
-      # included: React Native's renderer is built against one exact react, and
-      # dependabot moving react 19.2.3 -> 19.2.8 inside a "patch" group is how
-      # that broke. react-test-renderer follows the react the SDK pins and is
-      # ignored outright with it; async-storage (a native module already past
-      # the SDK's 2.x) takes patches only. Named one by one rather than
-      # `react-native-*`, which would also freeze react-native-marked (plain
-      # JS); add a native module here when one is added.
+      # react-dom, react-native, reanimated, svg, worklets, flash-list, webview,
+      # view-shot - see node_modules/expo/bundledNativeModules.json) are ignored
+      # outright, patches included: React Native's renderer is built against one
+      # exact react, and dependabot moving react 19.2.3 -> 19.2.8 inside a "patch"
+      # group is how that broke. async-storage (a native module deliberately past
+      # the SDK's 2.x, kept out of `expo install` by expo.install.exclude) takes
+      # patches only. Named one by one rather than `react-native-*`, which would
+      # also freeze react-native-marked (plain JS); add a native module here when
+      # one is added.
       - dependency-name: expo
         update-types:
           - version-update:semver-major
@@ -58,7 +58,6 @@ updates:
           - version-update:semver-minor
       - dependency-name: react
       - dependency-name: react-dom
-      - dependency-name: react-test-renderer
       - dependency-name: '@types/react'
         update-types:
           - version-update:semver-major
@@ -78,23 +77,19 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
       - dependency-name: react-native-svg
-      # Pinned exactly to the version patches/react-native-web+<ver>.patch targets
-      # (patch-package only warns on a version mismatch), so ignored outright: a bump
-      # regenerates the patch by hand (CONVENTIONS.md, Dependency patches).
+      # Pinned exactly (0.21.4) to the version patches/react-native-web+<ver>.patch
+      # targets (patch-package only warns on a version mismatch), so ignored outright:
+      # a bump regenerates the patch by hand (CONVENTIONS.md, Dependency patches).
       - dependency-name: react-native-web
       - dependency-name: react-native-worklets
-      # @shopify/flash-list is another EXACT SDK pin (2.0.2): 2.3.3 arrived in a
+      # @shopify/flash-list is another EXACT SDK pin (2.3.2): 2.3.3 arrived in a
       # minor-and-patch group and failed jest on its ESM build (#212).
       - dependency-name: '@shopify/flash-list'
-      # react-native-webview is an EXACT SDK pin too (13.16.1): even the 13.16.2
-      # patch fails tsc on its types (#224), as 14.0.1 did (#191).
+      # react-native-webview is an EXACT SDK pin too (14.0.1): under SDK 56 even a
+      # patch past the pin failed tsc on its types (#224, #191).
       - dependency-name: react-native-webview
-      # Already past the SDK's 5.x (6.x came in as its own major, #94), so like
-      # async-storage it takes patches only.
+      # An EXACT SDK pin since SDK 58 (6.1.1).
       - dependency-name: react-native-view-shot
-        update-types:
-          - version-update:semver-major
-          - version-update:semver-minor
       - dependency-name: '@react-native-async-storage/async-storage'
         update-types:
           - version-update:semver-major
@@ -112,7 +107,7 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
       # Uniwind compiles with the @tailwindcss/node it pins exactly (4.3.3 for
-      # uniwind 1.12), which pins its own tailwindcss; the top-level tailwindcss
+      # uniwind 1.13), which pins its own tailwindcss; the top-level tailwindcss
       # only supplies the theme/preflight/utilities CSS that src/global.css
       # imports, and must stay on that same version. A uniwind bump moves both
       # (npm hoists the new pin); a tailwindcss bump on its own - patches too:
