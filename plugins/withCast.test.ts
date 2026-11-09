@@ -48,7 +48,6 @@ describe('withCast + withCarPlay: the SDK 58 AppDelegate', () => {
     // withCarPlay's exact match succeeded (it throws otherwise) and its starter is in.
     expect(src).toContain('AudiosiloScenes.configure(');
     expect(src).toContain('internal import AudiosiloPlayer');
-    expect(src).toContain('RCTLinkingManager.application(app, open: url, options: options)');
     // The Cast SDK is set up in didFinishLaunching, before the React Native delegate.
     expect(src).toContain('import GoogleCast');
     expect(src.indexOf('import GoogleCast')).toBeLessThan(src.indexOf('import React\n'));

@@ -53,22 +53,12 @@ describe('withCarPlay: AppDelegate', () => {
     expect(out.split('AudiosiloScenes.configure(')).toHaveLength(2);
   });
 
-  it('adds the linking overrides the phone scene forwards to, calling RCTLinkingManager', () => {
+  it('adds no linking overrides: the phone scene hands links to React Native itself', () => {
+    // RN 0.88's RCTLinkingManager ignores its app-delegate methods in a scene app, and
+    // ExpoAppDelegate's own forward the link to Expo's subscribers.
     const out = patchAppDelegate(template);
-    expect(out).toContain(
-      'return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
-    );
-    expect(out).toContain(
-      'let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)',
-    );
-    expect(out).toContain(
-      'return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result',
-    );
-    // Inside AppDelegate (after didFinishLaunching), not in ReactNativeDelegate below it.
-    const open = out.indexOf('open url: URL');
-    expect(open).toBeGreaterThan(out.indexOf('didFinishLaunchingWithOptions: launchOptions)'));
-    expect(open).toBeLessThan(out.indexOf('class ReactNativeDelegate'));
-    expect(out.split('open url: URL')).toHaveLength(2);
+    expect(out).not.toContain('RCTLinkingManager');
+    expect(out).not.toContain('open url: URL');
   });
 
   it('is idempotent', () => {
@@ -83,14 +73,6 @@ describe('withCarPlay: AppDelegate', () => {
     );
   });
 
-  it('fails loudly when the `return super` anchor is missing', () => {
-    const changed = template.replace(
-      'return super.application(application, didFinishLaunchingWithOptions: launchOptions)',
-      'return true',
-    );
-    expect(() => patchAppDelegate(changed)).toThrow(/no `return super\.application/);
-  });
-
   it('fails loudly on an older template (no factory provider conformance, its own window)', () => {
     const older = template.replace(
       'class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {',
@@ -98,13 +80,19 @@ describe('withCarPlay: AppDelegate', () => {
     );
     expect(() => patchAppDelegate(older)).toThrow(/ExpoReactNativeFactoryProvider/);
   });
+});
 
-  it('fails loudly when the template already handles links itself', () => {
-    const changed = template.replace(
-      /\n\}\n\nclass ReactNativeDelegate/,
-      '\n  func open() { RCTLinkingManager.self }\n}\n\nclass ReactNativeDelegate',
-    );
-    expect(() => patchAppDelegate(changed)).toThrow(/already has linking overrides/);
+describe('withCarPlay: the phone scene hands links to React Native', () => {
+  // Jest compiles no Swift: this pins the source. Without these calls a link opened while the
+  // app runs (or into a CarPlay-first launch) never reaches JS's `url` event.
+  const swift = jest
+    .requireActual<{ readFileSync: (p: string, e: 'utf8') => string }>('fs')
+    .readFileSync('modules/audiosilo-player/ios/AudiosiloPhoneSceneDelegate.swift', 'utf8');
+
+  it("calls RCTLinkingManager's scene API for URLs and user activities", () => {
+    expect(swift).toContain('notifyLinking("scene:openURLContexts:", scene, Set([context]))');
+    expect(swift).toContain('notifyLinking("scene:continueUserActivity:", scene, activity)');
+    expect(swift).toContain('NSClassFromString("RCTLinkingManager")');
   });
 });
 

@@ -8,7 +8,6 @@ import { useLatestRef } from '@/lib/use-latest';
 import { whenActive } from '@/lib/when-active';
 
 import { sendInChunks } from './book-chunks';
-
 import { chunkReader, identifyEbook, type LocalEbook, localEbook } from './ebook-file.native';
 import {
   type HostChannel,

@@ -16,7 +16,17 @@ function clearMocksOnScope(scope) {
     const descriptor = Object.getOwnPropertyDescriptor(scope, key);
     if (!descriptor || typeof descriptor.get === 'function') continue;
     const value = descriptor.value;
-    if (value != null && this.isMockFunction(value)) value.mockClear();
+    // Jest's own guards: `in` (a `has` trap) before reading the marker, so a Proxy whose
+    // `get` throws never fails the teardown, and only a real mock is cleared.
+    if (
+      value != null &&
+      (typeof value === 'object' || typeof value === 'function') &&
+      '_isMockFunction' in value &&
+      this.isMockFunction(value) &&
+      typeof value.mockClear === 'function'
+    ) {
+      value.mockClear();
+    }
   }
 }
 

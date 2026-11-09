@@ -1837,10 +1837,13 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   itself. The plugin adds a stored starter (`AudiosiloScenes.configure`) right after
   `reactNativeFactory = factory`, which the first scene to connect runs (a CarPlay-first
   launch, maybe with the phone locked, into an off-screen parking window the phone scene
-  adopts later). It also puts back the two linking overrides the SDK 56 template had (`open
-  url`, `continue userActivity`, through `RCTLinkingManager`): our phone scene forwards links
-  to the app delegate, and Expo's scene event forwarder, which hands them to React Native in
-  the template, is bypassed by our scenes. **The template text is matched exactly and any
+  adopts later). **Links**: the phone scene (`AudiosiloPhoneSceneDelegate.swift`) forwards each
+  URL and user activity to the app delegate (Expo's subscribers) AND hands it to React Native's
+  scene API (`RCTLinkingManager` `scene:openURLContexts:` / `scene:continueUserActivity:`, as
+  Expo's own scene delegate does): since RN 0.88 the app-delegate `RCTLinkingManager` methods
+  do nothing in an app with a scene manifest, so AppDelegate overrides calling them (the SDK 56
+  template's) would leave a link opened while the app runs short of JS. `withCarPlay.test.ts`
+  pins those calls in the Swift source. **The template text is matched exactly and any
   other text fails the prebuild** (a silent miss would ship a black screen), so an Expo SDK bump
   updates the plugin and its fixture. **Plugin order**: mods of one kind run in REVERSE
   registration order, so **no plugin that rewrites the AppDelegate may be listed after

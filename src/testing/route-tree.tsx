@@ -66,7 +66,7 @@ export function realRouteTree(): Record<string, RouteModule> {
   keys.sort();
   const plainStack = () => <Stack screenOptions={{ headerShown: false }} />;
   // The tab stacks keep their real listeners (the cold-link param cleanup).
-  const tabStack = () => (
+  const tabStackLayout = () => (
     <Stack screenOptions={{ headerShown: false }} screenListeners={tabStackListeners} />
   );
   const tree: Record<string, RouteModule> = {};
@@ -76,31 +76,29 @@ export function realRouteTree(): Record<string, RouteModule> {
     else if (k === '(app)/_layout') {
       tree[k] = JsTabs;
     } else if (k.endsWith('(home,library,search,offline,me)/_layout')) {
-      tree[k] = { default: tabStack, unstable_settings: TAB_STACK_SETTINGS };
+      tree[k] = { default: tabStackLayout, unstable_settings: TAB_STACK_SETTINGS };
     } else if (k.endsWith('_layout')) tree[k] = plainStack;
     else tree[k] = () => <Text>{k}</Text>;
   }
   return tree;
 }
 
-/** The router's whole navigation state now (expo-router's `__root` route first), or
- * undefined before it is ready: the app's own reader (`root-stack.ts`). */
-export const rootState = currentNavState;
-
+// The router's whole navigation state is read with the app's own reader (`currentNavState`,
+// `root-stack.ts`): expo-router's `__root` route first, undefined before it is ready.
 const names = (routes: { name: string }[] | undefined): string[] =>
   (routes ?? []).map((r) => r.name);
 
 /** The root stack's route names (under expo-router's `__root`). */
-export const rootRoutes = (): string[] => names(rootState()?.routes[0]?.state?.routes);
+export const rootRoutes = (): string[] => names(currentNavState()?.routes[0]?.state?.routes);
 
 /** The route names on root route `parent`'s stack (`connect`), empty before it has a state. */
 export const stackRoutes = (parent: string): string[] =>
-  names(rootState()?.routes[0]?.state?.routes.find((r) => r.name === parent)?.state?.routes);
+  names(currentNavState()?.routes[0]?.state?.routes.find((r) => r.name === parent)?.state?.routes);
 
 /** The route names on the shell's `tab` stack (`(me)`), empty before it has a state. */
 export const tabStack = (tab: string): string[] =>
   names(
-    rootState()
+    currentNavState()
       ?.routes[0]?.state?.routes.find((r) => r.name === '(app)')
       ?.state?.routes.find((r) => r.name === tab)?.state?.routes,
   );
