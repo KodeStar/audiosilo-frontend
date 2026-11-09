@@ -13,7 +13,7 @@ import androidx.media3.session.MediaButtonReceiver
  * car snapshot can start without JS (a downloaded book with a play spec, see
  * [CarSnapshot.resumable]); with none, the press is ignored instead of crashing. Should a
  * resumption still fail after the start, the service releases the start itself
- * ([AudiosiloPlayerService.onResumptionFailed]).
+ * ([AudiosiloPlayerService.watchResumption]).
  *
  * The override must match the Media3 the app RUNS (build.gradle's `media3Version`): 1.9.0 calls
  * only `shouldStartForegroundService(Context, Intent)`, and the 1.5.1 `(Intent)` one this class

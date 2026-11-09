@@ -617,11 +617,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // `nowPlaying` (even with its car sync not listening yet), and swapping the engine under
     // it would map this book's place onto that one.
     if (spec != null && PlayerBridge.sink == null) {
-      val queue = MediaItems.buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
+      val start = MediaItems.startPositionOf(spec)
       // Every track of a play spec is a local file: no auth headers.
       AuthHolder.clear()
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }
-      return Futures.immediateFuture(MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs))
+      return Futures.immediateFuture(start)
     }
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()

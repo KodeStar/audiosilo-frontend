@@ -190,15 +190,11 @@ internal class LibraryCallback(private val service: AudiosiloPlayerService) : Me
   ): ListenableFuture<MediaItemsWithStartPosition> {
     val item = service.snapshot()?.resumable()
     if (!isForPlayback) {
-      val spec = item?.play ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
-      val queue = MediaItems.buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
-      return Futures.immediateFuture(MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs))
+      return item?.play?.let { Futures.immediateFuture(MediaItems.startPositionOf(it)) } ?: nothingToResume()
     }
-    val result = if (item == null) {
-      Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
-    } else {
-      service.playFromCar(item.id, requirePlaySpec = true)
-    }
-    return service.watchResumption(result)
+    return service.watchResumption(item?.let { service.playFromCar(it.id, requirePlaySpec = true) } ?: nothingToResume())
   }
+
+  private fun nothingToResume(): ListenableFuture<MediaItemsWithStartPosition> =
+    Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
 }
