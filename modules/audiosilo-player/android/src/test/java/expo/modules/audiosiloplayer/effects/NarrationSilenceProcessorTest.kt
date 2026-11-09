@@ -1,5 +1,6 @@
 package expo.modules.audiosiloplayer.effects
 
+import androidx.media3.common.audio.AudioProcessor
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import org.junit.Assert.assertArrayEquals
@@ -65,7 +66,7 @@ class NarrationSilenceProcessorTest {
     val p = NarrationSilenceProcessor(savedUs = savedUs)
     p.setEnabled(true)
     p.configure(pcm16(rate, channels))
-    p.flush()
+    p.flush(AudioProcessor.StreamMetadata.DEFAULT)
     assertTrue(p.isActive())
     return p to runProcessor(p, input, channels, chunkFrames)
   }
@@ -201,7 +202,7 @@ class NarrationSilenceProcessorTest {
 
     // A flush (a seek) resets the sink-facing count but never the monotonic one.
     val savedBeforeFlush = shared.get()
-    p.flush()
+    p.flush(AudioProcessor.StreamMetadata.DEFAULT)
     assertEquals(0L, p.getSkippedFrames())
     assertEquals(savedBeforeFlush, shared.get())
 

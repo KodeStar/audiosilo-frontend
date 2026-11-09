@@ -1,6 +1,12 @@
 import * as LabelPrimitive from '@rn-primitives/label';
 import { useState, type Ref } from 'react';
-import { Platform, TextInput, View, type TextInputProps } from 'react-native';
+import {
+  Platform,
+  TextInput,
+  View,
+  type TextInputProps,
+  type TextInputInstance,
+} from 'react-native';
 
 import { useDomId } from '@/lib/use-dom-id';
 import { cn } from '@/lib/utils';
@@ -34,7 +40,7 @@ export type InputProps = TextInputProps & {
   /** Classes for the wrapper holding the label, field and error. */
   containerClassName?: string;
   /** The native field, e.g. to focus it (React 19 passes `ref` as a prop). */
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
 };
 
 /**

@@ -9,8 +9,8 @@ import androidx.media3.common.util.UnstableApi
 /**
  * The sink's processor chain: [NarrationSilenceProcessor] -> Sonic -> [VoiceBoostProcessor].
  *
- * It mirrors Media3 1.5.1's `DefaultAudioSink.DefaultAudioProcessorChain` contract, which only
- * accepts Media3's own (final, buggy in 1.5.1) silence processor; Pocket Casts'
+ * It mirrors Media3's `DefaultAudioSink.DefaultAudioProcessorChain` contract, which only
+ * accepts Media3's own (final, still buggy in 1.9.0) silence processor; Pocket Casts'
  * `ShiftyAudioProcessorChain` replaces it the same way. Order matters:
  *  - silence skipping runs FIRST, on the book's own frames, so its skipped-frame count is book
  *    time (what [getSkippedOutputFrameCount] reports to the sink's position maths, and what

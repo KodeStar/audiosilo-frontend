@@ -1,12 +1,19 @@
 /**
- * @jest-environment jsdom
+ * @jest-environment ./src/testing/jsdom-environment.js
  */
 
 // A real DOM, so `isModalOpen` runs its selector against real attributes.
 import { renderHook } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
-import { isEditable, isModalOpen, ownsArrows, ownsSpace, useGlobalShortcut } from './keyboard';
+import {
+  isEditable,
+  isModalOpen,
+  ownsArrows,
+  ownsSpace,
+  useGlobalShortcut,
+  webKeyDown,
+} from './keyboard';
 
 const el = (tagName: string, isContentEditable = false) =>
   ({ tagName, isContentEditable }) as unknown as Element;
@@ -174,5 +181,15 @@ describe('ownsSpace and ownsArrows', () => {
       expect(ownsSpace(plain)).toBe(false);
       expect(ownsArrows(plain)).toBe(false);
     }
+  });
+});
+
+describe('webKeyDown', () => {
+  it('hands the handler the event react-native-web passes, unchanged', () => {
+    const seen: string[] = [];
+    const handler = webKeyDown((e) => seen.push(e.key));
+    const event = { key: 'ArrowLeft', altKey: false, preventDefault() {}, stopPropagation() {} };
+    handler(event as unknown as Parameters<typeof handler>[0]);
+    expect(seen).toEqual(['ArrowLeft']);
   });
 });

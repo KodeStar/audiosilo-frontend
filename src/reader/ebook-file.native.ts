@@ -3,6 +3,7 @@ import { readAsStringAsync } from 'expo-file-system/legacy';
 
 import { ApiError, type ApiClient } from '@/api/client';
 import { classifyDownloadError } from '@/downloads/failure';
+import { nativeNumber } from '@/lib/native-number';
 import { pathSlug } from '@/lib/path-slug';
 import { expoCrypto, toHex } from '@/lib/random';
 import { sha256 } from '@/lib/sha256';
@@ -61,7 +62,7 @@ export async function identifyEbook(
 
 function sizeOf(file: File): number {
   try {
-    return file.exists ? (file.size ?? 0) : 0;
+    return file.exists ? nativeNumber(file.size) : 0;
   } catch {
     return 0;
   }

@@ -685,8 +685,8 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   reader was (`resumeAt`), not at the screen's first place. In the app the `start` body is
   `reader.failure.start.bodyNative` (no browser to name). `/read` keys the screen by the book:
   a deep link to another book reuses the route with new params.
-- **react-native-webview 13.16.1** (exact pin, the version `npx expo install` chose for SDK 56;
-  bump it only with `npx expo install` and a device run of the reader on both platforms). Why
+- **react-native-webview 14.0.1** (exact pin, the Expo SDK 58 pin; bump it only with
+  `npx expo install` and a device run of the reader on both platforms). Why
   it: the one maintained WebView for RN, with Fabric support and the process-death callbacks
   the host relies on (`onContentProcessDidTerminate` iOS, `onRenderProcessGone` Android). Its
   sharp edges: a whitelist miss opens the URL in the system (above) and
@@ -1366,7 +1366,13 @@ media GETs only.
 - **Android: a `MediaLibraryService` with chapter controls (Audible parity)**
   (`AudiosiloPlayerService.kt` + `AudiosiloPlayerModule.kt` and helpers). The service is a
   Media3 `MediaLibraryService` (Android Auto browses it too, Car below) whose session player is
-  `AudiobookPlayer`; the module drives it through a `MediaController`. Each **chapter is a
+  `AudiobookPlayer`; the module drives it through a `MediaController`. **Media3 is 1.9.0, and the
+  module's `media3Version` must be what the APP resolves**: Gradle takes the highest Media3 any
+  dependency asks for (expo-camera's CameraX 1.6 pulls 1.9.0) while the module compiles against
+  its own declaration, so a lower one compiles and then breaks at run time (on 1.5.1 our
+  `ResumptionReceiver` override was never called and resumption crashed the app). The module's
+  `strictly` constraints make the app graph fail to resolve when anything asks for another
+  Media3: bump `media3Version` with it and adapt the code. Each **chapter is a
   clipped `MediaItem`** (`MediaItem.ClippingConfiguration`, built from the `chapters` arg to
   `load`), so the system scrubber is **chapter-relative** and `COMMAND_SEEK_TO_*_MEDIA_ITEM`
   give **prev/next chapter**. The **skip buttons** seek by the listener's skip lengths
@@ -1378,8 +1384,8 @@ media GETs only.
   `COMMAND_SEEK_BACK/FORWARD` - those map to the legacy `ACTION_REWIND`/`FAST_FORWARD` that
   the modern Android media UI silently ignores (`dumpsys media_session` showed
   `custom actions=[]` and no buttons). **Register them with `setCustomLayout`, NOT
-  `setMediaButtonPreferences`**: the slot-based preferences API caps the 1.5.1 notification
-  at 3 actions (drops the secondary slots - `dumpsys notification` showed `actions=3`),
+  `setMediaButtonPreferences`**: the slot-based preferences API capped the notification (on
+  1.5.1) at 3 actions (drops the secondary slots - `dumpsys notification` showed `actions=3`),
   whereas `setCustomLayout` makes the provider emit standard `[prev, play, next]` (auto, when
   the seek-to-prev/next commands are available) **+** the custom skip buttons = all 5
   actions, alongside the draggable chapter scrubber → the full lock-screen row
@@ -1447,7 +1453,7 @@ media GETs only.
   suspends when locked) and only for a source Web Audio can hear: same-origin, or another
   origin's loaded in CORS mode (see "Server media loads in CORS mode on web"; a cross-origin
   element WITHOUT CORS routed through Web Audio plays zeroes). **Smart speed is Android only**: `NarrationSilenceProcessor` (a
-  vendored port of Media3 1.11.1's silence skipper; 1.5.1's keeps a quarter of the padding)
+  vendored port of Media3 1.11.1's silence skipper; 1.9.0's still keeps a quarter of the padding)
   heads `AudiosiloAudioChain` (silence → Sonic → boost, so skipped frames are book time and the
   boost's attack and release are real time). The switches reach the service as
   `audiosilo.SET_EFFECTS` and persist in SharedPreferences, so a service started without JS
@@ -1477,6 +1483,12 @@ media GETs only.
   the resume floor moving with it; while that moves the track index, `persist` and
   `onRemoteMove` refuse a place at another index of that book (`swapHold`) until the download's
   queue is committed, which on a load is before the rate and the play.
+- **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
+  bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
+  where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /
+  `availableDiskSpace` and a download task's progress are `Int64`; Android sends a `Long` as a
+  number. Read such a value through it at the call into the module (and keep our own modules'
+  Swift on `Int`/`Double`, which arrive as numbers).
 - **Downloads store absolute file URIs**; the iOS document-container path can change
   between installs (notably dev rebuilds), so `src/downloads/store.ts` (downloads is
   a top-level dir, a sibling of `src/playback`) `relocateEntry`
@@ -1789,8 +1801,13 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   anything else emits `onCarPlayRequest` and completes with the module's next `load` (10 s, then
   `labels.unavailable`). Voice ("play X on AudioSilo") goes through `playFromSearch`; there is
   no search button. `ResumptionReceiver` refuses to start the foreground service when nothing
-  is resumable (one that doesn't start playback within seconds crashes the app,
-  `ForegroundServiceDidNotStartInTimeException`); `CarConnectionMonitor` reads the Auto host's
+  is resumable (one that doesn't reach `startForeground` within seconds crashes the app,
+  `ForegroundServiceDidNotStartInTimeException`); a media button start that does go ahead goes
+  into the foreground AT ONCE with a placeholder under Media3's notification id (Media3's own
+  replaces it when the book plays; a JS-routed resumption can take 10 s), and a failed
+  resumption removes it and stops the service (`onStartCommand`, `watchResumption`).
+  `onPlaybackResumption(…, isForPlayback = false)` (System UI's card after a reboot) answers from
+  the play spec with no side effect; `CarConnectionMonitor` reads the Auto host's
   connection provider (Media3 only notices a legacy controller leaving by timeout).
   - **Headless JS.** When the service needs JS (a car play, a book playing with no JS that
     must save, a pending bookmark, Auto connecting), `JsRuntime.ensure` starts the app's
@@ -1827,14 +1844,23 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     by `loadingBook` until the load lands, and its place saves nothing until it plays,
     `quietAdopted`; a paused one is paused again once loaded, and a pause while it loads
     stands). Not while casting (fe#145). Regression tests: `store-adopt.test.ts`.
-- **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over an SDK 56
-  AppDelegate fixture by `withCarPlay.test.ts`). Declaring any scene moves the whole iOS app
-  onto the UIScene life cycle (the iOS 27 SDK will require it anyway), where UIKit never shows
-  a window the app delegate made. So the plugin writes a phone scene and a CarPlay scene into
-  the manifest, and rewrites the AppDelegate so the template's window creation +
-  `startReactNative` become a stored starter (`AudiosiloScenes.configure`) that the first scene
-  to connect runs (a CarPlay-first launch, maybe with the phone locked, into an off-screen
-  parking window the phone scene adopts later). **The template text is matched exactly and any
+- **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over the SDK 58
+  AppDelegate fixture `plugins/__fixtures__/app-delegate-sdk58.ts` by `withCarPlay.test.ts`).
+  The SDK 58 template is already a scene app: its AppDelegate only builds the React Native
+  factory, and its `SceneDelegate` makes the window and starts React Native. We replace its
+  scene delegates with our own in the manifest (a phone scene and a CarPlay scene; the
+  template's `SceneDelegate.swift` stays in the project, unused), because a CarPlay-first
+  launch must park React Native in an off-screen window and Expo's delegate always starts it
+  itself. The plugin adds a stored starter (`AudiosiloScenes.configure`) right after
+  `reactNativeFactory = factory`, which the first scene to connect runs (a CarPlay-first
+  launch, maybe with the phone locked, into an off-screen parking window the phone scene
+  adopts later). **Links**: the phone scene (`AudiosiloPhoneSceneDelegate.swift`) forwards each
+  URL and user activity to the app delegate (Expo's subscribers) AND hands it to React Native's
+  scene API (`RCTLinkingManager` `scene:openURLContexts:` / `scene:continueUserActivity:`, as
+  Expo's own scene delegate does): since RN 0.88 the app-delegate `RCTLinkingManager` methods
+  do nothing in an app with a scene manifest, so AppDelegate overrides calling them (the SDK 56
+  template's) would leave a link opened while the app runs short of JS. `withCarPlay.test.ts`
+  pins those calls in the Swift source. **The template text is matched exactly and any
   other text fails the prebuild** (a silent miss would ship a black screen), so an Expo SDK bump
   updates the plugin and its fixture. **Plugin order**: mods of one kind run in REVERSE
   registration order, so **no plugin that rewrites the AppDelegate may be listed after
@@ -2166,7 +2192,7 @@ on first need). NOT device-verified (no Cast device yet).
   place, never the book's end. Not while casting: Smart speed, Voice boost, auto-rewind and the
   volume (the sleep timer's fade would set the TV's).
 
-**Widgets and the Live Activity (iOS only)** (`src/widgets/`, `expo-widgets` 56.0.27, whose
+**Widgets and the Live Activity (iOS only)** (`src/widgets/`, `expo-widgets` 58, whose
 Android side is a stub, so `widget-sync.ts` is the no-op everywhere else).
 `continue-listening.tsx` and `sleep-timer-activity.tsx` are `'widget'` functions:
 babel-preset-expo turns each into a source string the extension evaluates in its own
@@ -2181,9 +2207,11 @@ book (the extension can't fetch; only when `fitsCover` says the file is small en
 no resizer). The Live Activity starts only in the foreground (ActivityKit's rule), ends
 immediately when the timer fires or is cancelled, and has no buttons (expo-widgets has no
 `AudioPlaybackIntent`, so a button would run in the extension and never reach the player).
-`plugins/withWidgetsNoPush.js` strips the `aps-environment` expo-widgets 56 adds
-unconditionally (the app sends no push, and every profile would otherwise need the capability);
-it and `withXcode26SwiftUICoreFix` are listed BEFORE `expo-widgets` so they run after it. A
+The app sends no push, so no target may carry `aps-environment` (every profile would otherwise
+need the capability): expo-widgets 58 adds it only when asked, and
+`plugins/widgets-entitlements.test.ts` fails if it comes back (expo-widgets 56 added it
+unconditionally, and a `withWidgetsNoPush` plugin stripped it). `withXcode26SwiftUICoreFix` is
+listed BEFORE `expo-widgets` so it runs after it. A
 store build needs the App Group `group.app.audiosilo` and the extension `app.audiosilo.widget`
 provisioned. **A dev build beside the store app needs its own ids** for the app, the extension
 and the group, edited after prebuild (the list is in the docs' Testing page); a half-patched
@@ -2199,11 +2227,14 @@ pass through as they are.
 **Tests** - new logic ships with a unit test. Pure, framework-free modules get
 direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
 `progress-sync.ts`, `src/stores/*` (see the co-located `*.test.ts`). Keep logic out
-of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo (jest 29)
+of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo 58 (Jest 30)
 + @testing-library/react-native 14** - matchers are built in (no `jest-native`);
 `jest.setup.ts` provides in-memory mocks for `expo-secure-store` + AsyncStorage,
 and tests mock `fetch` / `@/api/reachability` as needed. Flip `Platform.OS` at
-runtime to cover web-vs-native branches. **Jest proves nothing about Swift or Kotlin.** The
+runtime to cover web-vs-native branches. A suite that needs a real DOM names
+`@jest-environment ./src/testing/jsdom-environment.js`, never plain `jsdom`: on Jest 30 the
+stock environment breaks under React Native's jest setup (it redefines `window`) and when
+clearing Expo's lazy globals after a test; the file says how. **Jest proves nothing about Swift or Kotlin.** The
 native module's pure parts have checks of their own that need no device: the Android JVM tests
 (`TimelineMapTest`, `NarrationSilenceProcessorTest`, `VoiceBoostProcessorTest`; after an
 Android prebuild, `./gradlew :audiosilo-player:testDebugUnitTest` under JDK 17) and the iOS
@@ -2242,7 +2273,7 @@ tokens, type and components; its section 17 maps them onto these files.
   both platforms (`keyboardOverlap`, then `keyboardLift` net of the home-indicator padding), and its
   height is capped to what the keyboard leaves under the top safe edge (`keyboardCap`), so the title
   stays on screen and the body scrolls. iOS lays the keyboard over the window; Android edge to edge
-  (SDK 56, Android 15+) no longer resizes the window either, so `adjustResize` alone is not enough
+  (since SDK 56, Android 15+) no longer resizes the window either, so `adjustResize` alone is not enough
   (the Phase 4 device pass caught the Android sheet hidden behind the keyboard). A window that DID
   resize ends at the keyboard's top and reads 0, so nothing lifts twice. Don't reach for
   `KeyboardAvoidingView` inside a portal or `FullWindowOverlay`: absolutely positioned there, it
@@ -2259,9 +2290,24 @@ tokens, type and components; its section 17 maps them onto these files.
   keep its context value while direction and locale hold: RNW wraps every element with a `dir` (each
   root `Text` is `dir="auto"`) in it, and a fresh value per render re-rendered every View and Text
   below a re-rendering parent straight through memo. `src/lib/react-native-web-locale.test.tsx`
-  guards it. RNW is pinned exactly to the patch's version (and ignored by Dependabot): an RNW
-  upgrade regenerates the patch (`npx patch-package react-native-web`) or drops it once upstream
-  fixes it; a patch that no longer applies fails the install.
+  guards it. RNW is pinned exactly to the patch's version (0.21.4, the patch file named for it)
+  and ignored by Dependabot: an RNW upgrade renames and regenerates the patch
+  (`npx patch-package react-native-web`) or drops it once upstream fixes it; a patch that no
+  longer applies fails the install.
+- **Expo SDK pins, and one copy of each native module.** The SDK decides the versions of its
+  native modules, react and react-native (`node_modules/expo/bundledNativeModules.json`). CI
+  runs `npx expo install --check`, which fails on any drift; move them only with
+  `npx expo install --fix` during an SDK upgrade. `expo.install.exclude` in `package.json`
+  holds the deliberate drift, and only that: `@react-native-async-storage/async-storage` 3.x,
+  ahead of the SDK's 2.2.0. The app has run on 3.x since before SDK 56, and going back would
+  downgrade the native store every setting lives in for no gain; without the exclude, `--fix`
+  would do exactly that. react-native-view-shot 6.1.1 is the SDK 58 pin, so it left the
+  exclude. The exclude and `.github/dependabot.yml` say the same
+  thing; change both together. CI then runs `node scripts/check-native-dupes.mjs`
+  (unit-tested by `check-native-dupes.test.mjs`): it fails when react, react-dom,
+  react-native, a listed native module or expo-modules-core is installed more than once (a
+  nested copy passes `--check` and can still crash on a device). Add a native module to its
+  list when one is added.
 - **Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`**
   (`themes.light` / `themes.dark`, plus a fixed `palette` of `white`/`black`). `npm run gen:tokens`
   (`scripts/gen-tokens.mjs`) writes the generated region of `src/global.css` (each theme token as a
@@ -2375,18 +2421,32 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   resolves a push against the current segments.
 - **Cold deep link owner = Home.** A cold `/book/...` is given to the alphabetically FIRST tab
   group, which is why Downloads is `(offline)`, not `(downloads)`. The array-group layout's
-  group-keyed `unstable_settings` (`TAB_STACK_SETTINGS`) insert each tab's root underneath, so
-  back works; `tabStackListeners` strips the link params React Navigation copies onto that root
-  and its ancestors (else back landed on `/?libraryId=1`).
+  group-keyed `unstable_settings` (`TAB_STACK_SETTINGS`, each tab's `anchor`; expo-router 58
+  replaced `initialRouteName` with it) insert each tab's root underneath, so back works;
+  `tabStackListeners` strips the link params React Navigation copies onto that root and its
+  ancestors (else back landed on `/?libraryId=1`). Since expo-router 58 the tab navigator's
+  history also keeps the first tab under a cold link into another tab, so `canGoBack()` is
+  true at a tab root: tests read the tab's stack (`tabStack` in `src/testing/route-tree.tsx`).
 - **Tab presses from our chrome dispatch `JUMP_TO`** (`useTabPress`): another tab -
   `navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } })`, which restores
   its stack; a href can't (`router.navigate('/(home)')` resolves to `/` and pops Home). The
   active tab again: `popTabToRoot(tab)` (`src/lib/root-stack.ts`, `POP_TO_TOP` on that tab
   stack's key), which keeps the root's own params; never a navigate to the root's href (a
   navigate is a push in this router, so it stacked a second root over the pages).
+- **The navigation container is read through `src/lib/router-ref.ts`.** expo-router 58 removed
+  its global store (`store.navigationRef`, `store.state`), and its only public read is a hook.
+  A press handler, a startup path or a test that reads the state at call time imports
+  `navigationRef` from `@/lib/router-ref`, the one module that names the deep
+  `expo-router/build/global-state/navigationRef` path (the route-tree tests pin it). An
+  expo-router upgrade checks that path first.
+- **Navigation at mount uses `useRouter()`.** Since expo-router 58 the module-level `router`
+  throws until the router has rendered once, so an effect or guard that navigates on mount
+  (`kids-route-guard.tsx`, the connect layout) takes the hook's router. The module-level one
+  stays fine in press handlers and later code.
 - **Web: `<TabSlot/>` stays at a FIXED ancestor path at every width**; only sibling chrome
   toggles (moving it remounts every screen and jumps the URL on resize). **Native: never add or
   remove tabs at runtime**; tablet/desktop toggle `NativeTabs hidden` (state survives).
+  NativeTabs comes from `expo-router/native-tabs` (it left `unstable-native-tabs` in SDK 58).
 - Onboarding returns with `leaveOnboarding()` (`src/components/shell/leave-onboarding.tsx`,
   `router.dismissTo('/')`; `<LeaveOnboarding />` at render time), never `replace` or `<Redirect href="/">`
   (also a replace): `(app)` is the root stack's `anchor` and already sits under `/connect`, so a replace
@@ -2395,6 +2455,8 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   connect layout, whose `useGlobalSearchParams` misses a warm link's params on first render.
 - Regression net: `src/components/shell/route-tree*.test.tsx` drive expo-router's
   `renderRouter` over the REAL `src/app` file list (`src/testing/route-tree.tsx`).
+  `renderRouter` is async (await it), and since expo-router 58 a tab navigator shows only the
+  screens its layout declares, so the JS `Tabs` stand-in (`JsTabs`) declares the five tabs.
 - **The You hub is the Me tab's ROOT** (`/you?section=stats|year|journal|settings|household|account`,
   `src/components/you/you-hub.tsx`, rules in `you-model.ts`; `section` and the Journal's `tab` are
   its `rootParams`). Open it only through `openYou(section)` / `openJournal(tab)` (`src/lib/open.ts`,
@@ -2430,8 +2492,8 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   FOCUSED (`claimPageTitle`, `src/lib/document-title.ts`), so Back names the page under it
   again. `DocumentTitle` (root layout, `src/components/shell/document-title{,.web}.tsx`) is the
   one writer of `document.title`: the book playing (`▶`), else the page, else the tab, then
-  "· AudioSilo". `StaticDocumentTitle` bakes "AudioSilo" into the static HTML (a `<title>` in
-  `+html.tsx` never shows: Expo's head manager puts its own first). A new page calls
+  "· AudioSilo". The static HTML's `<title>` ("AudioSilo", until hydration) is in `+html.tsx`:
+  expo-router 58 renders no `Head` tags into the static HTML. A new page calls
   `usePageTitle` too.
 
 **The Library tab root is the browse modes** (`src/components/library/library-screen.tsx`):

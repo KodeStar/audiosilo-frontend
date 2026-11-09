@@ -1,5 +1,6 @@
 package expo.modules.audiosiloplayer.effects
 
+import androidx.media3.common.audio.AudioProcessor
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 import kotlin.math.log10
@@ -22,7 +23,7 @@ class VoiceBoostProcessorTest {
     val switch = AtomicBoolean(on)
     val p = VoiceBoostProcessor(switch, highPass)
     p.configure(pcm16(rate, channels))
-    p.flush()
+    p.flush(AudioProcessor.StreamMetadata.DEFAULT)
     return p to switch
   }
 
@@ -176,7 +177,7 @@ class VoiceBoostProcessorTest {
       val switch = AtomicBoolean(true)
       val p = VoiceBoostProcessor(switch, gainEpsilonDb = epsilonDb)
       p.configure(pcm16(rate, channels))
-      p.flush()
+      p.flush(AudioProcessor.StreamMetadata.DEFAULT)
       return runProcessor(p, input, channels, chunk) { frame -> switch.set(frame !in offAt until onAt) }
     }
     val reference = run(0.0) // an exp of the smoothed gain on every frame, as before

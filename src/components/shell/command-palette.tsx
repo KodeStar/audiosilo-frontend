@@ -3,13 +3,12 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  type NativeSyntheticEvent,
   Platform,
   type Role,
   Pressable,
   ScrollView,
   TextInput,
-  type TextInputKeyPressEventData,
+  type TextInputKeyPressEvent,
   View,
 } from 'react-native';
 
@@ -404,7 +403,7 @@ function PaletteBody() {
     item.run();
   };
 
-  const onKeyPress = (e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+  const onKeyPress = (e: TextInputKeyPressEvent) => {
     const { key } = e.nativeEvent;
     if (key === 'ArrowDown' || key === 'ArrowUp') {
       e.preventDefault();

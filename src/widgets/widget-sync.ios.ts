@@ -401,7 +401,7 @@ export async function prepareCovers(dir: Directory, np: NowPlaying): Promise<Cov
     for (const source of sources) {
       const bytes = await readBytes(source);
       if (bytes && fitsCover(bytes, max)) {
-        file.write(bytes);
+        await file.write(bytes);
         return file.uri;
       }
     }

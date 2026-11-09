@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @jest-environment ./src/testing/jsdom-environment.js
  */
 
 type Module = typeof import('./register-sw.web');

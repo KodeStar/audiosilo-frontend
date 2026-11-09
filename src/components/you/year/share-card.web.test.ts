@@ -8,7 +8,7 @@ jest.mock('@/lib/download-blob', () => ({
 }));
 
 /* eslint-disable import/first */
-import type { View } from 'react-native';
+import type { ViewInstance } from 'react-native';
 
 import { captureCard, deliverCard } from './share-card.web';
 /* eslint-enable import/first */
@@ -39,7 +39,7 @@ describe('share a card (web)', () => {
   it('draws the card node at the share size, out of a canvas blob', async () => {
     mockToCanvas.mockResolvedValue(canvas(1080, 1920));
     const node = { getBoundingClientRect: () => ({ width: 360, height: 640 }) };
-    expect(await captureCard(node as unknown as View, opts.fileName)).toBe(png);
+    expect(await captureCard(node as unknown as ViewInstance, opts.fileName)).toBe(png);
     expect(mockToCanvas).toHaveBeenCalledWith(node, {
       pixelRatio: 3,
       skipAutoScale: true,
@@ -53,13 +53,13 @@ describe('share a card (web)', () => {
     const exact = canvas(0, 0);
     g.document = { createElement: () => exact };
     const node = { getBoundingClientRect: () => ({ width: 359.7, height: 639.4 }) };
-    await captureCard(node as unknown as View, opts.fileName);
+    await captureCard(node as unknown as ViewInstance, opts.fileName);
     expect([exact.width, exact.height]).toEqual([1080, 1920]);
   });
 
   it('refuses a card that is not on screen', async () => {
     const node = { getBoundingClientRect: () => ({ width: 0, height: 0 }) };
-    await expect(captureCard(node as unknown as View, opts.fileName)).rejects.toThrow();
+    await expect(captureCard(node as unknown as ViewInstance, opts.fileName)).rejects.toThrow();
   });
 
   it('shares the PNG through the Web Share API where files can be shared', async () => {

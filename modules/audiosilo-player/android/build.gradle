@@ -6,7 +6,14 @@ plugins {
 group = 'expo.modules.audiosiloplayer'
 version = '0.1.0'
 
-def media3Version = '1.5.1'
+// Media3 must be the version the APP resolves, not just the one this module asks for: Gradle
+// picks the highest requested anywhere in the app graph (expo-camera's CameraX 1.6 pulls
+// media3-muxer/common 1.9.0), and this module compiles alone against its own declaration. A
+// mismatch compiles fine and breaks at run time: our 1.5.1-era MediaButtonReceiver override was
+// never called on 1.9.0, so playback resumption crashed the app. The strict constraints below
+// make the app graph fail to resolve, loudly, if anything asks for another Media3: bump this
+// (and adapt the code) together with whatever moved.
+def media3Version = '1.9.0'
 
 android {
   namespace "expo.modules.audiosiloplayer"
@@ -14,8 +21,8 @@ android {
     versionCode 1
     versionName "0.1.0"
   }
-  lintOptions {
-    abortOnError false
+  lint {
+    abortOnError = false
   }
 }
 
@@ -29,6 +36,15 @@ dependencies {
   // StandaloneDatabaseProvider for the streaming SimpleCache (transitive via exoplayer,
   // declared explicitly so the cache classes resolve regardless of resolution order).
   implementation "androidx.media3:media3-database:${media3Version}"
+  // Published with the module, so they bind the app's graph too (see media3Version).
+  constraints {
+    ['common', 'exoplayer', 'session', 'datasource', 'database', 'decoder', 'extractor', 'container'].each { name ->
+      implementation("androidx.media3:media3-${name}") {
+        version { strictly media3Version }
+        because 'the module compiles against this Media3; the app must run the same one'
+      }
+    }
+  }
 
   // JVM unit tests (effects/ processors fed synthetic PCM; TimelineMap).
   testImplementation 'junit:junit:4.13.2'

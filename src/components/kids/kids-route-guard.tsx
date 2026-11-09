@@ -1,4 +1,4 @@
-import { router, usePathname, useRootNavigationState } from 'expo-router';
+import { usePathname, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 
 import { useProfiles } from '@/stores/profiles';
@@ -19,7 +19,9 @@ import { useKidsActive } from './use-kids';
  * `dismissTo`, not `replace`: when `/kids` is already in the root stack (the end credits
  * or the player pushed over it) it pops back to it rather than stacking a second one;
  * when it is not, it replaces the current route. Waits for the root navigator (a
- * navigation before it mounts throws).
+ * navigation before it mounts throws), and navigates through `useRouter()`: since
+ * expo-router 58 the module-level `router` throws until the router's own first commit has
+ * bound it, which a mount effect here can run ahead of.
  *
  * And the other way: `/kids` is a kids profile's only. Leaving kids mode through "Who's
  * listening?" puts the shell over it (the guard replaced the shell's anchor with it), so
@@ -32,10 +34,11 @@ export function KidsRouteGuard() {
   const hydrated = useProfiles((s) => s.hydrated);
   const pathname = usePathname();
   const ready = !!useRootNavigationState()?.key;
+  const router = useRouter();
   useEffect(() => {
     if (!ready) return;
     if (kids && !kidsAllowsPath(pathname)) router.dismissTo(KIDS_PATH);
     else if (!kids && hydrated && pathname === KIDS_PATH) router.dismissTo('/');
-  }, [ready, kids, hydrated, pathname]);
+  }, [ready, kids, hydrated, pathname, router]);
   return null;
 }

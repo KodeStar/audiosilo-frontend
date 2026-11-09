@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @jest-environment ./src/testing/jsdom-environment.js
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react-native';

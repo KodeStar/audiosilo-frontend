@@ -624,7 +624,7 @@ describe('the player the server serves', () => {
     };
 
     it('says so and opens the link, asking nothing of that server', async () => {
-      const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+      const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
       try {
         const link = `${HOME}/web/connect?token=abc`;
         await paste(link);

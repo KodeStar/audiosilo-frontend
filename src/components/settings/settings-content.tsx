@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, type ScrollView, View } from 'react-native';
+import { Platform, View, type ScrollViewInstance } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { useConnectionRemoval } from '@/components/account/connections-section';
@@ -280,7 +280,7 @@ function StackedPanes({
 }) {
   const { t } = useTranslation();
   const reduced = useReducedMotion();
-  const ref = useRef<ScrollView>(null);
+  const ref = useRef<ScrollViewInstance>(null);
   // The pane scrolled to last, so a re-layout never pulls the reader back to it.
   const scrolled = useRef<SettingsPane | null>(groups[0]?.panes[0] ?? null);
   const onPaneLayout = (p: SettingsPane, y: number) => {

@@ -1,4 +1,4 @@
-import type { View } from 'react-native';
+import type { ViewInstance } from 'react-native';
 
 import { downloadBlob } from '@/lib/download-blob';
 
@@ -32,7 +32,7 @@ import {
  * (Safari wants it close to the tap, and the drawing takes a moment) falls back to the
  * download too.
  */
-export function captureCard(view: View, _fileName: string): Promise<CapturedCard> {
+export function captureCard(view: ViewInstance, _fileName: string): Promise<CapturedCard> {
   return renderPng(view as unknown as HTMLElement);
 }
 

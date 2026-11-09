@@ -1,7 +1,7 @@
 import type { TriggerRef } from '@rn-primitives/dropdown-menu';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { View, type ViewInstance } from 'react-native';
 
 import { useBook, useSavedProgress } from '@/api/hooks';
 import type { Book } from '@/api/types';
@@ -34,7 +34,7 @@ export function TileActions({
   /** Bumped by the tile for each request; opens the menu again. */
   request: number;
   /** The tile, which takes the focus back when the menu closes (web). */
-  tileRef: RefObject<View | null>;
+  tileRef: RefObject<ViewInstance | null>;
 }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';

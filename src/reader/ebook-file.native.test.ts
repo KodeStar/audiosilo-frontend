@@ -32,9 +32,11 @@ jest.mock('expo-file-system', () => {
     get exists() {
       return typeof mockTree.get(this.uri) === 'number';
     }
+    // As iOS sends it since SDK 58 (a Swift Int64 is a bigint): every size read here must
+    // come back to the caller as a number.
     get size() {
       const v = mockTree.get(this.uri);
-      return typeof v === 'number' ? v : null;
+      return typeof v === 'number' ? BigInt(v) : null;
     }
     bytes() {
       return mockBytes(this.uri);

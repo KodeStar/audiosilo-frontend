@@ -1,7 +1,8 @@
-import { ScrollViewStyleReset } from 'expo-router/html';
+import { ScrollViewStyleReset, useServerDocumentContext } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
 import { BASE_URL as BASE } from '@/lib/base-url';
+import { formatDocumentTitle } from '@/lib/document-title';
 import { colors } from '@/theme/tokens';
 
 // Customises the static HTML shell Expo emits for every web route. This is where
@@ -33,8 +34,12 @@ const backdropCss = [
 const layerOrderCss = '@layer properties, theme, base, rnw, components, utilities;';
 
 export default function Root({ children }: PropsWithChildren) {
+  // The router's own document parts (expo-router 58): the attributes it sets on <html> and
+  // <body>, the nodes it adds to <head> (the bundle's stylesheets and metadata) and the
+  // nodes after the app in <body> (its scripts: leaving them out stops hydration).
+  const { htmlAttributes, bodyAttributes, headNodes, bodyNodes } = useServerDocumentContext();
   return (
-    <html lang="en">
+    <html lang="en" {...htmlAttributes}>
       <head>
         <meta charSet="utf-8" />
         {/* Must precede every stylesheet - see layerOrderCss. */}
@@ -45,6 +50,9 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
 
+        {/* The tab's name until the app hydrates and `DocumentTitle` names the page. expo-router
+            58 renders no `Head` tags into the static HTML, so it lives here. */}
+        <title>{formatDocumentTitle({})}</title>
         <meta name="description" content="Your self-hosted audiobook player." />
 
         {/* PWA install + theming */}
@@ -62,8 +70,14 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* Backdrop behind the app, to avoid a white flash before/around React. */}
         <style dangerouslySetInnerHTML={{ __html: backdropCss }} />
+
+        {/* Last, so the layer order above still comes before every stylesheet. */}
+        {headNodes}
       </head>
-      <body>{children}</body>
+      <body {...bodyAttributes}>
+        {children}
+        {bodyNodes}
+      </body>
     </html>
   );
 }

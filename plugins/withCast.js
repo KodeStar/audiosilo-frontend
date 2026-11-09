@@ -34,7 +34,7 @@ const withGoogleCast = castPlugin.default ?? castPlugin;
  * Plugin order (app.json): listed BEFORE `./plugins/withCarPlay`. Mods of one kind run in
  * reverse registration order, so withCarPlay's exact match sees Expo's template untouched
  * and this plugin's AppDelegate edits land after it (`withCast.test.ts` runs both, in this
- * order, over the SDK 56 AppDelegate).
+ * order, over the SDK 58 AppDelegate).
  */
 
 /** play-services-cast-framework, pinned. */

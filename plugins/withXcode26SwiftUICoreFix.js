@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Work around the Xcode 26 / iOS 26 SDK "SwiftUICore" linker failure.
+ * Work around the Xcode 26+ / iOS 26+ SDK "SwiftUICore" linker failure (kept for Xcode 27:
+ * not verified on Expo SDK 58 yet whether it is still needed; removing it is a follow-up).
  *
  * On the iOS 26 SDK, `import SwiftUI` (pulled in transitively by ExpoModulesCore, so
  * effectively every source-compiled Expo module, plus the app's own generated

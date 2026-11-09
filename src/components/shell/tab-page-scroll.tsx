@@ -1,5 +1,5 @@
 import type { Ref } from 'react';
-import { ScrollView, type ScrollViewProps } from 'react-native';
+import { ScrollView, type ScrollViewProps, type ScrollViewInstance } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { cn } from '@/lib/utils';
@@ -44,7 +44,7 @@ export function TabPageScroll({
   contentContainerClassName,
   contentContainerStyle,
   ...rest
-}: ScrollViewProps & { ref?: Ref<ScrollView>; gutter?: boolean }) {
+}: ScrollViewProps & { ref?: Ref<ScrollViewInstance>; gutter?: boolean }) {
   const paddingBottom = useMiniPlayerInset();
   return (
     <ScrollView

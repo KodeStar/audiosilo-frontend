@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { fnv1a } from '@/lib/fnv1a';
+import { nativeNumber } from '@/lib/native-number';
 
 /**
  * The covers the car shows for books that are not downloaded (a downloaded book's own
@@ -130,14 +131,14 @@ async function write(name: string, url: string): Promise<string | null> {
     const part = new File(dir, `${name}.part`);
     if (part.exists) part.delete();
     await File.downloadFileAsync(url, part, { idempotent: true });
-    if (!part.exists || (part.size ?? 0) <= 0) {
+    if (!part.exists || nativeNumber(part.size) <= 0) {
       if (part.exists) part.delete();
       // An empty answer is the server's own: a book with no cover.
       noteFailure(name, true);
       return null;
     }
     if (dest.exists) dest.delete();
-    part.move(dest);
+    await part.move(dest);
     failures.delete(name);
     return dest.uri;
   } catch (err) {

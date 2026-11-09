@@ -13,7 +13,7 @@ Bricolage Grotesque + Figtree + JetBrains Mono, cover shadows and the "one pink 
 `/admin` and `/web` read as one product. It is tuned for listening: surfaces washed by the current cover,
 a real player at every size, and physical shelf metaphors that make a household's books findable.
 
-Target stack: **Expo SDK 56 + React Native 0.85 + React 19 + Expo Router**, **react-native-reusables**
+Target stack: **Expo SDK 58 + React Native 0.88 + React 19 + Expo Router**, **react-native-reusables**
 (shadcn/ui "new-york" on `@rn-primitives`), styled with **Uniwind** (Tailwind v4 tokens; confirmed by the Phase 0a
 spike, which moved the app off NativeWind v4, so NativeWind is no longer a fallback). Companions: `@expo/ui` bottom sheet (vaul on web), FlashList v2, charts drawn with react-native-svg,
 expo-router native tabs, Reanimated 4, expo-glass-effect, expo-font, a vendored SVG icon set.

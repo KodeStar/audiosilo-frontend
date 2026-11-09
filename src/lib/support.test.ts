@@ -15,7 +15,7 @@ describe('support', () => {
   let openURL: jest.SpyInstance;
 
   beforeEach(() => {
-    openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
   });
 
   afterEach(() => {

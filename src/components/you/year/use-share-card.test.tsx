@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
-import { AppState, type AppStateStatus, type View } from 'react-native';
+import { AppState, type AppStateStatus, type ViewInstance } from 'react-native';
 
 const mockCapture = jest.fn();
 const mockDeliver = jest.fn();
@@ -15,7 +15,7 @@ import { useShareCard } from './use-share-card';
 /* eslint-enable import/first */
 
 const opts = { fileName: 'audiosilo-2026-01-hours.png', title: 'My 2026 in listening' };
-const card = { current: {} as View };
+const card = { current: {} as ViewInstance };
 
 beforeEach(() => {
   jest.clearAllMocks();

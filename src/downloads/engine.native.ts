@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { nativeNumber } from '@/lib/native-number';
 import { pathSlug } from '@/lib/path-slug';
 
 import type { DownloadEngine, DownloadProgressCb } from './types';
@@ -42,7 +43,7 @@ function ensureDir(dir: Directory) {
 function dirSize(dir: Directory): number {
   let total = 0;
   for (const item of dir.list()) {
-    if (item instanceof File) total += item.size ?? 0;
+    if (item instanceof File) total += nativeNumber(item.size);
     else total += dirSize(item);
   }
   return total;
@@ -68,7 +69,9 @@ export const engine: DownloadEngine = {
     const dest = new File(dir, fileName);
     if (dest.exists) dest.delete();
     const task = File.createDownloadTask(url, dest, {
-      onProgress: onProgress ? (p) => onProgress(p.bytesWritten, p.totalBytes) : undefined,
+      onProgress: onProgress
+        ? (p) => onProgress(nativeNumber(p.bytesWritten), nativeNumber(p.totalBytes))
+        : undefined,
       signal,
       headers,
     });
@@ -108,7 +111,7 @@ export const engine: DownloadEngine = {
       if (!dir.exists) return false;
       const file = new File(dir, fileName);
       if (!file.exists) file.create();
-      file.write(text);
+      await file.write(text);
       return true;
     } catch {
       return false;
@@ -186,8 +189,8 @@ export const engine: DownloadEngine = {
 
   async storageEstimate() {
     try {
-      const capacity = Paths.totalDiskSpace;
-      const free = Paths.availableDiskSpace;
+      const capacity = nativeNumber(Paths.totalDiskSpace);
+      const free = nativeNumber(Paths.availableDiskSpace, -1);
       return capacity > 0 && free >= 0 ? { scope: 'device', capacity, free } : null;
     } catch {
       return null;

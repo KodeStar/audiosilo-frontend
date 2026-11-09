@@ -33,7 +33,7 @@ export async function saveExport(
   }
   const out = new File(Paths.cache, file.name);
   out.create({ overwrite: true });
-  out.write(file.content);
+  await out.write(file.content);
   onReady?.();
   await Sharing.shareAsync(out.uri, { mimeType: file.mimeType, UTI: file.uti, dialogTitle });
 }

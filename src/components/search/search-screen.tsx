@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ScrollView, type TextInput, View } from 'react-native';
+import { ScrollView, View, type TextInputInstance } from 'react-native';
 
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
@@ -25,7 +25,7 @@ export function SearchScreen() {
   // Bumped by the top bar's omnisearch (a native tablet): focus the field, whether or not
   // this tab was already open. A first mount takes the focus through `autoFocus`.
   const focusRequest = useSearchStore((s) => s.focusRequest);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   useEffect(() => {
     if (focusRequest > 0) inputRef.current?.focus();
   }, [focusRequest]);

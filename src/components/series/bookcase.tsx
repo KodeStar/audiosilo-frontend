@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
 import Animated, {
   Easing,
   LinearTransition,
@@ -93,7 +93,7 @@ export function Bookcase({
   const scale = bookcaseScale(layout);
   const face = Math.round(212 * scale);
   const pad = layout === 'desktop' ? 32 : 16;
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ScrollViewInstance>(null);
   const slots = useRef(new Map<string, { x: number; width: number }>());
   const [viewWidth, setViewWidth] = useState(0);
   const [laidOut, setLaidOut] = useState(0);

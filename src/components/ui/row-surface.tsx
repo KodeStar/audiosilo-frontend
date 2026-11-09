@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { Platform, View, type ViewProps } from 'react-native';
+import { Platform, View, type ViewProps, type ViewInstance } from 'react-native';
 
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
@@ -24,7 +24,7 @@ export function RowSurface({ className, ...props }: ViewProps & { className?: st
  * the `accent` fill plus AnimatedPressable's press feedback. Forwards its ref, so it can
  * sit under an expo-router `<Link asChild>`.
  */
-export const PressableRow = forwardRef<View, AnimatedPressableProps>(function PressableRow(
+export const PressableRow = forwardRef<ViewInstance, AnimatedPressableProps>(function PressableRow(
   { className, ...props },
   ref,
 ) {

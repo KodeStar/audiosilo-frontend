@@ -1,4 +1,3 @@
-import Head from 'expo-router/head';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -27,21 +26,4 @@ export function DocumentTitle() {
     document.title = title;
   }, [title]);
   return null;
-}
-
-/**
- * The static HTML's title, until `DocumentTitle` names the page. Expo's static render
- * puts its head manager's own `<title>` first in `<head>` (empty unless a `Head` sets
- * one) and the browser shows the first, so a `<title>` in `+html.tsx` never shows. The
- * app's providers render nothing until they hydrate, so this sits above them, and it
- * renders only on the server (no `window`): `Head` commits on an animation frame, which
- * would land after `DocumentTitle` and put the bare brand back.
- */
-export function StaticDocumentTitle() {
-  if (typeof window !== 'undefined') return null;
-  return (
-    <Head>
-      <title>{formatDocumentTitle({})}</title>
-    </Head>
-  );
 }

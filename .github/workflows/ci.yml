@@ -1,4 +1,5 @@
-# Gates every pull request and push to main on typecheck + lint + format (prettier --check) + tests.
+# Gates every pull request and push to main on the Expo SDK pins, one copy of each native
+# module, typecheck + lint + format (prettier --check) + tests.
 # The web-export image build (web.yml) stays separate.
 name: ci
 
@@ -23,6 +24,17 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Exits non-zero when a package drifts from the version the Expo SDK pins.
+      # expo.install.exclude in package.json keeps the deliberate drift out
+      # (async-storage; CONVENTIONS.md, Dependency patches).
+      - name: Expo SDK pins
+        run: npx expo install --check
+
+      # A second installed copy of react, react-native, a native module or
+      # expo-modules-core passes the check above and can still crash on a device.
+      - name: No nested native modules
+        run: node scripts/check-native-dupes.mjs
 
       - name: Typecheck
         run: npx tsc --noEmit

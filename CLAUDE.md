@@ -24,7 +24,7 @@ the main session plans, decides and checks; fresh Opus agents (`ship-implementer
 verification, so the large main context is never what reviews or edits code.
 
 ## Stack
-- **Expo SDK 56**, **React Native 0.85** (new architecture), **React 19**, **Expo Router** (file-based, in `src/app`).
+- **Expo SDK 58** (expo 58.0.23), **React Native 0.88** (new architecture), **React 19.3**, **Expo Router** (file-based, in `src/app`), **Jest 30**.
 - **Uniwind** (Tailwind v4) for styling - `className` on core RN components, on every platform. No
   `tailwind.config.js`: the theme is CSS in `src/global.css`; colour tokens are generated into it
   from `src/theme/tokens.json` (see Styling below). Replaced NativeWind v4 in player-redesign Phase 0a.
@@ -44,7 +44,7 @@ verification, so the large main context is never what reviews or edits code.
   (`src/widgets/`, see Widgets below).
 
 ## ⚠️ Environment gotchas (read before running)
-- **Node 24 required.** RN 0.85 needs ≥20.19.4, and the Expo CLI's env-file loader
+- **Node 24 required.** RN 0.88 needs ^22.13 || ^24.3, and the Expo CLI's env-file loader
   uses `util.parseEnv` (Node ≥20.12) - older Node crashes once a `.env` exists.
   This machine's default `node` (`/usr/local/bin/node`) is old; use nvm's 24:
   `export PATH="$HOME/.nvm/versions/node/v24.16.0/bin:$PATH"` (or set the nvm default).
@@ -57,8 +57,9 @@ verification, so the large main context is never what reviews or edits code.
   secure-store are native): `npx expo prebuild` then `npx expo run:ios` / `run:android`.
   **Editing native code under `modules/audiosilo-player/{ios,android}` requires a full
   rebuild** (`run:ios`/`run:android`) - a Metro/JS reload won't pick it up.
-- **iOS build needs TWO Xcode-26 / Expo-56 workarounds (both are load-bearing; a device
-  link was verified green with them, red without).** `ios/` is gitignored (CNG), so both
+- **iOS build carries TWO Xcode 26+ / Expo 58 workarounds (both were load-bearing on Expo 56,
+  a device link verified green with them, red without; whether Expo 58 still needs them is an
+  open follow-up, so keep both).** `ios/` is gitignored (CNG), so both
   live in config so `expo prebuild` preserves them - never hand-edit `ios/` for these.
   1. **SwiftUICore autolink (`plugins/withXcode26SwiftUICoreFix.js`).** On the iOS 26 SDK,
      `import SwiftUI` (pulled in transitively by ExpoModulesCore, so effectively every Expo
@@ -73,7 +74,8 @@ verification, so the large main context is never what reviews or edits code.
      sets `ENABLE_DEBUG_DYLIB = NO` (Xcode 26's Debug `AudioSilo.debug.dylib` hits the same
      wall; RN doesn't use SwiftUI previews).
   2. **Build React Native from source (`expo-build-properties` -> `ios.buildReactNativeFromSource: true`).**
-     Expo 56 defaults to a **prebuilt** React core (`RCT_USE_PREBUILT_RNCORE`), but that
+     Expo 56+ defaults to a **prebuilt** React core (`RCT_USE_PREBUILT_RNCORE`; RN 0.87 reworked
+     its headers, untested here), but on Expo 56 that
      prebuilt `React.xcframework` doesn't export the Fabric renderer symbols
      (`facebook::react::Props`/`BaseViewProps`/`YogaStylableProps`/`Sealable`/`DebugStringConvertible`)
      that source-built `RNSVG`/`RNScreens`/`RNGestureHandler` link against -> undefined-symbol
@@ -87,7 +89,7 @@ verification, so the large main context is never what reviews or edits code.
   per rule saying what it keeps); a resource looked up only by name needs a `tools:keep` from a
   config plugin. Never turn minify off. The AAB carries the mapping for Play; for an APK, keep
   that build's `android/app/build/outputs/mapping/release/mapping.txt` to retrace.
-- **The Android window does not resize for the keyboard** (edge to edge, SDK 56): an overlay or a
+- **The Android window does not resize for the keyboard** (edge to edge, since SDK 56): an overlay or a
   bottom-anchored panel must lift itself (`useKeyboardAvoidance`, Styling below), and only a device
   run shows it; neither jest nor the web build has a software keyboard.
 - **Web dev needs CORS**: set `cors_origins` in the server config to the web origin
@@ -111,8 +113,10 @@ npm run gen:tokens          # regenerate colour tokens after editing src/theme/t
 ```
 
 **Before a change is done, run `npx tsc --noEmit && npm run lint && npm run format && npm test`**
-- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all four (typecheck,
-lint, **prettier `--check`** via the `format` script, test) on every PR/push.
+(after a dependency change also `npx expo install --check && node scripts/check-native-dupes.mjs`)
+- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) gates all of them (the Expo SDK
+pins, one copy of each native module, typecheck, lint, **prettier `--check`** via the `format`
+script, test) on every PR/push.
 `.nvmrc` pins Node `24.16.0`,
 which CI reads via `node-version-file`; keep the lockfile committed in sync (regenerate
 with `npm install` after changing deps).
@@ -183,6 +187,7 @@ keep this index in step (one line per topic).
   - Android: a `MediaLibraryService` with chapter controls (Audible parity)
   - Smart speed and Voice boost
   - The download hot-swap plays on from intent, not from `playing`
+  - Native counts go through `nativeNumber`
   - Downloads store absolute file URIs
   - Stream the file, not the book
   - Whole-book timeline
@@ -215,6 +220,7 @@ keep this index in step (one line per topic).
   - The keyboard over a bottom-anchored overlay
   - Web keyboard (Space)
   - Dependency patches (`patches/`, `patch-package`)
+  - Expo SDK pins, and one copy of each native module
   - Colour tokens are the Stacks semantic tokens, with ONE source, `src/theme/tokens.json`
   - Fonts (Stacks)
   - `<Text>` variants are the Stacks type roles
@@ -227,6 +233,8 @@ keep this index in step (one line per topic).
   - The pushing tab owns a detail page
   - Cold deep link owner = Home
   - Tab presses from our chrome dispatch `JUMP_TO`
+  - The navigation container is read through `src/lib/router-ref.ts`
+  - Navigation at mount uses `useRouter()`
   - Web: `<TabSlot/>` stays at a FIXED ancestor path at every width
   - The You hub is the Me tab's ROOT
   - Settings is a page of the array group
@@ -271,7 +279,7 @@ modules/audiosilo-player/   the native playback module (ios/ Swift, android/ Kot
 modules/audiosilo-watch/    the phone's WatchConnectivity link (apple only: the single WCSessionDelegate)
 targets/watch/      the Apple Watch app (Swift, not bundled by Metro): Core/ (Foundation-only ports of the player's rules), Net/, Storage/, Phone/, Playback/, UI/
 watch-core/         SwiftPM package over targets/watch/Core (a symlink), so its tests run on the host
-plugins/            config plugins: withCast, withCarPlay, withWidgetsNoPush, withWatchScheme, withXcode26SwiftUICoreFix
+plugins/            config plugins: withCast, withCarPlay, withWatchScheme, withXcode26SwiftUICoreFix (+ widgets-entitlements.test.ts)
 index.ts            app entry: registers the car task, then expo-router/entry
 ```
 

@@ -1,5 +1,5 @@
 import { useNavigationContainerRef, useSegments, type Href } from 'expo-router';
-import type { MaterialIcon, SFSymbolIcon } from 'expo-router/unstable-native-tabs';
+import type { MaterialIcon, SFSymbolIcon } from 'expo-router/native-tabs';
 import { useCallback } from 'react';
 
 import { LIBRARY_ROOT_PARAMS } from '@/components/library/library-modes';
@@ -166,9 +166,9 @@ export function rootOfRoute(routeName: string): Destination | null {
  * to. Keyed by group name - the array-group layout form, one `unstable_settings` for the
  * five stacks its single `_layout.tsx` expands into. Plain data so tests can import it.
  */
-export const TAB_STACK_SETTINGS: Record<string, { initialRouteName: string }> = Object.fromEntries(
+export const TAB_STACK_SETTINGS: Record<string, { anchor: string }> = Object.fromEntries(
   // `(home)` -> `home`: the array group's settings are keyed by the bare group name.
-  TABS.map((t) => [t.name.slice(1, -1), { initialRouteName: t.rootRoute }]),
+  TABS.map((t) => [t.name.slice(1, -1), { anchor: t.rootRoute }]),
 );
 
 /** The active tab, from the router's current segments. */

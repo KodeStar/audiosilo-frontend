@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { Pressable, type PressableProps, type View } from 'react-native';
+import { Pressable, type PressableProps, type ViewInstance } from 'react-native';
 
 export type AnimatedPressableProps = PressableProps & { className?: string };
 
@@ -35,7 +35,7 @@ const RIPPLE = { color: 'rgba(128,128,128,0.22)', borderless: false, foreground:
  * Forwards every Pressable prop (including accessibility props and the caller's own
  * onPressIn/onPressOut) and the ref, so it stays a drop-in for the ~30 call sites.
  */
-export const AnimatedPressable = forwardRef<View, AnimatedPressableProps>(
+export const AnimatedPressable = forwardRef<ViewInstance, AnimatedPressableProps>(
   function AnimatedPressable({ android_ripple, style, disabled, ...props }, ref) {
     return (
       <Pressable

@@ -1,5 +1,5 @@
 import * as Sharing from 'expo-sharing';
-import { PixelRatio, Platform, type View } from 'react-native';
+import { PixelRatio, Platform, type ViewInstance } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
 import {
@@ -30,7 +30,7 @@ export function captureSize(
  * fails (the caller can retry without covers: see `useShareCard`). The web build has its
  * own module (`share-card.web.ts`: html-to-image, then the Web Share API or a download).
  */
-export function captureCard(view: View, fileName: string): Promise<CapturedCard> {
+export function captureCard(view: ViewInstance, fileName: string): Promise<CapturedCard> {
   return captureRef(view, {
     format: 'png',
     quality: 1,

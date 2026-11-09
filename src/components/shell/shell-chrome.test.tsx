@@ -28,7 +28,7 @@ jest.mock('expo-router', () => ({
 }));
 
 let mockPlacement: 'regular' | 'inline' = 'regular';
-jest.mock('expo-router/unstable-native-tabs', () => ({
+jest.mock('expo-router/native-tabs', () => ({
   NativeTabs: { BottomAccessory: { usePlacement: () => mockPlacement } },
 }));
 

@@ -1,5 +1,7 @@
 import { File } from 'expo-file-system';
 
+import { nativeNumber } from '@/lib/native-number';
+
 import { OPML_MAX_BYTES } from './find-shows-model';
 
 /** A picked OPML list: its name, its size in bytes and the bytes to upload (a `Blob` on
@@ -17,7 +19,7 @@ export async function pickOpml(): Promise<PickedOpml | null> {
   const picked = await File.pickFileAsync();
   if (picked.canceled) return null;
   const file = picked.result;
-  const size = file.size ?? 0;
+  const size = nativeNumber(file.size);
   if (size > OPML_MAX_BYTES) return { name: file.name, size, body: new Uint8Array() };
   const bytes = await file.bytes();
   return { name: file.name, size: bytes.byteLength, body: bytes };

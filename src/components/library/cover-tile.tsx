@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import { type ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { View, type ViewInstance } from 'react-native';
 
 import { useSavedProgress } from '@/api/hooks';
 import type { Book } from '@/api/types';
@@ -150,12 +150,12 @@ export function CoverTile({
       ? progressFractionRemaining(saved.position, saved.duration || book?.duration || 0).fraction
       : givenProgress;
   // Web desktop: the cover drags onto Up next's drop zone.
-  const coverRef = useRef<View>(null);
+  const coverRef = useRef<ViewInstance>(null);
   useBookDragSource(coverRef, { connectionId, libraryId, path, title });
   // Each request bumps the count; the menu mounts on the first and reopens on each.
   const [request, setRequest] = useState(0);
   const onMenu = () => setRequest((n) => n + 1);
-  const tileRef = useRef<View>(null);
+  const tileRef = useRef<ViewInstance>(null);
   useContextMenuRequest(tileRef, onMenu);
   const inProgress = !finished && progress !== undefined && progress > 0 && progress < 1;
   const label = [title, caption, ...tileStateLabels({ progress, finished, downloaded, server, t })]

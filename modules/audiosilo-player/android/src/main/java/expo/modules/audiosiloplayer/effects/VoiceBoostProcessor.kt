@@ -104,7 +104,7 @@ class VoiceBoostProcessor(
     return inputFormat
   }
 
-  override fun onFlush() {
+  override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
     val format = inputAudioFormat
     if (format.channelCount != channelCount || format.sampleRate != sampleRate) {
       // A new format (not the audio thread's steady state): size the per-channel state.

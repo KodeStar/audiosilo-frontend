@@ -336,7 +336,7 @@ describe('check, export', () => {
 describe('useFollowRequests', () => {
   const original = AppState.currentState;
   afterEach(() => {
-    (AppState as { currentState: string }).currentState = original;
+    (AppState as { currentState: typeof original }).currentState = original;
   });
 
   type Interval = (q: Query<MyPodcasts>) => number | false;

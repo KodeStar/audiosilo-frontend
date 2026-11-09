@@ -135,17 +135,17 @@ const SleepTimerActivity = (
     compactTrailing: countdown(14, islandFg, 56),
     minimal: countdown(11, islandFg, 36),
     expandedLeading: (
-      <VStack modifiers={[padding({ leading: 4, top: 4 }), widgetURL(props.deepLink)]}>
+      <VStack spacing={0} modifiers={[padding({ leading: 4, top: 4 }), widgetURL(props.deepLink)]}>
         {cover(44, '#1d2640')}
       </VStack>
     ),
     expandedCenter: (
-      <VStack alignment="leading" modifiers={[widgetURL(props.deepLink)]}>
+      <VStack alignment="leading" spacing={0} modifiers={[widgetURL(props.deepLink)]}>
         {titles(islandFg, islandMuted)}
       </VStack>
     ),
     expandedTrailing: (
-      <VStack modifiers={[padding({ trailing: 4, top: 4 }), widgetURL(props.deepLink)]}>
+      <VStack spacing={0} modifiers={[padding({ trailing: 4, top: 4 }), widgetURL(props.deepLink)]}>
         {countdown(22, islandFg, 96)}
       </VStack>
     ),

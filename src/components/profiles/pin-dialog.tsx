@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type TextInput, View } from 'react-native';
+import { View, type TextInputInstance } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -119,7 +119,7 @@ function PinDialogBody({
   });
   const now = useNow(1000, lockedUntil > 0);
   const waiting = lockedUntil > now;
-  const field = useRef<TextInput>(null);
+  const field = useRef<TextInputInstance>(null);
   // The field stays editable while a PIN is checked (10,000 hash rounds): a field that
   // turns non-editable loses focus on native, the keyboard closes and the sheet drops, so
   // the next try needed a tap first. Input that arrives meanwhile is ignored (`onChange`).

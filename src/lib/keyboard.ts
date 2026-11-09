@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { type KeyDownEvent, Platform } from 'react-native';
 
 import { useLatest } from '@/lib/use-latest';
 
@@ -10,6 +10,25 @@ import { useLatest } from '@/lib/use-latest';
  * arrows stand aside for a focused control that uses them. The guards are DOM-only
  * (callers check `Platform.OS === 'web'` first); `useGlobalShortcut` applies the first two.
  */
+
+/** The key event react-native-web hands a View's `onKeyDown`: React DOM's keyboard event,
+ * so `key` and `altKey` sit at the top level. */
+export type WebKeyEvent = {
+  key: string;
+  altKey: boolean;
+  preventDefault: () => void;
+  stopPropagation: () => void;
+};
+
+/**
+ * A web-only `onKeyDown` for a View or Pressable. React Native 0.88 types the prop as its
+ * native `KeyDownEvent` (the key under `nativeEvent`), but on the web react-native-web
+ * passes the DOM event straight through, which carries the key at the top level. Only
+ * the type changes: callers still attach it on the web only.
+ */
+export function webKeyDown(handler: (e: WebKeyEvent) => void): (e: KeyDownEvent) => void {
+  return handler as unknown as (e: KeyDownEvent) => void;
+}
 
 /** Whether the focus is in something you type into (no shortcut fires there). */
 export function isEditable(el: Element | null): boolean {

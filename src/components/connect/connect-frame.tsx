@@ -1,6 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, TextInput, View, type HostInstance } from 'react-native';
+import {
+  Platform,
+  ScrollView,
+  TextInput,
+  View,
+  type HostInstance,
+  type ViewInstance,
+  type ScrollViewInstance,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Logo } from '@/components/brand/logo';
@@ -62,7 +70,7 @@ export const RevealKeepContext = createContext<(view: HostInstance) => () => voi
 export function ConnectReveal({ children, testID }: { children: ReactNode; testID?: string }) {
   const revealView = useContext(RevealViewContext);
   const keep = useContext(RevealKeepContext);
-  const ref = useRef<View>(null);
+  const ref = useRef<ViewInstance>(null);
   useEffect(() => {
     const view = ref.current as unknown as HostInstance | null;
     return view ? keep(view) : undefined;
@@ -145,8 +153,8 @@ function KeyboardColumn({
   const insets = useSafeAreaInsets();
   // The SafeAreaView already pads the home indicator, which the keyboard covers too.
   const pad = keyboardLift(overlap, insets.bottom);
-  const scroll = useRef<ScrollView>(null);
-  const inner = useRef<View>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
+  const inner = useRef<ViewInstance>(null);
   const scrollY = useRef(0);
   const viewport = useRef(0);
   const kept = useRef(new Set<HostInstance>());
@@ -221,7 +229,7 @@ function KeyboardColumn({
           <View style={{ flex: 1, paddingBottom: pad }}>
             <ScrollView
               ref={scroll}
-              innerViewRef={inner as React.RefObject<View>}
+              innerViewRef={inner as React.RefObject<ViewInstance>}
               keyboardShouldPersistTaps="handled"
               scrollEventThrottle={32}
               onScroll={(e) => {

@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @jest-environment ./src/testing/jsdom-environment.js
  */
 
 // The web listener end to end, on a real DOM: the focused element and the open layers it

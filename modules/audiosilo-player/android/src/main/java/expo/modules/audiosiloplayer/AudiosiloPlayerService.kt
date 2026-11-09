@@ -2,11 +2,17 @@ package expo.modules.audiosiloplayer
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
@@ -32,6 +38,7 @@ import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -200,7 +207,6 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   override fun onCreate() {
     super.onCreate()
-    CarSnapshotStore.init(this)
     // The car snapshot is read off the main thread; until it is in, the buttons carry their
     // English labels (as before the first snapshot), and the layout is re-set once it is.
     CarSnapshotStore.preload(this) { handler.post { refreshLayout() } }
@@ -259,7 +265,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
     val executor = Executors.newSingleThreadExecutor()
     bitmapExecutor = executor
     val bitmapLoader = CacheBitmapLoader(
-      DataSourceBitmapLoader(MoreExecutors.listeningDecorator(executor), dataSourceFactory),
+      DataSourceBitmapLoader.Builder(this)
+        .setExecutorService(MoreExecutors.listeningDecorator(executor))
+        .setDataSourceFactory(dataSourceFactory)
+        .build(),
     )
 
     // App logo as the notification small icon (Media3's default is a generic glyph).
@@ -487,6 +496,101 @@ class AudiosiloPlayerService : MediaLibraryService() {
   }
 
   /**
+   * True from a media button start with nothing loaded ([ResumptionReceiver] started us as a
+   * FOREGROUND service) until that resumption played or failed. Main thread only.
+   */
+  private var buttonStart = false
+  /** A start whose resumption never answers (Media3 ignored the press) is released all the same. */
+  private val buttonStartTimeout = Runnable { endButtonStart(failed = true) }
+
+  /**
+   * A media button start (the receiver's `startForegroundService`) must reach `startForeground`
+   * within seconds whatever the resumption does next, and a resumption can take up to
+   * [CAR_PLAY_TIMEOUT_MS] when it goes through JS. So such a start goes into the foreground at
+   * once with a placeholder under Media3's own notification id and channel: Media3's
+   * notification replaces it when the book plays, and [endButtonStart] removes it when the
+   * resumption fails ([watchResumption]) or never answers ([buttonStartTimeout]).
+   */
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    // Every such start needs its own startForeground, a second press while the first waits too.
+    if (intent?.action == Intent.ACTION_MEDIA_BUTTON && (player?.mediaItemCount ?: 0) == 0 &&
+      startPlaceholderForeground()
+    ) {
+      buttonStart = true
+      handler.removeCallbacks(buttonStartTimeout)
+      handler.postDelayed(buttonStartTimeout, BUTTON_START_TIMEOUT_MS)
+    }
+    return super.onStartCommand(intent, flags, startId)
+  }
+
+  /** A media button start is over: on a failure with nothing loaded, the placeholder goes and the
+   * started service stops (a bound browser, Android Auto, keeps it alive regardless). */
+  private fun endButtonStart(failed: Boolean) {
+    if (!buttonStart) return
+    buttonStart = false
+    handler.removeCallbacks(buttonStartTimeout)
+    if (!failed || (player?.mediaItemCount ?: 0) > 0) return // Media3's notification owns it now
+    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    stopSelf()
+  }
+
+  /** The placeholder foreground notification ([onStartCommand]); false when not allowed. */
+  private fun startPlaceholderForeground(): Boolean {
+    // Media3's channel, as Media3 creates it (a no-op when it exists; ignored below API 26).
+    NotificationManagerCompat.from(this).createNotificationChannel(
+      NotificationChannelCompat.Builder(
+        DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID,
+        NotificationManagerCompat.IMPORTANCE_LOW,
+      ).setName(getString(DefaultMediaNotificationProvider.DEFAULT_CHANNEL_NAME_RESOURCE_ID)).build(),
+    )
+    // peek: the receiver that started us loaded the snapshot; never a disk read here.
+    val title = CarSnapshotStore.peek()?.resumable()?.title ?: applicationInfo.loadLabel(packageManager).toString()
+    val notification = NotificationCompat.Builder(this, DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID)
+      .setSmallIcon(R.drawable.ic_notification)
+      .setContentTitle(title)
+      .setSilent(true)
+      .setOngoing(true)
+      .build()
+    return try {
+      ServiceCompat.startForeground(
+        this,
+        DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID,
+        notification,
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+      )
+      true
+    } catch (e: Exception) {
+      // Not a foreground start after all (Android 12+ refuses one from the background).
+      Log.w(TAG, "Could not start the resumption in the foreground", e)
+      false
+    }
+  }
+
+  /**
+   * A play resumption's [future], watched: when it fails after a media button start and nothing
+   * else loaded meanwhile, the placeholder goes and the started service stops ([endButtonStart]),
+   * so a press with nothing to resume never leaves a foreground start the system kills the app for.
+   */
+  internal fun watchResumption(
+    future: ListenableFuture<MediaItemsWithStartPosition>,
+  ): ListenableFuture<MediaItemsWithStartPosition> {
+    Futures.addCallback(
+      future,
+      object : FutureCallback<MediaItemsWithStartPosition> {
+        override fun onSuccess(result: MediaItemsWithStartPosition) = endButtonStart(failed = false)
+
+        // A JS-routed resumption superseded by a newer one (failPendingPlay) fails too: the
+        // newer one, still pending, keeps the start (its own answer or the timeout ends it).
+        override fun onFailure(t: Throwable) {
+          if (pendingPlay == null) endButtonStart(failed = true)
+        }
+      },
+      ContextCompat.getMainExecutor(this),
+    )
+    return future
+  }
+
+  /**
    * The car (or a resumption) asked to play a snapshot book.
    *  - The book the player already has: it plays on from where it is ([playingQueue]).
    *  - No JS runtime and the book is downloaded (has a play spec): start it now, from the
@@ -517,11 +621,11 @@ class AudiosiloPlayerService : MediaLibraryService() {
     // `nowPlaying` (even with its car sync not listening yet), and swapping the engine under
     // it would map this book's place onto that one.
     if (spec != null && PlayerBridge.sink == null) {
-      val queue = MediaItems.buildQueue(spec.tracks, spec.clips, spec.book, spec.startIndex, spec.positionInTrack)
+      val start = MediaItems.startPositionOf(spec)
       // Every track of a play spec is a local file: no auth headers.
       AuthHolder.clear()
       player?.internal { player?.setPlaybackParameters(PlaybackParameters(spec.rate.toFloat(), 1.0f)) }
-      return Futures.immediateFuture(MediaItemsWithStartPosition(queue.items, queue.index, queue.positionMs))
+      return Futures.immediateFuture(start)
     }
     failPendingPlay(notify = false)
     val future = SettableFuture.create<MediaItemsWithStartPosition>()
@@ -648,6 +752,8 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
   override fun onDestroy() {
     if (PlayerBridge.service === this) PlayerBridge.service = null
+    // The pendingPlay failed below reaches watchResumption after this: nothing left to end.
+    buttonStart = false
     handler.removeCallbacksAndMessages(null)
     pendingPlay?.setException(IllegalStateException("Service stopped"))
     pendingPlay = null
@@ -706,6 +812,10 @@ class AudiosiloPlayerService : MediaLibraryService() {
 
     /** How long a car play waits for JS to load the book before Auto shows an error. */
     private const val CAR_PLAY_TIMEOUT_MS = 10_000L
+
+    /** How long a media button start waits for its resumption to answer ([buttonStartTimeout]):
+     * past a JS-routed one ([CAR_PLAY_TIMEOUT_MS]). */
+    private const val BUTTON_START_TIMEOUT_MS = CAR_PLAY_TIMEOUT_MS + 5_000L
 
     private val CAR_PACKAGES = setOf(
       "com.google.android.projection.gearhead", // Android Auto (and the DHU)

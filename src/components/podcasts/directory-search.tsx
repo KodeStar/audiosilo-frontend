@@ -243,7 +243,7 @@ export function DirectorySearch({
           {form}
         </>
       }
-      ListEmptyComponent={empty}
+      ListEmptyComponent={empty ?? undefined}
       ListFooterComponent={footer}
       contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: paddingBottom + 24 }}
     />

@@ -120,7 +120,7 @@ export function FavouritesScreen() {
       keyExtractor={favKey}
       renderItem={({ item }) => <BookRow fav={item} server={server(item)} />}
       ListHeaderComponent={header}
-      ListEmptyComponent={empty}
+      ListEmptyComponent={empty ?? undefined}
       contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: 4, paddingBottom }}
     />
   );

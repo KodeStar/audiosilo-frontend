@@ -1,7 +1,7 @@
 import * as TabsPrimitive from '@rn-primitives/tabs';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View, type ScrollViewInstance } from 'react-native';
 
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -71,7 +71,7 @@ function ScrollingTabsList({
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ScrollViewInstance>(null);
   // Where the row is, in refs (a scroll event must not re-render the row); only the cue
   // it yields is state, so the row re-renders when the chevron changes, not per frame.
   const box = useRef<RowBox>({ view: 0, content: 0, x: 0 });

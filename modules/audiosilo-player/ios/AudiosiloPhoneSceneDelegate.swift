@@ -6,10 +6,13 @@ import UIKit
 /// Under the UIScene life cycle UIKit stops calling the app delegate's URL, user-activity,
 /// quick-action and life-cycle methods, and delivers a cold-start link in the scene's
 /// `connectionOptions` instead of the launch options. Every Expo subscriber (expo-linking,
-/// expo-router) and React Native's `RCTLinkingManager` still listen on the app delegate, so this
-/// delegate re-feeds those events to it, the way expo 57.0.23's `ExpoAppSceneDelegate` does.
-/// The SDK 56 AppDelegate's `open url` / `continue userActivity` overrides call
-/// `RCTLinkingManager` themselves (withCarPlay.js fails the prebuild if they stop doing so).
+/// expo-router) still listens on the app delegate, so this delegate re-feeds those events to it,
+/// as Expo SDK 58's `ExpoAppSceneDelegate` does for its own scene (which this app replaces: see
+/// withCarPlay.js). React Native's `url` event is another matter: since 0.88 `RCTLinkingManager`'s
+/// app-delegate methods do nothing in an app with a scene manifest (`RCTIsSceneDelegateApp`), so
+/// a link is also handed to its scene API (`notifyLinking`), as Expo's delegate does. Without
+/// that, a link opened while the app runs (a pairing link, a widget, the Live Activity) never
+/// reaches JS.
 @objc(AudiosiloPhoneSceneDelegate)
 public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
   public var window: UIWindow?
@@ -37,8 +40,8 @@ public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelega
 
     // After the start, as UIKit did with the app delegate: expo-linking records the initial URL
     // here (expo-router reads it first), and a running JS (a CarPlay-first launch) gets the event.
-    connectionOptions.urlContexts.forEach { Self.forwardOpen($0) }
-    connectionOptions.userActivities.forEach { Self.forwardContinue($0) }
+    connectionOptions.urlContexts.forEach { Self.forwardOpen($0, in: scene) }
+    connectionOptions.userActivities.forEach { Self.forwardContinue($0, in: scene) }
     if let item = connectionOptions.shortcutItem {
       Self.forwardShortcut(item) { _ in }
     }
@@ -70,11 +73,11 @@ public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelega
   }
 
   public func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-    URLContexts.forEach { Self.forwardOpen($0) }
+    URLContexts.forEach { Self.forwardOpen($0, in: scene) }
   }
 
   public func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-    Self.forwardContinue(userActivity)
+    Self.forwardContinue(userActivity, in: scene)
   }
 
   public func scene(_ scene: UIScene, didUpdate userActivity: NSUserActivity) {
@@ -113,18 +116,34 @@ public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelega
     return options.isEmpty ? nil : options
   }
 
-  private static func forwardOpen(_ context: UIOpenURLContext) {
+  private static func forwardOpen(_ context: UIOpenURLContext, in scene: UIScene) {
     let app = UIApplication.shared
     var options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     if let source = context.options.sourceApplication { options[.sourceApplication] = source }
     if let annotation = context.options.annotation { options[.annotation] = annotation }
     options[.openInPlace] = context.options.openInPlace
+    let announced = LinkAnnouncement(context.url)
     _ = app.delegate?.application?(app, open: context.url, options: options)
+    // One context per call: React Native reads only the first of the set.
+    if !announced.seen { notifyLinking("scene:openURLContexts:", scene, Set([context])) }
   }
 
-  private static func forwardContinue(_ activity: NSUserActivity) {
+  private static func forwardContinue(_ activity: NSUserActivity, in scene: UIScene) {
     let app = UIApplication.shared
+    let announced = activity.webpageURL.map { LinkAnnouncement($0) }
     _ = app.delegate?.application?(app, continue: activity, restorationHandler: { _ in })
+    if announced?.seen != true { notifyLinking("scene:continueUserActivity:", scene, activity) }
+  }
+
+  /// `RCTLinkingManager`'s scene API (a class method taking the scene and `argument`), which
+  /// sends JS its `url` event. Looked up at run time, as this module does not import React; a
+  /// React Native without it leaves the link to the app delegate alone.
+  private static func notifyLinking(_ selector: String, _ scene: UIScene, _ argument: Any) {
+    let sel = NSSelectorFromString(selector)
+    guard let manager = NSClassFromString("RCTLinkingManager") as? NSObject.Type,
+      manager.responds(to: sel)
+    else { return }
+    _ = manager.perform(sel, with: scene, with: argument)
   }
 
   private static func forwardShortcut(
@@ -137,5 +156,31 @@ public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelega
       return
     }
     perform(app, item, completionHandler)
+  }
+}
+
+/// Whether React Native already announced `url` (its `RCTOpenURLNotification`) while this lives:
+/// an app delegate subscriber that posts the link itself (expo-router's, for a Handoff `href`)
+/// must not have JS hear it twice. The same guard as Expo's `SceneEventForwarder`.
+private final class LinkAnnouncement: NSObject {
+  private let url: String
+  private(set) var seen = false
+
+  init(_ url: URL) {
+    self.url = url.absoluteString
+    super.init()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(announced(_:)),
+      name: Notification.Name("RCTOpenURLNotification"),
+      object: nil)
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  @objc private func announced(_ notification: Notification) {
+    seen = seen || notification.userInfo?["url"] as? String == url
   }
 }
