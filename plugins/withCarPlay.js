@@ -4,7 +4,7 @@ const { withAppDelegate, withEntitlementsPlist, withInfoPlist } = require('expo/
  * CarPlay: move the iOS app onto the UIScene life cycle and declare a CarPlay scene.
  *
  * Declaring ANY scene in `UIApplicationSceneManifest` moves the whole app to the scene life
- * cycle, and from then on UIKit never shows a window the app delegate made. Expo SDK 56's
+ * cycle, and from then on UIKit never shows a window the app delegate made. Expo SDK 56/57's
  * template still creates its window (and starts React Native into it) in
  * `application(_:didFinishLaunchingWithOptions:)`, so this plugin does three things:
  *
@@ -62,7 +62,7 @@ function applySceneManifest(infoPlist) {
   };
 }
 
-// The SDK 56 template's window creation, whitespace-tolerant but otherwise exact.
+// The SDK 56/57 template's window creation, whitespace-tolerant but otherwise exact.
 const TEMPLATE_WINDOW = new RegExp(
   [
     String.raw`#if os\(iOS\) \|\| os\(tvOS\)\s*`,
@@ -100,7 +100,7 @@ const STARTER = `#if os(iOS) || os(tvOS)
 
 function mismatch(what) {
   return new Error(
-    `withCarPlay: AppDelegate.swift does not match the Expo SDK 56 template (${what}). ` +
+    `withCarPlay: AppDelegate.swift does not match the Expo SDK 56/57 template (${what}). ` +
       'The app would launch to a black screen under the scene life cycle. Update ' +
       'plugins/withCarPlay.js (and its fixture) for the new template before building.',
   );
@@ -148,7 +148,7 @@ const withCarPlay = (config) => {
   });
   config = withAppDelegate(config, (cfg) => {
     if (cfg.modResults.language !== 'swift') {
-      throw new Error('withCarPlay: expected a Swift AppDelegate (Expo SDK 56 template).');
+      throw new Error('withCarPlay: expected a Swift AppDelegate (Expo SDK 56/57 template).');
     }
     cfg.modResults.contents = patchAppDelegate(cfg.modResults.contents);
     return cfg;

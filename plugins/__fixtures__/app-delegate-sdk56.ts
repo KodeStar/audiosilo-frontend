@@ -1,5 +1,6 @@
 // The AppDelegate.swift `expo prebuild` generates for Expo SDK 56 (expo 56.0.23), verbatim.
 // withCarPlay.test.ts runs the plugin over it; refresh it when the Expo template changes.
+// Verified identical to the AppDelegate.swift expo 57.0.32 (Expo SDK 57) generates.
 export const APP_DELEGATE_SDK56 = String.raw`internal import Expo
 import React
 import ReactAppDependencyProvider

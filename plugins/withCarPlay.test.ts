@@ -58,7 +58,7 @@ describe('withCarPlay: AppDelegate', () => {
       'window = UIWindow(frame: UIScreen.main.bounds)',
       'window = UIWindow(frame: .zero)',
     );
-    expect(() => patchAppDelegate(changed)).toThrow(/does not match the Expo SDK 56 template/);
+    expect(() => patchAppDelegate(changed)).toThrow(/does not match the Expo SDK 56\/57 template/);
   });
 
   it('fails loudly when the linking overrides no longer call RCTLinkingManager', () => {
