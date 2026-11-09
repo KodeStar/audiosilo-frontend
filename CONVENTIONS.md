@@ -2481,8 +2481,8 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   FOCUSED (`claimPageTitle`, `src/lib/document-title.ts`), so Back names the page under it
   again. `DocumentTitle` (root layout, `src/components/shell/document-title{,.web}.tsx`) is the
   one writer of `document.title`: the book playing (`▶`), else the page, else the tab, then
-  "· AudioSilo". `StaticDocumentTitle` bakes "AudioSilo" into the static HTML (a `<title>` in
-  `+html.tsx` never shows: Expo's head manager puts its own first). A new page calls
+  "· AudioSilo". The static HTML's `<title>` ("AudioSilo", until hydration) is in `+html.tsx`:
+  expo-router 58 renders no `Head` tags into the static HTML. A new page calls
   `usePageTitle` too.
 
 **The Library tab root is the browse modes** (`src/components/library/library-screen.tsx`):

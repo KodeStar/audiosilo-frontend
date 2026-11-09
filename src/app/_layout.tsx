@@ -7,7 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiProvider } from '@/api/provider';
 import { KidsRouteGuard } from '@/components/kids/kids-route-guard';
-import { DocumentTitle, StaticDocumentTitle } from '@/components/shell/document-title';
+import { DocumentTitle } from '@/components/shell/document-title';
 import { RootListeners, useRootServices } from '@/components/shell/root-services';
 import { ShellToastHost } from '@/components/shell/shell-toast-host';
 import { RootInsetsProvider } from '@/components/ui/overlay';
@@ -86,8 +86,6 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      {/* Web's static HTML: the tab's title before the app (below) hydrates. */}
-      <StaticDocumentTitle />
       {/* Web's static HTML: the fonts' @font-face rules and preloads. */}
       <StaticFonts />
       <SafeAreaProvider>

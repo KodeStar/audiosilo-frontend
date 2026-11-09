@@ -2,6 +2,7 @@ import { ScrollViewStyleReset, useServerDocumentContext } from 'expo-router/html
 import type { PropsWithChildren } from 'react';
 
 import { BASE_URL as BASE } from '@/lib/base-url';
+import { formatDocumentTitle } from '@/lib/document-title';
 import { colors } from '@/theme/tokens';
 
 // Customises the static HTML shell Expo emits for every web route. This is where
@@ -49,6 +50,9 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
 
+        {/* The tab's name until the app hydrates and `DocumentTitle` names the page. expo-router
+            58 renders no `Head` tags into the static HTML, so it lives here. */}
+        <title>{formatDocumentTitle({})}</title>
         <meta name="description" content="Your self-hosted audiobook player." />
 
         {/* PWA install + theming */}

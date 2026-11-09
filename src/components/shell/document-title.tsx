@@ -2,7 +2,3 @@
 export function DocumentTitle() {
   return null;
 }
-
-export function StaticDocumentTitle() {
-  return null;
-}
