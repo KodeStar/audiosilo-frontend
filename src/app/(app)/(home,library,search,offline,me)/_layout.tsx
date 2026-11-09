@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { Platform, View, type ViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -19,7 +19,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
  * ONE layout for all five tab stacks: the array group expands it into `(home)`,
  * `(library)`, `(search)`, `(offline)` and `(me)`, each its own Stack, so a pushed detail
  * page keeps the tab bar under it. The group-keyed
- * `initialRouteName`s give a cold deep link a tab root to go back to.
+ * `anchor`s give a cold deep link a tab root to go back to.
  *
  * On a phone each page gets the shell's `PhoneHeader` as its Stack header (large title
  * on a tab root, inline back on a pushed page, banners under it); tablet and desktop hide
@@ -43,7 +43,7 @@ export default function TabStackLayout() {
   // ignored.
   const native = Platform.OS !== 'web';
   const frameBottom = useShellMetrics((s) => s.frameBottom);
-  const page = useRef<View>(null);
+  const page = useRef<ViewInstance>(null);
   const [pageBottom, setPageBottom] = useState<number>();
   const measure = () =>
     page.current?.measureInWindow((_x, y, _w, h) => {
@@ -61,6 +61,9 @@ export default function TabStackLayout() {
           return {
             title: root ? t(root.titleKey) : '',
             headerShown: phone,
+            // The header is our own `PhoneHeader`: on iOS 26+ the stack's default is a
+            // transparent (Liquid Glass) header the page would draw under.
+            headerTransparent: false,
             header: ({ back, options, navigation }) => (
               <PhoneHeader
                 connectionId={connectionParam(

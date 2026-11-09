@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { type LayoutChangeEvent, Platform, type View } from 'react-native';
+import { type LayoutChangeEvent, Platform, type ViewInstance } from 'react-native';
 
 /**
  * A view's width, for a layout that divides it (a cover grid's columns): `0` until
@@ -10,7 +10,7 @@ import { type LayoutChangeEvent, Platform, type View } from 'react-native';
  * `onLayout`.
  */
 export function useWidth() {
-  const ref = useRef<View>(null);
+  const ref = useRef<ViewInstance>(null);
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
     if (Platform.OS !== 'web') return;

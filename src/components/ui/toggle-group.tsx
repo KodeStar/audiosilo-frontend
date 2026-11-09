@@ -1,7 +1,13 @@
 import * as ToggleGroupPrimitive from '@rn-primitives/toggle-group';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type LayoutChangeEvent, Platform, ScrollView, View } from 'react-native';
+import {
+  type LayoutChangeEvent,
+  Platform,
+  ScrollView,
+  View,
+  type ScrollViewInstance,
+} from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -188,7 +194,7 @@ function SegmentScroller<T extends string>({
   children: (onItemLayout: (value: T, e: LayoutChangeEvent) => void) => ReactNode;
 }) {
   const { t } = useTranslation();
-  const ref = useRef<ScrollView>(null);
+  const ref = useRef<ScrollViewInstance>(null);
   const reduced = useReducedMotion();
   const [layouts, setLayouts] = useState<Partial<Record<string, { x: number; width: number }>>>({});
   const [viewport, setViewport] = useState(0);

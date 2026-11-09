@@ -167,7 +167,7 @@ describe('UpcomingCalendarCard', () => {
   it('subscribes with the webcal link on iOS', async () => {
     const os = Platform.OS;
     Platform.OS = 'ios';
-    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
     try {
       await saveCalendarLink('a', { url: `https://a${PATH}`, created_at: CREATED });
       await mount([{ id: 'a', status: { active: true, created_at: CREATED } }]);

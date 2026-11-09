@@ -16,9 +16,14 @@ jest.mock('expo-router', () => {
   Stack.Screen = function Screen() {
     return null;
   };
+  const router = {
+    push: (h: unknown) => mockPush(h),
+    dismissTo: (h: unknown) => mockDismissTo(h),
+  };
   return {
     Stack,
-    router: { push: (h: unknown) => mockPush(h), dismissTo: (h: unknown) => mockDismissTo(h) },
+    router,
+    useRouter: () => router,
     useRootNavigationState: () => ({ key: 'root' }),
   };
 });

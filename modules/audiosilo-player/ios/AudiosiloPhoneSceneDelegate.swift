@@ -7,9 +7,10 @@ import UIKit
 /// quick-action and life-cycle methods, and delivers a cold-start link in the scene's
 /// `connectionOptions` instead of the launch options. Every Expo subscriber (expo-linking,
 /// expo-router) and React Native's `RCTLinkingManager` still listen on the app delegate, so this
-/// delegate re-feeds those events to it, the way expo 57.0.23's `ExpoAppSceneDelegate` does.
-/// The SDK 56 AppDelegate's `open url` / `continue userActivity` overrides call
-/// `RCTLinkingManager` themselves (withCarPlay.js fails the prebuild if they stop doing so).
+/// delegate re-feeds those events to it, as Expo SDK 58's `ExpoAppSceneDelegate` does for its own
+/// scene (which this app replaces: see withCarPlay.js). The SDK 58 AppDelegate has no `open url` /
+/// `continue userActivity` overrides of its own; withCarPlay.js adds the SDK 56 template's, which
+/// call `RCTLinkingManager`, so a forwarded link reaches JS.
 @objc(AudiosiloPhoneSceneDelegate)
 public final class AudiosiloPhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
   public var window: UIWindow?

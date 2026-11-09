@@ -81,7 +81,6 @@
       "./plugins/withCast",
       "./plugins/withCarPlay",
       "./plugins/withXcode26SwiftUICoreFix",
-      "./plugins/withWidgetsNoPush",
       [
         "expo-build-properties",
         {

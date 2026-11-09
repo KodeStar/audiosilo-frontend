@@ -1,5 +1,5 @@
 import { type RefObject, useEffect } from 'react';
-import type { View } from 'react-native';
+import type { ViewInstance } from 'react-native';
 
 import { useLayout } from '@/lib/layout';
 import { useLatestRef } from '@/lib/use-latest';
@@ -21,7 +21,7 @@ export function activeBookDrag(): BookDragPayload | null {
  * are. A drag never presses the tile: the browser cancels the pointer when it starts.
  */
 export function useBookDragSource(
-  ref: RefObject<View | null>,
+  ref: RefObject<ViewInstance | null>,
   payload: BookDragPayload & { title: string },
 ) {
   const desktop = useLayout() === 'desktop';

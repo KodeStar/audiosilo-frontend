@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { useEffect } from 'react';
 import { View } from 'react-native';
-import { GestureDetector, PointerType, State } from 'react-native-gesture-handler';
+import {
+  GestureDetector,
+  GestureHandlerRootView,
+  PointerType,
+  State,
+} from 'react-native-gesture-handler';
 import { fireGestureHandler } from 'react-native-gesture-handler/jest-utils';
 
 import { useSliderControl } from './use-slider-control';
@@ -36,10 +41,13 @@ function Harness({
     ...callbacks,
   });
   useEffect(() => onGesture(control.gesture as unknown as Composed), [control.gesture, onGesture]);
+  // gesture-handler 3's detector refuses to mount outside the root view.
   return (
-    <GestureDetector gesture={control.gesture}>
-      <View {...control.controlProps} />
-    </GestureDetector>
+    <GestureHandlerRootView>
+      <GestureDetector gesture={control.gesture}>
+        <View {...control.controlProps} />
+      </GestureDetector>
+    </GestureHandlerRootView>
   );
 }
 

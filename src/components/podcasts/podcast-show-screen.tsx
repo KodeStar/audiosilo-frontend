@@ -154,7 +154,7 @@ function ShowPage({
           <View className="items-center py-4" accessibilityLabel={t('podcasts.show.loadingMore')}>
             <Spinner />
           </View>
-        ) : null
+        ) : undefined
       }
       onEndReached={() => {
         if (episodes.hasNextPage && !episodes.isFetchingNextPage) void episodes.fetchNextPage();

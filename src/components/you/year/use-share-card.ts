@@ -1,6 +1,6 @@
 import { type RefObject, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppState, type View } from 'react-native';
+import { AppState, type ViewInstance } from 'react-native';
 
 import { toast } from '@/components/ui/toast';
 import { whenActive } from '@/lib/when-active';
@@ -26,7 +26,7 @@ export type ShareCardState = {
   /** The card draws its covers as plain title blocks: the second try of a capture that
    * failed with covers (an image the capture could not read). */
   coversOff: boolean;
-  share: (card: RefObject<View | null>, opts: ShareCardOptions) => Promise<void>;
+  share: (card: RefObject<ViewInstance | null>, opts: ShareCardOptions) => Promise<void>;
 };
 
 /**
@@ -42,7 +42,7 @@ export function useShareCard(): ShareCardState {
   const running = useRef(false);
 
   const share = useCallback(
-    async (card: RefObject<View | null>, opts: ShareCardOptions) => {
+    async (card: RefObject<ViewInstance | null>, opts: ShareCardOptions) => {
       if (running.current) return;
       running.current = true;
       setBusy(true);

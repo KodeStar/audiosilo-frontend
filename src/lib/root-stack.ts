@@ -1,4 +1,4 @@
-import { store } from 'expo-router/build/global-state/router-store';
+import { navigationRef } from '@/lib/router-ref';
 
 /** A navigation state, as much of it as the root-stack reads below use (`key`: the
  * navigator's, which an action can target). */
@@ -59,14 +59,12 @@ export function shellUnderTop(
 /**
  * The router's navigation state NOW, read at call time without subscribing (a press
  * handler deciding where to go must not re-render its component on every navigation).
- * Through expo-router's store (no public non-hook read exists; the route-tree tests pin
- * it). Undefined before the navigator is ready.
+ * Through the router's container ref (`router-ref.ts`: no public non-hook read exists;
+ * the route-tree tests pin it). Undefined before the navigator is ready.
  */
 export function currentNavState(): NavState | undefined {
   try {
-    const ref = store.navigationRef;
-    if (ref?.isReady()) return ref.getRootState() as NavState;
-    return (store.state as NavState | undefined) ?? undefined;
+    return navigationRef.isReady() ? (navigationRef.getRootState() as NavState) : undefined;
   } catch {
     return undefined;
   }
@@ -92,6 +90,6 @@ function tabStackState(state: NavState | undefined, tab: string): NavState | nul
 export function popTabToRoot(tab: string, state: NavState | undefined = currentNavState()) {
   const stack = tabStackState(state, tab);
   if (stack?.key && stack.routes.length > 1) {
-    store.navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
+    navigationRef.dispatch({ type: 'POP_TO_TOP', target: stack.key });
   }
 }

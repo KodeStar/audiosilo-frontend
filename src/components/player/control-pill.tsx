@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { Platform, type View } from 'react-native';
+import { Platform, type ViewInstance } from 'react-native';
 
 import { AnimatedPressable, type AnimatedPressableProps } from '@/components/ui/animated-pressable';
 import { FOCUS_RING_CLASS, FOCUS_RING_OFFSET_CLASS } from '@/components/ui/text';
@@ -44,7 +44,7 @@ export function pillClass(look: PillLook, className?: string): string {
 /** A pressable player control in the shared chrome (`pillClass`): a button with its
  * label for screen readers. */
 export const ControlPill = forwardRef<
-  View,
+  ViewInstance,
   AnimatedPressableProps & { look?: PillLook; label: string }
 >(function ControlPill({ look = 'ghost', label, className, ...props }, ref) {
   return (

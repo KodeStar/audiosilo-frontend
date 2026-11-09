@@ -3,6 +3,7 @@ import { type LayoutChangeEvent, Platform } from 'react-native';
 import { Gesture, PointerType } from 'react-native-gesture-handler';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 
+import { webKeyDown } from '@/lib/keyboard';
 import { useLatest } from '@/lib/use-latest';
 
 /** The pointer gesture-handler makes up on the web when Space or Enter is pressed on a
@@ -176,13 +177,12 @@ export function useSliderControl({
     else moveBy(direction * step);
   };
 
-  // Web keyboard. React Native's View types don't declare onKeyDown; react-native-web
-  // forwards it to the DOM node.
+  // Web keyboard: react-native-web forwards onKeyDown to the DOM node.
   const keyboard =
     Platform.OS === 'web'
       ? {
           focusable: !disabled,
-          onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+          onKeyDown: webKeyDown((e) => {
             const steps: Record<string, 1 | -1> = {
               ArrowRight: 1,
               ArrowUp: 1,
@@ -202,7 +202,7 @@ export function useSliderControl({
               e.preventDefault();
               moveBy(moves[e.key]);
             }
-          },
+          }),
         }
       : {};
 

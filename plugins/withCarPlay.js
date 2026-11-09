@@ -1,22 +1,28 @@
 const { withAppDelegate, withEntitlementsPlist, withInfoPlist } = require('expo/config-plugins');
 
 /**
- * CarPlay: move the iOS app onto the UIScene life cycle and declare a CarPlay scene.
+ * CarPlay: run the iOS app on the UIScene life cycle with our own scene delegates, and
+ * declare a CarPlay scene.
  *
- * Declaring ANY scene in `UIApplicationSceneManifest` moves the whole app to the scene life
- * cycle, and from then on UIKit never shows a window the app delegate made. Expo SDK 56/57's
- * template still creates its window (and starts React Native into it) in
- * `application(_:didFinishLaunchingWithOptions:)`, so this plugin does three things:
+ * Expo SDK 58's template is already a scene app: its AppDelegate only builds the React
+ * Native factory, and its `SceneDelegate` (an `ExpoAppSceneDelegate`) creates the window and
+ * starts React Native. We keep our own delegates instead: a CarPlay-first launch must park
+ * React Native in an off-screen window the phone scene adopts later, and Expo's delegate
+ * always starts it itself. So this plugin does three things:
  *
  *  1. Info.plist: a scene manifest with a phone scene (`AudiosiloPhoneSceneDelegate`) and a
- *     CarPlay scene (`AudiosiloCarPlaySceneDelegate`, a `CPTemplateApplicationScene`). Both
- *     classes live in `modules/audiosilo-player/ios` with stable `@objc` names.
- *  2. AppDelegate.swift: the template's window creation + `startReactNative` become a STORED
- *     starter (`AudiosiloScenes.configure`), which the first scene to connect runs: the phone
- *     scene into its own window, a CarPlay-first launch into an off-screen window that the
- *     phone scene adopts later. The template text is matched exactly; any other text fails the
- *     prebuild loudly (a silent miss would ship a black screen: a scene app whose React Native
- *     never starts in a scene window).
+ *     CarPlay scene (`AudiosiloCarPlaySceneDelegate`, a `CPTemplateApplicationScene`),
+ *     replacing the template's (whose `SceneDelegate.swift` stays in the project, unused).
+ *     Both classes live in `modules/audiosilo-player/ios` with stable `@objc` names.
+ *  2. AppDelegate.swift: a STORED starter (`AudiosiloScenes.configure`) right after the
+ *     factory is made, which the first scene to connect runs: the phone scene into its own
+ *     window, a CarPlay-first launch into an off-screen window that the phone scene adopts
+ *     later. And the two linking overrides the SDK 56 template had (`open url`, `continue
+ *     userActivity`): our phone scene forwards links to the app delegate, and
+ *     `ExpoAppDelegate`'s own methods no longer hand them to React Native (Expo's
+ *     `SceneEventForwarder` does that, which our scenes bypass). The template text is matched
+ *     exactly; any other text fails the prebuild loudly (a silent miss would ship a black
+ *     screen, or links that never reach JS).
  *  3. Entitlements: `com.apple.developer.carplay-audio` by default (Apple granted it to the team on
  *     2026-10-09; both App IDs carry the capability). `AUDIOSILO_CARPLAY=0` at prebuild leaves it
  *     out, for a signing identity without the grant; without it iOS simply never connects a
@@ -62,29 +68,20 @@ function applySceneManifest(infoPlist) {
   };
 }
 
-// The SDK 56/57 template's window creation, whitespace-tolerant but otherwise exact.
-const TEMPLATE_WINDOW = new RegExp(
-  [
-    String.raw`#if os\(iOS\) \|\| os\(tvOS\)\s*`,
-    String.raw`window = UIWindow\(frame: UIScreen\.main\.bounds\)\s*`,
-    String.raw`factory\.startReactNative\(\s*`,
-    String.raw`withModuleName: "main",\s*`,
-    String.raw`in: window,\s*`,
-    String.raw`launchOptions: launchOptions\)\s*`,
-    String.raw`#endif`,
-  ].join(''),
-);
+// The SDK 58 template's anchors, each matched exactly (whitespace aside).
 const TEMPLATE_IMPORT = /^import ReactAppDependencyProvider$/m;
-// The scene delegates forward URLs and user activities to these app-delegate overrides,
-// relying on them to hand the link to React Native (RCTLinkingManager). Under the scene life
-// cycle UIKit no longer calls them itself.
-const TEMPLATE_LINKING = [
-  /RCTLinkingManager\.application\(app, open: url, options: options\)/,
-  /RCTLinkingManager\.application\(application, continue: userActivity, restorationHandler: restorationHandler\)/,
-];
+const TEMPLATE_CLASS = /^class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider \{$/m;
+const TEMPLATE_FACTORY = /^(\s*)reactNativeFactory = factory\n/m;
+// The end of `didFinishLaunching` (its `return super` and closing brace).
+const TEMPLATE_RETURN =
+  /^(\s*)return super\.application\(application, didFinishLaunchingWithOptions: launchOptions\)\n\s*\}\n/m;
+// The template's note that its SceneDelegate starts React Native: not true once patched.
+const TEMPLATE_SCENE_NOTE =
+  /^\s*\/\/ The window is created and React Native is started by `SceneDelegate`[^\n]*\n(\s*\/\/[^\n]*\n)?/m;
 
-const STARTER = `#if os(iOS) || os(tvOS)
-    // withCarPlay: the app runs on the UIScene life cycle (a phone scene and a CarPlay scene).
+const STARTER = `
+#if os(iOS) || os(tvOS)
+    // withCarPlay: our own scene delegates (a phone scene and a CarPlay scene) run the app.
     // React Native starts in whichever scene connects first, with launch options rebuilt from
     // that scene's connection options, so nothing is shown from here.
     AudiosiloScenes.configure(
@@ -96,23 +93,55 @@ const STARTER = `#if os(iOS) || os(tvOS)
       },
       mirrorWindow: { [weak self] window in self?.window = window }
     )
-#endif`;
+#endif
+`;
+
+// The SDK 56 template's linking overrides. The phone scene delegate forwards URLs and user
+// activities here, and these hand them to React Native (RCTLinkingManager).
+const LINKING = `
+  // Linking API (withCarPlay: the phone scene forwards opened URLs here)
+  public override func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
+  }
+
+  // Universal Links (withCarPlay: the phone scene forwards user activities here)
+  public override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+`;
 
 function mismatch(what) {
   return new Error(
-    `withCarPlay: AppDelegate.swift does not match the Expo SDK 56/57 template (${what}). ` +
-      'The app would launch to a black screen under the scene life cycle. Update ' +
-      'plugins/withCarPlay.js (and its fixture) for the new template before building.',
+    `withCarPlay: AppDelegate.swift does not match the Expo SDK 58 template (${what}). ` +
+      'The app would launch to a black screen, or links would never reach JS, under the ' +
+      'scene life cycle. Update plugins/withCarPlay.js (and its fixture) for the new ' +
+      'template before building.',
   );
 }
 
-/** AppDelegate.swift: replace the template's window + start with the stored starter. */
+/** AppDelegate.swift: add the stored scene starter after the factory and the linking
+ * overrides after `didFinishLaunching`. */
 function patchAppDelegate(contents) {
   if (contents.includes(PATCHED_MARKER)) return contents; // already patched (idempotent)
   if (!TEMPLATE_IMPORT.test(contents)) throw mismatch('no `import ReactAppDependencyProvider`');
-  if (!TEMPLATE_WINDOW.test(contents)) throw mismatch('no window + startReactNative block');
-  for (const re of TEMPLATE_LINKING) {
-    if (!re.test(contents)) throw mismatch(`no ${re.source.replace(/\\/g, '')}`);
+  if (!TEMPLATE_CLASS.test(contents)) {
+    throw mismatch('no `class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider`');
+  }
+  if (!TEMPLATE_FACTORY.test(contents)) throw mismatch('no `reactNativeFactory = factory`');
+  if (!TEMPLATE_RETURN.test(contents)) {
+    throw mismatch('no `return super.application(application, didFinishLaunchingWithOptions:`');
+  }
+  if (/RCTLinkingManager|open url: URL|continue userActivity/.test(contents)) {
+    throw mismatch('it already has linking overrides');
   }
   return contents
     .replace(
@@ -121,7 +150,9 @@ function patchAppDelegate(contents) {
         '// internal, like the generated ExpoModulesProvider.swift imports it (one access level per module).\n' +
         'internal import AudiosiloPlayer',
     )
-    .replace(TEMPLATE_WINDOW, STARTER);
+    .replace(TEMPLATE_SCENE_NOTE, '')
+    .replace(TEMPLATE_FACTORY, (line) => line + STARTER + '\n')
+    .replace(TEMPLATE_RETURN, (block) => block + LINKING);
 }
 
 /** The values of `AUDIOSILO_CARPLAY` that leave the entitlement out (any case): `0` and the other
@@ -148,7 +179,7 @@ const withCarPlay = (config) => {
   });
   config = withAppDelegate(config, (cfg) => {
     if (cfg.modResults.language !== 'swift') {
-      throw new Error('withCarPlay: expected a Swift AppDelegate (Expo SDK 56/57 template).');
+      throw new Error('withCarPlay: expected a Swift AppDelegate (Expo SDK 58 template).');
     }
     cfg.modResults.contents = patchAppDelegate(cfg.modResults.contents);
     return cfg;

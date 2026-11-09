@@ -1,4 +1,4 @@
-import { ScrollViewStyleReset } from 'expo-router/html';
+import { ScrollViewStyleReset, useServerDocumentContext } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
 import { BASE_URL as BASE } from '@/lib/base-url';
@@ -33,8 +33,12 @@ const backdropCss = [
 const layerOrderCss = '@layer properties, theme, base, rnw, components, utilities;';
 
 export default function Root({ children }: PropsWithChildren) {
+  // The router's own document parts (expo-router 58): the attributes it sets on <html> and
+  // <body>, the nodes it adds to <head> (the bundle's stylesheets and metadata) and the
+  // nodes after the app in <body> (its scripts: leaving them out stops hydration).
+  const { htmlAttributes, bodyAttributes, headNodes, bodyNodes } = useServerDocumentContext();
   return (
-    <html lang="en">
+    <html lang="en" {...htmlAttributes}>
       <head>
         <meta charSet="utf-8" />
         {/* Must precede every stylesheet - see layerOrderCss. */}
@@ -62,8 +66,14 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* Backdrop behind the app, to avoid a white flash before/around React. */}
         <style dangerouslySetInnerHTML={{ __html: backdropCss }} />
+
+        {/* Last, so the layer order above still comes before every stylesheet. */}
+        {headNodes}
       </head>
-      <body>{children}</body>
+      <body {...bodyAttributes}>
+        {children}
+        {bodyNodes}
+      </body>
     </html>
   );
 }

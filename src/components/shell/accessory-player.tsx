@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/native-tabs';
 import { useTranslation } from 'react-i18next';
 import { useRef, useState } from 'react';
-import { Dimensions, View } from 'react-native';
+import { Dimensions, View, type ViewInstance } from 'react-native';
 
 import { BookCover } from '@/components/library/book-cover';
 import { ChapterProgressLine } from '@/components/player/chapter-progress';
@@ -59,7 +59,7 @@ export function AccessoryPlayer() {
   // The pill above the bar (`regular`) publishes its top edge for the root toasts. It is
   // native chrome, so it is measured in the window; a reading outside the bottom half of
   // the window (a copy iOS is not showing) is ignored.
-  const pill = useRef<View>(null);
+  const pill = useRef<ViewInstance>(null);
   const [edge, setEdge] = useState<number>();
   useChromeEdge('accessory', shown ? edge : undefined, regular);
   const measure = () =>

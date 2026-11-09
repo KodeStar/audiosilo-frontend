@@ -1,9 +1,10 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AccessibilityInfo, Platform, Pressable, View } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, View, type ViewInstance } from 'react-native';
 import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
+import { webKeyDown } from '@/lib/keyboard';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 
@@ -41,7 +42,7 @@ export function StoryStage({
   player: StoryPlayer;
   width: number;
   connectionId: string;
-  cardRef: RefObject<View | null>;
+  cardRef: RefObject<ViewInstance | null>;
   plainCovers: boolean;
   screenReader: boolean;
   /** Reduced motion: the story only moves when the listener moves it. */
@@ -86,18 +87,14 @@ export function StoryStage({
   const keys =
     Platform.OS === 'web'
       ? {
-          onKeyDown: (e: {
-            key: string;
-            preventDefault: () => void;
-            stopPropagation: () => void;
-          }) => {
+          onKeyDown: webKeyDown((e) => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             e.preventDefault();
             // The player's own arrow keys (skip back and forward) must not fire too.
             e.stopPropagation();
             if (e.key === 'ArrowLeft') player.previous();
             else player.next();
-          },
+          }),
         }
       : {};
   const hold = {

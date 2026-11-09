@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { WebView as BaseWebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { downloadedEntryOf } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
@@ -8,6 +8,7 @@ import { useLatestRef } from '@/lib/use-latest';
 import { whenActive } from '@/lib/when-active';
 
 import { sendInChunks } from './book-chunks';
+
 import { chunkReader, identifyEbook, type LocalEbook, localEbook } from './ebook-file.native';
 import {
   type HostChannel,
@@ -22,6 +23,12 @@ import { startReaderSession } from './reader-session';
 import { usePlaceGate } from './use-place-gate';
 import { useReaderControls } from './use-reader-controls';
 import { useReaderReadalong } from './use-reader-readalong';
+
+// react-native-webview 14 types its component `WebView<P = undefined>` with props
+// `WebViewProps & P`, and `& undefined` makes every prop `never`: instantiate it with no
+// extra props instead (a type-only instantiation; at runtime this is the same component).
+const ReaderWebView = BaseWebView<object>;
+type ReaderWebViewRef = BaseWebView<object>;
 
 /**
  * The reader document's base URL: it gives the document an origin, without which foliate's
@@ -92,7 +99,7 @@ export function ReaderHost({
   ref,
   ...readalongProps
 }: ReaderHostProps) {
-  const web = useRef<WebView>(null);
+  const web = useRef<ReaderWebViewRef>(null);
   const placeGate = usePlaceGate(placeKnown);
   const channel = useRef<HostChannel | null>(null);
   const latest = useLatestRef({
@@ -274,7 +281,7 @@ export function ReaderHost({
   };
 
   return (
-    <WebView
+    <ReaderWebView
       key={generation}
       ref={web}
       source={{ html: READER_HTML, baseUrl: READER_BASE_URL }}

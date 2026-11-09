@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import type { View } from 'react-native';
+import type { ViewInstance } from 'react-native';
 
 import type { BookDragPayload } from './up-next-model';
 
@@ -9,7 +9,7 @@ import type { BookDragPayload } from './up-next-model';
  * there is no drag in progress.
  */
 export function useBookDragSource(
-  _ref: RefObject<View | null>,
+  _ref: RefObject<ViewInstance | null>,
   _payload: BookDragPayload & { title: string },
 ) {}
 

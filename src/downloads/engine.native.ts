@@ -108,7 +108,7 @@ export const engine: DownloadEngine = {
       if (!dir.exists) return false;
       const file = new File(dir, fileName);
       if (!file.exists) file.create();
-      file.write(text);
+      await file.write(text);
       return true;
     } catch {
       return false;

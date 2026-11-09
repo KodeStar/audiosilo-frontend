@@ -1,12 +1,14 @@
-// The AppDelegate.swift `expo prebuild` generates for Expo SDK 56 (expo 56.0.23), verbatim.
+// The AppDelegate.swift `expo prebuild` generates for Expo SDK 58 (expo 58.0.23, template
+// expo-template-bare-minimum 58.0.32), verbatim: the text withCarPlay receives. Checked
+// against a real prebuild (the generated file is this, patched, plus withCast's blocks).
 // withCarPlay.test.ts runs the plugin over it; refresh it when the Expo template changes.
-// Verified identical to the AppDelegate.swift expo 57.0.32 (Expo SDK 57) generates.
-export const APP_DELEGATE_SDK56 = String.raw`internal import Expo
+// (Its backticks are interpolated: the template is a JS template literal.)
+export const APP_DELEGATE_SDK58 = String.raw`internal import Expo
 import React
 import ReactAppDependencyProvider
 
 @main
-class AppDelegate: ExpoAppDelegate {
+class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {
   var window: UIWindow?
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
@@ -23,34 +25,9 @@ class AppDelegate: ExpoAppDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
-
+    // The window is created and React Native is started by ${'`'}SceneDelegate${'`'} under the
+    // scene-based life cycle (required by the iOS 27 SDK).
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-
-  // Linking API
-  public override func application(
-    _ app: UIApplication,
-    open url: URL,
-    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-  ) -> Bool {
-    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
-  }
-
-  // Universal Links
-  public override func application(
-    _ application: UIApplication,
-    continue userActivity: NSUserActivity,
-    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
-  ) -> Bool {
-    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
-    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
   }
 }
 

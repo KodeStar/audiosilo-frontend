@@ -1,13 +1,12 @@
 import { renderRouter } from 'expo-router/testing-library';
-import { store } from 'expo-router/build/global-state/router-store';
 
 import { bookHref } from '@/lib/paths';
-import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
+import { nav, realRouteTree, rootState, routeInfo, router } from '@/testing/route-tree';
 
 import { LeaveOnboarding } from './leave-onboarding';
 
 // Its own file: it starts cold on /connect (see route-tree-cold.test.tsx).
-const rootRoutes = () => (store.state?.routes[0]?.state?.routes ?? []).map((r) => r.name);
+const rootRoutes = () => (rootState()?.routes[0]?.state?.routes ?? []).map((r) => r.name);
 
 it('leaves ONE (app) under the stack after connecting (dismissTo, not replace)', async () => {
   await (renderRouter(realRouteTree(), { initialUrl: '/connect' }) as unknown as Promise<unknown>);

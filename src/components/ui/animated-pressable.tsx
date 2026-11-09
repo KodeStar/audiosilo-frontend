@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { Pressable, type PressableProps, type View } from 'react-native';
+import { Pressable, type PressableProps, type ViewInstance } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -28,7 +28,7 @@ export type AnimatedPressableProps = PressableProps & { className?: string };
  * on web, iOS and Android (reanimated 4). Forwards every Pressable prop, including
  * accessibility props and the caller's own onPressIn/onPressOut.
  */
-export const AnimatedPressable = forwardRef<View, AnimatedPressableProps>(
+export const AnimatedPressable = forwardRef<ViewInstance, AnimatedPressableProps>(
   function AnimatedPressable({ onPressIn, onPressOut, style, ...props }, ref) {
     const reduced = useReducedMotion();
     const pressed = useSharedValue(0);

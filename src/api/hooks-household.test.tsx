@@ -183,7 +183,7 @@ describe('household hooks', () => {
 describe('housePollInterval', () => {
   const original = AppState.currentState;
   afterEach(() => {
-    (AppState as { currentState: string }).currentState = original;
+    (AppState as { currentState: typeof original }).currentState = original;
   });
 
   it('polls every minute in the foreground and not at all otherwise', () => {

@@ -2,13 +2,12 @@
 // with an empty module, which the screen's overlays and skeletons cannot load against.
 import FinishedScreen from '@/app/finished';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { store } from 'expo-router/build/global-state/router-store';
 import { fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
 import { finishedHref } from '@/lib/paths';
 import { currentNavState, topRootRoute } from '@/lib/root-stack';
 import { useSession } from '@/stores/session';
-import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
+import { nav, realRouteTree, rootState, routeInfo, router } from '@/testing/route-tree';
 
 // The credits' View details, pressed on the REAL `/finished` screen over the real route
 // tree: the book's page opens in the ONE app shell under the credits, in the tab the
@@ -51,10 +50,10 @@ jest.mock('@/playback/store', () => {
 type Route = { name: string; state?: { index?: number; routes: Route[] } };
 /** The root stack's routes (under expo-router's `__root`). */
 const rootRoutes = () =>
-  ((store.state?.routes[0] as Route | undefined)?.state?.routes ?? []).map((r) => r.name);
+  ((rootState()?.routes[0] as Route | undefined)?.state?.routes ?? []).map((r) => r.name);
 /** The routes of the shell's `tab` stack. */
 const tabStack = (tab: string) => {
-  const shell = (store.state?.routes[0] as Route).state!.routes[0];
+  const shell = (rootState()?.routes[0] as Route).state!.routes[0];
   const stack = shell.state?.routes.find((r) => r.name === tab);
   return (stack?.state?.routes ?? []).map((r) => r.name);
 };

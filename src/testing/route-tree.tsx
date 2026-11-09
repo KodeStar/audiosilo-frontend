@@ -1,10 +1,12 @@
 import { Stack, Tabs, router } from 'expo-router';
-import { store } from 'expo-router/build/global-state/router-store';
+import { getRouteInfoFromState } from 'expo-router/build/global-state/getRouteInfoFromState';
 import { act } from 'expo-router/testing-library';
 import type { ComponentType } from 'react';
 import { Text } from 'react-native';
 
-import { TAB_STACK_SETTINGS, tabStackListeners } from '@/components/shell/destinations';
+import { TAB_STACK_SETTINGS, TABS, tabStackListeners } from '@/components/shell/destinations';
+import type { NavState } from '@/lib/root-stack';
+import { navigationRef } from '@/lib/router-ref';
 
 // Node's fs/path, typed by hand: the app's tsconfig carries no Node types.
 type DirEntry = { name: string; isDirectory: () => boolean };
@@ -22,11 +24,26 @@ const APP = path.join(process.cwd(), 'src', 'app');
 type RouteModule = ComponentType | { default: ComponentType; unstable_settings?: unknown };
 
 /**
+ * expo-router's JS `Tabs` standing in for the shell's tab navigator, its five tabs
+ * declared as the real shells declare them (NativeTabs triggers, the web's `TabTrigger`s):
+ * since expo-router 58 a tab navigator shows only the screens its layout declares.
+ */
+export function JsTabs() {
+  return (
+    <Tabs screenOptions={{ headerShown: false }}>
+      {TABS.map((d) => (
+        <Tabs.Screen key={d.name} name={d.name} />
+      ))}
+    </Tabs>
+  );
+}
+
+/**
  * The REAL `src/app` route tree as an expo-router `renderRouter` context: every file the
  * app ships, with each screen stubbed (its route key as text) and each layout replaced by
  * a plain JS navigator of the same shape - the root and tab stacks by `Stack`, the
  * `(app)` NativeTabs / headless web Tabs by `Tabs`. The tab stacks keep their real
- * `unstable_settings` (the per-tab `initialRouteName`, which decides cold deep links) and
+ * `unstable_settings` (the per-tab `anchor`, which decides cold deep links) and
  * their real `screenListeners`.
  * A route file moved or renamed under `src/app` changes this tree, so the navigation
  * tests below run against what ships rather than a hand-copied list.
@@ -57,7 +74,7 @@ export function realRouteTree(): Record<string, RouteModule> {
     // The root keeps its real `anchor`: `(app)` always sits at the bottom of the root stack.
     if (k === '_layout') tree[k] = { default: plainStack, unstable_settings: { anchor: '(app)' } };
     else if (k === '(app)/_layout') {
-      tree[k] = () => <Tabs screenOptions={{ headerShown: false }} />;
+      tree[k] = JsTabs;
     } else if (k.endsWith('(home,library,search,offline,me)/_layout')) {
       tree[k] = { default: tabStack, unstable_settings: TAB_STACK_SETTINGS };
     } else if (k.endsWith('_layout')) tree[k] = plainStack;
@@ -66,10 +83,24 @@ export function realRouteTree(): Record<string, RouteModule> {
   return tree;
 }
 
-/** Where the router is now (RNTL 14 broke `renderRouter`'s own helpers: read the store). */
-export const routeInfo = () => store.getRouteInfo();
+/** The router's whole navigation state now (expo-router's `__root` route first), or
+ * undefined before it is ready. */
+export const rootState = (): NavState | undefined =>
+  navigationRef.isReady() ? (navigationRef.getRootState() as NavState) : undefined;
+
+/** The route names on the shell's `tab` stack (`(me)`), empty before it has a state. */
+export const tabStack = (tab: string): string[] =>
+  (
+    rootState()
+      ?.routes[0]?.state?.routes.find((r) => r.name === '(app)')
+      ?.state?.routes.find((r) => r.name === tab)?.state?.routes ?? []
+  ).map((r) => r.name);
+
+/** Where the router is now: its route info, read off the container the way the router's
+ * own testing library does (`renderRouter`'s helpers sit on a result the tests drop). */
+export const routeInfo = () => getRouteInfoFromState(navigationRef.getRootState());
 
 /** Drive the global router inside an awaited act, so the navigation commits first. */
 export const nav = (fn: () => void) => act(async () => fn());
 
-export { router };
+export { navigationRef, router };

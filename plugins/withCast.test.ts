@@ -1,6 +1,7 @@
 import type { ExpoConfig } from 'expo/config';
 
-import { APP_DELEGATE_SDK56 } from './__fixtures__/app-delegate-sdk56';
+import { APP_DELEGATE_SDK58 } from './__fixtures__/app-delegate-sdk58';
+import { MAIN_ACTIVITY_SDK58 } from './__fixtures__/main-activity-sdk58';
 import withCarPlay from './withCarPlay';
 import withCast, { addExpandedController, CAST_FRAMEWORK_VERSION } from './withCast';
 
@@ -36,10 +37,10 @@ async function runMod(platform: 'ios' | 'android', mod: string, modResults: unkn
   return result.modResults;
 }
 
-describe('withCast + withCarPlay: the SDK 56 AppDelegate', () => {
+describe('withCast + withCarPlay: the SDK 58 AppDelegate', () => {
   it('runs both plugins: CarPlay matches the template, then Cast adds its setup', async () => {
     const out = (await runMod('ios', 'appDelegate', {
-      contents: APP_DELEGATE_SDK56,
+      contents: APP_DELEGATE_SDK58,
       language: 'swift',
       path: 'AppDelegate.swift',
     })) as { contents: string };
@@ -47,7 +48,7 @@ describe('withCast + withCarPlay: the SDK 56 AppDelegate', () => {
     // withCarPlay's exact match succeeded (it throws otherwise) and its starter is in.
     expect(src).toContain('AudiosiloScenes.configure(');
     expect(src).toContain('internal import AudiosiloPlayer');
-    expect(src).not.toContain('UIWindow(frame: UIScreen.main.bounds)');
+    expect(src).toContain('RCTLinkingManager.application(app, open: url, options: options)');
     // The Cast SDK is set up in didFinishLaunching, before the React Native delegate.
     expect(src).toContain('import GoogleCast');
     expect(src.indexOf('import GoogleCast')).toBeLessThan(src.indexOf('import React\n'));
@@ -70,7 +71,7 @@ describe('withCast + withCarPlay: the SDK 56 AppDelegate', () => {
     const mod = (config as unknown as { mods: Record<string, Record<string, Mod>> }).mods.ios
       .appDelegate;
     const out = (await mod({
-      modResults: { contents: APP_DELEGATE_SDK56, language: 'swift', path: 'AppDelegate.swift' },
+      modResults: { contents: APP_DELEGATE_SDK58, language: 'swift', path: 'AppDelegate.swift' },
       modRequest: { platform: 'ios', modName: 'appDelegate', introspect: false },
     })) as { modResults: { contents: string } };
     expect(out.modResults.contents).toContain('AudiosiloScenes.configure(');
@@ -165,5 +166,17 @@ describe('withCast: Android', () => {
         'package app.audiosilo\n\nimport android.os.Bundle\n\nclass MainActivity {\n  override fun onCreate(savedInstanceState: Bundle?) {\n    super.onCreate(null)\n  }\n}\n',
     })) as { contents: string };
     expect(out.contents).toContain('RNGCCastContext.getSharedInstance(this)');
+  });
+
+  it("finds its anchor in the SDK 58 template's MainActivity", async () => {
+    expect(MAIN_ACTIVITY_SDK58).toContain('super.onCreate(');
+    const out = (await runMod('android', 'mainActivity', {
+      language: 'kt',
+      path: 'MainActivity.kt',
+      contents: MAIN_ACTIVITY_SDK58,
+    })) as { contents: string };
+    const init = out.contents.indexOf('RNGCCastContext.getSharedInstance(this)');
+    expect(init).toBeGreaterThan(out.contents.indexOf('override fun onCreate('));
+    expect(init).toBeLessThan(out.contents.indexOf('override fun getMainComponentName'));
   });
 });

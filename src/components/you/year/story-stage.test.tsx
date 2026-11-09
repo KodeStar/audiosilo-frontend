@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform, type View } from 'react-native';
+import { AccessibilityInfo, Platform, type ViewInstance } from 'react-native';
 
 import i18n from '@/i18n';
 
@@ -43,7 +43,7 @@ async function mount(p: StoryPlayer, opts: { screenReader?: boolean; onHold?: je
     copies,
     width: 360,
     connectionId: 'a',
-    cardRef: { current: null as View | null },
+    cardRef: { current: null as ViewInstance | null },
     plainCovers: false,
     screenReader: opts.screenReader ?? false,
     onHold: opts.onHold ?? jest.fn(),

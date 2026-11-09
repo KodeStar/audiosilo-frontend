@@ -1,6 +1,13 @@
 import { renderRouter } from 'expo-router/testing-library';
 
-import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
+import {
+  nav,
+  navigationRef,
+  realRouteTree,
+  routeInfo,
+  router,
+  tabStack,
+} from '@/testing/route-tree';
 
 // RNTL 14 makes render async, and renderRouter returns its promise.
 const mount = (initialUrl: string) =>
@@ -68,10 +75,7 @@ describe('the real route tree', () => {
     await nav(() => router.push('/book/1?connection=c&path=x'));
     await nav(() => router.navigate('/'));
     expect(tabOf()).toEqual(['(app)', '(home)']);
-    const { store } = jest.requireActual('expo-router/build/global-state/router-store');
-    await nav(() =>
-      store.navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } }),
-    );
+    await nav(() => navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(library)' } }));
     expect(tabOf()).toEqual(['(app)', '(library)']);
     expect(routeInfo().pathname).toBe('/book/1');
   });
@@ -115,7 +119,9 @@ describe('the real route tree', () => {
     // The hub switches sections in place.
     await nav(() => router.setParams({ section: 'year', tab: undefined }));
     expect(routeInfo().params).toEqual({ section: 'year' });
-    expect(router.canGoBack()).toBe(false);
+    // Nothing pushed (the JS Tabs stand-in's own history keeps the first tab under a
+    // cold link, so `canGoBack` can't say this).
+    expect(tabStack('(me)')).toEqual(['you']);
   });
 
   it('keeps the browse detail pages in the tab that pushed them, and back returns', async () => {

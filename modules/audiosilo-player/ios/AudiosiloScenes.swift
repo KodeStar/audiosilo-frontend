@@ -2,10 +2,10 @@ import UIKit
 
 /// Starts React Native in whichever UIScene connects first (the phone's or CarPlay's).
 ///
-/// Declaring a CarPlay scene moves the whole app onto the UIScene life cycle, where UIKit never
-/// shows a window the app delegate made. `plugins/withCarPlay.js` therefore rewrites the Expo
-/// template's AppDelegate: instead of creating a window and calling `startReactNative` in
-/// `didFinishLaunching`, it hands us that call as a closure (`configure`), and:
+/// The app runs on the UIScene life cycle with its own scene delegates (Expo SDK 58's template
+/// starts React Native from its `SceneDelegate`, which can't park it for a CarPlay-first launch).
+/// `plugins/withCarPlay.js` therefore adds to the template's AppDelegate, right after the React
+/// Native factory is made, a closure that starts it (`configure`), and:
 ///  - the phone scene (`AudiosiloPhoneSceneDelegate`) runs it into its own window, with launch
 ///    options rebuilt from the scene's connection options (the cold-start pairing link);
 ///  - a CarPlay-first launch (the car connects with the app not running, maybe with the phone
@@ -26,7 +26,7 @@ public enum AudiosiloScenes {
   private static var parkingWindow: UIWindow?
 
   /// Called once from the AppDelegate's `didFinishLaunching` (written by withCarPlay.js).
-  /// `start` is the template's `factory.startReactNative(...)`; `mirrorWindow` assigns the app
+  /// `start` calls the factory's `startReactNative(...)`; `mirrorWindow` assigns the app
   /// delegate's `window`, which code outside the scene still reads (expo-system-ui).
   public static func configure(
     start: @escaping Starter,

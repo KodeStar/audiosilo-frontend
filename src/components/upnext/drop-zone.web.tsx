@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { View, type ViewInstance } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { useLatestRef } from '@/lib/use-latest';
@@ -20,7 +20,7 @@ type Over = 'idle' | 'ok' | 'other-server';
  */
 export function DropZone({ connectionId, serverName, empty, onDrop }: DropZoneProps) {
   const { t } = useTranslation();
-  const ref = useRef<View>(null);
+  const ref = useRef<ViewInstance>(null);
   const [over, setOver] = useState<Over>('idle');
   const latest = useLatestRef({ connectionId, onDrop });
 

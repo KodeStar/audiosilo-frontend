@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
+import type { ViewInstance } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import type { View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { useScreenReaderEnabled } from './use-screen-reader';
@@ -27,7 +27,7 @@ export function useStoryStage(story: ReadyYearStory, cid: string, initial?: numb
     still: reduced,
     initial,
   });
-  const cardRef = useRef<View>(null);
+  const cardRef = useRef<ViewInstance>(null);
   const card = story.cards[player.index];
 
   const shareCard = useCallback(() => {

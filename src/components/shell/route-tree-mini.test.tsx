@@ -8,10 +8,10 @@ import { nav, realRouteTree, router } from '@/testing/route-tree';
 // The REAL native `(app)` layout and the REAL tab-stack layout over the real route tree,
 // NativeTabs swapped for expo-router's JS Tabs (which also keeps visited tabs mounted).
 // The floating mini player belongs to the `(app)` layout, once, not to each tab stack.
-jest.mock('expo-router/unstable-native-tabs', () => {
-  const { Tabs } = jest.requireActual('expo-router');
+jest.mock('expo-router/native-tabs', () => {
+  const { JsTabs } = jest.requireActual('@/testing/route-tree');
   const Stub = () => null;
-  const NativeTabs = Object.assign(() => <Tabs screenOptions={{ headerShown: false }} />, {
+  const NativeTabs = Object.assign(JsTabs, {
     Trigger: Object.assign(Stub, { Icon: Stub, Label: Stub }),
     BottomAccessory: Stub,
   });

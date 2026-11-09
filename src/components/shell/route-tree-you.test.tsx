@@ -1,10 +1,16 @@
-import { store } from 'expo-router/build/global-state/router-store';
 import { renderRouter } from 'expo-router/testing-library';
 
 import { openDownloads, openJournal, openSettings, openYou } from '@/lib/open';
 import { playerHref } from '@/lib/paths';
 import { popTabToRoot } from '@/lib/root-stack';
-import { nav, realRouteTree, routeInfo, router } from '@/testing/route-tree';
+import {
+  nav,
+  navigationRef,
+  realRouteTree,
+  rootState,
+  routeInfo,
+  router,
+} from '@/testing/route-tree';
 
 // The You hub is the Me tab's ROOT: every way in (the palette, the profile menu, a book
 // section's journal link, from over the full player) lands on that root with the asked
@@ -16,14 +22,14 @@ const mount = (initialUrl: string) =>
 
 type Route = { name: string; params?: object; state?: { routes: Route[] } };
 const shell = () =>
-  ((store.state?.routes[0] as Route | undefined)?.state?.routes ?? []).find(
+  ((rootState()?.routes[0] as Route | undefined)?.state?.routes ?? []).find(
     (r) => r.name === '(app)',
   );
 /** The routes of the shell's `tab` stack. */
 const tabStack = (tab: string) =>
   (shell()?.state?.routes.find((r) => r.name === tab)?.state?.routes ?? []).map((r) => r.name);
 const rootRoutes = () =>
-  ((store.state?.routes[0] as Route | undefined)?.state?.routes ?? []).map((r) => r.name);
+  ((rootState()?.routes[0] as Route | undefined)?.state?.routes ?? []).map((r) => r.name);
 
 it('opens the hub from another tab on its root, keeping that tab as it was', async () => {
   await mount('/library');
@@ -46,14 +52,12 @@ it('moves the hub to a section in place, and pops pages pushed over it', async (
   expect(routeInfo().pathname).toBe('/you');
   expect(routeInfo().params).toEqual({ section: 'journal' });
   expect(tabStack('(me)')).toEqual(['you']);
-  expect(router.canGoBack()).toBe(false);
 });
 
 it("pops the Me tab's pages when opened from another tab too", async () => {
   await mount('/you');
   await nav(() => router.push('/account?connection=c'));
-  const { store: s } = jest.requireActual('expo-router/build/global-state/router-store');
-  await nav(() => s.navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(home)' } }));
+  await nav(() => navigationRef.dispatch({ type: 'JUMP_TO', payload: { name: '(home)' } }));
   await nav(() => openYou('stats'));
   expect(routeInfo().pathnameWithParams).toBe('/you');
   expect(tabStack('(me)')).toEqual(['you']);

@@ -5,7 +5,7 @@ jest.mock('expo-router', () => ({
   useSegments: () => ['(app)'],
   usePathname: () => '/',
 }));
-jest.mock('expo-router/unstable-native-tabs', () => ({
+jest.mock('expo-router/native-tabs', () => ({
   NativeTabs: { BottomAccessory: { usePlacement: () => 'regular' } },
 }));
 jest.mock('@/lib/layout', () => ({ useLayout: () => 'phone' }));

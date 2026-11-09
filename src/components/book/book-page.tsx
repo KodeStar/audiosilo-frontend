@@ -1,8 +1,14 @@
 import { type InfiniteData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type LayoutChangeEvent, ScrollView, View } from 'react-native';
+import {
+  type LayoutChangeEvent,
+  ScrollView,
+  View,
+  type ViewInstance,
+  type ScrollViewInstance,
+} from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { isNotInLibraryError } from '@/api/client';
@@ -176,14 +182,17 @@ function useCanonicalBookPath(
   book: { rel_path: string } | undefined,
 ): boolean {
   const qc = useQueryClient();
+  // The hook: a cached item can run the move on the first commit, before expo-router 58
+  // has bound its module-level `router`.
+  const nav = useRouter();
   const target = book?.rel_path.replace(/\/+$/, '');
   const move = !!target && path.startsWith(`${target}/`);
   useEffect(() => {
     if (!move || !target || !book) return;
     const key = qk.item(cid, libraryId, target);
     if (qc.getQueryData(key) === undefined) qc.setQueryData(key, book);
-    router.setParams({ path: target });
-  }, [move, target, cid, libraryId, qc, book]);
+    nav.setParams({ path: target });
+  }, [move, target, cid, libraryId, qc, book, nav]);
   return !move;
 }
 
@@ -320,9 +329,9 @@ function BookPage() {
   // are measured against the scroller's content on press, once the tab switch has
   // committed (a frame later): a position cached from onLayout goes stale on the web,
   // which reports a layout only when a view's size changes, never when it just moves.
-  const scrollRef = useRef<ScrollView>(null);
-  const contentRef = useRef<View>(null);
-  const tabsRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const contentRef = useRef<ViewInstance>(null);
+  const tabsRef = useRef<ViewInstance>(null);
   const reduced = useReducedMotion();
   const openCharacters = () => {
     setTab('characters');

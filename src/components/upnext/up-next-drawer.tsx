@@ -6,6 +6,7 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-nativ
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { webKeyDown } from '@/lib/keyboard';
 import { cn } from '@/lib/utils';
 
 import { clampDrawerWidth, DRAWER_MAX, DRAWER_MIN } from './up-next-model';
@@ -66,12 +67,12 @@ function Drawer({ cid }: { cid: string }) {
     Platform.OS === 'web'
       ? {
           focusable: true,
-          onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+          onKeyDown: webKeyDown((e) => {
             const delta = e.key === 'ArrowLeft' ? KEY_STEP : e.key === 'ArrowRight' ? -KEY_STEP : 0;
             if (!delta) return;
             e.preventDefault();
             setWidth(clampDrawerWidth(width + delta));
-          },
+          }),
         }
       : {};
 

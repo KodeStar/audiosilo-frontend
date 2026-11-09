@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, type ListRenderItem, type ViewToken, View } from 'react-native';
+import { FlatList, type ListRenderItem, type ListViewToken, View } from 'react-native';
 
 import { isNotInLibraryError } from '@/api/client';
 import { useBrowseInfinite, useLibraries } from '@/api/hooks';
@@ -172,7 +172,7 @@ function BrowseContent() {
     router.push(libraryHref(cid, libraryId, sub)),
   );
 
-  const onViewableItemsChanged = useCallback((info: { viewableItems: ViewToken[] }) => {
+  const onViewableItemsChanged = useCallback((info: { viewableItems: ListViewToken[] }) => {
     const idxs = info.viewableItems.map((v) => v.index).filter((i): i is number => i != null);
     if (idxs.length) rememberScroll(keyRef.current, Math.min(...idxs));
   }, []);
@@ -276,7 +276,7 @@ function BrowseContent() {
                 <View className="py-4">
                   <Spinner center />
                 </View>
-              ) : null
+              ) : undefined
             }
           />
 

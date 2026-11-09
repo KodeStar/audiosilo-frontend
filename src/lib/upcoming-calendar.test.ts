@@ -75,7 +75,7 @@ describe('openWebcal', () => {
 
   it('opens the webcal form through Linking in the app', async () => {
     Platform.OS = 'ios';
-    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
     await openWebcal(`https://h${PATH}`);
     expect(open).toHaveBeenCalledWith(`webcal://h${PATH}`);
     open.mockRestore();
@@ -83,7 +83,7 @@ describe('openWebcal', () => {
 
   it('opens nothing for a link that is not http(s)', async () => {
     Platform.OS = 'ios';
-    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
     await openWebcal('javascript:alert(1)');
     expect(open).not.toHaveBeenCalled();
     open.mockRestore();

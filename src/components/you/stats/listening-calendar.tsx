@@ -1,6 +1,6 @@
 import { memo, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, type ScrollViewInstance } from 'react-native';
 
 import type { ListeningDay } from '@/api/types';
 import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
@@ -51,7 +51,7 @@ export function ListeningCalendar({
   // the app comes back, a day rolling over) is a new grid, and a slot of the old one
   // means another day there (or none), so the tip closes rather than misread it.
   const [tip, setTip] = useState<{ grid: CalendarGrid; slot: CalendarSlot } | null>(null);
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ScrollViewInstance>(null);
   const room = Math.max(0, width - DAYS_COLUMN);
   const cell = Math.max(
     MIN_CELL,

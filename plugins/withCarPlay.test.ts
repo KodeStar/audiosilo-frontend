@@ -4,9 +4,9 @@ import {
   CARPLAY_ENTITLEMENT,
   patchAppDelegate,
 } from './withCarPlay';
-import { APP_DELEGATE_SDK56 } from './__fixtures__/app-delegate-sdk56';
+import { APP_DELEGATE_SDK58 } from './__fixtures__/app-delegate-sdk58';
 
-const template = APP_DELEGATE_SDK56;
+const template = APP_DELEGATE_SDK58;
 
 describe('withCarPlay: Info.plist scene manifest', () => {
   it('declares the phone and CarPlay scenes and keeps the rest of the plist', () => {
@@ -34,18 +34,41 @@ describe('withCarPlay: Info.plist scene manifest', () => {
 });
 
 describe('withCarPlay: AppDelegate', () => {
-  it('replaces the window creation with the stored scene starter', () => {
+  it('stores the scene starter right after the factory is made', () => {
     const out = patchAppDelegate(template);
     expect(out).toContain('\ninternal import AudiosiloPlayer');
-    expect(out).toContain('AudiosiloScenes.configure(');
     expect(out).toContain('mirrorWindow: { [weak self] window in self?.window = window }');
-    expect(out).not.toContain('UIWindow(frame: UIScreen.main.bounds)');
-    // The starter still starts "main", now with the scene's window and launch options.
+    // The starter starts "main" with the scene's window and launch options...
     expect(out).toMatch(/withModuleName: "main",\s*in: window,\s*launchOptions: options\)/);
-    // The factory is still created and kept by the app delegate; the linking overrides stay.
-    expect(out).toContain('let factory = ExpoReactNativeFactory(delegate: delegate)');
-    expect(out).toContain('RCTLinkingManager.application(app, open: url, options: options)');
-    expect(out).toContain('return super.application(application, didFinishLaunchingWithOptions');
+    // ...after the factory is made and kept, before didFinishLaunching returns.
+    const kept = out.indexOf('reactNativeFactory = factory');
+    const starter = out.indexOf('AudiosiloScenes.configure(');
+    const ret = out.indexOf('return super.application(application, didFinishLaunchingWithOptions');
+    expect(kept).toBeGreaterThan(0);
+    expect(starter).toBeGreaterThan(kept);
+    expect(ret).toBeGreaterThan(starter);
+    // The template's note that its SceneDelegate starts React Native is gone (ours do).
+    expect(out).not.toContain('started by `SceneDelegate`');
+    // Once each.
+    expect(out.split('AudiosiloScenes.configure(')).toHaveLength(2);
+  });
+
+  it('adds the linking overrides the phone scene forwards to, calling RCTLinkingManager', () => {
+    const out = patchAppDelegate(template);
+    expect(out).toContain(
+      'return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)',
+    );
+    expect(out).toContain(
+      'let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)',
+    );
+    expect(out).toContain(
+      'return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result',
+    );
+    // Inside AppDelegate (after didFinishLaunching), not in ReactNativeDelegate below it.
+    const open = out.indexOf('open url: URL');
+    expect(open).toBeGreaterThan(out.indexOf('didFinishLaunchingWithOptions: launchOptions)'));
+    expect(open).toBeLessThan(out.indexOf('class ReactNativeDelegate'));
+    expect(out.split('open url: URL')).toHaveLength(2);
   });
 
   it('is idempotent', () => {
@@ -53,20 +76,35 @@ describe('withCarPlay: AppDelegate', () => {
     expect(patchAppDelegate(once)).toBe(once);
   });
 
-  it('fails loudly when the template window block changed', () => {
-    const changed = template.replace(
-      'window = UIWindow(frame: UIScreen.main.bounds)',
-      'window = UIWindow(frame: .zero)',
+  it('fails loudly when the factory anchor is missing', () => {
+    const changed = template.replace('reactNativeFactory = factory', 'self.factory = factory');
+    expect(() => patchAppDelegate(changed)).toThrow(
+      /does not match the Expo SDK 58 template \(no `reactNativeFactory = factory`\)/,
     );
-    expect(() => patchAppDelegate(changed)).toThrow(/does not match the Expo SDK 56\/57 template/);
   });
 
-  it('fails loudly when the linking overrides no longer call RCTLinkingManager', () => {
+  it('fails loudly when the `return super` anchor is missing', () => {
     const changed = template.replace(
-      '|| RCTLinkingManager.application(app, open: url, options: options)',
-      '',
+      'return super.application(application, didFinishLaunchingWithOptions: launchOptions)',
+      'return true',
     );
-    expect(() => patchAppDelegate(changed)).toThrow(/RCTLinkingManager/);
+    expect(() => patchAppDelegate(changed)).toThrow(/no `return super\.application/);
+  });
+
+  it('fails loudly on an older template (no factory provider conformance, its own window)', () => {
+    const older = template.replace(
+      'class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {',
+      'class AppDelegate: ExpoAppDelegate {',
+    );
+    expect(() => patchAppDelegate(older)).toThrow(/ExpoReactNativeFactoryProvider/);
+  });
+
+  it('fails loudly when the template already handles links itself', () => {
+    const changed = template.replace(
+      /\n\}\n\nclass ReactNativeDelegate/,
+      '\n  func open() { RCTLinkingManager.self }\n}\n\nclass ReactNativeDelegate',
+    );
+    expect(() => patchAppDelegate(changed)).toThrow(/already has linking overrides/);
   });
 });
 

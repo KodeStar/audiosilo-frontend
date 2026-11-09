@@ -1,4 +1,4 @@
-import { Stack, Tabs } from 'expo-router';
+import { type Href, Stack, Tabs } from 'expo-router';
 import { act, renderRouter } from 'expo-router/testing-library';
 import { Text } from 'react-native';
 
@@ -37,7 +37,12 @@ const tree = {
     ),
     unstable_settings: { anchor: '(app)' },
   },
-  '(app)/_layout': () => <Tabs screenOptions={{ headerShown: false }} />,
+  '(app)/_layout': () => (
+    <Tabs screenOptions={{ headerShown: false }}>
+      <Tabs.Screen name="(home)" />
+      <Tabs.Screen name="(library)" />
+    </Tabs>
+  ),
   '(app)/(home)/_layout': stack,
   '(app)/(home)/index': page('home'),
   '(app)/(home)/book': page('book', 'Dune'),
@@ -48,6 +53,10 @@ const tree = {
   // A root modal that names nothing (the tab's name doesn't stand in outside the tabs).
   finished: page('finished'),
 };
+
+// The test's own routes, not the app's (typed routes, when generated, list only those).
+const BOOK = '/book' as Href;
+const LOADING = '/loading' as Href;
 
 const g = globalThis as unknown as { document?: { title: string } };
 const savedDocument = g.document;
@@ -66,7 +75,7 @@ it("names the tab after the focused page, else the tab, and Back restores the la
   await (renderRouter(tree, { initialUrl: '/' }) as unknown as Promise<unknown>);
   expect(title()).toBe('Home · AudioSilo');
 
-  await nav(() => router.push('/book'));
+  await nav(() => router.push(BOOK));
   expect(title()).toBe('Dune · AudioSilo');
   await nav(() => router.push('/author'));
   expect(title()).toBe('Frank Herbert · AudioSilo');
@@ -74,7 +83,7 @@ it("names the tab after the focused page, else the tab, and Back restores the la
   await nav(() => router.back());
   expect(title()).toBe('Dune · AudioSilo');
   // A page with no title yet (its data loading) leaves the tab's name, not the last page's.
-  await nav(() => router.push('/loading'));
+  await nav(() => router.push(LOADING));
   expect(title()).toBe('Home · AudioSilo');
   await nav(() => router.back());
   await nav(() => router.back());
@@ -86,7 +95,7 @@ it("names the tab after the focused page, else the tab, and Back restores the la
 
 it('releases the page under a root modal and claims it again on the way back', async () => {
   await (renderRouter(tree, { initialUrl: '/' }) as unknown as Promise<unknown>);
-  await nav(() => router.push('/book'));
+  await nav(() => router.push(BOOK));
   await nav(() => router.push('/finished'));
   expect(title()).toBe('AudioSilo');
   await nav(() => router.back());

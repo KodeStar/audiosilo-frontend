@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 
 /**
@@ -12,10 +12,13 @@ export function leaveOnboarding() {
 }
 
 /** `leaveOnboarding` as a render-time exit, where a screen would otherwise return
- * `<Redirect href="/" />`. */
+ * `<Redirect href="/" />`. Through `useRouter()`: since expo-router 58 the module-level
+ * `router` throws until the router's first commit has bound it, which a mount effect can
+ * run ahead of (a cold link straight into onboarding). */
 export function LeaveOnboarding() {
+  const nav = useRouter();
   useEffect(() => {
-    leaveOnboarding();
-  }, []);
+    nav.dismissTo('/');
+  }, [nav]);
   return null;
 }

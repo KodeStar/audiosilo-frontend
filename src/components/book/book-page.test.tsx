@@ -1,7 +1,7 @@
 import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { type ReactElement, type ReactNode, type Ref, useState } from 'react';
-import { Platform, type ScrollView, type ScrollViewProps } from 'react-native';
+import { Platform, type ScrollViewInstance, type ScrollViewProps } from 'react-native';
 
 import type {
   Book,
@@ -25,11 +25,18 @@ import { mountWithPortal } from '@/testing/render-overlay';
 const mockPush = jest.fn();
 const mockSetParams = jest.fn();
 let mockParams: Record<string, unknown> = { libraryId: '1', path: ['Author', 'Book'] };
-jest.mock('expo-router', () => ({
-  router: { push: (h: unknown) => mockPush(h), setParams: (p: unknown) => mockSetParams(p) },
-  useIsFocused: () => true,
-  useLocalSearchParams: () => mockParams,
-}));
+jest.mock('expo-router', () => {
+  const router = {
+    push: (h: unknown) => mockPush(h),
+    setParams: (p: unknown) => mockSetParams(p),
+  };
+  return {
+    router,
+    useRouter: () => router,
+    useIsFocused: () => true,
+    useLocalSearchParams: () => mockParams,
+  };
+});
 
 let mockBook: Book | undefined;
 let mockBookLoading = false;
@@ -1031,13 +1038,18 @@ describe('book page Bridge (generated characters and recaps)', () => {
   it('scrolls the Characters tab into view from the covered line after the book loads', async () => {
     const RN = jest.requireActual<typeof import('react-native')>('react-native');
     const NativeScrollView = RN.ScrollView;
-    function MountRefScrollView({ ref, ...props }: ScrollViewProps & { ref?: Ref<ScrollView> }) {
+    function MountRefScrollView({
+      ref,
+      ...props
+    }: ScrollViewProps & { ref?: Ref<ScrollViewInstance> }) {
       const [mountRef] = useState(() => ref);
       return <NativeScrollView {...props} ref={mountRef} />;
     }
+    // Jest 30's spyOn takes a getter only on a non-function key, and RN 0.88 types
+    // ScrollView as a function component.
     const scrollView = jest
-      .spyOn(RN, 'ScrollView', 'get')
-      .mockReturnValue(MountRefScrollView as unknown as typeof NativeScrollView);
+      .spyOn(RN as unknown as { ScrollView: object }, 'ScrollView', 'get')
+      .mockReturnValue(MountRefScrollView);
     const scrollTo = jest.mocked(NativeScrollView.prototype.scrollTo);
     const { default: nativeMethods } = jest.requireActual<{
       default: { measureLayout: jest.Mock };

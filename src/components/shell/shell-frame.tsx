@@ -1,5 +1,5 @@
 import { type ReactNode, useRef } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, View, type ViewInstance } from 'react-native';
 
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
 
@@ -29,7 +29,7 @@ export function ShellFrame({
   const wide = layout !== 'phone';
   // Native: the frame's bottom in `measureInWindow` space, which the tab stacks measure
   // the native tab bar against (`frameBottom` in shell-metrics).
-  const root = useRef<View>(null);
+  const root = useRef<ViewInstance>(null);
   const measure = () =>
     root.current?.measureInWindow((_x, y, _w, h) => {
       if (h > 0) setFrameBottom(y + h);

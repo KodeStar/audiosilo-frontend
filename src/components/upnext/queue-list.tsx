@@ -1,7 +1,13 @@
 import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type AccessibilityActionEvent, Platform, Pressable, View } from 'react-native';
+import {
+  type AccessibilityActionEvent,
+  Platform,
+  Pressable,
+  View,
+  type ViewInstance,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -23,6 +29,7 @@ import { formatDuration } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { bookSeriesNumber } from '@/lib/series-position';
+import { webKeyDown } from '@/lib/keyboard';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -186,7 +193,7 @@ function QueueRow({
   // Lifted off the list while dragged: an opaque card with the overlay shadow.
   const [dragging, setDragging] = useState(false);
   const height = useSharedValue(0);
-  const grip = useRef<View>(null);
+  const grip = useRef<ViewInstance>(null);
 
   useEffect(() => {
     if (!focusGrip) return;
@@ -243,22 +250,16 @@ function QueueRow({
     if (e.nativeEvent.actionName === 'moveUp') onMove(index, index - 1, true);
     if (e.nativeEvent.actionName === 'moveDown') onMove(index, index + 1, true);
   };
-  type Key = {
-    key: string;
-    altKey: boolean;
-    preventDefault: () => void;
-    stopPropagation: () => void;
-  };
   const keyHandler = (onGrip: boolean) =>
     web
       ? {
-          onKeyDown: (e: Key) => {
+          onKeyDown: webKeyDown((e) => {
             const to = keyMove(e, onGrip, index, count);
             if (to === null) return;
             e.preventDefault();
             e.stopPropagation();
             onMove(index, to, true);
-          },
+          }),
         }
       : {};
 

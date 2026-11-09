@@ -1,6 +1,13 @@
 import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AppState, Platform, Pressable, ScrollView, View } from 'react-native';
+import {
+  AppState,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  type ScrollViewInstance,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, isSignedOutError } from '@/api/client';
@@ -588,7 +595,7 @@ const TocList = memo(function TocList({
 }) {
   const entries = toc ?? [];
   const current = section ? entries.findIndex((entry) => entry.label === section) : -1;
-  const scroller = useRef<ScrollView>(null);
+  const scroller = useRef<ScrollViewInstance>(null);
   // Once per opening (the sheet mounts the list each time it opens).
   const scrolled = useRef(false);
   return (

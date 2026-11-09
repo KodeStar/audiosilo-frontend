@@ -169,11 +169,11 @@ describe('serverLine', () => {
 describe('derived destination lists', () => {
   it('keys each tab stack setting by bare group name, rooted at the tab root', () => {
     expect(TAB_STACK_SETTINGS).toEqual({
-      home: { initialRouteName: 'index' },
-      library: { initialRouteName: 'library/index' },
-      search: { initialRouteName: 'search' },
-      offline: { initialRouteName: 'downloads' },
-      me: { initialRouteName: 'you' },
+      home: { anchor: 'index' },
+      library: { anchor: 'library/index' },
+      search: { anchor: 'search' },
+      offline: { anchor: 'downloads' },
+      me: { anchor: 'you' },
     });
   });
 

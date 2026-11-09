@@ -13,7 +13,7 @@ describe('afterPaint (web)', () => {
     };
     globalThis.requestIdleCallback = (fn) => idles.push(() => fn({} as IdleDeadline));
     globalThis.cancelIdleCallback = (id) => {
-      idles[id - 1] = () => {};
+      if (id) idles[id - 1] = () => {};
     };
   });
   afterEach(() => {

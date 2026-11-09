@@ -1,6 +1,6 @@
 import { type Ref, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, Pressable, TextInput, View } from 'react-native';
+import { Platform, Pressable, TextInput, View, type TextInputInstance } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS } from '@/components/ui/text';
@@ -23,7 +23,7 @@ export function SearchField({
   value: string;
   onChangeText: (text: string) => void;
   autoFocus?: boolean;
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();

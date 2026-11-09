@@ -1,5 +1,5 @@
 import { type RefObject, useEffect } from 'react';
-import type { View } from 'react-native';
+import type { ViewInstance } from 'react-native';
 
 import { useLatestRef } from '@/lib/use-latest';
 
@@ -10,7 +10,7 @@ import { useLatestRef } from '@/lib/use-latest';
  * undefined.
  */
 export function useContextMenuRequest(
-  ref: RefObject<View | null>,
+  ref: RefObject<ViewInstance | null>,
   onRequest: (() => void) | undefined,
 ): void {
   const latest = useLatestRef(onRequest);

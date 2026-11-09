@@ -137,7 +137,7 @@ async function write(name: string, url: string): Promise<string | null> {
       return null;
     }
     if (dest.exists) dest.delete();
-    part.move(dest);
+    await part.move(dest);
     failures.delete(name);
     return dest.uri;
   } catch (err) {
