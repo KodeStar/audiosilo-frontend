@@ -1660,7 +1660,8 @@ media GETs only.
     a reconnect, the foreground, each closed span; the web `pagehide` sends what waits (up to
     ~60 KB, the closes still queued behind a lock too: a lease's timer never fires on a page
     going) with `keepalive`. A 404/405 that a fresh `/server` confirms is a rollback: one legacy
-    PUT per book (`legacySavesOf`), the outbox dropped, the PUT path from then on.
+    PUT per book (`legacySavesOf`, each guarded: the replay guard below), the outbox dropped,
+    the PUT path from then on.
   - *The ack rule* (`ackVersion` in `progress-sync.ts`, never lowered): a sync answer's row that
     is this device's own after a non-rejected event of the batch for that book (`keptMine`), a
     resume from a server row (version > 0), the reconcile's auto-move, and an answered offer
