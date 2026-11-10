@@ -1794,7 +1794,10 @@ media GETs only.
     the resume floor and the next span begins there as a `resume`, so no `jump` or
     `moved_back` event tells the server the listener chose the place the tab was at. The
     Undo jump chip still offers the way back (it reads the snapshot stream, so a move of
-    more than a minute makes one), and that Undo is the listener's own `seekBook`. A book
+    more than a minute makes one), and that Undo is the listener's own `seekBook`. A seek
+    the engine refuses puts back what `adoptTabPlace` set (`moveToTabPlace`): the play goes
+    on from where the engine is, and a floor left at a place far ahead would refuse its
+    every save and span. A book
     the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,
     as a fresh load of a finished book does (not when this tab is at the end itself).
   - While the note stands the tab **saves nothing of its own** (`behindOtherTab` in

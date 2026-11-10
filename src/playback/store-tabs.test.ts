@@ -836,6 +836,37 @@ describe.each([
       expect(a.engine.svc.seekTo).not.toHaveBeenCalled();
     });
 
+    it('a move the engine refuses leaves the play that follows saved from where it is', async () => {
+      await playedPast(a, b);
+      // Far past A's 30 s (more than the save guard's slip tolerance), and B is paused, so
+      // no answer of B's moves A there after all.
+      b.engine.at(900);
+      await b.player().pause();
+      await until(() => listens().length === 2, "B's span on the server");
+      const key = mirrorKey('c1', 2, long.book.rel_path);
+      expect(mockMirror.records.get(key)?.position).toBe(900);
+      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        a.engine.svc.seekTo.mockRejectedValueOnce(new Error('no seek'));
+        await a.player().toggle();
+        expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
+        await sleep(10);
+        a.engine.at(40);
+        // The floor is not left at the 900 s the engine never reached: the place saves.
+        await a.save();
+        expect(mockMirror.records.get(key)?.position).toBe(40);
+        await a.player().pause();
+        await until(() => listens().length === 3, 'the three spans on the server');
+        expect(heard()).toEqual([
+          [5, 30, 'jump'],
+          [30, 40, 'resume'],
+          [30, 900, 'jump'],
+        ]);
+      } finally {
+        warned.mockRestore();
+      }
+    });
+
     it('takes an earlier place too: the other tab is the latest listening', async () => {
       await playedPast(a, b);
       await b.player().seekBook(12); // the listener went back in B, which plays on

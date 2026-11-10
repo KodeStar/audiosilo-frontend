@@ -1311,18 +1311,31 @@ function adoptTabPlace(np: NowPlaying, place: TabPlace) {
  * Move the loaded book to `place`, where another tab left it (`adoptTabPlace`): the engine
  * seeks there, which the Undo jump chip sees as any jump (`jump-undo.ts`), so the way back
  * is offered. Resolves the place taken, else null; never rejects (a play that waits on it
- * goes on from where the engine is).
+ * goes on from where the engine is: what `adoptTabPlace` set for the place is put back, or a
+ * floor at a place far ahead that the engine never reached would refuse every save and
+ * span of the play that follows, `SLIP_TOLERANCE`).
  */
 async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<TabPlace | null> {
   const { nowPlaying: np, snapshot } = usePlayer.getState();
   if (!np) return null;
+  const before = { resumeFloor, nextStart, unfinishDue };
+  const claim = ownClaim;
+  const claimPos = claim?.pos;
+  adoptTabPlace(np, place);
+  const moves = localMoves;
   try {
-    adoptTabPlace(np, place);
     if (place.index === snapshot.trackIndex) await svc.seekTo(place.positionInTrack);
     else await svc.skipToTrack(place.index, place.positionInTrack);
     return place;
   } catch (e) {
     console.warn('[player] could not take the place another tab left', e);
+    // Not once the listener moved or another book started meanwhile: the floor is theirs.
+    if (localMoves === moves) {
+      resumeFloor = before.resumeFloor;
+      nextStart = before.nextStart;
+      unfinishDue = before.unfinishDue;
+      if (claim && claimPos !== undefined) claim.pos = claimPos;
+    }
     return null;
   }
 }
