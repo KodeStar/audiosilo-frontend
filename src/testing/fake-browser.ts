@@ -106,3 +106,15 @@ export function tabStorage(storage: FakeTab['localStorage']) {
     removeItem: async (key: string) => storage.removeItem(key),
   };
 }
+
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Wait until `done()`, on real timers (the tabs talk in later turns, the outbox through
+ * its locks). */
+export async function until(done: () => boolean | Promise<boolean>, what: string) {
+  for (let i = 0; i < 1000; i++) {
+    if (await done()) return;
+    await sleep(5);
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}

@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { ListeningEvent, ListeningSyncRequest } from '@/api/types';
-import { fakeBrowser, type FakeTab } from '@/testing/fake-browser';
+import { fakeBrowser, type FakeTab, sleep, until } from '@/testing/fake-browser';
 
 // The listening outbox across the tabs of the web player (fe#123, fe#211): each tab is its
 // own copy of the module (`jest.isolateModules`), with its own memory and its own client,
@@ -63,6 +63,17 @@ const applied: Sync = async (body) => ({
   results: body.events.map((e) => ({ id: e.id, status: 'applied' })),
   progress: [],
 });
+/** A request that gets no answer. */
+const lost: Sync = async () => {
+  throw new TypeError('Failed to fetch');
+};
+/** `then`, once the gate `open` is resolved: a request that is out until the test lets it end. */
+const after =
+  (open: { promise: Promise<void> }, then: Sync): Sync =>
+  async (body, opts) => {
+    await open.promise;
+    return then(body, opts);
+  };
 
 type Tab = ReturnType<typeof openTab>;
 
@@ -129,15 +140,6 @@ const listen = (id: string) =>
 // Real timers and real locks between the tabs: room for a loaded CI machine.
 jest.setTimeout(20_000);
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function until(done: () => boolean | Promise<boolean>, what: string) {
-  for (let i = 0; i < 1000; i++) {
-    if (await done()) return;
-    await sleep(5);
-  }
-  throw new Error(`timed out waiting for ${what}`);
-}
-
 /** A promise a test settles by hand. */
 function gate<T = void>() {
   let resolve!: (v: T) => void;
@@ -186,10 +188,7 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
   it("waits for a finish another tab's request carries: answered there, the Undo needs its edit", async () => {
     await a.appendEvents('c1', [finish('f')]);
     const answer = gate();
-    b.sync(async (body) => {
-      await answer.promise;
-      return applied(body);
-    });
+    b.sync(after(answer, applied));
     const flushing = b.flushOutbox('c1');
     await until(() => b.client.syncListening.mock.calls.length === 1, "B's request");
     // Out, for every tab to read.
@@ -215,10 +214,7 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
   it("another tab's request got no answer: taken back, and the server may hold it", async () => {
     await a.appendEvents('c1', [finish('f')]);
     const answer = gate();
-    b.sync(async () => {
-      await answer.promise;
-      throw new TypeError('Failed to fetch');
-    });
+    b.sync(after(answer, lost));
     const flushing = b.flushOutbox('c1');
     await until(() => b.client.syncListening.mock.calls.length === 1, "B's request");
     const withdrawing = a.withdrawFinish('c1', 3, 'Author/Book');
@@ -231,9 +227,7 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
 
   it('a request another tab made earlier with no answer is read from the stored outbox', async () => {
     await a.appendEvents('c1', [finish('f')]);
-    b.sync(async () => {
-      throw new TypeError('Failed to fetch');
-    });
+    b.sync(lost);
     await b.flushOutbox('c1');
     expect(stored()[0]).toMatchObject({ maybeReached: true });
     expect(stored()[0].out).toBeUndefined();
@@ -243,9 +237,7 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
 
   it('with the server down by the Undo no edit can be made: undone here, as in one tab', async () => {
     await a.appendEvents('c1', [finish('f')]);
-    b.sync(async () => {
-      throw new TypeError('Failed to fetch');
-    });
+    b.sync(lost);
     await b.flushOutbox('c1');
     mockReachable = false;
     expect((await a.withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(true);
@@ -296,9 +288,7 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
 
   it("an edit that failed puts the finish back, still marked for the other tabs' Undo", async () => {
     await a.appendEvents('c1', [finish('f')]);
-    b.sync(async () => {
-      throw new TypeError('Failed to fetch');
-    });
+    b.sync(lost);
     await b.flushOutbox('c1');
     a.sync(async () => {
       throw a.refusal(503);
@@ -339,10 +329,7 @@ describe('a page that is going (sendOnPageHide) and an Undo in another tab', () 
     await a.appendEvents('c1', [finish('f')]);
     await b.outboxEvents('c1'); // B has read the outbox
     const answer = gate();
-    b.sync(async (body) => {
-      await answer.promise;
-      return applied(body);
-    });
+    b.sync(after(answer, applied));
     const before = Date.now();
     b.sendOnPageHide([], 'dev-1');
     expect(b.client.syncListening).toHaveBeenCalledWith(expect.anything(), { keepalive: true });
@@ -366,10 +353,7 @@ describe('a page that is going (sendOnPageHide) and an Undo in another tab', () 
     await a.appendEvents('c1', [finish('f1')]);
     await a.appendEvents('c2', [finish('f2')]);
     const answer = gate();
-    a.sync(async (body) => {
-      await answer.promise;
-      return applied(body);
-    });
+    a.sync(after(answer, applied));
     a.sendOnPageHide([], 'dev-1');
     expect(a.sent()).toEqual([['f1'], ['f2']]);
     expect(stored().map((e) => Object.keys(e.out ?? {}).length)).toEqual([1, 1]);

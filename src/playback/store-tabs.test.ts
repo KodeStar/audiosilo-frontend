@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { Book, ChaptersResponse, ListeningEvent, ListeningSyncRequest } from '@/api/types';
-import { fakeBrowser, type FakeTab } from '@/testing/fake-browser';
+import { fakeBrowser, type FakeTab, sleep, until } from '@/testing/fake-browser';
 
 import type { PlaybackService, PlaybackSnapshot } from './types';
 
@@ -219,17 +219,6 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
 
 // Real timers and real locks between the tabs: room for a loaded CI machine.
 jest.setTimeout(20_000);
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** Wait until `done()` (the tabs talk in later turns, the outbox through its locks). */
-async function until(done: () => boolean | Promise<boolean>, what: string) {
-  for (let i = 0; i < 1000; i++) {
-    if (await done()) return;
-    await sleep(5);
-  }
-  throw new Error(`timed out waiting for ${what}`);
-}
 
 const listens = () =>
   mockServer.events.filter((e): e is Extract<ListeningEvent, { kind: 'listen' }> => {

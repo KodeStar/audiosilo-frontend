@@ -281,12 +281,15 @@ async function writeOutbox(next: OutboxEntry[]): Promise<void> {
 export function refreshOutboxFrom(raw: string | null): void {
   if (!outboxRead || outboxUnsaved) return;
   try {
-    outboxCache = raw ? entriesOf(JSON.parse(raw)) : [];
+    outboxCache = parseOutbox(raw);
   } catch {
     return;
   }
   notify();
 }
+
+/** The outbox in a stored value as `localStorage` holds it (throws on a value not JSON). */
+const parseOutbox = (raw: string | null): OutboxEntry[] => (raw ? entriesOf(JSON.parse(raw)) : []);
 
 const win = globalThis as {
   addEventListener?: (
@@ -775,7 +778,7 @@ function gotNoAnswer(e: unknown): boolean {
 /** How long a finish's `out` mark stands (`OutboxEntry.out`): past a request's 15 s
  * timeout and the read of its answer, so a mark that ran out was left by a tab that went
  * away with its request, never by one still waiting. */
-export const OUT_MARK_MS = 45_000;
+const OUT_MARK_MS = 45_000;
 /** How long the mark of a finish sent as the page goes stands (`sendOnPageHide`): the
  * request outlives the page and nobody may see its answer, so an Undo in another tab waits
  * this long for it to land before its edit (which a finish landing later would undo). */
@@ -786,14 +789,19 @@ const OUT_POLL_MS = 200;
 
 const NONE: ReadonlySet<string> = new Set();
 
+/** The `out` marks of `entry` (none: no request carrying it is out, or a stored value that
+ * is not marks). */
+const marksOf = (entry: OutboxEntry): Record<string, number> =>
+  isRecord(entry.out) ? entry.out : {};
+
 /** Whether a request carrying `entry` is out (in any tab) by its stored marks. */
 const isOut = (entry: OutboxEntry, now: number) =>
-  isRecord(entry.out) && Object.values(entry.out).some((until) => until > now);
+  Object.values(marksOf(entry)).some((until) => until > now);
 
 /** `entry` marked as out from this tab until `until` (beside any other tab's mark). */
 const markedOut = (entry: OutboxEntry, until: number): OutboxEntry => ({
   ...entry,
-  out: { ...(isRecord(entry.out) ? entry.out : {}), [tabId]: until },
+  out: { ...marksOf(entry), [tabId]: until },
 });
 
 /**
@@ -829,12 +837,12 @@ function markSettled(ids: string[], lost: string[]): Promise<void> {
     let changed = false;
     const next = queue.map((entry): OutboxEntry => {
       if (!ids.includes(entry.event.id)) return entry;
-      const mine = isRecord(entry.out) && tabId in entry.out;
+      const marks = marksOf(entry);
       const reached = lost.includes(entry.event.id) && !entry.maybeReached;
-      if (!mine && !reached) return entry;
+      if (!(tabId in marks) && !reached) return entry;
       changed = true;
-      const { out, ...unmarked } = entry;
-      const { [tabId]: _mine, ...others } = out ?? {};
+      const { out: _out, ...unmarked } = entry;
+      const { [tabId]: _mine, ...others } = marks;
       return {
         ...unmarked,
         ...(Object.keys(others).length > 0 ? { out: others } : {}),
@@ -959,15 +967,13 @@ export async function withdrawFinish(
       const now = Date.now();
       // Out from this tab (its request's own end is waited for), or by the stored mark
       // from another tab, whose answer shows as a change of the stored outbox.
-      const here = mine.filter((e) => sendingNow.has(e.event.id));
-      const elsewhere = mine.filter((e) => !sendingNow.has(e.event.id) && isOut(e, now));
-      if (here.length + elsewhere.length > 0) {
-        for (const e of [...here, ...elsewhere]) waitedFor.add(e.event.id);
+      const out = mine.filter((e) => sendingNow.has(e.event.id) || isOut(e, now));
+      if (out.length > 0) {
+        for (const e of out) waitedFor.add(e.event.id);
+        const here = out.find((e) => sendingNow.has(e.event.id));
         // Boxed: a promise returned as is would hold the lock until it settles (its answer
         // needs the lock).
-        return {
-          out: here.length > 0 ? sendingNow.get(here[0].event.id) : outboxChanged(OUT_POLL_MS),
-        };
+        return { out: here ? sendingNow.get(here.event.id) : outboxChanged(OUT_POLL_MS) };
       }
       for (const e of mine) withdrawn.add(e.event.id);
       taken.push(...mine);
@@ -978,9 +984,9 @@ export async function withdrawFinish(
     await wait.out;
   }
   const answered = [...waitedFor].some((id) => !taken.some((e) => e.event.id === id));
-  const held = taken.filter((e) => serverMayHold(connectionId, e));
+  const held = taken.some((e) => serverMayHold(connectionId, e));
   return {
-    unsent: taken.length > 0 && !answered && held.length === 0,
+    unsent: taken.length > 0 && !answered && !held,
     restore: async () => {
       if (taken.length === 0) return;
       for (const e of taken) withdrawn.delete(e.event.id);
@@ -1365,9 +1371,11 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
   if (!sessionReady()) return;
   const byConnection = new Map<string, OutboxEntry[]>();
   const seen = new Set<string>();
-  const stored = storedOutboxNow();
+  const waiting = [...(outboxCache ?? []), ...queuedCloses.values(), ...extra];
+  // Read for a finish only: nothing else is checked against it or marked in it.
+  const stored = waiting.some((e) => e.event.kind === 'finish') ? storedOutboxNow() : null;
   const storedIds = stored && new Set(stored.entries.map((e) => e.event.id));
-  for (const entry of [...(outboxCache ?? []), ...queuedCloses.values(), ...extra]) {
+  for (const entry of waiting) {
     if (seen.has(entry.event.id)) continue;
     // A finish another tab took back a moment ago (its Undo), before this tab's copy heard.
     if (entry.event.kind === 'finish' && storedIds && !storedIds.has(entry.event.id)) continue;
@@ -1413,8 +1421,7 @@ function storedOutboxNow(): StoredNow | null {
   try {
     const storage = (globalThis as { localStorage?: Storage }).localStorage;
     if (!storage) return null;
-    const raw = storage.getItem(OUTBOX_KEY);
-    return { storage, entries: raw ? entriesOf(JSON.parse(raw)) : [] };
+    return { storage, entries: parseOutbox(storage.getItem(OUTBOX_KEY)) };
   } catch {
     return null;
   }
