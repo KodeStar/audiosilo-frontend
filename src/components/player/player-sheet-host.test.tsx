@@ -45,7 +45,7 @@ jest.mock('./companion/companion', () => {
   const { Text: T } = jest.requireActual('react-native');
   return { Companion: () => <T>companion</T> };
 });
-jest.mock('./grace-card', () => ({ GraceCard: () => null }));
+jest.mock('./grace-card', () => ({ GraceCard: () => null, useGraceCardOpen: () => false }));
 jest.mock('@/components/annotations/annotation-editor', () => {
   const { Text: T } = jest.requireActual('react-native');
   return {

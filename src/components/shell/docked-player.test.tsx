@@ -363,7 +363,6 @@ describe('DockedPlayer', () => {
   ])(
     'at %i with a running sleep timer the actions keep clear of the transport',
     async (width, all, centre) => {
-      mockLayout = 'desktop';
       useSleepTimer.setState({
         phase: 'running',
         remaining: 3900,

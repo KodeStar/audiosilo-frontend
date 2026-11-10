@@ -36,6 +36,7 @@ beforeEach(() => {
   seekBook.mockClear();
   (toast as jest.Mock).mockClear();
   useJumpUndo.setState({ jump: null });
+  useSleepTimer.setState({ phase: 'idle', remaining: null });
 });
 afterEach(() => {
   jest.useRealTimers();
