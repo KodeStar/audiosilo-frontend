@@ -23,6 +23,7 @@ import {
   saveProgress,
   writeMirror,
 } from '@/playback/progress-sync';
+import { provideStoredSkews } from '@/playback/stored-skews';
 
 // babel-jest hoists jest.mock above the imports, so the module under test sees the
 // mock at import time (it gates every save on isReachable(cid) and notes success/failure
@@ -744,6 +745,12 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
 
   // fe#208: the echo is stamped in server time, the capture in this device's time.
   describe("a device whose clock is behind the server's", () => {
+    // The stored skews come from the outbox, their one reader (fe#211): a stand-in here.
+    let stored: Record<string, number> = {};
+    beforeAll(() => provideStoredSkews(async () => stored));
+    beforeEach(() => {
+      stored = {};
+    });
     afterEach(() => noteClockSkew('c1', 0));
     // 20 s slow: the server stamps its echo of the 00:00:00 capture 00:00:22.
     const echo = makeProgress({
@@ -757,10 +764,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).not.toHaveProperty(
         'file',
       );
-      await AsyncStorage.setItem(
-        'audiosilo.listeningSync',
-        JSON.stringify({ c1: { clockSkewMs: 20_000 } }),
-      );
+      stored = { c1: 20_000 };
       expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).toMatchObject({
         file: { path: 'A/Book/02.mp3', pos: 600 },
       });
@@ -790,10 +794,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       const cid = 'c-cold';
       const mine = { ...filed, connectionId: cid };
       await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ [`${cid}:1:A/Book`]: mine }));
-      await AsyncStorage.setItem(
-        'audiosilo.listeningSync',
-        JSON.stringify({ [cid]: { clockSkewMs: 20_000 } }),
-      );
+      stored = { [cid]: 20_000 };
       const r = await loadInitialProgress(
         fakeGetApi(async () => echo),
         cid,

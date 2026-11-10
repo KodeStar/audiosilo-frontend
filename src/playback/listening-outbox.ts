@@ -36,6 +36,7 @@ import {
   saveProgress,
 } from './progress-sync';
 import { wallClockSeconds } from './rate';
+import { provideStoredSkews } from './stored-skews';
 
 export type { OpenSpan, SpanEnd } from './open-span-doc';
 
@@ -557,6 +558,20 @@ function updateState(
     notify();
   });
 }
+
+/** Each connection's stored clock skew (`clockSkewMs`), read under the state's lock: the
+ * one reader of it, which `progress-sync` asks for its merges (`stored-skews.ts`, fe#211). */
+function storedClockSkews(): Promise<Record<string, number>> {
+  return withStateLock(async () => {
+    const out: Record<string, number> = {};
+    for (const [cid, state] of Object.entries(await readState())) {
+      const skew = isRecord(state) ? state.clockSkewMs : undefined;
+      if (typeof skew === 'number' && Number.isFinite(skew)) out[cid] = skew;
+    }
+    return out;
+  });
+}
+provideStoredSkews(storedClockSkews);
 
 /** A connection's last sync and couldn't-sync list (entries past 30 days left out). */
 export async function syncStateOf(

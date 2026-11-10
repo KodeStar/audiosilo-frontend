@@ -7,10 +7,8 @@ import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 import {
-  isRecord,
   LISTENING_OPEN_SPAN_KEY,
   LISTENING_OUTBOX_KEY,
-  LISTENING_SYNC_KEY,
   PROGRESS_MIRROR_KEY as MIRROR_KEY,
   PROGRESS_QUEUE_KEY as QUEUE_KEY,
 } from '@/lib/storage-keys';
@@ -18,6 +16,7 @@ import { onConnectionRemoved } from '@/stores/session';
 
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
+import { hasStoredSkews, readStoredSkews } from './stored-skews';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
@@ -131,8 +130,7 @@ async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; spans: O
 }
 
 /** Each connection's server clock ahead of this device's (ms), as last measured by a sync
- * answer (`noteClockSkew`) or read from the stored sync state (`readLocalPlaces`,
- * `knownSkew`). */
+ * answer (`noteClockSkew`) or read from its stored copy (`readLocalPlaces`, `knownSkew`). */
 const clockSkews = new Map<string, number>();
 
 /** A sync answer measured how far ahead of this device's clock `connectionId`'s server is. */
@@ -144,28 +142,25 @@ export function noteClockSkew(connectionId: string, skewMs: number): void {
 const skewLooked = new Set<string>();
 
 /** `connectionId`'s server clock skew for a merge (ms): this launch's measurement, else the
- * stored sync state's (read once per connection a launch, so the first merge of a launch,
- * before any sync answer, has it too), else 0. */
+ * stored one (read once per connection a launch, so the first merge of a launch, before any
+ * sync answer, has it too), else 0. */
 async function knownSkew(connectionId: string): Promise<number> {
-  if (!clockSkews.has(connectionId) && !skewLooked.has(connectionId)) {
+  if (!clockSkews.has(connectionId) && hasStoredSkews() && !skewLooked.has(connectionId)) {
     skewLooked.add(connectionId);
     await readClockSkews().catch(() => undefined);
   }
   return clockSkews.get(connectionId) ?? 0;
 }
 
-/** Every connection's known server clock skew: the stored sync state's, this launch's
- * measurements over it. */
+/** Every connection's known server clock skew: the stored ones (through the outbox, their
+ * one reader: `stored-skews.ts`, fe#211), this launch's measurements over them. */
 async function readClockSkews(): Promise<Record<string, number>> {
-  const raw = await getItem<unknown>(LISTENING_SYNC_KEY);
+  const stored = await readStoredSkews().catch(() => ({}) as Record<string, number>);
   const out: Record<string, number> = {};
-  if (isRecord(raw)) {
-    for (const [cid, state] of Object.entries(raw)) {
-      const skew = isRecord(state) ? state.clockSkewMs : undefined;
-      if (typeof skew === 'number' && Number.isFinite(skew)) {
-        out[cid] = skew;
-        if (!clockSkews.has(cid)) clockSkews.set(cid, skew);
-      }
+  for (const [cid, skew] of Object.entries(stored)) {
+    if (typeof skew === 'number' && Number.isFinite(skew)) {
+      out[cid] = skew;
+      if (!clockSkews.has(cid)) clockSkews.set(cid, skew);
     }
   }
   for (const [cid, skew] of clockSkews) out[cid] = skew;

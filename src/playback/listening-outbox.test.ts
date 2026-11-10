@@ -86,7 +86,13 @@ import {
   usesListeningSync,
   watchListeningFlags,
 } from './listening-outbox';
-import { ackVersion, getDeviceId, pendingSaves, readMirror } from './progress-sync';
+import {
+  ackVersion,
+  getDeviceId,
+  pendingSaves,
+  readLocalPlaces,
+  readMirror,
+} from './progress-sync';
 /* eslint-enable import/first */
 
 const OUTBOX = 'audiosilo.listeningOutbox';
@@ -947,6 +953,15 @@ describe('the server clock', () => {
     };
     expect(stored.c1.clockSkewMs).toBeGreaterThan(29_000);
     expect(stored.c1.clockSkewMs).toBeLessThan(31_000);
+  });
+});
+
+describe('the stored clock skew has one reader (fe#211)', () => {
+  it("is the outbox's: progress-sync's merges read the sync state through it", async () => {
+    await AsyncStorage.setItem(SYNC, JSON.stringify({ c9: { clockSkewMs: 12_345 }, c8: {} }));
+    const { skews } = await readLocalPlaces();
+    expect(skews?.c9).toBe(12_345);
+    expect(skews).not.toHaveProperty('c8');
   });
 });
 
