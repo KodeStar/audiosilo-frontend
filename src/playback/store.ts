@@ -856,18 +856,42 @@ function moveListeningSpan(
   nextStart = reason;
 }
 
+/**
+ * Close `closing` (when any) into the outbox, then put the book's `finish` (at `at`) after
+ * it, then send: the outbox's order is the order a sync sends, so a book's last span always
+ * goes before its finish, and in the same batch when nothing else is being sent (server#359:
+ * a 12 s book's finish went first, in a batch of its own, found no session to mark finished,
+ * and the span then opened one that stayed unfinished). Resolves once the finish waits in
+ * the outbox (not sent).
+ */
+async function finishAfter(closing: OpenSpan | null, ref: ContentRef, at: string): Promise<void> {
+  try {
+    if (closing) await closeSpan(closing);
+  } catch {
+    // Its event could not be stored: the finish still goes.
+  }
+  try {
+    const base = await baseVersionOf(ref);
+    await appendEvents(ref.connectionId, [finishEvent('finish', ref, at, base)]);
+  } finally {
+    if (closing && closing.connectionId !== ref.connectionId) {
+      void flushOutbox(closing.connectionId);
+    }
+    void flushOutbox(ref.connectionId);
+  }
+}
+
 /** The book's last span closed, then its `finish` (the natural end, "Mark finished"):
- * once between them. */
+ * once between them, and in that order (`finishAfter`). */
 function sendFinish(np: NowPlaying) {
-  closeListeningSpan();
-  if (!usesListeningSync(np.connectionId)) return;
   const key = contentKeyOf(np);
-  if (finishSent === key) return;
+  if (!usesListeningSync(np.connectionId) || finishSent === key) {
+    closeListeningSpan();
+    return;
+  }
   finishSent = key;
-  const now = new Date().toISOString();
-  void baseVersionOf(np).then((base) =>
-    emit(np.connectionId, [finishEvent('finish', np, now, base)]),
-  );
+  const closing = takeSpan();
+  void finishAfter(closing, np, new Date().toISOString()).catch(() => undefined);
 }
 
 /**

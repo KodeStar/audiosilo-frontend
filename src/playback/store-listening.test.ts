@@ -121,6 +121,7 @@ import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
+import { appendEvents, closeSpan } from './listening-outbox';
 import { flushHistoryOnHide, standByPlace, usePlayer } from './store';
 /* eslint-enable import/first */
 
@@ -349,6 +350,55 @@ describe('with listening_sync', () => {
     await settle();
     expect(mockClosed).toHaveLength(1);
     expect(mockAppended.filter((e) => e.kind === 'finish')).toHaveLength(1);
+  });
+
+  // server#359: a 12 s book's finish was sent before its only span, in a batch of its own.
+  it('a short book ends: its span goes into the outbox before the finish, then one send', async () => {
+    const order: string[] = [];
+    (closeSpan as jest.Mock).mockImplementationOnce(async (closing: OpenSpan) => {
+      await settle(6); // the close waits its turn (the open-span lock, the base read)
+      mockClosed.push(structuredClone(closing));
+      order.push('listen');
+    });
+    (appendEvents as jest.Mock).mockImplementationOnce(
+      async (_cid: string, events: ListeningEvent[]) => {
+        mockAppended.push(...events);
+        order.push(...events.map((e) => e.kind));
+      },
+    );
+    mockFlushOutbox.mockImplementation(async () => {
+      order.push('flush');
+    });
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 0));
+      await settle();
+      jest.advanceTimersByTime(12_000);
+      pushSnapshot(snap('ended', 1, 50));
+      await settle(20);
+      expect(order).toEqual(['listen', 'finish', 'flush']);
+      expect(mockAppended).toEqual([
+        expect.objectContaining({ kind: 'finish', library_id: 2, path: folder, base_version: 41 }),
+      ]);
+      // The finish is dated at or after the span's end.
+      const finish = mockAppended[0] as { at: string };
+      expect(Date.parse(finish.at)).toBeGreaterThanOrEqual(Date.parse(mockClosed[0].endedAt));
+    } finally {
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
+  });
+
+  it('a finish still goes when its span could not be stored', async () => {
+    (closeSpan as jest.Mock).mockImplementationOnce(async () => {
+      throw new Error('storage full');
+    });
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('ended', 1, 50));
+    await settle(12);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
   });
 
   it('after Stay, the next span begins as a jump', async () => {
