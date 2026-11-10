@@ -467,6 +467,33 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
     states.length = 0;
   }
 
+  it('a pause made while a downloaded copy buffers for the swap stands once it swaps in', async () => {
+    jest.useFakeTimers();
+    try {
+      await startPlaying(0);
+      const streaming = el();
+      const local: PlaybackTrack[] = directTracks.map((t, i) => ({
+        ...t,
+        url: `https://s/local/${i}.mp3`,
+      }));
+      const swap = svc.swapTo!(local, 0, 0);
+      const pending = el();
+      expect(pending).not.toBe(streaming);
+      // Paused while the copy buffers (the listener, or another tab began playing).
+      await svc.pause();
+      expect(svc.getSnapshot().state).toBe('paused');
+      pending.emit('loadedmetadata');
+      pending.readyState = 4;
+      pending.emit('canplay');
+      expect(await swap).toBe(true);
+      expect(pending.plays).toBe(0);
+      expect(svc.getSnapshot().state).toBe('paused');
+      expect(states).not.toContain('playing');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('moves on at the natural end of a file without ever reporting a pause', async () => {
     await startPlaying(0);
     const a = el();

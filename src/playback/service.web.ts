@@ -557,8 +557,6 @@ class WebPlaybackService implements PlaybackService {
       return false;
     }
 
-    const wasPlaying = this.intendsToPlay();
-
     // Buffer the new (local) source on a separate element while the current one
     // keeps playing, then switch - so there's no silent gap while it loads/seeks.
     // (A local copy is never transcoded, so `source` is the plain url at offset 0;
@@ -607,6 +605,11 @@ class WebPlaybackService implements PlaybackService {
       this.discard(pending);
       return false;
     }
+
+    // Read now, not before the wait: a pause made while the local source buffered stands
+    // (the listener's, or this tab giving way to another tab's play: the swapped-in element
+    // playing regardless would take the connection back, `playing-claim.ts`).
+    const wasPlaying = this.intendsToPlay();
 
     // Switch. The active() guard makes the old element's teardown events no-ops.
     const old = this.audio;

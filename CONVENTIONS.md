@@ -1487,7 +1487,9 @@ media GETs only.
   to the same file (by path-keyed track id) when it has it, else to the same whole-book place,
   the resume floor moving with it; while that moves the track index, `persist` and
   `onRemoteMove` refuse a place at another index of that book (`swapHold`) until the download's
-  queue is committed, which on a load is before the rate and the play.
+  queue is committed, which on a load is before the rate and the play. The web engine's
+  `swapTo` reads its own intent after the copy has buffered (up to 8 s), not before: a pause
+  made meanwhile stands (the listener's, or the tab giving way to another tab's play).
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /
