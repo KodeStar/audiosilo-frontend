@@ -14,6 +14,8 @@ import { selectBookKey, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { useGraceCardOpen } from './grace-card';
+
 /** Take the listener back and say so (the chip's press). Returns whether there was
  * anything to undo. */
 export function undoJumpWithToast(t: (key: 'player.undo.restored') => string): boolean {
@@ -23,11 +25,19 @@ export function undoJumpWithToast(t: (key: 'player.undo.restored') => string): b
   return true;
 }
 
-/** Whether the Undo chip shows (a jump in the PLAYING book can still be undone): for a
- * surface that makes room for it. */
-export function useUndoVisible(): boolean {
+/** The jump the chip offers to undo: one in the PLAYING book, and none while the sleep
+ * timer's grace card is open (the chip gives way to it everywhere, so the card never moves
+ * when the chip goes). */
+function useChipJump() {
   const bookKey = usePlayer(selectBookKey);
-  return useJumpUndo(selectUndoFor(bookKey)) !== null;
+  const jump = useJumpUndo(selectUndoFor(bookKey));
+  const graceOpen = useGraceCardOpen();
+  return graceOpen ? null : jump;
+}
+
+/** Whether the Undo chip shows: for a surface that makes room for it. */
+export function useUndoVisible(): boolean {
+  return useChipJump() !== null;
 }
 
 /** The chip's height (a surface that reserves a band for it reads it here). */
@@ -37,15 +47,15 @@ export const UNDO_CHIP_HEIGHT = 34;
  * The Undo jump chip (STYLEGUIDE section 8): an ink pill, the undo glyph, "Back to
  * 17:26:50" (where the listener was in the book) and a ring that empties over its
  * 10 seconds. Appears after any jump of more than a minute in the PLAYING book
- * (`src/playback/jump-undo.ts` detects them) and renders nothing otherwise, so a surface
+ * (`src/playback/jump-undo.ts` detects them) and renders nothing otherwise (nor while the
+ * sleep timer's grace card is open), so a surface
  * can always mount it where the chip belongs (the full player's status line, above the
  * dock). A press goes back and toasts "Back where you were".
  */
 export function UndoChip() {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const bookKey = usePlayer(selectBookKey);
-  const jump = useJumpUndo(selectUndoFor(bookKey));
+  const jump = useChipJump();
   if (!jump) return null;
 
   const label = t('player.undo.label', { time: formatClock(jump.from) });

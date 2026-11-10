@@ -8,7 +8,6 @@ import { CastButton } from '@/cast/cast-button';
 import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
 import { ControlPill, slopTo44 } from '@/components/player/control-pill';
-import { useGraceCardOpen } from '@/components/player/grace-card';
 import { useMiniHeading } from '@/components/player/mini-player';
 import { usePlaceSync } from '@/components/player/place-sync';
 import { usePlayerOnTop, usePlayerSheets } from '@/components/player/player-sheets';
@@ -210,10 +209,9 @@ export function DockedPlayer() {
   const isPlaying = usePlayer(selectIsPlaying);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
-  // The sleep timer's grace card floats above the bar too: while it is open the chip
-  // gives way (as in the full player), so the card never moves when the chip goes.
-  const graceOpen = useGraceCardOpen();
-  const undo = useUndoVisible() && !graceOpen;
+  // False while the sleep timer's grace card is open: the chip gives way to it, and its
+  // band with it, so the card never moves when the chip goes.
+  const undo = useUndoVisible();
   const onTop = usePlayerOnTop();
   // The playing book's bookmarks, once for the bar.
   const pins = usePlayingPins();
@@ -280,7 +278,7 @@ export function DockedPlayer() {
           style={{ bottom: '100%', marginBottom: CHIP_GAP, zIndex: 20 }}
           className="absolute left-0 right-0 items-center"
         >
-          {undo ? <UndoChip /> : null}
+          <UndoChip />
         </View>
         <View
           testID="dock-row"

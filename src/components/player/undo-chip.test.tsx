@@ -12,6 +12,7 @@ jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 /* eslint-disable import/first */
 import { toast } from '@/components/ui/toast';
 import { UNDO_WINDOW_MS, useJumpUndo } from '@/playback/jump-undo';
+import { useSleepTimer } from '@/playback/sleep-timer';
 import { playerStoreMock } from '@/testing/player-store-mock';
 
 import { UndoChip } from './undo-chip';
@@ -55,6 +56,15 @@ describe('UndoChip', () => {
     offer(62_810, 'srv:1:a/other');
     await render(<UndoChip />);
     expect(screen.toJSON()).toBeNull();
+  });
+
+  it('gives way to the sleep grace card, and comes back when it closes', async () => {
+    offer(62_810);
+    useSleepTimer.setState({ phase: 'grace', remaining: 20 });
+    await render(<UndoChip />);
+    expect(screen.toJSON()).toBeNull();
+    await act(async () => useSleepTimer.setState({ phase: 'idle', remaining: null }));
+    expect(screen.getByRole('button', { name: 'Back to 17:26:50' })).toBeTruthy();
   });
 
   it('offers to go back to where the listener was, by the book clock', async () => {
