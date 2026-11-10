@@ -7,6 +7,8 @@
  * The store registers itself here as it loads (`setFinishRecorder`): the API hooks and the
  * book page can't import the store (it imports them). Nothing registered: the PUT path.
  */
+import type { ProgressSave } from './progress-sync';
+
 export type FinishRef = {
   connectionId: string;
   libraryId: number;
@@ -16,6 +18,22 @@ export type FinishRef = {
   duration: number;
   playback_speed?: number;
 };
+
+/** The save that records `ref` finished at its end, by `deviceId` at `at`: the PUT path's
+ * body and the event path's mirror record alike. */
+export function finishedSave(ref: FinishRef, deviceId: string, at: string): ProgressSave {
+  return {
+    connectionId: ref.connectionId,
+    libraryId: ref.libraryId,
+    path: ref.path,
+    position: ref.position,
+    duration: ref.duration,
+    finished: true,
+    playback_speed: ref.playback_speed && ref.playback_speed > 0 ? ref.playback_speed : 1,
+    device_id: deviceId,
+    updated_at: at,
+  };
+}
 
 type FinishRecorder = {
   /** Whether `connectionId`'s server takes the finish as an event. */

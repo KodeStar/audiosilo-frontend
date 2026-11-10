@@ -127,6 +127,7 @@ jest.mock('@/playback/progress-sync', () => ({
 let mockTakesEvent = false;
 const mockRecordFinish = jest.fn(async (..._a: unknown[]) => mockTakesEvent);
 jest.mock('@/playback/finish-route', () => ({
+  ...jest.requireActual('@/playback/finish-route'),
   recordFinishEvent: (...a: unknown[]) => mockRecordFinish(...a),
 }));
 

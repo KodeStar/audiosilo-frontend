@@ -55,7 +55,7 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { isKeptOffline } from '@/downloads/kept-offline';
-import { recordFinishEvent } from '@/playback/finish-route';
+import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
   getDeviceId,
   mirroredProgress,
@@ -1458,17 +1458,7 @@ export function useMarkFinished(connectionId?: string) {
     }) => {
       const ref = { connectionId: cid, ...p };
       if (await recordFinishEvent(ref)) return;
-      await saveProgress(api, {
-        connectionId: cid,
-        libraryId: p.libraryId,
-        path: p.path,
-        position: p.position,
-        duration: p.duration,
-        finished: true,
-        playback_speed: p.playback_speed && p.playback_speed > 0 ? p.playback_speed : 1,
-        device_id: await getDeviceId(),
-        updated_at: new Date().toISOString(),
-      });
+      await saveProgress(api, finishedSave(ref, await getDeviceId(), new Date().toISOString()));
     },
     onSuccess: (_data, p) => {
       qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
