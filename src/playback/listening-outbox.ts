@@ -1105,10 +1105,14 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
   void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
-  for (const save of legacySavesOf(connectionId, mine, deviceId)) {
-    await saveProgress(client, { ...(await withFinishedPlace(save)), guard: true });
-  }
-  await removeEvents(new Set(mine.map((e) => e.event.id)));
+  // Out as a send (`sending`): an Undo's withdrawal waits for these PUTs, or took its
+  // finish back first (fe#208).
+  await sending(mine, async (live) => {
+    for (const save of legacySavesOf(connectionId, live, deviceId)) {
+      await saveProgress(client, { ...(await withFinishedPlace(save)), guard: true });
+    }
+    await removeEvents(new Set(live.map((e) => e.event.id)));
+  });
 }
 
 // --- The web page going ------------------------------------------------------------------

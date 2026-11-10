@@ -588,6 +588,28 @@ describe('flushOutbox', () => {
       expect(await outboxEvents('c1')).toEqual([]);
     });
 
+    it("a rollback's PUT of the finish is waited for too", async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async () => {
+        throw new ApiError(404, 'not found');
+      });
+      c.saveProgress.mockImplementation(async () => {
+        await gate;
+        return {};
+      });
+      const flushing = flushOutbox('c1');
+      while (c.saveProgress.mock.calls.length === 0) await tick();
+      let done = false;
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then(() => (done = true));
+      await tick();
+      expect(done).toBe(false);
+      release();
+      await Promise.all([flushing, withdrawing]);
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
     it('a finish whose send got no answer is taken back after it, never sent again', async () => {
       await appendEvents('c1', [finish('f')]);
       let fail: (e: Error) => void = () => {};
