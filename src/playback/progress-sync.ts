@@ -166,13 +166,11 @@ async function knownSkew(connectionId: string): Promise<number> {
 /** Every connection's known server clock skew: the stored ones (through the outbox, their
  * one reader: `stored-skews.ts`, fe#211), this launch's measurements over them. */
 async function readClockSkews(): Promise<Record<string, number>> {
-  const stored = await readStoredSkews().catch(() => ({}) as Record<string, number>);
+  const stored = await readStoredSkews().catch((): Record<string, number> => ({}));
   const out: Record<string, number> = {};
   for (const [cid, skew] of Object.entries(stored)) {
-    if (typeof skew === 'number' && Number.isFinite(skew)) {
-      out[cid] = skew;
-      if (!clockSkews.has(cid)) clockSkews.set(cid, skew);
-    }
+    out[cid] = skew;
+    if (!clockSkews.has(cid)) clockSkews.set(cid, skew);
   }
   for (const [cid, skew] of clockSkews) out[cid] = skew;
   return out;
