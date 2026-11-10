@@ -944,10 +944,12 @@ function sendFinish(np: NowPlaying) {
  * the book finished at its end, so offline it reads finished and Play starts it again.
  */
 async function recordFinish(ref: FinishRef): Promise<void> {
-  const at = new Date().toISOString();
   const np = usePlayer.getState().nowPlaying;
   const loaded = !!np && sameBook(np, ref);
   const closing = span && sameBook(span, ref) ? takeSpan() : null;
+  // Dated after the span's end (`takeSpan` stamps it), as `sendFinish` does: the server
+  // applies a batch in time order, and a finish dated before its book's last span went first.
+  const at = new Date().toISOString();
   if (loaded) finishSent = contentKeyOf(ref);
   // The book page gives no speed: the book's own stays in the mirror (an offline Listen
   // again reads it), never 1x.

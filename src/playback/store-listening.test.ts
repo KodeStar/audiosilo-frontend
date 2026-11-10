@@ -663,6 +663,28 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
   });
 
+  // The server applies a batch in time order (request order only breaks ties): a finish
+  // dated before its book's last span was applied first, as server#359's was.
+  it("the finish is dated no earlier than the loaded book's last span", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    // A clock that ticks between any two readings.
+    let n = 0;
+    const iso = jest
+      .spyOn(Date.prototype, 'toISOString')
+      .mockImplementation(() => `2026-10-25T08:00:00.${String(n++).padStart(3, '0')}Z`);
+    try {
+      await recordFinishEvent(ref);
+    } finally {
+      iso.mockRestore();
+    }
+    const finish = mockAppended.find((e) => e.kind === 'finish') as { at: string };
+    expect(mockClosed).toHaveLength(1);
+    expect(finish.at >= (mockClosed[0].endedAt ?? '')).toBe(true);
+  });
+
   // An offline Mark as finished then Undo: the PATCH would fail, and the finish put back
   // went out on reconnect and finished the book after all.
   it('Undo of a finish that never left: the mirror goes back to before it, no edit', async () => {
