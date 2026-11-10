@@ -1622,10 +1622,10 @@ media GETs only.
     `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
     (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
-    twice it is one event. The keep, a save and the 15 s cut never move the span's end back
-    (`aheadOf`: a native lock-screen move's landed place reaches the store before the move,
-    which ends the span at its last place, fe#211); a pause or stop closes where the engine
-    is. The end's `finish` goes into the outbox only after the last span's close has landed
+    twice it is one event. The keep never moves the span's end back (a native lock-screen
+    move's landed place reaches the store before the move, which ends the span at its last
+    place); a save and the 15 s cut take where the engine is (applying that rule there froze
+    the span after a seek back or a hot-swap to another file order, fe#211). The end's `finish` goes into the outbox only after the last span's close has landed
     there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
     no session to mark). The book page's Mark as finished is a `finish` event too on such a
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
