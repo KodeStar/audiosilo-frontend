@@ -75,10 +75,11 @@ export async function undoFinish(
   ref: Pick<FinishRef, 'connectionId' | 'libraryId' | 'path'>,
   edit: () => Promise<boolean>,
 ): Promise<boolean> {
+  // A withdrawal that failed still lets the Undo's edit through (nothing was taken back).
   const restore = recorder
-    ? await recorder.withdraw(ref.connectionId, ref.libraryId, ref.path)
+    ? await recorder.withdraw(ref.connectionId, ref.libraryId, ref.path).catch(() => async () => {})
     : async () => {};
   const ok = await edit();
-  if (!ok) await restore();
+  if (!ok) await restore().catch(() => undefined);
   return ok;
 }

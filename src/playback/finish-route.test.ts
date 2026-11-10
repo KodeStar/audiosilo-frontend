@@ -41,6 +41,19 @@ describe('undoFinish', () => {
     expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'restore']);
   });
 
+  it('a withdrawal that failed still edits', async () => {
+    setFinishRecorder({
+      takesEvent: () => true,
+      record: async () => {},
+      withdraw: async () => {
+        throw new Error('storage');
+      },
+    });
+    const edit = jest.fn(async () => true);
+    await expect(undoFinish(ref, edit)).resolves.toBe(true);
+    expect(edit).toHaveBeenCalledTimes(1);
+  });
+
   it('nothing registered: the edit alone', async () => {
     setFinishRecorder(null);
     const edit = jest.fn(async () => true);
