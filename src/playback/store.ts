@@ -504,9 +504,13 @@ async function persist(opts?: { forceFinished?: boolean }) {
   if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
 }
 
-/** Save the loaded book's place now (the listener answered Stay to a place its server held
- * a save back for: the replay guard then lets it through). */
+/** Save the loaded book's place now: the listener answered Stay to a place its server held
+ * a save back for. That is their choice of this device's place, so the session's guard is
+ * lifted, not asked again: the other device may have saved since the offer was made (it is
+ * still playing), and its new row, not the one answered, would hold this save and every
+ * later one with no further offer. */
 export function saveLoadedPlace(): void {
+  placeGuard = null;
   void persist();
 }
 

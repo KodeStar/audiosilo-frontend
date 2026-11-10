@@ -132,7 +132,7 @@ import type { DownloadEntry } from '@/downloads/types';
 
 import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
-import { flushHistoryOnHide, standByPlace, usePlayer } from './store';
+import { flushHistoryOnHide, saveLoadedPlace, standByPlace, usePlayer } from './store';
 /* eslint-enable import/first */
 
 // A two-file folder book; the server now plays "2.mp3" before "10.mp3" (natural order).
@@ -318,6 +318,29 @@ describe('the replay guard on the PUT path', () => {
     await start();
     await playedTwoSaves('held');
     expect(guards()).toEqual([true, true]);
+  });
+
+  // The other device was still playing: its row had moved on from the one the offer named,
+  // so the Stay's own save was held again, and each save after it, with no new offer.
+  it("Stay on a held save's offer lifts the guard, whatever the other device saved since", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    mockSaveProgress.mockResolvedValueOnce('held' as never);
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards()).toEqual([true]);
+    saveLoadedPlace();
+    await settle();
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards()).toEqual([true, false, false]);
   });
 
   it('a downloaded book that could not ask its server (started at 0) is guarded too', async () => {

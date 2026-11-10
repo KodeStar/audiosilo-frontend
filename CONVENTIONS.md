@@ -1589,8 +1589,9 @@ media GETs only.
   (`answered` holds its `device_id|updated_at`), holds it (`guardHolds`). A held save is not
   sent and leaves the queue (the mirror keeps it; `guard` is never kept in the mirror), and
   `onHeldSave` tells the place reconcile, which offers that place for the loaded book with the
-  same Jump/Stay toast (`offerLoadedPlace(..., { held: true })`: Stay answers and saves at
-  once, `saveLoadedPlace`; a timeout answers nothing). Sync v2 needs none of it: the server
+  same Jump/Stay toast (`offerLoadedPlace(..., { held: true })`: Stay answers, lifts the
+  session's guard and saves at once, `saveLoadedPlace`, so a row the other device has saved
+  again since cannot hold it; a timeout answers nothing). Sync v2 needs none of it: the server
   resolves each span on its `base_version`.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
