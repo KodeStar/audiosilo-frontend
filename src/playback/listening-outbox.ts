@@ -1392,7 +1392,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     // Its answer may never be seen (the page is going): the server may hold these.
     const leaving = finishesLeaving(fit);
     for (const id of leaving) maybeReached.add(id);
-    if (stored) markOutNow(stored, leaving);
+    if (stored) markOutNow(stored.storage, leaving);
     void client
       .syncListening(
         syncBody(
@@ -1406,9 +1406,8 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
   }
 }
 
-/** What `storedOutboxNow` read: the web's `localStorage` and the outbox in it (kept in step
- * with what `markOutNow` writes: one connection's marks after another's). */
-type StoredNow = { storage: Pick<Storage, 'setItem'>; entries: OutboxEntry[] };
+/** What `storedOutboxNow` read: the web's `localStorage` and the outbox in it. */
+type StoredNow = { storage: Pick<Storage, 'getItem' | 'setItem'>; entries: OutboxEntry[] };
 
 /**
  * The stored outbox, read without a wait: the web's `localStorage` (where the web's storage
@@ -1432,19 +1431,21 @@ function storedOutboxNow(): StoredNow | null {
  * `PAGE_HIDE_MARK_MS`, with nobody to take the mark off, so an Undo in another tab waits
  * that long for the request to land, then reads the mark left standing as "the server may
  * hold it" and sends its edit. Written outside the outbox's lock (a page that is going
- * cannot wait for one), in the same task as the read: a write another tab makes from an
- * older read can only lose the mark again.
+ * cannot wait for one), so the outbox is read again here, with nothing between the read and
+ * the write: another tab's write that landed since the page began to go (an event it
+ * appended) is kept, not written over from the older read. A write another tab makes from
+ * an older read of its own can only lose the mark again.
  */
-function markOutNow(stored: StoredNow, ids: string[]): void {
-  if (!stored.entries.some((e) => ids.includes(e.event.id))) return;
-  const until = Date.now() + PAGE_HIDE_MARK_MS;
-  const next = stored.entries.map((e) => (ids.includes(e.event.id) ? markedOut(e, until) : e));
+function markOutNow(storage: StoredNow['storage'], ids: string[]): void {
   try {
-    stored.storage.setItem(OUTBOX_KEY, JSON.stringify(next));
-    stored.entries = next;
+    const entries = parseOutbox(storage.getItem(OUTBOX_KEY));
+    if (!entries.some((e) => ids.includes(e.event.id))) return;
+    const until = Date.now() + PAGE_HIDE_MARK_MS;
+    const next = entries.map((e) => (ids.includes(e.event.id) ? markedOut(e, until) : e));
+    storage.setItem(OUTBOX_KEY, JSON.stringify(next));
     outboxCache = next;
   } catch {
-    // Storage refuses the write: the mark is this tab's memory only.
+    // Storage refuses the read or the write: the mark is this tab's memory only.
   }
 }
 
