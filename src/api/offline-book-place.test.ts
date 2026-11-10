@@ -33,7 +33,7 @@ jest.mock('@/api/provider', () => {
 });
 
 /* eslint-disable import/first */
-import { fetchBookProgress } from '@/api/hooks';
+import { allProgressQuery, fetchBookProgress } from '@/api/hooks';
 import { setKeptOfflineCheck } from '@/downloads/kept-offline';
 import { loadInitialProgress, readMirror, writeMirror } from '@/playback/progress-sync';
 /* eslint-enable import/first */
@@ -129,5 +129,46 @@ describe('a downloaded book offline (PLAYER-01)', () => {
 
     const r = await loadInitialProgress(null, 'c1', 1, BOOK);
     expect(r.kind === 'progress' && r.progress.position).toBe(4000);
+  });
+});
+
+// fe#198: Home's progress list keeps the downloaded books' places too, so a book whose page
+// was not opened before going offline still resumes at another device's newer place.
+describe("the progress list keeps the downloaded books' places", () => {
+  const listClient = (rows: Progress[]) =>
+    ({ allProgress: jest.fn(async () => rows) }) as unknown as ApiClient;
+  const streamed: Progress = { ...serverPlace, path: 'Other/Streamed.m4b' };
+
+  async function readList(rows: Progress[]) {
+    const fn = allProgressQuery('c1', listClient(rows)).queryFn as () => Promise<Progress[]>;
+    return fn();
+  }
+
+  it('mirrors a downloaded book from the list, and only a downloaded one', async () => {
+    await expect(readList([serverPlace, streamed])).resolves.toEqual([serverPlace, streamed]);
+    expect(await readMirror('c1', 1, BOOK)).toMatchObject({ position: 3570, device_id: 'phone' });
+    expect(await readMirror('c1', 1, streamed.path)).toBeNull();
+    // Offline, the resume lookup opens there.
+    await expect(loadInitialProgress(offline(), 'c1', 1, BOOK)).resolves.toMatchObject({
+      kind: 'progress',
+      progress: { position: 3570 },
+    });
+  });
+
+  it("keeps this device's own newer save", async () => {
+    const mine = {
+      connectionId: 'c1',
+      libraryId: 1,
+      path: BOOK,
+      position: 120,
+      duration: 5100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'this-device',
+      updated_at: '2026-10-29T08:00:00Z',
+    };
+    await writeMirror(mine);
+    await readList([serverPlace]);
+    expect(await readMirror('c1', 1, BOOK)).toMatchObject({ position: 120 });
   });
 });

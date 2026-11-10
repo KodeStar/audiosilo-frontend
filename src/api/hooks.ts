@@ -62,6 +62,7 @@ import {
   progressToSave,
   saveProgress,
   writeMirror,
+  writeMirrors,
 } from '@/playback/progress-sync';
 import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
@@ -460,12 +461,34 @@ export function favouritesQuery(cid: string, client: MaybeClient) {
   });
 }
 
-/** Every saved progress row of a connection. */
+/** Every saved progress row of a connection. The rows of books downloaded here go into the
+ * durable mirror as they come (`keepDownloadedPlaces`). */
 export function allProgressQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.allProgress(cid),
-    queryFn: client ? () => client.allProgress() : skipToken,
+    queryFn: client
+      ? async () => {
+          const rows = await client.allProgress();
+          await keepDownloadedPlaces(cid, rows);
+          return rows;
+        }
+      : skipToken,
   });
+}
+
+/**
+ * Put the server's rows of the books downloaded on this device into the durable mirror, in
+ * one write (keep-newest, so a newer save of this device's own stays), as
+ * `fetchBookProgress` does for one book: an offline resume of a downloaded book then knows
+ * another device's newer place even when its page was not opened before going offline
+ * (fe#198). Never fails the list.
+ */
+async function keepDownloadedPlaces(cid: string, rows: readonly Progress[]): Promise<void> {
+  const kept = rows.filter((r) => isKeptOffline(cid, r.library_id, r.path));
+  if (kept.length === 0) return;
+  await writeMirrors(kept.map((r) => progressToSave(cid, r.library_id, r.path, r))).catch(
+    () => undefined,
+  );
 }
 
 /** A book search (the server's search covers title, author, narrator and series); an

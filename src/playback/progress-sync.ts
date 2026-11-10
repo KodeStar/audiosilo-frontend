@@ -451,15 +451,26 @@ const withMirrorLock = serialQueue();
  * fields a capture doesn't carry (`ack_version`, `answered`) are kept from the record it
  * replaces, and so is its file place when the new record holds that place without one (a
  * server row read back after this device's own save: `holdsFilePlace`). */
-export async function writeMirror(save: ProgressSave): Promise<void> {
+export function writeMirror(save: ProgressSave): Promise<void> {
+  return writeMirrors([save]);
+}
+
+/** `writeMirror` for many records at once: one read and at most one write of the mirror
+ * (Home's progress list, fe#198). */
+export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
+  if (saves.length === 0) return;
   await withMirrorLock(async () => {
     const map = await readMirrorMap();
-    const key = contentKey(save.connectionId, save.libraryId, save.path);
-    const existing = map[key];
-    if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
-      map[key] = mergeKept(save, existing, existing ? await knownSkew(save.connectionId) : 0);
-      await setItem(MIRROR_KEY, map);
+    let changed = false;
+    for (const save of saves) {
+      const key = contentKey(save.connectionId, save.libraryId, save.path);
+      const existing = map[key];
+      if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
+        map[key] = mergeKept(save, existing, existing ? await knownSkew(save.connectionId) : 0);
+        changed = true;
+      }
     }
+    if (changed) await setItem(MIRROR_KEY, map);
   });
 }
 
