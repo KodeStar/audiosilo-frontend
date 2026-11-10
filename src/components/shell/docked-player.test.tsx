@@ -103,23 +103,22 @@ async function renderAt(width: number) {
 
 describe('dockLayout', () => {
   it('shows every action from 1024, the tablet set below, and drops the scrubber below 800', () => {
-    expect(dockLayout(1440)).toEqual({ allActions: true, scrubber: true });
-    expect(dockLayout(1024)).toEqual({ allActions: true, scrubber: true });
-    expect(dockLayout(900)).toEqual({ allActions: false, scrubber: true });
-    expect(dockLayout(700)).toEqual({ allActions: false, scrubber: false });
+    expect(dockLayout(1440)).toMatchObject({ allActions: true, scrubber: true });
+    expect(dockLayout(1024)).toMatchObject({ allActions: true, scrubber: true });
+    expect(dockLayout(900)).toMatchObject({ allActions: false, scrubber: true });
+    expect(dockLayout(700)).toMatchObject({ allActions: false, scrubber: false });
   });
 
-  it("makes room for the Undo chip's measured width: the scrubber row first, then the secondary actions", () => {
-    // A tablet (834): the scrubber row goes while the chip shows, so the book keeps its title.
-    expect(dockLayout(834, 150)).toEqual({ allActions: false, scrubber: false });
-    expect(dockLayout(834, 0)).toEqual({ allActions: false, scrubber: true });
-    // A small desktop window: the secondary actions make way, the scrubber stays.
-    expect(dockLayout(1024, 150)).toEqual({ allActions: false, scrubber: true });
-    // A short chip in a wide enough window leaves everything; a long one does not.
-    expect(dockLayout(1180, 150)).toEqual({ allActions: true, scrubber: true });
-    expect(dockLayout(1180, 190)).toEqual({ allActions: false, scrubber: true });
-    // A wide window has room for everything.
-    expect(dockLayout(1440, 190)).toEqual({ allActions: true, scrubber: true });
+  it('sizes the middle column to leave the side columns room for their actions', () => {
+    // 1280: 1280 - 64 (padding and gaps) - 2 x 330 = 556 for the transport and scrubber.
+    expect(dockLayout(1280).centre).toBe(556);
+    // Never wider than 560, never narrower than 300 while it has the scrubber.
+    expect(dockLayout(1880).centre).toBe(560);
+    expect(dockLayout(1024).centre).toBe(300);
+    expect(dockLayout(834).centre).toBe(330);
+    expect(dockLayout(800).centre).toBe(300);
+    // No scrubber: the transport alone.
+    expect(dockLayout(700).centre).toBe(228);
   });
 });
 
@@ -287,27 +286,69 @@ describe('DockedPlayer', () => {
     expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
   });
 
-  it('on a tablet the Undo chip takes the scrubber row, so the book keeps its room', async () => {
-    mockLayout = 'tablet';
-    await renderAt(834);
-    expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
+  /** The props that place the three columns and the scrubber row. */
+  const geometry = () => ({
+    row: screen.getByTestId('dock-row').props.style,
+    book: screen.getByTestId('dock-book').props.className,
+    centre: [
+      screen.getByTestId('dock-centre').props.style,
+      screen.getByTestId('dock-centre').props.className,
+    ],
+    actions: screen.getByTestId('dock-actions').props.className,
+    scrubber: screen.queryByText('47m left at 1.25×') !== null,
+  });
+
+  it.each([834, 1280, 1880])(
+    'at %i the Undo chip moves nothing in the bar: it floats above it (fe#244)',
+    async (width) => {
+      mockLayout = width >= 1024 ? 'desktop' : 'tablet';
+      await renderAt(width);
+      const before = geometry();
+      expect(before.scrubber).toBe(true);
+      await act(async () =>
+        useJumpUndo.setState({
+          jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
+        }),
+      );
+      expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
+      expect(geometry()).toEqual(before);
+      // The chip is in the band above the bar, not in a column.
+      expect(screen.getByTestId('dock-undo').props.style).toMatchObject({ bottom: '100%' });
+      expect(screen.getByTestId('dock-actions')).not.toContainElement(
+        screen.getByTestId('undo-chip'),
+      );
+      // Its ten seconds are up: still nothing moved.
+      await act(async () => useJumpUndo.setState({ jump: null }));
+      expect(screen.queryByTestId('undo-chip')).toBeNull();
+      expect(geometry()).toEqual(before);
+    },
+  );
+
+  it('keeps the transport centred: the side columns flex equally from nothing', async () => {
+    await renderAt(1280);
+    // Equal side columns, and the same padding on both sides, put the middle on the centre.
+    for (const id of ['dock-book', 'dock-actions']) {
+      expect(screen.getByTestId(id).props.className).toEqual(
+        expect.stringContaining('flex-1 basis-0'),
+      );
+      expect(screen.getByTestId(id).props.className).toContain('min-w-0');
+    }
+    expect(screen.getByTestId('dock-row').props.style).toMatchObject({ paddingHorizontal: 16 });
+    expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 556 });
+    expect(screen.getByTestId('dock-centre').props.className).toContain('shrink-0');
+  });
+
+  it('lifts the toasts over the Undo chip while it shows', async () => {
+    await renderAt(1280);
+    expect(useShellMetrics.getState().edges.dock).toBe(84);
     await act(async () =>
       useJumpUndo.setState({
         jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
       }),
     );
-    expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
-    // Once it has laid out, its measured width comes off the bar's.
-    await fireEvent(screen.getByTestId('undo-chip'), 'layout', {
-      nativeEvent: { layout: { x: 0, y: 0, width: 170, height: 34 } },
-    });
-    expect(screen.queryByText('47m left at 1.25×')).toBeNull();
-    expect(screen.getByLabelText('Play')).toBeTruthy();
-    // ...and the right cluster stops sharing the slack, which goes to the book.
-    expect(screen.getByTestId('dock-actions').props.className).toContain('grow-0');
-    // The chip's ten seconds are up: the scrubber row comes back.
+    expect(useShellMetrics.getState().edges.dock).toBe(84 + 42);
     await act(async () => useJumpUndo.setState({ jump: null }));
-    expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
+    expect(useShellMetrics.getState().edges.dock).toBe(84);
   });
 
   it('renders nothing under the full player (its leaves would redraw behind it)', async () => {

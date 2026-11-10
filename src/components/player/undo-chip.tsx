@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { type LayoutChangeEvent, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -35,17 +35,10 @@ export function useUndoVisible(): boolean {
  * 17:26:50" (where the listener was in the book) and a ring that empties over its
  * 10 seconds. Appears after any jump of more than a minute in the PLAYING book
  * (`src/playback/jump-undo.ts` detects them) and renders nothing otherwise, so a surface
- * can always mount it where the chip belongs (the full player's status line, the dock's
- * right cluster). A press goes back and toasts "Back where you were".
+ * can always mount it where the chip belongs (the full player's status line, above the
+ * dock). A press goes back and toasts "Back where you were".
  */
-export function UndoChip({
-  className,
-  onLayout,
-}: {
-  className?: string;
-  /** Its laid-out size (the dock makes room for its measured width). */
-  onLayout?: (e: LayoutChangeEvent) => void;
-}) {
+export function UndoChip({ className }: { className?: string }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const bookKey = usePlayer(selectBookKey);
@@ -57,7 +50,6 @@ export function UndoChip({
     <Animated.View
       key={jump.at}
       testID="undo-chip"
-      onLayout={onLayout}
       entering={FadeIn.duration(320).reduceMotion(ReduceMotion.System)}
       exiting={FadeOut.duration(200).reduceMotion(ReduceMotion.System)}
     >
