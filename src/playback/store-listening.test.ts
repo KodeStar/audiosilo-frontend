@@ -696,11 +696,56 @@ describe('Mark as finished outside the player (finish-route)', () => {
           updated_at: string;
         }
       ).updated_at;
-      expect(mockWriteMirror).toHaveBeenLastCalledWith({ ...before, updated_at: finishedAt });
+      // Its Sync v2 fields are left to the mirror's own (an ack since the finish is newer).
+      expect(mockWriteMirror).toHaveBeenLastCalledWith({
+        ...before,
+        ack_version: undefined,
+        answered: undefined,
+        updated_at: finishedAt,
+      });
       expect(finishedAt > before.updated_at).toBe(true);
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
         queryKey: qk.progress('c1', 2, 'Other/Book'),
       });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo here with no record before the finish: only the finished record is undone', async () => {
+    const finishedRec = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 100,
+      duration: 100,
+      finished: true,
+      device_id: 'dev-1',
+      updated_at: '2026-01-02T00:00:00Z',
+    };
+    try {
+      mockReadMirror.mockResolvedValueOnce(null);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      mockReadMirror.mockResolvedValueOnce(finishedRec);
+      await undoFinish(
+        undoRef,
+        jest.fn(async () => true),
+      );
+      expect(mockWriteMirror).toHaveBeenLastCalledWith({
+        ...finishedRec,
+        finished: false,
+        position: 48,
+      });
+      // A place saved since the finish is not undone.
+      mockReadMirror.mockResolvedValueOnce(null);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const writes = mockWriteMirror.mock.calls.length;
+      mockReadMirror.mockResolvedValueOnce({ ...finishedRec, finished: false, position: 70 });
+      await undoFinish(
+        undoRef,
+        jest.fn(async () => true),
+      );
+      expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }

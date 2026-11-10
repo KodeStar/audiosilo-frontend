@@ -974,13 +974,15 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
   beforeFinish.delete(key);
   if (finishSent === key) finishSent = null;
   // Stamped with the finish's time: the mirror keeps the newest record, so the record from
-  // before it (older) would be refused, and a place saved since the finish still wins.
-  const back =
-    before?.prior && !before.prior.finished
-      ? { ...before.prior, updated_at: before.at }
-      : await readMirror(ref.connectionId, ref.libraryId, ref.path)
-          .then((now) => now && { ...now, finished: false, position: ref.position })
-          .catch(() => null);
+  // before it (older) would be refused, and a place saved since the finish still wins. Its
+  // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
+  const restore = before?.prior && !before.prior.finished ? before : null;
+  const back: ProgressSave | null = restore?.prior
+    ? { ...restore.prior, ack_version: undefined, answered: undefined, updated_at: restore.at }
+    : await readMirror(ref.connectionId, ref.libraryId, ref.path)
+        // Only the finish's record: a place saved since it is not undone.
+        .then((now) => (now?.finished ? { ...now, finished: false, position: ref.position } : null))
+        .catch(() => null);
   if (back) await writeMirror(back).catch(() => undefined);
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
 }
