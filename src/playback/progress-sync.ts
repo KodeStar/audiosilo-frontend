@@ -687,7 +687,13 @@ async function guardPasses(client: ApiClient, save: ProgressSave): Promise<boole
     readMirror(save.connectionId, save.libraryId, save.path),
   ]);
   if (!row || !guardHolds(save, row, mine?.answered)) return true;
-  for (const listener of heldListeners) listener(save, row, mine);
+  for (const listener of heldListeners) {
+    try {
+      listener(save, row, mine);
+    } catch {
+      // A listener's failure never turns a held save into a failed one (queued, retried).
+    }
+  }
   return false;
 }
 

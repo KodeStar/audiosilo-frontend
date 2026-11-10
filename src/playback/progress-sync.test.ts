@@ -1027,6 +1027,19 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
     expect(mirrored).not.toHaveProperty('guard'); // never kept in the mirror
   });
 
+  it('a listener that throws leaves the save held, not queued as a failure', async () => {
+    const stop = onHeldSave(() => {
+      throw new Error('listener broke');
+    });
+    try {
+      const api = serverWith(ahead);
+      await expect(saveProgress(api, guarded)).resolves.toBe('held');
+      expect(await readQueue()).toEqual([]);
+    } finally {
+      stop();
+    }
+  });
+
   it('a live guarded save goes through when nothing is further on, and says so', async () => {
     const api = serverWith(makeProgress({ position: 2, device_id: 'phone' }));
     await expect(saveProgress(api, guarded)).resolves.toBe('saved');
