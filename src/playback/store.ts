@@ -475,7 +475,11 @@ async function persist(opts?: { forceFinished?: boolean }) {
   // spans below); the capture only keeps this device's mirror.
   if (usesListeningSync(nowPlaying.connectionId)) {
     await writeMirror(save);
-    if (span && sameBook(span, nowPlaying) && !forceFinished && end) span.to = end;
+    // Never back (`aheadOf`): a native move's landed place reaches the store before the
+    // move does (`onRemoteMove`), which ends the span at its last place (fe#211).
+    if (span && sameBook(span, nowPlaying) && !forceFinished && end && aheadOf(end, span)) {
+      span.to = end;
+    }
     return;
   }
   await saveProgress(api, save);
@@ -725,29 +729,46 @@ function openListeningSpan(at?: SpanEnd) {
  * Close the open span at `at` (else where the engine is, else where it was last seen) into
  * the outbox, then send. Returns the closed span (null when none was open).
  */
-function closeListeningSpan(opts: { at?: SpanEnd } = {}): OpenSpan | null {
-  const closing = takeSpan(opts.at);
+function closeListeningSpan(opts: { at?: SpanEnd; neverBack?: boolean } = {}): OpenSpan | null {
+  const closing = takeSpan(opts.at, opts);
   if (!closing) return null;
   const cid = closing.connectionId;
   void closeSpan(closing).then(() => flushOutbox(cid));
   return closing;
 }
 
-/** Take the open span (none open from here), ended now at `at`, else where the engine is,
- * else where it was last seen. */
-function takeSpan(at?: SpanEnd): OpenSpan | null {
+/**
+ * Whether `here` may become `open`'s end mid-play: not behind where it was last seen (a
+ * second's slack for an engine's jitter). A native lock-screen, headset or car move's
+ * landed place reaches the store before the move does (`onRemoteMove`), and the move then
+ * ends the span at its last place (`span.to`) and opens the next as `moved_back`. Taken as
+ * the end in between (the 5 s keep, a save, the 15 s cut), the span would run backwards and
+ * the move would be a `jump` from where it landed (fe#211). A close that is not mid-play
+ * (a pause, a stop) takes where the engine is.
+ */
+function aheadOf(here: SpanEnd, open: OpenSpan): boolean {
+  return here.pos >= open.to.pos - 1;
+}
+
+/** Take the open span (none open from here), ended now at `at`, else where the engine is
+ * (with `neverBack`, only when that is not behind it: `aheadOf`), else where it was last
+ * seen. */
+function takeSpan(at?: SpanEnd, { neverBack = false }: { neverBack?: boolean } = {}) {
   const closing = span;
   span = null;
   if (!closing) return null;
   const np = usePlayer.getState().nowPlaying;
-  closing.to = at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
+  const here = np && sameBook(closing, np) ? engineEnd() : null;
+  closing.to = at ?? (here && (!neverBack || aheadOf(here, closing)) ? here : closing.to);
   closing.endedAt = new Date().toISOString();
   return closing;
 }
 
-/** Cut the span (close it, a span opening where it ended, for `start`) while playing. */
+/** Cut the span (close it, a span opening where it ended, for `start`) while playing. Never
+ * back (`aheadOf`): a cut runs mid-play, where a place behind the span is a native move
+ * not reported yet (fe#211). */
 function cutListeningSpan(start: ListeningStart = 'continue') {
-  const closed = closeListeningSpan();
+  const closed = closeListeningSpan({ neverBack: true });
   if (!closed || !isPlayingState(usePlayer.getState().snapshot.state)) return;
   nextStart = start;
   openListeningSpan(closed.to);
@@ -787,9 +808,8 @@ function keepOpenSpan() {
   const np = usePlayer.getState().nowPlaying;
   if (!np || !sameBook(kept, np)) return;
   const here = engineEnd();
-  // Never back: the native lock screen's landed place reaches the store before its move
-  // does (`onRemoteMove`), which then ends the span at its last place, `span.to`.
-  if (here && here.pos >= kept.to.pos - 1) kept.to = here;
+  // Never back (`aheadOf`): a native move's landed place reaches the store before the move.
+  if (here && aheadOf(here, kept)) kept.to = here;
   kept.endedAt = new Date().toISOString();
   void storeOpenSpan({ ...kept }).then((stored) => {
     // Another tab took its last copy (and sent it): it plays on under the new id it was

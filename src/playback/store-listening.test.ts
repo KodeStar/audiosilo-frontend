@@ -606,6 +606,52 @@ describe('the open span is kept every 5 s', () => {
     expect(mockClosed.at(-1)).toMatchObject({ start: 'moved_back', from: { pos: 2 } });
   });
 
+  // fe#211: the same landed place, reaching the 15 s cut or a save before the move.
+  it('the 15 s cut never ends a span behind where it was: the move after it is moved_back', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 1));
+    await settle();
+    pushSnapshot(snap('playing', 0, 11));
+    jest.advanceTimersByTime(10_000);
+    await settle();
+    jest.advanceTimersByTime(4_950); // the cut is due (within its slack)
+    pushSnapshot(snap('playing', 0, 2)); // landed 9 s back: the cut runs on this snapshot
+    remoteMove(0, 2);
+    await settle();
+    pushSnapshot(snap('paused', 0, 3));
+    await settle();
+    const closed = mockClosed.map((s) => [s.start, s.from.pos, s.to.pos]);
+    expect(closed[0]).toEqual(['resume', 1, 11]);
+    expect(closed.at(-1)).toEqual(['moved_back', 2, 3]);
+    expect(mockClosed.every((s) => s.to.pos >= s.from.pos)).toBe(true);
+  });
+
+  it('a save never moves the span back either (offline: no cut)', async () => {
+    const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 1));
+      await settle();
+      pushSnapshot(snap('playing', 0, 11));
+      jest.advanceTimersByTime(10_000);
+      await settle();
+      jest.advanceTimersByTime(4_950); // the 15 s save is due
+      pushSnapshot(snap('playing', 0, 2)); // landed back: the save runs on this snapshot
+      await settle(); // the save's mirror write lands before the move
+      remoteMove(0, 2);
+      await settle();
+      pushSnapshot(snap('paused', 0, 3));
+      await settle();
+      expect(mockWriteMirror).toHaveBeenCalledWith(expect.objectContaining({ position: 2 }));
+      expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+        ['resume', 1, 11],
+        ['moved_back', 2, 3],
+      ]);
+    } finally {
+      reach.mockRestore();
+    }
+  });
+
   it('stops with the playing: a pause stores nothing more', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 1));
