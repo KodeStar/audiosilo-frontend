@@ -60,7 +60,9 @@ jest.mock('./progress-sync', () => ({
   ignoreOffer: (...a: unknown[]) => mockIgnoreOffer(...a),
   cachedDeviceId: () => 'this-device',
   writeMirror: jest.fn(async () => {}),
-  onHeldSave: (cb: (save: ProgressSave, row: Progress) => void) => {
+  GUARD_SLACK_S: 30,
+  placeKey: (p: { device_id?: string; updated_at: string }) => `${p.device_id}|${p.updated_at}`,
+  onHeldSave: (cb: HeldCb) => {
     mockHeld = cb;
     return () => {
       mockHeld = null;
@@ -68,7 +70,8 @@ jest.mock('./progress-sync', () => ({
   },
 }));
 /** The replay guard's listener (fe#198), as the reconcile registered it. */
-let mockHeld: ((save: ProgressSave, row: Progress) => void) | null = null;
+type HeldCb = (save: ProgressSave, row: Progress, mirror: ProgressSave | null) => void;
+let mockHeld: HeldCb | null = null;
 const mockIgnoreOffer = jest.fn(async (..._a: unknown[]) => {});
 const mockAckVersion = jest.fn(async (..._a: unknown[]) => {});
 const mockMarkAnswered = jest.fn(async (..._a: unknown[]) => {});
@@ -753,7 +756,7 @@ describe('a save the replay guard held back (the PUT path)', () => {
 
   it('offers the place that held it; Stay notes the answer and saves this place at once', async () => {
     await loadedAndPaused();
-    mockHeld?.(heldSave(), further('held-1'));
+    mockHeld?.(heldSave(), further('held-1'), mockMirror);
     await settle();
     const offer = lastToast();
     expect(offer.title).toBe('On Phone you were at 10:40. Jump there?');
@@ -772,7 +775,7 @@ describe('a save the replay guard held back (the PUT path)', () => {
 
   it('Jump moves there', async () => {
     await loadedAndPaused();
-    mockHeld?.(heldSave(), further('held-2'));
+    mockHeld?.(heldSave(), further('held-2'), mockMirror);
     await settle();
     lastToast().action.onPress();
     await settle();
@@ -781,7 +784,7 @@ describe('a save the replay guard held back (the PUT path)', () => {
 
   it('a toast nobody answers answers nothing: the place stays held', async () => {
     await loadedAndPaused();
-    mockHeld?.(heldSave(), further('held-3'));
+    mockHeld?.(heldSave(), further('held-3'), mockMirror);
     await settle();
     lastToast().onTimeout();
     await settle();
@@ -791,7 +794,7 @@ describe('a save the replay guard held back (the PUT path)', () => {
 
   it('a held save of a book not loaded offers nothing', async () => {
     await loadedAndPaused();
-    mockHeld?.(heldSave({ path: 'Another/Book.m4b' }), further('held-4'));
+    mockHeld?.(heldSave({ path: 'Another/Book.m4b' }), further('held-4'), mockMirror);
     await settle();
     expect(mockToast).not.toHaveBeenCalled();
   });

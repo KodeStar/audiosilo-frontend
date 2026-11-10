@@ -6,6 +6,7 @@ import { isReachable, onReconnect } from '@/api/reachability';
 import type { Chapter, Progress } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
+import { contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { onForeground, whenActive } from '@/lib/when-active';
 
@@ -16,8 +17,10 @@ import {
   answerOffer,
   cachedDeviceId,
   getDeviceId,
+  GUARD_SLACK_S,
   ignoreOffer,
   onHeldSave,
+  placeKey,
   readMirror,
   type ProgressSave,
 } from './progress-sync';
@@ -62,8 +65,9 @@ import {
  * worse. This device's next save then records the book unfinished again.
  */
 
-/** A smaller difference is not worth moving the listener (auto-rewind is up to 30 s). */
-export const MOVE_THRESHOLD_S = 30;
+/** A smaller difference is not worth moving the listener (auto-rewind is up to 30 s): the
+ * replay guard's slack, so every save it holds is offered. */
+export const MOVE_THRESHOLD_S = GUARD_SLACK_S;
 /** How long the server has to answer. */
 export const CHECK_TIMEOUT_MS = 5_000;
 
@@ -130,7 +134,7 @@ export function offerOf(
   }): PlaceOffer | null => {
     if (!p.device_id || p.device_id === deviceId) return null;
     if (Math.abs(p.position - enginePosition) <= MOVE_THRESHOLD_S) return null;
-    const key = `${p.device_id}|${p.updated_at}`;
+    const key = placeKey(p);
     return answered.includes(key)
       ? null
       : { position: p.position, deviceName: p.device_name ?? '', key };
@@ -242,15 +246,12 @@ function offerFromAnswer(connectionId: string, rows: Progress[]) {
 }
 
 /** A guarded save of the loaded book that its server's row held back (fe#198): offered. */
-function offerHeldSave(save: ProgressSave, row: Progress) {
-  const player = usePlayer.getState();
-  const np = player.nowPlaying;
-  const bookKey = selectBookKey(player);
-  if (!np || !bookKey || np.connectionId !== save.connectionId) return;
-  if (np.libraryId !== save.libraryId || np.path !== save.path) return;
-  void readMirror(np.connectionId, np.libraryId, np.path)
-    .then((mirror) => offerLoadedPlace(bookKey, row, save.device_id, mirror, { held: true }))
-    .catch(() => undefined);
+function offerHeldSave(save: ProgressSave, row: Progress, mirror: ProgressSave | null) {
+  const bookKey = selectBookKey(usePlayer.getState());
+  if (!bookKey || bookKey !== contentKeyOf(save)) return;
+  void offerLoadedPlace(bookKey, row, save.device_id, mirror, { held: true }).catch(
+    () => undefined,
+  );
 }
 
 let checking = false;

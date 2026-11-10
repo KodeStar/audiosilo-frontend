@@ -631,9 +631,15 @@ function isUnrecoverable(e: unknown): boolean {
 // offers that place (`onHeldSave`, the place reconcile's Jump/Stay offer). Sync v2 needs
 // none of this: the server resolves each span on its `base_version`.
 
-/** How much further on (s) another device's place must be to hold a guarded save: the
- * place reconcile's threshold (`MOVE_THRESHOLD_S`; auto-rewind is up to 30 s). */
+/** How much further on (s) another device's place must be to hold a guarded save; the
+ * place reconcile's threshold too (`MOVE_THRESHOLD_S`), so a held save is always offered
+ * (auto-rewind is up to 30 s). */
 export const GUARD_SLACK_S = 30;
+
+/** A place's `answered` key: `device_id|updated_at` (an ISO time has no `|`). */
+export function placeKey(p: { device_id?: string; updated_at: string }): string {
+  return `${p.device_id}|${p.updated_at}`;
+}
 
 /**
  * Whether the server's `row` holds the guarded `save` back (pure): a place of another
@@ -649,11 +655,12 @@ export function guardHolds(
   if (!row || row.finished || save.finished) return false;
   if (!row.device_id || row.device_id === save.device_id) return false;
   if (row.position - save.position <= GUARD_SLACK_S) return false;
-  return !answered.includes(`${row.device_id}|${row.updated_at}`);
+  return !answered.includes(placeKey(row));
 }
 
-/** Told of each guarded save held back, with the server's row that held it. */
-type HeldListener = (save: ProgressSave, row: Progress) => void;
+/** Told of each guarded save held back, with the server's row that held it and this
+ * device's mirror record of the book. */
+type HeldListener = (save: ProgressSave, row: Progress, mirror: ProgressSave | null) => void;
 const heldListeners = new Set<HeldListener>();
 
 /** Be told of each guarded save the server's row held back; returns the unsubscribe. */
@@ -671,7 +678,7 @@ async function guardPasses(client: ApiClient, save: ProgressSave): Promise<boole
     readMirror(save.connectionId, save.libraryId, save.path),
   ]);
   if (!row || !guardHolds(save, row, mine?.answered)) return true;
-  for (const listener of heldListeners) listener(save, row);
+  for (const listener of heldListeners) listener(save, row, mine);
   return false;
 }
 
