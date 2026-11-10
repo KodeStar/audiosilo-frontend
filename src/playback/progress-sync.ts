@@ -472,7 +472,8 @@ export function writeMirror(save: ProgressSave): Promise<void> {
 }
 
 /** `writeMirror` for many records at once: one read and at most one write of the mirror
- * (Home's progress list, fe#198). */
+ * (Home's progress list, fe#198), none when every record is already there as it is (the
+ * list read again with no place moved). */
 export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
   if (saves.length === 0) return;
   await withMirrorLock(async () => {
@@ -483,12 +484,21 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
       const existing = map[key];
       if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
         const { guard: _guard, ...record } = save;
-        map[key] = mergeKept(record, existing, existing ? await knownSkew(save.connectionId) : 0);
+        const next = mergeKept(record, existing, existing ? await knownSkew(save.connectionId) : 0);
+        if (existing && sameRecord(next, existing)) continue;
+        map[key] = next;
         changed = true;
       }
     }
     if (changed) await setItem(MIRROR_KEY, map);
   });
+}
+
+/** Whether two mirror records hold the same fields (an array field by reference: one kept
+ * across records is the same array). */
+function sameRecord(a: ProgressSave, b: ProgressSave): boolean {
+  const keys = Object.keys(a) as (keyof ProgressSave)[];
+  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k], b[k]));
 }
 
 /** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock

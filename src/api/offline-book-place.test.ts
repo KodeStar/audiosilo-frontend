@@ -171,4 +171,15 @@ describe("the progress list keeps the downloaded books' places", () => {
     await readList([serverPlace]);
     expect(await readMirror('c1', 1, BOOK)).toMatchObject({ position: 120 });
   });
+
+  it('the list read again with no place moved writes nothing', async () => {
+    await readList([serverPlace]);
+    // The storage mock's setItem is a jest.fn already: its calls so far cleared, not restored.
+    const write = AsyncStorage.setItem as jest.Mock;
+    write.mockClear();
+    await readList([serverPlace]);
+    expect(write.mock.calls.filter(([key]) => key === 'audiosilo.progressMirror')).toEqual([]);
+    await readList([{ ...serverPlace, position: 3600, updated_at: '2026-10-28T20:10:00Z' }]);
+    expect(await readMirror('c1', 1, BOOK)).toMatchObject({ position: 3600 });
+  });
 });
