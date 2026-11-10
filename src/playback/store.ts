@@ -952,16 +952,16 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   // The book page gives no speed: the book's own stays in the mirror (an offline Listen
   // again reads it), never 1x.
   const prior = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
-  beforeFinish.set(contentKeyOf(ref), prior);
+  beforeFinish.set(contentKeyOf(ref), { prior, at });
   const speed = ref.playback_speed ?? prior?.playback_speed;
   const id = deviceId || (await getDeviceId());
   await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(() => undefined);
   await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
 }
 
-/** Each book's mirror record before its Mark as finished (`recordFinish`), for an Undo
- * done here (`unrecordFinish`). */
-const beforeFinish = new Map<string, ProgressSave | null>();
+/** Each book's mirror record before its Mark as finished (`recordFinish`) and the finish's
+ * time, for an Undo done here (`unrecordFinish`). */
+const beforeFinish = new Map<string, { prior: ProgressSave | null; at: string }>();
 
 /**
  * Undo a Mark as finished that never left this device (its finish was taken back from the
@@ -970,16 +970,17 @@ const beforeFinish = new Map<string, ProgressSave | null>();
  */
 async function unrecordFinish(ref: UndoRef): Promise<void> {
   const key = contentKeyOf(ref);
-  const prior = beforeFinish.get(key);
+  const before = beforeFinish.get(key);
   beforeFinish.delete(key);
   if (finishSent === key) finishSent = null;
-  const now = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
+  // Stamped with the finish's time: the mirror keeps the newest record, so the record from
+  // before it (older) would be refused, and a place saved since the finish still wins.
   const back =
-    prior && !prior.finished
-      ? prior
-      : now
-        ? { ...now, finished: false, position: ref.position }
-        : null;
+    before?.prior && !before.prior.finished
+      ? { ...before.prior, updated_at: before.at }
+      : await readMirror(ref.connectionId, ref.libraryId, ref.path)
+          .then((now) => now && { ...now, finished: false, position: ref.position })
+          .catch(() => null);
   if (back) await writeMirror(back).catch(() => undefined);
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
 }

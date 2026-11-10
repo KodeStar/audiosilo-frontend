@@ -688,7 +688,16 @@ describe('Mark as finished outside the player (finish-route)', () => {
       await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
-      expect(mockWriteMirror).toHaveBeenLastCalledWith(before);
+      // Stamped as new as the finish it replaces: the mirror refuses an older record.
+      const finishedAt = (
+        mockWriteMirror.mock.calls
+          .filter(([r]) => (r as { finished?: boolean }).finished)
+          .at(-1)?.[0] as {
+          updated_at: string;
+        }
+      ).updated_at;
+      expect(mockWriteMirror).toHaveBeenLastCalledWith({ ...before, updated_at: finishedAt });
+      expect(finishedAt > before.updated_at).toBe(true);
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
         queryKey: qk.progress('c1', 2, 'Other/Book'),
       });
