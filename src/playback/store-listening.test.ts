@@ -52,6 +52,8 @@ const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<Resume
   kind: 'empty',
 }));
 const mockReadMirror = jest.fn(async (..._a: unknown[]): Promise<unknown> => null);
+// Sessions whose guarded save the queue has PUT since (`guardSettled`).
+const mockSettled = new Set<string>();
 jest.mock('./progress-sync', () => ({
   saveProgress: (...a: unknown[]) => mockSaveProgress(...a),
   writeMirror: (...a: unknown[]) => mockWriteMirror(...a),
@@ -62,6 +64,7 @@ jest.mock('./progress-sync', () => ({
   cachedDeviceId: () => 'dev-1',
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: (...a: unknown[]) => mockReadMirror(...a),
+  guardSettled: (id: string) => mockSettled.has(id),
 }));
 
 // The outbox: the path choice is the test's, storage and sending are captured.
@@ -254,6 +257,7 @@ describe('the replay guard on the PUT path', () => {
 
   beforeEach(() => {
     mockSync = false;
+    mockSettled.clear();
   });
 
   async function playedTwoSaves(outcome: string) {
@@ -275,6 +279,27 @@ describe('the replay guard on the PUT path', () => {
     });
     await start();
     await playedTwoSaves('saved');
+    expect(guards()).toEqual([true, false]);
+  });
+
+  it('a queued save replayed later lifts the guard (no read before every later save)', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    mockSaveProgress.mockResolvedValueOnce('queued' as never);
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    const first = mockSaveProgress.mock.calls[0]?.[1] as { guard_session?: string };
+    expect(first.guard_session).toEqual(expect.any(String));
+    mockSettled.add(first.guard_session as string);
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
     expect(guards()).toEqual([true, false]);
   });
 

@@ -1575,8 +1575,10 @@ media GETs only.
   than 30 s behind the server's unfinished row); a downloaded book's `failed` start counts
   too, and so does an adopted book (`adoptLoadedBook`: the engine's place, never looked up,
   e.g. one the car started from an old snapshot). The store then puts `guard` on that
-  session's PUT saves (`placeGuard`; not on an explicit place or a finish) until one is PUT
-  (`saveProgress` answers `saved`). Before a
+  session's PUT saves (`placeGuard`; not on an explicit place or a finish) until one is PUT:
+  `saveProgress` answers `saved`, or a queued one is replayed later (each guarded save carries
+  its session's `guard_session` id, a PUT settles it, and the store's next save asks
+  `guardSettled`). Before a
   guarded save is PUT, live or replayed, `guardPasses` reads the server's row: another
   device's unfinished place more than `GUARD_SLACK_S` (30 s) further on, not answered
   (`answered` holds its `device_id|updated_at`), holds it (`guardHolds`). A held save is not

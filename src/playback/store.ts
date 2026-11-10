@@ -69,6 +69,7 @@ import {
   flushConnection,
   flushQueue,
   getDeviceId,
+  guardSettled,
   loadInitialProgress,
   readMirror,
   saveProgress,
@@ -160,7 +161,12 @@ let resumeFloor = 0;
  * (`ResumeLookup.unchecked`): on the legacy PUT path its saves carry the replay guard
  * (`ProgressSave.guard`, fe#198) until one of them is PUT. Set per session in `playBook`,
  * a new object each time, so an earlier session's save PUT late never lifts a later one's. */
-let placeGuard: { key: string } | null = null;
+let placeGuard: { key: string; id: string } | null = null;
+/** How many guarded sessions this launch began (with the time, `placeGuard.id`). */
+let guardSessions = 0;
+/** A guarded session for the book `key`, with an id its saves carry (`guard_session`), so a
+ * queued one PUT later lifts it (`guardSettled`, fe#198). */
+const guardFor = (key: string) => ({ key, id: `${Date.now().toString(36)}-${++guardSessions}` });
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
@@ -465,6 +471,8 @@ async function persist(opts?: { forceFinished?: boolean }) {
   const end = endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
   const key = contentKeyOf(nowPlaying);
   // A finish is the listener's own: never held back.
+  // A queued save of this session PUT since (a replay): the guard is over.
+  if (placeGuard && guardSettled(placeGuard.id)) placeGuard = null;
   const guard = placeGuard;
   const guarded = guard?.key === key && !forceFinished;
   const save = {
@@ -480,7 +488,7 @@ async function persist(opts?: { forceFinished?: boolean }) {
     // The file place (fe#188), the mirror's only (a PUT never sends it), on both paths: an
     // older capture's file place never outlives the place it was taken at.
     ...(forceFinished || !end?.file ? {} : { file: end.file, file_pos: end.filePos }),
-    ...(guarded ? { guard: true } : {}),
+    ...(guarded ? { guard: true, guard_session: guard.id } : {}),
   };
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
   // spans below); the capture only keeps this device's mirror.
@@ -1578,7 +1586,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       set({ rate: speed, nowPlaying, loadingBook });
       // An explicit place is the listener's own: unguarded, like a resume checked against
       // the server.
-      placeGuard = unchecked ? { key } : null;
+      placeGuard = unchecked ? guardFor(key) : null;
       nextStart = start;
       unfinishDue = unfinish && usesListeningSync(connectionId);
       finishSent = null;
@@ -2196,7 +2204,7 @@ async function adoptLoadedBook(
   // Nor checked for the replay guard (fe#198): offline, a place the car started from an
   // old snapshot must not move another device's further one back. Its PUT saves are
   // guarded until one is PUT, as an unchecked resume's.
-  placeGuard = { key: contentKeyOf(nowPlaying) };
+  placeGuard = guardFor(contentKeyOf(nowPlaying));
   // A reload holds every save and remote move until it lands (`loadingBook`): until then a
   // tick still counts in the engine's old order.
   usePlayer.setState({

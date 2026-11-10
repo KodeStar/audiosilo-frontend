@@ -10,6 +10,7 @@ import {
   ackVersion,
   flushConnection,
   guardHolds,
+  guardSettled,
   onHeldSave,
   flushQueue,
   loadInitialProgress,
@@ -1113,6 +1114,31 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
       await flushConnection('c1');
       expect(api.saveProgress).toHaveBeenCalledTimes(1);
       expect(await readQueue()).toEqual([]);
+    });
+
+    it("a replayed guarded save settles its session's guard; a held one does not", async () => {
+      await AsyncStorage.setItem(
+        QUEUE_KEY,
+        JSON.stringify([{ ...guarded, guard_session: 's-replayed' }]),
+      );
+      routeClients({ c1: serverWith(null) });
+      await flushConnection('c1');
+      expect(guardSettled('s-replayed')).toBe(true);
+
+      await AsyncStorage.setItem(
+        QUEUE_KEY,
+        JSON.stringify([{ ...guarded, guard_session: 's-held' }]),
+      );
+      routeClients({ c1: serverWith(ahead) });
+      await flushConnection('c1');
+      expect(guardSettled('s-held')).toBe(false);
+    });
+
+    it('a live guarded save that goes through settles its session too', async () => {
+      await expect(
+        saveProgress(serverWith(null), { ...guarded, guard_session: 's-live' }),
+      ).resolves.toBe('saved');
+      expect(guardSettled('s-live')).toBe(true);
     });
 
     it('a read with no answer keeps the guarded save queued for later', async () => {

@@ -80,6 +80,10 @@ export type ProgressSave = {
    * PUT, the server's row is read, and another device's further place holds it
    * (`guardHolds`). Saves and the queue only; never kept in the mirror. */
   guard?: boolean;
+  /** The listening session a guarded save belongs to (the store's `placeGuard.id`): once
+   * one of its saves is PUT, a replay from the queue too, the session's guard is lifted
+   * (`guardSettled`). Saves and the queue only. */
+  guard_session?: string;
 };
 
 /**
@@ -483,7 +487,7 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
       const key = contentKey(save.connectionId, save.libraryId, save.path);
       const existing = map[key];
       if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
-        const { guard: _guard, ...record } = save;
+        const { guard: _guard, guard_session: _session, ...record } = save;
         const next = mergeKept(record, existing, existing ? await knownSkew(save.connectionId) : 0);
         if (existing && sameRecord(next, existing)) continue;
         map[key] = next;
@@ -697,6 +701,20 @@ async function guardPasses(client: ApiClient, save: ProgressSave): Promise<boole
   return false;
 }
 
+/** Sessions (`ProgressSave.guard_session`) one of whose guarded saves was PUT. */
+const settledGuards = new Set<string>();
+
+/** Whether a guarded save of `session` has been PUT (live or replayed from the queue): the
+ * server had nothing further on, so the session's later saves need no read first. */
+export function guardSettled(session: string): boolean {
+  return settledGuards.has(session);
+}
+
+/** A save was PUT: its session's guard, if any, is settled. */
+function notePut(save: ProgressSave): void {
+  if (save.guard && save.guard_session) settledGuards.add(save.guard_session);
+}
+
 /** What became of a save: PUT (`saved`), kept for a later replay (`queued`), held back by
  * the replay guard (`held`), or refused for good (`dropped`, a 4xx). */
 export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
@@ -723,6 +741,7 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
       return 'held';
     }
     await api.saveProgress(save.libraryId, save.path, putBody(save));
+    notePut(save);
     noteSuccess(save.connectionId);
     void flushQueue();
     return 'saved';
@@ -794,6 +813,7 @@ async function flushGroup(
       // A guarded save the server's row holds back leaves the queue (the mirror keeps it).
       if (await guardPasses(client, save)) {
         await client.saveProgress(save.libraryId, save.path, putBody(save));
+        notePut(save);
       }
       noteSuccess(cid);
     } catch (e) {
