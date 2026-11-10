@@ -12,7 +12,9 @@ jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
 let mockGaveWay: (() => void) | null = null;
 let mockState = 'paused';
+const mockShowPlace = jest.fn();
 jest.mock('./store', () => ({
+  showOtherTabsPlace: () => mockShowPlace(),
   onGaveWayToTab: (listener: () => void) => {
     mockGaveWay = listener;
     return () => {
@@ -35,6 +37,7 @@ const emit = (s: string) => {
 
 beforeEach(() => {
   mockToast.mockClear();
+  mockShowPlace.mockClear();
   mockState = 'paused';
   appState = 'active';
   listeners = [];
@@ -88,6 +91,21 @@ describe('the "Playing in another tab" notice', () => {
     expect(mockGaveWay).toBeNull();
     emit('active');
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('shows the place the other tab played to each time the tab is looked at again', () => {
+    const stop = startOtherTabNotice();
+    expect(mockShowPlace).not.toHaveBeenCalled();
+    emit('background');
+    emit('active');
+    expect(mockShowPlace).toHaveBeenCalledTimes(1);
+    emit('background');
+    emit('active');
+    expect(mockShowPlace).toHaveBeenCalledTimes(2);
+    stop();
+    emit('background');
+    emit('active');
+    expect(mockShowPlace).toHaveBeenCalledTimes(2);
   });
 
   it.each(Object.entries({ en, de, es, fr, it: italian, pt }))(

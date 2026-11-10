@@ -10,9 +10,11 @@ import { tabChannel, type TabChannel } from '@/lib/tab-channel';
  * So a tab that starts playing says so on a channel every tab of the browser shares
  * (`tabChannel`: `BroadcastChannel`, else `storage` events), and a tab of the same
  * connection that is playing, or on its way to, gives way: it pauses, closes its listening
- * span and tells the listener ("Playing in another tab"). It keeps its book and its place;
- * pressing play there claims the connection back. The rule is per connection, not per book:
- * one account plays once in a browser, and two connections may play side by side.
+ * span and tells the listener ("Playing in another tab"). It keeps its book; pressing play
+ * there claims the connection back, from where the other tab left that book when it played
+ * the same one (the store's `otherTabsPlace`: the tabs are never at two places of a book).
+ * The rule is per connection, not per book: one account plays once in a browser, and two
+ * connections may play side by side.
  *
  * The newest play wins, by when it was asked for (`askedAt`), not by which claim arrives
  * last: a tab still loading whose play was asked for after another tab's keeps going, and

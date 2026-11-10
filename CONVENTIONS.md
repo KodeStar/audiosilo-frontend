@@ -1762,7 +1762,7 @@ media GETs only.
   is told with a toast, "Playing in another tab" (`other-tab-notice.ts`, a root service;
   shown once the tab is looked at, and the store keeps a give-way nobody was there to hear
   until the service registers). It keeps
-  its book and place, and a play there claims the connection back. A tab whose stream died
+  its book, and a play there claims the connection back. A tab whose stream died
   (`error`, no Retry out) is not playing and is told nothing, but its engine is paused all the
   same: a stream that came back by itself would read as a new play and take the connection
   back. Per connection, not per book: two connections may play side by side. "Newest" is
@@ -1778,6 +1778,40 @@ media GETs only.
   `audiosilo-tab:<name>` and removed at once); null off the web, where none of this runs.
   A tab on a build before the rule neither claims nor gives way. What the tabs share of the
   listening outbox is under Listening sync, *Across tabs*.
+  - *The tabs are never at two places of one book* (owner decision). A tab with a book of
+    the claim's connection loaded that gave way, or was not playing (paused by hand, a dead
+    stream), notes the earliest such claim (`otherTabPlayed`: its place may be behind from
+    then). Before it plays again it takes the place the tabs share (`otherTabsPlace`): the
+    mirror's record of the loaded book (what a fresh load resumes from, by its file when the
+    queue holds it, fe#188), when this browser's `device_id` saved it at or after that
+    claim and it is more than `SAME_PLACE_S` (2 s) from the engine's place, **earlier or
+    later** (the other tab is the latest listening). Another book played there leaves this
+    book's record as it was, so nothing moves; another device's record is the place
+    reconcile's. `toggle` reads it before the engine starts and `retry` reloads there; a
+    play that began by itself (the OS media controls, `!wantsPlayback` at `playing`) moves
+    as it plays (`catchUpPlaying`), and no span or history opens until it has
+    (`catchingUp`). The move is the engine's seek, **not** `seekBook`: `adoptTabPlace` sets
+    the resume floor and the next span begins there as a `resume`, so no `jump` or
+    `moved_back` event tells the server the listener chose the place the tab was at. The
+    Undo jump chip still offers the way back (it reads the snapshot stream, so a move of
+    more than a minute makes one), and that Undo is the listener's own `seekBook`. A book
+    the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,
+    as a fresh load of a finished book does (not when this tab is at the end itself).
+  - While the note stands the tab **saves nothing of its own** (`behindOtherTab` in
+    `persist`; a finish still saves): a paused tab's save dated now (a speed change, the
+    place reconcile's flush on the foreground) would be the newest record in the shared
+    mirror, over the other tab's, and a PUT of it would move the server's place back. The
+    place a tab gives way at is saved first (`giveWayTo`). The note is cleared when the tab
+    plays (`claimPlaying`) and by a move of the listener's own there (`userMoved`: a seek
+    in the paused tab stands, and so does every book switch).
+  - A paused tab looked at again shows the other tab's place
+    (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
+    the play that follows reads again; a finished book stays where it is).
+  - Limits: the shared place is the other tab's last **save** (every 15 s while it plays,
+    and when it stops), so a tab that takes over from one still playing lands up to 15 s
+    behind where that tab really is, and takes nothing from a tab that had not saved yet.
+    Two windows both in view never get a foreground event, so the paused one shows its old
+    place until it plays.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and

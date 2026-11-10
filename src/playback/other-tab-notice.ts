@@ -2,15 +2,18 @@ import { t } from 'i18next';
 import { AppState } from 'react-native';
 
 import { toast } from '@/components/ui/toast';
-import { whenActive } from '@/lib/when-active';
+import { onForeground, whenActive } from '@/lib/when-active';
 
-import { onGaveWayToTab, usePlayer } from './store';
+import { onGaveWayToTab, showOtherTabsPlace, usePlayer } from './store';
 
 /**
  * "Playing in another tab": the notice a web tab shows when it paused because another tab
  * of the same connection began playing (`playing-claim.ts`, fe#123). Shown once the tab is
  * looked at (it is usually hidden behind the tab that plays), and not at all when it plays
  * again by then. Started with the root's services; the store only ever gives way on the web.
+ *
+ * Looked at again, a paused tab also shows where the other tab has played its book to since
+ * (`showOtherTabsPlace`), not the place it stopped at.
  */
 export function startOtherTabNotice(): () => void {
   let cancel = () => {};
@@ -23,8 +26,10 @@ export function startOtherTabNotice(): () => void {
       toast({ title: t('player.otherTab.title') });
     });
   });
+  const stopShowing = onForeground(showOtherTabsPlace);
   return () => {
     cancel();
     stop();
+    stopShowing();
   };
 }
