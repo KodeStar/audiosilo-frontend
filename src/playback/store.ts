@@ -161,13 +161,12 @@ let resumeFloor = 0;
 /** The book (`contentKey`) whose session began at a place not checked against its server
  * (`ResumeLookup.unchecked`): on the legacy PUT path its saves carry the replay guard
  * (`ProgressSave.guard`, fe#198) until one of them is PUT. Set per session in `playBook`,
- * a new object each time, so an earlier session's save PUT late never lifts a later one's. */
+ * with a new id each time (`guardFor`), so an earlier session's save PUT late never lifts a
+ * later one's. */
 let placeGuard: { key: string; id: string } | null = null;
-/** How many guarded sessions this launch began (with the time, `placeGuard.id`). */
-let guardSessions = 0;
 /** A guarded session for the book `key`, with an id its saves carry (`guard_session`), so a
  * queued one PUT later lifts it (`guardSettled`, fe#198). */
-const guardFor = (key: string) => ({ key, id: `${Date.now().toString(36)}-${++guardSessions}` });
+const guardFor = (key: string) => ({ key, id: newEventId() });
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
@@ -471,10 +470,10 @@ async function persist(opts?: { forceFinished?: boolean }) {
   }
   const end = endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
   const key = contentKeyOf(nowPlaying);
-  // A finish is the listener's own: never held back.
   // A queued save of this session PUT since (a replay): the guard is over.
   if (placeGuard && guardSettled(placeGuard.id)) placeGuard = null;
   const guard = placeGuard;
+  // A finish is the listener's own: never held back.
   const guarded = guard?.key === key && !forceFinished;
   const save = {
     connectionId: nowPlaying.connectionId,
@@ -952,7 +951,7 @@ async function recordFinish(ref: FinishRef): Promise<void> {
 setFinishRecorder({
   takesEvent: usesListeningSync,
   record: recordFinish,
-  withdraw: (connectionId, libraryId, path) => withdrawFinish(connectionId, libraryId, path),
+  withdraw: withdrawFinish,
 });
 
 /**
