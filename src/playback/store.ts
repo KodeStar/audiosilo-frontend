@@ -1058,10 +1058,13 @@ function claimPlaying() {
 /**
  * Another tab began playing (its `claim`). When this tab plays on the same connection, or
  * means to, and that play is the newer one (`givesWayTo`), this one gives way: its span
- * ends where the engine is, dated no later than the other tab's began, then it pauses like
- * any pause (the place saved, the intent dropped; the pause finds no span left to close, so
- * the span is one event) and the listener is told (`onGaveWayToTab`). The book and its place
+ * ends where the engine is, dated no later than the other tab's began, then it pauses (the
+ * intent dropped, the place saved as the engine reports the pause, which finds no span left
+ * to close, so the span is one event) and the listener is told (`onGaveWayToTab`). The book and its place
  * stay loaded: a play here claims the connection back.
+ *
+ * A tab whose stream died is not playing, so it has nothing to give way with; its engine is
+ * stopped all the same, so the stream cannot come back by itself and play over the other tab.
  */
 function giveWayTo(claim: PlayingClaim) {
   const { nowPlaying: np, snapshot } = usePlayer.getState();
@@ -1071,12 +1074,26 @@ function giveWayTo(claim: PlayingClaim) {
     live: isPlayingState(snapshot.state) || wantsPlayback,
     askedAt: playAskedAt,
   };
-  if (!givesWayTo(claim, mine)) return;
+  if (!givesWayTo(claim, mine)) {
+    // A stream that died here (`error`, no Retry out) is not playing, but its engine may
+    // still bring it back by itself (the error hold lets a `playing` through), and that
+    // `playing` would read as a new play and take the connection back from the tab that
+    // plays now. So its engine is stopped: the error stays, and a Retry here plays again.
+    const died = !mine.live && snapshot.state === 'error';
+    if (died && mine.connectionId === claim.connectionId) {
+      void service?.pause().catch(() => undefined);
+    }
+    return;
+  }
   yieldedAttempt = playAttempts;
   closeListeningSpan({ endedAt: claim.sentAt });
-  void usePlayer
-    .getState()
-    .pause()
+  // The engine is paused whatever the snapshot says, where the `pause` action pauses only
+  // one seen `playing` or `loading`: a play just asked for, whose first engine event has not
+  // arrived, would go on to `playing` with the intent dropped, read as a new play and take
+  // the connection back.
+  clearPlaybackIntent();
+  void service
+    ?.pause()
     .catch((e: unknown) => console.warn('[player] could not pause for another tab', e));
   if (gaveWayListener) gaveWayListener();
   else gaveWayUntold = true;

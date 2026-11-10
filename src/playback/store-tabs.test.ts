@@ -99,6 +99,9 @@ function makeEngine() {
   };
   /** A load the test holds open (`holdLoad`), released by calling it. */
   let held: Promise<void> | null = null;
+  /** A play the test holds open (`holdPlay`): asked of the engine, not begun yet. */
+  let heldPlay: Promise<void> | null = null;
+  let pauses = 0;
   const svc = {
     onRemoteSeek: jest.fn(),
     onRemoteMove: jest.fn(),
@@ -110,8 +113,16 @@ function makeEngine() {
       push({ state: 'loading', trackIndex, position, duration: 50 });
       await held;
     }),
-    play: jest.fn(async () => push({ state: 'playing' })),
-    pause: jest.fn(async () => push({ state: 'paused' })),
+    play: jest.fn(async () => {
+      const before = pauses;
+      await heldPlay;
+      // A pause made while the play was out supersedes it, as in a browser.
+      if (pauses === before) push({ state: 'playing' });
+    }),
+    pause: jest.fn(async () => {
+      pauses++;
+      push({ state: 'paused' });
+    }),
     seekTo: jest.fn(async () => {}),
     skipToTrack: jest.fn(async () => {}),
     setRate: jest.fn(async () => {}),
@@ -127,11 +138,21 @@ function makeEngine() {
     svc: svc as typeof svc & PlaybackService,
     /** The engine plays on to `position` (seconds into the file). */
     at: (position: number) => push({ position }),
+    /** The stream dies: the engine reports `error` (and may come back by itself). */
+    fail: () => push({ state: 'error' }),
     holdLoad: () => {
       let release: () => void = () => {};
       held = new Promise<void>((r) => (release = r));
       return () => {
         held = null;
+        release();
+      };
+    },
+    holdPlay: () => {
+      let release: () => void = () => {};
+      heldPlay = new Promise<void>((r) => (release = r));
+      return () => {
+        heldPlay = null;
         release();
       };
     },
@@ -387,6 +408,34 @@ describe.each([
     expect([a.gaveWay(), b.gaveWay()]).toEqual([1, 1]);
   });
 
+  it('a tab whose stream died is stopped, so it cannot come back and take the connection', async () => {
+    await a.start(5);
+    a.engine.fail();
+    expect(a.player().snapshot.state).toBe('error');
+    await sleep(5); // B's play is asked for later than A's
+    await b.start(30);
+    // Not playing, so it gives way with nothing (no notice), but its engine is paused: the
+    // dead stream can no longer start playing by itself.
+    await until(() => a.engine.svc.pause.mock.calls.length === 1, "A's engine to stop");
+    await sleep(40);
+    expect(a.player().snapshot.state).toBe('error');
+    expect(a.gaveWay()).toBe(0);
+    expect(b.player().snapshot.state).toBe('playing');
+    expect(b.gaveWay()).toBe(0);
+    // A Retry there is a play asked for now: it claims the connection back.
+    await a.player().retry();
+    await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+    expect(a.player().snapshot.state).toBe('playing');
+  });
+
+  it('a tab whose stream died on another connection is left alone', async () => {
+    await a.start(5, 'c1');
+    a.engine.fail();
+    await b.start(30, 'c2');
+    await sleep(40);
+    expect(a.engine.svc.pause).not.toHaveBeenCalled();
+  });
+
   it('a tab whose services start late is still told it gave way', async () => {
     // The web starts the root's services (the notice among them) after the first paint.
     const c = await openTab(browser, { lateNotice: true });
@@ -425,6 +474,24 @@ describe.each([
     await a.player().toggle();
     await until(() => b.player().snapshot.state === 'paused', 'B to give way');
     expect(a.player().snapshot.state).toBe('playing');
+  });
+
+  it('a play just asked for, not yet begun in the engine, gives way and never begins', async () => {
+    await a.start(5);
+    await a.player().pause();
+    const release = a.engine.holdPlay();
+    const toggling = a.player().toggle();
+    await sleep(5); // B's play is asked for later than A's
+    await b.start(30);
+    await until(() => a.gaveWay() === 1, 'A to give way');
+    release();
+    await toggling;
+    await sleep(40);
+    // The snapshot still read `paused` when the claim landed: the engine is paused all the
+    // same, so the play that was out never begins and takes the connection back.
+    expect(a.player().snapshot.state).not.toBe('playing');
+    expect(b.player().snapshot.state).toBe('playing');
+    expect(b.gaveWay()).toBe(0);
   });
 
   it('a Retry still loading when the other tab plays gives way and never plays', async () => {

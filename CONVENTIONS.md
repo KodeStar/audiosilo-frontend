@@ -1754,11 +1754,17 @@ media GETs only.
   tab of the same connection that plays or means to (`wantsPlayback`) gives way
   (`giveWayTo`): its span closes there and then, dated no later than the claim (`sentAt`), so
   two tabs never record the same seconds; it pauses like any pause (the pause finds no span
-  left, so the span is one event); and the listener is told with a toast, "Playing in
+  left, so the span is one event), except that the engine is paused whatever the snapshot
+  reads (a play asked for a moment ago, whose first engine event has not arrived, must not
+  go on to `playing`: with the intent dropped it would read as a new play and take the
+  connection back); and the listener is told with a toast, "Playing in
   another tab" (`other-tab-notice.ts`, a root service; shown once the tab is looked at, and
   the store keeps a give-way nobody was there to hear until the service registers). It keeps
-  its book and place, and a play there claims the connection back. Per connection, not per
-  book: two connections may play side by side. "Newest" is when the play was asked for
+  its book and place, and a play there claims the connection back. A tab whose stream died
+  (`error`, no Retry out) is not playing and is told nothing, but its engine is paused all the
+  same: a stream that came back by itself would read as a new play and take the connection
+  back. Per connection, not per book: two connections may play side by side. "Newest" is
+  when the play was asked for
   (`playAskedAt`: `beginPlaybackAttempt`, else the moment the engine began by itself, the OS
   media controls), not which claim arrives last, with the tab id breaking a tie
   (`givesWayTo`, pure), so of two tabs that start together exactly one stands; a start or
