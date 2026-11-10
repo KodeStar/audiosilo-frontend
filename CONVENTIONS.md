@@ -1634,9 +1634,12 @@ media GETs only.
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
     book's span closes first, the mirror records it finished, offline it waits in the outbox,
     so `useMarkFinished` runs whatever the online flag says, `networkMode: 'always'`;
-    Undo stays a progress edit, sent only after `undoFinish` took the book's waiting finish
+    Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
     back out of the outbox (`withdrawFinish`; one whose request is out is waited for, and a
-    failed edit puts it back): sent after the edit it would finish the book again; fe#208). An event never claims more than 23 h of wall clock
+    failed edit puts it back): sent after the edit it would finish the book again. A finish
+    taken back that the server never answered (an offline Mark as finished) needs no edit:
+    the Undo is done here, the mirror back to its record before the finish
+    (`unrecordFinish`); fe#208). An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that

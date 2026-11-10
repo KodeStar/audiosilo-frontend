@@ -143,7 +143,7 @@ export function useBookActions(
               label: t('queue.undo'),
               // The finish event, if still waiting, is taken back before the edit (fe#208).
               onPress: () =>
-                void undoFinish({ connectionId, libraryId, path }, () =>
+                void undoFinish({ connectionId, libraryId, path, position: before }, () =>
                   setFinished(false, before),
                 ),
             }

@@ -555,7 +555,8 @@ describe('flushOutbox', () => {
 
     it("takes the book's waiting finish back (only it); the restore sends it after all", async () => {
       await appendEvents('c1', [listen('a'), finish('f'), finish('g', 'Other/Book')]);
-      const restore = await withdrawFinish('c1', 3, 'Author/Book');
+      const { unsent, restore } = await withdrawFinish('c1', 3, 'Author/Book');
+      expect(unsent).toBe(true);
       expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a', 'g']);
       const c = client(async (body) => answer(body));
       await flushOutbox('c1');
@@ -580,12 +581,17 @@ describe('flushOutbox', () => {
       const flushing = flushOutbox('c1');
       while (c.syncListening.mock.calls.length === 0) await tick();
       let done = false;
-      const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then(() => (done = true));
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then((w) => {
+        done = true;
+        return w;
+      });
       await tick();
       expect(done).toBe(false);
       release();
-      await Promise.all([flushing, withdrawing]);
+      const [, taken] = await Promise.all([flushing, withdrawing]);
       expect(await outboxEvents('c1')).toEqual([]);
+      // The server has it: the Undo needs its edit.
+      expect(taken.unsent).toBe(false);
     });
 
     it("a rollback's PUT of the finish is waited for too", async () => {
@@ -618,7 +624,8 @@ describe('flushOutbox', () => {
       while (c.syncListening.mock.calls.length === 0) await tick();
       const withdrawing = withdrawFinish('c1', 3, 'Author/Book');
       fail(new TypeError('Failed to fetch'));
-      await Promise.all([flushing, withdrawing]);
+      const [, taken] = await Promise.all([flushing, withdrawing]);
+      expect(taken.unsent).toBe(true);
       expect(await outboxEvents('c1')).toEqual([]);
       await flushOutbox('c1');
       expect(c.syncListening).toHaveBeenCalledTimes(1);

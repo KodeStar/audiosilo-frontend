@@ -719,17 +719,26 @@ async function sending<T>(
   }
 }
 
+/** What `withdrawFinish` took back. */
+export type Withdrawal = {
+  /** A finish the server never answered was taken back: it never reached the server (an
+   * offline Mark as finished), so the Undo is complete here, with no progress edit. */
+  unsent: boolean;
+  /** For an edit that failed: the events go back and are sent. */
+  restore: () => Promise<void>;
+};
+
 /**
  * Take a book's waiting `finish` events out of the outbox, before an Undo's progress edit
  * (fe#208): a finish sent after the edit would finish the book again. One whose request is
- * out is waited for (sent, the edit comes after it; unanswered, it is taken back). Returns
- * the restore, for an edit that failed: the events go back and are sent.
+ * out is waited for (answered, the server has it and the edit comes after it; unanswered,
+ * it is taken back).
  */
 export async function withdrawFinish(
   connectionId: string,
   libraryId: number,
   path: string,
-): Promise<() => Promise<void>> {
+): Promise<Withdrawal> {
   const isMine = (e: OutboxEntry) =>
     e.connectionId === connectionId &&
     e.event.kind === 'finish' &&
@@ -752,11 +761,14 @@ export async function withdrawFinish(
     if (!wait) break;
     await wait.out;
   }
-  return async () => {
-    if (taken.length === 0) return;
-    for (const e of taken) withdrawn.delete(e.id);
-    await appendEvents(connectionId, taken);
-    void flushOutbox(connectionId);
+  return {
+    unsent: taken.length > 0,
+    restore: async () => {
+      if (taken.length === 0) return;
+      for (const e of taken) withdrawn.delete(e.id);
+      await appendEvents(connectionId, taken);
+      void flushOutbox(connectionId);
+    },
   };
 }
 

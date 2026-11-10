@@ -219,7 +219,7 @@ describe('useBookActions', () => {
       mockUndoRefs.length = 0;
       await act(async () => t.action.onPress());
       expect(mockUndoRefs).toEqual([
-        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book' },
+        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 900 },
       ]);
       expect(mockEdit).toHaveBeenLastCalledWith({
         libraryId: 1,

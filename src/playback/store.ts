@@ -48,7 +48,7 @@ import {
   type LocalFiles,
 } from './book-source';
 import { engineTick, engineTicker } from './engine-ticks';
-import { type FinishRef, finishedSave, setFinishRecorder } from './finish-route';
+import { type FinishRef, finishedSave, setFinishRecorder, type UndoRef } from './finish-route';
 import {
   appendEvents,
   closeSpan,
@@ -72,6 +72,7 @@ import {
   getDeviceId,
   guardSettled,
   loadInitialProgress,
+  type ProgressSave,
   readMirror,
   saveProgress,
   writeMirror,
@@ -961,18 +962,51 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   if (loaded) finishSent = contentKeyOf(ref);
   // The book page gives no speed: the book's own stays in the mirror (an offline Listen
   // again reads it), never 1x.
-  const speed =
-    ref.playback_speed ??
-    (await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null))?.playback_speed;
+  const prior = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
+  beforeFinish.set(contentKeyOf(ref), prior);
+  const speed = ref.playback_speed ?? prior?.playback_speed;
   const id = deviceId || (await getDeviceId());
   await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(() => undefined);
   await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
+}
+
+/** Each book's mirror record before its Mark as finished (`recordFinish`), for an Undo
+ * done here (`unrecordFinish`). */
+const beforeFinish = new Map<string, ProgressSave | null>();
+
+/**
+ * Undo a Mark as finished that never left this device (its finish was taken back from the
+ * outbox unsent, `undoFinish`): the mirror goes back to its record before the finish (else
+ * this device's at `ref.position`, unfinished), and the player's end may send a finish again.
+ */
+async function unrecordFinish(ref: UndoRef): Promise<void> {
+  const key = contentKeyOf(ref);
+  const prior = beforeFinish.get(key);
+  beforeFinish.delete(key);
+  if (finishSent === key) finishSent = null;
+  const now = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
+  const back =
+    prior && !prior.finished
+      ? prior
+      : now
+        ? { ...now, finished: false, position: ref.position }
+        : null;
+  if (back) await writeMirror(back).catch(() => undefined);
+  void queryClient.invalidateQueries({ queryKey: qk.allProgress(ref.connectionId) });
+  void queryClient.invalidateQueries({
+    queryKey: qk.progress(ref.connectionId, ref.libraryId, ref.path),
+  });
+  invalidateProgressDependents(queryClient, ref.connectionId, ref.libraryId, ref.path, {
+    finish: true,
+    place: true,
+  });
 }
 
 setFinishRecorder({
   takesEvent: usesListeningSync,
   record: recordFinish,
   withdraw: withdrawFinish,
+  unrecord: unrecordFinish,
 });
 
 /**

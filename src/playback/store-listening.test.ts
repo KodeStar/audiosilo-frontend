@@ -90,8 +90,14 @@ jest.mock('./listening-outbox', () => {
     }),
     flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),
     sendOnPageHide: (...a: unknown[]) => mockSendOnPageHide(...a),
+    withdrawFinish: (...a: unknown[]) => mockWithdraw(...a),
   };
 });
+// What an Undo's withdrawal took back (`unsent`: a finish the server never got).
+const mockWithdraw = jest.fn(async (..._a: unknown[]) => ({
+  unsent: true,
+  restore: async () => {},
+}));
 
 jest.mock('./time-saved', () => ({ noteSilenceSaved: jest.fn(), flushTimeSaved: jest.fn() }));
 jest.mock('@/api/provider', () => ({
@@ -124,7 +130,7 @@ import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
-import { finishTakesEvent, recordFinishEvent } from './finish-route';
+import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
 import { flushHistoryOnHide, standByPlace, usePlayer } from './store';
 /* eslint-enable import/first */
@@ -654,6 +660,52 @@ describe('Mark as finished outside the player (finish-route)', () => {
     pushSnapshot(snap('paused', 1, 45));
     await settle();
     expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
+  });
+
+  // An offline Mark as finished then Undo: the PATCH would fail, and the finish put back
+  // went out on reconnect and finished the book after all.
+  it('Undo of a finish that never left: the mirror goes back to before it, no edit', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1.2,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+      ack_version: 7,
+    };
+    mockReadMirror.mockResolvedValue(before);
+    try {
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      expect(mockWriteMirror).toHaveBeenLastCalledWith(
+        expect.objectContaining({ path: 'Other/Book', finished: true }),
+      );
+      const edit = jest.fn(async () => true);
+      await expect(
+        undoFinish({ connectionId: 'c1', libraryId: 2, path: 'Other/Book', position: 48 }, edit),
+      ).resolves.toBe(true);
+      expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
+      expect(edit).not.toHaveBeenCalled();
+      expect(mockWriteMirror).toHaveBeenLastCalledWith(before);
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: qk.progress('c1', 2, 'Other/Book'),
+      });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo of a finish the server has: the edit, the mirror left to it', async () => {
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    await recordFinishEvent({ ...ref, path: 'Other/Book' });
+    const writes = mockWriteMirror.mock.calls.length;
+    const edit = jest.fn(async () => true);
+    await undoFinish({ connectionId: 'c1', libraryId: 2, path: 'Other/Book', position: 48 }, edit);
+    expect(edit).toHaveBeenCalledTimes(1);
+    expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
   });
 
   it("keeps the book's own speed in the mirror (the book page gives none)", async () => {

@@ -40,10 +40,19 @@ type FinishRecorder = {
   takesEvent: (connectionId: string) => boolean;
   /** Record the finish as an event; resolves once it waits in the outbox. */
   record: (ref: FinishRef) => Promise<void>;
-  /** Take the book's not-yet-sent finish events back (one being sent is waited for);
-   * resolves to the restore. */
-  withdraw: (connectionId: string, libraryId: number, path: string) => Promise<() => Promise<void>>;
+  /** Take the book's not-yet-sent finish events back (one being sent is waited for). */
+  withdraw: (
+    connectionId: string,
+    libraryId: number,
+    path: string,
+  ) => Promise<{ unsent: boolean; restore: () => Promise<void> }>;
+  /** A finish that never left this device is undone here: its record goes back to the
+   * place before it (`ref.position`), unfinished. */
+  unrecord: (ref: UndoRef) => Promise<void>;
 };
+
+/** The book an Undo unfinishes, and the place it goes back to. */
+export type UndoRef = Pick<FinishRef, 'connectionId' | 'libraryId' | 'path' | 'position'>;
 
 let recorder: FinishRecorder | null = null;
 
@@ -66,20 +75,24 @@ export async function recordFinishEvent(ref: FinishRef): Promise<boolean> {
 }
 
 /**
- * Undo a Mark as finished with `edit` (the progress edit that unfinishes the book): the
- * book's finish event still waiting in the outbox is taken back first, since sent after the
- * edit it would finish the book again; the edit failing puts it back. Resolves to the edit's
- * outcome.
+ * Undo a Mark as finished with `edit` (the progress edit that unfinishes the book, at
+ * `ref.position`): the book's finish event still waiting in the outbox is taken back first,
+ * since sent after the edit it would finish the book again. A finish the server never got
+ * (offline) needs no edit: taken back, this device's record goes back to the place before
+ * and the Undo is done (an edit offline fails, and putting the finish back sent it on
+ * reconnect). Else the edit, and an edit that failed puts the finish back. Resolves to
+ * whether the book is unfinished.
  */
-export async function undoFinish(
-  ref: Pick<FinishRef, 'connectionId' | 'libraryId' | 'path'>,
-  edit: () => Promise<boolean>,
-): Promise<boolean> {
+export async function undoFinish(ref: UndoRef, edit: () => Promise<boolean>): Promise<boolean> {
   // A withdrawal that failed still lets the Undo's edit through (nothing was taken back).
-  const restore = recorder
-    ? await recorder.withdraw(ref.connectionId, ref.libraryId, ref.path).catch(() => async () => {})
-    : async () => {};
+  const taken = recorder
+    ? await recorder.withdraw(ref.connectionId, ref.libraryId, ref.path).catch(() => null)
+    : null;
+  if (taken?.unsent && recorder) {
+    await recorder.unrecord(ref).catch(() => undefined);
+    return true;
+  }
   const ok = await edit();
-  if (!ok) await restore().catch(() => undefined);
+  if (!ok) await taken?.restore().catch(() => undefined);
   return ok;
 }
