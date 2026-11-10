@@ -94,7 +94,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   language's catalog is loaded before switching to it (`switchLanguage`, the last switch wins;
   first paint waits for a saved language at most `LANGUAGE_WAIT_MS`, then paints in English
   and switches when the chunk lands), so a string needed in every language at once has its own table (`fell-asleep-notes.ts`, held
-  to the catalogs by its test). A new module for the first screen keeps a static import; one
+  to the catalogs by its test). Native starts with English alone too (`i18n/catalogs.ts`, PERF-SPIKE
+  P5): the others stay in its one bundle but are `require()`d only when `switchLanguage` asks for
+  one, so never `i18n.changeLanguage` directly (tests included: the catalog would not be in). A new module for the first screen keeps a static import; one
   for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
   (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
   shell's scripts and every chunk they name, transitively; the shell cached once its own files

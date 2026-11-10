@@ -1,3 +1,4 @@
+import { ensureLanguage } from '@/i18n';
 import {
   bitrateKbps,
   formatDayDate,
@@ -94,7 +95,9 @@ describe('formatRelative', () => {
       expect(formatRelative(ago(3 * 365 * 86400), 'en')).toBe('3 years ago');
     });
 
-    it("says it in the app's language (#132)", () => {
+    it("says it in the app's language (#132)", async () => {
+      // The app's language is always in; only English is from the start.
+      await Promise.all((['fr', 'de', 'es'] as const).map(ensureLanguage));
       expect(formatRelative(ago(3 * 3600), 'fr')).toBe('il y a 3 heures');
       expect(formatRelative(ago(86400), 'fr')).toBe('hier');
       expect(formatRelative(ago(10), 'fr')).toBe('à l’instant');

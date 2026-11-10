@@ -1,9 +1,12 @@
 import { ApiError } from '@/api/client';
-import i18n from '@/i18n';
+import i18n, { ensureLanguage, SUPPORTED_CODES } from '@/i18n';
 
 import { signInErrorText } from './sign-in-error';
 
 const t = i18n.t.bind(i18n);
+
+// Only English is in from the start: the fixed-language checks below need theirs.
+beforeAll(() => Promise.all(SUPPORTED_CODES.map(ensureLanguage)));
 
 describe('signInErrorText', () => {
   it('tells a 401 apart by the request that failed', () => {

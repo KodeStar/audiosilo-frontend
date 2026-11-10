@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 
 import { PICKABLE_BOOKMARK_LABELS } from '@/api/bookmark-labels';
-import i18n from '@/i18n';
+import i18n, { switchLanguage } from '@/i18n';
 
 import { labelText, toggleLabel } from './labels';
 
@@ -12,7 +12,7 @@ describe('labelText', () => {
     expect(labelText(t, 'quote')).toBe('Quote');
     expect(labelText(t, 'relisten')).toBe('Re-listen');
     expect(labelText(t, 'fell_asleep')).toBe('Fell asleep');
-    await i18n.changeLanguage('de');
+    await switchLanguage('de');
     try {
       expect(labelText(t, 'relisten')).toBe('Nochmal hören');
     } finally {

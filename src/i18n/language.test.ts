@@ -1,4 +1,10 @@
-import i18n, { isSupportedCode } from '@/i18n';
+import i18n, { isSupportedCode, switchLanguage } from '@/i18n';
+import de from '@/i18n/locales/de.json';
+import en from '@/i18n/locales/en.json';
+import es from '@/i18n/locales/es.json';
+import fr from '@/i18n/locales/fr.json';
+import italian from '@/i18n/locales/it.json';
+import pt from '@/i18n/locales/pt.json';
 
 const mockGetLocales = jest.fn();
 jest.mock('expo-localization', () => ({ getLocales: () => mockGetLocales() }));
@@ -46,7 +52,8 @@ describe('catalog switching', () => {
 
   it('resolves translated strings per active language', async () => {
     expect(i18n.t('settings.title')).toBe('Settings');
-    await i18n.changeLanguage('es');
+    // Through the switch, which brings the catalog in first (only English starts in).
+    await switchLanguage('es');
     expect(i18n.t('settings.title')).toBe('Ajustes');
   });
 
@@ -90,24 +97,22 @@ describe('plural forms', () => {
     expect(i18n.t('search.hiddenCharacters', { count: 3 })).toBe(
       '3 more matches after your place in the book, hidden to avoid spoilers.',
     );
-    await i18n.changeLanguage('es');
+    await switchLanguage('es');
     expect(i18n.t('series.stats.missing', { count: 1 })).toBe('1 no está en tu biblioteca');
     expect(i18n.t('series.stats.missing', { count: 2 })).toBe('2 no están en tu biblioteca');
   });
 
   it('gives every plural key both forms, in every catalog', () => {
-    const catalogs = i18n.options.resources ?? {};
-    expect(Object.keys(catalogs)).toEqual(
-      expect.arrayContaining(['en', 'de', 'es', 'fr', 'it', 'pt']),
-    );
-    for (const [lang, res] of Object.entries(catalogs)) {
+    // The files, not the instance: only English is in it from the start.
+    const catalogs = { en, de, es, fr, it: italian, pt };
+    for (const [lang, translation] of Object.entries(catalogs)) {
       const keys: string[] = [];
       const walk = (o: unknown, path: string) => {
         if (o && typeof o === 'object') {
           for (const [k, v] of Object.entries(o)) walk(v, path ? `${path}.${k}` : k);
         } else keys.push(path);
       };
-      walk(res.translation, '');
+      walk(translation, '');
       const set = new Set(keys);
       for (const k of keys) {
         if (k.endsWith('_one'))

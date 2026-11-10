@@ -1,4 +1,4 @@
-import i18n from '@/i18n';
+import i18n, { type SupportedCode, switchLanguage } from '@/i18n';
 
 import {
   bookSpeed,
@@ -94,7 +94,7 @@ describe('formatTimeLeft', () => {
     ['it', 'mancano 45m a 1.25×', 'mancano 45m'],
     ['pt', 'faltam 45m a 1.25×', 'faltam 45m'],
   ])('is translated in %s', async (lang, atSpeed, normal) => {
-    await i18n.changeLanguage(lang);
+    await switchLanguage(lang as SupportedCode);
     expect(formatTimeLeft(t, timeLeft(0, 2700 * 1.25, 1.25))).toBe(atSpeed);
     expect(formatTimeLeft(t, timeLeft(0, 2700, 1))).toBe(normal);
   });
