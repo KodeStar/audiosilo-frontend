@@ -571,6 +571,24 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
+  it('the lists read again once the finish was sent (the caller read them before the send)', async () => {
+    await start();
+    let sent: () => void = () => {};
+    mockFlushOutbox.mockImplementation(() => new Promise<void>((resolve) => (sent = resolve)));
+    try {
+      const invalidate = queryClient.invalidateQueries as jest.Mock;
+      invalidate.mockClear();
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
+      sent();
+      await settle();
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.myStatsAll('c1') });
+    } finally {
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
+  });
+
   it('a server without listening events: not recorded, the caller saves by PUT', async () => {
     mockSync = false;
     expect(finishTakesEvent('c1')).toBe(false);

@@ -3,7 +3,7 @@ import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
+import { invalidateProgressDependents, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure } from '@/api/reachability';
 import type {
@@ -880,9 +880,14 @@ function moveListeningSpan(
  * goes before its finish, and in the same batch when nothing else is being sent (server#359:
  * a 12 s book's finish went first, in a batch of its own, found no session to mark finished,
  * and the span then opened one that stayed unfinished). Resolves once the finish waits in
- * the outbox (not sent).
+ * the outbox (not sent); `onSent` runs once that send is over.
  */
-async function finishAfter(closing: OpenSpan | null, ref: ContentRef, at: string): Promise<void> {
+async function finishAfter(
+  closing: OpenSpan | null,
+  ref: ContentRef,
+  at: string,
+  onSent?: () => void,
+): Promise<void> {
   try {
     if (closing) await closeSpan(closing);
   } catch {
@@ -895,8 +900,21 @@ async function finishAfter(closing: OpenSpan | null, ref: ContentRef, at: string
     if (closing && closing.connectionId !== ref.connectionId) {
       void flushOutbox(closing.connectionId);
     }
-    void flushOutbox(ref.connectionId);
+    void flushOutbox(ref.connectionId).then(onSent);
   }
+}
+
+/** What a finish moves, read again once the server has it: the caller (`useMarkFinished`)
+ * refreshed them as the finish went into the outbox, before it was sent, so they would
+ * otherwise keep the book unfinished. Only while its server is reachable (else nothing was
+ * sent, and the read would only fail). */
+function refreshAfterFinish(ref: ContentRef) {
+  if (!isReachable(ref.connectionId)) return;
+  void queryClient.invalidateQueries({ queryKey: qk.allProgress(ref.connectionId) });
+  invalidateProgressDependents(queryClient, ref.connectionId, ref.libraryId, ref.path, {
+    finish: true,
+    place: true,
+  });
 }
 
 /** The book's last span closed, then its `finish` (the natural end, "Mark finished"):
@@ -929,7 +947,7 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   await writeMirror(finishedSave(ref, deviceId || (await getDeviceId()), at)).catch(
     () => undefined,
   );
-  await finishAfter(closing, ref, at);
+  await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
 }
 
 setFinishRecorder({ takesEvent: usesListeningSync, record: recordFinish });
