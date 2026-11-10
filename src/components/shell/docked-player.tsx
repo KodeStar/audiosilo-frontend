@@ -13,8 +13,8 @@ import { usePlaceSync } from '@/components/player/place-sync';
 import { usePlayerOnTop, usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
-import { TransportControls } from '@/components/player/transport-controls';
-import { UndoChip, useUndoVisible } from '@/components/player/undo-chip';
+import { TransportControls, transportWidth } from '@/components/player/transport-controls';
+import { UNDO_CHIP_HEIGHT, UndoChip, useUndoVisible } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
 import { SEGMENT_LABEL, usePlayingSegment } from '@/components/player/use-playing-segment';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
@@ -48,10 +48,8 @@ const SIDE_TABLET = 220;
  * wider (a long track on a wide window is a long way to drag). */
 const CENTRE_MIN = 300;
 const CENTRE_MAX = 560;
-/** The `sm` transport: four 40 buttons and the 44 play, 6 apart. */
-const TRANSPORT_WIDTH = 228;
-/** The band the Undo chip floats in above the bar: its 34 and the 8 under it. */
-const CHIP_BAND = 42;
+/** The band the Undo chip floats in above the bar: the chip and the 8 (`mb-2`) under it. */
+const CHIP_BAND = UNDO_CHIP_HEIGHT + 8;
 
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
@@ -77,7 +75,7 @@ export function dockLayout(width: number): {
   const side = allActions ? SIDE_ALL : SIDE_TABLET;
   const centre = scrubber
     ? Math.min(CENTRE_MAX, Math.max(CENTRE_MIN, inner - 2 * side))
-    : TRANSPORT_WIDTH;
+    : transportWidth('sm');
   return { allActions, scrubber, centre };
 }
 

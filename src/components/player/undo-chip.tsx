@@ -38,7 +38,10 @@ export function useUndoVisible(): boolean {
  * can always mount it where the chip belongs (the full player's status line, above the
  * dock). A press goes back and toasts "Back where you were".
  */
-export function UndoChip({ className }: { className?: string }) {
+/** The chip's height (a surface that reserves a band for it reads it here). */
+export const UNDO_CHIP_HEIGHT = 34;
+
+export function UndoChip() {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const bookKey = usePlayer(selectBookKey);
@@ -58,10 +61,10 @@ export function UndoChip({ className }: { className?: string }) {
         hitSlop={5}
         accessibilityRole="button"
         accessibilityLabel={label}
+        style={{ height: UNDO_CHIP_HEIGHT }}
         className={cn(
-          'h-[34px] flex-row items-center gap-2 self-center rounded-full bg-primary pl-3 pr-1.5 shadow-overlay',
+          'flex-row items-center gap-2 self-center rounded-full bg-primary pl-3 pr-1.5 shadow-overlay',
           Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
-          className,
         )}
       >
         {/* The undo glyph: the vendored rotate arrow, mirrored (no separate glyph). */}
