@@ -37,9 +37,11 @@ describe('undoFinish', () => {
     return ok;
   };
 
-  it('a finish the server has: taken back (nothing waiting), then the edit', async () => {
+  // The edit's answer never reaches this device's record: left finished at the book's end,
+  // the next offline Play started the book again at 0.
+  it("a finish the server has: taken back (nothing waiting), the edit, then this device's record", async () => {
     await expect(undoFinish(ref, edit(true))).resolves.toBe(true);
-    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit']);
+    expect(steps).toEqual(['withdraw c1 3 Author/Book', 'edit', 'unrecord at 48']);
   });
 
   it('an edit that failed puts the finish back', async () => {

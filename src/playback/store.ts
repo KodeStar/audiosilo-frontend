@@ -964,9 +964,10 @@ async function recordFinish(ref: FinishRef): Promise<void> {
 const beforeFinish = new Map<string, { prior: ProgressSave | null; at: string }>();
 
 /**
- * Undo a Mark as finished that never left this device (its finish was taken back from the
- * outbox unsent, `undoFinish`): the mirror goes back to its record before the finish (else
- * this device's at `ref.position`, unfinished), and the player's end may send a finish again.
+ * A Mark as finished was undone (`undoFinish`: its finish taken back from the outbox unsent,
+ * or the progress edit that unfinished it on the server went through): the mirror goes back
+ * to its record before the finish (else this device's at `ref.position`, unfinished), and
+ * the player's end may send a finish again.
  */
 async function unrecordFinish(ref: UndoRef): Promise<void> {
   const key = contentKeyOf(ref);

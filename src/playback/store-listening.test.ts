@@ -751,14 +751,66 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
-  it('Undo of a finish the server has: the edit, the mirror left to it', async () => {
+  // The edit's answer only reaches the query caches: the mirror kept the finish's record
+  // (finished, at the end), and the next offline Play started the book again at 0.
+  it('Undo of a finish the server has: the edit, then the mirror back to before it', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValue(before);
+    try {
+      mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const edit = jest.fn(async () => true);
+      await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockWriteMirror).toHaveBeenLastCalledWith(
+        expect.objectContaining({ path: 'Other/Book', finished: false, position: 48 }),
+      );
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo whose edit failed: the mirror keeps the finish (it is sent again)', async () => {
     mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
     await recordFinishEvent({ ...ref, path: 'Other/Book' });
     const writes = mockWriteMirror.mock.calls.length;
-    const edit = jest.fn(async () => true);
-    await undoFinish(undoRef, edit);
-    expect(edit).toHaveBeenCalledTimes(1);
+    await expect(
+      undoFinish(
+        undoRef,
+        jest.fn(async () => false),
+      ),
+    ).resolves.toBe(false);
     expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+  });
+
+  // Marked finished from its page while loaded and paused, then undone: the player's own
+  // Mark as finished was taken for a second finish of the same end, and sent nothing.
+  it('after an Undo the player can finish the loaded book again', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('paused', 0, 9));
+    await settle();
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    await recordFinishEvent(ref);
+    await undoFinish(
+      { connectionId: 'c1', libraryId: 2, path: folder, position: 9 },
+      jest.fn(async () => true),
+    );
+    mockAppended.length = 0;
+    usePlayer.getState().finishBook();
+    await settle();
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
   });
 
   it("keeps the book's own speed in the mirror (the book page gives none)", async () => {
