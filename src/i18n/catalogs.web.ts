@@ -7,7 +7,8 @@ export type { Catalog } from './catalogs';
 /**
  * The web bundles only English (the fallback, and the language most start in): each other
  * catalog is about as large and is its own chunk, loaded when it is the language in use
- * (`ensureLanguage`). Native bundles all of them (`catalogs.ts`).
+ * (`ensureLanguage`). Native keeps them in its one bundle but runs only the one in use
+ * (`catalogs.ts`).
  */
 export const BUNDLED_CATALOGS: Readonly<Record<string, Catalog>> = { en };
 

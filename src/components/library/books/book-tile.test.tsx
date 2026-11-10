@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react-native';
 
 import type { Book } from '@/api/types';
-import i18n from '@/i18n';
+import i18n, { switchLanguage } from '@/i18n';
 
 // The tile itself (cover, progress, menu) has its own tests: this one reads its caption.
 jest.mock('../cover-tile', () => ({
@@ -53,7 +53,7 @@ describe('BookTile caption (Recently added)', () => {
     await render(<BookTile connectionId="c" libraryId={1} book={book} sort="recent" width={120} />);
     expect(screen.getByTestId('caption')).toHaveTextContent('Author · 5 minutes ago');
     await act(async () => {
-      await i18n.changeLanguage('de');
+      await switchLanguage('de');
     });
     expect(screen.getByTestId('caption')).toHaveTextContent('Author · vor 5 Minuten');
   });

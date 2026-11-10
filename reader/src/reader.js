@@ -30,6 +30,7 @@ import { View } from '../vendor/foliate-js/view.js';
 import { ChunkError, createAssembly, createTextAssembly } from './chunks.js';
 import { BookError, openEpub } from './epub-open.js';
 import { createReadalong } from './readalong.js';
+import { guardRender } from './render-guard.js';
 
 void View; // registers <foliate-view>
 
@@ -400,6 +401,8 @@ async function openBook(msg, bytes) {
   document.getElementById('book').append(view);
   try {
     await view.open(book);
+    // No relayout of a section whose document is still loading (fe#239).
+    guardRender(view.renderer);
     view.renderer.setAttribute('flow', 'paginated');
     view.renderer.setAttribute('margin', '32px');
     view.renderer.setAttribute('gap', '6%');

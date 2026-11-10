@@ -13,8 +13,8 @@ import { usePlaceSync } from '@/components/player/place-sync';
 import { usePlayerOnTop, usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
-import { TransportControls } from '@/components/player/transport-controls';
-import { UndoChip, useUndoVisible } from '@/components/player/undo-chip';
+import { TransportControls, transportWidth } from '@/components/player/transport-controls';
+import { UNDO_CHIP_HEIGHT, UndoChip, useUndoVisible } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
 import { SEGMENT_LABEL, usePlayingSegment } from '@/components/player/use-playing-segment';
 import { usePlayingTimeLeft } from '@/components/player/use-time-left';
@@ -36,24 +36,51 @@ import { useChromeEdge } from './shell-metrics';
 
 /** The bar's height above the safe area (STYLEGUIDE "Docked player bar"). */
 const DOCK_HEIGHT = 84;
+/** The bar's side padding and the gap between its three columns (the same on both sides,
+ * so the middle column's centre is the bar's). */
+const DOCK_PAD = 16;
+const DOCK_GAP = 16;
+/** What a side column needs for every action (speed, sleep, bookmark, output, cast, Up
+ * next, expand: about 388) or for the tablet set (sleep, Up next, expand: about 210), with
+ * the sleep pill at its widest (a running "10:05:00" or "Keep going", about 128), so the
+ * actions never reach the transport whatever the timer shows. */
+const SIDE_ALL = 390;
+const SIDE_TABLET = 220;
+/** The middle column with the scrubber row: never narrower (a usable scrubber), never
+ * wider (a long track on a wide window is a long way to drag). */
+const CENTRE_MIN = 300;
+const CENTRE_MAX = 560;
+/** The space between the floating Undo chip and the bar, and the band it floats in. */
+const CHIP_GAP = 8;
+const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
 
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
- * the desktop drawer; a tablet, a split view or a narrow browser window is less): from
- * 1024 every action (speed, bookmark, output); below it the tablet set, whose hidden
- * actions are all in the full player; below 800 the chapter scrubber row goes too (the
- * transport alone fits between the book and the actions). While the Undo chip shows (ten
- * seconds after a jump) its MEASURED width (`undoWidth`: "Back to 17:26:50" is wider
- * than "Back to 2:00") comes off the width first, so the scrubber row and then the
- * secondary actions make way for it and the book keeps its title (at 834 the chip used
- * to crush it to "C...").
+ * the desktop drawer; a tablet, a split view or a narrow browser window is less), and how
+ * wide its middle column is: every action (speed, bookmark, output, cast) once both side
+ * columns have room for them beside a full-width scrubber row (from 1144); below it the
+ * tablet set, whose hidden actions are all in the full player; below 800 the chapter
+ * scrubber row goes too (the transport alone is the middle column).
+ *
+ * Three columns (fe#244): the book and the actions are equal side columns and the
+ * transport sits between them, so it is centred on the bar whatever the title, the
+ * actions or the sleep countdown. Only the width decides any of it: the Undo chip floats
+ * above the bar (`DockedPlayer`), so a jump never moves or resizes the scrubber under the
+ * pointer that made it.
  */
-export function dockLayout(
-  width: number,
-  undoWidth = 0,
-): { allActions: boolean; scrubber: boolean } {
-  const room = width - undoWidth;
-  return { allActions: room >= 1024, scrubber: room >= 800 };
+export function dockLayout(width: number): {
+  allActions: boolean;
+  scrubber: boolean;
+  centre: number;
+} {
+  const inner = width - 2 * DOCK_PAD - 2 * DOCK_GAP;
+  const allActions = inner - 2 * SIDE_ALL >= CENTRE_MIN;
+  const scrubber = width >= 800;
+  const side = allActions ? SIDE_ALL : SIDE_TABLET;
+  const centre = scrubber
+    ? Math.min(CENTRE_MAX, Math.max(CENTRE_MIN, inner - 2 * side))
+    : transportWidth('sm');
+  return { allActions, scrubber, centre };
 }
 
 /** The chapter scrubber row: elapsed in the chapter, a thin scrubber with the chapter's
@@ -159,10 +186,10 @@ function SpeedPill() {
  * desktop, whenever a book is loaded: a 3 px whole-book progress line along the top; the
  * cover, chapter, book · author and the sync state on the left (tap for the full player);
  * the transport over a chapter scrubber (bookmark ticks, the time left in the book at the
- * listener's speed) in the centre; on the right the Undo chip after a jump, speed, sleep,
- * bookmark, output (where the engine can pick one), Up next and expand. What fits is
- * decided by the bar's measured width (`dockLayout`); everything hidden is in the full
- * player.
+ * listener's speed) centred on the bar; on the right speed, sleep, bookmark, output (where
+ * the engine can pick one), Up next and expand. After a jump the Undo chip floats above
+ * the bar over the transport. What fits is decided by the bar's measured width
+ * (`dockLayout`); everything hidden is in the full player.
  *
  * Speed and sleep open through `usePlayerSheets` (the web's keys open the same sheets),
  * rendered by the shell's one sheet host. Renders a fragment so that host can sit beside
@@ -182,18 +209,19 @@ export function DockedPlayer() {
   const isPlaying = usePlayer(selectIsPlaying);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
+  // False while the sleep timer's grace card is open: the chip gives way to it, and its
+  // band with it, so the card never moves when the chip goes.
   const undo = useUndoVisible();
   const onTop = usePlayerOnTop();
-  // The chip's width as it last laid out (it keeps it between jumps, so a chip that
-  // reappears makes room at once); none while it is not showing.
-  const [chipWidth, setChipWidth] = useState(0);
   // The playing book's bookmarks, once for the bar.
   const pins = usePlayingPins();
   // The bar sits on the window's bottom edge, so its height is its top edge (published
-  // for the root toasts). Its width picks what fits.
+  // for the root toasts and the sleep grace card), and the Undo chip's band above it
+  // while the chip shows, so they clear it. Its width picks what fits.
   const [size, setSize] = useState<{ width: number; height: number }>();
   const fetching = useEpisodeFetch((s) => s.pending !== null);
-  useChromeEdge('dock', nowPlaying || fetching ? size?.height : undefined);
+  const chipBand = nowPlaying && undo ? CHIP_BAND : 0;
+  useChromeEdge('dock', (nowPlaying || fetching) && size ? size.height + chipBand : undefined);
   // Nothing under the full player: the bar is hidden there, and its per-tick leaves
   // would only redraw behind it.
   if (onTop || (!nowPlaying && !fetching)) return null;
@@ -218,10 +246,10 @@ export function DockedPlayer() {
     );
   }
 
-  // Before the first layout: the form factor's guess.
-  const { allActions, scrubber } = dockLayout(
-    size?.width ?? (desktop ? 1280 : 800),
-    undo ? chipWidth : 0,
+  // The row's width (the bar's, inside its side insets); before the first layout, the
+  // form factor's guess.
+  const { allActions, scrubber, centre } = dockLayout(
+    size ? size.width - insets.left - insets.right : desktop ? 1280 : 800,
   );
   const { queue, title, author } = nowPlaying;
   // Under a chapter heading the book and its author; when the heading is already the
@@ -241,16 +269,30 @@ export function DockedPlayer() {
         <EpisodeFetchStrip className="border-b border-border pl-3.5 pr-4" />
         {/* The 3px whole-book progress line along the bar's top edge (a leaf). */}
         <BookProgressLine total={queue.total} className="absolute left-0 right-0 top-0 h-[3px]" />
+        {/* The Undo chip floats just above the bar, centred over the transport: in the bar
+            it took room from the scrubber, which then moved under the pointer that made
+            the jump (fe#244). Nothing in the bar lays out around it. */}
         <View
-          style={{ height: DOCK_HEIGHT }}
-          className="flex-row items-center gap-4 pl-3.5 pr-4 lg:gap-5 lg:pr-5"
+          testID="dock-undo"
+          pointerEvents="box-none"
+          style={{ bottom: '100%', marginBottom: CHIP_GAP, zIndex: 20 }}
+          className="absolute left-0 right-0 items-center"
+        >
+          <UndoChip />
+        </View>
+        <View
+          testID="dock-row"
+          style={{ height: DOCK_HEIGHT, paddingHorizontal: DOCK_PAD, gap: DOCK_GAP }}
+          className="flex-row items-center"
         >
           <AnimatedPressable
+            testID="dock-book"
             onPress={openPlayer}
             accessibilityRole="button"
             accessibilityLabel={t('shell.openPlayer', { title })}
             className={cn(
-              'min-w-0 flex-1 flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent',
+              // A side column: as wide as the actions' (both flex from nothing).
+              'min-w-0 flex-1 basis-0 flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent',
               Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
             )}
           >
@@ -274,30 +316,18 @@ export function DockedPlayer() {
             </View>
           </AnimatedPressable>
 
-          <View
-            testID="dock-centre"
-            className={cn('justify-center', scrubber && 'min-w-[300px] flex-[1.4]')}
-          >
+          <View testID="dock-centre" style={{ width: centre }} className="shrink-0 justify-center">
             <TransportControls size="sm" />
             {scrubber ? <ChapterScrubber bookmarks={pins.bookmarks} /> : null}
           </View>
 
           <View
             testID="dock-actions"
-            // The cluster shares the bar's slack with the book, except while the Undo chip
-            // is in it: then the book takes all of it (the chip already widened the cluster).
-            className={cn(
-              'shrink-0 basis-auto flex-row items-center justify-end gap-1',
-              undo ? 'grow-0' : 'grow',
-            )}
+            // The other side column, its actions against the bar's end. Its side padding is
+            // the book's (`p-1.5`): a flex basis of 0 still counts padding, so unequal
+            // padding would make unequal columns and move the transport off the centre.
+            className="min-w-0 flex-1 basis-0 flex-row items-center justify-end gap-1 px-1.5"
           >
-            <UndoChip
-              className="mr-1"
-              onLayout={(e) => {
-                const w = e.nativeEvent.layout.width;
-                if (w > 0) setChipWidth(w);
-              }}
-            />
             {allActions ? <SpeedPill /> : null}
             <View testID="dock-sleep">
               <SleepTimerButton onPress={() => usePlayerSheets.getState().openSheet('sleep')} />

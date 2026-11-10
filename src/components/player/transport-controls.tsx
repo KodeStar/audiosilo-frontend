@@ -43,6 +43,13 @@ const SIZES: Record<
   sm: { play: 44, button: 40, playIcon: 18, chapterIcon: 16, skipFont: 13, gap: 6 },
 };
 
+/** The transport's width at a size: four buttons and the play button, a gap between each
+ * (for a column that lays out around it, like the dock's middle one). */
+export function transportWidth(size: TransportSize): number {
+  const d = SIZES[size];
+  return 4 * d.button + d.play + 4 * d.gap;
+}
+
 /** Duration of the play/pause morph. */
 const MORPH_MS = 140;
 

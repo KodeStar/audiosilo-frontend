@@ -112,6 +112,35 @@ describe('useSliderControl gestures', () => {
     expect(onPreview).toHaveBeenLastCalledWith(null);
   });
 
+  it('maps a release against the track as it is then, once (a relayout mid-drag, fe#244)', async () => {
+    // `fireGestureHandler` plays a whole gesture, so the relayout goes between the pan's
+    // own callbacks: pressed on the 200-point track...
+    const { pan, onValueCommit } = await mount();
+    const h = (pan as unknown as { handlers: Record<string, (...a: unknown[]) => void> }).handlers;
+    const at = (x: number) => ({ x, pointerType: PointerType.MOUSE });
+    h.onBegin(at(20));
+    h.onUpdate(at(40));
+    // ...laid out at 100 while the button is down...
+    await fireEvent(screen.getByRole('adjustable'), 'layout', {
+      nativeEvent: { layout: { width: 100, height: 44 } },
+    });
+    h.onEnd(at(50), true);
+    h.onFinalize(at(50), true);
+    // ...so the release at x 50 is half of the new 100: one seek, nothing from the press.
+    expect(onValueCommit.mock.calls).toEqual([[50]]);
+  });
+
+  it('seeks nothing without a gesture: a relayout or a new value alone commits nothing', async () => {
+    const { onValueCommit, onPreview } = await mount();
+    for (const width of [120, 300, WIDTH]) {
+      await fireEvent(screen.getByRole('adjustable'), 'layout', {
+        nativeEvent: { layout: { width, height: 44 } },
+      });
+    }
+    expect(onValueCommit).not.toHaveBeenCalled();
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
   it('activates only on a sideways move: a vertical one fails the pan first', async () => {
     // The movement thresholds are gesture-handler's (native, and the web's pointer
     // tracking), so the config is what a test can hold: past 10 points sideways the drag

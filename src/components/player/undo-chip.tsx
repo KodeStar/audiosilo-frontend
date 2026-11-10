@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { type LayoutChangeEvent, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -14,6 +14,8 @@ import { selectBookKey, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { useGraceCardOpen } from './grace-card';
+
 /** Take the listener back and say so (the chip's press). Returns whether there was
  * anything to undo. */
 export function undoJumpWithToast(t: (key: 'player.undo.restored') => string): boolean {
@@ -23,33 +25,37 @@ export function undoJumpWithToast(t: (key: 'player.undo.restored') => string): b
   return true;
 }
 
-/** Whether the Undo chip shows (a jump in the PLAYING book can still be undone): for a
- * surface that makes room for it. */
-export function useUndoVisible(): boolean {
+/** The jump the chip offers to undo: one in the PLAYING book, and none while the sleep
+ * timer's grace card is open (the chip gives way to it everywhere, so the card never moves
+ * when the chip goes). */
+function useChipJump() {
   const bookKey = usePlayer(selectBookKey);
-  return useJumpUndo(selectUndoFor(bookKey)) !== null;
+  const jump = useJumpUndo(selectUndoFor(bookKey));
+  const graceOpen = useGraceCardOpen();
+  return graceOpen ? null : jump;
 }
+
+/** Whether the Undo chip shows: for a surface that makes room for it. */
+export function useUndoVisible(): boolean {
+  return useChipJump() !== null;
+}
+
+/** The chip's height (a surface that reserves a band for it reads it here). */
+export const UNDO_CHIP_HEIGHT = 34;
 
 /**
  * The Undo jump chip (STYLEGUIDE section 8): an ink pill, the undo glyph, "Back to
  * 17:26:50" (where the listener was in the book) and a ring that empties over its
  * 10 seconds. Appears after any jump of more than a minute in the PLAYING book
- * (`src/playback/jump-undo.ts` detects them) and renders nothing otherwise, so a surface
- * can always mount it where the chip belongs (the full player's status line, the dock's
- * right cluster). A press goes back and toasts "Back where you were".
+ * (`src/playback/jump-undo.ts` detects them) and renders nothing otherwise (nor while the
+ * sleep timer's grace card is open), so a surface
+ * can always mount it where the chip belongs (the full player's status line, above the
+ * dock). A press goes back and toasts "Back where you were".
  */
-export function UndoChip({
-  className,
-  onLayout,
-}: {
-  className?: string;
-  /** Its laid-out size (the dock makes room for its measured width). */
-  onLayout?: (e: LayoutChangeEvent) => void;
-}) {
+export function UndoChip() {
   const { t } = useTranslation();
   const themed = useThemeColors();
-  const bookKey = usePlayer(selectBookKey);
-  const jump = useJumpUndo(selectUndoFor(bookKey));
+  const jump = useChipJump();
   if (!jump) return null;
 
   const label = t('player.undo.label', { time: formatClock(jump.from) });
@@ -57,7 +63,6 @@ export function UndoChip({
     <Animated.View
       key={jump.at}
       testID="undo-chip"
-      onLayout={onLayout}
       entering={FadeIn.duration(320).reduceMotion(ReduceMotion.System)}
       exiting={FadeOut.duration(200).reduceMotion(ReduceMotion.System)}
     >
@@ -66,10 +71,10 @@ export function UndoChip({
         hitSlop={5}
         accessibilityRole="button"
         accessibilityLabel={label}
+        style={{ height: UNDO_CHIP_HEIGHT }}
         className={cn(
-          'h-[34px] flex-row items-center gap-2 self-center rounded-full bg-primary pl-3 pr-1.5 shadow-overlay',
+          'flex-row items-center gap-2 self-center rounded-full bg-primary pl-3 pr-1.5 shadow-overlay',
           Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
-          className,
         )}
       >
         {/* The undo glyph: the vendored rotate arrow, mirrored (no separate glyph). */}

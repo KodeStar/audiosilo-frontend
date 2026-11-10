@@ -94,7 +94,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   language's catalog is loaded before switching to it (`switchLanguage`, the last switch wins;
   first paint waits for a saved language at most `LANGUAGE_WAIT_MS`, then paints in English
   and switches when the chunk lands), so a string needed in every language at once has its own table (`fell-asleep-notes.ts`, held
-  to the catalogs by its test). A new module for the first screen keeps a static import; one
+  to the catalogs by its test). Native starts with English alone too (`i18n/catalogs.ts`, PERF-SPIKE
+  P5): the others stay in its one bundle but are `require()`d only when `switchLanguage` asks for
+  one, so never `i18n.changeLanguage` directly (tests included: the catalog would not be in). A new module for the first screen keeps a static import; one
   for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
   (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
   shell's scripts and every chunk they name, transitively; the shell cached once its own files
@@ -648,7 +650,10 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   `reader:check`, so a stale build fails the gate: rebuild and commit both with any change
   under `reader/`. `public/sw.js` never answers it with the app shell. `reader/src/polyfills.js`
   is imported first: foliate calls `Object.groupBy` and `Map.groupBy` on every open, which came
-  only with Safari 17.4 and Chrome 117 (the app's iOS floor is 16.4).
+  only with Safari 17.4 and Chrome 117 (the app's iOS floor is 16.4). A foliate bug is fixed
+  on our side, never in the vendored copy: `reader/src/render-guard.js` skips the paginator's
+  relayout (its ResizeObserver's `render()`) while the section it shows has no root or body
+  yet, which threw in `columnize` when the frame resized during a section load (fe#239).
 - **The host** (`reader-host.web.tsx`): a same-origin iframe sandboxed to `allow-scripts
   allow-same-origin` (foliate cannot run in an opaque origin). The host fetches `/ebook` with
   the Authorization header (`client.ebook`, never `?token=`) and posts the bytes as a
@@ -2834,14 +2839,21 @@ and `DockedPlayer` (84) whenever a book is loaded (nothing while the full player
 the mini player and the accessory: `usePlayerOnTop`): the 3 px whole-book line, book + sync state
 (`usePlaceSync`, shared with the full player's status line: sign in again > saved on this device
 (offline, or saves queued) > synced / synced just now), `TransportControls size="sm"` over a chapter
-scrubber with bookmark ticks (`usePlayingSegment`; the dock's one `usePlayingPins`), then `UndoChip`,
+scrubber with bookmark ticks (`usePlayingSegment`; the dock's one `usePlayingPins`), then
 speed, sleep (`SleepTimerButton`, `useSleepPill`: `brand-soft` + countdown while running), bookmark
 (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. The player controls share one chrome
 (`control-pill.tsx`: `pillClass` / `ControlPill`). What fits is decided by its MEASURED width
-(`dockLayout`: all actions from 1024, the tablet set below, no scrubber below 800; everything hidden is
-in the full player; while the Undo chip shows (`useUndoVisible`), its MEASURED width comes off the
-width first and the right cluster stops growing, so the book keeps its title). Speed and sleep open
-through `usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does).
+(`dockLayout`: all actions from 1144, the tablet set below, no scrubber below 800; everything hidden is
+in the full player). Each side column is sized for its actions with the sleep pill at its widest (a
+running "10:05:00" or "Keep going"), so they never reach the transport. Three columns (fe#244): the
+book and the actions are equal side columns (`flex-1 basis-0`, the same padding both sides) and the
+middle column's width comes from `dockLayout` (`centre`), so the transport is centred on the bar
+whatever the title, actions or sleep countdown. The `UndoChip` floats above the bar, centred over the
+transport, and nothing in the bar lays out around it (it used to take room from the scrubber, which
+moved under the pointer that made the jump); while it shows the dock's published edge includes its
+band, so toasts clear it. While the sleep grace card is open the chip gives way, as in the full player
+(no chip, no band), so the card never drops when the chip expires. Speed and sleep open through
+`usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does).
 Route-driven side effects (search reset on leaving the Search tab, browse scroll memory) are
 `useShellEffects`.
 - **Full player** (`src/app/player.tsx` thin, `src/components/player/player-view.tsx`, pieces in

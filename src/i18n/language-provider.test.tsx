@@ -2,6 +2,9 @@ import { act, render, waitFor } from '@testing-library/react-native';
 
 import { getItem, setItem } from '@/lib/storage';
 
+import de from './locales/de.json';
+import italian from './locales/it.json';
+
 jest.mock('expo-localization', () => ({ getLocales: () => [{ languageCode: 'en' }] }));
 
 // eslint-disable-next-line import/first
@@ -62,6 +65,20 @@ describe('LanguageProvider', () => {
     expect(value()!.language).toBe('de');
   });
 
+  it('paints first in the saved language, its catalog required before (only English starts in)', async () => {
+    i18n.removeResourceBundle('de', 'translation');
+    await setItem(STORAGE_KEY, 'de');
+    const firstPaint: string[] = [];
+    await render(
+      <LanguageProvider>
+        <Probe onValue={() => firstPaint.push(i18n.t('settings.title'))} />
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(firstPaint.length).toBeGreaterThan(0));
+    expect(firstPaint[0]).toBe(de.settings.title);
+    expect(firstPaint[0]).not.toBe('Settings');
+  });
+
   it('paints in English when the saved language is slow to load, then switches to it', async () => {
     await setItem(STORAGE_KEY, 'fr');
     // The web's fr chunk, still on its way.
@@ -115,9 +132,11 @@ describe('readLanguagePref / restoreLanguage (outside React)', () => {
     expect(await readLanguagePref()).toBe('system');
   });
 
-  it('applies the stored pref to i18next', async () => {
+  it('applies the stored pref to i18next, its catalog brought in (the car task)', async () => {
+    i18n.removeResourceBundle('it', 'translation');
     await setItem(STORAGE_KEY, 'it');
     await restoreLanguage();
     expect(i18n.language).toBe('it');
+    expect(i18n.t('settings.title')).toBe(italian.settings.title);
   });
 });
