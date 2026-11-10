@@ -4,6 +4,7 @@ import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser } from '@/testing/fake-browser';
 
 import {
+  type GaveWay,
   givesWayTo,
   type OwnPlay,
   PLAYING_CHANNEL,
@@ -95,6 +96,86 @@ describe('playingClaims', () => {
       expect(heardByB[0].sentAt).toBeLessThanOrEqual(Date.now());
     },
   );
+
+  it.each([
+    ['BroadcastChannel', true],
+    ['storage events', false],
+  ])(
+    'an answer reaches the tab whose claim it answers, and only that tab, over %s',
+    async (_n, broadcast) => {
+      const browser = fakeBrowser({ broadcast });
+      const [a, b, c] = ['tab-a', 'tab-b', 'tab-c'].map((id) =>
+        playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), id),
+      );
+      const claimsHeard: PlayingClaim[] = [];
+      const answers: Record<string, GaveWay[]> = { a: [], b: [], c: [] };
+      a.subscribe(
+        (heard) => claimsHeard.push(heard),
+        (answer) => answers.a.push(answer),
+      );
+      b.subscribe(
+        () => {},
+        (answer) => answers.b.push(answer),
+      );
+      c.subscribe(
+        () => {},
+        (answer) => answers.c.push(answer),
+      );
+      const made = b.announce('c1', 1234);
+      await settle();
+      expect(claimsHeard).toEqual([made]);
+      const stopped = {
+        connectionId: 'c1',
+        libraryId: 2,
+        path: 'A/Book',
+        position: 47,
+        file: 'A/Book/1.mp3',
+        filePos: 47,
+        finished: false,
+      };
+      a.answer(made, stopped);
+      await settle();
+      expect(answers.b).toEqual([
+        { ...stopped, kind: 'gave-way', tab: 'tab-a', to: 'tab-b', claimedAt: made.sentAt },
+      ]);
+      expect(answers.a).toEqual([]);
+      expect(answers.c).toEqual([]);
+      // Never read as a claim by anyone.
+      expect(claimsHeard).toEqual([made]);
+    },
+  );
+
+  it('ignores an answer that is not one', async () => {
+    const browser = fakeBrowser();
+    const raw = tabChannel<unknown>(PLAYING_CHANNEL, browser.tab())!;
+    const b = playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), 'tab-b');
+    const answers: GaveWay[] = [];
+    b.subscribe(
+      () => {},
+      (answer) => answers.push(answer),
+    );
+    const good = {
+      kind: 'gave-way',
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'A/Book',
+      position: 47,
+      finished: false,
+      tab: 'tab-a',
+      to: 'tab-b',
+      claimedAt: 1,
+    };
+    raw.post({ ...good, position: Number.NaN });
+    raw.post({ ...good, kind: 'left' });
+    raw.post({ ...good, path: 7 });
+    raw.post({ ...good, filePos: 'far' });
+    raw.post({ ...good, to: 'tab-z' });
+    await settle();
+    expect(answers).toEqual([]);
+    raw.post(good);
+    await settle();
+    expect(answers).toEqual([good]);
+  });
 
   it('ignores what is not a claim', async () => {
     const browser = fakeBrowser();

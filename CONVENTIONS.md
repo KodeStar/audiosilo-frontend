@@ -1807,11 +1807,32 @@ media GETs only.
   - A paused tab looked at again shows the other tab's place
     (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
     the play that follows reads again; a finished book stays where it is).
-  - Limits: the shared place is the other tab's last **save** (every 15 s while it plays,
-    and when it stops), so a tab that takes over from one still playing lands up to 15 s
-    behind where that tab really is, and takes nothing from a tab that had not saved yet.
-    Two windows both in view never get a foreground event, so the paused one shows its old
-    place until it plays.
+  - *The tab that gives way says where it stopped.* The mirror is the other tab's last
+    **save** (every 15 s while it plays), so a tab that takes over from one still playing
+    starts up to 15 s behind it, and a press is never kept waiting for more. So the tab
+    that gives way answers the claim on the same channel (`GaveWay` in `playing-claim.ts`,
+    told from a claim by its `kind`; `tabClaims().answer`, both transports): connection,
+    book (library and path), the place its span ended at (whole-book seconds and the file
+    place), whether that is the book's end, its tab and the claim it answers (`to`,
+    `claimedAt`). Only a tab that was not itself behind another's play answers. The
+    claiming tab (`onGaveWayAnswer`) moves there by `moveToTabPlace`, the same path as the
+    mirror's: the listening it began at the older place is dropped (`dropListening`: the
+    open span, stored or not, and the history's start, with no event) and begins again at
+    the place taken as a `resume`, then the place is saved at once. So the spans are one
+    chain (one tab's begins where the other's ended) and the saved place never goes back.
+    The answer is read against the place the play **began** at (`ownClaim.pos`, moved with
+    each tab place taken), not where it has played to since. Ignored: an answer to an
+    older claim than the tab's last, or later than `GAVE_WAY_ANSWER_MS` (5 s) after it;
+    another connection or book; while a book loads; a place the listener chose here
+    (`placeChosen`: an explicit start or a seek, until another tab plays); when yet another
+    tab plays by now; and a finished one (a book is not started again under a listener
+    hearing it; the next resume reads the save). A play that began by itself is still
+    moving to the mirror's place when the answer comes: the answer waits for that
+    (`catchingUp`). The web engine places a seek made before its metadata where the load
+    starts (`placeAt`), so an answer during a load lands there.
+  - Limit: two windows both in view never get a foreground event, so the paused one shows
+    the place it stopped at (right when it gave way, older as the other plays on) until it
+    plays, which then takes the other's place exactly.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and

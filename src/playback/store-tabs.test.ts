@@ -29,7 +29,12 @@ type MirrorRecord = {
 /** The mirror of the last saves, which the tabs of a browser share (it is in their
  * `localStorage`): the newest record of each book, kept only while `on` (off, a tab reads
  * nothing of another's place, as the tests of the claim alone want it). */
-const mockMirror = { on: false, records: new Map<string, MirrorRecord>() };
+const mockMirror = {
+  on: false,
+  records: new Map<string, MirrorRecord>(),
+  /** Every place saved while `on`, in the order the tabs saved them. */
+  saved: [] as number[],
+};
 const mirrorKey = (connectionId: string, libraryId: number, path: string) =>
   `${connectionId}|${libraryId}|${path}`;
 
@@ -47,6 +52,7 @@ jest.mock('./progress-sync', () => ({
   saveProgress: jest.fn(async () => {}),
   writeMirror: jest.fn(async (save: MirrorRecord) => {
     if (!mockMirror.on) return;
+    mockMirror.saved.push(save.position);
     const key = mirrorKey(save.connectionId, save.libraryId, save.path);
     const had = mockMirror.records.get(key);
     if (!had || Date.parse(save.updated_at) >= Date.parse(had.updated_at)) {
@@ -285,6 +291,8 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
       store.saveLoadedPlace();
       await sleep(0);
     },
+    /** How long after its claim the tab still takes the answer to it (ms). */
+    answerBound: store.GAVE_WAY_ANSWER_MS,
     /** The tab is looked at again (`other-tab-notice.ts` calls this on the foreground). */
     lookAt: () => store.showOtherTabsPlace(),
     /** Watch for jumps as the root does; returns the stop (the chip's timer with it). */
@@ -333,6 +341,7 @@ beforeEach(() => {
   mockNoteFailure.mockClear();
   mockMirror.on = false;
   mockMirror.records.clear();
+  mockMirror.saved = [];
 });
 
 /** Every listen the server got as `[from, to, start]`, by where it began. */
@@ -340,6 +349,29 @@ const heard = () =>
   listens()
     .map((e) => [e.from_pos, e.to_pos, e.start])
     .sort((x, y) => Number(x[0]) - Number(y[0]) || Number(x[1]) - Number(y[1]));
+
+/** B played the hour-long book (`aPlays`: another one) to 20 s and paused. A started its
+ * book there and plays on: its last save was at 35 s, and the listener is at 47 s by now.
+ * With the tabs' shared mirror kept. */
+async function aheadOfItsSave(a: Tab, b: Tab, aPlays = long) {
+  mockMirror.on = true;
+  await b.start(5, 'c1', long);
+  await sleep(10);
+  b.engine.at(20);
+  await b.player().pause();
+  await a.start(20, 'c1', aPlays);
+  await sleep(40); // B hears the claim
+  a.engine.at(35);
+  await a.save();
+  await sleep(10);
+  a.engine.at(47);
+}
+
+/** The listens the server got as `[from, to]`, in the order they were played. */
+const chain = () =>
+  listens()
+    .sort((x, y) => x.started_at.localeCompare(y.started_at) || x.from_pos - y.from_pos)
+    .map((e) => [e.from_pos, e.to_pos]);
 
 /** A plays the hour-long book to 30 s; B starts it there (as its resume would) and plays
  * on, so A has given way. With the tabs' shared mirror kept. */
@@ -411,6 +443,9 @@ describe.each([
     // It keeps its book, paused where it was.
     expect(a.player().nowPlaying?.path).toBe(folder);
     expect(a.player().snapshot.position).toBe(20);
+    // B began at a place the listener chose (an explicit start): A's place moves nothing.
+    await sleep(40);
+    expect(b.engine.svc.seekTo).not.toHaveBeenCalled();
 
     await sleep(20);
     b.engine.at(45);
@@ -443,18 +478,18 @@ describe.each([
     expect(a.player().snapshot.state).toBe('playing');
     expect([a.gaveWay(), b.gaveWay()]).toEqual([1, 1]);
     expect(b.engine.svc.pause).toHaveBeenCalledTimes(1);
+    // B says where it stopped, and A plays on from there, not from the 10 s it had kept.
+    await until(() => a.player().snapshot.position === 40, "A to take B's place");
 
     await sleep(10);
-    a.engine.at(15);
+    a.engine.at(45);
     await a.player().pause();
     await until(() => listens().length === 3, 'the three spans on the server');
-    expect(listens().map((e) => [e.from_pos, e.to_pos])).toEqual(
-      expect.arrayContaining([
-        [5, 10],
-        [30, 40],
-        [10, 15],
-      ]),
-    );
+    expect(heard()).toEqual([
+      [5, 10, 'jump'],
+      [30, 40, 'jump'],
+      [40, 45, 'resume'],
+    ]);
     expectNoSharedSeconds();
   });
 
@@ -596,6 +631,143 @@ describe.each([
     expect(b.gaveWay()).toBe(0);
   });
 
+  describe('a tab that takes over from one still playing', () => {
+    it('plays on from where that tab really was, not from its last save', async () => {
+      await aheadOfItsSave(a, b);
+
+      await b.player().toggle();
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await until(() => b.player().snapshot.position === 47, "B to take A's place");
+      // From the shared save first (the press is not kept waiting), then A's answer.
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [47]]);
+      expect(b.player().snapshot.state).toBe('playing');
+      // Saved at once: the shared place is where the listener is.
+      const key = mirrorKey('c1', 2, long.book.rel_path);
+      await until(() => mockMirror.records.get(key)?.position === 47, 'the place to be saved');
+
+      await sleep(10);
+      b.engine.at(55);
+      await b.player().pause();
+      await until(() => listens().length === 3, 'the three spans on the server');
+      // One chain: B's listening begins where A's ended, and nothing of B's is recorded
+      // for the 35 s to 47 s it had begun from.
+      expect(heard()).toEqual([
+        [5, 20, 'jump'],
+        [20, 47, 'jump'],
+        [47, 55, 'resume'],
+      ]);
+      expectNoSharedSeconds();
+      expect(await b.outbox.storedOpenSpan()).toBeNull();
+    });
+
+    it('back and forth three times: one chain, and the saved place never goes back', async () => {
+      await aheadOfItsSave(a, b);
+      const takeOver = async (to: Tab, from: Tab, at: number) => {
+        await to.player().toggle();
+        await until(() => from.player().snapshot.state === 'paused', 'the other tab to give way');
+        await until(() => to.player().snapshot.position === at, 'its place to be taken');
+        expect(to.player().snapshot.state).toBe('playing');
+        await sleep(10);
+      };
+      await takeOver(b, a, 47);
+      b.engine.at(60);
+      await takeOver(a, b, 60);
+      a.engine.at(72);
+      await takeOver(b, a, 72);
+      b.engine.at(85);
+      await b.player().pause();
+
+      await until(() => listens().length === 5, 'the five spans on the server');
+      expect(chain()).toEqual([
+        [5, 20],
+        [20, 47],
+        [47, 60],
+        [60, 72],
+        [72, 85],
+      ]);
+      expect(listens().filter((e) => e.start === 'moved_back')).toEqual([]);
+      expectNoSharedSeconds();
+      expect(mockMirror.saved.length).toBeGreaterThan(5);
+      expect(mockMirror.saved).toEqual([...mockMirror.saved].sort((x, y) => x - y));
+    });
+
+    it('a play from the OS media controls takes it too', async () => {
+      await aheadOfItsSave(a, b);
+      await b.engine.svc.play(); // no press in the page
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await until(() => b.player().snapshot.position === 47, "B to take A's place");
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [47]]);
+      await sleep(10);
+      b.engine.at(55);
+      await b.player().pause();
+      await until(() => listens().length === 3, 'the three spans on the server');
+      expect(chain()).toEqual([
+        [5, 20],
+        [20, 47],
+        [47, 55],
+      ]);
+      expectNoSharedSeconds();
+    });
+
+    it('ignores the place of another book', async () => {
+      await aheadOfItsSave(a, b, other);
+      await b.player().toggle();
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await sleep(40);
+      expect(b.engine.svc.seekTo).not.toHaveBeenCalled();
+      expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 20 });
+    });
+
+    it('ignores an answer that comes too long after its claim', async () => {
+      await aheadOfItsSave(a, b);
+      const release = b.engine.holdPlay();
+      const toggling = b.player().toggle();
+      await until(() => b.engine.svc.play.mock.calls.length === 2, "B's play");
+      // B's claim, made longer ago than an answer is taken for.
+      const now = Date.now;
+      const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() - b.answerBound - 1000);
+      release();
+      await toggling;
+      clock.mockRestore();
+      expect(b.player().snapshot.state).toBe('playing');
+
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await sleep(40);
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35]]);
+      expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 35 });
+    });
+
+    it("the listener's own seek since the claim wins", async () => {
+      await aheadOfItsSave(a, b);
+      await b.player().toggle();
+      await b.player().seekBook(300); // before A's answer has crossed
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await sleep(40);
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [300]]);
+      expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
+    });
+
+    it('ignores an answer once yet another tab plays', async () => {
+      await aheadOfItsSave(a, b);
+      const c = await openTab(browser);
+      try {
+        await b.player().toggle();
+        // C starts (a moment later: its play is the newer one) before A's answer has
+        // crossed to B, which gives way to it.
+        await sleep(2);
+        await c.start(500, 'c1', long);
+        await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+        await sleep(40);
+        expect(b.engine.svc.seekTo.mock.calls).toEqual([[35]]);
+      } finally {
+        await c.player().stop();
+        await c.outbox.storeOpenSpan(null);
+        await sleep(0);
+        await c.outbox.flushOutbox('c1');
+      }
+    });
+  });
+
   describe('a tab another tab has played past', () => {
     it('plays again from where the other tab left the same book, in one span from there', async () => {
       await playedPast(a, b);
@@ -614,6 +786,9 @@ describe.each([
 
       await sleep(10);
       a.engine.at(100);
+      // B's answer (90, where A began) comes after A has played on: A is not pulled back.
+      await sleep(40);
+      expect(a.engine.svc.seekTo).toHaveBeenCalledTimes(1);
       await a.player().pause();
       await until(() => listens().length === 3, 'the three spans on the server');
       // A's second span begins at B's place as a resume: nothing says A moved there, and
@@ -760,7 +935,8 @@ describe.each([
 
     it('a book the other tab finished starts again, unfinished first', async () => {
       await playedPast(a, b);
-      // B finished the book: the record its finish writes.
+      // B finished the book and plays no more: the record its finish writes.
+      await b.player().pause();
       mockMirror.records.set(mirrorKey('c1', 2, long.book.rel_path), {
         connectionId: 'c1',
         libraryId: 2,
@@ -777,7 +953,7 @@ describe.each([
       expect(a.engine.svc.seekTo).not.toHaveBeenCalled();
 
       await a.player().toggle();
-      await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+      expect(a.player().snapshot.state).toBe('playing');
       expect(a.engine.svc.seekTo).toHaveBeenCalledWith(0);
       await sleep(10);
       a.engine.at(8);
