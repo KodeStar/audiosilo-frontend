@@ -162,6 +162,8 @@ describe('dockLayout', () => {
     expect(tight).toEqual([]);
   });
 
+  // An equal side column would be (width - 64 - 228) / 2: 174 at 640 and 219.5 at 731,
+  // under the 220 the tablet set is given.
   it.each([640, 680, 711, 731])(
     'at %i gives up the centre: equal side columns would be narrower than the tablet set',
     (width) => {
@@ -171,19 +173,17 @@ describe('dockLayout', () => {
         centre: 228,
         centred: false,
       });
-      // What an equal side column would have been: under the 220 the tablet set is given.
-      expect((width - 64 - 228) / 2).toBeLessThan(220);
     },
   );
 
   it('centres the transport again from 732, the first width whose side columns fit the tablet set', () => {
+    // (732 - 64 - 228) / 2 is 220.
     expect(dockLayout(732)).toEqual({
       allActions: false,
       scrubber: false,
       centre: 228,
       centred: true,
     });
-    expect((732 - 64 - 228) / 2).toBe(220);
     // And at every width above it, with or without the scrubber row, whatever the actions.
     const offCentre: number[] = [];
     for (let width = 732; width <= 1900; width += 1) {
