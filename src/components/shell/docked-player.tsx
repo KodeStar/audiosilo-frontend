@@ -8,6 +8,7 @@ import { CastButton } from '@/cast/cast-button';
 import { BookCover } from '@/components/library/book-cover';
 import { BookProgressLine } from '@/components/player/book-progress';
 import { ControlPill, slopTo44 } from '@/components/player/control-pill';
+import { useGraceCardOpen } from '@/components/player/grace-card';
 import { useMiniHeading } from '@/components/player/mini-player';
 import { usePlaceSync } from '@/components/player/place-sync';
 import { usePlayerOnTop, usePlayerSheets } from '@/components/player/player-sheets';
@@ -41,8 +42,10 @@ const DOCK_HEIGHT = 84;
 const DOCK_PAD = 16;
 const DOCK_GAP = 16;
 /** What a side column needs for every action (speed, sleep, bookmark, output, cast, Up
- * next, expand) or for the tablet set (sleep, Up next, expand), with the sleep pill idle. */
-const SIDE_ALL = 330;
+ * next, expand: about 388) or for the tablet set (sleep, Up next, expand: about 210), with
+ * the sleep pill at its widest (a running "10:05:00" or "Keep going", about 128), so the
+ * actions never reach the transport whatever the timer shows. */
+const SIDE_ALL = 390;
 const SIDE_TABLET = 220;
 /** The middle column with the scrubber row: never narrower (a usable scrubber), never
  * wider (a long track on a wide window is a long way to drag). */
@@ -55,8 +58,9 @@ const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
  * the desktop drawer; a tablet, a split view or a narrow browser window is less), and how
- * wide its middle column is: from 1024 every action (speed, bookmark, output); below it
- * the tablet set, whose hidden actions are all in the full player; below 800 the chapter
+ * wide its middle column is: every action (speed, bookmark, output, cast) once both side
+ * columns have room for them beside a full-width scrubber row (from 1144); below it the
+ * tablet set, whose hidden actions are all in the full player; below 800 the chapter
  * scrubber row goes too (the transport alone is the middle column).
  *
  * Three columns (fe#244): the book and the actions are equal side columns and the
@@ -70,9 +74,9 @@ export function dockLayout(width: number): {
   scrubber: boolean;
   centre: number;
 } {
-  const allActions = width >= 1024;
-  const scrubber = width >= 800;
   const inner = width - 2 * DOCK_PAD - 2 * DOCK_GAP;
+  const allActions = inner - 2 * SIDE_ALL >= CENTRE_MIN;
+  const scrubber = width >= 800;
   const side = allActions ? SIDE_ALL : SIDE_TABLET;
   const centre = scrubber
     ? Math.min(CENTRE_MAX, Math.max(CENTRE_MIN, inner - 2 * side))
@@ -206,7 +210,10 @@ export function DockedPlayer() {
   const isPlaying = usePlayer(selectIsPlaying);
   const canRoutePick = usePlayer((s) => s.canRoutePick);
   const showRoutePicker = usePlayer((s) => s.showRoutePicker);
-  const undo = useUndoVisible();
+  // The sleep timer's grace card floats above the bar too: while it is open the chip
+  // gives way (as in the full player), so the card never moves when the chip goes.
+  const graceOpen = useGraceCardOpen();
+  const undo = useUndoVisible() && !graceOpen;
   const onTop = usePlayerOnTop();
   // The playing book's bookmarks, once for the bar.
   const pins = usePlayingPins();
@@ -273,7 +280,7 @@ export function DockedPlayer() {
           style={{ bottom: '100%', marginBottom: CHIP_GAP, zIndex: 20 }}
           className="absolute left-0 right-0 items-center"
         >
-          <UndoChip />
+          {undo ? <UndoChip /> : null}
         </View>
         <View
           testID="dock-row"

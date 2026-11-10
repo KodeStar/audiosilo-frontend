@@ -102,23 +102,37 @@ async function renderAt(width: number) {
 }
 
 describe('dockLayout', () => {
-  it('shows every action from 1024, the tablet set below, and drops the scrubber below 800', () => {
+  it('shows every action from 1144, the tablet set below, and drops the scrubber below 800', () => {
     expect(dockLayout(1440)).toMatchObject({ allActions: true, scrubber: true });
-    expect(dockLayout(1024)).toMatchObject({ allActions: true, scrubber: true });
+    expect(dockLayout(1144)).toMatchObject({ allActions: true, scrubber: true });
+    expect(dockLayout(1143)).toMatchObject({ allActions: false, scrubber: true });
+    expect(dockLayout(1024)).toMatchObject({ allActions: false, scrubber: true });
     expect(dockLayout(900)).toMatchObject({ allActions: false, scrubber: true });
     expect(dockLayout(700)).toMatchObject({ allActions: false, scrubber: false });
   });
 
   it('sizes the middle column to leave the side columns room for their actions', () => {
-    // 1280: 1280 - 64 (padding and gaps) - 2 x 330 = 556 for the transport and scrubber.
-    expect(dockLayout(1280).centre).toBe(556);
+    // 1280: 1280 - 64 (padding and gaps) - 2 x 390 = 436 for the transport and scrubber.
+    expect(dockLayout(1280).centre).toBe(436);
     // Never wider than 560, never narrower than 300 while it has the scrubber.
     expect(dockLayout(1880).centre).toBe(560);
-    expect(dockLayout(1024).centre).toBe(300);
+    expect(dockLayout(1144).centre).toBe(300);
+    // 1024, the tablet set: 960 - 2 x 220.
+    expect(dockLayout(1024).centre).toBe(520);
     expect(dockLayout(834).centre).toBe(330);
     expect(dockLayout(800).centre).toBe(300);
     // No scrubber: the transport alone.
     expect(dockLayout(700).centre).toBe(228);
+  });
+
+  it('leaves each side room for its actions with the sleep pill at its widest, at every width', () => {
+    // Every action with a running "10:05:00" or "Keep going" is about 388 wide; the tablet
+    // set about 210 (fe#244 review: at 330 they reached the scrubber's labels).
+    for (let width = 800; width <= 1900; width += 4) {
+      const { allActions, centre } = dockLayout(width);
+      const side = (width - 64 - centre) / 2;
+      expect([width, side >= (allActions ? 388 : 210)]).toEqual([width, true]);
+    }
   });
 });
 
@@ -337,8 +351,54 @@ describe('DockedPlayer', () => {
     expect(screen.getByTestId('dock-book').props.className).toContain('p-1.5');
     expect(screen.getByTestId('dock-actions').props.className).toContain('px-1.5');
     expect(screen.getByTestId('dock-row').props.style).toMatchObject({ paddingHorizontal: 16 });
-    expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 556 });
+    expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 436 });
     expect(screen.getByTestId('dock-centre').props.className).toContain('shrink-0');
+  });
+
+  it.each([
+    [1024, false, 520],
+    [1280, true, 436],
+  ])(
+    'at %i with a running sleep timer the actions keep clear of the transport',
+    async (width, all, centre) => {
+      mockLayout = 'desktop';
+      useSleepTimer.setState({
+        phase: 'running',
+        remaining: 3900,
+        label: { key: 'player.sleepTimer.minutes', params: { count: 90 } },
+      });
+      await renderAt(width);
+      expect(screen.getByText('1:05:00')).toBeTruthy();
+      expect(screen.queryByTestId('dock-speed') !== null).toBe(all);
+      expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: centre });
+      // The actions' side column, beside the transport: room for the widest set shown.
+      expect((width - 64 - centre) / 2).toBeGreaterThanOrEqual(all ? 388 : 210);
+    },
+  );
+
+  it('gives way to the sleep grace card: no chip, and no band, while the card is open', async () => {
+    await renderAt(1280);
+    await act(async () =>
+      useJumpUndo.setState({
+        jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
+      }),
+    );
+    expect(screen.getByTestId('undo-chip')).toBeTruthy();
+    await act(async () => useSleepTimer.setState({ phase: 'grace', remaining: 20 }));
+    expect(screen.queryByTestId('undo-chip')).toBeNull();
+    // The card sits on the bar itself, so the chip expiring later does not move it.
+    expect(useShellMetrics.getState().edges.dock).toBe(84);
+    await act(async () => useJumpUndo.setState({ jump: null }));
+    expect(useShellMetrics.getState().edges.dock).toBe(84);
+    // The card closed with the chip still live: the chip and its band come back.
+    await act(async () =>
+      useJumpUndo.setState({
+        jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
+      }),
+    );
+    await act(async () => useSleepTimer.setState({ phase: 'idle', remaining: null, label: null }));
+    expect(screen.getByTestId('undo-chip')).toBeTruthy();
+    expect(useShellMetrics.getState().edges.dock).toBe(84 + 42);
   });
 
   it('lifts the toasts over the Undo chip while it shows', async () => {

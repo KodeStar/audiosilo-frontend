@@ -2843,14 +2843,16 @@ scrubber with bookmark ticks (`usePlayingSegment`; the dock's one `usePlayingPin
 speed, sleep (`SleepTimerButton`, `useSleepPill`: `brand-soft` + countdown while running), bookmark
 (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. The player controls share one chrome
 (`control-pill.tsx`: `pillClass` / `ControlPill`). What fits is decided by its MEASURED width
-(`dockLayout`: all actions from 1024, the tablet set below, no scrubber below 800; everything hidden is
-in the full player). Three columns (fe#244): the book and the actions are equal side columns
+(`dockLayout`: all actions from 1144, the tablet set below, no scrubber below 800; everything hidden is
+in the full player). Each side column is sized for its actions with the sleep pill at its widest (a
+running "10:05:00" or "Keep going"), so they never reach the transport. Three columns (fe#244): the book and the actions are equal side columns
 (`flex-1 basis-0`, the same padding both sides) and the middle column's width comes from
 `dockLayout` (`centre`), so the transport is centred on the bar whatever the title, actions or sleep
 countdown. The `UndoChip` floats above the bar, centred over the transport, and nothing in the bar
 lays out around it (it used to take room from the scrubber, which moved under the pointer that made
-the jump); while it shows the dock's published edge includes its band, so toasts and the grace card
-clear it. Speed and sleep open
+the jump); while it shows the dock's published edge includes its band, so toasts clear it. While the
+sleep grace card is open the chip gives way, as in the full player (no chip, no band), so the card
+never drops when the chip expires. Speed and sleep open
 through `usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does).
 Route-driven side effects (search reset on leaving the Search tab, browse scroll memory) are
 `useShellEffects`.
