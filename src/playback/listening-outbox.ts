@@ -559,17 +559,17 @@ function updateState(
   });
 }
 
-/** Each connection's stored clock skew (`clockSkewMs`), read under the state's lock: the
- * one reader of it, which `progress-sync` asks for its merges (`stored-skews.ts`, fe#211). */
-function storedClockSkews(): Promise<Record<string, number>> {
-  return withStateLock(async () => {
-    const out: Record<string, number> = {};
-    for (const [cid, state] of Object.entries(await readState())) {
-      const skew = isRecord(state) ? state.clockSkewMs : undefined;
-      if (typeof skew === 'number' && Number.isFinite(skew)) out[cid] = skew;
-    }
-    return out;
-  });
+/** Each connection's stored clock skew (`clockSkewMs`): the one reader of it, which
+ * `progress-sync` asks for its merges and every resume lookup (`stored-skews.ts`, fe#211).
+ * A read, so not under the state's lock (as `syncStateOf`): the document is written whole,
+ * and the lock would hold a resume behind another tab's lease. */
+async function storedClockSkews(): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const [cid, state] of Object.entries(await readState())) {
+    const skew = isRecord(state) ? state.clockSkewMs : undefined;
+    if (typeof skew === 'number' && Number.isFinite(skew)) out[cid] = skew;
+  }
+  return out;
 }
 provideStoredSkews(storedClockSkews);
 

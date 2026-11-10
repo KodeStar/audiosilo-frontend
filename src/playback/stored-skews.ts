@@ -1,6 +1,6 @@
 /**
  * The stored server clock skews' one reader (fe#211). They live in the listening outbox's
- * sync state (`clockSkewMs`), which the outbox reads under its lock; it registers that read
+ * sync state (`clockSkewMs`), which the outbox reads; it registers that read
  * here as it loads, and `progress-sync`'s merges ask through `readStoredSkews`, so that
  * module never reads the outbox's document itself. A module of its own, imported by both:
  * `progress-sync` cannot import the outbox (the outbox imports it). None registered (a
