@@ -700,7 +700,9 @@ const sendingNow = new Map<string, Promise<unknown>>();
 const withdrawn = new Set<string>();
 /** Finish events a request carried while their server looked reachable and that got no
  * answer: the request may have arrived and only its answer been lost, so the server may
- * hold them (`serverMayHold`). */
+ * hold them (`serverMayHold`). This launch's only (an Undo is a toast of the launch that
+ * marked the book). Never forgotten on an answer: an answered finish has left the outbox, so
+ * nothing reads its mark, and one put back after a failed edit still takes the edit. */
 const maybeReached = new Set<string>();
 
 /** Whether a request to `connectionId`'s server can be expected to leave this device: the
@@ -717,6 +719,22 @@ function finishesLeaving(entries: OutboxEntry[]): string[] {
   return entries
     .filter((e) => e.event.kind === 'finish' && looksReachable(e.connectionId))
     .map((e) => e.event.id);
+}
+
+/** What a gateway answers for a server it reached and then lost (no answer in time, or one
+ * that broke off: the server may have stored the batch first): a proxy's 502 and 504,
+ * Cloudflare's 520 and 524. A 503 or a 52x that never connected reached no server. */
+const GATEWAY_LOST = new Set([502, 504, 520, 524]);
+
+/**
+ * Whether a send that failed with `e` got no answer from the server itself, which may have
+ * taken the batch all the same: the request timed out, the connection dropped, a gateway
+ * lost the server (`GATEWAY_LOST`), the answer could not be kept, or it could not be read
+ * (an `ApiError` under 400: a 2xx whose body is not JSON, `readJson`). Any other HTTP error
+ * is the server's answer, and a refused batch stores nothing.
+ */
+function gotNoAnswer(e: unknown): boolean {
+  return !(e instanceof ApiError) || e.status < 400 || GATEWAY_LOST.has(e.status);
 }
 
 /**
@@ -736,13 +754,7 @@ async function sending<T>(
   try {
     return await run;
   } catch (e) {
-    // No answer from the server itself (the request timed out, the connection dropped, a
-    // gateway gave up waiting, or the answer could not be kept): it may have taken the
-    // batch all the same. Any other HTTP error is its answer, and a refused batch stores
-    // nothing.
-    if (!(e instanceof ApiError) || e.status === 504) {
-      for (const id of leaving) maybeReached.add(id);
-    }
+    if (gotNoAnswer(e)) for (const id of leaving) maybeReached.add(id);
     throw e;
   } finally {
     for (const e of live) if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);

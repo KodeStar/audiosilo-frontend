@@ -680,6 +680,21 @@ describe('flushOutbox', () => {
       expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
     });
 
+    // A proxy whose server broke off after storing the batch (502, Cloudflare's 520), a
+    // Cloudflare timeout (524), and a 2xx whose body could not be read (an `ApiError` with
+    // its status).
+    it.each([502, 520, 524, 200])(
+      'a %i is no answer from the server either: it may hold the finish',
+      async (status) => {
+        await appendEvents('c1', [finish('f')]);
+        client(async () => {
+          throw new ApiError(status, 'no answer');
+        });
+        await flushOutbox('c1');
+        expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
+      },
+    );
+
     it('the server down by the Undo: no edit can be made, so it is undone here', async () => {
       await appendEvents('c1', [finish('f')]);
       client(async () => {
