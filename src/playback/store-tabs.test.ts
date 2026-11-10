@@ -157,7 +157,9 @@ function makeEngine() {
       push({ state: 'paused' });
     }),
     seekTo: jest.fn(async (position: number) => push({ position })),
-    skipToTrack: jest.fn(async () => {}),
+    skipToTrack: jest.fn(async (trackIndex: number, position = 0) =>
+      push({ trackIndex, position }),
+    ),
     setRate: jest.fn(async () => {}),
     setVolume: jest.fn(async () => {}),
     reset: jest.fn(async () => push({ ...INITIAL })),
@@ -171,6 +173,12 @@ function makeEngine() {
     svc: svc as typeof svc & PlaybackService,
     /** The engine plays on to `position` (seconds into the file). */
     at: (position: number) => push({ position }),
+    /** The playing file ends and the next one (`trackIndex`) loads and plays on, as the web
+     * engine does it: `loading`, then `playing`, with nothing pressed. */
+    advance: (trackIndex: number) => {
+      push({ state: 'loading', trackIndex, position: 0 });
+      push({ state: 'playing' });
+    },
     /** The stream dies: the engine reports `error` (and may come back by itself). */
     fail: () => push({ state: 'error' }),
     holdLoad: () => {
@@ -232,7 +240,35 @@ function hourLong(id: number, path: string): { book: Book; chapters: ChaptersRes
     },
   };
 }
+/** An hour-long book of three files of 20 minutes in `path`, a chapter each. */
+function threeFiles(id: number, path: string): { book: Book; chapters: ChaptersResponse } {
+  const rels = [1, 2, 3].map((n) => `${path}/${n}.mp3`);
+  return {
+    book: { ...book, id, rel_path: path, duration: 3600 },
+    chapters: {
+      ...chapters,
+      path,
+      duration: 3600,
+      files: rels.map((rel, seq) => ({
+        rel_path: rel,
+        seq,
+        duration: 1200,
+        format: 'mp3',
+        size: 1,
+      })),
+      chapters: rels.map((rel, index) => ({
+        ...chapters.chapters[0],
+        index,
+        file_index: index,
+        file_path: rel,
+        end: 1200,
+        book_offset: index * 1200,
+      })),
+    },
+  };
+}
 const long = hourLong(2, 'B/Long');
+const parts = threeFiles(4, 'D/Parts');
 const other = hourLong(3, 'C/Other');
 
 type Tab = Awaited<ReturnType<typeof openTab>>;
@@ -260,12 +296,14 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
   let store!: typeof import('./store');
   let outbox!: typeof import('./listening-outbox');
   let jumpUndo!: typeof import('./jump-undo');
+  let types!: typeof import('./types');
   try {
     jest.isolateModules(() => {
       /* eslint-disable @typescript-eslint/no-require-imports */
       store = require('./store') as typeof import('./store');
       outbox = require('./listening-outbox') as typeof import('./listening-outbox');
       jumpUndo = require('./jump-undo') as typeof import('./jump-undo');
+      types = require('./types') as typeof import('./types');
       /* eslint-enable @typescript-eslint/no-require-imports */
     });
     await store.initializePlayback();
@@ -286,6 +324,9 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
     /** Start the book on `connectionId` at `at` seconds (the engine plays from there). */
     start: (at: number, connectionId = 'c1', which = { book, chapters }) =>
       store.usePlayer.getState().playBook(connectionId, 2, which.book, which.chapters, at),
+    /** The browser refuses the next play (no gesture in the page yet: a cold deep link):
+     * the book it starts stays loaded and paused, and the tab claims nothing. */
+    blockPlay: () => engine.svc.play.mockRejectedValueOnce(new types.AutoplayBlockedError()),
     /** Save the place now, as the 15 s save does while it plays. */
     save: async () => {
       store.saveLoadedPlace();
@@ -1023,6 +1064,97 @@ describe.each([
       await until(() => b.player().snapshot.state === 'paused', 'B to give way');
       expect(a.engine.svc.seekTo.mock.calls).toEqual([[300]]);
       expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
+    });
+
+    /** A plays the three-file book to 30 s; B starts it there and plays on into its second
+     * file, so A has given way. With the tabs' shared mirror kept. */
+    async function playedIntoNextFile() {
+      mockMirror.on = true;
+      await a.start(5, 'c1', parts);
+      await sleep(10);
+      a.engine.at(30);
+      await b.start(30, 'c1', parts);
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await sleep(10);
+      b.engine.advance(1);
+      await sleep(40); // A hears B claim again
+    }
+
+    it("the listener's own move stands while the other tab plays on into its next files", async () => {
+      await playedIntoNextFile();
+      await a.player().seekBook(600);
+      // B plays on into its third file: the same play, which claims again.
+      b.engine.at(100);
+      await b.save();
+      b.engine.advance(2);
+      await sleep(40);
+      b.engine.at(50);
+      await b.save();
+      const key = mirrorKey('c1', 2, parts.book.rel_path);
+      expect(mockMirror.records.get(key)?.position).toBe(2450);
+
+      await a.player().toggle();
+      await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+      await sleep(40); // B's answer, which moves nothing either
+      expect(a.engine.svc.seekTo.mock.calls).toEqual([[600]]);
+      expect(a.engine.svc.skipToTrack).not.toHaveBeenCalled();
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', trackIndex: 0, position: 600 });
+    });
+
+    it('with no move of its own it follows the other tab across its files', async () => {
+      await playedIntoNextFile();
+      b.engine.at(100);
+      await b.save();
+      b.engine.advance(2);
+      await sleep(40);
+      b.engine.at(50);
+      await b.player().pause();
+      const key = mirrorKey('c1', 2, parts.book.rel_path);
+      await until(() => mockMirror.records.get(key)?.position === 2450, "B's place to be saved");
+
+      await a.player().toggle();
+      expect(a.engine.svc.skipToTrack.mock.calls).toEqual([[2, 50]]);
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', trackIndex: 2, position: 50 });
+    });
+
+    it('a new play in the other tab is noted again, over a move made here since', async () => {
+      await playedIntoNextFile();
+      await a.player().seekBook(600);
+      b.engine.at(100);
+      await b.player().pause();
+      await b.player().toggle(); // pressed again: a new play, not the one going on
+      await sleep(40);
+      b.engine.at(200);
+      await b.player().pause();
+      const key = mirrorKey('c1', 2, parts.book.rel_path);
+      await until(() => mockMirror.records.get(key)?.position === 1400, "B's place to be saved");
+
+      await a.player().toggle();
+      expect(a.engine.svc.skipToTrack.mock.calls).toEqual([[1, 200]]);
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', trackIndex: 1, position: 200 });
+    });
+
+    it('a book loaded after the other tab began playing still follows it', async () => {
+      await playedIntoNextFile();
+      // A starts the book again where the tabs' shared place is, and the browser refuses
+      // the play: loaded, paused, and nothing claimed.
+      b.engine.at(100);
+      await b.save();
+      a.blockPlay();
+      await a.start(1300, 'c1', parts);
+      expect(a.player().snapshot.state).toBe('paused');
+      expect(b.player().snapshot.state).toBe('playing');
+
+      b.engine.advance(2);
+      await sleep(40); // the play A noted before this load, going on: noted again
+      b.engine.at(50);
+      await b.player().pause();
+      const key = mirrorKey('c1', 2, parts.book.rel_path);
+      await until(() => mockMirror.records.get(key)?.position === 2450, "B's place to be saved");
+
+      await a.player().toggle();
+      expect(a.engine.svc.skipToTrack.mock.calls).toEqual([[2, 50]]);
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', trackIndex: 2, position: 50 });
     });
 
     it('a book the other tab finished starts again, unfinished first', async () => {

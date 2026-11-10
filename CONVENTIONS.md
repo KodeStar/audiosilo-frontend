@@ -1808,6 +1808,15 @@ media GETs only.
     place a tab gives way at is saved first (`giveWayTo`). The note is cleared when the tab
     plays (`claimPlaying`) and by a move of the listener's own there (`userMoved`: a seek
     in the paused tab stands, and so does every book switch).
+  - A play is noted **once** (`notedPlay` in `giveWayTo`: the claim's tab and `askedAt`).
+    A tab claims on every move into `playing`, so a play that goes on claims again (the
+    next file of a multi-file book, a stall it came back from, a transcoded stream
+    requested again at `&t=`) with the `askedAt` it began with; only a new play (a press,
+    the OS media controls) has another. A tab that already noted that play leaves its note
+    as it stands, so a seek the listener made there since is the place it plays from, for
+    a book of one file or of many (owner decision). `switchBook` forgets the play: a book
+    loaded after the claim (its place is the shared one as of its load) notes the play's
+    next claim and follows it. A new play is noted as before, over a seek made since.
   - A paused tab looked at again shows the other tab's place
     (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
     the play that follows reads again; a finished book stays where it is).
