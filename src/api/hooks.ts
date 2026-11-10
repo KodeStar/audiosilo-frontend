@@ -1460,6 +1460,9 @@ export function useMarkFinished(connectionId?: string) {
       if (await recordFinishEvent(ref)) return;
       await saveProgress(api, finishedSave(ref, await getDeviceId(), new Date().toISOString()));
     },
+    // Both routes work offline (the event waits in the outbox, the save in the queue): held
+    // for the online flag, an offline finish was never recorded, and a reload lost it.
+    networkMode: 'always',
     onSuccess: (_data, p) => {
       qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
       qc.invalidateQueries({ queryKey: qk.progress(cid, p.libraryId, p.path) });
