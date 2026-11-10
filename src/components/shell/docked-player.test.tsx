@@ -101,6 +101,19 @@ async function renderAt(width: number) {
   });
 }
 
+/** A jump of more than a minute in the playing book: the Undo chip shows. */
+const offerUndo = () =>
+  act(async () =>
+    useJumpUndo.setState({
+      jump: {
+        from: 62_810,
+        bookKey: 'c1:1:A/B',
+        at: Date.now(),
+        until: Date.now() + UNDO_WINDOW_MS,
+      },
+    }),
+  );
+
 describe('dockLayout', () => {
   it('shows every action from 1144, the tablet set below, and drops the scrubber below 800', () => {
     expect(dockLayout(1440)).toMatchObject({ allActions: true, scrubber: true });
@@ -128,11 +141,13 @@ describe('dockLayout', () => {
   it('leaves each side room for its actions with the sleep pill at its widest, at every width', () => {
     // Every action with a running "10:05:00" or "Keep going" is about 388 wide; the tablet
     // set about 210 (fe#244 review: at 330 they reached the scrubber's labels).
+    const tight: number[] = [];
     for (let width = 800; width <= 1900; width += 4) {
       const { allActions, centre } = dockLayout(width);
-      const side = (width - 64 - centre) / 2;
-      expect([width, side >= (allActions ? 388 : 210)]).toEqual([width, true]);
+      // The bar's padding and gaps are 64 in all.
+      if ((width - 64 - centre) / 2 < (allActions ? 388 : 210)) tight.push(width);
     }
+    expect(tight).toEqual([]);
   });
 });
 
@@ -287,16 +302,7 @@ describe('DockedPlayer', () => {
   it('shows the Undo chip only after a jump in this book', async () => {
     await renderAt(1280);
     expect(screen.queryByLabelText(/^Back to /)).toBeNull();
-    await act(async () =>
-      useJumpUndo.setState({
-        jump: {
-          from: 62_810,
-          bookKey: 'c1:1:A/B',
-          at: Date.now(),
-          until: Date.now() + UNDO_WINDOW_MS,
-        },
-      }),
-    );
+    await offerUndo();
     expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
   });
 
@@ -319,11 +325,7 @@ describe('DockedPlayer', () => {
       await renderAt(width);
       const before = geometry();
       expect(before.scrubber).toBe(true);
-      await act(async () =>
-        useJumpUndo.setState({
-          jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
-        }),
-      );
+      await offerUndo();
       expect(screen.getByLabelText('Back to 17:26:50')).toBeTruthy();
       expect(geometry()).toEqual(before);
       // The chip is in the band above the bar, not in a column.
@@ -369,20 +371,15 @@ describe('DockedPlayer', () => {
       });
       await renderAt(width);
       expect(screen.getByText('1:05:00')).toBeTruthy();
-      expect(screen.queryByTestId('dock-speed') !== null).toBe(all);
+      expect(Boolean(screen.queryByTestId('dock-speed'))).toBe(all);
+      // The middle column the sweep above checks leaves room for the widest set shown.
       expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: centre });
-      // The actions' side column, beside the transport: room for the widest set shown.
-      expect((width - 64 - centre) / 2).toBeGreaterThanOrEqual(all ? 388 : 210);
     },
   );
 
   it('gives way to the sleep grace card: no chip, and no band, while the card is open', async () => {
     await renderAt(1280);
-    await act(async () =>
-      useJumpUndo.setState({
-        jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
-      }),
-    );
+    await offerUndo();
     expect(screen.getByTestId('undo-chip')).toBeTruthy();
     await act(async () => useSleepTimer.setState({ phase: 'grace', remaining: 20 }));
     expect(screen.queryByTestId('undo-chip')).toBeNull();
@@ -391,11 +388,7 @@ describe('DockedPlayer', () => {
     await act(async () => useJumpUndo.setState({ jump: null }));
     expect(useShellMetrics.getState().edges.dock).toBe(84);
     // The card closed with the chip still live: the chip and its band come back.
-    await act(async () =>
-      useJumpUndo.setState({
-        jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
-      }),
-    );
+    await offerUndo();
     await act(async () => useSleepTimer.setState({ phase: 'idle', remaining: null, label: null }));
     expect(screen.getByTestId('undo-chip')).toBeTruthy();
     expect(useShellMetrics.getState().edges.dock).toBe(84 + 42);
@@ -404,11 +397,7 @@ describe('DockedPlayer', () => {
   it('lifts the toasts over the Undo chip while it shows', async () => {
     await renderAt(1280);
     expect(useShellMetrics.getState().edges.dock).toBe(84);
-    await act(async () =>
-      useJumpUndo.setState({
-        jump: { from: 62_810, bookKey: 'c1:1:A/B', at: Date.now(), until: Date.now() + 10_000 },
-      }),
-    );
+    await offerUndo();
     expect(useShellMetrics.getState().edges.dock).toBe(84 + 42);
     await act(async () => useJumpUndo.setState({ jump: null }));
     expect(useShellMetrics.getState().edges.dock).toBe(84);
