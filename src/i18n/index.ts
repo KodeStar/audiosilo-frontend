@@ -11,8 +11,8 @@ import { BUNDLED_CATALOGS, loadCatalog } from './catalogs';
  * NOTE: `app.json`'s `locales` is a SEPARATE, hand-maintained list - it points at
  * native-metadata files (`./assets/locales/<code>.json`, distinct from these UI
  * catalogs) and notably omits `en`. It does NOT read from SUPPORTED_LANGUAGES.
- * To add a language: drop a `locales/<code>.json`, add an entry below, import it in
- * give it a loader in `catalogs.ts` (native) and `catalogs.web.ts`, add its note to
+ * To add a language: drop a `locales/<code>.json`, add an entry below, give it a
+ * loader in `catalogs.ts` (native) and `catalogs.web.ts`, add its note to
  * `fell-asleep-notes.ts`, AND add the matching `app.json` `locales` entry (+ its
  * `assets/locales/<code>.json`).
  */

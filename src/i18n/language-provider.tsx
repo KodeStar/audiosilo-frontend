@@ -34,10 +34,11 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 /**
- * The longest first paint waits for the saved language. Native bundles every catalog, so
- * its switch is immediate; the web loads a language other than English from its own chunk
- * (`catalogs.web.ts`), and a slow or failing fetch must not hold the app blank. Past this
- * it paints in English and changes language when the chunk arrives.
+ * The longest first paint waits for the saved language. Native requires its catalog from
+ * its one bundle, so its switch is immediate; the web loads a language other than
+ * English from its own chunk (`catalogs.web.ts`), and a slow or failing fetch must not
+ * hold the app blank. Past this it paints in English and changes language when the chunk
+ * arrives.
  */
 export const LANGUAGE_WAIT_MS = 1500;
 
