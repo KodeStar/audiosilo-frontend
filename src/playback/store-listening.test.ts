@@ -555,6 +555,38 @@ describe('with listening_sync', () => {
     }
   });
 
+  // The web reports `paused` for the last file before `ended`: that pause's close was still
+  // on its way into the outbox when the end's finish was appended, and went after it.
+  it('a close still on its way at the end goes before the finish, in one send', async () => {
+    const order: string[] = [];
+    (closeSpan as jest.Mock).mockImplementationOnce(async (closing: OpenSpan) => {
+      await settle(6);
+      mockClosed.push(structuredClone(closing));
+      order.push('listen');
+    });
+    (appendEvents as jest.Mock).mockImplementationOnce(
+      async (_cid: string, events: ListeningEvent[]) => {
+        mockAppended.push(...events);
+        order.push(...events.map((e) => e.kind));
+      },
+    );
+    mockFlushOutbox.mockImplementation(async () => {
+      order.push('flush');
+    });
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 0));
+      await settle();
+      jest.advanceTimersByTime(12_000);
+      pushSnapshot(snap('paused', 1, 50));
+      pushSnapshot(snap('ended', 1, 50));
+      await settle(30);
+      expect(order).toEqual(['listen', 'finish', 'flush']);
+    } finally {
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
+  });
+
   it('a finish still goes when its span could not be stored', async () => {
     (closeSpan as jest.Mock).mockImplementationOnce(async () => {
       throw new Error('storage full');

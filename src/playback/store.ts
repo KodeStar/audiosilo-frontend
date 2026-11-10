@@ -757,9 +757,21 @@ function closeListeningSpan(opts: { at?: SpanEnd } = {}): OpenSpan | null {
   const closing = takeSpan(opts.at);
   if (!closing) return null;
   const cid = closing.connectionId;
-  void closeSpan(closing).then(() => flushOutbox(cid));
+  const key = contentKeyOf(closing);
+  const close: PendingClose = { done: Promise.resolve(), flush: true };
+  close.done = closeSpan(closing).finally(() => {
+    if (closesInFlight.get(key) === close) closesInFlight.delete(key);
+    if (close.flush) void flushOutbox(cid);
+  });
+  close.done.catch(() => undefined);
+  closesInFlight.set(key, close);
   return closing;
 }
+
+/** A span close still on its way into the outbox (`closeSpan` waits its turn), by book; its
+ * send is left to a finish that waits for it (`finishAfter`), so both go in one batch. */
+type PendingClose = { done: Promise<void>; flush: boolean };
+const closesInFlight = new Map<string, PendingClose>();
 
 /** Take the open span (none open from here), ended now at `at`, else where the engine is,
  * else where it was last seen. */
@@ -878,6 +890,15 @@ async function finishAfter(
   at: string,
   onSent?: () => void,
 ): Promise<void> {
+  // A close already on its way (the web reports `paused` before `ended`, fe#211's
+  // server#359 case): the finish waits for it too, and sends both.
+  const earlier = closesInFlight.get(contentKeyOf(ref));
+  if (earlier) earlier.flush = false;
+  try {
+    await earlier?.done;
+  } catch {
+    // Its event could not be stored: the finish still goes.
+  }
   try {
     if (closing) await closeSpan(closing);
   } catch {

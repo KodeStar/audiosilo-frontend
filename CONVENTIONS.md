@@ -1629,7 +1629,8 @@ media GETs only.
     place); a save and the 15 s cut take where the engine is (applying that rule there froze
     the span after a seek back or a hot-swap to another file order, fe#211). The end's `finish` goes into the outbox only after the last span's close has landed
     there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
-    no session to mark). The book page's Mark as finished is a `finish` event too on such a
+    no session to mark); a close already on its way (the web's `paused` before `ended`) is
+    waited for too and leaves its send to the finish (`closesInFlight`). The book page's Mark as finished is a `finish` event too on such a
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
     book's span closes first, the mirror records it finished, offline it waits in the outbox;
     Undo stays a progress edit, sent only after `undoFinish` took the book's waiting finish
