@@ -693,6 +693,72 @@ export function watchListeningFlags(): void {
 const inFlight = new Map<string, Promise<void>>();
 const flushAgain = new Set<string>();
 const chunkSizes = new Map<string, number>();
+/** Events whose request is out now, to the end of its answer (`sending`): a withdrawal
+ * waits for it. */
+const sendingNow = new Map<string, Promise<unknown>>();
+/** Events taken back (`withdrawFinish`): a chunk read before still holding one drops it. */
+const withdrawn = new Set<string>();
+
+/**
+ * The events of `chunk` still to go (not taken back meanwhile), marked as out while `send`
+ * runs. Called after a send's last wait, so a withdrawal either took an event back first or
+ * finds it out and waits.
+ */
+async function sending<T>(
+  chunk: OutboxEntry[],
+  send: (live: OutboxEntry[]) => Promise<T>,
+): Promise<T> {
+  const live = chunk.filter((e) => !withdrawn.has(e.event.id));
+  const run = send(live);
+  const settled = run.catch(() => undefined);
+  for (const e of live) sendingNow.set(e.event.id, settled);
+  try {
+    return await run;
+  } finally {
+    for (const e of live) if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
+  }
+}
+
+/**
+ * Take a book's waiting `finish` events out of the outbox, before an Undo's progress edit
+ * (fe#208): a finish sent after the edit would finish the book again. One whose request is
+ * out is waited for (sent, the edit comes after it; unanswered, it is taken back). Returns
+ * the restore, for an edit that failed: the events go back and are sent.
+ */
+export async function withdrawFinish(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<() => Promise<void>> {
+  const isMine = (e: OutboxEntry) =>
+    e.connectionId === connectionId &&
+    e.event.kind === 'finish' &&
+    e.event.library_id === libraryId &&
+    e.event.path === path;
+  const taken: ListeningEvent[] = [];
+  for (;;) {
+    const wait = await withOutboxLock(async () => {
+      const queue = await readOutbox();
+      const mine = queue.filter(isMine);
+      const out = mine.map((e) => sendingNow.get(e.event.id)).find((p) => p !== undefined);
+      // Boxed: a promise returned as is would hold the lock until it settles (its answer
+      // needs the lock).
+      if (out) return { out };
+      for (const e of mine) withdrawn.add(e.event.id);
+      taken.push(...mine.map((e) => e.event));
+      if (mine.length > 0) await writeOutbox(queue.filter((e) => !isMine(e)));
+      return null;
+    });
+    if (!wait) break;
+    await wait.out;
+  }
+  return async () => {
+    if (taken.length === 0) return;
+    for (const e of taken) withdrawn.delete(e.id);
+    await appendEvents(connectionId, taken);
+    void flushOutbox(connectionId);
+  };
+}
 
 /**
  * Send a connection's outbox. One flush at a time per connection: a call while one runs
@@ -797,17 +863,20 @@ async function sendChunk(
 ): Promise<Next> {
   try {
     const deviceId = await getDeviceId();
-    const sentAt = Date.now();
-    const answer = await client.syncListening(
-      syncBody(
-        chunk.map((e) => e.event),
-        deviceId,
-      ),
-    );
-    noteSuccess(connectionId);
-    noteListeningSyncFlag(connectionId, true);
-    await applyAnswer(connectionId, chunk, answer, { sentAt, answeredAt: Date.now() });
-    return 'more';
+    return await sending<Next>(chunk, async (live) => {
+      if (live.length === 0) return 'more';
+      const sentAt = Date.now();
+      const answer = await client.syncListening(
+        syncBody(
+          live.map((e) => e.event),
+          deviceId,
+        ),
+      );
+      noteSuccess(connectionId);
+      noteListeningSyncFlag(connectionId, true);
+      await applyAnswer(connectionId, live, answer, { sentAt, answeredAt: Date.now() });
+      return 'more';
+    });
   } catch (e) {
     if (!(e instanceof ApiError)) {
       // No answer: keep everything; only a check marks the server down.
@@ -845,8 +914,12 @@ async function sendOneByOne(
   }
   for (const entry of chunk) {
     try {
-      const answer = await client.syncListening(syncBody([entry.event], await getDeviceId()));
-      await applyAnswer(connectionId, [entry], answer);
+      const deviceId = await getDeviceId();
+      await sending([entry], async (live) => {
+        if (live.length === 0) return;
+        const answer = await client.syncListening(syncBody([entry.event], deviceId));
+        await applyAnswer(connectionId, [entry], answer);
+      });
     } catch (e) {
       if (e instanceof ApiError && e.status === 400) {
         await moveToFailed(connectionId, [{ event: entry.event, reason: 'invalid' }]);
@@ -1141,6 +1214,8 @@ export function resetOutboxForTests(): void {
   knownFlags.clear();
   flagsLoaded = null;
   chunkSizes.clear();
+  sendingNow.clear();
+  withdrawn.clear();
   inFlight.clear();
   flushAgain.clear();
   answerListeners.clear();

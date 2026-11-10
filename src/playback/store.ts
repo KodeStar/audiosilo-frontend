@@ -62,6 +62,7 @@ import {
   spanToEvent,
   storeOpenSpan,
   usesListeningSync,
+  withdrawFinish,
 } from './listening-outbox';
 import {
   ackVersion,
@@ -948,7 +949,11 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
 }
 
-setFinishRecorder({ takesEvent: usesListeningSync, record: recordFinish });
+setFinishRecorder({
+  takesEvent: usesListeningSync,
+  record: recordFinish,
+  withdraw: (connectionId, libraryId, path) => withdrawFinish(connectionId, libraryId, path),
+});
 
 /**
  * After the listener answered an offer of another device's place with Stay: this device's

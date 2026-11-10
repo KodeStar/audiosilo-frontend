@@ -55,7 +55,15 @@ jest.mock('@/lib/open', () => ({ useOpen: () => ({ openSeries: mockOpenSeries })
 const mockPlay = jest.fn();
 jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
 let mockTakesEvent = false;
-jest.mock('@/playback/finish-route', () => ({ finishTakesEvent: () => mockTakesEvent }));
+// The Undo goes through `undoFinish` (the waiting finish taken back first, fe#208).
+const mockUndoRefs: unknown[] = [];
+jest.mock('@/playback/finish-route', () => ({
+  finishTakesEvent: () => mockTakesEvent,
+  undoFinish: (ref: unknown, edit: () => Promise<boolean>) => {
+    mockUndoRefs.push(ref);
+    return edit();
+  },
+}));
 let mockSendToWatch: jest.Mock | null = null;
 jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
@@ -208,7 +216,11 @@ describe('useBookActions', () => {
       });
       const t = mockToast.mock.calls.at(-1)![0];
       expect(t.title).toBe('Marked as finished');
+      mockUndoRefs.length = 0;
       await act(async () => t.action.onPress());
+      expect(mockUndoRefs).toEqual([
+        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book' },
+      ]);
       expect(mockEdit).toHaveBeenLastCalledWith({
         libraryId: 1,
         path: 'Author/Series/01 - Book',

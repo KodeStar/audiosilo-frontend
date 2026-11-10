@@ -60,6 +60,7 @@ jest.mock('./progress-sync', () => ({
   ignoreOffer: (...a: unknown[]) => mockIgnoreOffer(...a),
   cachedDeviceId: () => 'this-device',
   writeMirror: jest.fn(async () => {}),
+  guardSettled: () => false,
   GUARD_SLACK_S: 30,
   placeKey: (p: { device_id?: string; updated_at: string }) => `${p.device_id}|${p.updated_at}`,
   onHeldSave: (cb: HeldCb) => {
@@ -98,7 +99,13 @@ const mockClient = {
   streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
   authHeaders: () => ({}),
   addHistory: jest.fn(async () => {}),
-  syncListening: jest.fn(async () => ({ server_time: '', results: [], progress: [] })),
+  // Every event applied: an outbox that empties ends its flush (one answering none goes
+  // round again and again, into the next tests).
+  syncListening: jest.fn(async (body: { events: { id: string }[] }) => ({
+    server_time: '',
+    results: body.events.map((e) => ({ id: e.id, status: 'applied' })),
+    progress: [],
+  })),
   getProgress: jest.fn((_lib: number, _path: string, signal?: AbortSignal) =>
     signal
       ? new Promise<Progress | null>((resolve, reject) => {

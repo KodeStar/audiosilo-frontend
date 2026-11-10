@@ -85,6 +85,7 @@ import {
   unsentListens,
   usesListeningSync,
   watchListeningFlags,
+  withdrawFinish,
 } from './listening-outbox';
 import {
   ackVersion,
@@ -538,6 +539,68 @@ describe('flushOutbox', () => {
     release();
     await Promise.all([first, second]);
     expect(sent(c).map((b) => b.events.map((e) => e.id))).toEqual([['a'], ['b']]);
+  });
+
+  // fe#208: an Undo's progress edit must not be followed by the finish it undoes.
+  describe("withdrawFinish (before an Undo's edit)", () => {
+    const finish = (id: string, path = 'Author/Book') =>
+      ({
+        id,
+        kind: 'finish',
+        library_id: 3,
+        path,
+        at: '2026-10-25T08:00:00.000Z',
+      }) as ListeningEvent;
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    it("takes the book's waiting finish back (only it); the restore sends it after all", async () => {
+      await appendEvents('c1', [listen('a'), finish('f'), finish('g', 'Other/Book')]);
+      const restore = await withdrawFinish('c1', 3, 'Author/Book');
+      expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a', 'g']);
+      const c = client(async (body) => answer(body));
+      await flushOutbox('c1');
+      expect(sent(c).flatMap((b) => b.events.map((e) => e.id))).toEqual(['a', 'g']);
+      await restore();
+      await flushOutbox('c1');
+      expect(
+        sent(c)
+          .at(-1)
+          ?.events.map((e) => e.id),
+      ).toEqual(['f']);
+    });
+
+    it('a finish being sent is waited for: the withdrawal ends after its answer', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async (body) => {
+        await gate;
+        return answer(body);
+      });
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      let done = false;
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then(() => (done = true));
+      await tick();
+      expect(done).toBe(false);
+      release();
+      await Promise.all([flushing, withdrawing]);
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
+    it('a finish whose send got no answer is taken back after it, never sent again', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let fail: (e: Error) => void = () => {};
+      const c = client(() => new Promise((_r, reject) => (fail = reject)));
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book');
+      fail(new TypeError('Failed to fetch'));
+      await Promise.all([flushing, withdrawing]);
+      expect(await outboxEvents('c1')).toEqual([]);
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('a 404/405 from anything but the rolled-back server keeps the outbox', async () => {

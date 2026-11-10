@@ -29,7 +29,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
-import { finishTakesEvent } from '@/playback/finish-route';
+import { finishTakesEvent, undoFinish } from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -139,7 +139,14 @@ export function useBookActions(
         title: t('library.bookActions.markedFinished'),
         description: book.title,
         action: canUndo
-          ? { label: t('queue.undo'), onPress: () => void setFinished(false, before) }
+          ? {
+              label: t('queue.undo'),
+              // The finish event, if still waiting, is taken back before the edit (fe#208).
+              onPress: () =>
+                void undoFinish({ connectionId, libraryId, path }, () =>
+                  setFinished(false, before),
+                ),
+            }
           : undefined,
       });
     if (canUndo && !finishTakesEvent(connectionId)) {

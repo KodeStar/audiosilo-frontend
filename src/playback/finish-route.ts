@@ -40,6 +40,9 @@ type FinishRecorder = {
   takesEvent: (connectionId: string) => boolean;
   /** Record the finish as an event; resolves once it waits in the outbox. */
   record: (ref: FinishRef) => Promise<void>;
+  /** Take the book's not-yet-sent finish events back (one being sent is waited for);
+   * resolves to the restore. */
+  withdraw: (connectionId: string, libraryId: number, path: string) => Promise<() => Promise<void>>;
 };
 
 let recorder: FinishRecorder | null = null;
@@ -60,4 +63,22 @@ export async function recordFinishEvent(ref: FinishRef): Promise<boolean> {
   if (!recorder?.takesEvent(ref.connectionId)) return false;
   await recorder.record(ref);
   return true;
+}
+
+/**
+ * Undo a Mark as finished with `edit` (the progress edit that unfinishes the book): the
+ * book's finish event still waiting in the outbox is taken back first, since sent after the
+ * edit it would finish the book again; the edit failing puts it back. Resolves to the edit's
+ * outcome.
+ */
+export async function undoFinish(
+  ref: Pick<FinishRef, 'connectionId' | 'libraryId' | 'path'>,
+  edit: () => Promise<boolean>,
+): Promise<boolean> {
+  const restore = recorder
+    ? await recorder.withdraw(ref.connectionId, ref.libraryId, ref.path)
+    : async () => {};
+  const ok = await edit();
+  if (!ok) await restore();
+  return ok;
 }
