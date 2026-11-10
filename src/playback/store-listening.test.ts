@@ -723,24 +723,21 @@ describe('Mark as finished outside the player (finish-route)', () => {
       updated_at: '2026-01-01T00:00:00Z',
       ack_version: 7,
     };
-    mockReadMirror.mockResolvedValue(before);
+    mockReadMirror.mockResolvedValueOnce(before);
     try {
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
       expect(mockWriteMirror).toHaveBeenLastCalledWith(
         expect.objectContaining({ path: 'Other/Book', finished: true }),
       );
+      // The mirror holds the finish's record by the Undo.
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValueOnce(finishedRec);
       const edit = jest.fn(async () => true);
       await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
       // Stamped as new as the finish it replaces: the mirror refuses an older record.
-      const finishedAt = (
-        mockWriteMirror.mock.calls
-          .filter(([r]) => (r as { finished?: boolean }).finished)
-          .at(-1)?.[0] as {
-          updated_at: string;
-        }
-      ).updated_at;
+      const finishedAt = finishedRec.updated_at;
       // Its Sync v2 fields are left to the mirror's own (an ack since the finish is newer).
       expect(mockWriteMirror).toHaveBeenLastCalledWith({
         ...before,
@@ -810,16 +807,61 @@ describe('Mark as finished outside the player (finish-route)', () => {
       device_id: 'dev-1',
       updated_at: '2026-01-01T00:00:00Z',
     };
-    mockReadMirror.mockResolvedValue(before);
+    mockReadMirror.mockResolvedValueOnce(before);
     try {
       mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      // The server answered for the finish and its row was read again: a downloaded book's
+      // record is that row by now, stamped by the server's clock, later than the finish's
+      // own time. A record stamped with the finish's time was refused as older.
+      const echo = {
+        ...(mockWriteMirror.mock.calls.at(-1)?.[0] as object),
+        updated_at: '2999-01-01T00:00:00.000Z',
+      };
+      mockReadMirror.mockResolvedValueOnce(echo);
       const edit = jest.fn(async () => true);
       await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
       expect(edit).toHaveBeenCalledTimes(1);
       expect(mockWriteMirror).toHaveBeenLastCalledWith(
-        expect.objectContaining({ path: 'Other/Book', finished: false, position: 48 }),
+        expect.objectContaining({
+          path: 'Other/Book',
+          finished: false,
+          position: 48,
+          updated_at: echo.updated_at,
+        }),
       );
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo after a place saved since the finish: that place stays', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValueOnce(before);
+    try {
+      mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const writes = mockWriteMirror.mock.calls.length;
+      mockReadMirror.mockResolvedValueOnce({
+        ...before,
+        position: 70,
+        updated_at: '2999-01-01T00:00:00.000Z',
+      });
+      await undoFinish(
+        undoRef,
+        jest.fn(async () => true),
+      );
+      expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
     } finally {
       mockReadMirror.mockImplementation(async () => null);
     }

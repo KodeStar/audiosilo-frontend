@@ -1654,7 +1654,9 @@ media GETs only.
     down no edit can be made, and that Undo is done here too. After an edit that went
     through the mirror goes back as well (`unrecordFinish`: the edit's answer only reaches
     the query caches, and the finished record would start the book again at 0 on the next
-    offline Play); fe#208). An event never claims more than 23 h of wall clock
+    offline Play; the record put back is stamped as the finished one it replaces, which for
+    a downloaded book may be the server's row for the finish, newer than the finish's own
+    time); fe#208). An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
