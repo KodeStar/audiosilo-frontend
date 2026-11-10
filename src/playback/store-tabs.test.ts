@@ -911,6 +911,33 @@ describe.each([
       expectNoSharedSeconds();
     });
 
+    it('a move still out when another book starts holds none of that book', async () => {
+      await playedPast(a, b);
+      b.engine.at(90);
+      await b.save();
+
+      // The engine never answers the seek (a route that went away mid-move).
+      a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
+      await a.engine.svc.play();
+      await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
+      await a.start(100, 'c1', other);
+      await sleep(10);
+      a.engine.at(110);
+      await a.save();
+      const key = mirrorKey('c1', 2, other.book.rel_path);
+      expect(mockMirror.records.get(key)?.position).toBe(110);
+      await a.player().pause();
+      await until(
+        () => listens().some((e) => e.path === other.book.rel_path),
+        "the other book's span on the server",
+      );
+      expect(
+        listens()
+          .filter((e) => e.path === other.book.rel_path)
+          .map((e) => [e.from_pos, e.to_pos, e.start]),
+      ).toEqual([[100, 110, 'jump']]);
+    });
+
     it('a tab paused by hand before the other tab played follows it too', async () => {
       mockMirror.on = true;
       await a.start(5, 'c1', long);

@@ -1797,7 +1797,8 @@ media GETs only.
     more than a minute makes one), and that Undo is the listener's own `seekBook`. A seek
     the engine refuses puts back what `adoptTabPlace` set (`moveToTabPlace`): the play goes
     on from where the engine is, and a floor left at a place far ahead would refuse its
-    every save and span. A book
+    every save and span. A book switch drops a move still out (`switchBook` clears
+    `catchingUp`), so it holds none of the next book's saves or spans. A book
     the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,
     as a fresh load of a finished book does (not when this tab is at the end itself).
   - While the note stands the tab **saves nothing of its own** (`behindOtherTab` in

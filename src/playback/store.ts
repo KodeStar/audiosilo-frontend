@@ -1203,8 +1203,10 @@ export function onGaveWayToTab(listener: () => void): () => void {
  * is one, and a book just loaded resumed from the shared place anyway).
  */
 let otherTabPlayed: { connectionId: string; since: number } | null = null;
-/** The engine plays (it began by itself: the OS media controls) while this tab moves to
- * another tab's place (`catchUpPlaying`): no span opens and nothing is saved meanwhile. */
+/** The engine may be playing while this tab moves to another tab's place (`moveWhilePlaying`:
+ * a play that began by itself, `catchUpPlaying`, or the answer of the tab that gave way,
+ * `onGaveWayAnswer`): no span opens and nothing is saved meanwhile. Dropped by a book switch
+ * (`switchBook`): the move was the previous book's. */
 let catchingUp: Promise<void> | null = null;
 /** Whether the loaded book's place is not to be saved: another tab has played since. */
 const behindOtherTab = (np: NowPlaying) =>
@@ -1654,6 +1656,9 @@ function switchBook(api: ApiClient | null, request: NonNullable<typeof lastPlayR
   cancelStallWatchdog();
   stopSaveLoop();
   userMoved();
+  // A move to another tab's place still out was the previous book's: its end opens no span
+  // of this one's (`moveWhilePlaying`), and holds none of its saves.
+  catchingUp = null;
   apiRef = api;
   apiRefFor = request.connectionId;
   lastPlayRequest = request; // so retry() can re-run resume
