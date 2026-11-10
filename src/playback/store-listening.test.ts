@@ -299,6 +299,24 @@ describe('the replay guard on the PUT path', () => {
     expect(guards()).toEqual([true, true]);
   });
 
+  it('an adopted book (its place never looked up) is guarded too', async () => {
+    useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloadedEntry() } });
+    const adopted = await usePlayer.getState().adoptLoaded({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: folder,
+      rate: 1,
+      trackIndex: 0,
+      position: 10,
+      playing: true,
+    });
+    expect(adopted).toBe(true);
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards()).toEqual([true]);
+  });
+
   it('a checked resume and an explicit place are not guarded', async () => {
     mockLoadInitialProgress.mockResolvedValue({ kind: 'progress', progress: row({ position: 5 }) });
     await start();

@@ -1573,8 +1573,10 @@ media GETs only.
   server must not move another device's further place back. `resumeLookupOf` marks such a
   place `unchecked` (the server was not reached, or this device's newer record resumes more
   than 30 s behind the server's unfinished row); a downloaded book's `failed` start counts
-  too. The store then puts `guard` on that session's PUT saves (`placeGuard`; not on an
-  explicit place or a finish) until one is PUT (`saveProgress` answers `saved`). Before a
+  too, and so does an adopted book (`adoptLoadedBook`: the engine's place, never looked up,
+  e.g. one the car started from an old snapshot). The store then puts `guard` on that
+  session's PUT saves (`placeGuard`; not on an explicit place or a finish) until one is PUT
+  (`saveProgress` answers `saved`). Before a
   guarded save is PUT, live or replayed, `guardPasses` reads the server's row: another
   device's unfinished place more than `GUARD_SLACK_S` (30 s) further on, not answered
   (`answered` holds its `device_id|updated_at`), holds it (`guardHolds`). A held save is not

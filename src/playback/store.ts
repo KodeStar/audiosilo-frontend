@@ -2205,6 +2205,10 @@ async function adoptLoadedBook(
   pausedAt = loaded.playing && !reload ? null : 0;
   svc.adoptPlace?.(snapshot);
   const nowPlaying = nowPlayingOf(loaded, book, queue, api, local);
+  // Nor checked for the replay guard (fe#198): offline, a place the car started from an
+  // old snapshot must not move another device's further one back. Its PUT saves are
+  // guarded until one is PUT, as an unchecked resume's.
+  placeGuard = { key: contentKeyOf(nowPlaying) };
   // A reload holds every save and remote move until it lands (`loadingBook`): until then a
   // tick still counts in the engine's old order.
   usePlayer.setState({
