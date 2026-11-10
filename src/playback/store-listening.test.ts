@@ -132,7 +132,7 @@ import type { DownloadEntry } from '@/downloads/types';
 
 import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
-import { flushHistoryOnHide, standByPlace, usePlayer } from './store';
+import { flushHistoryOnHide, saveLoadedPlace, standByPlace, usePlayer } from './store';
 /* eslint-enable import/first */
 
 // A two-file folder book; the server now plays "2.mp3" before "10.mp3" (natural order).
@@ -318,6 +318,29 @@ describe('the replay guard on the PUT path', () => {
     await start();
     await playedTwoSaves('held');
     expect(guards()).toEqual([true, true]);
+  });
+
+  // The other device was still playing: its row had moved on from the one the offer named,
+  // so the Stay's own save was held again, and each save after it, with no new offer.
+  it("Stay on a held save's offer lifts the guard, whatever the other device saved since", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    mockSaveProgress.mockResolvedValueOnce('held' as never);
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards()).toEqual([true]);
+    saveLoadedPlace();
+    await settle();
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards()).toEqual([true, false, false]);
   });
 
   it('a downloaded book that could not ask its server (started at 0) is guarded too', async () => {
@@ -663,6 +686,28 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
   });
 
+  // The server applies a batch in time order (request order only breaks ties): a finish
+  // dated before its book's last span was applied first, as server#359's was.
+  it("the finish is dated no earlier than the loaded book's last span", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    // A clock that ticks between any two readings.
+    let n = 0;
+    const iso = jest
+      .spyOn(Date.prototype, 'toISOString')
+      .mockImplementation(() => `2026-10-25T08:00:00.${String(n++).padStart(3, '0')}Z`);
+    try {
+      await recordFinishEvent(ref);
+    } finally {
+      iso.mockRestore();
+    }
+    const finish = mockAppended.find((e) => e.kind === 'finish') as { at: string };
+    expect(mockClosed).toHaveLength(1);
+    expect(finish.at >= (mockClosed[0].endedAt ?? '')).toBe(true);
+  });
+
   // An offline Mark as finished then Undo: the PATCH would fail, and the finish put back
   // went out on reconnect and finished the book after all.
   it('Undo of a finish that never left: the mirror goes back to before it, no edit', async () => {
@@ -678,24 +723,21 @@ describe('Mark as finished outside the player (finish-route)', () => {
       updated_at: '2026-01-01T00:00:00Z',
       ack_version: 7,
     };
-    mockReadMirror.mockResolvedValue(before);
+    mockReadMirror.mockResolvedValueOnce(before);
     try {
       await recordFinishEvent({ ...ref, path: 'Other/Book' });
       expect(mockWriteMirror).toHaveBeenLastCalledWith(
         expect.objectContaining({ path: 'Other/Book', finished: true }),
       );
+      // The mirror holds the finish's record by the Undo.
+      const finishedRec = mockWriteMirror.mock.calls.at(-1)?.[0] as { updated_at: string };
+      mockReadMirror.mockResolvedValueOnce(finishedRec);
       const edit = jest.fn(async () => true);
       await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
       // Stamped as new as the finish it replaces: the mirror refuses an older record.
-      const finishedAt = (
-        mockWriteMirror.mock.calls
-          .filter(([r]) => (r as { finished?: boolean }).finished)
-          .at(-1)?.[0] as {
-          updated_at: string;
-        }
-      ).updated_at;
+      const finishedAt = finishedRec.updated_at;
       // Its Sync v2 fields are left to the mirror's own (an ack since the finish is newer).
       expect(mockWriteMirror).toHaveBeenLastCalledWith({
         ...before,
@@ -751,14 +793,111 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
-  it('Undo of a finish the server has: the edit, the mirror left to it', async () => {
+  // The edit's answer only reaches the query caches: the mirror kept the finish's record
+  // (finished, at the end), and the next offline Play started the book again at 0.
+  it('Undo of a finish the server has: the edit, then the mirror back to before it', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValueOnce(before);
+    try {
+      mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      // The server answered for the finish and its row was read again: a downloaded book's
+      // record is that row by now, stamped by the server's clock, later than the finish's
+      // own time. A record stamped with the finish's time was refused as older.
+      const echo = {
+        ...(mockWriteMirror.mock.calls.at(-1)?.[0] as object),
+        updated_at: '2999-01-01T00:00:00.000Z',
+      };
+      mockReadMirror.mockResolvedValueOnce(echo);
+      const edit = jest.fn(async () => true);
+      await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockWriteMirror).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          path: 'Other/Book',
+          finished: false,
+          position: 48,
+          updated_at: echo.updated_at,
+        }),
+      );
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo after a place saved since the finish: that place stays', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    mockReadMirror.mockResolvedValueOnce(before);
+    try {
+      mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const writes = mockWriteMirror.mock.calls.length;
+      mockReadMirror.mockResolvedValueOnce({
+        ...before,
+        position: 70,
+        updated_at: '2999-01-01T00:00:00.000Z',
+      });
+      await undoFinish(
+        undoRef,
+        jest.fn(async () => true),
+      );
+      expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo whose edit failed: the mirror keeps the finish (it is sent again)', async () => {
     mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
     await recordFinishEvent({ ...ref, path: 'Other/Book' });
     const writes = mockWriteMirror.mock.calls.length;
-    const edit = jest.fn(async () => true);
-    await undoFinish(undoRef, edit);
-    expect(edit).toHaveBeenCalledTimes(1);
+    await expect(
+      undoFinish(
+        undoRef,
+        jest.fn(async () => false),
+      ),
+    ).resolves.toBe(false);
     expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+  });
+
+  // Marked finished from its page while loaded and paused, then undone: the player's own
+  // Mark as finished was taken for a second finish of the same end, and sent nothing.
+  it('after an Undo the player can finish the loaded book again', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('paused', 0, 9));
+    await settle();
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    await recordFinishEvent(ref);
+    await undoFinish(
+      { connectionId: 'c1', libraryId: 2, path: folder, position: 9 },
+      jest.fn(async () => true),
+    );
+    mockAppended.length = 0;
+    usePlayer.getState().finishBook();
+    await settle();
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
   });
 
   it("keeps the book's own speed in the mirror (the book page gives none)", async () => {

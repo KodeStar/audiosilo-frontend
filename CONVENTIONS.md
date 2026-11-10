@@ -1589,8 +1589,9 @@ media GETs only.
   (`answered` holds its `device_id|updated_at`), holds it (`guardHolds`). A held save is not
   sent and leaves the queue (the mirror keeps it; `guard` is never kept in the mirror), and
   `onHeldSave` tells the place reconcile, which offers that place for the loaded book with the
-  same Jump/Stay toast (`offerLoadedPlace(..., { held: true })`: Stay answers and saves at
-  once, `saveLoadedPlace`; a timeout answers nothing). Sync v2 needs none of it: the server
+  same Jump/Stay toast (`offerLoadedPlace(..., { held: true })`: Stay answers, lifts the
+  session's guard and saves at once, `saveLoadedPlace`, so a row the other device has saved
+  again since cannot hold it; a timeout answers nothing). Sync v2 needs none of it: the server
   resolves each span on its `base_version`.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
@@ -1642,9 +1643,20 @@ media GETs only.
     Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
     back out of the outbox (`withdrawFinish`; one whose request is out is waited for, and a
     failed edit puts it back): sent after the edit it would finish the book again. A finish
-    taken back that the server never answered (an offline Mark as finished) needs no edit:
+    taken back that never reached the server (an offline Mark as finished) needs no edit:
     the Undo is done here, the mirror back to its record before the finish
-    (`unrecordFinish`); fe#208). An event never claims more than 23 h of wall clock
+    (`unrecordFinish`). One a request carried with no answer while its server looked
+    reachable (`gotNoAnswer`: a timeout, a dropped connection, a gateway that lost the
+    server (502, 504, Cloudflare's 520 and 524), a 2xx that could not be read; and the
+    page's keepalive send) may be on the server, its answer lost: while the server looks
+    reachable now it is not `unsent` (`serverMayHold`), so the Undo takes the edit, which
+    unfinishes the book either way, and a failed edit puts the finish back. With the server
+    down no edit can be made, and that Undo is done here too. After an edit that went
+    through the mirror goes back as well (`unrecordFinish`: the edit's answer only reaches
+    the query caches, and the finished record would start the book again at 0 on the next
+    offline Play; the record put back is stamped as the finished one it replaces, which for
+    a downloaded book may be the server's row for the finish, newer than the finish's own
+    time); fe#208). An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that

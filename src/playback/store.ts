@@ -504,9 +504,13 @@ async function persist(opts?: { forceFinished?: boolean }) {
   if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
 }
 
-/** Save the loaded book's place now (the listener answered Stay to a place its server held
- * a save back for: the replay guard then lets it through). */
+/** Save the loaded book's place now: the listener answered Stay to a place its server held
+ * a save back for. That is their choice of this device's place, so the session's guard is
+ * lifted, not asked again: the other device may have saved since the offer was made (it is
+ * still playing), and its new row, not the one answered, would hold this save and every
+ * later one with no further offer. */
 export function saveLoadedPlace(): void {
+  placeGuard = null;
   void persist();
 }
 
@@ -944,46 +948,53 @@ function sendFinish(np: NowPlaying) {
  * the book finished at its end, so offline it reads finished and Play starts it again.
  */
 async function recordFinish(ref: FinishRef): Promise<void> {
-  const at = new Date().toISOString();
   const np = usePlayer.getState().nowPlaying;
   const loaded = !!np && sameBook(np, ref);
   const closing = span && sameBook(span, ref) ? takeSpan() : null;
+  // Dated after the span's end (`takeSpan` stamps it), as `sendFinish` does: the server
+  // applies a batch in time order, and a finish dated before its book's last span went first.
+  const at = new Date().toISOString();
   if (loaded) finishSent = contentKeyOf(ref);
   // The book page gives no speed: the book's own stays in the mirror (an offline Listen
   // again reads it), never 1x.
   const prior = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
-  beforeFinish.set(contentKeyOf(ref), { prior, at });
+  beforeFinish.set(contentKeyOf(ref), prior);
   const speed = ref.playback_speed ?? prior?.playback_speed;
   const id = deviceId || (await getDeviceId());
   await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(() => undefined);
   await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
 }
 
-/** Each book's mirror record before its Mark as finished (`recordFinish`) and the finish's
- * time, for an Undo done here (`unrecordFinish`). */
-const beforeFinish = new Map<string, { prior: ProgressSave | null; at: string }>();
+/** Each book's mirror record before its Mark as finished (`recordFinish`), for its Undo
+ * (`unrecordFinish`). */
+const beforeFinish = new Map<string, ProgressSave | null>();
 
 /**
- * Undo a Mark as finished that never left this device (its finish was taken back from the
- * outbox unsent, `undoFinish`): the mirror goes back to its record before the finish (else
- * this device's at `ref.position`, unfinished), and the player's end may send a finish again.
+ * A Mark as finished was undone (`undoFinish`: its finish taken back from the outbox unsent,
+ * or the progress edit that unfinished it on the server went through): the mirror goes back
+ * to its record before the finish (else this device's at `ref.position`, unfinished), and
+ * the player's end may send a finish again.
  */
 async function unrecordFinish(ref: UndoRef): Promise<void> {
   const key = contentKeyOf(ref);
-  const before = beforeFinish.get(key);
+  const prior = beforeFinish.get(key);
   beforeFinish.delete(key);
   if (finishSent === key) finishSent = null;
-  // Stamped with the finish's time: the mirror keeps the newest record, so the record from
-  // before it (older) would be refused, and a place saved since the finish still wins. Its
-  // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
-  const restore = before?.prior && !before.prior.finished ? before : null;
-  const back: ProgressSave | null = restore?.prior
-    ? { ...restore.prior, ack_version: undefined, answered: undefined, updated_at: restore.at }
-    : await readMirror(ref.connectionId, ref.libraryId, ref.path)
-        // Only the finish's record: a place saved since it is not undone.
-        .then((now) => (now?.finished ? { ...now, finished: false, position: ref.position } : null))
-        .catch(() => null);
-  if (back) await writeMirror(back).catch(() => undefined);
+  const now = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
+  // Only the finish's record: a place saved since it (newer, unfinished) is not undone.
+  if (now?.finished) {
+    // Stamped as the record it replaces: the mirror keeps the newest, so the record from
+    // before the finish (older) would be refused. That record's time, not the finish's: once
+    // the server answered, a downloaded book's record is the server's row for the finish,
+    // stamped by its clock after the request's delay, and a record stamped with the finish's
+    // own time is refused too. Its Sync v2 fields stay the mirror's own (`writeMirror` keeps
+    // them): an ack since is newer.
+    const back: ProgressSave =
+      prior && !prior.finished
+        ? { ...prior, ack_version: undefined, answered: undefined, updated_at: now.updated_at }
+        : { ...now, finished: false, position: ref.position };
+    await writeMirror(back).catch(() => undefined);
+  }
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
 }
 

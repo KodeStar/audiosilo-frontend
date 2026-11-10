@@ -159,7 +159,7 @@ const offeredAt = new Map<string, number>();
  *
  * `held`: the legacy PUT path's replay guard held a save of this book back for `row`
  * (fe#198; `onHeldSave`). There is no acknowledged version there (the row's own is new),
- * Stay saves this device's place at once (the guard then lets it through), and a toast that
+ * Stay saves this device's place at once (and lifts the session's guard), and a toast that
  * times out answers nothing: the place stays held, and is offered again next launch.
  */
 export async function offerLoadedPlace(

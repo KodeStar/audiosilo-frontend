@@ -43,8 +43,8 @@ type FinishRecorder = {
   record: (ref: FinishRef) => Promise<void>;
   /** Take the book's not-yet-sent finish events back (one being sent is waited for). */
   withdraw: (connectionId: string, libraryId: number, path: string) => Promise<Withdrawal>;
-  /** A finish that never left this device is undone here: its record goes back to the
-   * place before it (`ref.position`), unfinished. */
+  /** An undone finish leaves this device: its record goes back to the place before it
+   * (`ref.position`), unfinished. */
   unrecord: (ref: UndoRef) => Promise<void>;
 };
 
@@ -74,10 +74,14 @@ export async function recordFinishEvent(ref: FinishRef): Promise<boolean> {
 /**
  * Undo a Mark as finished with `edit` (the progress edit that unfinishes the book, at
  * `ref.position`): the book's finish event still waiting in the outbox is taken back first,
- * since sent after the edit it would finish the book again. A finish the server never got
- * (offline) needs no edit: taken back, this device's record goes back to the place before
- * and the Undo is done (an edit offline fails, and putting the finish back sent it on
- * reconnect). Else the edit, and an edit that failed puts the finish back. Resolves to
+ * since sent after the edit it would finish the book again. A finish that never reached the
+ * server (offline) needs no edit: taken back, this device's record goes back to the place
+ * before and the Undo is done (an edit offline fails, and putting the finish back sent it on
+ * reconnect). Else the edit (a finish the server has, or may have: `Withdrawal.unsent`), and
+ * an edit that failed puts the finish back. After the edit this device's record goes back
+ * too: the edit's answer only reaches the query caches, and the record the finish wrote
+ * (finished, at the book's end) would start the book again at 0 on the next offline Play,
+ * a restart that then replaces the place the Undo restored on the server. Resolves to
  * whether the book is unfinished.
  */
 export async function undoFinish(ref: UndoRef, edit: () => Promise<boolean>): Promise<boolean> {
@@ -90,6 +94,10 @@ export async function undoFinish(ref: UndoRef, edit: () => Promise<boolean>): Pr
     return true;
   }
   const ok = await edit();
-  if (!ok) await taken?.restore().catch(() => undefined);
-  return ok;
+  if (!ok) {
+    await taken?.restore().catch(() => undefined);
+    return false;
+  }
+  await r.unrecord(ref).catch(() => undefined);
+  return true;
 }

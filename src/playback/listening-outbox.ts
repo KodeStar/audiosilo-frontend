@@ -698,6 +698,44 @@ const chunkSizes = new Map<string, number>();
 const sendingNow = new Map<string, Promise<unknown>>();
 /** Events taken back (`withdrawFinish`): a chunk read before still holding one drops it. */
 const withdrawn = new Set<string>();
+/** Finish events a request carried while their server looked reachable and that got no
+ * answer: the request may have arrived and only its answer been lost, so the server may
+ * hold them (`serverMayHold`). This launch's only (an Undo is a toast of the launch that
+ * marked the book). Never forgotten on an answer: an answered finish has left the outbox, so
+ * nothing reads its mark, and one put back after a failed edit still takes the edit. */
+const maybeReached = new Set<string>();
+
+/** Whether a request to `connectionId`'s server can be expected to leave this device: the
+ * server is not marked down, and the browser is not offline (it sends nothing then). */
+function looksReachable(connectionId: string): boolean {
+  if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return false;
+  }
+  return isReachable(connectionId);
+}
+
+/** The finishes of `entries` whose request, leaving now, may reach their server. */
+function finishesLeaving(entries: OutboxEntry[]): string[] {
+  return entries
+    .filter((e) => e.event.kind === 'finish' && looksReachable(e.connectionId))
+    .map((e) => e.event.id);
+}
+
+/** What a gateway answers for a server it reached and then lost (no answer in time, or one
+ * that broke off: the server may have stored the batch first): a proxy's 502 and 504,
+ * Cloudflare's 520 and 524. A 503 or a 52x that never connected reached no server. */
+const GATEWAY_LOST = new Set([502, 504, 520, 524]);
+
+/**
+ * Whether a send that failed with `e` got no answer from the server itself, which may have
+ * taken the batch all the same: the request timed out, the connection dropped, a gateway
+ * lost the server (`GATEWAY_LOST`), the answer could not be kept, or it could not be read
+ * (an `ApiError` under 400: a 2xx whose body is not JSON, `readJson`). Any other HTTP error
+ * is the server's answer, and a refused batch stores nothing.
+ */
+function gotNoAnswer(e: unknown): boolean {
+  return !(e instanceof ApiError) || e.status < 400 || GATEWAY_LOST.has(e.status);
+}
 
 /**
  * The events of `chunk` still to go (not taken back meanwhile), marked as out while `send`
@@ -709,11 +747,15 @@ async function sending<T>(
   send: (live: OutboxEntry[]) => Promise<T>,
 ): Promise<T> {
   const live = chunk.filter((e) => !withdrawn.has(e.event.id));
+  const leaving = finishesLeaving(live);
   const run = send(live);
   const settled = run.catch(() => undefined);
   for (const e of live) sendingNow.set(e.event.id, settled);
   try {
     return await run;
+  } catch (e) {
+    if (gotNoAnswer(e)) for (const id of leaving) maybeReached.add(id);
+    throw e;
   } finally {
     for (const e of live) if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
   }
@@ -721,18 +763,37 @@ async function sending<T>(
 
 /** What `withdrawFinish` took back. */
 export type Withdrawal = {
-  /** A finish the server never answered was taken back: it never reached the server (an
-   * offline Mark as finished), so the Undo is complete here, with no progress edit. */
+  /** A finish that never reached the server was taken back (an offline Mark as finished),
+   * so the Undo is complete here, with no progress edit. Never true while the server may
+   * hold the finish and can be asked (`serverMayHold`): the Undo then takes its edit. */
   unsent: boolean;
   /** For an edit that failed: the events go back and are sent. */
   restore: () => Promise<void>;
 };
 
 /**
+ * Whether the Undo of the finish `id` needs its progress edit although no answer to it ever
+ * came: a request carried it while its server looked reachable (`maybeReached`), so it may
+ * have arrived with only its answer lost, and the server looks reachable now, so the edit
+ * can be made. With the server down no edit can be made, and the likeliest reading of a
+ * request with no answer is one that never left: the Undo is then done on this device, as
+ * for a finish no request carried.
+ */
+function serverMayHold(connectionId: string, id: string): boolean {
+  return maybeReached.has(id) && looksReachable(connectionId);
+}
+
+/**
  * Take a book's waiting `finish` events out of the outbox, before an Undo's progress edit
  * (fe#208): a finish sent after the edit would finish the book again. One whose request is
  * out is waited for (answered, the server has it and the edit comes after it; unanswered,
  * it is taken back).
+ *
+ * A finish taken back counts as unsent only when the server cannot hold it or cannot be
+ * asked (`serverMayHold`). Counted as unsent after a lost answer, the Undo was done on this
+ * device alone and the book stayed finished on the server; the edit unfinishes it whether
+ * the request arrived or not, and a failed edit puts the finish back (`restore`; sent again
+ * it is a `duplicate` when the server had it).
  */
 export async function withdrawFinish(
   connectionId: string,
@@ -768,8 +829,9 @@ export async function withdrawFinish(
     await wait.out;
   }
   const answered = [...waitedFor].some((id) => !taken.some((e) => e.id === id));
+  const held = taken.some((e) => serverMayHold(connectionId, e.id));
   return {
-    unsent: taken.length > 0 && !answered,
+    unsent: taken.length > 0 && !answered && !held,
     restore: async () => {
       if (taken.length === 0) return;
       for (const e of taken) withdrawn.delete(e.id);
@@ -1159,6 +1221,8 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     if (!client) continue;
     const fit = fitKeepalive(entries);
     if (fit.length === 0) continue;
+    // Its answer may never be seen (the page is going): the server may hold these.
+    for (const id of finishesLeaving(fit)) maybeReached.add(id);
     void client
       .syncListening(
         syncBody(
@@ -1239,6 +1303,7 @@ export function resetOutboxForTests(): void {
   chunkSizes.clear();
   sendingNow.clear();
   withdrawn.clear();
+  maybeReached.clear();
   inFlight.clear();
   flushAgain.clear();
   answerListeners.clear();
