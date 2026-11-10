@@ -51,6 +51,7 @@ jest.mock('./progress-sync', () => ({
   getDeviceId: jest.fn(async () => 'dev-1'),
   loadInitialProgress: jest.fn(async () => ({ kind: 'empty' })),
   readMirror: jest.fn(async () => null),
+  guardSettled: () => false,
 }));
 
 const mockFetchQuery = jest.fn(async (..._a: unknown[]): Promise<unknown> => ({}));

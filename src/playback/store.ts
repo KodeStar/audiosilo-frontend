@@ -3,7 +3,7 @@ import { create } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { qk } from '@/api/hooks';
+import { invalidateFinishedProgress, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { isReachable, noteFailure } from '@/api/reachability';
 import type {
@@ -48,6 +48,7 @@ import {
   type LocalFiles,
 } from './book-source';
 import { engineTick, engineTicker } from './engine-ticks';
+import { type FinishRef, finishedSave, setFinishRecorder, type UndoRef } from './finish-route';
 import {
   appendEvents,
   closeSpan,
@@ -61,6 +62,7 @@ import {
   spanToEvent,
   storeOpenSpan,
   usesListeningSync,
+  withdrawFinish,
 } from './listening-outbox';
 import {
   ackVersion,
@@ -68,7 +70,9 @@ import {
   flushConnection,
   flushQueue,
   getDeviceId,
+  guardSettled,
   loadInitialProgress,
+  type ProgressSave,
   readMirror,
   saveProgress,
   writeMirror,
@@ -155,6 +159,15 @@ let stallTimer: ReturnType<typeof setTimeout> | null = null;
  * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
  * real saved progress. Reset per book in `playBook`. */
 let resumeFloor = 0;
+/** The book (`contentKey`) whose session began at a place not checked against its server
+ * (`ResumeLookup.unchecked`): on the legacy PUT path its saves carry the replay guard
+ * (`ProgressSave.guard`, fe#198) until one of them is PUT. Set per session in `playBook`,
+ * with a new id each time (`guardFor`), so an earlier session's save PUT late never lifts a
+ * later one's. */
+let placeGuard: { key: string; id: string } | null = null;
+/** A guarded session for the book `key`, with an id its saves carry (`guard_session`), so a
+ * queued one PUT later lifts it (`guardSettled`, fe#198). */
+const guardFor = (key: string) => ({ key, id: newEventId() });
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
@@ -457,6 +470,12 @@ async function persist(opts?: { forceFinished?: boolean }) {
     if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
   }
   const end = endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
+  const key = contentKeyOf(nowPlaying);
+  // A queued save of this session PUT since (a replay): the guard is over.
+  if (placeGuard && guardSettled(placeGuard.id)) placeGuard = null;
+  const guard = placeGuard;
+  // A finish is the listener's own: never held back.
+  const guarded = guard?.key === key && !forceFinished;
   const save = {
     connectionId: nowPlaying.connectionId,
     libraryId: nowPlaying.libraryId,
@@ -470,6 +489,7 @@ async function persist(opts?: { forceFinished?: boolean }) {
     // The file place (fe#188), the mirror's only (a PUT never sends it), on both paths: an
     // older capture's file place never outlives the place it was taken at.
     ...(forceFinished || !end?.file ? {} : { file: end.file, file_pos: end.filePos }),
+    ...(guarded ? { guard: true, guard_session: guard.id } : {}),
   };
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
   // spans below); the capture only keeps this device's mirror.
@@ -478,7 +498,16 @@ async function persist(opts?: { forceFinished?: boolean }) {
     if (span && sameBook(span, nowPlaying) && !forceFinished && end) span.to = end;
     return;
   }
-  await saveProgress(api, save);
+  const outcome = await saveProgress(api, save);
+  // Once a guarded save is PUT, the server had nothing further on: the session's saves go
+  // straight on from here.
+  if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
+}
+
+/** Save the loaded book's place now (the listener answered Stay to a place its server held
+ * a save back for: the replay guard then lets it through). */
+export function saveLoadedPlace(): void {
+  void persist();
 }
 
 /** Nudge the Home/Browse "continue listening" + "finished" lists to re-read from
@@ -729,9 +758,25 @@ function closeListeningSpan(opts: { at?: SpanEnd } = {}): OpenSpan | null {
   const closing = takeSpan(opts.at);
   if (!closing) return null;
   const cid = closing.connectionId;
-  void closeSpan(closing).then(() => flushOutbox(cid));
+  const key = contentKeyOf(closing);
+  const close: PendingClose = {
+    flush: true,
+    // Its event could not be stored: a finish waiting for it still goes.
+    done: closeSpan(closing)
+      .catch(() => undefined)
+      .finally(() => {
+        if (closesInFlight.get(key) === close) closesInFlight.delete(key);
+        if (close.flush) void flushOutbox(cid);
+      }),
+  };
+  closesInFlight.set(key, close);
   return closing;
 }
+
+/** A span close still on its way into the outbox (`closeSpan` waits its turn), by book; its
+ * send is left to a finish that waits for it (`finishAfter`), so both go in one batch. */
+type PendingClose = { done: Promise<void>; flush: boolean };
+const closesInFlight = new Map<string, PendingClose>();
 
 /** Take the open span (none open from here), ended now at `at`, else where the engine is,
  * else where it was last seen. */
@@ -836,19 +881,118 @@ function moveListeningSpan(
   nextStart = reason;
 }
 
-/** The book's last span closed, then its `finish` (the natural end, "Mark finished"):
- * once between them. */
-function sendFinish(np: NowPlaying) {
-  closeListeningSpan();
-  if (!usesListeningSync(np.connectionId)) return;
-  const key = contentKeyOf(np);
-  if (finishSent === key) return;
-  finishSent = key;
-  const now = new Date().toISOString();
-  void baseVersionOf(np).then((base) =>
-    emit(np.connectionId, [finishEvent('finish', np, now, base)]),
-  );
+/**
+ * Close `closing` (when any) into the outbox, then put the book's `finish` (at `at`) after
+ * it, then send: the outbox's order is the order a sync sends, so a book's last span always
+ * goes before its finish, and in the same batch when nothing else is being sent (server#359:
+ * a 12 s book's finish went first, in a batch of its own, found no session to mark finished,
+ * and the span then opened one that stayed unfinished). Resolves once the finish waits in
+ * the outbox (not sent); `onSent` runs once that send is over.
+ */
+async function finishAfter(
+  closing: OpenSpan | null,
+  ref: ContentRef,
+  at: string,
+  onSent?: () => void,
+): Promise<void> {
+  // A close already on its way (the web reports `paused` before `ended`, fe#211's
+  // server#359 case): the finish waits for it too, and sends both.
+  const earlier = closesInFlight.get(contentKeyOf(ref));
+  if (earlier) earlier.flush = false;
+  await earlier?.done;
+  // Its event could not be stored: the finish still goes.
+  if (closing) await closeSpan(closing).catch(() => undefined);
+  try {
+    const base = await baseVersionOf(ref);
+    await appendEvents(ref.connectionId, [finishEvent('finish', ref, at, base)]);
+  } finally {
+    if (closing && closing.connectionId !== ref.connectionId) {
+      void flushOutbox(closing.connectionId);
+    }
+    void flushOutbox(ref.connectionId).then(onSent);
+  }
 }
+
+/** What a finish moves, read again once the server has it: the caller (`useMarkFinished`)
+ * refreshed them as the finish went into the outbox, before it was sent, so they would
+ * otherwise keep the book unfinished. Only while its server is reachable (else nothing was
+ * sent, and the read would only fail). */
+function refreshAfterFinish(ref: ContentRef) {
+  if (!isReachable(ref.connectionId)) return;
+  invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
+}
+
+/** The book's last span closed, then its `finish` (the natural end, "Mark finished"):
+ * once between them, and in that order (`finishAfter`). */
+function sendFinish(np: NowPlaying) {
+  const key = contentKeyOf(np);
+  if (!usesListeningSync(np.connectionId) || finishSent === key) {
+    closeListeningSpan();
+    return;
+  }
+  finishSent = key;
+  const closing = takeSpan();
+  void finishAfter(closing, np, new Date().toISOString()).catch(() => undefined);
+}
+
+/**
+ * "Mark as finished" outside the player (the book page; `finish-route.ts`, fe#208), on a
+ * server that takes listening events: a `finish` event, queued offline like any other.
+ * When it is the loaded book, its open span closes first and goes before the finish (a
+ * book still playing opens its next span on the next tick), and the player's own end
+ * does not send a second one until the book plays again. This device's mirror records
+ * the book finished at its end, so offline it reads finished and Play starts it again.
+ */
+async function recordFinish(ref: FinishRef): Promise<void> {
+  const at = new Date().toISOString();
+  const np = usePlayer.getState().nowPlaying;
+  const loaded = !!np && sameBook(np, ref);
+  const closing = span && sameBook(span, ref) ? takeSpan() : null;
+  if (loaded) finishSent = contentKeyOf(ref);
+  // The book page gives no speed: the book's own stays in the mirror (an offline Listen
+  // again reads it), never 1x.
+  const prior = await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
+  beforeFinish.set(contentKeyOf(ref), { prior, at });
+  const speed = ref.playback_speed ?? prior?.playback_speed;
+  const id = deviceId || (await getDeviceId());
+  await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(() => undefined);
+  await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
+}
+
+/** Each book's mirror record before its Mark as finished (`recordFinish`) and the finish's
+ * time, for an Undo done here (`unrecordFinish`). */
+const beforeFinish = new Map<string, { prior: ProgressSave | null; at: string }>();
+
+/**
+ * Undo a Mark as finished that never left this device (its finish was taken back from the
+ * outbox unsent, `undoFinish`): the mirror goes back to its record before the finish (else
+ * this device's at `ref.position`, unfinished), and the player's end may send a finish again.
+ */
+async function unrecordFinish(ref: UndoRef): Promise<void> {
+  const key = contentKeyOf(ref);
+  const before = beforeFinish.get(key);
+  beforeFinish.delete(key);
+  if (finishSent === key) finishSent = null;
+  // Stamped with the finish's time: the mirror keeps the newest record, so the record from
+  // before it (older) would be refused, and a place saved since the finish still wins. Its
+  // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
+  const restore = before?.prior && !before.prior.finished ? before : null;
+  const back: ProgressSave | null = restore?.prior
+    ? { ...restore.prior, ack_version: undefined, answered: undefined, updated_at: restore.at }
+    : await readMirror(ref.connectionId, ref.libraryId, ref.path)
+        // Only the finish's record: a place saved since it is not undone.
+        .then((now) => (now?.finished ? { ...now, finished: false, position: ref.position } : null))
+        .catch(() => null);
+  if (back) await writeMirror(back).catch(() => undefined);
+  invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
+}
+
+setFinishRecorder({
+  takesEvent: usesListeningSync,
+  record: recordFinish,
+  withdraw: withdrawFinish,
+  unrecord: unrecordFinish,
+});
 
 /**
  * After the listener answered an offer of another device's place with Stay: this device's
@@ -1381,9 +1525,13 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       // 1x for a kids profile, else the listener's setting (`listenerSettings`).
       const { defaultRate } = listenerSettings();
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
+      // The replay guard (fe#198): set below when the resume could not be checked.
+      let unchecked = false;
       if (startBookPosition === undefined && startTrack === undefined) {
         const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
         if (!current()) return;
+        // Not reached (a downloaded book's 'failed' starts at 0), or resumed behind it.
+        unchecked = r.kind === 'failed' || (r.kind === 'progress' && !!r.unchecked);
         if (r.kind === 'progress') {
           // An unfinished book resumes where it left off, a finished one starts again at 0
           // (`resumeStart`). resumeFloor is derived from startAt below, so a restart's floor
@@ -1480,6 +1628,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       const prev = get();
       const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
       set({ rate: speed, nowPlaying, loadingBook });
+      // An explicit place is the listener's own: unguarded, like a resume checked against
+      // the server.
+      placeGuard = unchecked ? guardFor(key) : null;
       nextStart = start;
       unfinishDue = unfinish && usesListeningSync(connectionId);
       finishSent = null;
@@ -2094,6 +2245,10 @@ async function adoptLoadedBook(
   pausedAt = loaded.playing && !reload ? null : 0;
   svc.adoptPlace?.(snapshot);
   const nowPlaying = nowPlayingOf(loaded, book, queue, api, local);
+  // Nor checked for the replay guard (fe#198): offline, a place the car started from an
+  // old snapshot must not move another device's further one back. Its PUT saves are
+  // guarded until one is PUT, as an unchecked resume's.
+  placeGuard = guardFor(contentKeyOf(nowPlaying));
   // A reload holds every save and remote move until it lands (`loadingBook`): until then a
   // tick still counts in the engine's old order.
   usePlayer.setState({

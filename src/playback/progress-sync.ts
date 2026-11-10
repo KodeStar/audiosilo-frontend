@@ -7,10 +7,8 @@ import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
 import { getItem, setItem } from '@/lib/storage';
 import {
-  isRecord,
   LISTENING_OPEN_SPAN_KEY,
   LISTENING_OUTBOX_KEY,
-  LISTENING_SYNC_KEY,
   PROGRESS_MIRROR_KEY as MIRROR_KEY,
   PROGRESS_QUEUE_KEY as QUEUE_KEY,
 } from '@/lib/storage-keys';
@@ -18,6 +16,7 @@ import { onConnectionRemoved } from '@/stores/session';
 
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
+import { hasStoredSkews, readStoredSkews } from './stored-skews';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
@@ -75,6 +74,16 @@ export type ProgressSave = {
   /** Sync v2: the other places (`device_id|updated_at`) the listener has answered (Jump or
    * Stay), so an offer never comes back. Mirror only; kept across captures. */
   answered?: string[];
+  /** The legacy PUT path's replay guard (fe#198): a save of a listening session that began
+   * from a place this device could not check against its server (an offline start, or a
+   * resume behind another device's further place: `ResumeLookup.unchecked`). Before it is
+   * PUT, the server's row is read, and another device's further place holds it
+   * (`guardHolds`). Saves and the queue only; never kept in the mirror. */
+  guard?: boolean;
+  /** The listening session a guarded save belongs to (the store's `placeGuard.id`): once
+   * one of its saves is PUT, a replay from the queue too, the session's guard is lifted
+   * (`guardSettled`). Saves and the queue only. */
+  guard_session?: string;
 };
 
 /**
@@ -94,6 +103,11 @@ export type ResumeLookup =
       /** The file place of this device's own save when that save is the newest record: a
        * resume plays that file from `pos` when the queue holds it (fe#188). */
       file?: { path: string; pos: number };
+      /** The place was not checked against the server: it was not reached, or its row is
+       * further on than the place resumed (another device's, which this device's newer
+       * record beat by the clock). The legacy PUT path guards this session's saves
+       * (`ProgressSave.guard`, fe#198). */
+      unchecked?: true;
     }
   | { kind: 'empty' }
   | { kind: 'failed' };
@@ -131,8 +145,7 @@ async function readListeningBacklog(): Promise<{ outbox: OutboxEntry[]; spans: O
 }
 
 /** Each connection's server clock ahead of this device's (ms), as last measured by a sync
- * answer (`noteClockSkew`) or read from the stored sync state (`readLocalPlaces`,
- * `knownSkew`). */
+ * answer (`noteClockSkew`) or read from its stored copy (`readLocalPlaces`, `knownSkew`). */
 const clockSkews = new Map<string, number>();
 
 /** A sync answer measured how far ahead of this device's clock `connectionId`'s server is. */
@@ -144,29 +157,24 @@ export function noteClockSkew(connectionId: string, skewMs: number): void {
 const skewLooked = new Set<string>();
 
 /** `connectionId`'s server clock skew for a merge (ms): this launch's measurement, else the
- * stored sync state's (read once per connection a launch, so the first merge of a launch,
- * before any sync answer, has it too), else 0. */
+ * stored one (read once per connection a launch, so the first merge of a launch, before any
+ * sync answer, has it too), else 0. */
 async function knownSkew(connectionId: string): Promise<number> {
-  if (!clockSkews.has(connectionId) && !skewLooked.has(connectionId)) {
+  if (!clockSkews.has(connectionId) && hasStoredSkews() && !skewLooked.has(connectionId)) {
     skewLooked.add(connectionId);
     await readClockSkews().catch(() => undefined);
   }
   return clockSkews.get(connectionId) ?? 0;
 }
 
-/** Every connection's known server clock skew: the stored sync state's, this launch's
- * measurements over it. */
+/** Every connection's known server clock skew: the stored ones (through the outbox, their
+ * one reader: `stored-skews.ts`, fe#211), this launch's measurements over them. */
 async function readClockSkews(): Promise<Record<string, number>> {
-  const raw = await getItem<unknown>(LISTENING_SYNC_KEY);
+  const stored = await readStoredSkews().catch((): Record<string, number> => ({}));
   const out: Record<string, number> = {};
-  if (isRecord(raw)) {
-    for (const [cid, state] of Object.entries(raw)) {
-      const skew = isRecord(state) ? state.clockSkewMs : undefined;
-      if (typeof skew === 'number' && Number.isFinite(skew)) {
-        out[cid] = skew;
-        if (!clockSkews.has(cid)) clockSkews.set(cid, skew);
-      }
-    }
+  for (const [cid, skew] of Object.entries(stored)) {
+    out[cid] = skew;
+    if (!clockSkews.has(cid)) clockSkews.set(cid, skew);
   }
   for (const [cid, skew] of clockSkews) out[cid] = skew;
   return out;
@@ -302,12 +310,19 @@ export function resumeLookupOf(
       mirror,
       places.skews?.[connectionId] ?? 0,
     );
+    const unchecked =
+      server === undefined ||
+      (server !== null &&
+        best !== server &&
+        !server.finished &&
+        server.position - best.position > GUARD_SLACK_S);
     return {
       kind: 'progress',
       progress: best,
       ...(filed?.file && typeof filed.file_pos === 'number'
         ? { file: { path: filed.file, pos: filed.file_pos } }
         : {}),
+      ...(unchecked ? { unchecked: true as const } : {}),
     };
   }
   if (server !== undefined) return { kind: 'empty' }; // server reachable + nothing anywhere = truly new
@@ -456,16 +471,38 @@ const withMirrorLock = serialQueue();
  * fields a capture doesn't carry (`ack_version`, `answered`) are kept from the record it
  * replaces, and so is its file place when the new record holds that place without one (a
  * server row read back after this device's own save: `holdsFilePlace`). */
-export async function writeMirror(save: ProgressSave): Promise<void> {
+export function writeMirror(save: ProgressSave): Promise<void> {
+  return writeMirrors([save]);
+}
+
+/** `writeMirror` for many records at once: one read and at most one write of the mirror
+ * (Home's progress list, fe#198), none when every record is already there as it is (the
+ * list read again with no place moved). */
+export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void> {
+  if (saves.length === 0) return;
   await withMirrorLock(async () => {
     const map = await readMirrorMap();
-    const key = contentKey(save.connectionId, save.libraryId, save.path);
-    const existing = map[key];
-    if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
-      map[key] = mergeKept(save, existing, existing ? await knownSkew(save.connectionId) : 0);
-      await setItem(MIRROR_KEY, map);
+    let changed = false;
+    for (const save of saves) {
+      const key = contentKey(save.connectionId, save.libraryId, save.path);
+      const existing = map[key];
+      if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
+        const { guard: _guard, guard_session: _session, ...record } = save;
+        const next = mergeKept(record, existing, existing ? await knownSkew(save.connectionId) : 0);
+        if (existing && sameRecord(next, existing)) continue;
+        map[key] = next;
+        changed = true;
+      }
     }
+    if (changed) await setItem(MIRROR_KEY, map);
   });
+}
+
+/** Whether two mirror records hold the same fields (an array field by reference: one kept
+ * across records is the same array). */
+function sameRecord(a: ProgressSave, b: ProgressSave): boolean {
+  const keys = Object.keys(a) as (keyof ProgressSave)[];
+  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k], b[k]));
 }
 
 /** `save` with what the mirror keeps across records (see `writeMirror`), its server's clock
@@ -596,9 +633,96 @@ function isUnrecoverable(e: unknown): boolean {
   return e instanceof ApiError && e.status >= 400 && e.status < 500;
 }
 
+// --- The replay guard (fe#198) ----------------------------------------------------------
+//
+// The legacy PUT is last-write-wins by `updated_at`, so a save from a session that began at
+// a place this device never checked against the server (offline, or behind another
+// device's further place) would move that further place back, with no question asked: the
+// v2.5.1 sweep saw a place go from 3570 s to 4.78 s. Such a save carries `guard`; before
+// it is PUT (live or replayed) the server's row is read, and another device's place further
+// on that the listener has not chosen to leave (Stay, `answerOffer`) holds it: it is not
+// sent and leaves the queue (this device's mirror keeps it), and the loaded book's player
+// offers that place (`onHeldSave`, the place reconcile's Jump/Stay offer). Sync v2 needs
+// none of this: the server resolves each span on its `base_version`.
+
+/** How much further on (s) another device's place must be to hold a guarded save; the
+ * place reconcile's threshold too (`MOVE_THRESHOLD_S`; auto-rewind is up to 30 s). */
+export const GUARD_SLACK_S = 30;
+
+/** A place's `answered` key: `device_id|updated_at` (an ISO time has no `|`). */
+export function placeKey(p: { device_id?: string; updated_at: string }): string {
+  return `${p.device_id}|${p.updated_at}`;
+}
+
+/**
+ * Whether the server's `row` holds the guarded `save` back (pure): a place of another
+ * device, not finished (a finish is not a place to resume; this device's next save
+ * unfinishes it, as before), more than `GUARD_SLACK_S` further on, that the listener has not
+ * answered (`answered`: the `device_id|updated_at` keys answered with Jump or Stay).
+ */
+export function guardHolds(
+  save: Pick<ProgressSave, 'position' | 'device_id' | 'finished'>,
+  row: Progress | null,
+  answered: readonly string[] = [],
+): boolean {
+  if (!row || row.finished || save.finished) return false;
+  if (!row.device_id || row.device_id === save.device_id) return false;
+  if (row.position - save.position <= GUARD_SLACK_S) return false;
+  return !answered.includes(placeKey(row));
+}
+
+/** Told of each guarded save held back, with the server's row that held it and this
+ * device's mirror record of the book. */
+type HeldListener = (save: ProgressSave, row: Progress, mirror: ProgressSave | null) => void;
+const heldListeners = new Set<HeldListener>();
+
+/** Be told of each guarded save the server's row held back; returns the unsubscribe. */
+export function onHeldSave(listener: HeldListener): () => void {
+  heldListeners.add(listener);
+  return () => heldListeners.delete(listener);
+}
+
+/** Whether `save` may be PUT (unguarded, or its server's row does not hold it). A held one
+ * is told to the listeners. Throws what reading the row throws. */
+async function guardPasses(client: ApiClient, save: ProgressSave): Promise<boolean> {
+  if (!save.guard) return true;
+  const [row, mine] = await Promise.all([
+    client.getProgress(save.libraryId, save.path),
+    readMirror(save.connectionId, save.libraryId, save.path),
+  ]);
+  if (!row || !guardHolds(save, row, mine?.answered)) return true;
+  for (const listener of heldListeners) {
+    try {
+      listener(save, row, mine);
+    } catch {
+      // A listener's failure never turns a held save into a failed one (queued, retried).
+    }
+  }
+  return false;
+}
+
+/** Sessions (`ProgressSave.guard_session`) one of whose guarded saves was PUT. */
+const settledGuards = new Set<string>();
+
+/** Whether a guarded save of `session` has been PUT (live or replayed from the queue): the
+ * server had nothing further on, so the session's later saves need no read first. */
+export function guardSettled(session: string): boolean {
+  return settledGuards.has(session);
+}
+
+/** A save was PUT: its session's guard, if any, is settled. */
+function notePut(save: ProgressSave): void {
+  if (save.guard && save.guard_session) settledGuards.add(save.guard_session);
+}
+
+/** What became of a save: PUT (`saved`), kept for a later replay (`queued`), held back by
+ * the replay guard (`held`), or refused for good (`dropped`, a 4xx). */
+export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
+
 /** Save progress now; if the network fails, queue it for later replay. version
- * is left 0 so the server reconciles by (updated_at, version). */
-export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<void> {
+ * is left 0 so the server reconciles by (updated_at, version). A guarded save is checked
+ * first (`guardPasses`). */
+export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<SaveOutcome> {
   // Reachability is per-connection: this save's success/failure notes ONLY its own
   // server. A book keeps playing on a connection the user has navigated away from, and
   // its 15s save loop lands here without touching any other server's state.
@@ -609,27 +733,39 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
   // the 15s save loop doesn't fire a doomed request every tick while it's offline.
   if (!isReachable(save.connectionId)) {
     await enqueue(save);
-    return;
+    return 'queued';
   }
   try {
-    await api.saveProgress(save.libraryId, save.path, {
-      position: save.position,
-      duration: save.duration,
-      finished: save.finished,
-      playback_speed: save.playback_speed,
-      version: 0,
-      device_id: save.device_id,
-      updated_at: save.updated_at,
-    });
+    if (!(await guardPasses(api, save))) {
+      noteSuccess(save.connectionId);
+      return 'held';
+    }
+    await api.saveProgress(save.libraryId, save.path, putBody(save));
+    notePut(save);
     noteSuccess(save.connectionId);
     void flushQueue();
+    return 'saved';
   } catch (e) {
-    if (isUnrecoverable(e)) return; // auth/forbidden - don't retry forever
+    if (isUnrecoverable(e)) return 'dropped'; // auth/forbidden - don't retry forever
     // No answer only asks for a check of the server (`noteFailure`): one slow save never
     // marks a healthy server down; the check does when it gets no answer either.
     noteFailure(save.connectionId, e);
     await enqueue(save);
+    return 'queued';
   }
+}
+
+/** A save as the legacy PUT's body. */
+function putBody(save: ProgressSave) {
+  return {
+    position: save.position,
+    duration: save.duration,
+    finished: save.finished,
+    playback_speed: save.playback_speed,
+    version: 0,
+    device_id: save.device_id,
+    updated_at: save.updated_at,
+  };
 }
 
 // Serialize all read-modify-write access to the queue so a flush and a
@@ -674,15 +810,11 @@ async function flushGroup(
       continue;
     }
     try {
-      await client.saveProgress(save.libraryId, save.path, {
-        position: save.position,
-        duration: save.duration,
-        finished: save.finished,
-        playback_speed: save.playback_speed,
-        version: 0,
-        device_id: save.device_id,
-        updated_at: save.updated_at,
-      });
+      // A guarded save the server's row holds back leaves the queue (the mirror keeps it).
+      if (await guardPasses(client, save)) {
+        await client.saveProgress(save.libraryId, save.path, putBody(save));
+        notePut(save);
+      }
       noteSuccess(cid);
     } catch (e) {
       if (isUnrecoverable(e)) continue; // 4xx: drop, can't ever succeed

@@ -85,8 +85,16 @@ import {
   unsentListens,
   usesListeningSync,
   watchListeningFlags,
+  withdrawFinish,
 } from './listening-outbox';
-import { ackVersion, getDeviceId, pendingSaves, readMirror } from './progress-sync';
+import {
+  ackVersion,
+  getDeviceId,
+  pendingSaves,
+  readLocalPlaces,
+  readMirror,
+  writeMirror,
+} from './progress-sync';
 /* eslint-enable import/first */
 
 const OUTBOX = 'audiosilo.listeningOutbox';
@@ -137,6 +145,7 @@ function client(
   const c = {
     syncListening: jest.fn(sync),
     saveProgress: jest.fn(async () => ({})),
+    getProgress: jest.fn(async (): Promise<unknown> => null),
     serverInfo: jest.fn(serverInfo),
   };
   (resolveClient as jest.Mock).mockImplementation((cid: string) =>
@@ -532,6 +541,116 @@ describe('flushOutbox', () => {
     expect(sent(c).map((b) => b.events.map((e) => e.id))).toEqual([['a'], ['b']]);
   });
 
+  // fe#208: an Undo's progress edit must not be followed by the finish it undoes.
+  describe("withdrawFinish (before an Undo's edit)", () => {
+    const finish = (id: string, path = 'Author/Book') =>
+      ({
+        id,
+        kind: 'finish',
+        library_id: 3,
+        path,
+        at: '2026-10-25T08:00:00.000Z',
+      }) as ListeningEvent;
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    it("takes the book's waiting finish back (only it); the restore sends it after all", async () => {
+      await appendEvents('c1', [listen('a'), finish('f'), finish('g', 'Other/Book')]);
+      const { unsent, restore } = await withdrawFinish('c1', 3, 'Author/Book');
+      expect(unsent).toBe(true);
+      expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a', 'g']);
+      const c = client(async (body) => answer(body));
+      await flushOutbox('c1');
+      expect(sent(c).flatMap((b) => b.events.map((e) => e.id))).toEqual(['a', 'g']);
+      await restore();
+      await flushOutbox('c1');
+      expect(
+        sent(c)
+          .at(-1)
+          ?.events.map((e) => e.id),
+      ).toEqual(['f']);
+    });
+
+    it('a finish being sent is waited for: the withdrawal ends after its answer', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async (body) => {
+        await gate;
+        return answer(body);
+      });
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      let done = false;
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then((w) => {
+        done = true;
+        return w;
+      });
+      await tick();
+      expect(done).toBe(false);
+      release();
+      const [, taken] = await Promise.all([flushing, withdrawing]);
+      expect(await outboxEvents('c1')).toEqual([]);
+      // The server has it: the Undo needs its edit.
+      expect(taken.unsent).toBe(false);
+    });
+
+    it('one finish answered while another waited: the Undo still needs its edit', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async (body) => {
+        await gate;
+        return answer(body);
+      });
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      await appendEvents('c1', [finish('g')]);
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book');
+      await tick();
+      release();
+      const [, taken] = await Promise.all([flushing, withdrawing]);
+      expect(await outboxEvents('c1')).toEqual([]);
+      expect(taken.unsent).toBe(false);
+    });
+
+    it("a rollback's PUT of the finish is waited for too", async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async () => {
+        throw new ApiError(404, 'not found');
+      });
+      c.saveProgress.mockImplementation(async () => {
+        await gate;
+        return {};
+      });
+      const flushing = flushOutbox('c1');
+      while (c.saveProgress.mock.calls.length === 0) await tick();
+      let done = false;
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book').then(() => (done = true));
+      await tick();
+      expect(done).toBe(false);
+      release();
+      await Promise.all([flushing, withdrawing]);
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
+    it('a finish whose send got no answer is taken back after it, never sent again', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let fail: (e: Error) => void = () => {};
+      const c = client(() => new Promise((_r, reject) => (fail = reject)));
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book');
+      fail(new TypeError('Failed to fetch'));
+      const [, taken] = await Promise.all([flushing, withdrawing]);
+      expect(taken.unsent).toBe(true);
+      expect(await outboxEvents('c1')).toEqual([]);
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('a 404/405 from anything but the rolled-back server keeps the outbox', async () => {
     await appendEvents('c1', [listen('a')]);
     // Another host at the address (its `/server` is no AudioSilo answer), or the server
@@ -581,6 +700,68 @@ describe('flushOutbox', () => {
     // From now on this connection saves by PUT, and its capability is read again.
     expect(usesListeningSync('c1')).toBe(false);
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+  });
+
+  it("a rolled-back Mark as finished (no listen) is PUT at the book's end with its length", async () => {
+    // The finish wrote this device's mirror (finishedSave) as it was queued.
+    await writeMirror({
+      connectionId: 'c1',
+      libraryId: 3,
+      path: 'Author/Book',
+      position: 61200,
+      duration: 61200,
+      finished: true,
+      playback_speed: 1.5,
+      device_id: 'dev-1',
+      updated_at: '2026-10-25T08:00:00.000Z',
+    });
+    await appendEvents('c1', [
+      {
+        id: 'f',
+        kind: 'finish',
+        library_id: 3,
+        path: 'Author/Book',
+        at: '2026-10-25T08:00:00.000Z',
+      } as ListeningEvent,
+    ]);
+    const c = client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    await flushOutbox('c1');
+    expect(c.saveProgress).toHaveBeenCalledTimes(1);
+    expect(c.saveProgress).toHaveBeenCalledWith(
+      3,
+      'Author/Book',
+      expect.objectContaining({
+        position: 61200,
+        duration: 61200,
+        finished: true,
+        playback_speed: 1.5,
+        updated_at: '2026-10-25T08:00:00.000Z',
+      }),
+    );
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  it("a rolled-back listen is held by another device's further place (the replay guard)", async () => {
+    await appendEvents('c1', [listen('a')]);
+    const c = client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    c.getProgress.mockResolvedValue({
+      library_id: 3,
+      path: 'Author/Book',
+      position: 20000,
+      duration: 61200,
+      finished: false,
+      version: 7,
+      device_id: 'other-device',
+      updated_at: '2026-10-25T09:00:00.000Z',
+    });
+    await flushOutbox('c1');
+    expect(c.getProgress).toHaveBeenCalledWith(3, 'Author/Book');
+    expect(c.saveProgress).not.toHaveBeenCalled();
+    expect(await outboxEvents('c1')).toEqual([]);
   });
 
   it('unsentListens sends once more while reachable, else only counts', async () => {
@@ -947,6 +1128,15 @@ describe('the server clock', () => {
     };
     expect(stored.c1.clockSkewMs).toBeGreaterThan(29_000);
     expect(stored.c1.clockSkewMs).toBeLessThan(31_000);
+  });
+});
+
+describe('the stored clock skew has one reader (fe#211)', () => {
+  it("is the outbox's: progress-sync's merges read the sync state through it", async () => {
+    await AsyncStorage.setItem(SYNC, JSON.stringify({ c9: { clockSkewMs: 12_345 }, c8: {} }));
+    const { skews } = await readLocalPlaces();
+    expect(skews?.c9).toBe(12_345);
+    expect(skews).not.toHaveProperty('c8');
   });
 });
 

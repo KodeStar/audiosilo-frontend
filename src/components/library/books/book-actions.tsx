@@ -29,6 +29,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
+import { finishTakesEvent, undoFinish } from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
@@ -129,28 +130,34 @@ export function useBookActions(
   };
 
   const onFinish = async () => {
-    if (progressEdit === true) {
-      const before = progress?.position ?? 0;
-      if (!(await setFinished(true))) return;
+    const before = progress?.position ?? 0;
+    // Undo is a progress edit (`progress_edit`): the only way to mark a book not finished
+    // at the place it had.
+    const canUndo = progressEdit === true;
+    const done = () =>
       toast({
         title: t('library.bookActions.markedFinished'),
         description: book.title,
-        action: {
-          label: t('queue.undo'),
-          onPress: () => void setFinished(false, before),
-        },
+        action: canUndo
+          ? {
+              label: t('queue.undo'),
+              // The finish event, if still waiting, is taken back before the edit (fe#208).
+              onPress: () =>
+                void undoFinish({ connectionId, libraryId, path, position: before }, () =>
+                  setFinished(false, before),
+                ),
+            }
+          : undefined,
       });
+    if (canUndo && !finishTakesEvent(connectionId)) {
+      if (await setFinished(true)) done();
       return;
     }
-    // An older server: the offline-aware save at the book's end (no undo without
-    // `progress_edit`, which is the only way to mark a book not finished).
+    // A server that takes listening events: a `finish` event, offline too (fe#208). An
+    // older server without progress edits: the offline-aware save at the book's end.
     markFinished.mutate(
       { libraryId, path, position: book.duration, duration: book.duration },
-      {
-        onSuccess: () =>
-          toast({ title: t('library.bookActions.markedFinished'), description: book.title }),
-        onError: failed,
-      },
+      { onSuccess: done, onError: failed },
     );
   };
 

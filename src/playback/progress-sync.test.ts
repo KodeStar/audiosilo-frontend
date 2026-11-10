@@ -9,6 +9,9 @@ import { onConnectionRemoved } from '@/stores/session';
 import {
   ackVersion,
   flushConnection,
+  guardHolds,
+  guardSettled,
+  onHeldSave,
   flushQueue,
   loadInitialProgress,
   answerOffer,
@@ -23,6 +26,7 @@ import {
   saveProgress,
   writeMirror,
 } from '@/playback/progress-sync';
+import { provideStoredSkews } from '@/playback/stored-skews';
 
 // babel-jest hoists jest.mock above the imports, so the module under test sees the
 // mock at import time (it gates every save on isReachable(cid) and notes success/failure
@@ -167,7 +171,7 @@ describe('progress-sync', () => {
     // before the ApiError reaches this layer. The client the save loop uses is built with
     // that callback (provider.tsx / resolveClient); this layer's job is only to not loop.
     const api = fakeApi(() => Promise.reject(new ApiError(401, 'invalid or expired token')));
-    await expect(saveProgress(api, save)).resolves.toBeUndefined();
+    await expect(saveProgress(api, save)).resolves.toBe('dropped');
     expect(await readQueue()).toHaveLength(0);
   });
 
@@ -478,7 +482,12 @@ describe('progress-sync', () => {
     );
     const api = fakeGetApi(() => Promise.reject(new Error('network down')));
     const r = await loadInitialProgress(api, 'c1', 1, 'A/Book');
-    expect(r).toEqual({ kind: 'progress', progress: expect.objectContaining({ position: 75 }) });
+    // Not checked against the server: the legacy path guards its saves (fe#198).
+    expect(r).toEqual({
+      kind: 'progress',
+      progress: expect.objectContaining({ position: 75 }),
+      unchecked: true,
+    });
   });
 
   it('loadInitialProgress: returns failed only when unreachable AND no local record', async () => {
@@ -670,6 +679,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       kind: 'progress',
       progress: expect.objectContaining({ position: 3600 }),
       file: { path: 'A/Book/02.mp3', pos: 600 },
+      unchecked: true,
     });
   });
 
@@ -744,6 +754,12 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
 
   // fe#208: the echo is stamped in server time, the capture in this device's time.
   describe("a device whose clock is behind the server's", () => {
+    // The stored skews come from the outbox, their one reader (fe#211): a stand-in here.
+    let stored: Record<string, number> = {};
+    beforeAll(() => provideStoredSkews(async () => stored));
+    beforeEach(() => {
+      stored = {};
+    });
     afterEach(() => noteClockSkew('c1', 0));
     // 20 s slow: the server stamps its echo of the 00:00:00 capture 00:00:22.
     const echo = makeProgress({
@@ -757,10 +773,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).not.toHaveProperty(
         'file',
       );
-      await AsyncStorage.setItem(
-        'audiosilo.listeningSync',
-        JSON.stringify({ c1: { clockSkewMs: 20_000 } }),
-      );
+      stored = { c1: 20_000 };
       expect(resumeLookupOf(echo, await readLocalPlaces(), 'c1', 1, 'A/Book')).toMatchObject({
         file: { path: 'A/Book/02.mp3', pos: 600 },
       });
@@ -790,10 +803,7 @@ describe('the file place (fe#188) and the Sync v2 mirror fields', () => {
       const cid = 'c-cold';
       const mine = { ...filed, connectionId: cid };
       await AsyncStorage.setItem(MIRROR_KEY, JSON.stringify({ [`${cid}:1:A/Book`]: mine }));
-      await AsyncStorage.setItem(
-        'audiosilo.listeningSync',
-        JSON.stringify({ [cid]: { clockSkewMs: 20_000 } }),
-      );
+      stored = { [cid]: 20_000 };
       const r = await loadInitialProgress(
         fakeGetApi(async () => echo),
         cid,
@@ -952,5 +962,230 @@ describe('resume against a newer server row (live verification F1, F2)', () => {
       ]),
     );
     expect((await readLocalPlaces()).pending).toEqual(new Set(['c1:1:A/Book']));
+  });
+});
+
+// fe#198: the legacy PUT is last-write-wins by updated_at, so a session that began where
+// this device could not check its server must not move another device's further place back.
+describe('the replay guard on the legacy PUT path (fe#198)', () => {
+  /** Another device's place far ahead on the server (Death Masks at 70%). */
+  const ahead = makeProgress({
+    position: 3570,
+    duration: 5100,
+    device_id: 'phone',
+    updated_at: '2025-12-31T20:00:00Z',
+    version: 7,
+  });
+  /** This device's offline session: 4.78 s in, newer by the clock. */
+  const guarded: ProgressSave = { ...save, position: 4.78, duration: 5100, guard: true };
+  const held: [ProgressSave, Progress][] = [];
+  let stopHeld: () => void = () => {};
+
+  /** A client whose GET answers `row` and whose PUT resolves (or `put` decides). */
+  function serverWith(row: Progress | null | (() => Promise<Progress | null>)) {
+    return {
+      getProgress: jest.fn(typeof row === 'function' ? row : async () => row),
+      saveProgress: jest.fn(async () => {}),
+    } as unknown as ApiClient & { getProgress: jest.Mock; saveProgress: jest.Mock };
+  }
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    jest.clearAllMocks();
+    reachable.mockReset().mockReturnValue(true);
+    mockResolveClient.mockReset().mockReturnValue(null);
+    mockSessionReady.mockReset().mockReturnValue(true);
+    held.length = 0;
+    stopHeld = onHeldSave((s, row) => held.push([s, row]));
+  });
+  afterEach(() => stopHeld());
+
+  describe('guardHolds (the rule)', () => {
+    it("holds for another device's unanswered place more than 30 s further on", () => {
+      expect(guardHolds(guarded, ahead)).toBe(true);
+    });
+
+    it("lets through this device's own row, a near place, a finish, an answered place, no row", () => {
+      expect(guardHolds(guarded, { ...ahead, device_id: 'dev' })).toBe(false);
+      expect(guardHolds(guarded, { ...ahead, position: 30 })).toBe(false);
+      expect(guardHolds(guarded, { ...ahead, finished: true })).toBe(false);
+      expect(guardHolds({ ...guarded, finished: true }, ahead)).toBe(false);
+      expect(guardHolds(guarded, ahead, ['phone|2025-12-31T20:00:00Z'])).toBe(false);
+      expect(guardHolds(guarded, ahead, ['phone|another time'])).toBe(true);
+      expect(guardHolds(guarded, null)).toBe(false);
+      expect(guardHolds(guarded, { ...ahead, device_id: '' })).toBe(false);
+    });
+  });
+
+  it("a live guarded save against a further place: no PUT, held, the mirror keeps this device's", async () => {
+    const api = serverWith(ahead);
+    await expect(saveProgress(api, guarded)).resolves.toBe('held');
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    expect(held).toEqual([[guarded, ahead]]);
+    expect(await readQueue()).toEqual([]);
+    const mirrored = await readMirrorOf('c1', 1, 'A/Book');
+    expect(mirrored).toMatchObject({ position: 4.78 });
+    expect(mirrored).not.toHaveProperty('guard'); // never kept in the mirror
+  });
+
+  it('a listener that throws leaves the save held, not queued as a failure', async () => {
+    const stop = onHeldSave(() => {
+      throw new Error('listener broke');
+    });
+    try {
+      const api = serverWith(ahead);
+      await expect(saveProgress(api, guarded)).resolves.toBe('held');
+      expect(await readQueue()).toEqual([]);
+    } finally {
+      stop();
+    }
+  });
+
+  it('a live guarded save goes through when nothing is further on, and says so', async () => {
+    const api = serverWith(makeProgress({ position: 2, device_id: 'phone' }));
+    await expect(saveProgress(api, guarded)).resolves.toBe('saved');
+    expect(api.saveProgress).toHaveBeenCalledWith(
+      1,
+      'A/Book',
+      expect.objectContaining({ position: 4.78, version: 0 }),
+    );
+    expect(held).toEqual([]);
+  });
+
+  it('after Stay (the place answered), the guarded save goes through', async () => {
+    await writeMirror({ ...save, answered: ['phone|2025-12-31T20:00:00Z'] });
+    const api = serverWith(ahead);
+    await expect(saveProgress(api, guarded)).resolves.toBe('saved');
+    expect(api.saveProgress).toHaveBeenCalled();
+  });
+
+  it('an unguarded save (its start was known) is PUT without a read, as before', async () => {
+    const api = serverWith(ahead);
+    await expect(saveProgress(api, { ...save, position: 4.78 })).resolves.toBe('saved');
+    expect(api.getProgress).not.toHaveBeenCalled();
+    expect(api.saveProgress).toHaveBeenCalled();
+  });
+
+  it('offline, a guarded save is queued with its guard', async () => {
+    reachable.mockReturnValue(false);
+    const api = serverWith(ahead);
+    await expect(saveProgress(api, guarded)).resolves.toBe('queued');
+    expect(api.getProgress).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ guard: true })]);
+  });
+
+  it('a read that gets no answer queues the guarded save; nothing is PUT', async () => {
+    const api = serverWith(() => Promise.reject(new TypeError('Failed to fetch')));
+    await expect(saveProgress(api, guarded)).resolves.toBe('queued');
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ guard: true })]);
+  });
+
+  describe('a replay (the queue)', () => {
+    it('an unknown-start save against a far-ahead server: no PUT, it leaves the queue, the place is offered', async () => {
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([guarded]));
+      const api = serverWith(ahead);
+      routeClients({ c1: api });
+      await flushQueue();
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([]);
+      expect(held).toEqual([[guarded, ahead]]);
+    });
+
+    it('a known-start save still replays (no guard, no read)', async () => {
+      const known = { ...save, position: 4.78 };
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([known]));
+      const api = serverWith(ahead);
+      routeClients({ c1: api });
+      await flushQueue();
+      expect(api.getProgress).not.toHaveBeenCalled();
+      expect(api.saveProgress).toHaveBeenCalledWith(
+        1,
+        'A/Book',
+        expect.objectContaining({ position: 4.78 }),
+      );
+      expect(await readQueue()).toEqual([]);
+    });
+
+    it('a guarded save the server has nothing further for replays', async () => {
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([guarded]));
+      const api = serverWith(null);
+      routeClients({ c1: api });
+      await flushConnection('c1');
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      expect(await readQueue()).toEqual([]);
+    });
+
+    it("a replayed guarded save settles its session's guard; a held one does not", async () => {
+      await AsyncStorage.setItem(
+        QUEUE_KEY,
+        JSON.stringify([{ ...guarded, guard_session: 's-replayed' }]),
+      );
+      routeClients({ c1: serverWith(null) });
+      await flushConnection('c1');
+      expect(guardSettled('s-replayed')).toBe(true);
+
+      await AsyncStorage.setItem(
+        QUEUE_KEY,
+        JSON.stringify([{ ...guarded, guard_session: 's-held' }]),
+      );
+      routeClients({ c1: serverWith(ahead) });
+      await flushConnection('c1');
+      expect(guardSettled('s-held')).toBe(false);
+    });
+
+    it('a live guarded save that goes through settles its session too', async () => {
+      await expect(
+        saveProgress(serverWith(null), { ...guarded, guard_session: 's-live' }),
+      ).resolves.toBe('saved');
+      expect(guardSettled('s-live')).toBe(true);
+    });
+
+    it('a read with no answer keeps the guarded save queued for later', async () => {
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([guarded]));
+      const api = serverWith(() => Promise.reject(new TypeError('Failed to fetch')));
+      routeClients({ c1: api });
+      await flushConnection('c1');
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([expect.objectContaining({ guard: true })]);
+    });
+  });
+
+  describe('resumeLookupOf says when a place was not checked', () => {
+    const places = async () => readLocalPlaces();
+    const mine = { ...save, position: 120, updated_at: '2026-01-02T00:00:00Z' };
+
+    it('not when it resumes from the server row, or the server had nothing', async () => {
+      await writeMirror(mine);
+      const newer = makeProgress({ position: 3570, updated_at: '2026-01-03T00:00:00Z' });
+      expect(resumeLookupOf(newer, await places(), 'c1', 1, 'A/Book')).not.toHaveProperty(
+        'unchecked',
+      );
+      expect(resumeLookupOf(null, await places(), 'c1', 1, 'A/Book')).not.toHaveProperty(
+        'unchecked',
+      );
+    });
+
+    it('when the server was not reached', async () => {
+      await writeMirror(mine);
+      expect(resumeLookupOf(undefined, await places(), 'c1', 1, 'A/Book')).toMatchObject({
+        unchecked: true,
+      });
+    });
+
+    it("when this device's newer record resumes behind the server's further place", async () => {
+      await writeMirror(mine);
+      expect(resumeLookupOf(ahead, await places(), 'c1', 1, 'A/Book')).toMatchObject({
+        progress: { position: 120 },
+        unchecked: true,
+      });
+      // Not for a finished row, or one within 30 s.
+      expect(
+        resumeLookupOf({ ...ahead, finished: true }, await places(), 'c1', 1, 'A/Book'),
+      ).not.toHaveProperty('unchecked');
+      expect(
+        resumeLookupOf({ ...ahead, position: 140 }, await places(), 'c1', 1, 'A/Book'),
+      ).not.toHaveProperty('unchecked');
+    });
   });
 });

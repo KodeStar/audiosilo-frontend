@@ -52,6 +52,8 @@ const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<Resume
   kind: 'empty',
 }));
 const mockReadMirror = jest.fn(async (..._a: unknown[]): Promise<unknown> => null);
+// Sessions whose guarded save the queue has PUT since (`guardSettled`).
+const mockSettled = new Set<string>();
 jest.mock('./progress-sync', () => ({
   saveProgress: (...a: unknown[]) => mockSaveProgress(...a),
   writeMirror: (...a: unknown[]) => mockWriteMirror(...a),
@@ -62,6 +64,7 @@ jest.mock('./progress-sync', () => ({
   cachedDeviceId: () => 'dev-1',
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: (...a: unknown[]) => mockReadMirror(...a),
+  guardSettled: (id: string) => mockSettled.has(id),
 }));
 
 // The outbox: the path choice is the test's, storage and sending are captured.
@@ -87,8 +90,14 @@ jest.mock('./listening-outbox', () => {
     }),
     flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),
     sendOnPageHide: (...a: unknown[]) => mockSendOnPageHide(...a),
+    withdrawFinish: (...a: unknown[]) => mockWithdraw(...a),
   };
 });
+// What an Undo's withdrawal took back (`unsent`: a finish the server never got).
+const mockWithdraw = jest.fn(async (..._a: unknown[]) => ({
+  unsent: true,
+  restore: async () => {},
+}));
 
 jest.mock('./time-saved', () => ({ noteSilenceSaved: jest.fn(), flushTimeSaved: jest.fn() }));
 jest.mock('@/api/provider', () => ({
@@ -121,6 +130,8 @@ import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
+import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
+import { appendEvents, closeSpan } from './listening-outbox';
 import { flushHistoryOnHide, standByPlace, usePlayer } from './store';
 /* eslint-enable import/first */
 
@@ -169,6 +180,25 @@ const row = (p: Partial<Progress> = {}): Progress => ({
   device_id: 'dev-1',
   updated_at: '2026-01-01T00:00:00Z',
   ...p,
+});
+
+/** The book, downloaded on this device. */
+const downloadedEntry = (): DownloadEntry => ({
+  connectionId: 'c1',
+  libraryId: 2,
+  path: folder,
+  title: 'A Book',
+  status: 'downloaded',
+  progress: 1,
+  bytes: 0,
+  totalBytes: 0,
+  manifest: {
+    book,
+    chapters,
+    files: order.map((relPath) => ({ relPath, localUri: `file:///d/${relPath}` })),
+    coverUri: 'file:///d/cover.jpg',
+    savedAt: '2026-01-01T00:00:00.000Z',
+  },
 });
 
 const snap = (state: PlaybackState, trackIndex: number, position: number): PlaybackSnapshot => ({
@@ -223,6 +253,150 @@ describe('without listening_sync (the PUT path, unchanged)', () => {
     expect(mockClosed).toEqual([]);
     expect(mockAppended).toEqual([]);
     expect(mockClient.addHistory).toHaveBeenCalled(); // POST /history as before
+  });
+});
+
+// fe#198: a session that began where the server was not checked guards its PUT saves.
+describe('the replay guard on the PUT path', () => {
+  const guards = () =>
+    mockSaveProgress.mock.calls.map((c) => (c[1] as { guard?: boolean }).guard === true);
+
+  beforeEach(() => {
+    mockSync = false;
+    mockSettled.clear();
+  });
+
+  async function playedTwoSaves(outcome: string) {
+    mockSaveProgress.mockResolvedValueOnce(outcome as never);
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+  }
+
+  it('an unchecked resume guards its saves until one is PUT', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    await playedTwoSaves('saved');
+    expect(guards()).toEqual([true, false]);
+  });
+
+  it('a queued save replayed later lifts the guard (no read before every later save)', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    mockSaveProgress.mockResolvedValueOnce('queued' as never);
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    const first = mockSaveProgress.mock.calls[0]?.[1] as { guard_session?: string };
+    expect(first.guard_session).toEqual(expect.any(String));
+    mockSettled.add(first.guard_session as string);
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards()).toEqual([true, false]);
+  });
+
+  it('a held save keeps the guard on', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    await playedTwoSaves('held');
+    expect(guards()).toEqual([true, true]);
+  });
+
+  it('a downloaded book that could not ask its server (started at 0) is guarded too', async () => {
+    mockLoadInitialProgress.mockResolvedValue({ kind: 'failed' });
+    useDownloads.setState({
+      entries: { [`c1:2:${folder}`]: downloadedEntry() },
+    });
+    await start();
+    await playedTwoSaves('queued');
+    expect(guards()).toEqual([true, true]);
+  });
+
+  it('an adopted book (its place never looked up) is guarded too', async () => {
+    useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloadedEntry() } });
+    const adopted = await usePlayer.getState().adoptLoaded({
+      connectionId: 'c1',
+      libraryId: 2,
+      path: folder,
+      rate: 1,
+      trackIndex: 0,
+      position: 10,
+      playing: true,
+    });
+    expect(adopted).toBe(true);
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards()).toEqual([true]);
+  });
+
+  it('a checked resume and an explicit place are not guarded', async () => {
+    mockLoadInitialProgress.mockResolvedValue({ kind: 'progress', progress: row({ position: 5 }) });
+    await start();
+    await playedTwoSaves('saved');
+    await usePlayer.getState().stop();
+    await start(5);
+    await playedTwoSaves('saved');
+    expect(guards().every((g) => !g)).toBe(true);
+  });
+
+  it("an earlier session's save PUT late does not lift the next session's guard", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    let landed: (o: string) => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise((resolve) => (landed = resolve as (o: string) => void)) as never,
+    );
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    await usePlayer.getState().stop();
+    await start();
+    landed('saved');
+    await settle();
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards().at(-1)).toBe(true);
+  });
+
+  it('a finish is never held back', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    pushSnapshot(snap('playing', 1, 45));
+    await settle();
+    usePlayer.getState().finishBook();
+    await settle();
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({ finished: true });
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).not.toHaveProperty('guard');
   });
 });
 
@@ -351,6 +525,87 @@ describe('with listening_sync', () => {
     expect(mockAppended.filter((e) => e.kind === 'finish')).toHaveLength(1);
   });
 
+  // server#359: a 12 s book's finish was sent before its only span, in a batch of its own.
+  it('a short book ends: its span goes into the outbox before the finish, then one send', async () => {
+    const order: string[] = [];
+    (closeSpan as jest.Mock).mockImplementationOnce(async (closing: OpenSpan) => {
+      await settle(6); // the close waits its turn (the open-span lock, the base read)
+      mockClosed.push(structuredClone(closing));
+      order.push('listen');
+    });
+    (appendEvents as jest.Mock).mockImplementationOnce(
+      async (_cid: string, events: ListeningEvent[]) => {
+        mockAppended.push(...events);
+        order.push(...events.map((e) => e.kind));
+      },
+    );
+    mockFlushOutbox.mockImplementation(async () => {
+      order.push('flush');
+    });
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 0));
+      await settle();
+      jest.advanceTimersByTime(12_000);
+      pushSnapshot(snap('ended', 1, 50));
+      await settle(20);
+      expect(order).toEqual(['listen', 'finish', 'flush']);
+      expect(mockAppended).toEqual([
+        expect.objectContaining({ kind: 'finish', library_id: 2, path: folder, base_version: 41 }),
+      ]);
+      // The finish is dated at or after the span's end.
+      const finish = mockAppended[0] as { at: string };
+      expect(Date.parse(finish.at)).toBeGreaterThanOrEqual(Date.parse(mockClosed[0].endedAt));
+    } finally {
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
+  });
+
+  // The web reports `paused` for the last file before `ended`: that pause's close was still
+  // on its way into the outbox when the end's finish was appended, and went after it.
+  it('a close still on its way at the end goes before the finish, in one send', async () => {
+    const order: string[] = [];
+    (closeSpan as jest.Mock).mockImplementationOnce(async (closing: OpenSpan) => {
+      await settle(6);
+      mockClosed.push(structuredClone(closing));
+      order.push('listen');
+    });
+    (appendEvents as jest.Mock).mockImplementationOnce(
+      async (_cid: string, events: ListeningEvent[]) => {
+        mockAppended.push(...events);
+        order.push(...events.map((e) => e.kind));
+      },
+    );
+    mockFlushOutbox.mockImplementation(async () => {
+      order.push('flush');
+    });
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 0));
+      await settle();
+      jest.advanceTimersByTime(12_000);
+      pushSnapshot(snap('paused', 1, 50));
+      pushSnapshot(snap('ended', 1, 50));
+      await settle(30);
+      expect(order).toEqual(['listen', 'finish', 'flush']);
+    } finally {
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
+  });
+
+  it('a finish still goes when its span could not be stored', async () => {
+    (closeSpan as jest.Mock).mockImplementationOnce(async () => {
+      throw new Error('storage full');
+    });
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('ended', 1, 50));
+    await settle(12);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockFlushOutbox).toHaveBeenCalledWith('c1');
+  });
+
   it('after Stay, the next span begins as a jump', async () => {
     await start();
     standByPlace();
@@ -379,6 +634,182 @@ describe('with listening_sync', () => {
       },
     ]);
     expect(mockClient.addHistory).not.toHaveBeenCalled();
+  });
+});
+
+// fe#208: the book page's Mark as finished is a `finish` event on a Sync v2 server.
+describe('Mark as finished outside the player (finish-route)', () => {
+  const ref = { connectionId: 'c1', libraryId: 2, path: folder, position: 100, duration: 100 };
+  const undoRef = { connectionId: 'c1', libraryId: 2, path: 'Other/Book', position: 48 };
+
+  it('the loaded, playing book: its span closes first, then the finish; the mirror reads finished', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 5, 9]]);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockWriteMirror).toHaveBeenCalledWith(
+      expect.objectContaining({ path: folder, finished: true, position: 100, duration: 100 }),
+    );
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+    // Still playing: the next tick opens the next span.
+    pushSnapshot(snap('playing', 1, 40));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    pushSnapshot(snap('paused', 1, 45));
+    await settle();
+    expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
+  });
+
+  // An offline Mark as finished then Undo: the PATCH would fail, and the finish put back
+  // went out on reconnect and finished the book after all.
+  it('Undo of a finish that never left: the mirror goes back to before it, no edit', async () => {
+    const before = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 48,
+      duration: 100,
+      finished: false,
+      playback_speed: 1.2,
+      device_id: 'dev-1',
+      updated_at: '2026-01-01T00:00:00Z',
+      ack_version: 7,
+    };
+    mockReadMirror.mockResolvedValue(before);
+    try {
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      expect(mockWriteMirror).toHaveBeenLastCalledWith(
+        expect.objectContaining({ path: 'Other/Book', finished: true }),
+      );
+      const edit = jest.fn(async () => true);
+      await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
+      expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
+      expect(edit).not.toHaveBeenCalled();
+      // Stamped as new as the finish it replaces: the mirror refuses an older record.
+      const finishedAt = (
+        mockWriteMirror.mock.calls
+          .filter(([r]) => (r as { finished?: boolean }).finished)
+          .at(-1)?.[0] as {
+          updated_at: string;
+        }
+      ).updated_at;
+      // Its Sync v2 fields are left to the mirror's own (an ack since the finish is newer).
+      expect(mockWriteMirror).toHaveBeenLastCalledWith({
+        ...before,
+        ack_version: undefined,
+        answered: undefined,
+        updated_at: finishedAt,
+      });
+      expect(finishedAt > before.updated_at).toBe(true);
+      expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: qk.progress('c1', 2, 'Other/Book'),
+      });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo here with no record before the finish: only the finished record is undone', async () => {
+    const finishedRec = {
+      connectionId: 'c1',
+      libraryId: 2,
+      path: 'Other/Book',
+      position: 100,
+      duration: 100,
+      finished: true,
+      device_id: 'dev-1',
+      updated_at: '2026-01-02T00:00:00Z',
+    };
+    try {
+      mockReadMirror.mockResolvedValueOnce(null);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      mockReadMirror.mockResolvedValueOnce(finishedRec);
+      await undoFinish(
+        undoRef,
+        jest.fn(async () => true),
+      );
+      expect(mockWriteMirror).toHaveBeenLastCalledWith({
+        ...finishedRec,
+        finished: false,
+        position: 48,
+      });
+      // A place saved since the finish is not undone.
+      mockReadMirror.mockResolvedValueOnce(null);
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const writes = mockWriteMirror.mock.calls.length;
+      mockReadMirror.mockResolvedValueOnce({ ...finishedRec, finished: false, position: 70 });
+      await undoFinish(
+        undoRef,
+        jest.fn(async () => true),
+      );
+      expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it('Undo of a finish the server has: the edit, the mirror left to it', async () => {
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    await recordFinishEvent({ ...ref, path: 'Other/Book' });
+    const writes = mockWriteMirror.mock.calls.length;
+    const edit = jest.fn(async () => true);
+    await undoFinish(undoRef, edit);
+    expect(edit).toHaveBeenCalledTimes(1);
+    expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
+  });
+
+  it("keeps the book's own speed in the mirror (the book page gives none)", async () => {
+    mockReadMirror.mockResolvedValue({ ack_version: 41, playback_speed: 1.6 });
+    await recordFinishEvent({ ...ref, path: 'Other/Book' });
+    expect(mockWriteMirror).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'Other/Book', finished: true, playback_speed: 1.6 }),
+    );
+  });
+
+  it('a book that is not loaded: only the finish, queued even with its server away', async () => {
+    const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 5));
+      await settle();
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      expect(mockClosed).toEqual([]);
+      expect(mockAppended).toEqual([
+        expect.objectContaining({ kind: 'finish', path: 'Other/Book' }),
+      ]);
+    } finally {
+      reach.mockRestore();
+    }
+  });
+
+  it('the lists read again once the finish was sent (the caller read them before the send)', async () => {
+    await start();
+    let sent: () => void = () => {};
+    mockFlushOutbox.mockImplementation(() => new Promise<void>((resolve) => (sent = resolve)));
+    try {
+      const invalidate = queryClient.invalidateQueries as jest.Mock;
+      invalidate.mockClear();
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
+      sent();
+      await settle();
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.progress('c1', 2, 'Other/Book') });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.myStatsAll('c1') });
+    } finally {
+      mockFlushOutbox.mockImplementation(async () => {});
+    }
+  });
+
+  it('a server without listening events: not recorded, the caller saves by PUT', async () => {
+    mockSync = false;
+    expect(finishTakesEvent('c1')).toBe(false);
+    await expect(recordFinishEvent(ref)).resolves.toBe(false);
+    expect(mockAppended).toEqual([]);
+    expect(mockWriteMirror).not.toHaveBeenCalled();
   });
 });
 
@@ -448,25 +879,8 @@ describe('a span opens whenever the book plays', () => {
   });
 
   describe('an adopted book (adoptLoaded)', () => {
-    const downloaded = (): DownloadEntry => ({
-      connectionId: 'c1',
-      libraryId: 2,
-      path: folder,
-      title: 'A Book',
-      status: 'downloaded',
-      progress: 1,
-      bytes: 0,
-      totalBytes: 0,
-      manifest: {
-        book,
-        chapters,
-        files: order.map((relPath) => ({ relPath, localUri: `file:///d/${relPath}` })),
-        coverUri: 'file:///d/cover.jpg',
-        savedAt: '2026-01-01T00:00:00.000Z',
-      },
-    });
     const loaded = { connectionId: 'c1', libraryId: 2, path: folder, rate: 1 };
-    beforeEach(() => useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded() } }));
+    beforeEach(() => useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloadedEntry() } }));
 
     it('a playing one opens its span at once (the store set its `playing`)', async () => {
       const adopted = await usePlayer
@@ -604,6 +1018,26 @@ describe('the open span is kept every 5 s', () => {
     pushSnapshot(snap('paused', 0, 3));
     await settle();
     expect(mockClosed.at(-1)).toMatchObject({ start: 'moved_back', from: { pos: 2 } });
+  });
+
+  // fe#211 review: the keep's rule on the cut froze the span at a stale place.
+  it('the 15 s cut ends where the engine is, after a seek back and a late old place', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 40));
+    await settle();
+    await usePlayer.getState().seekBook(10);
+    jest.advanceTimersByTime(4_950); // the keep is due
+    pushSnapshot(snap('playing', 0, 40)); // a late event from before the seek
+    pushSnapshot(snap('playing', 0, 12));
+    jest.advanceTimersByTime(10_000); // the cut is due
+    pushSnapshot(snap('playing', 0, 22));
+    await settle();
+    pushSnapshot(snap('paused', 0, 24));
+    await settle();
+    expect(mockClosed.slice(1).map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+      ['moved_back', 10, 22],
+      ['continue', 22, 24],
+    ]);
   });
 
   it('stops with the playing: a pause stores nothing more', async () => {

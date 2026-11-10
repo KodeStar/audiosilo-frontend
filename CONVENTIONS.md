@@ -1569,9 +1569,29 @@ media GETs only.
   restarted from the beginning" report. A **downloaded** book's mirror also takes its
   server's place as the download starts (`keepServerPlace` in `downloads/store.ts`) and on
   every server answer of `fetchBookProgress` (the registry check reaches the hooks through
-  `downloads/kept-offline.ts`, which has no imports): offline it opens there, never at 0
-  with its first save over the server's place (v2.5.1 PLAYER-01). Keep-newest, so a newer
-  save of this device's own stays.
+  `downloads/kept-offline.ts`, which has no imports), and from Home's progress list
+  (`allProgressQuery`: the downloaded books' rows in one `writeMirrors`, fe#198): offline it
+  opens there, never at 0 with its first save over the server's place (v2.5.1 PLAYER-01).
+  Keep-newest, so a newer save of this device's own stays.
+- **The replay guard (legacy PUT path, fe#198).** The PUT is last-write-wins by
+  `updated_at`, so a session that began at a place this device never checked against its
+  server must not move another device's further place back. `resumeLookupOf` marks such a
+  place `unchecked` (the server was not reached, or this device's newer record resumes more
+  than 30 s behind the server's unfinished row); a downloaded book's `failed` start counts
+  too, and so does an adopted book (`adoptLoadedBook`: the engine's place, never looked up,
+  e.g. one the car started from an old snapshot). The store then puts `guard` on that
+  session's PUT saves (`placeGuard`; not on an explicit place or a finish) until one is PUT:
+  `saveProgress` answers `saved`, or a queued one is replayed later (each guarded save carries
+  its session's `guard_session` id, a PUT settles it, and the store's next save asks
+  `guardSettled`). Before a
+  guarded save is PUT, live or replayed, `guardPasses` reads the server's row: another
+  device's unfinished place more than `GUARD_SLACK_S` (30 s) further on, not answered
+  (`answered` holds its `device_id|updated_at`), holds it (`guardHolds`). A held save is not
+  sent and leaves the queue (the mirror keeps it; `guard` is never kept in the mirror), and
+  `onHeldSave` tells the place reconcile, which offers that place for the loaded book with the
+  same Jump/Stay toast (`offerLoadedPlace(..., { held: true })`: Stay answers and saves at
+  once, `saveLoadedPlace`; a timeout answers nothing). Sync v2 needs none of it: the server
+  resolves each span on its `base_version`.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
@@ -1611,7 +1631,20 @@ media GETs only.
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
     twice it is one event. The keep never moves the span's end back (a native lock-screen
     move's landed place reaches the store before the move, which ends the span at its last
-    place). An event never claims more than 23 h of wall clock
+    place); a save and the 15 s cut take where the engine is (applying that rule there froze
+    the span after a seek back or a hot-swap to another file order, fe#211). The end's `finish` goes into the outbox only after the last span's close has landed
+    there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
+    no session to mark); a close already on its way (the web's `paused` before `ended`) is
+    waited for too and leaves its send to the finish (`closesInFlight`). The book page's Mark as finished is a `finish` event too on such a
+    server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
+    book's span closes first, the mirror records it finished, offline it waits in the outbox,
+    so `useMarkFinished` runs whatever the online flag says, `networkMode: 'always'`;
+    Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
+    back out of the outbox (`withdrawFinish`; one whose request is out is waited for, and a
+    failed edit puts it back): sent after the edit it would finish the book again. A finish
+    taken back that the server never answered (an offline Mark as finished) needs no edit:
+    the Undo is done here, the mirror back to its record before the finish
+    (`unrecordFinish`); fe#208). An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
@@ -1628,7 +1661,8 @@ media GETs only.
     `takenFrom`/`goingOnFrom`, so what it played since is not a `duplicate`),
     `audiosilo.listeningSync` (per
     connection: `lastSyncAt`, the couldn't-sync list, 30 days, at most 100, `clockSkewMs` from the
-    answers' `server_time`, and `listeningSync`). The three documents' read-modify-writes run
+    answers' `server_time`, and `listeningSync`; the outbox is its one reader:
+    `progress-sync` asks for the stored skews through `stored-skews.ts`, fe#211). The three documents' read-modify-writes run
     under `tabLock` (`src/lib/tab-lock.ts`: Web Locks, else a `localStorage` lease on plain
     http, fe#208); on the web they re-read storage, and a tab's outbox copy follows the
     `storage` event.
@@ -1642,7 +1676,10 @@ media GETs only.
     a reconnect, the foreground, each closed span; the web `pagehide` sends what waits (up to
     ~60 KB, the closes still queued behind a lock too: a lease's timer never fires on a page
     going) with `keepalive`. A 404/405 that a fresh `/server` confirms is a rollback: one legacy
-    PUT per book (`legacySavesOf`), the outbox dropped, the PUT path from then on.
+    PUT per book (`legacySavesOf`, each guarded: the replay guard below; a finish with no listen
+    beside it takes its place and length from the mirror its finish wrote, `withFinishedPlace`,
+    so it is the legacy finished save, never a finish at 0 of 0), the outbox dropped, the PUT
+    path from then on.
   - *The ack rule* (`ackVersion` in `progress-sync.ts`, never lowered): a sync answer's row that
     is this device's own after a non-rejected event of the batch for that book (`keptMine`), a
     resume from a server row (version > 0), the reconcile's auto-move, and an answered offer

@@ -54,6 +54,16 @@ const mockOpenSeries = jest.fn();
 jest.mock('@/lib/open', () => ({ useOpen: () => ({ openSeries: mockOpenSeries }) }));
 const mockPlay = jest.fn();
 jest.mock('@/components/player/use-play-book', () => ({ usePlayBook: () => mockPlay }));
+let mockTakesEvent = false;
+// The Undo goes through `undoFinish` (the waiting finish taken back first, fe#208).
+const mockUndoRefs: unknown[] = [];
+jest.mock('@/playback/finish-route', () => ({
+  finishTakesEvent: () => mockTakesEvent,
+  undoFinish: (ref: unknown, edit: () => Promise<boolean>) => {
+    mockUndoRefs.push(ref);
+    return edit();
+  },
+}));
 let mockSendToWatch: jest.Mock | null = null;
 jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
@@ -179,6 +189,54 @@ describe('useBookActions', () => {
       path: 'Author/Series/01 - Book',
       position: 3 * H,
       duration: 3 * H,
+    });
+  });
+
+  // fe#208: a server that takes listening events gets a `finish` event, offline too.
+  describe('on a server that takes listening events', () => {
+    beforeEach(() => {
+      mockTakesEvent = true;
+    });
+    afterEach(() => {
+      mockTakesEvent = false;
+    });
+
+    it('marks finished as the event, with an Undo through a progress edit', async () => {
+      mockMarkFinished.mockImplementation((_p: unknown, o: { onSuccess: () => void }) =>
+        o.onSuccess(),
+      );
+      const { find } = await actions(book(), progress({ position: 900 }));
+      await act(async () => find('finish')!.onPress());
+      expect(mockEdit).not.toHaveBeenCalled();
+      expect(mockMarkFinished.mock.calls[0][0]).toEqual({
+        libraryId: 1,
+        path: 'Author/Series/01 - Book',
+        position: 3 * H,
+        duration: 3 * H,
+      });
+      const t = mockToast.mock.calls.at(-1)![0];
+      expect(t.title).toBe('Marked as finished');
+      mockUndoRefs.length = 0;
+      await act(async () => t.action.onPress());
+      expect(mockUndoRefs).toEqual([
+        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 900 },
+      ]);
+      expect(mockEdit).toHaveBeenLastCalledWith({
+        libraryId: 1,
+        path: 'Author/Series/01 - Book',
+        edit: { finished: false, position: 900 },
+      });
+    });
+
+    it('without progress edits: the event, and no Undo', async () => {
+      mockCaps = { collections: true, progress_edit: false };
+      mockMarkFinished.mockImplementation((_p: unknown, o: { onSuccess: () => void }) =>
+        o.onSuccess(),
+      );
+      const { find } = await actions(book(), progress());
+      await act(async () => find('finish')!.onPress());
+      expect(mockMarkFinished).toHaveBeenCalled();
+      expect(mockToast.mock.calls.at(-1)![0].action).toBeUndefined();
     });
   });
 

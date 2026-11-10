@@ -36,6 +36,7 @@ import {
   saveProgress,
 } from './progress-sync';
 import { wallClockSeconds } from './rate';
+import { provideStoredSkews } from './stored-skews';
 
 export type { OpenSpan, SpanEnd } from './open-span-doc';
 
@@ -558,6 +559,20 @@ function updateState(
   });
 }
 
+/** Each connection's stored clock skew (`clockSkewMs`): the one reader of it, which
+ * `progress-sync` asks for its merges and every resume lookup (`stored-skews.ts`, fe#211).
+ * A read, so not under the state's lock (as `syncStateOf`): the document is written whole,
+ * and the lock would hold a resume behind another tab's lease. */
+async function storedClockSkews(): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const [cid, state] of Object.entries(await readState())) {
+    const skew = isRecord(state) ? state.clockSkewMs : undefined;
+    if (typeof skew === 'number' && Number.isFinite(skew)) out[cid] = skew;
+  }
+  return out;
+}
+provideStoredSkews(storedClockSkews);
+
 /** A connection's last sync and couldn't-sync list (entries past 30 days left out). */
 export async function syncStateOf(
   connectionId: string,
@@ -678,6 +693,91 @@ export function watchListeningFlags(): void {
 const inFlight = new Map<string, Promise<void>>();
 const flushAgain = new Set<string>();
 const chunkSizes = new Map<string, number>();
+/** Events whose request is out now, to the end of its answer (`sending`): a withdrawal
+ * waits for it. */
+const sendingNow = new Map<string, Promise<unknown>>();
+/** Events taken back (`withdrawFinish`): a chunk read before still holding one drops it. */
+const withdrawn = new Set<string>();
+
+/**
+ * The events of `chunk` still to go (not taken back meanwhile), marked as out while `send`
+ * runs. Called after a send's last wait, so a withdrawal either took an event back first or
+ * finds it out and waits.
+ */
+async function sending<T>(
+  chunk: OutboxEntry[],
+  send: (live: OutboxEntry[]) => Promise<T>,
+): Promise<T> {
+  const live = chunk.filter((e) => !withdrawn.has(e.event.id));
+  const run = send(live);
+  const settled = run.catch(() => undefined);
+  for (const e of live) sendingNow.set(e.event.id, settled);
+  try {
+    return await run;
+  } finally {
+    for (const e of live) if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
+  }
+}
+
+/** What `withdrawFinish` took back. */
+export type Withdrawal = {
+  /** A finish the server never answered was taken back: it never reached the server (an
+   * offline Mark as finished), so the Undo is complete here, with no progress edit. */
+  unsent: boolean;
+  /** For an edit that failed: the events go back and are sent. */
+  restore: () => Promise<void>;
+};
+
+/**
+ * Take a book's waiting `finish` events out of the outbox, before an Undo's progress edit
+ * (fe#208): a finish sent after the edit would finish the book again. One whose request is
+ * out is waited for (answered, the server has it and the edit comes after it; unanswered,
+ * it is taken back).
+ */
+export async function withdrawFinish(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<Withdrawal> {
+  const isMine = (e: OutboxEntry) =>
+    e.connectionId === connectionId &&
+    e.event.kind === 'finish' &&
+    e.event.library_id === libraryId &&
+    e.event.path === path;
+  const taken: ListeningEvent[] = [];
+  // The finishes waited for: one not taken back after was answered (the server has it).
+  const waitedFor = new Set<string>();
+  for (;;) {
+    const wait = await withOutboxLock(async () => {
+      const queue = await readOutbox();
+      const mine = queue.filter(isMine);
+      const outIds = mine.map((e) => e.event.id).filter((id) => sendingNow.has(id));
+      const out = outIds.length > 0 ? sendingNow.get(outIds[0]) : undefined;
+      // Boxed: a promise returned as is would hold the lock until it settles (its answer
+      // needs the lock).
+      if (out) {
+        for (const id of outIds) waitedFor.add(id);
+        return { out };
+      }
+      for (const e of mine) withdrawn.add(e.event.id);
+      taken.push(...mine.map((e) => e.event));
+      if (mine.length > 0) await writeOutbox(queue.filter((e) => !isMine(e)));
+      return null;
+    });
+    if (!wait) break;
+    await wait.out;
+  }
+  const answered = [...waitedFor].some((id) => !taken.some((e) => e.id === id));
+  return {
+    unsent: taken.length > 0 && !answered,
+    restore: async () => {
+      if (taken.length === 0) return;
+      for (const e of taken) withdrawn.delete(e.id);
+      await appendEvents(connectionId, taken);
+      void flushOutbox(connectionId);
+    },
+  };
+}
 
 /**
  * Send a connection's outbox. One flush at a time per connection: a call while one runs
@@ -782,17 +882,20 @@ async function sendChunk(
 ): Promise<Next> {
   try {
     const deviceId = await getDeviceId();
-    const sentAt = Date.now();
-    const answer = await client.syncListening(
-      syncBody(
-        chunk.map((e) => e.event),
-        deviceId,
-      ),
-    );
-    noteSuccess(connectionId);
-    noteListeningSyncFlag(connectionId, true);
-    await applyAnswer(connectionId, chunk, answer, { sentAt, answeredAt: Date.now() });
-    return 'more';
+    return await sending<Next>(chunk, async (live) => {
+      if (live.length === 0) return 'more';
+      const sentAt = Date.now();
+      const answer = await client.syncListening(
+        syncBody(
+          live.map((e) => e.event),
+          deviceId,
+        ),
+      );
+      noteSuccess(connectionId);
+      noteListeningSyncFlag(connectionId, true);
+      await applyAnswer(connectionId, live, answer, { sentAt, answeredAt: Date.now() });
+      return 'more';
+    });
   } catch (e) {
     if (!(e instanceof ApiError)) {
       // No answer: keep everything; only a check marks the server down.
@@ -830,8 +933,12 @@ async function sendOneByOne(
   }
   for (const entry of chunk) {
     try {
-      const answer = await client.syncListening(syncBody([entry.event], await getDeviceId()));
-      await applyAnswer(connectionId, [entry], answer);
+      const deviceId = await getDeviceId();
+      await sending([entry], async (live) => {
+        if (live.length === 0) return;
+        const answer = await client.syncListening(syncBody([entry.event], deviceId));
+        await applyAnswer(connectionId, [entry], answer);
+      });
     } catch (e) {
       if (e instanceof ApiError && e.status === 400) {
         await moveToFailed(connectionId, [{ event: entry.event, reason: 'invalid' }]);
@@ -973,6 +1080,24 @@ export function legacySavesOf(
   return saves.filter((s) => s.position > 0 || s.finished || !!s.updated_at);
 }
 
+/**
+ * A finish with no listen beside it (Mark as finished, fe#208) has no place or length in the
+ * outbox: it takes them from this device's mirror, which the finish wrote (`finishedSave`),
+ * so the PUT is the one the legacy path sends (finished at the book's end, its real
+ * duration), never a finish at 0 of 0.
+ */
+async function withFinishedPlace(save: ProgressSave): Promise<ProgressSave> {
+  if (!save.finished || save.duration > 0) return save;
+  const mirror = await readMirror(save.connectionId, save.libraryId, save.path).catch(() => null);
+  if (!mirror?.finished || !(mirror.duration > 0)) return save;
+  return {
+    ...save,
+    position: mirror.position > 0 ? mirror.position : mirror.duration,
+    duration: mirror.duration,
+    playback_speed: mirror.playback_speed > 0 ? mirror.playback_speed : save.playback_speed,
+  };
+}
+
 /** Drop a connection's events from the outbox; returns them. */
 function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
   return withOutboxLock(async () => {
@@ -988,6 +1113,8 @@ function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
  * answering without `listening_sync` (anything else answering at the address, a home
  * address another host holds on this network, keeps the outbox for a later send). The
  * events go as legacy saves, then leave the outbox (a kill between sends them again).
+ * Each carries the replay guard (fe#198): no server ever resolved those spans against its
+ * row, and a last-write-wins PUT of them could move another device's further place back.
  */
 async function rollBack(connectionId: string, client: ApiClient): Promise<void> {
   const info = await client.serverInfo().catch(() => null);
@@ -997,10 +1124,14 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
   void queryClient.invalidateQueries({ queryKey: qk.server(connectionId) });
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
-  for (const save of legacySavesOf(connectionId, mine, deviceId)) {
-    await saveProgress(client, save);
-  }
-  await removeEvents(new Set(mine.map((e) => e.event.id)));
+  // Out as a send (`sending`): an Undo's withdrawal waits for these PUTs, or took its
+  // finish back first (fe#208).
+  await sending(mine, async (live) => {
+    for (const save of legacySavesOf(connectionId, live, deviceId)) {
+      await saveProgress(client, { ...(await withFinishedPlace(save)), guard: true });
+    }
+    await removeEvents(new Set(live.map((e) => e.event.id)));
+  });
 }
 
 // --- The web page going ------------------------------------------------------------------
@@ -1106,6 +1237,8 @@ export function resetOutboxForTests(): void {
   knownFlags.clear();
   flagsLoaded = null;
   chunkSizes.clear();
+  sendingNow.clear();
+  withdrawn.clear();
   inFlight.clear();
   flushAgain.clear();
   answerListeners.clear();

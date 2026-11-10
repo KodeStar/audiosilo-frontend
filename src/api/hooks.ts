@@ -55,12 +55,14 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { isKeptOffline } from '@/downloads/kept-offline';
+import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
   getDeviceId,
   mirroredProgress,
   progressToSave,
   saveProgress,
   writeMirror,
+  writeMirrors,
 } from '@/playback/progress-sync';
 import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
@@ -459,12 +461,36 @@ export function favouritesQuery(cid: string, client: MaybeClient) {
   });
 }
 
-/** Every saved progress row of a connection. */
+/** Every saved progress row of a connection. The rows of books downloaded here go into the
+ * durable mirror as they come (`keepDownloadedPlaces`). */
 export function allProgressQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.allProgress(cid),
-    queryFn: client ? () => client.allProgress() : skipToken,
+    queryFn: client
+      ? async () => {
+          const rows = await client.allProgress();
+          await keepDownloadedPlaces(cid, rows);
+          return rows;
+        }
+      : skipToken,
   });
+}
+
+/**
+ * Put the server's rows of the books downloaded on this device into the durable mirror, in
+ * one write (keep-newest, so a newer save of this device's own stays), as
+ * `fetchBookProgress` does for one book: an offline resume of a downloaded book then knows
+ * another device's newer place even when its page was not opened before going offline
+ * (fe#198). Never fails the list.
+ */
+async function keepDownloadedPlaces(cid: string, rows: readonly Progress[]): Promise<void> {
+  try {
+    const kept = rows.filter((r) => isKeptOffline(cid, r.library_id, r.path));
+    if (kept.length === 0) return;
+    await writeMirrors(kept.map((r) => progressToSave(cid, r.library_id, r.path, r)));
+  } catch {
+    // The list stands without it: a downloaded book's page and resume still mirror it.
+  }
 }
 
 /** A book search (the server's search covers title, author, narrator and series); an
@@ -872,7 +898,7 @@ function hidesSpoilers(queryKey: readonly unknown[]): boolean {
  * and the goal when it can move a finish (they count finish dates), and the book's
  * `spoilers=hide` metadata when it can move the saved place the server cuts that at
  * (the position, or the finished flag). */
-function invalidateProgressDependents(
+export function invalidateProgressDependents(
   qc: QueryClient,
   cid: string,
   libraryId: number,
@@ -889,6 +915,19 @@ function invalidateProgressDependents(
       predicate: (q) => hidesSpoilers(q.queryKey),
     });
   }
+}
+
+/** Refresh what a book's finished flag moves: the progress list, the book's own row (its
+ * page reads it for Mark as finished / not finished) and its dependents. */
+export function invalidateFinishedProgress(
+  qc: QueryClient,
+  cid: string,
+  libraryId: number,
+  path: string,
+) {
+  void qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
+  void qc.invalidateQueries({ queryKey: qk.progress(cid, libraryId, path) });
+  invalidateProgressDependents(qc, cid, libraryId, path, { finish: true, place: true });
 }
 
 export function useLibraries() {
@@ -1413,9 +1452,11 @@ export function useReadalong(
   );
 }
 
-/** Mark a book finished. Goes through the offline-aware last-write-wins save so
- * it reconciles with playback progress, then refreshes the home lists and what else a
- * finish moves (the listening stats, the goal, the book's spoilers=hide metadata). */
+/** Mark a book finished: on a server that takes listening events (Sync v2) a `finish`
+ * event, queued offline like any other and sent after the book's open span
+ * (`finish-route.ts`, fe#208); else the offline-aware last-write-wins save. Then refreshes
+ * the home lists and what else a finish moves (the listening stats, the goal, the book's
+ * spoilers=hide metadata). */
 export function useMarkFinished(connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
@@ -1428,23 +1469,14 @@ export function useMarkFinished(connectionId?: string) {
       duration: number;
       playback_speed?: number;
     }) => {
-      await saveProgress(api, {
-        connectionId: cid,
-        libraryId: p.libraryId,
-        path: p.path,
-        position: p.position,
-        duration: p.duration,
-        finished: true,
-        playback_speed: p.playback_speed && p.playback_speed > 0 ? p.playback_speed : 1,
-        device_id: await getDeviceId(),
-        updated_at: new Date().toISOString(),
-      });
+      const ref = { connectionId: cid, ...p };
+      if (await recordFinishEvent(ref)) return;
+      await saveProgress(api, finishedSave(ref, await getDeviceId(), new Date().toISOString()));
     },
-    onSuccess: (_data, p) => {
-      qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
-      qc.invalidateQueries({ queryKey: qk.progress(cid, p.libraryId, p.path) });
-      invalidateProgressDependents(qc, cid, p.libraryId, p.path, { finish: true, place: true });
-    },
+    // Both routes work offline (the event waits in the outbox, the save in the queue): held
+    // for the online flag, an offline finish was never recorded, and a reload lost it.
+    networkMode: 'always',
+    onSuccess: (_data, p) => invalidateFinishedProgress(qc, cid, p.libraryId, p.path),
   });
 }
 
