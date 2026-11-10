@@ -648,7 +648,10 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   `reader:check`, so a stale build fails the gate: rebuild and commit both with any change
   under `reader/`. `public/sw.js` never answers it with the app shell. `reader/src/polyfills.js`
   is imported first: foliate calls `Object.groupBy` and `Map.groupBy` on every open, which came
-  only with Safari 17.4 and Chrome 117 (the app's iOS floor is 16.4).
+  only with Safari 17.4 and Chrome 117 (the app's iOS floor is 16.4). A foliate bug is fixed
+  on our side, never in the vendored copy: `reader/src/render-guard.js` skips the paginator's
+  relayout (its ResizeObserver's `render()`) while the section it shows has no root or body
+  yet, which threw in `columnize` when the frame resized during a section load (fe#239).
 - **The host** (`reader-host.web.tsx`): a same-origin iframe sandboxed to `allow-scripts
   allow-same-origin` (foliate cannot run in an opaque origin). The host fetches `/ebook` with
   the Authorization header (`client.ebook`, never `?token=`) and posts the bytes as a
