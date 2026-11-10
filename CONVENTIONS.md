@@ -1664,7 +1664,8 @@ media GETs only.
     `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start).
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
-    immutable once there), `audiosilo.listeningOpenSpan` (a list, one span per web tab
+    immutable once there; a `finish` entry also carries its sends' marks, see *Across tabs*),
+    `audiosilo.listeningOpenSpan` (a list, one span per web tab
     playing, each with its `owner` and `keptAt`; a bare span is the pre-W2 form; a kill's
     leftover is closed into the outbox at the next launch, `recoverOpenSpan`, and on the web
     another tab's span is left to it while it is live, 30 s either side of now (a tab on an
@@ -1692,6 +1693,28 @@ media GETs only.
     beside it takes its place and length from the mirror its finish wrote, `withFinishedPlace`,
     so it is the legacy finished save, never a finish at 0 of 0), the outbox dropped, the PUT
     path from then on.
+  - *Across tabs* (web, fe#123, fe#211). The tabs of a browser are one device: they share the
+    three documents and the device id, but not each other's memory. So what a tab's Undo must
+    know of another tab's sends is written in the stored outbox, which every tab reads under
+    its lock, never announced on a channel (a message can arrive after the send it was meant
+    to stop; the lock gives the two one order): a send that carries a `finish` first marks it
+    as out there (`markOut`, `OutboxEntry.out`: one time per tab, `OUT_MARK_MS` past the
+    request's timeout) and drops the finishes no longer stored (taken back by an Undo in
+    another tab, or answered there), and when it ends takes its own mark off and marks what
+    it carried with no answer (`maybeReached`, in the same write). `withdrawFinish` waits for
+    a live mark (the other tab's answer shows as a change of the stored outbox, else it looks
+    again every 200 ms) and reads `maybeReached`, or a mark left standing past its time (its
+    tab went with the request), as "the server may hold it": the Undo then takes its edit. A
+    page that is going marks the finishes its keepalive request carries for
+    `PAGE_HIDE_MARK_MS` (written to `localStorage` at once, outside the lock: a page that is
+    going cannot wait) and leaves out one another tab took back. The memory marks
+    (`sendingNow`, `withdrawn`, the `maybeReached` set) stay as this tab's own, and are all
+    there is in the app. A tab that closes the span another tab left (`sweepLeftBehind`)
+    sends it at once: the tab that would have is gone. In a test, two tabs are two copies of
+    the modules (`jest.isolateModules`) over `src/testing/fake-browser.ts`, with
+    `@/lib/storage` mocked per tab (`tabStorage`), not the AsyncStorage package: Babel
+    requires that one lazily, after `isolateModules` has returned, so every copy would share
+    the first tab's.
   - *The ack rule* (`ackVersion` in `progress-sync.ts`, never lowered): a sync answer's row that
     is this device's own after a non-rejected event of the batch for that book (`keptMine`), a
     resume from a server row (version > 0), the reconcile's auto-move, and an answered offer
@@ -1723,6 +1746,26 @@ media GETs only.
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
     book History's "Waiting to sync" rows (`usePendingListens`).
+- **One tab plays at a time (web)** (`src/playback/playing-claim.ts`, fe#123; owner decision:
+  the newest tab wins). A tab that reaches `playing` says so to the browser's other tabs
+  (`claimPlaying` in `store.ts`, on every move into `playing`, before its span opens), and a
+  tab of the same connection that plays or means to (`wantsPlayback`) gives way
+  (`giveWayTo`): its span closes there and then, dated no later than the claim (`sentAt`), so
+  two tabs never record the same seconds; it pauses like any pause (the pause finds no span
+  left, so the span is one event); and the listener is told with a toast, "Playing in
+  another tab" (`other-tab-notice.ts`, a root service; shown once the tab is looked at, and
+  the store keeps a give-way nobody was there to hear until the service registers). It keeps
+  its book and place, and a play there claims the connection back. Per connection, not per
+  book: two connections may play side by side. "Newest" is when the play was asked for
+  (`playAskedAt`: `beginPlaybackAttempt`, else the moment the engine began by itself, the OS
+  media controls), not which claim arrives last, with the tab id breaking a tie
+  (`givesWayTo`, pure), so of two tabs that start together exactly one stands; a start still
+  loading when it gives way does not play once loaded (`yieldedAttempt`). The channel is
+  `tabChannel` (`src/lib/tab-channel.ts`): `BroadcastChannel` (no secure context needed, so
+  plain http has it), else `storage` events (the message written to `localStorage` under
+  `audiosilo-tab:<name>` and removed at once); null off the web, where none of this runs.
+  A tab on a build before the rule neither claims nor gives way. What the tabs share of the
+  listening outbox is under Listening sync, *Across tabs*.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and

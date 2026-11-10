@@ -78,6 +78,7 @@ import {
   writeMirror,
 } from './progress-sync';
 import { listenerSettings } from './listener-settings';
+import { givesWayTo, type PlayingClaim, tabClaims } from './playing-claim';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
 import { bookSpeed } from './time-left';
@@ -152,6 +153,13 @@ let startingPlayback = false;
 /** Counts the play requests (`beginPlaybackAttempt`): a paused adoption's reload tells the
  * listener's play made while its load was out from the engine playing by itself. */
 let playAttempts = 0;
+/** When the play this tab makes (or means to) was asked for (ms): a press here
+ * (`beginPlaybackAttempt`), else the moment the engine began by itself (the OS media
+ * controls). What the tabs of the web player compare (`playing-claim.ts`): the newest wins. */
+let playAskedAt = 0;
+/** The play request (`playAttempts`) that gave way to another tab's claim (`giveWayTo`): a
+ * start still loading then does not play once it has loaded. */
+let yieldedAttempt = -1;
 /** Pending stall→error timer (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 /** The whole-book position the current book resumed from, kept as a running high-water
@@ -758,8 +766,8 @@ function openListeningSpan(at?: SpanEnd) {
  * Close the open span at `at` (else where the engine is, else where it was last seen) into
  * the outbox, then send. Returns the closed span (null when none was open).
  */
-function closeListeningSpan(opts: { at?: SpanEnd } = {}): OpenSpan | null {
-  const closing = takeSpan(opts.at);
+function closeListeningSpan(opts: { at?: SpanEnd; endedAt?: number } = {}): OpenSpan | null {
+  const closing = takeSpan(opts.at, opts.endedAt);
   if (!closing) return null;
   const cid = closing.connectionId;
   const key = contentKeyOf(closing);
@@ -783,14 +791,18 @@ type PendingClose = { done: Promise<void>; flush: boolean };
 const closesInFlight = new Map<string, PendingClose>();
 
 /** Take the open span (none open from here), ended now at `at`, else where the engine is,
- * else where it was last seen. */
-function takeSpan(at?: SpanEnd): OpenSpan | null {
+ * else where it was last seen. `endedAt` (ms): the time it ends when that is before now
+ * (another tab began playing then: `giveWayTo`). */
+function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
   const closing = span;
   span = null;
   if (!closing) return null;
   const np = usePlayer.getState().nowPlaying;
   closing.to = at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
-  closing.endedAt = new Date().toISOString();
+  const now = Date.now();
+  const ended = endedAt !== undefined && Number.isFinite(endedAt) ? Math.min(now, endedAt) : now;
+  // Never before it began (a span cut since the other tab's claim was made).
+  closing.endedAt = new Date(Math.max(ended, Date.parse(closing.startedAt) || 0)).toISOString();
   return closing;
 }
 
@@ -1034,6 +1046,59 @@ function closeSpanOnPageHide() {
   sendOnPageHide(extra, deviceId || cachedDeviceId());
 }
 
+// --- One tab plays at a time (web; `playing-claim.ts`, fe#123) ----------------------------
+
+/** Tell the other tabs of the web player this one plays the loaded book's connection. */
+function claimPlaying() {
+  const np = usePlayer.getState().nowPlaying;
+  if (np) tabClaims().announce(np.connectionId, playAskedAt);
+}
+
+/**
+ * Another tab began playing (its `claim`). When this tab plays on the same connection, or
+ * means to, and that play is the newer one (`givesWayTo`), this one gives way: its span
+ * ends where the engine is, dated no later than the other tab's began, then it pauses like
+ * any pause (the place saved, the intent dropped; the pause finds no span left to close, so
+ * the span is one event) and the listener is told (`onGaveWayToTab`). The book and its place
+ * stay loaded: a play here claims the connection back.
+ */
+function giveWayTo(claim: PlayingClaim) {
+  const { nowPlaying: np, snapshot } = usePlayer.getState();
+  const mine = {
+    tab: tabClaims().tab,
+    connectionId: np?.connectionId ?? null,
+    live: isPlayingState(snapshot.state) || wantsPlayback,
+    askedAt: playAskedAt,
+  };
+  if (!givesWayTo(claim, mine)) return;
+  yieldedAttempt = playAttempts;
+  closeListeningSpan({ endedAt: claim.sentAt });
+  void usePlayer
+    .getState()
+    .pause()
+    .catch((e: unknown) => console.warn('[player] could not pause for another tab', e));
+  if (gaveWayListener) gaveWayListener();
+  else gaveWayUntold = true;
+}
+
+let gaveWayListener: (() => void) | null = null;
+/** This tab gave way with nobody to tell yet (the root's services start after the first
+ * paint on the web): the listener is told as it registers. */
+let gaveWayUntold = false;
+
+/** Be told each time this tab gives way to another tab's play (the "Playing in another
+ * tab" notice). One listener; returns the unsubscribe. */
+export function onGaveWayToTab(listener: () => void): () => void {
+  gaveWayListener = listener;
+  if (gaveWayUntold) {
+    gaveWayUntold = false;
+    listener();
+  }
+  return () => {
+    if (gaveWayListener === listener) gaveWayListener = null;
+  };
+}
+
 /** Surface an `error` if we wanted to play but haven't reached `playing` within the
  * grace - a dead/stalled stream then offers a retry instead of an endless spinner. The
  * watchdog is armed by the play/retry actions (and by a mid-playback stall's `loading`),
@@ -1060,6 +1125,7 @@ function armStallWatchdog() {
  * stream surfaces an error after the grace, matching the old native behavior). */
 function beginPlaybackAttempt() {
   playAttempts++;
+  playAskedAt = Date.now();
   wantsPlayback = true;
   startingPlayback = true;
   armStallWatchdog();
@@ -1337,6 +1403,11 @@ async function createService(): Promise<PlaybackService> {
     // Listening spans use the STRICT reading (see `isPlayingState`): a span must cover
     // audio the listener actually heard, so a buffer is not the start of one.
     if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) {
+      // A play nobody asked for here (the OS media controls start the engine themselves) is
+      // asked for now. Claimed before its span opens: a tab that gives way ends its span
+      // at the claim, so the two never cover the same time.
+      if (!wantsPlayback) playAskedAt = Date.now();
+      claimPlaying();
       beginHistory();
       openListeningSpan();
     } else if (isPlayingState(prev.state) && !isPlayingState(snapshot.state)) {
@@ -1438,6 +1509,8 @@ async function createService(): Promise<PlaybackService> {
   });
   // Smart Speed's running total, counted on the playing book (`time-saved.ts`).
   svc.onSilenceSaved?.((total) => noteSilenceSaved(total, selectBookKey(usePlayer.getState())));
+  // Web: another tab began playing (`playing-claim.ts`). Nothing is heard off the web.
+  tabClaims().subscribe(giveWayTo);
   service = svc;
   // Expose whether this platform/engine can show an audio-route picker so the player
   // can decide whether to render the cast button (web: only where the APIs exist).
@@ -1647,6 +1720,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       finishSent = null;
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
+      const attempt = playAttempts;
       try {
         await svc.load(
           queue.tracks,
@@ -1674,6 +1748,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
       await svc.setRate(speed);
       if (!current()) return;
+      // Gave way to another tab while it loaded (`giveWayTo`): loaded here, played there.
+      if (yieldedAttempt === attempt) return;
       await startEngine(svc);
       // The save loop is started by the engine 'playing' transition (see subscribe).
       void flushQueue();

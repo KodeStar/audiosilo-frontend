@@ -12,6 +12,7 @@ import { startAutoSleep } from '@/playback/auto-sleep-controller';
 import { startDriftWatch } from '@/playback/drift-controller';
 import { startJumpUndo } from '@/playback/jump-undo';
 import { startListeningSync } from '@/playback/listening-sync';
+import { startOtherTabNotice } from '@/playback/other-tab-notice';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { startWidgetSync } from '@/widgets/widget-sync';
 
@@ -49,6 +50,9 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // Sync v2 (`listening_sync`): sends the listening outbox at launch, on reconnect and in
     // the foreground, and cuts the playing span when the app leaves; see the module.
     startListeningSync(),
+    // Web: "Playing in another tab", when this tab paused because another one began
+    // playing (one tab plays at a time per connection); see the module.
+    startOtherTabNotice(),
     // Home and away addresses: picks the address each server is reached at (native only)
     // and keeps the playing book on it; see the module.
     startAddressRouting(),

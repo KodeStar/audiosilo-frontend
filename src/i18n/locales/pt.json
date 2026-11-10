@@ -1809,6 +1809,9 @@
       "unknown": "Noutro dispositivo estavas em {{place}}. Ir para lá?",
       "jump": "Ir",
       "stay": "Ficar"
+    },
+    "otherTab": {
+      "title": "A reproduzir noutro separador"
     }
   },
   "reconnect": {
