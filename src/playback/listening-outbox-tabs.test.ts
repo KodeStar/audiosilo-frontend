@@ -286,6 +286,20 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
     expect(storedIds()).toEqual([]);
   });
 
+  it('a mark further ahead than any is written for (the clock set back) is not waited for', async () => {
+    const event = finish('f');
+    browser.data.set(
+      OUTBOX,
+      JSON.stringify([{ connectionId: 'c1', event, out: { 'tab-gone': Date.now() + 3_600_000 } }]),
+    );
+    const started = Date.now();
+    const taken = await a.withdrawFinish('c1', 3, 'Author/Book');
+    // Read as a mark that ran out: the server may hold the finish, so the edit is sent.
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(taken.unsent).toBe(false);
+    expect(storedIds()).toEqual([]);
+  });
+
   it("an edit that failed puts the finish back, still marked for the other tabs' Undo", async () => {
     await a.appendEvents('c1', [finish('f')]);
     b.sync(lost);

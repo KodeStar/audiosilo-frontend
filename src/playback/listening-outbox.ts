@@ -794,9 +794,11 @@ const NONE: ReadonlySet<string> = new Set();
 const marksOf = (entry: OutboxEntry): Record<string, number> =>
   isRecord(entry.out) ? entry.out : {};
 
-/** Whether a request carrying `entry` is out (in any tab) by its stored marks. */
+/** Whether a request carrying `entry` is out (in any tab) by its stored marks. A mark that
+ * stands further ahead than any is written for (the clock set back since) has run out too:
+ * read as live, an Undo would wait on it until the clock caught up. */
 const isOut = (entry: OutboxEntry, now: number) =>
-  Object.values(marksOf(entry)).some((until) => until > now);
+  Object.values(marksOf(entry)).some((until) => until > now && until - now <= OUT_MARK_MS);
 
 /** `entry` marked as out from this tab until `until` (beside any other tab's mark). */
 const markedOut = (entry: OutboxEntry, until: number): OutboxEntry => ({
@@ -915,7 +917,7 @@ export type Withdrawal = {
 };
 
 /**
- * Whether the Undo of the finish `id` needs its progress edit although no answer to it ever
+ * Whether the Undo of the finish `entry` needs its progress edit although no answer to it ever
  * came: a request carried it while its server looked reachable (`maybeReached`), so it may
  * have arrived with only its answer lost, and the server looks reachable now, so the edit
  * can be made. With the server down no edit can be made, and the likeliest reading of a
@@ -1392,7 +1394,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     // Its answer may never be seen (the page is going): the server may hold these.
     const leaving = finishesLeaving(fit);
     for (const id of leaving) maybeReached.add(id);
-    if (stored) markOutNow(stored.storage, leaving);
+    if (stored && leaving.length > 0) markOutNow(stored.storage, leaving);
     void client
       .syncListening(
         syncBody(
