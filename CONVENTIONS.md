@@ -1759,8 +1759,10 @@ media GETs only.
   book: two connections may play side by side. "Newest" is when the play was asked for
   (`playAskedAt`: `beginPlaybackAttempt`, else the moment the engine began by itself, the OS
   media controls), not which claim arrives last, with the tab id breaking a tie
-  (`givesWayTo`, pure), so of two tabs that start together exactly one stands; a start still
-  loading when it gives way does not play once loaded (`yieldedAttempt`). The channel is
+  (`givesWayTo`, pure), so of two tabs that start together exactly one stands; a start or
+  a Retry still loading when it gives way does not play once loaded (`yieldedAttempt`, read
+  in `startEngine`, the one place every start passes: played regardless, its `playing` would
+  read as a new play and take the connection back from the newer tab). The channel is
   `tabChannel` (`src/lib/tab-channel.ts`): `BroadcastChannel` (no secure context needed, so
   plain http has it), else `storage` events (the message written to `localStorage` under
   `audiosilo-tab:<name>` and removed at once); null off the web, where none of this runs.

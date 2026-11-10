@@ -157,8 +157,9 @@ let playAttempts = 0;
  * (`beginPlaybackAttempt`), else the moment the engine began by itself (the OS media
  * controls). What the tabs of the web player compare (`playing-claim.ts`): the newest wins. */
 let playAskedAt = 0;
-/** The play request (`playAttempts`) that gave way to another tab's claim (`giveWayTo`): a
- * start still loading then does not play once it has loaded. */
+/** The play request (`playAttempts`) that gave way to another tab's claim (`giveWayTo`):
+ * until a play is asked for again, a start still loading does not play once it has loaded
+ * (`startEngine`). */
 let yieldedAttempt = -1;
 /** Pending stall→error timer (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1152,8 +1153,14 @@ function clearPlaybackIntent() {
  * `/player` deep link) is a plain pause, not a failure: drop the intent (so the stall
  * watchdog never turns it into `error`) and settle on `paused`, so the play button comes
  * back and a press (the gesture it wanted) plays. Every other failure rejects as a
- * `PlaybackStartError` saying why (`startFailure`). */
-async function startEngine(svc: PlaybackService): Promise<void> {
+ * `PlaybackStartError` saying why (`startFailure`).
+ *
+ * Not started at all (false) when this tab gave way to another tab's play since the play
+ * was asked for (`giveWayTo`, while a start or a Retry was loading): loaded here, played
+ * there. Played regardless, the engine's `playing` would read as a new play nobody asked
+ * for and take the connection back from the newer tab. */
+async function startEngine(svc: PlaybackService): Promise<boolean> {
+  if (yieldedAttempt === playAttempts) return false;
   try {
     await svc.play();
   } catch (err) {
@@ -1162,6 +1169,7 @@ async function startEngine(svc: PlaybackService): Promise<void> {
     const { snapshot } = usePlayer.getState();
     usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
   }
+  return true;
 }
 
 /** A failed start as the listener is told it: the loaded book streams from a server known
@@ -1720,7 +1728,6 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       finishSent = null;
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
       beginPlaybackAttempt(); // intent + start window + watchdog armed from here
-      const attempt = playAttempts;
       try {
         await svc.load(
           queue.tracks,
@@ -1748,9 +1755,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
       await svc.setRate(speed);
       if (!current()) return;
-      // Gave way to another tab while it loaded (`giveWayTo`): loaded here, played there.
-      if (yieldedAttempt === attempt) return;
-      await startEngine(svc);
+      // False: gave way to another tab while it loaded (`giveWayTo`).
+      if (!(await startEngine(svc))) return;
       // The save loop is started by the engine 'playing' transition (see subscribe).
       void flushQueue();
       // Fire-and-forget AFTER playback is initiated (never before/awaited, so it can't delay

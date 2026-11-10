@@ -426,4 +426,24 @@ describe.each([
     await until(() => b.player().snapshot.state === 'paused', 'B to give way');
     expect(a.player().snapshot.state).toBe('playing');
   });
+
+  it('a Retry still loading when the other tab plays gives way and never plays', async () => {
+    await a.start(5);
+    await a.player().pause();
+    const release = a.engine.holdLoad();
+    const retrying = a.player().retry();
+    await until(() => a.engine.svc.load.mock.calls.length === 2, "A's reload");
+    await sleep(5); // B's play is asked for later than A's
+    await b.start(30);
+    await until(() => a.gaveWay() === 1, 'A to give way');
+    release();
+    await retrying;
+    await sleep(40);
+    // Played once, by its first start: the reload that gave way never played, so it made no
+    // claim of its own and B, the newer play, stands.
+    expect(a.engine.svc.play).toHaveBeenCalledTimes(1);
+    expect(a.player().snapshot.state).not.toBe('playing');
+    expect(b.player().snapshot.state).toBe('playing');
+    expect(b.gaveWay()).toBe(0);
+  });
 });
