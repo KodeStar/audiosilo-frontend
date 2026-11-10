@@ -74,6 +74,12 @@ export type ProgressSave = {
   /** Sync v2: the other places (`device_id|updated_at`) the listener has answered (Jump or
    * Stay), so an offer never comes back. Mirror only; kept across captures. */
   answered?: string[];
+  /** The legacy PUT path's replay guard (fe#198): a save of a listening session that began
+   * from a place this device could not check against its server (an offline start, or a
+   * resume behind another device's further place: `ResumeLookup.unchecked`). Before it is
+   * PUT, the server's row is read, and another device's further place holds it
+   * (`guardHolds`). Saves and the queue only; never kept in the mirror. */
+  guard?: boolean;
 };
 
 /**
@@ -93,6 +99,11 @@ export type ResumeLookup =
       /** The file place of this device's own save when that save is the newest record: a
        * resume plays that file from `pos` when the queue holds it (fe#188). */
       file?: { path: string; pos: number };
+      /** The place was not checked against the server: it was not reached, or its row is
+       * further on than the place resumed (another device's, which this device's newer
+       * record beat by the clock). The legacy PUT path guards this session's saves
+       * (`ProgressSave.guard`, fe#198). */
+      unchecked?: true;
     }
   | { kind: 'empty' }
   | { kind: 'failed' };
@@ -297,12 +308,19 @@ export function resumeLookupOf(
       mirror,
       places.skews?.[connectionId] ?? 0,
     );
+    const unchecked =
+      server === undefined ||
+      (server !== null &&
+        best !== server &&
+        !server.finished &&
+        server.position - best.position > GUARD_SLACK_S);
     return {
       kind: 'progress',
       progress: best,
       ...(filed?.file && typeof filed.file_pos === 'number'
         ? { file: { path: filed.file, pos: filed.file_pos } }
         : {}),
+      ...(unchecked ? { unchecked: true as const } : {}),
     };
   }
   if (server !== undefined) return { kind: 'empty' }; // server reachable + nothing anywhere = truly new
@@ -466,7 +484,8 @@ export async function writeMirrors(saves: readonly ProgressSave[]): Promise<void
       const key = contentKey(save.connectionId, save.libraryId, save.path);
       const existing = map[key];
       if (!existing || Date.parse(save.updated_at) >= Date.parse(existing.updated_at)) {
-        map[key] = mergeKept(save, existing, existing ? await knownSkew(save.connectionId) : 0);
+        const { guard: _guard, ...record } = save;
+        map[key] = mergeKept(record, existing, existing ? await knownSkew(save.connectionId) : 0);
         changed = true;
       }
     }
@@ -602,9 +621,70 @@ function isUnrecoverable(e: unknown): boolean {
   return e instanceof ApiError && e.status >= 400 && e.status < 500;
 }
 
+// --- The replay guard (fe#198) ----------------------------------------------------------
+//
+// The legacy PUT is last-write-wins by `updated_at`, so a save from a session that began at
+// a place this device never checked against the server (offline, or behind another
+// device's further place) would move that further place back, with no question asked: the
+// v2.5.1 sweep saw a place go from 3570 s to 4.78 s. Such a save carries `guard`; before
+// it is PUT (live or replayed) the server's row is read, and another device's place further
+// on that the listener has not chosen to leave (Stay, `answerOffer`) holds it: it is not
+// sent and leaves the queue (this device's mirror keeps it), and the loaded book's player
+// offers that place (`onHeldSave`, the place reconcile's Jump/Stay offer). Sync v2 needs
+// none of this: the server resolves each span on its `base_version`.
+
+/** How much further on (s) another device's place must be to hold a guarded save: the
+ * place reconcile's threshold (`MOVE_THRESHOLD_S`; auto-rewind is up to 30 s). */
+export const GUARD_SLACK_S = 30;
+
+/**
+ * Whether the server's `row` holds the guarded `save` back (pure): a place of another
+ * device, not finished (a finish is not a place to resume; this device's next save
+ * unfinishes it, as before), more than `GUARD_SLACK_S` further on, that the listener has not
+ * answered (`answered`: the `device_id|updated_at` keys answered with Jump or Stay).
+ */
+export function guardHolds(
+  save: Pick<ProgressSave, 'position' | 'device_id' | 'finished'>,
+  row: Progress | null,
+  answered: readonly string[] = [],
+): boolean {
+  if (!row || row.finished || save.finished) return false;
+  if (!row.device_id || row.device_id === save.device_id) return false;
+  if (row.position - save.position <= GUARD_SLACK_S) return false;
+  return !answered.includes(`${row.device_id}|${row.updated_at}`);
+}
+
+/** Told of each guarded save held back, with the server's row that held it. */
+type HeldListener = (save: ProgressSave, row: Progress) => void;
+const heldListeners = new Set<HeldListener>();
+
+/** Be told of each guarded save the server's row held back; returns the unsubscribe. */
+export function onHeldSave(listener: HeldListener): () => void {
+  heldListeners.add(listener);
+  return () => heldListeners.delete(listener);
+}
+
+/** Whether `save` may be PUT (unguarded, or its server's row does not hold it). A held one
+ * is told to the listeners. Throws what reading the row throws. */
+async function guardPasses(client: ApiClient, save: ProgressSave): Promise<boolean> {
+  if (!save.guard) return true;
+  const [row, mine] = await Promise.all([
+    client.getProgress(save.libraryId, save.path),
+    readMirror(save.connectionId, save.libraryId, save.path),
+  ]);
+  if (!row || !guardHolds(save, row, mine?.answered)) return true;
+  for (const listener of heldListeners) listener(save, row);
+  return false;
+}
+
+/** What became of a save: PUT (`saved`), kept for a later replay (`queued`), held back by
+ * the replay guard (`held`), or refused for good (`dropped`, a 4xx). */
+export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
+
 /** Save progress now; if the network fails, queue it for later replay. version
- * is left 0 so the server reconciles by (updated_at, version). */
-export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<void> {
+ * is left 0 so the server reconciles by (updated_at, version). A guarded save is checked
+ * first (`guardPasses`). */
+export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<SaveOutcome> {
   // Reachability is per-connection: this save's success/failure notes ONLY its own
   // server. A book keeps playing on a connection the user has navigated away from, and
   // its 15s save loop lands here without touching any other server's state.
@@ -615,27 +695,38 @@ export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<
   // the 15s save loop doesn't fire a doomed request every tick while it's offline.
   if (!isReachable(save.connectionId)) {
     await enqueue(save);
-    return;
+    return 'queued';
   }
   try {
-    await api.saveProgress(save.libraryId, save.path, {
-      position: save.position,
-      duration: save.duration,
-      finished: save.finished,
-      playback_speed: save.playback_speed,
-      version: 0,
-      device_id: save.device_id,
-      updated_at: save.updated_at,
-    });
+    if (!(await guardPasses(api, save))) {
+      noteSuccess(save.connectionId);
+      return 'held';
+    }
+    await api.saveProgress(save.libraryId, save.path, putBody(save));
     noteSuccess(save.connectionId);
     void flushQueue();
+    return 'saved';
   } catch (e) {
-    if (isUnrecoverable(e)) return; // auth/forbidden - don't retry forever
+    if (isUnrecoverable(e)) return 'dropped'; // auth/forbidden - don't retry forever
     // No answer only asks for a check of the server (`noteFailure`): one slow save never
     // marks a healthy server down; the check does when it gets no answer either.
     noteFailure(save.connectionId, e);
     await enqueue(save);
+    return 'queued';
   }
+}
+
+/** A save as the legacy PUT's body. */
+function putBody(save: ProgressSave) {
+  return {
+    position: save.position,
+    duration: save.duration,
+    finished: save.finished,
+    playback_speed: save.playback_speed,
+    version: 0,
+    device_id: save.device_id,
+    updated_at: save.updated_at,
+  };
 }
 
 // Serialize all read-modify-write access to the queue so a flush and a
@@ -680,15 +771,10 @@ async function flushGroup(
       continue;
     }
     try {
-      await client.saveProgress(save.libraryId, save.path, {
-        position: save.position,
-        duration: save.duration,
-        finished: save.finished,
-        playback_speed: save.playback_speed,
-        version: 0,
-        device_id: save.device_id,
-        updated_at: save.updated_at,
-      });
+      // A guarded save the server's row holds back leaves the queue (the mirror keeps it).
+      if (await guardPasses(client, save)) {
+        await client.saveProgress(save.libraryId, save.path, putBody(save));
+      }
       noteSuccess(cid);
     } catch (e) {
       if (isUnrecoverable(e)) continue; // 4xx: drop, can't ever succeed

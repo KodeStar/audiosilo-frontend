@@ -484,11 +484,13 @@ export function allProgressQuery(cid: string, client: MaybeClient) {
  * (fe#198). Never fails the list.
  */
 async function keepDownloadedPlaces(cid: string, rows: readonly Progress[]): Promise<void> {
-  const kept = rows.filter((r) => isKeptOffline(cid, r.library_id, r.path));
-  if (kept.length === 0) return;
-  await writeMirrors(kept.map((r) => progressToSave(cid, r.library_id, r.path, r))).catch(
-    () => undefined,
-  );
+  try {
+    const kept = rows.filter((r) => isKeptOffline(cid, r.library_id, r.path));
+    if (kept.length === 0) return;
+    await writeMirrors(kept.map((r) => progressToSave(cid, r.library_id, r.path, r)));
+  } catch {
+    // The list stands without it: a downloaded book's page and resume still mirror it.
+  }
 }
 
 /** A book search (the server's search covers title, author, narrator and series); an

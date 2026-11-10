@@ -156,6 +156,10 @@ let stallTimer: ReturnType<typeof setTimeout> | null = null;
  * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
  * real saved progress. Reset per book in `playBook`. */
 let resumeFloor = 0;
+/** The book (`contentKey`) whose session began at a place not checked against its server
+ * (`ResumeLookup.unchecked`): on the legacy PUT path its saves carry the replay guard
+ * (`ProgressSave.guard`, fe#198) until one of them is PUT. Set per book in `playBook`. */
+let placeGuard: string | null = null;
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
@@ -458,6 +462,9 @@ async function persist(opts?: { forceFinished?: boolean }) {
     if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
   }
   const end = endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
+  const key = contentKeyOf(nowPlaying);
+  // A finish is the listener's own: never held back.
+  const guarded = placeGuard === key && !forceFinished;
   const save = {
     connectionId: nowPlaying.connectionId,
     libraryId: nowPlaying.libraryId,
@@ -471,6 +478,7 @@ async function persist(opts?: { forceFinished?: boolean }) {
     // The file place (fe#188), the mirror's only (a PUT never sends it), on both paths: an
     // older capture's file place never outlives the place it was taken at.
     ...(forceFinished || !end?.file ? {} : { file: end.file, file_pos: end.filePos }),
+    ...(guarded ? { guard: true } : {}),
   };
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
   // spans below); the capture only keeps this device's mirror.
@@ -483,7 +491,16 @@ async function persist(opts?: { forceFinished?: boolean }) {
     }
     return;
   }
-  await saveProgress(api, save);
+  const outcome = await saveProgress(api, save);
+  // Once a guarded save is PUT, the server had nothing further on: the session's saves go
+  // straight on from here.
+  if (guarded && outcome === 'saved' && placeGuard === key) placeGuard = null;
+}
+
+/** Save the loaded book's place now (the listener answered Stay to a place its server held
+ * a save back for: the replay guard then lets it through). */
+export function saveLoadedPlace(): void {
+  void persist();
 }
 
 /** Nudge the Home/Browse "continue listening" + "finished" lists to re-read from
@@ -1456,9 +1473,13 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       // 1x for a kids profile, else the listener's setting (`listenerSettings`).
       const { defaultRate } = listenerSettings();
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
+      // The replay guard (fe#198): set below when the resume could not be checked.
+      let unchecked = false;
       if (startBookPosition === undefined && startTrack === undefined) {
         const r = await loadInitialProgress(api, connectionId, libraryId, book.rel_path);
         if (!current()) return;
+        // Not reached (a downloaded book's 'failed' starts at 0), or resumed behind it.
+        unchecked = r.kind === 'failed' || (r.kind === 'progress' && !!r.unchecked);
         if (r.kind === 'progress') {
           // An unfinished book resumes where it left off, a finished one starts again at 0
           // (`resumeStart`). resumeFloor is derived from startAt below, so a restart's floor
@@ -1555,6 +1576,9 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       const prev = get();
       const loadingBook = selectBookKey(prev) === key ? prev.loadingBook : key;
       set({ rate: speed, nowPlaying, loadingBook });
+      // An explicit place is the listener's own: unguarded, like a resume checked against
+      // the server.
+      placeGuard = unchecked ? key : null;
       nextStart = start;
       unfinishDue = unfinish && usesListeningSync(connectionId);
       finishSent = null;

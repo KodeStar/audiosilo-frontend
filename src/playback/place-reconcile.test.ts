@@ -60,7 +60,15 @@ jest.mock('./progress-sync', () => ({
   ignoreOffer: (...a: unknown[]) => mockIgnoreOffer(...a),
   cachedDeviceId: () => 'this-device',
   writeMirror: jest.fn(async () => {}),
+  onHeldSave: (cb: (save: ProgressSave, row: Progress) => void) => {
+    mockHeld = cb;
+    return () => {
+      mockHeld = null;
+    };
+  },
 }));
+/** The replay guard's listener (fe#198), as the reconcile registered it. */
+let mockHeld: ((save: ProgressSave, row: Progress) => void) | null = null;
 const mockIgnoreOffer = jest.fn(async (..._a: unknown[]) => {});
 const mockAckVersion = jest.fn(async (..._a: unknown[]) => {});
 const mockMarkAnswered = jest.fn(async (..._a: unknown[]) => {});
@@ -126,12 +134,14 @@ jest.mock('@/lib/when-active', () => ({
 }));
 
 /* eslint-disable import/first */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 
 import { useSettings } from '@/stores/settings';
 
 import { queryClient } from '@/api/provider';
 
+import { resetOutboxForTests } from './listening-outbox';
 import { OFFER_REPEAT_MS, offerOf, placeToMoveTo, startPlaceReconcile } from './place-reconcile';
 import { LONG_PAUSE_MS, selectBookPosition, selectIsPlaying, usePlayer } from './store';
 /* eslint-enable import/first */
@@ -714,5 +724,75 @@ describe('on a server with listening_sync', () => {
     expect(seeks()).toEqual([400]);
     // The row it moved to is acknowledged.
     expect(mockAckVersion).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b', 3, expect.anything());
+  });
+});
+
+// fe#198: on the legacy PUT path a guarded save that another device's further place held
+// back offers that place, with the same toast; Stay lets this device's place through.
+describe('a save the replay guard held back (the PUT path)', () => {
+  type Toast = {
+    title: string;
+    action: { onPress: () => void };
+    onClose: () => void;
+    onTimeout: () => void;
+  };
+  const lastToast = () => mockToast.mock.calls[mockToast.mock.calls.length - 1][0] as Toast;
+  const heldSave = (over: Partial<ProgressSave> = {}): ProgressSave => ({
+    ...mirrorAt('2026-10-08T11:55:00Z', 105),
+    guard: true,
+    ...over,
+  });
+  const further = (device: string) =>
+    record({ position: 640, device_id: device, device_name: 'Phone', version: 12 });
+  // A server without listening_sync: an earlier test's sync answer told the outbox c1 has
+  // it (kept in memory and in the sync state), and its events are still stored.
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetOutboxForTests();
+  });
+
+  it('offers the place that held it; Stay notes the answer and saves this place at once', async () => {
+    await loadedAndPaused();
+    mockHeld?.(heldSave(), further('held-1'));
+    await settle();
+    const offer = lastToast();
+    expect(offer.title).toBe('On Phone you were at 10:40. Jump there?');
+    offer.onClose();
+    await settle();
+    expect(mockMarkAnswered).toHaveBeenCalledWith(
+      'c1',
+      2,
+      'A/Book.m4b',
+      'held-1|2026-10-08T10:00:00Z',
+      expect.anything(),
+    );
+    expect(saved()).toEqual([105]);
+    expect(seeks()).toEqual([]);
+  });
+
+  it('Jump moves there', async () => {
+    await loadedAndPaused();
+    mockHeld?.(heldSave(), further('held-2'));
+    await settle();
+    lastToast().action.onPress();
+    await settle();
+    expect(seeks()).toEqual([640]);
+  });
+
+  it('a toast nobody answers answers nothing: the place stays held', async () => {
+    await loadedAndPaused();
+    mockHeld?.(heldSave(), further('held-3'));
+    await settle();
+    lastToast().onTimeout();
+    await settle();
+    expect(mockIgnoreOffer).not.toHaveBeenCalled();
+    expect(mockMarkAnswered).not.toHaveBeenCalled();
+  });
+
+  it('a held save of a book not loaded offers nothing', async () => {
+    await loadedAndPaused();
+    mockHeld?.(heldSave({ path: 'Another/Book.m4b' }), further('held-4'));
+    await settle();
+    expect(mockToast).not.toHaveBeenCalled();
   });
 });

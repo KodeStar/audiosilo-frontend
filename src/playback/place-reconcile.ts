@@ -17,6 +17,7 @@ import {
   cachedDeviceId,
   getDeviceId,
   ignoreOffer,
+  onHeldSave,
   readMirror,
   type ProgressSave,
 } from './progress-sync';
@@ -24,6 +25,7 @@ import {
   holdSaves,
   localMoveCount,
   onPickedUpAgain,
+  saveLoadedPlace,
   selectBookKey,
   selectBookPosition,
   standByPlace,
@@ -150,22 +152,29 @@ const offeredAt = new Map<string, number>();
  * `offerOf` finds one. Never moves the book by itself: a toast with Jump (seek there) and
  * Stay (close: this device's place stands, its next span a deliberate move that the server
  * applies). Either answer acknowledges the row's version. Resolves once it is shown or not.
+ *
+ * `held`: the legacy PUT path's replay guard held a save of this book back for `row`
+ * (fe#198; `onHeldSave`). There is no acknowledged version there (the row's own is new),
+ * Stay saves this device's place at once (the guard then lets it through), and a toast that
+ * times out answers nothing: the place stays held, and is offered again next launch.
  */
 export async function offerLoadedPlace(
   bookKey: string,
   row: Progress | null,
   deviceId: string,
   mirror: Pick<ProgressSave, 'ack_version' | 'answered'> | null,
+  { held = false }: { held?: boolean } = {},
 ): Promise<boolean> {
   const player = usePlayer.getState();
   const np = player.nowPlaying;
   if (!np || !row || selectBookKey(player) !== bookKey) return false;
-  // A Sync v2 offer: an older server keeps last-write-wins and its own move (above).
-  if (!usesListeningSync(np.connectionId)) return false;
+  // A Sync v2 offer, or a held save's: an older server keeps last-write-wins and its own
+  // move (above).
+  if (!held && !usesListeningSync(np.connectionId)) return false;
   const offer = offerOf(
     row,
     deviceId,
-    mirror?.ack_version,
+    held ? undefined : mirror?.ack_version,
     selectBookPosition(player),
     mirror?.answered,
   );
@@ -199,11 +208,15 @@ export async function offerLoadedPlace(
       closeLabel: t('player.placeOffer.stay'),
       onClose: () => {
         void answer().then(() => {
-          if (selectBookKey(usePlayer.getState()) === bookKey) standByPlace();
+          if (selectBookKey(usePlayer.getState()) !== bookKey) return;
+          if (held) saveLoadedPlace();
+          else standByPlace();
         });
       },
       // Not answered: noted, so the same place is not offered again (no acknowledgement).
+      // A held save's is not noted: that would let the guard through, as a Stay does.
       onTimeout: () => {
+        if (held) return;
         void ignoreOffer(np.connectionId, np.libraryId, np.path, row, offer.key).catch(
           () => undefined,
         );
@@ -225,6 +238,18 @@ function offerFromAnswer(connectionId: string, rows: Progress[]) {
   if (!row || (row.device_id === cachedDeviceId() && !row.other_place)) return;
   void Promise.all([getDeviceId(), readMirror(np.connectionId, np.libraryId, np.path)])
     .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror))
+    .catch(() => undefined);
+}
+
+/** A guarded save of the loaded book that its server's row held back (fe#198): offered. */
+function offerHeldSave(save: ProgressSave, row: Progress) {
+  const player = usePlayer.getState();
+  const np = player.nowPlaying;
+  const bookKey = selectBookKey(player);
+  if (!np || !bookKey || np.connectionId !== save.connectionId) return;
+  if (np.libraryId !== save.libraryId || np.path !== save.path) return;
+  void readMirror(np.connectionId, np.libraryId, np.path)
+    .then((mirror) => offerLoadedPlace(bookKey, row, save.device_id, mirror, { held: true }))
     .catch(() => undefined);
 }
 
@@ -387,6 +412,8 @@ function runPlaceReconcile(): () => void {
   );
   // Sync v2: each sync answer's row for the loaded book may carry a place to offer.
   stops.push(onSyncAnswer(offerFromAnswer));
+  // The legacy PUT path: a save the replay guard held back offers the place that held it.
+  stops.push(onHeldSave(offerHeldSave));
   return () => {
     for (const stop of stops) stop();
   };

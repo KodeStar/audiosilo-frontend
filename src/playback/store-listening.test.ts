@@ -173,6 +173,25 @@ const row = (p: Partial<Progress> = {}): Progress => ({
   ...p,
 });
 
+/** The book, downloaded on this device. */
+const downloadedEntry = (): DownloadEntry => ({
+  connectionId: 'c1',
+  libraryId: 2,
+  path: folder,
+  title: 'A Book',
+  status: 'downloaded',
+  progress: 1,
+  bytes: 0,
+  totalBytes: 0,
+  manifest: {
+    book,
+    chapters,
+    files: order.map((relPath) => ({ relPath, localUri: `file:///d/${relPath}` })),
+    coverUri: 'file:///d/cover.jpg',
+    savedAt: '2026-01-01T00:00:00.000Z',
+  },
+});
+
 const snap = (state: PlaybackState, trackIndex: number, position: number): PlaybackSnapshot => ({
   state,
   trackIndex,
@@ -225,6 +244,84 @@ describe('without listening_sync (the PUT path, unchanged)', () => {
     expect(mockClosed).toEqual([]);
     expect(mockAppended).toEqual([]);
     expect(mockClient.addHistory).toHaveBeenCalled(); // POST /history as before
+  });
+});
+
+// fe#198: a session that began where the server was not checked guards its PUT saves.
+describe('the replay guard on the PUT path', () => {
+  const guards = () =>
+    mockSaveProgress.mock.calls.map((c) => (c[1] as { guard?: boolean }).guard === true);
+
+  beforeEach(() => {
+    mockSync = false;
+  });
+
+  async function playedTwoSaves(outcome: string) {
+    mockSaveProgress.mockResolvedValueOnce(outcome as never);
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+  }
+
+  it('an unchecked resume guards its saves until one is PUT', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    await playedTwoSaves('saved');
+    expect(guards()).toEqual([true, false]);
+  });
+
+  it('a held save keeps the guard on', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    await playedTwoSaves('held');
+    expect(guards()).toEqual([true, true]);
+  });
+
+  it('a downloaded book that could not ask its server (started at 0) is guarded too', async () => {
+    mockLoadInitialProgress.mockResolvedValue({ kind: 'failed' });
+    useDownloads.setState({
+      entries: { [`c1:2:${folder}`]: downloadedEntry() },
+    });
+    await start();
+    await playedTwoSaves('queued');
+    expect(guards()).toEqual([true, true]);
+  });
+
+  it('a checked resume and an explicit place are not guarded', async () => {
+    mockLoadInitialProgress.mockResolvedValue({ kind: 'progress', progress: row({ position: 5 }) });
+    await start();
+    await playedTwoSaves('saved');
+    await usePlayer.getState().stop();
+    await start(5);
+    await playedTwoSaves('saved');
+    expect(guards().every((g) => !g)).toBe(true);
+  });
+
+  it('a finish is never held back', async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    pushSnapshot(snap('playing', 1, 45));
+    await settle();
+    usePlayer.getState().finishBook();
+    await settle();
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({ finished: true });
+    expect(mockSaveProgress.mock.calls.at(-1)?.[1]).not.toHaveProperty('guard');
   });
 });
 
@@ -549,25 +646,8 @@ describe('a span opens whenever the book plays', () => {
   });
 
   describe('an adopted book (adoptLoaded)', () => {
-    const downloaded = (): DownloadEntry => ({
-      connectionId: 'c1',
-      libraryId: 2,
-      path: folder,
-      title: 'A Book',
-      status: 'downloaded',
-      progress: 1,
-      bytes: 0,
-      totalBytes: 0,
-      manifest: {
-        book,
-        chapters,
-        files: order.map((relPath) => ({ relPath, localUri: `file:///d/${relPath}` })),
-        coverUri: 'file:///d/cover.jpg',
-        savedAt: '2026-01-01T00:00:00.000Z',
-      },
-    });
     const loaded = { connectionId: 'c1', libraryId: 2, path: folder, rate: 1 };
-    beforeEach(() => useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded() } }));
+    beforeEach(() => useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloadedEntry() } }));
 
     it('a playing one opens its span at once (the store set its `playing`)', async () => {
       const adopted = await usePlayer
