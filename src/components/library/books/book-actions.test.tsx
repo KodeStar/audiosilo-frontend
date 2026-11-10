@@ -224,7 +224,7 @@ describe('useBookActions', () => {
       const { find } = await actions(book(), progress());
       await act(async () => find('finish')!.onPress());
       expect(mockMarkFinished).toHaveBeenCalled();
-      expect(mockToast.mock.calls.at(-1)![0]).not.toHaveProperty('action');
+      expect(mockToast.mock.calls.at(-1)![0].action).toBeUndefined();
     });
   });
 

@@ -133,32 +133,24 @@ export function useBookActions(
     const before = progress?.position ?? 0;
     // Undo is a progress edit (`progress_edit`): the only way to mark a book not finished
     // at the place it had.
-    const undo =
-      progressEdit === true
-        ? { label: t('queue.undo'), onPress: () => void setFinished(false, before) }
-        : undefined;
-    if (progressEdit === true && !finishTakesEvent(connectionId)) {
-      if (!(await setFinished(true))) return;
+    const canUndo = progressEdit === true;
+    const done = () =>
       toast({
         title: t('library.bookActions.markedFinished'),
         description: book.title,
-        action: undo,
+        action: canUndo
+          ? { label: t('queue.undo'), onPress: () => void setFinished(false, before) }
+          : undefined,
       });
+    if (canUndo && !finishTakesEvent(connectionId)) {
+      if (await setFinished(true)) done();
       return;
     }
     // A server that takes listening events: a `finish` event, offline too (fe#208). An
     // older server without progress edits: the offline-aware save at the book's end.
     markFinished.mutate(
       { libraryId, path, position: book.duration, duration: book.duration },
-      {
-        onSuccess: () =>
-          toast({
-            title: t('library.bookActions.markedFinished'),
-            description: book.title,
-            ...(undo ? { action: undo } : {}),
-          }),
-        onError: failed,
-      },
+      { onSuccess: done, onError: failed },
     );
   };
 
