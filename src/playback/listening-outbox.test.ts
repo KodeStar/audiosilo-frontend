@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-import { ApiError, type ApiClient } from '@/api/client';
+import { ApiError, TimeoutError, type ApiClient } from '@/api/client';
 import type {
   ListeningEvent,
   ListeningSyncRequest,
@@ -635,7 +635,10 @@ describe('flushOutbox', () => {
       expect(await outboxEvents('c1')).toEqual([]);
     });
 
-    it('a finish whose send got no answer is taken back after it, never sent again', async () => {
+    // The lost answer: the request arrived, the server finished the book, and the answer
+    // never came back. Counted as unsent, the Undo was done on this device alone and the
+    // book stayed finished on the server.
+    it('a finish whose send got no answer may be on the server: the Undo needs its edit', async () => {
       await appendEvents('c1', [finish('f')]);
       let fail: (e: Error) => void = () => {};
       const c = client(() => new Promise((_r, reject) => (fail = reject)));
@@ -644,10 +647,91 @@ describe('flushOutbox', () => {
       const withdrawing = withdrawFinish('c1', 3, 'Author/Book');
       fail(new TypeError('Failed to fetch'));
       const [, taken] = await Promise.all([flushing, withdrawing]);
+      expect(taken.unsent).toBe(false);
+      // Taken back all the same: sent while the edit is out, it could land after it.
+      expect(await outboxEvents('c1')).toEqual([]);
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(1);
+    });
+
+    it('an edit that failed puts that finish back: sent again, the book finished on both sides', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let lost = true;
+      const c = client(async (body) => {
+        if (lost) throw new TimeoutError(15000);
+        return answer(body);
+      });
+      await flushOutbox('c1');
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
+      expect(taken.unsent).toBe(false);
+      lost = false;
+      await taken.restore();
+      await flushOutbox('c1');
+      expect(sent(c).map((b) => b.events.map((e) => e.id))).toEqual([['f'], ['f']]);
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
+    it('a gateway that gave up waiting (504) is no answer from the server either', async () => {
+      await appendEvents('c1', [finish('f')]);
+      client(async () => {
+        throw new ApiError(504, 'gateway timeout');
+      });
+      await flushOutbox('c1');
+      expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
+    });
+
+    it('the server down by the Undo: no edit can be made, so it is undone here', async () => {
+      await appendEvents('c1', [finish('f')]);
+      client(async () => {
+        throw new TypeError('Failed to fetch');
+      });
+      await flushOutbox('c1');
+      // The check that follows a request with no answer marked the server down.
+      (reachability.isReachable as jest.Mock).mockReturnValue(false);
+      try {
+        const taken = await withdrawFinish('c1', 3, 'Author/Book');
+        expect(taken.unsent).toBe(true);
+        expect(await outboxEvents('c1')).toEqual([]);
+      } finally {
+        (reachability.isReachable as jest.Mock).mockReturnValue(true);
+      }
+    });
+
+    it('a finish whose send could not leave (its server marked down) is unsent', async () => {
+      await appendEvents('c1', [finish('f')]);
+      const c = client(async () => {
+        throw new TypeError('Failed to fetch');
+      });
+      (reachability.isReachable as jest.Mock).mockReturnValue(false);
+      try {
+        await flushOutbox('c1');
+      } finally {
+        (reachability.isReachable as jest.Mock).mockReturnValue(true);
+      }
+      // Back since: the finish still never left this device.
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
       expect(taken.unsent).toBe(true);
       expect(await outboxEvents('c1')).toEqual([]);
       await flushOutbox('c1');
       expect(c.syncListening).toHaveBeenCalledTimes(1);
+    });
+
+    it('a finish the server refused (an HTTP error is its answer) is unsent', async () => {
+      await appendEvents('c1', [finish('f')]);
+      client(async () => {
+        throw new ApiError(503, 'unavailable');
+      });
+      await flushOutbox('c1');
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
+      expect(taken.unsent).toBe(true);
+      expect(await outboxEvents('c1')).toEqual([]);
+    });
+
+    it('a finish the page sent as it went may be on the server (its answer may never be seen)', async () => {
+      await appendEvents('c1', [finish('f')]);
+      client(() => new Promise(() => {}));
+      sendOnPageHide([], 'dev');
+      expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
     });
   });
 

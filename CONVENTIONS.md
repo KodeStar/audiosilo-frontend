@@ -1642,9 +1642,14 @@ media GETs only.
     Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
     back out of the outbox (`withdrawFinish`; one whose request is out is waited for, and a
     failed edit puts it back): sent after the edit it would finish the book again. A finish
-    taken back that the server never answered (an offline Mark as finished) needs no edit:
+    taken back that never reached the server (an offline Mark as finished) needs no edit:
     the Undo is done here, the mirror back to its record before the finish
-    (`unrecordFinish`); fe#208). An event never claims more than 23 h of wall clock
+    (`unrecordFinish`). One a request carried with no answer while its server looked
+    reachable (a timeout, a dropped connection, a 504, the page's keepalive send) may be on
+    the server, its answer lost: while the server looks reachable now it is not `unsent`
+    (`serverMayHold`), so the Undo takes the edit, which unfinishes the book either way, and
+    a failed edit puts the finish back. With the server down no edit can be made, and that
+    Undo is done here too; fe#208). An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that

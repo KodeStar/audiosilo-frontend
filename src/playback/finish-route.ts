@@ -74,11 +74,11 @@ export async function recordFinishEvent(ref: FinishRef): Promise<boolean> {
 /**
  * Undo a Mark as finished with `edit` (the progress edit that unfinishes the book, at
  * `ref.position`): the book's finish event still waiting in the outbox is taken back first,
- * since sent after the edit it would finish the book again. A finish the server never got
- * (offline) needs no edit: taken back, this device's record goes back to the place before
- * and the Undo is done (an edit offline fails, and putting the finish back sent it on
- * reconnect). Else the edit, and an edit that failed puts the finish back. Resolves to
- * whether the book is unfinished.
+ * since sent after the edit it would finish the book again. A finish that never reached the
+ * server (offline) needs no edit: taken back, this device's record goes back to the place
+ * before and the Undo is done (an edit offline fails, and putting the finish back sent it on
+ * reconnect). Else the edit (a finish the server has, or may have: `Withdrawal.unsent`), and
+ * an edit that failed puts the finish back. Resolves to whether the book is unfinished.
  */
 export async function undoFinish(ref: UndoRef, edit: () => Promise<boolean>): Promise<boolean> {
   const r = recorder;
