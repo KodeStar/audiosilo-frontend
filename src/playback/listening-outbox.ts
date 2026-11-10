@@ -51,7 +51,9 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  * further place back.
  *
  * - `audiosilo.listeningOutbox`: the closed events, each with its `connectionId`. An event is
- *   immutable once it is here (the store closes spans into new ones; nothing merges).
+ *   immutable once it is here (the store closes spans into new ones; nothing merges). On the
+ *   web, where every tab shares it, a `finish` also carries the marks of its sends
+ *   (`OutboxEntry`), which an Undo in another tab reads.
  * - `audiosilo.listeningOpenSpan`: the span being played (one per web tab playing),
  *   stored every few seconds, so a span a kill left open is closed at its last stored
  *   values on the next launch (`recoverOpenSpan`).
@@ -72,8 +74,24 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  * then on (`usesListeningSync`).
  */
 
-/** An event waiting for its server. */
-export type OutboxEntry = { connectionId: string; event: ListeningEvent };
+/**
+ * An event waiting for its server. The event is immutable; a `finish` also carries what
+ * happened to its sends, where every tab of the web player reads it (the tabs share the
+ * stored outbox but not each other's memory, so an Undo in one tab must see a send another
+ * tab made: `markOut`, `withdrawFinish`):
+ * - `out`: the requests carrying it that are out, by the tab that sent each, with the time
+ *   (ms) each is over by at the latest. A tab takes its own mark off when its request ends;
+ *   one still standing past its time was left by a tab that went with its request: the
+ *   server may hold the finish.
+ * - `maybeReached`: a request carried it while its server looked reachable and got no
+ *   answer, so the server may hold it (`serverMayHold`).
+ */
+export type OutboxEntry = {
+  connectionId: string;
+  event: ListeningEvent;
+  out?: Record<string, number>;
+  maybeReached?: true;
+};
 
 /** An event its server rejected, kept to show (the account's couldn't-sync list). */
 export type CouldNotSync = { event: ListeningEvent; reason: string; at: string };
@@ -293,11 +311,16 @@ function currentOutbox(): Promise<OutboxEntry[]> {
 export async function appendEvents(connectionId: string, given: ListeningEvent[]): Promise<void> {
   const events = given.filter(eventIsFinite);
   if (events.length < given.length) console.warn('[listening] dropped an event with no place');
-  if (events.length === 0) return;
+  await appendEntries(events.map((event) => ({ connectionId, event })));
+}
+
+/** Append entries (none already there, by event id) to the outbox. */
+async function appendEntries(entries: OutboxEntry[]): Promise<void> {
+  if (entries.length === 0) return;
   await withOutboxLock(async () => {
     const queue = await readOutbox();
     const have = new Set(queue.map((e) => e.event.id));
-    const add = events.filter((e) => !have.has(e.id)).map((event) => ({ connectionId, event }));
+    const add = entries.filter((e) => !have.has(e.event.id));
     if (add.length > 0) await writeOutbox([...queue, ...add]);
   });
 }
@@ -369,8 +392,9 @@ function leftBehind(span: StoredSpan, now: number): boolean {
 }
 
 /** Close every span left behind into the outbox. Run inside `spanOps`. Returns whether a
- * live span of another tab is still stored. */
-async function closeLeftBehind(): Promise<boolean> {
+ * live span of another tab is still stored (`live`), and the connections whose spans were
+ * closed (`swept`). */
+async function closeLeftBehind(): Promise<{ live: boolean; swept: string[] }> {
   const spans = await readSpans();
   const now = Date.now();
   const left = spans.filter((s) => leftBehind(s, now));
@@ -379,14 +403,22 @@ async function closeLeftBehind(): Promise<boolean> {
     await writeSpans(spans.filter((s) => !left.includes(s)));
     notify(); // an offline span counted while stored is now an event
   }
-  return spans.some((s) => s.owner !== tabId && !left.includes(s));
+  return {
+    live: spans.some((s) => s.owner !== tabId && !left.includes(s)),
+    swept: [...new Set(left.map((s) => s.connectionId))],
+  };
 }
 
-/** Close the spans left behind (`closeLeftBehind`) and, while another tab's live one is
- * still stored, look again once it would be stale. */
+/** Close the spans left behind (`closeLeftBehind`) and send what that put in the outbox:
+ * the tab that left them is gone, so no send of its own follows (fe#211: the events waited
+ * for this tab's next span to close). While another tab's live span is still stored, look
+ * again once it would be stale. */
 function sweepLeftBehind(): Promise<void> {
-  return spanOps(closeLeftBehind).then((live) => {
+  return spanOps(closeLeftBehind).then(({ live, swept }) => {
     if (live) checkAgainLater();
+    // Not waited for: a flush waits on the launch's recovery, which is this sweep. The web
+    // only: the app's one sweep is its launch's, which sends every outbox next.
+    if (Platform.OS === 'web' && sessionReady()) for (const cid of swept) void flushOutbox(cid);
   });
 }
 
@@ -693,16 +725,19 @@ export function watchListeningFlags(): void {
 const inFlight = new Map<string, Promise<void>>();
 const flushAgain = new Set<string>();
 const chunkSizes = new Map<string, number>();
-/** Events whose request is out now, to the end of its answer (`sending`): a withdrawal
- * waits for it. */
+/** Events whose request is out now from this tab, to the end of its answer (`sending`): a
+ * withdrawal waits for it. Another tab's are read from the stored outbox (`OutboxEntry.out`). */
 const sendingNow = new Map<string, Promise<unknown>>();
-/** Events taken back (`withdrawFinish`): a chunk read before still holding one drops it. */
+/** Events taken back here (`withdrawFinish`): a chunk read before still holding one drops
+ * it. One another tab took back is gone from the stored outbox (`markOut`). */
 const withdrawn = new Set<string>();
 /** Finish events a request carried while their server looked reachable and that got no
  * answer: the request may have arrived and only its answer been lost, so the server may
  * hold them (`serverMayHold`). This launch's only (an Undo is a toast of the launch that
  * marked the book). Never forgotten on an answer: an answered finish has left the outbox, so
- * nothing reads its mark, and one put back after a failed edit still takes the edit. */
+ * nothing reads its mark, and one put back after a failed edit still takes the edit. This
+ * tab's own; on the web the stored entry says it too (`OutboxEntry.maybeReached`), for the
+ * tab whose Undo it is. */
 const maybeReached = new Set<string>();
 
 /** Whether a request to `connectionId`'s server can be expected to leave this device: the
@@ -737,28 +772,128 @@ function gotNoAnswer(e: unknown): boolean {
   return !(e instanceof ApiError) || e.status < 400 || GATEWAY_LOST.has(e.status);
 }
 
+/** How long a finish's `out` mark stands (`OutboxEntry.out`): past a request's 15 s
+ * timeout and the read of its answer, so a mark that ran out was left by a tab that went
+ * away with its request, never by one still waiting. */
+export const OUT_MARK_MS = 45_000;
+/** How long the mark of a finish sent as the page goes stands (`sendOnPageHide`): the
+ * request outlives the page and nobody may see its answer, so an Undo in another tab waits
+ * this long for it to land before its edit (which a finish landing later would undo). */
+export const PAGE_HIDE_MARK_MS = 5_000;
+/** How often a withdrawal waiting on another tab's send looks again, when no change of the
+ * stored outbox told it sooner. */
+const OUT_POLL_MS = 200;
+
+const NONE: ReadonlySet<string> = new Set();
+
+/** Whether a request carrying `entry` is out (in any tab) by its stored marks. */
+const isOut = (entry: OutboxEntry, now: number) =>
+  isRecord(entry.out) && Object.values(entry.out).some((until) => until > now);
+
+/** `entry` marked as out from this tab until `until` (beside any other tab's mark). */
+const markedOut = (entry: OutboxEntry, until: number): OutboxEntry => ({
+  ...entry,
+  out: { ...(isRecord(entry.out) ? entry.out : {}), [tabId]: until },
+});
+
+/**
+ * Before a request that carries finishes (`ids`), on the web: under the outbox's lock, the
+ * ones no longer stored are found (taken back by an Undo in another tab, or answered
+ * there; returned, and not sent), and the rest are marked as out in the stored outbox
+ * (`OutboxEntry.out`), where a withdrawal in any tab reads it. The lock orders the two: a
+ * withdrawal either took the finish back first, or finds it out and waits.
+ */
+function markOut(ids: string[]): Promise<ReadonlySet<string>> {
+  return withOutboxLock(async () => {
+    const queue = await readOutbox();
+    const stored = new Set(queue.map((e) => e.event.id));
+    const gone = new Set(ids.filter((id) => !stored.has(id)));
+    if (gone.size < ids.length) {
+      const until = Date.now() + OUT_MARK_MS;
+      await writeOutbox(queue.map((e) => (ids.includes(e.event.id) ? markedOut(e, until) : e)));
+    }
+    return gone;
+  }).catch(() => NONE);
+}
+
+/**
+ * After that request: this tab's `out` marks come off the finishes still stored (an
+ * answered one has left the outbox), and the ones the request carried with no answer
+ * (`lost`) are marked `maybeReached`, in one write, so a withdrawal that waited never reads
+ * a finish as neither.
+ */
+function markSettled(ids: string[], lost: string[]): Promise<void> {
+  if (ids.length === 0) return Promise.resolve();
+  return withOutboxLock(async () => {
+    const queue = await readOutbox();
+    let changed = false;
+    const next = queue.map((entry): OutboxEntry => {
+      if (!ids.includes(entry.event.id)) return entry;
+      const mine = isRecord(entry.out) && tabId in entry.out;
+      const reached = lost.includes(entry.event.id) && !entry.maybeReached;
+      if (!mine && !reached) return entry;
+      changed = true;
+      const { out, ...unmarked } = entry;
+      const { [tabId]: _mine, ...others } = out ?? {};
+      return {
+        ...unmarked,
+        ...(Object.keys(others).length > 0 ? { out: others } : {}),
+        ...(reached ? { maybeReached: true } : {}),
+      };
+    });
+    if (changed) await writeOutbox(next);
+  }).catch(() => undefined);
+}
+
 /**
  * The events of `chunk` still to go (not taken back meanwhile), marked as out while `send`
- * runs. Called after a send's last wait, so a withdrawal either took an event back first or
- * finds it out and waits.
+ * runs: in this tab's memory (`sendingNow`) and, for a finish on the web, in the stored
+ * outbox (`markOut`), so a withdrawal in this tab or another either took an event back
+ * first or finds it out and waits. The memory mark is set with no wait after the last
+ * check of `withdrawn`.
  */
 async function sending<T>(
   chunk: OutboxEntry[],
   send: (live: OutboxEntry[]) => Promise<T>,
 ): Promise<T> {
-  const live = chunk.filter((e) => !withdrawn.has(e.event.id));
+  const marked = sharedAcrossTabs()
+    ? chunk.filter((e) => e.event.kind === 'finish').map((e) => e.event.id)
+    : [];
+  const gone = marked.length > 0 ? await markOut(marked) : NONE;
+  const live = chunk.filter((e) => !withdrawn.has(e.event.id) && !gone.has(e.event.id));
   const leaving = finishesLeaving(live);
   const run = send(live);
-  const settled = run.catch(() => undefined);
+  // Settled once its marks are: a withdrawal that waited reads them next.
+  const settled = run
+    .then(
+      () => [],
+      (e: unknown) => (gotNoAnswer(e) ? leaving : []),
+    )
+    .then((lost) => {
+      for (const id of lost) maybeReached.add(id);
+      return markSettled(marked, lost);
+    });
   for (const e of live) sendingNow.set(e.event.id, settled);
   try {
     return await run;
-  } catch (e) {
-    if (gotNoAnswer(e)) for (const id of leaving) maybeReached.add(id);
-    throw e;
   } finally {
+    await settled;
     for (const e of live) if (sendingNow.get(e.event.id) === settled) sendingNow.delete(e.event.id);
   }
+}
+
+/** Resolves at the next change of the outbox (this tab's write, or another tab's through
+ * the `storage` event), or after `ms`. */
+function outboxChanged(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      stop();
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    const stop = onOutboxChange(done);
+  });
 }
 
 /** What `withdrawFinish` took back. */
@@ -779,8 +914,11 @@ export type Withdrawal = {
  * request with no answer is one that never left: the Undo is then done on this device, as
  * for a finish no request carried.
  */
-function serverMayHold(connectionId: string, id: string): boolean {
-  return maybeReached.has(id) && looksReachable(connectionId);
+function serverMayHold(connectionId: string, entry: OutboxEntry): boolean {
+  // An `out` mark on a finish taken back has run out (a live one is waited for): the tab
+  // that sent it went with its request.
+  const carried = maybeReached.has(entry.event.id) || !!entry.maybeReached || !!entry.out;
+  return carried && looksReachable(connectionId);
 }
 
 /**
@@ -788,6 +926,12 @@ function serverMayHold(connectionId: string, id: string): boolean {
  * (fe#208): a finish sent after the edit would finish the book again. One whose request is
  * out is waited for (answered, the server has it and the edit comes after it; unanswered,
  * it is taken back).
+ *
+ * Across the tabs of the web player the same holds through the stored outbox, which every
+ * tab reads under its lock (fe#123): a send in another tab marked the finish as out there
+ * first (`markOut`) and is waited for by that mark, a send that comes after the withdrawal
+ * finds the finish gone and leaves it out of its request, and what another tab's request
+ * carried with no answer is read from its `maybeReached` mark.
  *
  * A finish taken back counts as unsent only when the server cannot hold it or cannot be
  * asked (`serverMayHold`). Counted as unsent after a lost answer, the Undo was done on this
@@ -805,37 +949,49 @@ export async function withdrawFinish(
     e.event.kind === 'finish' &&
     e.event.library_id === libraryId &&
     e.event.path === path;
-  const taken: ListeningEvent[] = [];
+  const taken: OutboxEntry[] = [];
   // The finishes waited for: one not taken back after was answered (the server has it).
   const waitedFor = new Set<string>();
   for (;;) {
     const wait = await withOutboxLock(async () => {
       const queue = await readOutbox();
       const mine = queue.filter(isMine);
-      const outIds = mine.map((e) => e.event.id).filter((id) => sendingNow.has(id));
-      const out = outIds.length > 0 ? sendingNow.get(outIds[0]) : undefined;
-      // Boxed: a promise returned as is would hold the lock until it settles (its answer
-      // needs the lock).
-      if (out) {
-        for (const id of outIds) waitedFor.add(id);
-        return { out };
+      const now = Date.now();
+      // Out from this tab (its request's own end is waited for), or by the stored mark
+      // from another tab, whose answer shows as a change of the stored outbox.
+      const here = mine.filter((e) => sendingNow.has(e.event.id));
+      const elsewhere = mine.filter((e) => !sendingNow.has(e.event.id) && isOut(e, now));
+      if (here.length + elsewhere.length > 0) {
+        for (const e of [...here, ...elsewhere]) waitedFor.add(e.event.id);
+        // Boxed: a promise returned as is would hold the lock until it settles (its answer
+        // needs the lock).
+        return {
+          out: here.length > 0 ? sendingNow.get(here[0].event.id) : outboxChanged(OUT_POLL_MS),
+        };
       }
       for (const e of mine) withdrawn.add(e.event.id);
-      taken.push(...mine.map((e) => e.event));
+      taken.push(...mine);
       if (mine.length > 0) await writeOutbox(queue.filter((e) => !isMine(e)));
       return null;
     });
     if (!wait) break;
     await wait.out;
   }
-  const answered = [...waitedFor].some((id) => !taken.some((e) => e.id === id));
-  const held = taken.some((e) => serverMayHold(connectionId, e.id));
+  const answered = [...waitedFor].some((id) => !taken.some((e) => e.event.id === id));
+  const held = taken.filter((e) => serverMayHold(connectionId, e));
   return {
-    unsent: taken.length > 0 && !answered && !held,
+    unsent: taken.length > 0 && !answered && held.length === 0,
     restore: async () => {
       if (taken.length === 0) return;
-      for (const e of taken) withdrawn.delete(e.id);
-      await appendEvents(connectionId, taken);
+      for (const e of taken) withdrawn.delete(e.event.id);
+      // Back without a send's mark; what the server may hold stays marked for every tab.
+      await appendEntries(
+        taken.map(({ event, maybeReached: reached, out }) => ({
+          connectionId,
+          event,
+          ...(reached || out ? { maybeReached: true as const } : {}),
+        })),
+      );
       void flushOutbox(connectionId);
     },
   };
@@ -1209,8 +1365,12 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
   if (!sessionReady()) return;
   const byConnection = new Map<string, OutboxEntry[]>();
   const seen = new Set<string>();
+  const stored = storedOutboxNow();
+  const storedIds = stored && new Set(stored.entries.map((e) => e.event.id));
   for (const entry of [...(outboxCache ?? []), ...queuedCloses.values(), ...extra]) {
     if (seen.has(entry.event.id)) continue;
+    // A finish another tab took back a moment ago (its Undo), before this tab's copy heard.
+    if (entry.event.kind === 'finish' && storedIds && !storedIds.has(entry.event.id)) continue;
     seen.add(entry.event.id);
     const list = byConnection.get(entry.connectionId) ?? [];
     list.push(entry);
@@ -1222,7 +1382,9 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     const fit = fitKeepalive(entries);
     if (fit.length === 0) continue;
     // Its answer may never be seen (the page is going): the server may hold these.
-    for (const id of finishesLeaving(fit)) maybeReached.add(id);
+    const leaving = finishesLeaving(fit);
+    for (const id of leaving) maybeReached.add(id);
+    if (stored) markOutNow(stored, leaving);
     void client
       .syncListening(
         syncBody(
@@ -1233,6 +1395,49 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
       )
       .then((answer) => applyAnswer(cid, fit, answer))
       .catch(() => undefined);
+  }
+}
+
+/** What `storedOutboxNow` read: the web's `localStorage` and the outbox in it (kept in step
+ * with what `markOutNow` writes: one connection's marks after another's). */
+type StoredNow = { storage: Pick<Storage, 'setItem'>; entries: OutboxEntry[] };
+
+/**
+ * The stored outbox, read without a wait: the web's `localStorage` (where the web's storage
+ * keeps it, under the key as it is), for a page that is going, where no lock can be waited
+ * for and no promise runs on. Null off the web, and while this tab's copy is not the stored
+ * one (never read, or holding a write storage refused).
+ */
+function storedOutboxNow(): StoredNow | null {
+  if (Platform.OS !== 'web' || !outboxRead || outboxUnsaved) return null;
+  try {
+    const storage = (globalThis as { localStorage?: Storage }).localStorage;
+    if (!storage) return null;
+    const raw = storage.getItem(OUTBOX_KEY);
+    return { storage, entries: raw ? entriesOf(JSON.parse(raw)) : [] };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Mark the finishes `ids` as out in the stored outbox, as the page goes: for
+ * `PAGE_HIDE_MARK_MS`, with nobody to take the mark off, so an Undo in another tab waits
+ * that long for the request to land, then reads the mark left standing as "the server may
+ * hold it" and sends its edit. Written outside the outbox's lock (a page that is going
+ * cannot wait for one), in the same task as the read: a write another tab makes from an
+ * older read can only lose the mark again.
+ */
+function markOutNow(stored: StoredNow, ids: string[]): void {
+  if (!stored.entries.some((e) => ids.includes(e.event.id))) return;
+  const until = Date.now() + PAGE_HIDE_MARK_MS;
+  const next = stored.entries.map((e) => (ids.includes(e.event.id) ? markedOut(e, until) : e));
+  try {
+    stored.storage.setItem(OUTBOX_KEY, JSON.stringify(next));
+    stored.entries = next;
+    outboxCache = next;
+  } catch {
+    // Storage refuses the write: the mark is this tab's memory only.
   }
 }
 
