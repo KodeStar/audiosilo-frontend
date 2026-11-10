@@ -306,7 +306,12 @@ class WebPlaybackService implements PlaybackService {
       }
     });
     a.addEventListener('playing', () => {
-      if (!active()) return;
+      // A `playing` queued before a pause that has since landed (the element is paused, and
+      // its 'pause' follows) is not playback: reported, the store would read it as a play
+      // begun here, and with its intent dropped (a give-way, a pause in the start window)
+      // as a new play that takes the connection from the tab playing now
+      // (`playing-claim.ts`).
+      if (!active() || a.paused) return;
       this.pendingAutoplay = false;
       this.update({ state: 'playing' });
     });

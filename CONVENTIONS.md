@@ -1757,9 +1757,11 @@ media GETs only.
   left, so the span is one event), except that the engine is paused whatever the snapshot
   reads (a play asked for a moment ago, whose first engine event has not arrived, must not
   go on to `playing`: with the intent dropped it would read as a new play and take the
-  connection back); and the listener is told with a toast, "Playing in
-  another tab" (`other-tab-notice.ts`, a root service; shown once the tab is looked at, and
-  the store keeps a give-way nobody was there to hear until the service registers). It keeps
+  connection back; for the same reason the web engine reports no `playing` for an element
+  that is paused by then, one the browser queued before the pause landed); and the listener
+  is told with a toast, "Playing in another tab" (`other-tab-notice.ts`, a root service;
+  shown once the tab is looked at, and the store keeps a give-way nobody was there to hear
+  until the service registers). It keeps
   its book and place, and a play there claims the connection back. A tab whose stream died
   (`error`, no Retry out) is not playing and is told nothing, but its engine is paused all the
   same: a stream that came back by itself would read as a new play and take the connection

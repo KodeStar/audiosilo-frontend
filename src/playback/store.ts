@@ -1060,8 +1060,8 @@ function claimPlaying() {
  * means to, and that play is the newer one (`givesWayTo`), this one gives way: its span
  * ends where the engine is, dated no later than the other tab's began, then it pauses (the
  * intent dropped, the place saved as the engine reports the pause, which finds no span left
- * to close, so the span is one event) and the listener is told (`onGaveWayToTab`). The book and its place
- * stay loaded: a play here claims the connection back.
+ * to close, so the span is one event) and the listener is told (`onGaveWayToTab`). The book
+ * and its place stay loaded: a play here claims the connection back.
  *
  * A tab whose stream died is not playing, so it has nothing to give way with; its engine is
  * stopped all the same, so the stream cannot come back by itself and play over the other tab.

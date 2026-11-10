@@ -494,6 +494,20 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
     }
   });
 
+  it('a `playing` that arrives after a pause is not reported: the element is paused', async () => {
+    await svc.load(directTracks, 0, 0);
+    const a = el();
+    a.emit('loadedmetadata');
+    await svc.play();
+    states.length = 0;
+    // The browser queued the element's `playing`; a pause lands before it is delivered (the
+    // listener's, or this tab giving way to another tab's play).
+    await svc.pause();
+    a.emit('playing');
+    expect(states).toEqual(['paused']);
+    expect(svc.getSnapshot().state).toBe('paused');
+  });
+
   it('moves on at the natural end of a file without ever reporting a pause', async () => {
     await startPlaying(0);
     const a = el();
