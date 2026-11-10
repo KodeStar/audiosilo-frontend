@@ -599,6 +599,14 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
   });
 
+  it("keeps the book's own speed in the mirror (the book page gives none)", async () => {
+    mockReadMirror.mockResolvedValue({ ack_version: 41, playback_speed: 1.6 });
+    await recordFinishEvent({ ...ref, path: 'Other/Book' });
+    expect(mockWriteMirror).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'Other/Book', finished: true, playback_speed: 1.6 }),
+    );
+  });
+
   it('a book that is not loaded: only the finish, queued even with its server away', async () => {
     const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
     try {

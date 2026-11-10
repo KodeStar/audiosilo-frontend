@@ -950,9 +950,13 @@ async function recordFinish(ref: FinishRef): Promise<void> {
   const loaded = !!np && sameBook(np, ref);
   const closing = span && sameBook(span, ref) ? takeSpan() : null;
   if (loaded) finishSent = contentKeyOf(ref);
-  await writeMirror(finishedSave(ref, deviceId || (await getDeviceId()), at)).catch(
-    () => undefined,
-  );
+  // The book page gives no speed: the book's own stays in the mirror (an offline Listen
+  // again reads it), never 1x.
+  const speed =
+    ref.playback_speed ??
+    (await readMirror(ref.connectionId, ref.libraryId, ref.path).catch(() => null))?.playback_speed;
+  const id = deviceId || (await getDeviceId());
+  await writeMirror(finishedSave({ ...ref, playback_speed: speed }, id, at)).catch(() => undefined);
   await finishAfter(closing, ref, at, () => refreshAfterFinish(ref));
 }
 
