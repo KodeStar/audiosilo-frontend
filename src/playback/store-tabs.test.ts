@@ -911,6 +911,40 @@ describe.each([
       expectNoSharedSeconds();
     });
 
+    it('a tab still moving to the shared place gives way with no place of its own', async () => {
+      const c = await openTab(browser);
+      try {
+        // C has the book too, paused at 30 s before the others play it.
+        mockMirror.on = true;
+        await c.start(30, 'c1', long);
+        await c.player().pause();
+        await playedPast(a, b);
+        b.engine.at(50);
+        await b.player().pause();
+        const key = mirrorKey('c1', 2, long.book.rel_path);
+        await until(() => mockMirror.records.get(key)?.position === 50, "B's place to be saved");
+
+        // A plays by itself from its 30 s, and its move to B's 50 s is still out.
+        a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
+        await a.engine.svc.play();
+        await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
+        await sleep(40); // C hears A's claim
+
+        // C plays from the shared 50 s. A gives way, and the 30 s its engine is still at is
+        // not where the listening was: C is told nothing, and stays.
+        await c.player().toggle();
+        await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+        await sleep(40);
+        expect(c.engine.svc.seekTo.mock.calls).toEqual([[50]]);
+        expect(c.player().snapshot).toMatchObject({ state: 'playing', position: 50 });
+      } finally {
+        await c.player().stop();
+        await c.outbox.storeOpenSpan(null);
+        await sleep(0);
+        await c.outbox.flushOutbox('c1');
+      }
+    });
+
     it('a move still out when another book starts holds none of that book', async () => {
       await playedPast(a, b);
       b.engine.at(90);

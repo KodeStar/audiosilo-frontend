@@ -1818,7 +1818,8 @@ media GETs only.
     told from a claim by its `kind`; `tabClaims().answer`, both transports): connection,
     book (library and path), the place its span ended at (whole-book seconds and the file
     place), whether that is the book's end, its tab and the claim it answers (`to`,
-    `claimedAt`). Only a tab that was not itself behind another's play answers. The
+    `claimedAt`). Only a tab that was not itself behind another's play answers (the note,
+    or a move to the shared place still out: `catchingUp`). The
     claiming tab (`onGaveWayAnswer`) moves there by `moveToTabPlace`, the same path as the
     mirror's: the listening it began at the older place is dropped (`dropListening`: the
     open span, stored or not, and the history's start, with no event) and begins again at

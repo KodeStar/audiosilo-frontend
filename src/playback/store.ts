@@ -1091,8 +1091,9 @@ function claimPlaying() {
  * Another tab began playing (its `claim`). When this tab plays on the same connection, or
  * means to, and that play is the newer one (`givesWayTo`), this one gives way: its span
  * ends where the engine is, dated no later than the other tab's began, then it pauses (the
- * intent dropped, the place saved as the engine reports the pause, which finds no span left
- * to close, so the span is one event) and the listener is told (`onGaveWayToTab`). The book
+ * intent dropped; the place was saved before the note below, so the save the pause makes
+ * writes nothing, and the pause finds no span left to close, so the span is one event) and
+ * the listener is told (`onGaveWayToTab`). The book
  * stays loaded: a play here claims the connection back, from where the other tab left the
  * book when it played the same one (`otherTabsPlace`).
  *
@@ -1105,7 +1106,8 @@ function claimPlaying() {
  * A tab that gives way answers the claim with the place it stopped at (`GaveWay`), which is
  * where its span ended: the other tab began from this tab's last save, up to 15 s behind,
  * and plays on from here instead (`onGaveWayAnswer`). Not a tab that was itself behind
- * another's play (a press still reading the shared place): its place is not the latest.
+ * another's play (a press still reading the shared place, a play that began by itself still
+ * moving there: `catchingUp`): its place is not the latest.
  */
 function giveWayTo(claim: PlayingClaim) {
   const { nowPlaying: np, snapshot } = usePlayer.getState();
@@ -1116,7 +1118,7 @@ function giveWayTo(claim: PlayingClaim) {
     askedAt: playAskedAt,
   };
   const gives = givesWayTo(claim, mine);
-  const wasBehind = otherTabPlayed?.connectionId === claim.connectionId;
+  const wasBehind = catchingUp !== null || otherTabPlayed?.connectionId === claim.connectionId;
   // Not when it plays on (the newer play is this tab's: the other tab follows it).
   if (np && np.connectionId === claim.connectionId && (gives || !mine.live)) {
     // The place it gives way at is saved first: nothing of its own is saved after the note.
@@ -1397,8 +1399,8 @@ function catchUpPlaying(svc: PlaybackService, since: number) {
  * `GAVE_WAY_ANSWER_MS` after it; another connection's or another book's; while a book
  * loads; when the listener chose the place here (`placeChosen`: an explicit start, a seek
  * since); when yet another tab plays by now (this tab is behind it); a place within
- * `SAME_PLACE_S` of the one this play began at; and a finished one (the book is not started again under a listener who
- * is hearing it: the next resume reads the save).
+ * `SAME_PLACE_S` of the one this play began at; and a finished one (the book is not started
+ * again under a listener who is hearing it: the next resume reads the save).
  */
 function onGaveWayAnswer(answer: GaveWay) {
   // Still moving to the shared place (`catchUpPlaying`): read against where that lands.
