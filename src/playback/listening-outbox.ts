@@ -1003,6 +1003,8 @@ function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
  * answering without `listening_sync` (anything else answering at the address, a home
  * address another host holds on this network, keeps the outbox for a later send). The
  * events go as legacy saves, then leave the outbox (a kill between sends them again).
+ * Each carries the replay guard (fe#198): no server ever resolved those spans against its
+ * row, and a last-write-wins PUT of them could move another device's further place back.
  */
 async function rollBack(connectionId: string, client: ApiClient): Promise<void> {
   const info = await client.serverInfo().catch(() => null);
@@ -1013,7 +1015,7 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
   for (const save of legacySavesOf(connectionId, mine, deviceId)) {
-    await saveProgress(client, save);
+    await saveProgress(client, { ...save, guard: true });
   }
   await removeEvents(new Set(mine.map((e) => e.event.id)));
 }

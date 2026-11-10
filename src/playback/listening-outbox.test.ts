@@ -143,6 +143,7 @@ function client(
   const c = {
     syncListening: jest.fn(sync),
     saveProgress: jest.fn(async () => ({})),
+    getProgress: jest.fn(async (): Promise<unknown> => null),
     serverInfo: jest.fn(serverInfo),
   };
   (resolveClient as jest.Mock).mockImplementation((cid: string) =>
@@ -587,6 +588,27 @@ describe('flushOutbox', () => {
     // From now on this connection saves by PUT, and its capability is read again.
     expect(usesListeningSync('c1')).toBe(false);
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+  });
+
+  it("a rolled-back listen is held by another device's further place (the replay guard)", async () => {
+    await appendEvents('c1', [listen('a')]);
+    const c = client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    c.getProgress.mockResolvedValue({
+      library_id: 3,
+      path: 'Author/Book',
+      position: 20000,
+      duration: 61200,
+      finished: false,
+      version: 7,
+      device_id: 'other-device',
+      updated_at: '2026-10-25T09:00:00.000Z',
+    });
+    await flushOutbox('c1');
+    expect(c.getProgress).toHaveBeenCalledWith(3, 'Author/Book');
+    expect(c.saveProgress).not.toHaveBeenCalled();
+    expect(await outboxEvents('c1')).toEqual([]);
   });
 
   it('unsentListens sends once more while reachable, else only counts', async () => {
