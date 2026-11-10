@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, View } from 'react-native';
+import { Dimensions, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CastButton } from '@/cast/cast-button';
@@ -42,10 +42,19 @@ const DOCK_PAD = 16;
 const DOCK_GAP = 16;
 /** What a side column needs for every action (speed, sleep, bookmark, output, cast, Up
  * next, expand: about 388) or for the tablet set (sleep, Up next, expand: about 210), with
- * the sleep pill at its widest (a running "10:05:00" or "Keep going", about 128), so the
- * actions never reach the transport whatever the timer shows. */
+ * the sleep pill at its widest (a running "10:05:00" or "Keep going", about 128). Both are
+ * px ESTIMATES at the default text size, not measurements: where an equal side column
+ * would be narrower than its set's estimate the actions column is content-sized instead
+ * (`dockLayout`'s `centred`), so at the default size the actions never reach the
+ * transport whatever the timer shows. Scaled text (a browser font size of 20 px or more,
+ * iPad Dynamic Type XXXL and up) makes the pills wider than the estimates and can still
+ * put them over the transport; measuring the actions column is the follow-up. */
 const SIDE_ALL = 390;
 const SIDE_TABLET = 220;
+/** The two ways a side column is sized (`dockLayout`'s `centred`): an equal share from
+ * nothing, or its content's width, never shrunk. */
+const SIDE_EQUAL = 'min-w-0 flex-1 basis-0';
+const SIDE_CONTENT = 'shrink-0 basis-auto';
 /** The middle column with the scrubber row: never narrower (a usable scrubber), never
  * wider (a long track on a wide window is a long way to drag). */
 const CENTRE_MIN = 300;
@@ -58,20 +67,31 @@ const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
  * the desktop drawer; a tablet, a split view or a narrow browser window is less), and how
  * wide its middle column is: every action (speed, bookmark, output, cast) once both side
- * columns have room for them beside a full-width scrubber row (from 1144); below it the
- * tablet set, whose hidden actions are all in the full player; below 800 the chapter
- * scrubber row goes too (the transport alone is the middle column).
+ * columns have room for them beside a scrubber row at its minimum width (from 1144, where
+ * the middle column is `CENTRE_MIN`); below it the tablet set, whose hidden actions are
+ * all in the full player; below 800 the chapter scrubber row goes too (the transport
+ * alone is the middle column).
  *
  * Three columns (fe#244): the book and the actions are equal side columns and the
  * transport sits between them, so it is centred on the bar whatever the title, the
- * actions or the sleep countdown. Only the width decides any of it: the Undo chip floats
- * above the bar (`DockedPlayer`), so a jump never moves or resizes the scrubber under the
- * pointer that made it.
+ * actions or the sleep countdown (`centred`). Only the width decides any of it: the Undo
+ * chip floats above the bar (`DockedPlayer`), so a jump never moves or resizes the
+ * scrubber under the pointer that made it.
+ *
+ * `centred` is false on a bar too narrow for that, below 732 (the dock starts at 640):
+ * without the scrubber row an equal side column is (width - 292) / 2, less than the
+ * tablet set's `SIDE_TABLET`, and a running sleep pill reached the next-chapter button.
+ * There the actions column is as wide as its content and never shrinks, the book column
+ * takes the squeeze, and the transport sits wherever that leaves it (off the centre).
+ * With the scrubber row the middle column's minimum has first call on the width, so at
+ * 800 to 803 a side column is 218 or 219, which the tablet set (about 210) still fits:
+ * centred.
  */
 export function dockLayout(width: number): {
   allActions: boolean;
   scrubber: boolean;
   centre: number;
+  centred: boolean;
 } {
   const inner = width - 2 * DOCK_PAD - 2 * DOCK_GAP;
   const allActions = inner - 2 * SIDE_ALL >= CENTRE_MIN;
@@ -80,7 +100,8 @@ export function dockLayout(width: number): {
   const centre = scrubber
     ? Math.min(CENTRE_MAX, Math.max(CENTRE_MIN, inner - 2 * side))
     : transportWidth('sm');
-  return { allActions, scrubber, centre };
+  const centred = scrubber || inner - centre >= 2 * side;
+  return { allActions, scrubber, centre, centred };
 }
 
 /** The chapter scrubber row: elapsed in the chapter, a thin scrubber with the chapter's
@@ -246,10 +267,12 @@ export function DockedPlayer() {
     );
   }
 
-  // The row's width (the bar's, inside its side insets); before the first layout, the
-  // form factor's guess.
-  const { allActions, scrubber, centre } = dockLayout(
-    size ? size.width - insets.left - insets.right : desktop ? 1280 : 800,
+  // The row's width (the bar's, inside its side insets); before the first layout the
+  // window's, which the bar spans. A guess by form factor (1280 on desktop) drew every
+  // action over the scrubber, and mounted the Cast button, for one frame on a window of
+  // 1024 to 1143.
+  const { allActions, scrubber, centre, centred } = dockLayout(
+    (size?.width ?? Dimensions.get('window').width) - insets.left - insets.right,
   );
   const { queue, title, author } = nowPlaying;
   // Under a chapter heading the book and its author; when the heading is already the
@@ -291,8 +314,10 @@ export function DockedPlayer() {
             accessibilityRole="button"
             accessibilityLabel={t('shell.openPlayer', { title })}
             className={cn(
-              // A side column: as wide as the actions' (both flex from nothing).
-              'min-w-0 flex-1 basis-0 flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent',
+              // A side column: as wide as the actions' while they are equal (both flex
+              // from nothing), and what the actions leave on a bar too narrow for that.
+              SIDE_EQUAL,
+              'flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent',
               Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
             )}
           >
@@ -323,10 +348,14 @@ export function DockedPlayer() {
 
           <View
             testID="dock-actions"
-            // The other side column, its actions against the bar's end. Its side padding is
-            // the book's (`p-1.5`): a flex basis of 0 still counts padding, so unequal
-            // padding would make unequal columns and move the transport off the centre.
-            className="min-w-0 flex-1 basis-0 flex-row items-center justify-end gap-1 px-1.5"
+            // The other side column, its actions against the bar's end: equal to the book's,
+            // or content-sized where an equal one would be too narrow (`centred`). Its side
+            // padding is the book's (`p-1.5`): a flex basis of 0 still counts padding, so
+            // unequal padding would make unequal columns and move the transport off the centre.
+            className={cn(
+              centred ? SIDE_EQUAL : SIDE_CONTENT,
+              'flex-row items-center justify-end gap-1 px-1.5',
+            )}
           >
             {allActions ? <SpeedPill /> : null}
             <View testID="dock-sleep">

@@ -400,7 +400,8 @@ Phone: cover and title side by side, buttons full width.
 84 tall translucent bar with a 3 px whole-book progress line along its top edge. Left: cover, chapter title,
 book · author, sync state. Centre: previous chapter, skip back, play, skip forward, next chapter; chapter
 scrubber with bookmark ticks and time left in the book at your speed, centred on the bar (the left and right
-columns are equal). Right: speed, sleep (shows its countdown and turns `--brand-soft` while running), bookmark,
+columns are equal; a bar narrower than 732 has no room for that, so there the right column is as wide as its
+actions and the transport sits off the centre). Right: speed, sleep (shows its countdown and turns `--brand-soft` while running), bookmark,
 output, Up next, expand. After a jump the Undo chip floats just above the bar, centred over the transport; the
 bar never re-lays out for it. Click the book to open the full player.
 

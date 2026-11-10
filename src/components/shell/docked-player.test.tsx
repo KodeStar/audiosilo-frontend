@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Dimensions } from 'react-native';
 
 import type { PlayerStoreMock } from '@/testing/player-store-mock';
 
@@ -29,6 +30,11 @@ jest.mock('@/components/upnext/up-next-button', () => {
   return {
     UpNextButton: ({ variant }: { variant: string }) => <RNText>{`upnext-${variant}`}</RNText>,
   };
+});
+// The Cast button, as a marker: mounting the real one can load the Cast sender script.
+jest.mock('@/cast/cast-button', () => {
+  const { View: RNView } = jest.requireActual('react-native');
+  return { CastButton: ({ testID }: { testID?: string }) => <RNView testID={testID} /> };
 });
 let mockBookmarks: number[] = [];
 jest.mock('@/components/player/use-playing-pins', () => ({
@@ -140,14 +146,50 @@ describe('dockLayout', () => {
 
   it('leaves each side room for its actions with the sleep pill at its widest, at every width', () => {
     // Every action with a running "10:05:00" or "Keep going" is about 388 wide; the tablet
-    // set about 210 (fe#244 review: at 330 they reached the scrubber's labels).
+    // set about 210 (fe#244 review: at 330 they reached the scrubber's labels). From 640,
+    // where the dock starts: below 800 an equal side column was (width - 292) / 2, and
+    // "Keep going" sat over the next-chapter button up to about 692.
     const tight: number[] = [];
-    for (let width = 800; width <= 1900; width += 4) {
-      const { allActions, centre } = dockLayout(width);
-      // The bar's padding and gaps are 64 in all.
-      if ((width - 64 - centre) / 2 < (allActions ? 388 : 210)) tight.push(width);
+    for (let width = 640; width <= 1900; width += 1) {
+      const { allActions, centre, centred } = dockLayout(width);
+      const need = allActions ? 388 : 210;
+      // The bar's padding and gaps are 64 in all. Equal columns each get half the rest;
+      // a content-sized actions column takes what it needs, and the book column (its
+      // padding and a 48 cover: 60) the remainder.
+      const rest = width - 64 - centre;
+      if (centred ? rest / 2 < need : rest - need < 60) tight.push(width);
     }
     expect(tight).toEqual([]);
+  });
+
+  it.each([640, 680, 711, 731])(
+    'at %i gives up the centre: equal side columns would be narrower than the tablet set',
+    (width) => {
+      expect(dockLayout(width)).toEqual({
+        allActions: false,
+        scrubber: false,
+        centre: 228,
+        centred: false,
+      });
+      // What an equal side column would have been: under the 220 the tablet set is given.
+      expect((width - 64 - 228) / 2).toBeLessThan(220);
+    },
+  );
+
+  it('centres the transport again from 732, the first width whose side columns fit the tablet set', () => {
+    expect(dockLayout(732)).toEqual({
+      allActions: false,
+      scrubber: false,
+      centre: 228,
+      centred: true,
+    });
+    expect((732 - 64 - 228) / 2).toBe(220);
+    // And at every width above it, with or without the scrubber row, whatever the actions.
+    const offCentre: number[] = [];
+    for (let width = 732; width <= 1900; width += 1) {
+      if (!dockLayout(width).centred) offCentre.push(width);
+    }
+    expect(offCentre).toEqual([]);
   });
 });
 
@@ -355,6 +397,74 @@ describe('DockedPlayer', () => {
     expect(screen.getByTestId('dock-row').props.style).toMatchObject({ paddingHorizontal: 16 });
     expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 436 });
     expect(screen.getByTestId('dock-centre').props.className).toContain('shrink-0');
+  });
+
+  it.each([640, 680, 711])(
+    'at %i sizes the actions to their content and lets the book take the squeeze',
+    async (width) => {
+      mockLayout = 'tablet';
+      useSleepTimer.setState({ phase: 'grace', remaining: 20 });
+      await renderAt(width);
+      expect(screen.getByText('Keep going')).toBeTruthy();
+      // The actions column is as wide as its pills and never shrinks under the transport.
+      const actions = screen.getByTestId('dock-actions').props.className;
+      expect(actions).toContain('shrink-0 basis-auto');
+      expect(actions).not.toContain('flex-1');
+      expect(actions).not.toContain('min-w-0');
+      // The book column still flexes and may shrink: it takes what is left.
+      const book = screen.getByTestId('dock-book').props.className;
+      expect(book).toContain('min-w-0 flex-1 basis-0');
+      // The transport alone, at its own width, not shrunk either.
+      expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 228 });
+      expect(screen.getByTestId('dock-centre').props.className).toContain('shrink-0');
+      expect(screen.queryByText('47m left at 1.25×')).toBeNull();
+    },
+  );
+
+  it('goes back to equal side columns at 732', async () => {
+    mockLayout = 'tablet';
+    useSleepTimer.setState({ phase: 'grace', remaining: 20 });
+    await renderAt(732);
+    for (const id of ['dock-book', 'dock-actions']) {
+      expect(screen.getByTestId(id).props.className).toContain('min-w-0 flex-1 basis-0');
+      expect(screen.getByTestId(id).props.className).not.toContain('basis-auto');
+    }
+    expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 228 });
+  });
+
+  describe('before its first layout', () => {
+    const windowIs = (width: number) =>
+      jest.spyOn(Dimensions, 'get').mockReturnValue({ width, height: 800, scale: 1, fontScale: 1 });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('lays out for the real window, not a form factor guess: no Cast button on a 1100 desktop', async () => {
+      // 1024 to 1143 is a desktop too narrow for every action; a guess of 1280 drew them
+      // all over the scrubber for a frame, and mounted the Cast button.
+      windowIs(1100);
+      await render(<DockedPlayer />);
+      expect(screen.queryByTestId('dock-cast')).toBeNull();
+      expect(screen.queryByTestId('dock-speed')).toBeNull();
+      expect(screen.queryByTestId('dock-bookmark')).toBeNull();
+      expect(screen.getByTestId('dock-expand')).toBeTruthy();
+      // 1100 - 64 - 2 x 220, capped at 560.
+      expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 560 });
+    });
+
+    it('shows every action at once on a window with room for them', async () => {
+      windowIs(1280);
+      await render(<DockedPlayer />);
+      expect(screen.getByTestId('dock-cast')).toBeTruthy();
+      expect(screen.getByTestId('dock-speed')).toBeTruthy();
+      expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 436 });
+    });
+
+    it('takes the measured width over the window once the bar is laid out', async () => {
+      windowIs(1280);
+      await renderAt(900);
+      expect(screen.queryByTestId('dock-cast')).toBeNull();
+      // 900 - 64 - 2 x 220.
+      expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 396 });
+    });
   });
 
   it.each([
