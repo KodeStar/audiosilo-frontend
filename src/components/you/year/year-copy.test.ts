@@ -1,4 +1,4 @@
-import i18n from '@/i18n';
+import i18n, { ensureLanguage, SUPPORTED_CODES } from '@/i18n';
 
 import {
   breakableName,
@@ -12,6 +12,10 @@ import { yearStats } from './year-fixture';
 import { buildYearCards, type YearCard } from './year-model';
 
 const t = i18n.t;
+
+// Only English is in from the start: the per-language checks below need theirs (else
+// `getFixedT` falls back to English and every language passes as English).
+beforeAll(() => Promise.all(SUPPORTED_CODES.map(ensureLanguage)));
 const ctx = { year: '2026', userName: 'alex', serverName: 'Hearthside' };
 const cards = buildYearCards({ stats: yearStats(), current: true, currentStreak: 3, goal: 50 });
 const copyOf = (kind: YearCard['kind'], c: YearCard[] = cards) =>
