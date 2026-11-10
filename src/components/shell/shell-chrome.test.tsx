@@ -302,6 +302,10 @@ describe('DockedPlayer', () => {
   it('says the time left in the book at the listening speed (frontend#50)', async () => {
     player.setState({ nowPlaying: book, rate: 1.25 });
     await render(<DockedPlayer />);
+    // The scrubber row carries it, on a bar of 800 or more (jest's window is 750 wide).
+    await fireEvent(screen.getByTestId('shell-docked-player'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 1280, height: 84 } },
+    });
     // (3600 - 30) / 1.25 = 2856 s.
     expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
   });

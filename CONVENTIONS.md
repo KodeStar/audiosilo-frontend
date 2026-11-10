@@ -2882,15 +2882,26 @@ speed, sleep (`SleepTimerButton`, `useSleepPill`: `brand-soft` + countdown while
 (`control-pill.tsx`: `pillClass` / `ControlPill`). What fits is decided by its MEASURED width
 (`dockLayout`: all actions from 1144, the tablet set below, no scrubber below 800; everything hidden is
 in the full player). Each side column is sized for its actions with the sleep pill at its widest (a
-running "10:05:00" or "Keep going"), so they never reach the transport. Three columns (fe#244): the
-book and the actions are equal side columns (`flex-1 basis-0`, the same padding both sides) and the
-middle column's width comes from `dockLayout` (`centre`), so the transport is centred on the bar
-whatever the title, actions or sleep countdown. The `UndoChip` floats above the bar, centred over the
-transport, and nothing in the bar lays out around it (it used to take room from the scrubber, which
-moved under the pointer that made the jump); while it shows the dock's published edge includes its
-band, so toasts clear it. While the sleep grace card is open the chip gives way, as in the full player
-(no chip, no band), so the card never drops when the chip expires. Speed and sleep open through
-`usePlayerSheets`; the dock mounts no sheets itself (the shell's one `PlayerSheetHost` does).
+running "10:05:00" or "Keep going"): `SIDE_ALL` and `SIDE_TABLET` are px estimates at the default text
+size, not measurements, so the actions keep clear of the transport at that size only. Scaled text (a
+browser font size of 20 px or more, iPad Dynamic Type XXXL and up) widens the pills past the estimates
+and can still put them over the transport; measuring the actions column is the follow-up. Three columns
+(fe#244): the book and the actions are equal side columns (`flex-1 basis-0`, the same padding both
+sides) and the middle column's width comes from `dockLayout` (`centre`), so the transport is centred on
+the bar whatever the title, actions or sleep countdown. The one exception is `dockLayout`'s `centred:
+false`, a bar of 640 to 731: with no scrubber row an equal side column, (width - 292) / 2, is narrower
+than `SIDE_TABLET` (a running sleep pill reached the next-chapter button there), so the actions column
+is content-sized and never shrinks (`shrink-0 basis-auto`), the book column takes the squeeze and the
+transport sits off the centre; from 732 the columns are equal again. Before its first layout the bar
+lays out for the window's width (`Dimensions`), never a guess by form factor: 1280 on a 1024 to 1143
+desktop drew every action for a frame and mounted the Cast button. The `UndoChip` floats above the bar,
+centred on the BAR (so over the transport wherever the side columns are equal; under 732 the transport
+is off the centre and the chip is not moved to follow it), and nothing in the bar lays out around it (it
+used to take room from the scrubber, which moved under the pointer that made the jump); while it shows
+the dock's published edge includes its band, so toasts clear it. While the sleep grace card is open the
+chip gives way, as in the full player (no chip, no band), so the card never drops when the chip
+expires. Speed and sleep open through `usePlayerSheets`; the dock mounts no sheets itself (the shell's
+one `PlayerSheetHost` does).
 Route-driven side effects (search reset on leaving the Search tab, browse scroll memory) are
 `useShellEffects`.
 - **Full player** (`src/app/player.tsx` thin, `src/components/player/player-view.tsx`, pieces in
