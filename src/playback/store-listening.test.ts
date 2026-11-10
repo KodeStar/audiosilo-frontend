@@ -121,6 +121,7 @@ import { useSettings } from '@/stores/settings';
 import { useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 
+import { finishTakesEvent, recordFinishEvent } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
 import { flushHistoryOnHide, standByPlace, usePlayer } from './store';
 /* eslint-enable import/first */
@@ -429,6 +430,56 @@ describe('with listening_sync', () => {
       },
     ]);
     expect(mockClient.addHistory).not.toHaveBeenCalled();
+  });
+});
+
+// fe#208: the book page's Mark as finished is a `finish` event on a Sync v2 server.
+describe('Mark as finished outside the player (finish-route)', () => {
+  const ref = { connectionId: 'c1', libraryId: 2, path: folder, position: 100, duration: 100 };
+
+  it('the loaded, playing book: its span closes first, then the finish; the mirror reads finished', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 5, 9]]);
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    expect(mockWriteMirror).toHaveBeenCalledWith(
+      expect.objectContaining({ path: folder, finished: true, position: 100, duration: 100 }),
+    );
+    expect(mockSaveProgress).not.toHaveBeenCalled();
+    // Still playing: the next tick opens the next span.
+    pushSnapshot(snap('playing', 1, 40));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    pushSnapshot(snap('paused', 1, 45));
+    await settle();
+    expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
+  });
+
+  it('a book that is not loaded: only the finish, queued even with its server away', async () => {
+    const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+    try {
+      await start();
+      pushSnapshot(snap('playing', 0, 5));
+      await settle();
+      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      expect(mockClosed).toEqual([]);
+      expect(mockAppended).toEqual([
+        expect.objectContaining({ kind: 'finish', path: 'Other/Book' }),
+      ]);
+    } finally {
+      reach.mockRestore();
+    }
+  });
+
+  it('a server without listening events: not recorded, the caller saves by PUT', async () => {
+    mockSync = false;
+    expect(finishTakesEvent('c1')).toBe(false);
+    await expect(recordFinishEvent(ref)).resolves.toBe(false);
+    expect(mockAppended).toEqual([]);
+    expect(mockWriteMirror).not.toHaveBeenCalled();
   });
 });
 

@@ -55,6 +55,7 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { isKeptOffline } from '@/downloads/kept-offline';
+import { recordFinishEvent } from '@/playback/finish-route';
 import {
   getDeviceId,
   mirroredProgress,
@@ -1413,9 +1414,11 @@ export function useReadalong(
   );
 }
 
-/** Mark a book finished. Goes through the offline-aware last-write-wins save so
- * it reconciles with playback progress, then refreshes the home lists and what else a
- * finish moves (the listening stats, the goal, the book's spoilers=hide metadata). */
+/** Mark a book finished: on a server that takes listening events (Sync v2) a `finish`
+ * event, queued offline like any other and sent after the book's open span
+ * (`finish-route.ts`, fe#208); else the offline-aware last-write-wins save. Then refreshes
+ * the home lists and what else a finish moves (the listening stats, the goal, the book's
+ * spoilers=hide metadata). */
 export function useMarkFinished(connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
@@ -1428,6 +1431,8 @@ export function useMarkFinished(connectionId?: string) {
       duration: number;
       playback_speed?: number;
     }) => {
+      const ref = { connectionId: cid, ...p };
+      if (await recordFinishEvent(ref)) return;
       await saveProgress(api, {
         connectionId: cid,
         libraryId: p.libraryId,

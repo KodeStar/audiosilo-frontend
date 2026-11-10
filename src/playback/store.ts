@@ -48,6 +48,7 @@ import {
   type LocalFiles,
 } from './book-source';
 import { engineTick, engineTicker } from './engine-ticks';
+import { type FinishRef, setFinishRecorder } from './finish-route';
 import {
   appendEvents,
   closeSpan,
@@ -893,6 +894,36 @@ function sendFinish(np: NowPlaying) {
   const closing = takeSpan();
   void finishAfter(closing, np, new Date().toISOString()).catch(() => undefined);
 }
+
+/**
+ * "Mark as finished" outside the player (the book page; `finish-route.ts`, fe#208), on a
+ * server that takes listening events: a `finish` event, queued offline like any other.
+ * When it is the loaded book, its open span closes first and goes before the finish (a
+ * book still playing opens its next span on the next tick), and the player's own end
+ * does not send a second one until the book plays again. This device's mirror records
+ * the book finished at its end, so offline it reads finished and Play starts it again.
+ */
+async function recordFinish(ref: FinishRef): Promise<void> {
+  const at = new Date().toISOString();
+  const np = usePlayer.getState().nowPlaying;
+  const loaded = !!np && sameBook(np, ref);
+  const closing = span && sameBook(span, ref) ? takeSpan() : null;
+  if (loaded) finishSent = contentKeyOf(ref);
+  await writeMirror({
+    connectionId: ref.connectionId,
+    libraryId: ref.libraryId,
+    path: ref.path,
+    position: ref.position,
+    duration: ref.duration,
+    finished: true,
+    playback_speed: ref.playback_speed && ref.playback_speed > 0 ? ref.playback_speed : 1,
+    device_id: deviceId || (await getDeviceId()),
+    updated_at: at,
+  }).catch(() => undefined);
+  await finishAfter(closing, ref, at);
+}
+
+setFinishRecorder({ takesEvent: usesListeningSync, record: recordFinish });
 
 /**
  * After the listener answered an offer of another device's place with Stay: this device's

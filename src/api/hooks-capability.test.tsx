@@ -117,10 +117,17 @@ jest.mock('@/api/provider', () => ({
   useOptionalApi: (id?: string) => mockClients[id ?? 'c1'] ?? null,
 }));
 jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
+const mockSaveProgress = jest.fn(async (..._a: unknown[]) => {});
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: jest.fn(async () => null),
-  saveProgress: jest.fn(async () => {}),
+  saveProgress: (...a: unknown[]) => mockSaveProgress(...a),
   getDeviceId: jest.fn(async () => 'dev-1'),
+}));
+// Whether the store records Mark as finished as a `finish` event (Sync v2, fe#208).
+let mockTakesEvent = false;
+const mockRecordFinish = jest.fn(async (..._a: unknown[]) => mockTakesEvent);
+jest.mock('@/playback/finish-route', () => ({
+  recordFinishEvent: (...a: unknown[]) => mockRecordFinish(...a),
 }));
 
 /* eslint-disable import/first */
@@ -1464,6 +1471,42 @@ describe('Phase 1b mutation cache updates', () => {
     expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(fullMeta)?.isInvalidated).toBe(false);
+  });
+
+  describe('Mark as finished goes as a finish event where the server takes one (fe#208)', () => {
+    const p = { libraryId: 2, path: 'A/Book', position: 100, duration: 100 };
+    afterEach(() => {
+      mockTakesEvent = false;
+    });
+
+    it('Sync v2: the event, no PUT, the same refreshes', async () => {
+      mockTakesEvent = true;
+      mockSaveProgress.mockClear();
+      const { result, qc } = await mountMutation(
+        { user_stats: true },
+        'user_stats',
+        useMarkFinished,
+      );
+      qc.setQueryData(qk.allProgress('c1'), []);
+      await act(async () => {
+        await result.current.m.mutateAsync(p);
+      });
+      expect(mockRecordFinish).toHaveBeenLastCalledWith({ connectionId: 'c1', ...p });
+      expect(mockSaveProgress).not.toHaveBeenCalled();
+      expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(true);
+    });
+
+    it('an older server: the PUT save at the end', async () => {
+      mockSaveProgress.mockClear();
+      const { result } = await mountMutation({ user_stats: true }, 'user_stats', useMarkFinished);
+      await act(async () => {
+        await result.current.m.mutateAsync(p);
+      });
+      expect(mockSaveProgress).toHaveBeenCalledWith(
+        mockClients.c1,
+        expect.objectContaining({ connectionId: 'c1', path: 'A/Book', finished: true }),
+      );
+    });
   });
 
   it('creating or revoking an API key refreshes the device list too', async () => {
