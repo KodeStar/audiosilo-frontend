@@ -642,8 +642,7 @@ function isUnrecoverable(e: unknown): boolean {
 // none of this: the server resolves each span on its `base_version`.
 
 /** How much further on (s) another device's place must be to hold a guarded save; the
- * place reconcile's threshold too (`MOVE_THRESHOLD_S`), so a held save is always offered
- * (auto-rewind is up to 30 s). */
+ * place reconcile's threshold too (`MOVE_THRESHOLD_S`; auto-rewind is up to 30 s). */
 export const GUARD_SLACK_S = 30;
 
 /** A place's `answered` key: `device_id|updated_at` (an ISO time has no `|`). */

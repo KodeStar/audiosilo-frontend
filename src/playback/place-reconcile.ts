@@ -65,8 +65,8 @@ import {
  * worse. This device's next save then records the book unfinished again.
  */
 
-/** A smaller difference is not worth moving the listener (auto-rewind is up to 30 s): the
- * replay guard's slack, so every save it holds is offered. */
+/** A smaller difference is not worth moving the listener (auto-rewind is up to 30 s): one
+ * threshold with the replay guard's slack. */
 export const MOVE_THRESHOLD_S = GUARD_SLACK_S;
 /** How long the server has to answer. */
 export const CHECK_TIMEOUT_MS = 5_000;
