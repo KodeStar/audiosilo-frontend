@@ -745,14 +745,20 @@ export async function withdrawFinish(
     e.event.library_id === libraryId &&
     e.event.path === path;
   const taken: ListeningEvent[] = [];
+  // The finishes waited for: one not taken back after was answered (the server has it).
+  const waitedFor = new Set<string>();
   for (;;) {
     const wait = await withOutboxLock(async () => {
       const queue = await readOutbox();
       const mine = queue.filter(isMine);
-      const out = mine.map((e) => sendingNow.get(e.event.id)).find((p) => p !== undefined);
+      const outIds = mine.map((e) => e.event.id).filter((id) => sendingNow.has(id));
+      const out = outIds.length > 0 ? sendingNow.get(outIds[0]) : undefined;
       // Boxed: a promise returned as is would hold the lock until it settles (its answer
       // needs the lock).
-      if (out) return { out };
+      if (out) {
+        for (const id of outIds) waitedFor.add(id);
+        return { out };
+      }
       for (const e of mine) withdrawn.add(e.event.id);
       taken.push(...mine.map((e) => e.event));
       if (mine.length > 0) await writeOutbox(queue.filter((e) => !isMine(e)));
@@ -761,8 +767,9 @@ export async function withdrawFinish(
     if (!wait) break;
     await wait.out;
   }
+  const answered = [...waitedFor].some((id) => !taken.some((e) => e.id === id));
   return {
-    unsent: taken.length > 0,
+    unsent: taken.length > 0 && !answered,
     restore: async () => {
       if (taken.length === 0) return;
       for (const e of taken) withdrawn.delete(e.id);

@@ -594,6 +594,25 @@ describe('flushOutbox', () => {
       expect(taken.unsent).toBe(false);
     });
 
+    it('one finish answered while another waited: the Undo still needs its edit', async () => {
+      await appendEvents('c1', [finish('f')]);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const c = client(async (body) => {
+        await gate;
+        return answer(body);
+      });
+      const flushing = flushOutbox('c1');
+      while (c.syncListening.mock.calls.length === 0) await tick();
+      await appendEvents('c1', [finish('g')]);
+      const withdrawing = withdrawFinish('c1', 3, 'Author/Book');
+      await tick();
+      release();
+      const [, taken] = await Promise.all([flushing, withdrawing]);
+      expect(await outboxEvents('c1')).toEqual([]);
+      expect(taken.unsent).toBe(false);
+    });
+
     it("a rollback's PUT of the finish is waited for too", async () => {
       await appendEvents('c1', [finish('f')]);
       let release: () => void = () => {};
