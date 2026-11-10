@@ -1,6 +1,7 @@
 # foliate-js, vendored unmodified (only the files the reader bundles).
 # https://github.com/johnfactotum/foliate-js
 commit 78914aef4466eb960965702401634c2cb348e9b1
+# reader/src/render-guard.js wraps the paginator's render() (fe#239): re-check it on a re-vendor.
 # sha256 of each vendored file (scripts/build-reader.mjs refuses to build when one differs):
 b621ffc351fe263bc9b09dd0bc1c9332fda9c462a3904c1e4f0b4d3236b9c28c  LICENSE
 56f46064f70484ac8c0014c04352a8f093091822ae1f682c5d3af76647f1f0dd  README.md
