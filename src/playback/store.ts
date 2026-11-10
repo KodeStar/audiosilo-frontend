@@ -158,8 +158,9 @@ let stallTimer: ReturnType<typeof setTimeout> | null = null;
 let resumeFloor = 0;
 /** The book (`contentKey`) whose session began at a place not checked against its server
  * (`ResumeLookup.unchecked`): on the legacy PUT path its saves carry the replay guard
- * (`ProgressSave.guard`, fe#198) until one of them is PUT. Set per book in `playBook`. */
-let placeGuard: string | null = null;
+ * (`ProgressSave.guard`, fe#198) until one of them is PUT. Set per session in `playBook`,
+ * a new object each time, so an earlier session's save PUT late never lifts a later one's. */
+let placeGuard: { key: string } | null = null;
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
@@ -464,7 +465,8 @@ async function persist(opts?: { forceFinished?: boolean }) {
   const end = endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
   const key = contentKeyOf(nowPlaying);
   // A finish is the listener's own: never held back.
-  const guarded = placeGuard === key && !forceFinished;
+  const guard = placeGuard;
+  const guarded = guard?.key === key && !forceFinished;
   const save = {
     connectionId: nowPlaying.connectionId,
     libraryId: nowPlaying.libraryId,
@@ -494,7 +496,7 @@ async function persist(opts?: { forceFinished?: boolean }) {
   const outcome = await saveProgress(api, save);
   // Once a guarded save is PUT, the server had nothing further on: the session's saves go
   // straight on from here.
-  if (guarded && outcome === 'saved' && placeGuard === key) placeGuard = null;
+  if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
 }
 
 /** Save the loaded book's place now (the listener answered Stay to a place its server held
@@ -1588,7 +1590,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       set({ rate: speed, nowPlaying, loadingBook });
       // An explicit place is the listener's own: unguarded, like a resume checked against
       // the server.
-      placeGuard = unchecked ? key : null;
+      placeGuard = unchecked ? { key } : null;
       nextStart = start;
       unfinishDue = unfinish && usesListeningSync(connectionId);
       finishSent = null;

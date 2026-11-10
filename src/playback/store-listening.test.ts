@@ -309,6 +309,32 @@ describe('the replay guard on the PUT path', () => {
     expect(guards().every((g) => !g)).toBe(true);
   });
 
+  it("an earlier session's save PUT late does not lift the next session's guard", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    let landed: (o: string) => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise((resolve) => (landed = resolve as (o: string) => void)) as never,
+    );
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    await usePlayer.getState().stop();
+    await start();
+    landed('saved');
+    await settle();
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 0, 25));
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(guards().at(-1)).toBe(true);
+  });
+
   it('a finish is never held back', async () => {
     mockLoadInitialProgress.mockResolvedValue({
       kind: 'progress',
