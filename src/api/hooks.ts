@@ -917,6 +917,19 @@ export function invalidateProgressDependents(
   }
 }
 
+/** Refresh what a book's finished flag moves: the progress list, the book's own row (its
+ * page reads it for Mark as finished / not finished) and its dependents. */
+export function invalidateFinishedProgress(
+  qc: QueryClient,
+  cid: string,
+  libraryId: number,
+  path: string,
+) {
+  void qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
+  void qc.invalidateQueries({ queryKey: qk.progress(cid, libraryId, path) });
+  invalidateProgressDependents(qc, cid, libraryId, path, { finish: true, place: true });
+}
+
 export function useLibraries() {
   const api = useApi();
   const cid = useCid();
@@ -1463,11 +1476,7 @@ export function useMarkFinished(connectionId?: string) {
     // Both routes work offline (the event waits in the outbox, the save in the queue): held
     // for the online flag, an offline finish was never recorded, and a reload lost it.
     networkMode: 'always',
-    onSuccess: (_data, p) => {
-      qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
-      qc.invalidateQueries({ queryKey: qk.progress(cid, p.libraryId, p.path) });
-      invalidateProgressDependents(qc, cid, p.libraryId, p.path, { finish: true, place: true });
-    },
+    onSuccess: (_data, p) => invalidateFinishedProgress(qc, cid, p.libraryId, p.path),
   });
 }
 

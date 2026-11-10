@@ -7,6 +7,7 @@
  * The store registers itself here as it loads (`setFinishRecorder`): the API hooks and the
  * book page can't import the store (it imports them). Nothing registered: the PUT path.
  */
+import type { Withdrawal } from './listening-outbox';
 import type { ProgressSave } from './progress-sync';
 
 export type FinishRef = {
@@ -41,11 +42,7 @@ type FinishRecorder = {
   /** Record the finish as an event; resolves once it waits in the outbox. */
   record: (ref: FinishRef) => Promise<void>;
   /** Take the book's not-yet-sent finish events back (one being sent is waited for). */
-  withdraw: (
-    connectionId: string,
-    libraryId: number,
-    path: string,
-  ) => Promise<{ unsent: boolean; restore: () => Promise<void> }>;
+  withdraw: (connectionId: string, libraryId: number, path: string) => Promise<Withdrawal>;
   /** A finish that never left this device is undone here: its record goes back to the
    * place before it (`ref.position`), unfinished. */
   unrecord: (ref: UndoRef) => Promise<void>;
@@ -84,12 +81,12 @@ export async function recordFinishEvent(ref: FinishRef): Promise<boolean> {
  * whether the book is unfinished.
  */
 export async function undoFinish(ref: UndoRef, edit: () => Promise<boolean>): Promise<boolean> {
+  const r = recorder;
+  if (!r) return edit();
   // A withdrawal that failed still lets the Undo's edit through (nothing was taken back).
-  const taken = recorder
-    ? await recorder.withdraw(ref.connectionId, ref.libraryId, ref.path).catch(() => null)
-    : null;
-  if (taken?.unsent && recorder) {
-    await recorder.unrecord(ref).catch(() => undefined);
+  const taken = await r.withdraw(ref.connectionId, ref.libraryId, ref.path).catch(() => null);
+  if (taken?.unsent) {
+    await r.unrecord(ref).catch(() => undefined);
     return true;
   }
   const ok = await edit();

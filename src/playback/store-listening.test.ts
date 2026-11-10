@@ -640,6 +640,7 @@ describe('with listening_sync', () => {
 // fe#208: the book page's Mark as finished is a `finish` event on a Sync v2 server.
 describe('Mark as finished outside the player (finish-route)', () => {
   const ref = { connectionId: 'c1', libraryId: 2, path: folder, position: 100, duration: 100 };
+  const undoRef = { connectionId: 'c1', libraryId: 2, path: 'Other/Book', position: 48 };
 
   it('the loaded, playing book: its span closes first, then the finish; the mirror reads finished', async () => {
     await start();
@@ -684,9 +685,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
         expect.objectContaining({ path: 'Other/Book', finished: true }),
       );
       const edit = jest.fn(async () => true);
-      await expect(
-        undoFinish({ connectionId: 'c1', libraryId: 2, path: 'Other/Book', position: 48 }, edit),
-      ).resolves.toBe(true);
+      await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
       expect(mockWriteMirror).toHaveBeenLastCalledWith(before);
@@ -703,7 +702,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
     await recordFinishEvent({ ...ref, path: 'Other/Book' });
     const writes = mockWriteMirror.mock.calls.length;
     const edit = jest.fn(async () => true);
-    await undoFinish({ connectionId: 'c1', libraryId: 2, path: 'Other/Book', position: 48 }, edit);
+    await undoFinish(undoRef, edit);
     expect(edit).toHaveBeenCalledTimes(1);
     expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
   });
