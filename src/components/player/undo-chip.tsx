@@ -30,6 +30,9 @@ export function useUndoVisible(): boolean {
   return useJumpUndo(selectUndoFor(bookKey)) !== null;
 }
 
+/** The chip's height (a surface that reserves a band for it reads it here). */
+export const UNDO_CHIP_HEIGHT = 34;
+
 /**
  * The Undo jump chip (STYLEGUIDE section 8): an ink pill, the undo glyph, "Back to
  * 17:26:50" (where the listener was in the book) and a ring that empties over its
@@ -38,9 +41,6 @@ export function useUndoVisible(): boolean {
  * can always mount it where the chip belongs (the full player's status line, above the
  * dock). A press goes back and toasts "Back where you were".
  */
-/** The chip's height (a surface that reserves a band for it reads it here). */
-export const UNDO_CHIP_HEIGHT = 34;
-
 export function UndoChip() {
   const { t } = useTranslation();
   const themed = useThemeColors();

@@ -333,6 +333,9 @@ describe('DockedPlayer', () => {
       );
       expect(screen.getByTestId(id).props.className).toContain('min-w-0');
     }
+    // A basis of 0 still counts padding: the book's `p-1.5` is matched by the actions'.
+    expect(screen.getByTestId('dock-book').props.className).toContain('p-1.5');
+    expect(screen.getByTestId('dock-actions').props.className).toContain('px-1.5');
     expect(screen.getByTestId('dock-row').props.style).toMatchObject({ paddingHorizontal: 16 });
     expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 556 });
     expect(screen.getByTestId('dock-centre').props.className).toContain('shrink-0');

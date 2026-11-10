@@ -48,8 +48,9 @@ const SIDE_TABLET = 220;
  * wider (a long track on a wide window is a long way to drag). */
 const CENTRE_MIN = 300;
 const CENTRE_MAX = 560;
-/** The band the Undo chip floats in above the bar: the chip and the 8 (`mb-2`) under it. */
-const CHIP_BAND = UNDO_CHIP_HEIGHT + 8;
+/** The space between the floating Undo chip and the bar, and the band it floats in. */
+const CHIP_GAP = 8;
+const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
 
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
@@ -240,8 +241,11 @@ export function DockedPlayer() {
     );
   }
 
-  // Before the first layout: the form factor's guess.
-  const { allActions, scrubber, centre } = dockLayout(size?.width ?? (desktop ? 1280 : 800));
+  // The row's width (the bar's, inside its side insets); before the first layout, the
+  // form factor's guess.
+  const { allActions, scrubber, centre } = dockLayout(
+    size ? size.width - insets.left - insets.right : desktop ? 1280 : 800,
+  );
   const { queue, title, author } = nowPlaying;
   // Under a chapter heading the book and its author; when the heading is already the
   // title (a chapterless book, an episode) only the author or show, never the title twice.
@@ -266,8 +270,8 @@ export function DockedPlayer() {
         <View
           testID="dock-undo"
           pointerEvents="box-none"
-          style={{ bottom: '100%', zIndex: 20 }}
-          className="absolute left-0 right-0 mb-2 items-center"
+          style={{ bottom: '100%', marginBottom: CHIP_GAP, zIndex: 20 }}
+          className="absolute left-0 right-0 items-center"
         >
           <UndoChip />
         </View>
@@ -314,8 +318,10 @@ export function DockedPlayer() {
 
           <View
             testID="dock-actions"
-            // The other side column, its actions against the bar's end.
-            className="min-w-0 flex-1 basis-0 flex-row items-center justify-end gap-1"
+            // The other side column, its actions against the bar's end. Its side padding is
+            // the book's (`p-1.5`): a flex basis of 0 still counts padding, so unequal
+            // padding would make unequal columns and move the transport off the centre.
+            className="min-w-0 flex-1 basis-0 flex-row items-center justify-end gap-1 px-1.5"
           >
             {allActions ? <SpeedPill /> : null}
             <View testID="dock-sleep">
