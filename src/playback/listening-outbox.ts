@@ -988,6 +988,24 @@ export function legacySavesOf(
   return saves.filter((s) => s.position > 0 || s.finished || !!s.updated_at);
 }
 
+/**
+ * A finish with no listen beside it (Mark as finished, fe#208) has no place or length in the
+ * outbox: it takes them from this device's mirror, which the finish wrote (`finishedSave`),
+ * so the PUT is the one the legacy path sends (finished at the book's end, its real
+ * duration), never a finish at 0 of 0.
+ */
+async function withFinishedPlace(save: ProgressSave): Promise<ProgressSave> {
+  if (!save.finished || save.duration > 0) return save;
+  const mirror = await readMirror(save.connectionId, save.libraryId, save.path).catch(() => null);
+  if (!mirror?.finished || !(mirror.duration > 0)) return save;
+  return {
+    ...save,
+    position: mirror.position > 0 ? mirror.position : mirror.duration,
+    duration: mirror.duration,
+    playback_speed: mirror.playback_speed > 0 ? mirror.playback_speed : save.playback_speed,
+  };
+}
+
 /** Drop a connection's events from the outbox; returns them. */
 function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
   return withOutboxLock(async () => {
@@ -1015,7 +1033,7 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
   for (const save of legacySavesOf(connectionId, mine, deviceId)) {
-    await saveProgress(client, { ...save, guard: true });
+    await saveProgress(client, { ...(await withFinishedPlace(save)), guard: true });
   }
   await removeEvents(new Set(mine.map((e) => e.event.id)));
 }

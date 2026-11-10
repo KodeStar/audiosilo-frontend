@@ -92,6 +92,7 @@ import {
   pendingSaves,
   readLocalPlaces,
   readMirror,
+  writeMirror,
 } from './progress-sync';
 /* eslint-enable import/first */
 
@@ -588,6 +589,47 @@ describe('flushOutbox', () => {
     // From now on this connection saves by PUT, and its capability is read again.
     expect(usesListeningSync('c1')).toBe(false);
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+  });
+
+  it("a rolled-back Mark as finished (no listen) is PUT at the book's end with its length", async () => {
+    // The finish wrote this device's mirror (finishedSave) as it was queued.
+    await writeMirror({
+      connectionId: 'c1',
+      libraryId: 3,
+      path: 'Author/Book',
+      position: 61200,
+      duration: 61200,
+      finished: true,
+      playback_speed: 1.5,
+      device_id: 'dev-1',
+      updated_at: '2026-10-25T08:00:00.000Z',
+    });
+    await appendEvents('c1', [
+      {
+        id: 'f',
+        kind: 'finish',
+        library_id: 3,
+        path: 'Author/Book',
+        at: '2026-10-25T08:00:00.000Z',
+      } as ListeningEvent,
+    ]);
+    const c = client(async () => {
+      throw new ApiError(404, 'not found');
+    });
+    await flushOutbox('c1');
+    expect(c.saveProgress).toHaveBeenCalledTimes(1);
+    expect(c.saveProgress).toHaveBeenCalledWith(
+      3,
+      'Author/Book',
+      expect.objectContaining({
+        position: 61200,
+        duration: 61200,
+        finished: true,
+        playback_speed: 1.5,
+        updated_at: '2026-10-25T08:00:00.000Z',
+      }),
+    );
+    expect(await outboxEvents('c1')).toEqual([]);
   });
 
   it("a rolled-back listen is held by another device's further place (the replay guard)", async () => {
