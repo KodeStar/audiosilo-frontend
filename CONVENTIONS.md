@@ -1564,9 +1564,25 @@ media GETs only.
   restarted from the beginning" report. A **downloaded** book's mirror also takes its
   server's place as the download starts (`keepServerPlace` in `downloads/store.ts`) and on
   every server answer of `fetchBookProgress` (the registry check reaches the hooks through
-  `downloads/kept-offline.ts`, which has no imports): offline it opens there, never at 0
-  with its first save over the server's place (v2.5.1 PLAYER-01). Keep-newest, so a newer
-  save of this device's own stays.
+  `downloads/kept-offline.ts`, which has no imports), and from Home's progress list
+  (`allProgressQuery`: the downloaded books' rows in one `writeMirrors`, fe#198): offline it
+  opens there, never at 0 with its first save over the server's place (v2.5.1 PLAYER-01).
+  Keep-newest, so a newer save of this device's own stays.
+- **The replay guard (legacy PUT path, fe#198).** The PUT is last-write-wins by
+  `updated_at`, so a session that began at a place this device never checked against its
+  server must not move another device's further place back. `resumeLookupOf` marks such a
+  place `unchecked` (the server was not reached, or this device's newer record resumes more
+  than 30 s behind the server's unfinished row); a downloaded book's `failed` start counts
+  too. The store then puts `guard` on that session's PUT saves (`placeGuard`; not on an
+  explicit place or a finish) until one is PUT (`saveProgress` answers `saved`). Before a
+  guarded save is PUT, live or replayed, `guardPasses` reads the server's row: another
+  device's unfinished place more than `GUARD_SLACK_S` (30 s) further on, not answered
+  (`answered` holds its `device_id|updated_at`), holds it (`guardHolds`). A held save is not
+  sent and leaves the queue (the mirror keeps it; `guard` is never kept in the mirror), and
+  `onHeldSave` tells the place reconcile, which offers that place for the loaded book with the
+  same Jump/Stay toast (`offerLoadedPlace(..., { held: true })`: Stay answers and saves at
+  once, `saveLoadedPlace`; a timeout answers nothing). Sync v2 needs none of it: the server
+  resolves each span on its `base_version`.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
@@ -1604,9 +1620,15 @@ media GETs only.
     `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
     (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
-    twice it is one event. The keep never moves the span's end back (a native lock-screen
-    move's landed place reaches the store before the move, which ends the span at its last
-    place). An event never claims more than 23 h of wall clock
+    twice it is one event. The keep, a save and the 15 s cut never move the span's end back
+    (`aheadOf`: a native lock-screen move's landed place reaches the store before the move,
+    which ends the span at its last place, fe#211); a pause or stop closes where the engine
+    is. The end's `finish` goes into the outbox only after the last span's close has landed
+    there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
+    no session to mark). The book page's Mark as finished is a `finish` event too on such a
+    server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
+    book's span closes first, the mirror records it finished, offline it waits in the outbox;
+    Undo stays a progress edit; fe#208). An event never claims more than 23 h of wall clock
     (`MAX_EVENT_SPAN_MS`, timers that stood still). Each end carries whole-book seconds and its file and in-file seconds;
     `duration` is the audio's own length (`BookQueue.audio`, never a timeline a chapter
     overhangs: the server refuses a span more than 10 s off, `duration_mismatch`); a place that
@@ -1623,7 +1645,8 @@ media GETs only.
     `takenFrom`/`goingOnFrom`, so what it played since is not a `duplicate`),
     `audiosilo.listeningSync` (per
     connection: `lastSyncAt`, the couldn't-sync list, 30 days, at most 100, `clockSkewMs` from the
-    answers' `server_time`, and `listeningSync`). The three documents' read-modify-writes run
+    answers' `server_time`, and `listeningSync`; the outbox is its one reader:
+    `progress-sync` asks for the stored skews through `stored-skews.ts`, fe#211). The three documents' read-modify-writes run
     under `tabLock` (`src/lib/tab-lock.ts`: Web Locks, else a `localStorage` lease on plain
     http, fe#208); on the web they re-read storage, and a tab's outbox copy follows the
     `storage` event.
