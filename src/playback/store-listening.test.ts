@@ -627,6 +627,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
       sent();
       await settle();
       expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.progress('c1', 2, 'Other/Book') });
       expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.myStatsAll('c1') });
     } finally {
       mockFlushOutbox.mockImplementation(async () => {});

@@ -913,6 +913,10 @@ async function finishAfter(
 function refreshAfterFinish(ref: ContentRef) {
   if (!isReachable(ref.connectionId)) return;
   void queryClient.invalidateQueries({ queryKey: qk.allProgress(ref.connectionId) });
+  // The book's own row too: its page reads it for Mark as finished / not finished.
+  void queryClient.invalidateQueries({
+    queryKey: qk.progress(ref.connectionId, ref.libraryId, ref.path),
+  });
   invalidateProgressDependents(queryClient, ref.connectionId, ref.libraryId, ref.path, {
     finish: true,
     place: true,
