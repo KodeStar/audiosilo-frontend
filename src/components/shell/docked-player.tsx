@@ -209,8 +209,9 @@ function SpeedPill() {
  * the transport over a chapter scrubber (bookmark ticks, the time left in the book at the
  * listener's speed) centred on the bar; on the right speed, sleep, bookmark, output (where
  * the engine can pick one), Up next and expand. After a jump the Undo chip floats above
- * the bar over the transport. What fits is decided by the bar's measured width
- * (`dockLayout`); everything hidden is in the full player.
+ * the bar, centred on it (over the transport wherever the side columns are equal). What
+ * fits is decided by the bar's measured width (`dockLayout`); everything hidden is in the
+ * full player.
  *
  * Speed and sleep open through `usePlayerSheets` (the web's keys open the same sheets),
  * rendered by the shell's one sheet host. Renders a fragment so that host can sit beside
@@ -292,9 +293,10 @@ export function DockedPlayer() {
         <EpisodeFetchStrip className="border-b border-border pl-3.5 pr-4" />
         {/* The 3px whole-book progress line along the bar's top edge (a leaf). */}
         <BookProgressLine total={queue.total} className="absolute left-0 right-0 top-0 h-[3px]" />
-        {/* The Undo chip floats just above the bar, centred over the transport: in the bar
-            it took room from the scrubber, which then moved under the pointer that made
-            the jump (fe#244). Nothing in the bar lays out around it. */}
+        {/* The Undo chip floats just above the bar, centred on the bar (over the transport
+            wherever the side columns are equal, `centred`): in the bar it took room from
+            the scrubber, which then moved under the pointer that made the jump (fe#244).
+            Nothing in the bar lays out around it. */}
         <View
           testID="dock-undo"
           pointerEvents="box-none"
