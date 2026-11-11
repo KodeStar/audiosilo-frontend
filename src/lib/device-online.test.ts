@@ -14,7 +14,7 @@ jest.mock('expo-network', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useDeviceOnline, watchDeviceOnline } from './device-online';
+import { isDeviceOnline, useDeviceOnline, watchDeviceOnline } from './device-online';
 /* eslint-enable import/first */
 
 const os = Platform.OS;
@@ -113,6 +113,34 @@ describe('watchDeviceOnline (the same signal outside React)', () => {
     expect(heard.at(-1)).toBe(false);
     await unmount();
     stop();
+  });
+});
+
+describe('isDeviceOnline (the same signal, read once)', () => {
+  it('reads what the system said last while watched', async () => {
+    mockState = { isConnected: true };
+    const stop = watchDeviceOnline(() => undefined);
+    await act(async () => {});
+    expect(isDeviceOnline()).toBe(true);
+    await act(async () => mockListeners[0]({ isConnected: false }));
+    expect(isDeviceOnline()).toBe(false);
+    await act(async () => mockListeners[0]({ isConnected: true }));
+    expect(isDeviceOnline()).toBe(true);
+    stop();
+  });
+
+  it("reads the browser's flag on the web when nothing watches", () => {
+    Platform.OS = 'web';
+    const saved = (globalThis as { navigator?: unknown }).navigator;
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: false },
+      configurable: true,
+    });
+    try {
+      expect(isDeviceOnline()).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, 'navigator', { value: saved, configurable: true });
+    }
   });
 });
 

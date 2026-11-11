@@ -24,6 +24,7 @@ import {
 import { isAway, onAppStateEdge } from '@/lib/app-activity';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
@@ -2181,9 +2182,14 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         (await resolveWebTranscode(connectionId, api, book, chapterData));
       // A downloaded book given no chapters (its chapters read failed) plays its download's
       // files and chapters, the order its manifest holds, so the engine never holds an order
-      // the manifest does not (`adoptStartedChapters`).
-      const own = dl && !chapterData ? dl.manifest : undefined;
-      const queueChapters = chapterData ?? own?.chapters ?? undefined;
+      // the manifest does not (`adoptStartedChapters`). So does one that ends before its book
+      // (`endsBefore`, D3, fe#185) started with the device offline, whatever chapters it was
+      // given (a cold start's cached server chapters name the files it lacks): a queue
+      // streaming those would stall into a stream error at the downloaded part's end instead
+      // of pausing there. Online it streams on.
+      const offlineShort = !!local && !!dl?.manifest.endsBefore && !isDeviceOnline();
+      const own = dl && (!chapterData || offlineShort) ? dl.manifest : undefined;
+      const queueChapters = own ? (own.chapters ?? undefined) : chapterData;
       const queue = buildBookQueue(
         api,
         libraryId,

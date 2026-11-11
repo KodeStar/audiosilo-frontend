@@ -80,6 +80,12 @@ jest.mock('@/api/provider', () => ({
   },
 }));
 jest.mock('@/lib/network', () => ({ canAutoDownload: jest.fn(async () => false) }));
+/** The device's network (`isDeviceOnline`): online unless a test says otherwise. */
+const mockDeviceOnline = jest.fn(() => true);
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  isDeviceOnline: () => mockDeviceOnline(),
+}));
 
 const fakeClient = {
   coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
@@ -995,6 +1001,74 @@ describe('adoptLoaded', () => {
       expect(finished).toBe(false);
       stopTelling();
       await usePlayer.getState().pause();
+    });
+
+    describe("a cold start given the server's cached chapters, which name the file the download lacks", () => {
+      /** The server's answer the cache kept: the book goes on in B/3 (20 s). */
+      const withB3: ChaptersResponse = {
+        ...uneven,
+        duration: 180,
+        files: [
+          ...uneven.files,
+          { rel_path: 'B/3.mp3', seq: 2, duration: 20, format: 'mp3', size: 1 },
+        ],
+      };
+      const startCold = async () => {
+        const e = downloadedUneven();
+        useDownloads.setState({
+          entries: { 'c1:2:B': { ...e, manifest: { ...e.manifest, endsBefore: 'B/3.mp3' } } },
+        });
+        const progressSync = jest.requireMock('./progress-sync') as {
+          loadInitialProgress: jest.Mock;
+        };
+        progressSync.loadInitialProgress.mockResolvedValueOnce({
+          kind: 'progress',
+          progress: {
+            position: 150,
+            duration: 180,
+            finished: false,
+            playback_speed: 1,
+            version: 0,
+          },
+        });
+        const { manifest } = useDownloads.getState().entries['c1:2:B'];
+        await usePlayer.getState().playBook('c1', 2, { ...manifest.book, duration: 180 }, withB3);
+      };
+      afterEach(() => mockDeviceOnline.mockReturnValue(true));
+
+      it("offline, plays the download's own copy and pauses at its end, never finishing (D3, fe#185)", async () => {
+        mockDeviceOnline.mockReturnValue(false);
+        const told = jest.fn();
+        const stopTelling = onPartialDownloadEnd(told);
+        await startCold();
+        // No stream of B/3 to stall on at the downloaded part's end.
+        expect(usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url)).toEqual([
+          'file:///d/1.mp3',
+          'file:///d/2.mp3',
+        ]);
+        pushSnapshot(snap('playing', 1, 58));
+        await flushMicrotasks();
+        pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
+        await flushMicrotasks();
+        expect(usePlayer.getState().snapshot.state).toBe('paused');
+        expect(told).toHaveBeenCalledTimes(1);
+        const finished = [...mockSaveProgress.mock.calls, ...mockWriteMirror.mock.calls].some(
+          (c) => (c[c.length === 1 ? 0 : 1] as { finished?: boolean }).finished,
+        );
+        expect(finished).toBe(false);
+        stopTelling();
+        await usePlayer.getState().pause();
+      });
+
+      it('online, streams the rest of the book on', async () => {
+        await startCold();
+        expect(usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url)).toEqual([
+          'file:///d/1.mp3',
+          'file:///d/2.mp3',
+          'stream:2:B/3.mp3',
+        ]);
+        await usePlayer.getState().pause();
+      });
     });
 
     it("finishes a cold offline start of a download that holds its book's end", async () => {
