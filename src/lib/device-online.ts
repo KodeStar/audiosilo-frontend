@@ -35,11 +35,11 @@ export function watchDeviceOnline(listener: (online: boolean) => void): () => vo
 
 /**
  * The same signal read once, outside React (a start of a download offline, `playBook`): what
- * the system said last while anything watches it (in the app the query wiring always does),
- * else the browser's `navigator.onLine` on the web. Unknown counts as online.
+ * the system said last in the app (the query wiring always watches it there), the browser's
+ * `navigator.onLine` on the web (what a watch there follows). Unknown counts as online.
  */
 export function isDeviceOnline(): boolean {
-  if (listeners.size > 0 || Platform.OS !== 'web') return online;
+  if (Platform.OS !== 'web') return online;
   return typeof navigator === 'undefined' || navigator.onLine !== false;
 }
 
