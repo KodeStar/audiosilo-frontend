@@ -1151,12 +1151,17 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
     // before the finish (older) would be refused. That record's time, not the finish's: once
     // the server answered, a downloaded book's record is the server's row for the finish,
     // stamped by its clock after the request's delay, and a record stamped with the finish's
-    // own time is refused too. Its Sync v2 fields stay the mirror's own (`writeMirror` keeps
-    // them): an ack since is newer.
+    // own time is refused too. One millisecond later (fe#258): a read of the finished row
+    // still on its way (the finish's own refresh) lands after this with that same stamp, and
+    // a tie goes to the later write, so the mirror was finished again, and with the device's
+    // clock ahead of the server's the unfinished row read next was older and lost to it. Its
+    // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
+    const stamp = Date.parse(now.updated_at);
+    const at = Number.isFinite(stamp) ? new Date(stamp + 1).toISOString() : now.updated_at;
     const back: ProgressSave =
       prior && !prior.finished
-        ? { ...prior, ack_version: undefined, answered: undefined, updated_at: now.updated_at }
-        : { ...now, finished: false, position: ref.position };
+        ? { ...prior, ack_version: undefined, answered: undefined, updated_at: at }
+        : { ...now, finished: false, position: ref.position, updated_at: at };
     await writeMirror(back).catch(() => undefined);
   }
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);

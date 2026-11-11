@@ -741,16 +741,18 @@ describe('Mark as finished outside the player (finish-route)', () => {
       await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
-      // Stamped as new as the finish it replaces: the mirror refuses an older record.
+      // Stamped just after the finish it replaces: the mirror refuses an older record, and a
+      // read of the finished row still on its way, stamped as the finish, loses to it (fe#258).
       const finishedAt = finishedRec.updated_at;
+      const after = new Date(Date.parse(finishedAt) + 1).toISOString();
       // Its Sync v2 fields are left to the mirror's own (an ack since the finish is newer).
       expect(mockWriteMirror).toHaveBeenLastCalledWith({
         ...before,
         ack_version: undefined,
         answered: undefined,
-        updated_at: finishedAt,
+        updated_at: after,
       });
-      expect(finishedAt > before.updated_at).toBe(true);
+      expect(after > finishedAt && finishedAt > before.updated_at).toBe(true);
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
         queryKey: qk.progress('c1', 2, 'Other/Book'),
       });
@@ -782,6 +784,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
         ...finishedRec,
         finished: false,
         position: 48,
+        updated_at: '2026-01-02T00:00:00.001Z',
       });
       // A place saved since the finish is not undone.
       mockReadMirror.mockResolvedValueOnce(null);
@@ -832,7 +835,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
           path: 'Other/Book',
           finished: false,
           position: 48,
-          updated_at: echo.updated_at,
+          updated_at: '2999-01-01T00:00:00.001Z',
         }),
       );
     } finally {
