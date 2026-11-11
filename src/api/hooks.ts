@@ -1845,7 +1845,15 @@ export function useToggleFavourite(connectionId?: string) {
       return { prev };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(qk.favourites(cid), ctx.prev);
+      if (!ctx) return;
+      if (ctx.prev) {
+        qc.setQueryData(qk.favourites(cid), ctx.prev);
+        return;
+      }
+      // Nothing was read before the toggle (the list waits for the network, or failed):
+      // the optimistic list is no answer, and kept it would show the heart as saved
+      // until the list is next read. Back to unread.
+      void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
     },
     // This mutation still counts itself here; a later toggle queued behind it reads
     // the list when it settles.

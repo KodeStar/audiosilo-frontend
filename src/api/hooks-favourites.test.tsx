@@ -115,6 +115,31 @@ describe('useToggleFavourite', () => {
     expect(favouriteReads).toHaveLength(1);
   });
 
+  // A write that fails (in the app it is sent with no network too, and fails at once)
+  // takes its heart back.
+  describe('a toggle that fails', () => {
+    const fail = async (vars: ToggleFavouriteVars) => {
+      mockAdd.mockRejectedValueOnce(new TypeError('Network request failed'));
+      const { result } = await renderHook(() => useToggleFavourite(), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync(vars).catch(() => undefined);
+      });
+    };
+
+    it('puts the list back as it was read', async () => {
+      const kept = [{ library_id: 1, path: 'Kept' } as Favourite];
+      qc.setQueryData(qk.favourites('c'), kept);
+      await fail({ libraryId: 1, path: 'A', on: true });
+      expect(qc.getQueryData(qk.favourites('c'))).toEqual(kept);
+    });
+
+    // The list was never read (held for the network): the stub is no answer to keep.
+    it('leaves no list behind when none was read', async () => {
+      await fail({ libraryId: 1, path: 'A', on: true });
+      expect(qc.getQueryData(qk.favourites('c'))).toBeUndefined();
+    });
+  });
+
   it('never reads the book when removing a pending favourite', async () => {
     await toggle({ libraryId: 1, path: 'A/New Book', on: false, pendingBook: true });
     expect(calls).toEqual(['remove A/New Book']);
