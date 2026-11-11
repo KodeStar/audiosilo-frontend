@@ -598,10 +598,15 @@ export function withBookEnd(
 
 /** An adoption with no server answer saw the engine play the book's files in `order`
  * (`adoptLoadedBook`): the download keeps whether it ends before the book does, so a later
- * start of it offline (a cold Resume) pauses at that end as the adopted queue did. */
+ * start of it offline (a cold Resume) pauses at that end as the adopted queue did. Only an
+ * order naming a file the download lacks says where the book ends: one inside the download
+ * (an engine loaded from the download's own copy, offline) says nothing, and leaves the
+ * fact a server answer kept. */
 export function noteDownloadEnd(ref: BookRef, order: readonly string[]): void {
   const entry = downloadedEntryOf(ref);
   if (!entry) return;
+  const held = new Set(entry.manifest.files.map((f) => f.relPath));
+  if (order.every((p) => held.has(p))) return;
   const manifest = withBookEnd(entry.manifest, order);
   if (manifest === entry.manifest) return;
   patchEntry(contentKeyOf(ref), { manifest });

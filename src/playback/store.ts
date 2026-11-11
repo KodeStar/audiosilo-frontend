@@ -2969,11 +2969,17 @@ async function adoptLoadedBook(
   // answer from the server: its end is the downloaded part's, not the book's (D3, fe#185).
   // One that lacks only an earlier file (an intro) still ends where the book does. With an
   // answer the queue holds every file the server has, and one it lacks is gone from the
-  // book. The download keeps the fact for a later start of it (`noteDownloadEnd`).
+  // book. The download keeps the fact for a later start of it (`noteDownloadEnd`), and an
+  // engine loaded from the download's own copy (a cold offline Resume, then a JS restart)
+  // ends early by the fact a server answer kept (`endsBefore`), as `playBook` reads it.
   let partial = false;
-  if (local && !served && engineIds && loaded.files) {
-    noteDownloadEnd(ref, loaded.files);
-    partial = trackIndexById(queue, engineIds[engineIds.length - 1]) < 0;
+  if (local && !served) {
+    if (loaded.files?.length) noteDownloadEnd(ref, loaded.files);
+    const last = engineIds?.[engineIds.length - 1];
+    const endsBefore = downloadedEntryOf(ref)?.manifest.endsBefore;
+    partial =
+      (last !== undefined && trackIndexById(queue, last) < 0) ||
+      (!!endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0);
     if (partial) partialQueues.add(queue);
   }
   // The engine's place is past the downloaded part: it stays paused at that part's end, and

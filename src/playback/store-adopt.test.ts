@@ -916,6 +916,31 @@ describe('adoptLoaded', () => {
       stopTelling();
     });
 
+    it("keeps a download's early end through an adoption of its own order (a cold offline Resume, then a JS restart)", async () => {
+      mockResolveClient.mockReturnValue(null);
+      const e = downloadedUneven();
+      useDownloads.setState({
+        entries: { 'c1:2:B': { ...e, manifest: { ...e.manifest, endsBefore: 'B/3.mp3' } } },
+      });
+      const told = jest.fn();
+      const stopTelling = onPartialDownloadEnd(told);
+      // The engine plays the download's own copy (B/1, B/2): it says nothing of the book's end.
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3'], { trackIndex: 1, position: 30 }));
+      expect(useDownloads.getState().entries['c1:2:B'].manifest.endsBefore).toBe('B/3.mp3');
+      mockResolveClient.mockReturnValue(fakeClient);
+      pushSnapshot(snap('playing', 1, 50));
+      await flushMicrotasks();
+      pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+      expect(told).toHaveBeenCalledTimes(1);
+      const saves = mockSaveProgress.mock.calls.map((c) => c[1] as { finished: boolean });
+      expect(saves.every((save) => !save.finished)).toBe(true);
+      stopTelling();
+    });
+
     it("finishes a download that lacks only an earlier file at the book's real end (D3, fe#185)", async () => {
       mockResolveClient.mockReturnValue(null);
       useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
