@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from 'react';
-import { Platform } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useReachability } from '@/api/reachability';
@@ -27,10 +26,11 @@ export function usePlayableHere(): (at: BookAt) => boolean {
   return useCallback(
     (at: BookAt) =>
       playableHere(at, {
-        // The browser's flag means no network at all. The app's also reads false on a
-        // network with no internet (Android's validation) while a server on that network
-        // answers: there the book's server's own flag decides, as it does for the player.
-        deviceOnline: Platform.OS !== 'web' || deviceOnline,
+        // No network at all, in the browser and in the app alike (`useDeviceOnline`: a
+        // network with no internet still counts, so a server on it decides by its own
+        // flag). With none, nothing but a download plays, whatever a server's flag still
+        // says (the app holds its requests then, so none fails and marks it down).
+        deviceOnline,
         online,
         downloaded: (book) => !hydrated || downloadedKeys.has(contentKeyOf(book)),
       }),

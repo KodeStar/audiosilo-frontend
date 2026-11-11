@@ -3337,12 +3337,16 @@ under their empty state).
   `online`/`offline` events on the web, expo-network's `isConnected` on native
   (`isInternetReachable` is not read: a phone on Wi-Fi with no internet still reaches a server
   on the LAN, and calling it offline hid Retry and the Library, fe#202; unknown counts as
-  online). On native the same source drives TanStack's `onlineManager`
+  online, a network Android can't name (`type: UNKNOWN`) included, and the first read never
+  undoes a change the listener told before it landed). On native the same source drives TanStack's `onlineManager`
   (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; the web keeps
   TanStack's own window listeners, the same events), so native queries and mutations pause
   with no network and resume when it returns, as they always did on the web: a screen must
   treat `fetchStatus: 'paused'` / `isPaused` as "offline", not as loading, and a read that has
-  to settle whatever the flag says uses `networkMode: 'always'` or `fetchFailFast`. Whether one
+  to settle whatever the flag says uses `networkMode: 'always'` or `fetchFailFast`: a read with
+  a copy on this device to fall back to is one (`useBookProgress`'s mirror: held, it never runs).
+  A held request neither fails nor marks its server down, so a surface that says "offline" asks
+  this signal too, not reachability alone (Search's results, `usePlayableHere`). Whether one
   SERVER answers is `src/api/reachability.ts`, a different question. In a test that mocks this
   module, spread `jest.requireActual` (the provider imports `watchDeviceOnline`).
 - **Offline states** (`src/lib/offline-state.ts`, `src/components/layout/offline-state.tsx`): one

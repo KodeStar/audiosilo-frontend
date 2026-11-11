@@ -72,7 +72,10 @@ export function SearchResultsView({
   const r = results;
   const settled = r.settled && !pending;
 
-  if (apis.length > 0 && offline.length === apis.length && r.total === 0) {
+  // No server could be asked: none is answering, or the device has no network (the app
+  // holds its requests then, so they neither load nor fail: nothing found is not "nothing
+  // called that", fe#179).
+  if (apis.length > 0 && (!deviceOnline || offline.length === apis.length) && r.total === 0) {
     return <OfflineState hint={t('search.offlineHint')} />;
   }
 
