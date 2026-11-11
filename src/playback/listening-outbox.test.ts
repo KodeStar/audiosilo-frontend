@@ -91,8 +91,10 @@ import {
   ackVersion,
   getDeviceId,
   pendingSaves,
+  type ProgressSave,
   readLocalPlaces,
   readMirror,
+  resumeLookupOf,
   writeMirror,
 } from './progress-sync';
 /* eslint-enable import/first */
@@ -331,6 +333,136 @@ describe('the outbox', () => {
     expect((await outboxEvents()).map((e) => e.event.id)).toEqual(['b']);
     expect(await storedOpenSpan()).toBeNull();
     expect(Object.keys(JSON.parse((await AsyncStorage.getItem(SYNC))!))).toEqual(['c2']);
+  });
+});
+
+// The open span is stored every 5 s while a book plays, the mirror every 15 s: after a
+// kill the span's end is this device's later word on the place (`mirrorSpanEnd`).
+describe("a recovered span brings this device's record of the place up to its end", () => {
+  /** This device's last capture of the book before the kill: 15 s before the span's keep. */
+  const capture = (over: Partial<ProgressSave> = {}): ProgressSave => ({
+    connectionId: 'c1',
+    libraryId: 3,
+    path: 'Author/Book',
+    position: 16782,
+    duration: 61200,
+    finished: false,
+    playback_speed: 1.2,
+    device_id: 'old-id',
+    updated_at: '2026-10-25T07:33:15.000Z',
+    file: 'Author/Book/05.mp3',
+    file_pos: 1185.9,
+    ack_version: 41,
+    answered: ['other|2026-10-20T00:00:00.000Z'],
+    ...over,
+  });
+  /** A kill left `left` stored; the next launch recovers it. */
+  async function relaunch(left: OpenSpan = span()) {
+    await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify(left));
+    resetOutboxForTests();
+    await recoverOpenSpan();
+  }
+  const record = () => readMirror('c1', 3, 'Author/Book');
+
+  it('moves a record older than the span and behind it, keeping what the mirror keeps', async () => {
+    await writeMirror(capture());
+    await relaunch();
+    expect(await record()).toEqual({
+      ...capture(),
+      position: 16800,
+      file: 'Author/Book/05.mp3',
+      file_pos: 1203.9,
+      updated_at: '2026-10-25T07:33:30.000Z',
+      device_id: await getDeviceId(),
+    });
+    // The span itself still goes to the server.
+    expect(await outboxEvents('c1')).toHaveLength(1);
+  });
+
+  it('a start offline then resumes where the span ended, by its file', async () => {
+    await writeMirror(capture());
+    await relaunch();
+    // The server is not reached (`undefined`): only this device's own records.
+    const lookup = resumeLookupOf(undefined, await readLocalPlaces(), 'c1', 3, 'Author/Book');
+    expect(lookup).toMatchObject({
+      kind: 'progress',
+      progress: { position: 16800 },
+      file: { path: 'Author/Book/05.mp3', pos: 1203.9 },
+    });
+  });
+
+  it('leaves a record newer than the span: a place chosen since stands', async () => {
+    // The listener went back just before the kill: the move saved at once, and the span
+    // of before it was still stored.
+    const chosen = capture({ position: 300, updated_at: '2026-10-25T07:33:31.000Z' });
+    await writeMirror(chosen);
+    await relaunch();
+    expect(await record()).toEqual(chosen);
+  });
+
+  it('never moves a place back', async () => {
+    const further = capture({ position: 20000 });
+    await writeMirror(further);
+    await relaunch();
+    expect(await record()).toEqual(further);
+  });
+
+  it('leaves a finished book, and a book with no record', async () => {
+    const done = capture({ position: 300, finished: true });
+    await writeMirror(done);
+    await relaunch();
+    expect(await record()).toEqual(done);
+
+    await AsyncStorage.clear();
+    await relaunch();
+    expect(await record()).toBeNull();
+    expect(await outboxEvents('c1')).toHaveLength(1);
+  });
+
+  it('drops the file place of the older capture when the span has none', async () => {
+    await writeMirror(capture());
+    await relaunch(span({ to: { pos: 16800 } }));
+    const moved = await record();
+    expect(moved).toMatchObject({ position: 16800 });
+    expect(moved).not.toHaveProperty('file');
+    expect(moved).not.toHaveProperty('file_pos');
+  });
+
+  it('reads the end of the book as finished, as a capture there does', async () => {
+    await writeMirror(capture({ duration: 16803 }));
+    await relaunch();
+    expect(await record()).toMatchObject({ position: 16800, finished: true });
+  });
+
+  it("brings the shared record up to a closed tab's span, dated when that tab kept it", async () => {
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      await writeMirror(capture());
+      const left = {
+        ...span({ id: 'left' }),
+        owner: 'tab-b',
+        keptAt: Date.now() - LIVE_SPAN_MS - 1,
+      };
+      const live = {
+        ...span({ id: 'live', path: 'Author/Other', to: { pos: 99999 } }),
+        owner: 'tab-a',
+        keptAt: Date.now(),
+      };
+      await writeMirror(capture({ path: 'Author/Other' }));
+      await AsyncStorage.setItem(OPEN_SPAN, JSON.stringify([live, left]));
+      resetOutboxForTests();
+      await recoverOpenSpan();
+      // Not dated now: a tab that has played on since has the newer record.
+      expect(await record()).toMatchObject({
+        position: 16800,
+        updated_at: '2026-10-25T07:33:30.000Z',
+      });
+      // A span its tab is still playing is that tab's to save.
+      expect(await readMirror('c1', 3, 'Author/Other')).toMatchObject({ position: 16782 });
+    } finally {
+      Platform.OS = os;
+    }
   });
 });
 

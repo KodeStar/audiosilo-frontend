@@ -29,6 +29,7 @@ import { isPos, type OpenSpan, type StoredSpan, storedSpans } from './open-span-
 import {
   ackVersion,
   getDeviceId,
+  mirrorSpanEnd,
   noteClockSkew,
   pendingSaves,
   type ProgressSave,
@@ -394,14 +395,20 @@ function leftBehind(span: StoredSpan, now: number): boolean {
   return Math.abs(now - keptAt) >= (oldBuild ? OLD_BUILD_LIVE_MS : LIVE_SPAN_MS);
 }
 
-/** Close every span left behind into the outbox. Run inside `spanOps`. Returns whether a
+/** Close every span left behind into the outbox, and bring this device's record of each
+ * one's book up to where it ended (`mirrorSpanEnd`). Run inside `spanOps`. Returns whether a
  * live span of another tab is still stored (`live`), and the connections whose spans were
  * closed (`swept`). */
 async function closeLeftBehind(): Promise<{ live: boolean; swept: string[] }> {
   const spans = await readSpans();
   const now = Date.now();
   const left = spans.filter((s) => leftBehind(s, now));
-  for (const s of left) await appendClosed(bare(s));
+  for (const s of left) {
+    await appendClosed(bare(s));
+    // The mirror is written less often than the span is kept: its record of the book is
+    // brought up to where the span ended (never back, never over a newer record).
+    await mirrorSpanEnd(bare(s)).catch(() => undefined);
+  }
   if (left.length > 0) {
     await writeSpans(spans.filter((s) => !left.includes(s)));
     notify(); // an offline span counted while stored is now an event
