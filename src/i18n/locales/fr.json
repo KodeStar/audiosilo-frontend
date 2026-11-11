@@ -1809,6 +1809,9 @@
       "unknown": "Sur un autre appareil, tu étais à {{place}}. Y aller ?",
       "jump": "Y aller",
       "stay": "Rester"
+    },
+    "otherTab": {
+      "title": "Lecture dans un autre onglet"
     }
   },
   "reconnect": {

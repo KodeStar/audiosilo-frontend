@@ -22,6 +22,7 @@ jest.mock('@/downloads/store', () => ({
 jest.mock('@/playback/jump-undo', () => ({ startJumpUndo: service('jumpUndo') }));
 jest.mock('@/playback/place-reconcile', () => ({ startPlaceReconcile: service('reconcile') }));
 jest.mock('@/playback/listening-sync', () => ({ startListeningSync: service('listeningSync') }));
+jest.mock('@/playback/other-tab-notice', () => ({ startOtherTabNotice: service('otherTab') }));
 jest.mock('@/api/address-runner', () => ({ startAddressRouting: service('addresses') }));
 jest.mock('@/widgets/widget-sync', () => ({ startWidgetSync: service('widget') }));
 jest.mock('@/car/car-controller', () => ({ startCarSync: () => void mockCalls.push('start car') }));
@@ -55,6 +56,7 @@ describe('startRootServices', () => {
       'start jumpUndo',
       'start reconcile',
       'start listeningSync',
+      'start otherTab',
       'start addresses',
       'start widget',
       'start car',
@@ -71,6 +73,7 @@ describe('startRootServices', () => {
       'stop jumpUndo',
       'stop reconcile',
       'stop listeningSync',
+      'stop otherTab',
       'stop addresses',
       'stop widget',
       'stop cast',

@@ -1809,6 +1809,9 @@
       "unknown": "En otro dispositivo ibas por {{place}}. ¿Ir allí?",
       "jump": "Ir",
       "stay": "Quedarme"
+    },
+    "otherTab": {
+      "title": "Reproduciendo en otra pestaña"
     }
   },
   "reconnect": {

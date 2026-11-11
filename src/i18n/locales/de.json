@@ -1809,6 +1809,9 @@
       "unknown": "Auf einem anderen Gerät warst du bei {{place}}. Dorthin springen?",
       "jump": "Springen",
       "stay": "Bleiben"
+    },
+    "otherTab": {
+      "title": "Wiedergabe in einem anderen Tab"
     }
   },
   "reconnect": {

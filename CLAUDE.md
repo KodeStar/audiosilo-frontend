@@ -197,6 +197,7 @@ keep this index in step (one line per topic).
   - The replay guard (legacy PUT path)
   - A loaded book picks up another device's place
   - Listening sync
+  - One tab plays at a time (web)
   - Stall → error watchdog lives in shared JS
   - Why not interpret engine events
   - A browser autoplay refusal is a pause, not an error

@@ -306,7 +306,12 @@ class WebPlaybackService implements PlaybackService {
       }
     });
     a.addEventListener('playing', () => {
-      if (!active()) return;
+      // A `playing` queued before a pause that has since landed (the element is paused, and
+      // its 'pause' follows) is not playback: reported, the store would read it as a play
+      // begun here, and with its intent dropped (a give-way, a pause in the start window)
+      // as a new play that takes the connection from the tab playing now
+      // (`playing-claim.ts`).
+      if (!active() || a.paused) return;
       this.pendingAutoplay = false;
       this.update({ state: 'playing' });
     });
@@ -557,8 +562,6 @@ class WebPlaybackService implements PlaybackService {
       return false;
     }
 
-    const wasPlaying = this.intendsToPlay();
-
     // Buffer the new (local) source on a separate element while the current one
     // keeps playing, then switch - so there's no silent gap while it loads/seeks.
     // (A local copy is never transcoded, so `source` is the plain url at offset 0;
@@ -607,6 +610,11 @@ class WebPlaybackService implements PlaybackService {
       this.discard(pending);
       return false;
     }
+
+    // Read now, not before the wait: a pause made while the local source buffered stands
+    // (the listener's, or this tab giving way to another tab's play: the swapped-in element
+    // playing regardless would take the connection back, `playing-claim.ts`).
+    const wasPlaying = this.intendsToPlay();
 
     // Switch. The active() guard makes the old element's teardown events no-ops.
     const old = this.audio;

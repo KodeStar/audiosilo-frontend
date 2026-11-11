@@ -1487,7 +1487,9 @@ media GETs only.
   to the same file (by path-keyed track id) when it has it, else to the same whole-book place,
   the resume floor moving with it; while that moves the track index, `persist` and
   `onRemoteMove` refuse a place at another index of that book (`swapHold`) until the download's
-  queue is committed, which on a load is before the rate and the play.
+  queue is committed, which on a load is before the rate and the play. The web engine's
+  `swapTo` reads its own intent after the copy has buffered (up to 8 s), not before: a pause
+  made meanwhile stands (the listener's, or the tab giving way to another tab's play).
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /
@@ -1664,7 +1666,8 @@ media GETs only.
     `base_version` is the mirror's `ack_version` at the close (0 when none: a cold start).
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
-    immutable once there), `audiosilo.listeningOpenSpan` (a list, one span per web tab
+    immutable once there; a `finish` entry also carries its sends' marks, see *Across tabs*),
+    `audiosilo.listeningOpenSpan` (a list, one span per web tab
     playing, each with its `owner` and `keptAt`; a bare span is the pre-W2 form; a kill's
     leftover is closed into the outbox at the next launch, `recoverOpenSpan`, and on the web
     another tab's span is left to it while it is live, 30 s either side of now (a tab on an
@@ -1692,6 +1695,28 @@ media GETs only.
     beside it takes its place and length from the mirror its finish wrote, `withFinishedPlace`,
     so it is the legacy finished save, never a finish at 0 of 0), the outbox dropped, the PUT
     path from then on.
+  - *Across tabs* (web, fe#123, fe#211). The tabs of a browser are one device: they share the
+    three documents and the device id, but not each other's memory. So what a tab's Undo must
+    know of another tab's sends is written in the stored outbox, which every tab reads under
+    its lock, never announced on a channel (a message can arrive after the send it was meant
+    to stop; the lock gives the two one order): a send that carries a `finish` first marks it
+    as out there (`markOut`, `OutboxEntry.out`: one time per tab, `OUT_MARK_MS` past the
+    request's timeout) and drops the finishes no longer stored (taken back by an Undo in
+    another tab, or answered there), and when it ends takes its own mark off and marks what
+    it carried with no answer (`maybeReached`, in the same write). `withdrawFinish` waits for
+    a live mark (the other tab's answer shows as a change of the stored outbox, else it looks
+    again every 200 ms) and reads `maybeReached`, or a mark left standing past its time (its
+    tab went with the request), as "the server may hold it": the Undo then takes its edit. A
+    page that is going marks the finishes its keepalive request carries for
+    `PAGE_HIDE_MARK_MS` (written to `localStorage` at once, outside the lock: a page that is
+    going cannot wait) and leaves out one another tab took back. The memory marks
+    (`sendingNow`, `withdrawn`, the `maybeReached` set) stay as this tab's own, and are all
+    there is in the app. A tab that closes the span another tab left (`sweepLeftBehind`)
+    sends it at once: the tab that would have is gone. In a test, two tabs are two copies of
+    the modules (`jest.isolateModules`) over `src/testing/fake-browser.ts`, with
+    `@/lib/storage` mocked per tab (`tabStorage`), not the AsyncStorage package: Babel
+    requires that one lazily, after `isolateModules` has returned, so every copy would share
+    the first tab's.
   - *The ack rule* (`ackVersion` in `progress-sync.ts`, never lowered): a sync answer's row that
     is this device's own after a non-rejected event of the batch for that book (`keptMine`), a
     resume from a server row (version > 0), the reconcile's auto-move, and an answered offer
@@ -1723,6 +1748,122 @@ media GETs only.
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
     book History's "Waiting to sync" rows (`usePendingListens`).
+- **One tab plays at a time (web)** (`src/playback/playing-claim.ts`, fe#123; owner decision:
+  the newest tab wins). A tab that reaches `playing` says so to the browser's other tabs
+  (`claimPlaying` in `store.ts`, on every move into `playing`, before its span opens), and a
+  tab of the same connection that plays or means to (`wantsPlayback`) gives way
+  (`giveWayTo`): its span closes there and then, dated no later than the claim (`sentAt`), so
+  two tabs never record the same seconds; it pauses like any pause (the pause finds no span
+  left, so the span is one event), except that the engine is paused whatever the snapshot
+  reads (a play asked for a moment ago, whose first engine event has not arrived, must not
+  go on to `playing`: with the intent dropped it would read as a new play and take the
+  connection back; for the same reason the web engine reports no `playing` for an element
+  that is paused by then, one the browser queued before the pause landed); and the listener
+  is told with a toast, "Playing in another tab" (`other-tab-notice.ts`, a root service;
+  shown once the tab is looked at, and the store keeps a give-way nobody was there to hear
+  until the service registers). It keeps
+  its book, and a play there claims the connection back. A tab whose stream died
+  (`error`, no Retry out) is not playing and is told nothing, but its engine is paused all the
+  same: a stream that came back by itself would read as a new play and take the connection
+  back. Per connection, not per book: two connections may play side by side. "Newest" is
+  when the play was asked for
+  (`playAskedAt`: `beginPlaybackAttempt`, else the moment the engine began by itself, the OS
+  media controls), not which claim arrives last, with the tab id breaking a tie
+  (`givesWayTo`, pure), so of two tabs that start together exactly one stands; a start or
+  a Retry still loading when it gives way does not play once loaded (`yieldedAttempt`, read
+  in `startEngine`, the one place every start passes: played regardless, its `playing` would
+  read as a new play and take the connection back from the newer tab). The channel is
+  `tabChannel` (`src/lib/tab-channel.ts`): `BroadcastChannel` (no secure context needed, so
+  plain http has it), else `storage` events (the message written to `localStorage` under
+  `audiosilo-tab:<name>` and removed at once); null off the web, where none of this runs.
+  A tab on a build before the rule neither claims nor gives way. What the tabs share of the
+  listening outbox is under Listening sync, *Across tabs*.
+  - *The tabs are never at two places of one book* (owner decision). A tab with a book of
+    the claim's connection loaded that gave way, or was not playing (paused by hand, a dead
+    stream), notes the earliest such claim (`otherTabPlayed`: its place may be behind from
+    then). Before it plays again it takes the place the tabs share (`otherTabsPlace`): the
+    mirror's record of the loaded book (what a fresh load resumes from, by its file when the
+    queue holds it, fe#188), when this browser's `device_id` saved it at or after that
+    claim and it is more than `SAME_PLACE_S` (2 s) from the engine's place, **earlier or
+    later** (the other tab is the latest listening). Another book played there leaves this
+    book's record as it was, so nothing moves; another device's record is the place
+    reconcile's. `toggle` reads it before the engine starts and `retry` reloads there; a
+    play that began by itself (the OS media controls, `!wantsPlayback` at `playing`) moves
+    as it plays (`catchUpPlaying`), and no span or history opens until it has
+    (`catchingUp`). The move is the engine's seek, **not** `seekBook`: `adoptTabPlace` sets
+    the resume floor and the next span begins there as a `resume`, so no `jump` or
+    `moved_back` event tells the server the listener chose the place the tab was at. The
+    Undo jump chip still offers the way back (it reads the snapshot stream, so a move of
+    more than a minute makes one), and that Undo is the listener's own `seekBook`. A seek
+    the engine refuses puts back what `adoptTabPlace` set (`moveToTabPlace`): the play goes
+    on from where the engine is, and a floor left at a place far ahead would refuse its
+    every save and span. A book switch drops a move still out (`switchBook` clears
+    `catchingUp`), so it holds none of the next book's saves or spans. A book
+    the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,
+    as a fresh load of a finished book does (not when this tab is at the end itself).
+  - While the note stands the tab **saves nothing of its own** (`behindOtherTab` in
+    `persist`; a finish still saves): a paused tab's save dated now (a speed change, the
+    place reconcile's flush on the foreground) would be the newest record in the shared
+    mirror, over the other tab's, and a PUT of it would move the server's place back. The
+    place a tab gives way at is saved first (`giveWayTo`). The note is cleared when the tab
+    plays (`claimPlaying`) and by a move of the listener's own there (`userMoved`: a seek
+    in the paused tab stands, and so does every book switch).
+  - A play is noted **once** (`notedPlay` in `giveWayTo`: the claim's tab and `askedAt`).
+    A tab claims on every move into `playing`, so a play that goes on claims again (the
+    next file of a multi-file book, a stall it came back from, a transcoded stream
+    requested again at `&t=`) with the `askedAt` it began with; only a new play (a press,
+    the OS media controls) has another. A tab that already noted that play leaves its note
+    as it stands, so a seek the listener made there since is the place it plays from, for
+    a book of one file or of many (owner decision). `switchBook` forgets the play: a book
+    loaded after the claim (its place is the shared one as of its load) notes the play's
+    next claim and follows it. A new play is noted as before, over a seek made since. A tab
+    that gave way still reads as playing until its engine reports the pause, and the play
+    claims again within milliseconds: to a tab that has asked for no play since it noted
+    that one (`notedPlay.own`, its `playAskedAt` then) the claim is nothing at all, not a
+    second give-way (a second pause and toast, and a note over a seek made in between).
+  - A paused tab looked at again shows the other tab's place
+    (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
+    the play that follows reads again; a finished book stays where it is).
+  - *The tab that gives way says where it stopped.* The mirror is the other tab's last
+    **save** (every 15 s while it plays), so a tab that takes over from one still playing
+    starts up to 15 s behind it, and a press is never kept waiting for more. So the tab
+    that gives way answers on the same channel (`GaveWay` in `playing-claim.ts`,
+    told from a claim by its `kind`; `tabClaims().answer`, both transports): connection,
+    book (library and path), the place its span ended at (whole-book seconds and the file
+    place), whether that is the book's end, its tab and the play it answers (`to`,
+    `askedAt`). **An answer is to a play, not to one claim message**: a tab claims on every
+    move into `playing`, and a web element buffers a moment after it starts, so the tab that
+    takes over has claimed twice (5 to 23 ms apart, each with a new `sentAt`) before the
+    answer to its first claim crosses back, always so over `storage` events. So the answer
+    names the play by what every claim of it carries (the claiming tab and `askedAt`), and
+    the claiming tab keeps the play it claimed (`ownPlay`: `askedAt`, when it was first
+    claimed, the place it began at), untouched by a later claim of the same play; never
+    match an answer on `sentAt`. Only a tab that was not itself behind another's play
+    answers (the note, or a move to the shared place still out: `catchingUp`), and a play
+    is answered **once**: a claim of a play the tab noted before (`notedPlay`) gets no
+    second answer, which would name a later place. The
+    claiming tab (`onGaveWayAnswer`) moves there by `moveToTabPlace`, the same path as the
+    mirror's: the listening it began at the older place is dropped (`dropListening`: the
+    open span, stored or not, and the history's start, with no event) and begins again at
+    the place taken as a `resume`, then the place is saved at once. So the spans are one
+    chain (one tab's begins where the other's ended) and the saved place never goes back.
+    The answer is read against the place the play **began** at (`ownPlay.pos`, moved with
+    each tab place taken), not where it has played to since. Ignored: an answer to an
+    older play than the tab's last (a press since; an answer with no `askedAt` matches
+    none), or later than `GAVE_WAY_ANSWER_MS` (5 s) after the play's first claim;
+    another connection or book; while a book loads; a place the listener chose here
+    (`placeChosen`: an explicit start or a seek, until another tab plays); when yet another
+    tab plays by now; and a finished one (a book is not started again under a listener
+    hearing it; the next resume reads the save). A play that began by itself is still
+    moving to the mirror's place when the answer comes: the answer waits for that
+    (`catchingUp`). A `playing` that arrives while such a move is out (the play buffered
+    during it) begins no history either (`beginHistory` reads `catchingUp` itself, as
+    `openListeningSpan` does): the listening begins where the move lands. The
+    web engine places a seek made before its metadata where the load
+    starts (`placeAt`), so an answer during a load lands there.
+  - Limit: two windows both in view never get a foreground event, so the paused one shows
+    the place it stopped at (right when it gave way, older as the other plays on) until it
+    plays, which then takes the other's place exactly.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and

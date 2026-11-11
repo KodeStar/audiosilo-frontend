@@ -78,6 +78,7 @@ import {
   writeMirror,
 } from './progress-sync';
 import { listenerSettings } from './listener-settings';
+import { type GaveWay, givesWayTo, type PlayingClaim, tabClaims } from './playing-claim';
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
 import { bookSpeed } from './time-left';
@@ -152,6 +153,14 @@ let startingPlayback = false;
 /** Counts the play requests (`beginPlaybackAttempt`): a paused adoption's reload tells the
  * listener's play made while its load was out from the engine playing by itself. */
 let playAttempts = 0;
+/** When the play this tab makes (or means to) was asked for (ms): a press here
+ * (`beginPlaybackAttempt`), else the moment the engine began by itself (the OS media
+ * controls). What the tabs of the web player compare (`playing-claim.ts`): the newest wins. */
+let playAskedAt = 0;
+/** The play request (`playAttempts`) that gave way to another tab's claim (`giveWayTo`):
+ * until a play is asked for again, a start still loading does not play once it has loaded
+ * (`startEngine`). */
+let yieldedAttempt = -1;
 /** Pending stall→error timer (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 /** The whole-book position the current book resumed from, kept as a running high-water
@@ -271,10 +280,13 @@ function lowerFloorTo(bookPosition: number) {
 
 /** A move of the listener's own in the loaded book (a seek, a track jump, a book
  * started): counted for the place reconcile (`localMoves`), and, given where it lands,
- * the resume floor lowered to it (`lowerFloorTo`). */
+ * the resume floor lowered to it (`lowerFloorTo`). The place is theirs from here, whatever
+ * another tab played meanwhile (`otherTabPlayed`). */
 function userMoved(bookPosition?: number) {
   localMoves++;
   quietAdopted = null;
+  otherTabPlayed = null;
+  placeChosen = true;
   if (bookPosition !== undefined) lowerFloorTo(bookPosition);
 }
 
@@ -430,6 +442,9 @@ async function persist(opts?: { forceFinished?: boolean }) {
   if (heldBySwap(nowPlaying, snapshot.trackIndex) && !opts?.forceFinished) return;
   // Nor an adoption's reloaded place, until it plays (`quietAdopted`).
   if (quietAdopted === contentKeyOf(nowPlaying) && !opts?.forceFinished) return;
+  // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
+  // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
+  if (behindOtherTab(nowPlaying) && !opts?.forceFinished) return;
   // A downloaded book started while its connection wasn't there (a session that could not
   // be read yet: a CarPlay launch with the phone locked) saves from when it is back.
   // A switch takes the next book's client before that book is `nowPlaying` (`switchBook`;
@@ -666,6 +681,20 @@ function fileOf(np: NowPlaying, index: number): string | undefined {
   return id?.startsWith(prefix) ? id.slice(prefix.length) : undefined;
 }
 
+/** A saved place by its file (`file`: its rel path, `pos` seconds into it) in the order
+ * `queue` plays now, never past the file's end; null when the queue has no such file. */
+function filePlaceIn(
+  queue: Pick<BookQueue, 'tracks' | 'offsets' | 'total'>,
+  libraryId: number,
+  file: string,
+  pos: number,
+): { index: number; positionInTrack: number } | null {
+  const index = trackIndexById(queue, trackIdOf(libraryId, file));
+  if (index < 0) return null;
+  const length = (queue.offsets[index + 1] ?? queue.total) - queue.offsets[index];
+  return { index, positionInTrack: length > 0 ? Math.min(pos, length) : pos };
+}
+
 /** A place in the loaded book as a span end, or null when it is not one: an engine that
  * reports NaN (a stream with no length yet) never puts one in a span or an event. */
 function endAt(np: NowPlaying, trackIndex: number, positionInTrack: number): SpanEnd | null {
@@ -732,6 +761,8 @@ function emit(connectionId: string, events: ListeningEvent[]): void {
 function openListeningSpan(at?: SpanEnd) {
   const np = usePlayer.getState().nowPlaying;
   if (!np || !usesListeningSync(np.connectionId)) return;
+  // Not from a place on its way to another tab's (`catchUpPlaying` opens it there).
+  if (catchingUp) return;
   if (span) {
     if (sameBook(span, np)) return;
     closeListeningSpan();
@@ -758,8 +789,8 @@ function openListeningSpan(at?: SpanEnd) {
  * Close the open span at `at` (else where the engine is, else where it was last seen) into
  * the outbox, then send. Returns the closed span (null when none was open).
  */
-function closeListeningSpan(opts: { at?: SpanEnd } = {}): OpenSpan | null {
-  const closing = takeSpan(opts.at);
+function closeListeningSpan(opts: { at?: SpanEnd; endedAt?: number } = {}): OpenSpan | null {
+  const closing = takeSpan(opts.at, opts.endedAt);
   if (!closing) return null;
   const cid = closing.connectionId;
   const key = contentKeyOf(closing);
@@ -783,14 +814,18 @@ type PendingClose = { done: Promise<void>; flush: boolean };
 const closesInFlight = new Map<string, PendingClose>();
 
 /** Take the open span (none open from here), ended now at `at`, else where the engine is,
- * else where it was last seen. */
-function takeSpan(at?: SpanEnd): OpenSpan | null {
+ * else where it was last seen. `endedAt` (ms): the time it ends when that is before now
+ * (another tab began playing then: `giveWayTo`). */
+function takeSpan(at?: SpanEnd, endedAt?: number): OpenSpan | null {
   const closing = span;
   span = null;
   if (!closing) return null;
   const np = usePlayer.getState().nowPlaying;
   closing.to = at ?? (np && sameBook(closing, np) ? engineEnd() : null) ?? closing.to;
-  closing.endedAt = new Date().toISOString();
+  const now = Date.now();
+  const ended = endedAt !== undefined && Number.isFinite(endedAt) ? Math.min(now, endedAt) : now;
+  // Never before it began (a span cut since the other tab's claim was made).
+  closing.endedAt = new Date(Math.max(ended, Date.parse(closing.startedAt) || 0)).toISOString();
   return closing;
 }
 
@@ -1034,6 +1069,429 @@ function closeSpanOnPageHide() {
   sendOnPageHide(extra, deviceId || cachedDeviceId());
 }
 
+// --- One tab plays at a time (web; `playing-claim.ts`, fe#123) ----------------------------
+
+/** Tell the other tabs of the web player this one plays the loaded book's connection. */
+function claimPlaying() {
+  // This tab plays now: the others follow its place from here.
+  otherTabPlayed = null;
+  const { nowPlaying: np, snapshot } = usePlayer.getState();
+  if (!np) {
+    ownPlay = null;
+    return;
+  }
+  const { sentAt } = tabClaims().announce(np.connectionId, playAskedAt);
+  // The play already claimed, going on (a buffer moments after it began, the next file):
+  // it is kept as it was first claimed, so the answer to that claim still finds it.
+  if (ownPlay?.connectionId === np.connectionId && ownPlay.askedAt === playAskedAt) return;
+  // Kept, with where this play began: the tab that gives way answers it with where it
+  // stopped (`onGaveWayAnswer`).
+  ownPlay = {
+    connectionId: np.connectionId,
+    askedAt: playAskedAt,
+    since: sentAt,
+    pos: toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position),
+  };
+}
+
+/**
+ * Another tab began playing (its `claim`). When this tab plays on the same connection, or
+ * means to, and that play is the newer one (`givesWayTo`), this one gives way: its span
+ * ends where the engine is, dated no later than the other tab's began, then it pauses (the
+ * intent dropped; the place was saved before the note below, so the save the pause makes
+ * writes nothing, and the pause finds no span left to close, so the span is one event) and
+ * the listener is told (`onGaveWayToTab`). The book
+ * stays loaded: a play here claims the connection back, from where the other tab left the
+ * book when it played the same one (`otherTabsPlace`).
+ *
+ * A tab whose stream died is not playing, so it has nothing to give way with; its engine is
+ * stopped all the same, so the stream cannot come back by itself and play over the other tab.
+ *
+ * Either way, and paused too, a tab with a book of that connection loaded notes that
+ * another tab plays (`otherTabPlayed`): its own place may be behind from here. Once per
+ * play: a tab claims on every move into `playing`, so the play it noted claims again as it
+ * goes on (the next file, a stall it came back from, a transcoded stream requested again),
+ * and that is no new play (`notedPlay`). The note is left as it stands, so a seek the
+ * listener made here since is still the place this tab plays from. That holds for a tab
+ * still pausing for the play too (it gave way a moment ago and its engine has not reported
+ * the pause, so it still reads as playing): the play's next claim is not a second give-way.
+ *
+ * A tab that gives way answers the play with the place it stopped at (`GaveWay`), which is
+ * where its span ended: the other tab began from this tab's last save, up to 15 s behind,
+ * and plays on from here instead (`onGaveWayAnswer`). Not a tab that was itself behind
+ * another's play (a press still reading the shared place, a play that began by itself still
+ * moving there: `catchingUp`): its place is not the latest. And once per play: a claim of
+ * a play this tab noted before (it gave way to it already, or was not playing then) is
+ * never answered, so the other tab is told one place, the one its first claim stopped.
+ */
+function giveWayTo(claim: PlayingClaim) {
+  const { nowPlaying: np, snapshot } = usePlayer.getState();
+  const mine = {
+    tab: tabClaims().tab,
+    connectionId: np?.connectionId ?? null,
+    live: isPlayingState(snapshot.state) || wantsPlayback,
+    askedAt: playAskedAt,
+  };
+  const gives = givesWayTo(claim, mine);
+  const wasBehind = catchingUp !== null || otherTabPlayed?.connectionId === claim.connectionId;
+  // The play already noted, going on: by its tab and when it was asked for, which only a new
+  // play changes (a press, the OS media controls).
+  const noted =
+    notedPlay?.connectionId === claim.connectionId &&
+    notedPlay.tab === claim.tab &&
+    notedPlay.askedAt === claim.askedAt;
+  // It gave way to that play already and no play was asked for here since (`own`): its
+  // engine has not reported the pause yet, so the snapshot still reads `playing`. Nothing
+  // is new: no second note (a seek the listener made here meanwhile stands), pause or
+  // notice.
+  if (gives && noted && notedPlay?.own === playAskedAt) return;
+  const goesOn = !gives && noted;
+  // Not when it plays on (the newer play is this tab's: the other tab follows it).
+  if (np && np.connectionId === claim.connectionId && (gives || !mine.live) && !goesOn) {
+    notedPlay = {
+      connectionId: claim.connectionId,
+      tab: claim.tab,
+      askedAt: claim.askedAt,
+      own: playAskedAt,
+    };
+    // The place it gives way at is saved first: nothing of its own is saved after the note.
+    if (gives) void persist();
+    // Whatever place the listener chose here, the other tab's listening is the latest.
+    placeChosen = false;
+    // The earliest claim not caught up with yet: every save since may be past this place.
+    if (otherTabPlayed?.connectionId !== claim.connectionId) {
+      otherTabPlayed = {
+        connectionId: claim.connectionId,
+        since: Math.min(claim.sentAt, Date.now()),
+      };
+    }
+  }
+  if (!gives) {
+    // A stream that died here (`error`, no Retry out) is not playing, but its engine may
+    // still bring it back by itself (the error hold lets a `playing` through), and that
+    // `playing` would read as a new play and take the connection back from the tab that
+    // plays now. So its engine is stopped: the error stays, and a Retry here plays again.
+    const died = !mine.live && snapshot.state === 'error';
+    if (died && mine.connectionId === claim.connectionId) {
+      void service?.pause().catch(() => undefined);
+    }
+    return;
+  }
+  yieldedAttempt = playAttempts;
+  const closed = closeListeningSpan({ endedAt: claim.sentAt });
+  if (np && !wasBehind && !noted) {
+    // Where its span ended, so the other tab's begins there: one chain, no gap.
+    const at = closed && sameBook(closed, np) ? closed.to : engineEnd();
+    const { total } = np.queue;
+    if (at) {
+      tabClaims().answer(claim, {
+        connectionId: np.connectionId,
+        libraryId: np.libraryId,
+        path: np.path,
+        position: at.pos,
+        ...(at.file !== undefined ? { file: at.file, filePos: at.filePos } : {}),
+        finished: total > 0 && at.pos >= total - FINISHED_TOLERANCE,
+      });
+    }
+  }
+  // The engine is paused whatever the snapshot says, where the `pause` action pauses only
+  // one seen `playing` or `loading`: a play just asked for, whose first engine event has not
+  // arrived, would go on to `playing` with the intent dropped, read as a new play and take
+  // the connection back.
+  clearPlaybackIntent();
+  void service
+    ?.pause()
+    .catch((e: unknown) => console.warn('[player] could not pause for another tab', e));
+  if (gaveWayListener) gaveWayListener();
+  else gaveWayUntold = true;
+}
+
+let gaveWayListener: (() => void) | null = null;
+/** This tab gave way with nobody to tell yet (the root's services start after the first
+ * paint on the web): the listener is told as it registers. */
+let gaveWayUntold = false;
+
+/** Be told each time this tab gives way to another tab's play (the "Playing in another
+ * tab" notice). One listener; returns the unsubscribe. */
+export function onGaveWayToTab(listener: () => void): () => void {
+  gaveWayListener = listener;
+  if (gaveWayUntold) {
+    gaveWayUntold = false;
+    listener();
+  }
+  return () => {
+    if (gaveWayListener === listener) gaveWayListener = null;
+  };
+}
+
+/**
+ * Another tab of the web player began playing on a connection while this tab, with a book
+ * of that connection loaded, was not playing or gave way to it: since when (the earliest
+ * such claim, ms). From then on this tab's place may be behind the one the tabs share (the
+ * mirror of the last save, which every tab of a browser reads and writes), so:
+ * - it saves nothing of its own (`persist`): its place dated now would be the newest there,
+ *   over the other tab's;
+ * - before it plays again it takes the shared place (`otherTabsPlace`), so the tabs are
+ *   never at two places of one book.
+ * Cleared once this tab plays (`claimPlaying`: the others follow it from here) and by a move
+ * of the listener's own here (`userMoved`: the place they chose stands; every book switch
+ * is one, and a book just loaded resumed from the shared place anyway).
+ */
+let otherTabPlayed: { connectionId: string; since: number } | null = null;
+/** The other tab's play this tab noted last (`giveWayTo`), by its tab and when it was asked
+ * for: the same play claiming again as it goes on is not noted a second time, so it never
+ * takes back a place the listener chose here since (`userMoved`). Forgotten when a book is
+ * started (`switchBook`): that book's place is the shared one as it was at its load, and
+ * the other tab plays on from there, so its next claim is noted afresh. `own`: this tab's
+ * own play as it stood then (`playAskedAt`), which tells a tab still pausing for that play
+ * (the engine's pause not reported yet) from one that has played again since. */
+let notedPlay: { connectionId: string; tab: string; askedAt: number; own: number } | null = null;
+/** The engine may be playing while this tab moves to another tab's place (`moveWhilePlaying`:
+ * a play that began by itself, `catchUpPlaying`, or the answer of the tab that gave way,
+ * `onGaveWayAnswer`): no span opens and nothing is saved meanwhile. Dropped by a book switch
+ * (`switchBook`): the move was the previous book's. */
+let catchingUp: Promise<void> | null = null;
+/** Whether the loaded book's place is not to be saved: another tab has played since. */
+const behindOtherTab = (np: NowPlaying) =>
+  catchingUp !== null || otherTabPlayed?.connectionId === np.connectionId;
+/** The play this tab claimed last (`claimPlaying`), by when it was asked for (`askedAt`,
+ * which every claim of the play carries: a play claims again on each move into `playing`):
+ * an answer to it says where the tab that gave way stopped (`onGaveWayAnswer`). `since`:
+ * when it was first claimed. `pos`: the whole-book place this play began at (the place of
+ * another tab it took since, `adoptTabPlace`), which is what an answer is read against: by
+ * the time one comes the tab has played on from there. */
+let ownPlay: { connectionId: string; askedAt: number; since: number; pos: number } | null = null;
+/** How long after a play's first claim a tab still takes the answer to it. The answer comes
+ * within moments (the other tab pauses as it hears the claim); one later than this would
+ * move a listener who has been listening here for seconds. */
+export const GAVE_WAY_ANSWER_MS = 5_000;
+/** Whether the loaded book's place is one the listener chose in this tab (an explicit
+ * start, a move of their own: `userMoved`) with no other tab playing since: an answer never
+ * moves it. Not one it resumed at or took from another tab. */
+let placeChosen = false;
+/** Places closer than this are one place: nothing moves for less. */
+const SAME_PLACE_S = 2;
+
+/** Where another tab left the loaded book: the track and the seconds into it, the
+ * whole-book place (`pos`), and whether it finished the book there (then the start). */
+type TabPlace = { index: number; positionInTrack: number; pos: number; finished: boolean };
+
+/**
+ * The place to take before this tab plays again, or null to stay: where the newest save of
+ * the loaded book is (the mirror: what a fresh load of the book resumes from, by its file
+ * when the queue holds it, fe#188), when a tab of this browser saved it after the other
+ * tab's claim (`since`) and it is another place than the engine's (`SAME_PLACE_S`), earlier
+ * or later: the other tab is the latest listening. Another device's record moves nothing
+ * (that is the place reconcile's, which asks first), nor does another book's, which leaves
+ * this book's record as it was.
+ *
+ * A book the other tab finished starts again from 0, as a fresh load of a finished book
+ * does (`playBook`), unless this tab is at its end itself (`finished: false` leaves a
+ * finished book where it is: the paused tab only shows the place).
+ */
+async function otherTabsPlace(
+  since: number,
+  opts?: { finished?: boolean },
+): Promise<TabPlace | null> {
+  const loaded = usePlayer.getState().nowPlaying;
+  if (!loaded) return null;
+  const moves = localMoves;
+  const record = await readMirror(loaded.connectionId, loaded.libraryId, loaded.path).catch(
+    () => null,
+  );
+  const { nowPlaying: np, snapshot, loadingBook } = usePlayer.getState();
+  // Another book, a place not known yet (a load), or the listener moved meanwhile.
+  if (!np || !sameBook(np, loaded) || loadingBook || localMoves !== moves) return null;
+  if (!record || record.device_id !== (deviceId || cachedDeviceId())) return null;
+  if (!(Date.parse(record.updated_at) >= since)) return null;
+  const stopped = { ...record, filePos: record.file_pos };
+  const here = toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position);
+  return tabPlaceOf(np, here, stopped, opts);
+}
+
+/**
+ * A place another tab stopped the loaded book at (`stopped`: its save, or its answer) as
+ * the place for this tab to take, null when it is this tab's own (`here`, within
+ * `SAME_PLACE_S`): by its file when the queue holds it (fe#188), else by its whole-book
+ * seconds. A finished one is the start (`finished: false`: null, the book stays where it
+ * is).
+ */
+function tabPlaceOf(
+  np: NowPlaying,
+  here: number,
+  stopped: { position: number; file?: string; filePos?: number; finished: boolean },
+  { finished = true }: { finished?: boolean } = {},
+): TabPlace | null {
+  const { offsets, total } = np.queue;
+  if (stopped.finished) {
+    if (!finished || (total > 0 && here >= total - FINISHED_TOLERANCE)) return null;
+    return { index: 0, positionInTrack: 0, pos: 0, finished: true };
+  }
+  const saved = Math.max(0, total > 0 ? Math.min(stopped.position, total) : stopped.position);
+  const at =
+    (stopped.file !== undefined
+      ? filePlaceIn(np.queue, np.libraryId, stopped.file, stopped.filePos ?? 0)
+      : null) ?? locate(offsets, saved);
+  const pos = toBookPosition(offsets, at.index, at.positionInTrack);
+  if (!Number.isFinite(pos) || Math.abs(pos - here) <= SAME_PLACE_S) return null;
+  return { ...at, pos, finished: false };
+}
+
+/**
+ * The loaded book is at `place` from here (`otherTabsPlace`), as a book just loaded is at
+ * its resume place: the resume floor is that place, and the next span begins there as a
+ * `resume` (a `restart` with the `unfinish` owed, for a book the other tab finished). Not a
+ * move of the listener's own, so no listening event says they moved (`moveListeningSpan`):
+ * the server never reads the place this tab was at as chosen. The place reconcile still
+ * counts it (`localMoves`): a check out meanwhile stands back.
+ */
+function adoptTabPlace(np: NowPlaying, place: TabPlace) {
+  resumeFloor = place.pos;
+  localMoves++;
+  nextStart = place.finished ? 'restart' : 'resume';
+  unfinishDue = place.finished && usesListeningSync(np.connectionId);
+  placeChosen = false;
+  if (ownPlay) ownPlay.pos = place.pos;
+}
+
+/**
+ * Move the loaded book to `place`, where another tab left it (`adoptTabPlace`): the engine
+ * seeks there, which the Undo jump chip sees as any jump (`jump-undo.ts`), so the way back
+ * is offered. Resolves the place taken, else null; never rejects (a play that waits on it
+ * goes on from where the engine is: what `adoptTabPlace` set for the place is put back, or a
+ * floor at a place far ahead that the engine never reached would refuse every save and
+ * span of the play that follows, `SLIP_TOLERANCE`).
+ */
+async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<TabPlace | null> {
+  const { nowPlaying: np, snapshot } = usePlayer.getState();
+  if (!np) return null;
+  const before = { resumeFloor, nextStart, unfinishDue };
+  const play = ownPlay;
+  const playPos = play?.pos;
+  adoptTabPlace(np, place);
+  const moves = localMoves;
+  try {
+    if (place.index === snapshot.trackIndex) await svc.seekTo(place.positionInTrack);
+    else await svc.skipToTrack(place.index, place.positionInTrack);
+    return place;
+  } catch (e) {
+    console.warn('[player] could not take the place another tab left', e);
+    // Not once the listener moved or another book started meanwhile: the floor is theirs.
+    if (localMoves === moves) {
+      resumeFloor = before.resumeFloor;
+      nextStart = before.nextStart;
+      unfinishDue = before.unfinishDue;
+      if (play && playPos !== undefined) play.pos = playPos;
+    }
+    return null;
+  }
+}
+
+/** Take the place the tabs share for the loaded book, when it is another one than the
+ * engine's (`otherTabsPlace`, `moveToTabPlace`). Resolves the place taken, else null. */
+async function catchUpWithOtherTab(
+  svc: PlaybackService,
+  since: number,
+  opts?: { finished?: boolean },
+): Promise<TabPlace | null> {
+  const place = await otherTabsPlace(since, opts).catch(() => null);
+  return place ? moveToTabPlace(svc, place) : null;
+}
+
+/**
+ * Run `move` (to another tab's place) in a tab whose engine may be playing: no span opens
+ * and nothing is saved until it is over (`catchingUp`), then, playing, its listening (the
+ * span, the history) begins at the place taken, else where the engine is. Resolves once
+ * over.
+ */
+function moveWhilePlaying(move: () => Promise<TabPlace | null>): Promise<void> {
+  const moving: Promise<void> = Promise.resolve()
+    .then(move)
+    .then((place) => {
+      if (catchingUp !== moving) return; // a later move took over: its end opens the span
+      catchingUp = null;
+      const { nowPlaying: np, snapshot } = usePlayer.getState();
+      if (!np || !isPlayingState(snapshot.state)) return;
+      beginHistory();
+      openListeningSpan(
+        place ? (endAt(np, place.index, place.positionInTrack) ?? undefined) : undefined,
+      );
+    });
+  catchingUp = moving;
+  return moving;
+}
+
+/**
+ * The engine began playing by itself (the OS media controls; nothing in the page was
+ * pressed) in a tab another tab has played past: it moves to that tab's place as it plays,
+ * and its listening begins there, not at the place it left.
+ */
+function catchUpPlaying(svc: PlaybackService, since: number) {
+  void moveWhilePlaying(() => catchUpWithOtherTab(svc, since));
+}
+
+/**
+ * The tab that gave way to this tab's play says where it stopped (`GaveWay`). This tab
+ * began from the shared save, which that tab made up to 15 s before it stopped, so it moves
+ * on to the place the listener really was: the listening begun at the older place is
+ * dropped (its span and history: nothing is recorded for a stretch nobody chose to hear
+ * twice) and begins again at the place taken, as a `resume`, with no event that says the
+ * listener moved. The place is saved at once.
+ *
+ * The answer is to a play, whichever of its claims the other tab heard: matched on when
+ * the play was asked for (`askedAt`), never on one claim's `sentAt`, which the play's next
+ * move into `playing` (a buffer moments after it began) would have replaced before the
+ * answer crossed back.
+ *
+ * Ignored: an answer to an older play than this tab's last (a press since), or one that
+ * comes later than `GAVE_WAY_ANSWER_MS` after the play's first claim; another connection's
+ * or another book's; while a book
+ * loads; when the listener chose the place here (`placeChosen`: an explicit start, a seek
+ * since); when yet another tab plays by now (this tab is behind it); a place within
+ * `SAME_PLACE_S` of the one this play began at; and a finished one (the book is not started
+ * again under a listener who is hearing it: the next resume reads the save).
+ */
+function onGaveWayAnswer(answer: GaveWay) {
+  // Still moving to the shared place (`catchUpPlaying`): read against where that lands.
+  if (catchingUp) {
+    void catchingUp.then(() => onGaveWayAnswer(answer));
+    return;
+  }
+  const svc = service;
+  const play = ownPlay;
+  const { nowPlaying: np, loadingBook } = usePlayer.getState();
+  if (!svc || !play || !np || loadingBook) return;
+  if (answer.askedAt !== play.askedAt || answer.connectionId !== play.connectionId) return;
+  if (Date.now() - play.since > GAVE_WAY_ANSWER_MS) return;
+  if (!sameBook(np, answer) || placeChosen || behindOtherTab(np)) return;
+  // Against where this play began, not where it has played to since.
+  const place = tabPlaceOf(np, play.pos, answer, { finished: false });
+  if (!place) return;
+  dropListening();
+  void moveWhilePlaying(() => moveToTabPlace(svc, place)).then(() => void persist());
+}
+
+/** Forget the listening begun where the engine was (the open span, stored or not, and the
+ * history's start): no event, as if it had not begun. */
+function dropListening() {
+  historyStart = null;
+  if (!span) return;
+  span = null;
+  void storeOpenSpan(null);
+}
+
+/**
+ * Web: a paused tab is looked at again. When another tab has played its book on since, it
+ * shows that tab's place (the engine moved there, paused) instead of the one it stopped at;
+ * the play that follows looks again (`toggle`). A book finished meanwhile stays where it is.
+ */
+export function showOtherTabsPlace(): void {
+  const { snapshot, nowPlaying: np } = usePlayer.getState();
+  if (!service || !np || otherTabPlayed?.connectionId !== np.connectionId) return;
+  if (wantsPlayback || (snapshot.state !== 'paused' && snapshot.state !== 'ready')) return;
+  void catchUpWithOtherTab(service, otherTabPlayed.since, { finished: false });
+}
+
 /** Surface an `error` if we wanted to play but haven't reached `playing` within the
  * grace - a dead/stalled stream then offers a retry instead of an endless spinner. The
  * watchdog is armed by the play/retry actions (and by a mid-playback stall's `loading`),
@@ -1060,6 +1518,7 @@ function armStallWatchdog() {
  * stream surfaces an error after the grace, matching the old native behavior). */
 function beginPlaybackAttempt() {
   playAttempts++;
+  playAskedAt = Date.now();
   wantsPlayback = true;
   startingPlayback = true;
   armStallWatchdog();
@@ -1086,8 +1545,14 @@ function clearPlaybackIntent() {
  * `/player` deep link) is a plain pause, not a failure: drop the intent (so the stall
  * watchdog never turns it into `error`) and settle on `paused`, so the play button comes
  * back and a press (the gesture it wanted) plays. Every other failure rejects as a
- * `PlaybackStartError` saying why (`startFailure`). */
-async function startEngine(svc: PlaybackService): Promise<void> {
+ * `PlaybackStartError` saying why (`startFailure`).
+ *
+ * Not started at all (false) when this tab gave way to another tab's play since the play
+ * was asked for (`giveWayTo`, while a start or a Retry was loading): loaded here, played
+ * there. Played regardless, the engine's `playing` would read as a new play nobody asked
+ * for and take the connection back from the newer tab. */
+async function startEngine(svc: PlaybackService): Promise<boolean> {
+  if (yieldedAttempt === playAttempts) return false;
   try {
     await svc.play();
   } catch (err) {
@@ -1096,6 +1561,7 @@ async function startEngine(svc: PlaybackService): Promise<void> {
     const { snapshot } = usePlayer.getState();
     usePlayer.setState({ snapshot: { ...snapshot, state: 'paused' } });
   }
+  return true;
 }
 
 /** A failed start as the listener is told it: the loaded book streams from a server known
@@ -1127,6 +1593,9 @@ async function startLoadedEngine(svc: PlaybackService): Promise<void> {
 /** Mark the start of a listening span when playback begins. */
 function beginHistory() {
   if (historyStart) return;
+  // Not from a place on its way to another tab's, as no span opens from one
+  // (`openListeningSpan`): the listening begins where the move lands (`moveWhilePlaying`).
+  if (catchingUp) return;
   const player = usePlayer.getState();
   if (!player.nowPlaying) return;
   historyStart = {
@@ -1241,6 +1710,11 @@ function switchBook(api: ApiClient | null, request: NonNullable<typeof lastPlayR
   cancelStallWatchdog();
   stopSaveLoop();
   userMoved();
+  // A move to another tab's place still out was the previous book's: its end opens no span
+  // of this one's (`moveWhilePlaying`), and holds none of its saves.
+  catchingUp = null;
+  // The play another tab made before this book was here is noted again as it goes on.
+  notedPlay = null;
   apiRef = api;
   apiRefFor = request.connectionId;
   lastPlayRequest = request; // so retry() can re-run resume
@@ -1337,8 +1811,24 @@ async function createService(): Promise<PlaybackService> {
     // Listening spans use the STRICT reading (see `isPlayingState`): a span must cover
     // audio the listener actually heard, so a buffer is not the start of one.
     if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) {
-      beginHistory();
-      openListeningSpan();
+      // A play nobody asked for here (the OS media controls start the engine themselves) is
+      // asked for now. Claimed before its span opens: a tab that gives way ends its span
+      // at the claim, so the two never cover the same time.
+      const byItself = !wantsPlayback;
+      if (byItself) playAskedAt = Date.now();
+      // A press took the other tab's place before it played (`toggle`, `retry`); a play
+      // that began by itself takes it now, and its listening begins there.
+      const behind = byItself ? otherTabPlayed : null;
+      claimPlaying();
+      if (behind && behind.connectionId === usePlayer.getState().nowPlaying?.connectionId) {
+        catchUpPlaying(svc, behind.since);
+      } else {
+        // Neither begins while a move to another tab's place is out (this play buffered and
+        // came back during it): the listening begins where the move lands
+        // (`moveWhilePlaying`).
+        beginHistory();
+        openListeningSpan();
+      }
     } else if (isPlayingState(prev.state) && !isPlayingState(snapshot.state)) {
       endHistory();
       // The natural end sends the finish after the last span (`sendFinish`, below).
@@ -1438,6 +1928,8 @@ async function createService(): Promise<PlaybackService> {
   });
   // Smart Speed's running total, counted on the playing book (`time-saved.ts`).
   svc.onSilenceSaved?.((total) => noteSilenceSaved(total, selectBookKey(usePlayer.getState())));
+  // Web: another tab began playing (`playing-claim.ts`). Nothing is heard off the web.
+  tabClaims().subscribe(giveWayTo, onGaveWayAnswer);
   service = svc;
   // Expose whether this platform/engine can show an audio-route picker so the player
   // can decide whether to render the cast button (web: only where the APIs exist).
@@ -1556,15 +2048,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
           } else if (r.file) {
             // This device's own place by its file: the same file in the order the queue
             // plays now, even when the place was saved on another order (fe#188).
-            const index = trackIndexById(queue, trackIdOf(libraryId, r.file.path));
-            if (index >= 0) {
-              const end = queue.offsets[index + 1] ?? queue.total;
-              const length = end - queue.offsets[index];
-              startFile = {
-                index,
-                positionInTrack: length > 0 ? Math.min(r.file.pos, length) : r.file.pos,
-              };
-            }
+            startFile = filePlaceIn(queue, libraryId, r.file.path, r.file.pos);
           }
           // Resumed from the server's row (this device's own records read as version 0):
           // its version is the one this device has seen. Stored before the book plays: a
@@ -1643,6 +2127,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       // the server.
       placeGuard = unchecked ? guardFor(key) : null;
       nextStart = start;
+      // A resume is the place the book was left at; an explicit place is the listener's own.
+      placeChosen = startBookPosition !== undefined || startTrack !== undefined;
       unfinishDue = unfinish && usesListeningSync(connectionId);
       finishSent = null;
       restoreOutputGain(svc); // only now can the old book's fade no longer write over it
@@ -1674,7 +2160,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
       await svc.setRate(speed);
       if (!current()) return;
-      await startEngine(svc);
+      // False: gave way to another tab while it loaded (`giveWayTo`).
+      if (!(await startEngine(svc))) return;
       // The save loop is started by the engine 'playing' transition (see subscribe).
       void flushQueue();
       // Fire-and-forget AFTER playback is initiated (never before/awaited, so it can't delay
@@ -1696,6 +2183,14 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       await svc.pause();
     } else {
       beginPlaybackAttempt();
+      // Another tab played on meanwhile: from where it left the book, when it is this one.
+      const behind = otherTabPlayed;
+      if (behind && behind.connectionId === get().nowPlaying?.connectionId) {
+        const attempt = playAttempts;
+        await catchUpWithOtherTab(svc, behind.since);
+        // Paused, or pressed again, while that was read: the later press stands.
+        if (attempt !== playAttempts || !wantsPlayback) return;
+      }
       await startLoadedEngine(svc);
     }
   },
@@ -1734,8 +2229,15 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     // never plays.
     beginPlaybackAttempt();
     const svc = await ensureService();
+    // Reloaded where another tab left the book, when one played it on meanwhile.
+    const behind = otherTabPlayed;
+    const place =
+      behind && behind.connectionId === np.connectionId
+        ? await otherTabsPlace(behind.since).catch(() => null)
+        : null;
+    if (place) adoptTabPlace(np, place);
     const bookPos = Math.max(resumeFloor, selectBookPosition(get()));
-    const { index, positionInTrack } = locate(np.queue.offsets, bookPos);
+    const { index, positionInTrack } = place ?? locate(np.queue.offsets, bookPos);
     await svc.load(np.queue.tracks, index, positionInTrack, np.queue.chapterClips, bookRefOf(np));
     await svc.setRate(get().rate);
     await startLoadedEngine(svc);

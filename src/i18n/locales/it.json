@@ -1809,6 +1809,9 @@
       "unknown": "Su un altro dispositivo eri a {{place}}. Vuoi andarci?",
       "jump": "Vai",
       "stay": "Resta"
+    },
+    "otherTab": {
+      "title": "In riproduzione in un'altra scheda"
     }
   },
   "reconnect": {
