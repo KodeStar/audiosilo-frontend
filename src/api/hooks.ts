@@ -1325,8 +1325,8 @@ export function useNextBook(
  * It is the place Resume plays from (`bookPlace`, fe#211): the server's row or this
  * device's own newer one, by the resume lookup's rule, its `position` the file place a
  * resume plays read on the chapters the cache holds (`positionOn`, fe#188; the cached
- * `qk.progress` entry keeps the record's own seconds). Offline (or against an unreachable server) it is this
- * device's own places alone - the same records the resume path trusts - so a downloaded
+ * `qk.progress` entry keeps the record's own seconds). Offline (or against an unreachable
+ * server) it is this device's own places alone - the same records the resume path trusts - so a downloaded
  * book still knows where the listener is instead of reading as "never started". An HTTP
  * error is NOT swallowed: it propagates and the query fails (see
  * `fetchBookProgress` for why that matters to the reconnect banner).
@@ -1345,11 +1345,7 @@ export function useBookProgress(
   // The book's chapters as the cache holds them (never asked from here: `enabled: false`),
   // so `position` is the file place on their timeline (`positionOn`): every caller reads
   // the same place after a server reorder with an old-order download.
-  const { data: files } = useQuery({
-    ...chaptersQuery(cid, api, libraryId, path),
-    enabled: false,
-    select: chapterFiles,
-  });
+  const files = useChapters(libraryId, path, connectionId, { enabled: false }).data?.files;
   const select = useCallback(
     (place: PlacedProgress | null) => {
       if (!place?.file) return place;
@@ -1366,8 +1362,6 @@ export function useBookProgress(
     select,
   });
 }
-
-const chapterFiles = (chapters: ChaptersResponse) => chapters.files;
 
 /**
  * The `useBookProgress` fetch, extracted so the fallback policy is unit-testable.

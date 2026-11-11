@@ -75,7 +75,7 @@ import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
-import { positionOn, serverRowOf } from '@/playback/progress-sync';
+import { serverRowOf } from '@/playback/progress-sync';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useBookTimeSaved } from '@/playback/time-saved';
 import { useLibraryName } from '@/stores/library-names';
@@ -299,9 +299,10 @@ function BookPage() {
   // spoiler gate reads it. `resume`: where a press on the primary plays from (the loaded
   // book toggles in place, at the player's place, even when another device saved one
   // further on): the hero's place, its Resume chapter N and the current row.
-  // The saved place as Resume plays it (fe#211): this device's file place read on these
-  // chapters' files (after a server reorder, the download's order put it elsewhere).
-  const savedPosition = progress ? positionOn(progress, chapterData?.files) : undefined;
+  // The saved place as Resume plays it (fe#211): `useBookProgress` already reads this
+  // device's file place on these chapters' files (after a server reorder, the download's
+  // order put it elsewhere).
+  const savedPosition = progress?.position;
   // What only the server's own row says, when the place shown is this device's newer record:
   // the book's dates, and another device's place to offer.
   const serverRow = progress && serverRowOf(progress);
