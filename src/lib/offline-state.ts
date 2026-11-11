@@ -56,16 +56,21 @@ export function useUnreadQuery(query: {
 
 /**
  * `useUnreadQuery` of a whole list of books read page by page (`useAllLibraryBooks`):
- * with no book in, there is nothing to show, whatever page the read stopped on.
+ * with no book in, there is nothing to show, whatever page the read stopped on. A list
+ * read to its end with no book in it IS an answer (an author with nothing left here): its
+ * empty state shows while a later read of it waits for the network. One that failed is
+ * the page's failure either way (the pages show that over an empty list).
  */
 export function useUnreadBooks(list: {
   books: readonly unknown[];
+  /** Every page is in. */
+  complete: boolean;
   /** A page waits for the network. */
   offline: boolean;
   error: unknown;
 }): UnreadState {
   return useUnreadQuery({
-    data: list.books.length > 0 ? list.books : undefined,
+    data: list.books.length > 0 || (list.complete && !list.error) ? list.books : undefined,
     isPaused: list.offline,
     error: list.error,
   });

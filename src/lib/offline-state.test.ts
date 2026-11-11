@@ -9,7 +9,7 @@ jest.mock('./device-online', () => ({
 }));
 
 /* eslint-disable import/first */
-import { offlineState, useUnreadQuery } from './offline-state';
+import { offlineState, useUnreadBooks, useUnreadQuery } from './offline-state';
 /* eslint-enable import/first */
 
 describe('offlineState (the one offline rule: Home, the Library, Folders, the read-along map)', () => {
@@ -73,5 +73,33 @@ describe('useUnreadQuery', () => {
       expect(await ask(refused, false)).toBe('failed');
       expect(await ask({ ...refused, isPaused: true }, false)).toBe('failed');
     }
+  });
+});
+
+// A list of books read page by page (the series and author / narrator pages).
+describe('useUnreadBooks', () => {
+  const down = new TypeError('Network request failed');
+  const none = { books: [] as unknown[], complete: false, offline: false, error: null as unknown };
+  const ask = async (list: typeof none, deviceOnline = true) => {
+    mockDeviceOnline = deviceOnline;
+    return (await renderHook(() => useUnreadBooks(list))).result.current;
+  };
+
+  it('is offline with no book in while a page waits for the network, or failed without one', async () => {
+    expect(await ask({ ...none, offline: true })).toBe('offline');
+    expect(await ask({ ...none, error: down }, false)).toBe('offline');
+    expect(await ask({ ...none, error: down })).toBe('failed');
+  });
+
+  it('says nothing once a book is in, whatever page the read stopped on', async () => {
+    expect(await ask({ ...none, books: [{}], offline: true, error: down }, false)).toBeNull();
+  });
+
+  // Read to its end with nothing in it: the page's empty state, not "offline", while a
+  // later read of it is held. A later read that failed is the page's failure.
+  it('counts a list read to its end with no book in it as read', async () => {
+    expect(await ask({ ...none, complete: true, offline: true }, false)).toBeNull();
+    expect(await ask({ ...none, complete: true, error: down }, false)).toBe('offline');
+    expect(await ask({ ...none, complete: true, error: down })).toBe('failed');
   });
 });
