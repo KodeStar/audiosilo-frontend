@@ -74,7 +74,7 @@ function toSource<T>(
   supported: Source<T>['supported'],
   info?: ServerAnnotations,
 ): Source<T> {
-  const { data, isError, hasNextPage, isFetchingNextPage } = query;
+  const { data, isError, isPaused, hasNextPage, isFetchingNextPage } = query;
   const status: SourceStatus =
     supported === false
       ? 'unsupported'
@@ -87,6 +87,7 @@ function toSource<T>(
     connectionId: connection.id,
     connectionName: connection.name,
     status,
+    waiting: status === 'loading' && isPaused,
     supported,
     rows: rowsOf(data),
     hasNextPage: status === 'ready' && hasNextPage,

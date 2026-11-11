@@ -11,14 +11,19 @@ jest.mock('@/playback/store', () =>
 type Query<T> = {
   data?: T;
   isPending: boolean;
+  isPaused: boolean;
   isError: boolean;
+  error: unknown;
   isSuccess: boolean;
   refetch: jest.Mock;
 };
-const query = <T,>(data?: T, state: 'ok' | 'pending' | 'error' = 'ok'): Query<T> => ({
+const query = <T,>(data?: T, state: 'ok' | 'pending' | 'held' | 'error' = 'ok'): Query<T> => ({
   data,
-  isPending: state === 'pending',
+  // Held for the network (the device is offline): still pending, and paused.
+  isPending: state === 'pending' || state === 'held',
+  isPaused: state === 'held',
   isError: state === 'error',
+  error: state === 'error' ? new TypeError('Network request failed') : null,
   isSuccess: state === 'ok',
   refetch: jest.fn(),
 });
@@ -131,6 +136,31 @@ describe('BookmarksSection', () => {
     expect(screen.getByText("Couldn't load your bookmarks")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockBookmarks.refetch).toHaveBeenCalled();
+  });
+
+  // The list is held for the network (it stays pending): the loading shape never ended,
+  // on the page of a downloaded book too.
+  it('says offline, with no Retry, while the list waits for the network', async () => {
+    mockBookmarks = query<Bookmark[]>(undefined, 'held');
+    mockNotes = query<Note[]>(undefined, 'held');
+    for (const section of [
+      <BookmarksSection key="b" libraryId={1} path="a/book" />,
+      <NotesSection key="n" libraryId={1} path="a/book" />,
+    ]) {
+      const view = await render(section);
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      // The book is on screen: nothing sends the listener to Downloads.
+      expect(screen.queryByText(/Downloads/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+      await view.unmount();
+    }
+  });
+
+  it('keeps showing the bookmarks it holds while it is offline', async () => {
+    mockBookmarks = { ...query([bookmark(1, 900)]), isPaused: true };
+    await render(<BookmarksSection libraryId={1} path="a/book" />);
+    expect(screen.getByText('note 1')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
   });
 
   it('links to the journal where the server lists bookmarks across books', async () => {

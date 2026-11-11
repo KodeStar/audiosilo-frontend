@@ -6,11 +6,13 @@ import { Platform, View } from 'react-native';
 
 import { useBookmarks, useCapability, useNotes } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { IconName } from '@/components/ui/icon';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import type { AnnotationKind, AnnotationOf, AnnotationTarget } from '@/lib/annotation-request';
 import { byPosition } from '@/lib/by-position';
+import { useUnreadQuery } from '@/lib/offline-state';
 
 import type { AnnotationRowProps } from './annotation-row';
 import { BookmarkRow } from './bookmark-row';
@@ -100,6 +102,7 @@ export function AnnotationSection<K extends AnnotationKind>({
   const annotations = useCapability('annotations', cid);
   const chapterAt = useChapterNamer(target);
   const rows = useMemo(() => byPosition(query.data ?? []), [query.data]);
+  const unread = useUnreadQuery(query);
 
   return (
     <View>
@@ -107,7 +110,10 @@ export function AnnotationSection<K extends AnnotationKind>({
         <Add target={target} />
         {annotations === true ? <JournalLink tab={tab} /> : null}
       </View>
-      {query.isPending ? (
+      {unread === 'offline' ? (
+        // Before the skeleton: a list held for the network stays pending (`useUnreadQuery`).
+        <OfflineState className="py-6" />
+      ) : query.isPending ? (
         <RowSkeletonList count={skeletons} />
       ) : query.isError ? (
         <EmptyState

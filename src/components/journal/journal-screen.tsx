@@ -5,10 +5,12 @@ import { FlatList, View } from 'react-native';
 
 import type { HistoryEntry, MyBookmark } from '@/api/types';
 import { isDriftBookmark } from '@/components/annotations';
+import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { useDeviceOnline } from '@/lib/device-online';
 import { groupSessions, type ListeningSpan, toSpan } from '@/lib/listening-sessions';
 import { useRouteParams } from '@/lib/route-params';
 import { useToday } from '@/lib/use-day-label';
@@ -20,7 +22,7 @@ import { DiaryDayCard, DiarySkeleton } from './diary';
 import { groupByDay, matchDrifts } from './diary-model';
 import { ExportActions } from './export-actions';
 import { parseJournalTab } from './journal-model';
-import { mergeNewestFirst, overallStatus } from './merge-model';
+import { mergeNewestFirst, overallStatus, unreadSources } from './merge-model';
 import { fetchMoreOf, MoreSpinner, useJournalListProps } from './journal-list';
 import { ServerNotes } from './server-notes';
 import { useDriftRecords } from './use-drift-records';
@@ -180,6 +182,7 @@ function DiaryTab({
   }, [bookmarks, sessions]);
   const today = useToday();
   const status = overallStatus(history);
+  const unread = unreadSources(history, useDeviceOnline());
 
   return (
     <FlatList
@@ -198,7 +201,10 @@ function DiaryTab({
         <DiaryDayCard day={item} today={today} wide={wide} drifts={drifts} records={records} />
       )}
       ListEmptyComponent={
-        status === 'loading' ? (
+        unread === 'offline' ? (
+          // Before the skeleton: a list held for the network stays loading (`unreadSources`).
+          <OfflineState variant="card" hint={t('common.offlineList')} />
+        ) : status === 'loading' ? (
           <DiarySkeleton />
         ) : status === 'error' ? (
           <EmptyState

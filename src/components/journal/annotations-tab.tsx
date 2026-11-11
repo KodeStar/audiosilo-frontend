@@ -11,16 +11,18 @@ import {
   NoteRow,
   useChapterNamer,
 } from '@/components/annotations';
+import { OfflineState } from '@/components/layout/offline-state';
 import { useServerFlag } from '@/components/library/cover-tile';
 import { useTabPress } from '@/components/shell/destinations';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
 import { RowSkeletonList } from '@/components/ui/skeleton';
+import { useDeviceOnline } from '@/lib/device-online';
 import { cn } from '@/lib/utils';
 
 import { annotationHaystack, matchesWords, searchWords } from './journal-model';
 import { fetchMoreOf, MoreSpinner, useJournalListProps } from './journal-list';
-import { mergeNewestFirst, overallStatus, type Sourced } from './merge-model';
+import { mergeNewestFirst, overallStatus, type Sourced, unreadSources } from './merge-model';
 import { ServerNotes } from './server-notes';
 import type { Source } from './use-journal-sources';
 
@@ -108,6 +110,7 @@ export function AnnotationsTab({
     );
   }, [merged.rows, label, deferred]);
   const status = overallStatus(sources);
+  const unread = unreadSources(sources, useDeviceOnline());
   const filtered = merged.rows.length > 0 && rows.length === 0;
   const empty =
     status === 'unsupported' ? (
@@ -118,6 +121,9 @@ export function AnnotationsTab({
         hint={t(`journal.${kind}.unsupported.hint`)}
         action={{ label: t('journal.openLibrary'), onPress: () => press('(library)') }}
       />
+    ) : unread === 'offline' ? (
+      // Before the skeleton: a list held for the network stays loading (`unreadSources`).
+      <OfflineState variant="card" hint={t('common.offlineList')} />
     ) : status === 'loading' ? (
       <RowSkeletonList count={5} />
     ) : status === 'error' ? (

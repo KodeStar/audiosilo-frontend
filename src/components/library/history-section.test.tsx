@@ -24,7 +24,13 @@ jest.mock('@/components/annotations', () => {
   };
 });
 
-let mockHistory: { data?: History[]; isError?: boolean; refetch?: jest.Mock } = {};
+let mockHistory: {
+  data?: History[];
+  isError?: boolean;
+  isPaused?: boolean;
+  error?: unknown;
+  refetch?: jest.Mock;
+} = {};
 jest.mock('@/api/hooks', () => ({ useHistory: () => mockHistory }));
 
 /* eslint-disable import/first */
@@ -152,6 +158,22 @@ describe('HistorySection', () => {
     mockHistory = { data: [] };
     await view.rerender(<HistorySection libraryId={1} path="x" emptyLabel="No history yet." />);
     expect(screen.getByText('No history yet.')).toBeTruthy();
+  });
+
+  // The list is held for the network: the loading shape never ended, on the page of a
+  // downloaded book too.
+  it('says offline, with no Retry, while the history waits for the network', async () => {
+    mockHistory = { data: undefined, isPaused: true };
+    await render(<HistorySection libraryId={1} path="x" emptyLabel="No history yet." />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText(/Downloads/)).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+
+  it('still renders nothing inline while it waits for the network', async () => {
+    mockHistory = { data: undefined, isPaused: true };
+    const view = await render(<HistorySection libraryId={1} path="x" />);
+    expect(view.toJSON()).toBeNull();
   });
 
   it('renders nothing inline when empty', async () => {

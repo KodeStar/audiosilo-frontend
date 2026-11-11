@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useHistory } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { useChapterNamer, useJumpTo } from '@/components/annotations';
+import { OfflineState } from '@/components/layout/offline-state';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
@@ -18,6 +19,7 @@ import {
   sessionMinutes,
   toSpan,
 } from '@/lib/listening-sessions';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useDayLabel, useToday } from '@/lib/use-day-label';
 import { cn } from '@/lib/utils';
 import { usePendingListens } from '@/playback/use-listening-sync';
@@ -59,7 +61,9 @@ export function HistorySection({
   onJump?: (position: number) => void;
 }) {
   const { t } = useTranslation();
-  const { data: history, isError, refetch } = useHistory(libraryId, path, connectionId);
+  const historyQuery = useHistory(libraryId, path, connectionId);
+  const { data: history, isError, refetch } = historyQuery;
+  const unread = useUnreadQuery(historyQuery);
   // The book's own connection: passed in (player sheet) or the route scope (book
   // screen). The player carries it as a param.
   const cid = useCid(connectionId);
@@ -84,6 +88,8 @@ export function HistorySection({
   if ((!history || history.length === 0) && waitingSessions.length === 0) {
     if (!emptyLabel) return null;
     if (!history) {
+      // Before the skeleton: a list held for the network never ends as one.
+      if (unread === 'offline') return <OfflineState className="py-6" />;
       return isError ? (
         <EmptyState
           icon="circle-exclamation"

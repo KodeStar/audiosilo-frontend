@@ -17,21 +17,24 @@ export function useOfflineHint(hint: string): string {
 /**
  * The offline state of a page or a list (`offlineState` says when): "You're offline",
  * what shows once a server answers, and where the downloads are (`useOfflineHint`). Never
- * a Retry: the request is asked again by itself once the network is back.
+ * a Retry: the request is asked again by itself once the network is back. Without a
+ * `hint` it is the title alone: a section of a page that is on screen (a downloaded
+ * book's bookmarks), where sending the listener to Downloads would be wrong.
  */
 export function OfflineState({
   hint,
   variant,
   className,
 }: {
-  hint: string;
+  hint?: string;
 } & Pick<EmptyStateProps, 'variant' | 'className'>) {
   const { t } = useTranslation();
+  const withDownloads = useOfflineHint(hint ?? '');
   return (
     <EmptyState
       icon="offline"
       title={t('common.offlineTitle')}
-      hint={useOfflineHint(hint)}
+      hint={hint ? withDownloads : undefined}
       variant={variant}
       className={className}
     />

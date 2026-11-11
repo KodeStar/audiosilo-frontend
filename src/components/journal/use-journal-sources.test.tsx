@@ -1,4 +1,9 @@
-import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  type InfiniteData,
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
@@ -109,6 +114,26 @@ describe('useJournalSources', () => {
       { limit: 100, cursor: 'h2' },
       expect.anything(),
     );
+  });
+
+  // Offline: the first page is held, not failed. It stays `loading`, and `waiting` tells
+  // the screen apart from a list on its way (its skeleton would never end).
+  it('marks a list held for the network as waiting, and a list on its way or held back not', async () => {
+    onlineManager.setOnline(false);
+    try {
+      const { result } = await mount({ notes: false });
+      await waitFor(() => expect(result.current.history[0].waiting).toBe(true));
+      expect(result.current.history[0].status).toBe('loading');
+      expect(mockConnections[0].client.allHistory).not.toHaveBeenCalled();
+      // Held back by the screen (`notes: false`), not by the network.
+      expect(result.current.notes[0]).toMatchObject({ status: 'loading', waiting: false });
+    } finally {
+      onlineManager.setOnline(true);
+    }
+    const { result } = await mount();
+    expect(result.current.history[0].waiting).toBe(false);
+    await waitFor(() => expect(result.current.history[0].status).toBe('ready'));
+    expect(result.current.history[0].waiting).toBe(false);
   });
 
   it('holds the notes back until they are wanted', async () => {
