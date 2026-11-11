@@ -10,6 +10,7 @@ import {
   usePodcastShows,
   useSeriesList,
 } from '@/api/hooks';
+import { OfflineState } from '@/components/layout/offline-state';
 import {
   refusedConnection,
   SignInAgainState,
@@ -21,6 +22,7 @@ import { RowSkeletonList } from '@/components/ui/skeleton';
 import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { isPodcastLibrary } from '@/lib/library-kind';
+import { offlineState } from '@/lib/offline-state';
 import { useRouteParams } from '@/lib/route-params';
 
 import {
@@ -60,7 +62,9 @@ const MODE_BODY: Record<
  * The Library tab root (`/library?mode=`): the browse modes as its sections (the sub-nav
  * on tablet/desktop, under the large title on a phone), the library picker as its
  * contextual action, and the current mode's body. Every mode but Folders shows the
- * selected library (`useSelectedLibrary`); a mode the library's server lacks is not
+ * selected library (`useSelectedLibrary`), or the state of the server it is on while that
+ * server's list is not in (loading, offline, failed with Retry, signed out: never another
+ * server's books in its place); a mode the library's server lacks is not
  * offered, and a link to one falls back to Books once that is known. A podcast library
  * (Bridge Phase 2d-1) offers Shows and Folders, and a book mode's link lands on Shows.
  */
@@ -68,7 +72,7 @@ export function LibraryScreen() {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { mode: modeParam } = useRouteParams<{ mode?: string | string[] }>();
-  const { selection, library, groups, isLoading, offline, retry } = useSelectedLibrary();
+  const { selection, library, server, groups, retryServer } = useSelectedLibrary();
   const signedOut = useSignedOutConnections();
   const deviceOnline = useDeviceOnline();
   const cid = selection?.connectionId ?? '';
@@ -96,20 +100,37 @@ export function LibraryScreen() {
 
   const body = () => {
     if (mode === 'folders') return <FoldersMode />;
-    if (selection) {
+    // The server the Library is on, while its list is not in: waiting for the network or
+    // failed without one (`offline`), failed with one (`failed`), else still on its way.
+    const unread =
+      server && server.status !== 'ready'
+        ? offlineState({
+            waiting: server.paused,
+            failed: server.status === 'error',
+            deviceOnline,
+          })
+        : null;
+    // A library whose server's list is in, or on its way: the mode's own states.
+    if (selection && !unread) {
       const Body = MODE_BODY[mode];
       return <Body key={`${cid}:${libraryId}`} connectionId={cid} libraryId={libraryId} />;
     }
-    if (isLoading) {
+    // Every server answered and none shares a library (or nobody is signed in).
+    if (!server) return <NoLibrariesState connectionIds={groups.map((g) => g.connectionId)} />;
+    // From here on it is THAT server's state, whatever the other servers list: never
+    // their books in its place (fe#142). The picker still offers their libraries.
+    if (!unread) {
       return (
         <View className="p-4 lg:px-8">
           <RowSkeletonList />
         </View>
       );
     }
+    const named = groups.length > 1;
+    const name = server.connectionName;
     // A server whose sign-in ended lists no libraries: it is not that none are shared
-    // (frontend#124).
-    const refused = refusedConnection(signedOut, groups);
+    // (frontend#124), nor a load error with a Retry that cannot work.
+    const refused = refusedConnection(signedOut, [server]);
     if (refused) {
       return (
         <View className="p-4 lg:px-8">
@@ -117,25 +138,31 @@ export function LibraryScreen() {
         </View>
       );
     }
-    // Offline (a list waits for the network, or failed with the device offline): the
+    // Offline (its list waits for the network, or failed with the device offline): the
     // offline state, not "Could not load" with a Retry that cannot work until the
-    // network is back. A list that answered "none" offline still says so.
-    const failed = groups.some((g) => g.status === 'error');
-    if (offline || (failed && !deviceOnline)) return <NoLibrariesState offline />;
-    // A server that did not answer has not said it shares nothing (frontend#131): its
-    // lists come back on their own once it answers again (`onReconnect`), or on Retry.
-    if (failed) {
-      return (
-        <View className="p-4 lg:px-8">
-          <LoadError
-            title={t('library.list.loadLibrariesError')}
-            retryLabel={t('common.retry')}
-            onRetry={retry}
-          />
-        </View>
+    // network is back. The remembered library's server is named among several.
+    if (unread === 'offline') {
+      return named ? (
+        <OfflineState hint={t('library.list.serverOffline', { name })} />
+      ) : (
+        <NoLibrariesState offline />
       );
     }
-    return <NoLibrariesState connectionIds={groups.map((g) => g.connectionId)} />;
+    // A server that did not answer has not said it shares nothing (frontend#131): its
+    // list comes back on its own once it answers again (`onReconnect`), or on Retry.
+    return (
+      <View className="p-4 lg:px-8">
+        <LoadError
+          title={
+            named
+              ? t('library.list.loadServerLibrariesError', { name })
+              : t('library.list.loadLibrariesError')
+          }
+          retryLabel={t('common.retry')}
+          onRetry={() => retryServer(server.connectionId)}
+        />
+      </View>
+    );
   };
 
   return (

@@ -14,7 +14,9 @@ import { PressableRow } from '@/components/ui/row-surface';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useDeviceOnline } from '@/lib/device-online';
+import { offlineState, type UnreadState } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
+import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { LoadError } from '../books/book-states';
 import { GlyphTile } from '../glyph-tile';
@@ -54,24 +56,36 @@ function FavouritesShelfRow() {
  */
 export function FoldersMode() {
   const { t } = useTranslation();
-  const { libraries, groups: lists, isLoading, offline, retryServer } = useLibrariesAll();
+  const { libraries, groups: lists, isLoading, retryServer } = useLibrariesAll();
   const { openLibrary } = useOpen();
+  const themed = useThemeColors();
   // A server whose sign-in ended shows the sign-in state, not a load error or "no
-  // libraries" (frontend#124); a list that failed otherwise says which server's it is,
-  // under that server's heading, with a Retry of its own (CONNECT-06).
+  // libraries" (frontend#124).
   const signedOut = useSignedOutConnections();
   const refused = refusedConnection(signedOut, lists);
-  // With no network on the device a failed list is the device's trouble, not the
-  // server's: the offline state says so instead of a Retry per server.
   const deviceOnline = useDeviceOnline();
-  const failed = (g: LibrariesOfServer) =>
-    deviceOnline && g.status === 'error' && !signedOut.some((c) => c.id === g.connectionId);
-  const error = lists.some(failed);
+  // What to say of a server whose list is not in (`offlineState`): `failed` names the
+  // server under its heading with a Retry of its own (CONNECT-06); `offline` (no network
+  // on the device, so a Retry cannot work) says its libraries show once it answers.
+  // A signed-out server's failed list is the sign-in state above, whatever the network.
+  const unread = (g: LibrariesOfServer): UnreadState =>
+    g.status === 'error' && signedOut.some((c) => c.id === g.connectionId)
+      ? null
+      : offlineState({ waiting: g.paused, failed: g.status === 'error', deviceOnline });
+  const states = new Map(lists.map((g) => [g.connectionId, unread(g)]));
+  const anyOffline = lists.some((g) => states.get(g.connectionId) === 'offline');
+  const anyFailed = lists.some((g) => states.get(g.connectionId) === 'failed');
+  // With no library to list, offline is the page's own state (below), not a row per server.
+  const offlinePage = libraries.length === 0 && anyOffline && !anyFailed;
 
-  // One group per server (in connection order) that has libraries or failed to list them,
+  // One group per server (in connection order) that has libraries or whose list is not in,
   // each under its server's heading when there are several (a signed-out server's list
-  // still cached included, so no two servers' libraries ever read as one).
-  const groups = lists.filter((g) => g.libraries.length > 0 || failed(g));
+  // still cached included, so no two servers' libraries ever read as one). A server the
+  // device is offline for is listed too, with a line saying so: it is not dropped without
+  // a word while another server's cached libraries show (fe#179).
+  const groups = lists.filter(
+    (g) => g.libraries.length > 0 || (!offlinePage && states.get(g.connectionId) !== null),
+  );
   const showServerHeaders = groups.length > 1;
 
   return (
@@ -87,7 +101,7 @@ export function FoldersMode() {
               {g.connectionName}
             </Text>
           ) : null}
-          {failed(g) ? (
+          {states.get(g.connectionId) === 'failed' ? (
             <View className="my-1">
               <LoadError
                 compact
@@ -95,6 +109,20 @@ export function FoldersMode() {
                 retryLabel={t('common.retry')}
                 onRetry={() => retryServer(g.connectionId)}
               />
+            </View>
+          ) : null}
+          {states.get(g.connectionId) === 'offline' ? (
+            <View
+              testID={`folders-offline-${g.connectionId}`}
+              className="my-1 flex-row items-center gap-3 rounded-xl border border-border bg-card px-3 py-2"
+            >
+              <Icon name="offline" size={16} color={themed.mutedForeground} />
+              <View className="flex-1">
+                <Text variant="label">{t('common.offlineTitle')}</Text>
+                <Text variant="caption">
+                  {t('library.list.serverOffline', { name: g.connectionName })}
+                </Text>
+              </View>
             </View>
           ) : null}
           {g.libraries.map((lib) => (
@@ -117,11 +145,8 @@ export function FoldersMode() {
 
       {/* A server that did not answer has not said it shares nothing (frontend#131), nor
           has one the device went offline waiting for (its list is paused). */}
-      {libraries.length === 0 && !isLoading && !refused && !error ? (
-        <NoLibrariesState
-          offline={offline || (!deviceOnline && lists.some((g) => g.status === 'error'))}
-          connectionIds={lists.map((g) => g.connectionId)}
-        />
+      {libraries.length === 0 && !isLoading && !refused && !anyFailed ? (
+        <NoLibrariesState offline={offlinePage} connectionIds={lists.map((g) => g.connectionId)} />
       ) : null}
     </TabPageScroll>
   );
