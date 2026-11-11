@@ -2212,7 +2212,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     finishes the book as usual (credits, `finish`, the finished save). The fact is kept on
     the download (`DownloadManifest.endsBefore`: set by every server chapters answer,
     `startChapterRefresh`, and by an adoption with no answer, `noteDownloadEnd`), so a cold
-    start of it with the device offline (`isDeviceOnline`) is partial too: `playBook` builds
+    start of it with no server to stream from (the device offline, `isDeviceOnline`; no
+    client; the server marked unreachable, `isReachable`) is partial too: `playBook` builds
     it from the download's copy whatever chapters it was given (a cold start's cached server
     chapters name the files it lacks, and a stream of them would stall into an error at the
     downloaded part's end); and on each capture of the mirror (`ProgressSave.partial`), so a

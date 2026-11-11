@@ -2186,8 +2186,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // (`endsBefore`, D3, fe#185) started with the device offline, whatever chapters it was
       // given (a cold start's cached server chapters name the files it lacks): a queue
       // streaming those would stall into a stream error at the downloaded part's end instead
-      // of pausing there. Online it streams on.
-      const offlineShort = !!local && !!dl?.manifest.endsBefore && !isDeviceOnline();
+      // of pausing there. So does one with no server to stream from: no client (its token
+      // gone this launch) or one marked unreachable (a LAN server from the car's mobile
+      // data). Online it streams on.
+      const offlineShort =
+        !!local &&
+        !!dl?.manifest.endsBefore &&
+        (!api || !isDeviceOnline() || !isReachable(connectionId));
       const own = dl && (!chapterData || offlineShort) ? dl.manifest : undefined;
       const queueChapters = own ? (own.chapters ?? undefined) : chapterData;
       const queue = buildBookQueue(

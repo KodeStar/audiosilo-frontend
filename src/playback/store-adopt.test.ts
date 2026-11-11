@@ -101,6 +101,7 @@ jest.mock('@/api/connection-clients', () => ({
 
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
+import { useReachability } from '@/api/reachability';
 import { startChapterRefresh, useDownloads } from '@/downloads/store';
 import type { DownloadEntry } from '@/downloads/types';
 import { setConnectionAliases } from '@/lib/connection-id';
@@ -1058,6 +1059,20 @@ describe('adoptLoaded', () => {
         expect(finished).toBe(false);
         stopTelling();
         await usePlayer.getState().pause();
+      });
+
+      it("with the device online but the server unreachable, plays the download's own copy", async () => {
+        useReachability.setState({ online: { c1: false } });
+        try {
+          await startCold();
+          expect(usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url)).toEqual([
+            'file:///d/1.mp3',
+            'file:///d/2.mp3',
+          ]);
+          await usePlayer.getState().pause();
+        } finally {
+          useReachability.setState({ online: {} });
+        }
       });
 
       it('online, streams the rest of the book on', async () => {
