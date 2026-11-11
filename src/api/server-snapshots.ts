@@ -1,5 +1,7 @@
+import { isServerInfoKey } from '@/lib/auth-failure';
 import { getItem, setItem } from '@/lib/storage';
 import { isRecord, OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
+import { tabLock } from '@/lib/tab-lock';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import { qk } from './hooks';
@@ -58,51 +60,37 @@ export async function readServerSnapshots(): Promise<Record<string, ServerSnapsh
   return out;
 }
 
-/** Writes of the kept answers, one after another (each reads what the last wrote). */
-let snapshotWrites: Promise<void> = Promise.resolve();
+/** Writes of the kept answers, one after another (each reads what the last wrote), in
+ * this tab and across the web player's tabs (they share the document). */
+const withSnapshotLock = tabLock(OFFLINE_SERVERS_KEY);
 
-/** Change the kept document (`change` says whether it did); resolves whether it was
- * written. A failed write resolves false: it must not fail the ones after it, nor reject
- * into a `void` caller. */
-function updateSnapshots(
-  change: (all: Record<string, ServerSnapshot>) => boolean,
-): Promise<boolean> {
-  const run = snapshotWrites
-    .then(async () => {
-      const all = await readServerSnapshots();
-      if (!change(all)) return false;
-      await setItem(OFFLINE_SERVERS_KEY, all);
-      return true;
-    })
-    .catch(() => false);
-  snapshotWrites = run.then(() => undefined);
-  return run;
+/** Change the kept document (`change` says whether it did). A failed write is dropped:
+ * it must not reject into a `void` caller, and the next answer writes again. */
+function updateSnapshots(change: (all: Record<string, ServerSnapshot>) => boolean): Promise<void> {
+  return withSnapshotLock(async () => {
+    const all = await readServerSnapshots();
+    if (change(all)) await setItem(OFFLINE_SERVERS_KEY, all);
+  }).catch(() => undefined);
 }
 
-/** Each connection's answer as last written or read here, as JSON: an answer that says
- * what the kept one says is not written again (a server's facts rarely change, and it is
- * asked every few minutes). */
-const lastKept = new Map<string, string>();
-
-/** Keep `snapshot` as the connection's answer, unless one read later is kept already. */
-export async function saveServerSnapshot(
-  connectionId: string,
-  snapshot: ServerSnapshot,
-): Promise<void> {
+/** Keep `snapshot` as the connection's answer, unless one read later is kept already, or
+ * the kept one says the same (a server's facts rarely change, and it is asked every few
+ * minutes: nothing is written then). */
+export function saveServerSnapshot(connectionId: string, snapshot: ServerSnapshot): Promise<void> {
   const json = JSON.stringify(snapshot.info);
-  if (lastKept.get(connectionId) === json) return;
-  const wrote = await updateSnapshots((all) => {
-    if ((all[connectionId]?.savedAt ?? -Infinity) > snapshot.savedAt) return false;
+  return updateSnapshots((all) => {
+    const kept = all[connectionId];
+    if (kept && (kept.savedAt > snapshot.savedAt || JSON.stringify(kept.info) === json)) {
+      return false;
+    }
     all[connectionId] = snapshot;
     return true;
   });
-  if (wrote) lastKept.set(connectionId, json);
 }
 
 /** Forget a removed connection's kept answer. */
-export async function forgetServerSnapshot(connectionId: string): Promise<void> {
-  lastKept.delete(connectionId);
-  await updateSnapshots((all) => {
+export function forgetServerSnapshot(connectionId: string): Promise<void> {
+  return updateSnapshots((all) => {
     if (!(connectionId in all)) return false;
     delete all[connectionId];
     return true;
@@ -128,8 +116,8 @@ export function seedServerSnapshot(connectionId: string, snapshot: ServerSnapsho
 /** Whether a query key is a signed-in connection's `/server` (`qk.server(cid)`); its
  * connection id, else null. The key is also built for a connection that is not one yet. */
 function connectionOfServerKey(key: readonly unknown[]): string | null {
-  const [kind, cid] = key;
-  if (kind !== qk.server('')[0] || typeof cid !== 'string' || key.length !== 2) return null;
+  const cid = key[1];
+  if (!isServerInfoKey(key) || typeof cid !== 'string') return null;
   return useSession.getState().connections.some((c) => c.id === cid) ? cid : null;
 }
 
@@ -143,15 +131,14 @@ let watching = false;
  */
 export function watchServerAnswers(): void {
   if (watching) return;
-  const cache = (queryClient as Partial<typeof queryClient> | undefined)?.getQueryCache?.();
-  if (!cache) return; // a test's stand-in client: nothing to follow
   watching = true;
-  cache.subscribe((e) => {
+  queryClient.getQueryCache().subscribe((e) => {
     if (e.type !== 'updated' || e.action.type !== 'success' || e.action.manual) return;
     const cid = connectionOfServerKey(e.query.queryKey);
+    if (!cid) return;
     const { data, dataUpdatedAt } = e.query.state;
-    if (!cid || !parseServerSnapshot({ info: data, savedAt: dataUpdatedAt })) return;
-    void saveServerSnapshot(cid, { info: data as ServerInfo, savedAt: dataUpdatedAt });
+    const snapshot = parseServerSnapshot({ info: data, savedAt: dataUpdatedAt });
+    if (snapshot) void saveServerSnapshot(cid, snapshot);
   });
 }
 
@@ -182,11 +169,7 @@ export function restoreServerSnapshots(): Promise<void> {
   restored ??= (async () => {
     watchServerAnswers();
     const all = await readServerSnapshots().catch(() => ({}) as Record<string, ServerSnapshot>);
-    for (const [cid, snapshot] of Object.entries(all)) {
-      // What is kept need not be written again by the first answer that says the same.
-      if (!lastKept.has(cid)) lastKept.set(cid, JSON.stringify(snapshot.info));
-      seedServerSnapshot(cid, snapshot);
-    }
+    for (const [cid, snapshot] of Object.entries(all)) seedServerSnapshot(cid, snapshot);
   })();
   return restored;
 }
@@ -194,10 +177,8 @@ export function restoreServerSnapshots(): Promise<void> {
 // A removed connection's answer would only ever seed a cache entry nobody reads.
 onConnectionRemoved((id) => void forgetServerSnapshot(id));
 
-/** Test-only: forget what this module holds in memory (not the watcher: a cache is
- * subscribed to once). */
+/** Test-only: let the launch step run again (not the watcher: a cache is subscribed to
+ * once). */
 export function resetServerSnapshotsForTests(): void {
-  lastKept.clear();
   restored = null;
-  snapshotWrites = Promise.resolve();
 }

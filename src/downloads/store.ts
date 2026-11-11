@@ -6,7 +6,6 @@ import { resolveClient } from '@/api/connection-clients';
 import { bookKeyParts, cachedCapability, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import {
-  readServerSnapshots,
   saveServerSnapshot,
   seedServerSnapshot,
   type ServerSnapshot,
@@ -866,7 +865,7 @@ const RESTORE_READS_AT_ONCE = 3;
 /** On launch: seed the metadata every downloaded book kept (each connection's `/server`
  * answer, whose flag opens the readers' gate, was seeded before any screen:
  * `restoreServerSnapshots`; a file from before that answer had its own key carries it
- * over, for a connection with none kept), then fill in, one book at a time, the downloads
+ * over, unless one read later is kept), then fill in, one book at a time, the downloads
  * that kept none (made before this existed, or whose file is gone or unreadable), then
  * refresh the copies older than a week. That asks only a server with `metadata`, each
  * server's flags once; a failure keeps what the book had. */
@@ -895,13 +894,10 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
     }
     if (Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) old.push(key);
   }
-  if (carried.size > 0) {
-    const kept = await readServerSnapshots();
-    for (const [cid, snapshot] of carried) {
-      if (kept[cid]) continue;
-      seedServerSnapshot(cid, snapshot);
-      void saveServerSnapshot(cid, snapshot);
-    }
+  // Neither replaces an answer read later (the launch's seed, the server's own).
+  for (const [cid, snapshot] of carried) {
+    seedServerSnapshot(cid, snapshot);
+    void saveServerSnapshot(cid, snapshot);
   }
   if (missing.length === 0 && old.length === 0) return;
 

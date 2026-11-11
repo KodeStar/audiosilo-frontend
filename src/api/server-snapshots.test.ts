@@ -117,6 +117,14 @@ describe('the kept document', () => {
     expect(set).toHaveBeenCalledTimes(1);
   });
 
+  it('is written again once the kept document is gone (a storage reset)', async () => {
+    const snap = { info: server({ queue: true }), savedAt: 5 };
+    await saveServerSnapshot('c1', snap);
+    await AsyncStorage.clear();
+    await saveServerSnapshot('c1', snap);
+    expect(await readServerSnapshots()).toEqual({ c1: snap });
+  });
+
   it('reads an unreadable document as none, and skips the entries it cannot use', async () => {
     await AsyncStorage.setItem(OFFLINE_SERVERS_KEY, '"nope"');
     expect(await readServerSnapshots()).toEqual({});
