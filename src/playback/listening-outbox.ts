@@ -113,7 +113,7 @@ const KEEPALIVE_BYTES = 60_000;
 /** A rejected event stays on the couldn't-sync list this long. */
 export const COULD_NOT_SYNC_KEEP_MS = 30 * 24 * 60 * 60_000;
 /** At most this many (the newest) per connection: a book the server keeps refusing adds
- * one each 15 s cut while it plays. */
+ * one each cut (15 s, or 60 s) while it plays. */
 export const MAX_COULD_NOT_SYNC = 100;
 /** A span shorter than this that moved nowhere says nothing (a play stopped at once). */
 const EMPTY_SPAN_MS = 1_000;

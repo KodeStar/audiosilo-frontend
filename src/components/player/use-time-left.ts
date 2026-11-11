@@ -54,7 +54,7 @@ export function useBookSpeed(book: PlayTarget | null, savedSpeed?: number): numb
 
 /**
  * Time left in ANY book: the live place and speed while it is the loaded one (a saved
- * place lags the player by up to 15 s, and its speed by a whole session), else its saved
+ * place lags the player by up to a minute, and its speed by a whole session), else its saved
  * place and speed. `total` overrides the saved duration when the caller knows better
  * (the book's own length). "" when unknown or finished. A row that is not the loaded
  * book reads one boolean from the player and its saved words once.

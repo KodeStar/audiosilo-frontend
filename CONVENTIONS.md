@@ -1585,8 +1585,10 @@ media GETs only.
     tab giving way and the app leaving still save at once, and the open span is still stored
     every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses no more listening than before
     (`recoverOpenSpan`). What waits up to a minute is what other devices and other tabs
-    see, and on the legacy PUT path (a server without `listening_sync`) the place a kill
-    leaves behind. Do not move an immediate save onto the loop.
+    see, and the place a kill leaves behind for a start that has only this device's mirror
+    (the save alone writes it): on the legacy PUT path (a server without `listening_sync`)
+    the server's too, on the sync path until the recovered span has reached the server. Do
+    not move an immediate save onto the loop.
   - The server reads a session as *playing* for 60 s after its last save or span
     (`livePlaying`, CROSS-REPO section 20), which the slower pace sits on: a book played in
     a pocket can read as paused in the console and in Listening in the house for the moment

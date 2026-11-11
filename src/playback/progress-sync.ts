@@ -725,12 +725,12 @@ export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
 export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<SaveOutcome> {
   // Reachability is per-connection: this save's success/failure notes ONLY its own
   // server. A book keeps playing on a connection the user has navigated away from, and
-  // its 15s save loop lands here without touching any other server's state.
+  // its periodic save loop lands here without touching any other server's state.
   // Always record the latest position in the durable mirror, independent of the network
   // outcome - this is what a future resume falls back to when the server can't be reached.
   await writeMirror(save);
   // This server known to be unreachable: queue locally without hitting the network, so
-  // the 15s save loop doesn't fire a doomed request every tick while it's offline.
+  // the periodic save loop doesn't fire a doomed request every tick while it's offline.
   if (!isReachable(save.connectionId)) {
     await enqueue(save);
     return 'queued';

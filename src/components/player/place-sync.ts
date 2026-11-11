@@ -13,7 +13,8 @@ export type PlaceSync = 'reconnect' | 'local' | 'synced-now' | 'synced';
  * this device until the listener signs in again (the server refused the token, so
  * nothing replays until then); kept here while the server is unreachable or saves wait
  * in the offline queue (it replays them); else synced - "just now" while playing (the
- * store saves every 15 s), plainly once paused, which saved too. Pure.
+ * store saves every 15 s, or every 60 s: `saveIntervalMs`), plainly once paused, which saved
+ * too. Pure.
  */
 export function placeSync(status: ServerStatus, pending: number, playing: boolean): PlaceSync {
   if (status === 'reconnect') return 'reconnect';

@@ -626,8 +626,10 @@ async function knownProgress(
  * Only the periodic save slows: a pause, a move, a stop, the end, a give-way and the app
  * leaving the front still save at once, and the open span is stored every 5 s all the
  * same (`OPEN_SPAN_KEEP_MS`), so a kill loses no more listening than before. What waits up
- * to a minute is what OTHER devices see: the server's place, and on the legacy PUT path
- * (no `listening_sync`) the place a kill leaves behind.
+ * to a minute is what OTHER devices see, the server's place, and the place a kill leaves
+ * behind for a start that has only this device's mirror (written by this save alone): on
+ * the legacy PUT path (no `listening_sync`) the server's too, on the sync path until the
+ * span the kill left open (`recoverOpenSpan`) has reached the server.
  */
 function saveIntervalMs(): number {
   if (isAway()) return QUIET_SAVE_INTERVAL_MS;
@@ -915,10 +917,6 @@ function tickListeningSpan() {
   // Offline the span stays open: `spanKeeper` stores it.
 }
 
-/** Bring the open span up to where the engine is now and store it (`OPEN_SPAN_KEEP_MS`), so
- * a kill loses only what played since. With none open while the book plays, one opens here
- * too: what plays before a span opens is in no listening event, and the save loop's tick
- * may be a minute away (`saveIntervalMs`). */
 /** Playing with no span open: open one where the engine is (see `tickListeningSpan`). */
 function openMissingSpan() {
   const np = usePlayer.getState().nowPlaying;
@@ -931,6 +929,10 @@ function openMissingSpan() {
   openListeningSpan();
 }
 
+/** Bring the open span up to where the engine is now and store it (`OPEN_SPAN_KEEP_MS`), so
+ * a kill loses only what played since. With none open while the book plays, one opens here
+ * too: what plays before a span opens is in no listening event, and the save loop's tick
+ * may be a minute away (`saveIntervalMs`). */
 function keepOpenSpan() {
   const kept = span;
   if (!kept) {
@@ -1912,7 +1914,7 @@ async function createService(): Promise<PlaybackService> {
       beginHistory();
     }
     // Drive the periodic progress save off the real play state: it runs only while
-    // actually playing, so we don't keep re-saving the same position every 15s
+    // actually playing, so we don't keep re-saving the same position every period
     // after pause/stop/end - including a lock-screen pause or a book that simply
     // finishes, neither of which calls stop().
     if (snapshot.state !== prev.state) {
@@ -1957,7 +1959,7 @@ async function createService(): Promise<PlaybackService> {
         // above): a real pause, a finished book, a dead stream the web/Android engines
         // report directly, Android's STATE_IDLE after a stop-like failure, or a stray
         // `ready`. All clear intent and halt the loop. Deliberately NOT an enumerated
-        // state list - that list kept coming up short (an unhandled `idle` left the 15s
+        // state list - that list kept coming up short (an unhandled `idle` left the
         // save loop re-persisting the same position forever); like the error hold above,
         // anything that isn't `playing`/`loading` settles playback.
         pausedAt ??= Date.now();

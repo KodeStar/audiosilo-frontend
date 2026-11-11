@@ -625,7 +625,7 @@ export class ApiClient {
     read: (res: Response, touch: () => void) => Promise<T>,
   ): Promise<T> {
     // Abort after timeoutMs (the client's, unless this request sets its own) so a
-    // frozen/unreachable server can't hang the caller (and the 15s save loop)
+    // frozen/unreachable server can't hang the caller (and the periodic save loop)
     // indefinitely; still honour a caller-supplied signal.
     // A timeout surfaces as a TimeoutError rather than the AbortError a caller
     // cancel raises, so reachability counts it as unreachable instead of ignoring
