@@ -609,22 +609,18 @@ export function withBookEnd(
   const last = order[order.length - 1];
   if (last === undefined) return manifest;
   const endsBefore = manifest.files.some((f) => f.relPath === last) ? undefined : last;
+  const { endsBefore: _was, bookDuration: _length, ...rest } = manifest;
+  if (endsBefore === undefined) return manifest.endsBefore === undefined ? manifest : rest;
   const bookDuration =
-    endsBefore === undefined
-      ? undefined
-      : duration !== undefined && duration > 0
-        ? duration
-        : endsBefore === manifest.endsBefore
-          ? manifest.bookDuration
-          : undefined;
+    duration !== undefined && duration > 0
+      ? duration
+      : endsBefore === manifest.endsBefore
+        ? manifest.bookDuration
+        : undefined;
   if (endsBefore === manifest.endsBefore && bookDuration === manifest.bookDuration) {
     return manifest;
   }
-  const { endsBefore: _was, bookDuration: _length, ...rest } = manifest;
-  if (endsBefore === undefined) return rest;
-  return bookDuration === undefined
-    ? { ...rest, endsBefore }
-    : { ...rest, endsBefore, bookDuration };
+  return { ...rest, endsBefore, ...(bookDuration !== undefined && { bookDuration }) };
 }
 
 /** An adoption with no server answer saw the engine play the book's files in `order`

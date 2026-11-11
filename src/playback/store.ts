@@ -38,6 +38,7 @@ import {
   bookFileSpecs,
   buildBookQueue,
   chapterAt,
+  chapterBookOffset,
   FINISHED_TOLERANCE,
   locate,
   toBookPosition,
@@ -1401,7 +1402,8 @@ function serverLengthOf(
   manifest: DownloadManifest | undefined,
   chapters?: ChaptersResponse,
 ): number {
-  if (manifest?.bookDuration && manifest.bookDuration > 0) return manifest.bookDuration;
+  const kept = manifest?.bookDuration ?? 0;
+  if (kept > 0) return kept;
   const end = manifest?.endsBefore;
   if (!end || !chapters || !(chapters.duration > 0)) return 0;
   const names = bookFileSpecs(manifest.book, chapters).some((f) => f.path === end);
@@ -3186,7 +3188,8 @@ async function playOnNow(evenMarkedDown: boolean): Promise<boolean> {
     usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state: before.state } });
     return false;
   }
-  const position = specs.slice(0, at + 1).reduce((sum, f) => sum + Math.max(0, f.duration), 0);
+  const next = { file_path: specs[at + 1].path, file_index: at + 1, start: 0 };
+  const position = chapterBookOffset(specs, next);
   // It answered: reachable, so the start streams the rest (`playBook`'s `offlineShort`).
   noteSuccess(np.connectionId);
   await usePlayer
