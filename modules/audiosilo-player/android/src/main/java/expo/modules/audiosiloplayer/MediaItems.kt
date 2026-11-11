@@ -296,16 +296,22 @@ fun Player.mediaItems(): List<MediaItem> = List(mediaItemCount) { getMediaItemAt
 object LoadedFiles {
   data class Item(val mediaId: String, val fileIndex: Int, val clip: Boolean)
 
+  /** The library-relative path one item plays (its media id less the library id and a clip's
+   * `#<startInFile>`), or null when the id has another shape. */
+  fun pathOf(mediaId: String, clip: Boolean): String? {
+    // A path may hold a '#' or a ':' itself: only the clip's own suffix and the library id go.
+    val id = if (clip) mediaId.substringBeforeLast('#', missingDelimiterValue = "") else mediaId
+    val colon = id.indexOf(':')
+    if (colon <= 0 || colon == id.length - 1) return null
+    return id.substring(colon + 1)
+  }
+
   fun paths(items: List<Item>): List<String>? {
     if (items.isEmpty()) return null
     val byIndex = HashMap<Int, String>()
     for (item in items) {
       if (item.fileIndex < 0) return null
-      // A path may hold a '#' or a ':' itself: only the clip's own suffix and the library id go.
-      val id = if (item.clip) item.mediaId.substringBeforeLast('#', missingDelimiterValue = "") else item.mediaId
-      val colon = id.indexOf(':')
-      if (colon <= 0 || colon == id.length - 1) return null
-      val path = id.substring(colon + 1)
+      val path = pathOf(item.mediaId, item.clip) ?: return null
       val known = byIndex.put(item.fileIndex, path)
       if (known != null && known != path) return null
     }

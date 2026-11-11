@@ -15,6 +15,7 @@ type MockBookmarkHandler = (
   trackIndex: number,
   positionInTrack: number,
   book?: { connectionId: string; libraryId: number; path: string },
+  relPath?: string,
 ) => void;
 
 const mockNative = {
@@ -1378,6 +1379,85 @@ describe('bookmarks from outside the app', () => {
       stop = startCarSync();
       await settle();
       expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 42);
+    });
+
+    it('lands a press made with no JS in the file it names, read in the order the download took since (fe#185)', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      // The download took the server's other order: D/2 (60 s) first, then D/1 (100 s). The
+      // press was made in the engine's old order, where D/2 was index 1: by its index it
+      // would read as D/1 (60 + 30 = 90).
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+      mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+        {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'D',
+          trackIndex: 1,
+          position: 30,
+          relPath: 'D/2.mp3',
+        },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 30);
+    });
+
+    it('still reads a press an older binary kept (no file path) by its index', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+      mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+        { connectionId: 'c1', libraryId: 2, path: 'D', trackIndex: 1, position: 30 },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 90);
+    });
+
+    it('keeps a press naming its file while its place cannot be read, and reads it by that file later', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      // Not downloaded, not loaded, the server out of reach: kept in engine coordinates.
+      mockNative.consumePendingBookmarks.mockResolvedValueOnce([
+        {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'D',
+          trackIndex: 1,
+          position: 30,
+          relPath: 'D/2.mp3',
+        },
+      ]);
+      stop = startCarSync();
+      await settle();
+      expect(mockAddBookmark).not.toHaveBeenCalled();
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([
+        {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'D',
+          trackIndex: 1,
+          positionInTrack: 30,
+          trackId: '2:D/2.mp3',
+        },
+      ]);
+      // Downloaded since, in the other order: the kept one lands in D/2.
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+      await redrain();
+      expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 30);
+      expect(await getItem('audiosilo.carBookmarks')).toEqual([]);
+    });
+
+    it('lands a live press on the engine’s book in the file it names', async () => {
+      connect(['c1']);
+      mockClients.c1 = fakeClient({});
+      useDownloads.setState({ entries: { 'c1:2:D': withLengths([1, 0]) } });
+      stop = startCarSync();
+      await settle();
+      mockNative.bookmark?.(1, 30, { connectionId: 'c1', libraryId: 2, path: 'D' }, 'D/2.mp3');
+      await settle();
+      expect(mockAddBookmark).toHaveBeenCalledWith('c1', 2, 'D', 30);
     });
 
     it('ignores a kept one in the new form with a malformed place', async () => {

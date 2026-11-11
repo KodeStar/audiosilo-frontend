@@ -76,7 +76,44 @@ describe('car-native (iOS and Android): old connection ids from the native side'
       libraryId: 2,
       path: 'D',
     });
-    expect(pressed).toHaveBeenCalledWith(0, 9, { connectionId: 'srv.3', libraryId: 2, path: 'D' });
+    expect(pressed).toHaveBeenCalledWith(
+      0,
+      9,
+      { connectionId: 'srv.3', libraryId: 2, path: 'D' },
+      undefined,
+    );
+  });
+
+  it('a press names its file when the binary does (fe#185), and only a real path counts', async () => {
+    const pressed = jest.fn();
+    carNative.onBookmark(pressed);
+    const press = { trackIndex: 1, position: 9, connectionId: 'srv', libraryId: 2, path: 'D' };
+    mockHandlers.get('onRemoteBookmark')!({ ...press, relPath: 'D/2.mp3' });
+    mockHandlers.get('onRemoteBookmark')!({ ...press, relPath: '' });
+    expect(pressed.mock.calls.map((c) => c[3])).toEqual(['D/2.mp3', undefined]);
+
+    mockModule.consumePendingBookmarks.mockResolvedValueOnce([
+      {
+        connectionId: 'srv',
+        libraryId: 2,
+        path: 'D',
+        trackIndex: 1,
+        position: 30,
+        relPath: 'D/2.mp3',
+      },
+      { connectionId: 'srv', libraryId: 2, path: 'D', trackIndex: 0, position: 5, relPath: 7 },
+    ]);
+    expect(await carNative.consumePendingBookmarks()).toEqual([
+      {
+        connectionId: 'srv.3',
+        libraryId: 2,
+        path: 'D',
+        trackIndex: 1,
+        position: 30,
+        relPath: 'D/2.mp3',
+      },
+      { connectionId: 'srv.3', libraryId: 2, path: 'D', trackIndex: 0, position: 5 },
+    ]);
   });
 });
 

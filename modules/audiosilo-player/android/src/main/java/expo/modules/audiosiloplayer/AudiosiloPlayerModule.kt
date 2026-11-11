@@ -109,8 +109,9 @@ class AudiosiloPlayerModule : Module() {
       sendEvent("onRateChange", mapOf("rate" to rate))
     }
 
-    override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?) {
-      val place: Map<String, Any> = mapOf("trackIndex" to fileIndex, "position" to position)
+    override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?) {
+      val place: Map<String, Any> = mapOf("trackIndex" to fileIndex, "position" to position) +
+        (relPath?.let { mapOf("relPath" to it) } ?: emptyMap())
       val named: Map<String, Any> = book?.let {
         mapOf("connectionId" to it.connectionId, "libraryId" to it.libraryId.toDouble(), "path" to it.path)
       } ?: emptyMap()

@@ -32,9 +32,15 @@ export type CarNative = {
   /** A bookmark button outside the app was pressed (CarPlay's Now Playing button, the
    * Android notification / Android Auto) while JS runs: the engine's place at the press
    * (file index + seconds in that file) of the book it has loaded, and that book when the
-   * binary names it (`book` is undefined from an older one). */
+   * binary names it (`book` is undefined from an older one), and the file's `rel_path` when
+   * the binary names it (fe#185; undefined from an older one). */
   onBookmark: (
-    handler: (trackIndex: number, positionInTrack: number, book?: BookRef) => void,
+    handler: (
+      trackIndex: number,
+      positionInTrack: number,
+      book?: BookRef,
+      relPath?: string,
+    ) => void,
   ) => () => void;
 };
 

@@ -16,8 +16,10 @@ interface PlayerEventSink {
   fun rateChange(rate: Double)
 
   /** The bookmark button was pressed at (fileIndex, seconds within that file) of [book], the
-   * book the engine has loaded (null when its items carry none, e.g. an older JS load). */
-  fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?)
+   * book the engine has loaded (null when its items carry none, e.g. an older JS load).
+   * [relPath] names that file by its library-relative path (null when its media id has
+   * another shape). */
+  fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?)
 
   /** Android Auto (or Automotive) connected or disconnected. */
   fun carConnection(connected: Boolean)

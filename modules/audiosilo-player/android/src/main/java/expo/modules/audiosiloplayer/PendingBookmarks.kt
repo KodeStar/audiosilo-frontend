@@ -14,7 +14,7 @@ object PendingBookmarks {
   private const val MAX = 200
 
   @Synchronized
-  fun append(context: Context, book: BookRef, fileIndex: Int, position: Double) {
+  fun append(context: Context, book: BookRef, fileIndex: Int, relPath: String?, position: Double) {
     val prefs = prefs(context)
     val arr = try {
       JSONArray(prefs.getString(KEY, "[]"))
@@ -27,6 +27,9 @@ object PendingBookmarks {
         .put("libraryId", book.libraryId)
         .put("path", book.path)
         .put("trackIndex", fileIndex)
+        // The file by its path (fe#185): JS reads the press in the order the book's files are
+        // in then. Absent when the item's id has another shape.
+        .apply { if (relPath != null) put("relPath", relPath) }
         .put("position", position),
     )
     while (arr.length() > MAX) arr.remove(0)
@@ -48,15 +51,16 @@ object PendingBookmarks {
     val out = ArrayList<Map<String, Any>>()
     for (i in 0 until arr.length()) {
       val o = arr.optJSONObject(i) ?: continue
-      out.add(
-        mapOf(
-          "connectionId" to o.optString("connectionId"),
-          "libraryId" to o.optLong("libraryId").toDouble(),
-          "path" to o.optString("path"),
-          "trackIndex" to o.optInt("trackIndex"),
-          "position" to o.optDouble("position", 0.0),
-        ),
+      val entry = mapOf(
+        "connectionId" to o.optString("connectionId"),
+        "libraryId" to o.optLong("libraryId").toDouble(),
+        "path" to o.optString("path"),
+        "trackIndex" to o.optInt("trackIndex"),
+        "position" to o.optDouble("position", 0.0),
       )
+      // One kept by an older binary has no path: JS reads it by its index, as before.
+      val relPath = o.optString("relPath", "")
+      out.add(if (relPath.isEmpty()) entry else entry + ("relPath" to relPath))
     }
     return out
   }

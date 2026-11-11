@@ -45,4 +45,11 @@ class LoadedFilesTest {
     assertNull(LoadedFiles.paths(listOf(clip("1:A/a.mp3", 0, 0.0), clip("1:A/b.mp3", 0, 10.0))))
     assertNull(LoadedFiles.paths(listOf(file("1:A/a.mp3", -1))))
   }
+
+  @Test fun oneItemNamesItsFile() {
+    assertEquals("A/#1: Book/01.mp3", LoadedFiles.pathOf("12:A/#1: Book/01.mp3#312.5", clip = true))
+    assertEquals("A/Book/2.mp3", LoadedFiles.pathOf("1:A/Book/2.mp3", clip = false))
+    assertNull(LoadedFiles.pathOf("no-library-id", clip = false))
+    assertNull(LoadedFiles.pathOf("1:A/x.mp3", clip = true))
+  }
 }

@@ -2091,7 +2091,13 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   order since still puts it in its file; the whole-book seconds stand only for a book that no
   longer holds that file, or that is neither loaded nor downloaded. A kept one of the older
   form (whole-book seconds alone) is still read; only one whose place could not be read yet
-  stays in file coordinates.
+  stays in file coordinates. **A press names its file by path** (fe#185): the Android service's
+  pending list and `onRemoteBookmark` (Android and iOS) carry `relPath` (the file's `rel_path`,
+  from the item's media id) beside the engine's index and the seconds in that file, and JS
+  reads the press in that file (`engineIndexOn`, by `trackIndexById`), so a press made before
+  an adoption reloaded the engine in the download's order still lands in its file. A press an
+  older binary made (no `relPath`) is read by its index, as before; a press kept in engine
+  coordinates keeps its `trackId`.
 - **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,

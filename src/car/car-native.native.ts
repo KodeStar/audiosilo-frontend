@@ -14,6 +14,10 @@ const has = (fn: unknown): boolean => typeof fn === 'function';
 
 const available = has(AudiosiloPlayer.setCarSnapshot);
 
+/** A bookmark's file path as the binary names it (fe#185): a non-empty string, else none. */
+const fileOf = (relPath: unknown): relPath is string =>
+  typeof relPath === 'string' && relPath !== '';
+
 export const carNative: CarNative = {
   available,
 
@@ -53,7 +57,12 @@ export const carNative: CarNative = {
     try {
       const list = await AudiosiloPlayer.consumePendingBookmarks!();
       return Array.isArray(list)
-        ? list.map((b) => ({ ...b, connectionId: resolveConnectionId(b.connectionId) }))
+        ? list.map(({ relPath, ...b }) => ({
+            ...b,
+            connectionId: resolveConnectionId(b.connectionId),
+            // Kept by an older binary: none, and the index alone counts (fe#185).
+            ...(fileOf(relPath) ? { relPath } : {}),
+          }))
         : [];
     } catch {
       return [];
@@ -93,7 +102,7 @@ export const carNative: CarNative = {
               path: e.path,
             }
           : undefined;
-      handler(trackIndex, position, book);
+      handler(trackIndex, position, book, fileOf(e.relPath) ? e.relPath : undefined);
     });
     return () => sub.remove();
   },
