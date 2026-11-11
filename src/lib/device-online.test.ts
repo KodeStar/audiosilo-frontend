@@ -3,8 +3,10 @@ import { Platform } from 'react-native';
 
 const mockListeners: ((s: object) => void)[] = [];
 let mockState: object = { isConnected: true, isInternetReachable: true };
+// The first read's answer, when a test holds it back (else `mockState`, at once).
+let mockProbe: Promise<object> | null = null;
 jest.mock('expo-network', () => ({
-  getNetworkStateAsync: () => Promise.resolve(mockState),
+  getNetworkStateAsync: () => mockProbe ?? Promise.resolve(mockState),
   addNetworkStateListener: (cb: (s: object) => void) => {
     mockListeners.push(cb);
     return { remove: jest.fn() };
@@ -20,6 +22,7 @@ afterEach(() => {
   Platform.OS = os;
   mockListeners.length = 0;
   mockState = { isConnected: true, isInternetReachable: true };
+  mockProbe = null;
 });
 
 describe('useDeviceOnline (app)', () => {
@@ -57,6 +60,28 @@ describe('useDeviceOnline (app)', () => {
     mockState = {};
     const { result } = await renderHook(() => useDeviceOnline());
     await act(async () => {});
+    expect(result.current).toBe(true);
+  });
+
+  // Android says `isConnected: false` for a network whose transport it can't name (and for
+  // a state it failed to read): not "no network", and every query waits on this flag.
+  it("counts a network the system can't name as online", async () => {
+    mockState = { isConnected: false, type: 'UNKNOWN' };
+    const { result } = await renderHook(() => useDeviceOnline());
+    await act(async () => {});
+    expect(result.current).toBe(true);
+    await act(async () => mockListeners[0]({ isConnected: false, type: 'NONE' }));
+    expect(result.current).toBe(false);
+  });
+
+  // iOS answers the first read after up to 5 s, as "not connected" when that runs out: it
+  // must not undo a change the listener told meanwhile.
+  it('keeps a change heard before the first read lands', async () => {
+    let land: (s: object) => void = () => undefined;
+    mockProbe = new Promise((resolve) => (land = resolve));
+    const { result } = await renderHook(() => useDeviceOnline());
+    await act(async () => mockListeners[0]({ isConnected: true }));
+    await act(async () => land({ isConnected: false, type: 'NONE' }));
     expect(result.current).toBe(true);
   });
 });

@@ -7,7 +7,8 @@ import { Platform } from 'react-native';
  * on the web, the system's network state in the app. With a network, a server that doesn't
  * answer is that server's trouble, and the chrome names it ("Hearthside isn't answering");
  * without one, the device is offline. Unknown counts as online (a state not yet known, a
- * probe that failed, a test), so the server is named rather than the device blamed. One
+ * probe that failed, a network the system can't name, a test), so the server is named
+ * rather than the device blamed. One
  * subscription to the system serves every caller (`subscribe`).
  *
  * In the app "a network" is the system's `isConnected` alone, never whether the internet
@@ -76,13 +77,27 @@ function listen(): () => void {
     };
   }
   let live = true;
+  // Offline only when the system says there is no network. A network it can't name (type
+  // `UNKNOWN`: Android reports `isConnected: false` for a transport it doesn't know, and
+  // for a state it failed to read) is unknown, so online: every query waits on this flag.
   const apply = (s: Network.NetworkState | undefined) => {
-    if (live && s) setOnline(s.isConnected !== false);
+    if (live && s) setOnline(s.isConnected !== false || (s.type as string) === 'UNKNOWN');
   };
   let sub: { remove: () => void } | undefined;
+  // The first read can land after a change the listener already told (iOS answers it
+  // after up to 5 s, and "not connected" when that runs out): the change is the newer.
+  let heard = false;
   try {
-    Promise.resolve(Network.getNetworkStateAsync()).then(apply, () => undefined);
-    sub = Network.addNetworkStateListener(apply);
+    Promise.resolve(Network.getNetworkStateAsync()).then(
+      (s) => {
+        if (!heard) apply(s);
+      },
+      () => undefined,
+    );
+    sub = Network.addNetworkStateListener((s) => {
+      heard = true;
+      apply(s);
+    });
   } catch {
     // No network module (a test, a platform without one): stay "online".
   }
