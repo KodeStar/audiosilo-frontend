@@ -1324,7 +1324,11 @@ export function useNextBook(
  * mirror - the same record the resume path trusts - so a downloaded book still
  * knows where the listener is instead of reading as "never started". An HTTP
  * error is NOT swallowed: it propagates and the query fails (see
- * `fetchBookProgress` for why that matters to the reconnect banner). */
+ * `fetchBookProgress` for why that matters to the reconnect banner).
+ *
+ * Asked whatever the online flag says (`networkMode: 'always'`): held for the network (the
+ * app pauses its queries with none, as the browser does), the read would never run, so it
+ * would never reach the mirror, and a downloaded book opened offline had no place. */
 export function useBookProgress(
   libraryId: number,
   path: string,
@@ -1337,6 +1341,7 @@ export function useBookProgress(
     queryKey: qk.progress(cid, libraryId, path),
     queryFn: ({ signal }) => fetchBookProgress(api!, cid, libraryId, path, signal),
     enabled: enabled && !!api && path.length > 0,
+    networkMode: 'always',
   });
 }
 
