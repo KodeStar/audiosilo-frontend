@@ -502,7 +502,11 @@ export function positionOn(
   const ordered = [...files].sort((a, b) => a.seq - b.seq);
   let offset = 0;
   for (const f of ordered) {
-    if (f.rel_path === file.path) return offset + Math.max(0, file.pos);
+    if (f.rel_path === file.path) {
+      // Never past the file's end, as a resume lands it (`filePlaceIn`).
+      const pos = Math.max(0, file.pos);
+      return offset + (f.duration > 0 ? Math.min(pos, f.duration) : pos);
+    }
     if (!(f.duration > 0)) return place.position;
     offset += f.duration;
   }

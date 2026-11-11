@@ -669,6 +669,10 @@ describe('positionOn', () => {
       900,
     );
     expect(positionOn({ position: 999, file: { path: 'A/Book/01.mp3', pos: 30 } }, files)).toBe(30);
+    // Never past the file's end (a file replaced by a shorter one), as a resume lands it.
+    expect(positionOn({ position: 999, file: { path: 'A/Book/01.mp3', pos: 700 } }, files)).toBe(
+      600,
+    );
   });
 
   it('keeps the whole-book seconds with no file place, an unknown file or an unknown length', () => {
