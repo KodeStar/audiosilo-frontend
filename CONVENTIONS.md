@@ -3371,11 +3371,15 @@ under their empty state).
   kept answer always shows; `failed` for an `ApiError`, the server's own answer, so the screen's
   sign-in or not-in-library state stands whatever the network did since) and checks it
   **before its skeleton**: a held query stays `isPending` (and `useAllLibraryBooks().isLoading`
-  counts it; a page over that list asks `useUnreadBooks(list)`), so a skeleton drawn for that
-  never ends where the screen used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows modes, the series,
-  author / narrator, book, episode, collection, show and folder pages, and a book's
-  bookmarks, notes and history sections all do; the Journal's tabs ask `unreadSources` (a
-  source held for the network is `waiting`). A new screen with a skeleton does the same. The
+  counts it; a page over that list asks `useUnreadBooks(list)`, where a list read to its end
+  with no book in it counts as read), so a skeleton drawn for that never ends where the screen
+  used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows
+  modes, the series, author / narrator, book, episode, collection, show and folder pages, and
+  a book's bookmarks, notes and history sections all do; the Journal's tabs ask
+  `unreadSources` (a source held for the network is `waiting`, and so is one whose `/server`
+  flag is). A page whose failure is `LoadFailedNote` (book, episode, folder) hands it the hint
+  (`offline`), so the sign-in state still comes first. A new screen with a skeleton does the
+  same. The
   surface is `<OfflineState hint>`: the offline icon, `common.offlineTitle`, and the caller's
   hint, to which
   `useOfflineHint` adds `common.offlineDownloads` only where downloads exist
