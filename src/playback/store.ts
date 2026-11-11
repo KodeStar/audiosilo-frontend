@@ -917,8 +917,12 @@ function tickListeningSpan() {
   // Offline the span stays open: `spanKeeper` stores it.
 }
 
-/** Playing with no span open: open one where the engine is (see `tickListeningSpan`). */
+/** Playing with no span open: open one where the engine is (see `tickListeningSpan`). Not
+ * for a play on its way to a pause (the intent dropped, the engine yet to report it): a tab
+ * that gave way has ended its span where the other tab's begins, and one opened in that
+ * moment would cover the other tab's listening. */
 function openMissingSpan() {
+  if (!wantsPlayback) return;
   const np = usePlayer.getState().nowPlaying;
   if (!np || !usesListeningSync(np.connectionId)) return;
   if (!isPlayingState(usePlayer.getState().snapshot.state)) return;

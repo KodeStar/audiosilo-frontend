@@ -979,6 +979,22 @@ describe('a span opens whenever the book plays', () => {
     expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 8, 25]]);
   });
 
+  it('a play on its way to a pause opens none: the pause is asked for, the engine yet to report it', async () => {
+    (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('playing', 0, 5));
+    });
+    await start();
+    pushSnapshot(snap('playing', 0, 8));
+    // As a tab that gives way does: the intent dropped and the engine told to pause, its
+    // snapshot still `playing` (a Cast receiver takes a second or two to confirm).
+    await usePlayer.getState().toggle();
+    jest.advanceTimersByTime(5_000);
+    await settle();
+    pushSnapshot(snap('paused', 0, 9));
+    await settle();
+    expect(mockClosed).toEqual([]);
+  });
+
   it('a server that takes listening events only since the book began gets a span within the keep', async () => {
     mockSync = false;
     await start();
