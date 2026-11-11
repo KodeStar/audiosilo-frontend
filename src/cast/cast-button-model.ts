@@ -51,3 +51,22 @@ export function castButtonModel(input: {
       : null;
   return { show, blocked, status, deviceName };
 }
+
+/**
+ * Whether the Cast SDK's own button (`CastButton` on iOS and Android) draws its icon, pure.
+ * The SDK hides it while no Cast device is found (`noDevicesAvailable`: Android's
+ * MediaRouteButton goes invisible, iOS's GCKUICastButton hides), so the player's pill around
+ * it was an empty slot on a network with no Chromecast (seen on an iPhone with the network
+ * back after airplane mode); the slot goes with it. On iOS the button still draws before
+ * discovery has ever run (discovery starts on its first tap, which asks for local network
+ * access: `iosStartDiscoveryAfterFirstTapOnCastButton`), so there it hides only while
+ * discovery runs (`discoveryRunning`). Unknown (a state not read yet) draws, as before.
+ */
+export function sdkButtonDraws(
+  state: string | null | undefined,
+  os: string,
+  discoveryRunning: boolean | null,
+): boolean {
+  if (state !== 'noDevicesAvailable') return true;
+  return os === 'ios' && discoveryRunning !== true;
+}

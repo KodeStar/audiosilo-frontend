@@ -1,4 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
+import GoogleCast, { CastState } from 'react-native-google-cast';
 
 import type { CastButtonModel } from './cast-button-model';
 
@@ -83,6 +85,61 @@ describe('the native Cast button', () => {
     expect(screen.queryByTestId('sdk-cast-button')).toBeNull();
     await fireEvent.press(screen.getByLabelText('Cast, not available for this book'));
     expect(mockToast).toHaveBeenCalled();
+  });
+
+  describe('with no Cast device found (the SDK hides its button)', () => {
+    const os = Platform.OS;
+    let changed: (state: CastState) => void = () => undefined;
+    let running = true;
+    beforeEach(() => {
+      jest.spyOn(GoogleCast, 'getCastState').mockResolvedValue(CastState.NO_DEVICES_AVAILABLE);
+      jest.spyOn(GoogleCast, 'onCastStateChanged').mockImplementation((l) => {
+        changed = l;
+        return { remove() {} };
+      });
+      jest
+        .spyOn(GoogleCast.getDiscoveryManager(), 'isRunning')
+        .mockImplementation(async () => running);
+    });
+    afterEach(() => {
+      Platform.OS = os;
+      running = true;
+      jest.restoreAllMocks();
+    });
+
+    it('leaves no empty slot, and comes back when a device is found', async () => {
+      Platform.OS = 'android';
+      await render(<NativeCastButton testID="cast" />);
+      await act(async () => {});
+      expect(screen.queryByTestId('cast')).toBeNull();
+      await act(async () => changed(CastState.NOT_CONNECTED));
+      expect(screen.getByTestId('sdk-cast-button')).toBeTruthy();
+    });
+
+    it('stays on iOS until discovery runs (its first tap starts it), then goes', async () => {
+      Platform.OS = 'ios';
+      running = false;
+      jest.useFakeTimers();
+      try {
+        await render(<NativeCastButton testID="cast" />);
+        await act(async () => {});
+        expect(screen.getByTestId('sdk-cast-button')).toBeTruthy();
+        // Tapped: discovery runs and finds nothing (no event says so: asked again).
+        running = true;
+        await act(() => jest.advanceTimersByTimeAsync(2_000));
+        expect(screen.queryByTestId('cast')).toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('still explains a book it cannot cast', async () => {
+      Platform.OS = 'android';
+      mockModel = { ...mockModel, blocked: 'codec' };
+      await render(<NativeCastButton />);
+      await act(async () => {});
+      expect(screen.getByLabelText('Cast, not available for this book')).toBeTruthy();
+    });
   });
 
   it('is absent on a binary or device that cannot cast', async () => {
