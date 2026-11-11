@@ -1701,7 +1701,10 @@ media GETs only.
     `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
     (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
-    twice it is one event. The keep never moves the span's end back (a native lock-screen
+    twice it is one event. A book playing with none open (its play's own could not open: a
+    load, the hot-swap or an adoption's reload held the place) gets one at that same 5 s keep
+    (`openMissingSpan`), not only at the save loop's tick, which may be a minute away: what
+    plays before a span opens is in no listening event. The keep never moves the span's end back (a native lock-screen
     move's landed place reaches the store before the move, which ends the span at its last
     place); a save and the loop's cut take where the engine is (applying that rule there froze
     the span after a seek back or a hot-swap to another file order, fe#211). The end's `finish` goes into the outbox only after the last span's close has landed

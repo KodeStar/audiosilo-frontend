@@ -896,20 +896,14 @@ function cutListeningSpan(start: ListeningStart = 'continue') {
 
 /** The save loop's tick (`saveIntervalMs`): cut while the server is reachable (live
  * sessions), else keep the span.
- * Playing with none open, one opens here: the play's own could not (its place was held by a
- * load, the hot-swap or an adoption's reload), or the server took listening events only
- * since (its `/server` read while the book played; the history the PUT path began goes by
- * `POST /history` up to here). */
+ * Playing with none open, one opens here or at the 5 s keep, whichever comes first
+ * (`openMissingSpan`): the play's own could not (its place was held by a load, the hot-swap
+ * or an adoption's reload), or the server took listening events only since (its `/server`
+ * read while the book played; the history the PUT path began goes by `POST /history` up to
+ * here). */
 function tickListeningSpan() {
   if (!span) {
-    const np = usePlayer.getState().nowPlaying;
-    if (!np || !usesListeningSync(np.connectionId)) return;
-    if (!isPlayingState(usePlayer.getState().snapshot.state)) return;
-    if (historyStart && !historyStart.sync) {
-      endHistory();
-      beginHistory();
-    }
-    openListeningSpan();
+    openMissingSpan();
     return;
   }
   // Online, every tick cuts (live sessions). Offline, a span is cut once it has run an
@@ -922,10 +916,27 @@ function tickListeningSpan() {
 }
 
 /** Bring the open span up to where the engine is now and store it (`OPEN_SPAN_KEEP_MS`), so
- * a kill loses only what played since. */
+ * a kill loses only what played since. With none open while the book plays, one opens here
+ * too: what plays before a span opens is in no listening event, and the save loop's tick
+ * may be a minute away (`saveIntervalMs`). */
+/** Playing with no span open: open one where the engine is (see `tickListeningSpan`). */
+function openMissingSpan() {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np || !usesListeningSync(np.connectionId)) return;
+  if (!isPlayingState(usePlayer.getState().snapshot.state)) return;
+  if (historyStart && !historyStart.sync) {
+    endHistory();
+    beginHistory();
+  }
+  openListeningSpan();
+}
+
 function keepOpenSpan() {
   const kept = span;
-  if (!kept) return;
+  if (!kept) {
+    openMissingSpan();
+    return;
+  }
   const np = usePlayer.getState().nowPlaying;
   if (!np || !sameBook(kept, np)) return;
   const here = engineEnd();
