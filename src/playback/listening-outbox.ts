@@ -404,10 +404,11 @@ async function closeLeftBehind(): Promise<{ live: boolean; swept: string[] }> {
   const now = Date.now();
   const left = spans.filter((s) => leftBehind(s, now));
   for (const s of left) {
-    await appendClosed(bare(s));
+    const closed = bare(s);
+    await appendClosed(closed);
     // The mirror is written less often than the span is kept: its record of the book is
     // brought up to where the span ended (never back, never over a newer record).
-    await mirrorSpanEnd(bare(s)).catch(() => undefined);
+    await mirrorSpanEnd(closed).catch(() => undefined);
   }
   if (left.length > 0) {
     await writeSpans(spans.filter((s) => !left.includes(s)));
