@@ -53,3 +53,20 @@ export function useUnreadQuery(query: {
   if (query.error instanceof ApiError) return 'failed';
   return offlineState({ waiting: query.isPaused, failed: !!query.error, deviceOnline });
 }
+
+/**
+ * `useUnreadQuery` of a whole list of books read page by page (`useAllLibraryBooks`):
+ * with no book in, there is nothing to show, whatever page the read stopped on.
+ */
+export function useUnreadBooks(list: {
+  books: readonly unknown[];
+  /** A page waits for the network. */
+  offline: boolean;
+  error: unknown;
+}): UnreadState {
+  return useUnreadQuery({
+    data: list.books.length > 0 ? list.books : undefined,
+    isPaused: list.offline,
+    error: list.error,
+  });
+}

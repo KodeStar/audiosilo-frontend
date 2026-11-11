@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration, formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
-import { useUnreadQuery } from '@/lib/offline-state';
+import { useUnreadBooks } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { yearOf } from '@/lib/published';
 import { bookSeriesNumber } from '@/lib/series-position';
@@ -59,11 +59,7 @@ export function PersonPage({
     libraryId,
     kind === 'author' ? { author: name } : { narrator: name },
   );
-  const unread = useUnreadQuery({
-    data: q.books.length > 0 ? q.books : undefined,
-    isPaused: q.offline,
-    error: q.error,
-  });
+  const unread = useUnreadBooks(q);
 
   if (kind === 'narrator' && browse === false) {
     return (

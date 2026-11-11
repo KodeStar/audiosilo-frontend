@@ -3371,8 +3371,8 @@ under their empty state).
   kept answer always shows; `failed` for an `ApiError`, the server's own answer, so the screen's
   sign-in or not-in-library state stands whatever the network did since) and checks it
   **before its skeleton**: a held query stays `isPending` (and `useAllLibraryBooks().isLoading`
-  counts it), so a skeleton drawn for that never ends where the screen used to fail with a
-  Retry. The Library's Series, Authors, Narrators, Collections and Shows modes, the series,
+  counts it; a page over that list asks `useUnreadBooks(list)`), so a skeleton drawn for that
+  never ends where the screen used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows modes, the series,
   author / narrator, book, episode, collection, show and folder pages, and a book's
   bookmarks, notes and history sections all do; the Journal's tabs ask `unreadSources` (a
   source held for the network is `waiting`). A new screen with a skeleton does the same. The

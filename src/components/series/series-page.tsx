@@ -18,7 +18,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
-import { useUnreadQuery } from '@/lib/offline-state';
+import { useUnreadBooks, useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { percentOf } from '@/lib/progress-view';
 import {
@@ -100,11 +100,7 @@ export function SeriesPage({
   // that is slow or unreachable must not hold the page on its skeleton.
   const progressLoading = loadingOf(cid);
   const owned = useSeriesBooks(libraryId, name);
-  const unread = useUnreadQuery({
-    data: owned.books.length > 0 ? owned.books : undefined,
-    isPaused: owned.offline,
-    error: owned.error,
-  });
+  const unread = useUnreadBooks(owned);
   const metadata = useCapability('metadata');
   // Wait for the progress so the anchor is the book you're on, not one asked for first
   // and replaced a moment later.
