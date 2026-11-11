@@ -1,3 +1,5 @@
+import { act, renderHook } from '@testing-library/react-native';
+
 import type { Book, ChaptersResponse } from '@/api/types';
 
 import type { OpenSpan } from './listening-outbox';
@@ -7,7 +9,9 @@ import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
 // The store while the app is away (perf P4). The periodic save's pace (`saveIntervalMs`):
 // every 15 s while the app is in front and the playing file streams, every 60 s with the app
 // away or the file on this device, switched mid-play with no save dropped or doubled, and
-// never slowing a save that goes at once. The engine is a fake whose snapshots a test pushes,
+// never slowing a save that goes at once. And what `usePlayer`, the hook, shows off screen
+// (`quietOffScreen`): no tick of the place, everything else at once, while the store's own
+// logic goes on reading the live state. The engine is a fake whose snapshots a test pushes,
 // about once a second as a real one does; the app's state is the test's.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
@@ -47,16 +51,20 @@ jest.mock('./service', () => ({ createPlaybackService: () => mockSvc }));
 
 /** When each save was made (the PUT path's `saveProgress`, the sync path's mirror write). */
 const mockSaves: number[] = [];
+/** The whole-book place each of them saved. */
+const mockSavedAt: number[] = [];
 const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<ResumeLookup> => ({
   kind: 'empty',
 }));
 jest.mock('./progress-sync', () => ({
-  saveProgress: jest.fn(async () => {
+  saveProgress: jest.fn(async (_api: unknown, save: { position: number }) => {
     mockSaves.push(Date.now());
+    mockSavedAt.push(save.position);
     return 'saved';
   }),
-  writeMirror: jest.fn(async () => {
+  writeMirror: jest.fn(async (save: { position: number }) => {
     mockSaves.push(Date.now());
+    mockSavedAt.push(save.position);
   }),
   ackVersion: jest.fn(async () => {}),
   flushQueue: jest.fn(async () => {}),
@@ -123,7 +131,7 @@ import type { DownloadEntry } from '@/downloads/types';
 import { useSettings } from '@/stores/settings';
 import { driveAppState } from '@/testing/app-state';
 
-import { usePlayer } from './store';
+import { selectBookPosition, selectCurrentChapter, selectIsPlaying, usePlayer } from './store';
 /* eslint-enable import/first */
 
 // The app's state: the store began watching it as it was imported.
@@ -209,6 +217,7 @@ async function play() {
   await settle();
   began = Date.now();
   mockSaves.length = 0;
+  mockSavedAt.length = 0;
   mockCuts.length = 0;
   mockKept.length = 0;
 }
@@ -240,9 +249,12 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await usePlayer.getState().stop();
-  // Back in front for the next test, with nothing playing to save.
-  appBecomes('active');
+  // In `act`: a reader a test mounted is shown both.
+  await act(async () => {
+    await usePlayer.getState().stop();
+    // Back in front for the next test, with nothing playing to save.
+    appBecomes('active');
+  });
   jest.clearAllTimers();
   jest.useRealTimers();
 });
@@ -421,5 +433,120 @@ describe('the Sync v2 span cut', () => {
     // A kill loses at most 5 s of listening, as before: 12 keeps in the minute between cuts.
     expect(mockKept).toHaveLength(12);
     expect(at(mockCuts)).toEqual([60]);
+  });
+});
+
+describe('what the hook shows off screen', () => {
+  /** A component reading the place, the chapter and whether it plays, and its renders. */
+  async function reader() {
+    let renders = 0;
+    const hook = await renderHook(() => {
+      renders++;
+      return {
+        position: usePlayer(selectBookPosition),
+        chapter: usePlayer(selectCurrentChapter)?.index ?? null,
+        playing: usePlayer(selectIsPlaying),
+        file: usePlayer((s) => s.snapshot.trackIndex),
+      };
+    });
+    return { shown: () => hook.result.current, renders: () => renders };
+  }
+  /** `played`, inside React's `act` so a mounted reader renders what it is shown. */
+  const playedShown = (seconds: number) => act(() => played(seconds));
+  const appShown = (state: 'active' | 'background') => act(async () => appBecomes(state));
+
+  it('redraws the place every second in front', async () => {
+    await play();
+    const { shown, renders } = await reader();
+    const before = renders();
+    await playedShown(10);
+    expect(shown().position).toBe(15);
+    expect(renders() - before).toBe(10);
+  });
+
+  it('redraws nothing while the book plays in the background, then the live place at once', async () => {
+    await play();
+    const { shown, renders } = await reader();
+    await appShown('background');
+    const before = renders();
+    // Other readers of the store (the car, the widgets) hear every tick as before.
+    const heard = jest.fn();
+    const stop = usePlayer.subscribe(heard);
+    await playedShown(120);
+    stop();
+    expect(renders()).toBe(before);
+    expect(shown().position).toBe(5);
+    expect(selectBookPosition(usePlayer.getState())).toBe(125);
+    expect(heard.mock.calls.length).toBeGreaterThanOrEqual(120);
+
+    await appShown('active');
+    expect(shown().position).toBe(125);
+    expect(renders()).toBe(before + 1);
+    await playedShown(1);
+    expect(shown().position).toBe(126);
+  });
+
+  it('saves the live place, not the one shown, while off screen', async () => {
+    await play();
+    const { shown } = await reader();
+    await appShown('background'); // a save at 5
+    await playedShown(60);
+    expect(shown().position).toBe(5);
+    // The minute's save took the engine's place (the timer fires just before the 65th
+    // second's event here), a minute on from the 5 the screen still shows.
+    expect(mockSavedAt).toEqual([5, 64]);
+  });
+
+  it('shows a pause in the background at once, at the place it paused', async () => {
+    await play();
+    const { shown } = await reader();
+    await appShown('background');
+    await playedShown(30);
+    expect(shown()).toMatchObject({ position: 5, playing: true });
+    await act(async () => {
+      pushSnapshot(snap('paused', track, position));
+      await settle();
+    });
+    expect(shown()).toMatchObject({ position: 35, playing: false });
+  });
+
+  it('shows the next file in the background, and the chapter with it', async () => {
+    await play();
+    const { shown } = await reader();
+    await appShown('background');
+    await playedShown(20);
+    expect(shown()).toMatchObject({ file: 0, chapter: 0, position: 5 });
+    track = 1;
+    position = 0;
+    await playedShown(1);
+    expect(shown()).toMatchObject({ file: 1, chapter: 1, position: 1001 });
+    await playedShown(10);
+    expect(shown().position).toBe(1001);
+  });
+
+  it('shows the end of the book in the background (what starts the next one)', async () => {
+    await play();
+    const ended = await renderHook(() => usePlayer((s) => s.snapshot.state === 'ended'));
+    await appShown('background');
+    await playedShown(5);
+    await act(async () => {
+      pushSnapshot(snap('ended', 1, 1000));
+      await settle();
+    });
+    expect(ended.result.current).toBe(true);
+  });
+
+  it('shows another book loading in the background', async () => {
+    await play();
+    const title = await renderHook(() => usePlayer((s) => s.nowPlaying?.title ?? null));
+    await appShown('background');
+    await playedShown(3);
+    await act(async () => {
+      await usePlayer
+        .getState()
+        .playBook('c1', 2, { ...book, rel_path: 'B/Other', title: 'Another' }, undefined, 0);
+      await settle();
+    });
+    expect(title.result.current).toBe('Another');
   });
 });

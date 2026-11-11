@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { create } from 'zustand';
+import { createStore } from 'zustand';
 
 import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
@@ -25,6 +25,7 @@ import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
 import { flushReadingConnection } from '@/reader/reading-progress';
+import { quietOffScreen } from '@/lib/visible-store';
 import { mayActFor } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
@@ -1994,7 +1995,7 @@ async function createService(): Promise<PlaybackService> {
   return svc;
 }
 
-export const usePlayer = create<PlayerState>()((set, get) => ({
+const playerStore = createStore<PlayerState>()((set, get) => ({
   nowPlaying: null,
   snapshot: { ...INITIAL_SNAPSHOT },
   rate: 1,
@@ -2446,6 +2447,28 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
 
   adoptLoaded: (book, reread) => adoptLoadedBook(book, reread),
 }));
+
+/**
+ * The player store. `usePlayer.getState()`, `setState` and `subscribe` are the live state,
+ * for the store's own logic and every reader outside React (the car, the widgets, Cast, the
+ * sleep timer, the reader's narration; the lock screen, Now Playing and the watch are fed by
+ * the native side and never read this at all). `usePlayer(selector)`, the hook components
+ * read, is what is SHOWN (`quietOffScreen`): the same in front, but off screen (the app in
+ * the background, a hidden tab) a tick of the place is not shown, so a player left open
+ * does not redraw once a second for nobody. Everything else is shown at once, the place
+ * with it: a play or a pause, another file, another speed, another book, a load, an error.
+ * Back on screen the live place shows at once.
+ */
+export const usePlayer = quietOffScreen(playerStore, 'snapshot', isPlaceTick);
+
+/** Whether `live` is the snapshot `shown` only further on: the engine's progress tick
+ * (about once a second while playing), or a seek. Its state, its file and its speed are
+ * the same; only the place in the file and that file's length may differ. */
+function isPlaceTick(shown: PlaybackSnapshot, live: PlaybackSnapshot): boolean {
+  return (
+    shown.state === live.state && shown.trackIndex === live.trackIndex && shown.rate === live.rate
+  );
+}
 
 /**
  * Hold `persist` (see `saveHold`) and return the release. `flush` (the default) saves

@@ -1590,6 +1590,39 @@ media GETs only.
     25) is not touched by the pace: a second device resumes from a server row (a base
     version above 0), and a span behind another device's newer row is then resolved as a
     divergence (the further place kept, the other offered), never refused as behind.
+- **Off screen, a tick is not redrawn** (perf P4; `quietOffScreen` in
+  `src/lib/visible-store.ts`). The player store's snapshot moves about once a second while a
+  book plays, and a mounted screen stays mounted with the phone locked or the tab hidden: a
+  full player left open redrew its seek bar, times and chapter list every second for nobody.
+  So `usePlayer(selector)` and `useSleepTimer(selector)`, the HOOKS, read what is **shown**,
+  not the live state. In front the two are the same object. Off screen (`isOffScreen`:
+  `AppState` `background`, which on the web is the hidden tab; NOT iOS's `inactive`, where
+  the app is still seen behind the app switcher, Control Centre or a system alert) a change
+  that is only a **tick** is not shown: no listener, no selector, no render. Coming back
+  shows the live state at once.
+  - A tick is one field moving and nothing else: the player's `snapshot` with the same
+    `state`, `trackIndex` and `rate` (so the place and the file's length; a seek counts), the
+    sleep timer's `remaining`. **Every other change is shown at once and whole**, the held
+    field with it: a play, a pause, the end, the next file, another book, a load, an error,
+    the timer's phase. That is what lets a component act in the background on what the hook
+    gives it (`BookEndedListener` starts the next book from `selectIsEnded`,
+    `useShakeToExtend` arms from the timer's phase, the hidden tab's title follows play and
+    pause).
+  - `getState()`, `setState()` and `subscribe()` on both stores are **live as ever**: the
+    store's own logic (the saves, the spans, the tab rules), the car, the widgets and the
+    Live Activity, Cast, the reader's narration, the reveal toast and the sleep timer's
+    tickers read those. The lock screen, Now Playing, the web Media Session, Android Auto's
+    session and the watch are fed by the native engine or `service.web.ts`, never by a
+    React render.
+  - **The rule this leaves:** nothing that must happen in the background may depend on a
+    component re-rendering for the place, the current chapter or the countdown's seconds.
+    Read `getState()` or subscribe (as the reveal toast and the narration do). A selector
+    that derives from the place (`selectBookPosition`, `selectCurrentChapter`,
+    `selectLivePosition`) is for drawing.
+  - A new store that ticks while a book plays gets its hook from `quietOffScreen` too,
+    naming its ticking field. In a test, `driveAppState()` (`src/testing/app-state.ts`) sets
+    the app's state; React Native's jest `AppState` is otherwise never `background`, so
+    every other suite sees the hook show everything.
 - **Never restart an in-progress book from 0.** `loadInitialProgress` returns a
   discriminated `ResumeLookup` (`progress`/`empty`/`failed`) reconciling the server, a
   **durable local mirror** (`writeMirror`, never pruned on sync - survives a flaky resume

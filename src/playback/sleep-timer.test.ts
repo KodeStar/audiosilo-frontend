@@ -24,6 +24,8 @@ const BOOK_A = () => book('author/book-a.m4b', { chapters: [], total: 0 });
 
 // Imported after the mock setup (the factory closes over the mock-prefixed vars).
 /* eslint-disable import/first */
+import { act, renderHook } from '@testing-library/react-native';
+
 import { engineTick } from '@/playback/engine-ticks';
 import { noteInteraction, resetInteractions } from '@/playback/last-interaction';
 import {
@@ -40,7 +42,11 @@ import {
   type SleepLabel,
   type SleepOutcome,
 } from '@/playback/sleep-timer';
+import { driveAppState } from '@/testing/app-state';
 /* eslint-enable import/first */
+
+// The app's state: the timer's hook began watching it as the module was imported.
+const app = driveAppState();
 
 const NOW = 1_700_000_000_000; // fixed epoch ms
 
@@ -126,6 +132,7 @@ describe('sleep timer', () => {
 
   afterEach(() => {
     useSleepTimer.getState().cancel();
+    app.becomes('active');
     jest.clearAllTimers();
     jest.useRealTimers();
   });
@@ -247,6 +254,33 @@ describe('sleep timer', () => {
       useSleepTimer.setState({ tick });
       return { tick, restore: () => useSleepTimer.setState({ tick: real }) };
     }
+
+    // Perf P4: the hook is what is shown (`quietOffScreen`), the store stays live.
+    it('redraws no countdown second off screen, and shows the ending and the return', async () => {
+      useSleepTimer.getState().startDuration(1);
+      let renders = 0;
+      const hook = await renderHook(() => {
+        renders++;
+        return {
+          remaining: useSleepTimer((s) => s.remaining),
+          phase: useSleepTimer(selectSleepPhase),
+        };
+      });
+      await act(async () => app.becomes('background'));
+      const before = renders;
+      await act(async () => screenOff(20));
+      expect(renders).toBe(before);
+      expect(hook.result.current).toEqual({ remaining: 60, phase: 'running' });
+      expect(useSleepTimer.getState().remaining).toBe(40);
+      // The phase is not a tick: it shows, with the second it was written at.
+      await act(async () => screenOff(11));
+      expect(hook.result.current).toEqual({ remaining: 30, phase: 'ending' });
+      await act(async () => screenOff(5));
+      expect(hook.result.current.remaining).toBe(30);
+      await act(async () => app.becomes('active'));
+      expect(hook.result.current).toEqual({ remaining: 24, phase: 'ending' });
+      await hook.unmount();
+    });
 
     it('reaches its ending, fades and pauses the book from the events alone', async () => {
       useSleepTimer.getState().startDuration(1);
