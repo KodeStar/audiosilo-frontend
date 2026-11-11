@@ -1853,7 +1853,8 @@ media GETs only.
     hearing it; the next resume reads the save). A play that began by itself is still
     moving to the mirror's place when the answer comes: the answer waits for that
     (`catchingUp`). A `playing` that arrives while such a move is out (the play buffered
-    during it) begins no history either: the listening begins where the move lands. The
+    during it) begins no history either (`beginHistory` reads `catchingUp` itself, as
+    `openListeningSpan` does): the listening begins where the move lands. The
     web engine places a seek made before its metadata where the load
     starts (`placeAt`), so an answer during a load lands there.
   - Limit: two windows both in view never get a foreground event, so the paused one shows

@@ -1579,6 +1579,9 @@ async function startLoadedEngine(svc: PlaybackService): Promise<void> {
 /** Mark the start of a listening span when playback begins. */
 function beginHistory() {
   if (historyStart) return;
+  // Not from a place on its way to another tab's, as no span opens from one
+  // (`openListeningSpan`): the listening begins where the move lands (`moveWhilePlaying`).
+  if (catchingUp) return;
   const player = usePlayer.getState();
   if (!player.nowPlaying) return;
   historyStart = {
@@ -1806,9 +1809,10 @@ async function createService(): Promise<PlaybackService> {
       if (behind && behind.connectionId === usePlayer.getState().nowPlaying?.connectionId) {
         catchUpPlaying(svc, behind.since);
       } else {
-        // Not while a move to another tab's place is out (this play buffered and came back
-        // during it): its listening begins where the move lands (`moveWhilePlaying`).
-        if (!catchingUp) beginHistory();
+        // Neither begins while a move to another tab's place is out (this play buffered and
+        // came back during it): the listening begins where the move lands
+        // (`moveWhilePlaying`).
+        beginHistory();
         openListeningSpan();
       }
     } else if (isPlayingState(prev.state) && !isPlayingState(snapshot.state)) {

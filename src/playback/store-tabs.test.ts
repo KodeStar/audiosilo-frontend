@@ -16,8 +16,12 @@ import type { PlaybackService, PlaybackSnapshot } from './types';
 let mockTab: FakeTab;
 /** The engine the tab being loaded gets. */
 let mockEngine: Engine;
-/** Every `listen` and `finish` the tabs sent, in the order the server got them. */
-const mockServer: { events: ListeningEvent[] } = { events: [] };
+/** Every `listen` and `finish` the tabs sent, in the order the server got them, and every
+ * span a tab posted to `POST /history` (a server that takes no listening events). */
+const mockServer: { events: ListeningEvent[]; history: { from_pos: number; to_pos: number }[] } = {
+  events: [],
+  history: [],
+};
 /** A book's last save: what `progress-sync.ts` keeps in the mirror. */
 type MirrorRecord = {
   connectionId: string;
@@ -50,17 +54,20 @@ jest.mock('./service', () => {
   const engine = mockEngine;
   return { createPlaybackService: () => engine.svc };
 });
+/** Keep `save` in the mirror while it is `on`: the newest record of its book. */
+async function mockWriteMirror(save: MirrorRecord) {
+  if (!mockMirror.on) return;
+  mockMirror.saved.push(save.position);
+  const key = mirrorKey(save.connectionId, save.libraryId, save.path);
+  const had = mockMirror.records.get(key);
+  if (!had || Date.parse(save.updated_at) >= Date.parse(had.updated_at)) {
+    mockMirror.records.set(key, save);
+  }
+}
 jest.mock('./progress-sync', () => ({
-  saveProgress: jest.fn(async () => {}),
-  writeMirror: jest.fn(async (save: MirrorRecord) => {
-    if (!mockMirror.on) return;
-    mockMirror.saved.push(save.position);
-    const key = mirrorKey(save.connectionId, save.libraryId, save.path);
-    const had = mockMirror.records.get(key);
-    if (!had || Date.parse(save.updated_at) >= Date.parse(had.updated_at)) {
-      mockMirror.records.set(key, save);
-    }
-  }),
+  // The PUT path (a server that takes no listening events) keeps the mirror too.
+  saveProgress: jest.fn(async (_api: unknown, save: MirrorRecord) => mockWriteMirror(save)),
+  writeMirror: jest.fn((save: MirrorRecord) => mockWriteMirror(save)),
   ackVersion: jest.fn(async () => {}),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
@@ -100,7 +107,9 @@ jest.mock('@/api/connection-clients', () => ({
     coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
     streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
     authHeaders: () => ({ Authorization: 'Bearer x' }),
-    addHistory: jest.fn(async () => {}),
+    addHistory: async (_lib: number, _path: string, span: { from_pos: number; to_pos: number }) => {
+      mockServer.history.push(span);
+    },
     syncListening: async (body: ListeningSyncRequest) => {
       for (const e of body.events) {
         if (!mockServer.events.some((had) => had.id === e.id)) mockServer.events.push(e);
@@ -402,6 +411,7 @@ afterAll(() => {
 
 beforeEach(() => {
   mockServer.events = [];
+  mockServer.history = [];
   mockNoteFailure.mockClear();
   mockMirror.on = false;
   mockMirror.records.clear();
@@ -1100,6 +1110,46 @@ describe.each([
         [90, 100, 'resume'],
       ]);
       expectNoSharedSeconds();
+    });
+
+    it('a play that buffers during that move begins its history where the move lands', async () => {
+      // A server that takes no listening events: the listening is its `POST /history`.
+      a.outbox.noteListeningSyncFlag('c1', false);
+      b.outbox.noteListeningSyncFlag('c1', false);
+      await playedPast(a, b);
+      b.engine.at(90);
+      await b.save();
+
+      // A plays by itself from its 30 s, and its move to B's 90 s is still out.
+      let land: () => void = () => {};
+      a.engine.svc.seekTo.mockImplementationOnce(
+        (position: number) =>
+          new Promise<void>((resolve) => {
+            land = () => {
+              a.engine.at(position);
+              resolve();
+            };
+          }),
+      );
+      await a.engine.svc.play();
+      await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
+      a.engine.stall(); // it buffers and comes back, still at 30 s
+      land();
+      await until(() => a.player().snapshot.position === 90, 'the move to land');
+      await sleep(40);
+
+      // Long enough to keep (`MIN_HISTORY_MS`).
+      const now = Date.now;
+      const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() + 30_000);
+      try {
+        a.engine.at(100);
+        await a.player().pause();
+      } finally {
+        clock.mockRestore();
+      }
+      await until(() => mockServer.history.length === 1, 'the span on the server');
+      // Nothing for the 30 s to 90 s it moved over.
+      expect(mockServer.history).toEqual([expect.objectContaining({ from_pos: 90, to_pos: 100 })]);
     });
 
     it('a tab still moving to the shared place gives way with no place of its own', async () => {
