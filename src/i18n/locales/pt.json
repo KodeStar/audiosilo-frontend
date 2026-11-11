@@ -1792,8 +1792,8 @@
       "textDeniedHint": "O servidor já não partilha este livro contigo.",
       "textMissingTitle": "Este livro já não está no servidor",
       "textMissingHint": "Pode ter sido movido ou removido. Abre-o de novo a partir da biblioteca.",
-      "textEbookChangedTitle": "A leitura sincronizada é de um ebook mais recente",
-      "textEbookChangedHint": "O ebook neste dispositivo é mais antigo do que aquele de que a leitura sincronizada foi feita. Remove a transferência e transfere o livro de novo para acompanhar o texto.",
+      "textEbookChangedTitle": "A leitura sincronizada é de outra edição do ebook",
+      "textEbookChangedHint": "O ebook neste dispositivo não é aquele de que a leitura sincronizada foi feita. Remove a transferência e transfere o livro de novo para acompanhar o texto.",
       "textNoServer": "O texto volta assim que estiver."
     },
     "placeMoved": {

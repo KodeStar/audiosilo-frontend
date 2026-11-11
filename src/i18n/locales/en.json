@@ -1792,8 +1792,8 @@
       "textDeniedHint": "The server no longer shares this book with you.",
       "textMissingTitle": "This book isn't on the server any more",
       "textMissingHint": "It may have moved or been removed. Open it from the library again.",
-      "textEbookChangedTitle": "The read-along is for a newer ebook",
-      "textEbookChangedHint": "The ebook on this device is older than the one the read-along was made from. Remove the download and download the book again to follow along.",
+      "textEbookChangedTitle": "The read-along is for a different edition of the ebook",
+      "textEbookChangedHint": "The ebook on this device is not the one the read-along was made from. Remove the download and download the book again to follow along.",
       "textNoServer": "The text comes back once it is."
     },
     "placeMoved": {

@@ -290,7 +290,11 @@ describe('TextPanel', () => {
   it.each([
     ['denied', "This read-along isn't yours to open", /no longer shares this book/],
     ['missing', "This book isn't on the server any more", /moved or been removed/],
-    ['ebookChanged', 'The read-along is for a newer ebook', /download the book again/],
+    [
+      'ebookChanged',
+      'The read-along is for a different edition of the ebook',
+      /download the book again/,
+    ],
     ['signedOut', "Couldn't load the text", /Sign in to this server again/],
   ] as const)(
     'says a %s map read as its own state, with no Try again and no Make (fe#192, fe#193)',
