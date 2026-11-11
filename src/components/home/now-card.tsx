@@ -133,12 +133,7 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
     };
   }, [chapterData, queue]);
 
-  const total =
-    (queue && queue.total > 0 ? queue.total : 0) ||
-    chapterData?.duration ||
-    saved?.duration ||
-    book?.duration ||
-    0;
+  const total = queue?.total || chapterData?.duration || saved?.duration || book?.duration || 0;
   // While a book is still loading the player reports 0: keep the saved place until it
   // has really moved. The saved place as Resume plays it: this device's file place read on
   // these chapters' files (`positionOn`).

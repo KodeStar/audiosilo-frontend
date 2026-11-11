@@ -1351,8 +1351,10 @@ export function useBookProgress(
 /**
  * The `useBookProgress` fetch, extracted so the fallback policy is unit-testable.
  *
- * Ask the server; on failure fall back to the durable local mirror **only when the
- * server never answered**. The distinction is load-bearing:
+ * Ask the server, and answer with the place Resume plays from (`bookPlace`: the server's
+ * row or this device's own newer one); on failure fall back to this device's own places
+ * (the mirror and the offline queue) **only when the server never answered**. The
+ * distinction is load-bearing:
  *  - An `ApiError` means the server DID answer with an HTTP error. Rethrow it so the
  *    query fails. A 401 in particular has already flagged the connection for reconnect
  *    via the client's `onAuthError`; resolving it as a *success* on `qk.progress(...)`
@@ -1360,9 +1362,9 @@ export function useBookProgress(
  *    and wipe the banner the same request just raised. A 403 (scope/share denial) is
  *    likewise a real answer, not an excuse to serve stale local state.
  *  - Anything else (offline, DNS, `TimeoutError`) means we never reached the server:
- *    have its server checked (`noteFailure`, frontend#131) and serve the mirror so a
- *    downloaded book still knows where the listener is. Never marked down straight
- *    away: the mirror's success would have the down server checked, found up,
+ *    have its server checked (`noteFailure`, frontend#131) and serve this device's own
+ *    place so a downloaded book still knows where the listener is. Never marked down
+ *    straight away: that read's success would have the down server checked, found up,
  *    and every query of the connection read again, this one included, round and round
  *    for a read that is only slow or broken.
  *

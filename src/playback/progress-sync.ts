@@ -419,7 +419,7 @@ export type PlacedProgress = Progress & { file?: { path: string; pos: number } }
 
 /** `resumeLookupOf`'s pick as a `PlacedProgress`, null when it has none (a new book, or
  * nothing known anywhere). The same object as the record picked when it has no file place. */
-export function resumePlaceOf(
+function resumePlaceOf(
   server: Progress | null | undefined,
   places: LocalPlaces,
   connectionId: string,

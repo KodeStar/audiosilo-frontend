@@ -510,7 +510,7 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
     // The end of a download that lacks the rest of its book is not the book's (D3, fe#185).
     finished:
       forceFinished ||
-      (total > 0 && position >= total - FINISHED_TOLERANCE && !partialQueues.has(nowPlaying.queue)),
+      (total > 0 && position >= total - FINISHED_TOLERANCE && !endsPartial(nowPlaying)),
     playback_speed: rate,
     device_id: deviceId || cachedDeviceId(),
     updated_at: new Date().toISOString(),
@@ -2929,8 +2929,7 @@ async function adoptLoadedBook(
   // A download that lacks files the engine played (offline, or the server didn't answer):
   // its end is the downloaded part's, not the book's, unless the server says those files are
   // gone (D3, fe#185).
-  const lacking =
-    local && engineIds ? engineIds.filter((id) => !queue.tracks.some((t) => t.id === id)) : [];
+  const lacking = local && engineIds ? engineIds.filter((id) => trackIndexById(queue, id) < 0) : [];
   const partial = lacking.length > 0 && (!served || lacking.some((id) => holds(served, id)));
   if (partial) partialQueues.add(queue);
   // The engine's place is past the downloaded part: it stays paused at that part's end, and
