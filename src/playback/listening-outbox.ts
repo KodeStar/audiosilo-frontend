@@ -67,7 +67,7 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  * `rejected` moves it to the couldn't-sync list. A network error or 5xx keeps everything; a
  * 413 or `too_many_events` halves the chunk, and one event alone still 413 is moved to the
  * list (`too_large`); a 400 on a batch sends its events one by one once, and one still
- * refused alone is moved to the list. An event older than 89 days is moved to the list
+ * refused alone is moved to the list. An event older than 90 days is moved to the list
  * unsent (`too_old`, `giveUpOld`). A 404/405 that the server's own `/server` confirms (no
  * `listening_sync`) means it was rolled back to one without the route: the connection's
  * outbox becomes one legacy save per book (`legacySavesOf`) and the player saves by PUT from
@@ -121,10 +121,12 @@ const EMPTY_SPAN_MS = 1_000;
  * that ran longer (fe#208). */
 export const MAX_EVENT_SPAN_MS = 23 * 60 * 60_000;
 /** An event older than this is given up without a send: the server refuses one older
- * than 90 days (`too_old`), so it could only ever wait (keeping its book pending, which
- * holds off another device's finish there) or be refused. A day short of the server's
- * bound, so a device clock a little behind never sends one that is refused. */
-export const GIVE_UP_AGE_MS = 89 * 24 * 60 * 60_000;
+ * than 90 days (`too_old`, its `syncRejectAge`), so it could only ever wait (keeping its
+ * book pending, which holds off another device's finish there) or be refused. The server's
+ * own bound, so the list's "more than 90 days old" is true of every one given up here; one
+ * a device clock a little behind still sends is refused `too_old` and lands in the same
+ * list (fe#211). */
+export const GIVE_UP_AGE_MS = 90 * 24 * 60 * 60_000;
 
 // --- Building events -------------------------------------------------------------------
 

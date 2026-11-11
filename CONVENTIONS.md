@@ -1812,8 +1812,9 @@ media GETs only.
     at each attempt. A 413 or `too_many_events` halves the chunk (one event alone still 413:
     `too_large`); another 400 resends that chunk one event at a time once, and an event still
     refused alone goes to the couldn't-sync list (`invalid`); a network error or 5xx keeps
-    everything. An event older than 89 days goes to the list as `too_old` unsent (the server
-    refuses 90), so none holds its book pending forever. Every status but `rejected` removes
+    everything. An event older than 90 days goes to the list as `too_old` unsent (the server's
+    own bound, `syncRejectAge`, so the list's wording is true of both), so none holds its
+    book pending forever. Every status but `rejected` removes
     the event; `rejected` moves it to the list. Triggers: the launch (after `recoverOpenSpan`),
     a reconnect, the foreground, each closed span; the web `pagehide` sends what waits (up to
     ~60 KB, the closes still queued behind a lock too: a lease's timer never fires on a page

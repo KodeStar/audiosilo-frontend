@@ -1291,6 +1291,10 @@ describe('a span whose timers stood still', () => {
 });
 
 describe('giving up', () => {
+  it("gives up at the server's own bound, the 90 days the list says (fe#211)", () => {
+    expect(GIVE_UP_AGE_MS).toBe(90 * 24 * 60 * 60_000);
+  });
+
   it(`moves an event older than ${GIVE_UP_AGE_MS / 86_400_000} days to the list unsent (too_old)`, async () => {
     const old = new Date(Date.now() - GIVE_UP_AGE_MS - 60_000).toISOString();
     await appendEvents('c1', [
