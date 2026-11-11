@@ -71,8 +71,11 @@ describe('library selection store', () => {
   });
 });
 
-describe('resolveLibrarySelection', () => {
+describe('resolveLibrary', () => {
   beforeAll(load);
+  /** The library the rule shows. */
+  const selectionOf = (...args: Parameters<typeof mod.resolveLibrary>) =>
+    mod.resolveLibrary(...args).selection;
   const group = (
     connectionId: string,
     libraryIds: number[],
@@ -81,44 +84,31 @@ describe('resolveLibrarySelection', () => {
 
   it('keeps a pick that still exists', () => {
     expect(
-      mod.resolveLibrarySelection({ connectionId: 'b', libraryId: 7 }, [
-        group('a', [1]),
-        group('b', [3, 7]),
-      ]),
+      selectionOf({ connectionId: 'b', libraryId: 7 }, [group('a', [1]), group('b', [3, 7])]),
     ).toEqual({ connectionId: 'b', libraryId: 7 });
   });
 
   it("keeps a pick while its server's list is loading or failing", () => {
     const pick = { connectionId: 'b', libraryId: 7 };
-    expect(mod.resolveLibrarySelection(pick, [group('a', [1]), group('b', [], 'loading')])).toBe(
-      pick,
-    );
-    expect(mod.resolveLibrarySelection(pick, [group('a', [1]), group('b', [], 'error')])).toBe(
-      pick,
-    );
+    expect(selectionOf(pick, [group('a', [1]), group('b', [], 'loading')])).toBe(pick);
+    expect(selectionOf(pick, [group('a', [1]), group('b', [], 'error')])).toBe(pick);
   });
 
   it('falls back to the first library when the pick is gone', () => {
     const first = { connectionId: 'a', libraryId: 1 };
-    expect(
-      mod.resolveLibrarySelection({ connectionId: 'gone', libraryId: 1 }, [group('a', [1, 2])]),
-    ).toEqual(first);
-    expect(mod.resolveLibrarySelection(null, [group('a', [1, 2])])).toEqual(first);
+    expect(selectionOf({ connectionId: 'gone', libraryId: 1 }, [group('a', [1, 2])])).toEqual(
+      first,
+    );
+    expect(selectionOf(null, [group('a', [1, 2])])).toEqual(first);
   });
 
   it('stays on the picked server when the pick is gone and it lists another library', () => {
     expect(
-      mod.resolveLibrarySelection({ connectionId: 'b', libraryId: 9 }, [
-        group('a', [1, 2]),
-        group('b', [3]),
-      ]),
+      selectionOf({ connectionId: 'b', libraryId: 9 }, [group('a', [1, 2]), group('b', [3])]),
     ).toEqual({ connectionId: 'b', libraryId: 3 });
     // A picked server that answered with no library at all: the first server that has one.
     expect(
-      mod.resolveLibrarySelection({ connectionId: 'b', libraryId: 9 }, [
-        group('a', [1, 2]),
-        group('b', []),
-      ]),
+      selectionOf({ connectionId: 'b', libraryId: 9 }, [group('a', [1, 2]), group('b', [])]),
     ).toEqual({ connectionId: 'a', libraryId: 1 });
   });
 
@@ -139,9 +129,7 @@ describe('resolveLibrarySelection', () => {
         selection: null,
         waitingOn: 'a',
       });
-      expect(mod.resolveLibrarySelection(null, [group('a', [], 'error'), group('b', [3])])).toBe(
-        null,
-      );
+      expect(selectionOf(null, [group('a', [], 'error'), group('b', [3])])).toBe(null);
     });
 
     it("keeps the stored pick on its own server while that server's list is loading or failed", () => {
@@ -193,14 +181,76 @@ describe('resolveLibrarySelection', () => {
   it('keeps showing a fallback when an earlier server lists a library later', () => {
     // Shown while the first server had none; it has one now.
     const shown = { connectionId: 'b', libraryId: 3 };
-    expect(mod.resolveLibrarySelection(null, [group('a', [1]), group('b', [3])], shown)).toBe(
-      shown,
-    );
+    expect(selectionOf(null, [group('a', [1]), group('b', [3])], shown)).toBe(shown);
     // A stored pick still wins; a shown library that is gone gives way.
     const pick = { connectionId: 'a', libraryId: 1 };
-    expect(mod.resolveLibrarySelection(pick, [group('a', [1]), group('b', [3])], shown)).toBe(pick);
-    expect(mod.resolveLibrarySelection(null, [group('a', [1]), group('b', [4])], shown)).toEqual(
-      pick,
-    );
+    expect(selectionOf(pick, [group('a', [1]), group('b', [3])], shown)).toBe(pick);
+    expect(selectionOf(null, [group('a', [1]), group('b', [4])], shown)).toEqual(pick);
+  });
+
+  // The car's Library tab has no picker and no state to show for a server: waiting on the
+  // first server while it could not be read left the tab empty for the whole drive.
+  describe('resolveCarLibrary (the car never waits on a server)', () => {
+    const b3 = { connectionId: 'b', libraryId: 3 };
+
+    it('with no pick, lists the first server that could be read', () => {
+      for (const status of ['loading', 'error'] as const) {
+        expect(mod.resolveCarLibrary(null, [group('a', [], status), group('b', [3])])).toEqual(b3);
+      }
+      // The listener's own order among the ones read, a server with no library passed over.
+      expect(
+        mod.resolveCarLibrary(null, [
+          group('a', [], 'error'),
+          group('x', []),
+          group('b', [3]),
+          group('c', [5]),
+        ]),
+      ).toEqual(b3);
+    });
+
+    it('goes back to the first server once it answers (nothing is remembered)', () => {
+      expect(mod.resolveCarLibrary(null, [group('a', [1]), group('b', [3])])).toEqual({
+        connectionId: 'a',
+        libraryId: 1,
+      });
+    });
+
+    it("never replaces a stored pick with another server's library", () => {
+      const pick = { connectionId: 'a', libraryId: 1 };
+      for (const status of ['loading', 'error'] as const) {
+        expect(mod.resolveCarLibrary(pick, [group('a', [], status), group('b', [3])])).toBe(pick);
+      }
+      // A pick that is gone stays on its own server, as on the phone.
+      expect(mod.resolveCarLibrary(pick, [group('a', [2]), group('b', [3])])).toEqual({
+        connectionId: 'a',
+        libraryId: 2,
+      });
+    });
+
+    it('keeps the library the phone shows while that stands', () => {
+      const shown = { connectionId: 'c', libraryId: 5 };
+      expect(
+        mod.resolveCarLibrary(
+          null,
+          [group('a', [], 'error'), group('b', [3]), group('c', [5])],
+          shown,
+        ),
+      ).toBe(shown);
+    });
+
+    it('lists nothing when no server could be read, or none has a library', () => {
+      expect(
+        mod.resolveCarLibrary(null, [group('a', [], 'error'), group('b', [], 'loading')]),
+      ).toBeNull();
+      expect(mod.resolveCarLibrary(null, [group('a', [], 'error'), group('b', [])])).toBeNull();
+      expect(mod.resolveCarLibrary(null, [])).toBeNull();
+    });
+
+    it('a pick whose server answered that it shares nothing gives way, as on the phone', () => {
+      const pick = { connectionId: 'b', libraryId: 9 };
+      expect(
+        mod.resolveCarLibrary(pick, [group('a', [], 'error'), group('b', []), group('c', [5])]),
+      ).toEqual({ connectionId: 'c', libraryId: 5 });
+    });
   });
 });

@@ -152,12 +152,22 @@ export function resolveLibrary(
   return { selection: first(home), waitingOn: null };
 }
 
-/** `resolveLibrary`'s library alone (the car's Library tab, which has no state to show
- * for a server it waits for: it lists nothing meanwhile). */
-export function resolveLibrarySelection(
+/**
+ * The car's Library tab: `resolveLibrary`'s library, except that the car never waits on a
+ * server. It has no picker and no state to show for one, so waiting on the first server
+ * while it can't be read (rule 4: no pick, or a pick whose server answered that it shares
+ * nothing) left the tab empty for the whole drive. There the first server that IS read and
+ * has a library is listed instead (the listener's own order). A pick whose server has not
+ * answered, or still has a library, is never replaced by another server's (rules 1 to 3),
+ * and nothing is remembered: once the first server answers, the tab is its library again.
+ */
+export function resolveCarLibrary(
   stored: LibrarySelection | null,
   groups: readonly LibraryGroup[],
   shown: LibrarySelection | null = null,
 ): LibrarySelection | null {
-  return resolveLibrary(stored, groups, shown).selection;
+  const { selection, waitingOn } = resolveLibrary(stored, groups, shown);
+  if (selection || !waitingOn) return selection;
+  const read = groups.find((g) => g.status === 'ready' && g.libraryIds.length > 0);
+  return read ? first(read) : null;
 }

@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import { pruneDrifts } from '@/playback/drift';
 import { parseTimeSaved } from '@/playback/time-saved';
-import { resolveLibrarySelection } from '@/stores/library-selection';
+import { resolveLibrary } from '@/stores/library-selection';
 import { profileConnectionIds, resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -367,7 +367,7 @@ describe('migrateConnectionIdentity', () => {
         status: 'ready' as const,
       }));
       expect(
-        resolveLibrarySelection(stored, groups, { connectionId: `${B}.2`, libraryId: 1 }),
+        resolveLibrary(stored, groups, { connectionId: `${B}.2`, libraryId: 1 }).selection,
       ).toEqual(stored);
     });
 

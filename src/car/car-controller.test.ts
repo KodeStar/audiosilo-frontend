@@ -567,16 +567,37 @@ describe('startCarSync', () => {
     ]);
   });
 
-  // fe#142: with no pick, the first server's library is the Library; while that server
-  // can't be read the car lists nothing there, never the next server's books as if they
-  // were it (the phone names the server and offers the pick).
-  it("never lists another server's library in place of the first server's unread one", async () => {
+  // The car has no picker and no state to show for a server: with no pick and the first
+  // server unreadable, its Library tab stayed empty for the whole drive. It lists the
+  // first server that could be read instead.
+  it("with no pick, lists the first readable server's library when the first can't be read", async () => {
     connect(['c1', 'c2']);
     mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'One' })] });
     (mockClients.c1.libraries as jest.Mock).mockRejectedValue(
       new TypeError('Network request failed'),
     );
     mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'Two' })] });
+    stop = startCarSync();
+    await settle();
+    expect(tab(lastSnapshot(), 'library')!.items.map((i) => i.book)).toEqual([
+      { connectionId: 'c2', libraryId: 2, path: 'Two' },
+    ]);
+    expect(mockClients.c1.listBooks).not.toHaveBeenCalled();
+  });
+
+  // fe#142: a library the listener picked is never swapped for another server's because
+  // its own server can't be read.
+  it("never lists another server's library in place of the picked server's unread one", async () => {
+    connect(['c1', 'c2']);
+    mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'One' })] });
+    (mockClients.c1.libraries as jest.Mock).mockRejectedValue(
+      new TypeError('Network request failed'),
+    );
+    (mockClients.c1.listBooks as jest.Mock).mockRejectedValue(
+      new TypeError('Network request failed'),
+    );
+    mockClients.c2 = fakeClient({ books: [makeBook({ rel_path: 'Two' })] });
+    useLibrarySelection.setState({ selection: { connectionId: 'c1', libraryId: 2 }, shown: null });
     stop = startCarSync();
     await settle();
     expect(tab(lastSnapshot(), 'library')?.items ?? []).toEqual([]);
