@@ -18,7 +18,7 @@ import { PressableRow, RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
-import { useUnreadBooks } from '@/lib/offline-state';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -38,8 +38,12 @@ export function FavouritesScreen() {
   const [booksLayout, setBooksLayout] = useBooksLayout();
   const { favourites, isLoading, offline, error } = useFavouritesAll();
   // With no favourite in, a server's list held for the network (or failed without one)
-  // is not "no favourites": every list read with nothing in them is (`useUnreadBooks`).
-  const unread = useUnreadBooks({ books: favourites, complete: !offline, offline, error });
+  // is not "no favourites": every list read with nothing in them is (`useUnreadQuery`).
+  const unread = useUnreadQuery({
+    data: favourites.length > 0 ? favourites : undefined,
+    isPaused: offline,
+    error,
+  });
   const books = favourites.filter((f) => f.is_book);
   const folders = favourites.filter((f) => !f.is_book);
   const serverFlag = useServerFlag();

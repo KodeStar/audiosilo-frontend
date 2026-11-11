@@ -16,7 +16,7 @@ import { GhostCovers } from '@/components/ui/ghost-art';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
-import { useUnreadBooks } from '@/lib/offline-state';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { bookTitle } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -58,13 +58,13 @@ export function SeeAllScreen() {
   );
   const state = type === 'recent' ? recent : progress;
   // With nothing in, a server's list held for the network (or failed without one) is not
-  // "no books": every list read with nothing in them is (`useUnreadBooks`). Finished
+  // "no books": every list read with nothing in them is (`useUnreadQuery`). Finished
   // books are judged by the progress list they come from (read, with none finished, is
   // an answer).
-  const unread = useUnreadBooks({
-    books: type === 'recent' ? recent.books : progress.progress,
-    complete: !state.offline,
-    offline: state.offline,
+  const rows = type === 'recent' ? recent.books : progress.progress;
+  const unread = useUnreadQuery({
+    data: rows.length > 0 ? rows : undefined,
+    isPaused: state.offline,
     error: state.error,
   });
 
