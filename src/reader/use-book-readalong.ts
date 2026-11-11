@@ -1,4 +1,10 @@
-import { type QueryClient, QueryObserver, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  hashKey,
+  type QueryClient,
+  QueryObserver,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ApiError, apiErrorKind, isSignedOutError } from '@/api/client';
@@ -183,9 +189,6 @@ export function useBookReadalong(
     networkMode: 'always',
     meta: { local: true },
   });
-  // The map read last stays in the cache while no surface shows it (`pinMap`): the phone's
-  // Text chip asks on every full-player open, and a map runs to 16 MiB.
-  const client = useQueryClient();
   // A copy that could not be read or does not fit the selected EPUB gives way to the
   // server's, when it has the map ready; else a copy that is gone is none, one whose read
   // threw a failure to say (`retry`).
@@ -221,18 +224,20 @@ export function useBookReadalong(
   const refetch = read?.refetch;
   const retry = useCallback(() => void refetch?.(), [refetch]);
   const map = useMemo(() => (data && hasSpans(data) ? readerMapOfOnce(data) : null), [data]);
-  const readKey =
-    data === undefined || read === null
+  // The map read last stays in the cache while no surface shows it (`pinMap`): the phone's
+  // Text chip asks on every full-player open, and a map runs to 16 MiB.
+  const client = useQueryClient();
+  const readHash =
+    data === undefined
       ? null
-      : source === 'local'
-        ? qk.readalongLocal(connectionId, libraryId, path, kept ?? '')
-        : qk.readalong(connectionId, libraryId, path, generatedAt);
-  const pinKey = readKey && JSON.stringify(readKey);
+      : hashKey(
+          source === 'local'
+            ? qk.readalongLocal(connectionId, libraryId, path, kept ?? '')
+            : qk.readalong(connectionId, libraryId, path, generatedAt),
+        );
   useEffect(() => {
-    if (readKey) pinMap(client, readKey);
-    // `pinKey` names `readKey`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, pinKey]);
+    if (readHash) pinMap(client, readHash);
+  }, [client, readHash]);
   // The server's map with no network on the device and no copy here (`offlineState`): held
   // back for the connection (TanStack's `paused`), or its read failed for want of one (a
   // reload offline, where the request went out before anything knew). Not a failure with
@@ -289,23 +294,27 @@ function readerMapOfOnce(data: Pick<ReadalongMap, 'sections'>): ReaderReadalongM
   return map;
 }
 
-/** The query each client holds (`pinMap`). */
-const pins = new WeakMap<QueryClient, { key: string; release: () => void }>();
+/** The query each client holds (`pinMap`), by its hash. */
+const pins = new WeakMap<QueryClient, { hash: string; release: () => void }>();
 
 /**
- * Hold the map query `queryKey` in the cache with no surface showing it (an observer that
- * never fetches), so the book's map is read once, not on every open of a surface (the phone
- * Text chip mounts with each full-player open, after the default cache time a fresh read).
- * One map at a time per client: pinning another book's (or a map made again) releases the
- * last one, which then leaves the cache as any unwatched query does.
+ * Hold the map query with the hash `hash` in the cache with no surface showing it (an
+ * observer that never fetches), so the book's map is read once, not on every open of a
+ * surface (the phone Text chip mounts with each full-player open, after the default cache
+ * time a fresh read). One map at a time per client: pinning another book's (or a map made
+ * again) releases the last one, which then leaves the cache as any unwatched query does.
  */
-export function pinMap(client: QueryClient, queryKey: readonly unknown[]): void {
-  const key = JSON.stringify(queryKey);
+function pinMap(client: QueryClient, hash: string): void {
   const pin = pins.get(client);
-  if (pin?.key === key) return;
+  if (pin?.hash === hash) return;
+  const query = client.getQueryCache().get(hash);
+  if (!query) return;
   pin?.release();
   // The query's own options (its function, `meta`...), so the pin changes nothing of it.
-  const options = client.getQueryCache().find({ queryKey, exact: true })?.options;
-  const observer = new QueryObserver(client, { ...options, queryKey, enabled: false });
-  pins.set(client, { key, release: observer.subscribe(() => {}) });
+  const observer = new QueryObserver(client, {
+    ...query.options,
+    queryKey: query.queryKey,
+    enabled: false,
+  });
+  pins.set(client, { hash, release: observer.subscribe(() => {}) });
 }
