@@ -68,6 +68,13 @@ function ShownCastButton(props: CastButtonProps) {
 /** How often (ms) iOS asks whether discovery has started while it has not (`useSdkButtonDraws`). */
 const DISCOVERY_CHECK_MS = 2_000;
 
+/** Reads whether the SDK's discovery runs into `onRead`; a read that fails tells nothing. */
+function readDiscoveryRunning(onRead: (running: boolean) => void): void {
+  GoogleCast.getDiscoveryManager()
+    .isRunning()
+    .then(onRead, () => undefined);
+}
+
 /**
  * Whether the SDK's Cast button draws its icon now (`sdkButtonDraws`): the SDK's cast state
  * as it changes and, on iOS, whether discovery runs. Discovery starting (the button's first
@@ -84,15 +91,7 @@ function useSdkButtonDraws(): boolean {
     // A change the listener told is newer than a first read that lands after it.
     let heard = false;
     const readRunning = () => {
-      if (!ios) return;
-      GoogleCast.getDiscoveryManager()
-        .isRunning()
-        .then(
-          (r) => {
-            if (live) setRunning(r);
-          },
-          () => undefined,
-        );
+      if (ios) readDiscoveryRunning((r) => live && setRunning(r));
     };
     GoogleCast.getCastState().then(
       (s) => {
@@ -116,14 +115,7 @@ function useSdkButtonDraws(): boolean {
     if (!waiting) return;
     let live = true;
     const timer = setInterval(() => {
-      GoogleCast.getDiscoveryManager()
-        .isRunning()
-        .then(
-          (r) => {
-            if (live) setRunning(r);
-          },
-          () => undefined,
-        );
+      readDiscoveryRunning((r) => live && setRunning(r));
     }, DISCOVERY_CHECK_MS);
     return () => {
       live = false;
