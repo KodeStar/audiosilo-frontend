@@ -1,4 +1,9 @@
-import { type InfiniteData, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  type InfiniteData,
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
@@ -109,6 +114,33 @@ describe('useJournalSources', () => {
       { limit: 100, cursor: 'h2' },
       expect.anything(),
     );
+  });
+
+  // Offline: the first page is held, not failed. It stays `loading`, and `waiting` tells
+  // the screen apart from a list on its way (its skeleton would never end).
+  it('marks a list held for the network as waiting, and a list on its way or held back not', async () => {
+    onlineManager.setOnline(false);
+    try {
+      // c1's flag is known (its kept `/server` answer); c2's is held with the rest.
+      const { result } = await mount({ notes: false }, (c) =>
+        c.setQueryData(qk.server('c1'), { capabilities: { annotations: true } }),
+      );
+      await waitFor(() => expect(result.current.history[0].waiting).toBe(true));
+      expect(result.current.history[0].status).toBe('loading');
+      expect(mockConnections[0].client.allHistory).not.toHaveBeenCalled();
+      // Held back by the screen (`notes: false`), not by the network.
+      expect(result.current.notes[0]).toMatchObject({ status: 'loading', waiting: false });
+      // A list that never ran for want of its flag waits with the `/server` read that is
+      // held: it has no page of its own to be held.
+      expect(result.current.bookmarks[1]).toMatchObject({ status: 'loading', waiting: true });
+      expect(mockConnections[1].client.serverInfo).not.toHaveBeenCalled();
+    } finally {
+      onlineManager.setOnline(true);
+    }
+    const { result } = await mount();
+    expect(result.current.history[0].waiting).toBe(false);
+    await waitFor(() => expect(result.current.history[0].status).toBe('ready'));
+    expect(result.current.history[0].waiting).toBe(false);
   });
 
   it('holds the notes back until they are wanted', async () => {

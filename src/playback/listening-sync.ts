@@ -4,7 +4,7 @@ import { onReconnect } from '@/api/reachability';
 import { onForeground } from '@/lib/when-active';
 import { useSession } from '@/stores/session';
 
-import { flushAllOutboxes, flushOutbox, watchListeningFlags } from './listening-outbox';
+import { flushAllOutboxes, flushOutbox } from './listening-outbox';
 import { cutListeningSpanNow } from './store';
 
 /**
@@ -38,8 +38,6 @@ export function startListeningSync(): () => void {
 
 function runListeningSync(): () => void {
   const stops: (() => void)[] = [];
-  // Each connection's `listening_sync` as its server last said it, kept across launches.
-  watchListeningFlags();
   // `flushAllOutboxes` closes a span a kill left open first (`recoverOpenSpan`).
   const launch = () => void flushAllOutboxes();
   if (sessionReady()) launch();

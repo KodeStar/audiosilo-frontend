@@ -12,6 +12,8 @@ import {
   useDownloadedReadalong,
 } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
+import { useDeviceOnline } from '@/lib/device-online';
+import { offlineState } from '@/lib/offline-state';
 
 import type { OpenedEbook } from './ebook-identity';
 import { readalongReady } from './readalong-gating';
@@ -76,8 +78,9 @@ export type BookReadalongMap = {
   /** Why there is no map when its read failed (see {@link ReadalongFailure}), else null:
    * never "no read-along" (an admin would be offered a job the book does not need). */
   failure: ReadalongFailure | null;
-  /** The server's map waits for the connection (offline, nothing on the device): nothing
-   * can be said about it yet, so a surface shows nothing (no spinner, no Make). */
+  /** The server's map waits for the connection, or failed for want of one (offline,
+   * nothing on the device): nothing can be said about it yet, so a surface shows nothing
+   * (no spinner, no Make, no "couldn't load"). */
   offline: boolean;
   /** Read it again (for `retry`). */
   retry: () => void;
@@ -124,6 +127,7 @@ export function useBookReadalong(
   const { connectionId, libraryId, path } = ref;
   const bookKey = contentKey(connectionId, libraryId, path);
   const serves = useCapability('readalong', connectionId);
+  const deviceOnline = useDeviceOnline();
   const kept = useDownloadedReadalong(connectionId, libraryId, path);
   const savedSha = useDownloadedEbookSha(connectionId, libraryId, path);
   const savedEbookSize = useDownloadedEbookSize(connectionId, libraryId, path);
@@ -209,8 +213,18 @@ export function useBookReadalong(
   const refetch = read?.refetch;
   const retry = useCallback(() => void refetch?.(), [refetch]);
   const map = useMemo(() => (data && hasSpans(data) ? readerMapOf(data) : null), [data]);
-  // The server's map held back by the connection (TanStack's `paused`), with no copy here.
-  const offline = source === 'server' && data === undefined && server.fetchStatus === 'paused';
+  // The server's map with no network on the device and no copy here (`offlineState`): held
+  // back for the connection (TanStack's `paused`), or its read failed for want of one (a
+  // reload offline, where the request went out before anything knew). Not a failure with
+  // a Try again that cannot work: nothing can be said about the map yet.
+  const offline =
+    source === 'server' &&
+    data === undefined &&
+    offlineState({
+      waiting: server.fetchStatus === 'paused',
+      failed: failure === 'retry',
+      deviceOnline,
+    }) === 'offline';
   const pending = source !== null && data === undefined && !errored && !offline;
   // The map last shown for this book, kept while it has one or another is on its way, or
   // waits for the connection (set while rendering, React's pattern for state that follows a
@@ -235,7 +249,7 @@ export function useBookReadalong(
     onEbook,
     selectingEbook: actual === null && ebookChanged,
     pending: !held && pending,
-    failure: map ? null : failure,
+    failure: map || offline ? null : failure,
     offline: !map && !held && offline,
     retry,
   };

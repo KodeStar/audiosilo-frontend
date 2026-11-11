@@ -9,7 +9,6 @@ const mockFlushOutbox = jest.fn(async (..._a: unknown[]) => {});
 jest.mock('./listening-outbox', () => ({
   flushAllOutboxes: () => mockFlushAll(),
   flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),
-  watchListeningFlags: jest.fn(),
 }));
 const mockCut = jest.fn((..._a: unknown[]) => {});
 jest.mock('./store', () => ({ cutListeningSpanNow: (...a: unknown[]) => mockCut(...a) }));

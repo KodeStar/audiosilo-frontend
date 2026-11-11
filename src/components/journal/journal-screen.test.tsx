@@ -55,6 +55,11 @@ let mockSources: {
   bookmarks: Source<MyBookmark>[];
   notes: Source<MyNote>[];
 };
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 jest.mock('./use-journal-sources', () => ({
   useJournalSources: () => mockSources,
 }));
@@ -135,6 +140,7 @@ const empty = () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockParams = {};
+  mockDeviceOnline = true;
   mockSources = empty();
   useSession.setState({
     connections: [{ id: 'c1', name: 'Hearthside', serverUrl: 'u', token: 't', user: {} as never }],
@@ -219,6 +225,37 @@ describe('JournalScreen: the Diary', () => {
     mockSources.history = [source('c1', [], { status: 'loading' })];
     await mount();
     expect(screen.getByTestId('diary-skeleton')).toBeTruthy();
+  });
+
+  // The first page is held for the network, so the list stays loading: the skeleton never
+  // ended where the Diary used to fail with a Retry.
+  it('says offline, not a skeleton, while the listening waits for the network', async () => {
+    mockSources.history = [source('c1', [], { status: 'loading', waiting: true })];
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(/^This list shows once its server answers\./)).toBeTruthy();
+    expect(screen.queryByTestId('diary-skeleton')).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+
+  it('says offline, with no Retry, when the listening failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    mockSources.history = [source<HistoryEntry>('c1', [], { status: 'error' })];
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your listening")).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+
+  it('says offline on Bookmarks and Notes too while their lists wait for the network', async () => {
+    for (const tab of ['bookmarks', 'notes'] as const) {
+      mockParams = { tab };
+      mockSources[tab] = [source<never>('c1', [], { status: 'loading', waiting: true })];
+      const view = await mount();
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      expect(screen.queryByText('Retry')).toBeNull();
+      await view.unmount();
+    }
   });
 
   it('says when nothing was listened to', async () => {

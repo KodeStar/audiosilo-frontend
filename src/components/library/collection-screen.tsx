@@ -15,6 +15,7 @@ import {
 import { useCid } from '@/api/provider';
 import type { Collection, CollectionItem } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
+import { OfflineState } from '@/components/layout/offline-state';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -25,6 +26,7 @@ import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { parseCollectionParams, pathLeaf } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -86,6 +88,7 @@ function CollectionContent() {
   const supported = useCapability('collections', cid);
   const query = useCollection(params?.id ?? 0, cid);
   usePageTitle(query.data?.collection.name);
+  const unread = useUnreadQuery(query);
 
   if (!params || supported === false || isGone(query.error)) {
     return (
@@ -101,6 +104,14 @@ function CollectionContent() {
     );
   }
   if (!query.data) {
+    // Before the skeleton: a read held for the network stays pending (`useUnreadQuery`).
+    if (unread === 'offline') {
+      return (
+        <Centered>
+          <OfflineState variant="card" hint={t('common.offlinePage')} />
+        </Centered>
+      );
+    }
     return query.error ? (
       <Centered>
         <LoadError

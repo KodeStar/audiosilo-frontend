@@ -5,6 +5,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { type MergedBook, useProgressLookup } from '@/api/hooks';
 import { useApis } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
+import { OfflineState } from '@/components/layout/offline-state';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { gridMetrics } from '@/components/library/cover-layout';
@@ -71,10 +72,11 @@ export function SearchResultsView({
   const r = results;
   const settled = r.settled && !pending;
 
-  if (apis.length > 0 && offline.length === apis.length && r.total === 0) {
-    return (
-      <EmptyState icon="offline" title={t('search.offlineTitle')} hint={t('search.offlineHint')} />
-    );
+  // No server could be asked: none is answering, or the device has no network (the app
+  // holds its requests then, so they neither load nor fail: nothing found is not "nothing
+  // called that", fe#179).
+  if (apis.length > 0 && (!deviceOnline || offline.length === apis.length) && r.total === 0) {
+    return <OfflineState hint={t('search.offlineHint')} />;
   }
 
   const people = [

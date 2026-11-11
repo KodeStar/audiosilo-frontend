@@ -8,6 +8,7 @@ import { useCapability, usePodcastEpisodes, usePodcastShows, useProgressLookup }
 import { useScopedCid } from '@/api/provider';
 import type { PodcastEpisodeOrder, PodcastShow } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
+import { OfflineState } from '@/components/layout/offline-state';
 import { BookCover } from '@/components/library/book-cover';
 import { pageGutter } from '@/components/library/cover-layout';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -19,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { parsePodcastParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -52,7 +54,10 @@ function ShowContent() {
   const shows = usePodcastShows(params?.libraryId ?? 0, cid, { enabled: !!params });
   const show = params ? shows.data?.find((s) => s.path === params.show) : undefined;
   usePageTitle(show?.title);
+  const unread = useUnreadQuery(shows);
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
+  // Before the skeleton: a list held for the network stays pending (`useUnreadQuery`).
+  if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
   if (shows.isPending) {
     return (
       <View className="p-4">
@@ -119,17 +124,25 @@ function ShowPage({
     [episodes.data],
   );
   const now = new Date();
+  const unread = useUnreadQuery(episodes);
 
-  const empty = episodes.isPending ? (
-    <RowSkeletonList />
-  ) : episodes.isError && !episodes.data ? (
-    <EmptyState
-      title={t('podcasts.show.loadError')}
-      action={{ label: t('common.retry'), icon: 'rotate', onPress: () => void episodes.refetch() }}
-    />
-  ) : (
-    <EmptyState icon="microphone" title={t('podcasts.show.noEpisodes')} />
-  );
+  const empty =
+    unread === 'offline' ? (
+      <OfflineState hint={t('common.offlineList')} />
+    ) : episodes.isPending ? (
+      <RowSkeletonList />
+    ) : episodes.isError && !episodes.data ? (
+      <EmptyState
+        title={t('podcasts.show.loadError')}
+        action={{
+          label: t('common.retry'),
+          icon: 'rotate',
+          onPress: () => void episodes.refetch(),
+        }}
+      />
+    ) : (
+      <EmptyState icon="microphone" title={t('podcasts.show.noEpisodes')} />
+    );
 
   return (
     <FlatList

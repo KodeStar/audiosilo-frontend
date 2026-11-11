@@ -1275,8 +1275,12 @@ export function useAllLibraryBooks(
     books,
     /** Every page is in. */
     complete: !!data && !hasNextPage,
-    /** Nothing loaded yet (the first page is on its way). */
+    /** Nothing loaded yet (the first page is on its way, or waits for the network). */
     isLoading: q.isPending && q.fetchStatus !== 'idle',
+    /** A page waits for the network (the device is offline: React Query holds the
+     * request), so nothing more arrives meanwhile; a screen with nothing loaded shows its
+     * offline state, not a skeleton that never ends (fe#179). */
+    offline: q.isPaused,
     /** The query can't run (no client, or a narrator filter on a server without it) or
      * hasn't yet (a series filter waiting for `/server`). */
     isIdle: q.isPending && q.fetchStatus === 'idle',
@@ -1320,7 +1324,11 @@ export function useNextBook(
  * mirror - the same record the resume path trusts - so a downloaded book still
  * knows where the listener is instead of reading as "never started". An HTTP
  * error is NOT swallowed: it propagates and the query fails (see
- * `fetchBookProgress` for why that matters to the reconnect banner). */
+ * `fetchBookProgress` for why that matters to the reconnect banner).
+ *
+ * Asked whatever the online flag says (`networkMode: 'always'`): held for the network (the
+ * app pauses its queries with none, as the browser does), the read would never run, so it
+ * would never reach the mirror, and a downloaded book opened offline had no place. */
 export function useBookProgress(
   libraryId: number,
   path: string,
@@ -1333,6 +1341,7 @@ export function useBookProgress(
     queryKey: qk.progress(cid, libraryId, path),
     queryFn: ({ signal }) => fetchBookProgress(api!, cid, libraryId, path, signal),
     enabled: enabled && !!api && path.length > 0,
+    networkMode: 'always',
   });
 }
 
@@ -1836,7 +1845,15 @@ export function useToggleFavourite(connectionId?: string) {
       return { prev };
     },
     onError: (_e, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(qk.favourites(cid), ctx.prev);
+      if (!ctx) return;
+      if (ctx.prev) {
+        qc.setQueryData(qk.favourites(cid), ctx.prev);
+        return;
+      }
+      // Nothing was read before the toggle (the list waits for the network, or failed):
+      // the optimistic list is no answer, and kept it would show the heart as saved
+      // until the list is next read. Back to unread.
+      void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
     },
     // This mutation still counts itself here; a later toggle queued behind it reads
     // the list when it settles.
@@ -3248,10 +3265,8 @@ export function useLibrariesAll() {
       return {
         groups,
         libraries: groups.flatMap((g) => g.libraries),
-        // `isLoading` is false for a paused list: that one is `offline` instead (fe#155).
+        // `isLoading` is false for a paused list: its group is `paused` instead (fe#155).
         isLoading: results.some((r) => r.isLoading),
-        /** A list waits for the network (the device went offline before it answered). */
-        offline: groups.some((g) => g.paused),
         error: results.find((r) => r.error)?.error ?? null,
         /** Ask again every server whose list failed. */
         retry: () => {
@@ -3284,6 +3299,15 @@ export function useSearchAll(query: string) {
   });
 }
 
+/**
+ * A fan-out's `offline`: one server's list waits for the network with nothing kept (the
+ * device went offline before it answered). That is not loading, and not "none": another
+ * server's empty answer says nothing about this one's. `isPaused`, not `fetchStatus` (a
+ * prop read in a `combine` is tracked, and fetchStatus changes at every background refetch).
+ */
+const anyHeld = (results: readonly { data: unknown; isPaused: boolean }[]) =>
+  results.some((r) => !r.data && r.isPaused);
+
 export function useRecentAll(limit = RECENT_LIMIT) {
   const apis = useApis();
   const rank = (id: string) => {
@@ -3295,6 +3319,7 @@ export function useRecentAll(limit = RECENT_LIMIT) {
     combine: (results) => ({
       books: dedupBooks(tagBooks(results, apis), rank),
       isLoading: results.some((r) => r.isLoading),
+      offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });
@@ -3571,6 +3596,7 @@ export function useFavouritesAll() {
         })),
       ),
       isLoading: results.some((r) => r.isLoading),
+      offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });
@@ -3604,9 +3630,7 @@ export function useAllProgressAll({
         )
         .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
       isLoading: results.some((r) => r.isLoading),
-      /** A list waits for the network with nothing cached (the device went offline
-       * before it answered): not loading, and not "no progress". */
-      offline: results.some((r) => !r.data && r.isPaused),
+      offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
       /** Ask again only for the servers whose progress failed. */
       retry: () => {

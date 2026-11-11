@@ -6,11 +6,13 @@ import type { UseQueryResult } from '@tanstack/react-query';
 
 import { useLibraryBooks, useProgressLookup } from '@/api/hooks';
 import type { PeopleList, PersonCount } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
 import { BookCover } from '@/components/library/book-cover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_OFFSET_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -57,13 +59,16 @@ export function PeopleMode({
   connectionId: string;
   libraryId: number;
   /** `useAuthors` or `useNarrators` for the library. */
-  list: Pick<UseQueryResult<PeopleList>, 'data' | 'isPending' | 'refetch'>;
+  list: Pick<UseQueryResult<PeopleList>, 'data' | 'isPending' | 'isPaused' | 'error' | 'refetch'>;
 }) {
   const { t } = useTranslation();
   const phone = useLayout() === 'phone';
   const { progressOf } = useProgressLookup();
   const minWidth = 176;
+  const unread = useUnreadQuery(list);
 
+  // Before the skeleton: a list held for the network stays pending (`useUnreadQuery`).
+  if (unread === 'offline') return <OfflineState hint={t('common.offlineList')} />;
   if (list.isPending) {
     return (
       <CardGrid

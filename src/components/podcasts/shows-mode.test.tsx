@@ -12,8 +12,25 @@ jest.mock('@/lib/open', () => ({
   }),
 }));
 let mockShows: PodcastShow[] | undefined = [];
+let mockShowsState: { isPending?: boolean; isPaused?: boolean; error?: unknown } = {};
+const mockRefetch = jest.fn();
 jest.mock('@/api/hooks', () => ({
-  usePodcastShows: () => ({ data: mockShows, isPending: false, refetch: jest.fn() }),
+  usePodcastShows: () => ({
+    data: mockShows,
+    isPending: false,
+    isPaused: false,
+    error: null,
+    refetch: mockRefetch,
+    ...mockShowsState,
+  }),
+}));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
+jest.mock('@/downloads/store', () => ({
+  useDownloads: (select: (s: object) => unknown) => select({ supported: true }),
 }));
 jest.mock('@/components/library/cover-grid', () => ({
   CoverGrid: () => null,
@@ -71,8 +88,59 @@ const mount = () => render(<PodcastShowsMode connectionId="c1" libraryId={7} />)
 beforeEach(() => {
   mockLayout = 'phone';
   mockShows = [];
+  mockShowsState = {};
+  mockDeviceOnline = true;
+  mockRefetch.mockReset();
   mockAccess = 'allowed';
   mockOpenFind.mockReset();
+});
+
+// The list is held for the network (it stays pending): the skeleton never ended where the
+// mode used to fail with a Retry.
+describe('PodcastShowsMode with no shows read', () => {
+  it('shows the skeleton while the list loads, and Retry when it failed', async () => {
+    mockShows = undefined;
+    mockShowsState = { isPending: true };
+    const loading = await mount();
+    expect(screen.getByTestId('shows-mode-loading')).toBeTruthy();
+    await loading.unmount();
+    mockShowsState = { error: new TypeError('Network request failed') };
+    await mount();
+    expect(screen.queryByText("You're offline")).toBeNull();
+    await fireEvent.press(screen.getByRole('button'));
+    expect(mockRefetch).toHaveBeenCalled();
+  });
+
+  it('says offline, not a skeleton, while the list waits for the network', async () => {
+    mockShows = undefined;
+    mockShowsState = { isPending: true, isPaused: true };
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This list shows once its server answers. Books you've downloaded are in Downloads.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('shows-mode-loading')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('says offline, with no Retry, when the list failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    mockShows = undefined;
+    mockShowsState = { error: new TypeError('Network request failed') };
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('keeps showing the shows it holds while it is offline', async () => {
+    mockDeviceOnline = false;
+    mockShowsState = { isPaused: true };
+    await mount();
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.getByText('No shows yet')).toBeTruthy();
+  });
 });
 
 describe('PodcastShowsMode actions (Bridge Phase 2d-2)', () => {

@@ -38,6 +38,7 @@ import { Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
 import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
@@ -68,7 +69,9 @@ const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 export function EpisodePage({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
   const cid = useScopedCid();
-  const { data: book, isLoading, refetch } = useBook(libraryId, path);
+  const bookQuery = useBook(libraryId, path);
+  const { data: book, isLoading, refetch } = bookQuery;
+  const unread = useUnreadQuery(bookQuery);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
   const paddingBottom = useMiniPlayerInset();
   const layout = useLayout();
@@ -81,9 +84,16 @@ export function EpisodePage({ libraryId, path }: { libraryId: number; path: stri
     );
   }
   if (!book) {
+    // `offline`: the episode waits for the network, or failed without one (no Retry can
+    // work).
     return (
       <View className="flex-1 p-4">
-        <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />
+        <LoadFailedNote
+          cid={cid}
+          message={t('book.loadError')}
+          onRetry={() => refetch()}
+          offline={unread === 'offline' ? t('common.offlinePage') : undefined}
+        />
       </View>
     );
   }

@@ -8,9 +8,11 @@ import {
   useListeningGoal,
   useMyListening,
   useMyStats,
+  useServerInfo,
 } from '@/api/hooks';
 import type { ListeningGoalStatus, MyListening, UserStats } from '@/api/types';
 import { listeningStreak, serverToday } from '@/components/home/listening';
+import { OfflineState } from '@/components/layout/offline-state';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -25,6 +27,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { YearBanner } from '@/components/you/year/year-banner';
 import { formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -104,6 +107,14 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
   const stats = useMyStats('year', cid);
   const goal = useListeningGoal(cid);
   const signedOut = useSignedOutConnection(cid);
+  // The page needs both reads: either one held for the network (or failed without one)
+  // with nothing kept leaves nothing to show (`useUnreadQuery`). So does the server's own
+  // answer: until its flag is known neither read is asked, so neither is ever held.
+  const unreadInfo = useUnreadQuery(useServerInfo(cid));
+  const unreadListening = useUnreadQuery(listening);
+  const unreadStats = useUnreadQuery(stats);
+  const offline =
+    unreadInfo === 'offline' || unreadListening === 'offline' || unreadStats === 'offline';
 
   if (supported === false) {
     return (
@@ -115,8 +126,11 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
     );
   }
   const today = listening.data ? serverToday(listening.data) : null;
-  if (listening.isError || stats.isError || (listening.data && !today)) {
+  if (offline || listening.isError || stats.isError || (listening.data && !today)) {
+    // Signed out first, then offline (before the skeleton: a held read stays pending, and
+    // no Retry can work), then the error.
     if (signedOut) return <SignInAgainState connection={signedOut} />;
+    if (offline) return <OfflineState variant="card" hint={t('common.offlinePage')} />;
     return (
       <Card className="gap-3 p-6">
         <Text variant="title">{t('stats.error.title')}</Text>

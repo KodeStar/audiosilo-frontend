@@ -29,29 +29,20 @@ jest.mock('@/api/hooks', () => ({
     server: (cid: string) => ['server', cid],
   },
 }));
-type CacheEvent = {
-  type: string;
-  query: { queryKey: readonly unknown[]; state: { data?: unknown } };
-  action: { type: string; manual?: boolean };
-};
-const mockCacheListeners: ((e: CacheEvent) => void)[] = [];
 jest.mock('@/api/provider', () => ({
   queryClient: {
     setQueryData: jest.fn(),
     invalidateQueries: jest.fn(async () => {}),
-    getQueryCache: () => ({
-      subscribe: (cb: (e: CacheEvent) => void) => {
-        mockCacheListeners.push(cb);
-        return () => {};
-      },
-    }),
   },
 }));
+// Each connection's kept `/server` answer (its own tests: server-snapshots.test.ts).
+jest.mock('@/api/server-snapshots', () => ({ keepServerAnswer: jest.fn() }));
 
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
 import * as reachability from '@/api/reachability';
+import { keepServerAnswer } from '@/api/server-snapshots';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -78,13 +69,11 @@ import {
   spanToEvent,
   storedOpenSpan,
   storeOpenSpan,
-  noteListeningSyncFlag,
   onOutboxChange,
   sendOnPageHide,
   syncStateOf,
   unsentListens,
   usesListeningSync,
-  watchListeningFlags,
   withdrawFinish,
 } from './listening-outbox';
 import {
@@ -928,9 +917,10 @@ describe('flushOutbox', () => {
         updated_at: '2026-10-25T08:00:00.000Z',
       }),
     );
-    // From now on this connection saves by PUT, and its capability is read again.
+    // From now on this connection saves by PUT, and the answer that said so is the
+    // connection's `/server` (in the cache and kept for the next launch).
     expect(usesListeningSync('c1')).toBe(false);
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+    expect(keepServerAnswer).toHaveBeenCalledWith('c1', { capabilities: {} });
   });
 
   it("a rolled-back Mark as finished (no listen) is PUT at the book's end with its length", async () => {
@@ -1019,74 +1009,65 @@ describe('usesListeningSync', () => {
   });
 });
 
-// W2 F3: after an offline cold launch the query cache is empty, and the PUT path took over.
+// W2 F3: after an offline cold launch the query cache was empty, and the PUT path took over.
+// The flag now comes from the connection's kept `/server` answer, seeded into the cache at
+// launch (server-snapshots.test.ts: "the launch"); the outbox keeps no copy of its own.
 describe("a connection's listening_sync across launches", () => {
-  const storedFlag = async (cid: string) =>
-    (
-      JSON.parse((await AsyncStorage.getItem(SYNC)) ?? '{}') as Record<
-        string,
-        { listeningSync?: boolean }
-      >
-    )[cid]?.listeningSync;
-  const serverAnswer = (cid: string, listening_sync: boolean, manual = false) => {
-    for (const cb of mockCacheListeners) {
-      cb({
-        type: 'updated',
-        query: { queryKey: ['server', cid], state: { data: { capabilities: { listening_sync } } } },
-        action: { type: 'success', manual },
-      });
-    }
-  };
-
-  it("keeps the flag its server answered, and a cold launch reads it before the server's answer", async () => {
-    watchListeningFlags();
-    serverAnswer('c1', true);
-    await settleState();
-    expect(await storedFlag('c1')).toBe(true);
-    // A cold launch: nothing cached, and the kept flag wins over a seeded copy saying no.
-    resetOutboxForTests();
+  it('reads the cached /server alone: a seeded "no" is the PUT path, a seeded "yes" is events', () => {
     mockCaps = { listening_sync: false };
-    watchListeningFlags();
-    await settleState();
+    expect(usesListeningSync('c1')).toBe(false);
+    mockCaps = { listening_sync: true };
     expect(usesListeningSync('c1')).toBe(true);
   });
 
-  it('a server that says no now is the PUT path, kept too', async () => {
-    noteListeningSyncFlag('c1', true);
-    watchListeningFlags();
-    serverAnswer('c1', false);
-    await settleState();
-    expect(usesListeningSync('c1')).toBe(false);
-    expect(await storedFlag('c1')).toBe(false);
-    resetOutboxForTests();
-    mockCaps = undefined;
-    watchListeningFlags();
-    await settleState();
-    expect(usesListeningSync('c1')).toBe(false);
-  });
-
-  it('a copy seeded into the cache (setQueryData) says nothing', async () => {
-    watchListeningFlags();
-    serverAnswer('c1', false, true);
-    await settleState();
-    expect(await storedFlag('c1')).toBeUndefined();
-  });
-
-  it('a sync answer keeps yes; a confirmed rollback keeps no', async () => {
+  it('keeps no flag of its own in the sync state', async () => {
     await appendEvents('c1', [listen('a')]);
     client(async (body) => answer(body));
     await flushOutbox('c1');
-    expect(await storedFlag('c1')).toBe(true);
+    await settleState();
+    const state = JSON.parse((await AsyncStorage.getItem(SYNC)) ?? '{}') as Record<string, object>;
+    expect(state.c1).not.toHaveProperty('listeningSync');
+  });
+
+  it('a sync answer from a server whose kept /server says no has it asked again', async () => {
+    // An answer from before the server was updated: it took the events, so it has the route.
+    mockCaps = { listening_sync: false };
+    await appendEvents('c1', [listen('a')]);
+    client(async (body) => answer(body));
+    await flushOutbox('c1');
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+  });
+
+  it('a sync answer asks nothing again when the cached /server agrees or is unknown', async () => {
+    for (const caps of [{ listening_sync: true }, undefined]) {
+      mockCaps = caps;
+      await appendEvents('c1', [listen(`a${caps ? 1 : 2}`)]);
+      client(async (body) => answer(body));
+      await flushOutbox('c1');
+    }
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['server', 'c1'] });
+  });
+
+  it("a confirmed rollback keeps the server's own answer; an unconfirmed one keeps nothing", async () => {
     await appendEvents('c1', [listen('b')]);
     client(
       async () => {
         throw new ApiError(404, 'not found');
       },
-      async () => ({ capabilities: {} }),
+      async () => ({ capabilities: { listening_sync: true } }),
     );
     await flushOutbox('c1');
-    await settleState();
-    expect(await storedFlag('c1')).toBe(false);
+    expect(keepServerAnswer).not.toHaveBeenCalled();
+    resetOutboxForTests();
+    const info = { capabilities: { queue: true } };
+    client(
+      async () => {
+        throw new ApiError(404, 'not found');
+      },
+      async () => info,
+    );
+    await flushOutbox('c1');
+    expect(keepServerAnswer).toHaveBeenCalledWith('c1', info);
   });
 
   it('events recorded while the flag is unknown wait in the outbox and go by sync', async () => {

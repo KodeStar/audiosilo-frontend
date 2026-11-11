@@ -13,6 +13,8 @@
  * rows in when they come).
  */
 
+import { offlineState, type UnreadState } from '@/lib/offline-state';
+
 export type SourceStatus = 'loading' | 'ready' | 'error' | 'unsupported';
 
 /** One server's list as its infinite query has it right now. */
@@ -20,6 +22,9 @@ export type SourceSnapshot<T> = {
   connectionId: string;
   connectionName: string;
   status: SourceStatus;
+  /** Still `loading` because its first page, or the `/server` flag it waits on, is held
+   * for the network (the device is offline: `isPaused`), so nothing arrives meanwhile. */
+  waiting?: boolean;
   /** Every loaded row, newest first (the server's order). */
   rows: readonly T[];
   hasNextPage: boolean;
@@ -112,4 +117,22 @@ export function overallStatus(
   if (able.some((s) => s.status === 'ready')) return 'ready';
   if (able.some((s) => s.status === 'loading')) return 'loading';
   return 'error';
+}
+
+/**
+ * What a page says when no server's list is in (`offlineState`, the one offline rule):
+ * `offline` while a list still to come is held for the network (a skeleton drawn for it
+ * never ends) or every list failed with no network on the device, `failed` when they
+ * failed with one (say so, with Retry), else null (read, loading, or unable to list).
+ */
+export function unreadSources(
+  sources: readonly Pick<SourceSnapshot<unknown>, 'status' | 'waiting'>[],
+  deviceOnline: boolean,
+): UnreadState {
+  const status = overallStatus(sources);
+  return offlineState({
+    waiting: status === 'loading' && sources.some((s) => s.status === 'loading' && s.waiting),
+    failed: status === 'error',
+    deviceOnline,
+  });
 }

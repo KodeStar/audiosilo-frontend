@@ -50,6 +50,10 @@
         "body": "Choose a book to start listening."
       }
     },
+    "offlineTitle": "You're offline",
+    "offlineDownloads": "Books you've downloaded are in Downloads.",
+    "offlinePage": "This page shows once its server answers.",
+    "offlineList": "This list shows once its server answers.",
     "scrollPrevious": "Scroll to previous sections",
     "scrollNext": "Scroll to more sections"
   },
@@ -662,8 +666,7 @@
       "body": "Nothing is lost: your place is kept on each server. Check the connection and try again."
     },
     "offline": {
-      "title": "You're offline",
-      "body": "Your place shows once a server answers. Books you've downloaded are in Downloads."
+      "body": "Your place shows once a server answers."
     },
     "previouslyOn": {
       "label": "Previously on",
@@ -858,8 +861,8 @@
       "loadServerLibrariesError": "Couldn't load libraries from {{name}}.",
       "noLibraries": "No libraries are shared with your account yet.",
       "noLibrariesHint": "Ask the server owner to share one with you.",
-      "offlineTitle": "You're offline",
-      "offlineHint": "Your libraries show once a server answers. Books you've downloaded are in Downloads.",
+      "offlineHint": "Your libraries show once a server answers.",
+      "serverOffline": "Libraries from {{name}} show once it answers.",
       "viewLabel": "Book list",
       "noLibrariesAdmin": "No libraries yet",
       "noLibrariesAdminHint": "Add your first library in the admin console of {{name}}: pick the folder that holds your books."
@@ -956,7 +959,8 @@
         "partial": "Couldn't load every book",
         "partialHint_one": "Showing the {{formatted}} that loaded.",
         "partialHint_other": "Showing the {{formatted}} that loaded."
-      }
+      },
+      "offlineHint": "This library's books show once its server answers."
     },
     "bookActions": {
       "more": "More for {{title}}",
@@ -1224,8 +1228,7 @@
     "resultsAcross_one": "{{count}} result for \"{{query}}\" across {{servers}}",
     "resultsAcross_other": "{{count}} results for \"{{query}}\" across {{servers}}",
     "someOffline": "Offline, so not searched: {{servers}}",
-    "offlineTitle": "You're offline",
-    "offlineHint": "Search asks your servers. Books you've downloaded are in Downloads.",
+    "offlineHint": "Search asks your servers.",
     "noMatchesTitle": "Nothing called \"{{query}}\" on your servers",
     "noMatchesHint": "Check the spelling, or search for the author instead.",
     "groups": {

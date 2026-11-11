@@ -1,7 +1,15 @@
-import { type Query, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  onlineManager,
+  type Query,
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 
 import { connectionIdFromKey, isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
+import { watchDeviceOnline } from '@/lib/device-online';
 import { flushConnection } from '@/playback/progress-sync';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/stores/profiles';
@@ -115,8 +123,25 @@ export const queryClient = new QueryClient({
       staleTime: 30_000,
       refetchOnWindowFocus: false,
     },
+    // The app: a write is sent whatever the online flag says, as it was before the flag
+    // followed the network there (below). Held for the network it never settles: Save
+    // spins, and the write, which lives only in memory, is gone if the app is closed
+    // before the network returns. Sent, it fails at once with no network and the screen
+    // says so (its own error, the form still open). The web keeps TanStack's default (a
+    // write waits for the browser to come back online), as it always has.
+    mutations: Platform.OS === 'web' ? undefined : { networkMode: 'always' },
   },
 });
+
+// The app: React Query's online flag follows the system's network state, the signal
+// `useDeviceOnline` shows (fe#179). With no network a query waits (`paused`) and is asked
+// as soon as the network is back, where it used to fail at once and stay failed; a read
+// that must settle either way asks with `networkMode: 'always'` (`fetchFailFast`, the
+// reads of this device). Only reads wait: a write is never held (the `mutations` default
+// above). "A network" is the system's `isConnected`, so a server on the
+// same Wi-Fi is still asked with the internet down. The web keeps TanStack's own listener:
+// the browser's `online` / `offline` events, which `useDeviceOnline` follows there too.
+if (Platform.OS !== 'web') onlineManager.setEventListener(watchDeviceOnline);
 
 // Web: paint the first screens from the last visit's answers while they are asked again
 // (`startup-cache.ts`); before anything renders, so the first render already has them. A

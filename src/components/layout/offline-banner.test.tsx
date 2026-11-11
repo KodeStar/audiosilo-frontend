@@ -6,7 +6,10 @@ import { useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 
 /* eslint-disable import/first */
 import { OfflineBanner, offlineBannerText } from './offline-banner';

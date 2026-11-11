@@ -73,7 +73,7 @@ import {
 import { bookRefOf, type BookRef } from '@/playback/types';
 import {
   type LibraryGroup,
-  resolveLibrarySelection,
+  resolveCarLibrary,
   useLibrarySelection,
 } from '@/stores/library-selection';
 import {
@@ -248,8 +248,9 @@ async function upNextEntries(): Promise<{ cid: string; entries: QueueEntry[] } |
   return { cid, entries: entries ?? [] };
 }
 
-/** The Library tab's library: the app's own pick (`resolveLibrarySelection`, as the Library
- * tab resolves it), over every signed-in server's library list. */
+/** The Library tab's library: the app's own pick as the Library tab resolves it, over every
+ * signed-in server's library list; with no pick, the first server that could be read
+ * (`resolveCarLibrary`: the car has no state to show for one it waits on). */
 async function selectedLibrary(): Promise<{ connectionId: string; libraryId: number } | null> {
   const groups = await Promise.all(
     profileConnections().map(async (c): Promise<LibraryGroup> => {
@@ -266,7 +267,7 @@ async function selectedLibrary(): Promise<{ connectionId: string; libraryId: num
     }),
   );
   const { selection, shown } = useLibrarySelection.getState();
-  return resolveLibrarySelection(selection, groups, shown);
+  return resolveCarLibrary(selection, groups, shown);
 }
 
 /** The selected library's books, recently added first. */

@@ -5,6 +5,7 @@ import { Platform, View } from 'react-native';
 
 import { useMyStats } from '@/api/hooks';
 import { useCid } from '@/api/provider';
+import { OfflineState } from '@/components/layout/offline-state';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -118,7 +119,7 @@ export function YearSection() {
     body = (
       <View className="gap-5">
         {story.status === 'unsupported' ? null : pickers}
-        {story.status === 'error' && signedOut ? (
+        {(story.status === 'error' || story.status === 'offline') && signedOut ? (
           <SignInAgainState connection={signedOut} />
         ) : (
           <YearState story={story} phone={phone} width={width} />
@@ -138,7 +139,7 @@ export function YearSection() {
   );
 }
 
-/** Loading, unsupported, error and empty: a calm state in the section's place. */
+/** Loading, unsupported, offline, error and empty: a calm state in the section's place. */
 function YearState({ story, phone, width }: { story: YearStory; phone: boolean; width: number }) {
   const { t } = useTranslation();
   switch (story.status) {
@@ -162,6 +163,8 @@ function YearState({ story, phone, width }: { story: YearStory; phone: boolean; 
       const copy = yearStateCopy(story, t);
       return <EmptyState variant="card" icon="sparkles" title={copy.title} hint={copy.body} />;
     }
+    case 'offline':
+      return <OfflineState variant="card" hint={t('common.offlinePage')} />;
     default: {
       // Loading (or the first layout): the stage's shapes, no layout shift.
       const stage = Math.min(STAGE_WIDTH, width || STAGE_WIDTH);

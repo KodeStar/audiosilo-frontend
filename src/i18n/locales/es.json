@@ -50,6 +50,10 @@
         "body": "Elige un libro para empezar a escuchar."
       }
     },
+    "offlineTitle": "Estás sin conexión",
+    "offlineDownloads": "Los libros descargados están en Descargas.",
+    "offlinePage": "Esta página aparece en cuanto responda su servidor.",
+    "offlineList": "Esta lista aparece en cuanto responda su servidor.",
     "scrollPrevious": "Desplazar a las secciones anteriores",
     "scrollNext": "Desplazar a más secciones"
   },
@@ -662,8 +666,7 @@
       "body": "No se ha perdido nada: tu posición está guardada en cada servidor. Comprueba la conexión e inténtalo de nuevo."
     },
     "offline": {
-      "title": "Estás sin conexión",
-      "body": "Tu punto aparece en cuanto responda un servidor. Los libros descargados están en Descargas."
+      "body": "Tu punto aparece en cuanto responda un servidor."
     },
     "previouslyOn": {
       "label": "Anteriormente",
@@ -858,8 +861,8 @@
       "loadServerLibrariesError": "No se pudieron cargar las bibliotecas de {{name}}.",
       "noLibraries": "Aún no se ha compartido ninguna biblioteca con tu cuenta.",
       "noLibrariesHint": "Pide al propietario del servidor que comparta una contigo.",
-      "offlineTitle": "Estás sin conexión",
-      "offlineHint": "Tus bibliotecas aparecen en cuanto responda un servidor. Los libros descargados están en Descargas.",
+      "offlineHint": "Tus bibliotecas aparecen en cuanto responda un servidor.",
+      "serverOffline": "Las bibliotecas de {{name}} aparecen en cuanto responda.",
       "viewLabel": "Lista de libros",
       "noLibrariesAdmin": "Aún no hay bibliotecas",
       "noLibrariesAdminHint": "Añade tu primera biblioteca en la consola de administración de {{name}}: elige la carpeta que guarda tus libros."
@@ -956,7 +959,8 @@
         "partial": "No se pudieron cargar todos los libros",
         "partialHint_one": "Se muestra el {{formatted}} libro que se cargó.",
         "partialHint_other": "Se muestran los {{formatted}} libros que se cargaron."
-      }
+      },
+      "offlineHint": "Los libros de esta biblioteca aparecen en cuanto responda su servidor."
     },
     "bookActions": {
       "more": "Más sobre {{title}}",
@@ -1224,8 +1228,7 @@
     "resultsAcross_one": "{{count}} resultado para «{{query}}» en {{servers}}",
     "resultsAcross_other": "{{count}} resultados para «{{query}}» en {{servers}}",
     "someOffline": "Sin conexión, no se ha buscado en: {{servers}}",
-    "offlineTitle": "Estás sin conexión",
-    "offlineHint": "La búsqueda pregunta a tus servidores. Los libros descargados están en Descargas.",
+    "offlineHint": "La búsqueda pregunta a tus servidores.",
     "noMatchesTitle": "No hay nada llamado «{{query}}» en tus servidores",
     "noMatchesHint": "Revisa la ortografía o busca al autor.",
     "groups": {

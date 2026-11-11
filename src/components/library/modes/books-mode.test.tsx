@@ -13,6 +13,7 @@ let mockWhole: {
   books: Book[];
   complete: boolean;
   isLoading: boolean;
+  offline: boolean;
   error: Error | null;
   retry: jest.Mock;
   refresh: jest.Mock;
@@ -20,9 +21,16 @@ let mockWhole: {
 jest.mock('../books/use-whole-library', () => ({ useWholeLibrary: () => mockWhole }));
 let mockProgress: (Progress & { connectionId: string })[] = [];
 jest.mock('@/api/hooks', () => ({ useAllProgressAll: () => ({ progress: mockProgress }) }));
+let mockCanDownload = true;
 jest.mock('@/downloads/store', () => ({
-  useDownloads: (select: (s: object) => unknown) => select({ supported: true, entries: {} }),
+  useDownloads: (select: (s: object) => unknown) =>
+    select({ supported: mockCanDownload, entries: {} }),
   useDownloadEntry: () => undefined,
+}));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
 }));
 jest.mock('../use-selected-library', () => ({
   useSelectedLibrary: () => ({ library: { name: 'Audiobooks' } }),
@@ -120,10 +128,13 @@ describe('BooksMode', () => {
       books: [book('Dune', 20 * H), book('Emma'), book('Beowulf', 2 * H)],
       complete: true,
       isLoading: false,
+      offline: false,
       error: null,
       retry: jest.fn(),
       refresh: jest.fn(),
     };
+    mockDeviceOnline = true;
+    mockCanDownload = true;
   });
 
   it('counts the books and each status from the listener’s progress', async () => {
@@ -309,6 +320,59 @@ describe('BooksMode', () => {
     expect(screen.queryByText('0 books')).toBeNull();
   });
 
+  // fe#179 (the RC3 re-check): with the library known and its books never loaded, the
+  // request waits for the network, and the grid's skeleton never ended.
+  describe('offline with nothing loaded', () => {
+    const offlineHint =
+      "This library's books show once its server answers. Books you've downloaded are in Downloads.";
+
+    it('shows the offline state, not a skeleton, while the list waits for the network', async () => {
+      mockWhole = { ...mockWhole, books: [], complete: false, isLoading: true, offline: true };
+      await mount();
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      expect(screen.getByText(offlineHint)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    });
+
+    it('shows it too when the list failed with no network on the device, with no Retry', async () => {
+      mockDeviceOnline = false;
+      mockWhole = { ...mockWhole, books: [], complete: false, error: new TypeError('offline') };
+      await mount();
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      expect(screen.queryByText("Couldn't load the books")).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    });
+
+    it('leaves Downloads out of it where this device cannot download (plain http)', async () => {
+      mockCanDownload = false;
+      mockWhole = { ...mockWhole, books: [], complete: false, isLoading: true, offline: true };
+      await mount();
+      expect(screen.getByText("This library's books show once its server answers.")).toBeTruthy();
+      expect(screen.queryByText(/are in Downloads/)).toBeNull();
+    });
+
+    it('keeps the Retry when the server fails with a network on the device', async () => {
+      mockWhole = { ...mockWhole, books: [], complete: false, error: new TypeError('down') };
+      await mount();
+      expect(screen.getByText("Couldn't load the books")).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+      expect(screen.queryByText("You're offline")).toBeNull();
+    });
+  });
+
+  it('with books on screen, a page that waits for the network says nothing more is loading', async () => {
+    mockWhole = { ...mockWhole, complete: false, offline: true };
+    await mount();
+    expect(screen.getByText('Dune')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.queryByText(/Loading more/)).toBeNull();
+    // ... nor a Retry for a page that failed as the network went.
+    mockDeviceOnline = false;
+    mockWhole = { ...mockWhole, offline: false, error: new TypeError('offline') };
+    await mount();
+    expect(screen.queryByText("Couldn't load every book")).toBeNull();
+  });
+
   // frontend#124: a refused session is one sign-in state, never a Retry.
   it('asks to sign in again, with no Retry, when its server refused the session', async () => {
     resetProfilesForTests();
@@ -326,6 +390,11 @@ describe('BooksMode', () => {
       expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
       expect(screen.queryByText("Couldn't load the books")).toBeNull();
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+      // The server answered (a 401): offline since or not, it is the sign-in state.
+      mockDeviceOnline = false;
+      await mount();
+      expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+      expect(screen.queryByText("You're offline")).toBeNull();
     } finally {
       screen.unmount();
       useSession.setState({ connections: before });

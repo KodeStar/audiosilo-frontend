@@ -42,6 +42,13 @@ jest.mock('./episode-row', () => ({
 
 let mockShows: PodcastShow[] | undefined;
 let mockShowsError: unknown = null;
+let mockShowsPaused = false;
+let mockEpisodes: { data?: unknown; isPending: boolean; isPaused: boolean; error: unknown };
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 let mockCaps: Record<string, boolean | undefined> = {};
 const mockEpisodesAsked: string[] = [];
 const mockFollow = jest.fn();
@@ -56,26 +63,12 @@ jest.mock('@/api/hooks', () => {
       data: mockShows,
       error: mockShowsError,
       isPending: mockShows === undefined && !mockShowsError,
+      isPaused: mockShowsPaused,
       refetch: mockRefetch,
     }),
     usePodcastEpisodes: (_lib: number, _show: string, order: string) => {
       mockEpisodesAsked.push(order);
-      return {
-        data: {
-          pages: [
-            {
-              episodes: [
-                { path: 'a', title: 'Kept', removed: true, downloaded: true },
-                { path: 'b', title: 'Gone', removed: true, downloaded: false },
-                { path: 'c', title: 'Live', removed: false, downloaded: false },
-              ],
-              next_cursor: null,
-            },
-          ],
-        },
-        isPending: false,
-        hasNextPage: false,
-      };
+      return { hasNextPage: false, refetch: jest.fn(), ...mockEpisodes };
     },
     useProgressLookup: () => ({ progressOf: () => undefined }),
     useFollowPodcast: () => ({ mutateAsync: mockFollow, isPending: false }),
@@ -99,6 +92,25 @@ beforeEach(() => {
   mockParams = { connection: 'c1', library: '5', show: 'Daily News' };
   mockShows = [podcastShow()];
   mockShowsError = null;
+  mockShowsPaused = false;
+  mockDeviceOnline = true;
+  mockEpisodes = {
+    data: {
+      pages: [
+        {
+          episodes: [
+            { path: 'a', title: 'Kept', removed: true, downloaded: true },
+            { path: 'b', title: 'Gone', removed: true, downloaded: false },
+            { path: 'c', title: 'Live', removed: false, downloaded: false },
+          ],
+          next_cursor: null,
+        },
+      ],
+    },
+    isPending: false,
+    isPaused: false,
+    error: null,
+  };
   mockRefetch.mockReset();
   mockCaps = { podcasts: true };
   mockEpisodesAsked.length = 0;
@@ -151,6 +163,47 @@ describe('PodcastShowScreen', () => {
     expect(screen.getByText("Couldn't load this show.")).toBeTruthy();
     await fireEvent.press(screen.getByText('Retry'));
     expect(mockRefetch).toHaveBeenCalled();
+  });
+
+  // The show list is held for the network (it stays pending): the skeleton never ended
+  // where the page used to fail with a Retry.
+  it('says offline, with no Retry, while the show list waits for the network', async () => {
+    mockShows = undefined;
+    mockShowsPaused = true;
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(/^This page shows once its server answers\./)).toBeTruthy();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+
+  it('says offline, with no Retry, when the show list failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    mockShows = undefined;
+    mockShowsError = new TypeError('Network request failed');
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load this show.")).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+
+  it('still says a bad link points nowhere when the device has since gone offline', async () => {
+    const { ApiError } = jest.requireActual('@/api/client');
+    mockDeviceOnline = false;
+    mockShows = undefined;
+    mockShowsError = new ApiError(404, 'nope');
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.getByText("This link doesn't point to anything here.")).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  it('shows the show from the list it holds, and says its episodes wait for the network', async () => {
+    mockShowsPaused = true;
+    mockEpisodes = { isPending: true, isPaused: true, error: null };
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.getByText('Daily News')).toBeTruthy();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(/^This list shows once its server answers\./)).toBeTruthy();
+    expect(screen.queryByText('Retry')).toBeNull();
   });
 
   it('says so when the show is not in its library', async () => {

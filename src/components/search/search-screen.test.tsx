@@ -48,6 +48,8 @@ jest.mock('@/components/library/use-selected-library', () => ({
 jest.mock('@/downloads/store', () => ({
   useIsDownloaded: () => false,
   useDownloadedCoverUri: () => null,
+  // The offline state's hint: this device keeps downloads.
+  useDownloads: (sel: (s: { supported: boolean }) => unknown) => sel({ supported: true }),
 }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
@@ -76,7 +78,10 @@ const mockUseSearch = jest.fn((_q: string) => mockResults);
 jest.mock('./use-search', () => ({ useSearch: (q: string) => mockUseSearch(q) }));
 
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 
 /* eslint-disable import/first */
 import { useReachability } from '@/api/reachability';
@@ -250,6 +255,27 @@ describe('SearchScreen, results', () => {
     mockResults = empty();
     await type('zebras');
     expect(screen.getByText('Nothing called "zebras" on your servers')).toBeTruthy();
+  });
+
+  // fe#179: with no network the app holds its requests, so no group loads or fails and no
+  // server is marked down by one: nothing found is the offline state, not "nothing called".
+  it('says offline, not that nothing matches, when the device has no network', async () => {
+    mockDeviceOnline = false;
+    mockResults = empty();
+    await render(<SearchScreen />);
+    await type('zebra');
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('Nothing called "zebra" on your servers')).toBeNull();
+  });
+
+  it('says offline when no server is answering', async () => {
+    useReachability.setState({ online: { a: false, b: false } });
+    mockResults = empty();
+    await render(<SearchScreen />);
+    await type('zebra');
+    expect(
+      screen.getByText("Search asks your servers. Books you've downloaded are in Downloads."),
+    ).toBeTruthy();
   });
 
   it("shows a group's failure with Retry, without hiding the others", async () => {

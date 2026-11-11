@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
+import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { adminConnection, adminConsoleUrl } from '@/lib/admin-console';
 import { openExternalUrl } from '@/lib/support';
@@ -21,15 +22,7 @@ export function NoLibrariesState({
 }) {
   const { t } = useTranslation();
   const admin = useSession((s) => adminConnection(s.connections, connectionIds));
-  if (offline) {
-    return (
-      <EmptyState
-        icon="offline"
-        title={t('library.list.offlineTitle')}
-        hint={t('library.list.offlineHint')}
-      />
-    );
-  }
+  if (offline) return <OfflineState hint={t('library.list.offlineHint')} />;
   if (admin) {
     return (
       <EmptyState

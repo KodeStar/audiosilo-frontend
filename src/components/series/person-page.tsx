@@ -4,6 +4,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { useAllLibraryBooks, useCapability, useProgressLookup } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { Book } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
 import { CoverGrid, CoverGridSkeleton } from '@/components/library/cover-grid';
 import { CoverTile } from '@/components/library/cover-tile';
 import { ShelfRow } from '@/components/library/shelf-row';
@@ -12,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration, formatDurationOrZero } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { useUnreadBooks } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { yearOf } from '@/lib/published';
 import { bookSeriesNumber } from '@/lib/series-position';
@@ -57,6 +59,7 @@ export function PersonPage({
     libraryId,
     kind === 'author' ? { author: name } : { narrator: name },
   );
+  const unread = useUnreadBooks(q);
 
   if (kind === 'narrator' && browse === false) {
     return (
@@ -66,6 +69,8 @@ export function PersonPage({
       />
     );
   }
+  // Before the skeleton: a list held for the network counts as loading (`isLoading`).
+  if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
   if (q.isLoading || q.isIdle) return <PersonSkeleton kind={kind} />;
   if (q.error && q.books.length === 0) {
     return (

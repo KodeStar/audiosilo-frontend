@@ -271,7 +271,8 @@ export function cardSpeech(copy: CardCopy): string {
 }
 
 /** What a story that can't be told says instead (the section's calm states, the
- * full-screen story's message): a server without stats, a failed read, a quiet year. */
+ * full-screen story's message): a server without stats, no network, a failed read, a
+ * quiet year. */
 export function yearStateCopy(
   story: Exclude<YearStory, { status: 'ready' | 'loading' }>,
   t: TFunction,
@@ -280,6 +281,8 @@ export function yearStateCopy(
   switch (story.status) {
     case 'unsupported':
       return { title: t('year.unsupported.title'), body: t('year.unsupported.body', { server }) };
+    case 'offline':
+      return { title: t('common.offlineTitle'), body: t('common.offlinePage') };
     case 'error':
       return { title: t('year.error.title'), body: t('year.error.body', { server }) };
     case 'empty':

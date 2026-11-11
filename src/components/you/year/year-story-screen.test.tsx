@@ -46,13 +46,15 @@ jest.mock('./use-share-card', () => ({
   useShareCard: () => ({ busy: false, coversOff: false, share: mockShare }),
 }));
 let mockSupported: boolean | undefined = true;
-let mockStats: Record<string, { data?: UserStats }> = {};
+let mockStats: Record<string, { data?: UserStats; isPaused?: boolean }> = {};
+// This year's streak and goal: failed, unless a test holds them for the network.
+let mockExtras: { data: undefined; isError: boolean; isPaused?: boolean };
 jest.mock('@/api/hooks', () => ({
   useServerInfo: () => ({ data: undefined, isError: false }),
   useCapability: () => mockSupported,
   useMyStats: (range: string) => mockStats[range] ?? {},
-  useMyListening: () => ({ data: undefined, isError: true }),
-  useListeningGoal: () => ({ data: undefined, isError: true }),
+  useMyListening: () => mockExtras,
+  useListeningGoal: () => mockExtras,
 }));
 
 /* eslint-disable import/first */
@@ -63,6 +65,7 @@ const os = Platform.OS;
 beforeEach(() => {
   jest.clearAllMocks();
   mockSupported = true;
+  mockExtras = { data: undefined, isError: true };
   mockStats = { year: { data: yearStats() }, '2025': { data: yearStats({ range: '2025' }) } };
 });
 afterEach(() => {
@@ -111,6 +114,23 @@ describe('YearStoryScreen', () => {
     expect(mockRouter.back).not.toHaveBeenCalled();
     await act(async () => pull.handlers.onEnd?.({ translationY: 200 }));
     expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  // A read held for the network stays pending: the spinner drawn for that never ended.
+  it('says offline, with a way out, while the stats wait for the network', async () => {
+    mockStats = { year: { isPaused: true } };
+    await render(<YearStoryScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText('This page shows once its server answers.')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Close the story' }));
+    expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  it('tells the story from the stats it has while the streak and the goal are held', async () => {
+    mockExtras = { data: undefined, isError: false, isPaused: true };
+    await render(<YearStoryScreen />);
+    expect(screen.getByLabelText(/^Card 1 of /)).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
   });
 
   it('says calmly why there is no story, with a way out', async () => {

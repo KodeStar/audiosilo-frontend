@@ -11,9 +11,13 @@ jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' 
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 // Previously on has its own tests; Home only places it.
 jest.mock('./previously-on', () => ({ PreviouslyOnCard: () => null }));
+// Whether this device can download (false: a browser on plain http).
+let mockCanDownload = true;
 jest.mock('@/downloads/store', () => ({
   useIsDownloaded: () => false,
   useDownloadedCoverUri: () => null,
+  useDownloads: (pick: (s: { supported: boolean }) => unknown) =>
+    pick({ supported: mockCanDownload }),
 }));
 jest.mock('@/playback/progress-sync', () => ({ flushQueue: jest.fn(async () => undefined) }));
 // Which books can start here (online, or downloaded); every one unless a test says.
@@ -71,7 +75,10 @@ let mockProgress: {
   error: null,
 };
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 let mockRecent: { books: unknown[]; isLoading: boolean; error: Error | null } = {
   books: [],
   isLoading: false,
@@ -270,6 +277,24 @@ describe('HomeScreen', () => {
     await mountHome();
     expect(screen.getByTestId('home-offline')).toBeTruthy();
     expect(screen.queryByText('Pick something to listen to')).toBeNull();
+    expect(
+      screen.getByText(
+        "Your place shows once a server answers. Books you've downloaded are in Downloads.",
+      ),
+    ).toBeTruthy();
+  });
+
+  // fe#179: a browser on plain http has no Downloads to be sent to.
+  it('leaves Downloads out of the offline notice where this device cannot download', async () => {
+    mockCanDownload = false;
+    try {
+      mockProgress = { progress: [], isLoading: false, error: null, offline: true };
+      await mountHome();
+      expect(screen.getByText('Your place shows once a server answers.')).toBeTruthy();
+      expect(screen.queryByText(/Downloads/)).toBeNull();
+    } finally {
+      mockCanDownload = true;
+    }
   });
 
   // Another server's finished rows say nothing about the paused server's Now book.

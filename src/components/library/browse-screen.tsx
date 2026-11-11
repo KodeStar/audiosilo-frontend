@@ -25,6 +25,7 @@ import {
   presentLetters,
   sectionIndexForLetter,
 } from '@/lib/alpha-sections';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { idParam, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
@@ -105,8 +106,12 @@ function BrowseContent() {
   const cid = useScopedCid();
 
   const { data: libraries } = useLibraries();
+  const browse = useBrowseInfinite(libraryId, path);
   const { data, isLoading, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useBrowseInfinite(libraryId, path);
+    browse;
+  // The folder waits for the network, or failed without one: not an empty folder, and no
+  // Retry can work.
+  const offline = useUnreadQuery(browse) === 'offline';
   const paddingBottom = useMiniPlayerInset();
 
   const [query, setQuery] = useState('');
@@ -232,7 +237,7 @@ function BrowseContent() {
       ) : null}
 
       {isLoading ? <BrowseSkeleton /> : null}
-      {!error ? null : isNotInLibraryError(error) ? (
+      {!error && !offline ? null : isNotInLibraryError(error) ? (
         <NotInLibraryState kind="folder" />
       ) : (
         <LoadFailedNote
@@ -240,10 +245,11 @@ function BrowseContent() {
           message={t('library.browse.openError')}
           onRetry={() => refetch()}
           className="mx-4 lg:mx-8"
+          offline={offline ? t('common.offlinePage') : undefined}
         />
       )}
 
-      {!isLoading && !error ? (
+      {!isLoading && !error && !offline ? (
         <View className="flex-1 flex-row">
           <FlatList
             ref={listRef}

@@ -12,14 +12,16 @@ jest.mock('@/lib/open', () => ({ useOpen: () => ({ openLibrary: mockOpenLibrary 
 const mockRetry = jest.fn();
 let mockLists: LibrariesOfServer[] = [];
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 jest.mock('@/api/hooks', () => ({
   useFavouritesAll: () => ({ favourites: [] }),
   useLibrariesAll: () => ({
     groups: mockLists,
     libraries: mockLists.flatMap((g) => g.libraries),
     isLoading: false,
-    offline: mockLists.some((g) => g.paused),
     retryServer: mockRetry,
   }),
 }));
@@ -111,14 +113,40 @@ describe('FoldersMode', () => {
     expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
   });
 
-  it('shows the libraries a server already listed while offline', async () => {
+  // fe#179: a server the device is offline for used to be dropped without a word while
+  // another server's cached libraries showed.
+  it('lists what a server already listed offline, and says of the other that it waits', async () => {
     mockLists = [
       list('a', 'Home', 'ready', ['Audiobooks']),
       { ...list('b', 'Maya', 'loading'), paused: true },
     ];
     await render(<FoldersMode />);
     expect(screen.getByText('Audiobooks')).toBeTruthy();
-    expect(screen.queryByText("You're offline")).toBeNull();
+    // Under its own heading, with no Retry (none can work until the network is back).
+    expect(screen.getByText('Maya')).toBeTruthy();
+    expect(screen.getByTestId('folders-offline-b')).toBeTruthy();
+    expect(screen.getByText('Libraries from Maya show once it answers.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+  });
+
+  it('says the same of a server whose list failed with the device offline', async () => {
+    mockDeviceOnline = false;
+    mockLists = [list('a', 'Home', 'ready', ['Audiobooks']), list('b', 'Maya', 'error')];
+    await render(<FoldersMode />);
+    expect(screen.getByTestId('folders-offline-b')).toBeTruthy();
+    expect(screen.queryByText(/Couldn't load libraries/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // The device has a network (a server on the same Wi-Fi answers with the internet down),
+  // so a server that does not answer keeps its Retry.
+  it('keeps the Retry of a server that fails while the device has a network', async () => {
+    mockLists = [list('a', 'Home', 'error'), { ...list('b', 'Maya', 'loading'), paused: true }];
+    await render(<FoldersMode />);
+    expect(screen.getByText("Couldn't load libraries from Home.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.getByTestId('folders-offline-b')).toBeTruthy();
   });
 
   it('says it is offline, with no Retry per server, when a list failed with the device offline', async () => {
@@ -127,6 +155,19 @@ describe('FoldersMode', () => {
     await render(<FoldersMode />);
     expect(screen.getByText("You're offline")).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    // The page's own state, not a row per server.
+    expect(screen.queryByTestId('folders-offline-a')).toBeNull();
+  });
+
+  // Beside a sign-in state (which takes the page state's place) a server the device is
+  // offline for keeps its row: it is not dropped without a word.
+  it('keeps the offline server on the page beside another server that needs sign-in', async () => {
+    mockSignedOut = [{ id: 'a', name: 'Home', needsReconnect: 'auth' }];
+    mockLists = [list('a', 'Home', 'error'), { ...list('b', 'Maya', 'loading'), paused: true }];
+    await render(<FoldersMode />);
+    expect(screen.getByTestId('folders-offline-b')).toBeTruthy();
+    expect(screen.getByText('Libraries from Maya show once it answers.')).toBeTruthy();
+    expect(screen.queryByText(/Couldn't load libraries/)).toBeNull();
   });
 
   it('opens a library from its row', async () => {

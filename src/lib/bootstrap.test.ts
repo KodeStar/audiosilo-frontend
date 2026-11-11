@@ -54,6 +54,12 @@ jest.mock('@/stores/library-selection', () => ({
 jest.mock('@/stores/profiles', () => ({
   useProfiles: { getState: () => ({ hydrate: mockHydrates.profiles }) },
 }));
+const mockRestoreServers = jest.fn(async () => {
+  calls.push('servers');
+});
+jest.mock('@/api/server-snapshots', () => ({
+  restoreServerSnapshots: () => mockRestoreServers(),
+}));
 
 /* eslint-disable import/first */
 import { bootstrapPlayback, forgetBootstrap } from './bootstrap';
@@ -76,8 +82,19 @@ describe('bootstrapPlayback', () => {
       'series',
       'library',
       'profiles',
+      // Each connection's kept `/server` answer, seeded before any screen reads a flag,
+      // and only after the migrations (which re-key or wipe the kept document).
+      'servers',
     ]);
     expect(mockClearAll).not.toHaveBeenCalled();
+  });
+
+  it('never waits on a kept /server answer that cannot be read', async () => {
+    mockRestoreServers.mockRejectedValueOnce(new Error('storage'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(bootstrapPlayback()).resolves.toBeUndefined();
+    warn.mockRestore();
+    expect(mockHydrates.profiles).toHaveBeenCalled();
   });
 
   // The identity migration's first read loads the aliases; a read of their own only when

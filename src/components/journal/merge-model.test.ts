@@ -1,4 +1,4 @@
-import { mergeNewestFirst, overallStatus, type SourceSnapshot } from './merge-model';
+import { mergeNewestFirst, overallStatus, type SourceSnapshot, unreadSources } from './merge-model';
 
 type Row = { id: number; at: string };
 const row = (id: number, minute: number): Row => ({
@@ -111,5 +111,27 @@ describe('overallStatus', () => {
   it('is unsupported when no server can list, and ready with no servers', () => {
     expect(overallStatus([{ status: 'unsupported' }])).toBe('unsupported');
     expect(overallStatus([])).toBe('ready');
+  });
+});
+
+// A first page held for the network stays `loading`: the Journal's skeleton never ended.
+describe('unreadSources', () => {
+  const held = { status: 'loading', waiting: true } as const;
+
+  it('is offline while a list still to come is held for the network', () => {
+    expect(unreadSources([held], true)).toBe('offline');
+    expect(unreadSources([{ status: 'error' }, held], false)).toBe('offline');
+  });
+
+  it('says nothing while a list loads, or once one server has answered', () => {
+    expect(unreadSources([{ status: 'loading' }], true)).toBeNull();
+    expect(unreadSources([{ status: 'loading' }], false)).toBeNull();
+    expect(unreadSources([{ status: 'ready' }, held], false)).toBeNull();
+    expect(unreadSources([{ status: 'unsupported' }], false)).toBeNull();
+  });
+
+  it('is offline when every list failed with no network on the device, failed with one', () => {
+    expect(unreadSources([{ status: 'error' }], false)).toBe('offline');
+    expect(unreadSources([{ status: 'error' }], true)).toBe('failed');
   });
 });

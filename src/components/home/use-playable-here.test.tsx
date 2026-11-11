@@ -8,7 +8,10 @@ jest.mock('@/downloads/store', () => {
   return { useDownloads: create(() => ({ entries: {}, hydrated: true })) };
 });
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 
 /* eslint-disable import/first */
 import { useReachability } from '@/api/reachability';
@@ -46,20 +49,18 @@ describe('usePlayableHere', () => {
     expect(result.current(kept)).toBe(true);
   });
 
-  it('in the app, a device flag of no internet leaves it to the server (a LAN server answers)', async () => {
-    Platform.OS = 'android';
-    mockDeviceOnline = false;
-    const { result } = await renderHook(() => usePlayableHere());
-    expect(result.current(streamed)).toBe(true);
-  });
-
-  it('on the web, a browser with no network plays only what is downloaded', async () => {
-    Platform.OS = 'web';
-    mockDeviceOnline = false;
-    const { result } = await renderHook(() => usePlayableHere());
-    expect(result.current(streamed)).toBe(false);
-    expect(result.current(kept)).toBe(true);
-  });
+  // The device's flag is "no network at all" on every platform (a network with no internet
+  // still counts as one, so a LAN server decides by its own flag: `useDeviceOnline`).
+  it.each(['android', 'ios', 'web'] as const)(
+    'on %s, a device with no network plays only what is downloaded',
+    async (os) => {
+      Platform.OS = os;
+      mockDeviceOnline = false;
+      const { result } = await renderHook(() => usePlayableHere());
+      expect(result.current(streamed)).toBe(false);
+      expect(result.current(kept)).toBe(true);
+    },
+  );
 
   it('calls nothing unplayable before the launch has read the downloads', async () => {
     useDownloads.setState({ entries: {}, hydrated: false });

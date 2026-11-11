@@ -15,6 +15,12 @@ jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 
 jest.mock('@/downloads/store', () => ({
   useIsDownloaded: () => false,
   useDownloadedCoverUri: () => null,
+  useDownloads: (select: (s: object) => unknown) => select({ supported: true }),
+}));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
 }));
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
@@ -30,11 +36,18 @@ jest.mock('@/stores/session', () => ({
   useConnectionName: (id: string) => (id === 'home' ? 'Home Library' : ''),
 }));
 let mockCaps: Record<string, boolean | undefined> = {};
-let mockSeries: { isPending: boolean; data?: unknown; refetch: jest.Mock };
+let mockSeries: {
+  isPending: boolean;
+  isPaused?: boolean;
+  error?: unknown;
+  data?: unknown;
+  refetch: jest.Mock;
+};
 let mockBooks: {
   books: Book[];
   isLoading: boolean;
   isIdle: boolean;
+  offline?: boolean;
   error: unknown;
   retry: jest.Mock;
 };
@@ -43,7 +56,7 @@ jest.mock('@/api/hooks', () => ({
   useServerInfo: () => ({ data: { capabilities: {} } }),
   useCapability: (flag: string) => mockCaps[flag],
   useLibraryBooks: () => ({ data: undefined }),
-  useSeriesList: () => mockSeries,
+  useSeriesList: () => ({ isPaused: false, error: null, ...mockSeries }),
   useAllLibraryBooks: () => mockBooks,
   useProgressLookup: () => ({ progressOf: () => undefined, isLoading: false }),
 }));
@@ -120,11 +133,23 @@ async function show(ui: React.ReactElement) {
   return r;
 }
 
+const OFFLINE_LIST =
+  "This list shows once its server answers. Books you've downloaded are in Downloads.";
+const OFFLINE_PAGE =
+  "This page shows once its server answers. Books you've downloaded are in Downloads.";
+beforeEach(() => {
+  mockDeviceOnline = true;
+});
+
 describe('PeopleMode', () => {
-  const list = (data?: PeopleList, isPending = false) => ({
+  const list = (data?: PeopleList, isPending = false, state: { isPaused?: boolean } = {}) => ({
     data,
     isPending,
+    isPaused: false,
+    // Settled with nothing: the list failed.
+    error: !data && !isPending ? new TypeError('Network request failed') : null,
     refetch: jest.fn(),
+    ...state,
   });
 
   it('shows placeholders while the list loads', async () => {
@@ -170,8 +195,56 @@ describe('PeopleMode', () => {
   it('offers Retry when the list fails', async () => {
     const failed = list(undefined, false);
     await show(<PeopleMode kind="author" connectionId="home" libraryId={1} list={failed} />);
+    expect(screen.queryByText("You're offline")).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(failed.refetch).toHaveBeenCalled();
+  });
+
+  // The list is held for the network (it stays pending): the placeholders never ended.
+  it('says offline, not placeholders, while the list waits for the network', async () => {
+    await show(
+      <PeopleMode
+        kind="author"
+        connectionId="home"
+        libraryId={1}
+        list={list(undefined, true, { isPaused: true })}
+      />,
+    );
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(OFFLINE_LIST)).toBeTruthy();
+    expect(screen.queryByTestId('people-mode-loading')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says offline, with no Retry, when the list failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    await show(
+      <PeopleMode kind="narrator" connectionId="home" libraryId={1} list={list(undefined)} />,
+    );
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('keeps showing the people it holds while it is offline', async () => {
+    mockDeviceOnline = false;
+    await show(
+      <PeopleMode
+        kind="narrator"
+        connectionId="home"
+        libraryId={1}
+        list={list(
+          { people: [{ name: 'Kate Reading', books: 2, duration: 7200 }], unknown: 0 },
+          false,
+          {
+            isPaused: true,
+          },
+        )}
+      />,
+    );
+    await fireEvent(screen.getByTestId('card-grid'), 'layout', layoutEvent);
+    await settleFlashList();
+    expect(screen.getByRole('button', { name: 'Kate Reading, 2 books · 2h' })).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
   });
 });
 
@@ -207,6 +280,44 @@ describe('SeriesMode', () => {
     mockSeries = { isPending: false, data: [], refetch: jest.fn() };
     await show(<SeriesMode connectionId="home" libraryId={1} />);
     expect(screen.getByText('No series here yet')).toBeTruthy();
+  });
+
+  it('shows placeholders while the list loads, and Retry when it fails', async () => {
+    mockSeries = { isPending: true, refetch: jest.fn() };
+    const loading = await show(<SeriesMode connectionId="home" libraryId={1} />);
+    expect(screen.getByTestId('series-mode-loading')).toBeTruthy();
+    await loading.unmount();
+    mockSeries = { isPending: false, error: new TypeError('down'), refetch: jest.fn() };
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
+    expect(screen.queryByText("You're offline")).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockSeries.refetch).toHaveBeenCalled();
+  });
+
+  // The list is held for the network (it stays pending): the placeholders never ended.
+  it('says offline, not placeholders, while the list waits for the network', async () => {
+    mockSeries = { isPending: true, isPaused: true, refetch: jest.fn() };
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(OFFLINE_LIST)).toBeTruthy();
+    expect(screen.queryByTestId('series-mode-loading')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says offline, with no Retry, when the list failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    mockSeries = { isPending: false, error: new TypeError('down'), refetch: jest.fn() };
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('keeps showing the series it holds while it is offline', async () => {
+    mockDeviceOnline = false;
+    mockSeries = { isPending: false, isPaused: true, data: [], refetch: jest.fn() };
+    await show(<SeriesMode connectionId="home" libraryId={1} />);
+    expect(screen.getByText('No series here yet')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
   });
 });
 
@@ -251,5 +362,45 @@ describe('PersonPage', () => {
     expect(screen.getByText('Other books')).toBeTruthy();
     // Read by: narrator chips need browse_people (true here).
     expect(screen.getByRole('link', { name: 'James Marsters' })).toBeTruthy();
+  });
+
+  // The first page is held for the network, which counts as loading: the skeleton never
+  // ended.
+  it('says offline, not a skeleton, while the books wait for the network', async () => {
+    mockCaps = { browse_people: true };
+    mockBooks = {
+      books: [],
+      isLoading: true,
+      isIdle: false,
+      offline: true,
+      error: null,
+      retry: jest.fn(),
+    };
+    await show(<PersonPage kind="author" libraryId={1} name="Jim Butcher" />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(OFFLINE_PAGE)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says offline with no Retry when they failed with no network, and Retry with one', async () => {
+    mockCaps = { browse_people: true };
+    mockBooks = {
+      books: [],
+      isLoading: false,
+      isIdle: false,
+      error: new TypeError('Network request failed'),
+      retry: jest.fn(),
+    };
+    mockDeviceOnline = false;
+    const offline = await show(<PersonPage kind="author" libraryId={1} name="Jim Butcher" />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    await offline.unmount();
+
+    mockDeviceOnline = true;
+    await show(<PersonPage kind="author" libraryId={1} name="Jim Butcher" />);
+    expect(screen.queryByText("You're offline")).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockBooks.retry).toHaveBeenCalled();
   });
 });

@@ -7,10 +7,17 @@ import { notifyQueriesSynchronously } from '@/testing/query-notify';
 // `useLibrariesAll` across two servers whose lists both failed: a server's own Retry
 // (`retryServer`, Folders mode, CONNECT-06) asks only that server again.
 const mockApis = [
-  { connection: { id: 'a', name: 'Home' }, client: { libraries: jest.fn() } },
+  {
+    connection: { id: 'a', name: 'Home' },
+    client: { libraries: jest.fn(), listBooks: jest.fn(), serverInfo: jest.fn() },
+  },
   { connection: { id: 'b', name: "Maya's Shelf" }, client: { libraries: jest.fn() } },
 ];
-jest.mock('@/api/provider', () => ({ useApis: () => mockApis }));
+jest.mock('@/api/provider', () => ({
+  useApis: () => mockApis,
+  useOptionalApi: () => mockApis[0].client,
+  useCid: (id?: string) => id ?? 'a',
+}));
 jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({
   mirroredProgress: jest.fn(async () => null),
@@ -19,7 +26,7 @@ jest.mock('@/playback/progress-sync', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useLibrariesAll } from '@/api/hooks';
+import { useAllLibraryBooks, useLibrariesAll } from '@/api/hooks';
 /* eslint-enable import/first */
 
 notifyQueriesSynchronously();
@@ -65,7 +72,7 @@ it('marks a list that waits for the network (offline before it answered) as paus
       ]),
     );
     // Not loading (no skeleton for good): offline until the network is back.
-    expect(result.current).toMatchObject({ isLoading: false, offline: true });
+    expect(result.current.isLoading).toBe(false);
     await act(async () => onlineManager.setOnline(true));
     await waitFor(() =>
       expect(result.current.groups.map((g) => [g.status, g.paused])).toEqual([
@@ -73,7 +80,36 @@ it('marks a list that waits for the network (offline before it answered) as paus
         ['ready', false],
       ]),
     );
-    expect(result.current).toMatchObject({ isLoading: false, offline: false });
+    expect(result.current.isLoading).toBe(false);
+  } finally {
+    onlineManager.setOnline(true);
+    qc.clear();
+  }
+});
+
+// fe#179 (the RC3 re-check): the Library grid's whole-library read, held for the network
+// with nothing loaded, is `offline`: its screen shows the offline state, not a skeleton
+// that never ends.
+it('says a whole-library read that waits for the network is offline, then loads it', async () => {
+  const { listBooks, serverInfo } = mockApis[0].client;
+  serverInfo!.mockResolvedValue({ capabilities: {} });
+  listBooks!.mockResolvedValue({ books: [{ rel_path: 'Dune' }], next_cursor: '' });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  onlineManager.setOnline(false);
+  try {
+    const { result } = await renderHook(() => useAllLibraryBooks(1, { sort: 'recent' }, 'a'), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.offline).toBe(true));
+    expect(result.current.books).toEqual([]);
+    expect(listBooks).not.toHaveBeenCalled();
+    await act(async () => onlineManager.setOnline(true));
+    await waitFor(() => expect(result.current.complete).toBe(true));
+    expect(result.current).toMatchObject({ offline: false, isLoading: false });
+    expect(result.current.books).toEqual([{ rel_path: 'Dune' }]);
   } finally {
     onlineManager.setOnline(true);
     qc.clear();

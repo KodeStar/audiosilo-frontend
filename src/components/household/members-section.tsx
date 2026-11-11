@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useCapabilitiesAll, useHouseholdMembers } from '@/api/hooks';
+import { OfflineState } from '@/components/layout/offline-state';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ErrorNote } from '@/components/ui/query-state';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useManagerName, useProfileConnections } from '@/stores/profiles';
 import type { Connection } from '@/stores/session';
 
@@ -71,6 +73,7 @@ function MembersSection({
 }) {
   const { t } = useTranslation();
   const list = useHouseholdMembers(connection.id);
+  const unread = useUnreadQuery(list);
   const server = connection.name;
   const data = list.data;
   const block = data ? addBlock(data) : null;
@@ -90,7 +93,11 @@ function MembersSection({
             : t('household.members.sub')
         }
       />
-      {list.isError && !data ? (
+      {unread === 'offline' ? (
+        // Before the error and the skeleton: a list held for the network never arrives
+        // (`useUnreadQuery`), and no Retry can work without one.
+        <OfflineState variant="card" />
+      ) : list.isError && !data ? (
         <ErrorNote
           message={t('household.members.loadFailed', { server })}
           onRetry={() => void list.refetch()}

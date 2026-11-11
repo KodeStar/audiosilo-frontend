@@ -28,13 +28,13 @@ function parseDoc(raw: unknown): Partial<Doc> {
 
 // Device-local, connection-scoped: a removed connection's pick is dropped below. Not in
 // session.ts's SCOPED_STORAGE_KEYS: a stale pick is harmless (it resolves to the first
-// library, `resolveLibrarySelection`), so neither storage-reset axis needs to wipe it.
+// library, `resolveLibrary`), so neither storage-reset axis needs to wipe it.
 const stored = persistedDocument<Doc>(LIBRARY_SELECTION_KEY, parseDoc);
 
 type LibrarySelectionState = Doc & {
   /** The library the browse modes last showed, in memory only: a fallback (no pick, or
    * a pick that is gone) stays put while the app runs instead of moving to an earlier
-   * server whose list arrives later (`resolveLibrarySelection`). */
+   * server that lists a library later (`resolveLibrary`). */
   shown: LibrarySelection | null;
   hydrate: () => Promise<void>;
   /** Remember the library the browse modes show. */
@@ -103,22 +103,71 @@ function stands(pick: LibrarySelection, groups: readonly LibraryGroup[]): boolea
   return !!group && (group.status !== 'ready' || group.libraryIds.includes(pick.libraryId));
 }
 
+/** What the browse modes are on (`resolveLibrary`). */
+export type LibraryResolution = {
+  /** The library to show; null when there is none (yet). */
+  selection: LibrarySelection | null;
+  /** With no library to show: the connection whose list the Library waits for (still
+   * loading, or failed), so the screen shows THAT server's loading, error or sign-in
+   * state. Null when a library shows, or when every server has answered that it shares
+   * none. */
+  waitingOn: string | null;
+};
+
+const first = (g: LibraryGroup): LibrarySelection => ({
+  connectionId: g.connectionId,
+  libraryId: g.libraryIds[0],
+});
+
 /**
- * The library the browse modes show: the stored pick while it stands, else the one they
- * already showed (`shown`) while that stands, else the first library of the first
- * connection that has one. The fallback passes over a connection still loading: a slow
- * or unreachable first server would otherwise hold the whole Library up (no library,
- * only the modes every server has) until its request gave up. Holding `shown` keeps
- * such a fallback from jumping to that earlier server when its list does arrive. Null
- * when there is nothing to show (yet).
+ * The library the browse modes show, and never another server's in place of one that has
+ * not answered (fe#142: a slow, failing or signed-out server used to hand the Library to
+ * the next server's books without a word):
+ * 1. the stored pick while it stands (its server lists it, or has not listed anything yet:
+ *    loading, failed, offline or signed out all keep it);
+ * 2. else the library already shown (`shown`) while that stands, so what is on screen
+ *    stays put while the app runs;
+ * 3. else, the pick being gone from a server that answered, that server's first library
+ *    (the listener stays on the server they chose);
+ * 4. else the first library of the first connection, in the listener's order, that has
+ *    not said it shares none. While that connection's list is loading or has failed there
+ *    is NO library (`waitingOn` names it): its state is shown, not a later server's books.
+ *    Only a server that answered with no libraries is passed over.
+ * A library on another server than the one picked is therefore only ever shown once the
+ * picked server has answered without it, and the screen names the server of what it
+ * shows (`LibraryPicker`).
  */
-export function resolveLibrarySelection(
+export function resolveLibrary(
+  stored: LibrarySelection | null,
+  groups: readonly LibraryGroup[],
+  shown: LibrarySelection | null = null,
+): LibraryResolution {
+  if (stored && stands(stored, groups)) return { selection: stored, waitingOn: null };
+  if (shown && stands(shown, groups)) return { selection: shown, waitingOn: null };
+  const chosen = stored && groups.find((g) => g.connectionId === stored.connectionId);
+  if (chosen && chosen.libraryIds.length > 0) return { selection: first(chosen), waitingOn: null };
+  const home = groups.find((g) => g.status !== 'ready' || g.libraryIds.length > 0);
+  if (!home) return { selection: null, waitingOn: null };
+  if (home.status !== 'ready') return { selection: null, waitingOn: home.connectionId };
+  return { selection: first(home), waitingOn: null };
+}
+
+/**
+ * The car's Library tab: `resolveLibrary`'s library, except that the car never waits on a
+ * server. It has no picker and no state to show for one, so waiting on the first server
+ * while it can't be read (rule 4: no pick, or a pick whose server answered that it shares
+ * nothing) left the tab empty for the whole drive. There the first server that IS read and
+ * has a library is listed instead (the listener's own order). A pick whose server has not
+ * answered, or still has a library, is never replaced by another server's (rules 1 to 3),
+ * and nothing is remembered: once the first server answers, the tab is its library again.
+ */
+export function resolveCarLibrary(
   stored: LibrarySelection | null,
   groups: readonly LibraryGroup[],
   shown: LibrarySelection | null = null,
 ): LibrarySelection | null {
-  if (stored && stands(stored, groups)) return stored;
-  if (shown && stands(shown, groups)) return shown;
-  const first = groups.find((g) => g.libraryIds.length > 0);
-  return first ? { connectionId: first.connectionId, libraryId: first.libraryIds[0] } : null;
+  const { selection, waitingOn } = resolveLibrary(stored, groups, shown);
+  if (selection || !waitingOn) return selection;
+  const read = groups.find((g) => g.status === 'ready' && g.libraryIds.length > 0);
+  return read ? first(read) : null;
 }

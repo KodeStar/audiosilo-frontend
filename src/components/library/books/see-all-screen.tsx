@@ -10,11 +10,13 @@ import {
   type SourcedProgress,
 } from '@/api/hooks';
 import { useProgressBook } from '@/components/home/book-title';
+import { OfflineState } from '@/components/layout/offline-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { GhostCovers } from '@/components/ui/ghost-art';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatRelative } from '@/lib/format';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { bookTitle } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -55,6 +57,15 @@ export function SeeAllScreen() {
     [progress.progress],
   );
   const state = type === 'recent' ? recent : progress;
+  // With no row to show, a server's list held for the network (or failed without one) is
+  // not "no books": every list read with nothing in them is (`useUnreadQuery`). Finished
+  // books too: one server's progress with none finished says nothing about a held one's.
+  const rows = type === 'recent' ? recent.books : finished;
+  const unread = useUnreadQuery({
+    data: rows.length > 0 ? rows : undefined,
+    isPaused: state.offline,
+    error: state.error,
+  });
 
   const header = (
     <View className="pb-5 pt-2">
@@ -73,6 +84,8 @@ export function SeeAllScreen() {
 
   const empty = state.isLoading ? (
     <CoverGridSkeleton rows={2} gutter={0} />
+  ) : unread === 'offline' ? (
+    <OfflineState variant="card" hint={t('common.offlineList')} />
   ) : (
     <EmptyState
       variant="card"

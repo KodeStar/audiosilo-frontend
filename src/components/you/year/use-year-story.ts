@@ -9,6 +9,7 @@ import {
   useServerInfo,
 } from '@/api/hooks';
 import { listeningStreak, serverToday } from '@/components/home/listening';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useSession } from '@/stores/session';
 
 import { type CardCopy, cardCopy, type CopyContext } from './year-copy';
@@ -28,6 +29,7 @@ export type ReadyYearStory = {
 
 export type YearStory =
   | { status: 'loading'; serverName: string }
+  | { status: 'offline'; serverName: string }
   | { status: 'unsupported'; serverName: string }
   | { status: 'error'; serverName: string; retry: () => void }
   | { status: 'empty'; serverName: string; year: string; current: boolean }
@@ -40,7 +42,10 @@ export type YearStory =
  * week card reads) and the goal (`/me/goal`), neither asked for a past year, whose stats
  * are kept for the session (they never change). A server without `user_stats` is
  * `unsupported` (never an error), one whose `/server` doesn't answer is an `error`, and a
- * year with too little listening is `empty`.
+ * year with too little listening is `empty`. With nothing kept, a `/server` or a year's
+ * stats held for the network (or failed without one, `useUnreadQuery`) is `offline`, not
+ * a `loading` that never ends; a streak or a goal held that way is left out like one that
+ * failed, so stats that are kept still tell their story.
  */
 export function useYearStory(cid: string, range: YearRange): YearStory {
   const { t } = useTranslation();
@@ -54,9 +59,14 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
   const serverName = connection?.name || info.data?.name || '';
   const userName = connection?.user?.username;
 
-  // This year's streak and goal are part of the story: wait for them (unless they fail).
-  const extrasPending =
-    current && ((!listening.data && !listening.isError) || (!goal.data && !goal.isError));
+  const unreadInfo = useUnreadQuery(info);
+  const unreadStats = useUnreadQuery(stats);
+
+  // This year's streak and goal are part of the story: wait for them (unless they fail,
+  // or wait for a network themselves).
+  const stillComing = (q: { data: unknown; isError: boolean; isPaused: boolean }) =>
+    !q.data && !q.isError && !q.isPaused;
+  const extrasPending = current && (stillComing(listening) || stillComing(goal));
 
   const built = useMemo(() => {
     if (!stats.data || extrasPending) return null;
@@ -74,10 +84,13 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
 
   if (supported === false) return { status: 'unsupported', serverName };
   if (supported === undefined) {
+    if (unreadInfo === 'offline') return { status: 'offline', serverName };
     return info.isError
       ? { status: 'error', serverName, retry: () => void info.refetch() }
       : { status: 'loading', serverName };
   }
+  // Before the error and the loading state: no Retry can work without a network.
+  if (unreadStats === 'offline') return { status: 'offline', serverName };
   if (stats.isError && !stats.data) {
     return { status: 'error', serverName, retry: () => void stats.refetch() };
   }

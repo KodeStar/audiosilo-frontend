@@ -44,12 +44,19 @@ jest.mock('@/playback/store', () => ({
 jest.mock('@/components/player/playing-target', () => ({ selectIsLoaded: () => () => mockLoaded }));
 
 let mockBook: Book | undefined;
+let mockBookPaused = false;
 let mockProgress: Progress | null = null;
 let mockFetchStatus: unknown;
 let mockCaps: Record<string, boolean | undefined> = {};
 let mockChapters: unknown;
 jest.mock('@/api/hooks', () => ({
-  useBook: () => ({ data: mockBook, isLoading: false, refetch: jest.fn() }),
+  useBook: () => ({
+    data: mockBook,
+    isLoading: false,
+    isPaused: mockBookPaused,
+    error: null,
+    refetch: jest.fn(),
+  }),
   useBookProgress: () => ({ data: mockProgress }),
   useCapability: (flag: string) => mockCaps[flag],
   useChapters: () => ({ data: mockChapters, isLoading: false }),
@@ -69,6 +76,7 @@ const mount = () => render(<EpisodePage libraryId={5} path={PATH} />);
 
 beforeEach(() => {
   mockBook = episodeBook({ description: 'What happened on Monday.' });
+  mockBookPaused = false;
   mockProgress = null;
   mockFetchStatus = undefined;
   mockCaps = { podcast_fetch: true };
@@ -86,6 +94,16 @@ describe('EpisodePage', () => {
     await mount();
     expect(screen.getByText('Could not load this book.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it('says offline, with no Retry, while the episode waits for the network', async () => {
+    mockBook = undefined;
+    mockBookPaused = true;
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(/^This page shows once its server answers\./)).toBeTruthy();
+    expect(screen.queryByText('Could not load this book.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   // CONNECT-03: an episode that did not load because the session ended.

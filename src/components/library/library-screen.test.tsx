@@ -20,6 +20,14 @@ let mockCaps: Record<string, boolean | undefined> = {};
 const mockBookListCids: string[] = [];
 const mockShowsEnabled: boolean[] = [];
 jest.mock('@/api/hooks', () => ({
+  // The servers' library lists (`useSelectedLibrary` itself is the real one: the pick is
+  // resolved against them as the app resolves it).
+  useLibrariesAll: () => ({
+    groups: mockGroups,
+    libraries: mockGroups.flatMap((g) => g.libraries),
+    isLoading: mockGroups.some((g) => g.status === 'loading' && !g.paused),
+    retryServer: mockRetry,
+  }),
   useSavedProgress: () => undefined,
   useCapability: (flag: string) => mockCaps[flag],
   useAuthors: (_lib: number, cid: string) => {
@@ -55,7 +63,8 @@ type Group = {
     connectionName: string;
     kind?: string;
   }[];
-  status: 'ready' | 'error';
+  status: 'ready' | 'error' | 'loading';
+  paused: boolean;
 };
 const lib = (connectionId: string, id: number, name: string, kind?: string) => ({
   id,
@@ -65,26 +74,12 @@ const lib = (connectionId: string, id: number, name: string, kind?: string) => (
   ...(kind ? { kind } : {}),
 });
 let mockGroups: Group[] = [];
-let mockSelection: { connectionId: string; libraryId: number } | null = null;
 const mockSelect = jest.fn();
 const mockRetry = jest.fn();
-let mockOffline = false;
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
-jest.mock('./use-selected-library', () => ({
-  useSelectedLibrary: () => ({
-    groups: mockGroups,
-    selection: mockSelection,
-    library: mockSelection
-      ? mockGroups
-          .find((g) => g.connectionId === mockSelection!.connectionId)
-          ?.libraries.find((l) => l.id === mockSelection!.libraryId)
-      : null,
-    select: mockSelect,
-    isLoading: false,
-    offline: mockOffline,
-    retry: mockRetry,
-  }),
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
 }));
 jest.mock('./modes/folders-mode', () => ({
   FoldersMode: () => {
@@ -116,6 +111,8 @@ jest.mock('./modes/series-mode', () => ({ SeriesMode: () => null }));
 jest.mock('./modes/narrators-mode', () => ({ NarratorsMode: () => null }));
 
 /* eslint-disable import/first */
+import { useDownloads } from '@/downloads/store';
+import { type LibrarySelection, useLibrarySelection } from '@/stores/library-selection';
 import { resetProfilesForTests } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
 
@@ -129,7 +126,18 @@ const group = (connectionId: string, libs: [number, string][]): Group => ({
   libraryIds: libs.map(([id]) => id),
   libraries: libs.map(([id, name]) => lib(connectionId, id, name)),
   status: 'ready',
+  paused: false,
 });
+/** A server whose list is not in: still loading, failed, or waiting for the network. */
+const unread = (connectionId: string, status: 'loading' | 'error', paused = false): Group => ({
+  ...group(connectionId, []),
+  status,
+  paused,
+});
+/** The device's stored pick (none: the first library the servers list). */
+function pick(selection: LibrarySelection | null) {
+  useLibrarySelection.setState({ selection, shown: null, select: mockSelect });
+}
 
 describe('LibraryScreen', () => {
   beforeEach(() => {
@@ -137,10 +145,11 @@ describe('LibraryScreen', () => {
     mockCaps = {};
     mockLayout = 'phone';
     mockGroups = [group('a', [[1, 'Audiobooks']])];
-    mockSelection = { connectionId: 'a', libraryId: 1 };
-    mockOffline = false;
+    pick({ connectionId: 'a', libraryId: 1 });
     mockDeviceOnline = true;
     mockSetParams.mockReset();
+    mockRetry.mockReset();
+    useDownloads.setState({ supported: true });
   });
 
   it('offers only the modes the server supports, Books first', async () => {
@@ -198,7 +207,7 @@ describe('LibraryScreen', () => {
           libraryIds: [1, 7],
         },
       ];
-      mockSelection = { connectionId: 'a', libraryId: 7 };
+      pick({ connectionId: 'a', libraryId: 7 });
       mockCaps = { browse_people: true, collections: true };
       mockBookListCids.length = 0;
       mockShowsEnabled.length = 0;
@@ -223,7 +232,7 @@ describe('LibraryScreen', () => {
     });
 
     it('never offers Shows on a books library, nor asks for shows', async () => {
-      mockSelection = { connectionId: 'a', libraryId: 1 };
+      pick({ connectionId: 'a', libraryId: 1 });
       mockParams = { mode: 'shows' };
       await mountWithPortal(<LibraryScreen />);
       expect(screen.queryByRole('radio', { name: /Shows/ })).toBeNull();
@@ -234,26 +243,40 @@ describe('LibraryScreen', () => {
 
   it('says so when there is no library', async () => {
     mockGroups = [];
-    mockSelection = null;
+    pick(null);
     await render(<LibraryScreen />);
     expect(screen.getByText('No libraries are shared with your account yet.')).toBeTruthy();
   });
 
   // Offline before any list answered: neither a skeleton for good nor "no libraries".
   it('says it is offline when the lists wait for the network', async () => {
-    mockGroups = [];
-    mockSelection = null;
-    mockOffline = true;
+    mockGroups = [unread('a', 'loading', true)];
+    pick(null);
     await render(<LibraryScreen />);
     expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Your libraries show once a server answers. Books you've downloaded are in Downloads.",
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
+  });
+
+  // fe#179: a browser on plain http has no Downloads to be sent to.
+  it('leaves Downloads out of the offline hint where this device cannot download', async () => {
+    useDownloads.setState({ supported: false });
+    mockGroups = [unread('a', 'loading', true)];
+    pick(null);
+    await render(<LibraryScreen />);
+    expect(screen.getByText('Your libraries show once a server answers.')).toBeTruthy();
+    expect(screen.queryByText(/Downloads/)).toBeNull();
   });
 
   // The list failed outright as the network went (or the app started offline): offline,
   // not "Could not load libraries." with a Retry that cannot work yet.
   it('says it is offline, not a load error, when the list failed with the device offline', async () => {
-    mockGroups = [{ ...group('a', []), status: 'error' }];
-    mockSelection = null;
+    mockGroups = [unread('a', 'error')];
+    pick(null);
     mockDeviceOnline = false;
     await render(<LibraryScreen />);
     expect(screen.getByText("You're offline")).toBeTruthy();
@@ -263,7 +286,7 @@ describe('LibraryScreen', () => {
 
   it('keeps a cached "none shared" offline rather than calling it offline', async () => {
     mockGroups = [group('a', [])];
-    mockSelection = null;
+    pick(null);
     mockDeviceOnline = false;
     await render(<LibraryScreen />);
     expect(screen.queryByText("You're offline")).toBeNull();
@@ -271,13 +294,109 @@ describe('LibraryScreen', () => {
 
   // frontend#131: a server that did not answer has not said it shares nothing.
   it('says the libraries did not load, with Retry, when a server did not answer', async () => {
-    mockGroups = [{ ...group('a', []), status: 'error' }];
-    mockSelection = null;
+    mockGroups = [unread('a', 'error')];
+    pick(null);
     await render(<LibraryScreen />);
     expect(screen.getByText('Could not load libraries.')).toBeTruthy();
     expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
-    expect(mockRetry).toHaveBeenCalled();
+    expect(mockRetry).toHaveBeenCalledWith('a');
+  });
+
+  // fe#142: a slow, failing or signed-out server used to hand the Library to the other
+  // server's books, with no server named.
+  // (Mounted with the overlay host: among several servers the picker is always there.)
+  describe('with two servers', () => {
+    const maya = group('b', [[3, 'Shelf']]);
+    const noBooks = () => expect(screen.queryByText('Books body')).toBeNull();
+
+    it('waits for the first server while its list loads, never the other one meanwhile', async () => {
+      mockGroups = [unread('a', 'loading'), maya];
+      pick(null);
+      await mountWithPortal(<LibraryScreen />);
+      noBooks();
+      expect(screen.queryByText('Could not load libraries from Hearthside.')).toBeNull();
+    });
+
+    it("names the server whose list failed, with its own Retry, and keeps the other's books out", async () => {
+      mockGroups = [unread('a', 'error'), maya];
+      pick(null);
+      await mountWithPortal(<LibraryScreen />);
+      expect(screen.getByText("Couldn't load libraries from Hearthside.")).toBeTruthy();
+      noBooks();
+      await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+      expect(mockRetry).toHaveBeenCalledWith('a');
+      // The other server's library is still one press away, by its server's name.
+      await fireEvent.press(screen.getByRole('combobox', { name: 'Library' }));
+      await fireEvent.press(screen.getByText("Shelf · Maya's Shelf"));
+      expect(mockSelect).toHaveBeenCalledWith({ connectionId: 'b', libraryId: 3 });
+    });
+
+    it('stays on the remembered library when its server fails', async () => {
+      mockGroups = [maya, unread('a', 'error')];
+      pick({ connectionId: 'a', libraryId: 1 });
+      await mountWithPortal(<LibraryScreen />);
+      expect(screen.getByText("Couldn't load libraries from Hearthside.")).toBeTruthy();
+      noBooks();
+    });
+
+    it('shows the remembered library while its list is still on its way', async () => {
+      mockGroups = [maya, unread('a', 'loading')];
+      pick({ connectionId: 'a', libraryId: 1 });
+      await mountWithPortal(<LibraryScreen />);
+      // The mode's own loading state, for THAT library.
+      expect(screen.getByText('Books body')).toBeTruthy();
+    });
+
+    it('says the remembered server is offline, by name, with no Retry', async () => {
+      mockGroups = [maya, unread('a', 'loading', true)];
+      pick({ connectionId: 'a', libraryId: 1 });
+      await mountWithPortal(<LibraryScreen />);
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Libraries from Hearthside show once it answers. Books you've downloaded are in Downloads.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+      noBooks();
+    });
+
+    it('asks to sign in to the signed-out server, not show the other one', async () => {
+      resetProfilesForTests();
+      const before = useSession.getState().connections;
+      useSession.setState({
+        connections: [
+          {
+            id: 'a',
+            name: 'Hearthside',
+            serverUrl: 'https://h',
+            token: 't',
+            needsReconnect: 'auth',
+          },
+          { id: 'b', name: "Maya's Shelf", serverUrl: 'https://m', token: 'u' },
+        ] as Connection[],
+      });
+      try {
+        mockGroups = [unread('a', 'error'), maya];
+        pick(null);
+        await mountWithPortal(<LibraryScreen />);
+        expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+        noBooks();
+      } finally {
+        screen.unmount();
+        useSession.setState({ connections: before });
+      }
+    });
+
+    it('shows the next server only once the first answered with no library, named', async () => {
+      mockGroups = [group('a', []), maya];
+      pick(null);
+      await mountWithPortal(<LibraryScreen />);
+      expect(screen.getByText('Books body')).toBeTruthy();
+      expect(screen.getByText("Shelf · Maya's Shelf")).toBeTruthy();
+    });
   });
 
   // frontend#124: a revoked session is not "no libraries shared".
@@ -293,8 +412,8 @@ describe('LibraryScreen', () => {
     } as Connection;
     useSession.setState({ connections: [conn] });
     try {
-      mockGroups = [{ ...group('a', []), status: 'error' }];
-      mockSelection = null;
+      mockGroups = [unread('a', 'error')];
+      pick(null);
       await render(<LibraryScreen />);
       expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
       expect(screen.queryByText('No libraries are shared with your account yet.')).toBeNull();
@@ -316,9 +435,19 @@ describe('LibraryPicker', () => {
     mockSelect.mockReset();
   });
 
+  // fe#142: among several servers the library shown is named with its server even when
+  // there is nothing to choose.
+  it('names the one library and its server when several servers are signed in', async () => {
+    mockGroups = [group('a', [[1, 'Audiobooks']]), group('b', [])];
+    pick({ connectionId: 'a', libraryId: 1 });
+    await render(<LibraryPicker />);
+    expect(screen.getByText('Audiobooks · Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
   it('is hidden with a single library', async () => {
     mockGroups = [group('a', [[1, 'Audiobooks']])];
-    mockSelection = { connectionId: 'a', libraryId: 1 };
+    pick({ connectionId: 'a', libraryId: 1 });
     const r = await render(<LibraryPicker />);
     expect(r.toJSON()).toBeNull();
   });
@@ -331,7 +460,7 @@ describe('LibraryPicker', () => {
       ]),
       group('b', [[1, 'Audiobooks']]),
     ];
-    mockSelection = { connectionId: 'a', libraryId: 2 };
+    pick({ connectionId: 'a', libraryId: 2 });
     await mountWithPortal(<LibraryPicker />);
     expect(screen.getByText('Kids · Hearthside')).toBeTruthy();
     await fireEvent.press(screen.getByRole('combobox', { name: 'Library' }));
@@ -346,7 +475,7 @@ describe('LibraryPicker', () => {
         [2, 'Kids'],
       ]),
     ];
-    mockSelection = { connectionId: 'a', libraryId: 2 };
+    pick({ connectionId: 'a', libraryId: 2 });
     const r = await render(<LibraryPicker by="server" />);
     expect(r.toJSON()).toBeNull();
   });
@@ -362,7 +491,7 @@ describe('LibraryPicker', () => {
         [4, 'Other'],
       ]),
     ];
-    mockSelection = { connectionId: 'a', libraryId: 2 };
+    pick({ connectionId: 'a', libraryId: 2 });
     await mountWithPortal(<LibraryPicker by="server" />);
     expect(screen.queryByText('Kids · Hearthside')).toBeNull();
     await fireEvent.press(screen.getByRole('combobox', { name: 'Server' }));

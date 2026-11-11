@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Text } from '@/components/ui/text';
 import { isPodcastLibrary } from '@/lib/library-kind';
 import { cn } from '@/lib/utils';
 
@@ -20,14 +21,17 @@ const optionValue = (connectionId: string, libraryId: number) => `${connectionId
 const kindIcon = (l: { kind?: string }) => (isPodcastLibrary(l) ? 'microphone' : undefined);
 
 /**
- * Picks the library the Library tab's browse modes show (`useSelectedLibrary`). Libraries
- * are grouped under their server's name when more than one server has any. Renders
- * nothing when there is only one library in all (nothing to choose).
+ * Picks the library the Library tab's browse modes show (`useSelectedLibrary`). With
+ * several servers signed in every library is named with its server and listed under it,
+ * so what the Library shows is never read as another server's (fe#142). With nothing to
+ * choose (the one library there is, shown) it renders nothing, or, among several
+ * servers, that library's name and server as plain words. With no library shown (its
+ * server has not answered) it still offers the ones the other servers list.
  *
  * `by="server"` is for a mode that belongs to a server rather than a library
  * (Collections): it lists and names the servers only, so it can't read as a library
- * filter, and is hidden with one server. Picking another server selects its first
- * library; the current server keeps the library it has.
+ * filter. Picking another server selects its first library; the current server keeps the
+ * library it has.
  */
 export function LibraryPicker({
   by = 'library',
@@ -39,8 +43,24 @@ export function LibraryPicker({
   const { t } = useTranslation();
   const { groups, library, select } = useSelectedLibrary();
   const withLibraries = groups.filter((g) => g.libraries.length > 0);
+  // Several servers signed in: the server is always named.
+  const named = groups.length > 1;
+  const total = withLibraries.reduce((n, g) => n + g.libraries.length, 0);
+  const choices = by === 'server' ? withLibraries.length : total;
+  if (choices === 0 || (choices === 1 && library)) {
+    if (!named || !library) return null;
+    return (
+      <Text
+        variant="muted"
+        numberOfLines={1}
+        testID="library-picker-label"
+        className={cn('shrink', className)}
+      >
+        {by === 'server' ? library.connectionName : `${library.name} · ${library.connectionName}`}
+      </Text>
+    );
+  }
   if (by === 'server') {
-    if (withLibraries.length < 2) return null;
     return (
       <Select
         value={library ? { value: library.connectionId, label: library.connectionName } : undefined}
@@ -64,13 +84,10 @@ export function LibraryPicker({
       </Select>
     );
   }
-  const total = withLibraries.reduce((n, g) => n + g.libraries.length, 0);
-  if (total < 2) return null;
-  const grouped = withLibraries.length > 1;
   const value = library
     ? {
         value: optionValue(library.connectionId, library.id),
-        label: grouped ? `${library.name} · ${library.connectionName}` : library.name,
+        label: named ? `${library.name} · ${library.connectionName}` : library.name,
       }
     : undefined;
 
@@ -91,7 +108,7 @@ export function LibraryPicker({
       </SelectTrigger>
       <SelectContent align="end">
         {withLibraries.map((g) =>
-          grouped ? (
+          named ? (
             <SelectGroup key={g.connectionId}>
               <SelectLabel>{g.connectionName}</SelectLabel>
               {g.libraries.map((l) => (

@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import { ApiError } from '@/api/client';
 import { CapabilityError, useMyDevices, useRevokeMyDevice } from '@/api/hooks';
 import type { MyDevice } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -24,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { joinList } from '@/lib/names';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 
@@ -84,6 +86,7 @@ export function DevicesSection({
 }) {
   const { t } = useTranslation();
   const devices = useMyDevices(connectionId);
+  const unread = useUnreadQuery(devices);
   const revoke = useRevokeMyDevice(connectionId);
   const [pending, setPending] = useState<MyDevice | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -132,7 +135,11 @@ export function DevicesSection({
     <View className="gap-3">
       <SectionTitle title={t('account.devices.title')} sub={t('account.devices.sub')} />
       <Card className="overflow-hidden p-0">
-        {devices.isError ? (
+        {unread === 'offline' ? (
+          // Before the error and the skeleton: a list held for the network stays pending
+          // (`useUnreadQuery`), and no Retry can work without one.
+          <OfflineState className="py-6" />
+        ) : devices.isError ? (
           <View className="gap-3 p-5">
             <Text variant="muted">{t('account.devices.loadError', { server: serverName })}</Text>
             <Button

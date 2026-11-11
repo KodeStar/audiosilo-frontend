@@ -84,13 +84,18 @@ jest.mock('./progress-sync', () => ({
   pendingSaves: jest.fn(async () => ({ events: 0, listens: 0 })),
 }));
 jest.mock('./time-saved', () => ({ noteSilenceSaved: jest.fn(), flushTimeSaved: jest.fn() }));
+// The flags the cached `/server` holds for every connection (undefined: never answered,
+// which the outbox counts as a server that takes listening events).
+let mockServerCaps: Record<string, boolean> | undefined;
 jest.mock('@/api/provider', () => ({
   queryClient: {
     invalidateQueries: jest.fn(async () => {}),
     setQueryData: jest.fn(),
     setQueryDefaults: jest.fn(),
     fetchQuery: jest.fn(async () => ({})),
-    getQueryData: jest.fn(() => undefined),
+    getQueryData: jest.fn((key: readonly unknown[]) =>
+      key[0] === 'server' && mockServerCaps ? { capabilities: mockServerCaps } : undefined,
+    ),
     cancelQueries: jest.fn(async () => {}),
   },
 }));
@@ -410,6 +415,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  mockServerCaps = undefined;
   mockServer.events = [];
   mockServer.history = [];
   mockNoteFailure.mockClear();
@@ -1125,8 +1131,7 @@ describe.each([
 
     it('a play that buffers during that move begins its history where the move lands', async () => {
       // A server that takes no listening events: the listening is its `POST /history`.
-      a.outbox.noteListeningSyncFlag('c1', false);
-      b.outbox.noteListeningSyncFlag('c1', false);
+      mockServerCaps = { listening_sync: false };
       await playedPast(a, b);
       b.engine.at(90);
       await b.save();
