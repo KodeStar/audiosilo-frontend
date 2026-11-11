@@ -178,17 +178,16 @@ function DiaryTab({
   const waiting = useWaitingListens();
   const shown = useMemo(() => new Set(history.map((s) => s.connectionId)), [history]);
   // One row per listening session (the server records a span per pause).
-  const sessions = useMemo(
-    () =>
-      [
-        ...groupSessions(spans),
-        ...waitingSessions(
-          waiting.filter((w) => shown.has(w.connectionId)),
-          spans,
-        ),
-      ].sort((a, b) => b.start - a.start),
-    [spans, waiting, shown],
-  );
+  const recorded = useMemo(() => groupSessions(spans), [spans]);
+  const sessions = useMemo(() => {
+    const unsent = waitingSessions(
+      waiting.filter((w) => shown.has(w.connectionId)),
+      spans,
+    );
+    return unsent.length > 0
+      ? [...recorded, ...unsent].sort((a, b) => b.start - a.start)
+      : recorded;
+  }, [recorded, spans, waiting, shown]);
   const days = useMemo(() => groupByDay(sessions), [sessions]);
   // The sleep timer's bookmarks, from the bookmarks loaded so far, each on the span it
   // ended (`matchDrifts`).

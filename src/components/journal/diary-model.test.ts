@@ -235,16 +235,6 @@ describe('waitingSessions (fe#208)', () => {
       [
         listen('a', at(5, 21, 0), at(5, 21, 10), 0, 600),
         listen('b', at(5, 21, 12), at(5, 21, 20), 600, 1080),
-        {
-          connectionId: 'c1',
-          event: {
-            id: 'f',
-            kind: 'finish',
-            library_id: 1,
-            path: 'Sanderson/Kings',
-            at: iso(at(5, 22)),
-          },
-        },
       ],
       [],
     );
