@@ -19,7 +19,7 @@ export type LibraryChoiceGroup = LibraryGroup &
  *   `status` and `paused` say which state the screen shows for it;
  * - `groups`: every server's libraries in connection order, for `LibraryPicker`;
  * - `select`: remember another library;
- * - `isLoading`: a list is on its way; `offline`: a list waits for the network;
+ * - `isLoading`: a list is on its way;
  * - `retryServer`: ask one server again for its list.
  * The library lists are `useLibrariesAll`'s.
  */
@@ -49,7 +49,6 @@ export function useSelectedLibrary() {
     groups,
     select,
     isLoading: all.isLoading,
-    offline: all.offline,
     retryServer: all.retryServer,
   };
 }

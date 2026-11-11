@@ -26,7 +26,6 @@ jest.mock('@/api/hooks', () => ({
     groups: mockGroups,
     libraries: mockGroups.flatMap((g) => g.libraries),
     isLoading: mockGroups.some((g) => g.status === 'loading' && !g.paused),
-    offline: mockGroups.some((g) => g.paused),
     retryServer: mockRetry,
   }),
   useSavedProgress: () => undefined,
