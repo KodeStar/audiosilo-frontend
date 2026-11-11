@@ -3379,9 +3379,10 @@ under their empty state).
   household members sections, Your listening (both of its reads, and its `/server`: until
   the flag is known neither read is asked, so neither is ever held) and the Year story
   (`useYearStory`'s `offline` status: a held streak or goal is left out, like a failed one);
-  Favourites and Home's See all, with no row in, hand `useUnreadQuery` their fan-out's
+  Favourites and Home's See all, with no row to show, hand `useUnreadQuery` their fan-out's
   `offline` (a server's list held with nothing kept, `anyHeld`), so one server's empty
-  answer is not "none" while another's is held. The Journal's tabs ask
+  answer is not "none" while another's is held (nor is its progress with no finished book
+  "none finished"). The Journal's tabs ask
   `unreadSources` (a source held for the network is `waiting`, and so is one whose `/server`
   flag is). A page whose failure is `LoadFailedNote` (book, episode, folder) hands it the hint
   (`offline`), so the sign-in state still comes first. A new screen with a skeleton does the

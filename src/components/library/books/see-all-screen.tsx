@@ -57,11 +57,10 @@ export function SeeAllScreen() {
     [progress.progress],
   );
   const state = type === 'recent' ? recent : progress;
-  // With nothing in, a server's list held for the network (or failed without one) is not
-  // "no books": every list read with nothing in them is (`useUnreadQuery`). Finished
-  // books are judged by the progress list they come from (read, with none finished, is
-  // an answer).
-  const rows = type === 'recent' ? recent.books : progress.progress;
+  // With no row to show, a server's list held for the network (or failed without one) is
+  // not "no books": every list read with nothing in them is (`useUnreadQuery`). Finished
+  // books too: one server's progress with none finished says nothing about a held one's.
+  const rows = type === 'recent' ? recent.books : finished;
   const unread = useUnreadQuery({
     data: rows.length > 0 ? rows : undefined,
     isPaused: state.offline,

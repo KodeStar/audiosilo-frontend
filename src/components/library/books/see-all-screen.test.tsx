@@ -98,12 +98,28 @@ describe('SeeAllScreen', () => {
     expect(screen.queryByText('No finished books yet.')).toBeNull();
   });
 
-  it('says none are finished when the progress it has holds no finished book', async () => {
+  it('says none are finished once every progress list is read with no finished book', async () => {
     mockParams = { type: 'finished' };
-    // Another server's list is held: the one that answered still says what it knows.
-    mockProgress = { ...read, offline: true, progress: [place(false)] };
+    mockProgress = { ...read, progress: [place(false)] };
     await render(<SeeAllScreen />);
     expect(screen.getByText('No finished books yet.')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  // One server's progress with none finished says nothing about a held server's.
+  it('says offline, never "none finished", while another server is held', async () => {
+    mockParams = { type: 'finished' };
+    mockProgress = { ...read, offline: true, progress: [place(false)] };
+    await render(<SeeAllScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('No finished books yet.')).toBeNull();
+  });
+
+  it('keeps showing the finished books it has while another server is held', async () => {
+    mockParams = { type: 'finished' };
+    mockProgress = { ...read, offline: true, progress: [place(true)] };
+    await render(<SeeAllScreen />);
+    expect(screen.getByText('1 tiles')).toBeTruthy();
     expect(screen.queryByText("You're offline")).toBeNull();
   });
 
