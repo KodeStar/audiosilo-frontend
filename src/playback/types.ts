@@ -21,6 +21,10 @@ export type PlaybackTrack = {
    * length, so the web engine seeks by re-requesting with `&t=` and takes the duration
    * from `duration` above. Never set on a local file or on native. */
   transcoded?: boolean;
+  /** `url` is a file on this device (a download's), not the server's stream: playing it
+   * needs no network, so the periodic save keeps the slower pace (`saveIntervalMs` in
+   * `store.ts`). JS only, like `transcoded`. */
+  local?: boolean;
 };
 
 /**

@@ -251,6 +251,7 @@ export function buildBookQueue(
       duration: s.duration > 0 ? s.duration : undefined,
       // Only present when set, so a direct stream's track is exactly what it always was.
       ...(transcoded ? { transcoded: true } : {}),
+      ...(localUri ? { local: true } : {}),
     };
   });
 

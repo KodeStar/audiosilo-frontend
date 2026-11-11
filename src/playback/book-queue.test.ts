@@ -14,6 +14,7 @@ import {
   synthesizeChapters,
   toBookPosition,
 } from '@/playback/book-queue';
+import { toNativeTrack } from '@/playback/types';
 
 // A fake client exposing only what the queue builder calls.
 const fakeApi = {
@@ -158,6 +159,17 @@ describe('buildBookQueue', () => {
     });
     expect(q.tracks[0].url).toBe('file:///local/a.m4b');
     expect(q.tracks[0].headers).toBeUndefined();
+  });
+
+  it('marks the tracks this device holds as local, and only those', () => {
+    const streamed = buildBookQueue(fakeApi, 2, makeBook({ rel_path: 'A/single.m4b' }));
+    expect('local' in streamed.tracks[0]).toBe(false);
+    const held = buildBookQueue(fakeApi, 2, makeBook({ rel_path: 'A/single.m4b' }), undefined, {
+      files: new Map([['A/single.m4b', 'file:///local/a.m4b']]),
+    });
+    expect(held.tracks[0].local).toBe(true);
+    // Never told to the native engine (`toNativeTrack` names its fields).
+    expect('local' in toNativeTrack(held.tracks[0])).toBe(false);
   });
 
   it('synthesizes virtual chapters for a long chapterless single file, without native clips', () => {

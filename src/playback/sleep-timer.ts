@@ -1,6 +1,7 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand';
 
 import type { Chapter } from '@/api/types';
+import { quietOffScreen } from '@/lib/visible-store';
 
 import { nextChapterEnd } from './book-queue';
 import { engineTicker } from './engine-ticks';
@@ -852,7 +853,7 @@ export function onSleepTimerEnded(fn: (outcome: SleepOutcome) => void): () => vo
   };
 }
 
-export const useSleepTimer = create<SleepTimerState>()((set, get) => {
+const sleepTimerStore = createStore<SleepTimerState>()((set, get) => {
   /** Shared arming path: every start resets the phase, drops any previous fade and
    * restarts the tick. */
   const arm = (
@@ -1063,6 +1064,16 @@ export const useSleepTimer = create<SleepTimerState>()((set, get) => {
     },
   };
 });
+
+/**
+ * The sleep timer store. As with the player's (`usePlayer`), `getState`, `setState` and
+ * `subscribe` are live, and the hook components read is what is SHOWN (`quietOffScreen`):
+ * off screen the countdown's once-a-second `remaining` is not redrawn (a timer is what a
+ * locked phone at bedtime runs). The phase, the target, an extension and the grace window
+ * all show at once, so what a component does with them in the background still happens
+ * (`useShakeToExtend` arms the accelerometer from the phase).
+ */
+export const useSleepTimer = quietOffScreen(sleepTimerStore, 'remaining', () => true);
 
 /** Resume after the timer paused playback. The player store has no bare `play`
  * action, and `toggle` from a paused state resumes - but it would PAUSE a book the

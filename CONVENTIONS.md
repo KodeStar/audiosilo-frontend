@@ -1552,13 +1552,116 @@ media GETs only.
   a hidden tab's focus; the credits' countdown counts only the time its ticks saw, so a
   suspended app doesn't wake to a countdown that already ran out.
 - Progress: `progress-sync.ts` saves last-write-wins (`version: 0` + `updated_at`,
-  server reconciles) with an offline replay queue; `store.ts` saves every 15s while
-  playing and on pause/seek/rate/stop/ended. Android pauses every JS timer with the screen
-  off, so the periodic work that must run while a book plays there (the 15 s save, the sleep
+  server reconciles) with an offline replay queue; `store.ts` saves periodically while
+  playing (the pace is the next entry) and on pause/seek/rate/stop/ended. Android pauses
+  every JS timer with the screen
+  off, so the periodic work that must run while a book plays there (the periodic save, the sleep
   timer's countdown and fade, auto sleep's poll) is an `engineTicker` (`engine-ticks.ts`):
   its interval OR the engine's own events (the store calls `engineTick` on every snapshot),
   whichever comes first, at most once per period. A new periodic job that must survive the
   screen being off uses it rather than a bare `setInterval`/`ticker`.
+- **The periodic save's pace** (perf P4; `saveIntervalMs` in `store.ts`). The save loop
+  (`saveLoop`: what the save sends, which is the legacy PUT, or on the sync path Sync v2's
+  span cut and its send) runs
+  every **15 s** while the app is in front AND the playing file streams from the server, and
+  every **60 s** otherwise: the app away (`isAway` in `src/lib/app-activity.ts`: `AppState`
+  `background` or `inactive`, which on the web is the tab hidden), or the playing file one
+  this device holds (`PlaybackTrack.local`, set by `buildBookQueue` for a download's file;
+  owner decision D5: in front too). Streaming in front the radio is up anyway; in every
+  other case each save would wake it for itself (240 requests an hour). A Cast receiver
+  streams whatever the phone holds, so a downloaded book cast with the app in front keeps
+  15 s (away, casting is 60 s like everything else).
+  - **The pace is the network's alone; this device's own record never slows.** Three
+    loops run while a book plays, each an `engineTicker`: `saveLoop` (15 s or 60 s, what
+    uses the network), `placeLoop` (**15 s, fixed**: the mirror, `persist({ local: true })`)
+    and `spanKeeper` (5 s: the open span). On the sync path `persist` only ever writes the
+    mirror, so slowing it saved no radio and left a kill up to a minute of playing behind
+    for a start with only the mirror to go by (a downloaded book, offline), enough at more
+    than 1x to end the resumed span over the server's 60 book seconds `resume_behind`
+    backstop behind the span the kill left open. On the legacy PUT path the `local` capture
+    writes the mirror and sends nothing; while the server is known to be away it goes
+    through `saveProgress` whole, which sends nothing either and queues the save, so the
+    queue holds the place the mirror does. A save writes the mirror itself and re-bases
+    `placeLoop` (`rebase`), and a save due at the moment `placeLoop` is goes in its place
+    (`check`), so the two never write it twice for one tick, and at the 15 s pace
+    `placeLoop` never writes. Every guard of `persist` holds for the local capture
+    too (a tab `behindOtherTab` writes nothing of its place at either pace). Not on the 5 s
+    keeper: the mirror is ONE document of every book's record, read and written whole
+    (synchronously on the web's `localStorage`), and 15 s is what it was always written at.
+    A new periodic job asks the same question: a request goes on `saveLoop`, a storage
+    write does not.
+  - **What a kill leaves behind** (the worst moment, in playing time; times the speed
+    for book seconds, the range is 0.5x to 2x). On this device, any server, online or
+    not: the mirror, **15 s**. On the sync path the open span is nearer, **5 s**: the
+    next launch closes it into the outbox (`recoverOpenSpan`) and brings the mirror's
+    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`), so an
+    offline start resumes there, and online the span reaches the server with the launch's
+    send and the resume reads it back; a play that beats the launch's recovery has the
+    15 s. `mirrorSpanEnd` takes the span's end as the capture it would have been when it
+    was last kept, by the mirror's own rule (the newest record wins) and no further: only a
+    record older than the span's end, only forward, never a finished book's or a book with
+    no record, so a place written since stands (the listener's own move saves at once;
+    another tab's play; a server row). On the web it runs for a span another tab left
+    behind too, dated when that tab kept it, never now. The legacy path has no span: 15 s
+    here, and the server (so every other device) holds the last PUT, up to 60 s back,
+    until this device saves again.
+  - The pace is **read at every check**, not set by an event (`engineTicker`'s `period`):
+    the next save is due that long after the LAST one, so a change mid-play (the hot-swap
+    onto a download, the next file being of the other kind, the app leaving or coming back)
+    drops no save and doubles none. Two edges do act (`onAwayChange`, on `onAppStateEdge`,
+    which tells a change of the reading once: iOS's `inactive` then `background` is one
+    leaving): **leaving**, the place is saved now and the loop re-based, so the save the
+    15 s pace owed never waits a minute; **coming back**, a save the 15 s pace already owes
+    goes at once. Neither does anything while nothing plays. Nothing else re-bases a
+    running loop: `loading` does not stop it, so a play back from a buffer (or the web's
+    next file) leaves the next save due from the last one (`startSaveLoop`), or a book that
+    buffers more often than the period would never save.
+  - **Only the periodic save slows.** A pause, a move, a rate change, a stop, the end, a
+    tab giving way and the app leaving still save at once, and the open span is still stored
+    every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses no more listening than before
+    (`recoverOpenSpan`). What waits up to a minute is what other devices see: the server's
+    place, on the legacy PUT path (a server without `listening_sync`) and on the sync path
+    alike. Do not move an immediate save onto the loop.
+  - The server reads a session as *playing* for 60 s after its last save or span
+    (`livePlaying`, CROSS-REPO section 20), which the slower pace sits on: a book played in
+    a pocket can read as paused in the console and in Listening in the house for the moment
+    before its next cut lands. Its `resume_behind` backstop (60 **book** seconds, section
+    25) is not touched by the pace: a second device resumes from a server row (a base
+    version above 0), and a span behind another device's newer row is then resolved as a
+    divergence (the further place kept, the other offered), never refused as behind.
+- **Off screen, a tick is not redrawn** (perf P4; `quietOffScreen` in
+  `src/lib/visible-store.ts`). The player store's snapshot moves about once a second while a
+  book plays, and a mounted screen stays mounted with the phone locked or the tab hidden: a
+  full player left open redrew its seek bar, times and chapter list every second for nobody.
+  So `usePlayer(selector)` and `useSleepTimer(selector)`, the HOOKS, read what is **shown**,
+  not the live state. In front the two are the same object. Off screen (`isOffScreen`:
+  `AppState` `background`, which on the web is the hidden tab; NOT iOS's `inactive`, where
+  the app is still seen behind the app switcher, Control Centre or a system alert) a change
+  that is only a **tick** is not shown: no listener, no selector, no render. Coming back
+  shows the live state at once.
+  - A tick is one field moving and nothing else: the player's `snapshot` with the same
+    `state`, `trackIndex` and `rate` (so the place and the file's length; a seek counts), the
+    sleep timer's `remaining`. **Every other change is shown at once and whole**, the held
+    field with it: a play, a pause, the end, the next file, another book, a load, an error,
+    the timer's phase. That is what lets a component act in the background on what the hook
+    gives it (`BookEndedListener` starts the next book from `selectIsEnded`,
+    `useShakeToExtend` arms from the timer's phase, the hidden tab's title follows play and
+    pause).
+  - `getState()`, `setState()` and `subscribe()` on both stores are **live as ever**: the
+    store's own logic (the saves, the spans, the tab rules), the car, the widgets and the
+    Live Activity, Cast, the reader's narration, the reveal toast and the sleep timer's
+    tickers read those. The lock screen, Now Playing, the web Media Session, Android Auto's
+    session and the watch are fed by the native engine or `service.web.ts`, never by a
+    React render.
+  - **The rule this leaves:** nothing that must happen in the background may depend on a
+    component re-rendering for the place, the current chapter or the countdown's seconds.
+    Read `getState()` or subscribe (as the reveal toast and the narration do). A selector
+    that derives from the place (`selectBookPosition`, `selectCurrentChapter`,
+    `selectLivePosition`) is for drawing.
+  - A new store that ticks while a book plays gets its hook from `quietOffScreen` too,
+    naming its ticking field. In a test, `driveAppState()` (`src/testing/app-state.ts`) sets
+    the app's state; React Native's jest `AppState` is otherwise never `background`, so
+    every other suite sees the hook show everything.
 - **Never restart an in-progress book from 0.** `loadInitialProgress` returns a
   discriminated `ResumeLookup` (`progress`/`empty`/`failed`) reconciling the server, a
   **durable local mirror** (`writeMirror`, never pruned on sync - survives a flaky resume
@@ -1624,7 +1727,8 @@ media GETs only.
   - *Spans* (`store.ts`). One opens on the move to `playing` and closes on a pause, a move (the
     next opens at the target with `jump`, or `moved_back` when it is behind), stop, a book switch
     and the end (then one `finish`). It is cut (closed, a `continue` span opening where it ended)
-    on the 15 s tick while its server is reachable, a rate change, a reconnect, backgrounding
+    on the save loop's tick (15 s, or 60 s: *The periodic save's pace*) while its server is
+    reachable, a rate change, a reconnect, backgrounding
     (`listening-sync.ts`) and the web page hiding; offline the tick leaves it open (the 5 s keep
     below stores it), and either way a span is cut after an hour of wall clock (`MAX_SPAN_MS`;
     the server refuses one over 24 h). A move while paused is sent at once as a span that moved nowhere. A
@@ -1632,9 +1736,12 @@ media GETs only.
     `restart`, another explicit place `jump`, Stay on an offer makes the next span `jump`
     (`standByPlace`). The open span is stored every 5 s online or offline (`OPEN_SPAN_KEEP_MS`),
     so a kill loses at most that, and takes its event id when it opens (`OpenSpan.id`): closed
-    twice it is one event. The keep never moves the span's end back (a native lock-screen
+    twice it is one event. A book playing with none open (its play's own could not open: a
+    load, the hot-swap or an adoption's reload held the place) gets one at that same 5 s keep
+    (`openMissingSpan`), not only at the save loop's tick, which may be a minute away: what
+    plays before a span opens is in no listening event. The keep never moves the span's end back (a native lock-screen
     move's landed place reaches the store before the move, which ends the span at its last
-    place); a save and the 15 s cut take where the engine is (applying that rule there froze
+    place); a save and the loop's cut take where the engine is (applying that rule there froze
     the span after a seek back or a hot-swap to another file order, fe#211). The end's `finish` goes into the outbox only after the last span's close has landed
     there, then one send (`finishAfter`, server#359: a 12 s book's finish went first and found
     no session to mark); a close already on its way (the web's `paused` before `ended`) is
@@ -1669,7 +1776,8 @@ media GETs only.
     immutable once there; a `finish` entry also carries its sends' marks, see *Across tabs*),
     `audiosilo.listeningOpenSpan` (a list, one span per web tab
     playing, each with its `owner` and `keptAt`; a bare span is the pre-W2 form; a kill's
-    leftover is closed into the outbox at the next launch, `recoverOpenSpan`, and on the web
+    leftover is closed into the outbox at the next launch, `recoverOpenSpan` (the mirror's
+    record brought up to its end, `mirrorSpanEnd`: *The periodic save's pace*), and on the web
     another tab's span is left to it while it is live, 30 s either side of now (a tab on an
     older build, no `owner`, while its `endedAt` is under 45 s old); a tab whose last copy
     another tab took that way plays on under a new id from where the copy ended,
@@ -1825,8 +1933,10 @@ media GETs only.
     (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
     the play that follows reads again; a finished book stays where it is).
   - *The tab that gives way says where it stopped.* The mirror is the other tab's last
-    **save** (every 15 s while it plays), so a tab that takes over from one still playing
-    starts up to 15 s behind it, and a press is never kept waiting for more. So the tab
+    **save** (every 15 s, hidden or playing a download too: `placeLoop`, *The periodic
+    save's pace*), so a tab that takes over
+    from one still playing starts up to that far behind it, and a press is never kept waiting
+    for more. A tab that is paused saved as it paused, so its record is its exact place. So the tab
     that gives way answers on the same channel (`GaveWay` in `playing-claim.ts`,
     told from a claim by its `kind`; `tabClaims().answer`, both transports): connection,
     book (library and path), the place its span ended at (whole-book seconds and the file
@@ -2193,7 +2303,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   the place, since the server applies a `restart` as a move to 0. Moved back after its end, the
   next play sends the `unfinish` too (a listen never unfinishes).
 - **Spans and sending** follow the phone's rules exactly (CROSS-REPO section 25): open on play,
-  close on pause / move / stop / end (then one `finish`) / sleep, cut every 15 s while the last
+  close on pause / move / stop / end (then one `finish`) / sleep, cut every 15 s (the watch
+  keeps that pace throughout: the phone's 60 s one is the phone's) while the last
   sync answered (else after an hour), on a rate change and on going to the background; kept every
   5 s; a kill's open span is recovered at launch. Beyond the phone's rules: a deliberate move
   nothing was heard after (`Spans.isBareMove`, a stop under a second behind a seek) gives the next

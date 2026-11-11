@@ -201,6 +201,10 @@ const downloadedEntry = (): DownloadEntry => ({
   },
 });
 
+/** The save loop's pace for a book this device holds (`saveIntervalMs`); a streamed one
+ * saves every 15 s. */
+const LOCAL_SAVE_MS = 60_000;
+
 const snap = (state: PlaybackState, trackIndex: number, position: number): PlaybackSnapshot => ({
   state,
   trackIndex,
@@ -266,14 +270,15 @@ describe('the replay guard on the PUT path', () => {
     mockSettled.clear();
   });
 
-  async function playedTwoSaves(outcome: string) {
+  /** `tick`: the save loop's pace for the book (`LOCAL_SAVE_MS` for a downloaded one). */
+  async function playedTwoSaves(outcome: string, tick = 15_000) {
     mockSaveProgress.mockResolvedValueOnce(outcome as never);
     pushSnapshot(snap('playing', 0, 5));
     await settle();
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(tick);
     await settle();
     pushSnapshot(snap('playing', 0, 25));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(tick);
     await settle();
   }
 
@@ -349,7 +354,7 @@ describe('the replay guard on the PUT path', () => {
       entries: { [`c1:2:${folder}`]: downloadedEntry() },
     });
     await start();
-    await playedTwoSaves('queued');
+    await playedTwoSaves('queued', LOCAL_SAVE_MS);
     expect(guards()).toEqual([true, true]);
   });
 
@@ -366,7 +371,7 @@ describe('the replay guard on the PUT path', () => {
     });
     expect(adopted).toBe(true);
     pushSnapshot(snap('playing', 0, 25));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
     await settle();
     expect(guards()).toEqual([true]);
   });
@@ -959,20 +964,38 @@ describe('a span opens whenever the book plays', () => {
       to_pos: number;
     };
 
-  it('a play the engine reports while the load holds the place opens its span on the next tick', async () => {
+  // The 5 s keep opens it (`keepOpenSpan`), not the save loop's tick, which may be a minute
+  // away (`saveIntervalMs`): what plays before a span opens is in no listening event.
+  it('a play the engine reports while the load holds the place opens its span within the keep', async () => {
     (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
       pushSnapshot(snap('playing', 0, 5)); // Android keeps playWhenReady through a load
     });
     await start();
     pushSnapshot(snap('playing', 0, 8));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(5_000);
     await settle();
     pushSnapshot(snap('paused', 0, 25));
     await settle();
     expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 8, 25]]);
   });
 
-  it('a server that takes listening events only since the book began gets a span from the next tick', async () => {
+  it('a play on its way to a pause opens none: the pause is asked for, the engine yet to report it', async () => {
+    (mockSvc.load as jest.Mock).mockImplementationOnce(async () => {
+      pushSnapshot(snap('playing', 0, 5));
+    });
+    await start();
+    pushSnapshot(snap('playing', 0, 8));
+    // As a tab that gives way does: the intent dropped and the engine told to pause, its
+    // snapshot still `playing` (a Cast receiver takes a second or two to confirm).
+    await usePlayer.getState().toggle();
+    jest.advanceTimersByTime(5_000);
+    await settle();
+    pushSnapshot(snap('paused', 0, 9));
+    await settle();
+    expect(mockClosed).toEqual([]);
+  });
+
+  it('a server that takes listening events only since the book began gets a span within the keep', async () => {
     mockSync = false;
     await start();
     pushSnapshot(snap('playing', 0, 5));
@@ -980,7 +1003,7 @@ describe('a span opens whenever the book plays', () => {
     jest.advanceTimersByTime(15_000); // a PUT save
     mockSync = true; // its `/server` was read while the book played
     pushSnapshot(snap('playing', 0, 30));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(5_000);
     await settle();
     pushSnapshot(snap('paused', 0, 40));
     await settle();

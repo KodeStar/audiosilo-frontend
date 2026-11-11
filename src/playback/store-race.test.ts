@@ -49,6 +49,8 @@ jest.mock('./service', () => ({ createPlaybackService: () => mockCreate() }));
 const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
+  // This device's own record between two saves (`placeLoop`).
+  writeMirror: jest.fn(async () => {}),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),

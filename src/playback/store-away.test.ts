@@ -1,0 +1,803 @@
+import { act, renderHook } from '@testing-library/react-native';
+
+import type { Book, ChaptersResponse } from '@/api/types';
+
+import type { OpenSpan } from './listening-outbox';
+import type { PlayingClaim } from './playing-claim';
+import type { ResumeLookup } from './progress-sync';
+import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
+
+// The store while the app is away (perf P4). The periodic save's pace (`saveIntervalMs`):
+// every 15 s while the app is in front and the playing file streams, every 60 s with the app
+// away or the file on this device, switched mid-play with no save dropped or doubled, and
+// never slowing a save that goes at once. That pace is the network's (the PUT, the span
+// cut): this device's own record of the place, the mirror, is written every 15 s whatever
+// it is (`placeLoop`). And what `usePlayer`, the hook, shows off screen
+// (`quietOffScreen`): no tick of the place, everything else at once, while the store's own
+// logic goes on reading the live state. The engine is a fake whose snapshots a test pushes,
+// about once a second as a real one does; the app's state is the test's.
+
+let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
+let mockCasting = false;
+const mockSvc = {
+  onRemoteSeek: jest.fn(),
+  onRemoteMove: jest.fn(),
+  onRateChange: jest.fn(),
+  onSilenceSaved: jest.fn(),
+  setup: jest.fn(async () => {}),
+  configure: jest.fn(async () => {}),
+  load: jest.fn(async () => {}),
+  play: jest.fn(async () => {}),
+  pause: jest.fn(async () => {}),
+  seekTo: jest.fn(async () => {}),
+  skipToTrack: jest.fn(async () => {}),
+  setRate: jest.fn(async () => {}),
+  setVolume: jest.fn(async () => {}),
+  reset: jest.fn(async () => {}),
+  isCasting: () => mockCasting,
+  getSnapshot: jest.fn(() => ({ ...INITIAL })),
+  subscribe: jest.fn((listener: (s: PlaybackSnapshot) => void) => {
+    pushSnapshot = listener;
+    return () => {};
+  }),
+} as unknown as PlaybackService;
+
+const INITIAL: PlaybackSnapshot = {
+  state: 'idle',
+  trackIndex: 0,
+  position: 0,
+  duration: 0,
+  rate: 1,
+};
+
+jest.mock('./service', () => ({ createPlaybackService: () => mockSvc }));
+
+/** When each save went to the server (the PUT path's `saveProgress`). */
+const mockSaves: number[] = [];
+/** The whole-book place each of them saved. */
+const mockSavedAt: number[] = [];
+/** When this device's own record of the place was written (the mirror: `writeMirror`, and
+ * inside every `saveProgress`), and the place each wrote. */
+const mockMirror: number[] = [];
+const mockMirrorAt: number[] = [];
+/** The mirror's record as a kill would leave it: the last one written before `mockKilled`. */
+let mockDisk: MirrorRecord | null = null;
+let mockKilled = false;
+type MirrorRecord = { position: number; updated_at: string; playback_speed: number };
+const mockNoteMirror = (save: MirrorRecord) => {
+  if (mockKilled) return;
+  mockMirror.push(Date.now());
+  mockMirrorAt.push(save.position);
+  mockDisk = save;
+};
+const mockNoteSave = (save: MirrorRecord) => {
+  if (mockKilled) return;
+  mockSaves.push(Date.now());
+  mockSavedAt.push(save.position);
+  mockNoteMirror(save);
+};
+const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<ResumeLookup> => ({
+  kind: 'empty',
+}));
+jest.mock('./progress-sync', () => ({
+  saveProgress: jest.fn(async (_api: unknown, save: MirrorRecord) => {
+    mockNoteSave(save);
+    return 'saved';
+  }),
+  writeMirror: jest.fn(async (save: MirrorRecord) => mockNoteMirror(save)),
+  ackVersion: jest.fn(async () => {}),
+  flushQueue: jest.fn(async () => {}),
+  flushConnection: jest.fn(async () => {}),
+  getDeviceId: jest.fn(async () => 'dev-1'),
+  cachedDeviceId: () => 'dev-1',
+  loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
+  readMirror: jest.fn(async () => null),
+  guardSettled: () => false,
+}));
+
+let mockSync = false;
+/** When each span was closed into the outbox (a cut, a pause). */
+const mockCuts: number[] = [];
+/** When the open span was stored (the 5 s keeper). */
+const mockKept: number[] = [];
+jest.mock('./listening-outbox', () => {
+  const actual = jest.requireActual('./listening-outbox');
+  return {
+    spanToEvent: actual.spanToEvent,
+    finishEvent: actual.finishEvent,
+    newEventId: actual.newEventId,
+    usesListeningSync: () => mockSync,
+    closeSpan: jest.fn(async (_span: OpenSpan) => {
+      mockCuts.push(Date.now());
+    }),
+    storeOpenSpan: jest.fn(async () => {
+      mockKept.push(Date.now());
+      return null;
+    }),
+    appendEvents: jest.fn(async () => {}),
+    flushOutbox: jest.fn(async () => {}),
+    sendOnPageHide: jest.fn(),
+    withdrawFinish: jest.fn(async () => ({ unsent: true, restore: async () => {} })),
+  };
+});
+
+jest.mock('./time-saved', () => ({ noteSilenceSaved: jest.fn(), flushTimeSaved: jest.fn() }));
+/** Another tab's claim, as this tab hears it (the web's channel between tabs is not here). */
+let mockHearClaim: (claim: PlayingClaim) => void = () => {};
+jest.mock('./playing-claim', () => ({
+  ...jest.requireActual('./playing-claim'),
+  tabClaims: () => ({
+    tab: 'tab-a',
+    announce: (connectionId: string, askedAt: number) => ({
+      connectionId,
+      tab: 'tab-a',
+      askedAt,
+      sentAt: Date.now(),
+    }),
+    answer: jest.fn(),
+    subscribe: (listener: (claim: PlayingClaim) => void) => {
+      mockHearClaim = listener;
+      return () => {};
+    },
+  }),
+}));
+jest.mock('@/api/provider', () => ({
+  queryClient: {
+    invalidateQueries: jest.fn(),
+    setQueryData: jest.fn(),
+    setQueryDefaults: jest.fn(),
+    fetchQuery: jest.fn(async () => ({})),
+    getQueryData: jest.fn(() => undefined),
+    cancelQueries: jest.fn(async () => {}),
+  },
+}));
+jest.mock('@/lib/network', () => ({ canAutoDownload: jest.fn(() => Promise.resolve(false)) }));
+const mockClient = {
+  coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+  streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
+  authHeaders: () => ({ Authorization: 'Bearer x' }),
+  addHistory: jest.fn(async () => {}),
+};
+jest.mock('@/api/connection-clients', () => ({
+  resolveClient: () => mockClient,
+  sessionReady: jest.fn(() => true),
+}));
+
+/* eslint-disable import/first */
+import * as reachability from '@/api/reachability';
+import { useDownloads } from '@/downloads/store';
+import type { DownloadEntry } from '@/downloads/types';
+import { useSettings } from '@/stores/settings';
+import { driveAppState } from '@/testing/app-state';
+
+import { selectBookPosition, selectCurrentChapter, selectIsPlaying, usePlayer } from './store';
+/* eslint-enable import/first */
+
+// The app's state: the store began watching it as it was imported.
+const { becomes: appBecomes } = driveAppState();
+
+const folder = 'A/Folder';
+const files = ['A/Folder/1.mp3', 'A/Folder/2.mp3'];
+const chapters: ChaptersResponse = {
+  library_id: 2,
+  path: folder,
+  duration: 2000,
+  is_folder: true,
+  files: files.map((rel_path, seq) => ({ rel_path, seq, duration: 1000, format: 'mp3', size: 1 })),
+  chapters: files.map((file_path, index) => ({
+    index,
+    title: `Chapter ${index + 1}`,
+    file_index: index,
+    file_path,
+    start: 0,
+    end: 1000,
+    book_offset: index * 1000,
+  })),
+};
+const book: Book = {
+  id: 1,
+  library_id: 2,
+  rel_path: folder,
+  is_folder: true,
+  title: 'A Book',
+  author: 'Author',
+  series: '',
+  series_index: 0,
+  narrator: '',
+  duration: 2000,
+  format: 'mp3',
+  size: 0,
+};
+
+/** The book's download: every file, or only `held`. */
+const downloaded = (held = files): DownloadEntry => ({
+  connectionId: 'c1',
+  libraryId: 2,
+  path: folder,
+  title: 'A Book',
+  status: 'downloaded',
+  progress: 1,
+  bytes: 0,
+  totalBytes: 0,
+  manifest: {
+    book,
+    chapters,
+    files: held.map((relPath) => ({ relPath, localUri: `file:///d/${relPath}` })),
+    coverUri: 'file:///d/cover.jpg',
+    savedAt: '2026-01-01T00:00:00.000Z',
+  },
+});
+
+const snap = (state: PlaybackState, trackIndex: number, position: number): PlaybackSnapshot => ({
+  state,
+  trackIndex,
+  position,
+  duration: 1000,
+  rate: 1,
+});
+
+async function settle(turns = 8) {
+  for (let i = 0; i < turns; i++) await Promise.resolve();
+}
+
+/** Where the fake engine is. */
+let track = 0;
+let position = 0;
+/** When the book began to play: the times below are seconds since. */
+let began = 0;
+
+/** Start the book playing at 5 s of its first file. */
+async function play() {
+  await usePlayer.getState().playBook('c1', 2, book, chapters, 5);
+  await settle();
+  track = 0;
+  position = 5;
+  pushSnapshot(snap('playing', track, position));
+  await settle();
+  began = Date.now();
+  mockSaves.length = 0;
+  mockSavedAt.length = 0;
+  mockMirror.length = 0;
+  mockMirrorAt.length = 0;
+  mockCuts.length = 0;
+  mockKept.length = 0;
+}
+
+/** `seconds` of playing: the clock, the JS timers and an engine event each second. With
+ * `timers: false` only the events come (Android, the screen off: its JS timers paused). */
+async function played(seconds: number, { timers = true } = {}) {
+  for (let i = 0; i < seconds; i++) {
+    if (timers) jest.advanceTimersByTime(1_000);
+    else jest.setSystemTime(Date.now() + 1_000);
+    position += 1;
+    pushSnapshot(snap('playing', track, position));
+    await settle();
+  }
+}
+
+/** The app's state changes, and what that sets off settles. */
+async function appGoes(state: 'active' | 'background') {
+  appBecomes(state);
+  await settle();
+}
+
+/** The book's download is on this device: every file, or only `held`. */
+const hold = (held = files) =>
+  useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded(held) } });
+
+/** Seconds into the play of each time in `times`. */
+const at = (times: number[]) => times.map((t) => Math.round((t - began) / 1_000));
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.useFakeTimers();
+  mockSync = false;
+  mockCasting = false;
+  mockKilled = false;
+  mockDisk = null;
+  mockLoadInitialProgress.mockResolvedValue({ kind: 'empty' });
+  useSettings.setState({ autoDownloadNext: 'never' });
+  usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL }, rate: 1 });
+  useDownloads.setState({ entries: {} });
+});
+
+afterEach(async () => {
+  // In `act`: a reader a test mounted is shown both.
+  await act(async () => {
+    await usePlayer.getState().stop();
+    // Back in front for the next test, with nothing playing to save.
+    appBecomes('active');
+  });
+  jest.clearAllTimers();
+  jest.useRealTimers();
+});
+
+describe('the pace of the periodic save', () => {
+  it('is 15 s for a streamed book with the app in front', async () => {
+    await play();
+    await played(60);
+    expect(at(mockSaves)).toEqual([15, 30, 45, 60]);
+  });
+
+  it('is 60 s with the app in the background, after a save as it leaves', async () => {
+    await play();
+    await played(20);
+    await appGoes('background');
+    await played(125);
+    // 15: the last at the faster pace. 20: leaving. Then a minute apart, counted from there.
+    expect(at(mockSaves)).toEqual([15, 20, 80, 140]);
+  });
+
+  it("counts iOS's inactive on the way to the background as one leaving", async () => {
+    await play();
+    await played(10);
+    appBecomes('inactive');
+    await appGoes('background');
+    await played(60);
+    expect(at(mockSaves)).toEqual([10, 70]);
+  });
+
+  it('keeps the 60 s pace from engine events alone (no JS timer fires)', async () => {
+    await play();
+    await appGoes('background');
+    await played(180, { timers: false });
+    expect(at(mockSaves)).toEqual([0, 60, 120, 180]);
+  });
+
+  it('keeps the pace through a buffer (a play back from `loading` does not re-base it)', async () => {
+    await play();
+    await appGoes('background');
+    // A moment of buffering every 40 s (a rebuffer, the web's next file): were each play
+    // after it a new start of the loop, no save would ever be due.
+    for (let i = 0; i < 3; i++) {
+      await played(40);
+      pushSnapshot(snap('loading', track, position));
+      await settle();
+      pushSnapshot(snap('playing', track, position));
+      await settle();
+    }
+    expect(at(mockSaves)).toEqual([0, 60, 120]);
+  });
+
+  it('saves at once on coming back when the faster pace already owes one', async () => {
+    await play();
+    await appGoes('background');
+    await played(40);
+    expect(at(mockSaves)).toEqual([0]);
+    await appGoes('active');
+    expect(at(mockSaves)).toEqual([0, 40]);
+    await played(30);
+    expect(at(mockSaves)).toEqual([0, 40, 55, 70]);
+  });
+
+  it('does not save twice on coming back soon after a save', async () => {
+    await play();
+    await played(10);
+    await appGoes('background'); // a save at 10
+    await played(5);
+    await appGoes('active');
+    await played(25);
+    // 15 s after the save made on leaving, not at the return and not at the old phase.
+    expect(at(mockSaves)).toEqual([10, 25, 40]);
+  });
+
+  it('is 60 s for a downloaded book, in front too', async () => {
+    hold();
+    await play();
+    expect(usePlayer.getState().nowPlaying!.queue.tracks.every((t) => t.local)).toBe(true);
+    await played(120);
+    expect(at(mockSaves)).toEqual([60, 120]);
+  });
+
+  it('follows the playing file: 60 s in one this device holds, 15 s in one that streams', async () => {
+    // Only the first file is held: the second streams.
+    hold([files[0]]);
+    await play();
+    expect(usePlayer.getState().nowPlaying!.queue.tracks.map((t) => !!t.local)).toEqual([
+      true,
+      false,
+    ]);
+    await played(70);
+    expect(at(mockSaves)).toEqual([60]);
+    // The engine goes on to the next file: 15 s from the last save, so at once here.
+    track = 1;
+    position = 0;
+    await played(40);
+    expect(at(mockSaves)).toEqual([60, 75, 90, 105]);
+  });
+
+  it('slows to 60 s from the last save when the playing book moves onto its download', async () => {
+    await play();
+    await played(20);
+    expect(at(mockSaves)).toEqual([15]);
+    hold();
+    await settle();
+    expect(usePlayer.getState().nowPlaying!.queue.tracks.every((t) => t.local)).toBe(true);
+    mockSaves.length = 0; // whatever the swap itself saved
+    await played(130);
+    const gaps = mockSaves.slice(1).map((t, i) => Math.round((t - mockSaves[i]) / 1_000));
+    expect(mockSaves.length).toBeGreaterThan(1);
+    expect(gaps.every((gap) => gap === 60)).toBe(true);
+  });
+
+  it('stays at 15 s for a downloaded book played on a Cast receiver', async () => {
+    hold();
+    mockCasting = true;
+    await play();
+    await played(30);
+    expect(at(mockSaves)).toEqual([15, 30]);
+  });
+});
+
+describe("this device's own record of the place (the mirror)", () => {
+  it('is written every 15 s on a legacy server while the PUT waits its minute, app away', async () => {
+    await play();
+    await appGoes('background'); // the save on leaving: a PUT, and the mirror with it
+    await played(60);
+    expect(at(mockMirror)).toEqual([0, 15, 30, 45, 60]);
+    expect(at(mockSaves)).toEqual([0, 60]);
+    // The place each wrote is the engine's then, never an older one.
+    expect(mockMirrorAt).toEqual([5, 19, 34, 49, 64]);
+  });
+
+  it('is written every 15 s on a legacy server for a downloaded book in front', async () => {
+    hold();
+    await play();
+    await played(120);
+    expect(at(mockMirror)).toEqual([15, 30, 45, 60, 75, 90, 105, 120]);
+    expect(at(mockSaves)).toEqual([60, 120]);
+  });
+
+  it('is written once, by the save, when the save itself runs every 15 s', async () => {
+    await play();
+    await played(60);
+    expect(at(mockSaves)).toEqual([15, 30, 45, 60]);
+    expect(at(mockMirror)).toEqual([15, 30, 45, 60]);
+  });
+
+  it('is written once per save when an engine event ran the save before it', async () => {
+    await play();
+    // The engine's events land 50 ms before each whole second, so the first save is an
+    // event's (inside the ticker's slack) and `placeLoop`, re-based by it, comes due a moment
+    // before the save's own interval: the save goes in its place, not after it.
+    jest.advanceTimersByTime(950);
+    await played(45);
+    expect(at(mockSaves)).toEqual([15, 30, 45]);
+    expect(at(mockMirror)).toEqual([15, 30, 45]);
+  });
+
+  it('keeps its 15 s from engine events alone (no JS timer fires)', async () => {
+    await play();
+    await appGoes('background');
+    await played(120, { timers: false });
+    expect(at(mockMirror)).toEqual([0, 15, 30, 45, 60, 75, 90, 105, 120]);
+    expect(at(mockSaves)).toEqual([0, 60, 120]);
+  });
+
+  it('is due 15 s after a save made on leaving, not at the old phase', async () => {
+    hold();
+    await play();
+    await played(10);
+    await appGoes('background'); // a save at 10
+    await played(60);
+    expect(at(mockMirror)).toEqual([10, 25, 40, 55, 70]);
+    expect(at(mockSaves)).toEqual([10, 70]);
+  });
+
+  it('queues its capture for a legacy server that is away: no request either way', async () => {
+    const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+    try {
+      hold();
+      await play();
+      await played(60);
+      // `saveProgress` writes the mirror and queues the save without a request while its
+      // server is unreachable, so the queue holds the place the mirror does.
+      expect(at(mockSaves)).toEqual([15, 30, 45, 60]);
+      expect(at(mockMirror)).toEqual([15, 30, 45, 60]);
+    } finally {
+      reach.mockRestore();
+    }
+  });
+
+  it('stops with the book: nothing is written after a pause', async () => {
+    hold();
+    await play();
+    await played(20);
+    pushSnapshot(snap('paused', track, position));
+    await settle();
+    expect(at(mockMirror)).toEqual([15, 20]);
+    jest.advanceTimersByTime(120_000);
+    await settle();
+    expect(at(mockMirror)).toEqual([15, 20]);
+  });
+
+  // The web's tab rule (`behindOtherTab`): its place dated now would be the newest in the
+  // mirror the tabs share, over the tab that plays.
+  it.each([
+    ['a legacy server', false],
+    ['a Sync v2 server', true],
+  ])(
+    "writes nothing of a tab's own place once another tab plays, at either pace (%s)",
+    async (_name, sync) => {
+      mockSync = sync;
+      hold();
+      await play();
+      await played(20);
+      expect(at(mockMirror)).toEqual([15]);
+      // Another tab plays the connection: this one gives way, saving the place it stops at.
+      // Its engine has not reported the pause yet, so its loops still run.
+      mockHearClaim({
+        connectionId: 'c1',
+        tab: 'tab-b',
+        askedAt: Date.now() + 1,
+        sentAt: Date.now(),
+      });
+      await settle();
+      expect(mockSvc.pause).toHaveBeenCalled();
+      expect(at(mockMirror)).toEqual([15, 20]);
+      mockCuts.length = 0;
+      await played(120);
+      expect(at(mockMirror)).toEqual([15, 20]);
+      expect(mockMirrorAt).toEqual([19, 25]);
+      expect(mockCuts).toEqual([]);
+    },
+  );
+
+  describe('on a Sync v2 server', () => {
+    beforeEach(() => {
+      mockSync = true;
+    });
+
+    it('is written every 15 s while the span is cut once a minute, app away', async () => {
+      await play();
+      await appGoes('background');
+      await played(60);
+      expect(at(mockMirror)).toEqual([0, 15, 30, 45, 60]);
+      expect(at(mockCuts)).toEqual([60]);
+      // Nothing goes by the legacy PUT here.
+      expect(mockSaves).toEqual([]);
+    });
+
+    it('is written every 15 s for a downloaded book in front, the cut once a minute', async () => {
+      hold();
+      await play();
+      await played(120);
+      expect(at(mockMirror)).toEqual([15, 30, 45, 60, 75, 90, 105, 120]);
+      expect(at(mockCuts)).toEqual([60, 120]);
+    });
+
+    it('is written once per cut when the cut itself runs every 15 s', async () => {
+      await play();
+      await played(60);
+      expect(at(mockCuts)).toEqual([15, 30, 45, 60]);
+      expect(at(mockMirror)).toEqual([15, 30, 45, 60]);
+    });
+
+    it.each([1, 2])(
+      'a kill at 59 s then a start offline resumes at most 15 s of playing back (speed %sx)',
+      async (speed) => {
+        hold();
+        await play();
+        // The engine's place moves `speed` book seconds a second.
+        usePlayer.setState({ rate: speed });
+        for (let i = 0; i < 59; i++) {
+          jest.advanceTimersByTime(1_000);
+          position += speed;
+          pushSnapshot({ ...snap('playing', track, position), rate: speed });
+          await settle();
+        }
+        // No cut yet: the server holds nothing of this minute, and offline it could not
+        // be asked anyway.
+        expect(mockCuts).toEqual([]);
+        const killedAt = position;
+        // The kill: nothing written from here on reaches storage.
+        mockKilled = true;
+        const disk = mockDisk!;
+        expect(disk).not.toBeNull();
+
+        // The next launch, offline: the resume has only this device's mirror to go by.
+        mockLoadInitialProgress.mockResolvedValue({
+          kind: 'progress',
+          progress: {
+            library_id: 2,
+            path: folder,
+            position: disk.position,
+            duration: 2000,
+            finished: false,
+            playback_speed: disk.playback_speed,
+            version: 0,
+            device_id: 'dev-1',
+            updated_at: disk.updated_at,
+          },
+          unchecked: true,
+        });
+        (mockSvc.load as jest.Mock).mockClear();
+        await usePlayer.getState().playBook('c1', 2, book, chapters);
+        await settle();
+        const [, index, resumedAt] = (mockSvc.load as jest.Mock).mock.calls.at(-1)!;
+        expect(index).toBe(0);
+        // 15 s of playing: 15 book seconds at 1x, 30 at 2x (the minute's pace: 60 and 120,
+        // the second over the server's 60 s `resume_behind` backstop).
+        expect(killedAt - resumedAt).toBeGreaterThanOrEqual(0);
+        expect(killedAt - resumedAt).toBeLessThanOrEqual(15 * speed);
+      },
+    );
+  });
+});
+
+describe('saves that go at once, whatever the pace', () => {
+  it('saves a pause in the background at once, and nothing after it', async () => {
+    await play();
+    await appGoes('background');
+    await played(7);
+    pushSnapshot(snap('paused', track, position));
+    await settle();
+    expect(at(mockSaves)).toEqual([0, 7]);
+    jest.advanceTimersByTime(120_000);
+    await settle();
+    expect(at(mockSaves)).toEqual([0, 7]);
+  });
+
+  it('saves a seek and a stop in the background at once', async () => {
+    await play();
+    await appGoes('background');
+    await played(3);
+    await usePlayer.getState().seekBook(500);
+    await settle();
+    expect(at(mockSaves)).toEqual([0, 3]);
+    await usePlayer.getState().stop();
+    await settle();
+    expect(at(mockSaves).slice(0, 3)).toEqual([0, 3, 3]);
+  });
+
+  it('saves nothing as the app leaves with the book paused', async () => {
+    await play();
+    await played(5);
+    pushSnapshot(snap('paused', track, position));
+    await settle();
+    mockSaves.length = 0;
+    await appGoes('background');
+    await appGoes('active');
+    expect(mockSaves).toEqual([]);
+  });
+});
+
+describe('the Sync v2 span cut', () => {
+  beforeEach(() => {
+    mockSync = true;
+  });
+
+  it('follows the pace: every 15 s in front, every 60 s away', async () => {
+    await play();
+    await played(60);
+    expect(at(mockCuts)).toEqual([15, 30, 45, 60]);
+    mockCuts.length = 0;
+    await appGoes('background'); // the cut on leaving is `listening-sync.ts`'s, not wired here
+    await played(120);
+    expect(at(mockCuts)).toEqual([120, 180]);
+  });
+
+  it('still stores the open span every 5 s in the background', async () => {
+    await play();
+    await appGoes('background');
+    await played(60);
+    // A kill loses at most 5 s of listening, as before: 12 keeps in the minute between cuts.
+    expect(mockKept).toHaveLength(12);
+    expect(at(mockCuts)).toEqual([60]);
+  });
+});
+
+describe('what the hook shows off screen', () => {
+  /** A component reading the place, the chapter and whether it plays, and its renders. */
+  async function reader() {
+    let renders = 0;
+    const hook = await renderHook(() => {
+      renders++;
+      return {
+        position: usePlayer(selectBookPosition),
+        chapter: usePlayer(selectCurrentChapter)?.index ?? null,
+        playing: usePlayer(selectIsPlaying),
+        file: usePlayer((s) => s.snapshot.trackIndex),
+      };
+    });
+    return { shown: () => hook.result.current, renders: () => renders };
+  }
+  /** `played`, inside React's `act` so a mounted reader renders what it is shown. */
+  const playedShown = (seconds: number) => act(() => played(seconds));
+  const appShown = (state: 'active' | 'background') => act(() => appGoes(state));
+
+  it('redraws the place every second in front', async () => {
+    await play();
+    const { shown, renders } = await reader();
+    const before = renders();
+    await playedShown(10);
+    expect(shown().position).toBe(15);
+    expect(renders() - before).toBe(10);
+  });
+
+  it('redraws nothing while the book plays in the background, then the live place at once', async () => {
+    await play();
+    const { shown, renders } = await reader();
+    await appShown('background');
+    const before = renders();
+    // Other readers of the store (the car, the widgets) hear every tick as before.
+    const heard = jest.fn();
+    const stop = usePlayer.subscribe(heard);
+    await playedShown(120);
+    stop();
+    expect(renders()).toBe(before);
+    expect(shown().position).toBe(5);
+    expect(selectBookPosition(usePlayer.getState())).toBe(125);
+    expect(heard.mock.calls.length).toBeGreaterThanOrEqual(120);
+
+    await appShown('active');
+    expect(shown().position).toBe(125);
+    expect(renders()).toBe(before + 1);
+    await playedShown(1);
+    expect(shown().position).toBe(126);
+  });
+
+  it('saves the live place, not the one shown, while off screen', async () => {
+    await play();
+    const { shown } = await reader();
+    await appShown('background'); // a save at 5
+    await playedShown(60);
+    expect(shown().position).toBe(5);
+    // The minute's save took the engine's place (the timer fires just before the 65th
+    // second's event here), a minute on from the 5 the screen still shows.
+    expect(mockSavedAt).toEqual([5, 64]);
+  });
+
+  it('shows a pause in the background at once, at the place it paused', async () => {
+    await play();
+    const { shown } = await reader();
+    await appShown('background');
+    await playedShown(30);
+    expect(shown()).toMatchObject({ position: 5, playing: true });
+    await act(async () => {
+      pushSnapshot(snap('paused', track, position));
+      await settle();
+    });
+    expect(shown()).toMatchObject({ position: 35, playing: false });
+  });
+
+  it('shows the next file in the background, and the chapter with it', async () => {
+    await play();
+    const { shown } = await reader();
+    await appShown('background');
+    await playedShown(20);
+    expect(shown()).toMatchObject({ file: 0, chapter: 0, position: 5 });
+    track = 1;
+    position = 0;
+    await playedShown(1);
+    expect(shown()).toMatchObject({ file: 1, chapter: 1, position: 1001 });
+    await playedShown(10);
+    expect(shown().position).toBe(1001);
+  });
+
+  it('shows the end of the book in the background (what starts the next one)', async () => {
+    await play();
+    const ended = await renderHook(() => usePlayer((s) => s.snapshot.state === 'ended'));
+    await appShown('background');
+    await playedShown(5);
+    await act(async () => {
+      pushSnapshot(snap('ended', 1, 1000));
+      await settle();
+    });
+    expect(ended.result.current).toBe(true);
+  });
+
+  it('shows another book loading in the background', async () => {
+    await play();
+    const title = await renderHook(() => usePlayer((s) => s.nowPlaying?.title ?? null));
+    await appShown('background');
+    await playedShown(3);
+    await act(async () => {
+      await usePlayer
+        .getState()
+        .playBook('c1', 2, { ...book, rel_path: 'B/Other', title: 'Another' }, undefined, 0);
+      await settle();
+    });
+    expect(title.result.current).toBe('Another');
+  });
+});

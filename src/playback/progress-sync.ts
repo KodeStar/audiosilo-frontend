@@ -14,6 +14,7 @@ import {
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { FINISHED_TOLERANCE } from './book-queue';
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
 import { hasStoredSkews, readStoredSkews } from './stored-skews';
@@ -552,6 +553,41 @@ export async function updateMirror(
   });
 }
 
+/**
+ * Bring a book's mirror record up to the end of a span a kill left open
+ * (`recoverOpenSpan`): the open span is stored every 5 s while the book plays and the
+ * mirror every 15 s, so the span's end is this device's later word on the place, and a
+ * start with only the mirror to go by (offline, a downloaded book) resumes from it.
+ *
+ * It is taken as the capture it would have been at the span's last keep, by the mirror's
+ * own rule (the newest record wins), and no further:
+ * - only a record OLDER than the span's end moves: a place written since stands (the
+ *   listener's own move, which saves at once; another tab's play; a server row read since);
+ * - only FORWARD: a span ending behind the record never moves a place back;
+ * - never a finished book's, and never a book with no record (nothing to bring up).
+ * The record becomes this device's, with the span's file place (fe#188) or none.
+ */
+export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
+  const { pos, file, filePos } = span.to;
+  const endedAt = Date.parse(span.endedAt);
+  if (!Number.isFinite(pos) || !Number.isFinite(endedAt)) return;
+  const deviceId = await getDeviceId();
+  await updateMirror(span.connectionId, span.libraryId, span.path, (record) => {
+    if (record.finished || !(pos > record.position)) return record;
+    if (!(endedAt > Date.parse(record.updated_at))) return record;
+    const { file: _file, file_pos: _filePos, ...kept } = record;
+    return {
+      ...kept,
+      position: pos,
+      finished: record.duration > 0 && pos >= record.duration - FINISHED_TOLERANCE,
+      playback_speed: span.speed > 0 ? span.speed : record.playback_speed,
+      device_id: deviceId,
+      updated_at: span.endedAt,
+      ...(file && Number.isFinite(filePos) ? { file, file_pos: filePos } : {}),
+    };
+  });
+}
+
 /** Acknowledge `version` of a book's server row (Sync v2): the next span sends it as its
  * `base_version`. Never lowers a known acknowledgement. */
 export function ackVersion(
@@ -725,12 +761,12 @@ export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
 export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<SaveOutcome> {
   // Reachability is per-connection: this save's success/failure notes ONLY its own
   // server. A book keeps playing on a connection the user has navigated away from, and
-  // its 15s save loop lands here without touching any other server's state.
+  // its periodic save loop lands here without touching any other server's state.
   // Always record the latest position in the durable mirror, independent of the network
   // outcome - this is what a future resume falls back to when the server can't be reached.
   await writeMirror(save);
   // This server known to be unreachable: queue locally without hitting the network, so
-  // the 15s save loop doesn't fire a doomed request every tick while it's offline.
+  // the periodic save loop doesn't fire a doomed request every tick while it's offline.
   if (!isReachable(save.connectionId)) {
     await enqueue(save);
     return 'queued';

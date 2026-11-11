@@ -193,6 +193,8 @@ keep this index in step (one line per topic).
   - Whole-book timeline
   - Start playback only after chapters/files have loaded
   - Never navigate while the app is in the background
+  - The periodic save's pace
+  - Off screen, a tick is not redrawn
   - Never restart an in-progress book from 0
   - The replay guard (legacy PUT path)
   - A loaded book picks up another device's place
