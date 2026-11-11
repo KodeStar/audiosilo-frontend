@@ -44,8 +44,11 @@ const mockSvc = {
 jest.mock('./service', () => ({ createPlaybackService: () => mockSvc }));
 
 const mockSaveProgress = jest.fn(async (..._args: unknown[]) => {});
+/** This device's own record between two saves (`placeLoop`: the mirror, every 15 s). */
+const mockWriteMirror = jest.fn(async (..._args: unknown[]) => {});
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
+  writeMirror: (...args: unknown[]) => mockWriteMirror(...args),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
@@ -183,7 +186,20 @@ async function flushMicrotasks(turns = 8) {
   for (let i = 0; i < turns; i++) await Promise.resolve();
 }
 
-const savedPaths = () => mockSaveProgress.mock.calls.map((c) => (c[1] as { path: string }).path);
+/** The books (their paths) anything was saved under: the saves, and this device's own
+ * record between them. */
+const savedPaths = () => [
+  ...new Set([
+    ...mockSaveProgress.mock.calls.map((c) => (c[1] as { path: string }).path),
+    ...mockWriteMirror.mock.calls.map((c) => (c[0] as { path: string }).path),
+  ]),
+];
+/** Nothing was saved, and nothing written to this device's own record either: every guard
+ * that holds a save holds the mirror's capture between two saves too. */
+function expectNothingSaved() {
+  expect(mockSaveProgress).not.toHaveBeenCalled();
+  expect(mockWriteMirror).not.toHaveBeenCalled();
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -215,7 +231,7 @@ describe('adoptLoaded', () => {
       expect(await adopting).toBe(false);
       expect(mockSvc.adoptPlace).not.toHaveBeenCalled();
       expect(usePlayer.getState().nowPlaying).toBeNull();
-      expect(mockSaveProgress).not.toHaveBeenCalled();
+      expectNothingSaved();
     } finally {
       resetProfilesForTests();
     }
@@ -407,7 +423,7 @@ describe('adoptLoaded', () => {
     pushSnapshot(snap('playing', 0, 10));
     jest.advanceTimersByTime(LOCAL_SAVE_MS);
     await flushMicrotasks();
-    expect(mockSaveProgress).not.toHaveBeenCalled();
+    expectNothingSaved();
 
     // Within the floor's tolerance it saves (the floor is 145, not 0 and not the end).
     pushSnapshot(snap('playing', 1, 40));
@@ -422,7 +438,7 @@ describe('adoptLoaded', () => {
     await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
     jest.advanceTimersByTime(60_000);
     await flushMicrotasks();
-    expect(mockSaveProgress).not.toHaveBeenCalled();
+    expectNothingSaved();
   });
 
   it('reads a streaming book through the query cache', async () => {
@@ -683,7 +699,7 @@ describe('adoptLoaded', () => {
       // The resume floor moved with it (100 + 30): a stray low place is refused...
       pushSnapshot(snap('playing', 0, 10));
       await saveTick();
-      expect(mockSaveProgress).not.toHaveBeenCalled();
+      expectNothingSaved();
       // ...and a later tick maps through the download's order: B/2 after B/1's 100 s.
       pushSnapshot(snap('playing', 1, 45));
       await saveTick();
@@ -715,7 +731,7 @@ describe('adoptLoaded', () => {
         pushSnapshot(snap('ready', 1, 30));
         pushSnapshot(snap('paused', 1, 30));
         await saveTick();
-        expect(mockSaveProgress).not.toHaveBeenCalled();
+        expectNothingSaved();
         // Its next play is a pick-up, then it saves on the download's timeline.
         pushSnapshot(snap('playing', 1, 31));
         expect(picked).toHaveBeenCalledTimes(1);
@@ -745,7 +761,7 @@ describe('adoptLoaded', () => {
       // The adoption's pause lands: the engine's unchecked place is still not saved.
       pushSnapshot(snap('paused', 1, 31));
       await saveTick();
-      expect(mockSaveProgress).not.toHaveBeenCalled();
+      expectNothingSaved();
     });
 
     it('saves a playing reload once its own play stands after the engine played during its load', async () => {
@@ -823,7 +839,7 @@ describe('adoptLoaded', () => {
       // The resume floor is that place (110): a place more than a minute below is refused...
       pushSnapshot(snap('playing', 0, 40));
       await saveTick();
-      expect(mockSaveProgress).not.toHaveBeenCalled();
+      expectNothingSaved();
       // ...and one at it saves.
       pushSnapshot(snap('playing', 1, 12));
       await saveTick();
@@ -844,7 +860,7 @@ describe('adoptLoaded', () => {
       jest.advanceTimersByTime(3_000);
       await flushMicrotasks();
       expect(usePlayer.getState().snapshot.state).toBe('error');
-      expect(mockSaveProgress).not.toHaveBeenCalled();
+      expectNothingSaved();
     });
 
     it("lands at the engine's file index when an earlier file's length is not known", async () => {
@@ -1038,7 +1054,7 @@ describe('adoptLoaded', () => {
       pushSnapshot(snap('ready', 1, 30));
       pushSnapshot(snap('paused', 1, 30));
       await saveTick();
-      expect(mockSaveProgress).not.toHaveBeenCalled();
+      expectNothingSaved();
       // The listener's own move is a new place: it saves.
       await usePlayer.getState().seekBook(120);
       await flushMicrotasks();
