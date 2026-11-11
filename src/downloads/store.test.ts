@@ -1891,7 +1891,8 @@ describe("refreshing a downloaded book's chapters", () => {
       const e = downloadedEntry();
       const key = downloadKey('c1', 2, 'A/Book');
       useDownloads.setState({ entries: { [key]: e } });
-      answer(fresh(['A/Book/01.mp3', 'A/Book/09.mp3']));
+      // Another file, before the book's last one (which the download holds).
+      answer(fresh(['A/Book/09.mp3', 'A/Book/02.mp3']));
       answer(fresh(), true);
       answer(fresh(), false, ['item', 'c1', 2, 'A/Book']);
       answer(fresh(), false, ['chapters', 'c2', 2, 'A/Book']);
@@ -1900,6 +1901,27 @@ describe("refreshing a downloaded book's chapters", () => {
       useDownloads.setState({ entries: { [key]: queued } });
       answer(fresh());
       expect(useDownloads.getState().entries[key]).toBe(queued);
+    });
+
+    it('keeps whether the download ends before the book does, by each answer (D3, fe#185)', () => {
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [key]: e } });
+      // The server's book now ends with a file the download lacks.
+      answer(fresh(['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3']));
+      const now = useDownloads.getState().entries[key].manifest;
+      expect(now.endsBefore).toBe('A/Book/03.mp3');
+      // Only that: its chapters name other files, so they stay the download's.
+      expect(now.chapters).toBe(e.manifest.chapters);
+      // An intro the download lacks is not an early end.
+      answer(fresh(['A/Book/00.mp3', 'A/Book/01.mp3', 'A/Book/02.mp3']));
+      expect(useDownloads.getState().entries[key].manifest).not.toHaveProperty('endsBefore');
+      // Nor is a book whose server no longer has the file.
+      useDownloads.setState({
+        entries: { [key]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } },
+      });
+      answer(fresh());
+      expect(useDownloads.getState().entries[key].manifest).not.toHaveProperty('endsBefore');
     });
 
     describe('a new file order', () => {

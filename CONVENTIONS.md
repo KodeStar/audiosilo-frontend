@@ -2201,7 +2201,16 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     server's chapters hold it in another order, the queue is built from the server's chapters
     (streaming what the download lacks) and the engine reloaded into it: it streams on, and a
     file the server no longer has is gone from the book. Offline (or no answer), a queue built
-    from a download that lacks files the engine played is partial (`partialQueues`): its end is the downloaded part's, so the engine's `ended` there
+    from a download that ENDS EARLY (it lacks the book's last file, as the engine's order or
+    the server's last answer names it) is partial (`partialQueues`). A download missing only
+    an earlier file (an intro) is not: it holds the book's end, and reaching that end
+    finishes the book as usual (credits, `finish`, the finished save). The fact is kept on
+    the download (`DownloadManifest.endsBefore`: set by every server chapters answer,
+    `startChapterRefresh`, and by an adoption with no answer, `noteDownloadEnd`), so a cold
+    start of it offline (`playBook` from the download's copy) is partial too; and on each
+    capture of the mirror (`ProgressSave.partial`), so a span recovered after a kill in the
+    last seconds (`mirrorSpanEnd`) never makes the record finished. A partial queue's end is
+    the downloaded part's, so the engine's `ended` there
     reads as a pause, never a finish (no credits, no `finish`, no `finished` save), and the
     listener is told "The rest of this book isn't downloaded" (`onPartialDownloadEnd`,
     `partial-download-notice.ts`, shown once the app is looked at; a stop with no listener
@@ -2211,7 +2220,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     attempt, since the ended engine reports no `playing` and the stall watchdog would call
     it an error: the notice again. The end credits' Play now never finishes such a book by
     its place (`selectEndsPartial`): it stops, unfinished. Regression tests:
-    `store-adopt.test.ts`, `end-credits.test.tsx`.
+    `store-adopt.test.ts`, `end-credits.test.tsx`, `listening-outbox.test.ts` (span recovery), `downloads/store.test.ts` (`endsBefore`).
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over the SDK 58
   AppDelegate fixture `plugins/__fixtures__/app-delegate-sdk58.ts` by `withCarPlay.test.ts`).
   The SDK 58 template is already a scene app: its AppDelegate only builds the React Native

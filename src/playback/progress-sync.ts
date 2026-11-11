@@ -68,6 +68,10 @@ export type ProgressSave = {
    * through the new one (fe#188). Mirror only: the legacy PUT never sends it. */
   file?: string;
   file_pos?: number;
+  /** Taken in a queue that ends before its book does (a download lacking the book's last
+   * file, D3, fe#185): its end is not the book's, so a span recovered past it never makes
+   * the record finished (`mirrorSpanEnd`). Mirror only; each capture says it again. */
+  partial?: true;
   /** Sync v2: the server version of this book's progress this device has acknowledged
    * (`listening-outbox.ts`'s ack rule); a listening span sends it as its `base_version`.
    * Mirror only; kept across captures (`writeMirror`). */
@@ -653,7 +657,8 @@ export async function updateMirror(
  * - only a record OLDER than the span's end moves: a place written since stands (the
  *   listener's own move, which saves at once; another tab's play; a server row read since);
  * - only FORWARD: a span ending behind the record never moves a place back;
- * - never a finished book's, and never a book with no record (nothing to bring up).
+ * - never a finished book's, and never a book with no record (nothing to bring up);
+ * - never finished at the end of a queue that ends before its book (`partial`, D3).
  * The record becomes this device's, with the span's file place (fe#188) or none.
  */
 export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
@@ -668,7 +673,9 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
     return {
       ...kept,
       position: pos,
-      finished: record.duration > 0 && pos >= record.duration - FINISHED_TOLERANCE,
+      // A record taken in a queue ending before its book (D3): that end is not the book's.
+      finished:
+        !record.partial && record.duration > 0 && pos >= record.duration - FINISHED_TOLERANCE,
       playback_speed: span.speed > 0 ? span.speed : record.playback_speed,
       device_id: deviceId,
       updated_at: span.endedAt,

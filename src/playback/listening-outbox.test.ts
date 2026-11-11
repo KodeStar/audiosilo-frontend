@@ -423,6 +423,14 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await record()).toMatchObject({ position: 16800, finished: true });
   });
 
+  it('never reads the end of a queue that ends before its book as finished (D3, fe#185)', async () => {
+    // Captured playing a download that lacks the book's last file: its 16803 s are the
+    // downloaded part's, and a kill in its last seconds leaves a span at that end.
+    await writeMirror(capture({ duration: 16803, partial: true }));
+    await relaunch();
+    expect(await record()).toMatchObject({ position: 16800, finished: false, partial: true });
+  });
+
   it("brings the shared record up to a closed tab's span, dated when that tab kept it", async () => {
     const os = Platform.OS;
     Platform.OS = 'web';

@@ -79,6 +79,13 @@ export type DownloadManifest = {
    * this download. Kept when the map is dropped (the EPUB stays the same); absent while no
    * map was ever kept. */
   ebookSha256?: string;
+  /** The book's last file (its rel path), when the download lacks it: the download ends
+   * before the book does (D3, fe#185), so offline its end is a pause, never a finish. A
+   * missing earlier file (an intro) is not this: the download still holds the book's end.
+   * Set by each server chapters answer for the book (`startChapterRefresh`) and by an
+   * adoption whose engine played the book's order (`noteDownloadEnd`); absent when the
+   * download holds the book's end, and on downloads made before it existed. */
+  endsBefore?: string;
   savedAt: string;
   /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
    * Only this marker lives here: the payload (an envelope with its characters and recaps

@@ -580,6 +580,35 @@ export function adoptStartedChapters(ref: BookRef, chapters: ChaptersResponse): 
 }
 
 /**
+ * `manifest` with `endsBefore` set from `order`, the book's files in its server's order:
+ * the last one when the download lacks it (it ends before the book does, D3, fe#185), else
+ * none. The same manifest when nothing changes, and when `order` is empty.
+ */
+export function withBookEnd(
+  manifest: DownloadManifest,
+  order: readonly string[],
+): DownloadManifest {
+  const last = order[order.length - 1];
+  if (last === undefined) return manifest;
+  const endsBefore = manifest.files.some((f) => f.relPath === last) ? undefined : last;
+  if (endsBefore === manifest.endsBefore) return manifest;
+  const { endsBefore: _was, ...rest } = manifest;
+  return endsBefore === undefined ? rest : { ...rest, endsBefore };
+}
+
+/** An adoption with no server answer saw the engine play the book's files in `order`
+ * (`adoptLoadedBook`): the download keeps whether it ends before the book does, so a later
+ * start of it offline (a cold Resume) pauses at that end as the adopted queue did. */
+export function noteDownloadEnd(ref: BookRef, order: readonly string[]): void {
+  const entry = downloadedEntryOf(ref);
+  if (!entry) return;
+  const manifest = withBookEnd(entry.manifest, order);
+  if (manifest === entry.manifest) return;
+  patchEntry(contentKeyOf(ref), { manifest });
+  void persist();
+}
+
+/**
  * `manifest` with the chapters answer the cache already holds for its book, when
  * `refreshedChapters` takes it. `startChapterRefresh` only sees answers that land while the
  * book is downloaded; this takes one that landed before, while it was downloading or before
@@ -621,7 +650,14 @@ export function startChapterRefresh(): () => void {
     if (!book || !fresh) return;
     const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
     const entry = downloadedEntryOf(ref);
-    const manifest = entry && refreshedChapters(entry.manifest, fresh);
+    if (!entry) return;
+    // Whether the download ends before the book does, by every answer (D3): also one
+    // naming files the download lacks, which `refreshedChapters` never takes.
+    const ended = withBookEnd(
+      entry.manifest,
+      bookFileSpecs(entry.manifest.book, fresh).map((f) => f.path),
+    );
+    const manifest = refreshedChapters(ended, fresh) ?? (ended === entry.manifest ? null : ended);
     if (!manifest) return;
     patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out, the start's own

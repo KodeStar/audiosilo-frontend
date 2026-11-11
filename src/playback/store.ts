@@ -18,6 +18,7 @@ import {
   adoptStartedChapters,
   downloadedEntryOf,
   downloadKey,
+  noteDownloadEnd,
   useDownloads,
 } from '@/downloads/store';
 import { isAway, onAppStateEdge } from '@/lib/app-activity';
@@ -518,6 +519,9 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
     // The file place (fe#188), the mirror's only (a PUT never sends it), on both paths: an
     // older capture's file place never outlives the place it was taken at.
     ...(forceFinished || !end?.file ? {} : { file: end.file, file_pos: end.filePos }),
+    // Its queue ends before the book (D3): a span recovered past this save never reads its
+    // end as the book's (`mirrorSpanEnd`).
+    ...(!forceFinished && endsPartial(nowPlaying) ? { partial: true as const } : {}),
     ...(guarded ? { guard: true, guard_session: guard.id } : {}),
   };
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
@@ -1316,7 +1320,7 @@ function giveWayTo(claim: PlayingClaim) {
         path: np.path,
         position: at.pos,
         ...(at.file !== undefined ? { file: at.file, filePos: at.filePos } : {}),
-        finished: total > 0 && at.pos >= total - FINISHED_TOLERANCE,
+        finished: total > 0 && at.pos >= total - FINISHED_TOLERANCE && !endsPartial(np),
       });
     }
   }
@@ -2182,6 +2186,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         useSettings.getState().virtualChapterInterval,
         transcode,
       );
+      // A download that ends before its book does (`endsBefore`, D3, fe#185), played without
+      // the rest (offline, from the download's own copy): its end is a pause, as an adopted
+      // one's (`partialQueues`). A queue streaming the rest from the server holds that file.
+      const endsBefore = local ? dl?.manifest.endsBefore : undefined;
+      if (endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0) {
+        partialQueues.add(queue);
+      }
       const nowPlaying = nowPlayingOf(ref, book, queue, api, local);
       const svc = await ensureService();
 
@@ -2947,10 +2958,14 @@ async function adoptLoadedBook(
     engineIds && otherOrder && !svc.isCasting?.()
       ? landingOf(queue, engineIds, loaded, fileDurations(libraryId, book, chapterData, served))
       : null;
-  // A download that lacks files the engine played, offline or with no answer from the
-  // server: its end is the downloaded part's, not the book's (D3, fe#185). With an answer
-  // the queue holds every file the server has, and one it lacks is gone from the book.
-  const partial = local && !served && !!engineIds?.some((id) => trackIndexById(queue, id) < 0);
+  // A download that lacks the book's last file as the engine played it, offline or with no
+  // answer from the server: its end is the downloaded part's, not the book's (D3, fe#185).
+  // One that lacks only an earlier file (an intro) still ends where the book does. With an
+  // answer the queue holds every file the server has, and one it lacks is gone from the
+  // book. The download keeps the fact for a later start of it (`noteDownloadEnd`).
+  if (local && !served && loaded.files?.length) noteDownloadEnd(ref, loaded.files);
+  const lastId = engineIds?.[engineIds.length - 1];
+  const partial = local && !served && lastId !== undefined && trackIndexById(queue, lastId) < 0;
   if (partial) partialQueues.add(queue);
   // The engine's place is past the downloaded part: it stays paused at that part's end, and
   // the listener is told why (a play there would end at once).

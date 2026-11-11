@@ -7,7 +7,7 @@ import { onPartialDownloadEnd } from './store';
 
 /**
  * "The rest of this book isn't downloaded": the player stopped, paused, at the end of a
- * download that lacks the rest of its book (an adoption offline, D3, fe#185) instead of
+ * download that lacks the book's last file (offline, D3, fe#185) instead of
  * finishing the book. Shown once the app is looked at (the stop usually happens in the
  * background or in the car). Started with the root's services.
  */
