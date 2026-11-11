@@ -16,7 +16,8 @@ import { Platform } from 'react-native';
  * internet down, so whether a server can be reached is that server's to say (by
  * answering), and a Retry stays on screen. React Query pauses its reads by the same
  * signal in the app (`watchDeviceOnline`, wired in `src/api/provider.tsx`; writes are
- * never held there).
+ * never held there), and the API client fails a request at once, unsent, while it reads
+ * false (`ApiClient.send`).
  */
 export function useDeviceOnline(): boolean {
   return useSyncExternalStore(subscribe, readOnline, readOnline);

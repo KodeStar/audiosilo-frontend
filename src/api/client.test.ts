@@ -1,5 +1,10 @@
 import { Platform } from 'react-native';
 
+// The device's network as the system reports it (`isDeviceOnline`); a test turns it off.
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ isDeviceOnline: () => mockDeviceOnline }));
+
+/* eslint-disable import/first */
 import {
   ApiClient,
   ApiError,
@@ -14,6 +19,11 @@ import {
 import type { AddMemberBody, BridgeEstimate, Listing, SidecarsGenerateResult } from '@/api/types';
 import { podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
 import { golden2c3, goldenBytes, goldenError, goldenText } from '@/testing/podcast-fixtures-2c3';
+/* eslint-enable import/first */
+
+afterEach(() => {
+  mockDeviceOnline = true;
+});
 
 type FetchResult = { status: number; body?: unknown };
 
@@ -907,6 +917,38 @@ describe('ApiClient', () => {
     expect(got).toBeInstanceOf(TypeError);
     expect(got).toMatchObject({ name: 'NetworkError', cause: fetchError });
     expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  // iPhone airplane mode: a sent request waited out its timeout, so an offline bookmark said
+  // "couldn't add" 20-30 s after the tap and a downloaded book's start waited.
+  it('fails a request at once, unsent, while the app has no network', async () => {
+    const fetchMock = installFetch(() => ({ status: 201, body: {} }));
+    const onAnswer = jest.fn();
+    mockDeviceOnline = false;
+    const c = new ApiClient('https://h', 'tok', undefined, undefined, onAnswer);
+    const got = await c.addBookmark(1, 'a/b', 12).catch((e: unknown) => e);
+    expect(got).toBeInstanceOf(NetworkError);
+    expect(got).toBeInstanceOf(TypeError); // reachability reads it as no answer
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onAnswer).not.toHaveBeenCalled();
+    // The network back (or unknown, which counts as online): sent as ever.
+    mockDeviceOnline = true;
+    await expect(c.addBookmark(1, 'a/b', 12)).resolves.toBeDefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the web to the browser (its fetch fails at once offline)', async () => {
+    const c = new ApiClient('https://h', 'tok');
+    const was = Platform.OS;
+    (Platform as { OS: string }).OS = 'web';
+    try {
+      const fetchMock = installFetch(() => ({ status: 200, body: { version: '1' } }));
+      mockDeviceOnline = false;
+      await expect(c.serverInfo()).resolves.toBeDefined();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      (Platform as { OS: string }).OS = was;
+    }
   });
 
   it("keeps a caller's cancel as the platform threw it, never a NetworkError", async () => {
