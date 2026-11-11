@@ -1272,8 +1272,13 @@ That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
 gated). Its answer is the place Resume plays from (`bookPlace` in `progress-sync.ts`,
 fe#211: the resume lookup's pick of the server's row and this device's own records, with the
-file place a resume plays, read on the page's chapters through `positionOn`), so the page
+file place a resume plays), so the page
 never shows another device's older row while Resume starts at this device's newer place.
+`useBookProgress` itself hands every caller (the book and episode pages, the end credits,
+the companion, the reveal listener, `usePlaceIn`) its `position` as that file place read on
+the chapters the cache holds (`positionOn` in its `select`, never asking for them; the
+cached entry keeps the record's own seconds), so after a server reorder with an old-order
+download they all show the same place; read `.position`, never the record's raw one.
 A record of this device's reads as version 0 and carries none of the row's own fields, so
 when it is the pick the server's row goes with it (`PlacedProgress.server`, read through
 `serverRowOf`): the book's dates, another device's place to offer (`ListeningOfferLine`) and
