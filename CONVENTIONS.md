@@ -2160,11 +2160,22 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     else (offline, no answer, the server's in another order or with other files than the
     engine's) reloads the engine in the queue's order at the same file (`trackIndexById`) and
     in-file place, or at the same whole-book seconds for a file the queue lacks (short of the
-    queue's end; the engine's file index when an earlier file's length is unknown), the resume
+    queue's end; the engine's file index when an earlier file's length is unknown, the place
+    kept within that file's length), the resume
     floor at that place and the play state kept (`reloadAdopted`: saves and remote moves held
     by `loadingBook` until the load lands, and its place saves nothing until it plays,
     `quietAdopted`; a paused one is paused again once loaded, and a pause while it loads
-    stands). Not while casting (fe#145). Regression tests: `store-adopt.test.ts`.
+    stands). Not while casting (fe#145). **A partial download** (D3, fe#185): online, when the
+    engine plays a file the download lacks and the server's chapters hold it in another order,
+    the queue is built from the server's chapters (streaming what the download lacks) and the
+    engine reloaded into it: it streams on. Offline (or no answer), a queue built from a
+    download that lacks files the engine played (unless the server says they are gone) is
+    partial (`partialQueues`): its end is the downloaded part's, so the engine's `ended` there
+    reads as a pause, never a finish (no credits, no `finish`, no `finished` save), and the
+    listener is told "The rest of this book isn't downloaded" (`onPartialDownloadEnd`,
+    `partial-download-notice.ts`, shown once the app is looked at); a place past that end
+    lands short of it and stays paused, with the same notice. Regression tests:
+    `store-adopt.test.ts`.
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over the SDK 58
   AppDelegate fixture `plugins/__fixtures__/app-delegate-sdk58.ts` by `withCarPlay.test.ts`).
   The SDK 58 template is already a scene app: its AppDelegate only builds the React Native

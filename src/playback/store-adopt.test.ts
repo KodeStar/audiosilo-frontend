@@ -101,7 +101,7 @@ import { setConnectionAliases } from '@/lib/connection-id';
 import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
-import { onPickedUpAgain, usePlayer } from './store';
+import { landingOf, onPartialDownloadEnd, onPickedUpAgain, usePlayer } from './store';
 /* eslint-enable import/first */
 
 function makeBook(p: Partial<Book> = {}): Book {
@@ -846,21 +846,115 @@ describe('adoptLoaded', () => {
       expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 112 });
     });
 
-    it("never lands at the download's end (a place there would finish the book)", async () => {
+    it("stays paused at the downloaded part's end, with the notice, when the place is past it (D3, fe#185)", async () => {
       mockResolveClient.mockReturnValue(null);
       useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      const told = jest.fn();
+      const stopTelling = onPartialDownloadEnd(told);
       // 20 s into B/3, which the download lacks, is 180 s: past its 160.
       await usePlayer
         .getState()
         .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 2, position: 20 }));
-      // Short of the last 5 s (`FINISHED_TOLERANCE`): 154 s is B/2 at 54.
+      // Short of the last 5 s (`FINISHED_TOLERANCE`): 154 s is B/2 at 54, paused there.
       expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 54]);
+      expect(mockSvc.play).not.toHaveBeenCalled();
+      expect(mockSvc.pause).toHaveBeenCalled();
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'paused', trackIndex: 1 });
+      expect(told).toHaveBeenCalledTimes(1);
       mockResolveClient.mockReturnValue(fakeClient);
-      // A reload that never plays gives up into an error, and still saves nothing.
       jest.advanceTimersByTime(3_000);
       await flushMicrotasks();
-      expect(usePlayer.getState().snapshot.state).toBe('error');
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
       expectNothingSaved();
+      stopTelling();
+    });
+
+    it('pauses at the end of a download that lacks the rest of the book, never finishing it (D3, fe#185)', async () => {
+      mockResolveClient.mockReturnValue(null);
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      const told = jest.fn();
+      const stopTelling = onPartialDownloadEnd(told);
+      // Offline in B/1, which the download holds, of an engine order with B/3 too: the
+      // download's queue ends after B/2, short of the book.
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/3.mp3', 'B/1.mp3', 'B/2.mp3'], { trackIndex: 1, position: 30 }));
+      mockResolveClient.mockReturnValue(fakeClient);
+      pushSnapshot(snap('playing', 1, 50));
+      await flushMicrotasks();
+      expect(told).not.toHaveBeenCalled();
+      // The engine reaches the queue's end: a pause there with the notice, not the book's end.
+      pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+      expect(told).toHaveBeenCalledTimes(1);
+      const saves = mockSaveProgress.mock.calls.map((c) => c[1] as { finished: boolean });
+      expect(saves.length).toBeGreaterThan(0);
+      expect(saves.every((save) => !save.finished)).toBe(true);
+      stopTelling();
+    });
+
+    it("streams on, online, in a file the download lacks when the server's order is another (D3, fe#185)", async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      // The server holds B/3 too, first now; the engine played it last.
+      serverAnswers({
+        ...uneven,
+        duration: 180,
+        files: [
+          { rel_path: 'B/3.mp3', seq: 0, duration: 20, format: 'mp3', size: 1 },
+          { ...uneven.files[0], seq: 1 },
+          { ...uneven.files[1], seq: 2 },
+        ],
+      });
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 2, position: 10 }));
+      const [tracks, index, inFile] = (mockSvc.load as jest.Mock).mock.calls[0];
+      expect((tracks as { url: string }[]).map((t) => t.url)).toEqual([
+        'stream:2:B/3.mp3',
+        'file:///d/1.mp3',
+        'file:///d/2.mp3',
+      ]);
+      expect([index, inFile]).toEqual([0, 10]);
+      expect(mockSvc.play).toHaveBeenCalled();
+      // The download keeps its own chapters: it doesn't hold B/3.
+      expect(useDownloads.getState().entries['c1:2:B'].manifest.chapters).toBe(uneven);
+    });
+
+    it("keeps the engine's in-file place within the landing file's length (fe#185)", () => {
+      const queue = {
+        tracks: [{ duration: 100 }, { duration: 60 }],
+        offsets: [0, 100],
+        total: 160,
+      };
+      const ids = (files: string[]) => files.map((f) => `2:${f}`);
+      // B/0's length is known nowhere: index 1 (B/2, 60 s) at the engine's 50 s stands...
+      expect(
+        landingOf(
+          queue as never,
+          ids(['B/0.mp3', 'B/9.mp3']),
+          { trackIndex: 1, position: 50 },
+          new Map(),
+        ),
+      ).toEqual({ index: 1, positionInTrack: 50, beyond: false });
+      // ...90 s into the engine's file is past B/2's 60 s and the queue's end: short of it.
+      expect(
+        landingOf(
+          queue as never,
+          ids(['B/0.mp3', 'B/9.mp3']),
+          { trackIndex: 1, position: 90 },
+          new Map(),
+        ),
+      ).toEqual({ index: 1, positionInTrack: 54, beyond: true });
+      // An index past the queue's files: its last file.
+      expect(
+        landingOf(
+          { ...queue, tracks: [{ duration: 100 }, { duration: 0 }] } as never,
+          ids(['B/0.mp3', 'B/8.mp3', 'B/9.mp3']),
+          { trackIndex: 2, position: 500 },
+          new Map(),
+        ),
+      ).toMatchObject({ index: 1 });
     });
 
     it("lands at the engine's file index when an earlier file's length is not known", async () => {

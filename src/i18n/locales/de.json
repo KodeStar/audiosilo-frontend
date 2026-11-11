@@ -1815,6 +1815,9 @@
     },
     "otherTab": {
       "title": "Wiedergabe in einem anderen Tab"
+    },
+    "partialDownload": {
+      "title": "Der Rest dieses Buchs ist nicht heruntergeladen"
     }
   },
   "reconnect": {

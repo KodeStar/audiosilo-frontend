@@ -1815,6 +1815,9 @@
     },
     "otherTab": {
       "title": "Playing in another tab"
+    },
+    "partialDownload": {
+      "title": "The rest of this book isn't downloaded"
     }
   },
   "reconnect": {

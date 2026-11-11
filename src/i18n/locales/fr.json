@@ -1815,6 +1815,9 @@
     },
     "otherTab": {
       "title": "Lecture dans un autre onglet"
+    },
+    "partialDownload": {
+      "title": "La suite de ce livre n'est pas téléchargée"
     }
   },
   "reconnect": {

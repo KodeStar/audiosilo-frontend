@@ -1815,6 +1815,9 @@
     },
     "otherTab": {
       "title": "In riproduzione in un'altra scheda"
+    },
+    "partialDownload": {
+      "title": "Il resto di questo libro non è scaricato"
     }
   },
   "reconnect": {
