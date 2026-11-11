@@ -2899,10 +2899,10 @@ async function adoptLoadedBook(
   const now = usePlayer.getState();
   if (now.nowPlaying !== before || now.loadingBook !== null || startsInFlight > 0) return false;
 
-  /** Whether `chapters` hold the file with track id `id`. */
-  const holds = (chapters: ChaptersResponse | undefined, id: string) =>
-    specIds(bookFileSpecs(book, chapters), libraryId).includes(id);
-  const playingId = engineIds?.[loaded.trackIndex];
+  /** The track ids of the files `chapters` hold. */
+  const idsIn = (chapters: ChaptersResponse | undefined) =>
+    new Set(specIds(bookFileSpecs(book, chapters), libraryId));
+  const servedIds = served ? idsIn(served) : null;
   if (served && inEngineOrder(served)) {
     // The engine plays the server's order: the queue is built from those chapters, as the lost
     // start built it (the download's files, streaming any it lacks), and the download takes
@@ -2910,12 +2910,14 @@ async function adoptLoadedBook(
     adoptStartedChapters(ref, served);
     chapterData = served;
     otherOrder = false;
-  } else if (served && playingId && !holds(chapterData, playingId) && holds(served, playingId)) {
-    // Online, the engine plays a file the download lacks, in an order that is no longer the
+  } else if (served && servedIds && engineIds) {
+    // Online, the engine played files the download lacks, in an order that is no longer the
     // server's: the queue streams the server's files the download lacks, as a start online
-    // builds it, and the engine is reloaded into that order (D3, fe#185). The download keeps
-    // its own chapters (it doesn't hold those files).
-    chapterData = served;
+    // builds it, and the engine is reloaded into that order, so the book plays on past the
+    // downloaded part (D3, fe#185). The download keeps its own chapters (it doesn't hold
+    // those files).
+    const own = idsIn(chapterData);
+    if (engineIds.some((id) => servedIds.has(id) && !own.has(id))) chapterData = served;
   }
   const queue = buildBookQueue(
     api,
@@ -2933,11 +2935,10 @@ async function adoptLoadedBook(
     engineIds && otherOrder && !svc.isCasting?.()
       ? landingOf(queue, engineIds, loaded, fileDurations(libraryId, book, chapterData, served))
       : null;
-  // A download that lacks files the engine played (offline, or the server didn't answer):
-  // its end is the downloaded part's, not the book's, unless the server says those files are
-  // gone (D3, fe#185).
-  const lacking = local && engineIds ? engineIds.filter((id) => trackIndexById(queue, id) < 0) : [];
-  const partial = lacking.length > 0 && (!served || lacking.some((id) => holds(served, id)));
+  // A download that lacks files the engine played, offline or with no answer from the
+  // server: its end is the downloaded part's, not the book's (D3, fe#185). With an answer
+  // the queue holds every file the server has, and one it lacks is gone from the book.
+  const partial = local && !served && !!engineIds?.some((id) => trackIndexById(queue, id) < 0);
   if (partial) partialQueues.add(queue);
   // The engine's place is past the downloaded part: it stays paused at that part's end, and
   // the listener is told why (a play there would end at once).

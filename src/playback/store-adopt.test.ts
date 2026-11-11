@@ -939,6 +939,40 @@ describe('adoptLoaded', () => {
       expect(useDownloads.getState().entries['c1:2:B'].manifest.chapters).toBe(uneven);
     });
 
+    it('streams on, online, past the downloaded part when the engine is in a file the download holds', async () => {
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      const told = jest.fn();
+      const stopTelling = onPartialDownloadEnd(told);
+      // The server holds B/3 too, first now; the engine, in its old order, plays B/1.
+      serverAnswers({
+        ...uneven,
+        duration: 180,
+        files: [
+          { rel_path: 'B/3.mp3', seq: 0, duration: 20, format: 'mp3', size: 1 },
+          { ...uneven.files[0], seq: 1 },
+          { ...uneven.files[1], seq: 2 },
+        ],
+      });
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 0, position: 10 }));
+      // The whole book, the server's: B/3 streams, and the engine goes on in B/1.
+      const [tracks, index, inFile] = (mockSvc.load as jest.Mock).mock.calls[0];
+      expect((tracks as { url: string }[]).map((t) => t.url)).toEqual([
+        'stream:2:B/3.mp3',
+        'file:///d/1.mp3',
+        'file:///d/2.mp3',
+      ]);
+      expect([index, inFile]).toEqual([1, 10]);
+      // Its end is the book's: no pause there with "the rest isn't downloaded".
+      pushSnapshot(snap('playing', 2, 50));
+      pushSnapshot({ ...snap('ended', 2, 60), duration: 60 });
+      await flushMicrotasks();
+      expect(usePlayer.getState().snapshot.state).toBe('ended');
+      expect(told).not.toHaveBeenCalled();
+      stopTelling();
+    });
+
     it("keeps the engine's in-file place within the landing file's length (fe#185)", () => {
       const queue = {
         tracks: [{ duration: 100 }, { duration: 60 }],
