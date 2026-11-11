@@ -3299,6 +3299,15 @@ export function useSearchAll(query: string) {
   });
 }
 
+/**
+ * A fan-out's `offline`: one server's list waits for the network with nothing kept (the
+ * device went offline before it answered). That is not loading, and not "none": another
+ * server's empty answer says nothing about this one's. `isPaused`, not `fetchStatus` (a
+ * prop read in a `combine` is tracked, and fetchStatus changes at every background refetch).
+ */
+const anyHeld = (results: readonly { data: unknown; isPaused: boolean }[]) =>
+  results.some((r) => !r.data && r.isPaused);
+
 export function useRecentAll(limit = RECENT_LIMIT) {
   const apis = useApis();
   const rank = (id: string) => {
@@ -3310,8 +3319,7 @@ export function useRecentAll(limit = RECENT_LIMIT) {
     combine: (results) => ({
       books: dedupBooks(tagBooks(results, apis), rank),
       isLoading: results.some((r) => r.isLoading),
-      /** A server's list waits for the network with nothing kept (`useAllProgressAll`). */
-      offline: results.some((r) => !r.data && r.isPaused),
+      offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });
@@ -3588,8 +3596,7 @@ export function useFavouritesAll() {
         })),
       ),
       isLoading: results.some((r) => r.isLoading),
-      /** A server's list waits for the network with nothing kept (`useAllProgressAll`). */
-      offline: results.some((r) => !r.data && r.isPaused),
+      offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });
@@ -3623,9 +3630,7 @@ export function useAllProgressAll({
         )
         .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
       isLoading: results.some((r) => r.isLoading),
-      /** A list waits for the network with nothing cached (the device went offline
-       * before it answered): not loading, and not "no progress". */
-      offline: results.some((r) => !r.data && r.isPaused),
+      offline: anyHeld(results),
       error: results.find((r) => r.error)?.error ?? null,
       /** Ask again only for the servers whose progress failed. */
       retry: () => {
