@@ -869,6 +869,24 @@ describe('adoptLoaded', () => {
       stopTelling();
     });
 
+    it('tells of a stop past the downloaded part once someone listens (a car start with no screen)', async () => {
+      mockResolveClient.mockReturnValue(null);
+      useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+      // Nobody to tell: the root's services have not started.
+      await usePlayer
+        .getState()
+        .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 2, position: 20 }));
+      expect(usePlayer.getState().snapshot.state).toBe('paused');
+      const told = jest.fn();
+      const stopTelling = onPartialDownloadEnd(told);
+      expect(told).toHaveBeenCalledTimes(1);
+      stopTelling();
+      // Told once: a later listener hears nothing of it.
+      const again = jest.fn();
+      onPartialDownloadEnd(again)();
+      expect(again).not.toHaveBeenCalled();
+    });
+
     it('pauses at the end of a download that lacks the rest of the book, never finishing it (D3, fe#185)', async () => {
       mockResolveClient.mockReturnValue(null);
       useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });

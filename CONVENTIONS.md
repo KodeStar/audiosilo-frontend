@@ -2195,7 +2195,8 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     partial (`partialQueues`): its end is the downloaded part's, so the engine's `ended` there
     reads as a pause, never a finish (no credits, no `finish`, no `finished` save), and the
     listener is told "The rest of this book isn't downloaded" (`onPartialDownloadEnd`,
-    `partial-download-notice.ts`, shown once the app is looked at); a place past that end
+    `partial-download-notice.ts`, shown once the app is looked at; a stop with no listener
+    yet, a car start before the root layout, is told as it registers); a place past that end
     lands short of it and stays paused, with the same notice. Regression tests:
     `store-adopt.test.ts`.
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over the SDK 58

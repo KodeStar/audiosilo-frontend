@@ -1341,17 +1341,27 @@ const partialQueues = new WeakSet<BookQueue>();
 const endsPartial = (np: NowPlaying | null): boolean => !!np && partialQueues.has(np.queue);
 
 let partialEndListener: (() => void) | null = null;
+/** The player stopped there with nobody to tell yet (a car start with no activity: the
+ * root's services start with the root layout, the store without it): the listener is told
+ * as it registers. */
+let partialEndUntold = false;
 
 /** "The rest of this book isn't downloaded": the player stopped at the end of a download
  * that lacks the rest of its book. */
 function tellPartialEnd() {
-  partialEndListener?.();
+  if (partialEndListener) partialEndListener();
+  else partialEndUntold = true;
 }
 
 /** Be told each time the player stops at the end of a download that lacks the rest of its
- * book (D3, fe#185). One listener; returns the unsubscribe. */
+ * book (D3, fe#185), and of a stop nobody was told of yet. One listener; returns the
+ * unsubscribe. */
 export function onPartialDownloadEnd(listener: () => void): () => void {
   partialEndListener = listener;
+  if (partialEndUntold) {
+    partialEndUntold = false;
+    listener();
+  }
   return () => {
     if (partialEndListener === listener) partialEndListener = null;
   };
