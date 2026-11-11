@@ -39,6 +39,7 @@ import { bookTitle } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { bookSeriesNumber } from '@/lib/series-position';
 import { useWidth } from '@/lib/use-width';
+import { type PlacedProgress, positionOn } from '@/playback/progress-sync';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { timeLeft, timeLeftLabel } from '@/playback/time-left';
 import { useConnectionName } from '@/stores/session';
@@ -58,7 +59,7 @@ const LIVE_STEP_S = 10;
  * Home's hero (STYLEGUIDE section 8, "Now card"): the book the listener is on, on a card
  * washed with its cover colour. Its hooks run against the book's own server.
  */
-export function NowCard({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
+export function NowCard({ at, saved }: { at: BookAt; saved?: SourcedProgress & PlacedProgress }) {
   return (
     <ConnectionScope connectionId={at.connectionId}>
       <NowCardBody at={at} saved={saved} />
@@ -66,7 +67,7 @@ export function NowCard({ at, saved }: { at: BookAt; saved?: SourcedProgress }) 
   );
 }
 
-function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
+function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & PlacedProgress }) {
   const { t } = useTranslation();
   // The card's own width decides its shape, not the window's: beside This week, or on a
   // desktop with the Up next drawer open, a "desktop" card can be phone-narrow.
@@ -111,20 +112,38 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }) {
       ? t('home.now.notDownloadedServerHint', { name: serverName })
       : t('home.now.notDownloadedHint');
 
+  // The loaded book's timeline is the player's own (fe#211): after a server reorder it can
+  // keep the download's order while the server's chapters have another, and the live place
+  // counts on the player's.
+  const queue = usePlayer((s) => (loaded ? s.nowPlaying?.queue : undefined));
   // Chapter starts recomputed from the file durations, as the book page does (the
-  // server's `book_offset` is unreliable on some books).
+  // server's `book_offset` is unreliable on some books); the queue's are already. Never the
+  // queue's synthetic 30 minute slices: a chapterless book has no chapters here either.
   const { titles, starts } = useMemo(() => {
+    if (queue && !queue.syntheticChapters && queue.chapters.length > 0) {
+      return {
+        titles: queue.chapters.map((c) => c.title),
+        starts: queue.chapters.map((c) => c.book_offset),
+      };
+    }
     const chapters = chapterData?.chapters ?? [];
     return {
       titles: chapters.map((c) => c.title),
       starts: chapterStartsOf(chapters, chapterData?.files ?? []),
     };
-  }, [chapterData]);
+  }, [chapterData, queue]);
 
-  const total = chapterData?.duration || saved?.duration || book?.duration || 0;
+  const total =
+    (queue && queue.total > 0 ? queue.total : 0) ||
+    chapterData?.duration ||
+    saved?.duration ||
+    book?.duration ||
+    0;
   // While a book is still loading the player reports 0: keep the saved place until it
-  // has really moved.
-  const position = loaded && livePosition > 0 ? livePosition : (saved?.position ?? 0);
+  // has really moved. The saved place as Resume plays it: this device's file place read on
+  // these chapters' files (`positionOn`).
+  const savedPosition = saved ? positionOn(saved, chapterData?.files) : 0;
+  const position = loaded && livePosition > 0 ? livePosition : savedPosition;
   const finished = !!saved?.finished && !loaded;
   // The book's own speed: the player's while loaded, else its saved one, else the default.
   const speed = useBookSpeed(at, saved?.playback_speed);

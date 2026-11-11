@@ -1270,8 +1270,16 @@ place (`selectLivePosition`), so it re-renders only when the chapter changes and
 the boundary itself.
 That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
-gated). Its `queryFn` falls back to the durable local mirror (`mirroredProgress` in
-`progress-sync.ts`) **only for a non-`ApiError` failure** (offline/unreachable, and
+gated). Its answer is the place Resume plays from (`bookPlace` in `progress-sync.ts`,
+fe#211: the resume lookup's pick of the server's row and this device's own records, with the
+file place a resume plays, read on the page's chapters through `positionOn`), so the page
+never shows another device's older row while Resume starts at this device's newer place.
+Home's progress list is read the same way (`useWithLocalPlaces` over `withLocalPlaces`,
+read again as the outbox changes), and its Now card reads a loaded book on the player's own
+queue (its chapters and total; never its synthetic slices), so Home's percent is the
+player's after an offline run and after a server reorder. With
+no server answer it reads this device's records alone (the mirror and the offline queue)
+**only for a non-`ApiError` failure** (offline/unreachable, and
 it has the server checked with `noteFailure`, like every request: marking it down at once
 would have the mirror's success find it up and read every query again, round and round,
 frontend#131) - an `ApiError` means

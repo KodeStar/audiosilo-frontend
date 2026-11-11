@@ -20,6 +20,10 @@ jest.mock('@/downloads/store', () => ({
     pick({ supported: mockCanDownload }),
 }));
 jest.mock('@/playback/progress-sync', () => ({ flushQueue: jest.fn(async () => undefined) }));
+// This device's own places over the list (`use-local-places.test.tsx`): none here.
+jest.mock('@/playback/use-local-places', () => ({
+  useWithLocalPlaces: (rows: unknown) => rows,
+}));
 // Which books can start here (online, or downloaded); every one unless a test says.
 let mockPlayable: (at: { path: string }) => boolean = () => true;
 jest.mock('./use-playable-here', () => ({

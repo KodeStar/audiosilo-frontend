@@ -119,7 +119,7 @@ jest.mock('@/api/provider', () => ({
 jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
 const mockSaveProgress = jest.fn(async (..._a: unknown[]) => {});
 jest.mock('@/playback/progress-sync', () => ({
-  mirroredProgress: jest.fn(async () => null),
+  bookPlace: jest.fn(async () => null),
   saveProgress: (...a: unknown[]) => mockSaveProgress(...a),
   getDeviceId: jest.fn(async () => 'dev-1'),
 }));

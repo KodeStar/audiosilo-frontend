@@ -25,7 +25,7 @@ jest.mock('@/api/reachability', () => ({
 }));
 const mockMirrored = jest.fn();
 jest.mock('@/playback/progress-sync', () => ({
-  mirroredProgress: (...a: unknown[]) => mockMirrored(...a),
+  bookPlace: (...a: unknown[]) => mockMirrored(...a),
   saveProgress: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
 }));
@@ -54,5 +54,5 @@ it("offline, reads this device's place rather than waiting for the network", asy
   mockMirrored.mockResolvedValue({ library_id: 1, path: 'A/Book', position: 120 });
   const { result } = await renderHook(() => useBookProgress(1, 'A/Book', true), { wrapper });
   await waitFor(() => expect(result.current.data).toMatchObject({ position: 120 }));
-  expect(mockMirrored).toHaveBeenCalledWith('c1', 1, 'A/Book');
+  expect(mockMirrored).toHaveBeenCalledWith(undefined, 'c1', 1, 'A/Book');
 });

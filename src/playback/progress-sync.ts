@@ -412,16 +412,82 @@ function filePlaceOf(
   return holdsFilePlace(best, mirror, skewMs) ? mirror : null;
 }
 
-/** The durable local mirror for a book, shaped as a `Progress` - for read paths
- * that could not reach the server (an offline book screen), so a downloaded book
- * still reports where the listener is instead of looking untouched. Null when
- * nothing has ever been mirrored for it. */
-export async function mirroredProgress(
+/** A place as a resume would play it: the record it picks (`resumeLookupOf`), with the
+ * file place it plays from when its queue holds that file (fe#188). `file` is this
+ * device's own; never on the wire. */
+export type PlacedProgress = Progress & { file?: { path: string; pos: number } };
+
+/** `resumeLookupOf`'s pick as a `PlacedProgress`, null when it has none (a new book, or
+ * nothing known anywhere). The same object as the record picked when it has no file place. */
+export function resumePlaceOf(
+  server: Progress | null | undefined,
+  places: LocalPlaces,
   connectionId: string,
   libraryId: number,
   path: string,
-): Promise<Progress | null> {
-  return mirrorAsProgress(libraryId, path, await readMirror(connectionId, libraryId, path));
+): PlacedProgress | null {
+  const lookup = resumeLookupOf(server, places, connectionId, libraryId, path);
+  if (lookup.kind !== 'progress') return null;
+  return lookup.file ? { ...lookup.progress, file: lookup.file } : lookup.progress;
+}
+
+/**
+ * A progress list with each row where Resume would play it (pure; fe#211): this device's
+ * own newer record of a book in place of the server's older row (an offline run the list
+ * has not heard of yet, a cold launch with another device's kept row), with its file place.
+ * Newest first again when any row changed; the same array when none did (or no places).
+ */
+export function withLocalPlaces<T extends Progress & { connectionId: string }>(
+  rows: readonly T[],
+  places: LocalPlaces | null,
+): readonly (T & PlacedProgress)[] {
+  if (!places) return rows;
+  let changed = false;
+  const out = rows.map((row): T & PlacedProgress => {
+    const place = resumePlaceOf(row, places, row.connectionId, row.library_id, row.path);
+    if (!place || place === row) return row;
+    changed = true;
+    return { ...row, ...place };
+  });
+  return changed ? out.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)) : rows;
+}
+
+/**
+ * Where a book's page shows the listener (fe#211): where Resume would play it from, so the
+ * page never shows another device's older row while Resume starts at this device's newer
+ * place. `server` is the server's answer when it was reached (null: no record), `undefined`
+ * when not (offline: this device's own places, the mirror and the offline queue's save).
+ * Null when nothing is known.
+ */
+export async function bookPlace(
+  server: Progress | null | undefined,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<PlacedProgress | null> {
+  return resumePlaceOf(server, await readLocalPlaces(), connectionId, libraryId, path);
+}
+
+/**
+ * A place's whole-book seconds on the timeline `files` lay out (a chapters answer's files),
+ * as a resume plays it: at its file place when `files` holds that file and every file before
+ * it has a length, else its own whole-book seconds (pure). After a server reorder, a place
+ * this device saved in the download's order then reads where the player would put it.
+ */
+export function positionOn(
+  place: Pick<PlacedProgress, 'position' | 'file'>,
+  files: readonly { rel_path: string; duration: number; seq: number }[] | undefined,
+): number {
+  const file = place.file;
+  if (!file || !files?.length) return place.position;
+  const ordered = [...files].sort((a, b) => a.seq - b.seq);
+  let offset = 0;
+  for (const f of ordered) {
+    if (f.rel_path === file.path) return offset + Math.max(0, file.pos);
+    if (!(f.duration > 0)) return place.position;
+    offset += f.duration;
+  }
+  return place.position;
 }
 
 /** A stored save (the mirror's, or one waiting in the offline queue) as a `Progress`. */

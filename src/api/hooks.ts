@@ -57,8 +57,9 @@ import {
 import { isKeptOffline } from '@/downloads/kept-offline';
 import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
+  bookPlace,
   getDeviceId,
-  mirroredProgress,
+  type PlacedProgress,
   progressToSave,
   saveProgress,
   writeMirror,
@@ -1320,9 +1321,11 @@ export function useNextBook(
  * Optional client (like `useBook`/`useChapters`) so a stale connection yields a
  * disabled query rather than a render throw.
  *
- * Offline (or against an unreachable server) it falls back to the durable local
- * mirror - the same record the resume path trusts - so a downloaded book still
- * knows where the listener is instead of reading as "never started". An HTTP
+ * It is the place Resume plays from (`bookPlace`, fe#211): the server's row or this
+ * device's own newer one, by the resume lookup's rule, with the file place a resume plays
+ * (read it with `positionOn`). Offline (or against an unreachable server) it is this
+ * device's own places alone - the same records the resume path trusts - so a downloaded
+ * book still knows where the listener is instead of reading as "never started". An HTTP
  * error is NOT swallowed: it propagates and the query fails (see
  * `fetchBookProgress` for why that matters to the reconnect banner).
  *
@@ -1377,7 +1380,7 @@ export async function fetchBookProgress(
   libraryId: number,
   path: string,
   signal: AbortSignal,
-): Promise<Progress | null> {
+): Promise<PlacedProgress | null> {
   let progress: Progress | null;
   try {
     progress = await api.getProgress(libraryId, path, signal);
@@ -1387,12 +1390,13 @@ export async function fetchBookProgress(
     // The server answered (any HTTP status) - propagate, never mask it with the mirror.
     if (e instanceof ApiError) throw e;
     noteFailure(connectionId, e);
-    return await mirroredProgress(connectionId, libraryId, path);
+    return await bookPlace(undefined, connectionId, libraryId, path);
   }
   if (progress && isKeptOffline(connectionId, libraryId, path)) {
     await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
   }
-  return progress;
+  // A local read that fails leaves the server's answer: it is still where the server is.
+  return await bookPlace(progress, connectionId, libraryId, path).catch(() => progress);
 }
 
 /** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest
