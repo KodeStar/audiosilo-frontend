@@ -2826,8 +2826,12 @@ server's group, and the screen shows its state (`library-screen.tsx`): the mode 
 library is shown, a skeleton while the list loads, `SignInAgainState` for a signed-out refusal,
 the offline state or `LoadError` with Retry (`retryServer`) per `offlineState` (*Offline
 states*), each naming the server when there are several. A stored pick whose list is only
-loading mounts its mode at once (no extra round trip); `resolveLibrarySelection` is the same
-rule's `selection` for the car. `LibraryPicker` offers every server's libraries whatever is
+loading mounts its mode at once (no extra round trip). The car's Library tab has no picker and
+no state to show for a server, so it never waits on one (`resolveCarLibrary`): where the rule
+would wait (no pick, or a pick whose server answered that it shares nothing), it lists the
+first server that IS read and has a library, and goes back to the first server once that
+answers (nothing is remembered); a pick whose server has not answered, or still has a
+library, is never replaced by another server's there either. `LibraryPicker` offers every server's libraries whatever is
 shown (the way out of a server that does not answer); among several servers its labels carry
 the server ("Books · Home"), and with nothing else to choose it is a plain label
 (`library-picker-label`) so the shelf still says whose it is; hidden with one library on one
@@ -3340,11 +3344,18 @@ under their empty state).
   online, a network Android can't name (`type: UNKNOWN`) included, and the first read never
   undoes a change the listener told before it landed). On native the same source drives TanStack's `onlineManager`
   (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; the web keeps
-  TanStack's own window listeners, the same events), so native queries and mutations pause
+  TanStack's own window listeners, the same events), so native queries pause
   with no network and resume when it returns, as they always did on the web: a screen must
   treat `fetchStatus: 'paused'` / `isPaused` as "offline", not as loading, and a read that has
   to settle whatever the flag says uses `networkMode: 'always'` or `fetchFailFast`: a read with
   a copy on this device to fall back to is one (`useBookProgress`'s mirror: held, it never runs).
+  **Writes are never held on native**: the query client's `mutations` default there is
+  `networkMode: 'always'` (`provider.tsx`), so a bookmark, note, rating, queue, collection or
+  progress edit made with no network is sent and fails at once with its screen's own error (the
+  form still open), as before the flag existed. A held mutation lives only in memory: Save
+  spins, and the write is gone if the app is closed before the network returns. The web keeps
+  TanStack's default (a write waits for the browser to come back online); a write that must
+  work offline on the web too says so itself (`useMarkFinished`).
   A held request neither fails nor marks its server down, so a surface that says "offline" asks
   this signal too, not reachability alone (Search's results, `usePlayableHere`). Whether one
   SERVER answers is `src/api/reachability.ts`, a different question. In a test that mocks this
@@ -3355,11 +3366,24 @@ under their empty state).
   (a reload offline sends the request before anything knows), `'failed'` when it failed with a
   network (the server's fault: say so, with Retry), else null (loading, or loaded). Home's hero,
   the Library's server state, Folders (per server), Books mode and the read-along map all ask
-  it; a signed-out refusal is decided before it (never "offline"). The surface is
-  `<OfflineState hint>`: the offline icon, `common.offlineTitle`, and the caller's hint, to which
+  it; a signed-out refusal is decided before it (never "offline"). A page or a list over ONE
+  query asks `useUnreadQuery(query)` (`{ data, isPaused, error }`: null once it holds data, so a
+  kept answer always shows; `failed` for an `ApiError`, the server's own answer, so the screen's
+  sign-in or not-in-library state stands whatever the network did since) and checks it
+  **before its skeleton**: a held query stays `isPending` (and `useAllLibraryBooks().isLoading`
+  counts it), so a skeleton drawn for that never ends where the screen used to fail with a
+  Retry. The Library's Series, Authors, Narrators, Collections and Shows modes, the series,
+  author / narrator, book, episode, collection, show and folder pages, and a book's
+  bookmarks, notes and history sections all do; the Journal's tabs ask `unreadSources` (a
+  source held for the network is `waiting`). A new screen with a skeleton does the same. The
+  surface is `<OfflineState hint>`: the offline icon, `common.offlineTitle`, and the caller's
+  hint, to which
   `useOfflineHint` adds `common.offlineDownloads` only where downloads exist
   (`useDownloads.supported`: not on a plain-http web origin, fe#179). Write a hint without the
-  Downloads sentence and never a second "You're offline" title.
+  Downloads sentence and never a second "You're offline" title; `common.offlinePage` and
+  `common.offlineList` are the hints of a page and a list with nothing more to say. With no
+  `hint` it is the title alone, for a section of a page that is on screen (a downloaded book's
+  bookmarks: nothing sends the listener to Downloads).
 - **The kept `/server` answer** (`src/api/server-snapshots.ts`, fe#211): each connection's last
   `/server` answer is kept on the device (`OFFLINE_SERVERS_KEY`, one document by connection id, in
   `SCOPED_STORAGE_KEYS` and the identity migration) and is the ONE copy of a server's facts for a
