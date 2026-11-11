@@ -6,6 +6,11 @@ jest.mock('@/api/provider', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/testing/api-provider-mock').apiProviderMock({}),
 );
+// The device's network and its server's reachability; a test turns either off.
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ isDeviceOnline: () => mockDeviceOnline }));
+let mockReachable = true;
+jest.mock('@/api/reachability', () => ({ isReachable: () => mockReachable }));
 const mockPlayBook = jest.fn();
 const mockSetRate = jest.fn();
 jest.mock('@/playback/store', () => ({
@@ -249,6 +254,34 @@ describe('startBookInPlace', () => {
       );
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  // iPhone airplane mode: Play on a downloaded book spun while the server was asked.
+  it('starts a downloaded book from its download at once when there is no one to ask', async () => {
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    const fromDownload = [
+      'c1',
+      2,
+      { rel_path: target.path, title: 'From the download' },
+      { chapters: [], files: [], from: 'download' },
+      undefined,
+      undefined,
+      undefined,
+    ];
+    try {
+      mockDeviceOnline = false;
+      await expect(startBookInPlace(target)).resolves.toBe(true);
+      expect(mockPlayBook).toHaveBeenLastCalledWith(...fromDownload);
+      mockDeviceOnline = true;
+      mockReachable = false;
+      await expect(startBookInPlace(target)).resolves.toBe(true);
+      expect(mockPlayBook).toHaveBeenLastCalledWith(...fromDownload);
+      expect(mockItem).not.toHaveBeenCalled();
+      expect(mockChapters).not.toHaveBeenCalled();
+    } finally {
+      mockDeviceOnline = true;
+      mockReachable = true;
     }
   });
 

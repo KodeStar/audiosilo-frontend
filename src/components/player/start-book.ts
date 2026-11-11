@@ -1,8 +1,10 @@
 import { resolveClient } from '@/api/connection-clients';
 import { fetchCapabilities } from '@/api/hooks';
+import { isReachable } from '@/api/reachability';
 import type { Book } from '@/api/types';
 import { downloadedEntryOf } from '@/downloads/store';
 import { contentKeyOf } from '@/lib/content-key';
+import { isDeviceOnline } from '@/lib/device-online';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
 import {
   cancelEpisodeFetchOf,
@@ -43,12 +45,14 @@ export const FRESH_SOURCE_WAIT_MS = 3_000;
  * item), and a server's chapters can change after a download (a rescan, community chapters
  * fitted on), which only an answer from the server picks up. It never waits long: offline,
  * refused, or slower than `FRESH_SOURCE_WAIT_MS`, it starts from its download's copy, so a
- * downloaded book still starts offline. Else `bookSourceOf` (a streamed book through the
- * query cache, or null when its connection is gone).
+ * downloaded book still starts offline. With nothing to ask (the device has no network, or
+ * its server is marked unreachable) it starts from that copy at once: Play offline showed a
+ * spinner for the whole wait. Else `bookSourceOf` (a streamed book through the query cache,
+ * or null when its connection is gone).
  */
 async function startSourceOf(target: PlayTarget): Promise<BookSource | null> {
   const client = downloadedEntryOf(target) ? resolveClient(target.connectionId) : null;
-  if (client) {
+  if (client && isDeviceOnline() && isReachable(target.connectionId)) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
