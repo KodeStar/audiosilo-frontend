@@ -50,6 +50,8 @@
         "body": "Wähle ein Buch, um mit dem Hören zu beginnen."
       }
     },
+    "offlineTitle": "Du bist offline",
+    "offlineDownloads": "Heruntergeladene Bücher findest du unter Downloads.",
     "scrollPrevious": "Zu vorherigen Bereichen scrollen",
     "scrollNext": "Zu weiteren Bereichen scrollen"
   },
@@ -662,8 +664,7 @@
       "body": "Nichts ist verloren: Deine Stelle ist auf jedem Server gespeichert. Prüfe die Verbindung und versuche es noch einmal."
     },
     "offline": {
-      "title": "Du bist offline",
-      "body": "Deine Stelle erscheint, sobald ein Server antwortet. Heruntergeladene Bücher findest du unter Downloads."
+      "body": "Deine Stelle erscheint, sobald ein Server antwortet."
     },
     "previouslyOn": {
       "label": "Was bisher geschah",
@@ -858,8 +859,8 @@
       "loadServerLibrariesError": "Bibliotheken von {{name}} konnten nicht geladen werden.",
       "noLibraries": "Mit deinem Konto wurde noch keine Bibliothek geteilt.",
       "noLibrariesHint": "Bitte den Serverbesitzer, dir eine freizugeben.",
-      "offlineTitle": "Du bist offline",
-      "offlineHint": "Deine Bibliotheken erscheinen, sobald ein Server antwortet. Heruntergeladene Bücher findest du unter Downloads.",
+      "offlineHint": "Deine Bibliotheken erscheinen, sobald ein Server antwortet.",
+      "serverOffline": "Die Bibliotheken von {{name}} erscheinen, sobald der Server antwortet.",
       "viewLabel": "Bücherliste",
       "noLibrariesAdmin": "Noch keine Bibliotheken",
       "noLibrariesAdminHint": "Füge in der Admin-Konsole von {{name}} deine erste Bibliothek hinzu: Wähle den Ordner mit deinen Büchern."
@@ -956,7 +957,8 @@
         "partial": "Nicht alle Bücher konnten geladen werden",
         "partialHint_one": "Angezeigt wird das {{formatted}} geladene Buch.",
         "partialHint_other": "Angezeigt werden die {{formatted}} geladenen Bücher."
-      }
+      },
+      "offlineHint": "Die Bücher dieser Bibliothek erscheinen, sobald ihr Server antwortet."
     },
     "bookActions": {
       "more": "Mehr zu {{title}}",
@@ -1224,8 +1226,7 @@
     "resultsAcross_one": "{{count}} Ergebnis für „{{query}}“ auf {{servers}}",
     "resultsAcross_other": "{{count}} Ergebnisse für „{{query}}“ auf {{servers}}",
     "someOffline": "Offline, daher nicht durchsucht: {{servers}}",
-    "offlineTitle": "Du bist offline",
-    "offlineHint": "Die Suche fragt deine Server. Heruntergeladene Bücher findest du unter Downloads.",
+    "offlineHint": "Die Suche fragt deine Server.",
     "noMatchesTitle": "Nichts namens „{{query}}“ auf deinen Servern",
     "noMatchesHint": "Prüfe die Schreibweise oder suche stattdessen nach dem Autor.",
     "groups": {

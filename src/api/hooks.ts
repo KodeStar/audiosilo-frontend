@@ -1275,8 +1275,12 @@ export function useAllLibraryBooks(
     books,
     /** Every page is in. */
     complete: !!data && !hasNextPage,
-    /** Nothing loaded yet (the first page is on its way). */
+    /** Nothing loaded yet (the first page is on its way, or waits for the network). */
     isLoading: q.isPending && q.fetchStatus !== 'idle',
+    /** A page waits for the network (the device is offline: React Query holds the
+     * request), so nothing more arrives meanwhile; a screen with nothing loaded shows its
+     * offline state, not a skeleton that never ends (fe#179). */
+    offline: q.isPaused,
     /** The query can't run (no client, or a narrator filter on a server without it) or
      * hasn't yet (a series filter waiting for `/server`). */
     isIdle: q.isPending && q.fetchStatus === 'idle',

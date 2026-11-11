@@ -5,6 +5,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { type MergedBook, useProgressLookup } from '@/api/hooks';
 import { useApis } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
+import { OfflineState } from '@/components/layout/offline-state';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { gridMetrics } from '@/components/library/cover-layout';
@@ -72,9 +73,7 @@ export function SearchResultsView({
   const settled = r.settled && !pending;
 
   if (apis.length > 0 && offline.length === apis.length && r.total === 0) {
-    return (
-      <EmptyState icon="offline" title={t('search.offlineTitle')} hint={t('search.offlineHint')} />
-    );
+    return <OfflineState hint={t('search.offlineHint')} />;
   }
 
   const people = [

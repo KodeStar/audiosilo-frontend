@@ -50,6 +50,8 @@
         "body": "Choisissez un livre pour commencer l'écoute."
       }
     },
+    "offlineTitle": "Vous êtes hors ligne",
+    "offlineDownloads": "Les livres téléchargés sont dans Téléchargements.",
     "scrollPrevious": "Faire défiler vers les sections précédentes",
     "scrollNext": "Faire défiler vers d’autres sections"
   },
@@ -662,8 +664,7 @@
       "body": "Rien n’est perdu : ta position est conservée sur chaque serveur. Vérifie la connexion et réessaie."
     },
     "offline": {
-      "title": "Tu es hors ligne",
-      "body": "Ta position s'affiche dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements."
+      "body": "Ta position s'affiche dès qu'un serveur répond."
     },
     "previouslyOn": {
       "label": "Précédemment",
@@ -858,8 +859,8 @@
       "loadServerLibrariesError": "Impossible de charger les bibliothèques de {{name}}.",
       "noLibraries": "Aucune bibliothèque n’est encore partagée avec ton compte.",
       "noLibrariesHint": "Demandez au propriétaire du serveur de vous en partager une.",
-      "offlineTitle": "Vous êtes hors ligne",
-      "offlineHint": "Vos bibliothèques s'affichent dès qu'un serveur répond. Les livres téléchargés sont dans Téléchargements.",
+      "offlineHint": "Vos bibliothèques s'affichent dès qu'un serveur répond.",
+      "serverOffline": "Les bibliothèques de {{name}} s'affichent dès que le serveur répond.",
       "viewLabel": "Liste de livres",
       "noLibrariesAdmin": "Aucune bibliothèque pour l'instant",
       "noLibrariesAdminHint": "Ajoutez votre première bibliothèque dans la console d'administration de {{name}} : choisissez le dossier qui contient vos livres."
@@ -956,7 +957,8 @@
         "partial": "Impossible de charger tous les livres",
         "partialHint_one": "Affichage du {{formatted}} livre chargé.",
         "partialHint_other": "Affichage des {{formatted}} livres chargés."
-      }
+      },
+      "offlineHint": "Les livres de cette bibliothèque s'affichent dès que son serveur répond."
     },
     "bookActions": {
       "more": "Plus pour {{title}}",
@@ -1224,8 +1226,7 @@
     "resultsAcross_one": "{{count}} résultat pour « {{query}} » sur {{servers}}",
     "resultsAcross_other": "{{count}} résultats pour « {{query}} » sur {{servers}}",
     "someOffline": "Hors ligne, donc non recherché : {{servers}}",
-    "offlineTitle": "Vous êtes hors ligne",
-    "offlineHint": "La recherche interroge vos serveurs. Les livres téléchargés sont dans Téléchargements.",
+    "offlineHint": "La recherche interroge vos serveurs.",
     "noMatchesTitle": "Rien ne s’appelle « {{query}} » sur vos serveurs",
     "noMatchesHint": "Vérifiez l’orthographe, ou cherchez plutôt l’auteur.",
     "groups": {

@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { useOfflineHint } from '@/components/layout/offline-state';
 import { Button } from '@/components/ui/button';
 import { GhostCovers } from '@/components/ui/ghost-art';
 import { Text } from '@/components/ui/text';
@@ -72,15 +73,15 @@ function NowNotice({
 }
 
 /** Offline before the listener's progress was read (paused, or failed when the network
- * went): where their place will show, and where the downloads are. `fill` as for
- * `NowEmpty`. */
+ * went): where their place will show, and where the downloads are (only where this
+ * device can download, `useOfflineHint`). `fill` as for `NowEmpty`. */
 export function NowOffline({ fill = false }: { fill?: boolean }) {
   const { t } = useTranslation();
   return (
     <NowNotice
       testID="home-offline"
-      title={t('home.offline.title')}
-      body={t('home.offline.body')}
+      title={t('common.offlineTitle')}
+      body={useOfflineHint(t('home.offline.body'))}
       fill={fill}
     />
   );

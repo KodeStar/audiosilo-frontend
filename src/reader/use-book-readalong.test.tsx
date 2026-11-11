@@ -23,6 +23,11 @@ jest.mock('@/downloads/store', () => ({
   useDownloadedEbookSize: () => mockEbookSize,
   readDownloadedReadalong: (ref: unknown) => mockReadKept(ref),
 }));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
@@ -115,6 +120,7 @@ describe('useBookReadalong', () => {
     mockKept = undefined;
     mockEbookSha = undefined;
     mockEbookSize = undefined;
+    mockDeviceOnline = true;
     // One answer per map, as the query gives it (the same object on every render).
     mockServerMap.mockImplementation(({ enabled }: { enabled: boolean }) => ({
       data: enabled ? SERVER_MAP : undefined,
@@ -327,6 +333,46 @@ describe('useBookReadalong', () => {
       failure: null,
       offline: true,
     });
+  });
+
+  // fe#142: a reload with no network sends the request before anything knows, so the read
+  // fails instead of waiting. The Text tab then goes (`textTab`), no "couldn't load" with
+  // a Try again that cannot work.
+  it('is offline, not failed, when the read failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    mockServerMap.mockReturnValue({
+      data: undefined,
+      isError: true,
+      error: new TypeError('Network request failed'),
+    });
+    const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+    expect(result.current).toMatchObject({
+      map: null,
+      pending: false,
+      failure: null,
+      offline: true,
+    });
+  });
+
+  it('still says what the server said with no network on the device (a refusal)', async () => {
+    mockDeviceOnline = false;
+    mockServerMap.mockReturnValue({
+      data: undefined,
+      isError: true,
+      error: new ApiError(403, 'no'),
+    });
+    const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+    expect(result.current).toMatchObject({ failure: 'denied', offline: false });
+  });
+
+  it("reads the device's copy with no network, its failure a failure to say", async () => {
+    mockDeviceOnline = false;
+    mockServes = undefined;
+    mockKept = 'g1';
+    mockReadKept.mockRejectedValue(new Error('disk'));
+    const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
+    await waitFor(() => expect(result.current.failure).toBe('retry'));
+    expect(result.current.offline).toBe(false);
   });
 
   describe("a map of another ebook than the download's (fe#193)", () => {

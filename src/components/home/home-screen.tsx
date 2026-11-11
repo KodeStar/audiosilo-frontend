@@ -33,6 +33,7 @@ import { useDeviceOnline } from '@/lib/device-online';
 import type { MergedBook } from '@/lib/dedup';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { offlineState } from '@/lib/offline-state';
 import { bookTitle } from '@/lib/paths';
 import { useMinuteClock } from '@/lib/use-now';
 import type { PlayerModule } from '@/modules/registry';
@@ -181,6 +182,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   // A server of several that is not answering, named on the greeting's servers pill.
   const down = useReachability((s) => firstOffline(connections, s.online)?.name);
   const progressRefused = isSignedOutError(error) && !!signedOut;
+  // The one offline rule (`offlineState`): the progress waits for the network or failed
+  // without one, else it failed with one (the server's trouble: Retry).
+  const unread = offlineState({ waiting: progressOffline, failed: !!error, deviceOnline });
   const recentRefused = isSignedOutError(recent.error);
 
   // This week stands beside the Now card only where the page column is wide enough for
@@ -200,13 +204,13 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     <NowCardSkeleton />
   ) : progressRefused ? (
     <SignInAgainState connection={signedOut} className={beside ? 'flex-1' : undefined} />
-  ) : progressOffline || (!deviceOnline && error) ? (
+  ) : unread === 'offline' ? (
     // Offline with a server's progress not read yet (paused, or failed when the network
     // went): its rows may hold the Now book, so not "pick something" (another server's
     // finished rows say nothing about it), nor a Retry that cannot work until the network
     // is back.
     <NowOffline fill={beside} />
-  ) : error ? (
+  ) : unread === 'failed' ? (
     <NowError onRetry={retryProgress} fill={beside} />
   ) : (
     <NowEmpty fill={beside} />

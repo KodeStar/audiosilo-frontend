@@ -50,6 +50,8 @@
         "body": "Scegli un libro per iniziare l'ascolto."
       }
     },
+    "offlineTitle": "Sei offline",
+    "offlineDownloads": "I libri scaricati sono in Download.",
     "scrollPrevious": "Scorri alle sezioni precedenti",
     "scrollNext": "Scorri ad altre sezioni"
   },
@@ -662,8 +664,7 @@
       "body": "Non è andato perso nulla: la tua posizione è salvata su ogni server. Controlla la connessione e riprova."
     },
     "offline": {
-      "title": "Sei offline",
-      "body": "Il punto in cui eri compare appena un server risponde. I libri scaricati sono in Download."
+      "body": "Il punto in cui eri compare appena un server risponde."
     },
     "previouslyOn": {
       "label": "Nelle puntate precedenti",
@@ -858,8 +859,8 @@
       "loadServerLibrariesError": "Impossibile caricare le librerie di {{name}}.",
       "noLibraries": "Nessuna libreria è ancora condivisa con il tuo account.",
       "noLibrariesHint": "Chiedi al proprietario del server di condividerne una.",
-      "offlineTitle": "Sei offline",
-      "offlineHint": "Le tue librerie compaiono appena un server risponde. I libri scaricati sono in Download.",
+      "offlineHint": "Le tue librerie compaiono appena un server risponde.",
+      "serverOffline": "Le librerie di {{name}} compaiono appena il server risponde.",
       "viewLabel": "Elenco dei libri",
       "noLibrariesAdmin": "Ancora nessuna libreria",
       "noLibrariesAdminHint": "Aggiungi la tua prima libreria nella console di amministrazione di {{name}}: scegli la cartella che contiene i tuoi libri."
@@ -956,7 +957,8 @@
         "partial": "Impossibile caricare tutti i libri",
         "partialHint_one": "Viene mostrato il {{formatted}} libro caricato.",
         "partialHint_other": "Vengono mostrati i {{formatted}} libri caricati."
-      }
+      },
+      "offlineHint": "I libri di questa libreria compaiono appena il suo server risponde."
     },
     "bookActions": {
       "more": "Altro per {{title}}",
@@ -1224,8 +1226,7 @@
     "resultsAcross_one": "{{count}} risultato per «{{query}}» su {{servers}}",
     "resultsAcross_other": "{{count}} risultati per «{{query}}» su {{servers}}",
     "someOffline": "Offline, quindi non cercato: {{servers}}",
-    "offlineTitle": "Sei offline",
-    "offlineHint": "La ricerca interroga i tuoi server. I libri scaricati sono in Download.",
+    "offlineHint": "La ricerca interroga i tuoi server.",
     "noMatchesTitle": "Niente che si chiami «{{query}}» sui tuoi server",
     "noMatchesHint": "Controlla l’ortografia, oppure cerca l’autore.",
     "groups": {

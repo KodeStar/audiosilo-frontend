@@ -8,6 +8,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAllProgressAll } from '@/api/hooks';
 import type { Book, Progress } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { TAB_PAGE_SCROLL_PROPS } from '@/components/shell/tab-page-scroll';
@@ -21,9 +22,11 @@ import { Text } from '@/components/ui/text';
 import { downloadedPaths } from '@/downloads/downloads-view';
 import { useDownloads } from '@/downloads/store';
 import { headIndexForLetter, presentLetters } from '@/lib/alpha-sections';
+import { useDeviceOnline } from '@/lib/device-online';
 import { formatCount } from '@/lib/format';
 import { LABEL_KINDS } from '@/lib/labels';
 import { useLayout } from '@/lib/layout';
+import { offlineState } from '@/lib/offline-state';
 import { useRouteParams } from '@/lib/route-params';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -115,6 +118,13 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
 
   const whole = useWholeLibrary(connectionId, libraryId);
   const signedOut = useSignedOutConnection(connectionId);
+  // The one offline rule (`offlineState`): the list waits for the network or failed
+  // without one (`offline`: no Retry can work), else it failed with one (`failed`).
+  const unread = offlineState({
+    waiting: whole.offline,
+    failed: !!whole.error,
+    deviceOnline: useDeviceOnline(),
+  });
   const { progress } = useAllProgressAll();
   const progressMap = useMemo(
     () =>
@@ -292,7 +302,7 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       {whole.error && total > 0 ? (
         signedOut ? (
           <SignInAgainState connection={signedOut} compact />
-        ) : (
+        ) : unread === 'failed' ? (
           <LoadError
             compact
             title={t('library.books.error.partial')}
@@ -303,13 +313,20 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
             retryLabel={t('common.retry')}
             onRetry={whole.retry}
           />
-        )
+        ) : null
       ) : null}
       {booksLayout === 'list' && shown.length > 0 ? <BookListHeader columns={columns} /> : null}
     </View>
   );
 
   const emptyBody = () => {
+    // Its sign-in ended: one sign-in state, never a Retry that cannot help (#124).
+    if (whole.error && total === 0 && signedOut) return <SignInAgainState connection={signedOut} />;
+    // Offline with nothing loaded: the offline state, not a skeleton that never ends (the
+    // request waits for the network) nor a Retry that cannot work (fe#179).
+    if (unread === 'offline' && total === 0) {
+      return <OfflineState variant="card" hint={t('library.books.offlineHint')} />;
+    }
     if (whole.isLoading) {
       return booksLayout === 'grid' ? (
         <CoverGridSkeleton rows={3} gutter={0} />
@@ -318,8 +335,6 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       );
     }
     if (whole.error && total === 0) {
-      // Its sign-in ended: one sign-in state, never a Retry that cannot help (#124).
-      if (signedOut) return <SignInAgainState connection={signedOut} />;
       return (
         <LoadError
           title={t('library.books.error.title')}
@@ -354,8 +369,9 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
   };
   const empty = emptyBody();
 
+  // Not while the next page waits for the network: nothing is loading then.
   const footer =
-    !whole.complete && !whole.error && total > 0 ? (
+    !whole.complete && !whole.error && !whole.offline && total > 0 ? (
       <Text variant="caption" className="py-4 text-center">
         {t('library.books.loadingMore')}
       </Text>
