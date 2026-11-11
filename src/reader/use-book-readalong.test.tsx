@@ -9,7 +9,10 @@ let mockServes: boolean | undefined = true;
 const mockServerMap = jest.fn();
 jest.mock('@/api/hooks', () => ({
   CapabilityError: class CapabilityError extends Error {},
-  qk: { readalongLocal: (...key: unknown[]) => ['readalongLocal', ...key] },
+  qk: {
+    readalong: (...key: unknown[]) => ['readalong', ...key],
+    readalongLocal: (...key: unknown[]) => ['readalongLocal', ...key],
+  },
   useCapability: () => mockServes,
   useReadalong: (_lib: number, _path: string, opts: { enabled: boolean }) => mockServerMap(opts),
 }));
@@ -62,14 +65,22 @@ describe('readalongSource', () => {
     expect(readalongSource({ ...base, book: ready() })).toBe('server');
   });
 
+  const stale = {
+    ebook: EBOOK,
+    readalong: { state: 'stale', reason: 'ebook_changed' },
+  } as const satisfies Pick<Book, 'ebook' | 'readalong'>;
+
   it('reads nothing for a stale or absent map, a book that does not read, or a server without maps', () => {
-    const stale = { ebook: EBOOK, readalong: { state: 'stale', reason: 'ebook_changed' } };
     expect(readalongSource({ ...base, book: stale })).toBeNull();
     expect(readalongSource({ ...base, book: { ebook: EBOOK } })).toBeNull();
     expect(readalongSource({ ...base, book: ready(), readable: false })).toBeNull();
     expect(readalongSource({ ...base, book: ready(), serves: false })).toBeNull();
-    // A stale map is invisible even with a copy on the device.
-    expect(readalongSource({ ...base, book: stale, kept: 'g1' })).toBeNull();
+    expect(readalongSource({ ...base, book: stale, kept: 'g1', serves: false })).toBeNull();
+  });
+
+  it("reads the download's copy online when the server's map is stale (fe#202 D4)", () => {
+    expect(readalongSource({ ...base, book: stale, kept: 'g1' })).toBe('local');
+    expect(readalongSource({ ...base, book: stale, kept: 'g1', readable: false })).toBeNull();
   });
 
   it("reads the download's copy offline, the capability unknown", () => {
@@ -373,6 +384,83 @@ describe('useBookReadalong', () => {
     const { result } = await renderHook(() => useBookReadalong(REF, ready(), true), { wrapper });
     await waitFor(() => expect(result.current.failure).toBe('retry'));
     expect(result.current.offline).toBe(false);
+  });
+
+  describe('a stale map online (fe#202 D4)', () => {
+    const stale: Pick<Book, 'ebook' | 'readalong'> = {
+      ebook: EBOOK,
+      readalong: { state: 'stale', reason: 'ebook_changed' },
+    };
+
+    it("shows the download's kept map, asking the server nothing", async () => {
+      mockKept = 'g1';
+      mockReadKept.mockResolvedValue(map());
+      const { result } = await renderHook(() => useBookReadalong(REF, stale, true), { wrapper });
+      await waitFor(() => expect(result.current.map).not.toBeNull());
+      expect(result.current.failure).toBeNull();
+      expect(mockServerMap).not.toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
+    });
+
+    it('shows nothing once it does not fit the EPUB actually opened', async () => {
+      mockKept = 'g1';
+      mockReadKept.mockResolvedValue(map([SPAN], 'sha-1'));
+      const { result } = await renderHook(() => useBookReadalong(REF, stale, true), { wrapper });
+      await waitFor(() => expect(result.current.map).not.toBeNull());
+      await act(async () =>
+        result.current.onEbook({ source: 'download', size: EBOOK.size, sha256: 'sha-9' }),
+      );
+      await waitFor(() => expect(result.current.map).toBeNull());
+    });
+
+    it("shows nothing with the server's EPUB opened instead (an unreadable download)", async () => {
+      mockKept = 'g1';
+      mockReadKept.mockResolvedValue(map());
+      const { result } = await renderHook(() => useBookReadalong(REF, stale, true), { wrapper });
+      await waitFor(() => expect(result.current.map).not.toBeNull());
+      await act(async () =>
+        result.current.onEbook({ source: 'server', size: EBOOK.size, sha256: 'sha-1' }),
+      );
+      await waitFor(() => expect(result.current).toMatchObject({ map: null, failure: null }));
+    });
+  });
+
+  describe('a map read once per book, not per open (fe#202)', () => {
+    beforeEach(() => {
+      // Unwatched queries leave the cache at once: only the pin keeps one.
+      client = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+    });
+
+    it("keeps the copy read while no surface shows it, until another book's map is read", async () => {
+      mockServes = undefined;
+      mockKept = 'g1';
+      mockReadKept.mockResolvedValue(map());
+      const open = () =>
+        renderHook(() => useBookReadalong(REF, { ebook: EBOOK }, true), { wrapper });
+      const first = await open();
+      await waitFor(() => expect(first.result.current.map).not.toBeNull());
+      const shown = first.result.current.map;
+      await first.unmount();
+      await new Promise((r) => setTimeout(r, 5));
+      const again = await open();
+      // At once, the same reader map, with no second read of the device.
+      expect(again.result.current.map).toBe(shown);
+      expect(mockReadKept).toHaveBeenCalledTimes(1);
+      await again.unmount();
+      // Another book's map read: the first is let go.
+      const other = { ...REF, path: 'B/Other' };
+      const third = await renderHook(() => useBookReadalong(other, { ebook: EBOOK }, true), {
+        wrapper,
+      });
+      await waitFor(() => expect(third.result.current.map).not.toBeNull());
+      await third.unmount();
+      await new Promise((r) => setTimeout(r, 5));
+      expect(
+        client.getQueryCache().find({ queryKey: ['readalongLocal', 'c1', 1, 'A/Book', 'g1'] }),
+      ).toBeUndefined();
+      expect(
+        client.getQueryCache().find({ queryKey: ['readalongLocal', 'c1', 1, 'B/Other', 'g1'] }),
+      ).toBeDefined();
+    });
   });
 
   describe("a map of another ebook than the download's (fe#193)", () => {

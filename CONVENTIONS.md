@@ -836,16 +836,20 @@ reader follows the narration in the book with it.
   Pausing leaves Follow narration active and saves no reading place.
   `useBookReadalong(ref, book, readable)`
   (`use-book-readalong.ts`) picks the map's source (`readalongSource`): the download's copy
-  while the server's book names it or names none (a list row, offline), else the server's
-  (`useReadalong`); never a stale map, copy or not; a copy that can't be read falls back to the
-  server's. Only a map with a sentence (`hasSpans`) reaches the reader. A read that fails for
+  while the server's book names it, names none (a list row, offline) or calls its map stale,
+  else the server's (`useReadalong`). A stale server map online keeps the copy shown (fe#202
+  D4: it was made for the download's EPUB, the one read, and is still checked against the
+  EPUB actually opened; with the server's EPUB opened instead, none), while the background
+  refresh takes a map made again; a stale map with no copy shows nothing. A copy that can't be
+  read falls back to the server's. Only a map with a sentence (`hasSpans`) reaches the reader. A read that fails for
   any reason but the server's none (404 `no_readalong`, 409 `readalong_stale`: `readalongNone`)
   is a `failure`, never "no read-along" (`readalongFailure`, fe#192): `retry` (offline, a 5xx, a
   copy that won't read) with a "couldn't load" notice and Try again; `signedOut` (401, and any
   failure while the connection needs signing in again: the sign-in state), `denied` (403),
   `missing` (404 without the code) each with their own words and no Try again; none offers Make
   (a needless multi-hour job). Before the host selects a file, download metadata
-  (`useDownloadedEbookSha`, else `useDownloadedEbookSize`) checks the map's fit (fe#193).
+  (`useDownloadedEbookSha`, else `useDownloadedEbookSize`) checks the map's fit (fe#193) by
+  `fitsDownload`, the download refresh's own rule (a size unknown on either side fits).
   Both hosts then report the actual selected EPUB's source, byte length and SHA-256 through
   `onEbook`; maps remain withheld until `readalongEbookSha256` matches those bytes (F35).
   A download that cannot be read falls back to the server file, whose identity supersedes
@@ -858,6 +862,11 @@ reader follows the narration in the book with it.
   new map. The full-screen reader keeps its already-selected file until it reopens.
   A replacement native WebView selects and identifies the file again before taking a map;
   its document generation cannot reuse the previous document's EPUB digest.
+  A map is read once per book (fe#202): the query last shown is held in the cache by an
+  observer that never fetches (`pinMap`, one map per client; another book's map, or one made
+  again, lets the last go), and its reader form is kept per map object (`readerMapOfOnce`), so
+  the phone's Text chip, mounted with each full-player open, neither reads up to 16 MiB again
+  nor walks it again.
   Withholding a map during identification preserves the reader's last Follow narration choice
   and sends the document nothing (a null map would be answered `readalong: none`).
   A local map read uses `meta: { local: true }`, so a disk success neither clears
@@ -3125,11 +3134,14 @@ are asked, at most 10,000 rows.
   `generated_at` fetches the map again (a failed fetch keeps the copy
   and the manifest as they were) only if it was made from the download's own ebook (fe#193:
   `fitsEbook` against `ebookSha256`; a download that never kept a map asks only while the
-  server's `ebook.size` is the one it saved: `knowsEbook`), so a map of a replaced ebook never
+  server's `ebook.size` is the one it saved: `fitsDownload`), so a map of a replaced ebook never
   joins the old `book.epub` and the matching copy stays, once per answer's map per launch
-  (`readalongTried`). No ready map drops the kept one (`readalongChange`; the book then says
-  what the server said), except a stale one under the same `knowsEbook` rule: it still fits
-  the download's own EPUB and audio, so it stays.
+  (`readalongTried`). A map refused for another ebook is remembered (`readalongRefused`, its
+  `generated_at`; cleared once a map is kept), so it is not fetched again on every launch; a
+  map made again is (fe#202). No ready map drops the kept one (`readalongChange`; the book then
+  says what the server said), except a stale one: the kept map was paired with the download's
+  own EPUB when it was kept, and that EPUB never changes under it (a new copy is a new
+  download), so it stays whatever size the server's ebook has now (fe#202).
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community

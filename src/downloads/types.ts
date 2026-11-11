@@ -68,6 +68,11 @@ export type DownloadManifest = {
   /** The size in bytes of that map on the device (counted in the entry's `bytes` and
    * `totalBytes`). Absent with no map, and on downloads made before it existed. */
   readalongBytes?: number;
+  /** The `generated_at` of a map the download refused (made from another ebook than the one
+   * `book.epub` is, fe#193): the same map is not fetched again on every launch
+   * (`readalongChange`), a map made again is. Cleared once a map is kept; absent while none
+   * was refused. */
+  readalongRefused?: string;
   /** The sha256 of the ebook `book.epub` is, as the first map the download kept named it
    * (fe#193): a map made later from another ebook (the server's was replaced) is refused,
    * never kept beside this one, and the server's copy of it never reaches the reader of

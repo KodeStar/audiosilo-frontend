@@ -18,7 +18,9 @@ import { parseReadalongMap } from '@/reader/readalong-map';
 
 import {
   fetchReadalongFile,
+  fitsDownload,
   fitsEbook,
+  keptOf,
   READALONG_FILE,
   readalongChange,
   readReadalongFile,
@@ -102,14 +104,17 @@ describe('fetchReadalongFile', () => {
   });
 
   it("refuses a map made from another ebook than the download's (fe#193), keeping the one kept", async () => {
-    await expect(
-      fetchReadalongFile(API, REF, { ebookSha256: 'b'.repeat(64) }),
-    ).resolves.toBeUndefined();
+    // Refused by its generated_at, so the download remembers it (fe#202).
+    await expect(fetchReadalongFile(API, REF, { ebookSha256: 'b'.repeat(64) })).resolves.toEqual({
+      refused: MAP.generated_at,
+    });
     expect(mockEngine.writeText).not.toHaveBeenCalled();
     expect(mockEngine.removeFile).not.toHaveBeenCalled();
     // A map that names no ebook never fits a known one.
     mockReadalong.mockImplementation(async () => checked({ ...MAP, ebook: undefined }));
-    await expect(fetchReadalongFile(API, REF, { ebookSha256: SHA })).resolves.toBeUndefined();
+    await expect(fetchReadalongFile(API, REF, { ebookSha256: SHA })).resolves.toEqual({
+      refused: MAP.generated_at,
+    });
     // The same ebook's map is kept.
     mockReadalong.mockImplementation(async () => checked(MAP));
     await expect(fetchReadalongFile(API, REF, { ebookSha256: SHA })).resolves.toMatchObject({
@@ -121,7 +126,7 @@ describe('fetchReadalongFile', () => {
     mockReadalong.mockImplementation(async () =>
       checked({ ...MAP, sections: [{ href: 'é€😀.xhtml', spans: [SPAN] }] }),
     );
-    const kept = await fetchReadalongFile(API, REF);
+    const kept = keptOf(await fetchReadalongFile(API, REF));
     const text = mockEngine.writeText.mock.calls[0][4] as string;
     expect(kept?.bytes).toBe(Buffer.byteLength(text, 'utf8'));
     expect(kept?.bytes).toBeGreaterThan(text.length);
@@ -156,6 +161,33 @@ describe('fitsEbook', () => {
   });
 });
 
+describe('keptOf', () => {
+  it('is the kept map, never a refusal', () => {
+    const kept = { generatedAt: 'g1', bytes: 3 };
+    expect(keptOf(kept)).toBe(kept);
+    expect(keptOf({ refused: 'g1' })).toBeUndefined();
+    expect(keptOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('fitsDownload', () => {
+  const mapOf = (sha256: string) => ({ ebook: { file: '', sha256 } });
+
+  it("pairs by the EPUB's sha when it is known: any server ebook, then the map's own", () => {
+    expect(fitsDownload({ sha256: 'x', size: 1 }, { size: 2 })).toBe(true);
+    expect(fitsDownload({ sha256: 'x' }, { map: mapOf('x') })).toBe(true);
+    expect(fitsDownload({ sha256: 'x', size: 1 }, { size: 1, map: mapOf('y') })).toBe(false);
+  });
+
+  it('pairs by size without a sha, an unknown size on either side saying nothing', () => {
+    expect(fitsDownload({ size: 9 }, { size: 9, map: mapOf('y') })).toBe(true);
+    expect(fitsDownload({ size: 9 }, { size: 10 })).toBe(false);
+    expect(fitsDownload({ size: 9 }, {})).toBe(true);
+    expect(fitsDownload({}, { size: 10 })).toBe(true);
+    expect(fitsDownload({}, {})).toBe(true);
+  });
+});
+
 describe('wantsReadalong', () => {
   it('asks only with the EPUB kept, a server that serves maps and no known-stale map', () => {
     const ready = { readalong: { state: 'ready' as const, generated_at: 'g1' } };
@@ -171,10 +203,10 @@ describe('wantsReadalong', () => {
 });
 
 describe('readalongChange', () => {
-  const kept = (generatedAt?: string) => ({
+  const kept = (generatedAt?: string, readalongRefused?: string) => ({
     ebookUri: 'book.epub',
     readalongGeneratedAt: generatedAt,
-    book: {},
+    readalongRefused,
   });
   const ready = (g: string) => ({ readalong: { state: 'ready' as const, generated_at: g } });
 
@@ -186,21 +218,25 @@ describe('readalongChange', () => {
 
   it('drops a kept map once the server has none ready', () => {
     expect(readalongChange({}, kept('g1'))).toBe('drop');
-    expect(readalongChange({}, { ...kept('g1'), ebookSha256: SHA })).toBe('drop');
     expect(readalongChange({}, kept())).toBe('keep');
   });
 
-  it("keeps a stale map while it fits the download's own EPUB (fe#193)", () => {
-    const stale = { state: 'stale' as const, reason: 'ebook_changed' as const };
-    const other = { readalong: stale, ebook: { path: 'A/B.epub', size: 9 } };
-    // Its sha known: every map it kept was checked against it.
-    expect(readalongChange(other, { ...kept('g1'), ebookSha256: SHA })).toBe('keep');
-    // No sha: while the server's ebook keeps the size the download saved.
-    expect(readalongChange({ readalong: stale }, kept('g1'))).toBe('keep');
-    expect(readalongChange(other, kept('g1'))).toBe('drop');
+  it("keeps a stale map: it was kept for the download's own EPUB (fe#193, fe#202)", () => {
+    const stale = { readalong: { state: 'stale' as const, reason: 'ebook_changed' as const } };
+    expect(readalongChange(stale, kept('g1'))).toBe('keep');
+    // With no sha recorded, a server ebook of another size no longer drops it: the
+    // download's own EPUB did not change.
+    const resized = { ...stale, ebook: { path: 'A/B.epub', size: 10 } };
+    expect(readalongChange(resized, kept('g1'))).toBe('keep');
+  });
+
+  it('does not fetch the map the download refused again, but one made again (fe#202)', () => {
+    expect(readalongChange(ready('g2'), kept('g1', 'g2'))).toBe('keep');
+    expect(readalongChange(ready('g2'), kept(undefined, 'g2'))).toBe('keep');
+    expect(readalongChange(ready('g3'), kept('g1', 'g2'))).toBe('fetch');
   });
 
   it('does nothing without the EPUB on the device', () => {
-    expect(readalongChange(ready('g2'), { readalongGeneratedAt: 'g1', book: {} })).toBe('keep');
+    expect(readalongChange(ready('g2'), { readalongGeneratedAt: 'g1' })).toBe('keep');
   });
 });

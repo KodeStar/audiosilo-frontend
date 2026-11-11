@@ -42,8 +42,9 @@ import {
 } from './offline-meta';
 import {
   fetchReadalongFile,
+  fitsDownload,
   type KeptReadalong,
-  knowsEbook,
+  keptOf,
   readalongChange,
   readReadalongFile,
   removeReadalongFile,
@@ -690,6 +691,7 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   if (change === 'keep') return;
   const key = contentKeyOf(ref);
   let kept: KeptReadalong | undefined;
+  let refused: string | undefined;
   if (change === 'drop') {
     await removeReadalongFile(ref);
   } else {
@@ -699,11 +701,16 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     readalongTried.add(attempt);
     // Only a map of the ebook the download holds (fe#193). Without its sha (no map was kept
     // yet), an ebook of another size on the server is another ebook: none is fetched.
-    if (!knowsEbook(book, entry.manifest)) return;
-    kept = await fetchReadalongFile(api, ref, { ebookSha256: entry.manifest.ebookSha256 });
-    // Not fetched (or refused): the map kept (if any) stays, and so does what the download
-    // says of it.
-    if (!kept) return;
+    const { manifest } = entry;
+    const own = { sha256: manifest.ebookSha256, size: manifest.book.ebook?.size };
+    if (!fitsDownload(own, { size: book.ebook?.size })) return;
+    const fetched = await fetchReadalongFile(api, ref, { ebookSha256: manifest.ebookSha256 });
+    kept = keptOf(fetched);
+    refused = fetched && 'refused' in fetched ? fetched.refused : undefined;
+    // Not fetched: the map kept (if any) stays, and so does what the download says of it.
+    // Refused: that too, and the download remembers the refusal, so the same map is not
+    // fetched again on the next launch (`readalongRefused`).
+    if (!kept && !refused) return;
   }
   if (!stillDownloaded(key, entry)) {
     // Removed while it was fetched: don't leave the file behind.
@@ -712,6 +719,11 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   }
   const cur = useDownloads.getState().entries[key];
   const { manifest } = cur;
+  if (refused) {
+    patchEntry(key, { manifest: { ...manifest, readalongRefused: refused } });
+    persistSoon();
+    return;
+  }
   // The entry's size follows the map's: the old one's bytes out, the new one's in.
   const delta = (kept?.bytes ?? 0) - (manifest.readalongBytes ?? 0);
   patchEntry(key, {
@@ -721,6 +733,7 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
       ...manifest,
       readalongGeneratedAt: kept?.generatedAt,
       readalongBytes: kept?.bytes,
+      readalongRefused: undefined,
       ebookSha256: manifest.ebookSha256 ?? kept?.ebookSha256,
       book: namingReadalong(manifest.book, kept?.generatedAt, book.readalong),
     },
@@ -1220,13 +1233,12 @@ async function runOne(key: string) {
     // The book's read-along map (Bridge Phase 3c), beside the EPUB it follows: optional too.
     // The capability as it is now, not as it was before the audio (a download resumed at
     // launch can start before the server's answer is cached).
+    // No ebook to check against yet (the map names it), so none is refused here.
     let readalong: KeptReadalong | undefined;
     const servesNow = cachedCapability(connectionId, 'readalong');
     if (wantsReadalong(servesNow, entry.manifest.book, ebookUri)) {
-      readalong = await fetchReadalongFile(
-        api,
-        { connectionId, libraryId, path },
-        { signal: ctrl.signal },
+      readalong = keptOf(
+        await fetchReadalongFile(api, { connectionId, libraryId, path }, { signal: ctrl.signal }),
       );
     }
     const mapBytes = readalong?.bytes ?? 0;
