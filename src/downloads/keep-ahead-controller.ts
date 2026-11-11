@@ -165,7 +165,8 @@ let tooBig: { registry: string; keys: Set<string> } = { registry: '', keys: new 
 
 /** Download one planned book with its full item and chapters (the queue and `/next`
  * give the list shape, which has no files), unless something changed while it waited.
- * Resolves what the downloads store did with it. */
+ * Resolves what the downloads store did with it (`declined` too when the network rule no
+ * longer lets it start). */
 async function startOne(client: ApiClient, book: AheadBook): Promise<DownloadOutcome> {
   const { connectionId: cid, libraryId, path } = book;
   // A fresh answer, as the store's own download asks (`chaptersQuery` alone trusts a
@@ -174,6 +175,10 @@ async function startOne(client: ApiClient, book: AheadBook): Promise<DownloadOut
     queryClient.fetchQuery({ ...itemQuery(cid, client, libraryId, path), staleTime: 30_000 }),
     queryClient.fetchQuery({ ...chaptersQuery(cid, client, libraryId, path), staleTime: 30_000 }),
   ]);
+  // The reads of a plan can wait for the network (a query is held while the device has
+  // none), and the one that comes back may be mobile data: the network rule is asked again
+  // before anything starts. The network's change plans again, with the rule as it is then.
+  if ((await networkGate()) !== 'allowed') return 'declined';
   // Not an errored one either: keep-ahead never retries a failure on its own. The store
   // applies the automatic rules (declined this session, the reserve).
   if (useDownloads.getState().entries[contentKeyOf(book)]) return 'exists';

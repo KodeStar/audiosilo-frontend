@@ -202,6 +202,15 @@ describe('runKeepAhead', () => {
     expect(download).not.toHaveBeenCalled();
   });
 
+  // The plan's reads can wait for the network (a held query), and the network that comes
+  // back may be mobile data: the rule read before them must not start a download after.
+  it('asks the network rule again before a book starts', async () => {
+    (canAutoDownload as jest.Mock).mockResolvedValueOnce(true).mockResolvedValue(false);
+    await runKeepAhead();
+    expect(client.item).toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
+  });
+
   it('never fetches again what the listener removed this session', async () => {
     (isDeclined as jest.Mock).mockImplementation((_c, _l, path: string) => path === 'B2');
     await runKeepAhead();

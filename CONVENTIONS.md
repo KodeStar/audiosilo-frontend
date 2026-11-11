@@ -3023,7 +3023,9 @@ are asked, at most 10,000 rows.
   drop under max(1 GB, 10%) (`reserveBytes`; one at a time when the room is unknowable). The
   controller (`keep-ahead-controller.ts`, started once from the root layout) gathers the inputs and
   waits a moment after the book changes, so the store's own download of the book you start always
-  goes first; it never changes the playback store.
+  goes first; it never changes the playback store. Its reads can wait for the network (a held
+  query), so it asks the network rule again right before each book starts (`startOne`): a plan
+  made on Wi-Fi never starts on the mobile data that came back.
 - **The session decline mark**: cancelling or removing a download marks it declined until the app
   restarts (`isDeclined`, memory only); automatic downloads skip it, a listener's download lifts it.
 - **One choke point**: `useDownloads.download(..., origin)` applies the automatic rules itself for
