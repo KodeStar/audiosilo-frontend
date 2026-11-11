@@ -1577,7 +1577,10 @@ media GETs only.
     which tells a change of the reading once: iOS's `inactive` then `background` is one
     leaving): **leaving**, the place is saved now and the loop re-based, so the save the
     15 s pace owed never waits a minute; **coming back**, a save the 15 s pace already owes
-    goes at once. Neither does anything while nothing plays.
+    goes at once. Neither does anything while nothing plays. Nothing else re-bases a
+    running loop: `loading` does not stop it, so a play back from a buffer (or the web's
+    next file) leaves the next save due from the last one (`startSaveLoop`), or a book that
+    buffers more often than the period would never save.
   - **Only the periodic save slows.** A pause, a move, a rate change, a stop, the end, a
     tab giving way and the app leaving still save at once, and the open span is still stored
     every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses no more listening than before

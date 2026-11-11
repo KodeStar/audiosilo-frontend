@@ -655,11 +655,13 @@ const saveLoop = engineTicker(
  * (`saveIntervalMs`). */
 const OPEN_SPAN_KEEP_MS = 5_000;
 const spanKeeper = engineTicker(() => keepOpenSpan(), OPEN_SPAN_KEEP_MS);
-/** Re-based on every start: the first save comes one period after playing starts. */
+/** Started as playing starts: the first save comes one period after that. Never re-based
+ * while it runs (`start()` leaves a running one alone): `loading` does not stop the loop, so
+ * a play back from a buffer, or the web's next file, would otherwise put the save off by a
+ * whole period each time, and a book that buffers (or changes file) more often than the
+ * period, a minute at the slower pace, would never save. */
 function startSaveLoop() {
-  saveLoop.stop();
   saveLoop.start();
-  spanKeeper.stop();
   spanKeeper.start();
 }
 function stopSaveLoop() {

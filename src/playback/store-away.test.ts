@@ -301,6 +301,21 @@ describe('the pace of the periodic save', () => {
     expect(at(mockSaves)).toEqual([0, 60, 120, 180]);
   });
 
+  it('keeps the pace through a buffer (a play back from `loading` does not re-base it)', async () => {
+    await play();
+    await appGoes('background');
+    // A moment of buffering every 40 s (a rebuffer, the web's next file): were each play
+    // after it a new start of the loop, no save would ever be due.
+    for (let i = 0; i < 3; i++) {
+      await played(40);
+      pushSnapshot(snap('loading', track, position));
+      await settle();
+      pushSnapshot(snap('playing', track, position));
+      await settle();
+    }
+    expect(at(mockSaves)).toEqual([0, 60, 120]);
+  });
+
   it('saves at once on coming back when the faster pace already owes one', async () => {
     await play();
     await appGoes('background');
