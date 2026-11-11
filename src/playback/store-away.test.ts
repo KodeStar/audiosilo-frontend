@@ -455,6 +455,17 @@ describe("this device's own record of the place (the mirror)", () => {
     expect(at(mockMirror)).toEqual([15, 30, 45, 60]);
   });
 
+  it('is written once per save when an engine event ran the save before it', async () => {
+    await play();
+    // The engine's events land 50 ms before each whole second, so the first save is an
+    // event's (inside the ticker's slack) and `placeLoop`, re-based by it, comes due a moment
+    // before the save's own interval: the save goes in its place, not after it.
+    jest.advanceTimersByTime(950);
+    await played(45);
+    expect(at(mockSaves)).toEqual([15, 30, 45]);
+    expect(at(mockMirror)).toEqual([15, 30, 45]);
+  });
+
   it('keeps its 15 s from engine events alone (no JS timer fires)', async () => {
     await play();
     await appGoes('background');

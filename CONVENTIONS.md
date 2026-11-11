@@ -1582,8 +1582,9 @@ media GETs only.
     writes the mirror and sends nothing; while the server is known to be away it goes
     through `saveProgress` whole, which sends nothing either and queues the save, so the
     queue holds the place the mirror does. A save writes the mirror itself and re-bases
-    `placeLoop` (`rebase`), so the two never write it twice for one tick, and at the 15 s
-    pace `placeLoop` never fires. Every guard of `persist` holds for the local capture
+    `placeLoop` (`rebase`), and a save due at the moment `placeLoop` is goes in its place
+    (`check`), so the two never write it twice for one tick, and at the 15 s pace
+    `placeLoop` never writes. Every guard of `persist` holds for the local capture
     too (a tab `behindOtherTab` writes nothing of its place at either pace). Not on the 5 s
     keeper: the mirror is ONE document of every book's record, read and written whole
     (synchronously on the web's `localStorage`), and 15 s is what it was always written at.

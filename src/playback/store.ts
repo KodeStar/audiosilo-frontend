@@ -670,11 +670,17 @@ const saveLoop = engineTicker(
  * a kill). At the save's 60 s pace that place was up to a minute of playing behind, and at
  * more than 1x a resume from it could end over 60 book seconds behind the span the kill
  * left open: the server's `resume_behind` backstop (CROSS-REPO section 25). While the save
- * itself runs every 15 s this never fires (each save re-bases it).
+ * itself runs every 15 s this never writes: each save re-bases it, and a save due at the
+ * moment this is goes in its place (`check`). This loop's interval starts again at each
+ * save and the save's own never does, so once an engine event has run a save this one's
+ * comes due a moment before the check that would run the next, and both would write the
+ * record for one tick.
  * Not on the 5 s keeper: the mirror is ONE document holding every book's record, read and
  * written whole (synchronously on the web's `localStorage`), where the open span is a few
  * hundred bytes; 15 s is the pace it was always written at. */
-const placeLoop = engineTicker(() => void persist({ local: true }), SAVE_INTERVAL_MS);
+const placeLoop = engineTicker(() => {
+  if (!saveLoop.check()) void persist({ local: true });
+}, SAVE_INTERVAL_MS);
 /** How often the open span is written to storage while playing, online or offline: a
  * kill (a force-stop, the OS ending the app) loses at most this much listening, since
  * `recoverOpenSpan` closes what was stored at the next launch. Without it an online span
@@ -688,8 +694,9 @@ const spanKeeper = engineTicker(() => keepOpenSpan(), OPEN_SPAN_KEEP_MS);
  * whole period each time, and a book that buffers (or changes file) more often than the
  * period, a minute at the slower pace, would never save. */
 function startSaveLoop() {
-  // In this order: on an engine event each runs in the order it was started, and a save
-  // that is due goes before `placeLoop`, which it re-bases.
+  // In this order: on an engine event each runs in the order it was started, so a save
+  // that is due goes before `placeLoop`, which it re-bases (`placeLoop` gives way to a due
+  // save by itself too, where its own interval is the first to come).
   saveLoop.start();
   placeLoop.start();
   spanKeeper.start();

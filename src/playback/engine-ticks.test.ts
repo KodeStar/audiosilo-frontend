@@ -135,17 +135,18 @@ describe('engineTicker', () => {
     it('check() runs it when due, and only while it is running', () => {
       every = 4_000;
       const { fn, t } = paced();
-      t.check();
+      expect(t.check()).toBe(false);
       expect(fn).not.toHaveBeenCalled();
       expect(t.running()).toBe(false);
       t.start();
       expect(t.running()).toBe(true);
       jest.setSystemTime(Date.now() + 2_000);
-      t.check();
+      expect(t.check()).toBe(false);
       expect(fn).not.toHaveBeenCalled();
       every = 1_000;
-      t.check();
-      t.check();
+      // It answers whether it ran.
+      expect(t.check()).toBe(true);
+      expect(t.check()).toBe(false);
       expect(fn).toHaveBeenCalledTimes(1);
       t.stop();
       expect(t.running()).toBe(false);

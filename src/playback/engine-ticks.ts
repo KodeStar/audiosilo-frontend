@@ -28,15 +28,16 @@ import { ticker } from '@/lib/ticker';
  * doubled. `ms` is then the shortest it gives, the interval's own pace; a longer period
  * is met by the first check past it (an engine event, about once a second while playing,
  * else the interval). `check()` is such a check, for the caller that knows the period just
- * got shorter; `running()` is whether it is started.
+ * got shorter, and answers whether it ran; `running()` is whether it is started.
  */
 export function engineTicker(fn: () => void, ms: number, period: () => number = () => ms) {
   let lastRun = 0;
-  const runIfDue = (now: number) => {
+  const runIfDue = (now: number): boolean => {
     const every = period();
-    if (now - lastRun < every - slackMs(every)) return;
+    if (now - lastRun < every - slackMs(every)) return false;
     lastRun = now;
     fn();
+    return true;
   };
   const interval = ticker(() => runIfDue(Date.now()), ms);
   return {
@@ -51,8 +52,8 @@ export function engineTicker(fn: () => void, ms: number, period: () => number = 
       interval.stop();
     },
     running: () => consumers.has(runIfDue),
-    check() {
-      if (consumers.has(runIfDue)) runIfDue(Date.now());
+    check(): boolean {
+      return consumers.has(runIfDue) && runIfDue(Date.now());
     },
   };
 }
