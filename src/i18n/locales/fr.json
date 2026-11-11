@@ -52,6 +52,8 @@
     },
     "offlineTitle": "Vous êtes hors ligne",
     "offlineDownloads": "Les livres téléchargés sont dans Téléchargements.",
+    "offlinePage": "Cette page s'affiche dès que son serveur répond.",
+    "offlineList": "Cette liste s'affiche dès que son serveur répond.",
     "scrollPrevious": "Faire défiler vers les sections précédentes",
     "scrollNext": "Faire défiler vers d’autres sections"
   },

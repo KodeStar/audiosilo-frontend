@@ -41,6 +41,12 @@ jest.mock('expo-router', () => {
 let mockBook: Book | undefined;
 let mockBookLoading = false;
 let mockBookError: unknown = null;
+let mockBookPaused = false;
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 const mockBookArgs = jest.fn();
 let mockChapters: ChaptersResponse | undefined;
 let mockProgress: Progress | null = null;
@@ -69,6 +75,7 @@ jest.mock('@/api/hooks', () => ({
     return {
       data: mockBook,
       isLoading: mockBookLoading,
+      isPaused: mockBookPaused,
       error: mockBookError,
       refetch: mockRefetch,
     };
@@ -177,6 +184,7 @@ jest.mock('@/downloads/store', () => ({
   useIsDownloaded: (cid: string, libraryId: number, path: string) =>
     mockIsDownloaded(cid, libraryId, path),
   useDownloadedEbook: () => undefined,
+  useDownloads: (select: (s: object) => unknown) => select({ supported: true }),
 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 
@@ -279,6 +287,8 @@ beforeEach(() => {
   useLibraryNames.setState({ names: {} });
   mockBookLoading = false;
   mockBookError = null;
+  mockBookPaused = false;
+  mockDeviceOnline = true;
   mockBookArgs.mockClear();
   mockChapters = CHAPTERS;
   mockProgress = null;
@@ -367,6 +377,58 @@ describe('book page, signed out', () => {
     await mountAt('desktop');
     expect(screen.getByText('Could not load this book.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+});
+
+// A book not read yet is held for the network: the page said "Could not load" with a Retry
+// that could not work. A downloaded book's page is seeded, so it never gets here.
+describe('book page, offline with the book not read', () => {
+  it('says offline, with no Retry, while the book waits for the network', async () => {
+    mockBook = undefined;
+    mockBookPaused = true;
+    await mountAt('desktop');
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This page shows once its server answers. Books you've downloaded are in Downloads.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Could not load this book.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says offline, with no Retry, when it failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    mockBook = undefined;
+    mockBookError = new TypeError('Network request failed');
+    await mountAt('desktop');
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('keeps the error with a Retry when it failed with a network on the device', async () => {
+    mockBook = undefined;
+    mockBookError = new TypeError('Network request failed');
+    await mountAt('desktop');
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it("keeps the server's refusal (not in the library) when the device has since gone offline", async () => {
+    mockDeviceOnline = false;
+    mockBook = undefined;
+    mockBookError = new ApiError(404, 'not found');
+    await mountAt('desktop');
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('shows a book it holds, whatever the network', async () => {
+    mockDeviceOnline = false;
+    mockBookPaused = true;
+    await mountAt('desktop');
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.getByTestId('book-page')).toBeTruthy();
   });
 });
 

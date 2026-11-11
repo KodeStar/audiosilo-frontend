@@ -5,6 +5,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useBookMeta, useCapability, useMetaWork, useProgressLookup } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import type { BookRef } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
 import { CoverWash } from '@/components/library/cover-wash';
 import { GhostCover } from '@/components/library/ghost-cover';
 import { SourceLine } from '@/components/library/source-line';
@@ -17,6 +18,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
 import { formatDuration } from '@/lib/format';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { percentOf } from '@/lib/progress-view';
 import {
@@ -98,6 +100,11 @@ export function SeriesPage({
   // that is slow or unreachable must not hold the page on its skeleton.
   const progressLoading = loadingOf(cid);
   const owned = useSeriesBooks(libraryId, name);
+  const unread = useUnreadQuery({
+    data: owned.books.length > 0 ? owned.books : undefined,
+    isPaused: owned.offline,
+    error: owned.error,
+  });
   const metadata = useCapability('metadata');
   // Wait for the progress so the anchor is the book you're on, not one asked for first
   // and replaced a moment later.
@@ -155,10 +162,15 @@ export function SeriesPage({
 
   // With community metadata on, the page waits for the rail before it lays out: a local
   // series ("6 entries") that then reflowed into the whole one (17) jumped on a deep link.
-  // A failed or unmatched lookup falls back to the local series.
+  // A failed or unmatched lookup falls back to the local series, and so does a list whose
+  // next page waits for the network (`owned.offline`): nothing more arrives meanwhile.
   const railPending =
     metadata === true &&
-    ((!owned.complete && !owned.error) || progressLoading || (!!anchor && meta.isLoading));
+    ((!owned.complete && !owned.error && !owned.offline) ||
+      progressLoading ||
+      (!!anchor && meta.isLoading));
+  // Before the skeleton: a list held for the network counts as loading (`isLoading`).
+  if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
   // isIdle too: a series list waits for /server (series_memberships) before it asks.
   if (owned.isLoading || owned.isIdle || railPending) return <SeriesSkeleton />;
   if (owned.error && owned.books.length === 0) {
@@ -370,6 +382,9 @@ export function WorkSeriesPage({ workId }: { workId: string }) {
   // The link carries no name: the work names the browser tab once it loads.
   usePageTitle(work.data?.title);
   const paddingBottom = useMiniPlayerInset();
+  const unread = useUnreadQuery(work);
+  // The work waits for the network: not "nothing of this series here".
+  if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
   if (metadata === undefined || work.isLoading) return <SeriesSkeleton />;
   const w = work.data;
   if (!w) {

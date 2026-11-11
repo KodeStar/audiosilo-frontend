@@ -9,6 +9,7 @@ import { useScopedCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
 import { NotInLibraryState } from '@/components/layout/not-in-library';
+import { OfflineState } from '@/components/layout/offline-state';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -25,6 +26,7 @@ import {
   presentLetters,
   sectionIndexForLetter,
 } from '@/lib/alpha-sections';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { idParam, libraryHref, pathLeaf, segmentsToPath } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { recallScroll, rememberScroll, scrollKey } from '@/lib/scroll-memory';
@@ -105,8 +107,12 @@ function BrowseContent() {
   const cid = useScopedCid();
 
   const { data: libraries } = useLibraries();
+  const browse = useBrowseInfinite(libraryId, path);
   const { data, isLoading, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useBrowseInfinite(libraryId, path);
+    browse;
+  // The folder waits for the network, or failed without one: not an empty folder, and no
+  // Retry can work.
+  const offline = useUnreadQuery(browse) === 'offline';
   const paddingBottom = useMiniPlayerInset();
 
   const [query, setQuery] = useState('');
@@ -232,7 +238,9 @@ function BrowseContent() {
       ) : null}
 
       {isLoading ? <BrowseSkeleton /> : null}
-      {!error ? null : isNotInLibraryError(error) ? (
+      {offline ? (
+        <OfflineState hint={t('common.offlinePage')} />
+      ) : !error ? null : isNotInLibraryError(error) ? (
         <NotInLibraryState kind="folder" />
       ) : (
         <LoadFailedNote
@@ -243,7 +251,7 @@ function BrowseContent() {
         />
       )}
 
-      {!isLoading && !error ? (
+      {!isLoading && !error && !offline ? (
         <View className="flex-1 flex-row">
           <FlatList
             ref={listRef}

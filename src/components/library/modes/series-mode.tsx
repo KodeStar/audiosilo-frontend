@@ -2,9 +2,11 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { useProgressLookup, useSeriesList } from '@/api/hooks';
+import { OfflineState } from '@/components/layout/offline-state';
 import { CardGrid } from '@/components/series/card-grid';
 import { EmptyShelf } from '@/components/series/empty-shelf';
 import { SeriesCard, SeriesCardSkeleton } from '@/components/series/series-card';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useConnectionName } from '@/stores/session';
 
 import type { LibraryModeProps } from '../library-modes';
@@ -22,7 +24,10 @@ export function SeriesMode({ connectionId, libraryId }: LibraryModeProps) {
   const list = useSeriesList(libraryId, connectionId);
   const { progressOf } = useProgressLookup();
   const connectionName = useConnectionName(connectionId);
+  const unread = useUnreadQuery(list);
 
+  // Before the skeleton: a list held for the network stays pending (`useUnreadQuery`).
+  if (unread === 'offline') return <OfflineState hint={t('common.offlineList')} />;
   if (list.isPending) {
     return (
       <CardGrid

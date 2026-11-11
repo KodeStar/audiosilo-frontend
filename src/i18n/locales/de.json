@@ -52,6 +52,8 @@
     },
     "offlineTitle": "Du bist offline",
     "offlineDownloads": "Heruntergeladene Bücher findest du unter Downloads.",
+    "offlinePage": "Diese Seite erscheint, sobald ihr Server antwortet.",
+    "offlineList": "Diese Liste erscheint, sobald ihr Server antwortet.",
     "scrollPrevious": "Zu vorherigen Bereichen scrollen",
     "scrollNext": "Zu weiteren Bereichen scrollen"
   },

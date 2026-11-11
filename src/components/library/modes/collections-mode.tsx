@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useCollections, useFavouritesAll } from '@/api/hooks';
+import { OfflineState } from '@/components/layout/offline-state';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 
@@ -34,7 +36,11 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
   const layout = useLayout();
   const gutter = pageGutter(layout);
   const { openCollection } = useOpen();
-  const { data, isLoading, error, refetch } = useCollections(connectionId);
+  const collections = useCollections(connectionId);
+  const { data, isLoading, error, refetch } = collections;
+  // The list waits for the network, or failed without one: no Retry can work, and
+  // Favourites (every server's, as last read) still shows below.
+  const unread = useUnreadQuery(collections);
   const { favourites } = useFavouritesAll();
   const [creating, setCreating] = useState(false);
   const [width, setWidth] = useState(0);
@@ -44,11 +50,16 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
 
   return (
     <TabPageScroll
+      testID="collections-mode"
       gutter={false}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: 20 }}
     >
-      {error && !data ? (
+      {unread === 'offline' ? (
+        <View className="pb-6">
+          <OfflineState variant="card" hint={t('common.offlineList')} />
+        </View>
+      ) : error && !data ? (
         <View className="pb-6">
           <LoadError
             compact

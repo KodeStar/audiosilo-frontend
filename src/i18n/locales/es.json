@@ -52,6 +52,8 @@
     },
     "offlineTitle": "Estás sin conexión",
     "offlineDownloads": "Los libros descargados están en Descargas.",
+    "offlinePage": "Esta página aparece en cuanto responda su servidor.",
+    "offlineList": "Esta lista aparece en cuanto responda su servidor.",
     "scrollPrevious": "Desplazar a las secciones anteriores",
     "scrollNext": "Desplazar a más secciones"
   },

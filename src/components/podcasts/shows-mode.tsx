@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { usePodcastShows } from '@/api/hooks';
+import { OfflineState } from '@/components/layout/offline-state';
 import { CoverGrid, CoverGridSkeleton } from '@/components/library/cover-grid';
 import type { LibraryModeProps } from '@/components/library/library-modes';
 import { EmptyShelf } from '@/components/series/empty-shelf';
 import { SubNavActions } from '@/components/shell/tab-root-nav';
 import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
 import { useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 
 import { FollowRequestsNotice, ShowsActions, useAddShowsAccess } from './shows-actions';
@@ -46,7 +48,10 @@ function ShowsBody({ connectionId, libraryId }: LibraryModeProps) {
   const shows = usePodcastShows(libraryId, connectionId);
   const canAdd = useAddShowsAccess(connectionId) === 'allowed';
   const [filter, setFilter] = useState<ShowsFilter>('all');
+  const unread = useUnreadQuery(shows);
 
+  // Before the skeleton: a list held for the network stays pending (`useUnreadQuery`).
+  if (unread === 'offline') return <OfflineState hint={t('common.offlineList')} />;
   if (shows.isPending) {
     return (
       <View testID="shows-mode-loading">

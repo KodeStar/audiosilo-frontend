@@ -20,6 +20,12 @@ jest.mock('@/api/provider', () => ({
 const mockRefetch = jest.fn();
 const mockBrowse = jest.fn();
 let mockError: Error | null = null;
+let mockPaused = false;
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 jest.mock('@/api/hooks', () => ({
   useLibraries: () => ({ data: [{ id: 1, name: 'Fiction' }] }),
   useBrowseInfinite: (...a: unknown[]) => {
@@ -27,6 +33,7 @@ jest.mock('@/api/hooks', () => ({
     return {
       data: undefined,
       isLoading: false,
+      isPaused: mockPaused,
       error: mockError,
       refetch: mockRefetch,
       fetchNextPage: jest.fn(),
@@ -50,6 +57,8 @@ beforeEach(() => {
   mockBrowse.mockClear();
   mockRefetch.mockClear();
   mockError = null;
+  mockPaused = false;
+  mockDeviceOnline = true;
   mockScope = 'home';
   useSession.setState({ connections: [connection] } as never);
 });
@@ -63,10 +72,31 @@ describe('BrowseScreen', () => {
     expect(mockRefetch).toHaveBeenCalled();
   });
 
+  // A folder not read yet is held for the network: it showed as an empty folder.
+  it('says offline, not an empty folder, while the folder waits for the network', async () => {
+    mockPaused = true;
+    await render(<BrowseScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(/^This page shows once its server answers\./)).toBeTruthy();
+    expect(screen.queryByText('This folder is empty.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says offline, with no Retry, when it failed with no network on the device', async () => {
+    mockDeviceOnline = false;
+    mockError = new TypeError('Network request failed');
+    await render(<BrowseScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('Could not open this folder.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   // CONNECT-02 (the 401 half): a session that ended is the sign-in state, no Retry.
   it('shows the sign-in state, and no Retry, when the session ended', async () => {
     useSession.setState({ connections: [{ ...connection, needsReconnect: 'auth' }] } as never);
     mockError = new ApiError(401, 'invalid or expired token');
+    // The server answered: offline since or not, it is the sign-in state.
+    mockDeviceOnline = false;
     await render(<BrowseScreen />);
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();

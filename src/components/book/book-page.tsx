@@ -31,6 +31,7 @@ import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
 import { ContentScope } from '@/components/layout/content-scope';
 import { NotInLibraryState } from '@/components/layout/not-in-library';
+import { OfflineState } from '@/components/layout/offline-state';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { bookMetaWork, matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
@@ -59,6 +60,7 @@ import { Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useIsDownloaded } from '@/downloads/store';
 import { CONTENT_WIDTH, useLayout } from '@/lib/layout';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import {
   type BookTab,
@@ -246,7 +248,9 @@ function BookPage() {
   const paddingBottom = useMiniPlayerInset();
   const { openSeries, openAuthor, openNarrator } = useOpen();
 
-  const { data: book, isLoading, error, refetch } = useBook(libraryId, path);
+  const bookQuery = useBook(libraryId, path);
+  const { data: book, isLoading, error, refetch } = bookQuery;
+  const unread = useUnreadQuery(bookQuery);
   usePageTitle(book ? bookTitle(book.title, path) : undefined);
   const { data: chapterData, isLoading: chaptersLoading } = useChapters(libraryId, path);
   const { data: libraries } = useLibraries();
@@ -419,6 +423,8 @@ function BookPage() {
   if (!book) {
     // A 404 or 403 is a book that isn't there for this listener: no Retry (CONNECT-13).
     if (isNotInLibraryError(error)) return <NotInLibraryState />;
+    // The book waits for the network, or failed without one: no Retry can work.
+    if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
     return (
       <View className="flex-1 p-4">
         <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />

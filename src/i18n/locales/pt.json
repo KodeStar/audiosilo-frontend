@@ -52,6 +52,8 @@
     },
     "offlineTitle": "Estás offline",
     "offlineDownloads": "Os livros transferidos estão em Transferências.",
+    "offlinePage": "Esta página aparece assim que o seu servidor responder.",
+    "offlineList": "Esta lista aparece assim que o seu servidor responder.",
     "scrollPrevious": "Deslocar para as secções anteriores",
     "scrollNext": "Deslocar para mais secções"
   },

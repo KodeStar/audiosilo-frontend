@@ -52,6 +52,8 @@
     },
     "offlineTitle": "You're offline",
     "offlineDownloads": "Books you've downloaded are in Downloads.",
+    "offlinePage": "This page shows once its server answers.",
+    "offlineList": "This list shows once its server answers.",
     "scrollPrevious": "Scroll to previous sections",
     "scrollNext": "Scroll to more sections"
   },

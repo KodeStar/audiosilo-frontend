@@ -11,6 +11,12 @@ jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 
 jest.mock('@/downloads/store', () => ({
   useIsDownloaded: () => false,
   useDownloadedCoverUri: () => null,
+  useDownloads: (select: (s: object) => unknown) => select({ supported: true }),
+}));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
 }));
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
@@ -74,6 +80,7 @@ type BooksResult = {
   isLoading: boolean;
   isIdle: boolean;
   complete: boolean;
+  offline?: boolean;
   error: unknown;
   retry: jest.Mock;
 };
@@ -130,6 +137,7 @@ function loaded(books: Book[]): BooksResult {
 }
 
 beforeEach(() => {
+  mockDeviceOnline = true;
   mockCaps = { metadata: false };
   mockMeta = undefined;
   mockMetaLoading = false;
@@ -203,6 +211,40 @@ describe('SeriesPage, local series', () => {
     mockBooks = loaded([]);
     await render(<SeriesPage libraryId={1} name="Nope" />);
     expect(screen.getByText('Nothing in this series here')).toBeTruthy();
+  });
+
+  // The first page is held for the network, which counts as loading: the skeleton never
+  // ended where the page used to fail with a Retry.
+  describe('offline with nothing loaded', () => {
+    it('says offline, not a skeleton, while the books wait for the network', async () => {
+      mockBooks = { ...loaded([]), isLoading: true, complete: false, offline: true };
+      await render(<SeriesPage libraryId={1} name="The Expanse" />);
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "This page shows once its server answers. Books you've downloaded are in Downloads.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('series-skeleton', { includeHiddenElements: true })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    });
+
+    it('says offline, with no Retry, when they failed with no network on the device', async () => {
+      mockDeviceOnline = false;
+      mockBooks = { ...loaded([]), complete: false, error: new TypeError('offline') };
+      await render(<SeriesPage libraryId={1} name="The Expanse" />);
+      expect(screen.getByText("You're offline")).toBeTruthy();
+      expect(screen.queryByText("Couldn't load this series")).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    });
+  });
+
+  it('keeps the books it holds while a later page waits for the network', async () => {
+    mockDeviceOnline = false;
+    mockBooks = { ...loaded([lw]), complete: false, offline: true };
+    await render(<SeriesPage libraryId={1} name="The Expanse" />);
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.getByRole('header', { name: 'Leviathan Wakes' })).toBeTruthy();
   });
 });
 
@@ -286,6 +328,16 @@ describe('SeriesPage, community rail', () => {
     expect(
       screen.getByRole('button', { name: 'Book 4, Cibola Burn, Not in your library' }),
     ).toBeTruthy();
+  });
+
+  // With metadata on the page waits for every page of the series before it lays out; a
+  // page held for the network never arrives, so the books it holds show as a local series.
+  it('lays out what it holds, not a skeleton, while a later page waits for the network', async () => {
+    mockBooks = { ...loaded([lw, cw]), complete: false, offline: true };
+    await render(<SeriesPage libraryId={1} name="The Expanse" />);
+    expect(screen.queryByTestId('series-skeleton', { includeHiddenElements: true })).toBeNull();
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.getAllByText('2 entries').length).toBeGreaterThan(0);
   });
 
   it('links a book on no server out to AudioSilo Meta', async () => {
