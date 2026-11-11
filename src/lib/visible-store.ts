@@ -1,4 +1,4 @@
-import { type StoreApi, type UseBoundStore, useStore } from 'zustand';
+import { createStore, type StoreApi, type UseBoundStore, useStore } from 'zustand';
 
 import { isOffScreen, onAppStateEdge } from './app-activity';
 
@@ -32,18 +32,14 @@ export function quietOffScreen<S extends object, K extends keyof S>(
   field: K,
   isTick: (shown: S[K], live: S[K]) => boolean,
 ): UseBoundStore<StoreApi<S>> {
-  let shown = store.getState();
-  const listeners = new Set<(state: S, prev: S) => void>();
-  const show = (next: S) => {
-    if (next === shown) return;
-    const prev = shown;
-    shown = next;
-    for (const listener of [...listeners]) listener(next, prev);
-  };
+  // What is shown: a store of its own, holding the same state object as the live one.
+  const shown = createStore<S>()(() => store.getState());
+  const show = (next: S) => shown.setState(next, true);
   const onlyATick = (live: S) => {
-    if (!isTick(shown[field], live[field])) return false;
+    const held = shown.getState();
+    if (!isTick(held[field], live[field])) return false;
     for (const key of Object.keys(live) as (keyof S)[]) {
-      if (key !== field && live[key] !== shown[key]) return false;
+      if (key !== field && live[key] !== held[key]) return false;
     }
     return true;
   };
@@ -54,16 +50,8 @@ export function quietOffScreen<S extends object, K extends keyof S>(
   onAppStateEdge(isOffScreen, (offScreen) => {
     if (!offScreen) show(store.getState());
   });
-  const visible: Pick<StoreApi<S>, 'getState' | 'getInitialState' | 'subscribe'> = {
-    getState: () => shown,
-    getInitialState: store.getInitialState,
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
   const useShown = <U>(selector?: (state: S) => U) =>
-    useStore(visible, selector ?? (identity as (state: S) => U));
+    useStore(shown, selector ?? (identity as (state: S) => U));
   return Object.assign(useShown, store) as UseBoundStore<StoreApi<S>>;
 }
 
