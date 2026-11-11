@@ -2145,7 +2145,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
   `startBookInPlace`, `adoptLoaded` and the car's play specs share it, so the car and the
-  phone start a book at the same place.
+  phone start a book at the same place. A downloaded book's start asks its server first
+  (`startSourceOf`, up to `FRESH_SOURCE_WAIT_MS`) only when there is someone to ask: with no
+  network on the device (`isDeviceOnline`) or its server marked unreachable it starts from
+  the download's copy at once (a Play offline spun for the whole wait).
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
   car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
   `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module
@@ -3435,8 +3438,14 @@ under their empty state).
   a copy on this device to fall back to is one (`useBookProgress`'s mirror: held, it never runs).
   **Writes are never held on native**: the query client's `mutations` default there is
   `networkMode: 'always'` (`provider.tsx`), so a bookmark, note, rating, queue, collection or
-  progress edit made with no network is sent and fails at once with its screen's own error (the
-  form still open), as before the flag existed. A held mutation lives only in memory: Save
+  progress edit made with no network fails at once with its screen's own error (the form still
+  open), as before the flag existed. **"At once" is the API client's**: in the app,
+  `ApiClient.send` throws the `NetworkError` of no answer, unsent, while `isDeviceOnline()` is
+  false (a sent one waited out its timeout on iOS in airplane mode: a bookmark's error 20-30 s
+  after the tap, a downloaded book's resume lookup holding its start). Every request path gets
+  it (queries, writes, `fetchFailFast`, the save loops, the car's kept bookmarks, which keep a
+  `NetworkError` like any no-answer); unknown counts as online, so a LAN server is never
+  refused. The web leaves it to the browser, whose fetch fails at once offline. A held mutation lives only in memory: Save
   spins, and the write is gone if the app is closed before the network returns. The web keeps
   TanStack's default (a write waits for the browser to come back online); a write that must
   work offline on the web too says so itself (`useMarkFinished`).

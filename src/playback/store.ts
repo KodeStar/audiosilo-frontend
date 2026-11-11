@@ -1374,9 +1374,11 @@ function lateListener() {
 /** This tab gave way to another tab's play. */
 const gaveWayNotice = lateListener();
 
-/** Queues built from a download that lacks files of its book the engine played (an
- * adoption offline, `adoptLoadedBook`): their end is the downloaded part's, not the book's
- * (D3, fe#185). By queue, so any other start of the book (a new queue) is a whole one. */
+/** Queues built from a download that ends before its book does, without the rest (an
+ * adoption offline, `adoptLoadedBook`; a `playBook` from the download's own copy with no
+ * server to stream from): their end is the downloaded part's, not the book's (D3, fe#185).
+ * By queue, so any other start of the book (a new queue) is a whole one unless it adds
+ * itself. */
 const partialQueues = new WeakSet<BookQueue>();
 
 /** Whether `np`'s queue ends where its download does, short of the book's end. */
