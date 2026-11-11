@@ -121,12 +121,19 @@ describe('useJournalSources', () => {
   it('marks a list held for the network as waiting, and a list on its way or held back not', async () => {
     onlineManager.setOnline(false);
     try {
-      const { result } = await mount({ notes: false });
+      // c1's flag is known (its kept `/server` answer); c2's is held with the rest.
+      const { result } = await mount({ notes: false }, (c) =>
+        c.setQueryData(qk.server('c1'), { capabilities: { annotations: true } }),
+      );
       await waitFor(() => expect(result.current.history[0].waiting).toBe(true));
       expect(result.current.history[0].status).toBe('loading');
       expect(mockConnections[0].client.allHistory).not.toHaveBeenCalled();
       // Held back by the screen (`notes: false`), not by the network.
       expect(result.current.notes[0]).toMatchObject({ status: 'loading', waiting: false });
+      // A list that never ran for want of its flag waits with the `/server` read that is
+      // held: it has no page of its own to be held.
+      expect(result.current.bookmarks[1]).toMatchObject({ status: 'loading', waiting: true });
+      expect(mockConnections[1].client.serverInfo).not.toHaveBeenCalled();
     } finally {
       onlineManager.setOnline(true);
     }

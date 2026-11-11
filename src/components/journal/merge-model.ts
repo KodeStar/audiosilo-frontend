@@ -22,8 +22,8 @@ export type SourceSnapshot<T> = {
   connectionId: string;
   connectionName: string;
   status: SourceStatus;
-  /** Still `loading` because its first page is held for the network (the device is
-   * offline: `isPaused`), so nothing arrives meanwhile. */
+  /** Still `loading` because its first page, or the `/server` flag it waits on, is held
+   * for the network (the device is offline: `isPaused`), so nothing arrives meanwhile. */
   waiting?: boolean;
   /** Every loaded row, newest first (the server's order). */
   rows: readonly T[];

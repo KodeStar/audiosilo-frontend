@@ -61,6 +61,9 @@ function rowsOf<T>(data: InfiniteData<Page<T>> | undefined): readonly T[] {
 
 type ServerAnnotations = {
   supported: boolean | 'unknown' | undefined;
+  /** Its `/server` is held for the network with no answer kept: the flag, and so the
+   * list that waits on it, can't come meanwhile. */
+  waiting: boolean;
   refetch: () => unknown;
 };
 
@@ -87,7 +90,7 @@ function toSource<T>(
     connectionId: connection.id,
     connectionName: connection.name,
     status,
-    waiting: status === 'loading' && isPaused,
+    waiting: status === 'loading' && (isPaused || info?.waiting === true),
     supported,
     rows: rowsOf(data),
     hasNextPage: status === 'ready' && hasNextPage,
@@ -112,6 +115,7 @@ export function useJournalSources({ notes: wantNotes = true } = {}): JournalSour
     combine: (results) =>
       results.map((r): ServerAnnotations => ({
         supported: r.data ? !!r.data.capabilities.annotations : r.isError ? 'unknown' : undefined,
+        waiting: !r.data && r.isPaused,
         refetch: r.refetch,
       })),
   });
