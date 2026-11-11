@@ -14,7 +14,10 @@ let mockPlayable = true;
 jest.mock('./use-playable-here', () => ({ usePlayableHere: () => () => mockPlayable }));
 // Why it can't: the device's network, and the book's server by name.
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 jest.mock('@/stores/session', () => ({
   ...jest.requireActual('@/stores/session'),
   useConnectionName: () => 'Hearthside',

@@ -6,12 +6,29 @@ import { Platform } from 'react-native';
  * Whether the device itself has a network (CONNECT-15): the browser's `navigator.onLine`
  * on the web, the system's network state in the app. With a network, a server that doesn't
  * answer is that server's trouble, and the chrome names it ("Hearthside isn't answering");
- * without one, the device is offline. Unknown counts as online (an iOS reachability not
- * yet known, a probe that failed, a test), so the server is named rather than the device
- * blamed. One subscription to the system serves every caller (`subscribe`).
+ * without one, the device is offline. Unknown counts as online (a state not yet known, a
+ * probe that failed, a test), so the server is named rather than the device blamed. One
+ * subscription to the system serves every caller (`subscribe`).
+ *
+ * In the app "a network" is the system's `isConnected` alone, never whether the internet
+ * can be reached through it (fe#179): a server on the same Wi-Fi answers with the
+ * internet down, so whether a server can be reached is that server's to say (by
+ * answering), and a Retry stays on screen. React Query pauses its requests by the same
+ * signal in the app (`watchDeviceOnline`, wired in `src/api/provider.tsx`).
  */
 export function useDeviceOnline(): boolean {
   return useSyncExternalStore(subscribe, readOnline, readOnline);
+}
+
+/**
+ * The same signal outside React: `listener` hears the state now and at every change, until
+ * the returned stop is called. The shape of TanStack's `onlineManager.setEventListener`
+ * setup, so the query library pauses and resumes by what `useDeviceOnline` shows.
+ */
+export function watchDeviceOnline(listener: (online: boolean) => void): () => void {
+  const stopWatching = subscribe(() => listener(online));
+  listener(online);
+  return stopWatching;
 }
 
 let online = true;
@@ -60,7 +77,7 @@ function listen(): () => void {
   }
   let live = true;
   const apply = (s: Network.NetworkState | undefined) => {
-    if (live && s) setOnline(s.isConnected !== false && s.isInternetReachable !== false);
+    if (live && s) setOnline(s.isConnected !== false);
   };
   let sub: { remove: () => void } | undefined;
   try {

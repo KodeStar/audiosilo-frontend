@@ -76,7 +76,10 @@ const mockUseSearch = jest.fn((_q: string) => mockResults);
 jest.mock('./use-search', () => ({ useSearch: (q: string) => mockUseSearch(q) }));
 
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 
 /* eslint-disable import/first */
 import { useReachability } from '@/api/reachability';

@@ -12,7 +12,7 @@ jest.mock('expo-network', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useDeviceOnline } from './device-online';
+import { useDeviceOnline, watchDeviceOnline } from './device-online';
 /* eslint-enable import/first */
 
 const os = Platform.OS;
@@ -37,6 +37,57 @@ describe('useDeviceOnline (app)', () => {
     const { result } = await renderHook(() => useDeviceOnline());
     await act(async () => {});
     expect(result.current).toBe(true);
+  });
+
+  // fe#179: a server on the same Wi-Fi answers with the internet down. The device has a
+  // network; whether a server can be reached is that server's to say.
+  it('stays online on a network with no internet (a LAN server still answers)', async () => {
+    mockState = { isConnected: true, isInternetReachable: false };
+    const { result } = await renderHook(() => useDeviceOnline());
+    await act(async () => {});
+    expect(result.current).toBe(true);
+    // Losing the internet on a connected network changes nothing either.
+    await act(async () => mockListeners[0]({ isConnected: true, isInternetReachable: false }));
+    expect(result.current).toBe(true);
+    await act(async () => mockListeners[0]({ isConnected: false, isInternetReachable: false }));
+    expect(result.current).toBe(false);
+  });
+
+  it('counts an unknown connection as online', async () => {
+    mockState = {};
+    const { result } = await renderHook(() => useDeviceOnline());
+    await act(async () => {});
+    expect(result.current).toBe(true);
+  });
+});
+
+describe('watchDeviceOnline (the same signal outside React)', () => {
+  it('tells the state now, then every change, until stopped', async () => {
+    mockState = { isConnected: true };
+    const heard: boolean[] = [];
+    const stop = watchDeviceOnline((online) => heard.push(online));
+    await act(async () => {});
+    expect(heard).toEqual([true]);
+    await act(async () => mockListeners[0]({ isConnected: false }));
+    await act(async () => mockListeners[0]({ isConnected: false })); // no change: no word
+    await act(async () => mockListeners[0]({ isConnected: true }));
+    expect(heard).toEqual([true, false, true]);
+    stop();
+    await act(async () => mockListeners[0]({ isConnected: false }));
+    expect(heard).toEqual([true, false, true]);
+  });
+
+  it('shares the one system subscription with the hook, and agrees with it', async () => {
+    mockState = { isConnected: true };
+    const heard: boolean[] = [];
+    const stop = watchDeviceOnline((online) => heard.push(online));
+    const { result, unmount } = await renderHook(() => useDeviceOnline());
+    expect(mockListeners).toHaveLength(1);
+    await act(async () => mockListeners[0]({ isConnected: false }));
+    expect(result.current).toBe(false);
+    expect(heard.at(-1)).toBe(false);
+    await unmount();
+    stop();
   });
 });
 

@@ -8,7 +8,10 @@ jest.mock('@/downloads/store', () => {
   return { useDownloads: create(() => ({ entries: {}, hydrated: true })) };
 });
 let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ useDeviceOnline: () => mockDeviceOnline }));
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 
 /* eslint-disable import/first */
 import { useReachability } from '@/api/reachability';
