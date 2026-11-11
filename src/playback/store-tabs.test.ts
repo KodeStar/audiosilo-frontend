@@ -892,6 +892,17 @@ describe.each([
       expect(answers()).toEqual([47]);
       expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [47]]);
       expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 47 });
+      // Nor a second give-way: one pause and one notice, and the place the listener chose
+      // in A is the one it plays from, whatever B has saved since.
+      expect(a.engine.svc.pause).toHaveBeenCalledTimes(1);
+      expect(a.gaveWay()).toBe(1);
+      b.engine.at(60);
+      await b.save();
+      await a.player().toggle();
+      await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+      await sleep(40);
+      expect(a.engine.svc.seekTo.mock.calls).toEqual([[300]]);
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
     });
 
     it('ignores an answer to a play before its last (a press since)', async () => {

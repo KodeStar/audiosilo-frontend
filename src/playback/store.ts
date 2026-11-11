@@ -1112,7 +1112,9 @@ function claimPlaying() {
  * play: a tab claims on every move into `playing`, so the play it noted claims again as it
  * goes on (the next file, a stall it came back from, a transcoded stream requested again),
  * and that is no new play (`notedPlay`). The note is left as it stands, so a seek the
- * listener made here since is still the place this tab plays from.
+ * listener made here since is still the place this tab plays from. That holds for a tab
+ * still pausing for the play too (it gave way a moment ago and its engine has not reported
+ * the pause, so it still reads as playing): the play's next claim is not a second give-way.
  *
  * A tab that gives way answers the play with the place it stopped at (`GaveWay`), which is
  * where its span ended: the other tab began from this tab's last save, up to 15 s behind,
@@ -1138,10 +1140,20 @@ function giveWayTo(claim: PlayingClaim) {
     notedPlay?.connectionId === claim.connectionId &&
     notedPlay.tab === claim.tab &&
     notedPlay.askedAt === claim.askedAt;
+  // It gave way to that play already and no play was asked for here since (`own`): its
+  // engine has not reported the pause yet, so the snapshot still reads `playing`. Nothing
+  // is new: no second note (a seek the listener made here meanwhile stands), pause or
+  // notice.
+  if (gives && noted && notedPlay?.own === playAskedAt) return;
   const goesOn = !gives && noted;
   // Not when it plays on (the newer play is this tab's: the other tab follows it).
   if (np && np.connectionId === claim.connectionId && (gives || !mine.live) && !goesOn) {
-    notedPlay = { connectionId: claim.connectionId, tab: claim.tab, askedAt: claim.askedAt };
+    notedPlay = {
+      connectionId: claim.connectionId,
+      tab: claim.tab,
+      askedAt: claim.askedAt,
+      own: playAskedAt,
+    };
     // The place it gives way at is saved first: nothing of its own is saved after the note.
     if (gives) void persist();
     // Whatever place the listener chose here, the other tab's listening is the latest.
@@ -1230,8 +1242,10 @@ let otherTabPlayed: { connectionId: string; since: number } | null = null;
  * for: the same play claiming again as it goes on is not noted a second time, so it never
  * takes back a place the listener chose here since (`userMoved`). Forgotten when a book is
  * started (`switchBook`): that book's place is the shared one as it was at its load, and
- * the other tab plays on from there, so its next claim is noted afresh. */
-let notedPlay: { connectionId: string; tab: string; askedAt: number } | null = null;
+ * the other tab plays on from there, so its next claim is noted afresh. `own`: this tab's
+ * own play as it stood then (`playAskedAt`), which tells a tab still pausing for that play
+ * (the engine's pause not reported yet) from one that has played again since. */
+let notedPlay: { connectionId: string; tab: string; askedAt: number; own: number } | null = null;
 /** The engine may be playing while this tab moves to another tab's place (`moveWhilePlaying`:
  * a play that began by itself, `catchUpPlaying`, or the answer of the tab that gave way,
  * `onGaveWayAnswer`): no span opens and nothing is saved meanwhile. Dropped by a book switch

@@ -1816,7 +1816,11 @@ media GETs only.
     as it stands, so a seek the listener made there since is the place it plays from, for
     a book of one file or of many (owner decision). `switchBook` forgets the play: a book
     loaded after the claim (its place is the shared one as of its load) notes the play's
-    next claim and follows it. A new play is noted as before, over a seek made since.
+    next claim and follows it. A new play is noted as before, over a seek made since. A tab
+    that gave way still reads as playing until its engine reports the pause, and the play
+    claims again within milliseconds: to a tab that has asked for no play since it noted
+    that one (`notedPlay.own`, its `playAskedAt` then) the claim is nothing at all, not a
+    second give-way (a second pause and toast, and a note over a seek made in between).
   - A paused tab looked at again shows the other tab's place
     (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
     the play that follows reads again; a finished book stays where it is).
