@@ -1823,26 +1823,38 @@ media GETs only.
   - *The tab that gives way says where it stopped.* The mirror is the other tab's last
     **save** (every 15 s while it plays), so a tab that takes over from one still playing
     starts up to 15 s behind it, and a press is never kept waiting for more. So the tab
-    that gives way answers the claim on the same channel (`GaveWay` in `playing-claim.ts`,
+    that gives way answers on the same channel (`GaveWay` in `playing-claim.ts`,
     told from a claim by its `kind`; `tabClaims().answer`, both transports): connection,
     book (library and path), the place its span ended at (whole-book seconds and the file
-    place), whether that is the book's end, its tab and the claim it answers (`to`,
-    `claimedAt`). Only a tab that was not itself behind another's play answers (the note,
-    or a move to the shared place still out: `catchingUp`). The
+    place), whether that is the book's end, its tab and the play it answers (`to`,
+    `askedAt`). **An answer is to a play, not to one claim message**: a tab claims on every
+    move into `playing`, and a web element buffers a moment after it starts, so the tab that
+    takes over has claimed twice (5 to 23 ms apart, each with a new `sentAt`) before the
+    answer to its first claim crosses back, always so over `storage` events. So the answer
+    names the play by what every claim of it carries (the claiming tab and `askedAt`), and
+    the claiming tab keeps the play it claimed (`ownPlay`: `askedAt`, when it was first
+    claimed, the place it began at), untouched by a later claim of the same play; never
+    match an answer on `sentAt`. Only a tab that was not itself behind another's play
+    answers (the note, or a move to the shared place still out: `catchingUp`), and a play
+    is answered **once**: a claim of a play the tab noted before (`notedPlay`) gets no
+    second answer, which would name a later place. The
     claiming tab (`onGaveWayAnswer`) moves there by `moveToTabPlace`, the same path as the
     mirror's: the listening it began at the older place is dropped (`dropListening`: the
     open span, stored or not, and the history's start, with no event) and begins again at
     the place taken as a `resume`, then the place is saved at once. So the spans are one
     chain (one tab's begins where the other's ended) and the saved place never goes back.
-    The answer is read against the place the play **began** at (`ownClaim.pos`, moved with
+    The answer is read against the place the play **began** at (`ownPlay.pos`, moved with
     each tab place taken), not where it has played to since. Ignored: an answer to an
-    older claim than the tab's last, or later than `GAVE_WAY_ANSWER_MS` (5 s) after it;
+    older play than the tab's last (a press since; an answer with no `askedAt` matches
+    none), or later than `GAVE_WAY_ANSWER_MS` (5 s) after the play's first claim;
     another connection or book; while a book loads; a place the listener chose here
     (`placeChosen`: an explicit start or a seek, until another tab plays); when yet another
     tab plays by now; and a finished one (a book is not started again under a listener
     hearing it; the next resume reads the save). A play that began by itself is still
     moving to the mirror's place when the answer comes: the answer waits for that
-    (`catchingUp`). The web engine places a seek made before its metadata where the load
+    (`catchingUp`). A `playing` that arrives while such a move is out (the play buffered
+    during it) begins no history either: the listening begins where the move lands. The
+    web engine places a seek made before its metadata where the load
     starts (`placeAt`), so an answer during a load lands there.
   - Limit: two windows both in view never get a foreground event, so the paused one shows
     the place it stopped at (right when it gave way, older as the other plays on) until it

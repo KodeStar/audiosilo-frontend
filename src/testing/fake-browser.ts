@@ -16,7 +16,9 @@ export type FakeTab = Required<Pick<TabChannelEnv, 'addEventListener' | 'removeE
  * that posted it). Events are delivered in a microtask, as a browser delivers them in a
  * later task: never inside the call that caused them (`delay`: that many ms later instead,
  * the time a real event takes to cross to another tab). `broadcast: false` is a browser
- * without `BroadcastChannel`.
+ * without `BroadcastChannel`. `hold()` keeps every event back until the function it returns
+ * is called, then they cross in the order they were caused: for a test of what one tab does
+ * before another tab's message reaches it, with no sleep racing the delay.
  */
 export function fakeBrowser({
   broadcast = true,
@@ -25,8 +27,21 @@ export function fakeBrowser({
   const data = new Map<string, string>();
   const tabs = new Set<Set<StorageListener>>();
   const channels = new Map<string, Set<Set<MessageListener>>>();
-  const later = (fn: () => void) =>
+  const cross = (fn: () => void) =>
     void (delay === undefined ? Promise.resolve().then(fn) : setTimeout(fn, delay));
+  /** The events kept back (`hold`), null while they cross as they are caused. */
+  let held: (() => void)[] | null = null;
+  const later = (fn: () => void) => {
+    if (held) held.push(fn);
+    else cross(fn);
+  };
+  function hold(): () => void {
+    const waiting = (held ??= []);
+    return () => {
+      if (held === waiting) held = null;
+      for (const fn of waiting.splice(0)) cross(fn);
+    };
+  }
 
   function tab(): FakeTab {
     const storageListeners = new Set<StorageListener>();
@@ -77,7 +92,7 @@ export function fakeBrowser({
     };
   }
 
-  return { tab, data };
+  return { tab, data, hold };
 }
 
 /**

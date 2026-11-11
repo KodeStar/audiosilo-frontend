@@ -1076,15 +1076,22 @@ function claimPlaying() {
   // This tab plays now: the others follow its place from here.
   otherTabPlayed = null;
   const { nowPlaying: np, snapshot } = usePlayer.getState();
+  if (!np) {
+    ownPlay = null;
+    return;
+  }
+  const { sentAt } = tabClaims().announce(np.connectionId, playAskedAt);
+  // The play already claimed, going on (a buffer moments after it began, the next file):
+  // it is kept as it was first claimed, so the answer to that claim still finds it.
+  if (ownPlay?.connectionId === np.connectionId && ownPlay.askedAt === playAskedAt) return;
   // Kept, with where this play began: the tab that gives way answers it with where it
   // stopped (`onGaveWayAnswer`).
-  ownClaim = np
-    ? {
-        connectionId: np.connectionId,
-        sentAt: tabClaims().announce(np.connectionId, playAskedAt).sentAt,
-        pos: toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position),
-      }
-    : null;
+  ownPlay = {
+    connectionId: np.connectionId,
+    askedAt: playAskedAt,
+    since: sentAt,
+    pos: toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position),
+  };
 }
 
 /**
@@ -1107,11 +1114,13 @@ function claimPlaying() {
  * and that is no new play (`notedPlay`). The note is left as it stands, so a seek the
  * listener made here since is still the place this tab plays from.
  *
- * A tab that gives way answers the claim with the place it stopped at (`GaveWay`), which is
+ * A tab that gives way answers the play with the place it stopped at (`GaveWay`), which is
  * where its span ended: the other tab began from this tab's last save, up to 15 s behind,
  * and plays on from here instead (`onGaveWayAnswer`). Not a tab that was itself behind
  * another's play (a press still reading the shared place, a play that began by itself still
- * moving there: `catchingUp`): its place is not the latest.
+ * moving there: `catchingUp`): its place is not the latest. And once per play: a claim of
+ * a play this tab noted before (it gave way to it already, or was not playing then) is
+ * never answered, so the other tab is told one place, the one its first claim stopped.
  */
 function giveWayTo(claim: PlayingClaim) {
   const { nowPlaying: np, snapshot } = usePlayer.getState();
@@ -1125,11 +1134,11 @@ function giveWayTo(claim: PlayingClaim) {
   const wasBehind = catchingUp !== null || otherTabPlayed?.connectionId === claim.connectionId;
   // The play already noted, going on: by its tab and when it was asked for, which only a new
   // play changes (a press, the OS media controls).
-  const goesOn =
-    !gives &&
+  const noted =
     notedPlay?.connectionId === claim.connectionId &&
     notedPlay.tab === claim.tab &&
     notedPlay.askedAt === claim.askedAt;
+  const goesOn = !gives && noted;
   // Not when it plays on (the newer play is this tab's: the other tab follows it).
   if (np && np.connectionId === claim.connectionId && (gives || !mine.live) && !goesOn) {
     notedPlay = { connectionId: claim.connectionId, tab: claim.tab, askedAt: claim.askedAt };
@@ -1158,7 +1167,7 @@ function giveWayTo(claim: PlayingClaim) {
   }
   yieldedAttempt = playAttempts;
   const closed = closeListeningSpan({ endedAt: claim.sentAt });
-  if (np && !wasBehind) {
+  if (np && !wasBehind && !noted) {
     // Where its span ended, so the other tab's begins there: one chain, no gap.
     const at = closed && sameBook(closed, np) ? closed.to : engineEnd();
     const { total } = np.queue;
@@ -1231,14 +1240,16 @@ let catchingUp: Promise<void> | null = null;
 /** Whether the loaded book's place is not to be saved: another tab has played since. */
 const behindOtherTab = (np: NowPlaying) =>
   catchingUp !== null || otherTabPlayed?.connectionId === np.connectionId;
-/** The claim this tab made last (`claimPlaying`): an answer to it says where the tab that
- * gave way stopped (`onGaveWayAnswer`). `pos`: the whole-book place this play began at (the
- * place of another tab it took since, `adoptTabPlace`), which is what an answer is read
- * against: by the time one comes the tab has played on from there. */
-let ownClaim: { connectionId: string; sentAt: number; pos: number } | null = null;
-/** How long after its claim a tab still takes the answer to it. The answer comes within
- * moments (the other tab pauses as it hears the claim); one later than this would move a
- * listener who has been listening here for seconds. */
+/** The play this tab claimed last (`claimPlaying`), by when it was asked for (`askedAt`,
+ * which every claim of the play carries: a play claims again on each move into `playing`):
+ * an answer to it says where the tab that gave way stopped (`onGaveWayAnswer`). `since`:
+ * when it was first claimed. `pos`: the whole-book place this play began at (the place of
+ * another tab it took since, `adoptTabPlace`), which is what an answer is read against: by
+ * the time one comes the tab has played on from there. */
+let ownPlay: { connectionId: string; askedAt: number; since: number; pos: number } | null = null;
+/** How long after a play's first claim a tab still takes the answer to it. The answer comes
+ * within moments (the other tab pauses as it hears the claim); one later than this would
+ * move a listener who has been listening here for seconds. */
 export const GAVE_WAY_ANSWER_MS = 5_000;
 /** Whether the loaded book's place is one the listener chose in this tab (an explicit
  * start, a move of their own: `userMoved`) with no other tab playing since: an answer never
@@ -1326,7 +1337,7 @@ function adoptTabPlace(np: NowPlaying, place: TabPlace) {
   nextStart = place.finished ? 'restart' : 'resume';
   unfinishDue = place.finished && usesListeningSync(np.connectionId);
   placeChosen = false;
-  if (ownClaim) ownClaim.pos = place.pos;
+  if (ownPlay) ownPlay.pos = place.pos;
 }
 
 /**
@@ -1341,8 +1352,8 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   const { nowPlaying: np, snapshot } = usePlayer.getState();
   if (!np) return null;
   const before = { resumeFloor, nextStart, unfinishDue };
-  const claim = ownClaim;
-  const claimPos = claim?.pos;
+  const play = ownPlay;
+  const playPos = play?.pos;
   adoptTabPlace(np, place);
   const moves = localMoves;
   try {
@@ -1356,7 +1367,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       resumeFloor = before.resumeFloor;
       nextStart = before.nextStart;
       unfinishDue = before.unfinishDue;
-      if (claim && claimPos !== undefined) claim.pos = claimPos;
+      if (play && playPos !== undefined) play.pos = playPos;
     }
     return null;
   }
@@ -1406,15 +1417,21 @@ function catchUpPlaying(svc: PlaybackService, since: number) {
 }
 
 /**
- * The tab that gave way to this tab's claim says where it stopped (`GaveWay`). This tab
+ * The tab that gave way to this tab's play says where it stopped (`GaveWay`). This tab
  * began from the shared save, which that tab made up to 15 s before it stopped, so it moves
  * on to the place the listener really was: the listening begun at the older place is
  * dropped (its span and history: nothing is recorded for a stretch nobody chose to hear
  * twice) and begins again at the place taken, as a `resume`, with no event that says the
  * listener moved. The place is saved at once.
  *
- * Ignored: an answer to an older claim than this tab's last, or one that comes later than
- * `GAVE_WAY_ANSWER_MS` after it; another connection's or another book's; while a book
+ * The answer is to a play, whichever of its claims the other tab heard: matched on when
+ * the play was asked for (`askedAt`), never on one claim's `sentAt`, which the play's next
+ * move into `playing` (a buffer moments after it began) would have replaced before the
+ * answer crossed back.
+ *
+ * Ignored: an answer to an older play than this tab's last (a press since), or one that
+ * comes later than `GAVE_WAY_ANSWER_MS` after the play's first claim; another connection's
+ * or another book's; while a book
  * loads; when the listener chose the place here (`placeChosen`: an explicit start, a seek
  * since); when yet another tab plays by now (this tab is behind it); a place within
  * `SAME_PLACE_S` of the one this play began at; and a finished one (the book is not started
@@ -1427,14 +1444,14 @@ function onGaveWayAnswer(answer: GaveWay) {
     return;
   }
   const svc = service;
-  const claim = ownClaim;
+  const play = ownPlay;
   const { nowPlaying: np, loadingBook } = usePlayer.getState();
-  if (!svc || !claim || !np || loadingBook) return;
-  if (answer.claimedAt !== claim.sentAt || answer.connectionId !== claim.connectionId) return;
-  if (Date.now() - claim.sentAt > GAVE_WAY_ANSWER_MS) return;
+  if (!svc || !play || !np || loadingBook) return;
+  if (answer.askedAt !== play.askedAt || answer.connectionId !== play.connectionId) return;
+  if (Date.now() - play.since > GAVE_WAY_ANSWER_MS) return;
   if (!sameBook(np, answer) || placeChosen || behindOtherTab(np)) return;
   // Against where this play began, not where it has played to since.
-  const place = tabPlaceOf(np, claim.pos, answer, { finished: false });
+  const place = tabPlaceOf(np, play.pos, answer, { finished: false });
   if (!place) return;
   dropListening();
   void moveWhilePlaying(() => moveToTabPlace(svc, place)).then(() => void persist());
@@ -1789,7 +1806,9 @@ async function createService(): Promise<PlaybackService> {
       if (behind && behind.connectionId === usePlayer.getState().nowPlaying?.connectionId) {
         catchUpPlaying(svc, behind.since);
       } else {
-        beginHistory();
+        // Not while a move to another tab's place is out (this play buffered and came back
+        // during it): its listening begins where the move lands (`moveWhilePlaying`).
+        if (!catchingUp) beginHistory();
         openListeningSpan();
       }
     } else if (isPlayingState(prev.state) && !isPlayingState(snapshot.state)) {

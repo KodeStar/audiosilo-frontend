@@ -136,7 +136,7 @@ describe('playingClaims', () => {
       a.answer(made, stopped);
       await settle();
       expect(answers.b).toEqual([
-        { ...stopped, kind: 'gave-way', tab: 'tab-a', to: 'tab-b', claimedAt: made.sentAt },
+        { ...stopped, kind: 'gave-way', tab: 'tab-a', to: 'tab-b', askedAt: made.askedAt },
       ]);
       expect(answers.a).toEqual([]);
       expect(answers.c).toEqual([]);
@@ -163,13 +163,15 @@ describe('playingClaims', () => {
       finished: false,
       tab: 'tab-a',
       to: 'tab-b',
-      claimedAt: 1,
+      askedAt: 1,
     };
     raw.post({ ...good, position: Number.NaN });
     raw.post({ ...good, kind: 'left' });
     raw.post({ ...good, path: 7 });
     raw.post({ ...good, filePos: 'far' });
     raw.post({ ...good, to: 'tab-z' });
+    // An answer that names a claim message, not the play (no `askedAt`).
+    raw.post({ ...good, askedAt: undefined, claimedAt: 1 });
     await settle();
     expect(answers).toEqual([]);
     raw.post(good);

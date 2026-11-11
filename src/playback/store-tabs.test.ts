@@ -1,8 +1,10 @@
 import { Platform } from 'react-native';
 
 import type { Book, ChaptersResponse, ListeningEvent, ListeningSyncRequest } from '@/api/types';
+import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser, type FakeTab, sleep, until } from '@/testing/fake-browser';
 
+import { PLAYING_CHANNEL } from './playing-claim';
 import type { PlaybackService, PlaybackSnapshot } from './types';
 
 // One tab plays at a time (fe#123), with two tabs that are each the real store and the real
@@ -134,6 +136,8 @@ function makeEngine() {
   let held: Promise<void> | null = null;
   /** A play the test holds open (`holdPlay`): asked of the engine, not begun yet. */
   let heldPlay: Promise<void> | null = null;
+  /** A pause the test holds open (`holdPause`): asked of the engine, not reported yet. */
+  let heldPause: Promise<void> | null = null;
   let pauses = 0;
   const svc = {
     onRemoteSeek: jest.fn(),
@@ -154,6 +158,7 @@ function makeEngine() {
     }),
     pause: jest.fn(async () => {
       pauses++;
+      if (heldPause) await heldPause;
       push({ state: 'paused' });
     }),
     seekTo: jest.fn(async (position: number) => push({ position })),
@@ -179,6 +184,12 @@ function makeEngine() {
       push({ state: 'loading', trackIndex, position: 0 });
       push({ state: 'playing' });
     },
+    /** The play buffers a moment and comes back where it is, as a web element does just
+     * after it starts: `loading`, then `playing` again, with nothing pressed. */
+    stall: () => {
+      push({ state: 'loading' });
+      push({ state: 'playing' });
+    },
     /** The stream dies: the engine reports `error` (and may come back by itself). */
     fail: () => push({ state: 'error' }),
     holdLoad: () => {
@@ -194,6 +205,14 @@ function makeEngine() {
       heldPlay = new Promise<void>((r) => (release = r));
       return () => {
         heldPlay = null;
+        release();
+      };
+    },
+    holdPause: () => {
+      let release: () => void = () => {};
+      heldPause = new Promise<void>((r) => (release = r));
+      return () => {
+        heldPause = null;
         release();
       };
     },
@@ -324,6 +343,10 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
     /** Start the book on `connectionId` at `at` seconds (the engine plays from there). */
     start: (at: number, connectionId = 'c1', which = { book, chapters }) =>
       store.usePlayer.getState().playBook(connectionId, 2, which.book, which.chapters, at),
+    /** Start the book with no place asked for: its resume, which is 0 for one never played
+     * (nothing the listener chose, so another tab's place moves it). */
+    open: (which = { book, chapters }) =>
+      store.usePlayer.getState().playBook('c1', 2, which.book, which.chapters),
     /** The browser refuses the next play (no gesture in the page yet: a cold deep link):
      * the book it starts stays loaded and paused, and the tab claims nothing. */
     blockPlay: () => engine.svc.play.mockRejectedValueOnce(new types.AutoplayBlockedError()),
@@ -406,6 +429,18 @@ async function aheadOfItsSave(a: Tab, b: Tab, aPlays = long) {
   await a.save();
   await sleep(10);
   a.engine.at(47);
+}
+
+/** The place of every answer (`GaveWay`) a tab of `browser` posts from here on, as another
+ * tab of it hears them, in order. */
+function answersOn(browser: ReturnType<typeof fakeBrowser>) {
+  const places: number[] = [];
+  tabChannel<{ kind?: unknown; position: number }>(PLAYING_CHANNEL, browser.tab())?.subscribe(
+    (message) => {
+      if (message.kind === 'gave-way') places.push(message.position);
+    },
+  );
+  return () => places;
 }
 
 /** The listens the server got as `[from, to]`, in the order they were played. */
@@ -750,6 +785,119 @@ describe.each([
       expectNoSharedSeconds();
     });
 
+    // A tab claims on every move into `playing`, and a web element buffers a moment after
+    // it starts: the tab that takes over has claimed twice by the time the answer to its
+    // first claim crosses back (always, over storage events). The answer is to the play.
+    it('takes the answer to its first claim after it has claimed again', async () => {
+      await aheadOfItsSave(a, b);
+      const answers = answersOn(browser);
+      const release = browser.hold();
+      await b.player().toggle();
+      await sleep(2); // the second claim is dated after the first
+      b.engine.stall();
+      release(); // both claims cross, and then A's answer to the first
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await until(() => b.player().snapshot.position === 47, "B to take A's place");
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [47]]);
+      expect(b.player().snapshot.state).toBe('playing');
+
+      await sleep(40);
+      // One answer for the play, however often it claimed.
+      expect(answers()).toEqual([47]);
+      b.engine.at(55);
+      await b.player().pause();
+      await until(() => listens().length === 3, 'the three spans on the server');
+      // Nothing of B's for the 35 s to 47 s it had begun from, before or after its buffer.
+      expect(chain()).toEqual([
+        [5, 20],
+        [20, 47],
+        [47, 55],
+      ]);
+      expectNoSharedSeconds();
+    });
+
+    it('a play from the OS media controls that claimed twice takes it too', async () => {
+      await aheadOfItsSave(a, b);
+      const release = browser.hold();
+      await b.engine.svc.play(); // no press in the page
+      await sleep(2);
+      b.engine.stall();
+      release();
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await until(() => b.player().snapshot.position === 47, "B to take A's place");
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [47]]);
+      await sleep(10);
+      b.engine.at(55);
+      await b.player().pause();
+      await until(() => listens().length === 3, 'the three spans on the server');
+      expect(chain()).toEqual([
+        [5, 20],
+        [20, 47],
+        [47, 55],
+      ]);
+      expectNoSharedSeconds();
+    });
+
+    it('a first play of a book starts where the other tab is, not at 0', async () => {
+      await a.start(0, 'c1', long);
+      await sleep(10);
+      a.engine.at(8);
+      const release = browser.hold();
+      await b.open(long); // never played: from 0
+      expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 0 });
+      await sleep(2);
+      b.engine.stall();
+      release();
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await until(() => b.player().snapshot.position === 8, "B to take A's place");
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[8]]);
+      expect(b.player().snapshot.state).toBe('playing');
+
+      await sleep(10);
+      b.engine.at(20);
+      await b.player().pause();
+      await until(() => listens().length === 2, 'both spans on the server');
+      // Nothing of B's for the 0 s to 8 s A had played: one chain.
+      expect(chain()).toEqual([
+        [0, 8],
+        [8, 20],
+      ]);
+      expectNoSharedSeconds();
+    });
+
+    it('a tab answers a play once, whatever it reads when the play claims again', async () => {
+      await aheadOfItsSave(a, b);
+      const answers = answersOn(browser);
+      // A's engine is slow to report its pause: A still reads `playing` after it gave way.
+      const settle = a.engine.holdPause();
+      await b.player().toggle();
+      await until(() => b.player().snapshot.position === 47, "B to take A's place");
+      // The listener moves A meanwhile (its note of B's play is gone), and B's play claims
+      // again: a second answer would send B to A's new place.
+      await a.player().seekBook(300);
+      b.engine.stall();
+      await sleep(40);
+      settle();
+      await until(() => a.player().snapshot.state === 'paused', "A's pause to land");
+      expect(answers()).toEqual([47]);
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [47]]);
+      expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 47 });
+    });
+
+    it('ignores an answer to a play before its last (a press since)', async () => {
+      await aheadOfItsSave(a, b);
+      const release = browser.hold();
+      await b.player().toggle();
+      await sleep(2); // the next play is asked for later
+      await b.player().pause();
+      await b.player().toggle(); // a new press: another play
+      release(); // A answers the first play's claim, which is B's play no more
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      await sleep(40);
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35]]);
+      expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 35 });
+    });
+
     it('ignores the place of another book', async () => {
       await aheadOfItsSave(a, b, other);
       await b.player().toggle();
@@ -792,11 +940,13 @@ describe.each([
       await aheadOfItsSave(a, b);
       const c = await openTab(browser);
       try {
+        // Nothing crosses until C has started too (a moment later: its play is the newer
+        // one), so B has given way to C's claim by the time A's answer reaches it.
+        const release = browser.hold();
         await b.player().toggle();
-        // C starts (a moment later: its play is the newer one) before A's answer has
-        // crossed to B, which gives way to it.
         await sleep(2);
         await c.start(500, 'c1', long);
+        release();
         await until(() => b.player().snapshot.state === 'paused', 'B to give way');
         await sleep(40);
         expect(b.engine.svc.seekTo.mock.calls).toEqual([[35]]);

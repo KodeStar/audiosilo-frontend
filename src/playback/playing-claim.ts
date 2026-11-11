@@ -23,7 +23,10 @@ import { tabChannel, type TabChannel } from '@/lib/tab-channel';
  *
  * A tab that gives way answers the claim with where it stopped (`GaveWay`): its last save
  * is up to 15 s old, so the tab that took over, which began from that save, moves on to the
- * place the listener really was (the store's `onGaveWayAnswer`).
+ * place the listener really was (the store's `onGaveWayAnswer`). The answer is to the
+ * PLAY (the claim's `tab` and `askedAt`), not to one claim message: a tab claims on every
+ * move into `playing`, so a play that buffers a moment after it began has claimed twice
+ * before the answer to its first claim crosses back.
  *
  * The store makes the claim and gives way (`store.ts`: `claimPlaying`, `giveWayTo`); this
  * module is the message and the rule. Off the web there is no channel, and none of it runs.
@@ -48,7 +51,7 @@ const isClaim = (v: unknown): v is PlayingClaim =>
   isNumber(v.sentAt);
 
 /**
- * A tab's answer to the claim it gave way to: the book it was playing and the place it
+ * A tab's answer to the play it gave way to: the book it was playing and the place it
  * stopped at, for the tab that claimed (`to`) to play on from. Told from a claim by its
  * `kind` (a claim has none, and no `sentAt` here: a build that knows only claims reads it
  * as nothing).
@@ -69,12 +72,13 @@ export type GaveWay = {
   finished: boolean;
   /** The tab that gave way. */
   tab: string;
-  /** The claim it answers: the tab that made it, and when (`PlayingClaim.sentAt`). */
+  /** The play it answers: the tab that claimed, and when that play was asked for
+   * (`PlayingClaim.askedAt`, which every claim of one play carries). */
   to: string;
-  claimedAt: number;
+  askedAt: number;
 };
 
-/** What an answer says besides who it is from and which claim it answers. */
+/** What an answer says besides who it is from and which play it answers. */
 export type StoppedAt = Pick<
   GaveWay,
   'connectionId' | 'libraryId' | 'path' | 'position' | 'file' | 'filePos' | 'finished'
@@ -94,7 +98,7 @@ const isGaveWay = (v: unknown): v is GaveWay =>
   typeof v.finished === 'boolean' &&
   typeof v.tab === 'string' &&
   typeof v.to === 'string' &&
-  isNumber(v.claimedAt);
+  isNumber(v.askedAt);
 
 /** A tab's own play, as the rule reads it. */
 export type OwnPlay = {
@@ -124,11 +128,11 @@ export type PlayingClaims = {
   /** Who this tab is in its claims. */
   tab: string;
   /** Tell the other tabs this one plays on `connectionId`, a play asked for at `askedAt`.
-   * Returns the claim it made (an answer names it: `GaveWay.claimedAt`). */
+   * Returns the claim it made (`sentAt`: when). */
   announce: (connectionId: string, askedAt: number) => PlayingClaim;
-  /** Answer `claim`, which this tab gave way to, with where it stopped. */
+  /** Answer the play of `claim`, which this tab gave way to, with where it stopped. */
   answer: (claim: PlayingClaim, stopped: StoppedAt) => void;
-  /** Be told of each other tab's claim, and of each answer to a claim of this tab's;
+  /** Be told of each other tab's claim, and of each answer to a play of this tab's;
    * returns the unsubscribe. */
   subscribe: (
     listener: (claim: PlayingClaim) => void,
@@ -154,7 +158,7 @@ export function playingClaims(
         kind: 'gave-way',
         tab,
         to: claim.tab,
-        claimedAt: claim.sentAt,
+        askedAt: claim.askedAt,
       };
       channel?.post(answer);
     },
