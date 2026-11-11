@@ -389,11 +389,7 @@ function BookPage() {
   // The row the listener is in (none marked before the start or once finished).
   const current = started && !finished ? rowAt(list.rows, position) : -1;
   // On the same place as the hero's: the saved one as Resume plays it.
-  const timeLeft = useBookTimeLeft(
-    book ? target : null,
-    progress && { ...progress, position: savedPosition ?? progress.position },
-    total,
-  );
+  const timeLeft = useBookTimeLeft(book ? target : null, progress, total);
 
   // Your listening: what this book's own records say. A recorded span refreshes the
   // history (`qk.historyAll`), so it is trusted long: only another device's spans wait.
