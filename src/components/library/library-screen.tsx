@@ -142,10 +142,10 @@ export function LibraryScreen() {
     // offline state, not "Could not load" with a Retry that cannot work until the
     // network is back. The remembered library's server is named among several.
     if (unread === 'offline') {
-      return named ? (
-        <OfflineState hint={t('library.list.serverOffline', { name })} />
-      ) : (
-        <NoLibrariesState offline />
+      return (
+        <OfflineState
+          hint={named ? t('library.list.serverOffline', { name }) : t('library.list.offlineHint')}
+        />
       );
     }
     // A server that did not answer has not said it shares nothing (frontend#131): its

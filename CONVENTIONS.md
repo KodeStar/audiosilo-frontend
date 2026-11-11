@@ -3330,7 +3330,7 @@ under their empty state).
   tablet/desktop with nothing loaded and over a root modal: just above the home indicator). The web mini
   player sits on its tab bar through a `100%` bottom offset, no measured height. The accessory renders
   nothing on tablet/desktop (iOS mounts both placements behind the hidden bar).
-- **The device's online signal** (`src/lib/device-online.ts`): `useDeviceOnline()` / `isDeviceOnline()`
+- **The device's online signal** (`src/lib/device-online.ts`): `useDeviceOnline()` / `watchDeviceOnline()`
   say whether the device has a network at all, never whether the internet answers: the browser's
   `online`/`offline` events on the web, expo-network's `isConnected` on native
   (`isInternetReachable` is not read: a phone on Wi-Fi with no internet still reaches a server

@@ -72,9 +72,9 @@ export function FoldersMode() {
     g.status === 'error' && signedOut.some((c) => c.id === g.connectionId)
       ? null
       : offlineState({ waiting: g.paused, failed: g.status === 'error', deviceOnline });
-  const states = new Map(lists.map((g) => [g.connectionId, unread(g)]));
-  const anyOffline = lists.some((g) => states.get(g.connectionId) === 'offline');
-  const anyFailed = lists.some((g) => states.get(g.connectionId) === 'failed');
+  const rows = lists.map((g) => ({ g, state: unread(g) }));
+  const anyOffline = rows.some((r) => r.state === 'offline');
+  const anyFailed = rows.some((r) => r.state === 'failed');
   // With no library to list, offline is the page's own state (below), not a row per server.
   const offlinePage = libraries.length === 0 && anyOffline && !anyFailed;
 
@@ -83,8 +83,8 @@ export function FoldersMode() {
   // still cached included, so no two servers' libraries ever read as one). A server the
   // device is offline for is listed too, with a line saying so: it is not dropped without
   // a word while another server's cached libraries show (fe#179).
-  const groups = lists.filter(
-    (g) => g.libraries.length > 0 || (!offlinePage && states.get(g.connectionId) !== null),
+  const groups = rows.filter(
+    ({ g, state }) => g.libraries.length > 0 || (!offlinePage && state !== null),
   );
   const showServerHeaders = groups.length > 1;
 
@@ -94,14 +94,14 @@ export function FoldersMode() {
       {refused ? <SignInAgainState connection={refused} className="mb-2" /> : null}
       <FavouritesShelfRow />
 
-      {groups.map((g) => (
+      {groups.map(({ g, state }) => (
         <View key={g.connectionId}>
           {showServerHeaders ? (
             <Text variant="eyebrow" className="mb-1 mt-4">
               {g.connectionName}
             </Text>
           ) : null}
-          {states.get(g.connectionId) === 'failed' ? (
+          {state === 'failed' ? (
             <View className="my-1">
               <LoadError
                 compact
@@ -111,7 +111,7 @@ export function FoldersMode() {
               />
             </View>
           ) : null}
-          {states.get(g.connectionId) === 'offline' ? (
+          {state === 'offline' ? (
             <View
               testID={`folders-offline-${g.connectionId}`}
               className="my-1 flex-row items-center gap-3 rounded-xl border border-border bg-card px-3 py-2"
