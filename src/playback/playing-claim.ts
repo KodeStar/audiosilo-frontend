@@ -22,8 +22,9 @@ import { tabChannel, type TabChannel } from '@/lib/tab-channel';
  * millisecond are told apart by their tab ids, so exactly one of them stands.
  *
  * A tab that gives way answers the claim with where it stopped (`GaveWay`): its last save
- * is up to 15 s old (a minute, played hidden), so the tab that took over, which began from
- * that save, moves on to the place the listener really was (the store's `onGaveWayAnswer`).
+ * is up to 15 s old (a minute, played hidden or from a download), so the tab that took over,
+ * which began from that save, moves on to the place the listener really was (the store's
+ * `onGaveWayAnswer`).
  * The answer is to the PLAY (the claim's `tab` and `askedAt`), not to one claim message: a
  * tab claims on every move into `playing`, so a play that buffers a moment after it began
  * has claimed twice before the answer to its first claim crosses back.

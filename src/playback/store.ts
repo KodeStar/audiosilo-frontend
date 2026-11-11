@@ -1193,10 +1193,10 @@ function claimPlaying() {
  *
  * A tab that gives way answers the play with the place it stopped at (`GaveWay`), which is
  * where its span ended: the other tab began from this tab's last save, up to 15 s behind
- * (a minute when this tab played hidden: `saveIntervalMs`), and plays on from here instead
- * (`onGaveWayAnswer`). Not a tab that was itself behind
- * another's play (a press still reading the shared place, a play that began by itself still
- * moving there: `catchingUp`): its place is not the latest. And once per play: a claim of
+ * (a minute when this tab played hidden, or played a download: `saveIntervalMs`), and plays
+ * on from here instead (`onGaveWayAnswer`). Not a tab that was itself behind another's play
+ * (a press still reading the shared place, a play that began by itself still moving there:
+ * `catchingUp`): its place is not the latest. And once per play: a claim of
  * a play this tab noted before (it gave way to it already, or was not playing then) is
  * never answered, so the other tab is told one place, the one its first claim stopped.
  */
@@ -1509,8 +1509,8 @@ function catchUpPlaying(svc: PlaybackService, since: number) {
 /**
  * The tab that gave way to this tab's play says where it stopped (`GaveWay`). This tab
  * began from the shared save, which that tab made up to 15 s before it stopped (a minute
- * when it played hidden), so it moves on to the place the listener really was: the
- * listening begun at the older place is
+ * when it played hidden, or played a download), so it moves on to the place the listener
+ * really was: the listening begun at the older place is
  * dropped (its span and history: nothing is recorded for a stretch nobody chose to hear
  * twice) and begins again at the place taken, as a `resume`, with no event that says the
  * listener moved. The place is saved at once.

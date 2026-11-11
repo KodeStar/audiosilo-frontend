@@ -1899,8 +1899,9 @@ media GETs only.
     (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
     the play that follows reads again; a finished book stays where it is).
   - *The tab that gives way says where it stopped.* The mirror is the other tab's last
-    **save** (every 15 s while it plays in a tab that is looked at, every 60 s in a hidden
-    one, after a save as it was hidden: *The periodic save's pace*), so a tab that takes over
+    **save** (every 15 s while it streams in a tab that is looked at; every 60 s in a hidden
+    one, after a save as it was hidden, and in any tab that plays a download: *The periodic
+    save's pace*), so a tab that takes over
     from one still playing starts up to that far behind it, and a press is never kept waiting
     for more. A tab that is paused saved as it paused, so its record is its exact place. So the tab
     that gives way answers on the same channel (`GaveWay` in `playing-claim.ts`,
