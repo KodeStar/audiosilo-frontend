@@ -1171,6 +1171,27 @@ describe('adoptLoaded', () => {
         stopTelling();
       });
 
+      it('a pause on the spinner while it asks stands: nothing starts when the answer lands', async () => {
+        const told = jest.fn();
+        const stopTelling = onPartialDownloadEnd(told);
+        await atPartialEnd();
+        let answer: (c: ChaptersResponse) => void = () => undefined;
+        mockFetchQuery.mockImplementation(
+          () => new Promise<ChaptersResponse>((resolve) => (answer = resolve)),
+        );
+        const pressed = usePlayer.getState().toggle();
+        await flushMicrotasks();
+        expect(usePlayer.getState().snapshot.state).toBe('loading');
+        await usePlayer.getState().toggle();
+        answer(withB3);
+        await pressed;
+        await flushMicrotasks();
+        expect(mockSvc.load).not.toHaveBeenCalled();
+        expect(usePlayer.getState().snapshot.state).toBe('paused');
+        expect(told).toHaveBeenCalledTimes(1);
+        stopTelling();
+      });
+
       it('plays on by itself when the engine reaches that end online', async () => {
         const told = jest.fn();
         const stopTelling = onPartialDownloadEnd(told);

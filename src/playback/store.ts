@@ -38,7 +38,6 @@ import {
   bookFileSpecs,
   buildBookQueue,
   chapterAt,
-  chapterBookOffset,
   FINISHED_TOLERANCE,
   locate,
   toBookPosition,
@@ -2422,6 +2421,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const st = get().snapshot.state;
     if (st === 'playing' || st === 'loading') {
       clearPlaybackIntent();
+      if (playingOn) playOnStopped = true;
       await svc.pause();
     } else {
       // At the end of a partial download (D3, fe#185) nothing plays: the engine, ended,
@@ -2447,6 +2447,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
 
   pause: async () => {
     clearPlaybackIntent();
+    if (playingOn) playOnStopped = true;
     const svc = await ensureService();
     // Also pause while still `loading`: an in-flight start would otherwise resolve
     // to `playing` and silently defeat the pause (e.g. the sleep timer firing while
@@ -3153,8 +3154,10 @@ async function serverChaptersOf(
  * end does not.
  */
 async function playOnPastPart(evenMarkedDown: boolean): Promise<boolean> {
-  // One at a time: the engine re-reports its end while one asks (a press joins it).
-  if (playingOn) return playingOn;
+  // One at a time: the engine re-reports its end while one asks (a press joins it). The
+  // first caller alone tells the listener when it can't, so the notice comes once.
+  if (playingOn) return playingOn.then(() => true);
+  playOnStopped = false;
   playingOn = playOnNow(evenMarkedDown).finally(() => {
     playingOn = null;
   });
@@ -3163,6 +3166,8 @@ async function playOnPastPart(evenMarkedDown: boolean): Promise<boolean> {
 
 /** The `playOnPastPart` on its way, if any. */
 let playingOn: Promise<boolean> | null = null;
+/** The listener paused while that asked its server (a press on its spinner): it stands. */
+let playOnStopped = false;
 
 async function playOnNow(evenMarkedDown: boolean): Promise<boolean> {
   const np = usePlayer.getState().nowPlaying;
@@ -3176,6 +3181,16 @@ async function playOnNow(evenMarkedDown: boolean): Promise<boolean> {
   const served = await serverChaptersOf(ref, api, evenMarkedDown);
   // Another book (or another start of this one) since: it stands.
   if (usePlayer.getState().nowPlaying !== np) return true;
+  /** Back to the state before the spinner, unless the engine has reported since. */
+  const settle = () => {
+    const now = usePlayer.getState().snapshot;
+    if (now.state === 'loading') usePlayer.setState({ snapshot: { ...now, state: before.state } });
+  };
+  // Moved off the end meanwhile (a seek back), or paused on the spinner: that stands.
+  if (!atPartialEnd || playOnStopped) {
+    settle();
+    return true;
+  }
   const book =
     queryClient.getQueryData<Book>(qk.item(np.connectionId, np.libraryId, np.path)) ??
     manifest.book;
@@ -3185,16 +3200,16 @@ async function playOnNow(evenMarkedDown: boolean): Promise<boolean> {
   const at = ids.indexOf(last ?? '');
   // The server's book goes on past the queue's last file: start where that file ends.
   if (!served || at < 0 || at === ids.length - 1) {
-    usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state: before.state } });
+    settle();
     return false;
   }
-  const next = { file_path: specs[at + 1].path, file_index: at + 1, start: 0 };
-  const position = chapterBookOffset(specs, next);
   // It answered: reachable, so the start streams the rest (`playBook`'s `offlineShort`).
   noteSuccess(np.connectionId);
+  // By the file, not a book position: a file the server has not measured yet (duration 0)
+  // shares its offset with the next, and a position there would start past it.
   await usePlayer
     .getState()
-    .playBook(np.connectionId, np.libraryId, book, served, position)
+    .playBook(np.connectionId, np.libraryId, book, served, undefined, at + 1)
     .catch((err: unknown) => console.warn('[player] could not play on past the download', err));
   return true;
 }
