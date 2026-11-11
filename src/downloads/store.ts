@@ -5,6 +5,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { resolveClient } from '@/api/connection-clients';
 import { bookKeyParts, cachedCapability, chaptersQuery, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import {
+  readServerSnapshots,
+  saveServerSnapshot,
+  seedServerSnapshot,
+  type ServerSnapshot,
+} from '@/api/server-snapshots';
 import type { ApiClient } from '@/api/client';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
@@ -26,18 +32,12 @@ import { classifyDownloadError } from './failure';
 import {
   canMatch,
   captureOfflineMeta,
-  currentServerSnapshot,
-  forgetServerSnapshot,
   readOfflineMeta,
-  readServerSnapshots,
   releaseOfflineBook,
   removeOfflineMeta,
-  saveServerSnapshot,
   seedOfflineMeta,
   seedQuery,
-  seedServerSnapshot,
   serverHasMetadata,
-  type ServerSnapshot,
   whenSessionReady,
   writeOfflineMeta,
 } from './offline-meta';
@@ -854,8 +854,6 @@ async function keepOfflineMeta(key: string): Promise<void> {
   // Many books in a row (the launch's fill-in) save the registry once, not once each.
   persistSoon();
   seedOfflineMeta(entry.connectionId, entry.libraryId, entry.path, payload);
-  const server = currentServerSnapshot(entry.connectionId);
-  if (server) void saveServerSnapshot(entry.connectionId, server);
 }
 
 /** A kept copy older than this is read again on a launch that can reach its server, so
@@ -865,13 +863,13 @@ const KEPT_META_REFRESH_MS = 7 * 24 * 60 * 60_000;
 /** How many kept payloads the launch reads at once. */
 const RESTORE_READS_AT_ONCE = 3;
 
-/** On launch: seed the metadata every downloaded book kept, then each such connection's
- * kept `/server` answer where the cache has none (after the books, so a gate it opens
- * finds their data; a file from before the answer had its own key carries it over), then
- * fill in, one book at a time, the downloads that kept none (made before this existed, or
- * whose file is gone or unreadable), then refresh the copies older than a week. That asks
- * only a server with `metadata`, each server's flags once; a failure keeps what the book
- * had. */
+/** On launch: seed the metadata every downloaded book kept (each connection's `/server`
+ * answer, whose flag opens the readers' gate, was seeded before any screen:
+ * `restoreServerSnapshots`; a file from before that answer had its own key carries it
+ * over, for a connection with none kept), then fill in, one book at a time, the downloads
+ * that kept none (made before this existed, or whose file is gone or unreadable), then
+ * refresh the copies older than a week. That asks only a server with `metadata`, each
+ * server's flags once; a failure keeps what the book had. */
 async function restoreOfflineMeta(keys: string[]): Promise<void> {
   const downloaded = keys
     .map((key) => [key, useDownloads.getState().entries[key]] as const)
@@ -881,9 +879,8 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
     entry: e,
     payload: e.manifest.meta ? await readOfflineMeta(e) : null,
   }));
-  // The connections whose books kept their metadata, and the `/server` answer a file
-  // from before it had its own key carries (the first such file's).
-  const connections = new Set<string>();
+  // The `/server` answer a file from before it had its own key carries (the first such
+  // file's, per connection).
   const carried = new Map<string, ServerSnapshot>();
   const missing: string[] = [];
   const old: string[] = [];
@@ -893,18 +890,18 @@ async function restoreOfflineMeta(keys: string[]): Promise<void> {
       continue;
     }
     seedOfflineMeta(entry.connectionId, entry.libraryId, entry.path, payload);
-    connections.add(entry.connectionId);
     if (payload.server && !carried.has(entry.connectionId)) {
       carried.set(entry.connectionId, payload.server);
     }
     if (Date.now() - payload.savedAt > KEPT_META_REFRESH_MS) old.push(key);
   }
-  const snapshots = await readServerSnapshots();
-  for (const cid of connections) {
-    const snapshot = snapshots[cid] ?? carried.get(cid);
-    if (!snapshot) continue;
-    seedServerSnapshot(cid, snapshot);
-    if (!snapshots[cid]) void saveServerSnapshot(cid, snapshot);
+  if (carried.size > 0) {
+    const kept = await readServerSnapshots();
+    for (const [cid, snapshot] of carried) {
+      if (kept[cid]) continue;
+      seedServerSnapshot(cid, snapshot);
+      void saveServerSnapshot(cid, snapshot);
+    }
   }
   if (missing.length === 0 && old.length === 0) return;
 
@@ -1325,7 +1322,6 @@ onConnectionRemoved(async (id) => {
     delete next[key];
   }
   useDownloads.setState({ entries: next });
-  void forgetServerSnapshot(id);
   // The file deletions are independent (and on web each one re-lists the cache), so
   // run them concurrently rather than making removal wait on N sequential scans.
   await Promise.all(doomed.map(([, e]) => engine.removeBook(e.connectionId, e.libraryId, e.path)));

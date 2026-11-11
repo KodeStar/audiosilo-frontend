@@ -74,6 +74,7 @@ jest.mock('@/api/reachability', () => ({
 /* eslint-disable import/first */
 import { useBook, useBookMeta, useMetaWork, useServerInfo } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
+import { resetServerSnapshotsForTests, restoreServerSnapshots } from '@/api/server-snapshots';
 import { BookAbout } from '@/components/book/book-about';
 import { BookMetaCharactersTab, bookMetaWork, matchedMeta } from '@/components/library/book-meta';
 import { metaEnabledFor } from '@/components/library/meta-gating';
@@ -191,9 +192,9 @@ function downloaded(): DownloadEntry {
 (globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback = (cb) =>
   setTimeout(cb, 0);
 
-/** A cold launch with no network: the registry, the kept payload and the server's kept
- * `/server` answer come back from storage, the cache starts empty. */
-async function launchOffline(kept: BookMeta = meta, entry: DownloadEntry = downloaded()) {
+/** What a launch finds in storage: the registry, the kept payload and the server's kept
+ * `/server` answer. */
+async function keptOnDevice(kept: BookMeta = meta, entry: DownloadEntry = downloaded()) {
   const savedAt = Date.parse('2026-05-01T10:00:00Z');
   mockFiles.set(
     `c1|2|${PATH}|meta.json`,
@@ -213,11 +214,26 @@ async function launchOffline(kept: BookMeta = meta, entry: DownloadEntry = downl
     'audiosilo.downloads',
     JSON.stringify({ [downloadKey('c1', 2, PATH)]: entry }),
   );
+}
+
+/** A cold launch with no network (`bootstrapPlayback`'s part of it): every connection's
+ * kept `/server` answer is seeded before any screen, and the registry comes back; the
+ * cache starts empty. */
+async function launchSteps() {
+  await restoreServerSnapshots();
   await useDownloads.getState().hydrate();
-  // The payload is read and seeded once the launch is idle, after the registry.
-  await act(async () => {
+}
+
+/** ... and the kept payload, read and seeded once the launch is idle, after the registry. */
+const restored = () =>
+  act(async () => {
     await new Promise((r) => setTimeout(r, 10));
   });
+
+async function launchOffline(kept: BookMeta = meta, entry: DownloadEntry = downloaded()) {
+  await keptOnDevice(kept, entry);
+  await launchSteps();
+  await restored();
 }
 
 /** Let the screens' (failing) refetches land. */
@@ -263,6 +279,7 @@ beforeEach(async () => {
   mockCalls.length = 0;
   mockFiles.clear();
   await AsyncStorage.clear();
+  resetServerSnapshotsForTests();
   useDownloads.setState({ entries: {}, hydrated: false });
   playerStoreMock().reset();
 });
@@ -342,6 +359,22 @@ describe('a downloaded book opened offline', () => {
     expect(result.current.work?.community_description?.text).toBe('A gate in the dark.');
     expect(result.current.work?.attribution).toBeDefined();
     expect(result.current.chapterStarts).toHaveLength(6);
+  });
+
+  // The server's flags are known before any screen (fe#211), the book's kept metadata only
+  // once the launch is idle: a screen that opened its gate and asked in between (the
+  // request fails: no network) takes the kept copy when it lands.
+  it('a screen mounted before the kept metadata is restored takes it when it lands', async () => {
+    await keptOnDevice();
+    await restoreServerSnapshots();
+    const { result } = await renderHook(() => useBookCommunity(target), { wrapper });
+    await settle();
+    expect(result.current.metadata).toBe(true);
+    expect(result.current.work).toBeUndefined();
+    await useDownloads.getState().hydrate();
+    await restored();
+    expect(result.current.work?.id).toBe('w3');
+    expect(result.current.loading).toBe(false);
   });
 
   it('the previous work answers by its id', async () => {

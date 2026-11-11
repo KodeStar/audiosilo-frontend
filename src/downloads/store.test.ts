@@ -51,9 +51,14 @@ const mockHasMetadata = jest.fn(async (_cid: string) => true);
 const mockCanMatch = jest.fn((_e: DownloadEntry) => true);
 const mockReadSnapshots = jest.fn(async (): Promise<Record<string, unknown>> => ({}));
 const mockSaveSnapshot = jest.fn(async (..._a: unknown[]) => {});
-const mockForgetSnapshot = jest.fn(async (_cid: string) => {});
-const mockCurrentSnapshot = jest.fn((_cid: string): unknown => undefined);
 const mockRelease = jest.fn();
+// Each connection's kept `/server` answer (server-snapshots.test.ts): the store only
+// carries over the one an old payload file holds.
+jest.mock('@/api/server-snapshots', () => ({
+  seedServerSnapshot: (...a: unknown[]) => mockSeedServer(...a),
+  readServerSnapshots: () => mockReadSnapshots(),
+  saveServerSnapshot: (...a: unknown[]) => mockSaveSnapshot(...a),
+}));
 jest.mock('@/downloads/offline-meta', () => ({
   canMatch: (e: DownloadEntry) => mockCanMatch(e),
   captureOfflineMeta: (e: DownloadEntry) => mockCapture(e),
@@ -61,14 +66,9 @@ jest.mock('@/downloads/offline-meta', () => ({
   readOfflineMeta: (e: DownloadEntry) => mockReadMeta(e),
   removeOfflineMeta: (e: DownloadEntry) => mockRemoveMeta(e),
   seedOfflineMeta: (...a: unknown[]) => mockSeedMeta(...a),
-  seedServerSnapshot: (...a: unknown[]) => mockSeedServer(...a),
   seedQuery: (...a: unknown[]) => mockSeedQuery(...a),
   serverHasMetadata: (cid: string) => mockHasMetadata(cid),
   whenSessionReady: async () => {},
-  readServerSnapshots: () => mockReadSnapshots(),
-  saveServerSnapshot: (...a: unknown[]) => mockSaveSnapshot(...a),
-  forgetServerSnapshot: (cid: string) => mockForgetSnapshot(cid),
-  currentServerSnapshot: (cid: string) => mockCurrentSnapshot(cid),
   releaseOfflineBook: (...a: unknown[]) => mockRelease(...a),
 }));
 
@@ -2658,8 +2658,6 @@ describe('the offline companion (community metadata kept with a download)', () =
     const path = nextPath();
     const p = payload();
     mockCapture.mockResolvedValue(p);
-    const snapshot = { info: { capabilities: { metadata: true } }, savedAt: 7 };
-    mockCurrentSnapshot.mockReturnValueOnce(snapshot);
     const watch = jest.spyOn(AppState, 'addEventListener');
     await downloadOne(path);
     const key = downloadKey('c1', 2, path);
@@ -2676,8 +2674,9 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(saved?.manifest.meta).toEqual({ savedAt: '2026-05-01T10:00:00.000Z' });
     expect(JSON.stringify(saved)).not.toContain('"works"');
     expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, p);
-    // The server's answer, kept once for the connection.
-    expect(mockSaveSnapshot).toHaveBeenCalledWith('c1', snapshot);
+    // The server's answer is kept as it arrives, for every connection (`watchServerAnswers`),
+    // not by the download.
+    expect(mockSaveSnapshot).not.toHaveBeenCalled();
   });
 
   it('a book with nothing to keep downloads exactly as before, unmarked', async () => {
@@ -2729,10 +2728,8 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(mockRemoveMeta).toHaveBeenCalledWith(expect.objectContaining({ path }));
   });
 
-  it("on launch, seeds what each book kept and then the connection's kept /server answer", async () => {
+  it("on launch, seeds what each book kept; the connections' /server answers are the launch's", async () => {
     const path = nextPath();
-    const kept = { info: { capabilities: { metadata: true } }, savedAt: 3 };
-    mockReadSnapshots.mockResolvedValueOnce({ c1: kept });
     await seed({
       [downloadKey('c1', 2, path)]: downloadedEntry({
         path,
@@ -2745,11 +2742,9 @@ describe('the offline companion (community metadata kept with a download)', () =
     await settle();
     await settle();
     expect(mockSeedMeta).toHaveBeenCalledWith('c1', 2, path, p);
-    expect(mockSeedServer).toHaveBeenCalledWith('c1', kept);
-    // The book page's metadata is seeded before the flag that opens its gate.
-    expect(mockSeedMeta.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSeedServer.mock.invocationCallOrder[0],
-    );
+    // Seeded for every connection before any screen (`restoreServerSnapshots`), not here.
+    expect(mockReadSnapshots).not.toHaveBeenCalled();
+    expect(mockSeedServer).not.toHaveBeenCalled();
     expect(mockSaveSnapshot).not.toHaveBeenCalled();
   });
 
@@ -2773,12 +2768,24 @@ describe('the offline companion (community metadata kept with a download)', () =
     expect(mockCapture).not.toHaveBeenCalled();
   });
 
-  it("forgets a removed connection's /server answer with its downloads", async () => {
+  it("leaves a connection's kept answer alone when an old file still carries one", async () => {
     const path = nextPath();
-    await seed({ [downloadKey('c9', 2, path)]: downloadedEntry({ connectionId: 'c9', path }) });
+    const older = payload(Date.now() - 60_000);
+    mockReadSnapshots.mockResolvedValueOnce({
+      c1: { info: { capabilities: { metadata: true } }, savedAt: 9 },
+    });
+    await seed({
+      [downloadKey('c1', 2, path)]: downloadedEntry({
+        path,
+        manifest: { ...downloadedEntry().manifest, meta: { savedAt: '2026-05-01T10:00:00Z' } },
+      }),
+    });
+    mockReadMeta.mockResolvedValue(older);
     await useDownloads.getState().hydrate();
-    await removalCleanup('c9');
-    expect(mockForgetSnapshot).toHaveBeenCalledWith('c9');
+    await settle();
+    await settle();
+    expect(mockSeedServer).not.toHaveBeenCalled();
+    expect(mockSaveSnapshot).not.toHaveBeenCalled();
   });
 
   it('fills in a download made before it was kept, once per launch', async () => {

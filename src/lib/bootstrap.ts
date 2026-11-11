@@ -1,3 +1,4 @@
+import { restoreServerSnapshots } from '@/api/server-snapshots';
 import { engine } from '@/downloads/engine';
 import { useDownloads } from '@/downloads/store';
 import { restoreLanguage } from '@/i18n/language-provider';
@@ -33,8 +34,10 @@ let pending: Promise<void> | null = null;
  *    wipe orphans them; a cache-schema bump invalidates them): wipe the whole downloads
  *    root once, or they leak, uncounted, forever.
  * 4. Hydrate the session, settings, downloads, series orderings, library selection and the
- *    profiles (who is listening on this device), all started together in that order. Resolves once each has settled (a store's own hydrate
- *    has its fail-safe; a rejection is logged, never thrown).
+ *    profiles (who is listening on this device), all started together in that order, and
+ *    seed each connection's kept `/server` answer (`restoreServerSnapshots`: the flags a
+ *    launch with no network would otherwise never learn). Resolves once each has settled
+ *    (a store's own hydrate has its fail-safe; a rejection is logged, never thrown).
  *
  * Alongside all of it (it reads no store and no record a reset touches), the listener's
  * language is applied (`restoreLanguage`): the root layout's `LanguageProvider` applies it
@@ -74,6 +77,10 @@ async function run(): Promise<void> {
     // After the session in this list: it reconciles with the session's connections once
     // those have loaded (whichever settles last), building the document when it is missing.
     useProfiles.getState().hydrate(),
+    // Each connection's last `/server` answer, back in the query cache before any screen
+    // (or the car's lists) reads a flag: a launch that can't reach a server still knows
+    // what it serves.
+    restoreServerSnapshots(),
   ]);
   for (const r of results) {
     if (r.status === 'rejected') console.warn('[bootstrap] a store failed to hydrate', r.reason);

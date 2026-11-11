@@ -52,24 +52,18 @@ jest.mock('@/stores/session', () => {
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import { OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
 
 import {
   canMatch,
   captureOfflineMeta,
-  currentServerSnapshot,
-  forgetServerSnapshot,
   OFFLINE_META_FILE,
   type OfflineMeta,
   parseOfflineMeta,
   readOfflineMeta,
-  readServerSnapshots,
   releaseOfflineBook,
   removeOfflineMeta,
-  saveServerSnapshot,
   seedOfflineMeta,
   seedQuery,
-  seedServerSnapshot,
   serverHasMetadata,
   whenSessionReady,
   writeOfflineMeta,
@@ -337,48 +331,6 @@ describe('seedOfflineMeta', () => {
   });
 });
 
-describe('the /server snapshot', () => {
-  it('is seeded only where the cache has no answer', () => {
-    seedServerSnapshot('c1', { info: server({ metadata: true }), savedAt: 1 });
-    expect(qc.getQueryData<ServerInfo>(qk.server('c1'))?.capabilities.metadata).toBe(true);
-    qc.setQueryData(qk.server('c2'), server({ metadata: false }));
-    seedServerSnapshot('c2', { info: server({ metadata: true }), savedAt: 1 });
-    expect(qc.getQueryData<ServerInfo>(qk.server('c2'))?.capabilities.metadata).toBe(false);
-  });
-
-  it('is kept once per connection under its own key, newer answers only', async () => {
-    const snap = (savedAt: number) => ({ info: server({ metadata: savedAt > 1 }), savedAt });
-    await saveServerSnapshot('c1', snap(2));
-    await saveServerSnapshot('c1', snap(1)); // older: kept as it was
-    await saveServerSnapshot('c2', snap(3));
-    expect(await readServerSnapshots()).toEqual({ c1: snap(2), c2: snap(3) });
-    await forgetServerSnapshot('c2');
-    expect(Object.keys(await readServerSnapshots())).toEqual(['c1']);
-  });
-
-  it('never loses a write to another one running beside it', async () => {
-    const snap = { info: server({ metadata: true }), savedAt: 5 };
-    await Promise.all([saveServerSnapshot('c1', snap), saveServerSnapshot('c2', snap)]);
-    expect(Object.keys(await readServerSnapshots()).sort()).toEqual(['c1', 'c2']);
-  });
-
-  it('reads an unreadable document as none, and skips the entries it cannot use', async () => {
-    await AsyncStorage.setItem(OFFLINE_SERVERS_KEY, '"nope"');
-    expect(await readServerSnapshots()).toEqual({});
-    await AsyncStorage.setItem(
-      OFFLINE_SERVERS_KEY,
-      JSON.stringify({ c1: { info: 'S' }, c2: { info: server({}), savedAt: 1 } }),
-    );
-    expect(Object.keys(await readServerSnapshots())).toEqual(['c2']);
-  });
-
-  it("reads the connection's answer from the cache", () => {
-    expect(currentServerSnapshot('c1')).toBeUndefined();
-    qc.setQueryData(qk.server('c1'), server({ metadata: true }), { updatedAt: 42 });
-    expect(currentServerSnapshot('c1')).toEqual({ info: server({ metadata: true }), savedAt: 42 });
-  });
-});
-
 describe('captureOfflineMeta', () => {
   it('with meta_bundle: one request brings the envelope and the previous works', async () => {
     const meta = envelope({ previous: [work('w2'), work('w1')] });
@@ -389,7 +341,7 @@ describe('captureOfflineMeta', () => {
     // The nearest earlier book (2) came with it, so nothing more is asked.
     expect(mockClient.metaWork).not.toHaveBeenCalled();
     expect(payload).toMatchObject({ v: 1, previous: true, meta, works: [] });
-    // The /server answer is kept apart (`saveServerSnapshot`), not in every book's file.
+    // The /server answer is kept apart (`src/api/server-snapshots.ts`), not in every book's file.
     expect(payload).not.toHaveProperty('server');
     // Kept for good from the read on: the cache's own timer never drops it.
     expect(

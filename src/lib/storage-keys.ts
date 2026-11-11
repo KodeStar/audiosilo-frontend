@@ -30,10 +30,12 @@ export const LISTENING_OUTBOX_KEY = 'audiosilo.listeningOutbox';
  * and `owner`; a bare span before W2), or null: rewritten every 5 s while one plays, so a
  * span a kill left open is closed at the next launch. */
 export const LISTENING_OPEN_SPAN_KEY = 'audiosilo.listeningOpenSpan';
-/** Per connection id: when its outbox last synced, the events it couldn't sync, its server's
- * clock skew (`clockSkewMs`) and the `listening_sync` flag it last answered (`listeningSync`). */
+/** Per connection id: when its outbox last synced, the events it couldn't sync and its
+ * server's clock skew (`clockSkewMs`). */
 export const LISTENING_SYNC_KEY = 'audiosilo.listeningSync';
-/** Each connection's kept `/server` answer for offline reading, keyed by connection id. */
+/** Each connection's last `/server` answer, keyed by connection id: kept on every answer
+ * and seeded at launch (`src/api/server-snapshots.ts`), so a launch that can't reach a
+ * server still knows what it serves. */
 export const OFFLINE_SERVERS_KEY = 'audiosilo.offlineServers';
 /** Web: the last answers the first screens paint from (`src/api/startup-cache.ts`), each
  * keyed by its query key (which carries the connection id). Disposable: a reset wipes it. */

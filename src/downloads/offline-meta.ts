@@ -4,11 +4,11 @@ import type { ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { bookMetaQuery, fetchCapabilities, fetchFailFast, metaWorkQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import type { Book, BookMeta, BookMetaWork, ServerInfo } from '@/api/types';
+import { parseServerSnapshot, type ServerSnapshot } from '@/api/server-snapshots';
+import type { Book, BookMeta, BookMetaWork } from '@/api/types';
 import { metaEnabledFor } from '@/components/library/meta-gating';
 import { previousWorks, seriesRails } from '@/components/library/series-rails';
-import { getItem, setItem } from '@/lib/storage';
-import { isRecord, OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
+import { isRecord } from '@/lib/storage-keys';
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { useSession } from '@/stores/session';
 
@@ -41,9 +41,9 @@ import type { DownloadEntry } from './types';
  * - the "catch up on previous books" rows (`book-meta.tsx`) and the work series page:
  *   `qk.metaWork(cid, workId)`;
  * - every one of them first waits on the server's `metadata` flag, read from
- *   `qk.server(cid)`: on a cold start with no network that is never answered, so the
- *   server's last `/server` answer is kept too, once per connection under its own small
- *   storage key (`OFFLINE_SERVERS_KEY`), not in every book's file.
+ *   `qk.server(cid)`: on a cold start with no network that is never answered, so every
+ *   connection's last `/server` answer is kept and seeded at launch
+ *   (`src/api/server-snapshots.ts`), not in every book's file.
  * Nothing reads the `spoilers=hide` variant today (it is cut at the saved place when it is
  * fetched, so it is not stored); the `include=previous` variant is seeded when the payload
  * was fetched that way.
@@ -52,9 +52,6 @@ import type { DownloadEntry } from './types';
 /** The payload's file name in the book's folder (audio files are numbered, the cover is
  * `cover.jpg`). */
 export const OFFLINE_META_FILE = 'meta.json';
-
-/** A server's `/server` answer and when it was read (epoch ms). */
-export type ServerSnapshot = { info: ServerInfo; savedAt: number };
 
 /** What a download keeps of its community metadata (version 1 of the file). */
 export type OfflineMeta = {
@@ -73,22 +70,12 @@ export type OfflineMeta = {
    * without `meta_bundle`, or a pick other than the main order). */
   works: BookMetaWork[];
   /** The server's `/server` answer, in a file written before it had its own key
-   * (`OFFLINE_SERVERS_KEY`); read only to carry it over. */
+   * (`src/api/server-snapshots.ts`); read only to carry it over. */
   server?: ServerSnapshot;
 };
 
 const isWork = (v: unknown): v is BookMetaWork =>
   isRecord(v) && typeof v.id === 'string' && v.id.length > 0;
-
-/** A stored `/server` snapshot, or undefined when it is not one. */
-function parseSnapshot(raw: unknown): ServerSnapshot | undefined {
-  return isRecord(raw) &&
-    isRecord(raw.info) &&
-    isRecord(raw.info.capabilities) &&
-    typeof raw.savedAt === 'number'
-    ? (raw as ServerSnapshot)
-    : undefined;
-}
 
 /** A stored payload, or null when it is not one this version can read (corrupt, foreign
  * or from a future version): the caller then simply goes without (and fetches it again
@@ -104,7 +91,7 @@ export function parseOfflineMeta(raw: unknown): OfflineMeta | null {
     if (Array.isArray(envelope.previous)) envelope.previous = envelope.previous.filter(isWork);
     else delete envelope.previous;
   }
-  const snapshot = parseSnapshot(server);
+  const snapshot = parseServerSnapshot(server);
   return {
     v: 1,
     savedAt,
@@ -154,8 +141,10 @@ export function seedQuery(key: QueryKey, data: unknown, updatedAt: number): void
 }
 
 /** Seed every key the payload can answer (see the module comment) for one book. The
- * server's answer is seeded separately (`seedServerSnapshot`), once per connection, after
- * every book's metadata, so a screen whose gate it opens finds its data already there. */
+ * server's answer, whose `metadata` flag opens the readers' gate, is seeded for every
+ * connection at launch (`restoreServerSnapshots`); a reader that asked meanwhile takes
+ * this copy when it lands (`seedQuery` fills a key with no data, a failed or waiting one
+ * too). */
 export function seedOfflineMeta(
   connectionId: string,
   libraryId: number,
@@ -177,61 +166,6 @@ export function seedOfflineMeta(
 function withoutPrevious(meta: Extract<BookMeta, { matched: true }>): BookMeta {
   const { previous: _previous, ...rest } = meta;
   return rest;
-}
-
-/** Seed a connection's `/server` answer when the cache has none (a cold start that can't
- * reach the server): without it every metadata surface waits on a flag that never
- * comes. The app then holds the flags it held when it was last online, which is what a
- * session that goes offline holds anyway; the first answer from the server replaces it. */
-export function seedServerSnapshot(connectionId: string, snapshot: ServerSnapshot): void {
-  seedQuery(qk.server(connectionId), snapshot.info, snapshot.savedAt);
-}
-
-/** The kept `/server` answers, by connection id (none when unreadable). */
-export async function readServerSnapshots(): Promise<Record<string, ServerSnapshot>> {
-  const raw = await getItem<unknown>(OFFLINE_SERVERS_KEY);
-  if (!isRecord(raw)) return {};
-  const out: Record<string, ServerSnapshot> = {};
-  for (const [cid, v] of Object.entries(raw)) {
-    const snapshot = parseSnapshot(v);
-    if (snapshot) out[cid] = snapshot;
-  }
-  return out;
-}
-
-/** Writes of the kept answers, one after another (each reads what the last wrote). */
-let snapshotWrites: Promise<void> = Promise.resolve();
-
-function updateSnapshots(change: (all: Record<string, ServerSnapshot>) => boolean): Promise<void> {
-  snapshotWrites = snapshotWrites.then(async () => {
-    const all = await readServerSnapshots();
-    if (change(all)) await setItem(OFFLINE_SERVERS_KEY, all);
-  });
-  return snapshotWrites;
-}
-
-/** The connection's `/server` answer as the cache holds it now, if any. */
-export function currentServerSnapshot(connectionId: string): ServerSnapshot | undefined {
-  const state = queryClient.getQueryState<ServerInfo>(qk.server(connectionId));
-  return state?.data ? { info: state.data, savedAt: state.dataUpdatedAt } : undefined;
-}
-
-/** Keep `snapshot` as the connection's answer, unless a newer one is kept already. */
-export function saveServerSnapshot(connectionId: string, snapshot: ServerSnapshot): Promise<void> {
-  return updateSnapshots((all) => {
-    if ((all[connectionId]?.savedAt ?? -Infinity) >= snapshot.savedAt) return false;
-    all[connectionId] = snapshot;
-    return true;
-  });
-}
-
-/** Forget a removed connection's kept answer. */
-export function forgetServerSnapshot(connectionId: string): Promise<void> {
-  return updateSnapshots((all) => {
-    if (!(connectionId in all)) return false;
-    delete all[connectionId];
-    return true;
-  });
 }
 
 /** Whether a connection's server has community metadata (its `/server` read the way the

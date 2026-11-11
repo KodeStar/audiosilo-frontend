@@ -313,7 +313,8 @@ describe('migrateConnectionIdentity', () => {
   // two fixture servers where the user is alex, id 2, on both. After the update the
   // Library and the car showed fixture B: not the migration's doing (this proves the
   // default and a stored pick survive it, the session and the profiles), but the
-  // no-pick fallback taking whichever server answered first (`resolveLibrarySelection`).
+  // no-pick fallback, which then took whichever server answered first (it now waits for
+  // the first server in the listener's order: `resolveLibrary`, fe#142).
   describe("the device pass's three connections", () => {
     const demoUser = { id: 57, username: 'demo-x', role: 'user' };
     const alex = { id: 2, username: 'alex', role: 'user' };
@@ -370,7 +371,7 @@ describe('migrateConnectionIdentity', () => {
       ).toEqual(stored);
     });
 
-    it('with no stored pick, none is invented (the fallback is by order of arrival)', async () => {
+    it('with no stored pick, none is invented', async () => {
       await seed(null);
       await migrateConnectionIdentity(deps());
       await hydrateAll();
