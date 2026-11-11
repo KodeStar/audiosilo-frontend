@@ -201,6 +201,10 @@ const downloadedEntry = (): DownloadEntry => ({
   },
 });
 
+/** The save loop's pace for a book this device holds (`saveIntervalMs`); a streamed one
+ * saves every 15 s. */
+const LOCAL_SAVE_MS = 60_000;
+
 const snap = (state: PlaybackState, trackIndex: number, position: number): PlaybackSnapshot => ({
   state,
   trackIndex,
@@ -266,14 +270,15 @@ describe('the replay guard on the PUT path', () => {
     mockSettled.clear();
   });
 
-  async function playedTwoSaves(outcome: string) {
+  /** `tick`: the save loop's pace for the book (`LOCAL_SAVE_MS` for a downloaded one). */
+  async function playedTwoSaves(outcome: string, tick = 15_000) {
     mockSaveProgress.mockResolvedValueOnce(outcome as never);
     pushSnapshot(snap('playing', 0, 5));
     await settle();
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(tick);
     await settle();
     pushSnapshot(snap('playing', 0, 25));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(tick);
     await settle();
   }
 
@@ -349,7 +354,7 @@ describe('the replay guard on the PUT path', () => {
       entries: { [`c1:2:${folder}`]: downloadedEntry() },
     });
     await start();
-    await playedTwoSaves('queued');
+    await playedTwoSaves('queued', LOCAL_SAVE_MS);
     expect(guards()).toEqual([true, true]);
   });
 
@@ -366,7 +371,7 @@ describe('the replay guard on the PUT path', () => {
     });
     expect(adopted).toBe(true);
     pushSnapshot(snap('playing', 0, 25));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
     await settle();
     expect(guards()).toEqual([true]);
   });

@@ -171,6 +171,10 @@ const loadedB = (p: {
   playing: p.playing ?? true,
 });
 
+/** The save loop's pace for a book this device holds, as every adopted one here is
+ * (`saveIntervalMs`); a streamed book saves every 15 s. */
+const LOCAL_SAVE_MS = 60_000;
+
 function snap(state: PlaybackState, trackIndex: number, position: number): PlaybackSnapshot {
   return { state, trackIndex, position, duration: 100, rate: 1.5 };
 }
@@ -255,7 +259,7 @@ describe('adoptLoaded', () => {
       useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
       await usePlayer.getState().adoptLoaded(loadedB({ playing: true }));
       pushSnapshot(snap('playing', 1, 45));
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(LOCAL_SAVE_MS);
       await flushMicrotasks();
       expect(order[0]).toBe('picked-up');
       expect(order.filter((o) => o === 'picked-up')).toHaveLength(1);
@@ -363,7 +367,7 @@ describe('adoptLoaded', () => {
       'file:///d/2.mp3',
     ]);
     pushSnapshot(snap('playing', 1, 45));
-    jest.advanceTimersByTime(15_000); // one save tick
+    jest.advanceTimersByTime(LOCAL_SAVE_MS); // one save tick
     await flushMicrotasks();
     // Track 1 is B/2.mp3, the second 100 s of the download's timeline.
     expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 145 });
@@ -378,7 +382,7 @@ describe('adoptLoaded', () => {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     await usePlayer.getState().adoptLoaded(loadedB({ trackIndex: 1, position: 30 }));
     pushSnapshot(snap('playing', 1, 45));
-    jest.advanceTimersByTime(15_000); // one save tick
+    jest.advanceTimersByTime(LOCAL_SAVE_MS); // one save tick
     await flushMicrotasks();
 
     expect(savedPaths()).toEqual(['B']);
@@ -401,13 +405,13 @@ describe('adoptLoaded', () => {
 
     // A stray low place (a slipped restart at file 0) is far below the floor: not saved.
     pushSnapshot(snap('playing', 0, 10));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
     await flushMicrotasks();
     expect(mockSaveProgress).not.toHaveBeenCalled();
 
     // Within the floor's tolerance it saves (the floor is 145, not 0 and not the end).
     pushSnapshot(snap('playing', 1, 40));
-    jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
     await flushMicrotasks();
     expect(mockSaveProgress).toHaveBeenCalledTimes(1);
     expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 140 });
@@ -580,7 +584,7 @@ describe('adoptLoaded', () => {
         return chapters;
       });
     const saveTick = async () => {
-      jest.advanceTimersByTime(15_000);
+      jest.advanceTimersByTime(LOCAL_SAVE_MS);
       await flushMicrotasks();
     };
     /** Until `mock` was called: the first adoption of a run also creates the service, which

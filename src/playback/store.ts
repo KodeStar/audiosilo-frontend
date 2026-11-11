@@ -20,6 +20,7 @@ import {
   downloadKey,
   useDownloads,
 } from '@/downloads/store';
+import { isAway, onAppStateEdge } from '@/lib/app-activity';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { canAutoDownload } from '@/lib/network';
@@ -262,12 +263,17 @@ let lastPlayRequest: {
 const MIN_HISTORY_MS = 20_000; // ignore listening spans shorter than this
 const STALL_GRACE_MS = 3_000; // a 'loading' that outlasts this is treated as a dead stream
 
-// The server derives listening sessions from these saves (audiosilo-server
-// internal/catalog/sessions.go: a session reads as playing for 60 s after a save
-// and as ended after 10 min without one, though a later save whose position advanced
-// by about the elapsed time still continues it). Changing the cadence means revisiting
-// those windows (CROSS-REPO.md section 20).
+// The periodic save's two paces (`saveIntervalMs`, perf P4). The server derives listening
+// sessions from these saves and the spans cut with them (audiosilo-server
+// internal/catalog/sessions.go: a session reads as playing for 60 s after one, `livePlaying`,
+// and as ended after 10 min without one, though a later one whose position advanced by about
+// the elapsed time still continues it). The slower pace sits ON that 60 s window, so a
+// session saved at it can read as paused for the moment before its next save lands;
+// changing either pace means revisiting those windows (CROSS-REPO.md section 20).
 const SAVE_INTERVAL_MS = 15_000;
+/** The pace while nobody is looking or nothing is streaming: each save is a request that
+ * wakes the radio by itself. */
+const QUIET_SAVE_INTERVAL_MS = 60_000;
 /** Treat within 5 s of the end as finished (defined beside the timeline maths). */
 export { FINISHED_TOLERANCE };
 const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect
@@ -532,7 +538,7 @@ export function saveLoadedPlace(): void {
 /** Nudge the Home/Browse "continue listening" + "finished" lists to re-read from
  * the server after playback halts. The live in-card position covers the actively-
  * playing book while it plays; this refreshes the other cards (finished state,
- * other-device progress) once it stops, without invalidating on every 15s save. */
+ * other-device progress) once it stops, without invalidating on every periodic save. */
 function invalidateProgressLists() {
   // The playing book's connection scopes the invalidation (stop() invalidates
   // before it nulls nowPlaying, so the id is still in hand at every call site).
@@ -606,20 +612,49 @@ async function knownProgress(
   return { cached, newest };
 }
 
-/** The 15 s periodic save. An `engineTicker`, so the engine's events keep it going where
- * Android has paused the interval (screen off, app in the background). `playBook` stops
- * it before a book switch, so a late event of the old book never saves under the new one. */
-const saveLoop = engineTicker(() => {
-  void persist();
-  tickListeningSpan();
-}, SAVE_INTERVAL_MS);
+/**
+ * How long after the last periodic save the next is due: 15 s while the app is in front
+ * AND the playing file streams from the server (the radio is up for the stream anyway),
+ * 60 s otherwise: the app away (`isAway`: a locked phone, another app in front, a hidden
+ * tab), or the file one this device holds (a download's, `PlaybackTrack.local`; owner
+ * decision D5: in front too), where every save would wake the radio for itself. A Cast
+ * receiver streams whatever the phone holds. Read at each check of the loop, so a change
+ * mid-play (the hot-swap onto a download, a file of another kind, the app leaving or
+ * coming back) sets the pace from the last save on, with none dropped and none doubled.
+ *
+ * Only the periodic save slows: a pause, a move, a stop, the end, a give-way and the app
+ * leaving the front still save at once, and the open span is stored every 5 s all the
+ * same (`OPEN_SPAN_KEEP_MS`), so a kill loses no more listening than before. What waits up
+ * to a minute is what OTHER devices see: the server's place, and on the legacy PUT path
+ * (no `listening_sync`) the place a kill leaves behind.
+ */
+function saveIntervalMs(): number {
+  if (isAway()) return QUIET_SAVE_INTERVAL_MS;
+  const { nowPlaying: np, snapshot } = usePlayer.getState();
+  const local = np?.queue.tracks[snapshot.trackIndex]?.local === true;
+  return local && !service?.isCasting?.() ? QUIET_SAVE_INTERVAL_MS : SAVE_INTERVAL_MS;
+}
+
+/** The periodic save, and with it the Sync v2 span cut, at `saveIntervalMs`'s pace. An
+ * `engineTicker`, so the engine's events keep it going where Android has paused the
+ * interval (screen off, app in the background). `playBook` stops it before a book switch,
+ * so a late event of the old book never saves under the new one. */
+const saveLoop = engineTicker(
+  () => {
+    void persist();
+    tickListeningSpan();
+  },
+  SAVE_INTERVAL_MS,
+  saveIntervalMs,
+);
 /** How often the open span is written to storage while playing, online or offline: a
  * kill (a force-stop, the OS ending the app) loses at most this much listening, since
  * `recoverOpenSpan` closes what was stored at the next launch. Without it an online span
- * lived only in memory between two 15 s cuts (W2 F1). */
+ * lived only in memory between two cuts (W2 F1), which are now up to a minute apart
+ * (`saveIntervalMs`). */
 const OPEN_SPAN_KEEP_MS = 5_000;
 const spanKeeper = engineTicker(() => keepOpenSpan(), OPEN_SPAN_KEEP_MS);
-/** Re-based on every start: the first save comes 15 s after playing starts. */
+/** Re-based on every start: the first save comes one period after playing starts. */
 function startSaveLoop() {
   saveLoop.stop();
   saveLoop.start();
@@ -630,6 +665,25 @@ function stopSaveLoop() {
   saveLoop.stop();
   spanKeeper.stop();
 }
+
+/**
+ * The app left the front (`away`) or came back, while a book plays. Leaving, the place is
+ * saved now and the loop re-based: the pace is 60 s from here, and the save the 15 s pace
+ * owed must not wait for it (Sync v2's span is cut at the same moment, by
+ * `listening-sync.ts` and on the web by `flushHistoryOnHide`). Coming back, a save the
+ * 15 s pace already owes goes now rather than on the next engine event.
+ */
+function onAwayChange(away: boolean) {
+  if (!saveLoop.running()) return;
+  if (!away) {
+    saveLoop.check();
+    return;
+  }
+  void persist();
+  saveLoop.stop();
+  saveLoop.start();
+}
+onAppStateEdge(isAway, onAwayChange);
 
 /** Capture the current position then stop the periodic save loop - shared by the
  * engine's terminal states (pause/end/error) and the stall watchdog. Refreshes the
@@ -645,16 +699,16 @@ function haltAndPersist() {
 // On a server with `listening_sync` the place reaches it as listening events: a span of
 // playing, from where it began to where it ended (whole-book seconds AND each end's file and
 // seconds into it, fe#188), with why it began (`start`) and the version this device had
-// acknowledged (`base_version`). A span OPENS when the engine starts playing; it is CUT
-// (closed into an event, a new one opening at once with `continue`) on each 15 s tick while
-// the server is reachable, a speed change, the server coming back, the app going to the
-// background and the web page hiding; it is CLOSED on a pause (any settling out of
-// `playing`), a move (the new place opens the next span with the move's reason), a stop, a
-// book switch and the end. Offline, a tick leaves the span open (cut only after an hour,
-// `MAX_SPAN_MS`), so a day offline is a handful of events. Online or offline, the open span
-// is stored every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that. The persist
-// guards above (the load, the hot-swap, an adoption's reload, the resume floor) keep a
-// suspicious place out of a span too: a span then ends where it was last seen.
+// acknowledged (`base_version`). A span OPENS when the engine starts playing; it is CUT (closed
+// into an event, a new one opening at once with `continue`) on each tick of the save loop
+// (`saveIntervalMs`) while the server is reachable, a speed change, the server coming back, the
+// app going to the background and the web page hiding; it is CLOSED on a pause (any settling
+// out of `playing`), a move (the new place opens the next span with the move's reason), a stop,
+// a book switch and the end. Offline, a tick leaves the span open (cut only after an hour,
+// `MAX_SPAN_MS`), so a day offline is a handful of events. Online or offline, the open span is
+// stored every 5 s (`OPEN_SPAN_KEEP_MS`), so a kill loses at most that. The persist guards
+// above (the load, the hot-swap, an adoption's reload, the resume floor) keep a suspicious
+// place out of a span too: a span then ends where it was last seen.
 
 /** The longest a span stays open (wall clock) before it is cut, online or offline: well
  * under the server's 24 h bound on one span. */
@@ -837,7 +891,8 @@ function cutListeningSpan(start: ListeningStart = 'continue') {
   openListeningSpan(closed.to);
 }
 
-/** The 15 s tick: cut while the server is reachable (live sessions), else keep the span.
+/** The save loop's tick (`saveIntervalMs`): cut while the server is reachable (live
+ * sessions), else keep the span.
  * Playing with none open, one opens here: the play's own could not (its place was held by a
  * load, the hot-swap or an adoption's reload), or the server took listening events only
  * since (its `/server` read while the book played; the history the PUT path began goes by
@@ -1117,8 +1172,9 @@ function claimPlaying() {
  * the pause, so it still reads as playing): the play's next claim is not a second give-way.
  *
  * A tab that gives way answers the play with the place it stopped at (`GaveWay`), which is
- * where its span ended: the other tab began from this tab's last save, up to 15 s behind,
- * and plays on from here instead (`onGaveWayAnswer`). Not a tab that was itself behind
+ * where its span ended: the other tab began from this tab's last save, up to 15 s behind
+ * (a minute when this tab played hidden: `saveIntervalMs`), and plays on from here instead
+ * (`onGaveWayAnswer`). Not a tab that was itself behind
  * another's play (a press still reading the shared place, a play that began by itself still
  * moving there: `catchingUp`): its place is not the latest. And once per play: a claim of
  * a play this tab noted before (it gave way to it already, or was not playing then) is
@@ -1432,8 +1488,9 @@ function catchUpPlaying(svc: PlaybackService, since: number) {
 
 /**
  * The tab that gave way to this tab's play says where it stopped (`GaveWay`). This tab
- * began from the shared save, which that tab made up to 15 s before it stopped, so it moves
- * on to the place the listener really was: the listening begun at the older place is
+ * began from the shared save, which that tab made up to 15 s before it stopped (a minute
+ * when it played hidden), so it moves on to the place the listener really was: the
+ * listening begun at the older place is
  * dropped (its span and history: nothing is recorded for a stretch nobody chose to hear
  * twice) and begins again at the place taken, as a `resume`, with no event that says the
  * listener moved. The place is saved at once.
@@ -1692,7 +1749,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !=
 /**
  * The switch to another book, as `playBook` and `adoptLoaded` both make it, BEFORE
  * `nowPlaying` changes: the previous book's listening span flushed, its stall timer dropped
- * and its periodic save loop stopped (otherwise a 15 s tick, or the engine's continued ticks
+ * and its periodic save loop stopped (otherwise its tick, or the engine's continued ticks
  * after an early return, would map the OLD engine position through the NEW book's queue and
  * persist it under the new book's path, corrupting its progress; the loop restarts on the
  * engine's next `playing` transition for the new book), counted as the listener's own move,
@@ -1979,8 +2036,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
       if (!api && !local) return; // connection gone and nothing local; nothing to play
 
       // The previous book's place, saved now through its own server: the switch stops its
-      // save loop (up to 15 s unsaved), and once this book is `nowPlaying` nothing saves it
-      // again. Here, not in `switchBook`: the engine still holds the previous book (an
+      // save loop (up to a minute unsaved), and once this book is `nowPlaying` nothing saves
+      // it again. Here, not in `switchBook`: the engine still holds the previous book (an
       // adoption's engine already plays another, so its snapshot is not that book's).
       void persist();
       switchBook(api, { connectionId, libraryId, book, chapterData });

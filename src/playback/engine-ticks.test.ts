@@ -87,6 +87,71 @@ describe('engineTicker', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  describe('with a period that changes while it runs', () => {
+    let every = 1_000;
+    function paced() {
+      const fn = jest.fn();
+      const t = engineTicker(fn, 1_000, () => every);
+      stops.push(() => t.stop());
+      return { fn, t };
+    }
+    beforeEach(() => {
+      every = 1_000;
+    });
+
+    it('waits the longer period from the last run, by events or by the interval alone', () => {
+      const events = paced();
+      events.t.start();
+      eventsOnly(2);
+      expect(events.fn).toHaveBeenCalledTimes(2);
+      every = 4_000;
+      eventsOnly(3);
+      expect(events.fn).toHaveBeenCalledTimes(2);
+      eventsOnly(1);
+      expect(events.fn).toHaveBeenCalledTimes(3);
+      events.t.stop();
+
+      const timers = paced();
+      timers.t.start();
+      jest.advanceTimersByTime(8_000);
+      expect(timers.fn).toHaveBeenCalledTimes(2);
+    });
+
+    it('runs at the first check once a shorter period is already past', () => {
+      every = 4_000;
+      const { fn, t } = paced();
+      t.start();
+      eventsOnly(2);
+      expect(fn).not.toHaveBeenCalled();
+      every = 1_000;
+      eventsOnly(1);
+      expect(fn).toHaveBeenCalledTimes(1);
+      // From that run on, not from the start: no second run inside the new period.
+      jest.setSystemTime(Date.now() + 500);
+      engineTick();
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('check() runs it when due, and only while it is running', () => {
+      every = 4_000;
+      const { fn, t } = paced();
+      t.check();
+      expect(fn).not.toHaveBeenCalled();
+      expect(t.running()).toBe(false);
+      t.start();
+      expect(t.running()).toBe(true);
+      jest.setSystemTime(Date.now() + 2_000);
+      t.check();
+      expect(fn).not.toHaveBeenCalled();
+      every = 1_000;
+      t.check();
+      t.check();
+      expect(fn).toHaveBeenCalledTimes(1);
+      t.stop();
+      expect(t.running()).toBe(false);
+    });
+  });
+
   it('skips one that an earlier one stopped in the same pass', () => {
     const second = counted(1_000);
     const first = counted(1_000);

@@ -21,12 +21,20 @@ import { ticker } from '@/lib/ticker';
  * short of a full `ms` after the last run (timer jitter, an event cadence of about `ms`)
  * still runs. Without it, every run that came slightly later than the one before it
  * would skip a whole period - a 1 s countdown stepping every 2 s.
+ *
+ * `period` makes the pace one that changes while it runs (the save loop: 15 s, or 60 s
+ * with the app in the background): how long after the last run the next is due, read at
+ * every check, so a change takes effect from the last run with none dropped and none
+ * doubled. `ms` is then the shortest it gives, the interval's own pace; a longer period
+ * is met by the first check past it (an engine event, about once a second while playing,
+ * else the interval). `check()` is such a check, for the caller that knows the period just
+ * got shorter; `running()` is whether it is started.
  */
-export function engineTicker(fn: () => void, ms: number) {
+export function engineTicker(fn: () => void, ms: number, period: () => number = () => ms) {
   let lastRun = 0;
-  const due = ms - slackMs(ms);
   const runIfDue = (now: number) => {
-    if (now - lastRun < due) return;
+    const every = period();
+    if (now - lastRun < every - slackMs(every)) return;
     lastRun = now;
     fn();
   };
@@ -41,6 +49,10 @@ export function engineTicker(fn: () => void, ms: number) {
     stop() {
       consumers.delete(runIfDue);
       interval.stop();
+    },
+    running: () => consumers.has(runIfDue),
+    check() {
+      if (consumers.has(runIfDue)) runIfDue(Date.now());
     },
   };
 }
