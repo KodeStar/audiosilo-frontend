@@ -60,6 +60,10 @@ jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
+let mockWaiting: { connectionId: string; event: unknown }[] = [];
+jest.mock('@/playback/use-listening-sync', () => ({
+  useWaitingListens: () => mockWaiting,
+}));
 jest.mock('./use-journal-sources', () => ({
   useJournalSources: () => mockSources,
 }));
@@ -141,6 +145,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockParams = {};
   mockDeviceOnline = true;
+  mockWaiting = [];
   mockSources = empty();
   useSession.setState({
     connections: [{ id: 'c1', name: 'Hearthside', serverUrl: 'u', token: 't', user: {} as never }],
@@ -206,6 +211,59 @@ describe('JournalScreen: the Diary', () => {
       { connectionId: 'c1', libraryId: 1, path: 'Sanderson/Kings' },
       3600,
     );
+  });
+
+  // fe#208: a listen played offline shows before its server has it, marked as waiting,
+  // and once the server's row is there it is that row alone.
+  it('shows a listen waiting to sync as its own row, on the servers listed only', async () => {
+    const waitingListen = {
+      connectionId: 'c1',
+      event: {
+        id: 'ev-1',
+        kind: 'listen',
+        library_id: 1,
+        path: 'Sanderson/Kings',
+        from_pos: 1000,
+        to_pos: 1600,
+        started_at: iso(today(8, 0)),
+        ended_at: iso(today(8, 10)),
+        start: 'resume',
+      },
+    };
+    mockWaiting = [waitingListen, { ...waitingListen, connectionId: 'gone' }];
+    await mount();
+    expect(screen.getAllByText('Waiting to sync', { exact: false })).toHaveLength(1);
+    expect(
+      screen.getByText(`· ${formatWallClock(new Date(today(8, 0)))}, 10 min · Waiting to sync`, {
+        exact: false,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('shows a synced listen once, even while the outbox still holds its event', async () => {
+    mockWaiting = [
+      {
+        connectionId: 'c1',
+        event: {
+          id: 'ev-1',
+          kind: 'listen',
+          library_id: 1,
+          path: 'Sanderson/Kings',
+          from_pos: 1000,
+          to_pos: 1600,
+          started_at: iso(today(8, 0)),
+          ended_at: iso(today(8, 10)),
+          start: 'resume',
+        },
+      },
+    ];
+    // The server's row (its clock a little apart) is there before the answer let it go.
+    mockSources.history = [source('c1', [span(1, today(8, 0) + 2_000, today(8, 10), 1600)])];
+    await mount();
+    expect(screen.queryByText('Waiting to sync', { exact: false })).toBeNull();
+    expect(
+      screen.getByText(`· ${formatWallClock(new Date(today(8, 0)))}, 10 min`, { exact: false }),
+    ).toBeTruthy();
   });
 
   it('marks a span that reached the end of its book', async () => {

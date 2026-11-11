@@ -107,3 +107,22 @@ export function usePendingListens(
     (a, b) => a.length === b.length && a.every((x, i) => x.id === b[i].id),
   );
 }
+
+/** A listen waiting to sync, with its connection. */
+export type WaitingListen = { connectionId: string; event: ListeningSpanEvent };
+
+const NO_WAITING: WaitingListen[] = [];
+
+/** Every connection's listen events waiting to sync (the Diary's waiting rows, fe#208),
+ * oldest first, kept current as the outbox changes. `active` false reads nothing. */
+export function useWaitingListens(active = true): WaitingListen[] {
+  return useOutboxRead(
+    active ? 'all' : null,
+    async () =>
+      (await outboxEvents()).flatMap((e): WaitingListen[] =>
+        e.event?.kind === 'listen' ? [{ connectionId: e.connectionId, event: e.event }] : [],
+      ),
+    NO_WAITING,
+    (a, b) => a.length === b.length && a.every((x, i) => x.event.id === b[i].event.id),
+  );
+}

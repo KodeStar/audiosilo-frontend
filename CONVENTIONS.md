@@ -1874,7 +1874,11 @@ media GETs only.
     removal warnings count every event, a finish too: `unsentListens`), the account's Listening sync
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
-    book History's "Waiting to sync" rows (`usePendingListens`).
+    book History's "Waiting to sync" rows (`usePendingListens`), and the Journal's Diary
+    (fe#208: `useWaitingListens`, every connection's listen events, as sessions of their own
+    marked "Waiting to sync", `waitingSessions` in `diary-model.ts`; only on the servers the
+    Diary lists, never joined into a server's session, and one the server's rows already
+    hold is left out, so a listen whose answer is on the way never shows twice).
 - **One tab plays at a time (web)** (`src/playback/playing-claim.ts`, fe#123; owner decision:
   the newest tab wins). A tab that reaches `playing` says so to the browser's other tabs
   (`claimPlaying` in `store.ts`, on every move into `playing`, before its span opens), and a
