@@ -50,7 +50,7 @@ jest.mock('@/components/connect/add-member-here', () =>
   }),
 );
 
-type Query<T> = { data?: T; isError?: boolean; refetch?: jest.Mock };
+type Query<T> = { data?: T; isError?: boolean; isPaused?: boolean; refetch?: jest.Mock };
 const mockCaps: Record<string, { household_members?: boolean; collections?: boolean }> = {};
 let mockMembers: Record<string, Query<Members>> = {};
 let mockCollections: Collection[] = [];
@@ -237,6 +237,21 @@ describe('the members section', () => {
     expect(screen.getByText("Couldn't load your household from Hearthside.")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
+  });
+
+  // A list held for the network never arrives: the skeleton drawn for that never ended.
+  it('says offline, with no skeleton and no Retry, while the list waits for the network', async () => {
+    mockMembers['a.1'] = { isPaused: true };
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByTestId('household-members-loading')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+
+    // A kept list shows, whatever became of the read behind it.
+    mockMembers['a.1'] = { ...list({ members: [member()] }), isPaused: true };
+    await mount();
+    expect(screen.getByText('card-Evie')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
   });
 
   it('names the server when the person listening has several with members', async () => {

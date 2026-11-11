@@ -25,6 +25,9 @@ jest.mock('@/components/layout/sign-in-again', () => ({
     return <Text>{`Sign in again to ${connection.name}`}</Text>;
   },
 }));
+jest.mock('@/downloads/store', () => ({
+  useDownloads: (select: (s: object) => unknown) => select({ supported: true }),
+}));
 let mockYears: number[] = [];
 jest.mock('./year-probes', () => ({ useStoryYears: () => mockYears }));
 jest.mock('@/stores/session', () => ({
@@ -44,15 +47,17 @@ jest.mock('./use-share-card', () => ({
   useShareCard: () => ({ busy: false, coversOff: false, share: mockShare }),
 }));
 
-type Query<T> = { data?: T; isError?: boolean; refetch?: () => void };
+type Query<T> = { data?: T; isError?: boolean; isPaused?: boolean; refetch?: () => void };
 let mockCaps: Record<string, Record<string, boolean> | undefined> = {};
 let mockInfoError = false;
+let mockInfoPaused = false;
 let mockStats: Record<string, Query<UserStats>> = {};
 const mockRefetch = jest.fn();
 jest.mock('@/api/hooks', () => ({
   useServerInfo: (cid: string) => ({
     data: mockCaps[cid] ? { name: 'Hearthside', capabilities: mockCaps[cid] } : undefined,
     isError: mockInfoError,
+    isPaused: mockInfoPaused,
     refetch: mockRefetch,
   }),
   useCapability: (flag: string, cid: string) => {
@@ -91,6 +96,7 @@ beforeEach(() => {
   mockConnections = [{ id: 'a', name: 'Hearthside', user: { username: 'alex' } }];
   mockCaps = { a: { user_stats: true } };
   mockInfoError = false;
+  mockInfoPaused = false;
   mockYears = [2025];
   mockStats = {
     year: { data: yearStats() },
@@ -214,6 +220,32 @@ describe('YearSection', () => {
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.queryByText("Couldn't load your year")).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // A read held for the network stays pending: the stage shapes drawn for that never ended.
+  it('says offline, with no stage shapes and no Retry, while the stats wait for the network', async () => {
+    mockStats.year = { isPaused: true };
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(/This page shows once its server answers\./)).toBeTruthy();
+    expect(screen.queryByTestId('year-stage-skeleton')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it("says offline while the server's own answer is what waits for the network", async () => {
+    mockCaps = {};
+    mockInfoPaused = true;
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByTestId('year-stage-skeleton')).toBeNull();
+  });
+
+  it('shows the sign-in state before the offline one', async () => {
+    mockSignedOut = { id: 'a', name: 'Hearthside' };
+    mockStats.year = { isPaused: true };
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
   });
 
   it('shows the stage shapes while loading', async () => {

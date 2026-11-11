@@ -14,6 +14,8 @@ type DevicesQuery = {
   isPending: boolean;
   isError: boolean;
   isSuccess: boolean;
+  isPaused?: boolean;
+  error?: unknown;
   refetch: jest.Mock;
 };
 let mockDevices: DevicesQuery;
@@ -175,6 +177,27 @@ describe('DevicesSection', () => {
     expect(screen.getByText("Couldn't load your devices from Hearthside.")).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
     expect(mockDevices.refetch).toHaveBeenCalled();
+  });
+
+  // A list held for the network stays pending: the skeleton drawn for that never ended.
+  it('says offline, with no skeleton and no Retry, while the list waits for the network', async () => {
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isPending: true,
+      isSuccess: false,
+      isPaused: true,
+    };
+    const view = await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByTestId('devices-loading')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+
+    // A kept list shows, whatever became of the read behind it.
+    mockDevices = { ...loaded([laptop, here]), isPaused: true };
+    await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
+    expect(screen.getByText('Work laptop')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
   });
 
   it('says when only this device is signed in', async () => {

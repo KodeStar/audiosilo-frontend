@@ -78,9 +78,17 @@ export function YearStoryScreen(params: {
             {story.status === 'loading' ? (
               <Spinner color={colors.white} />
             ) : (
-              <StoryText className="text-center" style={{ fontSize: 16, lineHeight: 23 }}>
-                {yearStateCopy(story, t).body}
-              </StoryText>
+              <>
+                {story.status === 'offline' ? (
+                  // The body alone ("This page shows once its server answers") says no why.
+                  <StoryText className="text-center font-sans-semibold" style={{ fontSize: 18 }}>
+                    {yearStateCopy(story, t).title}
+                  </StoryText>
+                ) : null}
+                <StoryText className="text-center" style={{ fontSize: 16, lineHeight: 23 }}>
+                  {yearStateCopy(story, t).body}
+                </StoryText>
+              </>
             )}
             <Pressable
               role="button"

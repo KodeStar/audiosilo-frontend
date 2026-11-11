@@ -40,7 +40,13 @@ jest.mock('@/api/provider', () => ({
 }));
 
 const TODAY = '2026-10-08';
-type Q<T> = { data?: T; isError?: boolean; isLoading?: boolean; refetch: jest.Mock };
+type Q<T> = {
+  data?: T;
+  isError?: boolean;
+  isLoading?: boolean;
+  isPaused?: boolean;
+  refetch: jest.Mock;
+};
 const q = <T,>(data?: T, extra: Partial<Q<T>> = {}): Q<T> => ({
   data,
   isError: false,
@@ -193,6 +199,32 @@ describe('StatsSection states', () => {
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.queryByText("Your listening didn't load")).toBeNull();
     expect(screen.queryByText('Retry')).toBeNull();
+  });
+
+  // A read held for the network stays pending: the placeholders drawn for that never ended.
+  it('says offline, with no placeholders and no Retry, while the stats wait for the network', async () => {
+    mockStats = q<UserStats>(undefined, { isPaused: true });
+    await mount();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.getByText(/This page shows once its server answers\./)).toBeTruthy();
+    expect(screen.queryByTestId('stats-skeleton')).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+
+  it('shows the sign-in state before the offline one', async () => {
+    mockSignedOut = { id: 'a', name: 'Hearthside' };
+    mockListening = q<MyListening>(undefined, { isPaused: true });
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
+  it('keeps showing the stats it has while a read behind them is held', async () => {
+    mockStats.isPaused = true;
+    mockListening.isPaused = true;
+    await mount();
+    expect(screen.queryByText("You're offline")).toBeNull();
+    expect(screen.queryByTestId('stats-skeleton')).toBeNull();
   });
 
   it('says so when there is no listening yet', async () => {

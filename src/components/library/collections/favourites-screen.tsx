@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
 import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/api/hooks';
+import { OfflineState } from '@/components/layout/offline-state';
 import { LayoutToggle } from '@/components/library/books/books-controls';
 import { useBooksLayout } from '@/components/library/books/books-layout-store';
 import { CoverGrid, CoverGridSkeleton, CoverListRow } from '@/components/library/cover-grid';
@@ -17,6 +18,7 @@ import { PressableRow, RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { bookSubtitle } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { useUnreadBooks } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -34,7 +36,10 @@ export function FavouritesScreen() {
   const gutter = pageGutter(layout);
   const paddingBottom = useMiniPlayerInset();
   const [booksLayout, setBooksLayout] = useBooksLayout();
-  const { favourites, isLoading, error } = useFavouritesAll();
+  const { favourites, isLoading, offline, error } = useFavouritesAll();
+  // With no favourite in, a server's list held for the network (or failed without one)
+  // is not "no favourites": every list read with nothing in them is (`useUnreadBooks`).
+  const unread = useUnreadBooks({ books: favourites, complete: !offline, offline, error });
   const books = favourites.filter((f) => f.is_book);
   const folders = favourites.filter((f) => !f.is_book);
   const serverFlag = useServerFlag();
@@ -47,7 +52,7 @@ export function FavouritesScreen() {
           <Text variant="display" accessibilityRole="header">
             {t('library.favourites.title')}
           </Text>
-          {isLoading ? null : (
+          {isLoading || unread === 'offline' ? null : (
             <Text variant="caption">
               {t('library.favourites.itemCount', { count: favourites.length })}
             </Text>
@@ -76,7 +81,9 @@ export function FavouritesScreen() {
   const themed = useThemeColors();
   const empty = isLoading ? (
     <CoverGridSkeleton rows={2} gutter={0} />
-  ) : folders.length > 0 ? null : error ? (
+  ) : folders.length > 0 ? null : unread === 'offline' ? (
+    <OfflineState variant="card" hint={t('common.offlineList')} />
+  ) : error ? (
     <EmptyState
       variant="card"
       art={<Icon name="circle-exclamation" size={28} color={themed.destructive} />}

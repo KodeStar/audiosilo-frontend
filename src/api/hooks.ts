@@ -3310,6 +3310,8 @@ export function useRecentAll(limit = RECENT_LIMIT) {
     combine: (results) => ({
       books: dedupBooks(tagBooks(results, apis), rank),
       isLoading: results.some((r) => r.isLoading),
+      /** A server's list waits for the network with nothing kept (`useAllProgressAll`). */
+      offline: results.some((r) => !r.data && r.isPaused),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });
@@ -3586,6 +3588,8 @@ export function useFavouritesAll() {
         })),
       ),
       isLoading: results.some((r) => r.isLoading),
+      /** A server's list waits for the network with nothing kept (`useAllProgressAll`). */
+      offline: results.some((r) => !r.data && r.isPaused),
       error: results.find((r) => r.error)?.error ?? null,
     }),
   });

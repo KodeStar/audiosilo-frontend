@@ -3375,7 +3375,12 @@ under their empty state).
   with no book in it counts as read), so a skeleton drawn for that never ends where the screen
   used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows
   modes, the series, author / narrator, book, episode, collection, show and folder pages, and
-  a book's bookmarks, notes and history sections all do; the Journal's tabs ask
+  a book's bookmarks, notes and history sections all do, and so do the Signed-in devices and
+  household members sections, Your listening (both of its reads) and the Year story
+  (`useYearStory`'s `offline` status: a held streak or goal is left out, like a failed one);
+  Favourites and Home's See all hand their fan-out's `offline` (a server's list held with
+  nothing kept) to `useUnreadBooks`, so one server's empty answer is not "none" while
+  another's is held. The Journal's tabs ask
   `unreadSources` (a source held for the network is `waiting`, and so is one whose `/server`
   flag is). A page whose failure is `LoadFailedNote` (book, episode, folder) hands it the hint
   (`offline`), so the sign-in state still comes first. A new screen with a skeleton does the
