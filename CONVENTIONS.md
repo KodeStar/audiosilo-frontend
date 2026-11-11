@@ -2212,9 +2212,15 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     finishes the book as usual (credits, `finish`, the finished save). The fact is kept on
     the download (`DownloadManifest.endsBefore`: set by every server chapters answer,
     `startChapterRefresh`, and by an adoption with no answer, `noteDownloadEnd`), so a cold
-    start of it offline (`playBook` from the download's copy) is partial too; and on each
-    capture of the mirror (`ProgressSave.partial`), so a span recovered after a kill in the
-    last seconds (`mirrorSpanEnd`) never makes the record finished. A partial queue's end is
+    start of it with the device offline (`isDeviceOnline`) is partial too: `playBook` builds
+    it from the download's copy whatever chapters it was given (a cold start's cached server
+    chapters name the files it lacks, and a stream of them would stall into an error at the
+    downloaded part's end); and on each capture of the mirror (`ProgressSave.partial`), so a
+    span recovered after a kill in the last seconds (`mirrorSpanEnd`) never makes the record
+    finished. `mirrorSpanEnd` also asks the download (`downloadEndsBefore`, registered by the
+    downloads store in `kept-offline.ts`), since a server row written into the mirror since
+    the capture carries no `partial`: only a span that ended in the book's last file (it
+    streamed it) reads that end as finished. A partial queue's end is
     the downloaded part's, so the engine's `ended` there
     reads as a pause, never a finish (no credits, no `finish`, no `finished` save), and the
     listener is told "The rest of this book isn't downloaded" (`onPartialDownloadEnd`,

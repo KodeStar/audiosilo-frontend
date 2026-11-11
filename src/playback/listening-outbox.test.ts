@@ -43,6 +43,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer } from '@/api/server-snapshots';
+import { setDownloadEndCheck } from '@/downloads/kept-offline';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -429,6 +430,30 @@ describe("a recovered span brings this device's record of the place up to its en
     await writeMirror(capture({ duration: 16803, partial: true }));
     await relaunch();
     expect(await record()).toMatchObject({ position: 16800, finished: false, partial: true });
+  });
+
+  describe("a download that ends before its book, by the download's own fact (D3, fe#185)", () => {
+    // This device's download of the book lacks its last file, 06.mp3 (`endsBefore`).
+    beforeEach(() =>
+      setDownloadEndCheck(async (_c, _l, path) =>
+        path === 'Author/Book' ? 'Author/Book/06.mp3' : undefined,
+      ),
+    );
+    afterEach(() => setDownloadEndCheck(async () => undefined));
+
+    it('never reads its end as finished from a server row written into the mirror since the capture', async () => {
+      // The server's row (this device's earlier save of the downloaded part's end, read back)
+      // was written over the capture: it carries no `partial`.
+      await writeMirror(capture({ duration: 16803, device_id: 'server-row' }));
+      await relaunch();
+      expect(await record()).toMatchObject({ position: 16800, finished: false });
+    });
+
+    it("reads the end of the book's last file as finished: that was streamed", async () => {
+      await writeMirror(capture({ duration: 16803 }));
+      await relaunch(span({ to: { pos: 16800, file: 'Author/Book/06.mp3', filePos: 1203.9 } }));
+      expect(await record()).toMatchObject({ position: 16800, finished: true });
+    });
   });
 
   it("brings the shared record up to a closed tab's span, dated when that tab kept it", async () => {

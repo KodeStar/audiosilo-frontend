@@ -25,7 +25,7 @@ import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
-import { setKeptOfflineCheck } from './kept-offline';
+import { setDownloadEndCheck, setKeptOfflineCheck } from './kept-offline';
 import { estimateBytes, pendingBytes, roomLeft } from './keep-ahead';
 import { classifyDownloadError } from './failure';
 import {
@@ -260,6 +260,13 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 setKeptOfflineCheck((connectionId, libraryId, path) => {
   const entry = useDownloads.getState().entries[downloadKey(connectionId, libraryId, path)];
   return !!entry && entry.status !== 'error';
+});
+
+// A span recovered past a download's early end never finishes its book (`mirrorSpanEnd`,
+// which can't import this store): asked after the launch's read of the registry.
+setDownloadEndCheck(async (connectionId, libraryId, path) => {
+  if (hydrating) await hydrating;
+  return downloadedEntryOf({ connectionId, libraryId, path })?.manifest.endsBefore;
 });
 
 // --- helpers ---------------------------------------------------------------

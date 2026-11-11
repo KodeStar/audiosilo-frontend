@@ -2,6 +2,7 @@ import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
+import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
@@ -658,7 +659,11 @@ export async function updateMirror(
  *   listener's own move, which saves at once; another tab's play; a server row read since);
  * - only FORWARD: a span ending behind the record never moves a place back;
  * - never a finished book's, and never a book with no record (nothing to bring up);
- * - never finished at the end of a queue that ends before its book (`partial`, D3).
+ * - never finished at the end of a queue that ends before its book (D3): one the record
+ *   was captured in (`partial`), or this device's download of the book when it lacks the
+ *   book's last file (`downloadEndsBefore`), unless the span ended in that file (streamed:
+ *   its end is the book's). The download is asked as well because a server row written
+ *   into the mirror since the last capture carries no `partial`.
  * The record becomes this device's, with the span's file place (fe#188) or none.
  */
 export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
@@ -666,6 +671,10 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
   const endedAt = Date.parse(span.endedAt);
   if (!Number.isFinite(pos) || !Number.isFinite(endedAt)) return;
   const deviceId = await getDeviceId();
+  const endsBefore = await downloadEndsBefore(span.connectionId, span.libraryId, span.path).catch(
+    () => undefined,
+  );
+  const shortEnd = endsBefore !== undefined && file !== endsBefore;
   await updateMirror(span.connectionId, span.libraryId, span.path, (record) => {
     if (record.finished || !(pos > record.position)) return record;
     if (!(endedAt > Date.parse(record.updated_at))) return record;
@@ -673,9 +682,13 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
     return {
       ...kept,
       position: pos,
-      // A record taken in a queue ending before its book (D3): that end is not the book's.
+      // A record taken in a queue ending before its book, or a download that does (D3):
+      // that end is not the book's.
       finished:
-        !record.partial && record.duration > 0 && pos >= record.duration - FINISHED_TOLERANCE,
+        !record.partial &&
+        !shortEnd &&
+        record.duration > 0 &&
+        pos >= record.duration - FINISHED_TOLERANCE,
       playback_speed: span.speed > 0 ? span.speed : record.playback_speed,
       device_id: deviceId,
       updated_at: span.endedAt,
