@@ -657,8 +657,8 @@ export function startChapterRefresh(): () => void {
       entry.manifest,
       bookFileSpecs(entry.manifest.book, fresh).map((f) => f.path),
     );
-    const manifest = refreshedChapters(ended, fresh) ?? (ended === entry.manifest ? null : ended);
-    if (!manifest) return;
+    const manifest = refreshedChapters(ended, fresh) ?? ended;
+    if (manifest === entry.manifest) return;
     patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out, the start's own
     // sweep above) saves the registry once, not once per book.

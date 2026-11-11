@@ -1158,10 +1158,12 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
     // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
     const stamp = Date.parse(now.updated_at);
     const at = Number.isFinite(stamp) ? new Date(stamp + 1).toISOString() : now.updated_at;
-    const back: ProgressSave =
-      prior && !prior.finished
-        ? { ...prior, ack_version: undefined, answered: undefined, updated_at: at }
-        : { ...now, finished: false, position: ref.position, updated_at: at };
+    const back: ProgressSave = {
+      ...(prior && !prior.finished
+        ? { ...prior, ack_version: undefined, answered: undefined }
+        : { ...now, finished: false, position: ref.position }),
+      updated_at: at,
+    };
     await writeMirror(back).catch(() => undefined);
   }
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
@@ -2968,10 +2970,12 @@ async function adoptLoadedBook(
   // One that lacks only an earlier file (an intro) still ends where the book does. With an
   // answer the queue holds every file the server has, and one it lacks is gone from the
   // book. The download keeps the fact for a later start of it (`noteDownloadEnd`).
-  if (local && !served && loaded.files?.length) noteDownloadEnd(ref, loaded.files);
-  const lastId = engineIds?.[engineIds.length - 1];
-  const partial = local && !served && lastId !== undefined && trackIndexById(queue, lastId) < 0;
-  if (partial) partialQueues.add(queue);
+  let partial = false;
+  if (local && !served && engineIds && loaded.files) {
+    noteDownloadEnd(ref, loaded.files);
+    partial = trackIndexById(queue, engineIds[engineIds.length - 1]) < 0;
+    if (partial) partialQueues.add(queue);
+  }
   // The engine's place is past the downloaded part: it stays paused at that part's end, and
   // the listener is told why (a play there would end at once).
   const pastPart = partial && !!reload?.beyond;
