@@ -5,7 +5,7 @@ import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { invalidateFinishedProgress, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import { isReachable, noteFailure } from '@/api/reachability';
+import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type {
   Book,
   Chapter,
@@ -21,6 +21,7 @@ import {
   noteDownloadEnd,
   useDownloads,
 } from '@/downloads/store';
+import type { DownloadManifest } from '@/downloads/types';
 import { isAway, onAppStateEdge } from '@/lib/app-activity';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
@@ -509,7 +510,9 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
     libraryId: nowPlaying.libraryId,
     path: nowPlaying.path,
     position,
-    duration: total,
+    // A partial queue's is the book's length on its server when known (`partialQueues`), so a
+    // percent read from the save is of the book, not of the downloaded part.
+    duration: partialQueues.get(nowPlaying.queue) || total,
     // The end of a download that lacks the rest of its book is not the book's (D3, fe#185).
     finished:
       forceFinished ||
@@ -854,7 +857,7 @@ function spanAt(
     from: at,
     to: at,
     // The audio's length, not the timeline's: the server checks it against the indexed book.
-    duration: np.queue.audio,
+    duration: bookAudioOf(np.queue),
     speed: usePlayer.getState().rate,
     startedAt: now,
     endedAt: now,
@@ -1378,11 +1381,32 @@ const gaveWayNotice = lateListener();
  * adoption offline, `adoptLoadedBook`; a `playBook` from the download's own copy with no
  * server to stream from): their end is the downloaded part's, not the book's (D3, fe#185).
  * By queue, so any other start of the book (a new queue) is a whole one unless it adds
- * itself. */
-const partialQueues = new WeakSet<BookQueue>();
+ * itself. Each with the book's length on its server (`DownloadManifest.bookDuration`, 0 when
+ * unknown): the queue's own audio is only the downloaded part's. */
+const partialQueues = new WeakMap<BookQueue, number>();
 
 /** Whether `np`'s queue ends where its download does, short of the book's end. */
 const endsPartial = (np: NowPlaying | null): boolean => !!np && partialQueues.has(np.queue);
+
+/** The book's audio length a span of `queue` reports (Sync v2's `duration`): the queue's own,
+ * but for a partial queue the book's on its server, 0 when unknown (the server then checks
+ * nothing). The downloaded part's length is more than 10 s off the indexed book's whenever a
+ * whole file is missing, and every such listen was refused `duration_mismatch`. */
+const bookAudioOf = (queue: BookQueue): number => partialQueues.get(queue) ?? queue.audio;
+
+/** The book's length on its server for a partial queue over `manifest`: what the download
+ * kept from the answer that said where the book ends, else a server chapters answer the start
+ * was given that names that end (a cold start's cached one), else 0 (unknown). */
+function serverLengthOf(
+  manifest: DownloadManifest | undefined,
+  chapters?: ChaptersResponse,
+): number {
+  if (manifest?.bookDuration && manifest.bookDuration > 0) return manifest.bookDuration;
+  const end = manifest?.endsBefore;
+  if (!end || !chapters || !(chapters.duration > 0)) return 0;
+  const names = bookFileSpecs(manifest.book, chapters).some((f) => f.path === end);
+  return names ? chapters.duration : 0;
+}
 
 /** The engine last reported the end of such a queue (the store reads it as `paused`): a
  * play there has nothing to play. False again with the engine's next other state (a move
@@ -1992,7 +2016,18 @@ async function createService(): Promise<PlaybackService> {
       return;
     }
     usePlayer.setState({ snapshot });
-    if (partialEnd && prev.state !== 'paused') tellPartialEnd();
+    // Reached online (the network came back while it played): it plays on, streaming the
+    // rest, when its server answers; else the listener is told.
+    if (partialEnd && prev.state !== 'paused') {
+      const cid = usePlayer.getState().nowPlaying?.connectionId ?? '';
+      if (isDeviceOnline() && isReachable(cid) && resolveClient(cid)) {
+        void playOnPastPart(false).then((on) => {
+          if (!on) tellPartialEnd();
+        });
+      } else {
+        tellPartialEnd();
+      }
+    }
     // Listening spans use the STRICT reading (see `isPlayingState`): a span must cover
     // audio the listener actually heard, so a buffer is not the start of one.
     if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) {
@@ -2211,7 +2246,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // one's (`partialQueues`). A queue streaming the rest from the server holds that file.
       const endsBefore = local ? dl?.manifest.endsBefore : undefined;
       if (endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0) {
-        partialQueues.add(queue);
+        partialQueues.set(queue, serverLengthOf(dl?.manifest, chapterData));
       }
       const nowPlaying = nowPlayingOf(ref, book, queue, api, local);
       const svc = await ensureService();
@@ -2390,8 +2425,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // At the end of a partial download (D3, fe#185) nothing plays: the engine, ended,
       // reports no `playing`, and the stall watchdog would call the attempt an error. The
       // listener is told again instead.
+      // Online again since the queue was built offline, it plays on, streaming the rest.
       if (atPartialEnd && endsPartial(get().nowPlaying)) {
-        tellPartialEnd();
+        if (!(await playOnPastPart(true))) tellPartialEnd();
         return;
       }
       beginPlaybackAttempt();
@@ -2993,7 +3029,7 @@ async function adoptLoadedBook(
     partial =
       (last !== undefined && trackIndexById(queue, last) < 0) ||
       (!!endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0);
-    if (partial) partialQueues.add(queue);
+    if (partial) partialQueues.set(queue, serverLengthOf(downloadedEntryOf(ref)?.manifest));
   }
   // The engine's place is past the downloaded part: it stays paused at that part's end, and
   // the listener is told why (a play there would end at once).
@@ -3084,8 +3120,10 @@ const SERVED_ORDER_WAIT_MS = 3_000;
 async function serverChaptersOf(
   ref: BookRef,
   api: ApiClient | null,
+  /** Ask even a server marked unreachable (a mark left from before the network came back). */
+  evenMarkedDown = false,
 ): Promise<ChaptersResponse | null> {
-  if (!api || !isReachable(ref.connectionId)) return null;
+  if (!api || (!evenMarkedDown && !isReachable(ref.connectionId))) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -3099,6 +3137,63 @@ async function serverChaptersOf(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The loaded book at the end of its downloaded part (a partial queue, D3, fe#185) plays on
+ * from there, streaming the rest, when its server answers now: the device back online in the
+ * same session (the queue was built offline, from the download's own copy). The book starts
+ * again (`playBook`) with the server's chapters, at the place in them where the downloaded
+ * part ends. False, with the book left as it is, when there is no network, no server answer
+ * (within `SERVED_ORDER_WAIT_MS`), or the server's book ends where the download does now:
+ * the caller tells the listener why nothing plays. `evenMarkedDown`: a press asks a server
+ * marked unreachable too (the mark can predate the network coming back); the engine's own
+ * end does not.
+ */
+async function playOnPastPart(evenMarkedDown: boolean): Promise<boolean> {
+  // One at a time: the engine re-reports its end while one asks (a press joins it).
+  if (playingOn) return playingOn;
+  playingOn = playOnNow(evenMarkedDown).finally(() => {
+    playingOn = null;
+  });
+  return playingOn;
+}
+
+/** The `playOnPastPart` on its way, if any. */
+let playingOn: Promise<boolean> | null = null;
+
+async function playOnNow(evenMarkedDown: boolean): Promise<boolean> {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np || !endsPartial(np) || !isDeviceOnline()) return false;
+  const api = resolveClient(np.connectionId);
+  const manifest = downloadedEntryOf(np)?.manifest;
+  if (!api || !manifest) return false;
+  const ref = bookRefOf(np);
+  const before = usePlayer.getState().snapshot;
+  usePlayer.setState({ snapshot: { ...before, state: 'loading' } });
+  const served = await serverChaptersOf(ref, api, evenMarkedDown);
+  // Another book (or another start of this one) since: it stands.
+  if (usePlayer.getState().nowPlaying !== np) return true;
+  const book =
+    queryClient.getQueryData<Book>(qk.item(np.connectionId, np.libraryId, np.path)) ??
+    manifest.book;
+  const specs = served ? bookFileSpecs(book, served) : [];
+  const ids = specs.map((f) => trackIdOf(np.libraryId, f.path));
+  const last = np.queue.tracks[np.queue.tracks.length - 1]?.id;
+  const at = ids.indexOf(last ?? '');
+  // The server's book goes on past the queue's last file: start where that file ends.
+  if (!served || at < 0 || at === ids.length - 1) {
+    usePlayer.setState({ snapshot: { ...usePlayer.getState().snapshot, state: before.state } });
+    return false;
+  }
+  const position = specs.slice(0, at + 1).reduce((sum, f) => sum + Math.max(0, f.duration), 0);
+  // It answered: reachable, so the start streams the rest (`playBook`'s `offlineShort`).
+  noteSuccess(np.connectionId);
+  await usePlayer
+    .getState()
+    .playBook(np.connectionId, np.libraryId, book, served, position)
+    .catch((err: unknown) => console.warn('[player] could not play on past the download', err));
+  return true;
 }
 
 /** Each file's duration by track id: the queue's own files', and the server's for a file only

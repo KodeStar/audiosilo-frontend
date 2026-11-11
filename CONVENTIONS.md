@@ -2233,9 +2233,26 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     lands short of it and stays paused, with the same notice. A Play pressed at that end
     (`toggle`, while the engine's last word is that `ended`: `atPartialEnd`) starts no
     attempt, since the ended engine reports no `playing` and the stall watchdog would call
-    it an error: the notice again. The end credits' Play now never finishes such a book by
-    its place (`selectEndsPartial`): it stops, unfinished. Regression tests:
-    `store-adopt.test.ts`, `end-credits.test.tsx`, `listening-outbox.test.ts` (span recovery), `downloads/store.test.ts` (`endsBefore`).
+    it an error: the notice again. **Online again in the same session** it streams on
+    (`playOnPastPart`): a Play pressed at that end, or the engine reaching it with the device
+    online and the server marked reachable, asks the server's chapters (for
+    `SERVED_ORDER_WAIT_MS`; a press asks a server marked down too, as the mark can predate
+    the network coming back) and, when they go on past the queue's last file, starts the book
+    again (`playBook`) with them, where that file ends; no answer, the notice. **A partial
+    queue's length**: its own audio is the downloaded part's, more than 10 s off the indexed
+    book's whenever a whole file is missing, and the server refused every listen over it
+    (`duration_mismatch`). Each partial queue carries the book's length on its server
+    (`partialQueues` maps it: `DownloadManifest.bookDuration`, kept from the chapters answer
+    that set `endsBefore`, else a server answer the start was given naming that end, else 0):
+    a span sends it as its `duration` (0 sends none, and the server checks none) and a save
+    as its `duration`, so a percent read from the mirror is of the book. A listen refused
+    `duration_mismatch` over such a download goes back to the outbox at that length (or none)
+    on every `flushAllOutboxes` (`resendMismatched`, through `downloadBookLength` in
+    `kept-offline.ts`), once per length, so one refused again stays on the list. The end
+    credits' Play now never finishes such a book by its place (`selectEndsPartial`): it
+    stops, unfinished. Regression tests: `store-adopt.test.ts`, `store-listening.test.ts`
+    (its length), `end-credits.test.tsx`, `listening-outbox.test.ts` (span recovery, the
+    resend), `downloads/store.test.ts` (`endsBefore`, `bookDuration`).
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over the SDK 58
   AppDelegate fixture `plugins/__fixtures__/app-delegate-sdk58.ts` by `withCarPlay.test.ts`).
   The SDK 58 template is already a scene app: its AppDelegate only builds the React Native

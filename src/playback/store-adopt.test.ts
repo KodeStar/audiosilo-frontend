@@ -219,6 +219,7 @@ beforeEach(() => {
 afterEach(() => {
   jest.clearAllTimers();
   jest.useRealTimers();
+  mockDeviceOnline.mockReturnValue(true);
 });
 
 describe('adoptLoaded', () => {
@@ -907,6 +908,7 @@ describe('adoptLoaded', () => {
       // The download keeps that it ends early, for a later start of it.
       expect(useDownloads.getState().entries['c1:2:B'].manifest.endsBefore).toBe('B/3.mp3');
       mockResolveClient.mockReturnValue(fakeClient);
+      mockDeviceOnline.mockReturnValue(false); // still offline at the end
       pushSnapshot(snap('playing', 1, 50));
       await flushMicrotasks();
       expect(told).not.toHaveBeenCalled();
@@ -937,6 +939,7 @@ describe('adoptLoaded', () => {
         .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3'], { trackIndex: 1, position: 30 }));
       expect(useDownloads.getState().entries['c1:2:B'].manifest.endsBefore).toBe('B/3.mp3');
       mockResolveClient.mockReturnValue(fakeClient);
+      mockDeviceOnline.mockReturnValue(false); // still offline at the end
       pushSnapshot(snap('playing', 1, 50));
       await flushMicrotasks();
       pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
@@ -1103,6 +1106,91 @@ describe('adoptLoaded', () => {
       pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
       await flushMicrotasks();
       expect(usePlayer.getState().snapshot.state).toBe('ended');
+    });
+
+    // Owner (Pixel 6a, iPhone): back online in the same session, Play at that end showed the
+    // notice again and stayed; only a relaunch streamed on (D3: online it streams on).
+    describe('online again at that end', () => {
+      /** The server's book goes on in B/3 (20 s), which the download lacks. */
+      const withB3: ChaptersResponse = {
+        ...uneven,
+        duration: 180,
+        files: [
+          ...uneven.files,
+          { rel_path: 'B/3.mp3', seq: 2, duration: 20, format: 'mp3', size: 1 },
+        ],
+      };
+      /** Adopted offline at B/2, of an engine order ending with B/3, then at its end. */
+      const atPartialEnd = async () => {
+        mockResolveClient.mockReturnValue(null);
+        useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+        await usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 1, position: 30 }));
+        mockDeviceOnline.mockReturnValue(false);
+        pushSnapshot(snap('playing', 1, 50));
+        pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
+        await flushMicrotasks();
+        expect(usePlayer.getState().snapshot.state).toBe('paused');
+        // The network back.
+        mockResolveClient.mockReturnValue(fakeClient);
+        mockDeviceOnline.mockReturnValue(true);
+        (mockSvc.load as jest.Mock).mockClear();
+      };
+
+      it("Play streams on from the downloaded part's end, with the server's chapters", async () => {
+        const told = jest.fn();
+        const stopTelling = onPartialDownloadEnd(told);
+        await atPartialEnd();
+        expect(told).toHaveBeenCalledTimes(1);
+        serverAnswers(withB3);
+        await usePlayer.getState().toggle();
+        await flushMicrotasks();
+        expect(told).toHaveBeenCalledTimes(1);
+        const queue = usePlayer.getState().nowPlaying?.queue;
+        expect(queue?.tracks.map((t) => t.url)).toEqual([
+          'file:///d/1.mp3',
+          'file:///d/2.mp3',
+          'stream:2:B/3.mp3',
+        ]);
+        // At the start of B/3: 100 + 60 s in.
+        expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([2, 0]);
+        stopTelling();
+        await usePlayer.getState().pause();
+      });
+
+      it('tells again and stays when the server does not answer', async () => {
+        const told = jest.fn();
+        const stopTelling = onPartialDownloadEnd(told);
+        await atPartialEnd();
+        serverAnswers(new TypeError('Network request failed'));
+        await usePlayer.getState().toggle();
+        expect(told).toHaveBeenCalledTimes(2);
+        expect(mockSvc.load).not.toHaveBeenCalled();
+        expect(usePlayer.getState().snapshot.state).toBe('paused');
+        stopTelling();
+      });
+
+      it('plays on by itself when the engine reaches that end online', async () => {
+        const told = jest.fn();
+        const stopTelling = onPartialDownloadEnd(told);
+        mockResolveClient.mockReturnValue(null);
+        useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+        await usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 1, position: 30 }));
+        // The network came back while it played.
+        mockResolveClient.mockReturnValue(fakeClient);
+        serverAnswers(withB3);
+        (mockSvc.load as jest.Mock).mockClear();
+        pushSnapshot(snap('playing', 1, 50));
+        pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
+        await untilCalled(mockSvc.load as jest.Mock);
+        expect(told).not.toHaveBeenCalled();
+        expect(usePlayer.getState().nowPlaying?.queue.tracks).toHaveLength(3);
+        stopTelling();
+        await usePlayer.getState().pause();
+      });
     });
 
     it('tells again, with no play attempt, when Play is pressed at that end', async () => {

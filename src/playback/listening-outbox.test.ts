@@ -43,7 +43,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer } from '@/api/server-snapshots';
-import { setDownloadEndCheck } from '@/downloads/kept-offline';
+import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -65,6 +65,7 @@ import {
   outboxEvents,
   recoverOpenSpan,
   refreshOutboxFrom,
+  resendMismatched,
   resetOutboxForTests,
   spanSaysSomething,
   spanToEvent,
@@ -597,6 +598,65 @@ describe('flushOutbox', () => {
     // Discard takes it off the list.
     await discardFailed('c1', 'e');
     expect((await syncStateOf('c1')).failed).toEqual([]);
+  });
+
+  // Pixel 6a: listens over a download that ends before its book carried the downloaded
+  // part's length, and the server refused them all; the list said so, the server had nothing.
+  describe('a listen refused for its length over an early-ending download', () => {
+    const at = new Date().toISOString();
+    const refused = (
+      id: string,
+      reason = 'duration_mismatch',
+      over: Partial<ListeningEvent> = {},
+    ) => ({
+      event: listen(id, { duration: 4501, ...over }),
+      reason,
+      at,
+    });
+    afterEach(() => setDownloadLengthCheck(async () => undefined));
+
+    it("goes back to the outbox at the book's length, and off the list", async () => {
+      setDownloadLengthCheck(async (_c, _l, path) => (path === 'Author/Book' ? 4561 : undefined));
+      await AsyncStorage.setItem(
+        SYNC,
+        JSON.stringify({
+          c1: {
+            failed: [
+              refused('a'),
+              refused('other-book', 'duration_mismatch', { path: 'Other/Book' }),
+              refused('gone', 'not_found'),
+            ],
+          },
+        }),
+      );
+      await resendMismatched();
+      const out = await outboxEvents('c1');
+      expect(out.map((e) => [e.event.id, (e.event as { duration?: number }).duration])).toEqual([
+        ['a', 4561],
+      ]);
+      expect((await syncStateOf('c1')).failed?.map((f) => f.event.id)).toEqual([
+        'other-book',
+        'gone',
+      ]);
+    });
+
+    it('goes back with no length when the book length is not known, and never twice', async () => {
+      setDownloadLengthCheck(async () => 0);
+      await AsyncStorage.setItem(
+        SYNC,
+        JSON.stringify({
+          c1: {
+            failed: [refused('a'), refused('b', 'duration_mismatch', { duration: undefined })],
+          },
+        }),
+      );
+      await resendMismatched();
+      const out = await outboxEvents('c1');
+      expect(out.map((e) => e.event.id)).toEqual(['a']);
+      expect(out[0].event).not.toHaveProperty('duration');
+      // One refused again at the length it would be sent with stays on the list.
+      expect((await syncStateOf('c1')).failed?.map((f) => f.event.id)).toEqual(['b']);
+    });
   });
 
   it("keeps the newest MAX_COULD_NOT_SYNC on the couldn't-sync list", async () => {

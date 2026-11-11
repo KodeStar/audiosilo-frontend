@@ -161,7 +161,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
-import { isKeptOffline } from '@/downloads/kept-offline';
+import { downloadBookLength, isKeptOffline } from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { readMirror } from '@/playback/progress-sync';
 import {
@@ -1922,6 +1922,42 @@ describe("refreshing a downloaded book's chapters", () => {
       });
       answer(fresh());
       expect(useDownloads.getState().entries[key].manifest).not.toHaveProperty('endsBefore');
+    });
+
+    // Pixel 6a: a listen over such a download sent the downloaded part's length, and the
+    // server refused every one (duration_mismatch). The download keeps the book's.
+    it("keeps the server's book length with an early end, and drops it with the end", () => {
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [key]: e } });
+      const three = ['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3'];
+      answer(fresh(three, { duration: 180 }));
+      expect(useDownloads.getState().entries[key].manifest).toMatchObject({
+        endsBefore: 'A/Book/03.mp3',
+        bookDuration: 180,
+      });
+      // A later answer with the same end and a new length takes it; one with none keeps it.
+      answer(fresh(three, { duration: 181 }));
+      expect(useDownloads.getState().entries[key].manifest.bookDuration).toBe(181);
+      answer(fresh(three, { duration: 0 }));
+      expect(useDownloads.getState().entries[key].manifest.bookDuration).toBe(181);
+      answer(fresh());
+      const whole = useDownloads.getState().entries[key].manifest;
+      expect(whole).not.toHaveProperty('endsBefore');
+      expect(whole).not.toHaveProperty('bookDuration');
+    });
+
+    it('tells the listening outbox the book length of an early-ending download only', async () => {
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [key]: e } });
+      expect(await downloadBookLength('c1', 2, 'A/Book')).toBeUndefined();
+      useDownloads.setState({
+        entries: { [key]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } },
+      });
+      expect(await downloadBookLength('c1', 2, 'A/Book')).toBe(0); // its length not known
+      answer(fresh(['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3'], { duration: 180 }));
+      expect(await downloadBookLength('c1', 2, 'A/Book')).toBe(180);
     });
 
     describe('a new file order', () => {

@@ -86,6 +86,13 @@ export type DownloadManifest = {
    * adoption whose engine played the book's order (`noteDownloadEnd`); absent when the
    * download holds the book's end, and on downloads made before it existed. */
   endsBefore?: string;
+  /** With `endsBefore`: the book's length on its server (seconds, the chapters answer's
+   * `duration`), as the answer that said where the book ends gave it. A queue over the
+   * download reports it as the book's length (a Sync v2 event's `duration`, a save's), never
+   * the shorter downloaded part's, which the server refuses (`duration_mismatch`, more than
+   * 10 s off the indexed book's). Absent when not known (an adoption's order only, a
+   * download from before it existed: the next server answer fills it in). */
+  bookDuration?: number;
   savedAt: string;
   /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
    * Only this marker lives here: the payload (an envelope with its characters and recaps

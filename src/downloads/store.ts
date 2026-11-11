@@ -25,7 +25,7 @@ import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
-import { setDownloadEndCheck, setKeptOfflineCheck } from './kept-offline';
+import { setDownloadEndCheck, setDownloadLengthCheck, setKeptOfflineCheck } from './kept-offline';
 import { estimateBytes, pendingBytes, roomLeft } from './keep-ahead';
 import { classifyDownloadError } from './failure';
 import {
@@ -267,6 +267,14 @@ setKeptOfflineCheck((connectionId, libraryId, path) => {
 setDownloadEndCheck(async (connectionId, libraryId, path) => {
   if (hydrating) await hydrating;
   return downloadedEntryOf({ connectionId, libraryId, path })?.manifest.endsBefore;
+});
+
+// A listen the server refused as another length, played over a download that ends early,
+// is sent again at the book's length (`resendMismatched`, which can't import this store).
+setDownloadLengthCheck(async (connectionId, libraryId, path) => {
+  if (hydrating) await hydrating;
+  const manifest = downloadedEntryOf({ connectionId, libraryId, path })?.manifest;
+  return manifest?.endsBefore ? (manifest.bookDuration ?? 0) : undefined;
 });
 
 // --- helpers ---------------------------------------------------------------
@@ -589,18 +597,34 @@ export function adoptStartedChapters(ref: BookRef, chapters: ChaptersResponse): 
 /**
  * `manifest` with `endsBefore` set from `order`, the book's files in its server's order:
  * the last one when the download lacks it (it ends before the book does, D3, fe#185), else
- * none. The same manifest when nothing changes, and when `order` is empty.
+ * none; and with it `bookDuration`, the book's length on the server when `duration` gives
+ * it (an order with no length keeps the one known for the same end). The same manifest when
+ * nothing changes, and when `order` is empty.
  */
 export function withBookEnd(
   manifest: DownloadManifest,
   order: readonly string[],
+  duration?: number,
 ): DownloadManifest {
   const last = order[order.length - 1];
   if (last === undefined) return manifest;
   const endsBefore = manifest.files.some((f) => f.relPath === last) ? undefined : last;
-  if (endsBefore === manifest.endsBefore) return manifest;
-  const { endsBefore: _was, ...rest } = manifest;
-  return endsBefore === undefined ? rest : { ...rest, endsBefore };
+  const bookDuration =
+    endsBefore === undefined
+      ? undefined
+      : duration !== undefined && duration > 0
+        ? duration
+        : endsBefore === manifest.endsBefore
+          ? manifest.bookDuration
+          : undefined;
+  if (endsBefore === manifest.endsBefore && bookDuration === manifest.bookDuration) {
+    return manifest;
+  }
+  const { endsBefore: _was, bookDuration: _length, ...rest } = manifest;
+  if (endsBefore === undefined) return rest;
+  return bookDuration === undefined
+    ? { ...rest, endsBefore }
+    : { ...rest, endsBefore, bookDuration };
 }
 
 /** An adoption with no server answer saw the engine play the book's files in `order`
@@ -668,6 +692,7 @@ export function startChapterRefresh(): () => void {
     const ended = withBookEnd(
       entry.manifest,
       bookFileSpecs(entry.manifest.book, fresh).map((f) => f.path),
+      fresh.duration,
     );
     const manifest = refreshedChapters(ended, fresh) ?? ended;
     if (manifest === entry.manifest) return;

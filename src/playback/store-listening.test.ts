@@ -1098,6 +1098,53 @@ describe('what a span carries', () => {
     expect(mockClosed.map((s) => s.duration)).toEqual([100]);
   });
 
+  // Pixel 6a: a download that ends before its book played from its own copy sent the
+  // downloaded part's length, and the server refused every listen (duration_mismatch).
+  describe('over a download that ends before its book does (D3)', () => {
+    const withEnd = (bookDuration?: number): DownloadEntry => {
+      const e = downloadedEntry();
+      return {
+        ...e,
+        manifest: {
+          ...e.manifest,
+          endsBefore: 'A/Folder/30.mp3',
+          ...(bookDuration === undefined ? {} : { bookDuration }),
+        },
+      };
+    };
+    const playOffline = async (entry: DownloadEntry) => {
+      useDownloads.setState({ entries: { [`c1:2:${folder}`]: entry } });
+      const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+      try {
+        await usePlayer.getState().playBook('c1', 2, book, chapters, undefined);
+        await settle();
+      } finally {
+        reach.mockRestore();
+      }
+      pushSnapshot(snap('playing', 0, 5));
+      pushSnapshot(snap('paused', 0, 20));
+      await settle();
+    };
+
+    it("sends the book's length on its server, and saves it", async () => {
+      await playOffline(withEnd(160));
+      expect(usePlayer.getState().nowPlaying?.queue.audio).toBe(100);
+      expect(mockClosed.map((s) => s.duration)).toEqual([160]);
+      await usePlayer.getState().pause();
+      await settle();
+      const durations = mockWriteMirror.mock.calls.map(
+        (c) => (c[0] as { duration: number }).duration,
+      );
+      expect(durations.length).toBeGreaterThan(0);
+      expect(durations.every((d) => d === 160)).toBe(true);
+    });
+
+    it('sends no length when the download does not know it (the server checks none)', async () => {
+      await playOffline(withEnd());
+      expect(mockClosed.map((s) => s.duration)).toEqual([0]);
+    });
+  });
+
   it('never takes a place that is not a number', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));

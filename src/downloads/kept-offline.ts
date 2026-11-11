@@ -1,7 +1,8 @@
 /**
  * Facts of this device's downloads registry, for code the downloads store can't be
  * imported into (it imports the API hooks, which ask `isKeptOffline`: `fetchBookProgress`,
- * and the progress mirror, which asks `downloadEndsBefore`: `mirrorSpanEnd`). The store
+ * the progress mirror, which asks `downloadEndsBefore`: `mirrorSpanEnd`, and the listening
+ * outbox, which asks `downloadBookLength`: `resendMismatched`). The store
  * registers its checks as it loads; until it has, no book is kept and none ends early.
  */
 type KeptCheck = (connectionId: string, libraryId: number, path: string) => boolean;
@@ -38,4 +39,28 @@ export function downloadEndsBefore(
   path: string,
 ): Promise<string | undefined> {
   return endCheck(connectionId, libraryId, path);
+}
+
+type LengthCheck = (
+  connectionId: string,
+  libraryId: number,
+  path: string,
+) => Promise<number | undefined>;
+
+let lengthCheck: LengthCheck = async () => undefined;
+
+/** The downloads store's length check (`src/downloads/store.ts`). */
+export function setDownloadLengthCheck(fn: LengthCheck): void {
+  lengthCheck = fn;
+}
+
+/** When this device's download of the book ends before the book does (`endsBefore`), the
+ * book's length on its server (seconds, `DownloadManifest.bookDuration`), 0 when that is not
+ * known; once the launch has read the registry. Undefined for any other book. */
+export function downloadBookLength(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<number | undefined> {
+  return lengthCheck(connectionId, libraryId, path);
 }

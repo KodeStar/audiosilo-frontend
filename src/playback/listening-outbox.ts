@@ -14,6 +14,7 @@ import type {
   ListeningSyncResult,
   Progress,
 } from '@/api/types';
+import { downloadBookLength } from '@/downloads/kept-offline';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { hasWebLocks, tabLock } from '@/lib/tab-lock';
@@ -984,11 +985,45 @@ export function flushOutbox(connectionId: string): Promise<void> {
   return run;
 }
 
+/**
+ * Listens refused `duration_mismatch` because they were played over a download that ends
+ * before its book does (D3): before 8d such a queue sent the downloaded part's length, more
+ * than 10 s off the server's book, so the listening never reached it. Each goes back into the
+ * outbox at the book's length on its server (`downloadBookLength`), or with no length when
+ * that is not known (the server then checks none, as a partial queue's span now sends), and
+ * leaves the couldn't-sync list. Only a listen whose length would change: one refused again
+ * at that length (another edition indeed) stays on the list.
+ */
+export async function resendMismatched(): Promise<void> {
+  const state = await readState();
+  const now = Date.now();
+  for (const [connectionId, s] of Object.entries(state)) {
+    const again: ListeningEvent[] = [];
+    for (const f of s.failed ?? []) {
+      if (!stillKept(f, now) || f.reason !== 'duration_mismatch' || f.event.kind !== 'listen')
+        continue;
+      const length = await downloadBookLength(connectionId, f.event.library_id, f.event.path);
+      if (length === undefined) continue;
+      const { duration: _was, ...rest } = f.event;
+      const event: ListeningSpanEvent = length > 0 ? { ...rest, duration: length } : rest;
+      if (event.duration !== f.event.duration) again.push(event);
+    }
+    if (again.length === 0) continue;
+    const ids = new Set(again.map((e) => e.id));
+    await updateState(connectionId, (st) => ({
+      ...st,
+      failed: (st.failed ?? []).filter((f) => !ids.has(f.event.id)),
+    }));
+    await appendEvents(connectionId, again);
+  }
+}
+
 /** Send every connection's outbox (a launch, the foreground). */
 export async function flushAllOutboxes(): Promise<void> {
   if (!sessionReady()) return;
   const recovered = recovery !== null;
   await recoverOpenSpan();
+  await resendMismatched().catch(() => undefined);
   // The web: another tab's span may have been left since (that tab closed or crashed). The
   // launch's first call has just looked (the recovery).
   if (Platform.OS === 'web' && recovered) await sweepLeftBehind().catch(() => undefined);
