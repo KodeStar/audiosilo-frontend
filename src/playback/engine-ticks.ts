@@ -22,8 +22,8 @@ import { ticker } from '@/lib/ticker';
  * still runs. Without it, every run that came slightly later than the one before it
  * would skip a whole period - a 1 s countdown stepping every 2 s.
  *
- * `period` makes the pace one that changes while it runs (the save loop: 15 s, or 60 s
- * with the app in the background): how long after the last run the next is due, read at
+ * `period` makes the pace one that changes while it runs (the save loop's `saveIntervalMs`
+ * in `store.ts`: 15 s or 60 s): how long after the last run the next is due, read at
  * every check, so a change takes effect from the last run with none dropped and none
  * doubled. `ms` is then the shortest it gives, the interval's own pace; a longer period
  * is met by the first check past it (an engine event, about once a second while playing,

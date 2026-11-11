@@ -1568,7 +1568,8 @@ media GETs only.
   this device holds (`PlaybackTrack.local`, set by `buildBookQueue` for a download's file;
   owner decision D5: in front too). Streaming in front the radio is up anyway; in every
   other case each save would wake it for itself (240 requests an hour). A Cast receiver
-  streams whatever the phone holds, so casting keeps 15 s.
+  streams whatever the phone holds, so a downloaded book cast with the app in front keeps
+  15 s (away, casting is 60 s like everything else).
   - The pace is **read at every check**, not set by an event (`engineTicker`'s `period`):
     the next save is due that long after the LAST one, so a change mid-play (the hot-swap
     onto a download, the next file being of the other kind, the app leaving or coming back)
