@@ -1439,7 +1439,10 @@ media GETs only.
     replaced by `load` is released first** (fe#202): the module `stop`s a prepared player
     before setting the new items, so the old queue's extractors (two at a chapter boundary)
     are not alive while the new ones load; the events of that stop (an idle, the old place)
-    are the old queue's and never reach JS (`replacing`). Not covered: two adjacent long
+    are the old queue's and never reach JS (`replacing`). The controller masks that stop as
+    an idle only (no `onIsPlayingChanged(false)` for a queue that was playing, then or once
+    the new one buffers), so `load` stops the 1 s progress loop itself; the new queue's
+    `playing` starts it again. Not covered: two adjacent long
     files that both play whole (each over half the budget) still hold both tables where they
     meet, since Media3 prepares the next item before the current ends; only a queue of one
     file at a time would avoid it.

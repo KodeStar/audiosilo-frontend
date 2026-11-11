@@ -256,6 +256,11 @@ class AudiosiloPlayerModule : Module() {
           } finally {
             replacing = false
           }
+          // The controller masks `stop` as an idle only: a queue that was playing gets no
+          // `onIsPlayingChanged(false)` (then or once the new queue buffers), so the 1 s
+          // loop is stopped here. The new queue's `playing` starts it again; one that
+          // never plays (paused or failed while it loads) would otherwise tick on.
+          stopProgressLoop()
         }
         timelineMap = timelineOf(queue.items)
         c.setMediaItems(queue.items, queue.index, queue.positionMs)
@@ -495,10 +500,7 @@ class AudiosiloPlayerModule : Module() {
         if (!replacing) emitState()
       }
       override fun onIsPlayingChanged(isPlaying: Boolean) {
-        if (replacing) {
-          if (!isPlaying) stopProgressLoop()
-          return
-        }
+        if (replacing) return
         emitState()
         // Tick progress only while actually playing - a paused audiobook can sit for hours,
         // and emitting every second wakes JS for no position change (battery). Emit one
