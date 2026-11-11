@@ -53,19 +53,19 @@ jest.mock('./service', () => ({ createPlaybackService: () => mockSvc }));
 const mockSaves: number[] = [];
 /** The whole-book place each of them saved. */
 const mockSavedAt: number[] = [];
+const mockNoteSave = (save: { position: number }) => {
+  mockSaves.push(Date.now());
+  mockSavedAt.push(save.position);
+};
 const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<ResumeLookup> => ({
   kind: 'empty',
 }));
 jest.mock('./progress-sync', () => ({
   saveProgress: jest.fn(async (_api: unknown, save: { position: number }) => {
-    mockSaves.push(Date.now());
-    mockSavedAt.push(save.position);
+    mockNoteSave(save);
     return 'saved';
   }),
-  writeMirror: jest.fn(async (save: { position: number }) => {
-    mockSaves.push(Date.now());
-    mockSavedAt.push(save.position);
-  }),
+  writeMirror: jest.fn(async (save: { position: number }) => mockNoteSave(save)),
   ackVersion: jest.fn(async () => {}),
   flushQueue: jest.fn(async () => {}),
   flushConnection: jest.fn(async () => {}),
@@ -234,6 +234,16 @@ async function played(seconds: number, { timers = true } = {}) {
   }
 }
 
+/** The app's state changes, and what that sets off settles. */
+async function appGoes(state: 'active' | 'background') {
+  appBecomes(state);
+  await settle();
+}
+
+/** The book's download is on this device: every file, or only `held`. */
+const hold = (held = files) =>
+  useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded(held) } });
+
 /** Seconds into the play of each time in `times`. */
 const at = (times: number[]) => times.map((t) => Math.round((t - began) / 1_000));
 
@@ -269,8 +279,7 @@ describe('the pace of the periodic save', () => {
   it('is 60 s with the app in the background, after a save as it leaves', async () => {
     await play();
     await played(20);
-    appBecomes('background');
-    await settle();
+    await appGoes('background');
     await played(125);
     // 15: the last at the faster pace. 20: leaving. Then a minute apart, counted from there.
     expect(at(mockSaves)).toEqual([15, 20, 80, 140]);
@@ -280,28 +289,24 @@ describe('the pace of the periodic save', () => {
     await play();
     await played(10);
     appBecomes('inactive');
-    appBecomes('background');
-    await settle();
+    await appGoes('background');
     await played(60);
     expect(at(mockSaves)).toEqual([10, 70]);
   });
 
   it('keeps the 60 s pace from engine events alone (no JS timer fires)', async () => {
     await play();
-    appBecomes('background');
-    await settle();
+    await appGoes('background');
     await played(180, { timers: false });
     expect(at(mockSaves)).toEqual([0, 60, 120, 180]);
   });
 
   it('saves at once on coming back when the faster pace already owes one', async () => {
     await play();
-    appBecomes('background');
-    await settle();
+    await appGoes('background');
     await played(40);
     expect(at(mockSaves)).toEqual([0]);
-    appBecomes('active');
-    await settle();
+    await appGoes('active');
     expect(at(mockSaves)).toEqual([0, 40]);
     await played(30);
     expect(at(mockSaves)).toEqual([0, 40, 55, 70]);
@@ -310,18 +315,16 @@ describe('the pace of the periodic save', () => {
   it('does not save twice on coming back soon after a save', async () => {
     await play();
     await played(10);
-    appBecomes('background'); // a save at 10
-    await settle();
+    await appGoes('background'); // a save at 10
     await played(5);
-    appBecomes('active');
-    await settle();
+    await appGoes('active');
     await played(25);
     // 15 s after the save made on leaving, not at the return and not at the old phase.
     expect(at(mockSaves)).toEqual([10, 25, 40]);
   });
 
   it('is 60 s for a downloaded book, in front too', async () => {
-    useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded() } });
+    hold();
     await play();
     expect(usePlayer.getState().nowPlaying!.queue.tracks.every((t) => t.local)).toBe(true);
     await played(120);
@@ -330,7 +333,7 @@ describe('the pace of the periodic save', () => {
 
   it('follows the playing file: 60 s in one this device holds, 15 s in one that streams', async () => {
     // Only the first file is held: the second streams.
-    useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded([files[0]]) } });
+    hold([files[0]]);
     await play();
     expect(usePlayer.getState().nowPlaying!.queue.tracks.map((t) => !!t.local)).toEqual([
       true,
@@ -349,7 +352,7 @@ describe('the pace of the periodic save', () => {
     await play();
     await played(20);
     expect(at(mockSaves)).toEqual([15]);
-    useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded() } });
+    hold();
     await settle();
     expect(usePlayer.getState().nowPlaying!.queue.tracks.every((t) => t.local)).toBe(true);
     mockSaves.length = 0; // whatever the swap itself saved
@@ -360,7 +363,7 @@ describe('the pace of the periodic save', () => {
   });
 
   it('stays at 15 s for a downloaded book played on a Cast receiver', async () => {
-    useDownloads.setState({ entries: { [`c1:2:${folder}`]: downloaded() } });
+    hold();
     mockCasting = true;
     await play();
     await played(30);
@@ -371,8 +374,7 @@ describe('the pace of the periodic save', () => {
 describe('saves that go at once, whatever the pace', () => {
   it('saves a pause in the background at once, and nothing after it', async () => {
     await play();
-    appBecomes('background');
-    await settle();
+    await appGoes('background');
     await played(7);
     pushSnapshot(snap('paused', track, position));
     await settle();
@@ -384,8 +386,7 @@ describe('saves that go at once, whatever the pace', () => {
 
   it('saves a seek and a stop in the background at once', async () => {
     await play();
-    appBecomes('background');
-    await settle();
+    await appGoes('background');
     await played(3);
     await usePlayer.getState().seekBook(500);
     await settle();
@@ -401,10 +402,8 @@ describe('saves that go at once, whatever the pace', () => {
     pushSnapshot(snap('paused', track, position));
     await settle();
     mockSaves.length = 0;
-    appBecomes('background');
-    await settle();
-    appBecomes('active');
-    await settle();
+    await appGoes('background');
+    await appGoes('active');
     expect(mockSaves).toEqual([]);
   });
 });
@@ -419,16 +418,14 @@ describe('the Sync v2 span cut', () => {
     await played(60);
     expect(at(mockCuts)).toEqual([15, 30, 45, 60]);
     mockCuts.length = 0;
-    appBecomes('background'); // the cut on leaving is `listening-sync.ts`'s, not wired here
-    await settle();
+    await appGoes('background'); // the cut on leaving is `listening-sync.ts`'s, not wired here
     await played(120);
     expect(at(mockCuts)).toEqual([120, 180]);
   });
 
   it('still stores the open span every 5 s in the background', async () => {
     await play();
-    appBecomes('background');
-    await settle();
+    await appGoes('background');
     await played(60);
     // A kill loses at most 5 s of listening, as before: 12 keeps in the minute between cuts.
     expect(mockKept).toHaveLength(12);
@@ -453,7 +450,7 @@ describe('what the hook shows off screen', () => {
   }
   /** `played`, inside React's `act` so a mounted reader renders what it is shown. */
   const playedShown = (seconds: number) => act(() => played(seconds));
-  const appShown = (state: 'active' | 'background') => act(async () => appBecomes(state));
+  const appShown = (state: 'active' | 'background') => act(() => appGoes(state));
 
   it('redraws the place every second in front', async () => {
     await play();

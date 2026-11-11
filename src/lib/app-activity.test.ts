@@ -1,28 +1,12 @@
 import { AppState } from 'react-native';
 
+import { driveAppState } from '@/testing/app-state';
+
 import { isAway, isOffScreen, onAppStateEdge } from './app-activity';
 
-let state: string;
-let listeners: ((s: string) => void)[];
+const { becomes } = driveAppState();
 
-beforeEach(() => {
-  state = 'active';
-  listeners = [];
-  Object.defineProperty(AppState, 'currentState', { get: () => state, configurable: true });
-  jest.spyOn(AppState, 'addEventListener').mockImplementation(((
-    _: string,
-    l: (s: string) => void,
-  ) => {
-    listeners.push(l);
-    return { remove: () => (listeners = listeners.filter((x) => x !== l)) };
-  }) as unknown as typeof AppState.addEventListener);
-});
-afterEach(() => jest.restoreAllMocks());
-
-const becomes = (s: string) => {
-  state = s;
-  [...listeners].forEach((l) => l(s));
-};
+afterEach(() => becomes('active'));
 
 describe('isAway and isOffScreen', () => {
   it('read the background as both, inactive as away only', () => {
@@ -38,7 +22,7 @@ describe('isAway and isOffScreen', () => {
   });
 
   it('read the current state when given none', () => {
-    state = 'background';
+    becomes('background');
     expect([isAway(), isOffScreen()]).toEqual([true, true]);
   });
 });
@@ -59,7 +43,7 @@ describe('onAppStateEdge', () => {
   });
 
   it('starts from the state the app is in', () => {
-    state = 'background';
+    becomes('background');
     const fn = jest.fn();
     onAppStateEdge(isAway, fn);
     becomes('background');
@@ -76,9 +60,7 @@ describe('onAppStateEdge', () => {
   });
 
   it('does nothing where the platform gives no subscription (no document)', () => {
-    jest
-      .spyOn(AppState, 'addEventListener')
-      .mockImplementation((() => undefined) as unknown as typeof AppState.addEventListener);
+    (AppState.addEventListener as unknown as jest.Mock).mockImplementationOnce(() => undefined);
     expect(() => onAppStateEdge(isAway, jest.fn())()).not.toThrow();
   });
 });
