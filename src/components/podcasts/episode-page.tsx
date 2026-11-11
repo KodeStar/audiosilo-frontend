@@ -22,7 +22,6 @@ import {
   rowAt,
 } from '@/components/book/book-page-model';
 import { BookSkeleton } from '@/components/book/book-skeleton';
-import { OfflineState } from '@/components/layout/offline-state';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
 import { pageGutter } from '@/components/library/cover-layout';
@@ -85,11 +84,16 @@ export function EpisodePage({ libraryId, path }: { libraryId: number; path: stri
     );
   }
   if (!book) {
-    // The episode waits for the network, or failed without one: no Retry can work.
-    if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
+    // `offline`: the episode waits for the network, or failed without one (no Retry can
+    // work).
     return (
       <View className="flex-1 p-4">
-        <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />
+        <LoadFailedNote
+          cid={cid}
+          message={t('book.loadError')}
+          onRetry={() => refetch()}
+          offline={unread === 'offline' ? t('common.offlinePage') : undefined}
+        />
       </View>
     );
   }

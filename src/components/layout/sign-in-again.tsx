@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import type { Connection } from '@/stores/session';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { OfflineState } from './offline-state';
 import { reconnectConnection, useSignedOutConnections } from './reconnect-banner';
 
 export { useSignedOutConnections } from './reconnect-banner';
@@ -25,24 +26,27 @@ export function useSignedOutConnection(cid: string | undefined): Connection | un
 /** A page's load error for `cid`'s server: the sign-in state while that server needs
  * signing in again (CONNECT-03), else `message` with its Retry. `cid` is resolved as the
  * page's own reads resolve theirs (`useCid`): a route scope of '' (a link without
- * `?connection=`) is the default server. `className` styles the sign-in card only. */
+ * `?connection=`) is the default server. `className` styles the sign-in card only.
+ * `offline` is the page's offline hint while its read waits for the network or failed
+ * without one (`useUnreadQuery`): the offline state then, with no Retry, but never in
+ * place of the sign-in state (a signed-out refusal is decided first). */
 export function LoadFailedNote({
   cid,
   message,
   onRetry,
   className,
+  offline,
 }: {
   cid: string | undefined;
   message: string;
   onRetry: () => void;
   className?: string;
+  offline?: string;
 }) {
   const signedOut = useSignedOutConnection(useCid(cid || undefined));
-  return signedOut ? (
-    <SignInAgainState connection={signedOut} className={className} />
-  ) : (
-    <ErrorNote message={message} onRetry={onRetry} />
-  );
+  if (signedOut) return <SignInAgainState connection={signedOut} className={className} />;
+  if (offline !== undefined) return <OfflineState hint={offline} />;
+  return <ErrorNote message={message} onRetry={onRetry} />;
 }
 
 /** The first of `signedOut` whose list failed among `groups` (one per server): its

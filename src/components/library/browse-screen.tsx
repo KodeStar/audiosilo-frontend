@@ -9,7 +9,6 @@ import { useScopedCid } from '@/api/provider';
 import type { FsEntry } from '@/api/types';
 import { ContentScope } from '@/components/layout/content-scope';
 import { NotInLibraryState } from '@/components/layout/not-in-library';
-import { OfflineState } from '@/components/layout/offline-state';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { EntryRow } from '@/components/library/entry-row';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -238,9 +237,7 @@ function BrowseContent() {
       ) : null}
 
       {isLoading ? <BrowseSkeleton /> : null}
-      {offline ? (
-        <OfflineState hint={t('common.offlinePage')} />
-      ) : !error ? null : isNotInLibraryError(error) ? (
+      {!error && !offline ? null : isNotInLibraryError(error) ? (
         <NotInLibraryState kind="folder" />
       ) : (
         <LoadFailedNote
@@ -248,6 +245,7 @@ function BrowseContent() {
           message={t('library.browse.openError')}
           onRetry={() => refetch()}
           className="mx-4 lg:mx-8"
+          offline={offline ? t('common.offlinePage') : undefined}
         />
       )}
 

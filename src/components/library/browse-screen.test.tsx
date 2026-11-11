@@ -104,6 +104,15 @@ describe('BrowseScreen', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
+  // Asked again and held for the network: the session has still ended.
+  it('keeps the sign-in state while the folder waits for the network', async () => {
+    useSession.setState({ connections: [{ ...connection, needsReconnect: 'auth' }] } as never);
+    mockPaused = true;
+    await render(<BrowseScreen />);
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
   it("shows the default server's sign-in state on a link without ?connection=", async () => {
     mockScope = '';
     useSession.setState({ connections: [{ ...connection, needsReconnect: 'auth' }] } as never);

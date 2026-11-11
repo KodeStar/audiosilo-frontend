@@ -31,7 +31,6 @@ import { GenerateStatus } from '@/components/bridge/generate-status';
 import { useGenerate } from '@/components/bridge/use-generate';
 import { ContentScope } from '@/components/layout/content-scope';
 import { NotInLibraryState } from '@/components/layout/not-in-library';
-import { OfflineState } from '@/components/layout/offline-state';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { bookMetaWork, matchedMeta, summaryIsVisible } from '@/components/library/book-meta';
 import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book-tabs';
@@ -423,11 +422,15 @@ function BookPage() {
   if (!book) {
     // A 404 or 403 is a book that isn't there for this listener: no Retry (CONNECT-13).
     if (isNotInLibraryError(error)) return <NotInLibraryState />;
-    // The book waits for the network, or failed without one: no Retry can work.
-    if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
+    // `offline`: the book waits for the network, or failed without one (no Retry can work).
     return (
       <View className="flex-1 p-4">
-        <LoadFailedNote cid={cid} message={t('book.loadError')} onRetry={() => refetch()} />
+        <LoadFailedNote
+          cid={cid}
+          message={t('book.loadError')}
+          onRetry={() => refetch()}
+          offline={unread === 'offline' ? t('common.offlinePage') : undefined}
+        />
       </View>
     );
   }
