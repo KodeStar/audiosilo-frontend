@@ -132,7 +132,13 @@ import type { DownloadEntry } from '@/downloads/types';
 
 import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
-import { flushHistoryOnHide, saveLoadedPlace, standByPlace, usePlayer } from './store';
+import {
+  flushHistoryOnHide,
+  saveLoadedPlace,
+  selectBookLength,
+  standByPlace,
+  usePlayer,
+} from './store';
 /* eslint-enable import/first */
 
 // A two-file folder book; the server now plays "2.mp3" before "10.mp3" (natural order).
@@ -741,16 +747,18 @@ describe('Mark as finished outside the player (finish-route)', () => {
       await expect(undoFinish(undoRef, edit)).resolves.toBe(true);
       expect(mockWithdraw).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(edit).not.toHaveBeenCalled();
-      // Stamped as new as the finish it replaces: the mirror refuses an older record.
+      // Stamped just after the finish it replaces: the mirror refuses an older record, and a
+      // read of the finished row still on its way, stamped as the finish, loses to it (fe#258).
       const finishedAt = finishedRec.updated_at;
+      const after = new Date(Date.parse(finishedAt) + 1).toISOString();
       // Its Sync v2 fields are left to the mirror's own (an ack since the finish is newer).
       expect(mockWriteMirror).toHaveBeenLastCalledWith({
         ...before,
         ack_version: undefined,
         answered: undefined,
-        updated_at: finishedAt,
+        updated_at: after,
       });
-      expect(finishedAt > before.updated_at).toBe(true);
+      expect(after > finishedAt && finishedAt > before.updated_at).toBe(true);
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
         queryKey: qk.progress('c1', 2, 'Other/Book'),
       });
@@ -782,6 +790,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
         ...finishedRec,
         finished: false,
         position: 48,
+        updated_at: '2026-01-02T00:00:00.001Z',
       });
       // A place saved since the finish is not undone.
       mockReadMirror.mockResolvedValueOnce(null);
@@ -832,7 +841,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
           path: 'Other/Book',
           finished: false,
           position: 48,
-          updated_at: echo.updated_at,
+          updated_at: '2999-01-01T00:00:00.001Z',
         }),
       );
     } finally {
@@ -1093,6 +1102,56 @@ describe('what a span carries', () => {
     pushSnapshot(snap('paused', 0, 20));
     await settle();
     expect(mockClosed.map((s) => s.duration)).toEqual([100]);
+  });
+
+  // Pixel 6a: a download that ends before its book played from its own copy sent the
+  // downloaded part's length, and the server refused every listen (duration_mismatch).
+  describe('over a download that ends before its book does (D3)', () => {
+    const withEnd = (bookDuration?: number): DownloadEntry => {
+      const e = downloadedEntry();
+      return {
+        ...e,
+        manifest: {
+          ...e.manifest,
+          endsBefore: 'A/Folder/30.mp3',
+          ...(bookDuration === undefined ? {} : { bookDuration }),
+        },
+      };
+    };
+    const playOffline = async (entry: DownloadEntry) => {
+      useDownloads.setState({ entries: { [`c1:2:${folder}`]: entry } });
+      const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+      try {
+        await usePlayer.getState().playBook('c1', 2, book, chapters, undefined);
+        await settle();
+      } finally {
+        reach.mockRestore();
+      }
+      pushSnapshot(snap('playing', 0, 5));
+      pushSnapshot(snap('paused', 0, 20));
+      await settle();
+    };
+
+    it("sends the book's length on its server, and saves it", async () => {
+      await playOffline(withEnd(160));
+      expect(usePlayer.getState().nowPlaying?.queue.audio).toBe(100);
+      expect(mockClosed.map((s) => s.duration)).toEqual([160]);
+      await usePlayer.getState().pause();
+      await settle();
+      const durations = mockWriteMirror.mock.calls.map(
+        (c) => (c[0] as { duration: number }).duration,
+      );
+      expect(durations.length).toBeGreaterThan(0);
+      expect(durations.every((d) => d === 160)).toBe(true);
+      // The player's percent is of the same length, so it reads as Home's.
+      expect(selectBookLength(usePlayer.getState())).toBe(160);
+    });
+
+    it('sends no length when the download does not know it (the server checks none)', async () => {
+      await playOffline(withEnd());
+      expect(mockClosed.map((s) => s.duration)).toEqual([0]);
+      expect(selectBookLength(usePlayer.getState())).toBe(100);
+    });
   });
 
   it('never takes a place that is not a number', async () => {

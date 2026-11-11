@@ -48,7 +48,14 @@ export type RateChangeEvent = { rate: number };
  * action; the phone's notification leaves it out): where the book was at the press, and which
  * book the engine had loaded (absent from a binary that predates it, or an engine loaded
  * without a `book`). */
-export type RemoteBookmarkEvent = { trackIndex: number; position: number } & Partial<BookRef>;
+export type RemoteBookmarkEvent = { trackIndex: number; position: number } & Partial<BookRef> &
+  FileOfPress;
+
+/** The file a bookmark was pressed in, by its library-relative path (`rel_path`, as in the
+ * media ids), so JS finds it in whatever order the book's files are in when it reads the
+ * press (fe#185); `position` is the seconds in that file. Absent from binaries that predate
+ * it (and on Android when the item's id has another shape): the index alone counts then. */
+export type FileOfPress = { relPath?: string };
 
 /** CarPlay or Android Auto connected or disconnected. */
 export type CarConnectionEvent = { connected: boolean };
@@ -74,7 +81,7 @@ export type LoadedBook = BookRef & {
 };
 
 /** Android: a bookmark pressed while no JS was running. */
-export type PendingBookmark = BookRef & { trackIndex: number; position: number };
+export type PendingBookmark = BookRef & { trackIndex: number; position: number } & FileOfPress;
 
 /** Tunables that can change at runtime (driven by the app's settings store). */
 export type PlayerConfig = {

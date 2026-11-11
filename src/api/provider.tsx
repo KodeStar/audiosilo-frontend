@@ -126,8 +126,9 @@ export const queryClient = new QueryClient({
     // The app: a write is sent whatever the online flag says, as it was before the flag
     // followed the network there (below). Held for the network it never settles: Save
     // spins, and the write, which lives only in memory, is gone if the app is closed
-    // before the network returns. Sent, it fails at once with no network and the screen
-    // says so (its own error, the form still open). The web keeps TanStack's default (a
+    // before the network returns. Sent, it fails at once with no network (the client
+    // refuses it unsent, `ApiClient.send`) and the screen says so (its own error, the form
+    // still open). The web keeps TanStack's default (a
     // write waits for the browser to come back online), as it always has.
     mutations: Platform.OS === 'web' ? undefined : { networkMode: 'always' },
   },

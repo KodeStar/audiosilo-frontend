@@ -68,12 +68,31 @@ export type DownloadManifest = {
   /** The size in bytes of that map on the device (counted in the entry's `bytes` and
    * `totalBytes`). Absent with no map, and on downloads made before it existed. */
   readalongBytes?: number;
+  /** The `generated_at` of a map the download refused (made from another ebook than the one
+   * `book.epub` is, fe#193): the same map is not fetched again on every launch
+   * (`readalongChange`), a map made again is. Cleared once a map is kept; absent while none
+   * was refused. */
+  readalongRefused?: string;
   /** The sha256 of the ebook `book.epub` is, as the first map the download kept named it
    * (fe#193): a map made later from another ebook (the server's was replaced) is refused,
    * never kept beside this one, and the server's copy of it never reaches the reader of
    * this download. Kept when the map is dropped (the EPUB stays the same); absent while no
    * map was ever kept. */
   ebookSha256?: string;
+  /** The book's last file (its rel path), when the download lacks it: the download ends
+   * before the book does (D3, fe#185), so offline its end is a pause, never a finish. A
+   * missing earlier file (an intro) is not this: the download still holds the book's end.
+   * Set by each server chapters answer for the book (`startChapterRefresh`) and by an
+   * adoption whose engine played the book's order (`noteDownloadEnd`); absent when the
+   * download holds the book's end, and on downloads made before it existed. */
+  endsBefore?: string;
+  /** With `endsBefore`: the book's length on its server (seconds, the chapters answer's
+   * `duration`), as the answer that said where the book ends gave it. A queue over the
+   * download reports it as the book's length (a Sync v2 event's `duration`, a save's), never
+   * the shorter downloaded part's, which the server refuses (`duration_mismatch`, more than
+   * 10 s off the indexed book's). Absent when not known (an adoption's order only, a
+   * download from before it existed: the next server answer fills it in). */
+  bookDuration?: number;
   savedAt: string;
   /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
    * Only this marker lives here: the payload (an envelope with its characters and recaps

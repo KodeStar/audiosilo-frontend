@@ -1,4 +1,4 @@
-import { castButtonModel } from './cast-button-model';
+import { castButtonModel, sdkButtonDraws } from './cast-button-model';
 
 const base = {
   loaded: true,
@@ -58,5 +58,24 @@ describe('castButtonModel', () => {
   it('hides it for a podcast episode, unless a session runs', () => {
     expect(castButtonModel({ ...base, episode: true }).show).toBe(false);
     expect(castButtonModel({ ...base, episode: true, status: 'connected' }).show).toBe(true);
+  });
+});
+
+describe('sdkButtonDraws', () => {
+  it('draws while a device is found or a session runs, and while the state is unknown', () => {
+    for (const state of ['notConnected', 'connecting', 'connected', null, undefined]) {
+      expect(sdkButtonDraws(state, 'ios', true)).toBe(true);
+      expect(sdkButtonDraws(state, 'android', null)).toBe(true);
+    }
+  });
+
+  it('does not draw with no device found (the empty pill)', () => {
+    expect(sdkButtonDraws('noDevicesAvailable', 'android', null)).toBe(false);
+    expect(sdkButtonDraws('noDevicesAvailable', 'ios', true)).toBe(false);
+  });
+
+  it('draws on iOS before discovery has run, so its first tap can start it', () => {
+    expect(sdkButtonDraws('noDevicesAvailable', 'ios', false)).toBe(true);
+    expect(sdkButtonDraws('noDevicesAvailable', 'ios', null)).toBe(true);
   });
 });

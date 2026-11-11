@@ -80,6 +80,10 @@ class AudiosiloPlayerModule : Module() {
   private val handler = Handler(Looper.getMainLooper())
   private var progressRunnable: Runnable? = null
   private var lastTrackIndex: Int = -1
+
+  /** True while `load` releases the queue it replaces: the controller's events then are the
+   * old queue's (an idle, its last place) and are not sent to JS. Main thread only. */
+  private var replacing = false
   /** The engine items' FILE mapping (chapter clips or whole files), from their extras. */
   private var timelineMap: TimelineMap = TimelineMap(emptyList())
   /** Output gain (0..1) last asked for by JS - the sleep timer's fade-out. Kept here so a
@@ -109,8 +113,9 @@ class AudiosiloPlayerModule : Module() {
       sendEvent("onRateChange", mapOf("rate" to rate))
     }
 
-    override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?) {
-      val place: Map<String, Any> = mapOf("trackIndex" to fileIndex, "position" to position)
+    override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?) {
+      val place: Map<String, Any> = mapOf("trackIndex" to fileIndex, "position" to position) +
+        (relPath?.let { mapOf("relPath" to it) } ?: emptyMap())
       val named: Map<String, Any> = book?.let {
         mapOf("connectionId" to it.connectionId, "libraryId" to it.libraryId.toDouble(), "path" to it.path)
       } ?: emptyMap()
@@ -239,6 +244,24 @@ class AudiosiloPlayerModule : Module() {
         val ref = book?.takeIf { it.connectionId.isNotEmpty() && it.path.isNotEmpty() }
           ?.let { BookRef(it.connectionId, it.libraryId.toLong(), it.path) }
         val queue = MediaItems.buildQueue(specs, clips, ref, startIndex, position)
+        // The old queue goes before the new one prepares (fe#202): setting a new queue on a
+        // prepared player keeps the old items' extractors (a long m4b's sample tables, two at
+        // a chapter boundary) alive while the new ones load, a heap peak a small device can't
+        // hold. `stop` releases them and keeps playWhenReady; its idle and the old place are
+        // the old queue's, so none of it reaches JS (`replacing`).
+        if (c.mediaItemCount > 0 && c.playbackState != Player.STATE_IDLE) {
+          replacing = true
+          try {
+            c.stop()
+          } finally {
+            replacing = false
+          }
+          // The controller masks `stop` as an idle only: a queue that was playing gets no
+          // `onIsPlayingChanged(false)` (then or once the new queue buffers), so the 1 s
+          // loop is stopped here. The new queue's `playing` starts it again; one that
+          // never plays (paused or failed while it loads) would otherwise tick on.
+          stopProgressLoop()
+        }
         timelineMap = timelineOf(queue.items)
         c.setMediaItems(queue.items, queue.index, queue.positionMs)
         c.prepare()
@@ -473,8 +496,11 @@ class AudiosiloPlayerModule : Module() {
 
   private fun attachListener(c: MediaController) {
     c.addListener(object : Player.Listener {
-      override fun onPlaybackStateChanged(playbackState: Int) = emitState()
+      override fun onPlaybackStateChanged(playbackState: Int) {
+        if (!replacing) emitState()
+      }
       override fun onIsPlayingChanged(isPlaying: Boolean) {
+        if (replacing) return
         emitState()
         // Tick progress only while actually playing - a paused audiobook can sit for hours,
         // and emitting every second wakes JS for no position change (battery). Emit one
@@ -484,7 +510,9 @@ class AudiosiloPlayerModule : Module() {
           stopProgressLoop()
         }
       }
-      override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = emitState()
+      override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+        if (!replacing) emitState()
+      }
       override fun onTimelineChanged(timeline: Timeline, reason: Int) {
         // A queue set by anyone (this module, the car, playback resumption): its items carry
         // their file mapping. A SOURCE_UPDATE (a duration resolved) leaves the items, and so the
@@ -500,11 +528,12 @@ class AudiosiloPlayerModule : Module() {
         // Smart Speed skips a silence several times a minute; each is a discontinuity. They
         // only happen while playing, when the 1 s loop already reports the position, so a
         // sample per skip would just wake JS for nothing.
-        if (reason == Player.DISCONTINUITY_REASON_SILENCE_SKIP) return
+        if (reason == Player.DISCONTINUITY_REASON_SILENCE_SKIP || replacing) return
         emitProgress()
         flushRemoteMove()
       }
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        if (replacing) return
         // Report the FILE index. In chapter mode several consecutive items belong to the
         // same file; emitTrackChange dedupes, so this only fires when the file changes.
         emitTrackChange(timelineMap.itemToFile(c.currentMediaItemIndex, 0L).first)

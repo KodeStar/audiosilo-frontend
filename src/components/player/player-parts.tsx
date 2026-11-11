@@ -23,7 +23,7 @@ import { pushInShell } from '@/lib/open';
 import { bookHref, finishedHref } from '@/lib/paths';
 import { percentHeard } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
+import { selectBookLength, selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { useSession } from '@/stores/session';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -161,7 +161,7 @@ export function PlayerHeader({
 /** The percentage heard, in whole percent (a leaf: it redraws when the number moves). */
 function usePlayingPercent(): number {
   return usePlayer((s) =>
-    s.nowPlaying ? percentHeard(selectBookPosition(s), s.nowPlaying.queue.total, false) : 0,
+    s.nowPlaying ? percentHeard(selectBookPosition(s), selectBookLength(s), false) : 0,
   );
 }
 

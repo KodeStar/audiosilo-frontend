@@ -43,6 +43,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { queryClient } from '@/api/provider';
 import * as reachability from '@/api/reachability';
 import { keepServerAnswer } from '@/api/server-snapshots';
+import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
 import { onConnectionRemoved } from '@/stores/session';
 
 import {
@@ -64,6 +65,7 @@ import {
   outboxEvents,
   recoverOpenSpan,
   refreshOutboxFrom,
+  resendMismatched,
   resetOutboxForTests,
   spanSaysSomething,
   spanToEvent,
@@ -423,6 +425,38 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await record()).toMatchObject({ position: 16800, finished: true });
   });
 
+  it('never reads the end of a queue that ends before its book as finished (D3, fe#185)', async () => {
+    // Captured playing a download that lacks the book's last file: its 16803 s are the
+    // downloaded part's, and a kill in its last seconds leaves a span at that end.
+    await writeMirror(capture({ duration: 16803, partial: true }));
+    await relaunch();
+    expect(await record()).toMatchObject({ position: 16800, finished: false, partial: true });
+  });
+
+  describe("a download that ends before its book, by the download's own fact (D3, fe#185)", () => {
+    // This device's download of the book lacks its last file, 06.mp3 (`endsBefore`).
+    beforeEach(() =>
+      setDownloadEndCheck(async (_c, _l, path) =>
+        path === 'Author/Book' ? 'Author/Book/06.mp3' : undefined,
+      ),
+    );
+    afterEach(() => setDownloadEndCheck(async () => undefined));
+
+    it('never reads its end as finished from a server row written into the mirror since the capture', async () => {
+      // The server's row (this device's earlier save of the downloaded part's end, read back)
+      // was written over the capture: it carries no `partial`.
+      await writeMirror(capture({ duration: 16803, device_id: 'server-row' }));
+      await relaunch();
+      expect(await record()).toMatchObject({ position: 16800, finished: false });
+    });
+
+    it("reads the end of the book's last file as finished: that was streamed", async () => {
+      await writeMirror(capture({ duration: 16803 }));
+      await relaunch(span({ to: { pos: 16800, file: 'Author/Book/06.mp3', filePos: 1203.9 } }));
+      expect(await record()).toMatchObject({ position: 16800, finished: true });
+    });
+  });
+
   it("brings the shared record up to a closed tab's span, dated when that tab kept it", async () => {
     const os = Platform.OS;
     Platform.OS = 'web';
@@ -566,6 +600,65 @@ describe('flushOutbox', () => {
     expect((await syncStateOf('c1')).failed).toEqual([]);
   });
 
+  // Pixel 6a: listens over a download that ends before its book carried the downloaded
+  // part's length, and the server refused them all; the list said so, the server had nothing.
+  describe('a listen refused for its length over an early-ending download', () => {
+    const at = new Date().toISOString();
+    const refused = (
+      id: string,
+      reason = 'duration_mismatch',
+      over: Partial<ListeningEvent> = {},
+    ) => ({
+      event: listen(id, { duration: 4501, ...over }),
+      reason,
+      at,
+    });
+    afterEach(() => setDownloadLengthCheck(async () => undefined));
+
+    it("goes back to the outbox at the book's length, and off the list", async () => {
+      setDownloadLengthCheck(async (_c, _l, path) => (path === 'Author/Book' ? 4561 : undefined));
+      await AsyncStorage.setItem(
+        SYNC,
+        JSON.stringify({
+          c1: {
+            failed: [
+              refused('a'),
+              refused('other-book', 'duration_mismatch', { path: 'Other/Book' }),
+              refused('gone', 'not_found'),
+            ],
+          },
+        }),
+      );
+      await resendMismatched();
+      const out = await outboxEvents('c1');
+      expect(out.map((e) => [e.event.id, (e.event as { duration?: number }).duration])).toEqual([
+        ['a', 4561],
+      ]);
+      expect((await syncStateOf('c1')).failed?.map((f) => f.event.id)).toEqual([
+        'other-book',
+        'gone',
+      ]);
+    });
+
+    it('goes back with no length when the book length is not known, and never twice', async () => {
+      setDownloadLengthCheck(async () => 0);
+      await AsyncStorage.setItem(
+        SYNC,
+        JSON.stringify({
+          c1: {
+            failed: [refused('a'), refused('b', 'duration_mismatch', { duration: undefined })],
+          },
+        }),
+      );
+      await resendMismatched();
+      const out = await outboxEvents('c1');
+      expect(out.map((e) => e.event.id)).toEqual(['a']);
+      expect(out[0].event).not.toHaveProperty('duration');
+      // One refused again at the length it would be sent with stays on the list.
+      expect((await syncStateOf('c1')).failed?.map((f) => f.event.id)).toEqual(['b']);
+    });
+  });
+
   it("keeps the newest MAX_COULD_NOT_SYNC on the couldn't-sync list", async () => {
     const count = MAX_COULD_NOT_SYNC + 50;
     await appendEvents(
@@ -613,6 +706,45 @@ describe('flushOutbox', () => {
       row,
     );
     expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBe(42);
+  });
+
+  it("caches this device's newer place, with the row, when the server kept another device's (fe#211)", async () => {
+    const deviceId = await getDeviceId();
+    // This device resumed behind another device's further place, and played on since.
+    await writeMirror({
+      connectionId: 'c1',
+      libraryId: 3,
+      path: 'Author/Book',
+      position: 7200,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1,
+      device_id: deviceId,
+      updated_at: '2026-10-25T08:00:00.000Z',
+    });
+    await appendEvents('c1', [listen('a')]);
+    const row: Progress = {
+      library_id: 3,
+      path: 'Author/Book',
+      position: 16800,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1.2,
+      version: 42,
+      device_id: 'tablet',
+      updated_at: '2026-10-25T07:33:30.000Z',
+    };
+    client(async (body) =>
+      answer(body, () => ({ status: 'not_applied', reason: 'resume_behind' }), [row]),
+    );
+    await flushOutbox('c1');
+    // Where Resume plays, as the book's own read answers, never the row alone.
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['progress', 'c1', 3, 'Author/Book'],
+      expect.objectContaining({ position: 7200, device_id: deviceId, version: 0, server: row }),
+    );
+    // Another device's row is not acknowledged by the answer.
+    expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBeUndefined();
   });
 
   it('acknowledges the row an unfinish of a book another device finished hands this device', async () => {
@@ -1291,6 +1423,10 @@ describe('a span whose timers stood still', () => {
 });
 
 describe('giving up', () => {
+  it("gives up at the server's own bound, the 90 days the list says (fe#211)", () => {
+    expect(GIVE_UP_AGE_MS).toBe(90 * 24 * 60 * 60_000);
+  });
+
   it(`moves an event older than ${GIVE_UP_AGE_MS / 86_400_000} days to the list unsent (too_old)`, async () => {
     const old = new Date(Date.now() - GIVE_UP_AGE_MS - 60_000).toISOString();
     await appendEvents('c1', [

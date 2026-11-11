@@ -1792,8 +1792,8 @@
       "textDeniedHint": "Der Server teilt dieses Buch nicht mehr mit dir.",
       "textMissingTitle": "Dieses Buch ist nicht mehr auf dem Server",
       "textMissingHint": "Es wurde vielleicht verschoben oder entfernt. Öffne es erneut aus der Bibliothek.",
-      "textEbookChangedTitle": "Das Mitlesen gehört zu einem neueren E-Book",
-      "textEbookChangedHint": "Das E-Book auf diesem Gerät ist älter als das, aus dem das Mitlesen erstellt wurde. Entferne den Download und lade das Buch erneut herunter, um mitzulesen.",
+      "textEbookChangedTitle": "Das Mitlesen gehört zu einer anderen Ausgabe des E-Books",
+      "textEbookChangedHint": "Das E-Book auf diesem Gerät ist nicht das, aus dem das Mitlesen erstellt wurde. Entferne den Download und lade das Buch erneut herunter, um mitzulesen.",
       "textNoServer": "Der Text ist wieder da, sobald er verbunden ist."
     },
     "placeMoved": {
@@ -1815,6 +1815,9 @@
     },
     "otherTab": {
       "title": "Wiedergabe in einem anderen Tab"
+    },
+    "partialDownload": {
+      "title": "Der Rest dieses Buchs ist nicht heruntergeladen"
     }
   },
   "reconnect": {

@@ -4,6 +4,7 @@ import { webOrigin } from '@/lib/base-url';
 import { createBatchLoader } from '@/lib/batch-loader';
 import { READALONG_ALIGN } from '@/lib/bridge-jobs';
 import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
+import { isDeviceOnline } from '@/lib/device-online';
 import { cleanAddresses } from '@/lib/pairing';
 import { APP_VERSION } from '@/lib/version';
 import { type CheckedReadalongMap, parseReadalongMap } from '@/reader/readalong-map';
@@ -388,7 +389,8 @@ export class TimeoutError extends Error {
  * rejected with: the app's global fetch is Expo's (`expo/fetch`), which rejects with a
  * plain `Error` (`FetchError`, "fetch failed: ..."), so without this the reachability
  * layer (`isUnreachableError`) never saw an offline phone as one (W2 F1). The original
- * rejection is its `cause`.
+ * rejection is its `cause`. In the app a request made while the system reports no network
+ * throws one at once, unsent (`send`).
  */
 export class NetworkError extends TypeError {
   constructor(cause: unknown) {
@@ -653,6 +655,14 @@ export class ApiClient {
     try {
       let res: Response;
       try {
+        // The app with no network (`isDeviceOnline`: only when the system says so, unknown
+        // counts as online, so a server on the same Wi-Fi is always asked): nothing can
+        // answer, so the request fails at once with the `NetworkError` of no answer. Sent,
+        // it can wait out the whole timeout first (iOS in airplane mode): a bookmark's
+        // "couldn't add" came 20-30 s after the tap, a downloaded book's resume lookup held
+        // its start. The web needs none of this (the browser fails a fetch at once offline).
+        if (Platform.OS !== 'web' && !isDeviceOnline())
+          throw new Error('The device has no network');
         res = await fetch(url, {
           method,
           headers,

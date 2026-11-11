@@ -517,10 +517,17 @@ final class AudioEngine: NSObject {
 
   /// CarPlay's bookmark button: `onRemoteBookmark` with the file and position right now (a
   /// pending start seek's target while one is waiting), and the loaded book when `load` named
-  /// it, so JS adds the bookmark to the book the listener heard.
+  /// it, so JS adds the bookmark to the book the listener heard. The file goes by its path too
+  /// (`relPath`, from the track id `<libraryId>:<relPath>`, fe#185), so JS finds it in whatever
+  /// order the book's files are in when it reads the press.
   func emitRemoteBookmark() {
     guard !tracks.isEmpty else { return }
     var body: [String: Any] = ["trackIndex": currentIndex, "position": currentPosition()]
+    if let id = tracks[safe: currentIndex]?.id, let colon = id.firstIndex(of: ":"),
+      colon != id.startIndex, id.index(after: colon) != id.endIndex
+    {
+      body["relPath"] = String(id[id.index(after: colon)...])
+    }
     if let b = loadedBook {
       body["connectionId"] = b.connectionId
       body["libraryId"] = b.libraryId

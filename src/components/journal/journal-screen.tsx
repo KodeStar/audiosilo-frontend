@@ -14,12 +14,13 @@ import { useDeviceOnline } from '@/lib/device-online';
 import { groupSessions, type ListeningSpan, toSpan } from '@/lib/listening-sessions';
 import { useRouteParams } from '@/lib/route-params';
 import { useToday } from '@/lib/use-day-label';
+import { useWaitingListens } from '@/playback/use-listening-sync';
 import type { JournalTab } from '@/lib/paths';
 import { cn } from '@/lib/utils';
 
 import { AnnotationsTab } from './annotations-tab';
 import { DiaryDayCard, DiarySkeleton } from './diary';
-import { groupByDay, matchDrifts } from './diary-model';
+import { groupByDay, matchDrifts, waitingSessions } from './diary-model';
 import { ExportActions } from './export-actions';
 import { parseJournalTab } from './journal-model';
 import { mergeNewestFirst, overallStatus, unreadSources } from './merge-model';
@@ -171,8 +172,22 @@ function DiaryTab({
     () => merged.rows.map(toSpan).filter((s): s is ListeningSpan => s !== null),
     [merged.rows],
   );
+  // This device's listening still waiting to reach its server (fe#208), on the servers
+  // listed here, as sessions of their own marked "Waiting to sync" until the server's
+  // rows replace them.
+  const waiting = useWaitingListens();
+  const shown = useMemo(() => new Set(history.map((s) => s.connectionId)), [history]);
   // One row per listening session (the server records a span per pause).
-  const sessions = useMemo(() => groupSessions(spans), [spans]);
+  const recorded = useMemo(() => groupSessions(spans), [spans]);
+  const sessions = useMemo(() => {
+    const unsent = waitingSessions(
+      waiting.filter((w) => shown.has(w.connectionId)),
+      spans,
+    );
+    return unsent.length > 0
+      ? [...recorded, ...unsent].sort((a, b) => b.start - a.start)
+      : recorded;
+  }, [recorded, spans, waiting, shown]);
   const days = useMemo(() => groupByDay(sessions), [sessions]);
   // The sleep timer's bookmarks, from the bookmarks loaded so far, each on the span it
   // ended (`matchDrifts`).

@@ -57,8 +57,10 @@ import {
 import { isKeptOffline } from '@/downloads/kept-offline';
 import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
+  bookPlace,
   getDeviceId,
-  mirroredProgress,
+  type PlacedProgress,
+  positionOn,
   progressToSave,
   saveProgress,
   writeMirror,
@@ -1320,9 +1322,12 @@ export function useNextBook(
  * Optional client (like `useBook`/`useChapters`) so a stale connection yields a
  * disabled query rather than a render throw.
  *
- * Offline (or against an unreachable server) it falls back to the durable local
- * mirror - the same record the resume path trusts - so a downloaded book still
- * knows where the listener is instead of reading as "never started". An HTTP
+ * It is the place Resume plays from (`bookPlace`, fe#211): the server's row or this
+ * device's own newer one, by the resume lookup's rule, its `position` the file place a
+ * resume plays read on the chapters the cache holds (`positionOn`, fe#188; the cached
+ * `qk.progress` entry keeps the record's own seconds). Offline (or against an unreachable
+ * server) it is this device's own places alone - the same records the resume path trusts - so a downloaded
+ * book still knows where the listener is instead of reading as "never started". An HTTP
  * error is NOT swallowed: it propagates and the query fails (see
  * `fetchBookProgress` for why that matters to the reconnect banner).
  *
@@ -1337,19 +1342,34 @@ export function useBookProgress(
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
+  // The book's chapters as the cache holds them (never asked from here: `enabled: false`),
+  // so `position` is the file place on their timeline (`positionOn`): every caller reads
+  // the same place after a server reorder with an old-order download.
+  const files = useChapters(libraryId, path, connectionId, { enabled: false }).data?.files;
+  const select = useCallback(
+    (place: PlacedProgress | null) => {
+      if (!place?.file) return place;
+      const position = positionOn(place, files);
+      return position === place.position ? place : { ...place, position };
+    },
+    [files],
+  );
   return useQuery({
     queryKey: qk.progress(cid, libraryId, path),
     queryFn: ({ signal }) => fetchBookProgress(api!, cid, libraryId, path, signal),
     enabled: enabled && !!api && path.length > 0,
     networkMode: 'always',
+    select,
   });
 }
 
 /**
  * The `useBookProgress` fetch, extracted so the fallback policy is unit-testable.
  *
- * Ask the server; on failure fall back to the durable local mirror **only when the
- * server never answered**. The distinction is load-bearing:
+ * Ask the server, and answer with the place Resume plays from (`bookPlace`: the server's
+ * row or this device's own newer one); on failure fall back to this device's own places
+ * (the mirror and the offline queue) **only when the server never answered**. The
+ * distinction is load-bearing:
  *  - An `ApiError` means the server DID answer with an HTTP error. Rethrow it so the
  *    query fails. A 401 in particular has already flagged the connection for reconnect
  *    via the client's `onAuthError`; resolving it as a *success* on `qk.progress(...)`
@@ -1357,9 +1377,9 @@ export function useBookProgress(
  *    and wipe the banner the same request just raised. A 403 (scope/share denial) is
  *    likewise a real answer, not an excuse to serve stale local state.
  *  - Anything else (offline, DNS, `TimeoutError`) means we never reached the server:
- *    have its server checked (`noteFailure`, frontend#131) and serve the mirror so a
- *    downloaded book still knows where the listener is. Never marked down straight
- *    away: the mirror's success would have the down server checked, found up,
+ *    have its server checked (`noteFailure`, frontend#131) and serve this device's own
+ *    place so a downloaded book still knows where the listener is. Never marked down
+ *    straight away: that read's success would have the down server checked, found up,
  *    and every query of the connection read again, this one included, round and round
  *    for a read that is only slow or broken.
  *
@@ -1377,7 +1397,7 @@ export async function fetchBookProgress(
   libraryId: number,
   path: string,
   signal: AbortSignal,
-): Promise<Progress | null> {
+): Promise<PlacedProgress | null> {
   let progress: Progress | null;
   try {
     progress = await api.getProgress(libraryId, path, signal);
@@ -1387,12 +1407,13 @@ export async function fetchBookProgress(
     // The server answered (any HTTP status) - propagate, never mask it with the mirror.
     if (e instanceof ApiError) throw e;
     noteFailure(connectionId, e);
-    return await mirroredProgress(connectionId, libraryId, path);
+    return await bookPlace(undefined, connectionId, libraryId, path);
   }
   if (progress && isKeptOffline(connectionId, libraryId, path)) {
     await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
   }
-  return progress;
+  // A local read that fails leaves the server's answer: it is still where the server is.
+  return await bookPlace(progress, connectionId, libraryId, path).catch(() => progress);
 }
 
 /** Where the ebook reader opens a book (capability `ebooks`, Bridge Phase 3b): the newest

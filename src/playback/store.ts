@@ -5,7 +5,7 @@ import type { ApiClient } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { invalidateFinishedProgress, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import { isReachable, noteFailure } from '@/api/reachability';
+import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type {
   Book,
   Chapter,
@@ -18,11 +18,14 @@ import {
   adoptStartedChapters,
   downloadedEntryOf,
   downloadKey,
+  noteDownloadEnd,
   useDownloads,
 } from '@/downloads/store';
+import type { DownloadManifest } from '@/downloads/types';
 import { isAway, onAppStateEdge } from '@/lib/app-activity';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
+import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
@@ -74,6 +77,7 @@ import {
   getDeviceId,
   guardSettled,
   loadInitialProgress,
+  type PlacedProgress,
   type ProgressSave,
   readMirror,
   saveProgress,
@@ -506,14 +510,22 @@ async function persist(opts?: { forceFinished?: boolean; local?: boolean }) {
     libraryId: nowPlaying.libraryId,
     path: nowPlaying.path,
     position,
-    duration: total,
-    finished: forceFinished || (total > 0 && position >= total - FINISHED_TOLERANCE),
+    // A partial queue's is the book's length on its server when known (`partialQueues`), so a
+    // percent read from the save is of the book, not of the downloaded part.
+    duration: partialQueues.get(nowPlaying.queue) || total,
+    // The end of a download that lacks the rest of its book is not the book's (D3, fe#185).
+    finished:
+      forceFinished ||
+      (total > 0 && position >= total - FINISHED_TOLERANCE && !endsPartial(nowPlaying)),
     playback_speed: rate,
     device_id: deviceId || cachedDeviceId(),
     updated_at: new Date().toISOString(),
     // The file place (fe#188), the mirror's only (a PUT never sends it), on both paths: an
     // older capture's file place never outlives the place it was taken at.
     ...(forceFinished || !end?.file ? {} : { file: end.file, file_pos: end.filePos }),
+    // Its queue ends before the book (D3): a span recovered past this save never reads its
+    // end as the book's (`mirrorSpanEnd`).
+    ...(!forceFinished && endsPartial(nowPlaying) ? { partial: true as const } : {}),
     ...(guarded ? { guard: true, guard_session: guard.id } : {}),
   };
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
@@ -601,18 +613,22 @@ async function maybeAutoDownloadCurrent(
 }
 
 /** What this device knows of `path`'s progress without the network (an explicit start
- * must not wait on it): the server's progress the app has cached (the book page reads it),
- * and the newer of that and the local mirror of the last save. */
+ * must not wait on it): the place the app has cached (the book page reads it: the server's
+ * row, or this device's own newer record with that row beside it, `bookPlace`), the
+ * server's row of it (`row`; a cache that holds only this device's record, read offline,
+ * hands that record, whose version is 0), and the newer of the cached place and the local
+ * mirror of the last save. */
 async function knownProgress(
   connectionId: string,
   libraryId: number,
   path: string,
 ): Promise<{
-  cached: Progress | null;
+  row: Progress | null;
   newest: Pick<Progress, 'playback_speed' | 'finished'> | null;
 }> {
   const cached =
-    queryClient.getQueryData<Progress | null>(qk.progress(connectionId, libraryId, path)) ?? null;
+    queryClient.getQueryData<PlacedProgress | null>(qk.progress(connectionId, libraryId, path)) ??
+    null;
   const mirror = await readMirror(connectionId, libraryId, path).catch(() => null);
   const newest =
     cached && mirror
@@ -620,7 +636,7 @@ async function knownProgress(
         ? mirror
         : cached
       : (cached ?? mirror);
-  return { cached, newest };
+  return { row: cached && (cached.server ?? cached), newest };
 }
 
 /**
@@ -841,7 +857,7 @@ function spanAt(
     from: at,
     to: at,
     // The audio's length, not the timeline's: the server checks it against the indexed book.
-    duration: np.queue.audio,
+    duration: bookAudioOf(np.queue),
     speed: usePlayer.getState().rate,
     startedAt: now,
     endedAt: now,
@@ -1139,12 +1155,19 @@ async function unrecordFinish(ref: UndoRef): Promise<void> {
     // before the finish (older) would be refused. That record's time, not the finish's: once
     // the server answered, a downloaded book's record is the server's row for the finish,
     // stamped by its clock after the request's delay, and a record stamped with the finish's
-    // own time is refused too. Its Sync v2 fields stay the mirror's own (`writeMirror` keeps
-    // them): an ack since is newer.
-    const back: ProgressSave =
-      prior && !prior.finished
-        ? { ...prior, ack_version: undefined, answered: undefined, updated_at: now.updated_at }
-        : { ...now, finished: false, position: ref.position };
+    // own time is refused too. One millisecond later (fe#258): a read of the finished row
+    // still on its way (the finish's own refresh) lands after this with that same stamp, and
+    // a tie goes to the later write, so the mirror was finished again, and with the device's
+    // clock ahead of the server's the unfinished row read next was older and lost to it. Its
+    // Sync v2 fields stay the mirror's own (`writeMirror` keeps them): an ack since is newer.
+    const stamp = Date.parse(now.updated_at);
+    const at = Number.isFinite(stamp) ? new Date(stamp + 1).toISOString() : now.updated_at;
+    const back: ProgressSave = {
+      ...(prior && !prior.finished
+        ? { ...prior, ack_version: undefined, answered: undefined }
+        : { ...now, finished: false, position: ref.position }),
+      updated_at: at,
+    };
     await writeMirror(back).catch(() => undefined);
   }
   invalidateFinishedProgress(queryClient, ref.connectionId, ref.libraryId, ref.path);
@@ -1308,7 +1331,7 @@ function giveWayTo(claim: PlayingClaim) {
         path: np.path,
         position: at.pos,
         ...(at.file !== undefined ? { file: at.file, filePos: at.filePos } : {}),
-        finished: total > 0 && at.pos >= total - FINISHED_TOLERANCE,
+        finished: total > 0 && at.pos >= total - FINISHED_TOLERANCE && !endsPartial(np),
       });
     }
   }
@@ -1320,27 +1343,90 @@ function giveWayTo(claim: PlayingClaim) {
   void service
     ?.pause()
     .catch((e: unknown) => console.warn('[player] could not pause for another tab', e));
-  if (gaveWayListener) gaveWayListener();
-  else gaveWayUntold = true;
+  gaveWayNotice.tell();
 }
 
-let gaveWayListener: (() => void) | null = null;
-/** This tab gave way with nobody to tell yet (the root's services start after the first
- * paint on the web): the listener is told as it registers. */
-let gaveWayUntold = false;
-
-/** Be told each time this tab gives way to another tab's play (the "Playing in another
- * tab" notice). One listener; returns the unsubscribe. */
-export function onGaveWayToTab(listener: () => void): () => void {
-  gaveWayListener = listener;
-  if (gaveWayUntold) {
-    gaveWayUntold = false;
-    listener();
-  }
-  return () => {
-    if (gaveWayListener === listener) gaveWayListener = null;
+/**
+ * One listener for something the store has to say, told of it as it registers when it
+ * happened with nobody to tell yet (the root's services, which show the notices, start
+ * after the store can: after the first paint on the web, with the root layout on a car
+ * start with no activity).
+ */
+function lateListener() {
+  let listener: (() => void) | null = null;
+  let untold = false;
+  return {
+    tell() {
+      if (listener) listener();
+      else untold = true;
+    },
+    /** Register the listener (one at a time); returns the unsubscribe. */
+    on(next: () => void): () => void {
+      listener = next;
+      if (untold) {
+        untold = false;
+        next();
+      }
+      return () => {
+        if (listener === next) listener = null;
+      };
+    },
   };
 }
+
+/** This tab gave way to another tab's play. */
+const gaveWayNotice = lateListener();
+
+/** Queues built from a download that ends before its book does, without the rest (an
+ * adoption offline, `adoptLoadedBook`; a `playBook` from the download's own copy with no
+ * server to stream from): their end is the downloaded part's, not the book's (D3, fe#185).
+ * By queue, so any other start of the book (a new queue) is a whole one unless it adds
+ * itself. Each with the book's length on its server (`DownloadManifest.bookDuration`, 0 when
+ * unknown): the queue's own audio is only the downloaded part's. */
+const partialQueues = new WeakMap<BookQueue, number>();
+
+/** Whether `np`'s queue ends where its download does, short of the book's end. */
+const endsPartial = (np: NowPlaying | null): boolean => !!np && partialQueues.has(np.queue);
+
+/** The book's audio length a span of `queue` reports (Sync v2's `duration`): the queue's own,
+ * but for a partial queue the book's on its server, 0 when unknown (the server then checks
+ * nothing). The downloaded part's length is more than 10 s off the indexed book's whenever a
+ * whole file is missing, and every such listen was refused `duration_mismatch`. */
+const bookAudioOf = (queue: BookQueue): number => partialQueues.get(queue) ?? queue.audio;
+
+/** The book's length on its server for a partial queue over `manifest`: what the download
+ * kept from the answer that said where the book ends, else a server chapters answer the start
+ * was given that names that end (a cold start's cached one), else 0 (unknown). */
+function serverLengthOf(
+  manifest: DownloadManifest | undefined,
+  chapters?: ChaptersResponse,
+): number {
+  const kept = manifest?.bookDuration ?? 0;
+  if (kept > 0) return kept;
+  const end = manifest?.endsBefore;
+  if (!end || !chapters || !(chapters.duration > 0)) return 0;
+  const names = bookFileSpecs(manifest.book, chapters).some((f) => f.path === end);
+  return names ? chapters.duration : 0;
+}
+
+/** The engine last reported the end of such a queue (the store reads it as `paused`): a
+ * play there has nothing to play. False again with the engine's next other state (a move
+ * back, another book). */
+let atPartialEnd = false;
+
+/** "The rest of this book isn't downloaded": the player stopped at the end of a download
+ * that lacks the rest of its book. */
+const partialEndNotice = lateListener();
+const tellPartialEnd = partialEndNotice.tell;
+
+/** Be told each time the player stops at the end of a download that lacks the rest of its
+ * book (D3, fe#185), and of a stop nobody was told of yet. One listener; returns the
+ * unsubscribe. */
+export const onPartialDownloadEnd = partialEndNotice.on;
+
+/** Be told each time this tab gives way to another tab's play (the "Playing in another
+ * tab" notice), and of one nobody was told of yet. One listener; returns the unsubscribe. */
+export const onGaveWayToTab = gaveWayNotice.on;
 
 /**
  * Another tab of the web player began playing on a connection while this tab, with a book
@@ -1901,7 +1987,12 @@ async function createService(): Promise<PlaybackService> {
     // `playing` (startingPlayback already false), so it stays `paused`. Outside a fresh
     // start, a `ready` while intending to play is also a spinner.
     let state = raw.state;
-    if (startingPlayback && state !== 'playing' && state !== 'error') state = 'loading';
+    // The end of a download that lacks the rest of its book (an adoption offline, D3, fe#185)
+    // is a pause there with a notice, never the book's end: no credits, no finish.
+    const partialEnd = state === 'ended' && endsPartial(usePlayer.getState().nowPlaying);
+    atPartialEnd = partialEnd;
+    if (partialEnd) state = 'paused';
+    else if (startingPlayback && state !== 'playing' && state !== 'error') state = 'loading';
     else if (state === 'ready' && wantsPlayback) state = 'loading';
     // When we're NOT intending to play (no attempt in flight), an engine `loading`
     // is not "connecting" - it's a stalled/failed item we have no watchdog for
@@ -1926,6 +2017,18 @@ async function createService(): Promise<PlaybackService> {
       return;
     }
     usePlayer.setState({ snapshot });
+    // Reached online (the network came back while it played): it plays on, streaming the
+    // rest, when its server answers; else the listener is told.
+    if (partialEnd && prev.state !== 'paused') {
+      const cid = usePlayer.getState().nowPlaying?.connectionId ?? '';
+      if (isDeviceOnline() && isReachable(cid) && resolveClient(cid)) {
+        void playOnPastPart(false).then((on) => {
+          if (!on) tellPartialEnd();
+        });
+      } else {
+        tellPartialEnd();
+      }
+    }
     // Listening spans use the STRICT reading (see `isPlayingState`): a span must cover
     // audio the listener actually heard, so a buffer is not the start of one.
     if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) {
@@ -2117,9 +2220,19 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         (await resolveWebTranscode(connectionId, api, book, chapterData));
       // A downloaded book given no chapters (its chapters read failed) plays its download's
       // files and chapters, the order its manifest holds, so the engine never holds an order
-      // the manifest does not (`adoptStartedChapters`).
-      const own = dl && !chapterData ? dl.manifest : undefined;
-      const queueChapters = chapterData ?? own?.chapters ?? undefined;
+      // the manifest does not (`adoptStartedChapters`). So does one that ends before its book
+      // (`endsBefore`, D3, fe#185) started with the device offline, whatever chapters it was
+      // given (a cold start's cached server chapters name the files it lacks): a queue
+      // streaming those would stall into a stream error at the downloaded part's end instead
+      // of pausing there. So does one with no server to stream from: no client (its token
+      // gone this launch) or one marked unreachable (a LAN server from the car's mobile
+      // data). Online it streams on.
+      const offlineShort =
+        !!local &&
+        !!dl?.manifest.endsBefore &&
+        (!api || !isDeviceOnline() || !isReachable(connectionId));
+      const own = dl && (!chapterData || offlineShort) ? dl.manifest : undefined;
+      const queueChapters = own ? (own.chapters ?? undefined) : chapterData;
       const queue = buildBookQueue(
         api,
         libraryId,
@@ -2129,6 +2242,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         useSettings.getState().virtualChapterInterval,
         transcode,
       );
+      // A download that ends before its book does (`endsBefore`, D3, fe#185), played without
+      // the rest (offline, from the download's own copy): its end is a pause, as an adopted
+      // one's (`partialQueues`). A queue streaming the rest from the server holds that file.
+      const endsBefore = local ? dl?.manifest.endsBefore : undefined;
+      if (endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0) {
+        partialQueues.set(queue, serverLengthOf(dl?.manifest, chapterData));
+      }
       const nowPlaying = nowPlayingOf(ref, book, queue, api, local);
       const svc = await ensureService();
 
@@ -2215,13 +2335,15 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         const saved = known.newest?.playback_speed ?? 0;
         if (!askedSpeed && saved > 0) speed = clampRate(saved);
         if (known.newest?.finished) unfinish = true;
-        if (known.cached && known.cached.version > 0 && usesListeningSync(connectionId)) {
+        // The server's own row, also when the page showed this device's newer place (a
+        // record of this device's reads as version 0, and would acknowledge nothing).
+        if (known.row && known.row.version > 0 && usesListeningSync(connectionId)) {
           await ackVersion(
             connectionId,
             libraryId,
             book.rel_path,
-            known.cached.version,
-            known.cached,
+            known.row.version,
+            known.row,
           ).catch(() => undefined);
         }
       }
@@ -2299,8 +2421,17 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const st = get().snapshot.state;
     if (st === 'playing' || st === 'loading') {
       clearPlaybackIntent();
+      if (playingOn) playOnStopped = true;
       await svc.pause();
     } else {
+      // At the end of a partial download (D3, fe#185) nothing plays: the engine, ended,
+      // reports no `playing`, and the stall watchdog would call the attempt an error. The
+      // listener is told again instead.
+      // Online again since the queue was built offline, it plays on, streaming the rest.
+      if (atPartialEnd && endsPartial(get().nowPlaying)) {
+        if (!(await playOnPastPart(true))) tellPartialEnd();
+        return;
+      }
       beginPlaybackAttempt();
       // Another tab played on meanwhile: from where it left the book, when it is this one.
       const behind = otherTabPlayed;
@@ -2316,6 +2447,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
 
   pause: async () => {
     clearPlaybackIntent();
+    if (playingOn) playOnStopped = true;
     const svc = await ensureService();
     // Also pause while still `loading`: an in-flight start would otherwise resolve
     // to `playing` and silently defeat the pause (e.g. the sleep timer firing while
@@ -2849,6 +2981,10 @@ async function adoptLoadedBook(
   const now = usePlayer.getState();
   if (now.nowPlaying !== before || now.loadingBook !== null || startsInFlight > 0) return false;
 
+  /** The track ids of the files `chapters` hold. */
+  const idsIn = (chapters: ChaptersResponse | undefined) =>
+    new Set(specIds(bookFileSpecs(book, chapters), libraryId));
+  const servedIds = served ? idsIn(served) : null;
   if (served && inEngineOrder(served)) {
     // The engine plays the server's order: the queue is built from those chapters, as the lost
     // start built it (the download's files, streaming any it lacks), and the download takes
@@ -2856,6 +2992,14 @@ async function adoptLoadedBook(
     adoptStartedChapters(ref, served);
     chapterData = served;
     otherOrder = false;
+  } else if (served && servedIds && engineIds) {
+    // Online, the engine played files the download lacks, in an order that is no longer the
+    // server's: the queue streams the server's files the download lacks, as a start online
+    // builds it, and the engine is reloaded into that order, so the book plays on past the
+    // downloaded part (D3, fe#185). The download keeps its own chapters (it doesn't hold
+    // those files).
+    const own = idsIn(chapterData);
+    if (engineIds.some((id) => servedIds.has(id) && !own.has(id))) chapterData = served;
   }
   const queue = buildBookQueue(
     api,
@@ -2873,6 +3017,27 @@ async function adoptLoadedBook(
     engineIds && otherOrder && !svc.isCasting?.()
       ? landingOf(queue, engineIds, loaded, fileDurations(libraryId, book, chapterData, served))
       : null;
+  // A download that lacks the book's last file as the engine played it, offline or with no
+  // answer from the server: its end is the downloaded part's, not the book's (D3, fe#185).
+  // One that lacks only an earlier file (an intro) still ends where the book does. With an
+  // answer the queue holds every file the server has, and one it lacks is gone from the
+  // book. The download keeps the fact for a later start of it (`noteDownloadEnd`), and an
+  // engine loaded from the download's own copy (a cold offline Resume, then a JS restart)
+  // ends early by the fact a server answer kept (`endsBefore`), as `playBook` reads it.
+  let partial = false;
+  if (local && !served) {
+    if (loaded.files?.length) noteDownloadEnd(ref, loaded.files);
+    const last = engineIds?.[engineIds.length - 1];
+    const endsBefore = downloadedEntryOf(ref)?.manifest.endsBefore;
+    partial =
+      (last !== undefined && trackIndexById(queue, last) < 0) ||
+      (!!endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0);
+    if (partial) partialQueues.set(queue, serverLengthOf(downloadedEntryOf(ref)?.manifest));
+  }
+  // The engine's place is past the downloaded part: it stays paused at that part's end, and
+  // the listener is told why (a play there would end at once).
+  const pastPart = partial && !!reload?.beyond;
+  const playing = loaded.playing && !pastPart;
 
   const { index: trackIndex, positionInTrack: position } = reload ?? {
     index: Math.max(0, Math.min(loaded.trackIndex, queue.tracks.length - 1)),
@@ -2880,7 +3045,7 @@ async function adoptLoadedBook(
   };
   const rate = clampRate(loaded.rate > 0 ? loaded.rate : now.rate);
   const snapshot: PlaybackSnapshot = {
-    state: loaded.playing ? (reload ? 'loading' : 'playing') : 'paused',
+    state: playing ? (reload ? 'loading' : 'playing') : 'paused',
     trackIndex,
     position,
     duration: queue.tracks[trackIndex]?.duration ?? 0,
@@ -2896,7 +3061,7 @@ async function adoptLoadedBook(
   // with, and another device may have played on since. So the adopted book counts as picked
   // up again: a paused one on its next play (how long it has been paused is unknown), a
   // playing one at once, below (a reloaded one on its next `playing`).
-  pausedAt = loaded.playing && !reload ? null : 0;
+  pausedAt = playing && !reload ? null : 0;
   svc.adoptPlace?.(snapshot);
   const nowPlaying = nowPlayingOf(loaded, book, queue, api, local);
   // Nor checked for the replay guard (fe#198): offline, a place the car started from an
@@ -2912,8 +3077,9 @@ async function adoptLoadedBook(
     snapshot,
   });
   restoreOutputGain(svc);
+  if (pastPart) tellPartialEnd();
   if (reload) {
-    await reloadAdopted(svc, nowPlaying, reload, rate, loaded.playing);
+    await reloadAdopted(svc, nowPlaying, reload, rate, playing);
     return true;
   }
   // And its queue: a Cast session started later hands this book to the receiver (never
@@ -2923,7 +3089,7 @@ async function adoptLoadedBook(
   // A speed outside the app's range (set by another controller while no JS listened) goes
   // back to the engine clamped, as `onRateChange` does: the store says what plays.
   if (rate !== loaded.rate) void svc.setRate(rate);
-  if (loaded.playing) {
+  if (playing) {
     wantsPlayback = true;
     // Before the first save: the place reconcile holds the saves while it asks the server,
     // so this place can't overwrite another device's newer one (last-write-wins).
@@ -2957,8 +3123,10 @@ const SERVED_ORDER_WAIT_MS = 3_000;
 async function serverChaptersOf(
   ref: BookRef,
   api: ApiClient | null,
+  /** Ask even a server marked unreachable (a mark left from before the network came back). */
+  evenMarkedDown = false,
 ): Promise<ChaptersResponse | null> {
-  if (!api || !isReachable(ref.connectionId)) return null;
+  if (!api || (!evenMarkedDown && !isReachable(ref.connectionId))) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -2972,6 +3140,78 @@ async function serverChaptersOf(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The loaded book at the end of its downloaded part (a partial queue, D3, fe#185) plays on
+ * from there, streaming the rest, when its server answers now: the device back online in the
+ * same session (the queue was built offline, from the download's own copy). The book starts
+ * again (`playBook`) with the server's chapters, at the place in them where the downloaded
+ * part ends. False, with the book left as it is, when there is no network, no server answer
+ * (within `SERVED_ORDER_WAIT_MS`), or the server's book ends where the download does now:
+ * the caller tells the listener why nothing plays. `evenMarkedDown`: a press asks a server
+ * marked unreachable too (the mark can predate the network coming back); the engine's own
+ * end does not.
+ */
+async function playOnPastPart(evenMarkedDown: boolean): Promise<boolean> {
+  // One at a time: the engine re-reports its end while one asks (a press joins it). The
+  // first caller alone tells the listener when it can't, so the notice comes once.
+  if (playingOn) return playingOn.then(() => true);
+  playOnStopped = false;
+  playingOn = playOnNow(evenMarkedDown).finally(() => {
+    playingOn = null;
+  });
+  return playingOn;
+}
+
+/** The `playOnPastPart` on its way, if any. */
+let playingOn: Promise<boolean> | null = null;
+/** The listener paused while that asked its server (a press on its spinner): it stands. */
+let playOnStopped = false;
+
+async function playOnNow(evenMarkedDown: boolean): Promise<boolean> {
+  const np = usePlayer.getState().nowPlaying;
+  if (!np || !endsPartial(np) || !isDeviceOnline()) return false;
+  const api = resolveClient(np.connectionId);
+  const manifest = downloadedEntryOf(np)?.manifest;
+  if (!api || !manifest) return false;
+  const ref = bookRefOf(np);
+  const before = usePlayer.getState().snapshot;
+  usePlayer.setState({ snapshot: { ...before, state: 'loading' } });
+  const served = await serverChaptersOf(ref, api, evenMarkedDown);
+  // Another book (or another start of this one) since: it stands.
+  if (usePlayer.getState().nowPlaying !== np) return true;
+  /** Back to the state before the spinner, unless the engine has reported since. */
+  const settle = () => {
+    const now = usePlayer.getState().snapshot;
+    if (now.state === 'loading') usePlayer.setState({ snapshot: { ...now, state: before.state } });
+  };
+  // Moved off the end meanwhile (a seek back), or paused on the spinner: that stands.
+  if (!atPartialEnd || playOnStopped) {
+    settle();
+    return true;
+  }
+  const book =
+    queryClient.getQueryData<Book>(qk.item(np.connectionId, np.libraryId, np.path)) ??
+    manifest.book;
+  const specs = served ? bookFileSpecs(book, served) : [];
+  const ids = specs.map((f) => trackIdOf(np.libraryId, f.path));
+  const last = np.queue.tracks[np.queue.tracks.length - 1]?.id;
+  const at = ids.indexOf(last ?? '');
+  // The server's book goes on past the queue's last file: start where that file ends.
+  if (!served || at < 0 || at === ids.length - 1) {
+    settle();
+    return false;
+  }
+  // It answered: reachable, so the start streams the rest (`playBook`'s `offlineShort`).
+  noteSuccess(np.connectionId);
+  // By the file, not a book position: a file the server has not measured yet (duration 0)
+  // shares its offset with the next, and a position there would start past it.
+  await usePlayer
+    .getState()
+    .playBook(np.connectionId, np.libraryId, book, served, undefined, at + 1)
+    .catch((err: unknown) => console.warn('[player] could not play on past the download', err));
+  return true;
 }
 
 /** Each file's duration by track id: the queue's own files', and the server's for a file only
@@ -2991,33 +3231,48 @@ function fileDurations(
   return durations;
 }
 
+/** Where an adopted engine's place lands in its queue (`landingOf`); `beyond` when the place
+ * was past the queue's end, so it lands short of it. */
+type Landing = { index: number; positionInTrack: number; beyond: boolean };
+
 /** Where the engine's place lands in `queue`: the same file (by track id) at the same place
  * in it, else (a file the queue lacks) the same whole-book seconds, read on the engine's own
  * timeline (`durations`), short of the queue's end (a place there would finish the book). When
  * an earlier file's length is not known (a streamed book whose files were renamed since it
  * loaded, a download whose server can't be asked), the seconds can't be read: the engine's
- * file index, at the same place in the file. */
-function landingOf(
-  queue: BookQueue,
+ * file index, at the same place in the file, within that file's length (fe#185), and short of
+ * the queue's end too. */
+export function landingOf(
+  queue: Pick<BookQueue, 'tracks' | 'offsets' | 'total'>,
   engineIds: string[],
   loaded: Pick<LoadedBook, 'trackIndex' | 'position'>,
   durations: Map<string, number>,
-): { index: number; positionInTrack: number } {
+): Landing {
   const inFile = Math.max(0, loaded.position);
   const same = trackIndexById(queue, engineIds[loaded.trackIndex]);
-  if (same >= 0) return { index: same, positionInTrack: inFile };
+  if (same >= 0) return { index: same, positionInTrack: inFile, beyond: false };
+  const lastPlace = Math.max(0, queue.total - FINISHED_TOLERANCE - 1);
+  const shortOfEnd = (seconds: number): Landing =>
+    queue.total > 0 && seconds > lastPlace
+      ? { ...locate(queue.offsets, lastPlace), beyond: true }
+      : { ...locate(queue.offsets, seconds), beyond: false };
   let seconds = inFile;
   const before = Math.max(0, Math.min(loaded.trackIndex, engineIds.length));
   for (let i = 0; i < before; i++) {
     const duration = durations.get(engineIds[i]);
     if (!(duration && duration > 0)) {
       const index = Math.max(0, Math.min(loaded.trackIndex, queue.tracks.length - 1));
-      return { index, positionInTrack: inFile };
+      // That index can be another file, shorter than the place in the engine's.
+      const length = queue.tracks[index]?.duration ?? 0;
+      const positionInTrack = length > 0 ? Math.min(inFile, length) : inFile;
+      const known = queue.offsets[index] !== undefined && queue.total > 0;
+      return known
+        ? shortOfEnd(toBookPosition(queue.offsets, index, positionInTrack))
+        : { index, positionInTrack, beyond: false };
     }
     seconds += duration;
   }
-  const lastPlace = Math.max(0, queue.total - FINISHED_TOLERANCE - 1);
-  return locate(queue.offsets, queue.total > 0 ? Math.min(seconds, lastPlace) : seconds);
+  return shortOfEnd(seconds);
 }
 
 /**
@@ -3168,3 +3423,12 @@ export const selectIsTransportLive = (s: PlayerState): boolean =>
 /** The current book has reached its natural end (its files finished). Drives the
  * UI-layer end-of-book flow; nowPlaying stays populated in this state. */
 export const selectIsEnded = (s: PlayerState): boolean => s.snapshot.state === 'ended';
+
+/** The loaded book's queue ends where its download does, short of the book's end (an
+ * adoption offline, D3, fe#185): reaching that end is never the book's end. */
+export const selectEndsPartial = (s: PlayerState): boolean => endsPartial(s.nowPlaying);
+/** The loaded book's length for a percent heard: the queue's, but a partial queue's is the
+ * book's on its server when known (`partialQueues`), as its saves send, so the player's
+ * percent is Home's. */
+export const selectBookLength = (s: PlayerState): number =>
+  s.nowPlaying ? partialQueues.get(s.nowPlaying.queue) || s.nowPlaying.queue.total : 0;

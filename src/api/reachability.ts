@@ -288,7 +288,10 @@ export function deviceNetworkChanged(
   }
   if (state.isConnected !== true) return;
   if (!anyOffline(useReachability.getState().online)) return;
-  recheckDown();
+  // Once every listener has heard this state: this one is registered first (at import), and
+  // the client refuses a request unsent while `isDeviceOnline` still reads the old "no
+  // network" (`ApiClient.send`), so a check sent from here would fail at once.
+  void Promise.resolve().then(recheckDown);
   if (rejoinRetry) clearTimeout(rejoinRetry);
   rejoinRetry = setTimeout(() => {
     rejoinRetry = null;

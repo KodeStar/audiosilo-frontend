@@ -396,15 +396,20 @@ class AudiosiloPlayerService : MediaLibraryService() {
   internal fun onBookmarkPressed() {
     val p = player ?: return
     val (fileIndex, position) = currentFilePosition() ?: return
-    val book = MediaItems.bookOf(p.currentMediaItem)
+    val item = p.currentMediaItem
+    val book = MediaItems.bookOf(item)
+    // The file by its path too (fe#185): JS may reload the book in another file order (an
+    // adoption in the download's order) before it reads the press, and the index alone would
+    // then name another file.
+    val relPath = item?.let { LoadedFiles.pathOf(it.mediaId, MediaItems.entryOf(it)?.clip ?: false) }
     val sink = PlayerBridge.sink
     if (sink != null && sink.observingBookmarks) {
       // With its book: JS may not have adopted the book the engine plays yet (a car start
       // the JS boot is still adopting), and the press belongs to the book the listener heard.
-      sink.remoteBookmark(fileIndex, position, book)
+      sink.remoteBookmark(fileIndex, position, book, relPath)
     } else {
       book ?: return // can't name the book: drop it
-      PendingBookmarks.append(this, book, fileIndex, position)
+      PendingBookmarks.append(this, book, fileIndex, relPath, position)
       needJs()
     }
     bookmarkFilled = true

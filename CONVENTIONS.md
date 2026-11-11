@@ -836,16 +836,20 @@ reader follows the narration in the book with it.
   Pausing leaves Follow narration active and saves no reading place.
   `useBookReadalong(ref, book, readable)`
   (`use-book-readalong.ts`) picks the map's source (`readalongSource`): the download's copy
-  while the server's book names it or names none (a list row, offline), else the server's
-  (`useReadalong`); never a stale map, copy or not; a copy that can't be read falls back to the
-  server's. Only a map with a sentence (`hasSpans`) reaches the reader. A read that fails for
+  while the server's book names it, names none (a list row, offline) or calls its map stale,
+  else the server's (`useReadalong`). A stale server map online keeps the copy shown (fe#202
+  D4: it was made for the download's EPUB, the one read, and is still checked against the
+  EPUB actually opened; with the server's EPUB opened instead, none), while the background
+  refresh takes a map made again; a stale map with no copy shows nothing. A copy that can't be
+  read falls back to the server's. Only a map with a sentence (`hasSpans`) reaches the reader. A read that fails for
   any reason but the server's none (404 `no_readalong`, 409 `readalong_stale`: `readalongNone`)
   is a `failure`, never "no read-along" (`readalongFailure`, fe#192): `retry` (offline, a 5xx, a
   copy that won't read) with a "couldn't load" notice and Try again; `signedOut` (401, and any
   failure while the connection needs signing in again: the sign-in state), `denied` (403),
   `missing` (404 without the code) each with their own words and no Try again; none offers Make
   (a needless multi-hour job). Before the host selects a file, download metadata
-  (`useDownloadedEbookSha`, else `useDownloadedEbookSize`) checks the map's fit (fe#193).
+  (`useDownloadedEbookSha`, else `useDownloadedEbookSize`) checks the map's fit (fe#193) by
+  `fitsDownload`, the download refresh's own rule (a size unknown on either side fits).
   Both hosts then report the actual selected EPUB's source, byte length and SHA-256 through
   `onEbook`; maps remain withheld until `readalongEbookSha256` matches those bytes (F35).
   A download that cannot be read falls back to the server file, whose identity supersedes
@@ -858,6 +862,11 @@ reader follows the narration in the book with it.
   new map. The full-screen reader keeps its already-selected file until it reopens.
   A replacement native WebView selects and identifies the file again before taking a map;
   its document generation cannot reuse the previous document's EPUB digest.
+  A map is read once per book (fe#202): the query last shown is held in the cache by an
+  observer that never fetches (`pinMap`, one map per client; another book's map, or one made
+  again, lets the last go), and its reader form is kept per map object (`readerMapOfOnce`), so
+  the phone's Text chip, mounted with each full-player open, neither reads up to 16 MiB again
+  nor walks it again.
   Withholding a map during identification preserves the reader's last Follow narration choice
   and sends the document nothing (a null map would be answered `readalong: none`).
   A local map read uses `meta: { local: true }`, so a disk success neither clears
@@ -1261,8 +1270,27 @@ place (`selectLivePosition`), so it re-renders only when the chapter changes and
 the boundary itself.
 That progress query rides the SAME gate as the metadata itself
 (the screen passes `bookMetaEnabled`, so there's no wasted GET where nothing is
-gated). Its `queryFn` falls back to the durable local mirror (`mirroredProgress` in
-`progress-sync.ts`) **only for a non-`ApiError` failure** (offline/unreachable, and
+gated). Its answer is the place Resume plays from (`bookPlace` in `progress-sync.ts`,
+fe#211: the resume lookup's pick of the server's row and this device's own records, with the
+file place a resume plays), so the page
+never shows another device's older row while Resume starts at this device's newer place.
+`useBookProgress` itself hands every caller (the book and episode pages, the end credits,
+the companion, the reveal listener, `usePlaceIn`) its `position` as that file place read on
+the chapters the cache holds (`positionOn` in its `select`, never asking for them; the
+cached entry keeps the record's own seconds), so after a server reorder with an old-order
+download they all show the same place; read `.position`, never the record's raw one.
+A record of this device's reads as version 0 and carries none of the row's own fields, so
+when it is the pick the server's row goes with it (`PlacedProgress.server`, read through
+`serverRowOf`): the book's dates, another device's place to offer (`ListeningOfferLine`) and
+the version an explicit start acknowledges (`knownProgress`) come from that row. A sync
+answer's rows reach this cache the same way (`applyAnswer` stores `bookPlace` of each row),
+never the row alone.
+Home's progress list is read the same way (`useWithLocalPlaces` over `withLocalPlaces`,
+read again as the outbox changes), and its Now card reads a loaded book on the player's own
+queue (its chapters and total; never its synthetic slices), so Home's percent is the
+player's after an offline run and after a server reorder. With
+no server answer it reads this device's records alone (the mirror and the offline queue)
+**only for a non-`ApiError` failure** (offline/unreachable, and
 it has the server checked with `noteFailure`, like every request: marking it down at once
 would have the mirror's success find it up and read every query again, round and round,
 frontend#131) - an `ApiError` means
@@ -1412,7 +1440,17 @@ media GETs only.
     clips (no lock-screen chapter scrubber or prev/next chapter for it; the app's chapters
     are unchanged); other files keep theirs. A file of unknown duration counts as long as its
     clips reach (the last, "to end", as long as its longest). The module's manifest sets
-    `android:largeHeap="true"`, so books up to about 41 h keep their clips.
+    `android:largeHeap="true"`, so books up to about 41 h keep their clips. **A queue
+    replaced by `load` is released first** (fe#202): the module `stop`s a prepared player
+    before setting the new items, so the old queue's extractors (two at a chapter boundary)
+    are not alive while the new ones load; the events of that stop (an idle, the old place)
+    are the old queue's and never reach JS (`replacing`). The controller masks that stop as
+    an idle only (no `onIsPlayingChanged(false)` for a queue that was playing, then or once
+    the new one buffers), so `load` stops the 1 s progress loop itself; the new queue's
+    `playing` starts it again. Not covered: two adjacent long
+    files that both play whole (each over half the budget) still hold both tables where they
+    meet, since Media3 prepares the next item before the current ends; only a queue of one
+    file at a time would avoid it.
   - **The JS store + iOS stay file-based**: the Android module translates between its chapter
     clips and the file-relative `(trackIndex, position)` the bridge reports through
     `TimelineMap` (in `MediaItems.kt`: `fileToItem`/`itemToFile`), built from each item's own
@@ -1796,8 +1834,9 @@ media GETs only.
     at each attempt. A 413 or `too_many_events` halves the chunk (one event alone still 413:
     `too_large`); another 400 resends that chunk one event at a time once, and an event still
     refused alone goes to the couldn't-sync list (`invalid`); a network error or 5xx keeps
-    everything. An event older than 89 days goes to the list as `too_old` unsent (the server
-    refuses 90), so none holds its book pending forever. Every status but `rejected` removes
+    everything. An event older than 90 days goes to the list as `too_old` unsent (the server's
+    own bound, `syncRejectAge`, so the list's wording is true of both), so none holds its
+    book pending forever. Every status but `rejected` removes
     the event; `rejected` moves it to the list. Triggers: the launch (after `recoverOpenSpan`),
     a reconnect, the foreground, each closed span; the web `pagehide` sends what waits (up to
     ~60 KB, the closes still queued behind a lock too: a lease's timer never fires on a page
@@ -1858,7 +1897,11 @@ media GETs only.
     removal warnings count every event, a finish too: `unsentListens`), the account's Listening sync
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
-    book History's "Waiting to sync" rows (`usePendingListens`).
+    book History's "Waiting to sync" rows (`usePendingListens`), and the Journal's Diary
+    (fe#208: `useWaitingListens`, every connection's listen events, as sessions of their own
+    marked "Waiting to sync", `waitingSessions` in `diary-model.ts`; only on the servers the
+    Diary lists, never joined into a server's session, and one the server's rows already
+    hold is left out, so a listen whose answer is on the way never shows twice).
 - **One tab plays at a time (web)** (`src/playback/playing-claim.ts`, fe#123; owner decision:
   the newest tab wins). A tab that reaches `playing` says so to the browser's other tabs
   (`claimPlaying` in `store.ts`, on every move into `playing`, before its span opens), and a
@@ -2091,12 +2134,21 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
   order since still puts it in its file; the whole-book seconds stand only for a book that no
   longer holds that file, or that is neither loaded nor downloaded. A kept one of the older
   form (whole-book seconds alone) is still read; only one whose place could not be read yet
-  stays in file coordinates.
+  stays in file coordinates. **A press names its file by path** (fe#185): the Android service's
+  pending list and `onRemoteBookmark` (Android and iOS) carry `relPath` (the file's `rel_path`,
+  from the item's media id) beside the engine's index and the seconds in that file, and JS
+  reads the press in that file (`engineIndexOn`, by `trackIndexById`), so a press made before
+  an adoption reloaded the engine in the download's order still lands in its file. A press an
+  older binary made (no `relPath`) is read by its index, as before; a press kept in engine
+  coordinates keeps its `trackId`.
 - **`src/playback/book-source.ts`** is the one rule for how a book starts: `bookSourceOf` (the
   item, chapters and local files: the download's copy, else through the query cache),
   `resumeStart` (a finished book starts at 0) and `localFromManifest`. `playBook`,
   `startBookInPlace`, `adoptLoaded` and the car's play specs share it, so the car and the
-  phone start a book at the same place.
+  phone start a book at the same place. A downloaded book's start asks its server first
+  (`startSourceOf`, up to `FRESH_SOURCE_WAIT_MS`) only when there is someone to ask: with no
+  network on the device (`isDeviceOnline`) or its server marked unreachable it starts from
+  the download's copy at once (a Play offline spun for the whole wait).
 - **Auto sleep stays off in the car**: `car-connection.ts` (`isCarConnected`, written by the
   car sync and, on iOS, by the car start in `register-car-task.ios.ts`) is read by
   `auto-sleep-controller.ts`, so the nightly timer never pauses a driver. It is its own module
@@ -2147,11 +2199,60 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     else (offline, no answer, the server's in another order or with other files than the
     engine's) reloads the engine in the queue's order at the same file (`trackIndexById`) and
     in-file place, or at the same whole-book seconds for a file the queue lacks (short of the
-    queue's end; the engine's file index when an earlier file's length is unknown), the resume
+    queue's end; the engine's file index when an earlier file's length is unknown, the place
+    kept within that file's length), the resume
     floor at that place and the play state kept (`reloadAdopted`: saves and remote moves held
     by `loadingBook` until the load lands, and its place saves nothing until it plays,
     `quietAdopted`; a paused one is paused again once loaded, and a pause while it loads
-    stands). Not while casting (fe#145). Regression tests: `store-adopt.test.ts`.
+    stands). Not while casting (fe#145). **A partial download** (D3, fe#185): online, when the
+    engine's files include one the download lacks (the playing one or a later one) and the
+    server's chapters hold it in another order, the queue is built from the server's chapters
+    (streaming what the download lacks) and the engine reloaded into it: it streams on, and a
+    file the server no longer has is gone from the book. Offline (or no answer), a queue built
+    from a download that ENDS EARLY (it lacks the book's last file, as the engine's order or
+    the server's last answer names it) is partial (`partialQueues`). A download missing only
+    an earlier file (an intro) is not: it holds the book's end, and reaching that end
+    finishes the book as usual (credits, `finish`, the finished save). The fact is kept on
+    the download (`DownloadManifest.endsBefore`: set by every server chapters answer,
+    `startChapterRefresh`, and by an adoption with no answer, `noteDownloadEnd`), so a cold
+    start of it with no server to stream from (the device offline, `isDeviceOnline`; no
+    client; the server marked unreachable, `isReachable`) is partial too: `playBook` builds
+    it from the download's copy whatever chapters it was given (a cold start's cached server
+    chapters name the files it lacks, and a stream of them would stall into an error at the
+    downloaded part's end); and on each capture of the mirror (`ProgressSave.partial`), so a
+    span recovered after a kill in the last seconds (`mirrorSpanEnd`) never makes the record
+    finished. `mirrorSpanEnd` also asks the download (`downloadEndsBefore`, registered by the
+    downloads store in `kept-offline.ts`), since a server row written into the mirror since
+    the capture carries no `partial`: only a span that ended in the book's last file (it
+    streamed it) reads that end as finished. A partial queue's end is
+    the downloaded part's, so the engine's `ended` there
+    reads as a pause, never a finish (no credits, no `finish`, no `finished` save), and the
+    listener is told "The rest of this book isn't downloaded" (`onPartialDownloadEnd`,
+    `partial-download-notice.ts`, shown once the app is looked at; a stop with no listener
+    yet, a car start before the root layout, is told as it registers); a place past that end
+    lands short of it and stays paused, with the same notice. A Play pressed at that end
+    (`toggle`, while the engine's last word is that `ended`: `atPartialEnd`) starts no
+    attempt, since the ended engine reports no `playing` and the stall watchdog would call
+    it an error: the notice again. **Online again in the same session** it streams on
+    (`playOnPastPart`): a Play pressed at that end, or the engine reaching it with the device
+    online and the server marked reachable, asks the server's chapters (for
+    `SERVED_ORDER_WAIT_MS`; a press asks a server marked down too, as the mark can predate
+    the network coming back) and, when they go on past the queue's last file, starts the book
+    again (`playBook`) with them, where that file ends; no answer, the notice. **A partial
+    queue's length**: its own audio is the downloaded part's, more than 10 s off the indexed
+    book's whenever a whole file is missing, and the server refused every listen over it
+    (`duration_mismatch`). Each partial queue carries the book's length on its server
+    (`partialQueues` maps it: `DownloadManifest.bookDuration`, kept from the chapters answer
+    that set `endsBefore`, else a server answer the start was given naming that end, else 0):
+    a span sends it as its `duration` (0 sends none, and the server checks none) and a save
+    as its `duration`, so a percent read from the mirror is of the book. A listen refused
+    `duration_mismatch` over such a download goes back to the outbox at that length (or none)
+    on every `flushAllOutboxes` (`resendMismatched`, through `downloadBookLength` in
+    `kept-offline.ts`), once per length, so one refused again stays on the list. The end
+    credits' Play now never finishes such a book by its place (`selectEndsPartial`): it
+    stops, unfinished. Regression tests: `store-adopt.test.ts`, `store-listening.test.ts`
+    (its length), `end-credits.test.tsx`, `listening-outbox.test.ts` (span recovery, the
+    resend), `downloads/store.test.ts` (`endsBefore`, `bookDuration`).
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over the SDK 58
   AppDelegate fixture `plugins/__fixtures__/app-delegate-sdk58.ts` by `withCarPlay.test.ts`).
   The SDK 58 template is already a scene app: its AppDelegate only builds the React Native
@@ -3101,11 +3202,14 @@ are asked, at most 10,000 rows.
   `generated_at` fetches the map again (a failed fetch keeps the copy
   and the manifest as they were) only if it was made from the download's own ebook (fe#193:
   `fitsEbook` against `ebookSha256`; a download that never kept a map asks only while the
-  server's `ebook.size` is the one it saved: `knowsEbook`), so a map of a replaced ebook never
+  server's `ebook.size` is the one it saved: `fitsDownload`), so a map of a replaced ebook never
   joins the old `book.epub` and the matching copy stays, once per answer's map per launch
-  (`readalongTried`). No ready map drops the kept one (`readalongChange`; the book then says
-  what the server said), except a stale one under the same `knowsEbook` rule: it still fits
-  the download's own EPUB and audio, so it stays.
+  (`readalongTried`). A map refused for another ebook is remembered (`readalongRefused`, its
+  `generated_at`; cleared once a map is kept), so it is not fetched again on every launch; a
+  map made again is (fe#202). No ready map drops the kept one (`readalongChange`; the book then
+  says what the server said), except a stale one: the kept map was paired with the download's
+  own EPUB when it was kept, and that EPUB never changes under it (a new copy is a new
+  download), so it stays whatever size the server's ebook has now (fe#202).
   The Text tab reads it offline (`readDownloadedReadalong`, `qk.readalongLocal`, `networkMode:
   'always'`) with the EPUB on the device.
 - **Offline companion** (`src/downloads/offline-meta.ts`): a downloaded book keeps its community
@@ -3351,8 +3455,14 @@ under their empty state).
   a copy on this device to fall back to is one (`useBookProgress`'s mirror: held, it never runs).
   **Writes are never held on native**: the query client's `mutations` default there is
   `networkMode: 'always'` (`provider.tsx`), so a bookmark, note, rating, queue, collection or
-  progress edit made with no network is sent and fails at once with its screen's own error (the
-  form still open), as before the flag existed. A held mutation lives only in memory: Save
+  progress edit made with no network fails at once with its screen's own error (the form still
+  open), as before the flag existed. **"At once" is the API client's**: in the app,
+  `ApiClient.send` throws the `NetworkError` of no answer, unsent, while `isDeviceOnline()` is
+  false (a sent one waited out its timeout on iOS in airplane mode: a bookmark's error 20-30 s
+  after the tap, a downloaded book's resume lookup holding its start). Every request path gets
+  it (queries, writes, `fetchFailFast`, the save loops, the car's kept bookmarks, which keep a
+  `NetworkError` like any no-answer); unknown counts as online, so a LAN server is never
+  refused. The web leaves it to the browser, whose fetch fails at once offline. A held mutation lives only in memory: Save
   spins, and the write is gone if the app is closed before the network returns. The web keeps
   TanStack's default (a write waits for the browser to come back online); a write that must
   work offline on the web too says so itself (`useMarkFinished`).

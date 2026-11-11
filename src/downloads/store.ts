@@ -25,7 +25,7 @@ import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
-import { setKeptOfflineCheck } from './kept-offline';
+import { setDownloadEndCheck, setDownloadLengthCheck, setKeptOfflineCheck } from './kept-offline';
 import { estimateBytes, pendingBytes, roomLeft } from './keep-ahead';
 import { classifyDownloadError } from './failure';
 import {
@@ -42,8 +42,9 @@ import {
 } from './offline-meta';
 import {
   fetchReadalongFile,
+  fitsDownload,
   type KeptReadalong,
-  knowsEbook,
+  keptOf,
   readalongChange,
   readReadalongFile,
   removeReadalongFile,
@@ -259,6 +260,21 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 setKeptOfflineCheck((connectionId, libraryId, path) => {
   const entry = useDownloads.getState().entries[downloadKey(connectionId, libraryId, path)];
   return !!entry && entry.status !== 'error';
+});
+
+// A span recovered past a download's early end never finishes its book (`mirrorSpanEnd`,
+// which can't import this store): asked after the launch's read of the registry.
+setDownloadEndCheck(async (connectionId, libraryId, path) => {
+  if (hydrating) await hydrating;
+  return downloadedEntryOf({ connectionId, libraryId, path })?.manifest.endsBefore;
+});
+
+// A listen the server refused as another length, played over a download that ends early,
+// is sent again at the book's length (`resendMismatched`, which can't import this store).
+setDownloadLengthCheck(async (connectionId, libraryId, path) => {
+  if (hydrating) await hydrating;
+  const manifest = downloadedEntryOf({ connectionId, libraryId, path })?.manifest;
+  return manifest?.endsBefore ? (manifest.bookDuration ?? 0) : undefined;
 });
 
 // --- helpers ---------------------------------------------------------------
@@ -579,6 +595,52 @@ export function adoptStartedChapters(ref: BookRef, chapters: ChaptersResponse): 
 }
 
 /**
+ * `manifest` with `endsBefore` set from `order`, the book's files in its server's order:
+ * the last one when the download lacks it (it ends before the book does, D3, fe#185), else
+ * none; and with it `bookDuration`, the book's length on the server when `duration` gives
+ * it (an order with no length keeps the one known for the same end). The same manifest when
+ * nothing changes, and when `order` is empty.
+ */
+export function withBookEnd(
+  manifest: DownloadManifest,
+  order: readonly string[],
+  duration?: number,
+): DownloadManifest {
+  const last = order[order.length - 1];
+  if (last === undefined) return manifest;
+  const endsBefore = manifest.files.some((f) => f.relPath === last) ? undefined : last;
+  const { endsBefore: _was, bookDuration: _length, ...rest } = manifest;
+  if (endsBefore === undefined) return manifest.endsBefore === undefined ? manifest : rest;
+  const bookDuration =
+    duration !== undefined && duration > 0
+      ? duration
+      : endsBefore === manifest.endsBefore
+        ? manifest.bookDuration
+        : undefined;
+  if (endsBefore === manifest.endsBefore && bookDuration === manifest.bookDuration) {
+    return manifest;
+  }
+  return { ...rest, endsBefore, ...(bookDuration !== undefined && { bookDuration }) };
+}
+
+/** An adoption with no server answer saw the engine play the book's files in `order`
+ * (`adoptLoadedBook`): the download keeps whether it ends before the book does, so a later
+ * start of it offline (a cold Resume) pauses at that end as the adopted queue did. Only an
+ * order naming a file the download lacks says where the book ends: one inside the download
+ * (an engine loaded from the download's own copy, offline) says nothing, and leaves the
+ * fact a server answer kept. */
+export function noteDownloadEnd(ref: BookRef, order: readonly string[]): void {
+  const entry = downloadedEntryOf(ref);
+  if (!entry) return;
+  const held = new Set(entry.manifest.files.map((f) => f.relPath));
+  if (order.every((p) => held.has(p))) return;
+  const manifest = withBookEnd(entry.manifest, order);
+  if (manifest === entry.manifest) return;
+  patchEntry(contentKeyOf(ref), { manifest });
+  void persist();
+}
+
+/**
  * `manifest` with the chapters answer the cache already holds for its book, when
  * `refreshedChapters` takes it. `startChapterRefresh` only sees answers that land while the
  * book is downloaded; this takes one that landed before, while it was downloading or before
@@ -620,8 +682,16 @@ export function startChapterRefresh(): () => void {
     if (!book || !fresh) return;
     const ref = { connectionId: book.cid, libraryId: book.libraryId, path: book.path };
     const entry = downloadedEntryOf(ref);
-    const manifest = entry && refreshedChapters(entry.manifest, fresh);
-    if (!manifest) return;
+    if (!entry) return;
+    // Whether the download ends before the book does, by every answer (D3): also one
+    // naming files the download lacks, which `refreshedChapters` never takes.
+    const ended = withBookEnd(
+      entry.manifest,
+      bookFileSpecs(entry.manifest.book, fresh).map((f) => f.path),
+      fresh.duration,
+    );
+    const manifest = refreshedChapters(ended, fresh) ?? ended;
+    if (manifest === entry.manifest) return;
     patchEntry(contentKeyOf(ref), { manifest });
     // A burst of answers (a reconnect's refetches, a search fan-out, the start's own
     // sweep above) saves the registry once, not once per book.
@@ -699,11 +769,22 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     readalongTried.add(attempt);
     // Only a map of the ebook the download holds (fe#193). Without its sha (no map was kept
     // yet), an ebook of another size on the server is another ebook: none is fetched.
-    if (!knowsEbook(book, entry.manifest)) return;
-    kept = await fetchReadalongFile(api, ref, { ebookSha256: entry.manifest.ebookSha256 });
-    // Not fetched (or refused): the map kept (if any) stays, and so does what the download
-    // says of it.
-    if (!kept) return;
+    const { manifest } = entry;
+    const own = { sha256: manifest.ebookSha256, size: manifest.book.ebook?.size };
+    if (!fitsDownload(own, { size: book.ebook?.size })) return;
+    const fetched = await fetchReadalongFile(api, ref, { ebookSha256: manifest.ebookSha256 });
+    // Not fetched: the map kept (if any) stays, and so does what the download says of it.
+    if (!fetched) return;
+    if ('refused' in fetched) {
+      // Refused: that too, and the download remembers the refusal, so the same map is not
+      // fetched again on the next launch (`readalongRefused`).
+      if (!stillDownloaded(key, entry)) return;
+      const cur = useDownloads.getState().entries[key];
+      patchEntry(key, { manifest: { ...cur.manifest, readalongRefused: fetched.refused } });
+      persistSoon();
+      return;
+    }
+    kept = fetched;
   }
   if (!stillDownloaded(key, entry)) {
     // Removed while it was fetched: don't leave the file behind.
@@ -721,6 +802,7 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
       ...manifest,
       readalongGeneratedAt: kept?.generatedAt,
       readalongBytes: kept?.bytes,
+      readalongRefused: undefined,
       ebookSha256: manifest.ebookSha256 ?? kept?.ebookSha256,
       book: namingReadalong(manifest.book, kept?.generatedAt, book.readalong),
     },
@@ -1220,13 +1302,12 @@ async function runOne(key: string) {
     // The book's read-along map (Bridge Phase 3c), beside the EPUB it follows: optional too.
     // The capability as it is now, not as it was before the audio (a download resumed at
     // launch can start before the server's answer is cached).
+    // No ebook to check against yet (the map names it), so none is refused here.
     let readalong: KeptReadalong | undefined;
     const servesNow = cachedCapability(connectionId, 'readalong');
     if (wantsReadalong(servesNow, entry.manifest.book, ebookUri)) {
-      readalong = await fetchReadalongFile(
-        api,
-        { connectionId, libraryId, path },
-        { signal: ctrl.signal },
+      readalong = keptOf(
+        await fetchReadalongFile(api, { connectionId, libraryId, path }, { signal: ctrl.signal }),
       );
     }
     const mapBytes = readalong?.bytes ?? 0;

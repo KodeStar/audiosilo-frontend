@@ -26,10 +26,13 @@ jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
   useLayout: () => 'desktop',
 }));
+// The loaded book (none unless a test says) and its live place.
+let mockNowPlaying: object | null = null;
+let mockLive = 0;
 jest.mock('@/playback/store', () => ({
   usePlayer: (sel: (s: object) => unknown) =>
-    sel({ nowPlaying: null, rate: 1, snapshot: { state: 'idle' } }),
-  selectBookPosition: () => 0,
+    sel({ nowPlaying: mockNowPlaying, rate: 1, snapshot: { state: 'paused' } }),
+  selectBookPosition: () => mockLive,
   selectIsPlaying: () => false,
 }));
 jest.mock('@/api/provider', () => ({
@@ -46,6 +49,7 @@ let mockDays: { date: string; listened: number }[] | null = null;
 let mockEpisode = false;
 let mockPodcastLibrary = false;
 let mockChapterCount = 3;
+let mockFiles: { rel_path: string; duration: number; seq: number }[] = [];
 const mockChar = (name: string, chapter: number) => ({
   id: name,
   name,
@@ -78,7 +82,7 @@ jest.mock('@/api/hooks', () => ({
   useChapters: () => ({
     data: {
       duration: 3000,
-      files: [],
+      files: mockFiles,
       chapters: [
         { title: 'Prologue', book_offset: 0, file_index: 0, file_path: 'a', start: 0, end: 1000 },
         {
@@ -145,6 +149,9 @@ beforeEach(() => {
   mockEpisode = false;
   mockPodcastLibrary = false;
   mockChapterCount = 3;
+  mockFiles = [];
+  mockNowPlaying = null;
+  mockLive = 0;
   mockPush.mockClear();
   mockPlayable = true;
   mockDeviceOnline = true;
@@ -194,6 +201,44 @@ describe('NowCard', () => {
     expect(screen.getByText('16m')).toBeTruthy();
     expect(screen.getByText('left at 1.5×')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Resume chapter 2' })).toBeTruthy();
+  });
+
+  // fe#211: this device's place saved in the download's file order reads where Resume
+  // plays it on the server's chapters (the file place), not at its whole-book seconds.
+  it('places a file place saved in another file order where Resume plays it', async () => {
+    mockFiles = [
+      { rel_path: 'b', duration: 1000, seq: 1 },
+      { rel_path: 'a', duration: 2000, seq: 2 },
+    ];
+    await render(
+      <NowCard at={at} saved={{ ...saved, position: 500, file: { path: 'a', pos: 1500 } }} />,
+    );
+    // File b (1000 s) first: 1000 + 1500 in file a, Holden's chapter (its file's 1000-2000).
+    expect(screen.getByText('Chapter 2 of 3')).toBeTruthy();
+    expect(screen.getByRole('image', { name: '83% through the book' })).toBeTruthy();
+  });
+
+  // fe#211: the loaded book reads the player's own timeline (a download's order kept after
+  // a server reorder), as the player shows it.
+  it("reads the loaded book on the player's timeline, not the server's chapters", async () => {
+    mockNowPlaying = {
+      connectionId: at.connectionId,
+      libraryId: at.libraryId,
+      path: at.path,
+      queue: {
+        total: 4000,
+        syntheticChapters: false,
+        chapters: [
+          { title: 'Bobbie', book_offset: 0 },
+          { title: 'Prologue', book_offset: 2000 },
+        ],
+      },
+    };
+    mockLive = 2600;
+    await render(<NowCard at={at} saved={saved} />);
+    expect(screen.getByText('Chapter 2 of 2')).toBeTruthy();
+    expect(screen.getByText('Prologue')).toBeTruthy();
+    expect(screen.getByRole('image', { name: '65% through the book' })).toBeTruthy();
   });
 
   // Bridge 2d-1: an episode is no book.

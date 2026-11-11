@@ -14,6 +14,7 @@ import type {
   ListeningSyncResult,
   Progress,
 } from '@/api/types';
+import { downloadBookLength } from '@/downloads/kept-offline';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { hasWebLocks, tabLock } from '@/lib/tab-lock';
@@ -28,6 +29,7 @@ import { onConnectionRemoved } from '@/stores/session';
 import { isPos, type OpenSpan, type StoredSpan, storedSpans } from './open-span-doc';
 import {
   ackVersion,
+  bookPlace,
   getDeviceId,
   mirrorSpanEnd,
   noteClockSkew,
@@ -67,7 +69,7 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  * `rejected` moves it to the couldn't-sync list. A network error or 5xx keeps everything; a
  * 413 or `too_many_events` halves the chunk, and one event alone still 413 is moved to the
  * list (`too_large`); a 400 on a batch sends its events one by one once, and one still
- * refused alone is moved to the list. An event older than 89 days is moved to the list
+ * refused alone is moved to the list. An event older than 90 days is moved to the list
  * unsent (`too_old`, `giveUpOld`). A 404/405 that the server's own `/server` confirms (no
  * `listening_sync`) means it was rolled back to one without the route: the connection's
  * outbox becomes one legacy save per book (`legacySavesOf`) and the player saves by PUT from
@@ -121,10 +123,12 @@ const EMPTY_SPAN_MS = 1_000;
  * that ran longer (fe#208). */
 export const MAX_EVENT_SPAN_MS = 23 * 60 * 60_000;
 /** An event older than this is given up without a send: the server refuses one older
- * than 90 days (`too_old`), so it could only ever wait (keeping its book pending, which
- * holds off another device's finish there) or be refused. A day short of the server's
- * bound, so a device clock a little behind never sends one that is refused. */
-export const GIVE_UP_AGE_MS = 89 * 24 * 60 * 60_000;
+ * than 90 days (`too_old`, its `syncRejectAge`), so it could only ever wait (keeping its
+ * book pending, which holds off another device's finish there) or be refused. The server's
+ * own bound, so the list's "more than 90 days old" is true of every one given up here; one
+ * a device clock a little behind still sends is refused `too_old` and lands in the same
+ * list (fe#211). */
+export const GIVE_UP_AGE_MS = 90 * 24 * 60 * 60_000;
 
 // --- Building events -------------------------------------------------------------------
 
@@ -981,11 +985,52 @@ export function flushOutbox(connectionId: string): Promise<void> {
   return run;
 }
 
+/**
+ * Listens refused `duration_mismatch` because they were played over a download that ends
+ * before its book does (D3): before 8d such a queue sent the downloaded part's length, more
+ * than 10 s off the server's book, so the listening never reached it. Each goes back into the
+ * outbox at the book's length on its server (`downloadBookLength`), or with no length when
+ * that is not known (the server then checks none, as a partial queue's span now sends), and
+ * leaves the couldn't-sync list. Only a listen whose length would change: one refused again
+ * at that length (another edition indeed) stays on the list.
+ */
+export async function resendMismatched(): Promise<void> {
+  const state = await readState();
+  const now = Date.now();
+  for (const [connectionId, s] of Object.entries(state)) {
+    const again: ListeningSpanEvent[] = [];
+    for (const f of s.failed ?? []) {
+      if (!stillKept(f, now) || f.reason !== 'duration_mismatch' || f.event.kind !== 'listen')
+        continue;
+      const length = await downloadBookLength(connectionId, f.event.library_id, f.event.path);
+      if (length === undefined) continue;
+      const { duration: _was, ...rest } = f.event;
+      const event: ListeningSpanEvent = length > 0 ? { ...rest, duration: length } : rest;
+      if (event.duration !== f.event.duration) again.push(event);
+    }
+    if (again.length === 0) continue;
+    // Queued before it leaves the list: a stop in between leaves it on both (sent again
+    // by id, a replay the server answers duplicate), never on neither.
+    await appendEvents(connectionId, again);
+    // The refused copy only: one refused again meanwhile (at the new length) stays.
+    const sent = new Map(again.map((e) => [e.id, e.duration]));
+    await updateState(connectionId, (st) => ({
+      ...st,
+      failed: (st.failed ?? []).filter(
+        (f) =>
+          !sent.has(f.event.id) ||
+          (f.event.kind === 'listen' && sent.get(f.event.id) === f.event.duration),
+      ),
+    }));
+  }
+}
+
 /** Send every connection's outbox (a launch, the foreground). */
 export async function flushAllOutboxes(): Promise<void> {
   if (!sessionReady()) return;
   const recovered = recovery !== null;
   await recoverOpenSpan();
+  await resendMismatched().catch(() => undefined);
   // The web: another tab's span may have been left since (that tab closed or crashed). The
   // launch's first call has just looked (the recovery).
   if (Platform.OS === 'web' && recovered) await sweepLeftBehind().catch(() => undefined);
@@ -1203,10 +1248,14 @@ async function applyAnswer(
   const deviceId = await getDeviceId();
   const events = sent.map((e) => e.event);
   for (const row of rows) {
-    queryClient.setQueryData(qk.progress(connectionId, row.library_id, row.path), row);
     if (keptMine(row, deviceId, events, results)) {
       await ackVersion(connectionId, row.library_id, row.path, row.version, row);
     }
+    // The book's cached progress is the place Resume plays (`bookPlace`, fe#211), as its
+    // own read answers (`fetchBookProgress`): a row the server kept over this device's
+    // newer place (another device's, further on) must not show while Resume plays here.
+    const place = await bookPlace(row, connectionId, row.library_id, row.path).catch(() => null);
+    queryClient.setQueryData(qk.progress(connectionId, row.library_id, row.path), place ?? row);
   }
   if (events.some((e) => e.kind === 'listen')) {
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });

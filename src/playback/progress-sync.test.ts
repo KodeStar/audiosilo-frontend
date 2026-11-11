@@ -16,14 +16,18 @@ import {
   loadInitialProgress,
   answerOffer,
   ignoreOffer,
-  mirroredProgress,
+  bookPlace,
+  positionOn,
+  withLocalPlaces,
   noteClockSkew,
   pendingSaveCount,
+  type PlacedProgress,
   type ProgressSave,
   readLocalPlaces,
   readMirror as readMirrorOf,
   resumeLookupOf,
   saveProgress,
+  serverRowOf,
   writeMirror,
 } from '@/playback/progress-sync';
 import { provideStoredSkews } from '@/playback/stored-skews';
@@ -553,16 +557,16 @@ describe('progress-sync', () => {
     expect(r).toMatchObject({ kind: 'progress', progress: { position: 95 } });
   });
 
-  // --- mirroredProgress: the offline read path (the book screen's progress query) ---
+  // --- bookPlace: the book page's place, where Resume plays from (fe#211) ---
 
-  it('mirroredProgress returns the mirrored record shaped as Progress', async () => {
+  it('bookPlace offline is the mirrored record shaped as Progress', async () => {
     reachable.mockReturnValue(false); // offline: the save only lands in the mirror/queue
     await saveProgress(
       fakeApi(() => Promise.resolve()),
       { ...save, position: 42, finished: true },
     );
 
-    expect(await mirroredProgress('c1', 1, 'A/Book')).toMatchObject({
+    expect(await bookPlace(undefined, 'c1', 1, 'A/Book')).toMatchObject({
       library_id: 1,
       path: 'A/Book',
       position: 42,
@@ -571,15 +575,114 @@ describe('progress-sync', () => {
     });
   });
 
-  it('mirroredProgress is null for another connection or an unmirrored book', async () => {
+  it('bookPlace is null for another connection or an unmirrored book', async () => {
     reachable.mockReturnValue(false);
     await saveProgress(
       fakeApi(() => Promise.resolve()),
       save,
     );
 
-    expect(await mirroredProgress('c2', 1, 'A/Book')).toBeNull(); // another server
-    expect(await mirroredProgress('c1', 1, 'A/Other')).toBeNull(); // never played
+    expect(await bookPlace(undefined, 'c2', 1, 'A/Book')).toBeNull(); // another server
+    expect(await bookPlace(undefined, 'c1', 1, 'A/Other')).toBeNull(); // never played
+    expect(await bookPlace(null, 'c1', 1, 'A/Other')).toBeNull(); // new on the server too
+  });
+
+  // The cold-launch case: the server still has another device's older row (12%), this
+  // device played on since. The page shows this device's place, the one Resume plays.
+  it("bookPlace takes this device's newer place over another device's older row", async () => {
+    await writeMirror({
+      ...save,
+      position: 900,
+      device_id: 'me',
+      updated_at: '2026-03-02T00:00:00Z',
+      file: 'A/Book/02.mp3',
+      file_pos: 300,
+    });
+    const other = makeProgress({
+      position: 120,
+      device_id: 'tablet',
+      updated_at: '2026-03-01T00:00:00Z',
+    });
+    const place = await bookPlace(other, 'c1', 1, 'A/Book');
+    expect(place).toMatchObject({
+      position: 900,
+      device_id: 'me',
+      file: { path: 'A/Book/02.mp3', pos: 300 },
+    });
+    // The server's own row goes with it: this device's record reads as version 0 and says
+    // nothing of the row's dates or of another device's place to offer.
+    expect(place?.server).toBe(other);
+    expect(serverRowOf(place as PlacedProgress)).toBe(other);
+    // The server's newer row stands, as it does for Resume.
+    const newer = makeProgress({ position: 1500, updated_at: '2026-03-03T00:00:00Z' });
+    expect(await bookPlace(newer, 'c1', 1, 'A/Book')).toBe(newer);
+    expect(serverRowOf(newer)).toBe(newer);
+  });
+});
+
+describe('withLocalPlaces (fe#211)', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const row = (path: string, p: Partial<Progress> = {}) => ({
+    ...makeProgress({ path, ...p }),
+    connectionId: 'c1',
+    connectionName: 'Home',
+  });
+
+  it("puts this device's newer place over a row, newest first again, and keeps the rest", async () => {
+    await writeMirror({
+      ...save,
+      path: 'A/Old',
+      position: 70,
+      device_id: 'me',
+      updated_at: '2026-03-05T00:00:00Z',
+    });
+    const rows = [
+      row('A/New', { position: 20, updated_at: '2026-03-04T00:00:00Z' }),
+      row('A/Old', { position: 0, updated_at: '2026-02-01T00:00:00Z' }),
+    ];
+    const out = withLocalPlaces(rows, await readLocalPlaces());
+    expect(out.map((r) => [r.path, r.position, r.connectionName])).toEqual([
+      ['A/Old', 70, 'Home'],
+      ['A/New', 20, 'Home'],
+    ]);
+    expect(out[1]).toBe(rows[0]);
+  });
+
+  it('is the same list when nothing local is newer, or no places are read yet', async () => {
+    const rows = [row('A/Book', { position: 20, updated_at: '2026-03-04T00:00:00Z' })];
+    expect(withLocalPlaces(rows, null)).toBe(rows);
+    expect(withLocalPlaces(rows, await readLocalPlaces())).toBe(rows);
+  });
+});
+
+describe('positionOn', () => {
+  const files = [
+    { rel_path: 'A/Book/02.mp3', duration: 500, seq: 2 },
+    { rel_path: 'A/Book/01.mp3', duration: 600, seq: 1 },
+  ];
+
+  it('reads a file place on the timeline the files lay out', () => {
+    expect(positionOn({ position: 300, file: { path: 'A/Book/02.mp3', pos: 300 } }, files)).toBe(
+      900,
+    );
+    expect(positionOn({ position: 999, file: { path: 'A/Book/01.mp3', pos: 30 } }, files)).toBe(30);
+    // Never past the file's end (a file replaced by a shorter one), as a resume lands it.
+    expect(positionOn({ position: 999, file: { path: 'A/Book/01.mp3', pos: 700 } }, files)).toBe(
+      600,
+    );
+  });
+
+  it('keeps the whole-book seconds with no file place, an unknown file or an unknown length', () => {
+    expect(positionOn({ position: 77 }, files)).toBe(77);
+    expect(positionOn({ position: 77, file: { path: 'A/Book/09.mp3', pos: 3 } }, files)).toBe(77);
+    expect(positionOn({ position: 77, file: { path: 'A/Book/02.mp3', pos: 3 } }, undefined)).toBe(
+      77,
+    );
+    const unknown = [{ ...files[1], duration: 0 }, files[0]];
+    expect(positionOn({ position: 77, file: { path: 'A/Book/02.mp3', pos: 3 } }, unknown)).toBe(77);
   });
 });
 

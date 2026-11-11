@@ -4,7 +4,7 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import type { ApiClient } from '@/api/client';
 import type { Book, ChaptersResponse } from '@/api/types';
-import type { KeptReadalong } from '@/downloads/readalong-file';
+import type { KeptReadalong, RefusedReadalong } from '@/downloads/readalong-file';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 
 // The store resolves its file storage from './engine' (Metro picks the per-platform
@@ -80,7 +80,7 @@ jest.mock('@/reader/ebook-file', () => ({
 // A download's read-along map (readalong-file.ts has its own tests): the store's part is
 // WHEN it fetches, keeps and drops one. The pure rules are the real ones.
 const mockFetchReadalong = jest.fn(
-  async (..._a: unknown[]): Promise<KeptReadalong | undefined> => undefined,
+  async (..._a: unknown[]): Promise<KeptReadalong | RefusedReadalong | undefined> => undefined,
 );
 /** A map the download kept, as `fetchReadalongFile` resolves it. */
 const keptMap = (generatedAt: string, ebookSha256 = 'sha-1', bytes = 300): KeptReadalong => ({
@@ -161,7 +161,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { resolveClient } from '@/api/connection-clients';
 import { engine } from '@/downloads/engine';
-import { isKeptOffline } from '@/downloads/kept-offline';
+import { downloadBookLength, isKeptOffline } from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { readMirror } from '@/playback/progress-sync';
 import {
@@ -1334,15 +1334,33 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
       });
     });
 
-    it('keeps the map of its own ebook when the one made again is refused', async () => {
+    it('keeps the map of its own ebook when the one made again is refused, and remembers the refusal', async () => {
       const mine = kept('g1', { manifest: { ebookSha256: 'sha-1' } });
       // fetchReadalongFile refuses a map of another ebook: nothing kept, nothing written.
-      mockFetchReadalong.mockResolvedValue(undefined);
+      mockFetchReadalong.mockResolvedValue({ refused: 'g2' });
       answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2' } }));
       await settle();
       expect(mockFetchReadalong).toHaveBeenCalledWith(API, REF, { ebookSha256: 'sha-1' });
-      expect(entry()).toBe(mine);
+      expect(entry()?.manifest).toEqual({ ...mine.manifest, readalongRefused: 'g2' });
       expect(mockRemoveReadalong).not.toHaveBeenCalled();
+      // The next launch (another try key) does not fetch the same map again (fe#202) ...
+      mockFetchReadalong.mockClear();
+      const refused = entry()!;
+      useDownloads.setState({
+        entries: {
+          [key]: { ...refused, manifest: { ...refused.manifest, savedAt: '2026-02-01T00:00:00Z' } },
+        },
+      });
+      answer(makeBook({ readalong: { state: 'ready', generated_at: 'g2' } }));
+      await settle();
+      expect(mockFetchReadalong).not.toHaveBeenCalled();
+      // ... but one made again, and keeping it clears the refusal.
+      mockFetchReadalong.mockResolvedValue(keptMap('g3', 'sha-1'));
+      answer(makeBook({ readalong: { state: 'ready', generated_at: 'g3' } }));
+      await settle();
+      expect(mockFetchReadalong).toHaveBeenCalledTimes(1);
+      expect(entry()?.manifest.readalongGeneratedAt).toBe('g3');
+      expect(entry()?.manifest.readalongRefused).toBeUndefined();
     });
 
     it("fetches no map for a download that never kept one when the server's ebook changed size", async () => {
@@ -1411,48 +1429,32 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
       await settle();
       expect(mockRemoveReadalong).not.toHaveBeenCalled();
       expect(entry()).toBe(e);
-      // No sha known: while the server's ebook keeps the size the download saved.
+      // No sha known: the same, even once the server's ebook changed size (fe#202): the
+      // download's own EPUB did not change.
       const sized = kept('g1');
       answer(makeBook({ readalong: { state: 'stale', reason: 'audio_changed' } }));
+      answer(
+        makeBook({
+          ebook: { path: 'A/Book/Book.epub', size: 2000 },
+          readalong: { state: 'stale', reason: 'ebook_changed' },
+        }),
+      );
       await settle();
       expect(mockRemoveReadalong).not.toHaveBeenCalled();
       expect(entry()).toBe(sized);
     });
 
-    it('drops a stale map that may not fit the EPUB, and one the server has no more', async () => {
-      // No sha known, and the server's ebook changed size.
+    it('drops a map the server has no more, sha known or not', async () => {
       kept('g1');
-      answer(
-        makeBook({
-          ebook: { path: 'A/Book/Book.epub', size: 2000 },
-          readalong: { state: 'stale', reason: 'ebook_changed' },
-        }),
-      );
+      answer(makeBook());
       await settle();
-      expect(mockRemoveReadalong).toHaveBeenCalledTimes(1);
-      // No map on the server at all, sha known or not.
+      expect(mockRemoveReadalong).toHaveBeenCalledWith(REF);
+      expect(entry()?.manifest.readalongGeneratedAt).toBeUndefined();
       kept('g1', { manifest: { ebookSha256: 'sha-1' } });
       answer(makeBook());
       await settle();
       expect(mockRemoveReadalong).toHaveBeenCalledTimes(2);
       expect(entry()?.manifest.readalongGeneratedAt).toBeUndefined();
-    });
-
-    it('names what the server said once it dropped the map', async () => {
-      kept('g1');
-      answer(
-        makeBook({
-          ebook: { path: 'A/Book/Book.epub', size: 2000 },
-          readalong: { state: 'stale', reason: 'ebook_changed' },
-        }),
-      );
-      await settle();
-      expect(mockRemoveReadalong).toHaveBeenCalledWith(REF);
-      expect(entry()?.manifest.readalongGeneratedAt).toBeUndefined();
-      expect(entry()?.manifest.book.readalong).toEqual({
-        state: 'stale',
-        reason: 'ebook_changed',
-      });
       expect(mockFetchReadalong).not.toHaveBeenCalled();
     });
 
@@ -1889,7 +1891,8 @@ describe("refreshing a downloaded book's chapters", () => {
       const e = downloadedEntry();
       const key = downloadKey('c1', 2, 'A/Book');
       useDownloads.setState({ entries: { [key]: e } });
-      answer(fresh(['A/Book/01.mp3', 'A/Book/09.mp3']));
+      // Another file, before the book's last one (which the download holds).
+      answer(fresh(['A/Book/09.mp3', 'A/Book/02.mp3']));
       answer(fresh(), true);
       answer(fresh(), false, ['item', 'c1', 2, 'A/Book']);
       answer(fresh(), false, ['chapters', 'c2', 2, 'A/Book']);
@@ -1898,6 +1901,63 @@ describe("refreshing a downloaded book's chapters", () => {
       useDownloads.setState({ entries: { [key]: queued } });
       answer(fresh());
       expect(useDownloads.getState().entries[key]).toBe(queued);
+    });
+
+    it('keeps whether the download ends before the book does, by each answer (D3, fe#185)', () => {
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [key]: e } });
+      // The server's book now ends with a file the download lacks.
+      answer(fresh(['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3']));
+      const now = useDownloads.getState().entries[key].manifest;
+      expect(now.endsBefore).toBe('A/Book/03.mp3');
+      // Only that: its chapters name other files, so they stay the download's.
+      expect(now.chapters).toBe(e.manifest.chapters);
+      // An intro the download lacks is not an early end.
+      answer(fresh(['A/Book/00.mp3', 'A/Book/01.mp3', 'A/Book/02.mp3']));
+      expect(useDownloads.getState().entries[key].manifest).not.toHaveProperty('endsBefore');
+      // Nor is a book whose server no longer has the file.
+      useDownloads.setState({
+        entries: { [key]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } },
+      });
+      answer(fresh());
+      expect(useDownloads.getState().entries[key].manifest).not.toHaveProperty('endsBefore');
+    });
+
+    // Pixel 6a: a listen over such a download sent the downloaded part's length, and the
+    // server refused every one (duration_mismatch). The download keeps the book's.
+    it("keeps the server's book length with an early end, and drops it with the end", () => {
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [key]: e } });
+      const three = ['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3'];
+      answer(fresh(three, { duration: 180 }));
+      expect(useDownloads.getState().entries[key].manifest).toMatchObject({
+        endsBefore: 'A/Book/03.mp3',
+        bookDuration: 180,
+      });
+      // A later answer with the same end and a new length takes it; one with none keeps it.
+      answer(fresh(three, { duration: 181 }));
+      expect(useDownloads.getState().entries[key].manifest.bookDuration).toBe(181);
+      answer(fresh(three, { duration: 0 }));
+      expect(useDownloads.getState().entries[key].manifest.bookDuration).toBe(181);
+      answer(fresh());
+      const whole = useDownloads.getState().entries[key].manifest;
+      expect(whole).not.toHaveProperty('endsBefore');
+      expect(whole).not.toHaveProperty('bookDuration');
+    });
+
+    it('tells the listening outbox the book length of an early-ending download only', async () => {
+      const key = downloadKey('c1', 2, 'A/Book');
+      const e = downloadedEntry();
+      useDownloads.setState({ entries: { [key]: e } });
+      expect(await downloadBookLength('c1', 2, 'A/Book')).toBeUndefined();
+      useDownloads.setState({
+        entries: { [key]: { ...e, manifest: { ...e.manifest, endsBefore: 'A/Book/03.mp3' } } },
+      });
+      expect(await downloadBookLength('c1', 2, 'A/Book')).toBe(0); // its length not known
+      answer(fresh(['A/Book/01.mp3', 'A/Book/02.mp3', 'A/Book/03.mp3'], { duration: 180 }));
+      expect(await downloadBookLength('c1', 2, 'A/Book')).toBe(180);
     });
 
     describe('a new file order', () => {

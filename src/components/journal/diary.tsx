@@ -14,12 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { getLocale } from '@/i18n/locale';
 import { formatDayDate, formatDurationOrZero, formatWallClock } from '@/lib/format';
-import {
-  type ListeningSession,
-  type ListeningSpan,
-  sessionFinished,
-  sessionMinutes,
-} from '@/lib/listening-sessions';
+import { type ListeningSpan, sessionFinished, sessionMinutes } from '@/lib/listening-sessions';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { useDayLabel } from '@/lib/use-day-label';
@@ -29,7 +24,14 @@ import { type DriftRecords, takeDrift } from '@/playback/drift';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { barColor, type DiaryDay, dayBars, driftStrip, spanRange } from './diary-model';
+import {
+  barColor,
+  type DiaryDay,
+  type DiarySession,
+  dayBars,
+  driftStrip,
+  spanRange,
+} from './diary-model';
 import type { Sourced } from './merge-model';
 
 /** The day's 24 hour bar: each span by wall clock, in its book's cover colour where it
@@ -144,14 +146,15 @@ function DriftStripView({
 /** One listening session: cover, title, "21:12, 21 min" (its start and the minutes
  * listened), the chapters it went through (when this
  * device can know them), a drift-off strip, "Finished the book". The cover opens the
- * book page on its History tab. */
+ * book page on its History tab. A session still waiting in this device's outbox says
+ * "Waiting to sync" after its minutes (fe#208). */
 function SessionRow({
   session: span,
   drift,
   records,
   serverFlag,
 }: {
-  session: ListeningSession;
+  session: DiarySession;
   drift?: Sourced<Bookmark>;
   records: DriftRecords;
   serverFlag?: string;
@@ -173,6 +176,7 @@ function SessionRow({
     time: formatWallClock(new Date(span.start)),
     minutes: t('journal.minutes', { count: sessionMinutes(span) }),
   });
+  const caption = span.waiting ? `${when} · ${t('journal.history.waiting')}` : when;
   return (
     <View className="flex-row items-start gap-3">
       <RowCover
@@ -185,7 +189,7 @@ function SessionRow({
         <Text variant="body" className="text-[13px]" numberOfLines={2}>
           <Text className="font-sans-semibold text-[13px] text-foreground">{title}</Text>
           <Text className="text-[13px] text-muted-foreground" style={tabularNums}>
-            {` · ${when}`}
+            {` · ${caption}`}
           </Text>
         </Text>
         <Text variant="caption" numberOfLines={1} style={tabularNums}>

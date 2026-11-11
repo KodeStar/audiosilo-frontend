@@ -10,10 +10,14 @@ jest.mock('@/api/reachability', () => ({
   noteFailure: (...args: unknown[]) => mockNoteFailure(...args),
 }));
 
-const mockMirroredProgress = jest.fn(async (..._args: unknown[]): Promise<Progress | null> => null);
+// The place Resume would play (`bookPlace`): the server's answer as is unless a test says.
+const mockBookPlace = jest.fn(
+  async (server?: unknown, ..._rest: unknown[]): Promise<Progress | null> =>
+    (server as Progress | null | undefined) ?? null,
+);
 const mockWriteMirror = jest.fn(async (..._args: unknown[]) => {});
 jest.mock('@/playback/progress-sync', () => ({
-  mirroredProgress: (...args: unknown[]) => mockMirroredProgress(...args),
+  bookPlace: (...args: unknown[]) => mockBookPlace(...args),
   writeMirror: (...args: unknown[]) => mockWriteMirror(...args),
   progressToSave: (connectionId: string, libraryId: number, path: string, p: Progress) => ({
     connectionId,
@@ -98,7 +102,6 @@ function clientThat(impl: () => Promise<Progress | null>): ApiClient {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockMirroredProgress.mockResolvedValue(null);
 });
 
 describe('fetchBookProgress', () => {
@@ -109,8 +112,39 @@ describe('fetchBookProgress', () => {
     await expect(
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).resolves.toBe(p);
-    expect(mockMirroredProgress).not.toHaveBeenCalled();
+    expect(mockBookPlace).toHaveBeenCalledWith(p, 'c1', 2, 'A/Book.m4b');
     expect(mockNoteFailure).not.toHaveBeenCalled();
+  });
+
+  // fe#211: the page shows where Resume plays from, this device's newer place over another
+  // device's older row.
+  it("returns the place Resume would play, this device's newer one included", async () => {
+    const p = makeProgress();
+    const mine = { ...p, position: 80, device_id: 'me', updated_at: '2026-02-01T00:00:00Z' };
+    mockBookPlace.mockResolvedValueOnce(mine);
+    await expect(
+      fetchBookProgress(
+        clientThat(async () => p),
+        'c1',
+        2,
+        'A/Book.m4b',
+        new AbortController().signal,
+      ),
+    ).resolves.toBe(mine);
+  });
+
+  it("keeps the server's answer when this device's places can't be read", async () => {
+    const p = makeProgress();
+    mockBookPlace.mockRejectedValueOnce(new Error('storage'));
+    await expect(
+      fetchBookProgress(
+        clientThat(async () => p),
+        'c1',
+        2,
+        'A/Book.m4b',
+        new AbortController().signal,
+      ),
+    ).resolves.toBe(p);
   });
 
   // The reconnect invariant: a 401 has already flagged the connection via the client's
@@ -125,7 +159,7 @@ describe('fetchBookProgress', () => {
     await expect(
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).rejects.toBe(err);
-    expect(mockMirroredProgress).not.toHaveBeenCalled();
+    expect(mockBookPlace).not.toHaveBeenCalled();
     expect(mockNoteFailure).not.toHaveBeenCalled();
   });
 
@@ -138,12 +172,12 @@ describe('fetchBookProgress', () => {
     await expect(
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).rejects.toBe(err);
-    expect(mockMirroredProgress).not.toHaveBeenCalled();
+    expect(mockBookPlace).not.toHaveBeenCalled();
   });
 
-  it('falls back to the mirror and notes reachability on a network failure', async () => {
+  it("falls back to this device's places and notes reachability on a network failure", async () => {
     const mirrored = makeProgress();
-    mockMirroredProgress.mockResolvedValue(mirrored);
+    mockBookPlace.mockResolvedValueOnce(mirrored);
     const err = new Error('Network request failed');
     const api = clientThat(async () => {
       throw err;
@@ -152,7 +186,7 @@ describe('fetchBookProgress', () => {
     await expect(
       fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', new AbortController().signal),
     ).resolves.toBe(mirrored);
-    expect(mockMirroredProgress).toHaveBeenCalledWith('c1', 2, 'A/Book.m4b');
+    expect(mockBookPlace).toHaveBeenCalledWith(undefined, 'c1', 2, 'A/Book.m4b');
     expect(mockNoteFailure).toHaveBeenCalledWith('c1', err);
   });
 
@@ -233,7 +267,7 @@ describe('fetchBookProgress', () => {
     await expect(fetchBookProgress(api, 'c1', 2, 'A/Book.m4b', controller.signal)).rejects.toBe(
       err,
     );
-    expect(mockMirroredProgress).not.toHaveBeenCalled();
+    expect(mockBookPlace).not.toHaveBeenCalled();
     expect(mockNoteFailure).not.toHaveBeenCalled();
   });
 });

@@ -57,6 +57,7 @@ import {
   type BookQueue,
   buildBookQueue,
   toBookPosition,
+  trackIdOf,
   trackIndexById,
 } from '@/playback/book-queue';
 import { bookSourceOf, downloadedSourceOf } from '@/playback/book-source';
@@ -781,10 +782,15 @@ export async function handleCarPlayRequest(id: string): Promise<void> {
 type PlacedBookmark = BookRef &
   ({ position: number } | { trackId: string; positionInTrack: number; position: number });
 
+/** A press at the engine's file coordinates: the file's index in the engine's order at the
+ * press and the seconds in it, and the file's track id when the binary named its path
+ * (`relPath`, fe#185; a press an older binary kept has none). */
+type EngineBookmark = BookRef & { trackIndex: number; positionInTrack: number; trackId?: string };
+
 /** A bookmark to add: placed (pressed while the book was loaded here, or kept from a try that
  * read its place), or at the engine's file coordinates (pressed while no JS ran, or on the
  * book the engine names) until its book's timeline is read. */
-type CarBookmark = PlacedBookmark | (BookRef & { trackIndex: number; positionInTrack: number });
+type CarBookmark = PlacedBookmark | EngineBookmark;
 
 /** The part of a book's queue a place on its timeline is read through. */
 type Timeline = Pick<BookQueue, 'tracks' | 'offsets'>;
@@ -808,6 +814,10 @@ async function timelineOf(b: BookRef, onDevice = false): Promise<Timeline | null
  * engine's file coordinates can't be read now. */
 async function placeOf(b: CarBookmark): Promise<PlacedBookmark | null> {
   const ref = bookRefOf(b);
+  if ('trackIndex' in b) {
+    const timeline = await timelineOf(b);
+    return timeline && placedIn(ref, timeline, engineIndexOn(timeline, b), b.positionInTrack);
+  }
   if ('trackId' in b) {
     const timeline = await timelineOf(b, true);
     const index = timeline ? trackIndexById(timeline, b.trackId) : -1;
@@ -817,9 +827,16 @@ async function placeOf(b: CarBookmark): Promise<PlacedBookmark | null> {
         : b.position;
     return { ...ref, trackId: b.trackId, positionInTrack: b.positionInTrack, position };
   }
-  if ('position' in b) return { ...ref, position: b.position };
-  const timeline = await timelineOf(b);
-  return timeline && placedIn(ref, timeline, b.trackIndex, b.positionInTrack);
+  return { ...ref, position: b.position };
+}
+
+/** A press's file on `timeline`: the file it names by path when the timeline holds it (the
+ * order the book's files are in now can differ from the engine's at the press: an adoption
+ * reloads the engine in the download's order, fe#185), else its index in the engine's order
+ * (a press an older binary made, or a file the book no longer holds). */
+function engineIndexOn(timeline: Timeline, b: Pick<EngineBookmark, 'trackIndex' | 'trackId'>) {
+  const byId = b.trackId === undefined ? -1 : trackIndexById(timeline, b.trackId);
+  return byId >= 0 ? byId : b.trackIndex;
 }
 
 /** A place in file coordinates on `timeline`, kept by its file when the timeline names one. */
@@ -870,17 +887,25 @@ async function addCarBookmark(b: CarBookmark): Promise<CarBookmark | null> {
 function isCarBookmark(v: unknown): v is CarBookmark {
   if (!v || typeof v !== 'object') return false;
   const b = v as Record<string, unknown>;
-  return (
-    typeof b.connectionId === 'string' &&
-    typeof b.libraryId === 'number' &&
-    typeof b.path === 'string' &&
-    ('trackId' in b
-      ? typeof b.trackId === 'string' &&
+  if (
+    typeof b.connectionId !== 'string' ||
+    typeof b.libraryId !== 'number' ||
+    typeof b.path !== 'string'
+  ) {
+    return false;
+  }
+  if ('trackIndex' in b) {
+    return (
+      typeof b.trackIndex === 'number' &&
+      typeof b.positionInTrack === 'number' &&
+      (b.trackId === undefined || typeof b.trackId === 'string')
+    );
+  }
+  return 'trackId' in b
+    ? typeof b.trackId === 'string' &&
         typeof b.positionInTrack === 'number' &&
         typeof b.position === 'number'
-      : typeof b.position === 'number' ||
-        (typeof b.trackIndex === 'number' && typeof b.positionInTrack === 'number'))
-  );
+    : typeof b.position === 'number';
 }
 
 /** Bookmark work runs one at a time, so the kept list is never written by two at once. */
@@ -912,11 +937,22 @@ function addBookmarks(fresh: CarBookmark[]): Promise<void> {
   });
 }
 
-const fromPending = (p: PendingBookmark): CarBookmark => ({
-  ...bookRefOf(p),
-  trackIndex: p.trackIndex,
-  positionInTrack: p.position,
+/** A press at the engine's file coordinates, with its file's track id when the binary named
+ * the file (fe#185). */
+const atEngine = (
+  ref: BookRef,
+  trackIndex: number,
+  positionInTrack: number,
+  relPath: string | undefined,
+): EngineBookmark => ({
+  ...bookRefOf(ref),
+  trackIndex,
+  positionInTrack,
+  ...(relPath ? { trackId: trackIdOf(ref.libraryId, relPath) } : {}),
 });
+
+const fromPending = (p: PendingBookmark): CarBookmark =>
+  atEngine(p, p.trackIndex, p.position, p.relPath);
 
 /** The bookmarks pressed while no JS ran (and any kept ones), added now. */
 async function drainCarBookmarks(): Promise<void> {
@@ -930,17 +966,24 @@ async function drainCarBookmarks(): Promise<void> {
  * timeline): the engine can hold a book the store has not adopted yet (a car start the JS
  * boot is still adopting), and it is the one the listener heard. Without one (an older
  * binary) it goes on the book loaded here, at its file and whole-book place taken now
- * (`placedIn`); a press with none loaded is dropped. */
-function onBookmarkPressed(trackIndex: number, positionInTrack: number, book?: BookRef): void {
+ * (`placedIn`); a press with none loaded is dropped. Either way the file goes by the path the
+ * binary names when it names one (`engineIndexOn`, fe#185). */
+function onBookmarkPressed(
+  trackIndex: number,
+  positionInTrack: number,
+  book?: BookRef,
+  relPath?: string,
+): void {
   if (book) {
     noteInteraction();
-    void addBookmarks([{ ...bookRefOf(book), trackIndex, positionInTrack }]);
+    void addBookmarks([atEngine(book, trackIndex, positionInTrack, relPath)]);
     return;
   }
   const np = usePlayer.getState().nowPlaying;
   if (!np) return;
   noteInteraction();
-  void addBookmarks([placedIn(bookRefOf(np), np.queue, trackIndex, positionInTrack)]);
+  const index = engineIndexOn(np.queue, atEngine(np, trackIndex, positionInTrack, relPath));
+  void addBookmarks([placedIn(bookRefOf(np), np.queue, index, positionInTrack)]);
 }
 
 // --- Adopting -------------------------------------------------------------------------------

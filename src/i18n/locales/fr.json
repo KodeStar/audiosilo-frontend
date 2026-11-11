@@ -1792,8 +1792,8 @@
       "textDeniedHint": "Le serveur ne partage plus ce livre avec vous.",
       "textMissingTitle": "Ce livre n'est plus sur le serveur",
       "textMissingHint": "Il a peut-être été déplacé ou supprimé. Rouvrez-le depuis la bibliothèque.",
-      "textEbookChangedTitle": "La lecture synchronisée concerne un ebook plus récent",
-      "textEbookChangedHint": "L'ebook de cet appareil est plus ancien que celui de la lecture synchronisée. Supprimez le téléchargement et téléchargez à nouveau le livre pour suivre le texte.",
+      "textEbookChangedTitle": "La lecture synchronisée concerne une autre édition de l'ebook",
+      "textEbookChangedHint": "L'ebook de cet appareil n'est pas celui de la lecture synchronisée. Supprimez le téléchargement et téléchargez à nouveau le livre pour suivre le texte.",
       "textNoServer": "Le texte revient dès qu'il l'est."
     },
     "placeMoved": {
@@ -1815,6 +1815,9 @@
     },
     "otherTab": {
       "title": "Lecture dans un autre onglet"
+    },
+    "partialDownload": {
+      "title": "La suite de ce livre n'est pas téléchargée"
     }
   },
   "reconnect": {

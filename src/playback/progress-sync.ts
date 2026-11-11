@@ -2,6 +2,7 @@ import { ApiError, type ApiClient } from '@/api/client';
 import { resolveClient, sessionReady } from '@/api/connection-clients';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
 import type { Progress } from '@/api/types';
+import { downloadEndsBefore } from '@/downloads/kept-offline';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 import { serialQueue } from '@/lib/serial-queue';
@@ -68,6 +69,10 @@ export type ProgressSave = {
    * through the new one (fe#188). Mirror only: the legacy PUT never sends it. */
   file?: string;
   file_pos?: number;
+  /** Taken in a queue that ends before its book does (a download lacking the book's last
+   * file, D3, fe#185): its end is not the book's, so a span recovered past it never makes
+   * the record finished (`mirrorSpanEnd`). Mirror only; each capture says it again. */
+  partial?: true;
   /** Sync v2: the server version of this book's progress this device has acknowledged
    * (`listening-outbox.ts`'s ack rule); a listening span sends it as its `base_version`.
    * Mirror only; kept across captures (`writeMirror`). */
@@ -412,16 +417,105 @@ function filePlaceOf(
   return holdsFilePlace(best, mirror, skewMs) ? mirror : null;
 }
 
-/** The durable local mirror for a book, shaped as a `Progress` - for read paths
- * that could not reach the server (an offline book screen), so a downloaded book
- * still reports where the listener is instead of looking untouched. Null when
- * nothing has ever been mirrored for it. */
-export async function mirroredProgress(
+/** A place as a resume would play it: the record it picks (`resumeLookupOf`), with the
+ * file place it plays from when its queue holds that file (fe#188). `file` is this
+ * device's own; never on the wire. `server`: the server's own row when the record picked
+ * is this device's (`bookPlace`), for what only that row says (its version, its dates,
+ * another device's place to offer); this device's records read as version 0. */
+export type PlacedProgress = Progress & {
+  file?: { path: string; pos: number };
+  server?: Progress;
+};
+
+/** The server's own row of a place (`PlacedProgress.server`): the place itself when it is
+ * that row, or carries none (offline, a book the server has no record of). */
+export const serverRowOf = (place: PlacedProgress): Progress => place.server ?? place;
+
+/** `resumeLookupOf`'s pick as a `PlacedProgress`, null when it has none (a new book, or
+ * nothing known anywhere). The same object as the record picked when it has no file place. */
+function resumePlaceOf(
+  server: Progress | null | undefined,
+  places: LocalPlaces,
   connectionId: string,
   libraryId: number,
   path: string,
-): Promise<Progress | null> {
-  return mirrorAsProgress(libraryId, path, await readMirror(connectionId, libraryId, path));
+): PlacedProgress | null {
+  const lookup = resumeLookupOf(server, places, connectionId, libraryId, path);
+  return lookup.kind === 'progress' ? placedOf(lookup) : null;
+}
+
+/** A resume lookup's record with its file place; the same object when it has none. */
+function placedOf(lookup: Extract<ResumeLookup, { kind: 'progress' }>): PlacedProgress {
+  return lookup.file ? { ...lookup.progress, file: lookup.file } : lookup.progress;
+}
+
+/**
+ * A progress list with each row where Resume would play it (pure; fe#211): this device's
+ * own newer record of a book in place of the server's older row (an offline run the list
+ * has not heard of yet, a cold launch with another device's kept row), with its file place.
+ * Newest first again when any row changed; the same array when none did (or no places).
+ */
+export function withLocalPlaces<T extends Progress & { connectionId: string }>(
+  rows: readonly T[],
+  places: LocalPlaces | null,
+): readonly (T & PlacedProgress)[] {
+  if (!places) return rows;
+  let changed = false;
+  const out = rows.map((row): T & PlacedProgress => {
+    const place = resumePlaceOf(row, places, row.connectionId, row.library_id, row.path);
+    if (!place || place === row) return row;
+    changed = true;
+    return { ...row, ...place };
+  });
+  return changed ? out.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)) : rows;
+}
+
+/**
+ * Where a book's page shows the listener (fe#211): where Resume would play it from, so the
+ * page never shows another device's older row while Resume starts at this device's newer
+ * place. `server` is the server's answer when it was reached (null: no record), `undefined`
+ * when not (offline: this device's own places, the mirror and the offline queue's save).
+ * Null when nothing is known.
+ */
+export async function bookPlace(
+  server: Progress | null | undefined,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<PlacedProgress | null> {
+  const lookup = resumeLookupOf(server, await readLocalPlaces(), connectionId, libraryId, path);
+  if (lookup.kind !== 'progress') return null;
+  const place = placedOf(lookup);
+  // This device's own record says nothing of the server's row (its version, its dates,
+  // another device's place to offer): the row goes with it.
+  return server && lookup.progress !== server ? { ...place, server } : place;
+}
+
+/**
+ * A place's whole-book seconds on the timeline `files` lay out (a chapters answer's files),
+ * as a resume plays it: at its file place (within that file's length) when `files` holds
+ * that file and every file before it has a length, else its own whole-book seconds (pure).
+ * After a server reorder, a place this device saved in the download's order then reads
+ * where the player would put it.
+ */
+export function positionOn(
+  place: Pick<PlacedProgress, 'position' | 'file'>,
+  files: readonly { rel_path: string; duration: number; seq: number }[] | undefined,
+): number {
+  const file = place.file;
+  if (!file || !files?.length) return place.position;
+  const ordered = [...files].sort((a, b) => a.seq - b.seq);
+  let offset = 0;
+  for (const f of ordered) {
+    if (f.rel_path === file.path) {
+      // Never past the file's end, as a resume lands it (`filePlaceIn`).
+      const pos = Math.max(0, file.pos);
+      return offset + (f.duration > 0 ? Math.min(pos, f.duration) : pos);
+    }
+    if (!(f.duration > 0)) return place.position;
+    offset += f.duration;
+  }
+  return place.position;
 }
 
 /** A stored save (the mirror's, or one waiting in the offline queue) as a `Progress`. */
@@ -564,7 +658,12 @@ export async function updateMirror(
  * - only a record OLDER than the span's end moves: a place written since stands (the
  *   listener's own move, which saves at once; another tab's play; a server row read since);
  * - only FORWARD: a span ending behind the record never moves a place back;
- * - never a finished book's, and never a book with no record (nothing to bring up).
+ * - never a finished book's, and never a book with no record (nothing to bring up);
+ * - never finished at the end of a queue that ends before its book (D3): one the record
+ *   was captured in (`partial`), or this device's download of the book when it lacks the
+ *   book's last file (`downloadEndsBefore`), unless the span ended in that file (streamed:
+ *   its end is the book's). The download is asked as well because a server row written
+ *   into the mirror since the last capture carries no `partial`.
  * The record becomes this device's, with the span's file place (fe#188) or none.
  */
 export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
@@ -572,6 +671,10 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
   const endedAt = Date.parse(span.endedAt);
   if (!Number.isFinite(pos) || !Number.isFinite(endedAt)) return;
   const deviceId = await getDeviceId();
+  const endsBefore = await downloadEndsBefore(span.connectionId, span.libraryId, span.path).catch(
+    () => undefined,
+  );
+  const shortEnd = endsBefore !== undefined && file !== endsBefore;
   await updateMirror(span.connectionId, span.libraryId, span.path, (record) => {
     if (record.finished || !(pos > record.position)) return record;
     if (!(endedAt > Date.parse(record.updated_at))) return record;
@@ -579,7 +682,13 @@ export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
     return {
       ...kept,
       position: pos,
-      finished: record.duration > 0 && pos >= record.duration - FINISHED_TOLERANCE,
+      // A record taken in a queue ending before its book, or a download that does (D3):
+      // that end is not the book's.
+      finished:
+        !record.partial &&
+        !shortEnd &&
+        record.duration > 0 &&
+        pos >= record.duration - FINISHED_TOLERANCE,
       playback_speed: span.speed > 0 ? span.speed : record.playback_speed,
       device_id: deviceId,
       updated_at: span.endedAt,

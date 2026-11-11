@@ -5,12 +5,15 @@ import { contrast } from '@/components/series/spine-colors';
 import { contentKey } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import {
+  groupSessions,
   type ListeningSession,
   type ListeningSpan,
   localDayStart,
   nextDayStart,
+  toSpan,
 } from '@/lib/listening-sessions';
 import { driftOffer, type DriftRecord, type DriftRecords } from '@/playback/drift';
+import type { WaitingListen } from '@/playback/use-listening-sync';
 
 import type { Sourced } from './merge-model';
 
@@ -22,6 +25,10 @@ import type { Sourced } from './merge-model';
  * what this decides.
  */
 
+/** A Diary session: a server's, or (`waiting`) this device's listening still waiting in
+ * the outbox to reach its server (fe#208). */
+export type DiarySession = ListeningSession & { waiting?: true };
+
 /** One local day of listening. */
 export type DiaryDay = {
   /** Local midnight, epoch ms (also the day's identity). */
@@ -29,15 +36,15 @@ export type DiaryDay = {
   /** Wall-clock seconds listened that day. */
   total: number;
   /** The day's sessions, newest first. */
-  sessions: ListeningSession[];
+  sessions: DiarySession[];
   /** Every span of those sessions (the honest picture, for the 24 hour bar). */
   spans: ListeningSpan[];
 };
 
 /** Sessions grouped by the local day they started on (a session past midnight belongs
  * to its start day), newest day first. */
-export function groupByDay(sessions: readonly ListeningSession[]): DiaryDay[] {
-  const byDay = new Map<number, ListeningSession[]>();
+export function groupByDay(sessions: readonly DiarySession[]): DiaryDay[] {
+  const byDay = new Map<number, DiarySession[]>();
   for (const s of sessions) {
     const day = localDayStart(s.start);
     const list = byDay.get(day);
@@ -52,6 +59,50 @@ export function groupByDay(sessions: readonly ListeningSession[]): DiaryDay[] {
       spans: list.flatMap((s) => s.spans),
       total: list.reduce((sum, s) => sum + s.listened, 0),
     }));
+}
+
+// --- Waiting listens ---------------------------------------------------------------
+
+/** A waiting span this close (content seconds) to a server span at both ends is that span
+ * already recorded: the server's row arrived before the outbox let the event go. */
+const SAME_SPAN_POS_S = 2;
+/** ... and this close in wall clock at its start (the server corrects the device's clock). */
+const SAME_SPAN_TIME_MS = 5 * 60 * 1000;
+
+/**
+ * This device's listens still waiting to sync (`useWaitingListens`: the outbox's `listen`
+ * events, each with its connection) as Diary sessions marked `waiting` (pure; fe#208), as
+ * the book's History tab shows them. Grouped among themselves, never into a server's session (a session is one
+ * server's record); one the server's rows already hold (`synced`: the same book, from and
+ * to within `SAME_SPAN_POS_S`, started within `SAME_SPAN_TIME_MS`) is left out, so a listen
+ * never shows twice while its answer is on the way.
+ */
+export function waitingSessions(
+  entries: readonly WaitingListen[],
+  synced: readonly ListeningSpan[],
+): DiarySession[] {
+  if (entries.length === 0) return [];
+  const syncedOf = new Map<string, ListeningSpan[]>();
+  for (const s of synced) {
+    const of = syncedOf.get(s.bookKey);
+    if (of) of.push(s);
+    else syncedOf.set(s.bookKey, [s]);
+  }
+  const spans: ListeningSpan[] = [];
+  for (const { connectionId, event } of entries) {
+    const span = toSpan({ ...event, id: 0, connectionId, connectionName: '' });
+    if (!span) continue;
+    const recorded = syncedOf
+      .get(span.bookKey)
+      ?.some(
+        (s) =>
+          Math.abs(s.from - span.from) <= SAME_SPAN_POS_S &&
+          Math.abs(s.to - span.to) <= SAME_SPAN_POS_S &&
+          Math.abs(s.start - span.start) <= SAME_SPAN_TIME_MS,
+      );
+    if (!recorded) spans.push({ ...span, key: `waiting\n${connectionId}\n${event.id}` });
+  }
+  return groupSessions(spans).map((s) => ({ ...s, waiting: true as const }));
 }
 
 /** Where a span sits on its day's 24 hour bar, as fractions of the day. */

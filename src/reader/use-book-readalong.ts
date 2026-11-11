@@ -1,10 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  hashKey,
+  type QueryClient,
+  QueryObserver,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ApiError, apiErrorKind, isSignedOutError } from '@/api/client';
 import { CapabilityError, qk, useCapability, useReadalong } from '@/api/hooks';
-import type { Book } from '@/api/types';
-import { fitsEbook } from '@/downloads/readalong-file';
+import type { Book, ReadalongMap } from '@/api/types';
+import { fitsDownload, fitsEbook } from '@/downloads/readalong-file';
 import {
   readDownloadedReadalong,
   useDownloadedEbookSha,
@@ -26,11 +32,15 @@ export type ReadalongSource = 'local' | 'server' | null;
 /**
  * Where to read a book's map (Bridge Phase 3c). The download's copy (`kept`: its
  * `generated_at`) while the server does not say otherwise: offline (the capability
- * unknown), or the server's book naming that same map or none at all (a book seeded from a
- * list row says nothing; an answer without one has the background refresh drop the copy).
- * The server's when `readalongReady` and the book names another map (made again: the
- * refresh fetches it into the download meanwhile). Never for a book that does not read, a
- * server that serves no maps (`false`), or a stale map (invisible to a listener).
+ * unknown), or the server's book naming that same map, a stale one or none at all (a book
+ * seeded from a list row says nothing; an answer without one has the background refresh drop
+ * the copy). A stale server map (its ebook or audio changed there) leaves the copy shown
+ * (fe#202 D4): it was made for the download's own EPUB, which is what this device reads, and
+ * the hook still checks it against the EPUB actually opened; the background refresh takes a
+ * map made again. The server's when `readalongReady` and the book names another map (made
+ * again: the refresh fetches it into the download meanwhile). Never for a book that does
+ * not read, a server that serves no maps (`false`), or a stale map with no copy (invisible
+ * to a listener).
  */
 export function readalongSource(opts: {
   serves: boolean | undefined;
@@ -39,8 +49,9 @@ export function readalongSource(opts: {
   kept: string | undefined;
 }): ReadalongSource {
   const { serves, book, readable, kept } = opts;
-  if (!readable || serves === false || book?.readalong?.state === 'stale') return null;
+  if (!readable || serves === false) return null;
   if (kept) {
+    // Undefined for a stale map too: the copy stands.
     const named = book?.readalong?.state === 'ready' ? book.readalong.generated_at : undefined;
     if (serves !== true || named === undefined || named === kept) return 'local';
   }
@@ -141,14 +152,13 @@ export function useBookReadalong(
     [ebookSelectionKey],
   );
   const ebookSha = actual?.sha256 ?? savedSha;
+  // A copy follows the download's EPUB only: not once the server's EPUB was opened instead
+  // (an unreadable download), where the server's ready map is read, and a stale one is none.
+  const serverEpub =
+    actual?.source === 'server' &&
+    (readalongReady(serves, book, readable) || book?.readalong?.state === 'stale');
   const wanted = enabled
-    ? readalongSource({
-        serves,
-        book,
-        readable,
-        kept:
-          actual?.source === 'server' && readalongReady(serves, book, readable) ? undefined : kept,
-      })
+    ? readalongSource({ serves, book, readable, kept: serverEpub ? undefined : kept })
     : null;
   const generatedAt = book?.readalong?.generated_at ?? '';
   // The server's map: when it is the source, or the copy could not be read (`fallback`,
@@ -161,13 +171,14 @@ export function useBookReadalong(
     connectionId,
   );
   // The selected EPUB's digest takes precedence over the download record. Before selection,
-  // use the recorded digest, else a changed server size (`refreshReadalong`, fe#193).
-  const serverSize = book?.ebook?.size;
+  // use the recorded digest, else a changed server size: the download refresh's own rule
+  // (`fitsDownload`, fe#193).
   const foreign =
     server.data !== undefined &&
-    (ebookSha
-      ? !fitsEbook(server.data, ebookSha)
-      : savedEbookSize !== undefined && serverSize !== undefined && serverSize !== savedEbookSize);
+    !fitsDownload(
+      { sha256: ebookSha, size: savedEbookSize },
+      { size: book?.ebook?.size, map: server.data },
+    );
   const local = useQuery({
     queryKey: qk.readalongLocal(connectionId, libraryId, path, kept ?? ''),
     queryFn: () => readDownloadedReadalong({ connectionId, libraryId, path }),
@@ -212,7 +223,21 @@ export function useBookReadalong(
         : readalongFailure(read?.error);
   const refetch = read?.refetch;
   const retry = useCallback(() => void refetch?.(), [refetch]);
-  const map = useMemo(() => (data && hasSpans(data) ? readerMapOf(data) : null), [data]);
+  const map = useMemo(() => (data && hasSpans(data) ? readerMapOfOnce(data) : null), [data]);
+  // The map read last stays in the cache while no surface shows it (`pinMap`): the phone's
+  // Text chip asks on every full-player open, and a map runs to 16 MiB.
+  const client = useQueryClient();
+  const readHash =
+    data === undefined
+      ? null
+      : hashKey(
+          source === 'local'
+            ? qk.readalongLocal(connectionId, libraryId, path, kept ?? '')
+            : qk.readalong(connectionId, libraryId, path, generatedAt),
+        );
+  useEffect(() => {
+    if (readHash) pinMap(client, readHash);
+  }, [client, readHash]);
   // The server's map with no network on the device and no copy here (`offlineState`): held
   // back for the connection (TanStack's `paused`), or its read failed for want of one (a
   // reload offline, where the request went out before anything knew). Not a failure with
@@ -253,4 +278,43 @@ export function useBookReadalong(
     offline: !map && !held && offline,
     retry,
   };
+}
+
+/** The reader's form of each map read (`readerMapOf`), per map object: the cache hands the
+ * same object to every surface that shows it, so a reopened player does not walk a map of
+ * up to 16 MiB again. */
+const readerMaps = new WeakMap<object, ReaderReadalongMap>();
+
+function readerMapOfOnce(data: Pick<ReadalongMap, 'sections'>): ReaderReadalongMap {
+  let map = readerMaps.get(data);
+  if (!map) {
+    map = readerMapOf(data);
+    readerMaps.set(data, map);
+  }
+  return map;
+}
+
+/** The query each client holds (`pinMap`), by its hash. */
+const pins = new WeakMap<QueryClient, { hash: string; release: () => void }>();
+
+/**
+ * Hold the map query with the hash `hash` in the cache with no surface showing it (an
+ * observer that never fetches), so the book's map is read once, not on every open of a
+ * surface (the phone Text chip mounts with each full-player open, after the default cache
+ * time a fresh read). One map at a time per client: pinning another book's (or a map made
+ * again) releases the last one, which then leaves the cache as any unwatched query does.
+ */
+function pinMap(client: QueryClient, hash: string): void {
+  const pin = pins.get(client);
+  if (pin?.hash === hash) return;
+  const query = client.getQueryCache().get(hash);
+  if (!query) return;
+  pin?.release();
+  // The query's own options (its function, `meta`...), so the pin changes nothing of it.
+  const observer = new QueryObserver(client, {
+    ...query.options,
+    queryKey: query.queryKey,
+    enabled: false,
+  });
+  pins.set(client, { hash, release: observer.subscribe(() => {}) });
 }

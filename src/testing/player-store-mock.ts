@@ -139,6 +139,8 @@ function buildPlayerStoreMock() {
 
     // The store's real selectors, over the stand-in state.
     selectBookPosition: (s: PlayerMockState) => s.bookPosition,
+    /** The book's length for a percent (the real one takes a partial queue's server length). */
+    selectBookLength: (s: PlayerMockState) => s.nowPlaying?.queue.total ?? 0,
     /** The book's `contentKey` identity - the one the timer scopes itself to and auto
      * sleep keys its memory on. */
     selectBookKey: (s: PlayerMockState) =>
