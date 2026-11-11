@@ -691,7 +691,6 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   if (change === 'keep') return;
   const key = contentKeyOf(ref);
   let kept: KeptReadalong | undefined;
-  let refused: string | undefined;
   if (change === 'drop') {
     await removeReadalongFile(ref);
   } else {
@@ -705,12 +704,18 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
     const own = { sha256: manifest.ebookSha256, size: manifest.book.ebook?.size };
     if (!fitsDownload(own, { size: book.ebook?.size })) return;
     const fetched = await fetchReadalongFile(api, ref, { ebookSha256: manifest.ebookSha256 });
-    kept = keptOf(fetched);
-    refused = fetched && 'refused' in fetched ? fetched.refused : undefined;
     // Not fetched: the map kept (if any) stays, and so does what the download says of it.
-    // Refused: that too, and the download remembers the refusal, so the same map is not
-    // fetched again on the next launch (`readalongRefused`).
-    if (!kept && !refused) return;
+    if (!fetched) return;
+    if ('refused' in fetched) {
+      // Refused: that too, and the download remembers the refusal, so the same map is not
+      // fetched again on the next launch (`readalongRefused`).
+      if (!stillDownloaded(key, entry)) return;
+      const cur = useDownloads.getState().entries[key];
+      patchEntry(key, { manifest: { ...cur.manifest, readalongRefused: fetched.refused } });
+      persistSoon();
+      return;
+    }
+    kept = fetched;
   }
   if (!stillDownloaded(key, entry)) {
     // Removed while it was fetched: don't leave the file behind.
@@ -719,11 +724,6 @@ async function refreshReadalong(ref: BookRef, book: Book): Promise<void> {
   }
   const cur = useDownloads.getState().entries[key];
   const { manifest } = cur;
-  if (refused) {
-    patchEntry(key, { manifest: { ...manifest, readalongRefused: refused } });
-    persistSoon();
-    return;
-  }
   // The entry's size follows the map's: the old one's bytes out, the new one's in.
   const delta = (kept?.bytes ?? 0) - (manifest.readalongBytes ?? 0);
   patchEntry(key, {
