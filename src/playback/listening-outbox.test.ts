@@ -615,6 +615,45 @@ describe('flushOutbox', () => {
     expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBe(42);
   });
 
+  it("caches this device's newer place, with the row, when the server kept another device's (fe#211)", async () => {
+    const deviceId = await getDeviceId();
+    // This device resumed behind another device's further place, and played on since.
+    await writeMirror({
+      connectionId: 'c1',
+      libraryId: 3,
+      path: 'Author/Book',
+      position: 7200,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1,
+      device_id: deviceId,
+      updated_at: '2026-10-25T08:00:00.000Z',
+    });
+    await appendEvents('c1', [listen('a')]);
+    const row: Progress = {
+      library_id: 3,
+      path: 'Author/Book',
+      position: 16800,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1.2,
+      version: 42,
+      device_id: 'tablet',
+      updated_at: '2026-10-25T07:33:30.000Z',
+    };
+    client(async (body) =>
+      answer(body, () => ({ status: 'not_applied', reason: 'resume_behind' }), [row]),
+    );
+    await flushOutbox('c1');
+    // Where Resume plays, as the book's own read answers, never the row alone.
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['progress', 'c1', 3, 'Author/Book'],
+      expect.objectContaining({ position: 7200, device_id: deviceId, version: 0, server: row }),
+    );
+    // Another device's row is not acknowledged by the answer.
+    expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBeUndefined();
+  });
+
   it('acknowledges the row an unfinish of a book another device finished hands this device', async () => {
     // The server's unfinish of a finished row takes it for this device (server 0b7ce0f).
     const deviceId = await getDeviceId();

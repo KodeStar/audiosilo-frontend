@@ -1274,6 +1274,12 @@ gated). Its answer is the place Resume plays from (`bookPlace` in `progress-sync
 fe#211: the resume lookup's pick of the server's row and this device's own records, with the
 file place a resume plays, read on the page's chapters through `positionOn`), so the page
 never shows another device's older row while Resume starts at this device's newer place.
+A record of this device's reads as version 0 and carries none of the row's own fields, so
+when it is the pick the server's row goes with it (`PlacedProgress.server`, read through
+`serverRowOf`): the book's dates, another device's place to offer (`ListeningOfferLine`) and
+the version an explicit start acknowledges (`knownProgress`) come from that row. A sync
+answer's rows reach this cache the same way (`applyAnswer` stores `bookPlace` of each row),
+never the row alone.
 Home's progress list is read the same way (`useWithLocalPlaces` over `withLocalPlaces`,
 read again as the outbox changes), and its Now card reads a loaded book on the player's own
 queue (its chapters and total; never its synthetic slices), so Home's percent is the

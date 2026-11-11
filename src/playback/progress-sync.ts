@@ -414,8 +414,17 @@ function filePlaceOf(
 
 /** A place as a resume would play it: the record it picks (`resumeLookupOf`), with the
  * file place it plays from when its queue holds that file (fe#188). `file` is this
- * device's own; never on the wire. */
-export type PlacedProgress = Progress & { file?: { path: string; pos: number } };
+ * device's own; never on the wire. `server`: the server's own row when the record picked
+ * is this device's (`bookPlace`), for what only that row says (its version, its dates,
+ * another device's place to offer); this device's records read as version 0. */
+export type PlacedProgress = Progress & {
+  file?: { path: string; pos: number };
+  server?: Progress;
+};
+
+/** The server's own row of a place (`PlacedProgress.server`): the place itself when it is
+ * that row, or carries none (offline, a book the server has no record of). */
+export const serverRowOf = (place: PlacedProgress): Progress => place.server ?? place;
 
 /** `resumeLookupOf`'s pick as a `PlacedProgress`, null when it has none (a new book, or
  * nothing known anywhere). The same object as the record picked when it has no file place. */
@@ -427,7 +436,11 @@ function resumePlaceOf(
   path: string,
 ): PlacedProgress | null {
   const lookup = resumeLookupOf(server, places, connectionId, libraryId, path);
-  if (lookup.kind !== 'progress') return null;
+  return lookup.kind === 'progress' ? placedOf(lookup) : null;
+}
+
+/** A resume lookup's record with its file place; the same object when it has none. */
+function placedOf(lookup: Extract<ResumeLookup, { kind: 'progress' }>): PlacedProgress {
   return lookup.file ? { ...lookup.progress, file: lookup.file } : lookup.progress;
 }
 
@@ -465,14 +478,20 @@ export async function bookPlace(
   libraryId: number,
   path: string,
 ): Promise<PlacedProgress | null> {
-  return resumePlaceOf(server, await readLocalPlaces(), connectionId, libraryId, path);
+  const lookup = resumeLookupOf(server, await readLocalPlaces(), connectionId, libraryId, path);
+  if (lookup.kind !== 'progress') return null;
+  const place = placedOf(lookup);
+  // This device's own record says nothing of the server's row (its version, its dates,
+  // another device's place to offer): the row goes with it.
+  return server && lookup.progress !== server ? { ...place, server } : place;
 }
 
 /**
  * A place's whole-book seconds on the timeline `files` lay out (a chapters answer's files),
- * as a resume plays it: at its file place when `files` holds that file and every file before
- * it has a length, else its own whole-book seconds (pure). After a server reorder, a place
- * this device saved in the download's order then reads where the player would put it.
+ * as a resume plays it: at its file place (within that file's length) when `files` holds
+ * that file and every file before it has a length, else its own whole-book seconds (pure).
+ * After a server reorder, a place this device saved in the download's order then reads
+ * where the player would put it.
  */
 export function positionOn(
   place: Pick<PlacedProgress, 'position' | 'file'>,

@@ -28,6 +28,7 @@ import { onConnectionRemoved } from '@/stores/session';
 import { isPos, type OpenSpan, type StoredSpan, storedSpans } from './open-span-doc';
 import {
   ackVersion,
+  bookPlace,
   getDeviceId,
   mirrorSpanEnd,
   noteClockSkew,
@@ -1205,10 +1206,14 @@ async function applyAnswer(
   const deviceId = await getDeviceId();
   const events = sent.map((e) => e.event);
   for (const row of rows) {
-    queryClient.setQueryData(qk.progress(connectionId, row.library_id, row.path), row);
     if (keptMine(row, deviceId, events, results)) {
       await ackVersion(connectionId, row.library_id, row.path, row.version, row);
     }
+    // The book's cached progress is the place Resume plays (`bookPlace`, fe#211), as its
+    // own read answers (`fetchBookProgress`): a row the server kept over this device's
+    // newer place (another device's, further on) must not show while Resume plays here.
+    const place = await bookPlace(row, connectionId, row.library_id, row.path).catch(() => null);
+    queryClient.setQueryData(qk.progress(connectionId, row.library_id, row.path), place ?? row);
   }
   if (events.some((e) => e.kind === 'listen')) {
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });

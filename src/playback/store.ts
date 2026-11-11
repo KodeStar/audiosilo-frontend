@@ -74,6 +74,7 @@ import {
   getDeviceId,
   guardSettled,
   loadInitialProgress,
+  type PlacedProgress,
   type ProgressSave,
   readMirror,
   saveProgress,
@@ -604,18 +605,22 @@ async function maybeAutoDownloadCurrent(
 }
 
 /** What this device knows of `path`'s progress without the network (an explicit start
- * must not wait on it): the server's progress the app has cached (the book page reads it),
- * and the newer of that and the local mirror of the last save. */
+ * must not wait on it): the place the app has cached (the book page reads it: the server's
+ * row, or this device's own newer record with that row beside it, `bookPlace`), the
+ * server's row of it (`row`; a cache that holds only this device's record, read offline,
+ * hands that record, whose version is 0), and the newer of the cached place and the local
+ * mirror of the last save. */
 async function knownProgress(
   connectionId: string,
   libraryId: number,
   path: string,
 ): Promise<{
-  cached: Progress | null;
+  row: Progress | null;
   newest: Pick<Progress, 'playback_speed' | 'finished'> | null;
 }> {
   const cached =
-    queryClient.getQueryData<Progress | null>(qk.progress(connectionId, libraryId, path)) ?? null;
+    queryClient.getQueryData<PlacedProgress | null>(qk.progress(connectionId, libraryId, path)) ??
+    null;
   const mirror = await readMirror(connectionId, libraryId, path).catch(() => null);
   const newest =
     cached && mirror
@@ -623,7 +628,7 @@ async function knownProgress(
         ? mirror
         : cached
       : (cached ?? mirror);
-  return { cached, newest };
+  return { row: cached && (cached.server ?? cached), newest };
 }
 
 /**
@@ -2258,13 +2263,15 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         const saved = known.newest?.playback_speed ?? 0;
         if (!askedSpeed && saved > 0) speed = clampRate(saved);
         if (known.newest?.finished) unfinish = true;
-        if (known.cached && known.cached.version > 0 && usesListeningSync(connectionId)) {
+        // The server's own row, also when the page showed this device's newer place (a
+        // record of this device's reads as version 0, and would acknowledge nothing).
+        if (known.row && known.row.version > 0 && usesListeningSync(connectionId)) {
           await ackVersion(
             connectionId,
             libraryId,
             book.rel_path,
-            known.cached.version,
-            known.cached,
+            known.row.version,
+            known.row,
           ).catch(() => undefined);
         }
       }

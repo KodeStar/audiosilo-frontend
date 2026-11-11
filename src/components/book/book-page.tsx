@@ -75,7 +75,7 @@ import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
-import { positionOn } from '@/playback/progress-sync';
+import { positionOn, serverRowOf } from '@/playback/progress-sync';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useBookTimeSaved } from '@/playback/time-saved';
 import { useLibraryName } from '@/stores/library-names';
@@ -302,6 +302,9 @@ function BookPage() {
   // The saved place as Resume plays it (fe#211): this device's file place read on these
   // chapters' files (after a server reorder, the download's order put it elsewhere).
   const savedPosition = progress ? positionOn(progress, chapterData?.files) : undefined;
+  // What only the server's own row says, when the place shown is this device's newer record:
+  // the book's dates, and another device's place to offer.
+  const serverRow = progress && serverRowOf(progress);
   const { listening: listeningPosition, resume: resumePosition } = useBookPlace(
     target,
     savedPosition,
@@ -384,7 +387,12 @@ function BookPage() {
   const position = finished ? total : (resumePosition ?? 0);
   // The row the listener is in (none marked before the start or once finished).
   const current = started && !finished ? rowAt(list.rows, position) : -1;
-  const timeLeft = useBookTimeLeft(book ? target : null, progress, total);
+  // On the same place as the hero's: the saved one as Resume plays it.
+  const timeLeft = useBookTimeLeft(
+    book ? target : null,
+    progress && { ...progress, position: savedPosition ?? progress.position },
+    total,
+  );
 
   // Your listening: what this book's own records say. A recorded span refreshes the
   // history (`qk.historyAll`), so it is trusted long: only another device's spans wait.
@@ -397,7 +405,7 @@ function BookPage() {
   const listening = listeningFigures({
     started,
     finished,
-    progress,
+    progress: serverRow,
     history,
     speed,
     smartSpeedSaved,
@@ -634,7 +642,7 @@ function BookPage() {
               <DownloadProgress libraryId={libraryId} path={relPath} />
               <ListeningOfferLine
                 target={target}
-                row={progress}
+                row={serverRow}
                 here={resumePosition}
                 chapters={chapterData?.chapters ?? []}
                 onPlay={(position) => play({ at: { position } })}

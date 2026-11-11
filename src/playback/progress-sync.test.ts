@@ -21,11 +21,13 @@ import {
   withLocalPlaces,
   noteClockSkew,
   pendingSaveCount,
+  type PlacedProgress,
   type ProgressSave,
   readLocalPlaces,
   readMirror as readMirrorOf,
   resumeLookupOf,
   saveProgress,
+  serverRowOf,
   writeMirror,
 } from '@/playback/progress-sync';
 import { provideStoredSkews } from '@/playback/stored-skews';
@@ -601,14 +603,20 @@ describe('progress-sync', () => {
       device_id: 'tablet',
       updated_at: '2026-03-01T00:00:00Z',
     });
-    expect(await bookPlace(other, 'c1', 1, 'A/Book')).toMatchObject({
+    const place = await bookPlace(other, 'c1', 1, 'A/Book');
+    expect(place).toMatchObject({
       position: 900,
       device_id: 'me',
       file: { path: 'A/Book/02.mp3', pos: 300 },
     });
+    // The server's own row goes with it: this device's record reads as version 0 and says
+    // nothing of the row's dates or of another device's place to offer.
+    expect(place?.server).toBe(other);
+    expect(serverRowOf(place as PlacedProgress)).toBe(other);
     // The server's newer row stands, as it does for Resume.
     const newer = makeProgress({ position: 1500, updated_at: '2026-03-03T00:00:00Z' });
     expect(await bookPlace(newer, 'c1', 1, 'A/Book')).toBe(newer);
+    expect(serverRowOf(newer)).toBe(newer);
   });
 });
 
