@@ -3427,3 +3427,8 @@ export const selectIsEnded = (s: PlayerState): boolean => s.snapshot.state === '
 /** The loaded book's queue ends where its download does, short of the book's end (an
  * adoption offline, D3, fe#185): reaching that end is never the book's end. */
 export const selectEndsPartial = (s: PlayerState): boolean => endsPartial(s.nowPlaying);
+/** The loaded book's length for a percent heard: the queue's, but a partial queue's is the
+ * book's on its server when known (`partialQueues`), as its saves send, so the player's
+ * percent is Home's. */
+export const selectBookLength = (s: PlayerState): number =>
+  s.nowPlaying ? partialQueues.get(s.nowPlaying.queue) || s.nowPlaying.queue.total : 0;

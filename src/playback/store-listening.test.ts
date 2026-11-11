@@ -132,7 +132,13 @@ import type { DownloadEntry } from '@/downloads/types';
 
 import { finishTakesEvent, recordFinishEvent, undoFinish } from './finish-route';
 import { appendEvents, closeSpan } from './listening-outbox';
-import { flushHistoryOnHide, saveLoadedPlace, standByPlace, usePlayer } from './store';
+import {
+  flushHistoryOnHide,
+  saveLoadedPlace,
+  selectBookLength,
+  standByPlace,
+  usePlayer,
+} from './store';
 /* eslint-enable import/first */
 
 // A two-file folder book; the server now plays "2.mp3" before "10.mp3" (natural order).
@@ -1137,11 +1143,14 @@ describe('what a span carries', () => {
       );
       expect(durations.length).toBeGreaterThan(0);
       expect(durations.every((d) => d === 160)).toBe(true);
+      // The player's percent is of the same length, so it reads as Home's.
+      expect(selectBookLength(usePlayer.getState())).toBe(160);
     });
 
     it('sends no length when the download does not know it (the server checks none)', async () => {
       await playOffline(withEnd());
       expect(mockClosed.map((s) => s.duration)).toEqual([0]);
+      expect(selectBookLength(usePlayer.getState())).toBe(100);
     });
   });
 
