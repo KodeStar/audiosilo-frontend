@@ -3376,7 +3376,8 @@ under their empty state).
   used to fail with a Retry. The Library's Series, Authors, Narrators, Collections and Shows
   modes, the series, author / narrator, book, episode, collection, show and folder pages, and
   a book's bookmarks, notes and history sections all do, and so do the Signed-in devices and
-  household members sections, Your listening (both of its reads) and the Year story
+  household members sections, Your listening (both of its reads, and its `/server`: until
+  the flag is known neither read is asked, so neither is ever held) and the Year story
   (`useYearStory`'s `offline` status: a held streak or goal is left out, like a failed one);
   Favourites and Home's See all, with no row in, hand `useUnreadQuery` their fan-out's
   `offline` (a server's list held with nothing kept, `anyHeld`), so one server's empty
