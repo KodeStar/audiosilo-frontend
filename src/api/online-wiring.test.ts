@@ -122,15 +122,17 @@ describe("React Query's online flag in the app", () => {
     it('keeps the one-at-a-time order of a scope', async () => {
       await system({ isConnected: false });
       const order: string[] = [];
-      const write = (name: string) =>
+      // The first takes longer than the second: run side by side, the second would land
+      // first.
+      const write = (name: string, ticks: number) =>
         new MutationObserver(queryClient, {
           scope: { id: 'queue:c1' },
           mutationFn: async () => {
-            await tick();
+            for (let i = 0; i < ticks; i++) await tick();
             order.push(name);
           },
         }).mutate();
-      await Promise.all([write('first'), write('second')]);
+      await Promise.all([write('first', 3), write('second', 1)]);
       expect(order).toEqual(['first', 'second']);
     });
   });
