@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import type { Progress } from '@/api/types';
 
-import { onOutboxChange } from './listening-outbox';
 import {
   type LocalPlaces,
   type PlacedProgress,
   readLocalPlaces,
   withLocalPlaces,
 } from './progress-sync';
+import { useOutboxRead } from './use-listening-sync';
+
+/** Each read of this device's records is a new one: the list is worked out again. */
+const never = () => false;
 
 /**
  * `rows` (a progress list) with each book where Resume would play it (`withLocalPlaces`,
@@ -20,23 +23,15 @@ import {
 export function useWithLocalPlaces<T extends Progress & { connectionId: string }>(
   rows: readonly T[],
 ): readonly (T & PlacedProgress)[] {
-  const [places, setPlaces] = useState<LocalPlaces | null>(null);
-  // What the list says, not its identity: a list rebuilt each render reads nothing again.
-  const said = rows
-    .map((r) => `${r.connectionId}\u0000${r.library_id}\u0000${r.path}\u0000${r.updated_at}`)
-    .join('\n');
-  useEffect(() => {
-    let live = true;
-    const read = () =>
-      void readLocalPlaces()
-        .then((p) => live && setPlaces(p))
-        .catch(() => undefined);
-    read();
-    const stop = onOutboxChange(read);
-    return () => {
-      live = false;
-      stop();
-    };
-  }, [said]);
+  // What the list says, not its identity: a list rebuilt with the same rows reads nothing
+  // again.
+  const said = useMemo(
+    () =>
+      rows
+        .map((r) => `${r.connectionId}\u0000${r.library_id}\u0000${r.path}\u0000${r.updated_at}`)
+        .join('\n'),
+    [rows],
+  );
+  const places = useOutboxRead<LocalPlaces | null>(said, readLocalPlaces, null, never);
   return useMemo(() => withLocalPlaces(rows, places), [rows, places]);
 }

@@ -24,7 +24,7 @@ const EMPTY: ListeningSyncView = { waiting: 0, failed: [] };
 /** Re-run `read` now and on every outbox change, while mounted; `null` key reads nothing.
  * A value `same` as the one held keeps it (no re-render: an outbox change that left this
  * reader's part alone). */
-function useOutboxRead<T>(
+export function useOutboxRead<T>(
   key: string | null,
   read: () => Promise<T>,
   initial: T,
@@ -114,15 +114,15 @@ export type WaitingListen = { connectionId: string; event: ListeningSpanEvent };
 const NO_WAITING: WaitingListen[] = [];
 
 /** Every connection's listen events waiting to sync (the Diary's waiting rows, fe#208),
- * oldest first, kept current as the outbox changes. `active` false reads nothing. */
-export function useWaitingListens(active = true): WaitingListen[] {
+ * oldest first, kept current as the outbox changes. */
+export function useWaitingListens(): WaitingListen[] {
   return useOutboxRead(
-    active ? 'all' : null,
+    'all',
     async () =>
       (await outboxEvents()).flatMap((e): WaitingListen[] =>
         e.event?.kind === 'listen' ? [{ connectionId: e.connectionId, event: e.event }] : [],
       ),
     NO_WAITING,
-    (a, b) => a.length === b.length && a.every((x, i) => x.event.id === b[i].event.id),
+    sameIds,
   );
 }
