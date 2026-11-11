@@ -31,7 +31,12 @@ import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
 import { wallClockSeconds } from '@/playback/rate';
-import { FINISHED_TOLERANCE, selectBookPosition, usePlayer } from '@/playback/store';
+import {
+  FINISHED_TOLERANCE,
+  selectBookPosition,
+  selectEndsPartial,
+  usePlayer,
+} from '@/playback/store';
 import { resolveUpNext, type UpNextAnswer, type UpNextBook } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
@@ -189,11 +194,14 @@ function EndCreditsBody({
     const player = usePlayer.getState();
     const np = player.nowPlaying;
     const loaded = np?.connectionId === cid && np.libraryId === libraryId && np.path === path;
+    // Never by its place when its queue ends short of the book (a partial download, D3,
+    // fe#185): that end is the downloaded part's, and Play now must not finish the book.
     const over =
       ended ||
       player.snapshot.state === 'ended' ||
       (!!np &&
         np.queue.total > 0 &&
+        !selectEndsPartial(player) &&
         selectBookPosition(player) >= np.queue.total - FINISHED_TOLERANCE);
     let stopped: Promise<unknown> = Promise.resolve();
     if (loaded && over) {

@@ -1328,14 +1328,39 @@ function giveWayTo(claim: PlayingClaim) {
   void service
     ?.pause()
     .catch((e: unknown) => console.warn('[player] could not pause for another tab', e));
-  if (gaveWayListener) gaveWayListener();
-  else gaveWayUntold = true;
+  gaveWayNotice.tell();
 }
 
-let gaveWayListener: (() => void) | null = null;
-/** This tab gave way with nobody to tell yet (the root's services start after the first
- * paint on the web): the listener is told as it registers. */
-let gaveWayUntold = false;
+/**
+ * One listener for something the store has to say, told of it as it registers when it
+ * happened with nobody to tell yet (the root's services, which show the notices, start
+ * after the store can: after the first paint on the web, with the root layout on a car
+ * start with no activity).
+ */
+function lateListener() {
+  let listener: (() => void) | null = null;
+  let untold = false;
+  return {
+    tell() {
+      if (listener) listener();
+      else untold = true;
+    },
+    /** Register the listener (one at a time); returns the unsubscribe. */
+    on(next: () => void): () => void {
+      listener = next;
+      if (untold) {
+        untold = false;
+        next();
+      }
+      return () => {
+        if (listener === next) listener = null;
+      };
+    },
+  };
+}
+
+/** This tab gave way to another tab's play. */
+const gaveWayNotice = lateListener();
 
 /** Queues built from a download that lacks files of its book the engine played (an
  * adoption offline, `adoptLoadedBook`): their end is the downloaded part's, not the book's
@@ -1345,45 +1370,24 @@ const partialQueues = new WeakSet<BookQueue>();
 /** Whether `np`'s queue ends where its download does, short of the book's end. */
 const endsPartial = (np: NowPlaying | null): boolean => !!np && partialQueues.has(np.queue);
 
-let partialEndListener: (() => void) | null = null;
-/** The player stopped there with nobody to tell yet (a car start with no activity: the
- * root's services start with the root layout, the store without it): the listener is told
- * as it registers. */
-let partialEndUntold = false;
+/** The engine last reported the end of such a queue (the store reads it as `paused`): a
+ * play there has nothing to play. False again with the engine's next other state (a move
+ * back, another book). */
+let atPartialEnd = false;
 
 /** "The rest of this book isn't downloaded": the player stopped at the end of a download
  * that lacks the rest of its book. */
-function tellPartialEnd() {
-  if (partialEndListener) partialEndListener();
-  else partialEndUntold = true;
-}
+const partialEndNotice = lateListener();
+const tellPartialEnd = partialEndNotice.tell;
 
 /** Be told each time the player stops at the end of a download that lacks the rest of its
  * book (D3, fe#185), and of a stop nobody was told of yet. One listener; returns the
  * unsubscribe. */
-export function onPartialDownloadEnd(listener: () => void): () => void {
-  partialEndListener = listener;
-  if (partialEndUntold) {
-    partialEndUntold = false;
-    listener();
-  }
-  return () => {
-    if (partialEndListener === listener) partialEndListener = null;
-  };
-}
+export const onPartialDownloadEnd = partialEndNotice.on;
 
 /** Be told each time this tab gives way to another tab's play (the "Playing in another
- * tab" notice). One listener; returns the unsubscribe. */
-export function onGaveWayToTab(listener: () => void): () => void {
-  gaveWayListener = listener;
-  if (gaveWayUntold) {
-    gaveWayUntold = false;
-    listener();
-  }
-  return () => {
-    if (gaveWayListener === listener) gaveWayListener = null;
-  };
-}
+ * tab" notice), and of one nobody was told of yet. One listener; returns the unsubscribe. */
+export const onGaveWayToTab = gaveWayNotice.on;
 
 /**
  * Another tab of the web player began playing on a connection while this tab, with a book
@@ -1947,6 +1951,7 @@ async function createService(): Promise<PlaybackService> {
     // The end of a download that lacks the rest of its book (an adoption offline, D3, fe#185)
     // is a pause there with a notice, never the book's end: no credits, no finish.
     const partialEnd = state === 'ended' && endsPartial(usePlayer.getState().nowPlaying);
+    atPartialEnd = partialEnd;
     if (partialEnd) state = 'paused';
     else if (startingPlayback && state !== 'playing' && state !== 'error') state = 'loading';
     else if (state === 'ready' && wantsPlayback) state = 'loading';
@@ -2351,6 +2356,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       clearPlaybackIntent();
       await svc.pause();
     } else {
+      // At the end of a partial download (D3, fe#185) nothing plays: the engine, ended,
+      // reports no `playing`, and the stall watchdog would call the attempt an error. The
+      // listener is told again instead.
+      if (atPartialEnd && endsPartial(get().nowPlaying)) {
+        tellPartialEnd();
+        return;
+      }
       beginPlaybackAttempt();
       // Another tab played on meanwhile: from where it left the book, when it is this one.
       const behind = otherTabPlayed;
@@ -3255,3 +3267,7 @@ export const selectIsTransportLive = (s: PlayerState): boolean =>
 /** The current book has reached its natural end (its files finished). Drives the
  * UI-layer end-of-book flow; nowPlaying stays populated in this state. */
 export const selectIsEnded = (s: PlayerState): boolean => s.snapshot.state === 'ended';
+
+/** The loaded book's queue ends where its download does, short of the book's end (an
+ * adoption offline, D3, fe#185): reaching that end is never the book's end. */
+export const selectEndsPartial = (s: PlayerState): boolean => endsPartial(s.nowPlaying);

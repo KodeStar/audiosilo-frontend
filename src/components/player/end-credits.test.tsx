@@ -42,11 +42,13 @@ jest.mock('@/playback/store', () => {
   return {
     FINISHED_TOLERANCE: 5,
     selectBookPosition: (s: { position: number }) => s.position,
+    selectEndsPartial: (s: { endsPartial?: boolean }) => !!s.endsPartial,
     usePlayer: create(() => ({
       nowPlaying: null,
       snapshot: { state: 'idle' },
       rate: 1,
       position: 0,
+      endsPartial: false,
       finishBook: () => mockFinishBook(),
       stop: () => mockStop(),
     })),
@@ -231,7 +233,13 @@ beforeEach(() => {
     { started_at: '2026-10-04T20:00:00Z', ended_at: '2026-10-04T21:00:00Z' },
   ]);
   useSettings.setState({ autoPlayNext: false, defaultRate: 1 });
-  setPlayer({ nowPlaying: null, snapshot: { state: 'idle' }, rate: 1, position: 0 });
+  setPlayer({
+    nowPlaying: null,
+    snapshot: { state: 'idle' },
+    rate: 1,
+    position: 0,
+    endsPartial: false,
+  });
   useAutoPlayHold.setState({ key: null });
 });
 
@@ -500,6 +508,27 @@ describe('EndCredits', () => {
     // It is finished: it leaves Up next; the next book, which did not start, stays.
     expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: PATH }]]);
     warn.mockRestore();
+  });
+
+  it('Play now never finishes a book paused at the end of a partial download (D3, fe#185)', async () => {
+    mockEnded = false;
+    queryClient.setQueryData(['queue', 'c1'], [
+      { library_id: 1, path: 'Weir/Project Hail Mary', added_at: '' },
+      { library_id: 1, path: PATH, added_at: '' },
+    ] satisfies QueueEntry[]);
+    // Its queue is the downloaded part: the place at its end is not the book's end.
+    setPlayer({
+      nowPlaying: { connectionId: 'c1', libraryId: 1, path: PATH, queue: { total: 1000 } },
+      snapshot: { state: 'paused' },
+      position: 1000,
+      endsPartial: true,
+    });
+    await mount();
+    await fireEvent.press(screen.getByText('Play now'));
+    await act(async () => {});
+    expect(mockFinishBook).not.toHaveBeenCalled();
+    expect(mockStop).toHaveBeenCalledTimes(1);
+    expect(mockRemove.mock.calls).toEqual([[{ libraryId: 1, path: 'Weir/Project Hail Mary' }]]);
   });
 
   it('Play now finishes a book opened by its end that is still loaded', async () => {

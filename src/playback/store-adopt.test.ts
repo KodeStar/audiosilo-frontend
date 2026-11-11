@@ -912,6 +912,39 @@ describe('adoptLoaded', () => {
       stopTelling();
     });
 
+    it('tells again, with no play attempt, when Play is pressed at that end', async () => {
+      jest.useFakeTimers();
+      try {
+        mockResolveClient.mockReturnValue(null);
+        useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+        const told = jest.fn();
+        const stopTelling = onPartialDownloadEnd(told);
+        await usePlayer
+          .getState()
+          .adoptLoaded(engine(['B/3.mp3', 'B/1.mp3', 'B/2.mp3'], { trackIndex: 1, position: 30 }));
+        pushSnapshot(snap('playing', 1, 50));
+        pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
+        expect(told).toHaveBeenCalledTimes(1);
+        (mockSvc.play as jest.Mock).mockClear();
+        // The engine, ended, plays nothing: an attempt would sit until the stall watchdog
+        // called it an error.
+        await usePlayer.getState().toggle();
+        expect(mockSvc.play).not.toHaveBeenCalled();
+        expect(told).toHaveBeenCalledTimes(2);
+        jest.advanceTimersByTime(60_000);
+        expect(usePlayer.getState().snapshot.state).toBe('paused');
+        // Moved back from the end, the engine reports another state: Play plays again.
+        pushSnapshot(snap('paused', 1, 20));
+        await usePlayer.getState().toggle();
+        expect(mockSvc.play).toHaveBeenCalledTimes(1);
+        expect(told).toHaveBeenCalledTimes(2);
+        stopTelling();
+      } finally {
+        await usePlayer.getState().pause();
+        jest.useRealTimers();
+      }
+    });
+
     it("streams on, online, in a file the download lacks when the server's order is another (D3, fe#185)", async () => {
       useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
       // The server holds B/3 too, first now; the engine played it last.

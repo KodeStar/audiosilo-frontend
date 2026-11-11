@@ -2197,17 +2197,21 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     by `loadingBook` until the load lands, and its place saves nothing until it plays,
     `quietAdopted`; a paused one is paused again once loaded, and a pause while it loads
     stands). Not while casting (fe#145). **A partial download** (D3, fe#185): online, when the
-    engine plays a file the download lacks and the server's chapters hold it in another order,
-    the queue is built from the server's chapters (streaming what the download lacks) and the
-    engine reloaded into it: it streams on. Offline (or no answer), a queue built from a
-    download that lacks files the engine played (unless the server says they are gone) is
-    partial (`partialQueues`): its end is the downloaded part's, so the engine's `ended` there
+    engine's files include one the download lacks (the playing one or a later one) and the
+    server's chapters hold it in another order, the queue is built from the server's chapters
+    (streaming what the download lacks) and the engine reloaded into it: it streams on, and a
+    file the server no longer has is gone from the book. Offline (or no answer), a queue built
+    from a download that lacks files the engine played is partial (`partialQueues`): its end is the downloaded part's, so the engine's `ended` there
     reads as a pause, never a finish (no credits, no `finish`, no `finished` save), and the
     listener is told "The rest of this book isn't downloaded" (`onPartialDownloadEnd`,
     `partial-download-notice.ts`, shown once the app is looked at; a stop with no listener
     yet, a car start before the root layout, is told as it registers); a place past that end
-    lands short of it and stays paused, with the same notice. Regression tests:
-    `store-adopt.test.ts`.
+    lands short of it and stays paused, with the same notice. A Play pressed at that end
+    (`toggle`, while the engine's last word is that `ended`: `atPartialEnd`) starts no
+    attempt, since the ended engine reports no `playing` and the stall watchdog would call
+    it an error: the notice again. The end credits' Play now never finishes such a book by
+    its place (`selectEndsPartial`): it stops, unfinished. Regression tests:
+    `store-adopt.test.ts`, `end-credits.test.tsx`.
 - **CarPlay and the UIScene life cycle** (`plugins/withCarPlay.js`, tested over the SDK 58
   AppDelegate fixture `plugins/__fixtures__/app-delegate-sdk58.ts` by `withCarPlay.test.ts`).
   The SDK 58 template is already a scene app: its AppDelegate only builds the React Native
