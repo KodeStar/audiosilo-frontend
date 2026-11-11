@@ -76,7 +76,9 @@ export function FoldersMode() {
   const anyOffline = rows.some((r) => r.state === 'offline');
   const anyFailed = rows.some((r) => r.state === 'failed');
   // With no library to list, offline is the page's own state (below), not a row per server.
-  const offlinePage = libraries.length === 0 && anyOffline && !anyFailed;
+  // Not beside a sign-in state, which takes the page state's place: the offline servers
+  // keep their rows then.
+  const offlinePage = libraries.length === 0 && anyOffline && !anyFailed && !refused;
 
   // One group per server (in connection order) that has libraries or whose list is not in,
   // each under its server's heading when there are several (a signed-out server's list

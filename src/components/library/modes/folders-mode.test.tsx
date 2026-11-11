@@ -159,6 +159,17 @@ describe('FoldersMode', () => {
     expect(screen.queryByTestId('folders-offline-a')).toBeNull();
   });
 
+  // Beside a sign-in state (which takes the page state's place) a server the device is
+  // offline for keeps its row: it is not dropped without a word.
+  it('keeps the offline server on the page beside another server that needs sign-in', async () => {
+    mockSignedOut = [{ id: 'a', name: 'Home', needsReconnect: 'auth' }];
+    mockLists = [list('a', 'Home', 'error'), { ...list('b', 'Maya', 'loading'), paused: true }];
+    await render(<FoldersMode />);
+    expect(screen.getByTestId('folders-offline-b')).toBeTruthy();
+    expect(screen.getByText('Libraries from Maya show once it answers.')).toBeTruthy();
+    expect(screen.queryByText(/Couldn't load libraries/)).toBeNull();
+  });
+
   it('opens a library from its row', async () => {
     mockLists = [list('a', 'Home', 'ready', ['Audiobooks'])];
     await render(<FoldersMode />);
