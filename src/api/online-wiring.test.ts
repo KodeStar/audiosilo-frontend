@@ -1,4 +1,4 @@
-import { onlineManager, QueryObserver } from '@tanstack/react-query';
+import { MutationObserver, onlineManager, QueryObserver } from '@tanstack/react-query';
 
 // The system's network state, as expo-network reports it. Held on the mock itself: the
 // modules under test subscribe as they are imported, before this file's constants exist.
@@ -97,5 +97,60 @@ describe("React Query's online flag in the app", () => {
         },
       }),
     ).rejects.toThrow('Network request failed');
+  });
+
+  // Only reads wait. A write held for the network never settles (Save spins) and lives
+  // only in memory: closing the app before the network is back loses it without a word.
+  describe('a write (a bookmark, a note, a rating, the queue, a collection, a progress edit)', () => {
+    it('is sent with no network, and fails at once with its own error', async () => {
+      await system({ isConnected: false });
+      const send = jest.fn(async () => {
+        throw new TypeError('Network request failed');
+      });
+      const observer = new MutationObserver(queryClient, { mutationFn: send });
+      await expect(observer.mutate()).rejects.toThrow('Network request failed');
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(observer.getCurrentResult()).toMatchObject({ status: 'error', isPaused: false });
+    });
+
+    it('lands with no network when its server still answers', async () => {
+      await system({ isConnected: false });
+      const observer = new MutationObserver(queryClient, { mutationFn: async () => 'saved' });
+      await expect(observer.mutate()).resolves.toBe('saved');
+    });
+
+    it('keeps the one-at-a-time order of a scope', async () => {
+      await system({ isConnected: false });
+      const order: string[] = [];
+      const write = (name: string) =>
+        new MutationObserver(queryClient, {
+          scope: { id: 'queue:c1' },
+          mutationFn: async () => {
+            await tick();
+            order.push(name);
+          },
+        }).mutate();
+      await Promise.all([write('first'), write('second')]);
+      expect(order).toEqual(['first', 'second']);
+    });
+  });
+});
+
+// The web is untouched: TanStack's default there, a write waits for the browser to come
+// back online and is sent then (the tab stays open meanwhile).
+describe('a write on the web', () => {
+  it('waits for the network, as it always has', () => {
+    jest.isolateModules(() => {
+      const { Platform } = jest.requireActual<typeof import('react-native')>('react-native');
+      const os = Platform.OS;
+      Platform.OS = 'web';
+      try {
+        const web = jest.requireActual<typeof import('./provider')>('./provider');
+        expect(web.queryClient.getDefaultOptions().mutations?.networkMode).toBeUndefined();
+        expect(queryClient.getDefaultOptions().mutations?.networkMode).toBe('always');
+      } finally {
+        Platform.OS = os;
+      }
+    });
   });
 });

@@ -14,8 +14,9 @@ import { Platform } from 'react-native';
  * In the app "a network" is the system's `isConnected` alone, never whether the internet
  * can be reached through it (fe#179): a server on the same Wi-Fi answers with the
  * internet down, so whether a server can be reached is that server's to say (by
- * answering), and a Retry stays on screen. React Query pauses its requests by the same
- * signal in the app (`watchDeviceOnline`, wired in `src/api/provider.tsx`).
+ * answering), and a Retry stays on screen. React Query pauses its reads by the same
+ * signal in the app (`watchDeviceOnline`, wired in `src/api/provider.tsx`; writes are
+ * never held there).
  */
 export function useDeviceOnline(): boolean {
   return useSyncExternalStore(subscribe, readOnline, readOnline);
@@ -24,7 +25,7 @@ export function useDeviceOnline(): boolean {
 /**
  * The same signal outside React: `listener` hears the state now and at every change, until
  * the returned stop is called. The shape of TanStack's `onlineManager.setEventListener`
- * setup, so the query library pauses and resumes by what `useDeviceOnline` shows.
+ * setup, so the query library pauses and resumes its reads by what `useDeviceOnline` shows.
  */
 export function watchDeviceOnline(listener: (online: boolean) => void): () => void {
   const stopWatching = subscribe(() => listener(online));

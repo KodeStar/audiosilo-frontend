@@ -123,6 +123,13 @@ export const queryClient = new QueryClient({
       staleTime: 30_000,
       refetchOnWindowFocus: false,
     },
+    // The app: a write is sent whatever the online flag says, as it was before the flag
+    // followed the network there (below). Held for the network it never settles: Save
+    // spins, and the write, which lives only in memory, is gone if the app is closed
+    // before the network returns. Sent, it fails at once with no network and the screen
+    // says so (its own error, the form still open). The web keeps TanStack's default (a
+    // write waits for the browser to come back online), as it always has.
+    mutations: Platform.OS === 'web' ? undefined : { networkMode: 'always' },
   },
 });
 
@@ -130,7 +137,8 @@ export const queryClient = new QueryClient({
 // `useDeviceOnline` shows (fe#179). With no network a query waits (`paused`) and is asked
 // as soon as the network is back, where it used to fail at once and stay failed; a read
 // that must settle either way asks with `networkMode: 'always'` (`fetchFailFast`, the
-// reads of this device). "A network" is the system's `isConnected`, so a server on the
+// reads of this device). Only reads wait: a write is never held (the `mutations` default
+// above). "A network" is the system's `isConnected`, so a server on the
 // same Wi-Fi is still asked with the internet down. The web keeps TanStack's own listener:
 // the browser's `online` / `offline` events, which `useDeviceOnline` follows there too.
 if (Platform.OS !== 'web') onlineManager.setEventListener(watchDeviceOnline);
