@@ -43,7 +43,11 @@ export function quietOffScreen<S extends object, K extends keyof S>(
     }
     return true;
   };
-  store.subscribe((live) => {
+  // The store's state now, not the one this call is told: were a listener before this one to
+  // set the store while it is told of a change, this one would hear the newer state first
+  // and the older one after it.
+  store.subscribe(() => {
+    const live = store.getState();
     if (isOffScreen() && onlyATick(live)) return;
     show(live);
   });

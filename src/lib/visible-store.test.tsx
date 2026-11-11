@@ -114,6 +114,18 @@ describe('quietOffScreen', () => {
     expect(hook.result.current).toBe(store.getState());
   });
 
+  it('shows the newest state when a listener before it sets the store as it is told', async () => {
+    const store = clock();
+    // Subscribed first: zustand tells the later listeners the newer state, then the older.
+    store.subscribe((s) => {
+      if (s.label === 'b' && s.running) store.setState({ running: false });
+    });
+    const useClock = quietOffScreen(store, 'seconds', () => true);
+    const hook = await renderHook(() => useClock((s) => s.running));
+    await act(async () => store.setState({ label: 'b' }));
+    expect(hook.result.current).toBe(false);
+  });
+
   it('shows a reader mounted off screen the state last shown, then the live one', async () => {
     const store = clock();
     const useClock = quietOffScreen(store, 'seconds', () => true);
