@@ -998,7 +998,7 @@ export async function resendMismatched(): Promise<void> {
   const state = await readState();
   const now = Date.now();
   for (const [connectionId, s] of Object.entries(state)) {
-    const again: ListeningEvent[] = [];
+    const again: ListeningSpanEvent[] = [];
     for (const f of s.failed ?? []) {
       if (!stillKept(f, now) || f.reason !== 'duration_mismatch' || f.event.kind !== 'listen')
         continue;
@@ -1009,12 +1009,19 @@ export async function resendMismatched(): Promise<void> {
       if (event.duration !== f.event.duration) again.push(event);
     }
     if (again.length === 0) continue;
-    const ids = new Set(again.map((e) => e.id));
+    // Queued before it leaves the list: a stop in between leaves it on both (sent again
+    // by id, a replay the server answers duplicate), never on neither.
+    await appendEvents(connectionId, again);
+    // The refused copy only: one refused again meanwhile (at the new length) stays.
+    const sent = new Map(again.map((e) => [e.id, e.duration]));
     await updateState(connectionId, (st) => ({
       ...st,
-      failed: (st.failed ?? []).filter((f) => !ids.has(f.event.id)),
+      failed: (st.failed ?? []).filter(
+        (f) =>
+          !sent.has(f.event.id) ||
+          (f.event.kind === 'listen' && sent.get(f.event.id) === f.event.duration),
+      ),
     }));
-    await appendEvents(connectionId, again);
   }
 }
 
