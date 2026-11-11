@@ -862,9 +862,11 @@ reader follows the narration in the book with it.
   and sends the document nothing (a null map would be answered `readalong: none`).
   A local map read uses `meta: { local: true }`, so a disk success neither clears
   `needsReconnect` nor probes a server marked down (frontend#206).
-  A server map waiting for the connection (`paused`, no copy here) is
-  `offline` (a map already shown stays meanwhile): neither pending nor
-  failed, and the Text tab hides for everyone, an admin too (no spinner, no Make). While another copy of the
+  A server map waiting for the connection (`paused`, no copy here), or whose read failed
+  without a server's answer while the device has no network (a reload offline: `offlineState`,
+  fe#142), is `offline` (a map already shown stays meanwhile): neither pending nor
+  failed, and the Text tab hides for everyone, an admin too (no spinner, no Make, no "couldn't
+  load"); a refusal the server did send (401, 403, 404) still says so. While another copy of the
   map shown is on its way (the download took it, it was made again), the one shown stays (not
   `pending`): a tab or a reader with a map never loses it in between.
   - **The companion's Text tab** (`companion/use-text-tab.ts`, `text-panel.tsx`), right after
@@ -1716,11 +1718,12 @@ media GETs only.
   acknowledges the row it moved to. This module is the only place that reconciles a
   loaded book: never call `toggle()` expecting it to look anything up.
 - **Listening sync** (Sync v2, Track W1, capability `listening_sync`; CROSS-REPO section 25).
-  - *The path.* `usesListeningSync(cid)` (`listening-outbox.ts`): the flag the connection's
-    server last answered to a `/server` request (kept in the sync state as `listeningSync`, so
-    an offline cold launch knows it: W2 F3; a copy seeded with `setQueryData` says nothing),
-    else the cached `/server`'s, else unknown, which records events (a 404 that a fresh
-    `/server` confirms turns them into PUTs); never after a rollback this session. False: the
+  - *The path.* `usesListeningSync(cid)` (`listening-outbox.ts`): the cached `/server`'s flag
+    (`cachedCapability`; an offline cold launch knows it from the kept answer seeded at launch,
+    *The kept `/server` answer*, fe#211: the outbox keeps no copy of its own), else unknown,
+    which records events (a 404 that a fresh `/server` confirms turns them into PUTs, and that
+    answer is kept: `keepServerAnswer`); never after a rollback this session. A send the server
+    took while the cached flag says off has the cache ask `/server` again. False: the
     PUT save loop and `POST /history`, unchanged. On the sync path `persist` only writes the
     mirror (with the file place `file`/`file_pos`, fe#188) and the place reaches the server as
     listen spans; `POST /history` is not sent (the server writes history from spans).
@@ -1784,7 +1787,7 @@ media GETs only.
     `takenFrom`/`goingOnFrom`, so what it played since is not a `duplicate`),
     `audiosilo.listeningSync` (per
     connection: `lastSyncAt`, the couldn't-sync list, 30 days, at most 100, `clockSkewMs` from the
-    answers' `server_time`, and `listeningSync`; the outbox is its one reader:
+    answers' `server_time`; the outbox is its one reader:
     `progress-sync` asks for the stored skews through `stored-skews.ts`, fe#211). The three documents' read-modify-writes run
     under `tabLock` (`src/lib/tab-lock.ts`: Web Locks, else a `localStorage` lease on plain
     http, fe#208); on the web they re-read storage, and a tab's outbox copy follows the
@@ -2810,8 +2813,25 @@ not offered and a link to it falls back to Books). The mode is the root's own se
 Every mode but Folders (today's libraries-then-folders flow, `modes/folders-mode.tsx`) shows ONE
 library: `useSelectedLibrary()` (the device-local `useLibrarySelection` store, persisted with
 `persistedDocument`, purged through `onConnectionRemoved`, reconciled by the pure
-`resolveLibrarySelection`: a pick that is gone falls back to the first library, an offline server
-keeps its pick), chosen with `LibraryPicker` (hidden with one library). Each mode body is its own
+`resolveLibrary`), chosen with `LibraryPicker`. **The Library never shows another server's
+library in place of the one it should show** (fe#202), so `resolveLibrary` answers
+`{ selection, waitingOn }`: a pick stands while its server's list is unread (loading, failed,
+signed out) or still holds it; else the library on screen stands (`shown`, so a list that
+loads late moves nothing under the listener); a pick that is gone becomes the first library of
+ITS server; with
+no pick, or a pick whose server has no libraries, the first server that is not known to be empty
+is the one (the listener's own order): its first library when its list is in, else `waitingOn`
+names it and nothing is shown from a later server. `useSelectedLibrary().server` is that
+server's group, and the screen shows its state (`library-screen.tsx`): the mode body once a
+library is shown, a skeleton while the list loads, `SignInAgainState` for a signed-out refusal,
+the offline state or `LoadError` with Retry (`retryServer`) per `offlineState` (*Offline
+states*), each naming the server when there are several. A stored pick whose list is only
+loading mounts its mode at once (no extra round trip); `resolveLibrarySelection` is the same
+rule's `selection` for the car. `LibraryPicker` offers every server's libraries whatever is
+shown (the way out of a server that does not answer); among several servers its labels carry
+the server ("Books · Home"), and with nothing else to choose it is a plain label
+(`library-picker-label`) so the shelf still says whose it is; hidden with one library on one
+server. Each mode body is its own
 file under `src/components/library/modes/`. The detail pages take query params too:
 `seriesHref(cid, lib, { name } | { work })` (`name` = a local series: a `Book.series` or one of
 its `series_list`, `useSeriesBooks` numbering each book by that series (`inSeries`); `work` = a community
@@ -2824,7 +2844,9 @@ sub-nav can't fit all six).
 
 **Library Books mode** (`modes/books-mode.tsx`, rules in `books/books-view.ts`): `useWholeLibrary`
 (`useAllLibraryBooks`, one cache entry per library) pages through the selected library 200 books
-at a time until `next_cursor` runs out, then filters
+at a time until `next_cursor` runs out (`offline` while a page waits for the network: with
+nothing loaded the grid is the offline state, never a skeleton that cannot end, fe#179; with
+books loaded they stay and "Loading more" hides), then filters
 (status from the listener's progress, Downloaded from the registry, length buckets, and a genre
 and a tag matched case-insensitively by `labelKey`, which mirrors the server's `catalog.labelKey`;
 it, `bookLabels` and `LABEL_KINDS` live in `src/lib/labels.ts`, shared with the book page, and the
@@ -3092,9 +3114,10 @@ are asked, at most 10,000 rows.
   data the cache already holds, dated by `savedAt` so an online screen still refetches on its own
   schedule, and kept for the session through `setQueryDefaults` (`gcTime: Infinity`; else a book
   downloaded an hour before the flight opens with nothing) until `releaseOfflineBook` on remove.
-  Every reader first waits on the `metadata` flag, so each connection's last `/server` answer is
-  kept under `audiosilo.offlineServers` (`OFFLINE_SERVERS_KEY`, in `SCOPED_STORAGE_KEYS`): a cold
-  offline launch still knows the flags. The launch restore runs after first paint
+  Every reader first waits on the `metadata` flag, which a cold offline launch knows from the
+  connection's kept `/server` answer (*The kept `/server` answer*: seeded by `bootstrapPlayback`,
+  no longer by this restore; a pre-8c download's own copy inside its `meta.json` is carried over
+  once when none is kept). The launch restore runs after first paint
   (`afterLaunch`), reads three files at a time, seeds the books before the server answers (so a
   gate it opens finds the data), then backfills downloads that kept none and refreshes copies
   older than a week (only servers with `metadata`; a failure keeps what the book had). The spoiler
@@ -3307,6 +3330,43 @@ under their empty state).
   tablet/desktop with nothing loaded and over a root modal: just above the home indicator). The web mini
   player sits on its tab bar through a `100%` bottom offset, no measured height. The accessory renders
   nothing on tablet/desktop (iOS mounts both placements behind the hidden bar).
+- **The device's online signal** (`src/lib/device-online.ts`): `useDeviceOnline()` / `isDeviceOnline()`
+  say whether the device has a network at all, never whether the internet answers: the browser's
+  `online`/`offline` events on the web, expo-network's `isConnected` on native
+  (`isInternetReachable` is not read: a phone on Wi-Fi with no internet still reaches a server
+  on the LAN, and calling it offline hid Retry and the Library, fe#202; unknown counts as
+  online). On native the same source drives TanStack's `onlineManager`
+  (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; the web keeps
+  TanStack's own window listeners, the same events), so native queries and mutations pause
+  with no network and resume when it returns, as they always did on the web: a screen must
+  treat `fetchStatus: 'paused'` / `isPaused` as "offline", not as loading, and a read that has
+  to settle whatever the flag says uses `networkMode: 'always'` or `fetchFailFast`. Whether one
+  SERVER answers is `src/api/reachability.ts`, a different question. In a test that mocks this
+  module, spread `jest.requireActual` (the provider imports `watchDeviceOnline`).
+- **Offline states** (`src/lib/offline-state.ts`, `src/components/layout/offline-state.tsx`): one
+  rule says what a read with nothing to show is, `offlineState({ waiting, failed, deviceOnline })`:
+  `'offline'` while it waits for the network (`paused`) or failed with no network on the device
+  (a reload offline sends the request before anything knows), `'failed'` when it failed with a
+  network (the server's fault: say so, with Retry), else null (loading, or loaded). Home's hero,
+  the Library's server state, Folders (per server), Books mode and the read-along map all ask
+  it; a signed-out refusal is decided before it (never "offline"). The surface is
+  `<OfflineState hint>`: the offline icon, `common.offlineTitle`, and the caller's hint, to which
+  `useOfflineHint` adds `common.offlineDownloads` only where downloads exist
+  (`useDownloads.supported`: not on a plain-http web origin, fe#179). Write a hint without the
+  Downloads sentence and never a second "You're offline" title.
+- **The kept `/server` answer** (`src/api/server-snapshots.ts`, fe#211): each connection's last
+  `/server` answer is kept on the device (`OFFLINE_SERVERS_KEY`, one document by connection id, in
+  `SCOPED_STORAGE_KEYS` and the identity migration) and is the ONE copy of a server's facts for a
+  launch that cannot reach it. Kept on every answer a request gets (`watchServerAnswers`, a
+  query-cache subscription: a `setQueryData` seed is `manual` and is never written back; an
+  answer that says what the kept one says is not rewritten) and on one read outside the cache
+  (`keepServerAnswer`); seeded into `qk.server(cid)` at launch (`restoreServerSnapshots`, awaited
+  in `bootstrapPlayback` before any screen; dated `savedAt` so the first observer still asks
+  again, `gcTime: Infinity`, never over an answer the cache already holds that is no older);
+  forgotten with its connection. Every gate (`useCapability`, `cachedCapability`,
+  `fetchCapabilities`) therefore holds, offline, the flags it held when last online. Never keep
+  another copy of a flag beside it; a flag nobody has read stays unknown and its reader decides
+  what unknown means (listening sync: on).
 - **Banners**: `OfflineBanner` takes the page's connection as a prop (each phone header its own
   route's `?connection=`, the wide `WideTop` the focused page's) and selects only which servers are
   down; the words are `offlineBannerText` (CONNECT-15): no network on the device says offline, else

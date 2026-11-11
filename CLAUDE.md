@@ -259,6 +259,9 @@ keep this index in step (one line per topic).
   - Search
   - Profile menu
   - Toasts
+  - The device's online signal
+  - Offline states
+  - The kept `/server` answer
   - Banners
 
 ## Layout
