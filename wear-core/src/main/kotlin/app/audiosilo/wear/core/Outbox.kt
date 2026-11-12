@@ -58,7 +58,7 @@ class Outbox(
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer()) }
 
   /** What waits, oldest first. */
-  var events: List<ListeningEvent> = directory?.let(::restoredEvents) ?: emptyList()
+  var events: List<ListeningEvent> = eventsFile?.let(::restoredEvents) ?: emptyList()
     get() = synchronized(lock) { field }
     private set
 
@@ -97,8 +97,8 @@ class Outbox(
    * build's format) is moved aside, so the next save never writes over that listening, and joins
    * what waits at a later launch if it reads by then.
    */
-  private fun restoredEvents(directory: File): List<ListeningEvent> {
-    val main = JsonFile(File(directory, "outbox.json"), EVENTS, durable = true)
+  private fun restoredEvents(main: JsonFile<List<ListeningEvent>>): List<ListeningEvent> {
+    val directory = checkNotNull(main.file.parentFile)
     val current = main.read()
     if (current == null && main.file.exists()) {
       main.file.renameTo(File(directory, ASIDE_PREFIX + UUID.randomUUID() + ".json"))

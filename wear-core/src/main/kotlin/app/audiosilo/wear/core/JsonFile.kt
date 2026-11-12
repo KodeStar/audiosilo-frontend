@@ -5,8 +5,8 @@
 // `durable` documents survive a power cut too: the bytes are synced to the disk before the
 // rename and the folder after it, so a battery dying mid-write leaves the old file or the new
 // one, never an empty one. Only what holds listening is durable (the outbox, the open span, the
-// places): about 11 writes per 15 s happen while playing, and the rest (caches, sync status,
-// acknowledgements, the account) is rebuilt from the server or the phone if a cut loses it.
+// places); the rest is rebuilt from the server or the phone, so it skips the sync (CONVENTIONS.md,
+// the Wear OS app).
 package app.audiosilo.wear.core
 
 import java.io.File
@@ -68,10 +68,7 @@ class JsonFile<T>(
       try {
         FileOutputStream(tmp).use { out ->
           out.write(bytes)
-          if (durable) {
-            out.flush()
-            out.fd.sync()
-          }
+          if (durable) out.fd.sync()
         }
         Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
       } catch (e: Exception) {
