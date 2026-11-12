@@ -76,7 +76,10 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
    */
   private suspend fun execute(r: Request, timeout: Double): String =
     withContext(Dispatchers.IO) {
-      val call = http.newCall(r)
+      // The client's read timeout cuts a slow answer whatever the call's budget, so a longer
+      // budget (an unscanned book indexed on demand) needs a client that waits as long.
+      val client = if (timeout > TIMEOUT) http.newBuilder().readTimeout((timeout * 1000).toLong(), TimeUnit.MILLISECONDS).build() else http
+      val call = client.newCall(r)
       call.timeout().timeout((timeout * 1000).toLong(), TimeUnit.MILLISECONDS)
       call.await().use { resp ->
         val text = resp.body?.string()
