@@ -224,6 +224,24 @@ describe('RoutedPlaybackService', () => {
     expect(t.local.calls.at(-1)).toBe('local.play');
   });
 
+  it('keeps the download remembered during a refused handover on the phone, not the stream', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const cast = fakeCast();
+    const localTracks = TRACKS.map((tr) => ({ ...tr, url: `file:///dl/${tr.id}` }));
+    // The book's download lands while the receiver is being asked (the store's hot-swap
+    // sees a cast route and only remembers the phone's copy), then the receiver refuses.
+    (cast.load as jest.Mock).mockImplementationOnce(async () => {
+      t.router.rememberLoad({ tracks: localTracks, chapters: [], book: BOOK });
+      throw new CastBlockedError('codec');
+    });
+    t.router.onCastFailed = jest.fn();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    expect(t.router.castRoute()).toBeNull();
+    const reload = (t.local.load as jest.Mock).mock.calls.at(-1)!;
+    expect(reload.slice(0, 3)).toEqual([localTracks, 1, 120]);
+  });
+
   it('plays a new book here when it cannot be cast mid-session', async () => {
     const t = setup();
     const cast = fakeCast();

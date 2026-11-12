@@ -156,7 +156,10 @@ export class RoutedPlaybackService implements PlaybackService {
     } catch (err) {
       if (!current()) return;
       this.dropCast();
-      await this.loadLocal(load, place);
+      // The book's download may have landed while the receiver was asked (`rememberLoad`,
+      // the store's hot-swap sees a cast route): the phone plays its own copy then.
+      const mine = this.lastLoad && sameBookLoad(this.lastLoad, load) ? this.lastLoad : load;
+      await this.loadLocal(mine, place);
       this.mode = 'local';
       this.onCastFailed?.(err);
     }
