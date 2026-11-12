@@ -2623,6 +2623,65 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   `Library/Application Support/AudioSilo/`. The simulator may send the app to the background
   after about a minute without input, and then stop its audio (a real watch plays on).
 
+**Wear OS app (Track W4, `wear/` + `wear-core/`; W4a pass 1)**: a standalone Kotlin app (Compose
+for Wear OS Material 3, minSdk 30), the Apple Watch's twin. Same package as the phone,
+`app.audiosilo` (the Data Layer only connects apps with the same package and signing
+certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per Wear build).
+- **Build wiring**: `plugins/withWearApp.js` adds `include ':wear'` (projectDir `../wear`) and
+  `includeBuild('../wear-core')` to the generated `android/settings.gradle`, one tagged block
+  after `include ':app'` (prebuild twice is idempotent). Nothing in the root `build.gradle`:
+  `wear/build.gradle` puts the Compose compiler plugin on its own buildscript at the root's
+  `kotlinVersion`, and applies EAS's `eas-build-inject-android-credentials.gradle` and
+  `eas-build-configure-version.gradle` when present. RN's root plugin makes `:app:preBuild`
+  depend on `:wear:preBuild`, so a broken `:wear` breaks the phone build: `AUDIOSILO_NO_WEAR=1`
+  skips the wiring, and `wear.yml` builds both. EAS profiles: `production-wear` (AAB,
+  `:wear:bundleRelease`) and `preview-wear` (APK for emulator installs). No Horologist (its
+  alpha needs a newer Kotlin stdlib); Media3 is the phone's strict 1.9.0.
+- **The Core boundary**: `wear-core/` is pure Kotlin/JVM (package `app.audiosilo.wear.core`, no
+  `android.*`), so `npm run test:wear` runs it on any JDK 17. It ports `targets/watch/Core/*`
+  file for file (Timeline, PlayerRules, SleepTimer, SpanRecorder, Outbox, AckAndOffer,
+  ClockSkew, AddressPicker, AccountRules, ClientHeader `wearos`, RenditionPlan, PhoneMessages,
+  HeldBooks, StatePublication, ContinueOrder, QueryString, JsonFile) with the Swift suites'
+  vectors as JUnit tests: a rule changed on one watch changes on both, tests included. Swift's
+  `rounded()` is `roundHalfAway` (Kotlin's `round` is half-even). Not ported (Apple-only, W4
+  decision 9): `Outbox.backgroundBody`/`applyBackground`, `ClockSkew.clockOffset`,
+  `BackgroundSync`, `AddressPicker.unattended`, `RenditionPlan.keepsTransfer`; Wear's
+  `SyncSchedule` says when a send runs instead. Wear's own, also pure: `Downloads.kt` (the
+  account, the item cache, the downloads index, Continue listening's rows), `BookDownload`
+  (one book's run) and `Labels`.
+- **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
+  KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
+  in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to
+  30 min then hands over to the backoff, the free-space rule (bytes + 200 MB), then each file
+  into `books/<folder>/` with Range + `If-Range` on a strong ETag (`.part` + `.etag` beside it),
+  so every run is idempotent. It asks for unmetered Wi-Fi (`WifiRequest`) and binds OkHttp to
+  it; after 30 s with none the row says "Waiting for Wi-Fi" and offers "Use the phone's
+  connection (slow)" (Q3: `slow` on the record, the work replaced). Each run picks its own
+  address over its own network (`AddressPicker.pick`, home only after the probe).
+- **Storage (decision 11)**: `TokenStore` seals the token with a non-exportable Keystore
+  AES-GCM key (`audiosilo.session`), ciphertext and `device_id` in `noBackupFilesDir`;
+  `allowBackup=false` and `data_extraction_rules.xml` exclude every domain. `device_name` is
+  `Settings.Global.DEVICE_NAME`, else `Build.MODEL`. Cleartext is allowed by
+  `network_security_config.xml` (the home address after the probe; decision 4).
+- **Sign-in (decision 12)**: `AppModel.receive(PhoneMessage)` (PhoneLink's entry point,
+  `signInFromPair` for a pair alone) handles the phone's messages one at a time in order; a
+  pair is exchanged at `base_url`, then away, then home http under `pairingFallback`; past
+  `expires_at` it says "Send again from your phone". No typed sign-in. Setup offers "Get
+  AudioSilo on your phone" (RemoteActivityHelper) when no node has `audiosilo_phone_app`.
+- **Data Layer contract** (W4b sends): items under `/audiosilo/v1/to/<watchnode>/` (`pair`,
+  `book/<key>`, key = hex SHA-256 of `<account>|<library_id>|<path>`), every one with `sent_at`;
+  the watch never deletes them: it puts a receipt `/audiosilo/v1/from/<watchnode>/taken/<key>`
+  `{v:1, type:"taken", path, sent_at}` (the item's `sent_at` echoed as text) and the phone
+  deletes its own item on a match; the watch reads all its `/to/` items at each start, skips one
+  its receipt names, ignores DELETED there, and drops a receipt once its item is gone. A
+  `remove` older than the download it would remove is ignored. `watch-state` at
+  `/audiosilo/v1/watch-state`. PhoneLink (the one listener) is W4a pass 2.
+- **Build and test**: `npm run test:wear` (wear-core); after `npx expo prebuild -p android`,
+  from `android/`: `./gradlew :wear:assembleDebug :wear:testDebugUnitTest :app:assembleDebug`
+  (`:wear`'s JVM tests: ApiClient on MockWebServer, the router, TokenStore, Continue
+  listening). Install on a Wear emulator with `adb -s <wear> install
+  wear/build/outputs/apk/debug/wear-debug.apk`.
+
 **Chromecast (Phase 8, capability `cast`, `src/cast/`)**: react-native-google-cast 4.9.1 on
 native (the Default Media Receiver; `plugins/withCast.js`, listed before `withCarPlay`, pins the
 Cast framework and keeps the SDK's own notification on Android, whose foreground service keeps the
