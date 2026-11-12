@@ -2833,11 +2833,14 @@ const specIds = (specs: { path: string }[], libraryId: number) =>
  * sequence, skipping files. Only a download holding other files moves the listener: to
  * the same file when it has it, else to the same whole-book place.
  *
- * A web swap refused because the listener sought or moved to another file while the copy
- * buffered (`'moved'`: the copy sat at the place before) runs again from the new place,
- * each time, while the same book is still the store's and its download complete: every
- * such refusal needs a real move by the listener, so it ends. A stop, a reset, another
- * book or a copy that never became playable (`'refused'`) is not retried.
+ * A web swap refused because the stream moved while the copy buffered (`'moved'`: the copy
+ * sat at the place before) runs again from the new place, each time, while the same book is
+ * still the store's and its download complete. Every such refusal needs a real move of the
+ * stream: the listener's seek, skip or auto-rewinding play, the stream's own advance to its
+ * next file or a transcoded stream's early-end reload (both move it on through the book),
+ * or a one-off move the store makes (the pick-up's place, another tab's): none comes from
+ * the swap itself, so it ends. A stop, a reset, another book or a copy that never became
+ * playable (`'refused'`) is not retried.
  */
 async function switchCurrentBookToLocal() {
   const state = usePlayer.getState();

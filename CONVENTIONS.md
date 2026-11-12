@@ -1557,8 +1557,10 @@ media GETs only.
   a move to another file (`loadSeq` moved) or a seek (`seekSeq`) meanwhile discards the copy
   and refuses the swap: the copy was buffered at the place before it. A refusal for a seek or
   a move (`'moved'`) is swapped again from the new place, after every such refusal, while
-  the book is still the store's and its download complete (each needs a real move by the
-  listener, so it ends); a `'refused'` copy is never retried.
+  the book is still the store's and its download complete (each needs a real move of the
+  stream: the listener's, the stream's own advance to its next file or a transcoded
+  early-end reload, or a one-off move the store makes; never the swap's own, so it ends); a
+  `'refused'` copy is never retried.
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /
