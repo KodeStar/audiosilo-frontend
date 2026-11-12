@@ -3003,8 +3003,10 @@ async function switchCurrentBookToLocal() {
   // Again from where the listener moved to (the download is read again there, so one
   // removed meanwhile ends it).
   const now = usePlayer.getState().nowPlaying;
+  // Returned, not awaited: this attempt's queue and download map are freed while the
+  // next one buffers.
   if (outcome === 'moved' && now && sameBook(now, nowPlaying)) {
-    await switchCurrentBookToLocal();
+    return switchCurrentBookToLocal();
   }
 }
 
