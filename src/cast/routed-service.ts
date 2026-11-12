@@ -26,6 +26,10 @@ function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
   );
 }
 
+/** The same files in the same order (a track's id is its file's path). */
+const sameOrder = (a: PlaybackTrack[], b: PlaybackTrack[]) =>
+  a.length === b.length && a.every((t, i) => t.id === b[i].id);
+
 type Mode = 'local' | 'cast' | 'switching';
 
 /**
@@ -84,8 +88,13 @@ export class RoutedPlaybackService implements PlaybackService {
       this.swapTo = async (tracks, startIndex, positionInTrack, chapters, book, onSwitch) => {
         const load = { tracks, chapters, book };
         // While casting, the receiver streams from the server whatever the phone holds:
-        // only remember the local files, for when the book comes back to the phone.
+        // only remember the local files, for when the book comes back to the phone. Only
+        // the loaded book's, in the order the other side plays (its track indices read
+        // through the store's queue, which a `true` here commits): a copy holding other
+        // files, or one landing after a reset or another book's load, is refused.
         if (this.mode !== 'local') {
+          const now = this.lastLoad;
+          if (!now || !sameBookLoad(now, load) || !sameOrder(now.tracks, tracks)) return false;
           this.lastLoad = load;
           return true;
         }
