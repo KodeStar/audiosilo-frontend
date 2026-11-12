@@ -426,7 +426,8 @@ function queueBook(
 /** Start a download `queueBook` let through: a podcast episode its server must fetch first
  * waits there (`awaitEpisode`), anything else goes on the queue. An episode whose last try
  * failed on its server (the fetch, or a 503 from a file the server no longer had) asks it
- * again; one that failed its fetch POSTs (the listener's Retry skips the server's cool-down). */
+ * again; one that failed its fetch POSTs when the listener asks (their Retry skips the
+ * server's cool-down, which an automatic download's own retry respects). */
 function begin(
   key: string,
   connectionId: string,
@@ -443,8 +444,10 @@ function begin(
     (isAbsentEpisode(book) ||
       fetchFailed ||
       (failure?.kind === 'server' && failure.status === 503));
-  if (wait) awaitEpisode(key, connectionId, libraryId, book, chapterData, origin, fetchFailed);
-  else enqueue(key, connectionId, libraryId, book, chapterData, origin);
+  if (wait) {
+    const retry = fetchFailed && origin === 'listener';
+    awaitEpisode(key, connectionId, libraryId, book, chapterData, origin, retry);
+  } else enqueue(key, connectionId, libraryId, book, chapterData, origin);
 }
 
 /** Put a book's entry in the registry as `queued` (saved at once): its manifest from `book`

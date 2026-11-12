@@ -2487,6 +2487,15 @@ describe('podcast episodes', () => {
     expect(entry()).toMatchObject({ status: 'queued', serverFetch: { percent: null } });
   });
 
+  it("an automatic download's own retry never POSTs (the server's cool-down stands)", async () => {
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters, 'auto');
+    mockWaits[0].hooks.onEnd({ kind: 'failed', code: null });
+    expect(entry()?.failure).toEqual({ kind: 'serverFetch', kept: 0 });
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters, 'auto');
+    expect(mockWaits).toHaveLength(2);
+    expect(mockWaits[1].opts).toEqual({ retry: false });
+  });
+
   it('fails as removed when its connection went while it waited', async () => {
     await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
     mockWaits[0].hooks.onEnd({ kind: 'removed' });
