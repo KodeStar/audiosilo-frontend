@@ -294,7 +294,7 @@ object Resume {
 
 /** The places this watch played to, per book (`places.json`). Thread-safe. */
 class PlaceStore(file: File?) {
-  private val file = file?.let { JsonFile(it, SERIALIZER) }
+  private val file = file?.let { JsonFile(it, SERIALIZER, durable = true) }
   private var places: Map<String, LocalPlace> = this.file?.read() ?: emptyMap()
 
   @Synchronized fun place(ref: BookRef): LocalPlace? = places[ref.key]

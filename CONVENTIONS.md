@@ -2652,7 +2652,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   PlaybackTest checks them against Media3). Wear's own, also pure: `Downloads.kt` (the account,
   the item cache, the downloads index, Continue listening's rows), `BookDownload` (one book's
   run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
-  sweep and event plans), `FileSpanStore` and `Labels`.
+  sweep and event plans), `FileSpanStore` and `Labels`. `JsonFile(durable = true)` syncs the
+  bytes before its rename and the folder after (a battery death never empties the file): only
+  `outbox.json`, `open-span.json` and `places.json`, whose loss loses listening; the rest
+  (caches, sync status, acks, the account) is rebuilt from the server or the phone, so it skips
+  the sync (about 11 writes per 15 s while playing).
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to

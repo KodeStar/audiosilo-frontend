@@ -54,7 +54,7 @@ class Outbox(
   private val clock: () -> Instant = Instant::now,
 ) {
   private val lock = Any()
-  private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS) }
+  private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true) }
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer()) }
 
   /** What waits, oldest first. */
@@ -98,7 +98,7 @@ class Outbox(
    * what waits at a later launch if it reads by then.
    */
   private fun restoredEvents(directory: File): List<ListeningEvent> {
-    val main = JsonFile(File(directory, "outbox.json"), EVENTS)
+    val main = JsonFile(File(directory, "outbox.json"), EVENTS, durable = true)
     val current = main.read()
     if (current == null && main.file.exists()) {
       main.file.renameTo(File(directory, ASIDE_PREFIX + UUID.randomUUID() + ".json"))
