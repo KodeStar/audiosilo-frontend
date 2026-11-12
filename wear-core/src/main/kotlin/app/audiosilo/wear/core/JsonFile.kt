@@ -22,7 +22,7 @@ class JsonFile<T>(
   val file: File,
   private val serializer: KSerializer<T>,
   /** Sync each write to the disk (see the header): for a file whose loss loses listening. */
-  val durable: Boolean = false,
+  private val durable: Boolean = false,
 ) {
   /** The stored value, null when there is none or it can't be read. */
   fun read(): T? =
@@ -38,7 +38,8 @@ class JsonFile<T>(
    */
   fun write(value: T?): Boolean {
     if (value == null) {
-      file.delete()
+      // Durable: the removal reaches the disk too, or a power cut could bring back what was closed.
+      if (file.delete() && durable) file.absoluteFile.parentFile?.let(::syncFolder)
       return true
     }
     return try {

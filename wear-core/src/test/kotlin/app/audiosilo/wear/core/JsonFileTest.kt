@@ -77,6 +77,11 @@ class JsonFileTest {
     assertTrue("outbox.json" in synced)
     assertFalse("sync-state.json" in synced)
     assertEquals(listOf("e1"), Outbox(dir, AckStore(null), DEVICE_ID).events.map { it.id })
+    // discardAll writes the status too: it lands, unsynced.
+    synced.clear()
+    outbox.discardAll()
+    assertTrue(File(dir, "sync-state.json").isFile)
+    assertEquals(listOf("outbox.json"), synced)
     assertEquals(emptyList<String>(), leftovers())
   }
 
