@@ -2660,7 +2660,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   so every run is idempotent. It asks for unmetered Wi-Fi (`WifiRequest`) and binds OkHttp to
   it; after 30 s with none the row says "Waiting for Wi-Fi" and offers "Use the phone's
   connection (slow)" (Q3: `slow` on the record, the work replaced). Each run picks its own
-  address over its own network (`AddressPicker.pick`, home only after the probe).
+  address over its own network (`AddressPicker.pick`, home only after the probe) and, since a
+  run can outlast that network, asks a home pick again once it is 90 s old before the next
+  request (`ProvenBookServer`; a home that stops answering as this server gives way to away). A
+  resume the server answers 416 (a part already whole) starts that file again from 0.
 - **Storage (decision 11)**: `TokenStore` seals the token with a non-exportable Keystore
   AES-GCM key (`audiosilo.session`), ciphertext and `device_id` in `noBackupFilesDir`;
   `allowBackup=false` and `data_extraction_rules.xml` exclude every domain. `device_name` is

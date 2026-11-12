@@ -30,9 +30,12 @@ import app.audiosilo.wear.core.AddressPicker
 import app.audiosilo.wear.core.BookDownload
 import app.audiosilo.wear.core.BookRef
 import app.audiosilo.wear.core.DownloadRecord
+import app.audiosilo.wear.core.ServerIdProbe
 import app.audiosilo.wear.core.orNull
 import app.audiosilo.wear.storage.Files
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
   override suspend fun doWork(): Result {
@@ -63,13 +66,17 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
       }
       // This run's own pick over its own network: home only after the tokenless probe says it is
       // this server (decision 3), so a worker in the background may use home too (decision 9).
-      val base = AddressPicker.pick(account.serverUrl, account.addresses, account.serverId) { ApiClient.probeServerId(it, http) }
+      val client = http
+      val probe: ServerIdProbe = { ApiClient.probeServerId(it, client) }
+      val base = AddressPicker.pick(account.serverUrl, account.addresses, account.serverId, probe)
       // Signed out or switched while it waited: this account's token goes nowhere now.
       if (model.account.value?.accountId != account.accountId) return Result.success()
-      val api = ApiClient(base, token, http)
+      // A run can outlast the network its pick was proven on: a home pick is proven again as it ages.
+      val api = ProvenBookServer(account, base, probe) { ApiClient(it, token, client) }
       val run =
         BookDownload(api, model.downloads, model.files, ref, onProgress = { rec, done, total -> updateForeground(rec, percent(rec, done, total)) })
-      return when (run.run()) {
+      // The bytes are read and written with blocking calls: not on the default dispatcher's few threads.
+      return when (withContext(Dispatchers.IO) { run.run() }) {
         BookDownload.Outcome.Done,
         BookDownload.Outcome.Failed,
         BookDownload.Outcome.Gone -> Result.success()

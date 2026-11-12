@@ -6,12 +6,19 @@ package app.audiosilo.wear
 
 import app.audiosilo.wear.core.APIError
 import app.audiosilo.wear.core.Account
+import app.audiosilo.wear.core.Book
 import app.audiosilo.wear.core.BookRef
+import app.audiosilo.wear.core.BookServer
+import app.audiosilo.wear.core.ChaptersResponse
+import app.audiosilo.wear.core.Fetched
+import app.audiosilo.wear.core.ProgressRow
+import app.audiosilo.wear.core.RenditionsAnswer
 import app.audiosilo.wear.core.ServerAddresses
 import app.audiosilo.wear.core.SyncRequest
 import app.audiosilo.wear.net.AddressRouter
 import app.audiosilo.wear.net.ApiClient
 import app.audiosilo.wear.net.ContinueListening
+import app.audiosilo.wear.net.ProvenBookServer
 import app.audiosilo.wear.storage.Files
 import java.io.File
 import java.io.IOException
@@ -232,6 +239,58 @@ class AddressRouterTest {
     gate.complete("srv")
     job.join()
     assertEquals(away, router.base(account))
+  }
+
+  /** A book server that only says which address it was asked at. */
+  private class AskedAt(val base: String, val asked: MutableList<String>) : BookServer {
+    override suspend fun renditionStatus(ref: BookRef): RenditionsAnswer {
+      asked += base
+      return RenditionsAnswer("watch", emptyList())
+    }
+
+    override suspend fun prepareRenditions(ref: BookRef): RenditionsAnswer = renditionStatus(ref)
+
+    override suspend fun item(ref: BookRef): Book = error("not asked")
+
+    override suspend fun chapters(ref: BookRef): ChaptersResponse = error("not asked")
+
+    override suspend fun progress(ref: BookRef): ProgressRow? = null
+
+    override suspend fun download(libraryId: Int, file: String, from: Long, ifRange: String?): Fetched = error("not asked")
+  }
+
+  @Test
+  fun aBooksRunProvesAnAgingHomeAgainBeforeTheTokenGoesThere() = runTest {
+    var answer: String? = "srv"
+    var now = Instant.EPOCH
+    var probes = 0
+    val asked = ArrayList<String>()
+    val ref = BookRef(1, "A/B")
+    val server =
+      ProvenBookServer(account, home, probe = { probes++; answer }, clock = { now }) { AskedAt(it, asked) }
+    server.renditionStatus(ref)
+    now = now.plusSeconds(89)
+    server.renditionStatus(ref)
+    assertEquals("the run's own pick stands for 90 s", 0, probes)
+    now = now.plusSeconds(1)
+    server.renditionStatus(ref)
+    assertEquals(1, probes)
+    assertEquals(listOf(home, home, home), asked)
+    // Out of the door on the phone's connection: another box holds the address now.
+    now = now.plusSeconds(90)
+    answer = "another-box"
+    server.prepareRenditions(ref)
+    assertEquals(2, probes)
+    assertEquals("asked with no token first, so the token goes away", away, asked.last())
+    now = now.plusSeconds(600)
+    server.renditionStatus(ref)
+    assertEquals("an away pick needs no proof", 2, probes)
+    assertEquals(away, asked.last())
+
+    // A run that began away never probes.
+    val out = ProvenBookServer(account, away, probe = { probes++; "srv" }, clock = { now.plusSeconds(1000) }) { AskedAt(it, asked) }
+    out.renditionStatus(ref)
+    assertEquals(2, probes)
   }
 
   @Test
