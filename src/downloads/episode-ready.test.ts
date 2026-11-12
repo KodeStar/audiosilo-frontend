@@ -38,12 +38,12 @@ let ends: Record<string, EpisodeWaitEnd>;
 let statuses: Record<string, PodcastFetchStatus[]>;
 const started: string[] = [];
 
-/** Wait for episode `n` (path `ep-<n>`) on connection c1. */
-function wait(n: number, retry = false) {
-  const key = `c1:5:ep-${n}`;
+/** Wait for episode `n` (path `ep-<n>`) on connection `cid` (c1 unless said). */
+function wait(n: number, retry = false, cid = 'c1') {
+  const key = `${cid}:5:ep-${n}`;
   started.push(key);
   waitForEpisode(
-    { key, connectionId: 'c1', libraryId: 5, path: `ep-${n}` },
+    { key, connectionId: cid, libraryId: 5, path: `ep-${n}` },
     {
       onStatus: (s) => (statuses[key] ??= []).push(s),
       onEnd: (e) => (ends[key] = e),
@@ -190,6 +190,33 @@ describe('waitForEpisode', () => {
     await flush();
     expect(client.prepareEpisodeStream).toHaveBeenCalledTimes(4);
     expect(client.prepareEpisodeStream.mock.calls[3][1]).toBe('ep-4');
+  });
+
+  it(`counts the ${MAX_WAITING} per server: waits stuck on one never hold up another's`, async () => {
+    // Server A can't be reached: its answers are blips, asked again for ever.
+    client.prepareEpisodeStream.mockRejectedValue(new ApiError(502, 'bad gateway'));
+    const b = {
+      prepareEpisodeStream: jest.fn().mockRejectedValue(pending503()),
+      podcastFetchStatus: jest
+        .fn()
+        .mockResolvedValue({ fetch: fetchStatus({ state: 'fetching' }) }),
+      retryPodcastFetch: jest.fn(),
+    };
+    mockClients.c2 = b;
+    [1, 2, 3].map((n) => wait(n));
+    await flush();
+    expect(askingCount('c1')).toBe(MAX_WAITING);
+    const onB = wait(4, false, 'c2');
+    const fourthOnA = wait(5);
+    await flush();
+    // B's starts asking at once; A's fourth still waits its turn.
+    expect(b.prepareEpisodeStream).toHaveBeenCalledTimes(1);
+    expect(askingCount('c2')).toBe(1);
+    expect(isWaiting(onB)).toBe(true);
+    expect(client.prepareEpisodeStream.mock.calls.map((c) => c[1])).not.toContain('ep-5');
+    expect(askingCount('c1')).toBe(MAX_WAITING);
+    expect(askingCount()).toBe(MAX_WAITING + 1);
+    expect(isWaiting(fourthOnA)).toBe(true);
   });
 
   it('pauses in the background and asks at once on the way back', async () => {

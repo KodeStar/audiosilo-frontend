@@ -15,14 +15,16 @@ import { blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
  * Each wait asks the stream once (`prepareEpisodeStream`, which starts the server's fetch;
  * `retry` POSTs instead, the listener's Retry after a failed fetch), then follows the fetch's
  * status every max(2, Retry-After) s. Only in the foreground (a poll due in the background
- * runs on the way back), and at most `MAX_WAITING` at once: more wait their turn here, so a
- * listener's own plays keep room under the server's limit of five fetches on their way. A
+ * runs on the way back), and at most `MAX_WAITING` at once per server (connection): more
+ * wait their turn here, so a listener's own plays keep room under each server's limit of five
+ * fetches on their way, and waits stuck on a server that can't be reached never hold up
+ * another server's. A
  * refusal for the moment (the limit, the rate limiter, a blip) waits and asks again; a fetch
  * that failed or can't be made ends the wait with the server's code. Framework-free: the
  * store hands each wait its hooks and stops it (`stopWaiting`) on a cancel or remove.
  */
 
-/** How many episodes ask their server at once. */
+/** How many episodes ask one server (connection) at once. */
 export const MAX_WAITING = 3;
 
 /** An episode the downloads store waits for: its registry key and where it lives. */
@@ -46,7 +48,7 @@ type Waiter = {
   hooks: EpisodeWaitHooks;
   /** What the next step asks: the stream once, the listener's POST, or the status. */
   action: 'probe' | 'retry' | 'poll';
-  /** Holds one of the `MAX_WAITING` turns. */
+  /** Holds one of its connection's `MAX_WAITING` turns. */
   active: boolean;
   abort: AbortController;
   timer: ReturnType<typeof setTimeout> | null;
@@ -100,10 +102,13 @@ export function isWaiting(key: string): boolean {
   return waiters.has(key);
 }
 
-/** How many waits are asking their server now (at most `MAX_WAITING`). */
-export function askingCount(): number {
+/** How many waits are asking `connectionId`'s server now (at most `MAX_WAITING`), or every
+ * server's without one. */
+export function askingCount(connectionId?: string): number {
   let n = 0;
-  for (const w of waiters.values()) if (w.active) n++;
+  for (const w of waiters.values()) {
+    if (w.active && (connectionId === undefined || w.ref.connectionId === connectionId)) n++;
+  }
   return n;
 }
 
@@ -118,14 +123,18 @@ function drop(w: Waiter) {
   }
 }
 
-/** Give free turns to the waits next in line. */
+/** Give free turns to the waits next in line, each connection its own `MAX_WAITING`. */
 function pump() {
-  let asking = askingCount();
+  const asking = new Map<string, number>();
   for (const w of waiters.values()) {
-    if (asking >= MAX_WAITING) return;
-    if (w.active) continue;
+    if (w.active) asking.set(w.ref.connectionId, (asking.get(w.ref.connectionId) ?? 0) + 1);
+  }
+  for (const w of waiters.values()) {
+    const cid = w.ref.connectionId;
+    const n = asking.get(cid) ?? 0;
+    if (w.active || n >= MAX_WAITING) continue;
     w.active = true;
-    asking++;
+    asking.set(cid, n + 1);
     void step(w);
   }
 }
