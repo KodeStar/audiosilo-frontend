@@ -8,6 +8,7 @@ import {
   cachedCapability,
   cachedShowTitle,
   chaptersQuery,
+  fetchFailFast,
   itemQuery,
   qk,
 } from '@/api/hooks';
@@ -554,8 +555,9 @@ function withoutServerFetch(entry: DownloadEntry): DownloadEntry {
 
 /**
  * An episode's wait on its server ended. On its server: its item and chapters are read again
- * (the file's own size and chapters, `downloaded` now true), the show's episode lists too (a
- * show page on screen says it is on the server), and it goes on the queue. Otherwise the
+ * (the file's own size and chapters, `downloaded` now true; `fetchFailFast`, so the entry
+ * never sits here on a read the network holds), the show's episode lists too (a show page
+ * on screen says it is on the server), and it goes on the queue. Otherwise the
  * entry fails (`serverFetch`, with the server's code; Retry POSTs), or, for a removed
  * connection, as `removed`. A cancel or remove meanwhile wins.
  */
@@ -596,11 +598,8 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
   let chapters = entry.manifest.chapters ?? undefined;
   if (client) {
     const [item, read] = await Promise.allSettled([
-      queryClient.fetchQuery({ ...itemQuery(connectionId, client, libraryId, path), staleTime: 0 }),
-      queryClient.fetchQuery({
-        ...chaptersQuery(connectionId, client, libraryId, path),
-        staleTime: 0,
-      }),
+      fetchFailFast({ ...itemQuery(connectionId, client, libraryId, path), staleTime: 0 }),
+      fetchFailFast({ ...chaptersQuery(connectionId, client, libraryId, path), staleTime: 0 }),
     ]);
     if (item.status === 'fulfilled') book = item.value;
     if (read.status === 'fulfilled') chapters = read.value;

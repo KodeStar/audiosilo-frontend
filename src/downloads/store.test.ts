@@ -174,6 +174,8 @@ jest.mock('@/api/hooks', () => ({
       show,
     ],
   },
+  // The read that always settles (hooks.test.ts covers it): here, the same fake fetch.
+  fetchFailFast: (o: { queryKey: unknown[] }) => mockFetchQuery(o),
   itemQuery: (cid: string, _c: unknown, lib: number, path: string) => ({
     queryKey: ['item', cid, lib, path],
   }),
