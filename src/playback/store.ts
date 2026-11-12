@@ -278,7 +278,8 @@ let pickedUpAgainListener: (() => void) | null = null;
 let pickUpDue: string | null = null;
 /** The download hot-swap of the book (its content key) whose download landed while a load
  * held the store (`loadingBook`): the snapshot is the previous place until that load lands,
- * so the swap runs from the hold's release (the subscription beside `pickUpDue`'s). */
+ * so the swap runs from the hold's release (the subscription beside `pickUpDue`'s). Dropped
+ * when that load fails: the hold is released then too, with no place of the book's landed. */
 let swapDue: string | null = null;
 
 /** Tell the pick-up listener now, or once the load holding the store lands (`pickUpDue`). */
@@ -2422,6 +2423,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
           queue.chapterClips,
           bookRefOf(nowPlaying),
         );
+      } catch (err) {
+        // Its place never landed: a hot-swap waiting on this load has nothing to swap from.
+        if (swapDue === key) swapDue = null;
+        throw err;
       } finally {
         // Also when the load failed: a `loadingBook` left behind would hold every save and
         // every remote move of whatever plays next.
@@ -3378,6 +3383,7 @@ async function reloadAdopted(
     );
   } catch (err) {
     console.warn('[player] could not reload the adopted book in its order', err);
+    if (swapDue === key) swapDue = null; // no place landed to swap from
     if (current()) {
       clearPlaybackIntent();
       const { snapshot } = usePlayer.getState();
