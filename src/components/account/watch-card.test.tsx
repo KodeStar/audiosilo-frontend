@@ -284,6 +284,30 @@ describe('WatchCard on Android (Wear OS)', () => {
     expect(screen.getByText(/Couldn't open Google Play on your watch/)).toBeTruthy();
   });
 
+  it('says only how the last Install went, and nothing of it once the app is on the watch', async () => {
+    await mount({ ...NO_WATCH, paired: true });
+    await act(async () => fireEvent.press(screen.getByText('Install on watch')));
+    expect(screen.getByText(/Google Play opens there/)).toBeTruthy();
+    mockInstall.mockRejectedValue(new Error('ERR_NO_WATCH'));
+    await act(async () => fireEvent.press(screen.getByText('Install on watch')));
+    expect(screen.getByText(/Couldn't open Google Play on your watch/)).toBeTruthy();
+    expect(screen.queryByText(/Google Play opens there/)).toBeNull();
+    await act(async () => useWatchStore.setState({ status: installed }));
+    expect(screen.getByText('Set up your watch')).toBeTruthy();
+    expect(screen.queryByText(/Couldn't open Google Play on your watch/)).toBeNull();
+  });
+
+  it('asks the watch once while Play is still opening there', async () => {
+    let opened = () => {};
+    mockInstall.mockReturnValue(new Promise<void>((resolve) => (opened = resolve)));
+    await mount({ ...NO_WATCH, paired: true });
+    await act(async () => fireEvent.press(screen.getByText('Install on watch')));
+    await act(async () => fireEvent.press(screen.getByText('Install on watch')));
+    expect(mockInstall).toHaveBeenCalledTimes(1);
+    await act(async () => opened());
+    expect(screen.getByText(/Google Play opens there/)).toBeTruthy();
+  });
+
   it('does not ask for the watch app to be opened after Set up: it signs in by itself', async () => {
     await mount(installed);
     await act(async () => fireEvent.press(screen.getByText('Set up your watch')));

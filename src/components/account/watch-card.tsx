@@ -47,7 +47,8 @@ export function WatchCard({ connectionId }: { connectionId: string }) {
   const now = useNow(pairUntil === undefined ? 60_000 : 15_000, visible);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [installAsked, setInstallAsked] = useState(false);
+  // Install on watch: asked and waiting for the watch's answer, opened there, or it could not be.
+  const [installAsk, setInstallAsk] = useState<'idle' | 'opening' | 'opened' | 'failed'>('idle');
   if (!connection || !visible) return null;
 
   const serverName = serverDisplayName(connection, connections);
@@ -70,15 +71,18 @@ export function WatchCard({ connectionId }: { connectionId: string }) {
 
   const openInstall = watchLink.openInstallOnWatch;
   const install = async () => {
-    if (!openInstall) return;
-    setError(null);
+    if (!openInstall || installAsk === 'opening') return;
+    setInstallAsk('opening');
     try {
       await openInstall();
-      setInstallAsked(true);
+      setInstallAsk('opened');
     } catch {
-      setError(t('account.watch.installFailed'));
+      setInstallAsk('failed');
     }
   };
+  // Each status shows only its own failure: one from Install says nothing once the app is on the
+  // watch, and one from Set up nothing once it is off again.
+  const installError = installAsk === 'failed' ? t('account.watch.installFailed') : null;
 
   const body = {
     install: t(watchWording(kind, 'account.watch.install')),
@@ -99,7 +103,7 @@ export function WatchCard({ connectionId }: { connectionId: string }) {
           {t(watchWording(kind, 'account.watch.title'))}
         </Text>
         <Text variant="muted">{body}</Text>
-        {status === 'install' && installAsked ? (
+        {status === 'install' && installAsk === 'opened' ? (
           <Text variant="caption">{t('account.watch.installOpened')}</Text>
         ) : null}
         {here ? <WatchSyncLines state={here} now={now} /> : null}
@@ -113,6 +117,7 @@ export function WatchCard({ connectionId }: { connectionId: string }) {
             variant="outline"
             icon="watch"
             title={t('account.watch.installOnWatch')}
+            loading={installAsk === 'opening'}
             onPress={() => void install()}
           />
         </View>
@@ -140,7 +145,7 @@ export function WatchCard({ connectionId }: { connectionId: string }) {
           />
         </View>
       ) : null}
-      <FormError error={error} />
+      <FormError error={status === 'install' ? installError : error} />
     </Card>
   );
 }
