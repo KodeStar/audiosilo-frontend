@@ -2222,7 +2222,7 @@ describe('the download hot-swap across file orders', () => {
       expect(selectBookPosition(usePlayer.getState())).toBe(45);
     });
 
-    it('streams on after a second seek during the retry, with no third swap', async () => {
+    it('swaps in at the last seek after seeks in successive buffering windows', async () => {
       const answers = swapsInTurn();
       await streamIn(newOrder);
       downloadLands(oldOrder);
@@ -2230,11 +2230,20 @@ describe('the download hot-swap across file orders', () => {
       pushSnapshot(snap('playing', 45, { trackIndex: 0, duration: 70 }));
       answers[0]('moved');
       await flushMicrotasks();
+      // A second seek while the retry's copy buffers: a third attempt from there.
       pushSnapshot(snap('playing', 10, { trackIndex: 0, duration: 70 }));
       answers[1]('moved');
       await flushMicrotasks();
-      expect(web.swapTo).toHaveBeenCalledTimes(2);
-      expect(queueUrls()).toEqual(['stream:2:A/Folder/2.mp3', 'stream:2:A/Folder/10.mp3']);
+      expect(web.swapTo).toHaveBeenCalledTimes(3);
+      expect(startOf(web.swapTo!.mock.calls[2])).toEqual({
+        url: urlOf('A/Folder/2.mp3'),
+        index: 0,
+        position: 10,
+      });
+      answers[2]('swapped');
+      await flushMicrotasks();
+      expect(queueUrls()).toEqual(newOrder.map(urlOf));
+      expect(selectBookPosition(usePlayer.getState())).toBe(10);
     });
 
     it('does not swap again after a stop while the copy buffered', async () => {

@@ -2834,12 +2834,12 @@ const specIds = (specs: { path: string }[], libraryId: number) =>
  * the same file when it has it, else to the same whole-book place.
  *
  * A web swap refused because the listener sought or moved to another file while the copy
- * buffered (`'moved'`: the copy sat at the place before) runs once more from the new place
- * (`mayRetry`), while the same book is still the store's and its download complete. A
- * second such refusal leaves it streaming; a stop, a reset, another book or a copy that
- * never became playable is not retried.
+ * buffered (`'moved'`: the copy sat at the place before) runs again from the new place,
+ * each time, while the same book is still the store's and its download complete: every
+ * such refusal needs a real move by the listener, so it ends. A stop, a reset, another
+ * book or a copy that never became playable (`'refused'`) is not retried.
  */
-async function switchCurrentBookToLocal(mayRetry = true) {
+async function switchCurrentBookToLocal() {
   const state = usePlayer.getState();
   const { nowPlaying, snapshot } = state;
   if (!nowPlaying || !apiRef) return;
@@ -3000,10 +3000,11 @@ async function switchCurrentBookToLocal(mayRetry = true) {
     // A refused swap or a failed load: the hold must not outlive it.
     if (swapHold?.nowPlaying === nowPlaying) swapHold = null;
   }
-  // Once, from where the listener moved to (the download is read again there).
+  // Again from where the listener moved to (the download is read again there, so one
+  // removed meanwhile ends it).
   const now = usePlayer.getState().nowPlaying;
-  if (outcome === 'moved' && mayRetry && now && sameBook(now, nowPlaying)) {
-    await switchCurrentBookToLocal(false);
+  if (outcome === 'moved' && now && sameBook(now, nowPlaying)) {
+    await switchCurrentBookToLocal();
   }
 }
 
