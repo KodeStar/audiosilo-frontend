@@ -2246,6 +2246,39 @@ describe('the download hot-swap across file orders', () => {
       expect(selectBookPosition(usePlayer.getState())).toBe(10);
     });
 
+    it("swaps again from the next file the stream's own advance moved it to", async () => {
+      const answers = swapsInTurn();
+      await streamIn(newOrder);
+      downloadLands(oldOrder);
+      await flushMicrotasks();
+      // 2.mp3 ends while the copy buffers: the stream moves on into 10.mp3 by itself.
+      pushSnapshot(snap('playing', 0, { trackIndex: 1, duration: 30 }));
+      answers[0]('moved');
+      await flushMicrotasks();
+      expect(web.swapTo).toHaveBeenCalledTimes(2);
+      expect(startOf(web.swapTo!.mock.calls[1])).toEqual({
+        url: urlOf('A/Folder/10.mp3'),
+        index: 1,
+        position: 0,
+      });
+      answers[1]('swapped');
+      await flushMicrotasks();
+      expect(queueUrls()).toEqual(newOrder.map(urlOf));
+    });
+
+    it('does not swap again once the download was removed while the copy buffered', async () => {
+      const answers = swapsInTurn();
+      await streamIn(newOrder);
+      downloadLands(oldOrder);
+      await flushMicrotasks();
+      pushSnapshot(snap('playing', 45, { trackIndex: 0, duration: 70 }));
+      useDownloads.setState({ entries: {} });
+      answers[0]('moved');
+      await flushMicrotasks();
+      expect(web.swapTo).toHaveBeenCalledTimes(1);
+      expect(queueUrls()?.[0]).toBe('stream:2:A/Folder/2.mp3');
+    });
+
     it('does not swap again after a stop while the copy buffered', async () => {
       const answers = swapsInTurn();
       await streamIn(newOrder);
