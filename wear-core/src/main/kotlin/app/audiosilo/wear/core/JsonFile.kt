@@ -39,8 +39,10 @@ class JsonFile<T>(
   fun write(value: T?): Boolean {
     if (value == null) {
       // Durable: the removal reaches the disk too, or a power cut could bring back what was closed.
-      if (file.delete() && durable) synced(file)
-      return true
+      val removed = file.delete()
+      if (removed && durable) synced(file)
+      // False when it is still there (the outbox's join keeps what it would have dropped).
+      return removed || !file.exists()
     }
     return try {
       atomicWrite(file, FORMAT.encodeToString(serializer, value).toByteArray(Charsets.UTF_8), durable)
