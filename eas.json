@@ -40,13 +40,8 @@
       }
     },
     "preview-wear": {
-      "extends": "production",
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk",
-        "gradleCommand": ":wear:assembleRelease",
-        "applicationArchivePath": "wear/build/outputs/apk/release/*.apk"
-      }
+      "extends": "production-wear-apk",
+      "distribution": "internal"
     }
   },
   "submit": {
