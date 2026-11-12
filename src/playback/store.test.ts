@@ -181,6 +181,27 @@ function makeBook(p: Partial<Book> = {}): Book {
   };
 }
 
+/** A podcast episode on its server (one file, `Show/Ep.mp3`). */
+function makeEpisode(p: Partial<Book> = {}): Book {
+  return makeBook({
+    rel_path: 'Show/Ep.mp3',
+    title: 'An Episode',
+    format: 'mp3',
+    episode: {
+      show_path: 'Show',
+      published: null,
+      season: null,
+      episode: null,
+      episode_type: 'full',
+      explicit: false,
+      downloaded: true,
+      duration_source: 'file',
+      removed: false,
+    },
+    ...p,
+  });
+}
+
 function makeProgress(p: Partial<Progress> = {}): Progress {
   return {
     library_id: 2,
@@ -1417,6 +1438,41 @@ describe('the download hot-swap', () => {
     expect(mockSvc.play).toHaveBeenCalledTimes(1);
   });
 
+  // fe#166: Download while an episode streams: it plays on from its download.
+  it('switches a streaming episode onto its download', async () => {
+    const episode = makeEpisode();
+    await startBook(episode, 0);
+    pushSnapshot(snap('playing', 10));
+    (mockSvc.play as jest.Mock).mockClear();
+
+    useDownloads.setState({
+      entries: {
+        'c1:2:Show/Ep.mp3': {
+          connectionId: 'c1',
+          libraryId: 2,
+          path: 'Show/Ep.mp3',
+          title: episode.title,
+          status: 'downloaded',
+          progress: 1,
+          bytes: 0,
+          totalBytes: 0,
+          manifest: {
+            book: episode,
+            chapters: null,
+            files: [{ relPath: 'Show/Ep.mp3', localUri: 'file:///dl/0.mp3' }],
+            coverUri: null,
+            savedAt: '2026-01-01T00:00:00Z',
+          },
+        },
+      },
+    });
+    await flushMicrotasks();
+
+    expect(loadedUrls()).toEqual(['stream:2:Show/Ep.mp3', 'file:///dl/0.mp3']);
+    expect(mockSvc.play).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().nowPlaying?.episode).toBe(true);
+  });
+
   it('stays paused when the download lands on a book the listener paused', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 10));
@@ -2113,6 +2169,37 @@ describe('finishBook', () => {
     removeSpy.mockRestore();
   });
 
+  // fe#166 (D4): one setting for books and episodes.
+  it('deletes a downloaded episode when autoDeleteFinished is on', async () => {
+    const episode = makeEpisode();
+    await startBook(episode, 0);
+    pushSnapshot(snap('playing', 40));
+    await Promise.resolve();
+
+    const entry = downloadedEntry();
+    useDownloads.setState({
+      entries: {
+        'c1:2:Show/Ep.mp3': {
+          ...entry,
+          path: 'Show/Ep.mp3',
+          manifest: {
+            ...entry.manifest,
+            book: episode,
+            files: [{ relPath: 'Show/Ep.mp3', localUri: 'file:///dl/0.mp3' }],
+          },
+        },
+      },
+    });
+    const removeSpy = jest.spyOn(useDownloads.getState(), 'remove').mockResolvedValue(undefined);
+    useSettings.setState({ autoDeleteFinished: true });
+
+    expect(usePlayer.getState().finishBook()).toMatchObject({ episode: true });
+    await flushMicrotasks();
+
+    expect(removeSpy).toHaveBeenCalledWith('c1', 2, 'Show/Ep.mp3');
+    removeSpy.mockRestore();
+  });
+
   it('keeps the downloaded copy when autoDeleteFinished is off', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 40));
@@ -2167,6 +2254,60 @@ describe('auto-download on start', () => {
     expect(mockCanAutoDownload).toHaveBeenCalledWith('wifi');
     expect(downloadSpy).toHaveBeenCalledWith('c1', 2, book, undefined, 'auto');
     downloadSpy.mockRestore();
+  });
+
+  // fe#166 (D4b): an episode only with "Download podcast episodes when you start them" on
+  // (off by default), under the books' network rule.
+  describe('a podcast episode', () => {
+    afterEach(() => useSettings.setState({ autoDownloadEpisodes: false }));
+
+    it('is skipped with the episodes setting off (the default)', async () => {
+      useSettings.setState({ autoDownloadNext: 'always', autoDownloadEpisodes: false });
+      const downloadSpy = jest
+        .spyOn(useDownloads.getState(), 'download')
+        .mockImplementation(async () => 'queued');
+      await startBook(makeEpisode(), 0);
+      await flushMicrotasks();
+      expect(downloadSpy).not.toHaveBeenCalled();
+      downloadSpy.mockRestore();
+    });
+
+    it('downloads on Wi-Fi with it on, as an automatic download', async () => {
+      useSettings.setState({ autoDownloadNext: 'wifi', autoDownloadEpisodes: true });
+      mockCanAutoDownload.mockResolvedValue(true);
+      const downloadSpy = jest
+        .spyOn(useDownloads.getState(), 'download')
+        .mockImplementation(async () => 'queued');
+      const episode = makeEpisode();
+      await startBook(episode, 0);
+      await flushMicrotasks();
+      expect(mockCanAutoDownload).toHaveBeenCalledWith('wifi');
+      expect(downloadSpy).toHaveBeenCalledWith('c1', 2, episode, undefined, 'auto');
+      downloadSpy.mockRestore();
+    });
+
+    it('never on mobile data when the rule says Wi-Fi only', async () => {
+      useSettings.setState({ autoDownloadNext: 'wifi', autoDownloadEpisodes: true });
+      mockCanAutoDownload.mockResolvedValue(false);
+      const downloadSpy = jest
+        .spyOn(useDownloads.getState(), 'download')
+        .mockImplementation(async () => 'queued');
+      await startBook(makeEpisode(), 0);
+      await flushMicrotasks();
+      expect(downloadSpy).not.toHaveBeenCalled();
+      downloadSpy.mockRestore();
+    });
+
+    it("never when the books' rule is Never", async () => {
+      useSettings.setState({ autoDownloadNext: 'never', autoDownloadEpisodes: true });
+      const downloadSpy = jest
+        .spyOn(useDownloads.getState(), 'download')
+        .mockImplementation(async () => 'queued');
+      await startBook(makeEpisode(), 0);
+      await flushMicrotasks();
+      expect(downloadSpy).not.toHaveBeenCalled();
+      downloadSpy.mockRestore();
+    });
   });
 
   it("does not download when the mode is 'never'", async () => {

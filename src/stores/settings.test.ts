@@ -77,6 +77,7 @@ describe('settings store', () => {
         virtualChapterInterval: 30 * 60,
         autoPlayNext: false,
         autoDownloadNext: 'wifi',
+        autoDownloadEpisodes: false,
         keepAhead: 0,
         autoDeleteFinished: true,
         autoSleepTimer: false,
@@ -201,6 +202,20 @@ describe('settings store', () => {
     await useSettings.getState().hydrate();
     expect(useSettings.getState().smartSpeed).toBe(false);
     expect(useSettings.getState().voiceBoost).toBe(false);
+  });
+
+  // fe#166 (D4b): episodes download on start only once the listener turns it on.
+  it('keeps episode downloads on start off until turned on, and round-trips it', async () => {
+    await AsyncStorage.setItem(KEY, JSON.stringify({ skipForward: 45 }));
+    await useSettings.getState().hydrate();
+    expect(useSettings.getState().autoDownloadEpisodes).toBe(false);
+    load();
+    await AsyncStorage.setItem(KEY, JSON.stringify({ autoDownloadEpisodes: 'yes' }));
+    await useSettings.getState().hydrate();
+    expect(useSettings.getState().autoDownloadEpisodes).toBe(false);
+    useSettings.getState().setAutoDownloadEpisodes(true);
+    await restart();
+    expect(useSettings.getState().autoDownloadEpisodes).toBe(true);
   });
 
   it('persists and round-trips Smart Speed and Voice Boost', async () => {

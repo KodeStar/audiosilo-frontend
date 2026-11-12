@@ -117,10 +117,11 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
 }
 
 /**
- * "Automatic downloads": the network rule (`autoDownloadNext`), "Keep the next books
- * ready" (`keepAhead`) and "Remove a download when you finish the book"
- * (`autoDeleteFinished`). The same settings as the Settings screen's Up next section,
- * read and written through the one store.
+ * "Automatic downloads": the network rule (`autoDownloadNext`), "Download podcast episodes
+ * when you start them" (`autoDownloadEpisodes`, fe#166), "Keep the next books ready"
+ * (`keepAhead`) and "Remove a download when you finish the book" (`autoDeleteFinished`).
+ * The same settings as the Settings screen's Downloads section, read and written through
+ * the one store.
  */
 export function RulesCard({ className }: { className?: string }) {
   const { t } = useTranslation();
@@ -128,6 +129,8 @@ export function RulesCard({ className }: { className?: string }) {
   const setMode = useSettings((s) => s.setAutoDownloadNext);
   const autoDelete = useSettings((s) => s.autoDeleteFinished);
   const setAutoDelete = useSettings((s) => s.setAutoDeleteFinished);
+  const episodes = useSettings((s) => s.autoDownloadEpisodes);
+  const setEpisodes = useSettings((s) => s.setAutoDownloadEpisodes);
 
   const modes = useAutoDownloadModes();
 
@@ -146,6 +149,16 @@ export function RulesCard({ className }: { className?: string }) {
         />
         <AutoDownloadHint mode={mode} />
       </View>
+      <Row
+        label={t('downloads.rules.episodes.label')}
+        hint={<Text variant="caption">{t('downloads.rules.episodes.hint')}</Text>}
+      >
+        <Switch
+          checked={episodes}
+          onCheckedChange={setEpisodes}
+          accessibilityLabel={t('downloads.rules.episodes.label')}
+        />
+      </Row>
       <Row
         label={t('downloads.rules.keepAhead.label')}
         hint={

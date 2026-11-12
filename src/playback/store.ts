@@ -325,7 +325,8 @@ export type NowPlaying = {
   cover: string;
   queue: BookQueue;
   /** A podcast episode (Bridge Phase 2d-1; set only then): no end credits, no cast, no
-   * downloads. A view field only. */
+   * keep-ahead (it downloads only when asked, or started with `autoDownloadEpisodes` on). A
+   * view field only. */
   episode?: true;
 };
 
@@ -581,7 +582,9 @@ function invalidateProgressLists() {
  * player hot-swaps to the local copy the moment a download finishes
  * (`switchCurrentBookToLocal`), downloading on start covers a whole series - the next book
  * downloads as soon as "Play next" starts it. Honours the `autoDownloadNext` preference
- * and the network policy (`canAutoDownload`), and skips a book already downloaded or
+ * and the network policy (`canAutoDownload`), a podcast episode only with
+ * `autoDownloadEpisodes` on too (fe#166, D4b: off by default; one not on its server yet
+ * waits there first, `episode-ready.ts`), and skips a book already downloaded or
  * queued/downloading (only an errored entry may be retried, matching the downloads store's
  * own guard). It asks as `auto`, so the downloads store applies the automatic rules (a
  * book the listener cancelled or removed this session, or one that would eat into the
@@ -595,8 +598,8 @@ async function maybeAutoDownloadCurrent(
   chapterData?: ChaptersResponse,
 ): Promise<void> {
   try {
-    // Episodes are never downloaded (Bridge Phase 2d-1, decision 6.1).
-    if (book.episode) return;
+    // An episode only when the listener asked for episodes too (fe#166, D4b).
+    if (book.episode && !useSettings.getState().autoDownloadEpisodes) return;
     const mode = useSettings.getState().autoDownloadNext;
     if (mode === 'never') return;
     // Already downloaded/queued/downloading? Nothing to do (only re-attempt an errored one).
