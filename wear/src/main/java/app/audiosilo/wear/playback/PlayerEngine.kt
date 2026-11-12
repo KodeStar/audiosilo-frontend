@@ -302,9 +302,13 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     lastCut = now
     lastAdvance = now
     player().play()
-    watchStart()
-    spanEnd()?.let { spans.open(b.playing, it, rate) }
-    publish()
+    // Media3 tells its listeners inside play(): an output it refuses (the speaker not yet agreed
+    // to) has paused this play already, so no span opens on a book that is not playing.
+    if (playing) {
+      watchStart()
+      spanEnd()?.let { spans.open(b.playing, it, rate) }
+      publish()
+    }
     if (pickedUp) onPickedUp?.invoke()
   }
 
