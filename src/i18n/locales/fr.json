@@ -268,11 +268,18 @@
     },
     "watch": {
       "title": "Apple Watch",
+      "titleWear": "Montre Wear OS",
       "install": "Installez AudioSilo sur votre montre depuis l'app Watch de cet iPhone, puis revenez ici.",
+      "installWear": "Installez AudioSilo sur votre montre depuis Google Play, puis revenez ici.",
+      "installOnWatch": "Installer sur la montre",
+      "installOpened": "Regardez votre montre : Google Play s'y ouvre sur la page d'AudioSilo.",
+      "installFailed": "Impossible d'ouvrir Google Play sur votre montre. Cherchez plutôt AudioSilo dans Google Play sur la montre.",
       "setupBody": "Connectez votre montre à {{server}} sans rien saisir, puis emportez des livres et laissez le téléphone à la maison.",
       "setUp": "Configurer l'Apple Watch",
+      "setUpWear": "Configurer la montre",
       "sendAgain": "Renvoyer",
       "sent": "Envoyé. Ouvrez AudioSilo sur votre montre pour terminer la connexion.",
+      "sentWear": "Envoyé. Votre montre se connecte dès qu'elle le reçoit. Gardez-la à proximité.",
       "expired": "La connexion a expiré avant d'atteindre votre montre. Rien n'a changé sur la montre. Gardez-la à proximité et renvoyez.",
       "signedInAs": "Connecté en tant que {{user}} sur {{server}}",
       "otherAccount": "Votre montre est connectée à un autre compte. La configurer pour {{server}} remplace ce compte une fois ses écoutes synchronisées.",
@@ -973,6 +980,7 @@
       "sendToWatch": "Envoyer à la montre",
       "sentToWatch": "Envoyé à votre montre",
       "sentToWatchPair": "Si AudioSilo n'est pas ouvert sur votre montre, ouvrez-le pour terminer la connexion.",
+      "sentToWatchPairWear": "Votre montre se connecte d’abord, puis reçoit le livre.",
       "sentToWatchShow": "Afficher",
       "markFinished": "Marquer comme terminé",
       "markUnfinished": "Marquer comme non terminé",
@@ -1186,6 +1194,7 @@
     },
     "watch": {
       "title": "Sur votre Apple Watch",
+      "titleWear": "Sur votre montre",
       "empty": "Aucun livre sur votre montre pour l'instant. Choisissez Envoyer à la montre sur la page d'un livre.",
       "notHere": "Votre montre n'utilise pas ce compte",
       "otherAccount": "Elle est connectée à un autre compte, dont les livres ne sont pas listés ici. Pour l'utiliser avec {{server}}, configurez-la sur la page de votre compte.",
@@ -1204,6 +1213,7 @@
       "phase": {
         "undelivered": "Envoyé, pas encore livré",
         "delivered": "Livré. Ouvrez AudioSilo sur votre montre.",
+        "deliveredWear": "Livré sur votre montre",
         "waiting-sign-in": "Livré. Il démarrera une fois votre montre connectée ici.",
         "send-failed": "Impossible de joindre votre montre. Envoyez-le de nouveau.",
         "stale": "Votre montre ne l'a pas pris en 7 jours. Envoyez-le de nouveau si vous le voulez toujours.",
@@ -1214,6 +1224,7 @@
         "failed": "Téléchargement impossible. Envoyez-le de nouveau pour réessayer.",
         "removing-undelivered": "Sera retiré dès que votre montre sera à portée",
         "removing": "Retrait en cours. Ouvrez AudioSilo sur votre montre pour terminer.",
+        "removingWear": "Retrait de votre montre en cours",
         "remove-failed": "Impossible de joindre votre montre pour le retirer. Réessayez.",
         "remove-refused": "Pas retiré : votre montre n'est pas connectée à ce compte."
       }

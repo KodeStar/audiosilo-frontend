@@ -385,6 +385,20 @@ final class PhoneMessagesTests: XCTestCase {
     XCTAssertNil(PhoneMessages.decode(noPath))
   }
 
+  /// The phone stamps every message with `sent_at` (src/watch/watch-model.ts): Wear OS reads it,
+  /// this watch does not, and a message carrying it reads as the same message without it.
+  func testReadsAMessageTheSameWithThePhonesSentAt() {
+    let book: [String: Any] = ["v": 1, "type": "book", "server_id": "srv", "user_id": 7, "library_id": 2, "path": "A/Book", "title": "Book"]
+    var remove = book
+    remove["type"] = "remove"
+    for message in [pair, book, remove] {
+      var stamped = message
+      stamped["sent_at"] = "2026-11-12T10:00:00.000Z"
+      XCTAssertNotNil(PhoneMessages.decode(stamped), "\(message["type"] ?? "")")
+      XCTAssertEqual(PhoneMessages.decode(stamped), PhoneMessages.decode(message), "\(message["type"] ?? "")")
+    }
+  }
+
   func testEncodesWatchStateAsAPropertyList() throws {
     let s = WatchState(signedIn: true, serverId: "srv", userId: 7, appVersion: "2.6.0",
                        books: [WatchStateBook(ref: BookRef(libraryId: 2, path: "A/Book"), title: "Book", state: .downloading, bytes: 10)],

@@ -1,4 +1,4 @@
-import type { WatchState, WatchTransfer } from './watch-model';
+import { parseTransfers, type WatchState, type WatchTransfer } from './watch-model';
 import {
   dropRow,
   type LedgerRow,
@@ -319,5 +319,49 @@ describe('the rows as stored', () => {
     expect(putRow(rows, sent({ library_id: 2 }))).toHaveLength(2);
     expect(dropRow(rows, { library_id: 1, path: 'A/B' })).toEqual([]);
     expect(dropRow(rows, { library_id: 2, path: 'A/B' })).toHaveLength(1);
+  });
+});
+
+describe('the ledger on Wear OS (nothing is ever failed)', () => {
+  // The Android link lists the phone's own Data Layer items still held for the watch: present until
+  // the watch app sends its receipt, never `failed` (an item waits for the watch for good).
+  const wearHeld = (type: WatchTransfer['type']) =>
+    parseTransfers([{ type, server_id: 'srv', user_id: 7, library_id: 1, path: 'A/B' }]);
+
+  it('reads the held items as on their way, never as failed', () => {
+    expect(wearHeld('book')).toEqual([transfer('book')]);
+  });
+
+  it('goes from sent to delivered to the watch’s own word, with no failure on the way', () => {
+    const seen: string[] = [];
+    let row = sent();
+    const step = (s: WatchState, transfers: WatchTransfer[]) => {
+      row = reconcileRows([row], ACCOUNT, { state: s, transfers })[0] ?? row;
+      seen.push(phase(row, s, transfers));
+    };
+    step(state(), wearHeld('book'));
+    step(state(), []);
+    step(state({ books: [{ ...listed, state: 'queued' }] }), []);
+    step(state({ books: [{ ...listed, state: 'ready' }] }), []);
+    expect(seen).toEqual(['undelivered', 'delivered', 'queued', 'ready']);
+  });
+
+  it('removes in the same way, the row going once the watch lists the book no more', () => {
+    const onWatch = state({ books: [{ ...listed, state: 'ready' }] });
+    const row = sent({ seen: true, remove_at: NOW });
+    expect(phase(row, onWatch, wearHeld('remove'))).toBe('removing-undelivered');
+    expect(phase(row, onWatch, [])).toBe('removing');
+    expect(reconcileRows([row], ACCOUNT, { state: state(), transfers: [] })).toEqual([]);
+  });
+
+  it('never says send-failed or remove-failed for a held item, however long it waits', () => {
+    for (const t of [...wearHeld('book'), ...wearHeld('remove')]) {
+      const row = t.type === 'remove' ? sent({ seen: true, remove_at: NOW }) : sent();
+      const p = phase(row, state(), [t], NOW + 1000);
+      expect(p).not.toBe('send-failed');
+      expect(p).not.toBe('remove-failed');
+    }
+    // The hold limit is what ends a book the watch never takes.
+    expect(phase(sent(), state(), wearHeld('book'), NOW + WATCH_HOLD_MS)).toBe('stale');
   });
 });

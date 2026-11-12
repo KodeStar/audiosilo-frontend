@@ -68,9 +68,9 @@ jobs:
       - name: Prebuild Android
         run: npx expo prebuild -p android --no-install
 
-      - name: Build and test the Wear app, and build the phone app
+      - name: Build and test the Wear app and the phone's Wear link, and build the phone app
         working-directory: android
-        run: ./gradlew --console=plain :wear:assembleDebug :wear:testDebugUnitTest :wear:assembleRelease :app:assembleDebug
+        run: ./gradlew --console=plain :wear:assembleDebug :wear:testDebugUnitTest :wear:assembleRelease :audiosilo-watch:testDebugUnitTest :app:assembleDebug
 
       # The debug sign-in (wear/src/debug) must never reach a release build.
       - name: Check the release build has no debug sign-in

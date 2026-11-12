@@ -1,7 +1,10 @@
 {
-  "platforms": ["apple"],
+  "platforms": ["apple", "android"],
   "apple": {
     "modules": ["AudiosiloWatchModule"],
     "appDelegateSubscribers": ["AudiosiloWatchAppDelegateSubscriber"]
+  },
+  "android": {
+    "modules": ["expo.modules.audiosilowatch.AudiosiloWatchModule"]
   }
 }

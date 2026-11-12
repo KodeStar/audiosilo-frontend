@@ -268,11 +268,18 @@
     },
     "watch": {
       "title": "Apple Watch",
+      "titleWear": "Wear OS-Uhr",
       "install": "Installiere AudioSilo über die Watch-App dieses iPhones auf deiner Uhr und komm dann hierher zurück.",
+      "installWear": "Installiere AudioSilo über Google Play auf deiner Uhr und komm dann hierher zurück.",
+      "installOnWatch": "Auf der Uhr installieren",
+      "installOpened": "Sieh auf deine Uhr: Google Play öffnet sich dort auf der Seite von AudioSilo.",
+      "installFailed": "Google Play ließ sich auf deiner Uhr nicht öffnen. Suche AudioSilo stattdessen in Google Play auf der Uhr.",
       "setupBody": "Melde deine Uhr ohne Tippen bei {{server}} an, nimm dann Bücher mit und lass das Telefon zu Hause.",
       "setUp": "Apple Watch einrichten",
+      "setUpWear": "Uhr einrichten",
       "sendAgain": "Erneut senden",
       "sent": "Gesendet. Öffne AudioSilo auf deiner Uhr, um die Anmeldung abzuschließen.",
+      "sentWear": "Gesendet. Deine Uhr meldet sich an, sobald sie es erhält. Halte sie in der Nähe.",
       "expired": "Die Anmeldung ist abgelaufen, bevor deine Uhr sie erhalten hat. Auf der Uhr hat sich nichts geändert. Halte sie in der Nähe und sende erneut.",
       "signedInAs": "Angemeldet als {{user}} auf {{server}}",
       "otherAccount": "Deine Uhr ist bei einem anderen Konto angemeldet. Die Einrichtung für {{server}} ersetzt dieses Konto, sobald sein Hörverlauf synchronisiert ist.",
@@ -973,6 +980,7 @@
       "sendToWatch": "An Uhr senden",
       "sentToWatch": "An deine Uhr gesendet",
       "sentToWatchPair": "Falls AudioSilo auf deiner Uhr nicht geöffnet ist, öffne es, um die Anmeldung abzuschließen.",
+      "sentToWatchPairWear": "Deine Uhr meldet sich zuerst an und erhält dann das Buch.",
       "sentToWatchShow": "Anzeigen",
       "markFinished": "Als abgeschlossen markieren",
       "markUnfinished": "Als nicht abgeschlossen markieren",
@@ -1186,6 +1194,7 @@
     },
     "watch": {
       "title": "Auf deiner Apple Watch",
+      "titleWear": "Auf deiner Uhr",
       "empty": "Noch keine Bücher auf deiner Uhr. Wähle An Uhr senden auf der Seite eines Buchs.",
       "notHere": "Deine Uhr nutzt dieses Konto nicht",
       "otherAccount": "Sie ist bei einem anderen Konto angemeldet, und dessen Bücher werden hier nicht aufgeführt. Um sie mit {{server}} zu nutzen, richte sie auf deiner Kontoseite ein.",
@@ -1204,6 +1213,7 @@
       "phase": {
         "undelivered": "Gesendet, noch nicht zugestellt",
         "delivered": "Zugestellt. Öffne AudioSilo auf deiner Uhr.",
+        "deliveredWear": "An deine Uhr zugestellt",
         "waiting-sign-in": "Zugestellt. Es startet, sobald deine Uhr hier angemeldet ist.",
         "send-failed": "Deine Uhr war nicht erreichbar. Sende es erneut.",
         "stale": "Deine Uhr hat es in 7 Tagen nicht übernommen. Sende es erneut, falls du es noch möchtest.",
@@ -1214,6 +1224,7 @@
         "failed": "Download fehlgeschlagen. Sende es erneut, um es noch einmal zu versuchen.",
         "removing-undelivered": "Wird entfernt, sobald deine Uhr in Reichweite ist",
         "removing": "Wird entfernt. Öffne AudioSilo auf deiner Uhr, um es abzuschließen.",
+        "removingWear": "Wird von deiner Uhr entfernt",
         "remove-failed": "Deine Uhr war zum Entfernen nicht erreichbar. Versuche es erneut.",
         "remove-refused": "Nicht entfernt: Deine Uhr ist nicht bei diesem Konto angemeldet."
       }

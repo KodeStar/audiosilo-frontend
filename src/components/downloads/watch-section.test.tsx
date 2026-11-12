@@ -7,9 +7,13 @@ import type { WatchState, WatchStatus } from '@/watch/watch-model';
 const mockRead = jest.fn();
 const mockSendBook = jest.fn();
 const mockSendRemove = jest.fn();
+const mockLink: { kind: 'apple' | 'wear' } = { kind: 'apple' };
 jest.mock('@/watch/link', () => ({
   watchLink: {
     supported: true,
+    get kind() {
+      return mockLink.kind;
+    },
     read: () => mockRead(),
     subscribe: () => {},
     sendPair: async () => {},
@@ -106,6 +110,7 @@ async function mount(status: WatchStatus, rows: object[] = [], onReveal = jest.f
 
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+  mockLink.kind = 'apple';
   mockParams = {};
   mockLayout = 'desktop';
   mockDefaultId = 'srv.7';
@@ -240,6 +245,7 @@ describe('WatchSection', () => {
         user_id: 7,
         library_id: 1,
         path: 'A/B',
+        sent_at: expect.any(String),
       });
       expect(screen.getByText('Removing. Open AudioSilo on your watch to finish.')).toBeTruthy();
     });
@@ -405,5 +411,47 @@ describe('WatchSection', () => {
       );
       expect(onReveal).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('WatchSection on Android (Wear OS)', () => {
+  beforeEach(() => {
+    mockLink.kind = 'wear';
+  });
+
+  it('is "On your watch", never the Apple Watch', async () => {
+    await mount(base, [row()]);
+    expect(screen.getByText('On your watch')).toBeTruthy();
+    expect(screen.queryByText(/Apple/)).toBeNull();
+  });
+
+  it('says not delivered while the phone still holds the item, then delivered once the watch took it', async () => {
+    const held = {
+      type: 'book' as const,
+      account: 'srv.7',
+      library_id: 1,
+      path: 'A/B',
+      failed: false,
+    };
+    await mount({ ...base, transfers: [held] }, [row()]);
+    expect(screen.getByText('Sent, not delivered yet')).toBeTruthy();
+    await act(async () => useWatchStore.setState({ status: base }));
+    expect(screen.getByText('Delivered to your watch')).toBeTruthy();
+    expect(screen.queryByText(/Open AudioSilo/)).toBeNull();
+  });
+
+  it('says removing without asking for the watch app to be opened', async () => {
+    const listed = here([{ library_id: 1, path: 'A/B', title: 'Sent book', state: 'ready' }]);
+    await mount({ ...base, state: listed }, [row({ seen: true, remove_at: NOW - 1000 })]);
+    expect(screen.getByText('Removing from your watch')).toBeTruthy();
+  });
+
+  it('is not there for a kid or a demo account', async () => {
+    mockUser = { id: 7, member_kind: 'kid' };
+    await mount(base, [row()]);
+    expect(screen.queryByTestId('downloads-watch')).toBeNull();
+    mockUser = { id: 7, is_demo: true };
+    await mount(base, [row()]);
+    expect(screen.queryByTestId('downloads-watch')).toBeNull();
   });
 });

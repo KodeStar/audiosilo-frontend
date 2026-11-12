@@ -26,7 +26,7 @@ import { watchLink } from '@/watch/link';
 import { resolveAccountCid, signedInSessions } from './account-model';
 import { ApiKeyCreatedModal } from './api-key-created-modal';
 import { ApiKeysSection, ApiKeysUnavailable } from './api-keys-section';
-import { AppleWatchCard } from './apple-watch-card';
+import { WatchCard } from './watch-card';
 import { DevicesSection } from './devices-section';
 import { IdentityCard } from './identity-card';
 import { ListeningSyncCard } from './listening-sync-card';
@@ -48,7 +48,7 @@ const CARDS_BESIDE_MIN = 680;
 
 /**
  * One server's account page body (the Stacks prototype's `Account`): who is signed in,
- * the password, pairing another device, the Apple Watch (iOS, a paired watch), the signed-in
+ * the password, pairing another device, the watch (a paired Apple Watch or Wear OS watch), the signed-in
  * devices, personal API keys and signing out. Every block is gated on its capability, so an older server shows less,
  * quietly.
  *
@@ -182,7 +182,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         ) : null}
       </View>
 
-      {watchLink.supported ? <AppleWatchCard connectionId={cid} /> : null}
+      {watchLink.supported ? <WatchCard connectionId={cid} /> : null}
 
       <AccountAddresses cid={cid} caps={caps} />
 

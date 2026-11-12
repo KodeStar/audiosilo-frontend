@@ -1,0 +1,23 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- The phone's one WearableListenerService (WearLinkService): Play services starts the app
+         for a watch's receipt or its watch-state even when the app is not running, so the phone
+         deletes the items the watch has taken and remembers which watch spoke last. Its own
+         items under /audiosilo/v1/to/ wake nothing. -->
+    <service
+      android:name="expo.modules.audiosilowatch.WearLinkService"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+        <data
+          android:host="*"
+          android:pathPrefix="/audiosilo/v1/from/"
+          android:scheme="wear" />
+        <data
+          android:host="*"
+          android:path="/audiosilo/v1/watch-state"
+          android:scheme="wear" />
+      </intent-filter>
+    </service>
+  </application>
+</manifest>

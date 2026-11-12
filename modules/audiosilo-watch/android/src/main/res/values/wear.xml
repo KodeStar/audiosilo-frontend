@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The phone app's Data Layer capability (W4 decision 12): the Wear app looks for a phone node
+     advertising it, and without one offers "Get AudioSilo on your phone". Only the Wearable API
+     reads it, by name: res/raw/audiosilo_watch_keep.xml keeps it through resource shrinking. -->
+<resources>
+  <string-array name="android_wear_capabilities">
+    <item>audiosilo_phone_app</item>
+  </string-array>
+</resources>

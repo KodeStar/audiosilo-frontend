@@ -268,11 +268,18 @@
     },
     "watch": {
       "title": "Apple Watch",
+      "titleWear": "Reloj Wear OS",
       "install": "Instala AudioSilo en tu reloj desde la app Watch de este iPhone y vuelve aquí.",
+      "installWear": "Instala AudioSilo en tu reloj desde Google Play y vuelve aquí.",
+      "installOnWatch": "Instalar en el reloj",
+      "installOpened": "Mira tu reloj: Google Play se abre allí en la página de AudioSilo.",
+      "installFailed": "No se pudo abrir Google Play en tu reloj. Busca AudioSilo en Google Play desde el reloj.",
       "setupBody": "Inicia sesión en {{server}} desde tu reloj sin escribir nada; luego llévate libros y deja el teléfono en casa.",
       "setUp": "Configurar Apple Watch",
+      "setUpWear": "Configurar el reloj",
       "sendAgain": "Enviar de nuevo",
       "sent": "Enviado. Abre AudioSilo en tu reloj para terminar de iniciar sesión.",
+      "sentWear": "Enviado. Tu reloj inicia sesión en cuanto lo recibe. Tenlo cerca.",
       "expired": "El inicio de sesión caducó antes de llegar a tu reloj. Nada ha cambiado en el reloj. Tenlo cerca y envíalo de nuevo.",
       "signedInAs": "Sesión iniciada como {{user}} en {{server}}",
       "otherAccount": "Tu reloj tiene sesión iniciada en otra cuenta. Configurarlo para {{server}} sustituye esa cuenta cuando se haya sincronizado lo que escuchaste.",
@@ -973,6 +980,7 @@
       "sendToWatch": "Enviar al reloj",
       "sentToWatch": "Enviado a tu reloj",
       "sentToWatchPair": "Si AudioSilo no está abierto en tu reloj, ábrelo para terminar de iniciar sesión.",
+      "sentToWatchPairWear": "Tu reloj inicia sesión primero y después recibe el libro.",
       "sentToWatchShow": "Ver",
       "markFinished": "Marcar como terminado",
       "markUnfinished": "Marcar como no terminado",
@@ -1186,6 +1194,7 @@
     },
     "watch": {
       "title": "En tu Apple Watch",
+      "titleWear": "En tu reloj",
       "empty": "Aún no hay libros en tu reloj. Elige Enviar al reloj en la página de un libro.",
       "notHere": "Tu reloj no está en esta cuenta",
       "otherAccount": "Ha iniciado sesión en otra cuenta, y los libros de esa cuenta no aparecen aquí. Para usarlo con {{server}}, configúralo en la página de tu cuenta.",
@@ -1204,6 +1213,7 @@
       "phase": {
         "undelivered": "Enviado, aún sin entregar",
         "delivered": "Entregado. Abre AudioSilo en tu reloj.",
+        "deliveredWear": "Entregado a tu reloj",
         "waiting-sign-in": "Entregado. Empezará cuando tu reloj inicie sesión aquí.",
         "send-failed": "No se pudo contactar con tu reloj. Envíalo de nuevo.",
         "stale": "Tu reloj no lo ha recogido en 7 días. Envíalo de nuevo si aún lo quieres.",
@@ -1214,6 +1224,7 @@
         "failed": "No se pudo descargar. Envíalo de nuevo para reintentar.",
         "removing-undelivered": "Se quitará cuando tu reloj esté al alcance",
         "removing": "Quitándose. Abre AudioSilo en tu reloj para terminar.",
+        "removingWear": "Quitándose de tu reloj",
         "remove-failed": "No se pudo contactar con tu reloj para quitarlo. Inténtalo de nuevo.",
         "remove-refused": "No se ha quitado: tu reloj no ha iniciado sesión en esta cuenta."
       }

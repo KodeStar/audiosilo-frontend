@@ -1,7 +1,8 @@
 // The phone-watch message contract (W3 plan, "The phone-watch message contract"): the watch
 // receives `pair`, `book` and `remove` from the phone and sends `watch-state`. Every
 // message carries `v: 1`; an unknown type or a newer version is ignored. WatchConnectivity hands
-// over property-list dictionaries, so decoding works on `[String: Any]`.
+// over property-list dictionaries, so decoding works on `[String: Any]`. The phone also stamps each
+// message with `sent_at` (src/watch/watch-model.ts) for Wear OS; this watch does not read it.
 import Foundation
 
 /// `<server_id>.<user_id>`: the account a message names and the watch is signed in to (the

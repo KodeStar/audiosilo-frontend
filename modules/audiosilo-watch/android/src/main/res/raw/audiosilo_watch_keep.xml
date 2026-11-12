@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keeps the phone's Data Layer capability (res/values/wear.xml) through release resource
+     shrinking: only Play services reads it, by name, so nothing in the app refers to it. It has to
+     be a file of its own under res/raw: a `tools:keep` on a values file's root is dropped when a
+     library's values are merged, and never reaches the app's shrinker. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+  tools:keep="@array/android_wear_capabilities" />
