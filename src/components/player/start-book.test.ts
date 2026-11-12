@@ -369,6 +369,15 @@ describe('startBookInPlace, a podcast episode', () => {
     expect(mockPlayBook).toHaveBeenCalledTimes(1);
   });
 
+  it('plays an episode on this device from it, though its server no longer has it (fe#166)', async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(false));
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    await expect(startBookInPlace(target)).resolves.toBe(true);
+    expect(mockRequestFetch).not.toHaveBeenCalled();
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
   it('plays it as before on a server that does not fetch on demand', async () => {
     serverFetches(false);
     mockItem.mockResolvedValue(episode(false));
