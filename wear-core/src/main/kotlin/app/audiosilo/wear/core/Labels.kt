@@ -49,4 +49,34 @@ object Labels {
     val sec = s % 60
     return if (h > 0) String.format(Locale.ROOT, "%d:%02d:%02d", h, m, sec) else String.format(Locale.ROOT, "%d:%02d", m, sec)
   }
+
+  /** A sleep timer choice. */
+  fun sleepChoice(mode: SleepMode): String =
+    when (mode) {
+      is SleepMode.Minutes -> "${mode.minutes} minutes"
+      SleepMode.EndOfChapter -> "End of chapter"
+    }
+
+  /** How long ago `at` was, from `now`: "Just now", "5 min ago", "2 hr ago", "3 days ago". */
+  fun ago(at: java.time.Instant, now: java.time.Instant): String {
+    val s = now.epochSecond - at.epochSecond
+    return when {
+      s < 60 -> "Just now"
+      s < 3600 -> "${s / 60} min ago"
+      s < 86_400 -> "${s / 3600} hr ago"
+      s < 2 * 86_400 -> "Yesterday"
+      else -> "${s / 86_400} days ago"
+    }
+  }
+
+  /** A couldn't-sync reason in plain words. */
+  fun reason(r: String): String =
+    when (r) {
+      "too_old" -> "Too old to sync (over 89 days)"
+      "too_large" -> "Too large to send"
+      "no_access" -> "The book is no longer yours to sync"
+      "not_found" -> "The book is no longer on the server"
+      "duration_mismatch" -> "The book has changed on the server"
+      else -> "The server refused it ($r)"
+    }
 }

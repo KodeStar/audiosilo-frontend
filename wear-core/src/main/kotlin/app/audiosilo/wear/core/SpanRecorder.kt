@@ -366,3 +366,14 @@ class SpanRecorder(
   private fun finishEvent(kind: String, ref: BookRef, at: Instant, base: Int) =
     FinishEvent(newId(), kind, ref.libraryId, ref.path, ISOTime.string(at), base)
 }
+
+/** The open span on disk (Files' `open-span.json`), what a kill leaves for the next launch to recover. */
+class FileSpanStore(file: java.io.File) : OpenSpanStore {
+  private val doc = JsonFile(file, OpenSpan.serializer())
+
+  override fun load(): OpenSpan? = doc.read()
+
+  override fun save(span: OpenSpan?) {
+    doc.write(span)
+  }
+}

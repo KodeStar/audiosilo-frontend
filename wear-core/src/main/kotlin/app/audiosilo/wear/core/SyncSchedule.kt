@@ -65,4 +65,24 @@ object SyncSchedule {
 
   /** Whether the 60 s foreground timer runs: only while events wait and the app is in front. */
   fun foregroundTimer(unsent: Int, inForeground: Boolean): Boolean = unsent > 0 && inForeground
+
+  /** What a sync worker's run ends with. */
+  enum class Outcome {
+    /** Nothing more to do this run (sent, or nothing it can send now; the backstop stays while events wait). */
+    DONE,
+
+    /** No answer: WorkManager's backoff tries again (the send is the connectivity test). */
+    RETRY,
+  }
+
+  /**
+   * After a worker's flush: `canSync` false (signed out, or a server without Sync v2) ends it;
+   * events still waiting after a flush that got no answer retry with backoff; anything else is done.
+   */
+  fun outcome(canSync: Boolean, unsent: Int, flushFailed: Boolean): Outcome =
+    if (canSync && unsent > 0 && flushFailed) Outcome.RETRY else Outcome.DONE
+
+  /** How many flushes one worker run makes at most while a span keeps closing during it. */
+  const val WORKER_ROUNDS = 3
 }
+
