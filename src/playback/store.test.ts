@@ -140,7 +140,9 @@ import { resetProfilesForTests, switchProfile, useProfiles } from '@/stores/prof
 import { useSettings } from '@/stores/settings';
 
 import { bookFileSpecs } from './book-queue';
+import { clearJumpUndo, startJumpUndo, useJumpUndo } from './jump-undo';
 import { flushConnection } from './progress-sync';
+import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
 import { AutoplayBlockedError, PlaybackStartError } from './types';
 import {
@@ -1805,6 +1807,152 @@ describe('the download hot-swap across file orders', () => {
     expect(mockSvc.play).not.toHaveBeenCalled();
   });
 
+  /** The next `load` waits until the returned release is called (an engine still loading). */
+  function holdNextLoad(report?: (index: number, position: number) => void) {
+    let release: () => void = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      (_tracks: unknown, index: number, position: number) =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            report?.(index, position);
+            resolve();
+          };
+        }),
+    );
+    return () => release();
+  }
+  /** The download holds one more file, first: every file of the stream one index later. */
+  const withExtra = ['A/Folder/c.mp3', ...newOrder];
+
+  it("waits for a start's load before swapping, and swaps at that start's place", async () => {
+    // Another book plays 50 s in; this book's start (10 s into 10.mp3) is still loading.
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await flushMicrotasks();
+    (mockSvc.load as jest.Mock).mockClear();
+    const land = holdNextLoad((index, position) =>
+      pushSnapshot(snap('ready', position, { trackIndex: index, duration: 30 })),
+    );
+    const start = usePlayer.getState().playBook('c1', 2, book, chaptersIn(newOrder), 80);
+    await flushMicrotasks(20);
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    downloadLands(oldOrder);
+    await flushMicrotasks(20);
+    // Nothing swaps while the start's load is out: the place is still the other book's.
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    land();
+    await start;
+    await flushMicrotasks(20);
+    expect(mockSvc.load).toHaveBeenCalledTimes(2);
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/10.mp3'), index: 1, position: 10 });
+    expect(queueUrls()).toEqual(newOrder.map(urlOf));
+  });
+
+  it('keeps a pause made while the swap loads, and a speed set meanwhile', async () => {
+    await streamIn(newOrder);
+    const land = holdNextLoad();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    (mockSvc.play as jest.Mock).mockClear();
+    await usePlayer.getState().setRate(1.5);
+    await usePlayer.getState().pause();
+    land();
+    await flushMicrotasks();
+    expect(queueUrls()).toEqual(newOrder.map(urlOf));
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    expect((mockSvc.setRate as jest.Mock).mock.lastCall).toEqual([1.5]);
+  });
+
+  it('plays on at a speed set while the swap loads', async () => {
+    await streamIn(newOrder);
+    const land = holdNextLoad();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    (mockSvc.play as jest.Mock).mockClear();
+    await usePlayer.getState().setRate(1.5);
+    land();
+    await flushMicrotasks();
+    expect((mockSvc.setRate as jest.Mock).mock.lastCall).toEqual([1.5]);
+    expect(mockSvc.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('neither sets the speed nor plays after a stop made while the swap loads', async () => {
+    await streamIn(newOrder);
+    const land = holdNextLoad();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    await usePlayer.getState().stop();
+    (mockSvc.setRate as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    land();
+    await flushMicrotasks();
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it("saves the playing file's place on a stop after the engine reported the download's index", async () => {
+    // 20 s into 10.mp3: whole-book 70 + 20; the download holds it at index 2.
+    await streamIn(newOrder, { file: 'A/Folder/10.mp3' });
+    const land = holdNextLoad();
+    downloadLands(withExtra);
+    await flushMicrotasks();
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/10.mp3'), index: 2, position: 20 });
+    // The engine is on the download already (its index reported), the store not yet.
+    pushSnapshot(snap('playing', 21, { trackIndex: 2, duration: 30 }));
+    await usePlayer.getState().stop();
+    expect(savedPositions()).toEqual([91]);
+    land();
+    await flushMicrotasks();
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+  });
+
+  it("reads no jump and fires no chapter's sleep timer at the download's index", async () => {
+    const stopWatching = startJumpUndo();
+    try {
+      // 20 s into 2.mp3 (chapter 1, ending at 70); the download holds it at index 1, which
+      // through the stream's queue is 10.mp3: whole-book 70 + 20, past the chapter's end.
+      await streamIn(newOrder);
+      jest.advanceTimersByTime(4_000); // past the jump watch's settling
+      pushSnapshot(snap('playing', 24, { trackIndex: 0, duration: 70 }));
+      useSleepTimer.getState().startUntilPosition(70, { key: 'player.sleepTimer.endOf' });
+      (mockSvc.pause as jest.Mock).mockClear();
+      const land = holdNextLoad();
+      downloadLands(withExtra);
+      await flushMicrotasks();
+      pushSnapshot(snap('playing', 25, { trackIndex: 1, duration: 70 }));
+      jest.advanceTimersByTime(1_000);
+      await flushMicrotasks();
+      expect(useJumpUndo.getState().jump).toBeNull();
+      expect(mockSvc.pause).not.toHaveBeenCalled();
+      expect(useSleepTimer.getState().phase).toBe('running');
+      expect(selectBookPosition(usePlayer.getState())).toBe(25);
+      land();
+      await flushMicrotasks();
+      expect(selectBookPosition(usePlayer.getState())).toBe(75); // c.mp3's 50 + 25
+    } finally {
+      useSleepTimer.getState().cancel();
+      stopWatching();
+      clearJumpUndo();
+    }
+  });
+
+  it("moves a held error's place onto the download's index at the commit", async () => {
+    await streamIn(newOrder, { file: 'A/Folder/10.mp3' });
+    pushSnapshot(snap('error', 20, { trackIndex: 1, duration: 30 }));
+    // Like the native engine, the load reports the download's index: the error holds it out.
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      async (_tracks: unknown, index: number, position: number) => {
+        pushSnapshot(snap('ready', position, { trackIndex: index, duration: 30 }));
+      },
+    );
+    downloadLands(withExtra);
+    await flushMicrotasks();
+    expect(queueUrls()).toEqual(withExtra.map(urlOf));
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', trackIndex: 2 });
+    expect(selectBookPosition(usePlayer.getState())).toBe(140); // 50 + 70 + 20
+  });
+
   describe('while casting', () => {
     const cast = mockSvc as unknown as { isCasting?: () => boolean; rememberLoad?: jest.Mock };
     beforeEach(() => {
@@ -1826,6 +1974,16 @@ describe('the download hot-swap across file orders', () => {
       expect(mockSvc.load).not.toHaveBeenCalled();
       expect(queueUrls()).toEqual(newOrder.map(urlOf));
       // The receiver's index still reads as 10.mp3.
+      expect(selectBookPosition(usePlayer.getState())).toBe(80);
+    });
+
+    it('leaves the queue alone for a download holding other files than the receiver plays', async () => {
+      await streamIn(newOrder, { file: 'A/Folder/10.mp3', at: 10 });
+      downloadLands(withExtra);
+      await flushMicrotasks();
+      expect(cast.rememberLoad).not.toHaveBeenCalled();
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expect(queueUrls()).toEqual(['stream:2:A/Folder/2.mp3', 'stream:2:A/Folder/10.mp3']);
       expect(selectBookPosition(usePlayer.getState())).toBe(80);
     });
   });
