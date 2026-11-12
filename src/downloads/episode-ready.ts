@@ -18,10 +18,10 @@ import { blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
  * runs on the way back), and at most `MAX_WAITING` at once per server (connection): more
  * wait their turn here, so a listener's own plays keep room under each server's limit of five
  * fetches on their way, and waits stuck on a server that can't be reached never hold up
- * another server's. A
- * refusal for the moment (the limit, the rate limiter, a blip) waits and asks again; a fetch
- * that failed or can't be made ends the wait with the server's code. Framework-free: the
- * store hands each wait its hooks and stops it (`stopWaiting`) on a cancel or remove.
+ * another server's. A refusal for the moment (the limit, the rate limiter, a blip) waits and
+ * asks again; a fetch that failed or can't be made ends the wait with the server's code.
+ * Framework-free: the store hands each wait its hooks and stops it (`stopWaiting`) on a
+ * cancel or remove.
  */
 
 /** How many episodes ask one server (connection) at once. */
@@ -125,16 +125,9 @@ function drop(w: Waiter) {
 
 /** Give free turns to the waits next in line, each connection its own `MAX_WAITING`. */
 function pump() {
-  const asking = new Map<string, number>();
   for (const w of waiters.values()) {
-    if (w.active) asking.set(w.ref.connectionId, (asking.get(w.ref.connectionId) ?? 0) + 1);
-  }
-  for (const w of waiters.values()) {
-    const cid = w.ref.connectionId;
-    const n = asking.get(cid) ?? 0;
-    if (w.active || n >= MAX_WAITING) continue;
+    if (w.active || askingCount(w.ref.connectionId) >= MAX_WAITING) continue;
     w.active = true;
-    asking.set(cid, n + 1);
     void step(w);
   }
 }
