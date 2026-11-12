@@ -487,7 +487,7 @@ private fun HeldRow(held: HeldBook) {
 fun heldLine(held: HeldBook): String =
   if (held.waiting) "Waiting until this watch can take it" else "Not delivered. Send it again from your phone."
 
-const val SETUP_WAITING = "Open AudioSilo on your phone and choose Set up watch."
+const val SETUP_WAITING = "Open AudioSilo on your phone and choose Set up your watch."
 
 /**
  * The server's encode runs under its own lifetime, whoever is polling; on Wear the book's worker
