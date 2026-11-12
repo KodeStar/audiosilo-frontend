@@ -157,6 +157,9 @@ object PhoneLink {
         val items = items(context, Uri.parse("wear://*" + DataPaths.to(me)), exact = false)
         val receipts = items(context, Uri.parse("wear://$me" + DataPaths.takenPrefix(me)), exact = false)
         val plan = PhoneInbox.sweep(me, items, receipts)
+        // Before the takes: a newer send's receipt goes at the path of the one it replaces, and
+        // dropped after, the receipt just put would go with the settled one.
+        for (path in plan.dropReceipts) deleteOwn(context, me, path)
         for (item in plan.handle) {
           try {
             take(context, me, item)
@@ -166,7 +169,6 @@ object PhoneLink {
             Log.w(TAG, "item ${item.path} not handled", x)
           }
         }
-        for (path in plan.dropReceipts) deleteOwn(context, me, path)
       } catch (x: CancellationException) {
         throw x
       } catch (x: Exception) {
