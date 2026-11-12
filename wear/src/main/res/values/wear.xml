@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kept through resource shrinking by res/raw/audiosilo_wear_keep.xml. -->
+<resources>
+  <string-array name="android_wear_capabilities">
+    <item>audiosilo_wear_app</item>
+  </string-array>
+</resources>

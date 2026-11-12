@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Play services reads android_wear_capabilities by name, so no code refers to it and the
+     release build's resource shrinking would empty it (the phone would then never see this app
+     as installed). A tools:keep only counts in a file of its own: on values/wear.xml's root it
+     is dropped when the values files are merged. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+  tools:keep="@array/android_wear_capabilities" />

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">AudioSilo</string>
+  <string name="downloads_channel">Downloads</string>
+  <string name="getting_ready">Getting %1$s ready</string>
+  <string name="sync_channel">Sync</string>
+  <string name="syncing">Sending your listening</string>
+</resources>

@@ -1,0 +1,93 @@
+# The Wear OS app (Track W4, decision 14): its pure Kotlin core (wear-core/) tested on the JVM,
+# then the Android build after a prebuild. `:app` is built too: React Native's root plugin makes
+# `:app:preBuild` depend on `:wear:preBuild`, so a broken `:wear` breaks the phone build.
+name: wear
+
+on:
+  pull_request:
+    paths:
+      - 'wear/**'
+      - 'wear-core/**'
+      - 'plugins/withWearApp.js'
+      - 'modules/audiosilo-watch/**'
+      - 'scripts/test-wear.sh'
+      - 'app.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/wear.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'wear/**'
+      - 'wear-core/**'
+      - 'plugins/withWearApp.js'
+      - 'modules/audiosilo-watch/**'
+      - 'scripts/test-wear.sh'
+      - 'app.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/wear.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Test the Wear core
+        run: sh scripts/test-wear.sh
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild Android
+        run: npx expo prebuild -p android --no-install
+
+      - name: Build and test the Wear app, and build the phone app
+        working-directory: android
+        run: ./gradlew --console=plain :wear:assembleDebug :wear:testDebugUnitTest :wear:assembleRelease :app:assembleDebug
+
+      # The debug sign-in (wear/src/debug) must never reach a release build.
+      - name: Check the release build has no debug sign-in
+        run: |
+          mkdir -p /tmp/wear-dex
+          unzip -q -o wear/build/outputs/apk/release/wear-release.apk 'classes*.dex' -d /tmp/wear-dex
+          if LC_ALL=C grep -a -q -E 'DebugSignIn|debug_pair' /tmp/wear-dex/*.dex; then
+            echo "the release dex holds the debug sign-in" >&2
+            exit 1
+          fi
+
+      # Resource shrinking must not empty android_wear_capabilities (res/raw/audiosilo_wear_keep.xml):
+      # without it the phone never sees the Wear app as installed.
+      - name: Check the release build still advertises its capability
+        run: |
+          unzip -q -o wear/build/outputs/apk/release/wear-release.apk resources.arsc -d /tmp/wear-dex
+          if ! LC_ALL=C grep -a -q 'audiosilo_wear_app' /tmp/wear-dex/resources.arsc; then
+            echo "the release build lost the audiosilo_wear_app capability" >&2
+            exit 1
+          fi

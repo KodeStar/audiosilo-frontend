@@ -23,3 +23,9 @@ targets/watch/Assets.xcassets/
 
 # Local Claude Code permissions (untracked, per machine): its own JSON spacing
 .claude/settings.local.json
+
+# Wear OS app (Track W4): Gradle outputs
+wear/build/
+wear-core/build/
+wear-core/.gradle/
+wear-core/.kotlin/
