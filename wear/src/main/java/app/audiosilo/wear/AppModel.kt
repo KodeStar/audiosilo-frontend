@@ -228,6 +228,9 @@ class AppModel private constructor(private val context: Context) {
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
     publishState()
+    // A book's stage moving is news for the phone (its Preparing and Downloading rows), whoever
+    // moved it: a BookWorker run with the app closed too, as this model is the process's.
+    scope.launch { downloads.stages.collect { publishState() } }
   }
 
   /** The session token, null when signed out (or it no longer opens). */
@@ -833,9 +836,7 @@ class AppModel private constructor(private val context: Context) {
     // One entry per book: a row kept beside its record speaks for it until it settles.
     val rowRefs = rows.map { it.ref }.toSet()
     val books =
-      records.filter { it.ref !in rowRefs }.map { r: DownloadRecord ->
-        WatchStateBook(r.ref, r.title, r.state, if (r.state == WatchStateBook.State.READY) r.bytes else null)
-      } + rows
+      records.filter { it.ref !in rowRefs }.map(DownloadRecord::stateBook) + rows
     val a = _account.value
     val state =
       WatchState(

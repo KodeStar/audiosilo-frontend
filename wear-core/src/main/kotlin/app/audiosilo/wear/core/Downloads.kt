@@ -6,9 +6,12 @@ package app.audiosilo.wear.core
 
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 
@@ -88,6 +91,12 @@ data class DownloadRecord(
   /** When it was queued, for `PhoneMessages.removeApplies`. */
   val queuedAt: Instant
     get() = sentAt ?: addedAt
+
+  /**
+   * What `watch-state` says of this book: its stage, and its size only once it is ready, so bytes
+   * landing mid-download are no change for the phone (StatePublication).
+   */
+  fun stateBook(): WatchStateBook = WatchStateBook(ref, title, state, if (state == WatchStateBook.State.READY) bytes else null)
 }
 
 /** One row of Continue listening: a book started and not finished, with its title. */
@@ -170,6 +179,13 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
   private val flow = MutableStateFlow(this.file?.read() ?: emptyList())
 
   val records: StateFlow<List<DownloadRecord>> = flow.asStateFlow()
+
+  /**
+   * The books as `watch-state` reports them, each time that changes: a stage moving (queued,
+   * preparing, downloading, ready, failed) is news, from whichever thread changed it; bytes landing
+   * or a row's message are not.
+   */
+  val stages: Flow<List<WatchStateBook>> = flow.map { rs -> rs.map { it.stateBook() } }.distinctUntilChanged()
 
   /** False when the last write failed (a full disk): `records` would not survive a kill. */
   @Volatile
