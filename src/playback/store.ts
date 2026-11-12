@@ -284,9 +284,11 @@ let pickedUpAgainListener: (() => void) | null = null;
  * reported during the load. */
 let pickUpDue: string | null = null;
 /** The download hot-swap of the book (its content key) whose download landed while a load
- * held the store (`loadingBook`): the snapshot is the previous place until that load lands,
- * so the swap runs from the hold's release (the subscription beside `pickUpDue`'s). Dropped
- * when that load fails: the hold is released then too, with no place of the book's landed. */
+ * held the store (`loadingBook`) or a start was on its way (`startsInFlight`: a start of the
+ * book already loaded holds nothing): the snapshot is the previous place until that load
+ * lands, and a swap's own load made meanwhile would land after the start's, at that place.
+ * It runs once both are over (`runDueSwap`), and is dropped by a start or a reload that
+ * placed nothing (a failed load releases the hold too). */
 let swapDue: string | null = null;
 
 /** Tell the pick-up listener now, or once the load holding the store lands (`pickUpDue`). */
@@ -2231,6 +2233,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const current = () => mayActFor(connectionId);
     // In flight until it ends: an adoption reading meanwhile stands back (`startsInFlight`).
     startsInFlight++;
+    // Whether this start put its book in the engine, at its place (`swapDue`).
+    let placed = false;
     try {
       // Resolve the client from the connection id (single source of truth), mirroring the
       // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
@@ -2430,10 +2434,6 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
           queue.chapterClips,
           bookRefOf(nowPlaying),
         );
-      } catch (err) {
-        // Its place never landed: a hot-swap waiting on this load has nothing to swap from.
-        if (swapDue === key) swapDue = null;
-        throw err;
       } finally {
         // Also when the load failed: a `loadingBook` left behind would hold every save and
         // every remote move of whatever plays next.
@@ -2448,6 +2448,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // Another book was started while this one loaded (a second tap, Up next): that start
       // owns the engine now, so this one neither sets its speed nor plays.
       if (selectBookKey(get()) !== key) return;
+      placed = true;
       // The engine holds the queue built from these chapters now: a download takes them,
       // with a new file order when its server re-ordered the files (`adoptStartedChapters`).
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
@@ -2462,6 +2463,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       void maybeAutoDownloadCurrent(connectionId, libraryId, book, chapterData);
     } finally {
       startsInFlight--;
+      // The book's download landed meanwhile: it is swapped in now, from the place this
+      // start put it at, or not at all when the start placed nothing (a failed load, a
+      // failed resume lookup: the snapshot is not this book's place).
+      if (!placed && swapDue === contentKey(connectionId, libraryId, book.rel_path)) {
+        swapDue = null;
+      }
+      runDueSwap();
     }
   },
 
@@ -2818,8 +2826,10 @@ async function switchCurrentBookToLocal() {
   const { nowPlaying, snapshot } = state;
   if (!nowPlaying || !apiRef) return;
   // A load holding the store (a start, an adoption's reload: `loadingBook`) leaves the
-  // snapshot the PREVIOUS place until it lands: the swap runs once it has (`swapDue`).
-  if (state.loadingBook) {
+  // snapshot the PREVIOUS place until it lands, and so does a start of this same book at
+  // another place, which holds nothing (`startsInFlight`): the swap runs once they are
+  // over (`swapDue`).
+  if (state.loadingBook || startsInFlight > 0) {
     swapDue = contentKeyOf(nowPlaying);
     return;
   }
@@ -3455,13 +3465,19 @@ function moveOntoDownload() {
   );
 }
 
-// A hot-swap due while a load held the store (`swapDue`) runs once that hold is released, on
-// the book that load placed (its own place in the snapshot by then).
-usePlayer.subscribe((state, prev) => {
-  if (swapDue === null || !prev.loadingBook || state.loadingBook) return;
+/** Run the hot-swap that waited (`swapDue`) once no load holds the store and no start is on
+ * its way, on the book it waited for (its own place in the snapshot by then). Asked at both
+ * ends: the hold's release (below) and a start's end (`playBook`). */
+function runDueSwap() {
+  if (swapDue === null || startsInFlight > 0) return;
+  const { nowPlaying, loadingBook } = usePlayer.getState();
+  if (loadingBook) return;
   const due = swapDue;
   swapDue = null;
-  if (state.nowPlaying && contentKeyOf(state.nowPlaying) === due) moveOntoDownload();
+  if (nowPlaying && contentKeyOf(nowPlaying) === due) moveOntoDownload();
+}
+usePlayer.subscribe((state, prev) => {
+  if (prev.loadingBook && !state.loadingBook) runDueSwap();
 });
 
 // When a download completes for the book that's currently playing, switch it to the

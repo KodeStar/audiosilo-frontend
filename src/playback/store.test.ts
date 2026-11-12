@@ -1847,6 +1847,27 @@ describe('the download hot-swap across file orders', () => {
     expect(queueUrls()).toEqual(newOrder.map(urlOf));
   });
 
+  it("waits for a start of the same book too, and swaps at that start's place", async () => {
+    // 20 s into 2.mp3; the book is started again 10 s into 10.mp3, its load still out.
+    await streamIn(newOrder);
+    const land = holdNextLoad((index, position) =>
+      pushSnapshot(snap('ready', position, { trackIndex: index, duration: 30 })),
+    );
+    const start = usePlayer.getState().playBook('c1', 2, book, chaptersIn(newOrder), 80);
+    await flushMicrotasks(20);
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    downloadLands(oldOrder);
+    await flushMicrotasks(20);
+    // A swap now would load the place before the restart, after the restart's own load.
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    land();
+    await start;
+    await flushMicrotasks(20);
+    expect(mockSvc.load).toHaveBeenCalledTimes(2);
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/10.mp3'), index: 1, position: 10 });
+    expect(queueUrls()).toEqual(newOrder.map(urlOf));
+  });
+
   it("swaps nothing after a start's load that failed", async () => {
     // Another book plays 50 s in; this book's start fails in its load, the download landed.
     await startBook(makeBook(), 0);

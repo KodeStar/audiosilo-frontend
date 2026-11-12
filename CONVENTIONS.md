@@ -1536,9 +1536,10 @@ media GETs only.
   download's queue is committed, which on a load is before the rate and the play. The commit
   moves the store's snapshot onto the download's index by file too (a stream in `error` holds
   back the engine's own report). A download landing while a load holds the store
-  (`loadingBook`: a start, an adoption's reload) swaps once that load lands (`swapDue`), from
-  that book's own place, and not at all when that load fails (no place of the book's landed;
-  the next start uses the download). The native load runs as a play attempt when it plays on
+  (`loadingBook`: a start, an adoption's reload) or a start is on its way (`startsInFlight`:
+  one of the book already loaded holds nothing) swaps once they are over (`swapDue`,
+  `runDueSwap`), from the place that start put the book at, and not at all when it placed
+  nothing (a failed load or resume lookup; the next start uses the download). The native load runs as a play attempt when it plays on
   (`beginPlaybackAttempt`, so iOS's pause at `load` reads as the load's), then sets the
   store's speed as it is then and plays only while the intent stands: a pause or a speed set
   during the load stands. Casting, only a download in the receiver's order is remembered
