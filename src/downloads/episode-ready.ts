@@ -3,7 +3,7 @@ import { AppState, type NativeEventSubscription } from 'react-native';
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import type { PodcastFetchStatus } from '@/api/types';
-import { blipDelay, MIN_POLL_S } from '@/playback/episode-fetch-rules';
+import { blipDelay, pollDelay } from '@/playback/episode-fetch-rules';
 
 /**
  * Waiting for a podcast episode to be on its server before it downloads (fe#166, D2). An
@@ -28,11 +28,11 @@ export const MAX_WAITING = 3;
 /** An episode the downloads store waits for: its registry key and where it lives. */
 export type EpisodeWaitRef = { key: string; connectionId: string; libraryId: number; path: string };
 
-/** How a wait ended: on the server (`ready`), a fetch that `failed` or can't be made now
- * (`unavailable`; `code` is the server's safe code, null when it said none), or the
- * connection gone (`removed`). */
+/** How a wait ended: on the server (`ready`), a fetch that failed or can't be made now
+ * (`failed`; `code` is the server's safe code, null when it said none), or the connection
+ * gone (`removed`). */
 export type EpisodeWaitEnd =
-  { kind: 'ready' } | { kind: 'failed' | 'unavailable'; code: string | null } | { kind: 'removed' };
+  { kind: 'ready' } | { kind: 'failed'; code: string | null } | { kind: 'removed' };
 
 export type EpisodeWaitHooks = {
   /** The server's fetch moved (queued, fetching and how far). */
@@ -60,19 +60,10 @@ type Waiter = {
 const waiters = new Map<string, Waiter>();
 let appWatch: NativeEventSubscription | null = null;
 
-/** The refusals that need a person before a fetch can work (the module, the Bridge, the
- * library, the demo): the wait ends as `unavailable`. */
-const UNAVAILABLE = new Set([
-  'module_off',
-  'bridge_unavailable',
-  'library_not_writable',
-  'demo_account',
-]);
-
 /**
- * Wait for `ref`'s episode to be on its server; `hooks.onEnd` says how it went. Asked again
- * for an episode already waiting, it joins that wait, unless `retry` (the listener's Retry
- * POSTs a fetch again), which starts it over.
+ * Wait for `ref`'s episode to be on its server; `hooks.onEnd` says how it went. `retry` POSTs
+ * a fetch first (the listener's Retry) where a plain wait asks the stream. A wait already
+ * there for the key is replaced (the store starts one only for an entry with none).
  */
 export function waitForEpisode(
   ref: EpisodeWaitRef,
@@ -80,10 +71,6 @@ export function waitForEpisode(
   { retry = false }: { retry?: boolean } = {},
 ): void {
   const had = waiters.get(ref.key);
-  if (had && !retry) {
-    had.hooks = hooks;
-    return;
-  }
   if (had) drop(had);
   waiters.set(ref.key, {
     ref,
@@ -171,10 +158,10 @@ function end(w: Waiter, how: EpisodeWaitEnd) {
   pump();
 }
 
-/** Ask again in `seconds` (at least `MIN_POLL_S`), or on the way back to the foreground. */
+/** Ask again in `seconds` (`pollDelay`), or on the way back to the foreground. */
 function schedule(w: Waiter, seconds: number) {
   if (!live(w)) return;
-  const wait = Math.max(MIN_POLL_S, Number.isFinite(seconds) ? seconds : 0);
+  const wait = pollDelay(seconds);
   if (AppState.currentState === 'background') {
     w.paused = true;
     return;
@@ -220,8 +207,7 @@ async function step(w: Waiter) {
     if (e.code === 'fetch_limit' || e.status === 429 || e.status >= 500) {
       return askAgain(w, e.retryAfterSeconds);
     }
-    const code = e.code ?? null;
-    end(w, { kind: code && UNAVAILABLE.has(code) ? 'unavailable' : 'failed', code });
+    end(w, { kind: 'failed', code: e.code ?? null });
   }
 }
 
@@ -237,12 +223,10 @@ function settle(w: Waiter, status: PodcastFetchStatus, retryAfter?: number) {
       // On its way: its status from here on (a POST once is enough).
       w.action = 'poll';
       return schedule(w, retryAfter ?? status.retry_after_seconds);
-    case 'unavailable':
-      // Five on their way already: this one waits its turn and asks again.
-      if (code === 'fetch_limit') return askAgain(w, retryAfter);
-      return end(w, { kind: 'unavailable', code });
     default:
-      // `failed`, and `absent` after a fetch was asked for (nothing on its way).
+      // Five on their way already: this one waits its turn and asks again.
+      if (status.state === 'unavailable' && code === 'fetch_limit') return askAgain(w, retryAfter);
+      // `failed`, `unavailable`, and `absent` after a fetch was asked for (nothing on its way).
       return end(w, { kind: 'failed', code });
   }
 }

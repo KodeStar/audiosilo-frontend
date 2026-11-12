@@ -67,9 +67,7 @@ function DeviceDownloadLine({
   const { status } = useDownloadState(connectionId, libraryId, path);
   const text =
     onServer !== undefined
-      ? onServer !== null
-        ? t('podcasts.episode.gettingPercent', { percent: onServer })
-        : t('podcasts.episode.getting')
+      ? stateText({ kind: 'getting', percent: onServer }, t)
       : status === 'queued'
         ? t('library.download.queued')
         : t('library.download.downloading', { percent: Math.round(progress * 100) });

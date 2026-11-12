@@ -69,9 +69,8 @@ export function fetchProgress(status: PodcastFetchStatus | null): {
   percent: number | null;
 } {
   const received = Math.max(0, status?.bytes_received ?? 0);
-  const total = status?.bytes_total ?? null;
-  if (total === null || total <= 0) return { received, total: null, percent: null };
-  return { received, total, percent: fetchPercent(status) };
+  const percent = fetchPercent(status);
+  return { received, total: percent === null ? null : (status?.bytes_total ?? null), percent };
 }
 
 /** How long an episode stays "new" (the show tiles' caption, Home's rail). */

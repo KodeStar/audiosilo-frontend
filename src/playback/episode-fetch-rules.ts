@@ -13,9 +13,15 @@ export function isAbsentEpisode(book: Book): boolean {
 }
 
 /** The poll interval floor, seconds (the server's `Retry-After`). */
-export const MIN_POLL_S = 2;
+const MIN_POLL_S = 2;
 /** The longest wait between two looks while the server keeps failing (5xx, no answer). */
 const MAX_BLIP_POLL_S = 60;
+
+/** The wait before the next look at a fetch on its way: the server's `seconds`, never under
+ * the floor (an answer without a usable number waits the floor). */
+export function pollDelay(seconds: number): number {
+  return Math.max(MIN_POLL_S, Number.isFinite(seconds) ? seconds : 0);
+}
 
 /** The wait before the next look after `blips` failed looks in a row: doubling from the
  * floor, at most `MAX_BLIP_POLL_S`, and never under the answer's `Retry-After`. */

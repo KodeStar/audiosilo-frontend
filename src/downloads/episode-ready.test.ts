@@ -132,13 +132,13 @@ describe('waitForEpisode', () => {
     expect(ends[key]).toEqual({ kind: 'ready' });
   });
 
-  it('ends unavailable on a refusal only a person can lift', async () => {
+  it('ends failed with the code of a refusal only a person can lift', async () => {
     client.prepareEpisodeStream.mockRejectedValue(
       new ApiError(409, 'no bridge', 'bridge_unavailable'),
     );
     const key = wait(1);
     await flush();
-    expect(ends[key]).toEqual({ kind: 'unavailable', code: 'bridge_unavailable' });
+    expect(ends[key]).toEqual({ kind: 'failed', code: 'bridge_unavailable' });
   });
 
   it('waits and asks again at the fetch limit, and on a blip', async () => {
@@ -190,13 +190,6 @@ describe('waitForEpisode', () => {
     await flush();
     expect(client.prepareEpisodeStream).toHaveBeenCalledTimes(4);
     expect(client.prepareEpisodeStream.mock.calls[3][1]).toBe('ep-4');
-  });
-
-  it('joins a wait already on its way instead of asking again', async () => {
-    wait(1);
-    wait(1);
-    await flush();
-    expect(client.prepareEpisodeStream).toHaveBeenCalledTimes(1);
   });
 
   it('pauses in the background and asks at once on the way back', async () => {

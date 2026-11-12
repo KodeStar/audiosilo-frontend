@@ -1,6 +1,6 @@
 import type { Book, Collection, CollectionDetail, Library, Progress, User } from '@/api/types';
 import { type GridSpec, gridMetrics } from '@/components/library/cover-layout';
-import { visibleDownloads } from '@/downloads/downloads-view';
+import { isEpisodeEntry, visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry } from '@/downloads/types';
 import type { LayoutClass } from '@/lib/layout';
 import { kidsLibraries, podcastLibraryIds } from '@/lib/library-kind';
@@ -264,9 +264,7 @@ export function kidsDownloads(
   libraryId: number | null,
 ): Book[] {
   return visibleDownloads(entries, [connectionId])
-    .ready.filter(
-      (e) => !e.manifest.book.episode && (libraryId === null || e.libraryId === libraryId),
-    )
+    .ready.filter((e) => !isEpisodeEntry(e) && (libraryId === null || e.libraryId === libraryId))
     .map((e) => e.manifest.book);
 }
 
