@@ -41,7 +41,13 @@ class ChapterPlayer(player: Player, private val engine: PlayerEngine) : Forwardi
   /** A seek within the file playing (a scrubber): the book's place there. */
   override fun seekTo(positionMs: Long) = seekTo(currentMediaItemIndex, positionMs)
 
-  override fun seekToDefaultPosition() = seekTo(currentMediaItemIndex, 0)
+  /**
+   * Media3's play button on an ended player seeks here before `play()`: the engine's own play
+   * starts a finished book again from its start (a `restart`), so that seek is not a move.
+   */
+  override fun seekToDefaultPosition() {
+    if (playbackState != Player.STATE_ENDED) seekTo(currentMediaItemIndex, 0)
+  }
 
   override fun seekToDefaultPosition(mediaItemIndex: Int) = seekTo(mediaItemIndex, 0)
 

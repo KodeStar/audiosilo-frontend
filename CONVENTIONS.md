@@ -2703,6 +2703,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   starts it before a play. `OngoingNotification` (Media3's default provider) adds the
   OngoingActivity while playing. Spans, ticks (0.5 s; keep 5 s; cut 15 s while reachable), the
   pull before play, the offer and its throttles, Stay, `PICKED_UP_AFTER` are the Apple Watch's.
+  Media3 tells its listeners inside `play()`, so `startPlaying` opens the span only if the play
+  still stands after it. A book is finished only when it played to its end (`STATE_ENDED` while
+  playing); a paused move onto the end sends nothing until `play`, which ends it there. The
+  place is saved by the tick only while the audio moves (a hold keeps `lastAdvance`'s time).
 - **Sync (decision 9)**: `AppModel.schedule(trigger)` runs `SyncSchedule.plan`: in front it
   flushes (launch after `spans.recover()`, foreground, each closed span, the 60 s timer, a
   network coming up); in the background `SyncWorker.expedite` (unique `sync`, KEEP, CONNECTED,

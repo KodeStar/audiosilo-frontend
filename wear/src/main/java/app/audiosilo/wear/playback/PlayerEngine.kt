@@ -251,7 +251,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     if (playing) return
     problem = null
     val p = player()
-    if (ended) {
+    val restarting = ended
+    if (restarting) {
       // Played to the end: start again (an `unfinish`, then a `restart` span).
       spans.prepareStart(ListeningStart.RESTART, unfinish = true)
       position = 0.0
@@ -264,6 +265,10 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     } else if (p.playbackState == Player.STATE_IDLE) {
       // A failed file: try it again from the place.
       p.prepare()
+    } else if (!restarting && p.playbackState == Player.STATE_ENDED) {
+      // A move while paused landed on the book's end: playing it is what ends the book.
+      bookEnded()
+      return
     }
     if (SystemPause.asksSpeaker(SystemPause.ofSuppression(p.playbackSuppressionReason), speakerConfirmed)) {
       speakerPrompt = true
@@ -480,7 +485,9 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
       }
 
       override fun onPlaybackStateChanged(state: Int) {
-        if (state == Player.STATE_ENDED) bookEnded()
+        // Only a book that played to its end is finished (the Apple Watch's DidPlayToEndTime): a
+        // paused skip past the end is a move, and `play` ends the book from there.
+        if (state == Player.STATE_ENDED && playing) bookEnded()
       }
 
       override fun onPlayerError(error: PlaybackException) {
