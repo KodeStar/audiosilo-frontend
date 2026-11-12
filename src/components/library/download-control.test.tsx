@@ -48,6 +48,12 @@ jest.mock('@/downloads/store', () => ({
     const d = mockDownload();
     return ticked === undefined ? d : { ...d, progress: ticked };
   },
+  // An episode its server is still fetching: the percent there (null: unknown), else
+  // undefined (`serverFetch`, fe#166).
+  useDownloadServerFetch: () => {
+    const d = mockDownload() as { serverFetch?: { percent: number | null } };
+    return d.serverFetch ? d.serverFetch.percent : undefined;
+  },
   useDownloads: { getState: () => ({ remove: mockRemove }) },
 }));
 
@@ -67,12 +73,32 @@ beforeEach(() => {
 });
 
 describe('DownloadControl', () => {
-  // Bridge Phase 2d-1, decision 6.1: episodes are never kept offline.
-  it('renders nothing for a podcast episode', async () => {
-    mockControlsOverride = { status: undefined, progress: 0 };
+  // fe#166 (D1): a podcast episode downloads like a book.
+  it('offers the download for a podcast episode', async () => {
+    const start = jest.fn();
+    mockControlsOverride = { status: undefined, progress: 0, start };
     const episode = { ...book, episode: { show_path: 'Show', downloaded: true } } as Book;
     await mountWithPortal(<DownloadControl libraryId={1} path="b" book={episode} />);
-    expect(screen.queryByRole('button')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Download for offline' }));
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  // fe#166 (D2): an episode not on its server yet waits there first, and says so.
+  it('says an episode is being got on its server, and cancels from it', async () => {
+    const cancel = jest.fn();
+    mockControlsOverride = {
+      status: 'queued',
+      progress: 0,
+      serverFetch: { percent: 40 },
+      cancel,
+    };
+    const episode = { ...book, episode: { show_path: 'Show', downloaded: false } } as Book;
+    await mountWithPortal(<DownloadControl libraryId={1} path="b" book={episode} />);
+    expect(screen.getByText('Getting it on your server · Cancel')).toBeTruthy();
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Getting it on your server · Cancel, Cancel download' }),
+    );
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   // Removed from the menu its "Downloaded" button opens (with the size on this device).
@@ -184,5 +210,15 @@ describe('DownloadProgress', () => {
     mockControlsOverride = {};
     await mountWithPortal(<DownloadProgress libraryId={1} path="b" />);
     expect(screen.queryByText(/^Downloading/)).toBeNull();
+  });
+
+  it("says how far an episode's server has got it while it waits there", async () => {
+    mockControlsOverride = { status: 'queued', progress: 0, serverFetch: { percent: 40 } };
+    await mountWithPortal(<DownloadProgress libraryId={1} path="b" />);
+    expect(screen.getByText(/^Getting it on your server 40%/)).toBeTruthy();
+    mockControlsOverride = { status: 'queued', progress: 0, serverFetch: { percent: null } };
+    await mountWithPortal(<DownloadProgress libraryId={1} path="b" />);
+    expect(screen.getByText(/^Getting it on your server/)).toBeTruthy();
+    expect(screen.queryByText(/%/)).toBeNull();
   });
 });

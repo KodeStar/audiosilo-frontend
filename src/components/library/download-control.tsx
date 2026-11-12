@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
@@ -18,7 +19,7 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { ProgressRing } from '@/components/ui/progress-ring';
 import { Text } from '@/components/ui/text';
 import { failureText } from '@/downloads/failure';
-import { useDownloadEntry, useDownloadProgress } from '@/downloads/store';
+import { useDownloadEntry, useDownloadProgress, useDownloadServerFetch } from '@/downloads/store';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import { formatBytes } from '@/lib/format';
 import { useConnectionName } from '@/stores/session';
@@ -32,7 +33,9 @@ const SHRINKS = 'max-w-full shrink';
  * The book hero's download control (the prototype's `DownloadControl`): Download for
  * offline / "52% · Cancel" / Downloaded (a menu with its size and Remove download) /
  * Retry download, with a fallback when offline storage is unavailable (an
- * insecure-context or very old browser, or a book this browser only plays converted).
+ * insecure-context or very old browser, or a book this browser only plays converted). A
+ * podcast episode not on its server yet says "Getting it on your server · Cancel" while its
+ * server fetches it (fe#166).
  * Delete asks first (the Downloads page's confirm, with the size): the only undo is
  * downloading the book again. An outline button per state, so the hero's one pink thing
  * stays its progress bar. It may shrink (a phone's row keeps the hero's icon buttons
@@ -76,8 +79,6 @@ export function DownloadControl({
     />
   );
 
-  // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1).
-  if (book?.episode) return null;
   if (!supported) {
     return (
       <Button
@@ -197,9 +198,14 @@ const DownloadingButton = memo(function DownloadingButton({
   const themed = useThemeColors();
   const { t } = useTranslation();
   const { progress } = useDownloadProgress(connectionId, libraryId, path);
-  const said = queued
-    ? t('book.download.queuedCancel')
-    : t('book.download.progressCancel', { percent: Math.round(progress * 100) });
+  // An episode its server is still fetching (its percent there, or null: unknown).
+  const onServer = useDownloadServerFetch(connectionId, libraryId, path);
+  const said =
+    onServer !== undefined
+      ? t('book.download.gettingCancel')
+      : queued
+        ? t('book.download.queuedCancel')
+        : t('book.download.progressCancel', { percent: Math.round(progress * 100) });
   return (
     <Button
       variant="outline"
@@ -209,7 +215,7 @@ const DownloadingButton = memo(function DownloadingButton({
       className={SHRINKS}
     >
       <ProgressRing
-        fraction={queued ? 0 : progress}
+        fraction={queued ? (onServer ?? 0) / 100 : progress}
         size={18}
         stroke={2.5}
         color={themed.foreground}
@@ -251,16 +257,26 @@ export function DownloadProgress({ libraryId, path }: { libraryId: number; path:
   // It redraws with every tick anyway, so the whole entry is the one read it needs.
   const entry = useDownloadEntry(useScopedCid(), libraryId, path);
   if (entry?.status !== 'downloading' && entry?.status !== 'queued') return null;
-  const { status, progress, bytes, totalBytes } = entry;
+  const { status, progress, bytes, totalBytes, serverFetch } = entry;
   return (
     <View className="max-w-[560px] gap-1.5">
       <Text variant="caption" numberOfLines={1} style={tabularNums}>
-        {status === 'queued'
-          ? t('library.download.queued')
-          : t('library.download.downloading', { percent: Math.round(progress * 100) })}
+        {serverFetch
+          ? serverFetchLabel(t, serverFetch.percent)
+          : status === 'queued'
+            ? t('library.download.queued')
+            : t('library.download.downloading', { percent: Math.round(progress * 100) })}
         {totalBytes > 0 ? ` · ${formatBytes(bytes)} / ${formatBytes(totalBytes)}` : ''}
       </Text>
       <ProgressBar fraction={progress} minPercent={4} fillClassName="bg-foreground/60" />
     </View>
   );
+}
+
+/** "Getting it on your server", with its percent there when the server knows the size: a
+ * podcast episode's download while its server fetches it (`serverFetch`). */
+export function serverFetchLabel(t: TFunction, percent: number | null): string {
+  return percent === null
+    ? t('downloads.row.gettingOnServer')
+    : t('downloads.row.gettingOnServerPercent', { percent });
 }

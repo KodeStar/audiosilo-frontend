@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { BookCover } from '@/components/library/book-cover';
+import { serverFetchLabel } from '@/components/library/download-control';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -134,7 +135,12 @@ export function ActiveRow({
       </Text>
     </>
   ) : entry.status === 'queued' ? (
-    <Text variant="caption">{t('downloads.row.queued')}</Text>
+    // An episode waits for its server to fetch it first (fe#166).
+    <Text variant="caption" style={tabularNums}>
+      {entry.serverFetch
+        ? serverFetchLabel(t, entry.serverFetch.percent)
+        : t('downloads.row.queued')}
+    </Text>
   ) : (
     <>
       <ProgressBar fraction={entry.progress} minPercent={2} />
@@ -273,9 +279,11 @@ export function PlannedRow({
 }
 
 /** A book on the device: opens its page; Play starts it (as the old list did); Remove
- * asks first (`onRemove` opens the confirm). */
+ * asks first (`onRemove` opens the confirm). Its second line starts with its author, or
+ * `byline` (an episode's show). */
 export function ReadyRow({
   entry,
+  byline,
   progressLabel,
   first,
   onOpen,
@@ -283,6 +291,7 @@ export function ReadyRow({
   onRemove,
 }: {
   entry: DownloadEntry;
+  byline?: string;
   /** "38%", "Not started" or "Finished", when the listener's progress is known. */
   progressLabel?: string;
   first: boolean;
@@ -296,7 +305,7 @@ export function ReadyRow({
   const phone = useLayout() === 'phone';
   const size = formatBytes(entryBytes(entry));
   const meta = [
-    entry.manifest.book.author,
+    byline ?? entry.manifest.book.author,
     progressLabel,
     phone ? size : null,
     entry.origin === 'keep-ahead' ? t('downloads.row.keptAhead') : null,

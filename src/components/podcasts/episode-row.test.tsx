@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 const mockOpenBook = jest.fn();
 jest.mock('@/lib/open', () => ({ useOpen: () => ({ openBook: mockOpenBook }) }));
@@ -21,6 +21,8 @@ jest.mock('@/components/library/books/book-actions', () => ({
 
 /* eslint-disable import/first */
 import type { PodcastEpisode, Progress } from '@/api/types';
+import { useDownloads } from '@/downloads/store';
+import type { DownloadEntry } from '@/downloads/types';
 import { fetchStatus, podcastEpisode, podcastShow, wire2b } from '@/testing/podcast-fixtures';
 
 import { EpisodeRow } from './episode-row';
@@ -42,7 +44,25 @@ const renderRow = (
     />,
   );
 
+/** This device's download of `ep` (fe#166), in the given state. */
+async function onDevice(ep: PodcastEpisode, over: Partial<DownloadEntry> = {}) {
+  const entry = {
+    connectionId: 'c1',
+    libraryId: 5,
+    path: ep.path,
+    title: ep.title,
+    status: 'downloaded',
+    progress: 1,
+    bytes: 0,
+    totalBytes: 0,
+    manifest: { book: {}, chapters: null, files: [], coverUri: null, savedAt: '' },
+    ...over,
+  } as DownloadEntry;
+  await act(async () => useDownloads.setState({ entries: { [`c1:5:${ep.path}`]: entry } }));
+}
+
 beforeEach(() => {
+  useDownloads.setState({ entries: {} });
   mockOpenBook.mockReset();
   mockPlay.mockReset().mockResolvedValue(undefined);
   mockRequest.mockReset();
@@ -124,9 +144,33 @@ describe('EpisodeRow', () => {
     expect(screen.getByTestId('episode-finished')).toBeTruthy();
   });
 
-  it('offers Up next and Mark as finished, never a download', async () => {
+  // fe#166: "On this device" is this device's copy, apart from the server's ("Ready on your
+  // server"); on its way here, the row says how far.
+  it('says On this device for a downloaded episode, and plays it whatever its server says', async () => {
+    const ep = podcastEpisode({ downloaded: false });
+    await onDevice(ep);
+    await renderRow(ep, { canFetch: false });
+    expect(screen.getByTestId('episode-on-device')).toBeTruthy();
+    expect(screen.getByText('On this device')).toBeTruthy();
+    expect(screen.queryByTestId('episode-state')).toBeNull();
+    // On the device it plays: no reason, no Try again, Play enabled.
+    expect(screen.queryByTestId('episode-reason')).toBeNull();
+    expect(screen.getByTestId('episode-play')).not.toBeDisabled();
+  });
+
+  it('says how far its download to this device is, its server first', async () => {
+    const ep = podcastEpisode({ downloaded: false });
+    await onDevice(ep, { status: 'queued', serverFetch: { percent: 40 } });
+    await renderRow(ep);
+    expect(screen.getByTestId('episode-device-download').props.children).toBe('Getting it 40%');
+    await onDevice(ep, { status: 'queued' });
+    expect(screen.getByTestId('episode-device-download').props.children).toBe('Queued…');
+    await onDevice(ep, { status: 'downloading', progress: 0.25 });
+    expect(screen.getByTestId('episode-device-download').props.children).toBe('Downloading 25%');
+  });
+
+  it('hands its menu the episode, which offers Download (`useBookActions`)', async () => {
     await renderRow(podcastEpisode());
-    // The actions drop Download for any book with `episode` set (`useBookActions`).
     expect(mockActions).toHaveBeenCalledWith(
       expect.objectContaining({
         omit: ['play', 'collect', 'series'],

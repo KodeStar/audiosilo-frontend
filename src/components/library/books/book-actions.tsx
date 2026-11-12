@@ -75,18 +75,35 @@ function playabilityUnknown(book: Book): boolean {
   return Platform.OS === 'web' && book.direct_playable === undefined;
 }
 
+/** The menu's download item for `book` (`known`: its full item when it was looked up, else
+ * the book as given, null while a lookup it waits for is on its way). A book: always. An
+ * item of a podcast library: only once it is known to be an episode (a list shape carries no
+ * `episode`; a show's folder is never one), and not one its server can't fetch
+ * (`podcastFetch` false while it is not on the server). */
+function offersDownload(
+  known: Book | null,
+  podcastLibrary: boolean,
+  podcastFetch: boolean | undefined,
+): boolean {
+  if (!known) return false;
+  if (!known.episode) return !podcastLibrary;
+  return known.episode.downloaded || podcastFetch !== false;
+}
+
 /**
  * What can be done to a book from a list, each only where its server and this platform
  * allow it (a capability still unknown hides its item): Play or Resume, Add to / Remove
- * from Up next, Add to collection..., Download for offline / Remove download, Send to watch
- * (iOS, a paired watch with the app, `useSendToWatch`), Mark as finished / not finished, More
+ * from Up next, Add to collection..., Download for offline / Remove download (a podcast
+ * episode too, fe#166: `offersDownload`), Send to watch (iOS, a paired watch with the app,
+ * `useSendToWatch`; never an episode), Mark as finished / not finished, More
  * in this series. `openCollect` opens the Add to
  * collection dialog and `confirmRemove` the remove-download confirm, both rendered by
  * the caller (`BookActionsMenu`): removing a download asks first, as everywhere.
  *
  * On web a list-shape `book` is looked up in full once `opened` (the menu was shown; not
  * per row of a list), and Download waits for it: offered only when the browser plays
- * the book directly, so the menu never offers a download that would be refused.
+ * the book directly, so the menu never offers a download that would be refused. So is an
+ * item of a podcast library given without its `episode` (a tile's list shape), everywhere.
  */
 export function useBookActions(
   { connectionId, libraryId, book, progress }: Target,
@@ -102,14 +119,15 @@ export function useBookActions(
   const progressEdit = useCapability('progress_edit', connectionId);
   const edit = useEditProgress(connectionId);
   const markFinished = useMarkFinished(connectionId);
-  const unknown = playabilityUnknown(book);
+  // An item of a podcast library: by the item's `episode`, or for a list-shape book, by its
+  // library's kind (never sent to a watch; downloaded once known to be an episode).
+  const podcastLibrary = useIsPodcastLibrary(libraryId, connectionId);
+  const podcastFetch = useCapability('podcast_fetch', connectionId);
+  const unknown = playabilityUnknown(book) || (podcastLibrary && !book.episode);
   // An empty path keeps the lookup off until it is wanted.
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
   const known = unknown ? full.data : book;
   const download = useDownloadControls(libraryId, path, known ?? book, undefined, connectionId);
-  // Podcast episodes are not kept offline (Bridge Phase 2d-1): by the item's `episode`, or
-  // for a list-shape book, by its library's kind.
-  const podcastLibrary = useIsPodcastLibrary(libraryId, connectionId);
   const episode = podcastLibrary || !!(known ?? book).episode;
   const status = bookStatus(progress);
   const sendToWatch = useSendToWatch(connectionId, libraryId);
@@ -200,7 +218,11 @@ export function useBookActions(
   }
   const s = download.status;
   // A download already there stays manageable; a new one waits for the verdict.
-  if (!episode && download.supported && (known || (s !== undefined && s !== 'error'))) {
+  if (
+    download.supported &&
+    (offersDownload(known ?? null, podcastLibrary, podcastFetch) ||
+      (s !== undefined && s !== 'error'))
+  ) {
     const state =
       s === 'downloaded' ? 'remove' : s === 'downloading' || s === 'queued' ? 'cancel' : 'start';
     const run = {

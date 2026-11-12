@@ -15,6 +15,7 @@ import { dropStartedBook } from '@/components/player/drop-started';
 import { playFailedToast } from '@/components/player/play-failed';
 import { EpisodeFetchPanel } from '@/components/podcasts/episode-fetch-panel';
 import { Spinner } from '@/components/ui/spinner';
+import { useIsDownloaded } from '@/downloads/store';
 import { contentKey } from '@/lib/content-key';
 import { bookTitle, idParam, segmentsToPath } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -22,11 +23,11 @@ import { usePageTitle } from '@/lib/use-page-title';
 import {
   cancelEpisodeFetchOf,
   cancelEpisodeFetchUnless,
-  isAbsentEpisode,
   needsEpisodeFetch,
   requestEpisodeFetch,
   useEpisodeFetch,
 } from '@/playback/episode-fetch';
+import { isAbsentEpisode } from '@/playback/episode-fetch-rules';
 import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
@@ -79,6 +80,8 @@ export default function PlayerScreen() {
   const chaptersQuery = useChapters(libraryId, path, connectionId, { enabled: routeNamesBook });
   const chapterData = chaptersQuery.data;
   const podcastFetch = useCapability('podcast_fetch', cid);
+  // An episode on this device plays from it, whatever its server holds (fe#166).
+  const onDevice = useIsDownloaded(cid, libraryId, book?.rel_path ?? '');
 
   // Auto-start playback AT MOST ONCE per target book. A mount-scoped latch keyed by
   // `${cid}|${libraryId}|<rel_path>` remembers the target we already resolved, so we never
@@ -157,13 +160,13 @@ export default function PlayerScreen() {
     if (startedKeyRef.current === key) return;
     // An episode not on its server: wait for the server's flags before choosing a start,
     // so it never streams a file that isn't there yet.
-    if (isAbsentEpisode(book) && podcastFetch === undefined) return;
+    if (!onDevice && isAbsentEpisode(book) && podcastFetch === undefined) return;
     startedKeyRef.current = key;
     // The start below lands on the jump itself, so the book showing up as `nowPlaying`
     // must not jump there a second time.
     jumpedKeyRef.current = jumpKey;
     const startAt = hasPos ? posParam : undefined;
-    if (needsEpisodeFetch(book, podcastFetch)) {
+    if (!onDevice && needsEpisodeFetch(book, podcastFetch)) {
       requestEpisodeFetch({ connectionId: cid, libraryId, path: book.rel_path }, book, {
         position: startAt,
         track: hasTrack ? trackParam : undefined,
@@ -196,6 +199,7 @@ export default function PlayerScreen() {
     goToTrack,
     gated,
     podcastFetch,
+    onDevice,
   ]);
 
   if (gate) return gate;

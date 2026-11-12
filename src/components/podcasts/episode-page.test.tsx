@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, Progress } from '@/api/types';
 
@@ -65,8 +65,11 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
+import { useDownloads } from '@/downloads/store';
+import type { DownloadEntry } from '@/downloads/types';
 import { useSession } from '@/stores/session';
 import { episodeBook, wire2b } from '@/testing/podcast-fixtures';
+import { mountWithPortal } from '@/testing/render-overlay';
 
 import { EpisodePage } from './episode-page';
 /* eslint-enable import/first */
@@ -86,7 +89,25 @@ beforeEach(() => {
   mockRequest.mockReset();
   mockOpenShow.mockReset();
   useSession.setState({ connections: [] } as never);
+  useDownloads.setState({ entries: {}, supported: true });
 });
+
+/** This device's download of the episode (fe#166), in the given state. */
+async function onDevice(over: Partial<DownloadEntry> = {}) {
+  const entry = {
+    connectionId: 'c1',
+    libraryId: 5,
+    path: PATH,
+    title: 'Monday',
+    status: 'downloaded',
+    progress: 1,
+    bytes: 0,
+    totalBytes: 0,
+    manifest: { book: mockBook, chapters: null, files: [], coverUri: null, savedAt: '' },
+    ...over,
+  } as DownloadEntry;
+  await act(async () => useDownloads.setState({ entries: { [`c1:5:${PATH}`]: entry } }));
+}
 
 describe('EpisodePage', () => {
   it('keeps the error with a Retry when the episode did not load', async () => {
@@ -202,6 +223,42 @@ describe('EpisodePage', () => {
     mockProgress = { position: 300, duration: 1800, finished: false } as Progress;
     await mount();
     expect(screen.getByTestId('episode-timeline-changed')).toBeTruthy();
+  });
+
+  // fe#166 (D1): the book page's download control, beside Play.
+  it('offers Download for offline, and downloads the episode', async () => {
+    const download = jest
+      .spyOn(useDownloads.getState(), 'download')
+      .mockResolvedValue('queued' as const);
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'Download for offline' }));
+    expect(download).toHaveBeenCalledWith('c1', 5, mockBook, undefined);
+    download.mockRestore();
+  });
+
+  it('says it is being got on its server while its download waits there', async () => {
+    await mount();
+    await onDevice({ status: 'queued', progress: 0, serverFetch: { percent: null } });
+    expect(screen.getByText('Getting it on your server · Cancel')).toBeTruthy();
+    expect(screen.getByText(/^Getting it on your server$/)).toBeTruthy();
+  });
+
+  it('plays from this device whatever its server can do, with no reason or Try again', async () => {
+    mockCaps = { podcast_fetch: false };
+    await onDevice();
+    // The Downloaded control opens a menu: the app's overlay roots.
+    await mountWithPortal(<EpisodePage libraryId={5} path={PATH} />);
+    expect(screen.getByRole('button', { name: 'Downloaded' })).toBeTruthy();
+    expect(screen.getByTestId('episode-page-play').props.accessibilityState).toMatchObject({
+      disabled: false,
+    });
+    expect(screen.queryByTestId('episode-page-reason')).toBeNull();
+  });
+
+  it("can't download an episode nothing can fetch", async () => {
+    mockCaps = { podcast_fetch: false };
+    await mount();
+    expect(screen.getByRole('button', { name: 'Download for offline' })).toBeDisabled();
   });
 
   it("lists the chapters the episode's file carries", async () => {
