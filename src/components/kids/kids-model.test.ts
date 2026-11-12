@@ -184,6 +184,18 @@ describe('kidsDownloads', () => {
         .sort(),
     ).toEqual(['one', 'two']);
   });
+
+  // fe#166: a grown-up's podcast episode on the same account never shows in kids mode.
+  it('never lists a podcast episode', () => {
+    const episode = entry('a.1', 1, 'Show/Monday.mp3');
+    episode.manifest.book = {
+      ...episode.manifest.book,
+      episode: { show_path: 'Show', downloaded: true },
+    } as Book;
+    const entries = { x: entry('a.1', 1, 'story'), y: episode };
+    expect(kidsDownloads(entries, 'a.1', null).map((b) => b.rel_path)).toEqual(['story']);
+    expect(kidsDownloads(entries, 'a.1', 1).map((b) => b.rel_path)).toEqual(['story']);
+  });
 });
 
 describe('kidsAllowsPath', () => {

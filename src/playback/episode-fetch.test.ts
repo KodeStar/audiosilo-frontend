@@ -21,7 +21,6 @@ import { useSession } from '@/stores/session';
 import { episodeBook, fetchStatus, wire2b } from '@/testing/podcast-fixtures';
 
 import {
-  blipDelay,
   cancelEpisodeFetch,
   cancelEpisodeFetchOf,
   cancelEpisodeFetchUnless,
@@ -32,6 +31,7 @@ import {
   retryEpisodeFetch,
   useEpisodeFetch,
 } from './episode-fetch';
+import { blipDelay } from './episode-fetch-rules';
 /* eslint-enable import/first */
 
 const target = { connectionId: 'c1', libraryId: 5, path: 'Daily News/2026-10-21 Monday.mp3' };

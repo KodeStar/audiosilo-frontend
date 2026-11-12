@@ -11,13 +11,14 @@ import {
   type ServerSnapshot,
 } from '@/api/server-snapshots';
 import type { ApiClient } from '@/api/client';
-import type { Book, ChaptersResponse, Progress } from '@/api/types';
+import type { Book, ChaptersResponse, PodcastShow, Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
 import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
+import { fetchPercent, isAbsentEpisode } from '@/playback/episode-fetch-rules';
 import { progressToSave, writeMirror } from '@/playback/progress-sync';
 import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
@@ -25,6 +26,7 @@ import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { engine } from './engine';
+import { type EpisodeWaitEnd, stopWaiting, waitForEpisode } from './episode-ready';
 import { setDownloadEndCheck, setDownloadLengthCheck, setKeptOfflineCheck } from './kept-offline';
 import { estimateBytes, pendingBytes, roomLeft } from './keep-ahead';
 import { classifyDownloadError } from './failure';
@@ -77,9 +79,11 @@ const queue: string[] = [];
 // again queues a new entry under the same key, which the old run must never touch.
 const controllers = new Map<string, AbortController>();
 
-/** Stop a book's waiting or running download: off the queue, its transfer aborted, and
- * its run no longer the live one (see `controllers`). */
+/** Stop a book's waiting or running download: off the queue (or no longer waiting for its
+ * server, an episode: `episode-ready.ts`), its transfer aborted, and its run no longer the
+ * live one (see `controllers`). */
 function stopRun(key: string) {
+  stopWaiting(key);
   const idx = queue.indexOf(key);
   if (idx >= 0) queue.splice(idx, 1);
   controllers.get(key)?.abort();
@@ -126,7 +130,9 @@ type DownloadsState = {
    * keeping the files it already finished. Resolves what it did (`DownloadOutcome`); a
    * listener's request is queued at once, an automatic one after reading the room. On
    * web, a list-shape `book` (no `direct_playable`) is first looked up in full, so a
-   * book this browser plays transcoded is refused whoever asks. */
+   * book this browser plays transcoded is refused whoever asks; so is a podcast episode
+   * given without its chapters (an episode row's list shape), for its file's own. An
+   * episode not on its server yet waits there first (`episode-ready.ts`), off the queue. */
   download: (
     connectionId: string,
     libraryId: number,
@@ -200,15 +206,15 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // This browser can't play a download offline (the launch's probe): refused up front,
     // before a byte is fetched. The control says so ("Downloads unavailable").
     if (!get().supported) return Promise.resolve<DownloadOutcome>('unsupported');
-    // Podcast episodes are not kept offline (Bridge Phase 2d-1, decision 6.1): one not on
-    // its server yet answers 503 to the download engines, and nothing would clean them up.
-    if (book.episode) return Promise.resolve<DownloadOutcome>('unsupported');
     // On web, a list-shape book (`/books`, `/fs`, shelves, tiles, the queue) carries no
     // `direct_playable`, so the transcode refusal below would read it as playable and
     // download raw files this browser cannot play. Such a book is decided on its full
     // item and chapters (through the query cache, as keep-ahead's `startOne` does), which
-    // also give the download its files. Native never transcodes, so it never asks.
-    const client = lacksPlayability(book, chapterData) ? resolveClient(connectionId) : null;
+    // also give the download its files. Native never transcodes, so it asks only for an
+    // episode given without chapters: its item says whether its server has it now, and its
+    // chapters (the file's own) go with the download.
+    const lookup = lacksPlayability(book, chapterData) || (!!book.episode && !chapterData);
+    const client = lookup ? resolveClient(connectionId) : null;
     if (!client) return queueBook(connectionId, libraryId, book, chapterData, origin);
     return (async () => {
       const [item, chapters] = await Promise.allSettled([
@@ -366,7 +372,7 @@ function queueBook(
   if (existing && existing.status !== 'error') return done('exists'); // queued/downloading/done
   if (origin === 'listener') {
     declined.delete(key);
-    enqueue(key, connectionId, libraryId, book, chapterData, origin);
+    begin(key, connectionId, libraryId, book, chapterData, origin);
     return done('queued');
   }
   // An automatic download (the book you start, keep-ahead) never takes back a book
@@ -401,12 +407,16 @@ function queueBook(
     if (declined.has(key)) return 'declined';
     if (now && now.status !== 'error') return 'exists';
     for (const k of yielding) stepAside(k);
-    enqueue(key, connectionId, libraryId, book, chapterData, origin);
+    begin(key, connectionId, libraryId, book, chapterData, origin);
     return 'queued';
   })();
 }
 
-function enqueue(
+/** Start a download `queueBook` let through: a podcast episode its server must fetch first
+ * waits there (`awaitEpisode`), anything else goes on the queue. An episode whose last try
+ * failed on its server (the fetch, or a 503 from a file the server no longer had) asks it
+ * again; one that failed its fetch POSTs (the listener's Retry skips the server's cool-down). */
+function begin(
   key: string,
   connectionId: string,
   libraryId: number,
@@ -414,8 +424,42 @@ function enqueue(
   chapterData: ChaptersResponse | undefined,
   origin: DownloadOrigin,
 ) {
+  const existing = useDownloads.getState().entries[key];
+  const failure = existing?.status === 'error' ? existing.failure : undefined;
+  const fetchFailed = failure?.kind === 'serverFetch';
+  const wait =
+    !!book.episode &&
+    (isAbsentEpisode(book) ||
+      fetchFailed ||
+      (failure?.kind === 'server' && failure.status === 503));
+  if (wait) awaitEpisode(key, connectionId, libraryId, book, chapterData, origin, fetchFailed);
+  else enqueue(key, connectionId, libraryId, book, chapterData, origin);
+}
+
+/** A podcast episode's show title from the cached show list, else undefined. */
+function cachedShowTitle(connectionId: string, libraryId: number, book: Book): string | undefined {
+  const show = book.episode?.show_path;
+  if (show === undefined) return undefined;
+  const shows = queryClient.getQueryData<PodcastShow[]>(qk.podcastShows(connectionId, libraryId));
+  return shows?.find((s) => s.path === show)?.title || undefined;
+}
+
+/** Put a book's entry in the registry as `queued` (saved at once): its manifest from `book`
+ * and `chapterData`, keeping the files a failed attempt finished. */
+function putEntry(
+  key: string,
+  connectionId: string,
+  libraryId: number,
+  book: Book,
+  chapterData: ChaptersResponse | undefined,
+  origin: DownloadOrigin,
+  extra: Pick<DownloadEntry, 'serverFetch'> = {},
+) {
   const { entries } = useDownloads.getState();
   const existing = entries[key];
+  const showTitle = book.episode
+    ? (cachedShowTitle(connectionId, libraryId, book) ?? existing?.manifest.showTitle)
+    : undefined;
   const manifest: DownloadManifest = {
     book,
     chapters: chapterData ?? existing?.manifest.chapters ?? null,
@@ -423,6 +467,7 @@ function enqueue(
     // on disk).
     files: existing?.manifest.files ?? [],
     coverUri: null,
+    ...(showTitle ? { showTitle } : {}),
     savedAt: new Date().toISOString(),
   };
   const entry: DownloadEntry = {
@@ -435,10 +480,22 @@ function enqueue(
     bytes: 0,
     totalBytes: 0,
     origin,
+    ...extra,
     manifest,
   };
   useDownloads.setState({ entries: { ...entries, [key]: entry } });
   void persist();
+}
+
+function enqueue(
+  key: string,
+  connectionId: string,
+  libraryId: number,
+  book: Book,
+  chapterData: ChaptersResponse | undefined,
+  origin: DownloadOrigin,
+) {
+  putEntry(key, connectionId, libraryId, book, chapterData, origin);
   if (!queue.includes(key)) {
     // The book you start goes next, ahead of keep-ahead's books still waiting (the
     // download running now is off the queue).
@@ -446,6 +503,106 @@ function enqueue(
     else queue.push(key);
   }
   void runQueue();
+}
+
+/**
+ * A podcast episode not on its server yet (fe#166, D2): its entry waits as `queued` with
+ * `serverFetch`, off the one-at-a-time queue, while `episode-ready.ts` gets it onto its
+ * server (`retry`: POST, the listener's Retry after a failed fetch); then it goes on the
+ * queue like any book (`episodeWaitEnded`).
+ */
+function awaitEpisode(
+  key: string,
+  connectionId: string,
+  libraryId: number,
+  book: Book,
+  chapterData: ChaptersResponse | undefined,
+  origin: DownloadOrigin,
+  retry: boolean,
+) {
+  putEntry(key, connectionId, libraryId, book, chapterData, origin, {
+    serverFetch: { percent: fetchPercent(book.episode?.fetch) },
+  });
+  waitForEpisode(
+    { key, connectionId, libraryId, path: book.rel_path },
+    {
+      onStatus: (status) => {
+        const cur = useDownloads.getState().entries[key];
+        const percent = fetchPercent(status);
+        if (cur?.serverFetch && cur.serverFetch.percent !== percent) {
+          patchEntry(key, { serverFetch: { percent } });
+        }
+      },
+      onEnd: (end) => void episodeWaitEnded(key, end).catch(() => {}),
+    },
+    { retry },
+  );
+}
+
+/** A waiting entry without its `serverFetch` (the key gone, not kept as undefined). */
+function withoutServerFetch(entry: DownloadEntry): DownloadEntry {
+  const { serverFetch: _waiting, ...rest } = entry;
+  return rest;
+}
+
+/**
+ * An episode's wait on its server ended. On its server: its item and chapters are read again
+ * (the file's own size and chapters, `downloaded` now true), the show's episode lists too (a
+ * show page on screen says it is on the server), and it goes on the queue. Otherwise the
+ * entry fails (`serverFetch`, with the server's code; Retry POSTs), or, for a removed
+ * connection, as `removed`. A cancel or remove meanwhile wins.
+ */
+async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void> {
+  const entry = useDownloads.getState().entries[key];
+  if (!entry?.serverFetch) return;
+  const { connectionId, libraryId, path } = entry;
+  if (end.kind !== 'ready') {
+    useDownloads.setState({
+      entries: {
+        ...useDownloads.getState().entries,
+        [key]: {
+          ...withoutServerFetch(entry),
+          status: 'error',
+          error:
+            end.kind === 'removed' ? 'Server connection removed' : 'The episode was not fetched',
+          failure:
+            end.kind === 'removed'
+              ? { kind: 'removed' }
+              : { kind: 'serverFetch', kept: 0, ...(end.code ? { code: end.code } : {}) },
+        },
+      },
+    });
+    void persist();
+    return;
+  }
+  const stops = stopCount(key);
+  const client = resolveClient(connectionId);
+  let book = entry.manifest.book;
+  let chapters = entry.manifest.chapters ?? undefined;
+  if (client) {
+    const [item, read] = await Promise.allSettled([
+      queryClient.fetchQuery({ ...itemQuery(connectionId, client, libraryId, path), staleTime: 0 }),
+      queryClient.fetchQuery({
+        ...chaptersQuery(connectionId, client, libraryId, path),
+        staleTime: 0,
+      }),
+    ]);
+    if (item.status === 'fulfilled') book = item.value;
+    if (read.status === 'fulfilled') chapters = read.value;
+  }
+  if (stopCount(key) !== stops || !useDownloads.getState().entries[key]?.serverFetch) return;
+  // Its server has the file now, whatever an older answer said: the queue must not send it
+  // back here.
+  if (book.episode && !book.episode.downloaded) {
+    book = { ...book, episode: { ...book.episode, downloaded: true } };
+  }
+  const show = book.episode?.show_path;
+  if (show !== undefined) {
+    void queryClient.invalidateQueries({
+      queryKey: qk.podcastEpisodesOfShow(connectionId, libraryId, show),
+    });
+  }
+  enqueue(key, connectionId, libraryId, book, chapters, entry.origin ?? 'listener');
 }
 
 /** Take a waiting automatic download off the queue for the book you start, without the
@@ -475,7 +632,10 @@ function stepAside(key: string) {
  *   with no files, or one whose files are no longer all there.
  * The kept share is recomputed from the files, so it is what is really on the device.
  */
-export function reviveEntry(e: DownloadEntry, allPresent: boolean): DownloadEntry | null {
+export function reviveEntry(saved: DownloadEntry, allPresent: boolean): DownloadEntry | null {
+  // An episode that was waiting for its server is a download the app cut short (Retry asks
+  // its server again).
+  const e = saved.serverFetch ? withoutServerFetch(saved) : saved;
   const files = e.manifest.files;
   if (e.status === 'downloaded') return files.length > 0 && allPresent ? e : null;
   if (files.length === 0) {
@@ -1526,6 +1686,20 @@ export function useDownloadState(
       return { status: e?.status, failure: e?.failure };
     }),
   );
+}
+
+/** A podcast episode's download while it waits for its server to fetch it (`serverFetch`):
+ * how far that fetch is (a whole percent, null while the size is unknown); undefined when
+ * the download is not waiting there (none, on the queue, running, done or failed). */
+export function useDownloadServerFetch(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): number | null | undefined {
+  return useDownloads((s) => {
+    const e = s.entries[downloadKey(connectionId, libraryId, path)];
+    return e?.status === 'queued' && e.serverFetch ? e.serverFetch.percent : undefined;
+  });
 }
 
 /** A book's download progress (0..1) and bytes so far over the total, all 0 without a

@@ -30,7 +30,6 @@ const mockCancelOf = jest.fn();
 let mockLatestStart: string | null = null;
 let mockFetchStarting = true;
 jest.mock('@/playback/episode-fetch', () => ({
-  isAbsentEpisode: jest.requireActual('@/playback/episode-fetch').isAbsentEpisode,
   needsEpisodeFetch: jest.requireActual('@/playback/episode-fetch').needsEpisodeFetch,
   requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
   // The real bookkeeping of the start asked for last, observed.

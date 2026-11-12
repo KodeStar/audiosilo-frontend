@@ -255,7 +255,8 @@ export function kidsOfflineScope(
 /**
  * The stories on this device for kids mode when its server can't be reached: the
  * finished downloads of `connectionId`, in `libraryId` when it is known, most recently
- * saved first.
+ * saved first. Never a podcast episode (a grown-up's on the same account): kids mode shows
+ * no podcasts (decision 6.2).
  */
 export function kidsDownloads(
   entries: Readonly<Record<string, DownloadEntry>>,
@@ -263,7 +264,9 @@ export function kidsDownloads(
   libraryId: number | null,
 ): Book[] {
   return visibleDownloads(entries, [connectionId])
-    .ready.filter((e) => libraryId === null || e.libraryId === libraryId)
+    .ready.filter(
+      (e) => !e.manifest.book.episode && (libraryId === null || e.libraryId === libraryId),
+    )
     .map((e) => e.manifest.book);
 }
 

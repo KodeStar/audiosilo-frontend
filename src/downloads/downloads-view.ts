@@ -1,3 +1,5 @@
+import { pathLeaf } from '@/lib/paths';
+
 import type { DownloadEntry, StorageEstimate } from './types';
 
 /**
@@ -34,6 +36,18 @@ export function downloadedPaths(
       out.push(e.path);
   }
   return out.sort().join('\n');
+}
+
+/** Whether a download is a podcast episode (fe#166): the Downloads page lists those in a
+ * section of their own. */
+export function isEpisodeEntry(e: Pick<DownloadEntry, 'manifest'>): boolean {
+  return !!e.manifest.book.episode;
+}
+
+/** An episode download's show, for its second line: the title kept with it, else the name
+ * of the show's folder. */
+export function episodeShowTitle(e: Pick<DownloadEntry, 'manifest'>): string {
+  return e.manifest.showTitle || pathLeaf(e.manifest.book.episode?.show_path ?? '');
 }
 
 /** Bytes still to fetch for a running download, when its total is known. */

@@ -2,7 +2,9 @@ import {
   bytesToGo,
   downloadedPaths,
   entryBytes,
+  episodeShowTitle,
   groupByServer,
+  isEpisodeEntry,
   orphanDownloads,
   splitDownloads,
   storageBar,
@@ -190,5 +192,32 @@ describe('orphanDownloads', () => {
       'gone.2',
     ]);
     expect(orphanDownloads(entries, ['a.1'], false)).toEqual([]);
+  });
+});
+
+// fe#166: episodes have their own section, under their show's name.
+describe('episode downloads', () => {
+  const withBook = (book: object, showTitle?: string): DownloadEntry => {
+    const e = entry('Show/Monday.mp3', 'downloaded');
+    return {
+      ...e,
+      manifest: {
+        ...e.manifest,
+        book: book as DownloadEntry['manifest']['book'],
+        ...(showTitle ? { showTitle } : {}),
+      },
+    };
+  };
+
+  it('tells an episode from a book', () => {
+    expect(isEpisodeEntry(withBook({ episode: { show_path: 'Show' } }))).toBe(true);
+    expect(isEpisodeEntry(withBook({}))).toBe(false);
+  });
+
+  it("names the show by the title kept with it, else its folder's name", () => {
+    expect(episodeShowTitle(withBook({ episode: { show_path: 'Pods/Daily' } }, 'The Daily'))).toBe(
+      'The Daily',
+    );
+    expect(episodeShowTitle(withBook({ episode: { show_path: 'Pods/Daily' } }))).toBe('Daily');
   });
 });

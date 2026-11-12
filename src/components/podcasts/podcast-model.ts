@@ -9,6 +9,7 @@ import type {
 } from '@/api/types';
 import { formatDuration, formatRecordDate } from '@/lib/format';
 import type { PendingEpisodeFetch } from '@/playback/episode-fetch';
+import { fetchPercent } from '@/playback/episode-fetch-rules';
 
 /**
  * The podcast views' pure rules (Bridge Phase 2d-1): what an episode's fetch says to a
@@ -70,7 +71,7 @@ export function fetchProgress(status: PodcastFetchStatus | null): {
   const received = Math.max(0, status?.bytes_received ?? 0);
   const total = status?.bytes_total ?? null;
   if (total === null || total <= 0) return { received, total: null, percent: null };
-  return { received, total, percent: Math.min(100, Math.floor((received / total) * 100)) };
+  return { received, total, percent: fetchPercent(status) };
 }
 
 /** How long an episode stays "new" (the show tiles' caption, Home's rail). */
@@ -191,8 +192,8 @@ export function episodeRowState(
   }
 }
 
-/** An episode row as the player's `Book` (the shape a start, the actions and the fetch
- * take): its show's author, the episode facts, `episode` set so it is never downloaded. */
+/** An episode row as the player's `Book` (the shape a start, the actions, the fetch and a
+ * download take): its show's author and the episode facts (`episode` set). */
 export function episodeAsBook(ep: PodcastEpisode, show: PodcastShow): Book {
   return {
     id: 0,

@@ -9,12 +9,12 @@ import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-
 import {
   cancelEpisodeFetchOf,
   cancelEpisodeFetchUnless,
-  isAbsentEpisode,
   isEpisodeFetchStarting,
   isLatestStart,
   needsEpisodeFetch,
   requestEpisodeFetch,
 } from '@/playback/episode-fetch';
+import { isAbsentEpisode } from '@/playback/episode-fetch-rules';
 import { usePlayer } from '@/playback/store';
 import { mayActFor } from '@/stores/profiles';
 
