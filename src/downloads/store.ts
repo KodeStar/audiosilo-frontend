@@ -3,7 +3,14 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
 import { resolveClient } from '@/api/connection-clients';
-import { bookKeyParts, cachedCapability, chaptersQuery, itemQuery, qk } from '@/api/hooks';
+import {
+  bookKeyParts,
+  cachedCapability,
+  cachedShowTitle,
+  chaptersQuery,
+  itemQuery,
+  qk,
+} from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import {
   saveServerSnapshot,
@@ -11,7 +18,7 @@ import {
   type ServerSnapshot,
 } from '@/api/server-snapshots';
 import type { ApiClient } from '@/api/client';
-import type { Book, ChaptersResponse, PodcastShow, Progress } from '@/api/types';
+import type { Book, ChaptersResponse, Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
@@ -212,8 +219,12 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
     // item and chapters (through the query cache, as keep-ahead's `startOne` does), which
     // also give the download its files. Native never transcodes, so it asks only for an
     // episode given without chapters: its item says whether its server has it now, and its
-    // chapters (the file's own) go with the download.
-    const lookup = lacksPlayability(book, chapterData) || (!!book.episode && !chapterData);
+    // chapters (the file's own) go with the download. Not for one its caller says is absent:
+    // it waits on its server first, and both are read once the file is there
+    // (`episodeWaitEnded`).
+    const lookup =
+      lacksPlayability(book, chapterData) ||
+      (!!book.episode && !chapterData && !isAbsentEpisode(book));
     const client = lookup ? resolveClient(connectionId) : null;
     if (!client) return queueBook(connectionId, libraryId, book, chapterData, origin);
     return (async () => {
@@ -436,14 +447,6 @@ function begin(
   else enqueue(key, connectionId, libraryId, book, chapterData, origin);
 }
 
-/** A podcast episode's show title from the cached show list, else undefined. */
-function cachedShowTitle(connectionId: string, libraryId: number, book: Book): string | undefined {
-  const show = book.episode?.show_path;
-  if (show === undefined) return undefined;
-  const shows = queryClient.getQueryData<PodcastShow[]>(qk.podcastShows(connectionId, libraryId));
-  return shows?.find((s) => s.path === show)?.title || undefined;
-}
-
 /** Put a book's entry in the registry as `queued` (saved at once): its manifest from `book`
  * and `chapterData`, keeping the files a failed attempt finished. */
 function putEntry(
@@ -458,7 +461,8 @@ function putEntry(
   const { entries } = useDownloads.getState();
   const existing = entries[key];
   const showTitle = book.episode
-    ? (cachedShowTitle(connectionId, libraryId, book) ?? existing?.manifest.showTitle)
+    ? (cachedShowTitle(connectionId, libraryId, book.episode.show_path) ??
+      existing?.manifest.showTitle)
     : undefined;
   const manifest: DownloadManifest = {
     book,
@@ -591,8 +595,8 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
     if (read.status === 'fulfilled') chapters = read.value;
   }
   if (stopCount(key) !== stops || !useDownloads.getState().entries[key]?.serverFetch) return;
-  // Its server has the file now, whatever an older answer said: the queue must not send it
-  // back here.
+  // Its server has the file now, whatever an older answer said (the re-read failed): the
+  // manifest a later Retry starts from must not send it back to wait.
   if (book.episode && !book.episode.downloaded) {
     book = { ...book, episode: { ...book.episode, downloaded: true } };
   }

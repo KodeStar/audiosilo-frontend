@@ -602,23 +602,24 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
 - **Episodes download (v2.7.0, fe#166)**: Download / Remove download on the episode page
   (`DownloadControl`, disabled while nothing can fetch it) and in the row's ... menu
   (`offersDownload`: an episode on its server, or one `podcast_fetch` is not `false` for; a list
-  shape is looked up once the menu opens). The downloads store downloads an episode like a book
-  (its item and chapters read first when the caller held a list shape, the show's title kept in
-  `manifest.showTitle`). One not on its server (`isAbsentEpisode`, or a last failure `serverFetch`
-  or a server 503) first waits in `downloads/episode-ready.ts`, OUTSIDE the one-at-a-time queue
-  (D2): the entry stays `queued` with `serverFetch: {percent}`, the waiter probes the stream once
-  (a Retry POSTs), follows the status every max(2, Retry-After) s in the foreground only, at most
-  three asking at once (the rest wait their turn, leaving room under the server's five), and on
-  `ready` reads the item and chapters again and joins the queue. The fetch limit, 429 and blips
-  ask again (`blipDelay`); a failed or impossible fetch ends as a `serverFetch` failure with the
-  server's code (`failureText` reads it through `fetchReasonKey`). A cancel or remove stops the
-  wait (`stopWaiting`); the server's fetch carries on. The fetch rules the player and the waiter
-  share live in `playback/episode-fetch-rules.ts` (import-light: the downloads store must not pull
-  in the start path). The row says "On this device" (`episode-on-device`) and the download's
-  state; an episode on the device plays from it, with no fetch (`player.tsx` checks
-  `useIsDownloaded`), and the hot-swap moves a streaming episode onto its download.
-  Remove-when-finished deletes a finished episode like a book. Starting an episode downloads it
-  only when `autoDownloadEpisodes` is on (default off, D4b), under the books' network rule.
+  shape is looked up once the menu opens). The downloads store downloads an episode like a book (its
+  item and chapters read first when the caller held a list shape of one on its server, the show's
+  title kept in `manifest.showTitle`). One not on its server (`isAbsentEpisode`, or a last failure
+  `serverFetch` or a server 503) first waits in `downloads/episode-ready.ts`, OUTSIDE the
+  one-at-a-time queue (D2): the entry stays `queued` with `serverFetch: {percent}`, the waiter
+  probes the stream once (a Retry POSTs), follows the status every max(2, Retry-After) s in the
+  foreground only, at most three asking at once (the rest wait their turn, leaving room under the
+  server's five), and on `ready` reads the item and chapters (again, when it had them) and joins the
+  queue. The fetch limit, 429 and blips ask again (`blipDelay`); a failed or impossible fetch ends
+  as a `serverFetch` failure with the server's code (`failureText` reads it through
+  `fetchReasonKey`). A cancel or remove stops the wait (`stopWaiting`); the server's fetch carries
+  on. The fetch rules the player and the waiter share live in `playback/episode-fetch-rules.ts`
+  (import-light: the downloads store must not pull in the start path). The row says "On this device"
+  (`episode-on-device`) and the download's state; an episode on the device plays from it, with no
+  fetch (`player.tsx` checks `useIsDownloaded`), and the hot-swap moves a streaming episode onto its
+  download. Remove-when-finished deletes a finished episode like a book. Starting an episode
+  downloads it only when `autoDownloadEpisodes` is on (default off, D4b), under the books' network
+  rule.
 - **Surfaces**: the Library's `shows` mode (a podcast library offers Shows and Folders only, a
   book mode's link lands on Shows, its book lists are never asked), the show page
   `/podcast?connection=&library=&show=[&order=]` (the server orders the episodes; a serial show

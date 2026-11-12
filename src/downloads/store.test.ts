@@ -155,6 +155,11 @@ jest.mock('@/api/hooks', () => ({
       { capabilities: Record<string, boolean> } | undefined;
     return info ? !!info.capabilities[flag] : undefined;
   },
+  cachedShowTitle: (cid: string, lib: number, showPath: string | undefined) => {
+    const shows = mockGetQueryData(['podcastShows', cid, lib]) as
+      { path: string; title: string }[] | undefined;
+    return shows?.find((s) => s.path === showPath)?.title || undefined;
+  },
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path],
@@ -2394,6 +2399,24 @@ describe('podcast episodes', () => {
     await useDownloads.getState().download('c1', 2, episodeBook(true));
     await settle();
     expect(entry()?.manifest.book.description).toBe('full');
+    expect(entry()?.manifest.chapters).toBe(chapters);
+  });
+
+  it('waits for an absent episode given without chapters before reading either', async () => {
+    mockFetchQuery.mockClear();
+    await expect(useDownloads.getState().download('c1', 2, episodeBook(false))).resolves.toBe(
+      'queued',
+    );
+    // On the row at once, with nothing asked: both are read once its server has the file.
+    expect(mockFetchQuery).not.toHaveBeenCalled();
+    expect(mockWaits).toHaveLength(1);
+    expect(entry()).toMatchObject({ status: 'queued', serverFetch: { percent: null } });
+    mockFetchQuery.mockImplementation(async ({ queryKey }) =>
+      queryKey[0] === 'item' ? episodeBook(true) : chapters,
+    );
+    mockWaits[0].hooks.onEnd({ kind: 'ready' });
+    await settle();
+    expect(entry()?.status).toBe('downloaded');
     expect(entry()?.manifest.chapters).toBe(chapters);
   });
 
