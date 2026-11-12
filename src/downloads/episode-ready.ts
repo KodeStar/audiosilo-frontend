@@ -105,11 +105,20 @@ export function isWaiting(key: string): boolean {
 /** How many waits are asking `connectionId`'s server now (at most `MAX_WAITING`), or every
  * server's without one. */
 export function askingCount(connectionId?: string): number {
+  const turns = turnsByConnection();
+  if (connectionId !== undefined) return turns.get(connectionId) ?? 0;
   let n = 0;
-  for (const w of waiters.values()) {
-    if (w.active && (connectionId === undefined || w.ref.connectionId === connectionId)) n++;
-  }
+  for (const c of turns.values()) n += c;
   return n;
+}
+
+/** How many waits hold a turn, per connection: one pass over the waits. */
+function turnsByConnection(): Map<string, number> {
+  const turns = new Map<string, number>();
+  for (const w of waiters.values()) {
+    if (w.active) turns.set(w.ref.connectionId, (turns.get(w.ref.connectionId) ?? 0) + 1);
+  }
+  return turns;
 }
 
 function drop(w: Waiter) {
@@ -125,9 +134,13 @@ function drop(w: Waiter) {
 
 /** Give free turns to the waits next in line, each connection its own `MAX_WAITING`. */
 function pump() {
+  const turns = turnsByConnection();
   for (const w of waiters.values()) {
-    if (w.active || askingCount(w.ref.connectionId) >= MAX_WAITING) continue;
+    const cid = w.ref.connectionId;
+    const n = turns.get(cid) ?? 0;
+    if (w.active || n >= MAX_WAITING) continue;
     w.active = true;
+    turns.set(cid, n + 1);
     void step(w);
   }
 }

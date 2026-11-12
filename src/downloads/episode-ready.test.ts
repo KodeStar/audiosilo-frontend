@@ -203,7 +203,7 @@ describe('waitForEpisode', () => {
       retryPodcastFetch: jest.fn(),
     };
     mockClients.c2 = b;
-    [1, 2, 3].map((n) => wait(n));
+    [1, 2, 3].forEach((n) => wait(n));
     await flush();
     expect(askingCount('c1')).toBe(MAX_WAITING);
     const onB = wait(4, false, 'c2');
