@@ -72,6 +72,8 @@ private class FakeServer(val content: Map<String, ByteArray>) : BookServer {
     downloads += Triple(file, from, ifRange)
     val all = content.getValue(file)
     val resume = from > 0 && ifRange == etag
+    // As the server answers a Range that starts at or past the file's end.
+    if (resume && from >= all.size) throw APIError(416)
     val bytes = if (resume) all.copyOfRange(from.toInt(), all.size) else all
     val cut = cutAfter
     val body =
@@ -180,6 +182,22 @@ class BookDownloadTest {
     assertEquals(BookDownload.Outcome.Done, run(server, idx).run())
     assertEquals("asked to resume, answered whole", Triple("Author/Book/01.mp3", 1000L, "\"v1\""), server.downloads[1])
     assertTrue(content.getValue("Author/Book/01.mp3").contentEquals(File(dir, "folder-1/000.m4a").readBytes()))
+  }
+
+  @Test
+  fun aPartAlreadyWholeStartsAgainInsteadOfFailing() = runTest {
+    val idx = index()
+    idx.enqueue(REF, "Book", null, T0)
+    val server = FakeServer(content)
+    server.cutAfter = 1000
+    run(server, idx).run()
+    // Killed after the last byte and before the rename: the part holds the whole file.
+    File(dir, "folder-1/000.m4a.part").writeBytes(content.getValue("Author/Book/01.mp3"))
+    assertEquals(BookDownload.Outcome.Done, run(server, idx).run())
+    assertEquals("asked for what is past the end (416)", Triple("Author/Book/01.mp3", 3000L, "\"v1\""), server.downloads[1])
+    assertEquals("then the whole file", Triple("Author/Book/01.mp3", 0L, null), server.downloads[2])
+    assertTrue(content.getValue("Author/Book/01.mp3").contentEquals(File(dir, "folder-1/000.m4a").readBytes()))
+    assertEquals(WatchStateBook.State.READY, idx.record(REF)!!.state)
   }
 
   @Test

@@ -236,7 +236,18 @@ class BookDownload(
     val have = if (part.exists()) part.length() else 0L
     val etag = if (have > 0 && etagFile.exists()) etagFile.readText().takeIf { it.isNotBlank() } else null
     val from = if (etag != null) have else 0L
-    server.download(ref.libraryId, file.path, from, etag).use { answer ->
+    val fetched =
+      try {
+        server.download(ref.libraryId, file.path, from, etag)
+      } catch (e: APIError) {
+        if (e.status != RANGE_NOT_SATISFIABLE || from == 0L) throw e
+        // Nothing past what is here (a part already whole, killed before its rename, or longer
+        // than the file now is): no resume can end it, so this file starts again from 0.
+        part.delete()
+        etagFile.delete()
+        return fetch(file)
+      }
+    fetched.use { answer ->
       // 206 carries on from `from`; 200 is the whole file (the ETag changed, or no resume asked).
       val resumed = answer.status == 206 && from > 0
       if (answer.etag != null && isStrong(answer.etag)) etagFile.writeText(answer.etag) else etagFile.delete()
@@ -303,6 +314,9 @@ class BookDownload(
     fun notEnoughSpace(needed: Long, free: Long): String =
       "Not enough space on this watch: it needs ${Labels.bytes(needed)} and keeps " +
         "${Labels.bytes(RenditionPlan.HEADROOM_BYTES)} free; ${Labels.bytes(free)} is free."
+
+    /** The server's answer to a `Range` that starts at or past the file's end. */
+    const val RANGE_NOT_SATISFIABLE = 416
 
     /** If-Range needs a strong validator: a weak one (`W/"..."`) is never sent. */
     fun isStrong(etag: String): Boolean = etag.startsWith("\"") && etag.endsWith("\"") && etag.length >= 2
