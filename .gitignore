@@ -49,3 +49,9 @@ modules/*/android/build/
 # the watch core's SwiftPM build output (npm run test:watch)
 watch-core/.build/
 watch-core/.swiftpm/
+
+# Wear OS app (Track W4): Gradle outputs
+wear/build/
+wear-core/build/
+wear-core/.gradle/
+wear-core/.kotlin/

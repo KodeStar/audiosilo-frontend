@@ -103,6 +103,7 @@
     "reader:check": "node scripts/build-reader.mjs --check",
     "format": "prettier --check .",
     "test:watch": "sh scripts/test-watch.sh",
+    "test:wear": "sh scripts/test-wear.sh",
     "postinstall": "patch-package --error-on-fail"
   },
   "expo": {
