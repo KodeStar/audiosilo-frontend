@@ -68,4 +68,14 @@ jobs:
 
       - name: Build and test the Wear app, and build the phone app
         working-directory: android
-        run: ./gradlew --console=plain :wear:assembleDebug :wear:testDebugUnitTest :app:assembleDebug
+        run: ./gradlew --console=plain :wear:assembleDebug :wear:testDebugUnitTest :wear:assembleRelease :app:assembleDebug
+
+      # The debug sign-in (wear/src/debug) must never reach a release build.
+      - name: Check the release build has no debug sign-in
+        run: |
+          mkdir -p /tmp/wear-dex
+          unzip -q -o wear/build/outputs/apk/release/wear-release.apk 'classes*.dex' -d /tmp/wear-dex
+          if cat /tmp/wear-dex/*.dex | LC_ALL=C grep -a -q -E 'DebugSignIn|debug_pair'; then
+            echo "the release dex holds the debug sign-in" >&2
+            exit 1
+          fi

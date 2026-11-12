@@ -1,12 +1,18 @@
 #!/usr/bin/env node
-// Mint a v1 `pair` message for the watch app's DEBUG simulator sign-in (CONVENTIONS.md,
-// "Apple Watch app"). Signs in to a (scratch) server, asks it for a 10 minute pairing token
-// for that user (`POST /auth/pair {"ttl_seconds":600}`, what the phone's Set up Apple Watch
-// sends), signs its own session out again, and prints the message as one line of JSON:
+// Mint a v1 `pair` message for the watch apps' debug sign-in (CONVENTIONS.md, "Apple Watch app"
+// and "Wear OS app"). Signs in to a (scratch) server, asks it for a 10 minute pairing token for
+// that user (`POST /auth/pair {"ttl_seconds":600}`, what the phone's Set up watch sends), signs
+// its own session out again, and prints the message as one line of JSON:
 //
 //   node scripts/watch-debug-pair.mjs http://192.168.1.5:8080 admin 'password'
+//
+// Apple Watch simulator (a DEBUG build):
 //   SIMCTL_CHILD_AUDIOSILO_DEBUG_PAIR="$(node scripts/watch-debug-pair.mjs ...)" \
 //     xcrun simctl launch --terminate-running-process <watch-udid> app.audiosilo.watchkitapp
+//
+// Wear OS emulator (a debug build; the emulator reaches the host as 10.0.2.2):
+//   adb -s <wear> shell am start -n app.audiosilo/app.audiosilo.wear.MainActivity \
+//     --es debug_pair "'$(node scripts/watch-debug-pair.mjs http://10.0.2.2:8080 ...)'"
 //
 // The token is single use: mint a new message for every fresh sign-in.
 
@@ -56,6 +62,8 @@ try {
     pairing_token: pairing.pairing_token,
     expires_at: new Date(Date.now() + 600_000).toISOString(),
     phone_name: 'watch-debug-pair',
+    // What the phone's Data Layer item carries (Wear echoes it in its receipt; Apple ignores it).
+    sent_at: new Date().toISOString(),
   };
   console.log(JSON.stringify(message));
 } catch (e) {

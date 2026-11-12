@@ -216,7 +216,7 @@ keep this index in step (one line per topic).
   - CarPlay and the UIScene life cycle
   - Tokens on a locked phone
   - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, the watch scheme, the player, spans and background sync, sign-out, the phone's side `modules/audiosilo-watch` + `src/watch/`, the watch in Downloads and `remove`, DEBUG launch variables)
-  - Wear OS app (`wear/` + `wear-core/`: build wiring and AUDIOSILO_NO_WEAR, the Core boundary and what is not ported, BookWorker downloads and the Wi-Fi wait, TokenStore, sign-in, the Data Layer contract with receipts, build and test)
+  - Wear OS app (`wear/` + `wear-core/`: build wiring and AUDIOSILO_NO_WEAR, the Core boundary and what is not ported, BookWorker downloads and the Wi-Fi wait, TokenStore, sign-in, the Data Layer contract with receipts, PhoneLink, playback and the speaker question, sync triggers and SyncWorker, the debug sign-in, build and test)
   - A route, not a second player (decision 7)
   - The receiver never gets the session token
   - Generations
@@ -288,7 +288,7 @@ modules/audiosilo-player/   the native playback module (ios/ Swift, android/ Kot
 modules/audiosilo-watch/    the phone's WatchConnectivity link (apple only: the single WCSessionDelegate)
 targets/watch/      the Apple Watch app (Swift, not bundled by Metro): Core/ (Foundation-only ports of the player's rules), Net/, Storage/, Phone/, Playback/, UI/
 watch-core/         SwiftPM package over targets/watch/Core (a symlink), so its tests run on the host
-wear/               the Wear OS app (Kotlin, Compose for Wear M3; Gradle module :wear wired by withWearApp): storage/, net/, phone/, ui/, AppModel
+wear/               the Wear OS app (Kotlin, Compose for Wear M3; Gradle module :wear wired by withWearApp): storage/, net/, phone/, playback/, ui/, AppModel; src/debug the debug sign-in
 wear-core/          pure Kotlin/JVM rules for the Wear app (ports of targets/watch/Core + downloads), its own Gradle build and JUnit tests
 plugins/            config plugins: withCast, withCarPlay, withWatchScheme, withWearApp, withXcode26SwiftUICoreFix (+ widgets-entitlements.test.ts)
 index.ts            app entry: registers the car task, then expo-router/entry

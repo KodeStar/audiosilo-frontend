@@ -2623,7 +2623,7 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   `Library/Application Support/AudioSilo/`. The simulator may send the app to the background
   after about a minute without input, and then stop its audio (a real watch plays on).
 
-**Wear OS app (Track W4, `wear/` + `wear-core/`; W4a pass 1)**: a standalone Kotlin app (Compose
+**Wear OS app (Track W4, `wear/` + `wear-core/`; W4a)**: a standalone Kotlin app (Compose
 for Wear OS Material 3, minSdk 30), the Apple Watch's twin. Same package as the phone,
 `app.audiosilo` (the Data Layer only connects apps with the same package and signing
 certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per Wear build).
@@ -2646,9 +2646,12 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `rounded()` is `roundHalfAway` (Kotlin's `round` is half-even). Not ported (Apple-only, W4
   decision 9): `Outbox.backgroundBody`/`applyBackground`, `ClockSkew.clockOffset`,
   `BackgroundSync`, `AddressPicker.unattended`, `RenditionPlan.keepsTransfer`; Wear's
-  `SyncSchedule` says when a send runs instead. Wear's own, also pure: `Downloads.kt` (the
-  account, the item cache, the downloads index, Continue listening's rows), `BookDownload`
-  (one book's run) and `Labels`.
+  `SyncSchedule` says when a send runs instead. `PlaybackAttempt` is ported with its tests, its
+  `PlaybackFailure` read from Media3's error codes (mirrored as constants; `:wear`'s
+  PlaybackTest checks them against Media3). Wear's own, also pure: `Downloads.kt` (the account,
+  the item cache, the downloads index, Continue listening's rows), `BookDownload` (one book's
+  run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
+  sweep and event plans), `FileSpanStore` and `Labels`.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to
@@ -2675,12 +2678,54 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   deletes its own item on a match; the watch reads all its `/to/` items at each start, skips one
   its receipt names, ignores DELETED there, and drops a receipt once its item is gone. A
   `remove` older than the download it would remove is ignored. `watch-state` at
-  `/audiosilo/v1/watch-state`. PhoneLink (the one listener) is W4a pass 2.
+  `/audiosilo/v1/watch-state`. No `state-please`.
+- **PhoneLink (`phone/`)**: the only code that reads `/to/<me>/` or puts the watch's items. Two
+  ways in, one path: `PhoneLinkService` (the one WearableListenerService, filtered to
+  `/audiosilo/v1/to/`, so GMS starts the app for an item even when it was swiped away) and the
+  running process's DataClient listener; both freeze the events and call `PhoneLink.onEvents`,
+  which handles one at a time under a lock (`PhoneInbox` decides; an item seen by both ways is
+  handled once). For each item: `AppModel.receive` keeps its effect, then the receipt goes; an
+  unknown message type gets no receipt. `PhoneLink.start` (from `AudioSiloApp`) and every
+  return to the foreground read all of `/to/<me>/` and the receipts. `watch-state` is put under
+  its own lock, always `StatePublication.due` (an older state never lands last).
+- **Playback (decision 10, `playback/`)**: `PlayerEngine` (the twin of WatchAudioEngine.swift)
+  owns one ExoPlayer, one MediaItem per downloaded file; speech attributes with focus handled,
+  noisy handled, `setSuppressPlaybackOnUnsuitableOutput(true)` until the speaker is confirmed
+  (prefs `player`/`speakerConfirmed`). Play with the speaker as the only output shows the
+  one-time question (`Prompts.kt`): Yes rebuilds the player without suppression and hands it to
+  the session (`onPlayerChanged`), No opens `OutputSwitcher` (the media output panel, else the
+  Bluetooth picker; Media3 1.9.0 opens neither). Media3's reasons (`SystemPause`): a focus loss,
+  noisy, an unsuitable output or suppressed-too-long is a pause whose span ends at
+  `lastAdvance`; a transient focus loss closes the span there but keeps the wish to play, and
+  the next span opens when the audio moves again. `PlaybackService` (MediaSessionService) holds
+  the session over `ChapterPlayer`, a ForwardingPlayer sending every outside command through
+  the engine (next / previous = chapters, skips 15 / 30 s, a scrubber = a move); the engine
+  starts it before a play. `OngoingNotification` (Media3's default provider) adds the
+  OngoingActivity while playing. Spans, ticks (0.5 s; keep 5 s; cut 15 s while reachable), the
+  pull before play, the offer and its throttles, Stay, `PICKED_UP_AFTER` are the Apple Watch's.
+- **Sync (decision 9)**: `AppModel.schedule(trigger)` runs `SyncSchedule.plan`: in front it
+  flushes (launch after `spans.recover()`, foreground, each closed span, the 60 s timer, a
+  network coming up); in the background `SyncWorker.expedite` (unique `sync`, KEEP, CONNECTED,
+  `RUN_AS_NON_EXPEDITED` out of quota) and the 15 min `sync-periodic` backstop while events
+  wait. A worker run (`AppModel.syncInBackground`) picks its own address with the probe (home
+  allowed), flushes up to `WORKER_ROUNDS` while spans close, and retries with backoff only on
+  no answer (`SyncSchedule.outcome`). Sign out (`AppModel.signOut`) stops the player first, then
+  is blocked while events wait unless discarded; a replacing account likewise (pass 1).
+- **Debug sign-in (debug builds only)**: `src/debug/.../debug/DebugSignIn.kt` reads intent
+  extras on MainActivity (`debug_pair`, `debug_book`, `debug_remove`: v1 messages as JSON taken
+  as if the phone sent them; `--es debug_play 1` plays the first book on the watch).
+  `src/release` has an empty stand-in R8 removes: the release dex holds no `DebugSignIn` and no
+  `debug_pair` (check with `unzip` + `grep -a`). Mint a pair with
+  `node scripts/watch-debug-pair.mjs http://10.0.2.2:8080 <user> <password>` and pass it as
+  `adb -s <wear> shell am start -n app.audiosilo/app.audiosilo.wear.MainActivity --es
+  debug_pair "'<json>'"`. POST_NOTIFICATIONS is asked once, after the first sign-in.
 - **Build and test**: `npm run test:wear` (wear-core); after `npx expo prebuild -p android`,
   from `android/`: `./gradlew :wear:assembleDebug :wear:testDebugUnitTest :app:assembleDebug`
   (`:wear`'s JVM tests: ApiClient on MockWebServer, the router, TokenStore, Continue
-  listening). Install on a Wear emulator with `adb -s <wear> install
-  wear/build/outputs/apk/debug/wear-debug.apk`.
+  listening, the Media3 constants, the screens' words). Install on a Wear emulator with `adb -s
+  <wear> install wear/build/outputs/apk/debug/wear-debug.apk`. Force a background sync with
+  `adb shell cmd jobscheduler run -f app.audiosilo <job id>` (`dumpsys jobscheduler | grep
+  app.audiosilo` lists them).
 
 **Chromecast (Phase 8, capability `cast`, `src/cast/`)**: react-native-google-cast 4.9.1 on
 native (the Default Media Receiver; `plugins/withCast.js`, listed before `withCarPlay`, pins the
