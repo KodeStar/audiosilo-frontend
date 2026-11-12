@@ -312,12 +312,14 @@ class PlaceStore(file: File?) {
 
   /**
    * The place an open span a kill left carries (`SpanRecorder.recover`), when it is newer than the
-   * one saved. Only a span kept at least once (it ended after it began): a span still at its open
-   * carries the loaded place stamped with the play's time, later than it was heard.
+   * one saved. Only a span kept at least once (it ended after it began), or one a cut opened (its
+   * start is where the closed span ended, at that time: a kill between the cut's span write and its
+   * place write): a play's span still at its open carries the loaded place stamped with the play's
+   * time, later than it was heard.
    */
   @Synchronized
   fun recover(span: OpenSpan) {
-    if (span.endedAt <= span.startedAt) return
+    if (span.endedAt <= span.startedAt && span.start != ListeningStart.CONTINUE) return
     val saved = place(span.ref)
     if (saved != null && saved.at >= span.endedAt) return
     set(span.ref, LocalPlace.of(span.to, span.endedAt, span.speed))

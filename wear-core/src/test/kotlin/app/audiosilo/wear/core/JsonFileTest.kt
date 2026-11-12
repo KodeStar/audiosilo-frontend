@@ -247,6 +247,23 @@ class DurableRateTest {
     assertEquals(saved, places.place(ref))
   }
 
+  @Test
+  fun aKillBetweenTheCutsSpanAndItsPlaceResumesAtTheCut() {
+    val first = Launch()
+    first.spans.open(book, at(0.0), 1.0)
+    clock.advance(15.0)
+    // The cut's outbox and next span are written; the kill comes before the place is.
+    first.spans.playingTick(book, at(15.0), 1.0, keepDue = true, cutDue = true, reachable = true)
+    val cutAt = clock.now
+    clock.advance(30.0)
+    val next = Launch()
+    assertNull(next.places.place(ref))
+    next.spans.recover()?.let(next.places::recover)
+    val place = next.places.place(ref)!!
+    assertEquals(15.0, place.position, 0.0)
+    assertEquals(cutAt, place.at)
+  }
+
   private fun answered(outbox: Outbox, id: String) {
     val sent = listOf(listen(id))
     outbox.apply(answer(SyncRequest(DEVICE_ID, events = sent)), sent, null, null)

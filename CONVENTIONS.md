@@ -2658,8 +2658,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   PlaybackTest checks them against Media3). Wear's own, also pure: `Downloads.kt` (the account,
   the item cache, the downloads index, Continue listening's rows), `BookDownload` (one book's
   run), `SystemPause` (a pause the system made, from Media3's reasons), `PhoneInbox` (PhoneLink's
-  sweep and event plans), `FileSpanStore` and `Labels`. `JsonFile(durable = true)` syncs the
-  bytes before its rename and the folder after (a battery death never empties the file): only
+  sweep and event plans), `FileSpanStore` and `Labels`. Wear-only additions to ported files, for
+  the sync rate below (the Apple Watch writes `places.json` every 5 s, unsynced, so it needs none):
+  `SpanRecorder.playingTick`, `recover()` returning the span, `PlaceStore.set(save:)` and
+  `PlaceStore.recover`, and the outbox removing its file when empty. `JsonFile(durable = true)`
+  syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json` and `places.json`, whose loss loses listening; the rest
   (caches, sync status, acks, the account) is rebuilt from the server or the phone, so it skips
   the sync. The rate while playing (all on the main looper): a plain 5 s tick syncs the open
@@ -2669,10 +2672,12 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   closed by a cut, going to the background, removing the book and sign-out; on the plain 5 s
   tick it changes in memory only (`PlaceStore.set(save = false)`), because the open span synced
   on that tick carries it: at launch `SpanRecorder.recover()` hands the span a kill left to
-  `PlaceStore.recover`, which takes its `to` and `endedAt` when it was kept at least once and is
-  newer than the saved place. An outbox with nothing waiting removes `outbox.json` (a folder
-  sync) rather than syncing `[]`; a missing file is an empty outbox at launch. Moving these
-  writes off the main looper is a follow-up.
+  `PlaceStore.recover`, which takes its `to` and `endedAt` when it was kept at least once (or a cut
+  opened it: a kill between the cut's span and place writes) and is newer than the saved place. A
+  next span that can't be written (a full disk) leaves the closed one in the file: recovered, its
+  event goes again under its one id (`duplicate`), and its place is the newest the disk holds. An
+  outbox with nothing waiting removes `outbox.json` (a folder sync) rather than syncing `[]`; a
+  missing file is an empty outbox at launch. Moving these writes off the main looper is a follow-up.
 - **Downloads (decision 8)**: one WorkManager `BookWorker` per book (unique `book:<safe name>`,
   KEEP; `CONNECTED`; exponential backoff from 1 min) runs `BookDownload`: item + chapters (kept
   in `items/`), `POST .../renditions`, polls at `retry_after_seconds` (15 s at least) for up to
