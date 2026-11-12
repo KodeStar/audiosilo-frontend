@@ -3,6 +3,7 @@
 // a row's message are not (W4 plan, the Data Layer contract: StatePublication's rule).
 package app.audiosilo.wear.core
 
+import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -73,5 +74,20 @@ class DownloadStagesTest {
       ),
       seen,
     )
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun aStageSeenAlreadyKnowsWhetherItWasSaved() = runTest {
+    // A full disk: the write fails. The publish a stage runs (in place on Main.immediate, or at
+    // once on the main thread while a worker writes) must read this write's `saved`, not the last.
+    val blocker = File.createTempFile("blocker", null).apply { deleteOnExit() }
+    val index = DownloadIndex(File(blocker, "downloads.json"))
+    val seen = ArrayList<Boolean>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { index.stages.collect { if (it.isNotEmpty()) seen += index.saved } }
+
+    index.enqueue(REF, "Book", null, QUEUED_AT)
+
+    assertEquals(listOf(false), seen)
   }
 }

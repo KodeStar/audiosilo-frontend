@@ -246,7 +246,9 @@ class DownloadIndex(file: File?, private val newFolder: () -> String = { java.ut
     }
 
   private fun commit(next: List<DownloadRecord>) {
-    flow.value = next
+    // Saved before the flow moves: the `stages` collector (AppModel's publish) reads `saved`, and it
+    // can run inside the assignment below (on the main thread) or while a worker's write is still on.
     saved = file?.write(next.ifEmpty { null }) ?: true
+    flow.value = next
   }
 }
