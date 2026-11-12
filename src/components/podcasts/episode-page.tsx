@@ -54,6 +54,7 @@ import {
   episodeMarks,
   episodeMetaLine,
   episodeRowState,
+  offersEpisodeDownload,
   rowStateReasonKey,
 } from './podcast-model';
 
@@ -274,7 +275,7 @@ function EpisodeBody({
                 path={relPath}
                 book={book}
                 chapterData={chapterData}
-                disabled={state.kind === 'unavailable'}
+                disabled={!offersEpisodeDownload(state)}
               />
               {reason ? (
                 <Text

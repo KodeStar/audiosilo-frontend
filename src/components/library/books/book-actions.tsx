@@ -14,6 +14,7 @@ import {
 import type { Book, Progress } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { usePlayBook } from '@/components/player/use-play-book';
+import { episodeRowState, offersEpisodeDownload } from '@/components/podcasts/podcast-model';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -29,6 +30,8 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
+import { contentKey } from '@/lib/content-key';
+import { type PendingEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
 import { finishTakesEvent, undoFinish } from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -78,16 +81,18 @@ function playabilityUnknown(book: Book): boolean {
 /** The menu's download item for `book` (`known`: its full item when it was looked up, else
  * the book as given, null while a lookup it waits for is on its way). A book: always. An
  * item of a podcast library: only once it is known to be an episode (a list shape carries no
- * `episode`; a show's folder is never one), and not one its server can't fetch
- * (`podcastFetch` false while it is not on the server). */
+ * `episode`; a show's folder is never one), and by the episode page's rule
+ * (`offersEpisodeDownload`: not while it is not available, from `podcastFetch`, its fetch
+ * status and the player's `pending` fetch of it). */
 function offersDownload(
   known: Book | null,
   podcastLibrary: boolean,
   podcastFetch: boolean | undefined,
+  pending: PendingEpisodeFetch | null,
 ): boolean {
   if (!known) return false;
   if (!known.episode) return !podcastLibrary;
-  return known.episode.downloaded || podcastFetch !== false;
+  return offersEpisodeDownload(episodeRowState(known.episode, pending, podcastFetch));
 }
 
 /**
@@ -123,6 +128,9 @@ export function useBookActions(
   // library's kind (never sent to a watch; downloaded once known to be an episode).
   const podcastLibrary = useIsPodcastLibrary(libraryId, connectionId);
   const podcastFetch = useCapability('podcast_fetch', connectionId);
+  // The player's fetch of this item, when it is the one on its way (what the episode page reads).
+  const pendingKey = contentKey(connectionId, libraryId, path);
+  const pending = useEpisodeFetch((s) => (s.pending?.key === pendingKey ? s.pending : null));
   const unknown = playabilityUnknown(book) || (podcastLibrary && !book.episode);
   // An empty path keeps the lookup off until it is wanted.
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);
@@ -220,7 +228,7 @@ export function useBookActions(
   // A download already there stays manageable; a new one waits for the verdict.
   if (
     download.supported &&
-    (offersDownload(known ?? null, podcastLibrary, podcastFetch) ||
+    (offersDownload(known ?? null, podcastLibrary, podcastFetch, pending) ||
       (s !== undefined && s !== 'error'))
   ) {
     const state =

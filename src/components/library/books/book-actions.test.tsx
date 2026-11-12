@@ -64,11 +64,18 @@ jest.mock('@/playback/finish-route', () => ({
     return edit();
   },
 }));
+// The player's fetch of an episode (`useEpisodeFetch`'s `pending`), which the menu reads.
+let mockPending: object | null = null;
+jest.mock('@/playback/episode-fetch', () => ({
+  useEpisodeFetch: (select: (s: { pending: object | null }) => unknown) =>
+    select({ pending: mockPending }),
+}));
 let mockSendToWatch: jest.Mock | null = null;
 jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
+import { fetchStatus } from '@/testing/podcast-fixtures';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -361,6 +368,28 @@ describe('useBookActions, a podcast episode', () => {
     expect((await actions(b)).find('download')).toBeDefined();
     mockCaps = { ...ALL, podcast_fetch: false };
     expect((await actions(b)).find('download')).toBeUndefined();
+  });
+
+  it('offers no Download for one its server says is not available, as the episode page (fe#166)', async () => {
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const refused = book({
+      episode: {
+        ...info(false)!,
+        fetch: fetchStatus({
+          state: 'unavailable',
+          error: { code: 'library_not_writable', message: 'read-only' },
+        }),
+      },
+    });
+    expect((await actions(refused)).find('download')).toBeUndefined();
+    const b = book({ episode: info(false) });
+    // The player's fetch of this one stopped as not available (another's never counts).
+    mockPending = { key: 'c:1:Author/Series/01 - Book', phase: 'unavailable', code: 'module_off' };
+    expect((await actions(b)).find('download')).toBeUndefined();
+    mockPending = { key: 'c:1:Other', phase: 'unavailable', code: 'module_off' };
+    expect((await actions(b)).find('download')).toBeDefined();
+    mockPending = null;
+    expect((await actions(b)).find('download')).toBeDefined();
   });
 
   it('looks a list-shape item of a podcast library up once opened, then offers Download', async () => {

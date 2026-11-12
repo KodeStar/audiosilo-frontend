@@ -179,6 +179,19 @@ describe('EpisodeRow', () => {
     );
   });
 
+  it("hands its menu the episode's fetch status, so it offers no Download where the page disables it", async () => {
+    const fetch = fetchStatus({
+      state: 'unavailable',
+      error: { code: 'library_not_writable', message: 'read-only' },
+    });
+    await renderRow(podcastEpisode({ downloaded: false, fetch }));
+    expect(mockActions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        book: expect.objectContaining({ episode: expect.objectContaining({ fetch }) }),
+      }),
+    );
+  });
+
   it('says why it is not available or could not be got', async () => {
     await renderRow(podcastEpisode({ downloaded: false }), { canFetch: false });
     expect(screen.getByTestId('episode-reason').props.children).toBe(

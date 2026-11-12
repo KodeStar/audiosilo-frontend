@@ -61,6 +61,14 @@ export function canRetryFetch(state: EpisodeRowState): boolean {
   );
 }
 
+/** Whether a download to this device (fe#166) is offered for an episode in `state`: not
+ * while it is not available (its server can't fetch it now, or said it can't for this one),
+ * since the downloads store would only fail it. One rule for the episode page's Download
+ * and an episode's "..." menu (`useBookActions`). */
+export function offersEpisodeDownload(state: EpisodeRowState): boolean {
+  return state.kind !== 'unavailable';
+}
+
 /** How far a fetch has got: the bytes so far, the size when the server knows it, and the
  * share done (0..100, whole) when it does. */
 export function fetchProgress(status: PodcastFetchStatus | null): {
