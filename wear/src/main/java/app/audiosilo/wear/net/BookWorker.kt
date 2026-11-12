@@ -13,7 +13,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -31,9 +30,9 @@ import app.audiosilo.wear.core.AddressPicker
 import app.audiosilo.wear.core.BookDownload
 import app.audiosilo.wear.core.BookRef
 import app.audiosilo.wear.core.DownloadRecord
+import app.audiosilo.wear.core.orNull
 import app.audiosilo.wear.storage.Files
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CancellationException
 
 class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
   override suspend fun doWork(): Result {
@@ -44,7 +43,7 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     val record = model.downloads.record(ref) ?: return Result.success()
     val account = model.account.value ?: return Result.success()
     val token = model.token() ?: return Result.retry()
-    showForeground(record, null)
+    showForeground(record)
 
     val wifi = if (record.slow) null else WifiRequest(applicationContext)
     try {
@@ -76,8 +75,6 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         BookDownload.Outcome.Gone -> Result.success()
         BookDownload.Outcome.Retry -> Result.retry()
       }
-    } catch (e: CancellationException) {
-      throw e
     } finally {
       wifi?.close()
       model.publishState()
@@ -90,16 +87,17 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
   }
 
   /** `setForeground` (dataSync) with "Getting <title> ready"; refused from the background on some versions, which only loses the notification. */
-  private suspend fun showForeground(record: DownloadRecord, percent: Int?) {
-    try {
-      setForeground(foregroundInfo(record.title, percent, record.ref.path.hashCode()))
-    } catch (e: CancellationException) {
-      throw e
-    } catch (_: Exception) {}
+  private suspend fun showForeground(record: DownloadRecord) {
+    orNull { setForeground(foregroundInfo(record.title, null, record.ref.path.hashCode())) }
   }
+
+  /** The percent the notification last showed (the run reports every MiB; it changes far less often). */
+  @Volatile private var shownPercent: Int? = null
 
   /** The notification's percent as bytes land (from the run's thread: no suspending there). */
   private fun updateForeground(record: DownloadRecord, percent: Int?) {
+    if (percent == shownPercent) return
+    shownPercent = percent
     try {
       setForegroundAsync(foregroundInfo(record.title, percent, record.ref.path.hashCode()))
     } catch (_: Exception) {}
@@ -112,11 +110,17 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     return (((record.doneCount + inFile) / files) * 100).toInt().coerceIn(0, 100)
   }
 
+  /** The channel is made once per run, not per progress update. */
+  @Volatile private var channelMade = false
+
   private fun foregroundInfo(title: String, percent: Int?, id: Int): ForegroundInfo {
-    val nm = applicationContext.getSystemService(NotificationManager::class.java)
-    nm.createNotificationChannel(
-      NotificationChannel(CHANNEL, applicationContext.getString(R.string.downloads_channel), NotificationManager.IMPORTANCE_LOW)
-    )
+    if (!channelMade) {
+      val nm = applicationContext.getSystemService(NotificationManager::class.java)
+      nm.createNotificationChannel(
+        NotificationChannel(CHANNEL, applicationContext.getString(R.string.downloads_channel), NotificationManager.IMPORTANCE_LOW)
+      )
+      channelMade = true
+    }
     val text = applicationContext.getString(R.string.getting_ready, title)
     val n =
       NotificationCompat.Builder(applicationContext, CHANNEL)
@@ -126,11 +130,7 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         .setOnlyAlertOnce(true)
         .apply { if (percent != null) setProgress(100, percent, false) }
         .build()
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      ForegroundInfo(id, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-    } else {
-      ForegroundInfo(id, n)
-    }
+    return ForegroundInfo(id, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
   }
 
   companion object {
