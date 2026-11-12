@@ -2541,7 +2541,7 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     surface over the Wear Data Layer, plus `openInstallOnWatch` (the card's Install on watch:
     `RemoteActivityHelper` opens Play on every connected watch). `WearLink.kt` is the phone's only
     Data Layer user (nothing else puts or deletes under `/audiosilo/v1/`); its rules are pure in
-    `WearRules.kt` (JVM tests: `./gradlew :audiosilo-watch:testDebugUnitTest` after prebuild).
+    `WearRules.kt` (JVM tests: `./gradlew :audiosilo-watch:testDebugUnitTest` after prebuild; `wear.yml` runs them).
     `isSupported` is Play services being there; with no Wear OS app on the phone the snapshot says
     no watch. A Data Layer that fails, or does not answer in 5 s, is not "no watch": `getSnapshot`
     rejects (`ERR_NO_ANSWER`, or the error) and no event is sent, so JS keeps its last answer
