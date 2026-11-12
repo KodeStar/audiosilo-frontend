@@ -21,7 +21,7 @@ object QueryString {
 
   /** The unreserved characters (RFC 3986 section 2.3), the only ones sent as they are. */
   private fun unreserved(c: Int): Boolean =
-    c in 'A'.code..'Z'.code || c in 'a'.code..'z'.code || c in '0'.code..'9'.code || c in "-._~".map { it.code }
+    c in 'A'.code..'Z'.code || c in 'a'.code..'z'.code || c in '0'.code..'9'.code || c == '-'.code || c == '.'.code || c == '_'.code || c == '~'.code
 
   private const val HEX = "0123456789ABCDEF"
 }

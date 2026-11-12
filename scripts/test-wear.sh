@@ -6,7 +6,8 @@
 #   ./gradlew :wear:assembleDebug :wear:testDebugUnitTest :app:assembleDebug
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
-if [ -z "${JAVA_HOME:-}" ] && ! command -v java >/dev/null 2>&1; then
+# `java -version`, not `command -v java`: macOS ships a java stub that is there with no JDK.
+if [ -z "${JAVA_HOME:-}" ] && ! java -version >/dev/null 2>&1; then
   echo "test:wear: no JDK here, skipped"
   exit 0
 fi
