@@ -287,6 +287,7 @@ let pickUpDue: string | null = null;
  * held the store (`loadingBook`) or a start was on its way (`startsInFlight`: a start of the
  * book already loaded holds nothing): the snapshot is the previous place until that load
  * lands, and a swap's own load made meanwhile would land after the start's, at that place.
+ * Also one that landed before a start made the book the store's (nothing saw it land).
  * It runs once both are over (`runDueSwap`), and is dropped by a start or a reload that
  * placed nothing (a failed load releases the hold too). */
 let swapDue: string | null = null;
@@ -2449,6 +2450,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // owns the engine now, so this one neither sets its speed nor plays.
       if (selectBookKey(get()) !== key) return;
       placed = true;
+      // A download that landed before this book was the store's (while its place was looked
+      // up) was seen by nothing: the book streams, and is swapped in as this start ends.
+      if (!dl && downloadedEntryOf(ref)) swapDue = key;
       // The engine holds the queue built from these chapters now: a download takes them,
       // with a new file order when its server re-ordered the files (`adoptStartedChapters`).
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);

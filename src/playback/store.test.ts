@@ -1868,6 +1868,25 @@ describe('the download hot-swap across file orders', () => {
     expect(queueUrls()).toEqual(newOrder.map(urlOf));
   });
 
+  it("swaps in a download that landed before the start made the book the store's", async () => {
+    // Nothing plays yet: the download lands while this start still looks up its place.
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      async (_tracks: unknown, index: number, position: number) => {
+        pushSnapshot(snap('ready', position, { trackIndex: index, duration: 30 }));
+      },
+    );
+    const start = usePlayer.getState().playBook('c1', 2, book, chaptersIn(newOrder), 80);
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    downloadLands(oldOrder);
+    await start;
+    await flushMicrotasks(20);
+    // The start streamed (it saw no download), then the copy took over at its place.
+    expect(mockSvc.load).toHaveBeenCalledTimes(2);
+    expect(startOf((mockSvc.load as jest.Mock).mock.calls[0]).url).toBe('stream:2:A/Folder/10.mp3');
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/10.mp3'), index: 1, position: 10 });
+    expect(queueUrls()).toEqual(newOrder.map(urlOf));
+  });
+
   it("swaps nothing after a start's load that failed", async () => {
     // Another book plays 50 s in; this book's start fails in its load, the download landed.
     await startBook(makeBook(), 0);
