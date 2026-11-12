@@ -5,10 +5,9 @@ package app.audiosilo.wear.storage
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import app.audiosilo.wear.core.JsonFile
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files as NioFiles
-import java.nio.file.StandardCopyOption
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -70,12 +69,19 @@ class KeystoreCipher(private val alias: String = ALIAS) : TokenCipher {
 
 /** Thread-safe. */
 class TokenStore(private val file: File, private val cipher: TokenCipher) {
+  /**
+   * The token once opened, for this process: every request asks for it, and opening it is a trip
+   * to the Keystore each time. Only this store writes the file, so it is never stale.
+   */
+  private var opened: String? = null
+
   /** The token, or null when there is none or it no longer opens (the key went with a reset). */
   @Synchronized
   fun token(): String? {
+    opened?.let { return it }
     if (!file.exists()) return null
     return try {
-      String(cipher.open(file.readBytes()), Charsets.UTF_8)
+      String(cipher.open(file.readBytes()), Charsets.UTF_8).also { opened = it }
     } catch (_: Exception) {
       null
     }
@@ -87,13 +93,13 @@ class TokenStore(private val file: File, private val cipher: TokenCipher) {
    */
   @Synchronized
   fun setToken(token: String?): Boolean {
-    if (token == null) return !file.exists() || file.delete()
+    if (token == null) {
+      opened = null
+      return !file.exists() || file.delete()
+    }
     return try {
-      val sealed = cipher.seal(token.toByteArray(Charsets.UTF_8))
-      file.parentFile?.mkdirs()
-      val tmp = File(file.parentFile, file.name + ".tmp")
-      tmp.writeBytes(sealed)
-      NioFiles.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+      JsonFile.atomicWrite(file, cipher.seal(token.toByteArray(Charsets.UTF_8)))
+      opened = token
       true
     } catch (_: Exception) {
       false

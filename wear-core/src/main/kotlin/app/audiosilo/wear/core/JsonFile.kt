@@ -28,15 +28,7 @@ class JsonFile<T>(val file: File, private val serializer: KSerializer<T>) {
       return true
     }
     return try {
-      file.parentFile?.mkdirs()
-      val tmp = File(file.parentFile, ".${file.name}.tmp")
-      tmp.writeText(FORMAT.encodeToString(serializer, value), Charsets.UTF_8)
-      Files.move(
-        tmp.toPath(),
-        file.toPath(),
-        StandardCopyOption.REPLACE_EXISTING,
-        StandardCopyOption.ATOMIC_MOVE,
-      )
+      atomicWrite(file, FORMAT.encodeToString(serializer, value).toByteArray(Charsets.UTF_8))
       true
     } catch (_: Exception) {
       false
@@ -46,5 +38,16 @@ class JsonFile<T>(val file: File, private val serializer: KSerializer<T>) {
   companion object {
     /** The watch's own files: the wire's spelling, so a stored event is the event it sends. */
     val FORMAT: Json = Wire.json
+
+    /**
+     * Write `bytes` beside `file` and move them in, so a reader sees the old file or the new one,
+     * never half of either, and a write that fails leaves what was there. Throws when it can't.
+     */
+    fun atomicWrite(file: File, bytes: ByteArray) {
+      file.parentFile?.mkdirs()
+      val tmp = File(file.parentFile, ".${file.name}.tmp")
+      tmp.writeBytes(bytes)
+      Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    }
   }
 }

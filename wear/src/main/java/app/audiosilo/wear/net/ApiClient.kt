@@ -19,19 +19,22 @@ import app.audiosilo.wear.core.ListeningSyncTransport
 import app.audiosilo.wear.core.ProgressList
 import app.audiosilo.wear.core.ProgressRow
 import app.audiosilo.wear.core.QueryString
+import app.audiosilo.wear.core.RenditionPlan
 import app.audiosilo.wear.core.RenditionsAnswer
 import app.audiosilo.wear.core.ServerAddresses
 import app.audiosilo.wear.core.ServerInfo
 import app.audiosilo.wear.core.SyncRequest
 import app.audiosilo.wear.core.SyncResponse
 import app.audiosilo.wear.core.Wire
+import app.audiosilo.wear.core.orNull
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -66,19 +69,24 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
     return b.build()
   }
 
-  /** The answer's body when it is a success; else the server's answer as an `APIError`. */
-  private suspend fun execute(r: Request, timeout: Double): String {
-    val call = http.newCall(r)
-    call.timeout().timeout((timeout * 1000).toLong(), TimeUnit.MILLISECONDS)
-    return call.await().use { resp ->
-      val text = resp.body?.string()
-      check(resp, text)
-      text ?: ""
+  /**
+   * The answer's body when it is a success; else the server's answer as an `APIError`. The body is
+   * read off the caller's thread: the model calls from the main thread, where a body still on the
+   * wire must not be read.
+   */
+  private suspend fun execute(r: Request, timeout: Double): String =
+    withContext(Dispatchers.IO) {
+      val call = http.newCall(r)
+      call.timeout().timeout((timeout * 1000).toLong(), TimeUnit.MILLISECONDS)
+      call.await().use { resp ->
+        val text = resp.body?.string()
+        check(resp, text)
+        text ?: ""
+      }
     }
-  }
 
   private suspend fun <T> send(r: Request, serializer: KSerializer<T>, timeout: Double = TIMEOUT): T =
-    Wire.json.decodeFromString(serializer, execute(r, timeout))
+    withContext(Dispatchers.IO) { Wire.json.decodeFromString(serializer, execute(r, timeout)) }
 
   // Routes
 
@@ -132,7 +140,7 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
       ifRange?.let { b.header("If-Range", it) }
     }
     val resp = http.newCall(b.build()).await()
-    if (resp.code == 200 || resp.code == 206) {
+    if (RenditionPlan.downloadSucceeded(resp.code)) {
       val body = resp.body ?: run {
         resp.close()
         throw IOException("no body")
@@ -143,7 +151,7 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
     throw IOException("unexpected ${resp.code}")
   }
 
-  /** `POST /auth/logout`: end this watch's token on the server (sign-out, W4a pass 2). */
+  /** `POST /auth/logout`: end this watch's token on the server (sign-out, or a replaced account). */
   suspend fun logout() {
     execute(request("POST", "/auth/logout", body = "{}"), PROBE_TIMEOUT * 2)
   }
@@ -187,13 +195,7 @@ class ApiClient(base: String, private val token: String?, private val http: OkHt
 
     /** Ask `url` who it is with NO token: its `server_id`, else null. Never throws but a cancel. */
     suspend fun probeServerId(url: String, http: OkHttpClient = shared): String? =
-      try {
-        ApiClient(url, null, http).serverInfo(PROBE_TIMEOUT).serverId
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        null
-      }
+      orNull { ApiClient(url, null, http).serverInfo(PROBE_TIMEOUT).serverId }
 
     /** Whether an error means the request timed out (no fallback to a home address after one). */
     fun isTimeout(e: Throwable): Boolean =
