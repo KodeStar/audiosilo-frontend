@@ -166,8 +166,8 @@ type WatchAccount = Pick<WatchConnection, 'id' | 'serverId' | 'user'>;
 type WatchUser = Pick<User, 'id' | 'is_demo' | 'member_kind'>;
 export type WatchableBook = Pick<Book, 'rel_path' | 'title' | 'author'>;
 
-/** RFC 3339 for a message's `sent_at` (epoch ms in). */
-const sentAt = (now: number) => new Date(now).toISOString();
+/** RFC 3339 for a message's times (epoch ms in). */
+const rfc3339 = (ms: number) => new Date(ms).toISOString();
 
 /** The `pair` message for `connection`, from a token just minted (`POST /auth/pair`).
  * `expiresAt` and `now` are epoch ms. */
@@ -193,9 +193,9 @@ export function buildPairMessage(
     server_url: connection.serverUrl,
     addresses: mergeAddresses(connection.addresses, payload.addresses) ?? {},
     pairing_token: payload.pairing_token,
-    expires_at: new Date(expiresAt).toISOString(),
+    expires_at: rfc3339(expiresAt),
     phone_name: phoneName,
-    sent_at: sentAt(now),
+    sent_at: rfc3339(now),
   };
 }
 
@@ -216,7 +216,7 @@ export function buildBookMessage(
     path: book.rel_path,
     title: book.title,
     ...(book.author ? { author: book.author } : {}),
-    sent_at: sentAt(now),
+    sent_at: rfc3339(now),
   };
 }
 
@@ -234,7 +234,7 @@ export function buildRemoveMessage(
     user_id: connection.user.id,
     library_id: libraryId,
     path,
-    sent_at: sentAt(now),
+    sent_at: rfc3339(now),
   };
 }
 

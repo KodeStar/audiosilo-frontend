@@ -2557,7 +2557,7 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     `audiosilo_wear_app`, or a `watch-state`), the one whose `watch-state` this phone saw last
     (kept in prefs), else one nearby; `watch_id` is its node id. The phone advertises
     `audiosilo_phone_app` (`res/values/wear.xml`). The wording on Android (`watchWording`,
-    `watchKind`) says "your watch" or "Wear OS watch", never "Apple Watch", and never asks for the
+    `watchLink.kind`) says "your watch" or "Wear OS watch", never "Apple Watch", and never asks for the
     watch app to be opened: its listener takes what is sent.
   - **Order is the rule of `pair` then `book`.** The watch handles messages in order and holds a
     book for an account it does not hold yet, so `sendPair` answers only once the pair is ahead of

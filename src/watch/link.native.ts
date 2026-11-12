@@ -36,7 +36,8 @@ export const watchLink: WatchLink = native
       sendBook: (message) => native.sendBook(message),
       sendRemove: (message) => native.sendRemove(message),
       ...(native.openInstallOnWatch
-        ? { openInstallOnWatch: async () => void (await native.openInstallOnWatch?.()) }
+        ? { openInstallOnWatch: async () => native.openInstallOnWatch?.() }
         : {}),
     }
-  : NO_WATCH_LINK;
+  : // No module in this build, or no Play services: still the platform's watch, for any wording.
+    { ...NO_WATCH_LINK, kind: watchKindOf(Platform.OS) };
