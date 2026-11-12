@@ -580,6 +580,14 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
       },
     });
     void persist();
+    // The feed gave the episode another identity: what the cache holds of it is stale (as
+    // the player's fetch does, `episode-fetch.ts`).
+    if (end.kind === 'failed' && end.code === 'identity_changed') {
+      void queryClient.invalidateQueries({ queryKey: qk.item(connectionId, libraryId, path) });
+      void queryClient.invalidateQueries({
+        queryKey: qk.podcastEpisodesOfLibrary(connectionId, libraryId),
+      });
+    }
     return;
   }
   const stops = stopCount(key);

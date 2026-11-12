@@ -166,6 +166,7 @@ jest.mock('@/api/hooks', () => ({
     chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path],
     server: (cid: string) => ['server', cid],
     podcastShows: (cid: string, lib: number) => ['podcastShows', cid, lib],
+    podcastEpisodesOfLibrary: (cid: string, lib: number) => ['podcastEpisodes', cid, lib],
     podcastEpisodesOfShow: (cid: string, lib: number, show: string) => [
       'podcastEpisodes',
       cid,
@@ -2494,6 +2495,19 @@ describe('podcast episodes', () => {
     await useDownloads.getState().download('c1', 2, episodeBook(false), chapters, 'auto');
     expect(mockWaits).toHaveLength(2);
     expect(mockWaits[1].opts).toEqual({ retry: false });
+  });
+
+  it('reads the lists again when the feed gave the episode another identity', async () => {
+    const { queryClient } = jest.requireMock('@/api/provider');
+    queryClient.invalidateQueries.mockClear();
+    await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+    mockWaits[0].hooks.onEnd({ kind: 'failed', code: 'identity_changed' });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['item', 'c1', 2, 'Show/Monday.mp3'],
+    });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['podcastEpisodes', 'c1', 2],
+    });
   });
 
   it('fails as removed when its connection went while it waited', async () => {
