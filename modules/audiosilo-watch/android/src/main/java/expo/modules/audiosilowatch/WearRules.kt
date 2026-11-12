@@ -464,7 +464,7 @@ object Json {
         '\t' -> sb.append("\\t")
         '\b' -> sb.append("\\b")
         '\u000C' -> sb.append("\\f")
-        else -> if (c < ' ' || c == ' ' || c == ' ') sb.append("\\u%04x".format(c.code)) else sb.append(c)
+        else -> if (c < ' ' || c == '\u2028' || c == '\u2029') sb.append("\\u%04x".format(c.code)) else sb.append(c)
       }
     }
     sb.append('"')
