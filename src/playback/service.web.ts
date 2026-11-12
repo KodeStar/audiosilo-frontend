@@ -572,6 +572,9 @@ class WebPlaybackService implements PlaybackService {
     pending.crossOrigin = crossOriginFor(source.url);
     pending.src = source.url;
     this.applyRate(pending);
+    // Every `load`, `reset` and file change bumps it: one while the copy buffers leaves
+    // nothing to switch from (another book started, the book stopped, a cast took the route).
+    const seq = this.loadSeq;
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
       const done = (ok: boolean) => {
@@ -605,11 +608,14 @@ class WebPlaybackService implements PlaybackService {
     });
 
     // The local source never became playable - discard it and keep streaming rather
-    // than cutting the live element over to a dead one.
-    if (!ready) {
+    // than cutting the live element over to a dead one. Nor is there anything to switch
+    // from once a load or a reset came while it buffered: what plays now (or nothing) stands.
+    if (!ready || seq !== this.loadSeq) {
       this.discard(pending);
       return false;
     }
+    // A speed set while it buffered reached only the old element (`setRate`).
+    this.applyRate(pending);
 
     // Read now, not before the wait: a pause made while the local source buffered stands
     // (the listener's, or this tab giving way to another tab's play: the swapped-in element

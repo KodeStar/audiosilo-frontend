@@ -494,6 +494,56 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
     }
   });
 
+  describe('a swap to the local copy still buffering', () => {
+    const local = directTracks.map((t, i) => ({ ...t, url: `https://s/local/${i}.mp3` }));
+    /** The swap's element gets ready at its place. */
+    function ready(pending: FakeAudio) {
+      pending.emit('loadedmetadata');
+      pending.readyState = 4;
+      pending.emit('canplay');
+    }
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('switches to nothing once the book was reset meanwhile (a stop, a cast taking over)', async () => {
+      await startPlaying(0);
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.reset();
+      ready(pending);
+      expect(await swap).toBe(false);
+      expect(pending.src).toBe(''); // let go, never played
+      expect(pending.plays).toBe(0);
+      expect(svc.getSnapshot().state).toBe('idle');
+    });
+
+    it('keeps what another load put in meanwhile (another book started)', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.load(directTracks, 1, 0);
+      ready(pending);
+      expect(await swap).toBe(false);
+      expect(pending.src).toBe('');
+      expect(pending.plays).toBe(0);
+      expect(streaming.src).toBe(FILE2);
+      expect(svc.getSnapshot().trackIndex).toBe(1);
+    });
+
+    it('plays the swapped-in copy at a speed set while it buffered', async () => {
+      await startPlaying(0);
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.setRate(1.5);
+      ready(pending);
+      expect(await swap).toBe(true);
+      expect(pending.plays).toBe(1);
+      expect(pending.playbackRate).toBe(1.5);
+      expect(pending.defaultPlaybackRate).toBe(1.5);
+    });
+  });
+
   it('a `playing` that arrives after a pause is not reported: the element is paused', async () => {
     await svc.load(directTracks, 0, 0);
     const a = el();
