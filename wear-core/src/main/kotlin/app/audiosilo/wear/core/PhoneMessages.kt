@@ -381,6 +381,7 @@ object PhoneMessages {
   private fun date(v: JsonElement?): Instant? {
     val p = v as? JsonPrimitive ?: return null
     if (p.isString) return ISOTime.parse(p.content)
-    return p.doubleOrNull?.let(::instantAt)
+    // A number no Instant holds is no date (Foundation's Date takes any Double; Instant throws).
+    return p.doubleOrNull?.let { orNull { instantAt(it) } }
   }
 }

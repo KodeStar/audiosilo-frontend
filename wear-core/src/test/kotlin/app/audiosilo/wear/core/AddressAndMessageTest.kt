@@ -533,6 +533,10 @@ class PhoneMessagesTest {
     assertNull(PhoneMessages.decodeBytes(null))
     // A book whose sent_at is not a time still reads, with none.
     assertNull((PhoneMessages.decodeJSON(book.with("sent_at", "soon").toString()) as PhoneMessage.Book).message.sentAt)
+    // Seconds since 1970 read too; a number no Instant holds is no time, never a throw.
+    fun sentAt(v: Number) = (PhoneMessages.decodeJSON(book.with("sent_at", v).toString()) as PhoneMessage.Book).message.sentAt
+    assertEquals(instantAt(1_800_000_000.0), sentAt(1_800_000_000))
+    assertNull(sentAt(1e30))
   }
 
   @Test
