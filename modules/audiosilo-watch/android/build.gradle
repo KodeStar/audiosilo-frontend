@@ -1,0 +1,31 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.audiosilowatch'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.audiosilowatch"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lint {
+    abortOnError = false
+  }
+}
+
+dependencies {
+  // The Wear Data Layer (DataClient, CapabilityClient, NodeClient, WearableListenerService). The
+  // same version as the Wear app's (wear/build.gradle): both ends of the Data Layer.
+  implementation 'com.google.android.gms:play-services-wearable:19.0.0'
+  // RemoteActivityHelper: Install on watch opens AudioSilo's Play listing on the watch.
+  implementation 'androidx.wear:wear-remote-interactions:1.1.0'
+  // Task.await() for the Play services calls.
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
+
+  // JVM unit tests (WearRules: paths, keys, the snapshot, the target, receipts, JSON).
+  testImplementation 'junit:junit:4.13.2'
+}

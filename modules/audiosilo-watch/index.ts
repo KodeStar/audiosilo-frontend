@@ -2,7 +2,9 @@ import { type NativeModule, requireOptionalNativeModule } from 'expo';
 
 /** What the native side knows of the watch (`getSnapshot`, the `watchState` event). `state` is
  * absent until the watch has sent one. `watch_id` names this very watch (absent with no app on it);
- * `outstanding` holds the `book`s and `remove`s not delivered yet or (`failed`) that could not be. */
+ * `outstanding` holds the `book`s and `remove`s not delivered yet or (`failed`, iOS only) that
+ * could not be. On Android "not delivered" means the phone's Data Layer item is still there: the
+ * watch app has not sent its receipt for it. */
 export type NativeWatchSnapshot = {
   paired: boolean;
   installed: boolean;
@@ -21,6 +23,8 @@ declare class AudiosiloWatchModule extends NativeModule<Events> {
   sendPair(message: Record<string, unknown>): Promise<void>;
   sendBook(message: Record<string, unknown>): Promise<void>;
   sendRemove(message: Record<string, unknown>): Promise<void>;
+  /** Android only: open AudioSilo's Play listing on the connected watches. */
+  openInstallOnWatch?(): Promise<void>;
 }
 
 /** Null on a binary built without the module: the JS bundle can be newer than the app. */
