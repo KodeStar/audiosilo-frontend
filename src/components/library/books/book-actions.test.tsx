@@ -346,6 +346,7 @@ describe('useBookActions, a podcast episode', () => {
     mockDownload.mockReset();
     mockUseBook.mockReset();
     mockFull = undefined;
+    mockPending = null;
   });
   afterEach(() => {
     mockPodcastLibrary = false;
@@ -390,6 +391,9 @@ describe('useBookActions, a podcast episode', () => {
     expect((await actions(b)).find('download')).toBeDefined();
     mockPending = null;
     expect((await actions(b)).find('download')).toBeDefined();
+    // One on its server needs no fetch: a stopped fetch of it from before never hides it.
+    mockPending = { key: 'c:1:Author/Series/01 - Book', phase: 'unavailable', code: 'module_off' };
+    expect((await actions(book({ episode: info(true) }))).find('download')).toBeDefined();
   });
 
   it('looks a list-shape item of a podcast library up once opened, then offers Download', async () => {

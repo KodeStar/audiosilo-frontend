@@ -92,7 +92,10 @@ function offersDownload(
 ): boolean {
   if (!known) return false;
   if (!known.episode) return !podcastLibrary;
-  return offersEpisodeDownload(episodeRowState(known.episode, pending, podcastFetch));
+  return offersEpisodeDownload(
+    known.episode,
+    episodeRowState(known.episode, pending, podcastFetch),
+  );
 }
 
 /**

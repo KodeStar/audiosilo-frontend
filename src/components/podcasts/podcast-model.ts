@@ -61,12 +61,16 @@ export function canRetryFetch(state: EpisodeRowState): boolean {
   );
 }
 
-/** Whether a download to this device (fe#166) is offered for an episode in `state`: not
- * while it is not available (its server can't fetch it now, or said it can't for this one),
- * since the downloads store would only fail it. One rule for the episode page's Download
- * and an episode's "..." menu (`useBookActions`). */
-export function offersEpisodeDownload(state: EpisodeRowState): boolean {
-  return state.kind !== 'unavailable';
+/** Whether a download to this device (fe#166) is offered for an episode in `state`: always
+ * for one on its server (`downloaded`: it needs no fetch, whatever a stopped fetch of it
+ * said), else not while it is not available (its server can't fetch it now, or said it
+ * can't for this one), since the downloads store would only fail it. One rule for the
+ * episode page's Download and an episode's "..." menu (`useBookActions`). */
+export function offersEpisodeDownload(
+  ep: Pick<PodcastEpisode, 'downloaded'>,
+  state: EpisodeRowState,
+): boolean {
+  return ep.downloaded || state.kind !== 'unavailable';
 }
 
 /** How far a fetch has got: the bytes so far, the size when the server knows it, and the

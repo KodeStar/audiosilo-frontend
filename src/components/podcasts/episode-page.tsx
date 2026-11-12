@@ -273,7 +273,7 @@ function EpisodeBody({
                 path={relPath}
                 book={book}
                 chapterData={chapterData}
-                disabled={!offersEpisodeDownload(state)}
+                disabled={!offersEpisodeDownload(episode, state)}
               />
               {reason ? (
                 <Text
