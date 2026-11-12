@@ -22,7 +22,7 @@ import app.audiosilo.wear.playback.OutputSwitcher
 @Composable
 fun Prompts(model: AppModel) {
   val offer by model.offerPrompt.collectAsState()
-  val player by model.engine.state.collectAsState()
+  val speakerPrompt by playerPart(model) { it.speakerPrompt }
   val context = LocalContext.current
   val o = offer
   AlertDialog(
@@ -30,13 +30,17 @@ fun Prompts(model: AppModel) {
     // Swiped away unanswered: not offered again (nothing acknowledged).
     onDismissRequest = { o?.let(model::ignore) },
     title = { Text(o?.let(::offerTitle) ?: "") },
-    text = { Text("You are at ${Labels.clock(player.position)}.") },
+    text = {
+      // Read here, so only this line follows the position as the book plays.
+      val position by playerPart(model) { it.position }
+      Text("You are at ${Labels.clock(position)}.")
+    },
   ) {
     item { Button(onClick = { o?.let(model::jump) }, modifier = Modifier.fillMaxWidth(), label = { Text("Jump there") }) }
     item { FilledTonalButton(onClick = { o?.let(model::stay) }, modifier = Modifier.fillMaxWidth(), label = { Text("Stay here") }) }
   }
   AlertDialog(
-    visible = o == null && player.speakerPrompt,
+    visible = o == null && speakerPrompt,
     onDismissRequest = { model.engine.declineSpeaker() },
     title = { Text(SPEAKER_QUESTION) },
     text = { Text(SPEAKER_NOTE) },

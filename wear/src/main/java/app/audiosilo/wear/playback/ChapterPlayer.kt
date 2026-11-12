@@ -34,9 +34,9 @@ class ChapterPlayer(player: Player, private val engine: PlayerEngine) : Forwardi
 
   override fun seekBack() = engine.skip(-Skips.BACK)
 
-  override fun getSeekForwardIncrement(): Long = (Skips.FORWARD * 1000).toLong()
+  override fun getSeekForwardIncrement(): Long = PlayerEngine.ms(Skips.FORWARD)
 
-  override fun getSeekBackIncrement(): Long = (Skips.BACK * 1000).toLong()
+  override fun getSeekBackIncrement(): Long = PlayerEngine.ms(Skips.BACK)
 
   /** A seek within the file playing (a scrubber): the book's place there. */
   override fun seekTo(positionMs: Long) = seekTo(currentMediaItemIndex, positionMs)

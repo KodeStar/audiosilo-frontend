@@ -11,6 +11,7 @@ import android.content.Intent
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import app.audiosilo.wear.AppModel
+import app.audiosilo.wear.MainActivity
 
 class PlaybackService : MediaSessionService() {
   private var session: MediaSession? = null
@@ -47,7 +48,10 @@ class PlaybackService : MediaSessionService() {
       }
     }
 
-    fun openApp(context: Context): PendingIntent =
-      PendingIntent.getActivity(context, 0, PlayerEngine.openApp(context), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    /** Open the app (the ongoing activity's and the session's touch target). */
+    fun openApp(context: Context): PendingIntent {
+      val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+      return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
   }
 }

@@ -16,7 +16,6 @@
 package app.audiosilo.wear.playback
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -109,7 +108,6 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   private var position = 0.0
   private var rate = _state.value.rate
   private var sleep: SleepTimer? = null
-  private var times: NowPlayingTimes? = null
   private var speakerPrompt = false
   private var problem: String? = null
 
@@ -168,8 +166,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
         .setHandleAudioBecomingNoisy(true)
         .setSuppressPlaybackOnUnsuitableOutput(suppress)
         .setWakeMode(C.WAKE_MODE_LOCAL)
-        .setSeekBackIncrementMs((Skips.BACK * 1000).toLong())
-        .setSeekForwardIncrementMs((Skips.FORWARD * 1000).toLong())
+        .setSeekBackIncrementMs(ms(Skips.BACK))
+        .setSeekForwardIncrementMs(ms(Skips.FORWARD))
         .build()
     p.addListener(listener)
     p.playbackParameters = PlaybackParameters(rate.toFloat())
@@ -242,7 +240,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     ended = false
     setItems(next, place.index, place.positionInTrack)
     startTicks()
-    refreshTimes()
+    publish()
   }
 
   // Transport
@@ -306,7 +304,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     player().play()
     watchStart()
     spanEnd()?.let { spans.open(b.playing, it, rate) }
-    refreshTimes()
+    publish()
     if (pickedUp) onPickedUp?.invoke()
   }
 
@@ -338,7 +336,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     spans.close(spanEnd(), stoppedAt)
     savePlace(stoppedAt)
     sleep = sleep?.paused(Instant.now())
-    refreshTimes()
+    publish()
   }
 
   fun toggle() = if (playing) pause() else play()
@@ -358,7 +356,6 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     }
     ended = false
     book = null
-    times = null
     sleep = null
     problem = null
     stopTicks()
@@ -389,7 +386,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     lastKeep = now
     lastCut = now
     lastAdvance = now
-    refreshTimes()
+    publish()
   }
 
   fun skip(delta: Double) {
@@ -418,7 +415,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     exo?.playbackParameters = PlaybackParameters(next.toFloat())
     // The book's own from now on. Its place's time stays: the place did not move.
     book?.let { b -> places.place(b.ref)?.let { places.set(b.ref, it.copy(speed = next)) } }
-    refreshTimes()
+    publish()
   }
 
   fun setSleep(mode: SleepMode?) {
@@ -512,7 +509,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     position = b.timeline.total
     places.set(b.ref, LocalPlace(position = b.timeline.total, at = Instant.now(), speed = rate))
     sleep = null
-    refreshTimes()
+    publish()
   }
 
   // Ticks
@@ -551,7 +548,7 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
         position = p
       }
     }
-    refreshTimes(force = false)
+    publish()
     if (!playing) return
     // Only audio that moved counts down (a transient focus loss keeps `playing`).
     if (exo?.isPlaying == true) {
@@ -582,14 +579,12 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
 
   // Now Playing
 
-  private fun refreshTimes(force: Boolean = true) {
+  /** Tell the screens what is so now (a state equal to the last one is not sent again). */
+  private fun publish() {
     val b = book
-    times = b?.let { NowPlayingTimes.of(it.timeline.chapters, position, it.timeline.total, it.title) }
-    val next = PlayerState(b, playing, position, rate, sleep, times, speakerPrompt, problem)
-    if (force || next != _state.value) _state.value = next
+    val times = b?.let { NowPlayingTimes.of(it.timeline.chapters, position, it.timeline.total, it.title) }
+    _state.value = PlayerState(b, playing, position, rate, sleep, times, speakerPrompt, problem)
   }
-
-  private fun publish() = refreshTimes(force = true)
 
   companion object {
     const val TICK_MS = 500L
@@ -605,9 +600,5 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     private const val SPEAKER_KEY = "speakerConfirmed"
 
     fun ms(seconds: Double): Long = if (seconds.isFinite() && seconds > 0) (seconds * 1000).roundToLong() else 0L
-
-    /** Open the app (the ongoing activity's and the session's touch target). */
-    fun openApp(context: Context): Intent =
-      Intent(context, app.audiosilo.wear.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
   }
 }

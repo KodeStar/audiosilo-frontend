@@ -120,9 +120,9 @@ fun sleepLabel(s: PlayerState): String = s.sleep?.let { "Sleep in ${Labels.clock
 
 @Composable
 fun ChaptersScreen(model: AppModel, done: () -> Unit) {
-  val s by model.engine.state.collectAsState()
-  val chapters = s.book?.timeline?.chapters ?: emptyList()
-  val current = s.times?.chapterIndex
+  val book by playerPart(model) { it.book }
+  val current by playerPart(model) { it.times?.chapterIndex }
+  val chapters = book?.timeline?.chapters ?: emptyList()
   ListScreen {
     item { ListHeader { Text("Chapters") } }
     itemsIndexed(chapters) { i, ch ->
@@ -141,7 +141,7 @@ fun ChaptersScreen(model: AppModel, done: () -> Unit) {
 
 @Composable
 fun SpeedScreen(model: AppModel, done: () -> Unit) {
-  val s by model.engine.state.collectAsState()
+  val rate by playerPart(model) { it.rate }
   ListScreen {
     item { ListHeader { Text("Speed") } }
     PlaybackSpeed.PRESETS.forEach { r ->
@@ -152,7 +152,7 @@ fun SpeedScreen(model: AppModel, done: () -> Unit) {
             done()
           },
           modifier = Modifier.fillMaxWidth(),
-          secondaryLabel = if (r == s.rate) ({ Text("Now") }) else null,
+          secondaryLabel = if (r == rate) ({ Text("Now") }) else null,
           label = { Text(PlaybackSpeed.label(r)) },
         )
       }
@@ -162,10 +162,10 @@ fun SpeedScreen(model: AppModel, done: () -> Unit) {
 
 @Composable
 fun SleepScreen(model: AppModel, done: () -> Unit) {
-  val s by model.engine.state.collectAsState()
+  val armed by playerPart(model) { it.sleep != null }
   ListScreen {
     item { ListHeader { Text("Sleep timer") } }
-    if (s.sleep != null) {
+    if (armed) {
       item {
         Button(
           onClick = {

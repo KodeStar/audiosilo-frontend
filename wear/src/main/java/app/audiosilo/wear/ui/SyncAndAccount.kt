@@ -12,8 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.wear.compose.foundation.lazy.items
-import androidx.wear.compose.material3.AlertDialog
-import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.FilledTonalButton
@@ -62,20 +60,15 @@ fun SyncScreen(model: AppModel, onSignOut: () -> Unit) {
     item { OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth(), label = { Text("Sign out") }) }
   }
   val d = dismissing
-  AlertDialog(
+  ConfirmDialog(
     visible = d != null,
-    onDismissRequest = { dismissing = null },
-    title = { Text("Dismiss this update?") },
-    text = { Text("It will not be sent.") },
-    confirmButton = {
-      AlertDialogDefaults.ConfirmButton(
-        onClick = {
-          d?.let { model.outbox.discardFailed(it.event.id) }
-          dismissing = null
-        }
-      )
+    title = "Dismiss this update?",
+    text = "It will not be sent.",
+    onConfirm = {
+      d?.let { model.outbox.discardFailed(it.event.id) }
+      dismissing = null
     },
-    dismissButton = { AlertDialogDefaults.DismissButton(onClick = { dismissing = null }) },
+    onDismiss = { dismissing = null },
   )
 }
 
@@ -121,23 +114,20 @@ fun SignOutScreen(model: AppModel) {
     }
     item { Note(SIGN_OUT_REMOVES) }
   }
-  AlertDialog(
+  ConfirmDialog(
     visible = confirming,
-    onDismissRequest = { confirming = false },
-    title = { Text("Discard listening not synced yet?") },
-    confirmButton = {
-      AlertDialogDefaults.ConfirmButton(
-        onClick = {
-          confirming = false
-          model.signOut(discard = true)
-        }
-      )
+    title = DISCARD_QUESTION,
+    onConfirm = {
+      confirming = false
+      model.signOut(discard = true)
     },
-    dismissButton = { AlertDialogDefaults.DismissButton(onClick = { confirming = false }) },
+    onDismiss = { confirming = false },
   )
 }
 
 fun signOutBlocked(waiting: Int): String = "${Labels.updates(waiting)} not synced yet. Sync first, or discard to sign out."
 
+/** Asked before listening that waits is dropped (Sign out, and a switch to another account). */
+const val DISCARD_QUESTION = "Discard listening not synced yet?"
 const val SIGN_OUT_REMOVES = "Signing out removes the books on this watch."
 const val CANT_REACH_SYNC = "Can't reach your server. Listening is kept here and sent when it can be."

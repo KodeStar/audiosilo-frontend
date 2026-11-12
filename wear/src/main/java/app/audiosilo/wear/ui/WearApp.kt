@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,7 +51,10 @@ import app.audiosilo.wear.core.HeldBooks
 import app.audiosilo.wear.core.Labels
 import app.audiosilo.wear.core.WatchStateBook
 import app.audiosilo.wear.phone.PhoneApp
+import app.audiosilo.wear.playback.PlayerState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @Composable
@@ -119,6 +123,35 @@ internal fun ListScreen(content: ScalingLazyListScope.() -> Unit) {
   }
 }
 
+/**
+ * One part of the player's state. The whole state changes twice a second while a book plays (the
+ * position), so a screen that shows none of that reads only its part and is redrawn when it changes.
+ */
+@Composable
+internal fun <T> playerPart(model: AppModel, part: (PlayerState) -> T): State<T> {
+  val state = model.engine.state
+  return remember(state) { state.map(part).distinctUntilChanged() }.collectAsState(part(state.value))
+}
+
+/** A yes or no question over a screen. */
+@Composable
+internal fun ConfirmDialog(visible: Boolean, title: String, text: String? = null, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+  AlertDialog(
+    visible = visible,
+    onDismissRequest = onDismiss,
+    title = { Text(title) },
+    text = text?.let { { Text(it) } },
+    confirmButton = { AlertDialogDefaults.ConfirmButton(onClick = onConfirm) },
+    dismissButton = { AlertDialogDefaults.DismissButton(onClick = onDismiss) },
+  )
+}
+
+/** A row that only says what is happening. */
+@Composable
+internal fun Busy(label: String) {
+  Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), icon = { CircularProgressIndicator() }, label = { Text(label) })
+}
+
 @Composable
 internal fun Note(text: String, center: Boolean = false) {
   Text(
@@ -149,7 +182,7 @@ fun SetupScreen(model: AppModel, status: AppModel.SetupStatus) {
     item {
       when (status) {
         AppModel.SetupStatus.Waiting -> Text(SETUP_WAITING, modifier = Modifier.fillMaxWidth())
-        AppModel.SetupStatus.SigningIn -> SigningIn()
+        AppModel.SetupStatus.SigningIn -> Busy("Signing in")
         AppModel.SetupStatus.Expired -> Text(AppModel.EXPIRED, modifier = Modifier.fillMaxWidth())
         is AppModel.SetupStatus.Failed -> Text(status.message, modifier = Modifier.fillMaxWidth())
       }
@@ -166,11 +199,6 @@ fun SetupScreen(model: AppModel, status: AppModel.SetupStatus) {
     }
     heldRows(held)
   }
-}
-
-@Composable
-private fun SigningIn() {
-  Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), icon = { CircularProgressIndicator() }, label = { Text("Signing in") })
 }
 
 // Too old
@@ -223,7 +251,8 @@ fun HomeScreen(
   onSync: () -> Unit,
   onSignOut: () -> Unit,
 ) {
-  val player by model.engine.state.collectAsState()
+  val playerBook by playerPart(model) { it.book }
+  val playing by playerPart(model) { it.playing }
   val pending by model.pendingReplace.collectAsState()
   val records by model.downloads.records.collectAsState()
   val held by model.heldBooks.collectAsState()
@@ -242,12 +271,12 @@ fun HomeScreen(
   ListScreen {
     item { ListHeader { Text("AudioSilo") } }
     pending?.let { replaceRows(model, it) }
-    player.book?.let { book ->
+    playerBook?.let { book ->
       item {
         Button(
           onClick = onNowPlaying,
           modifier = Modifier.fillMaxWidth(),
-          secondaryLabel = { Text(if (player.playing) "Playing" else "Paused") },
+          secondaryLabel = { Text(if (playing) "Playing" else "Paused") },
           label = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         )
       }
@@ -306,22 +335,17 @@ private fun ScalingLazyListScope.replaceRows(model: AppModel, state: AppModel.Pe
         }
         OutlinedButton(onClick = { model.keepAccount() }, modifier = Modifier.fillMaxWidth(), label = { Text("Keep this account") })
         }
-        AlertDialog(
+        ConfirmDialog(
           visible = confirming,
-          onDismissRequest = { confirming = false },
-          title = { Text("Discard listening not synced yet?") },
-          confirmButton = {
-            AlertDialogDefaults.ConfirmButton(
-              onClick = {
-                confirming = false
-                model.replace(discard = true)
-              }
-            )
+          title = DISCARD_QUESTION,
+          onConfirm = {
+            confirming = false
+            model.replace(discard = true)
           },
-          dismissButton = { AlertDialogDefaults.DismissButton(onClick = { confirming = false }) },
+          onDismiss = { confirming = false },
         )
       }
-    AppModel.PendingReplace.Switching -> item { Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), icon = { CircularProgressIndicator() }, label = { Text("Switching accounts") }) }
+    AppModel.PendingReplace.Switching -> item { Busy("Switching accounts") }
     is AppModel.PendingReplace.Failed ->
       item {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -394,20 +418,15 @@ fun OnThisWatchScreen(model: AppModel, onPlay: (DownloadRecord) -> Unit) {
     }
   }
   val r = removing
-  AlertDialog(
+  ConfirmDialog(
     visible = r != null,
-    onDismissRequest = { removing = null },
-    title = { Text(r?.let { "Remove ${it.title}?" } ?: "") },
-    text = { Text("Remove from watch") },
-    confirmButton = {
-      AlertDialogDefaults.ConfirmButton(
-        onClick = {
-          r?.let { model.removeBook(it.ref) }
-          removing = null
-        }
-      )
+    title = r?.let { "Remove ${it.title}?" } ?: "",
+    text = "Remove from watch",
+    onConfirm = {
+      r?.let { model.removeBook(it.ref) }
+      removing = null
     },
-    dismissButton = { AlertDialogDefaults.DismissButton(onClick = { removing = null }) },
+    onDismiss = { removing = null },
   )
 }
 
