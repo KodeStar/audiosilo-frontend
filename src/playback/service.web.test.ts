@@ -409,7 +409,7 @@ describe('WebPlaybackService (transcoded tracks)', () => {
       expect(pending.currentTime).toBe(300); // a local file seeks in place
       pending.readyState = 4;
       pending.emit('canplay');
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(streaming.src).toBe(''); // the transcode connection is closed
       pending.currentTime = 310;
       pending.emit('timeupdate');
@@ -488,7 +488,7 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       await svc.pause();
       expect(svc.getSnapshot().state).toBe('paused');
       ready(pending);
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(pending.plays).toBe(0);
       expect(svc.getSnapshot().state).toBe('paused');
       expect(states).not.toContain('playing');
@@ -500,7 +500,7 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       const pending = el();
       await svc.reset();
       ready(pending);
-      expect(await swap).toBe(false);
+      expect(await swap).toBe('refused');
       expect(pending.src).toBe(''); // let go, never played
       expect(pending.plays).toBe(0);
       expect(svc.getSnapshot().state).toBe('idle');
@@ -513,7 +513,7 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       const pending = el();
       await svc.load(directTracks, 1, 0);
       ready(pending);
-      expect(await swap).toBe(false);
+      expect(await swap).toBe('refused');
       expect(pending.src).toBe('');
       expect(pending.plays).toBe(0);
       expect(streaming.src).toBe(FILE2);
@@ -528,11 +528,34 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       await svc.seekTo(45);
       ready(pending);
       // The copy was buffered at the place before the seek: switched in, it would undo it.
-      expect(await swap).toBe(false);
+      expect(await swap).toBe('moved');
       expect(pending.src).toBe('');
       expect(pending.plays).toBe(0);
       expect(streaming.currentTime).toBe(45);
       expect(svc.getSnapshot().position).toBe(45);
+    });
+
+    it('keeps the stream on a file the listener moved to meanwhile, as a move', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.skipToTrack(1);
+      ready(pending);
+      expect(await swap).toBe('moved');
+      expect(pending.plays).toBe(0);
+      expect(streaming.src).toBe(FILE2);
+    });
+
+    it('refuses a copy that never becomes playable', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      pending.emit('error');
+      expect(await swap).toBe('refused');
+      expect(pending.src).toBe('');
+      expect(streaming.src).toBe(FILE1);
     });
 
     it('tells the switch before its first report in the new order, and never a refusal', async () => {
@@ -545,7 +568,7 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       const pending = el();
       seen.length = 0;
       ready(pending);
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(seen.indexOf('switch')).toBe(0);
       expect(seen.slice(1).every((index) => index === 1)).toBe(true);
 
@@ -554,7 +577,7 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       const dropped = el();
       await svc.seekTo(45);
       ready(dropped);
-      expect(await refused).toBe(false);
+      expect(await refused).toBe('moved');
       expect(seen).not.toContain('switch');
     });
 
@@ -564,7 +587,7 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       const pending = el();
       await svc.setVolume(0.25); // the sleep timer's fade
       ready(pending);
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(pending.volume).toBe(0.25);
     });
 
@@ -574,7 +597,7 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       const pending = el();
       await svc.setRate(1.5);
       ready(pending);
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(pending.plays).toBe(1);
       expect(pending.playbackRate).toBe(1.5);
       expect(pending.defaultPlaybackRate).toBe(1.5);
@@ -1160,7 +1183,7 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
       pending.emit('loadedmetadata');
       pending.readyState = 4;
       pending.emit('canplay');
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(ctx().sources.size).toBe(2);
       expect(routeOf(pending)).toBe('compressor');
       expect(ctx().sources.get(first)!.targets).toEqual([]); // the old one is let go
@@ -1232,7 +1255,7 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
       pending.emit('loadedmetadata');
       pending.readyState = 4;
       pending.emit('canplay');
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
     } finally {
       jest.useRealTimers();
     }

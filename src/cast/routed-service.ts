@@ -90,17 +90,19 @@ export class RoutedPlaybackService implements PlaybackService {
         // While casting, the receiver streams from the server whatever the phone holds:
         // only remember the local files, for when the book comes back to the phone. Only
         // the loaded book's, in the order the other side plays (its track indices read
-        // through the store's queue, which a `true` here commits): a copy holding other
+        // through the store's queue, which a `'swapped'` here commits): a copy holding other
         // files, or one landing after a reset or another book's load, is refused.
         if (this.mode !== 'local') {
           const now = this.lastLoad;
-          if (!now || !sameBookLoad(now, load) || !sameOrder(now.tracks, tracks)) return false;
+          if (!now || !sameBookLoad(now, load) || !sameOrder(now.tracks, tracks)) {
+            return 'refused';
+          }
           this.lastLoad = load;
-          return true;
+          return 'swapped';
         }
-        const ok = await swap(tracks, startIndex, positionInTrack, chapters, book, onSwitch);
-        if (ok) this.lastLoad = load;
-        return ok;
+        const outcome = await swap(tracks, startIndex, positionInTrack, chapters, book, onSwitch);
+        if (outcome === 'swapped') this.lastLoad = load;
+        return outcome;
       };
     }
   }

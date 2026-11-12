@@ -1555,7 +1555,9 @@ media GETs only.
   before: a pause made meanwhile stands (the listener's, or the tab giving way to another
   tab's play), a speed or a volume set meanwhile is applied to the copy, and a load, a reset,
   a move to another file (`loadSeq` moved) or a seek (`seekSeq`) meanwhile discards the copy
-  and refuses the swap: the copy was buffered at the place before it.
+  and refuses the swap: the copy was buffered at the place before it. A refusal for a seek or
+  a move (`'moved'`) is swapped once more from the new place while the book is still the
+  store's (`mayRetry`); a second leaves it streaming.
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /

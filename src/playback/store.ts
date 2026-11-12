@@ -2831,8 +2831,14 @@ const specIds = (specs: { path: string }[], libraryId: number) =>
  * book streaming: moved onto its own order, the rest of the book would play in another
  * sequence, skipping files. Only a download holding other files moves the listener: to
  * the same file when it has it, else to the same whole-book place.
+ *
+ * A web swap refused because the listener sought or moved to another file while the copy
+ * buffered (`'moved'`: the copy sat at the place before) runs once more from the new place
+ * (`mayRetry`), while the same book is still the store's and its download complete. A
+ * second such refusal leaves it streaming; a stop, a reset, another book or a copy that
+ * never became playable is not retried.
  */
-async function switchCurrentBookToLocal() {
+async function switchCurrentBookToLocal(mayRetry = true) {
   const state = usePlayer.getState();
   const { nowPlaying, snapshot } = state;
   if (!nowPlaying || !apiRef) return;
@@ -2951,12 +2957,13 @@ async function switchCurrentBookToLocal() {
       ? { nowPlaying, trackIndex: snapshot.trackIndex, queue, live: !svc.swapTo }
       : null;
   if (hold) swapHold = hold;
+  let moved = false;
   try {
     if (svc.swapTo) {
       // Gapless: keep streaming until the local file is buffered at this position. The
       // swap can be refused (e.g. the local source isn't servable on web) - in that
       // case leave nowPlaying on the streaming queue so playback keeps going.
-      const swapped = await svc.swapTo(
+      const outcome = await svc.swapTo(
         queue.tracks,
         index,
         positionInTrack,
@@ -2966,7 +2973,8 @@ async function switchCurrentBookToLocal() {
           if (hold) hold.live = true;
         },
       );
-      if (swapped) commit();
+      if (outcome === 'swapped') commit();
+      else moved = outcome === 'moved';
     } else {
       // A play goes on through the load as a start's does: iOS's `load` pauses the player,
       // and that pause must read as the load's, not the listener's (`reloadAdopted`).
@@ -2991,6 +2999,11 @@ async function switchCurrentBookToLocal() {
   } finally {
     // A refused swap or a failed load: the hold must not outlive it.
     if (swapHold?.nowPlaying === nowPlaying) swapHold = null;
+  }
+  // Once, from where the listener moved to (the download is read again there).
+  const now = usePlayer.getState().nowPlaying;
+  if (moved && mayRetry && now && contentKeyOf(now) === contentKeyOf(nowPlaying)) {
+    await switchCurrentBookToLocal(false);
   }
 }
 

@@ -14,6 +14,7 @@ import {
   type PlaybackService,
   type PlaybackSnapshot,
   type PlaybackTrack,
+  type SwapOutcome,
 } from './types';
 import {
   isEarlyTranscodeEnd,
@@ -209,6 +210,9 @@ class WebPlaybackService implements PlaybackService {
   /** Bumped per seek made in place (a direct stream's; a transcoded one's is a `loadTrack`):
    * a copy `swapTo` buffered at the place before it is no longer where the listener is. */
   private seekSeq = 0;
+  /** Bumped per `load` and `reset`: a new queue (or none). A `loadSeq` move without it is a
+   * move to another file of the same queue (a skip, a track's end, a transcoded seek). */
+  private queueSeq = 0;
   /** The element a load is placing at its start position, until its metadata arrives
    * and the seek is made (or it reports `seeked`). The load algorithm queues a
    * `timeupdate` at `currentTime` 0 as soon as `src` changes, before any metadata: read
@@ -538,6 +542,7 @@ class WebPlaybackService implements PlaybackService {
     // A pause belongs to what was loaded before: the first play() of a new load must not
     // auto-rewind (or, transcoded, re-request the stream early) for it.
     this.pausedAt = null;
+    this.queueSeq++;
     this.loadTrack(startIndex, positionInTrack, false);
     this.update({ state: 'ready' });
   }
@@ -549,9 +554,9 @@ class WebPlaybackService implements PlaybackService {
     _chapters?: PlaybackChapter[], // ignored on web (see load)
     _book?: BookRef, // ignored on web (see load)
     onSwitch?: () => void,
-  ): Promise<boolean> {
+  ): Promise<SwapOutcome> {
     const track = tracks[startIndex];
-    if (!track) return false;
+    if (!track) return 'refused';
 
     // Downloaded files live behind synthetic `…/_offline/…` urls that only resolve
     // when our service worker is controlling this page (it serves them from the
@@ -563,7 +568,7 @@ class WebPlaybackService implements PlaybackService {
       track.url.includes('/_offline/') &&
       !(typeof navigator !== 'undefined' && navigator.serviceWorker?.controller)
     ) {
-      return false;
+      return 'refused';
     }
 
     // Buffer the new (local) source on a separate element while the current one
@@ -576,10 +581,11 @@ class WebPlaybackService implements PlaybackService {
     pending.crossOrigin = crossOriginFor(source.url);
     pending.src = source.url;
     this.applyRate(pending);
-    // Every `load`, `reset` and file change bumps it: one while the copy buffers leaves
-    // nothing to switch from (another book started, the book stopped, a cast took the route).
-    // A seek meanwhile (`seekSeq`; a transcoded stream's bumps `loadSeq` too) leaves the copy
-    // at the place the listener left: switched in, it would undo the seek.
+    // A `load` or a `reset` while the copy buffers (`queueSeq`) leaves nothing to switch
+    // from (another book started, the book stopped, a cast took the route). A seek
+    // (`seekSeq`) or a move to another file (`loadSeq` alone; a transcoded seek is one)
+    // leaves the copy at the place the listener left: switched in, it would undo the move.
+    const queues = this.queueSeq;
     const seq = this.loadSeq;
     const seeks = this.seekSeq;
     const ready = await new Promise<boolean>((resolve) => {
@@ -615,11 +621,15 @@ class WebPlaybackService implements PlaybackService {
     });
 
     // The local source never became playable - discard it and keep streaming rather
-    // than cutting the live element over to a dead one. So too when `loadSeq` or `seekSeq`
-    // moved: what plays now (or nothing) stands, where it is.
-    if (!ready || seq !== this.loadSeq || seeks !== this.seekSeq) {
+    // than cutting the live element over to a dead one. So too when anything above moved:
+    // what plays now (or nothing) stands, where it is.
+    if (!ready || queues !== this.queueSeq) {
       this.discard(pending);
-      return false;
+      return 'refused';
+    }
+    if (seq !== this.loadSeq || seeks !== this.seekSeq) {
+      this.discard(pending);
+      return 'moved';
     }
     // A speed or a volume (the sleep timer's fade) set while it buffered reached only the
     // old element (`setRate`, `setVolume`).
@@ -662,7 +672,7 @@ class WebPlaybackService implements PlaybackService {
         // autoplay shouldn't be blocked mid-session, but ignore if it is
       }
     }
-    return true;
+    return 'swapped';
   }
 
   /**
@@ -800,6 +810,7 @@ class WebPlaybackService implements PlaybackService {
     this.offset = 0;
     this.pausedAt = null;
     this.loadSeq++;
+    this.queueSeq++;
     this.placing = null;
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;

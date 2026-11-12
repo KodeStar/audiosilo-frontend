@@ -1,7 +1,7 @@
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
 
 import type { ResumeLookup } from './progress-sync';
-import type { PlaybackService, PlaybackSnapshot, PlaybackState } from './types';
+import type { PlaybackService, PlaybackSnapshot, PlaybackState, SwapOutcome } from './types';
 
 // --- Mocks -----------------------------------------------------------------
 // The store talks to the playback engine only through createPlaybackService()
@@ -2111,7 +2111,7 @@ describe('the download hot-swap across file orders', () => {
     });
 
     it('commits the queue once the swap lands', async () => {
-      web.swapTo = jest.fn(async () => true);
+      web.swapTo = jest.fn(async () => 'swapped');
       await streamIn(newOrder);
       downloadLands(oldOrder);
       await flushMicrotasks();
@@ -2125,7 +2125,7 @@ describe('the download hot-swap across file orders', () => {
     });
 
     it('keeps the stream, and holds nothing, when the swap is refused', async () => {
-      web.swapTo = jest.fn(async () => false);
+      web.swapTo = jest.fn(async () => 'refused');
       await streamIn(newOrder, { at: 60 });
       downloadLands(renamed); // the swap would move the file's index
       await flushMicrotasks();
@@ -2139,23 +2139,23 @@ describe('the download hot-swap across file orders', () => {
     });
 
     it('saves a stop made while the local copy buffers', async () => {
-      let swapped: (ok: boolean) => void = () => {};
-      web.swapTo = jest.fn(() => new Promise<boolean>((resolve) => (swapped = resolve)));
+      let swapped: (outcome: SwapOutcome) => void = () => {};
+      web.swapTo = jest.fn(() => new Promise<SwapOutcome>((resolve) => (swapped = resolve)));
       await streamIn(newOrder);
       downloadLands(oldOrder);
       await flushMicrotasks();
       await usePlayer.getState().stop();
       expect(savedPositions()).toEqual([20]);
-      swapped(false);
+      swapped('refused');
       await flushMicrotasks();
     });
 
     /** A swap still buffering: `switched` is the engine's switch, `swapped` its answer. */
     function bufferingSwap() {
-      const swap = { switched: () => {}, swapped: (_ok: boolean) => {} };
+      const swap = { switched: () => {}, swapped: (_outcome: SwapOutcome) => {} };
       web.swapTo = jest.fn((...args: unknown[]) => {
         swap.switched = args[5] as () => void;
-        return new Promise<boolean>((resolve) => (swap.swapped = resolve));
+        return new Promise<SwapOutcome>((resolve) => (swap.swapped = resolve));
       });
       return swap;
     }
@@ -2170,8 +2170,8 @@ describe('the download hot-swap across file orders', () => {
       // through the download's queue it would be 2.mp3 again, 3 s in.
       pushSnapshot(snap('playing', 3, { trackIndex: 1, duration: 30 }));
       expect(selectBookPosition(usePlayer.getState())).toBe(73);
-      // The engine refuses the swap (the file changed under it): the place saves as it is.
-      swap.swapped(false);
+      // The engine refuses the swap (the copy never became playable): the place saves as it is.
+      swap.swapped('refused');
       await flushMicrotasks();
       pushSnapshot(snap('paused', 4, { trackIndex: 1, duration: 30 }));
       await flushMicrotasks();
@@ -2187,10 +2187,79 @@ describe('the download hot-swap across file orders', () => {
       // The engine is on the copy: its index 1 is 2.mp3, the stream's index 0.
       pushSnapshot(snap('playing', 21, { trackIndex: 1, duration: 70 }));
       expect(selectBookPosition(usePlayer.getState())).toBe(21);
-      swap.swapped(true);
+      swap.swapped('swapped');
       await flushMicrotasks();
       expect(queueUrls()).toEqual(withExtra.map(urlOf));
       expect(selectBookPosition(usePlayer.getState())).toBe(71); // c.mp3's 50 + 21
+    });
+
+    /** Each swap still buffering, in turn: answer the nth with `answers[n]`. */
+    function swapsInTurn() {
+      const answers: ((outcome: SwapOutcome) => void)[] = [];
+      web.swapTo = jest.fn(() => new Promise<SwapOutcome>((resolve) => void answers.push(resolve)));
+      return answers;
+    }
+
+    it('swaps again from where a seek made while the copy buffered put the listener', async () => {
+      const answers = swapsInTurn();
+      await streamIn(newOrder);
+      downloadLands(oldOrder);
+      await flushMicrotasks();
+      expect(startOf(web.swapTo!.mock.calls[0])).toMatchObject({ index: 0, position: 20 });
+      // The listener seeks to 45 s while the copy buffers at 20 s: the engine refuses it.
+      pushSnapshot(snap('playing', 45, { trackIndex: 0, duration: 70 }));
+      answers[0]('moved');
+      await flushMicrotasks();
+      expect(web.swapTo).toHaveBeenCalledTimes(2);
+      expect(startOf(web.swapTo!.mock.calls[1])).toEqual({
+        url: urlOf('A/Folder/2.mp3'),
+        index: 0,
+        position: 45,
+      });
+      answers[1]('swapped');
+      await flushMicrotasks();
+      expect(queueUrls()).toEqual(newOrder.map(urlOf));
+      expect(selectBookPosition(usePlayer.getState())).toBe(45);
+    });
+
+    it('streams on after a second seek during the retry, with no third swap', async () => {
+      const answers = swapsInTurn();
+      await streamIn(newOrder);
+      downloadLands(oldOrder);
+      await flushMicrotasks();
+      pushSnapshot(snap('playing', 45, { trackIndex: 0, duration: 70 }));
+      answers[0]('moved');
+      await flushMicrotasks();
+      pushSnapshot(snap('playing', 10, { trackIndex: 0, duration: 70 }));
+      answers[1]('moved');
+      await flushMicrotasks();
+      expect(web.swapTo).toHaveBeenCalledTimes(2);
+      expect(queueUrls()).toEqual(['stream:2:A/Folder/2.mp3', 'stream:2:A/Folder/10.mp3']);
+    });
+
+    it('does not swap again after a stop while the copy buffered', async () => {
+      const answers = swapsInTurn();
+      await streamIn(newOrder);
+      downloadLands(oldOrder);
+      await flushMicrotasks();
+      await usePlayer.getState().stop();
+      answers[0]('moved');
+      await flushMicrotasks();
+      expect(web.swapTo).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().nowPlaying).toBeNull();
+    });
+
+    it('does not swap again once another book started while the copy buffered', async () => {
+      const answers = swapsInTurn();
+      await streamIn(newOrder);
+      downloadLands(oldOrder);
+      await flushMicrotasks();
+      const other = makeBook({ rel_path: 'Other/Book', title: 'Other' });
+      await usePlayer.getState().playBook('c1', 2, other, undefined, 0);
+      answers[0]('moved');
+      await flushMicrotasks();
+      expect(web.swapTo).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().nowPlaying?.path).toBe('Other/Book');
     });
   });
 });

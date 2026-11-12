@@ -151,6 +151,9 @@ export function clampVolume(volume: number): number {
   return Math.min(1, Math.max(0, volume));
 }
 
+/** How `PlaybackService.swapTo` ended (see there). */
+export type SwapOutcome = 'swapped' | 'moved' | 'refused';
+
 /**
  * Platform-agnostic playback engine. Implemented by a custom native module
  * (AVQueuePlayer / Media3) on native and HTML5 Audio on web; the player store
@@ -176,9 +179,11 @@ export interface PlaybackService {
    * then switch. Used to move a streaming book onto its just-downloaded local files
    * without an audible gap. Optional - callers fall back to `load` + `play`.
    *
-   * Resolves `true` if the swap happened, `false` if it was refused: the local source
-   * can't be served (the original source is still playing), or a load, a reset, a seek or
-   * a move to another file was made while the new source buffered (what that left stands).
+   * Resolves `'swapped'` if the swap happened. Otherwise what was playing stands, where it
+   * is: `'moved'` when a seek or a move to another file of the same queue was made while
+   * the new source buffered (it was buffered at the place before, so the caller may swap
+   * again from the new place), `'refused'` when the local source can't be served or never
+   * became playable, or a load or a reset was made meanwhile.
    *
    * `onSwitch` is called as the engine switches, before its first report from the new
    * source: every report until then is still the original source's, in its own track order.
@@ -190,7 +195,7 @@ export interface PlaybackService {
     chapters?: PlaybackChapter[],
     book?: BookRef,
     onSwitch?: () => void,
-  ): Promise<boolean>;
+  ): Promise<SwapOutcome>;
   play(): Promise<void>;
   pause(): Promise<void>;
   /** Seek within the current track. */
