@@ -57,8 +57,15 @@ class Files(val root: File, val noBackup: File) : BookStorage {
 
   override fun loadItem(ref: BookRef): ItemCache? = JsonFile(item(ref), ItemCache.serializer()).read()
 
-  /** Free space for the books (StatFs's available bytes), null when unknown. */
-  override fun freeBytes(): Long? = root.usableSpace.takeIf { it > 0 }
+  /**
+   * Free space for the books, null when unknown. `usableSpace` answers 0 both for a full disk and
+   * for a path it cannot read; a readable volume has a size, and a full one must read as 0 (the
+   * book then says "Not enough space", not "Waiting for a connection").
+   */
+  override fun freeBytes(): Long? {
+    val free = root.usableSpace
+    return if (free > 0 || root.totalSpace > 0) free else null
+  }
 
   companion object {
     /** A file name for any string: its letters and digits (the last 60), plus an FNV-1a hash. */

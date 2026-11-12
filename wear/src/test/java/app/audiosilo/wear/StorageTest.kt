@@ -16,6 +16,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -130,5 +131,17 @@ class FilesTest {
     assertEquals(File("/data/no_backup/device-id"), f.deviceIdFile)
     assertEquals(File("/data/files/downloads.json"), f.downloadsIndex)
     assertTrue(f.item(BookRef(1, "A/B")).path.startsWith("/data/files/items/"))
+  }
+
+  @Test
+  fun freeSpaceIsUnknownOnlyWhereTheVolumeCannotBeRead() {
+    val dir = NioFiles.createTempDirectory("space").toFile()
+    try {
+      // A real volume answers a number (0 on a full one, which is known, not unknown).
+      assertNotNull(Files(dir, dir).freeBytes())
+      assertNull(Files(File(dir, "missing/files"), dir).freeBytes())
+    } finally {
+      dir.deleteRecursively()
+    }
   }
 }
