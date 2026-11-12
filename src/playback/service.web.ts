@@ -608,8 +608,8 @@ class WebPlaybackService implements PlaybackService {
     });
 
     // The local source never became playable - discard it and keep streaming rather
-    // than cutting the live element over to a dead one. Nor is there anything to switch
-    // from once a load or a reset came while it buffered: what plays now (or nothing) stands.
+    // than cutting the live element over to a dead one. So too when `loadSeq` moved: what
+    // plays now (or nothing) stands.
     if (!ready || seq !== this.loadSeq) {
       this.discard(pending);
       return false;

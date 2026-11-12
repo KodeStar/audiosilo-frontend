@@ -467,33 +467,6 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
     states.length = 0;
   }
 
-  it('a pause made while a downloaded copy buffers for the swap stands once it swaps in', async () => {
-    jest.useFakeTimers();
-    try {
-      await startPlaying(0);
-      const streaming = el();
-      const local: PlaybackTrack[] = directTracks.map((t, i) => ({
-        ...t,
-        url: `https://s/local/${i}.mp3`,
-      }));
-      const swap = svc.swapTo!(local, 0, 0);
-      const pending = el();
-      expect(pending).not.toBe(streaming);
-      // Paused while the copy buffers (the listener, or another tab began playing).
-      await svc.pause();
-      expect(svc.getSnapshot().state).toBe('paused');
-      pending.emit('loadedmetadata');
-      pending.readyState = 4;
-      pending.emit('canplay');
-      expect(await swap).toBe(true);
-      expect(pending.plays).toBe(0);
-      expect(svc.getSnapshot().state).toBe('paused');
-      expect(states).not.toContain('playing');
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
   describe('a swap to the local copy still buffering', () => {
     const local = directTracks.map((t, i) => ({ ...t, url: `https://s/local/${i}.mp3` }));
     /** The swap's element gets ready at its place. */
@@ -504,6 +477,22 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
     }
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
+
+    it('keeps a pause made meanwhile once it swaps in', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 0);
+      const pending = el();
+      expect(pending).not.toBe(streaming);
+      // Paused while the copy buffers (the listener, or another tab began playing).
+      await svc.pause();
+      expect(svc.getSnapshot().state).toBe('paused');
+      ready(pending);
+      expect(await swap).toBe(true);
+      expect(pending.plays).toBe(0);
+      expect(svc.getSnapshot().state).toBe('paused');
+      expect(states).not.toContain('playing');
+    });
 
     it('switches to nothing once the book was reset meanwhile (a stop, a cast taking over)', async () => {
       await startPlaying(0);

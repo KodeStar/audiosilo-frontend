@@ -1788,25 +1788,6 @@ describe('the download hot-swap across file orders', () => {
     expect(savedPositions()).toContain(25);
   });
 
-  it('saves a stop made while the swap loads', async () => {
-    await streamIn(newOrder);
-    let landed: () => void = () => {};
-    (mockSvc.load as jest.Mock).mockImplementationOnce(
-      () => new Promise<void>((resolve) => (landed = resolve)),
-    );
-    downloadLands(oldOrder);
-    await flushMicrotasks();
-    await usePlayer.getState().stop();
-    // The stop saved the place: nothing held it.
-    expect(savedPositions()).toEqual([20]);
-    (mockSvc.play as jest.Mock).mockClear();
-    landed();
-    await flushMicrotasks();
-    // The swap landing after the stop brings nothing back, and plays nothing.
-    expect(usePlayer.getState().nowPlaying).toBeNull();
-    expect(mockSvc.play).not.toHaveBeenCalled();
-  });
-
   /** The next `load` waits until the returned release is called (an engine still loading). */
   function holdNextLoad(report?: (index: number, position: number) => void) {
     let release: () => void = () => {};
@@ -1823,6 +1804,24 @@ describe('the download hot-swap across file orders', () => {
   }
   /** The download holds one more file, first: every file of the stream one index later. */
   const withExtra = ['A/Folder/c.mp3', ...newOrder];
+
+  it('saves a stop made while the swap loads', async () => {
+    await streamIn(newOrder);
+    const land = holdNextLoad();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    await usePlayer.getState().stop();
+    // The stop saved the place: nothing held it.
+    expect(savedPositions()).toEqual([20]);
+    (mockSvc.setRate as jest.Mock).mockClear();
+    (mockSvc.play as jest.Mock).mockClear();
+    land();
+    await flushMicrotasks();
+    // The swap landing after the stop brings nothing back: no speed set, nothing played.
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    expect(mockSvc.setRate).not.toHaveBeenCalled();
+    expect(mockSvc.play).not.toHaveBeenCalled();
+  });
 
   it("waits for a start's load before swapping, and swaps at that start's place", async () => {
     // Another book plays 50 s in; this book's start (10 s into 10.mp3) is still loading.
@@ -1874,21 +1873,6 @@ describe('the download hot-swap across file orders', () => {
     await flushMicrotasks();
     expect((mockSvc.setRate as jest.Mock).mock.lastCall).toEqual([1.5]);
     expect(mockSvc.play).toHaveBeenCalledTimes(1);
-  });
-
-  it('neither sets the speed nor plays after a stop made while the swap loads', async () => {
-    await streamIn(newOrder);
-    const land = holdNextLoad();
-    downloadLands(oldOrder);
-    await flushMicrotasks();
-    await usePlayer.getState().stop();
-    (mockSvc.setRate as jest.Mock).mockClear();
-    (mockSvc.play as jest.Mock).mockClear();
-    land();
-    await flushMicrotasks();
-    expect(mockSvc.setRate).not.toHaveBeenCalled();
-    expect(mockSvc.play).not.toHaveBeenCalled();
-    expect(usePlayer.getState().nowPlaying).toBeNull();
   });
 
   it("saves the playing file's place on a stop after the engine reported the download's index", async () => {

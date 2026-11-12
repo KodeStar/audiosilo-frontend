@@ -214,9 +214,10 @@ const SAVE_HOLD_MAX_MS = 5_000;
  * index before its swap or load returns, while the store still holds the stream's queue: the
  * engine's reports are read back through the download's queue onto the stream's
  * (`throughSwap`), so the saves, the sleep timer and jump undo keep reading the playing
- * file's place. A place still at another index of that book (one the mapping could not
- * place) is refused by `persist` and `onRemoteMove` meanwhile. Released at the commit, or
- * when the swap is refused or fails.
+ * file's place. A place at another index of that book is still refused meanwhile: by
+ * `persist`, one the mapping put on another file of the stream (the download's engine moved
+ * on), and by `onRemoteMove`, whose index is the engine's own, never mapped. Released at the
+ * commit, or when the swap is refused or fails.
  */
 let swapHold: { nowPlaying: NowPlaying; trackIndex: number; queue: BookQueue } | null = null;
 /**
@@ -233,20 +234,36 @@ let quietAdopted: string | null = null;
 const heldBySwap = (np: NowPlaying, trackIndex: number) =>
   swapHold !== null && swapHold.nowPlaying === np && trackIndex !== swapHold.trackIndex;
 /**
+ * A snapshot's place in one queue read onto another queue of the same book, by its file
+ * (track ids are path-keyed): the same file's index there, or `lost` for a file that queue
+ * lacks.
+ */
+function ontoQueue(
+  s: PlaybackSnapshot,
+  from: BookQueue,
+  to: BookQueue,
+  lost: Pick<PlaybackSnapshot, 'trackIndex' | 'position' | 'duration'>,
+): PlaybackSnapshot {
+  const at = trackIndexById(to, from.tracks[s.trackIndex]?.id);
+  if (at === s.trackIndex) return s;
+  return at >= 0 ? { ...s, trackIndex: at } : { ...s, ...lost };
+}
+/**
  * An engine report read onto the queue the store holds while the hot-swap moves the playing
  * file (`swapHold`): one at another index is the download's, so it becomes the same file's
- * index in the stream's queue (track ids are path-keyed), and one in a file the stream lacks
- * keeps the store's place (`prev`) until the commit moves it.
+ * index in the stream's queue, and one in a file the stream lacks keeps the store's place
+ * (`prev`) until the commit moves it.
  */
 function throughSwap(s: PlaybackSnapshot, prev: PlaybackSnapshot): PlaybackSnapshot {
   const hold = swapHold;
   if (!hold || s.trackIndex === hold.trackIndex) return s;
   const np = usePlayer.getState().nowPlaying;
   if (np !== hold.nowPlaying) return s;
-  const at = trackIndexById(np.queue, hold.queue.tracks[s.trackIndex]?.id);
-  if (at === s.trackIndex) return s;
-  if (at >= 0) return { ...s, trackIndex: at };
-  return { ...s, trackIndex: prev.trackIndex, position: prev.position, duration: prev.duration };
+  return ontoQueue(s, hold.queue, np.queue, {
+    trackIndex: prev.trackIndex,
+    position: prev.position,
+    duration: prev.duration,
+  });
 }
 /** When the transport last settled out of `playing` (a pause, from any source), else
  * null. A play after `LONG_PAUSE_MS` of it is a book picked up again, which is when
@@ -2825,7 +2842,8 @@ async function switchCurrentBookToLocal() {
     local,
     useSettings.getState().virtualChapterInterval,
   );
-  if (!sameIds(idsOf(queue), idsOf(nowPlaying.queue))) {
+  const sameOrder = sameIds(idsOf(queue), idsOf(nowPlaying.queue));
+  if (!sameOrder) {
     const held = new Set(queue.tracks.map((t) => t.id));
     const sameFiles =
       queue.tracks.length === nowPlaying.queue.tracks.length &&
@@ -2856,31 +2874,24 @@ async function switchCurrentBookToLocal() {
   // Commit only once the engine has actually moved onto the local files, and only while
   // this book is still the store's: a stop, a sign-out, a switch of person or another
   // start while the swap was out must not bring it back, nor move another book's floor.
-  let committed: NowPlaying | null = null;
-  const commit = (): boolean => {
+  // The book as committed, or null when it is no longer the store's.
+  const commit = (): NowPlaying | null => {
     if (swapHold?.nowPlaying === nowPlaying) swapHold = null;
     const { nowPlaying: now, snapshot: at } = usePlayer.getState();
-    if (now !== nowPlaying) return false;
+    if (now !== nowPlaying) return null;
     resumeFloor = Math.max(0, resumeFloor + shift);
-    committed = { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue };
+    const committed = { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue };
     // The store's place moves onto the download's queue with it, by the file: the engine's
     // report of the download's index can be held back (a stream in `error` holds every
     // report but `playing`), and the stream's index read through the download's queue is
     // another file's place. A file the download lacks lands where the swap put it.
-    const same = trackIndexById(queue, nowPlaying.queue.tracks[at.trackIndex]?.id);
-    const moved =
-      same === at.trackIndex
-        ? at
-        : same >= 0
-          ? { ...at, trackIndex: same }
-          : {
-              ...at,
-              trackIndex: index,
-              position: positionInTrack,
-              duration: queue.tracks[index]?.duration ?? at.duration,
-            };
+    const moved = ontoQueue(at, nowPlaying.queue, queue, {
+      trackIndex: index,
+      position: positionInTrack,
+      duration: queue.tracks[index]?.duration ?? at.duration,
+    });
     usePlayer.setState({ nowPlaying: committed, snapshot: moved });
-    return true;
+    return committed;
   };
 
   if (svc.isCasting?.()) {
@@ -2889,7 +2900,7 @@ async function switchCurrentBookToLocal() {
     // it. The route keeps the phone's copy for when the book comes back to the phone. The
     // receiver's track indices read through the store's queue, so only a download in the
     // order it plays is taken; the next start uses one holding other files.
-    if (!sameIds(idsOf(queue), idsOf(nowPlaying.queue))) return;
+    if (!sameOrder) return;
     svc.rememberLoad?.({
       tracks: queue.tracks,
       chapters: queue.chapterClips,
@@ -2929,7 +2940,8 @@ async function switchCurrentBookToLocal() {
       );
       // Committed before the rate and the play, so the play's `playing` (and the save loop
       // it starts) reads the engine's index through the download's queue.
-      if (!commit()) return;
+      const committed = commit();
+      if (!committed) return;
       // The speed and the intent as they stand now: a speed set or a pause made while the
       // load was out reached the engine before it landed, and stands.
       await svc.setRate(usePlayer.getState().rate);
