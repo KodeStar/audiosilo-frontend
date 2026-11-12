@@ -227,9 +227,9 @@ class AppModel private constructor(private val context: Context) {
     spans.recover()?.let(places::recover)
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
-    publishState()
-    // A book's stage moving is news for the phone (its Preparing and Downloading rows), whoever
-    // moved it: a BookWorker run with the app closed too, as this model is the process's.
+    // The launch's publish (the flow's first value), then each move of a book's stage: news for the
+    // phone (its Preparing and Downloading rows), whoever moved it, a BookWorker run with the app
+    // closed too, as this model is the process's.
     scope.launch { downloads.stages.collect { publishState() } }
   }
 
@@ -527,7 +527,6 @@ class AppModel private constructor(private val context: Context) {
   /** The Download button (and Try again): queue the book and start its worker. */
   fun download(row: ContinueRow) {
     queue(row.ref, row.title, row.author, sentAt = null)
-    publishState()
   }
 
   /** Queue a book's record and start its worker; `sentAt` is the phone's, for a book it sent. */
@@ -550,7 +549,6 @@ class AppModel private constructor(private val context: Context) {
     files.folder(r).deleteRecursively()
     files.item(ref).delete()
     downloads.remove(ref)
-    publishState()
   }
 
   /** Remove every book (the account was left). */

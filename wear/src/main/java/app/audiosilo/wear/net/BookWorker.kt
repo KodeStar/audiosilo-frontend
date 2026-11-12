@@ -84,6 +84,7 @@ class BookWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
       }
     } finally {
       wifi?.close()
+      // Stage moves publish themselves (AppModel's `stages`); a failed index write (`saved`) does not.
       model.publishState()
     }
   }
