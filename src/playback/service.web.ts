@@ -548,6 +548,7 @@ class WebPlaybackService implements PlaybackService {
     positionInTrack: number,
     _chapters?: PlaybackChapter[], // ignored on web (see load)
     _book?: BookRef, // ignored on web (see load)
+    onSwitch?: () => void,
   ): Promise<boolean> {
     const track = tracks[startIndex];
     if (!track) return false;
@@ -644,6 +645,8 @@ class WebPlaybackService implements PlaybackService {
     // The swapped-in element gets its own source node (an element's one for life).
     this.routeBoost(pending);
     this.setMediaSession(track);
+    // Told before the first report in the new queue's order (the one below).
+    onSwitch?.();
     this.update({
       trackIndex: startIndex,
       position: positionInTrack,

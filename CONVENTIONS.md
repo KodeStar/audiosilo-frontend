@@ -1528,7 +1528,10 @@ media GETs only.
   the resume floor moving with it. While that moves the track index (`swapHold`, which holds
   the download's queue), the engine's reports at the download's index are read back onto the
   stream's queue by file (`throughSwap`, in the snapshot intake; a file the stream lacks keeps
-  the store's place), so a stop, the sleep timer and jump undo read the playing file's place;
+  the store's place), so a stop, the sleep timer and jump undo read the playing file's place.
+  Only once the engine is on the download: a load from its call, a gapless swap from its
+  switch (`swapTo`'s `onSwitch`; while the copy buffers the web engine goes on reporting the
+  stream, in the stream's order);
   `persist` and `onRemoteMove` still refuse a place at another index of that book until the
   download's queue is committed, which on a load is before the rate and the play. The commit
   moves the store's snapshot onto the download's index by file too (a stream in `error` holds

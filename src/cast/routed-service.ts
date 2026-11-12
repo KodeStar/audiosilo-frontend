@@ -81,7 +81,7 @@ export class RoutedPlaybackService implements PlaybackService {
     });
     if (local.swapTo) {
       const swap = local.swapTo.bind(local);
-      this.swapTo = async (tracks, startIndex, positionInTrack, chapters, book) => {
+      this.swapTo = async (tracks, startIndex, positionInTrack, chapters, book, onSwitch) => {
         const load = { tracks, chapters, book };
         // While casting, the receiver streams from the server whatever the phone holds:
         // only remember the local files, for when the book comes back to the phone.
@@ -89,7 +89,7 @@ export class RoutedPlaybackService implements PlaybackService {
           this.lastLoad = load;
           return true;
         }
-        const ok = await swap(tracks, startIndex, positionInTrack, chapters, book);
+        const ok = await swap(tracks, startIndex, positionInTrack, chapters, book, onSwitch);
         if (ok) this.lastLoad = load;
         return ok;
       };

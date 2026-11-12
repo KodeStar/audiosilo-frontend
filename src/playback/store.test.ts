@@ -2040,6 +2040,49 @@ describe('the download hot-swap across file orders', () => {
       swapped(false);
       await flushMicrotasks();
     });
+
+    /** A swap still buffering: `switched` is the engine's switch, `swapped` its answer. */
+    function bufferingSwap() {
+      const swap = { switched: () => {}, swapped: (_ok: boolean) => {} };
+      web.swapTo = jest.fn((...args: unknown[]) => {
+        swap.switched = args[5] as () => void;
+        return new Promise<boolean>((resolve) => (swap.swapped = resolve));
+      });
+      return swap;
+    }
+
+    it("reads the stream's own move to its next file as the stream's while the copy buffers", async () => {
+      // 20 s into 2.mp3 (index 0); the download holds it at index 1, after c.mp3.
+      const swap = bufferingSwap();
+      await streamIn(newOrder);
+      downloadLands(withExtra);
+      await flushMicrotasks();
+      // The stream plays on into 10.mp3 (its index 1), which the download holds at 2: read
+      // through the download's queue it would be 2.mp3 again, 3 s in.
+      pushSnapshot(snap('playing', 3, { trackIndex: 1, duration: 30 }));
+      expect(selectBookPosition(usePlayer.getState())).toBe(73);
+      // The engine refuses the swap (the file changed under it): the place saves as it is.
+      swap.swapped(false);
+      await flushMicrotasks();
+      pushSnapshot(snap('paused', 4, { trackIndex: 1, duration: 30 }));
+      await flushMicrotasks();
+      expect(savedPositions()).toEqual([74]);
+    });
+
+    it("reads the copy's index onto the stream's queue from the switch to the commit", async () => {
+      const swap = bufferingSwap();
+      await streamIn(newOrder);
+      downloadLands(withExtra);
+      await flushMicrotasks();
+      swap.switched();
+      // The engine is on the copy: its index 1 is 2.mp3, the stream's index 0.
+      pushSnapshot(snap('playing', 21, { trackIndex: 1, duration: 70 }));
+      expect(selectBookPosition(usePlayer.getState())).toBe(21);
+      swap.swapped(true);
+      await flushMicrotasks();
+      expect(queueUrls()).toEqual(withExtra.map(urlOf));
+      expect(selectBookPosition(usePlayer.getState())).toBe(71); // c.mp3's 50 + 21
+    });
   });
 });
 

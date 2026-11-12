@@ -535,6 +535,29 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       expect(svc.getSnapshot().position).toBe(45);
     });
 
+    it('tells the switch before its first report in the new order, and never a refusal', async () => {
+      await startPlaying(0);
+      const seen: (number | 'switch')[] = [];
+      svc.subscribe((s) => void seen.push(s.trackIndex));
+      const onSwitch = () => void seen.push('switch');
+      // The copy holds the playing file at index 1.
+      const swap = svc.swapTo!([local[1], local[0]], 1, 30, undefined, undefined, onSwitch);
+      const pending = el();
+      seen.length = 0;
+      ready(pending);
+      expect(await swap).toBe(true);
+      expect(seen.indexOf('switch')).toBe(0);
+      expect(seen.slice(1).every((index) => index === 1)).toBe(true);
+
+      seen.length = 0;
+      const refused = svc.swapTo!(local, 0, 30, undefined, undefined, onSwitch);
+      const dropped = el();
+      await svc.seekTo(45);
+      ready(dropped);
+      expect(await refused).toBe(false);
+      expect(seen).not.toContain('switch');
+    });
+
     it('plays the swapped-in copy at a volume set while it buffered', async () => {
       await startPlaying(0);
       const swap = svc.swapTo!(local, 0, 30);

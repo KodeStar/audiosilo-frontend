@@ -179,6 +179,9 @@ export interface PlaybackService {
    * Resolves `true` if the swap happened, `false` if it was refused: the local source
    * can't be served (the original source is still playing), or a load, a reset, a seek or
    * a move to another file was made while the new source buffered (what that left stands).
+   *
+   * `onSwitch` is called as the engine switches, before its first report from the new
+   * source: every report until then is still the original source's, in its own track order.
    */
   swapTo?(
     tracks: PlaybackTrack[],
@@ -186,6 +189,7 @@ export interface PlaybackService {
     positionInTrack: number,
     chapters?: PlaybackChapter[],
     book?: BookRef,
+    onSwitch?: () => void,
   ): Promise<boolean>;
   play(): Promise<void>;
   pause(): Promise<void>;

@@ -214,12 +214,19 @@ const SAVE_HOLD_MAX_MS = 5_000;
  * index before its swap or load returns, while the store still holds the stream's queue: the
  * engine's reports are read back through the download's queue onto the stream's
  * (`throughSwap`), so the saves, the sleep timer and jump undo keep reading the playing
- * file's place. A place at another index of that book is still refused meanwhile: by
- * `persist`, one the mapping put on another file of the stream (the download's engine moved
- * on), and by `onRemoteMove`, whose index is the engine's own, never mapped. Released at the
- * commit, or when the swap is refused or fails.
+ * file's place. Only once the engine is on the download (`live`): a load is from the call,
+ * while a gapless swap (`swapTo`) goes on reporting the stream, in the stream's order, until
+ * it switches. A place at another index of that book is still refused meanwhile: by
+ * `persist`, one the stream moved to while the copy buffered or the mapping put on another
+ * file (the download's engine moved on), and by `onRemoteMove`, whose index is the engine's
+ * own, never mapped. Released at the commit, or when the swap is refused or fails.
  */
-let swapHold: { nowPlaying: NowPlaying; trackIndex: number; queue: BookQueue } | null = null;
+let swapHold: {
+  nowPlaying: NowPlaying;
+  trackIndex: number;
+  queue: BookQueue;
+  live: boolean;
+} | null = null;
 /**
  * The book (its `contentKey`) `adoptLoaded` had to reload in its own file order (fe#134): its
  * engine's place is not new and was never checked against the server, so nothing saves it
@@ -256,7 +263,7 @@ function ontoQueue(
  */
 function throughSwap(s: PlaybackSnapshot, prev: PlaybackSnapshot): PlaybackSnapshot {
   const hold = swapHold;
-  if (!hold || s.trackIndex === hold.trackIndex) return s;
+  if (!hold || !hold.live || s.trackIndex === hold.trackIndex) return s;
   const np = usePlayer.getState().nowPlaying;
   if (np !== hold.nowPlaying) return s;
   return ontoQueue(s, hold.queue, np.queue, {
@@ -2915,10 +2922,13 @@ async function switchCurrentBookToLocal() {
     return;
   }
 
-  // The engine reports the download's track index before its swap or load returns.
-  if (index !== snapshot.trackIndex) {
-    swapHold = { nowPlaying, trackIndex: snapshot.trackIndex, queue };
-  }
+  // The engine reports the download's track index before its swap or load returns: a load
+  // from its call, a gapless swap from its switch (the stream reports its own until then).
+  const hold =
+    index !== snapshot.trackIndex
+      ? { nowPlaying, trackIndex: snapshot.trackIndex, queue, live: !svc.swapTo }
+      : null;
+  if (hold) swapHold = hold;
   try {
     if (svc.swapTo) {
       // Gapless: keep streaming until the local file is buffered at this position. The
@@ -2930,6 +2940,9 @@ async function switchCurrentBookToLocal() {
         positionInTrack,
         queue.chapterClips,
         bookRefOf(nowPlaying),
+        () => {
+          if (hold) hold.live = true;
+        },
       );
       if (swapped) commit();
     } else {
