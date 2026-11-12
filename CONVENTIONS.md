@@ -2682,7 +2682,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   deletes its own item on a match; the watch reads all its `/to/` items at each start, skips one
   its receipt names, ignores DELETED there, and drops a receipt once its item is gone. A
   `remove` older than the download it would remove is ignored. `watch-state` at
-  `/audiosilo/v1/watch-state`. No `state-please`.
+  `/audiosilo/v1/watch-state`. No `state-please`. The app advertises `audiosilo_wear_app`
+  (`res/values/wear.xml`), which only Play services reads, by name: `res/raw/audiosilo_wear_keep.xml`
+  keeps it through release resource shrinking (a `tools:keep` on a values file's root is dropped at
+  the merge), and `wear.yml` fails if the release APK loses it.
 - **PhoneLink (`phone/`)**: the only code that reads `/to/<me>/` or puts the watch's items. Two
   ways in, one path: `PhoneLinkService` (the one WearableListenerService, filtered to
   `/audiosilo/v1/to/`, so GMS starts the app for an item even when it was swiped away) and the
