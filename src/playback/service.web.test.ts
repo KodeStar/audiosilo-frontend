@@ -535,6 +535,28 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       expect(svc.getSnapshot().position).toBe(45);
     });
 
+    it('counts the auto-rewind of a play after a pause meanwhile as a move', async () => {
+      await svc.configure({
+        autoRewindMax: 30,
+        jumpForward: 30,
+        jumpBackward: 15,
+        smartSpeed: false,
+        voiceBoost: false,
+      });
+      await startPlaying(0);
+      const streaming = el();
+      streaming.currentTime = 30;
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.pause();
+      jest.advanceTimersByTime(5_000);
+      await svc.play(); // rewinds the stream in place
+      ready(pending);
+      expect(await swap).toBe('moved');
+      expect(pending.plays).toBe(0);
+      expect(streaming.currentTime).toBeLessThan(30);
+    });
+
     it('keeps the stream on a file the listener moved to meanwhile, as a move', async () => {
       await startPlaying(0);
       const streaming = el();

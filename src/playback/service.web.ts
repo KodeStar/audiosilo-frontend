@@ -590,9 +590,11 @@ class WebPlaybackService implements PlaybackService {
     const seeks = this.seekSeq;
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const done = (ok: boolean) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         pending.removeEventListener('loadedmetadata', onLoaded);
         pending.removeEventListener('canplay', onReady);
         pending.removeEventListener('seeked', onReady);
@@ -617,7 +619,7 @@ class WebPlaybackService implements PlaybackService {
       pending.addEventListener('seeked', onReady);
       pending.addEventListener('error', onError);
       pending.load();
-      setTimeout(() => done(false), 8000); // never hang; a slow load counts as a failed swap
+      timer = setTimeout(() => done(false), 8000); // never hang; a slow load counts as a failed swap
     });
 
     // The local source never became playable - discard it and keep streaming rather
@@ -729,7 +731,11 @@ class WebPlaybackService implements PlaybackService {
       await this.playElement(a);
       return;
     }
-    if (rewind > 0.5) a.currentTime = Math.max(0, a.currentTime - rewind);
+    if (rewind > 0.5) {
+      // A seek in place like `seekTo`'s: a copy `swapTo` buffered before it is behind it.
+      this.seekSeq++;
+      a.currentTime = Math.max(0, a.currentTime - rewind);
+    }
     await this.playElement(a);
   }
 
