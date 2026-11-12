@@ -2534,9 +2534,31 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   The messages are built and parsed in `src/watch/watch-model.ts`, the other half of
   `Core/PhoneMessages.swift`: a field changed here changes there, with tests on both. Plain
   property lists only (`addresses: {}`, never a null: the native side rejects the rest).
-  JS reaches the module only through `src/watch/link.ios.ts`; `link.ts` is the no-op for web and
-  Android (Wear OS comes in behind the same `WatchLink`, W4). `watchLink.supported` is read once
-  at load, so `useSendToWatch` and the account card cost a platform without a watch nothing.
+  JS reaches the module only through `src/watch/link.native.ts` (iOS and Android); `link.ts` is
+  the no-op for web. `watchLink.supported` is read once at load, so `useSendToWatch` and the
+  account card cost a platform without a watch nothing.
+  - **Android: the Wear OS phone side (W4b, `modules/audiosilo-watch/android/`).** The same JS
+    surface over the Wear Data Layer, plus `openInstallOnWatch` (the card's Install on watch:
+    `RemoteActivityHelper` opens Play on every connected watch). `WearLink.kt` is the phone's only
+    Data Layer user (nothing else puts or deletes under `/audiosilo/v1/`); its rules are pure in
+    `WearRules.kt` (JVM tests: `./gradlew :audiosilo-watch:testDebugUnitTest` after prebuild).
+    `isSupported` is Play services being there; with no Wear OS app on the phone the snapshot says
+    no watch. Each message is a DataItem of UTF-8 JSON (`pair` at `/audiosilo/v1/to/<node>/pair`,
+    `book`/`remove` sharing `/audiosilo/v1/to/<node>/book/<sha256 of server_id.user_id|library_id|path>`),
+    every one with `sent_at` (`watch-model.ts`; an identical put sends nothing). The watch never
+    deletes them: it puts a receipt at `/audiosilo/v1/from/<node>/taken/<last segment>`
+    (`{v:1,type:"taken",path,sent_at}`), and the phone deletes its own item only when the path and
+    the `sent_at` text match what it holds (a newer send stays), from `WearLinkService` (Play
+    services wakes the app for receipts and `watch-state`) or the running app's listener, plus a
+    sweep at start. So `outstanding` is the phone's own book items still there, never `failed`
+    (the 7-day hold ends one the watch never takes), and "delivered" means the watch app took it.
+    Pairs are pruned past `expires_at` at every snapshot, send and start, and a new pair drops any
+    held for another watch. One watch at a time: of the nodes with the app (capability
+    `audiosilo_wear_app`, or a `watch-state`), the one whose `watch-state` this phone saw last
+    (kept in prefs), else one nearby; `watch_id` is its node id. The phone advertises
+    `audiosilo_phone_app` (`res/values/wear.xml`). The wording on Android (`watchWording`,
+    `watchKind`) says "your watch" or "Wear OS watch", never "Apple Watch", and never asks for the
+    watch app to be opened: its listener takes what is sent.
   - **Order is the rule of `pair` then `book`.** The watch handles messages in order and holds a
     book for an account it does not hold yet, so `sendPair` answers only once the pair is ahead of
     what follows (the watch replied to `sendMessage`, or it fell back to `transferUserInfo`, FIFO

@@ -215,7 +215,7 @@ keep this index in step (one line per topic).
   - Android Auto
   - CarPlay and the UIScene life cycle
   - Tokens on a locked phone
-  - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, the watch scheme, the player, spans and background sync, sign-out, the phone's side `modules/audiosilo-watch` + `src/watch/`, the watch in Downloads and `remove`, DEBUG launch variables)
+  - Apple Watch app (`targets/watch/`: Swift ports, Foundation-only Core, one WCSession delegate, the watch scheme, the player, spans and background sync, sign-out, the phone's side `modules/audiosilo-watch` + `src/watch/` (iOS, and Android's Wear OS link), the watch in Downloads and `remove`, DEBUG launch variables)
   - Wear OS app (`wear/` + `wear-core/`: build wiring and AUDIOSILO_NO_WEAR, the Core boundary and what is not ported, BookWorker downloads and the Wi-Fi wait, TokenStore, sign-in, the Data Layer contract with receipts, PhoneLink, playback and the speaker question, sync triggers and SyncWorker, the debug sign-in, build and test)
   - A route, not a second player (decision 7)
   - The receiver never gets the session token
@@ -285,7 +285,7 @@ src/theme/          tokens (tokens.json source -> generated tokens.ts) + ThemePr
 src/lib/            storage (+ storage-keys), secure-store, bootstrap (launch steps), storage + identity migrations, connection-id, profile-pin, sha256, native-intent, device, paths, format, register-sw
 reader/             the reader document's source + vendored foliate-js; `npm run reader:build` -> public/reader.html + src/reader/reader-html.native.ts
 modules/audiosilo-player/   the native playback module (ios/ Swift, android/ Kotlin, src/ its TS surface)
-modules/audiosilo-watch/    the phone's WatchConnectivity link (apple only: the single WCSessionDelegate)
+modules/audiosilo-watch/    the phone's watch link: WatchConnectivity on iOS (the single WCSessionDelegate), the Wear Data Layer on Android (WearLink, the single Data Layer user)
 targets/watch/      the Apple Watch app (Swift, not bundled by Metro): Core/ (Foundation-only ports of the player's rules), Net/, Storage/, Phone/, Playback/, UI/
 watch-core/         SwiftPM package over targets/watch/Core (a symlink), so its tests run on the host
 wear/               the Wear OS app (Kotlin, Compose for Wear M3; Gradle module :wear wired by withWearApp): storage/, net/, phone/, playback/, ui/, AppModel; src/debug the debug sign-in
