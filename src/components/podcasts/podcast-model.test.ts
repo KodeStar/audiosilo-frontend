@@ -12,6 +12,7 @@ import {
   fetchProgress,
   fetchReasonKey,
   isRecent,
+  offersEpisodeDownload,
   rowStateReasonKey,
   visibleEpisodes,
 } from './podcast-model';
@@ -49,6 +50,36 @@ describe('canRetryFetch (R-23)', () => {
       expect(canRetryFetch({ kind: 'unavailable', code })).toBe(false);
     }
     expect(canRetryFetch({ kind: 'ready' })).toBe(false);
+  });
+});
+
+describe('offersEpisodeDownload (fe#166)', () => {
+  it('offers a download unless the episode is not available, from any of its sources', () => {
+    const ep = podcastEpisode({ downloaded: false });
+    expect(offersEpisodeDownload(ep, episodeRowState(ep, null, true))).toBe(true);
+    const held = podcastEpisode();
+    expect(offersEpisodeDownload(held, episodeRowState(held, null, false))).toBe(true);
+    // The server can fetch, but said it can't for this one (the menu used to offer it).
+    const refused = podcastEpisode({
+      downloaded: false,
+      fetch: fetchStatus({
+        state: 'unavailable',
+        error: { code: 'library_not_writable', message: 'read-only' },
+      }),
+    });
+    expect(offersEpisodeDownload(refused, episodeRowState(refused, null, true))).toBe(false);
+    expect(offersEpisodeDownload(ep, episodeRowState(ep, null, false))).toBe(false);
+    const stopped = { phase: 'unavailable' as const, status: null, code: 'module_off' };
+    expect(offersEpisodeDownload(ep, episodeRowState(ep, stopped, true))).toBe(false);
+    // One on its server needs no fetch: a stopped fetch of it from before never hides it.
+    expect(offersEpisodeDownload(held, episodeRowState(held, stopped, true))).toBe(true);
+  });
+
+  it('still offers one whose fetch failed or is on its way', () => {
+    const ep = podcastEpisode({ downloaded: false });
+    expect(offersEpisodeDownload(ep, { kind: 'failed', code: 'http_500' })).toBe(true);
+    expect(offersEpisodeDownload(ep, { kind: 'getting', percent: 10 })).toBe(true);
+    expect(offersEpisodeDownload(ep, { kind: 'onDemand' })).toBe(true);
   });
 });
 

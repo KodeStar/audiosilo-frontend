@@ -1104,6 +1104,10 @@
         "declined": "Os próximos livros ficam como estão: você os removeu.",
         "unavailable": "Este navegador não consegue manter os próximos livros offline."
       },
+      "episodes": {
+        "label": "Baixar episódios de podcast quando você os inicia",
+        "hint": "Segue a mesma regra de rede dos livros. Um episódio que ainda não está no seu servidor é baixado lá primeiro."
+      },
       "autoDelete": "Remover um download quando terminares o livro"
     },
     "browser": {
@@ -1118,6 +1122,8 @@
       "progress": "{{percent}}% · faltam {{size}}",
       "percent": "{{percent}}%",
       "queued": "Aguardando para começar",
+      "gettingOnServer": "Baixando no seu servidor",
+      "gettingOnServerPercent": "Baixando no seu servidor {{percent}}%",
       "waitingWifi": "Aguardando o Wi-Fi",
       "noSpace": "Precisa de mais espaço livre",
       "keptAhead": "Preparado",
@@ -1139,6 +1145,7 @@
       "unservable": "Salvo, mas a reprodução offline ainda não está pronta. Recarregue o app e tente de novo.",
       "removed": "Você não está mais conectado a este servidor.",
       "interrupted": "A app fechou antes de terminar.",
+      "serverFetch": "{{server}} não conseguiu obter este episódio.",
       "unknown": "O download parou.",
       "notInBrowser": "Este navegador não consegue reproduzir este livro offline. Remova-o para liberar o espaço.",
       "kept": "Seus {{percent}}% estão guardados.",
@@ -1149,6 +1156,11 @@
       "sub_one": "{{count}} livro · toca sem conexão",
       "sub_other": "{{count}} livros · tocam sem conexão",
       "serverSize": "{{server}} · {{size}}"
+    },
+    "episodes": {
+      "title": "Episódios de podcast",
+      "sub_one": "{{count}} episódio · toca sem conexão",
+      "sub_other": "{{count}} episódios · tocam sem conexão"
     },
     "remove": {
       "title": "Remover este download?",
@@ -1353,6 +1365,7 @@
       "forOffline": "Transferir para ouvir offline",
       "progressCancel": "{{percent}}% · Cancelar",
       "queuedCancel": "Na fila · Cancelar",
+      "gettingCancel": "Baixando no seu servidor · Cancelar",
       "onDevice": "{{size}} neste dispositivo"
     },
     "chapters": {
@@ -2880,6 +2893,7 @@
       "gettingPercent": "Baixando {{percent}}%",
       "failed": "Não foi possível baixar",
       "unavailable": "Indisponível agora",
+      "onDevice": "Neste dispositivo",
       "play": "Tocar",
       "resume": "Continuar",
       "tryAgain": "Tentar de novo",

@@ -100,7 +100,8 @@ function NowCardBody({ at, saved }: { at: BookAt; saved?: SourcedProgress & Plac
   const playableHere = usePlayableHere();
   const unplayable = !loaded && !playableHere(at);
   // Why, as the chrome says it (CONNECT-15): this device has no network, or it has one and
-  // the book's server isn't answering (named). An episode is never downloaded.
+  // the book's server isn't answering (named). An episode says so in its own words (one on
+  // this device is playable here).
   const deviceOnline = useDeviceOnline();
   const serverName = useConnectionName(at.connectionId);
   const byServer = deviceOnline && !!serverName;

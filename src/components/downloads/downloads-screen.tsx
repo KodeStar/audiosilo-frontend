@@ -11,7 +11,9 @@ import { Card } from '@/components/ui/card';
 import { Notice } from '@/components/ui/notice';
 import { Text } from '@/components/ui/text';
 import {
+  episodeShowTitle,
   groupByServer,
+  isEpisodeEntry,
   orphanDownloads,
   type ServerRef,
   statusSignature,
@@ -79,8 +81,9 @@ const CARDS_BESIDE_MIN = 716;
 /**
  * The Downloads tab (Stacks prototype `Downloads`): what is on this device and how much
  * room it takes per server, the automatic download rules, the browser's limits (web),
- * what is downloading or waiting, what is on a paired Apple Watch (iOS) and the books ready
- * offline grouped by server.
+ * what is downloading or waiting, what is on a paired Apple Watch (iOS), the books ready
+ * offline grouped by server and the podcast episodes on this device (fe#166, each with its
+ * show).
  */
 export function DownloadsScreen() {
   const { t } = useTranslation();
@@ -122,7 +125,11 @@ export function DownloadsScreen() {
       ),
     [entries, servers],
   );
-  const groups = useMemo(() => groupByServer(ready, servers), [ready, servers]);
+  // Episodes are listed on their own, under their show's name; the storage bar counts both.
+  const readyBooks = useMemo(() => ready.filter((e) => !isEpisodeEntry(e)), [ready]);
+  const readyEpisodes = useMemo(() => ready.filter(isEpisodeEntry), [ready]);
+  const groups = useMemo(() => groupByServer(readyBooks, servers), [readyBooks, servers]);
+  const allGroups = useMemo(() => groupByServer(ready, servers), [ready, servers]);
   // Downloads no signed-in account holds ("Not signed in", `orphanDownloads`): listed to
   // remove, since nothing else would ever free their room.
   const allConnections = useSession((s) => s.connections);
@@ -143,7 +150,7 @@ export function DownloadsScreen() {
     .filter((s) => !entries[downloadKey(s.book.connectionId, s.book.libraryId, s.book.path)]);
 
   const scope = storage.estimate?.scope ?? (Platform.OS === 'web' ? 'browser' : 'device');
-  const bar = storageBar(groups, storage.estimate, storage.measured);
+  const bar = storageBar(allGroups, storage.estimate, storage.measured);
   const summary =
     scope === 'device'
       ? t('downloads.summary.device', { size: formatBytes(bar.used) })
@@ -266,11 +273,11 @@ export function DownloadsScreen() {
           />
         ) : null}
 
-        {ready.length > 0 ? (
+        {readyBooks.length > 0 ? (
           <View className="gap-3">
             <SectionHead
               title={t('downloads.ready.title')}
-              sub={t('downloads.ready.sub', { count: ready.length })}
+              sub={t('downloads.ready.sub', { count: readyBooks.length })}
             />
             {groups.map((g) => (
               <View key={g.connectionId} className="gap-2">
@@ -300,6 +307,32 @@ export function DownloadsScreen() {
                 </Card>
               </View>
             ))}
+          </View>
+        ) : null}
+
+        {readyEpisodes.length > 0 ? (
+          <View className="gap-3" testID="downloads-episodes">
+            <SectionHead
+              title={t('downloads.episodes.title')}
+              sub={t('downloads.episodes.sub', { count: readyEpisodes.length })}
+            />
+            <Card className="overflow-hidden p-0">
+              {readyEpisodes.map((e, i) => {
+                const key = downloadKey(e.connectionId, e.libraryId, e.path);
+                return (
+                  <ReadyRow
+                    key={key}
+                    entry={e}
+                    byline={episodeShowTitle(e)}
+                    progressLabel={progressLabels.get(key)}
+                    first={i === 0}
+                    onOpen={() => openBook(e.connectionId, e.libraryId, e.path)}
+                    onPlay={() => void openPlayer(e.connectionId, e.libraryId, e.path)}
+                    onRemove={() => setRemoving(e)}
+                  />
+                );
+              })}
+            </Card>
           </View>
         ) : null}
 

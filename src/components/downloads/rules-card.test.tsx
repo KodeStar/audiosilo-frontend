@@ -48,4 +48,15 @@ describe('RulesCard', () => {
     expect(screen.getByText(/^Nothing downloads on its own/)).toBeTruthy();
     expect(screen.queryByText(/when you start listening/)).toBeNull();
   });
+
+  // fe#166 (D4b): episodes download on start only once turned on, under the same rule.
+  it('offers episodes on start, off by default', async () => {
+    useSettings.setState({ autoDownloadEpisodes: false });
+    await render(<RulesCard />);
+    const toggle = screen.getByRole('switch', {
+      name: 'Download podcast episodes when you start them',
+    });
+    expect(toggle.props.accessibilityState).toMatchObject({ checked: false });
+    expect(screen.getByText(/^Uses the same network rule as books\./)).toBeTruthy();
+  });
 });

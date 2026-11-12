@@ -3,15 +3,17 @@ import { create } from 'zustand';
 
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
-import { chaptersQuery, fetchFailFast, itemQuery, qk } from '@/api/hooks';
+import { cachedShowTitle, chaptersQuery, fetchFailFast, itemQuery, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
-import type { Book, PodcastFetchStatus, PodcastShow } from '@/api/types';
+import type { Book, PodcastFetchStatus } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
 import { startBookInPlace, type StartOptions } from '@/components/player/start-book';
 import { contentKeyOf } from '@/lib/content-key';
 import { onForeground } from '@/lib/when-active';
 import { mayActFor, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+
+import { blipDelay, isAbsentEpisode, pollDelay } from './episode-fetch-rules';
 
 /**
  * Playing an episode that is not on the server yet (Bridge Phase 2d-1). The server fetches
@@ -53,28 +55,11 @@ export const useEpisodeFetch = create<{ pending: PendingEpisodeFetch | null }>((
   pending: null,
 }));
 
-/** Whether `book` is an episode whose file is not on its server (yet). */
-export function isAbsentEpisode(book: Book): boolean {
-  return !!book.episode && !book.episode.downloaded;
-}
-
 /** Whether starting `book` must go through a fetch first: an episode not on its server,
  * on a server that fetches on demand (`podcast_fetch`). Otherwise it plays (or fails) as
  * it always did. */
 export function needsEpisodeFetch(book: Book, podcastFetch: boolean | undefined): boolean {
   return isAbsentEpisode(book) && podcastFetch === true;
-}
-
-/** The poll interval floor, seconds (the server's `Retry-After`). */
-const MIN_POLL_S = 2;
-/** The longest wait between two looks while the server keeps failing (5xx, no answer). */
-const MAX_BLIP_POLL_S = 60;
-
-/** The wait before the next look after `blips` failed looks in a row: doubling from the
- * floor, at most `MAX_BLIP_POLL_S`, and never under the answer's `Retry-After`. */
-export function blipDelay(blips: number, retryAfter?: number): number {
-  const backoff = Math.min(MAX_BLIP_POLL_S, MIN_POLL_S * 2 ** Math.max(0, blips - 1));
-  return Math.max(backoff, retryAfter ?? 0);
 }
 
 type Run = {
@@ -164,10 +149,9 @@ export function isEpisodeFetchStarting(key: string): boolean {
 /** The show's title from the cached show list, else its folder. */
 function showTitleOf(target: PlayTarget, book: Book): string {
   const showPath = book.episode?.show_path ?? '';
-  const shows = queryClient.getQueryData<PodcastShow[]>(
-    qk.podcastShows(target.connectionId, target.libraryId),
+  return (
+    cachedShowTitle(target.connectionId, target.libraryId, showPath) || book.author || showPath
   );
-  return shows?.find((s) => s.path === showPath)?.title || book.author || showPath;
 }
 
 /**
@@ -353,7 +337,7 @@ function settle(
 
 function schedule(r: Run, seconds: number) {
   if (run !== r) return;
-  const wait = Math.max(MIN_POLL_S, Number.isFinite(seconds) ? seconds : 0);
+  const wait = pollDelay(seconds);
   if (AppState.currentState === 'background') {
     r.paused = true;
     return;

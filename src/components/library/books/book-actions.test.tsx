@@ -64,11 +64,18 @@ jest.mock('@/playback/finish-route', () => ({
     return edit();
   },
 }));
+// The player's fetch of an episode (`useEpisodeFetch`'s `pending`), which the menu reads.
+let mockPending: object | null = null;
+jest.mock('@/playback/episode-fetch', () => ({
+  useEpisodeFetch: (select: (s: { pending: object | null }) => unknown) =>
+    select({ pending: mockPending }),
+}));
 let mockSendToWatch: jest.Mock | null = null;
 jest.mock('@/watch/use-watch', () => ({ useSendToWatch: () => mockSendToWatch }));
 
 /* eslint-disable import/first */
 import { CapabilityError } from '@/api/hooks';
+import { fetchStatus } from '@/testing/podcast-fixtures';
 
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -321,36 +328,98 @@ describe('useBookActions, Send to watch', () => {
   });
 });
 
-// Bridge Phase 2d-1: episodes are never kept offline (decision 6.1).
+// fe#166 (D1): an episode downloads like a book, once it is known to be one; never one its
+// server can't fetch, and never to a watch.
 describe('useBookActions, a podcast episode', () => {
+  const info = (downloaded: boolean): Book['episode'] => ({
+    show_path: 'Show',
+    published: null,
+    season: null,
+    episode: null,
+    episode_type: 'full',
+    explicit: false,
+    downloaded,
+    duration_source: 'file',
+    removed: false,
+  });
+  beforeEach(() => {
+    mockDownload.mockReset();
+    mockUseBook.mockReset();
+    mockFull = undefined;
+    mockPending = null;
+  });
   afterEach(() => {
     mockPodcastLibrary = false;
+    mockSendToWatch = null;
   });
 
-  it('offers no Download for an item that is an episode', async () => {
-    const b = book({
-      episode: {
-        show_path: 'Show',
-        published: null,
-        season: null,
-        episode: null,
-        episode_type: 'full',
-        explicit: false,
-        downloaded: true,
-        duration_source: 'file',
-        removed: false,
-      },
-    });
+  it('offers Download for an item that is an episode, and downloads it', async () => {
+    mockPodcastLibrary = true;
+    const b = book({ episode: info(true) });
     const { find } = await actions(b);
-    expect(find('download')).toBeUndefined();
+    expect(find('download')!.label).toBe('Download for offline');
+    find('download')!.onPress();
+    expect(mockDownload).toHaveBeenCalledWith('c', 1, b, undefined);
     expect(find('play')).toBeDefined();
   });
 
-  it('offers no Download for a list-shape book of a podcast library', async () => {
+  it("offers Download for one not on its server while the server fetches, not when it can't", async () => {
+    const b = book({ episode: info(false) });
+    mockCaps = { ...ALL, podcast_fetch: true };
+    expect((await actions(b)).find('download')).toBeDefined();
+    mockCaps = { ...ALL, podcast_fetch: false };
+    expect((await actions(b)).find('download')).toBeUndefined();
+  });
+
+  it('offers no Download for one its server says is not available, as the episode page (fe#166)', async () => {
+    mockCaps = { ...ALL, podcast_fetch: true };
+    const refused = book({
+      episode: {
+        ...info(false)!,
+        fetch: fetchStatus({
+          state: 'unavailable',
+          error: { code: 'library_not_writable', message: 'read-only' },
+        }),
+      },
+    });
+    expect((await actions(refused)).find('download')).toBeUndefined();
+    const b = book({ episode: info(false) });
+    // The player's fetch of this one stopped as not available (another's never counts).
+    mockPending = { key: 'c:1:Author/Series/01 - Book', phase: 'unavailable', code: 'module_off' };
+    expect((await actions(b)).find('download')).toBeUndefined();
+    mockPending = { key: 'c:1:Other', phase: 'unavailable', code: 'module_off' };
+    expect((await actions(b)).find('download')).toBeDefined();
+    mockPending = null;
+    expect((await actions(b)).find('download')).toBeDefined();
+    // One on its server needs no fetch: a stopped fetch of it from before never hides it.
+    mockPending = { key: 'c:1:Author/Series/01 - Book', phase: 'unavailable', code: 'module_off' };
+    expect((await actions(book({ episode: info(true) }))).find('download')).toBeDefined();
+  });
+
+  it('looks a list-shape item of a podcast library up once opened, then offers Download', async () => {
     mockPodcastLibrary = true;
-    const { find } = await actions(book());
+    const shown = await actions(book());
+    expect(mockUseBook).toHaveBeenCalledWith('');
+    expect(shown.find('download')).toBeUndefined();
+    expect(shown.find('queue')).toBeDefined();
+    mockFull = book({ episode: info(true) });
+    const opened = await actions(book(), undefined, true);
+    expect(mockUseBook).toHaveBeenCalledWith('Author/Series/01 - Book');
+    expect(opened.find('download')).toBeDefined();
+  });
+
+  it("offers no Download for a podcast library's item that is not an episode (a show's folder)", async () => {
+    mockPodcastLibrary = true;
+    mockFull = book();
+    const { find } = await actions(book(), undefined, true);
     expect(find('download')).toBeUndefined();
-    expect(find('queue')).toBeDefined();
+  });
+
+  it('never offers Send to watch for an episode', async () => {
+    mockSendToWatch = jest.fn();
+    const { find } = await actions(book({ episode: info(true) }));
+    expect(find('watch')).toBeUndefined();
+    expect(find('download')).toBeDefined();
   });
 });
 

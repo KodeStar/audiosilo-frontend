@@ -1104,6 +1104,10 @@
         "declined": "Los próximos libros se quedan como están: los quitaste.",
         "unavailable": "Este navegador no puede guardar los próximos libros sin conexión."
       },
+      "episodes": {
+        "label": "Descargar episodios de pódcast cuando los empiezas",
+        "hint": "Sigue la misma regla de red que los libros. Un episodio que aún no está en tu servidor se descarga allí primero."
+      },
       "autoDelete": "Quitar una descarga al terminar el libro"
     },
     "browser": {
@@ -1118,6 +1122,8 @@
       "progress": "{{percent}} % · faltan {{size}}",
       "percent": "{{percent}} %",
       "queued": "Esperando para empezar",
+      "gettingOnServer": "Descargándolo en tu servidor",
+      "gettingOnServerPercent": "Descargándolo en tu servidor {{percent}} %",
       "waitingWifi": "Esperando al wifi",
       "noSpace": "Necesita más espacio libre",
       "keptAhead": "Preparado",
@@ -1139,6 +1145,7 @@
       "unservable": "Guardado, pero la reproducción sin conexión aún no está lista. Recarga la app y vuelve a intentarlo.",
       "removed": "Ya no tienes la sesión iniciada en este servidor.",
       "interrupted": "La app se cerró antes de que terminara.",
+      "serverFetch": "{{server}} no pudo conseguir este episodio.",
       "unknown": "La descarga se detuvo.",
       "notInBrowser": "Este navegador no puede reproducir este libro sin conexión. Quítalo para liberar el espacio.",
       "kept": "Tu {{percent}} % se conserva.",
@@ -1149,6 +1156,11 @@
       "sub_one": "{{count}} libro · se reproduce sin conexión",
       "sub_other": "{{count}} libros · se reproducen sin conexión",
       "serverSize": "{{server}} · {{size}}"
+    },
+    "episodes": {
+      "title": "Episodios de pódcast",
+      "sub_one": "{{count}} episodio · se reproduce sin conexión",
+      "sub_other": "{{count}} episodios · se reproducen sin conexión"
     },
     "remove": {
       "title": "¿Quitar esta descarga?",
@@ -1353,6 +1365,7 @@
       "forOffline": "Descargar para escuchar sin conexión",
       "progressCancel": "{{percent}} % · Cancelar",
       "queuedCancel": "En cola · Cancelar",
+      "gettingCancel": "Descargándolo en tu servidor · Cancelar",
       "onDevice": "{{size}} en este dispositivo"
     },
     "chapters": {
@@ -2880,6 +2893,7 @@
       "gettingPercent": "Descargando {{percent}} %",
       "failed": "No se pudo descargar",
       "unavailable": "No disponible ahora",
+      "onDevice": "En este dispositivo",
       "play": "Reproducir",
       "resume": "Continuar",
       "tryAgain": "Reintentar",

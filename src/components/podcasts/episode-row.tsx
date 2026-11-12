@@ -12,11 +12,11 @@ import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
-import { contentKey } from '@/lib/content-key';
+import { useDownloadProgress, useDownloadServerFetch, useDownloadState } from '@/downloads/store';
 import { useOpen } from '@/lib/open';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
+import { requestEpisodeFetch } from '@/playback/episode-fetch';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -29,6 +29,7 @@ import {
   episodeRowState,
   rowStateReasonKey,
 } from './podcast-model';
+import { usePendingEpisodeFetch } from './use-pending-episode-fetch';
 
 /** The state line's words. */
 function stateText(state: EpisodeRowState, t: TFunction): string {
@@ -48,13 +49,43 @@ function stateText(state: EpisodeRowState, t: TFunction): string {
   }
 }
 
+/** The state line while the episode downloads to this device (fe#166): its server still
+ * fetching it ("Getting it", with the share there when known), waiting its turn, or how far
+ * the download is. Its own component: only it redraws on the download's progress. */
+function DeviceDownloadLine({
+  connectionId,
+  libraryId,
+  path,
+}: {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+}) {
+  const { t } = useTranslation();
+  const onServer = useDownloadServerFetch(connectionId, libraryId, path);
+  const { progress } = useDownloadProgress(connectionId, libraryId, path);
+  const { status } = useDownloadState(connectionId, libraryId, path);
+  const text =
+    onServer !== undefined
+      ? stateText({ kind: 'getting', percent: onServer }, t)
+      : status === 'queued'
+        ? t('library.download.queued')
+        : t('library.download.downloading', { percent: Math.round(progress * 100) });
+  return (
+    <Text variant="caption" testID="episode-device-download" style={tabularNums}>
+      {text}
+    </Text>
+  );
+}
+
 /**
  * One episode of a show (Bridge Phase 2d-1): its title, a meta line (date, length, number),
- * its Trailer / Bonus / Explicit marks, a line saying where its file is (on the server,
- * fetched when played, on its way, or why not), and the listener's place (a bar while in
- * progress, a tick once finished). One primary button: Play (Resume once started), or Try
- * again after a failed fetch (or one not available for no reason it can name: `canRetryFetch`). Its "..." offers Up next and Mark as finished (never a
- * download: episodes are not kept offline). The row opens the episode page.
+ * its Trailer / Bonus / Explicit marks, a line saying where its file is (on this device, on
+ * its way here, on the server, fetched when played, on its way there, or why not), and the
+ * listener's place (a bar while in progress, a tick once finished). One primary button: Play
+ * (Resume once started), or Try again after a failed fetch (or one not available for no
+ * reason it can name: `canRetryFetch`) unless it is on this device. Its "..." offers Up next,
+ * Download / Remove download (fe#166) and Mark as finished. The row opens the episode page.
  */
 export function EpisodeRow({
   connectionId,
@@ -80,14 +111,17 @@ export function EpisodeRow({
   const book = episodeAsBook(episode, show);
   // The player's fetch of this episode, when it is the one on its way (only this row
   // follows its progress).
-  const key = contentKey(connectionId, libraryId, episode.path);
-  const pending = useEpisodeFetch((s) => (s.pending?.key === key ? s.pending : null));
+  const pending = usePendingEpisodeFetch(connectionId, libraryId, episode.path);
   const state = episodeRowState(episode, pending, canFetch);
   const finished = !!progress?.finished;
+  // On this device (not `episode.downloaded`, which is its server's copy), or on its way.
+  const device = useDownloadState(connectionId, libraryId, episode.path).status;
+  const onDevice = device === 'downloaded';
+  const toDevice = device === 'queued' || device === 'downloading';
   // Why it can't play or wasn't fetched, also on a finished episode (else a disabled Play
-  // there says nothing).
-  const reasonKey = rowStateReasonKey(state);
-  const retryable = canRetryFetch(state);
+  // there says nothing). Not for one on this device: it plays from there.
+  const reasonKey = onDevice ? null : rowStateReasonKey(state);
+  const retryable = !onDevice && canRetryFetch(state);
   const reason = reasonKey ? t(reasonKey) : null;
   const started = !!progress && isInProgress(progress);
   const fraction =
@@ -105,7 +139,15 @@ export function EpisodeRow({
       <AnimatedPressable
         onPress={() => openBook(connectionId, libraryId, episode.path)}
         accessibilityRole="button"
-        accessibilityLabel={[episode.title, meta, ...marks, reason].filter(Boolean).join(', ')}
+        accessibilityLabel={[
+          episode.title,
+          meta,
+          ...marks,
+          onDevice ? t('podcasts.episode.onDevice') : null,
+          reason,
+        ]
+          .filter(Boolean)
+          .join(', ')}
         className={cn(
           'min-w-0 flex-1 gap-1 rounded-control',
           Platform.select({ web: `cursor-pointer ${FOCUS_RING_CLASS}` }),
@@ -139,6 +181,17 @@ export function EpisodeRow({
               <Icon name="circle-check" size={12} color={themed.success} />
               <Text variant="caption">{t('podcasts.episode.finished')}</Text>
             </View>
+          ) : onDevice ? (
+            <View testID="episode-on-device" className="flex-row items-center gap-1">
+              <Icon name="download" size={12} color={themed.mutedForeground} />
+              <Text variant="caption">{t('podcasts.episode.onDevice')}</Text>
+            </View>
+          ) : toDevice ? (
+            <DeviceDownloadLine
+              connectionId={connectionId}
+              libraryId={libraryId}
+              path={episode.path}
+            />
           ) : (
             <Text
               variant="caption"
@@ -176,7 +229,7 @@ export function EpisodeRow({
           icon="play"
           title={started ? t('podcasts.episode.resume') : t('podcasts.episode.play')}
           accessibilityLabel={t('podcasts.episode.playLabel', { title: episode.title })}
-          disabled={state.kind === 'unavailable'}
+          disabled={state.kind === 'unavailable' && !onDevice}
           onPress={play}
           testID="episode-play"
         />

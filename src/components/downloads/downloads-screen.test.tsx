@@ -160,7 +160,12 @@ beforeEach(() => {
   Platform.OS = 'ios';
   useDownloads.setState({ entries: {}, supported: true, hydrated: true } as never);
   useKeepAhead.setState({ status: 'idle' as KeepAheadStatus, slots: [] as KeepAheadSlot[] });
-  useSettings.setState({ keepAhead: 0, autoDownloadNext: 'wifi', autoDeleteFinished: true });
+  useSettings.setState({
+    keepAhead: 0,
+    autoDownloadNext: 'wifi',
+    autoDeleteFinished: true,
+    autoDownloadEpisodes: false,
+  });
 });
 
 async function mount() {
@@ -264,6 +269,55 @@ describe('DownloadsScreen', () => {
     expect(screen.getByText('Remove this download?')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Remove' }));
     expect(store().remove).toHaveBeenCalledWith('b', 1, 'Emma');
+  });
+
+  // fe#166 (D3): episodes in a section of their own, each under its show.
+  it('lists podcast episodes in their own section, under their show', async () => {
+    const [key, ep] = entry('Monday', 'downloaded', { totalBytes: 2048 });
+    ep.manifest.book = {
+      ...ep.manifest.book,
+      episode: { show_path: 'Pods/Daily News' } as Book['episode'],
+    };
+    const [key2, ep2] = entry('Tuesday', 'downloaded', { totalBytes: 1024 });
+    ep2.manifest.book = {
+      ...ep2.manifest.book,
+      episode: { show_path: 'Pods/Daily News' } as Book['episode'],
+    };
+    ep2.manifest.showTitle = 'The Daily News';
+    setEntries(entry('Dune', 'downloaded', { totalBytes: 4096 }), [key, ep], [key2, ep2]);
+    await mount();
+    expect(screen.getByText('1 book · plays with no connection')).toBeTruthy();
+    const section = screen.getByTestId('downloads-episodes');
+    expect(within(section).getByText('Podcast episodes')).toBeTruthy();
+    expect(within(section).getByText('2 episodes · play with no connection')).toBeTruthy();
+    // The show's title kept with it, else its folder's name; never the book list.
+    expect(within(section).getByText('The Daily News')).toBeTruthy();
+    expect(within(section).getByText('Daily News')).toBeTruthy();
+    expect(within(section).queryByText('Dune')).toBeNull();
+    // Played, opened and removed like any download.
+    await fireEvent.press(screen.getByRole('button', { name: 'Play Monday' }));
+    expect(mockOpenPlayer).toHaveBeenCalledWith('a', 1, 'Monday');
+    await fireEvent.press(screen.getByRole('button', { name: 'Remove Monday' }));
+    expect(screen.getByText('Remove this download?')).toBeTruthy();
+  });
+
+  it('says an episode waiting for its server is being got there', async () => {
+    setEntries(entry('Monday', 'queued', { serverFetch: { percent: 40 } }));
+    await mount();
+    expect(screen.getByText('Getting it on your server 40%')).toBeTruthy();
+    expect(screen.queryByText('Waiting to start')).toBeNull();
+  });
+
+  it("says an episode's server couldn't get it, and why", async () => {
+    setEntries(
+      entry('Monday', 'error', { failure: { kind: 'serverFetch', code: 'too_large', kept: 0 } }),
+    );
+    await mount();
+    expect(
+      screen.getByText(
+        "Home Library couldn't get this episode. This episode is too large for your server to keep.",
+      ),
+    ).toBeTruthy();
   });
 
   it("lists only the person listening's downloads (another person's stay theirs)", async () => {
@@ -370,6 +424,12 @@ describe('DownloadsScreen', () => {
       screen.getByRole('switch', { name: 'Remove a download when you finish the book' }),
     );
     expect(useSettings.getState().autoDeleteFinished).toBe(false);
+    // fe#166 (D4b): episodes on start, off until turned on.
+    expect(useSettings.getState().autoDownloadEpisodes).toBe(false);
+    await fireEvent.press(
+      screen.getByRole('switch', { name: 'Download podcast episodes when you start them' }),
+    );
+    expect(useSettings.getState().autoDownloadEpisodes).toBe(true);
   });
 
   it('explains why downloads are off in a browser that cannot keep them', async () => {

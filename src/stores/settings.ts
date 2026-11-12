@@ -56,6 +56,10 @@ export type PlaybackSettings = {
    * *next* book in a series near the current one's end; do not rename it. Off by default on
    * the web, on Wi-Fi in the apps (`defaultAutoDownload`). */
   autoDownloadNext: AutoDownloadMode;
+  /** Also download a podcast episode when you start listening to it (fe#166, D4b), under
+   * the same `autoDownloadNext` network rule; one not on its server yet is fetched there
+   * first. Off by default: episodes come and go, so the listener opts in. */
+  autoDownloadEpisodes: boolean;
   /** Keep this many of the next books (Up next, then the series) downloaded while a book
    * is loaded, under the `autoDownloadNext` network rule. Off by default: it downloads on
    * its own, so the listener opts in. */
@@ -99,6 +103,7 @@ const DEFAULTS: PlaybackSettings = {
   virtualChapterInterval: DEFAULT_VIRTUAL_CHAPTER_INTERVAL,
   autoPlayNext: false,
   autoDownloadNext: defaultAutoDownload(),
+  autoDownloadEpisodes: false,
   keepAhead: 0,
   autoDeleteFinished: true,
   autoSleepTimer: false,
@@ -179,6 +184,7 @@ type SettingsState = PlaybackSettings & {
   setVirtualChapterInterval: (seconds: number) => void;
   setAutoPlayNext: (on: boolean) => void;
   setAutoDownloadNext: (mode: AutoDownloadMode) => void;
+  setAutoDownloadEpisodes: (on: boolean) => void;
   setKeepAhead: (count: KeepAhead) => void;
   setAutoDeleteFinished: (on: boolean) => void;
   setAutoSleepTimer: (on: boolean) => void;
@@ -218,6 +224,7 @@ export const useSettings = create<SettingsState>()((set, get) => {
           // Off unless the stored value says on (a document from before they existed has
           // none; anything that isn't `true` is not a listener's choice).
           smartSpeed: doc.smartSpeed === true,
+          autoDownloadEpisodes: doc.autoDownloadEpisodes === true,
           voiceBoost: doc.voiceBoost === true,
         }),
       );
@@ -229,6 +236,7 @@ export const useSettings = create<SettingsState>()((set, get) => {
     setVirtualChapterInterval: (virtualChapterInterval) => update({ virtualChapterInterval }),
     setAutoPlayNext: (autoPlayNext) => update({ autoPlayNext }),
     setAutoDownloadNext: (autoDownloadNext) => update({ autoDownloadNext }),
+    setAutoDownloadEpisodes: (autoDownloadEpisodes) => update({ autoDownloadEpisodes }),
     setKeepAhead: (keepAhead) => update({ keepAhead }),
     setAutoDeleteFinished: (autoDeleteFinished) => update({ autoDeleteFinished }),
     setAutoSleepTimer: (autoSleepTimer) => update({ autoSleepTimer }),

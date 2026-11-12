@@ -71,9 +71,10 @@ export const SETTLE_MS = 4000;
 type Current = { connectionId: string; libraryId: number; path: string };
 
 /** The queue as `AheadBook`s (entries the server didn't index, with no `book`, can't be
- * downloaded and are skipped; so are podcast episodes, never kept offline: Bridge Phase
- * 2d-1, told by their library's kind, as the queue's list shape has no `episode`; the
- * library list is read when the cache holds none, so an episode is never taken for a book). */
+ * downloaded and are skipped; so are podcast episodes, which download only when asked or
+ * started (fe#166, D4: keep-ahead keeps books), told by their library's kind, as the
+ * queue's list shape has no `episode`; the library list is read when the cache holds none,
+ * so an episode is never taken for a book). */
 async function queueAhead(client: ApiClient, cid: string): Promise<AheadBook[]> {
   const [queue] = await Promise.all([
     queryClient.fetchQuery({ ...queueQuery(cid, client), staleTime: 30_000 }),
@@ -199,7 +200,8 @@ export async function runKeepAhead(): Promise<void> {
   if (!downloads.supported || !downloads.hydrated) return publish('idle');
   const network = await networkGate();
   if (network === 'never') return publish('never');
-  // An episode has no next books to keep ready (Bridge Phase 2d-1).
+  // An episode has no next books to keep ready (Bridge Phase 2d-1; fe#166 D4: keep-ahead
+  // stays for books).
   if (!np || np.episode) return publish('idle');
 
   const current: Current = {

@@ -9,6 +9,7 @@ import type {
 } from '@/api/types';
 import { formatDuration, formatRecordDate } from '@/lib/format';
 import type { PendingEpisodeFetch } from '@/playback/episode-fetch';
+import { fetchPercent } from '@/playback/episode-fetch-rules';
 
 /**
  * The podcast views' pure rules (Bridge Phase 2d-1): what an episode's fetch says to a
@@ -60,6 +61,18 @@ export function canRetryFetch(state: EpisodeRowState): boolean {
   );
 }
 
+/** Whether a download to this device (fe#166) is offered for an episode in `state`: always
+ * for one on its server (`downloaded`: it needs no fetch, whatever a stopped fetch of it
+ * said), else not while it is not available (its server can't fetch it now, or said it
+ * can't for this one), since the downloads store would only fail it. One rule for the
+ * episode page's Download and an episode's "..." menu (`useBookActions`). */
+export function offersEpisodeDownload(
+  ep: Pick<PodcastEpisode, 'downloaded'>,
+  state: EpisodeRowState,
+): boolean {
+  return ep.downloaded || state.kind !== 'unavailable';
+}
+
 /** How far a fetch has got: the bytes so far, the size when the server knows it, and the
  * share done (0..100, whole) when it does. */
 export function fetchProgress(status: PodcastFetchStatus | null): {
@@ -68,9 +81,8 @@ export function fetchProgress(status: PodcastFetchStatus | null): {
   percent: number | null;
 } {
   const received = Math.max(0, status?.bytes_received ?? 0);
-  const total = status?.bytes_total ?? null;
-  if (total === null || total <= 0) return { received, total: null, percent: null };
-  return { received, total, percent: Math.min(100, Math.floor((received / total) * 100)) };
+  const percent = fetchPercent(status);
+  return { received, total: percent === null ? null : (status?.bytes_total ?? null), percent };
 }
 
 /** How long an episode stays "new" (the show tiles' caption, Home's rail). */
@@ -191,8 +203,8 @@ export function episodeRowState(
   }
 }
 
-/** An episode row as the player's `Book` (the shape a start, the actions and the fetch
- * take): its show's author, the episode facts, `episode` set so it is never downloaded. */
+/** An episode row as the player's `Book` (the shape a start, the actions, the fetch and a
+ * download take): its show's author and the episode facts (`episode` set). */
 export function episodeAsBook(ep: PodcastEpisode, show: PodcastShow): Book {
   return {
     id: 0,

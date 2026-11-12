@@ -596,9 +596,35 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   `EpisodeFetchStrip`; the book playing meanwhile plays on (decision 6.4).
 - **What episodes never do**: open the end credits (`BookEndedListener` leaves Up next and, with
   auto-play, starts Up next's head only, never the series or folder), cast (`castButtonModel`'s
-  `episode`), or download: the downloads store refuses `book.episode` as `unsupported`,
-  `DownloadControl` and the tile menu leave it out, auto-download and keep-ahead skip it
-  (decision 6.1). Kids mode shows no podcast library (decision 6.2).
+  `episode`), Send to watch (the tile menu leaves it out), or keep-ahead (it plans books only).
+  Kids mode shows no podcast library (decision 6.2) and lists no downloaded episode
+  (`kidsDownloads`).
+- **Episodes download (v2.7.0, fe#166)**: Download / Remove download on the episode page
+  (`DownloadControl`, disabled while nothing can fetch it) and in the row's ... menu
+  (`offersDownload`: an episode on its server, or one `podcast_fetch` is not `false` for; a list
+  shape is looked up once the menu opens). The downloads store downloads an episode like a book (its
+  item and chapters read first when the caller held a list shape of one on its server, the show's
+  title kept in `manifest.showTitle`). One not on its server (`isAbsentEpisode`, or a last failure
+  `serverFetch` or a server 503) first waits in `downloads/episode-ready.ts`, OUTSIDE the
+  one-at-a-time queue (D2): the entry stays `queued` with `serverFetch: {percent}`, the waiter
+  probes the stream once (the listener's Retry POSTs; an automatic download's own retry never does),
+  follows the status every max(2, Retry-After) s in the foreground only, at most three asking at
+  once (the rest wait their turn, leaving room under the server's five), and on `ready` reads the
+  item and chapters (again, when it had them; `fetchFailFast`) and joins the queue. The wait can be
+  long, so `episodeWaitEnded` decides again what `queueBook` decided before it: an `auto` download
+  the network rule no longer lets start is dropped with no decline mark (`canAutoDownload`), and so
+  is one this browser turns out to play transcoded. The fetch limit, 429 and blips ask again
+  (`blipDelay`); a failed or impossible fetch ends as a `serverFetch` failure with the server's code
+  (`failureText` reads it through `fetchReasonKey`; `identity_changed` also reads the item and the
+  library's episode lists again). A cancel or remove stops the wait (`stopWaiting`); the server's
+  fetch carries on. The fetch rules the player and the waiter share live in
+  `playback/episode-fetch-rules.ts` (import-light: the downloads store must not pull in the start
+  path). The row says "On this device" (`episode-on-device`) and the download's state; an episode on
+  the device plays from it, with no fetch (`player.tsx` checks `useIsDownloaded`, `startBookInPlace`
+  `downloadedEntryOf`: a downloaded item's start source is its server's own when it answers, with no
+  `local`), and the hot-swap moves a streaming episode onto its download. Remove-when-finished
+  deletes a finished episode like a book. Starting an episode downloads it only when
+  `autoDownloadEpisodes` is on (default off, D4b), under the books' network rule.
 - **Surfaces**: the Library's `shows` mode (a podcast library offers Shows and Folders only, a
   book mode's link lands on Shows, its book lists are never asked), the show page
   `/podcast?connection=&library=&show=[&order=]` (the server orders the episodes; a serial show
@@ -3189,6 +3215,13 @@ are asked, at most 10,000 rows.
   (`unsupported`) while `supported` is false, so no byte is fetched for a download that could
   never play offline (v2.5.1 PLAYER-03).
 - Removing a download asks first everywhere (`RemoveDownloadConfirm`, with the room it frees).
+- **Podcast episodes** (fe#166, *Podcasts* above): the page lists downloaded episodes in their own
+  "Podcast episodes" section (`isEpisodeEntry`, the show as the byline: `episodeShowTitle`), out
+  of the books' groups and the "Ready offline" count (the storage bar counts both). An episode
+  waiting on its server reads "Getting it on your server" (`serverFetchLabel`) in its row, the
+  control and the progress line. The rules card and Settings both bind `autoDownloadEpisodes`
+  ("Download podcast episodes when you start them"; it obeys `autoDownloadNext`, so Never means
+  never).
 - **Changed chapters**: a book's chapters can change on the server after it was downloaded (a
   rescan, a community chapter list, `chapters_source: "community"`). `startChapterRefresh` (the
   root's services) watches the query cache: a server answer for a downloaded book's chapters replaces

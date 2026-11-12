@@ -1104,6 +1104,10 @@
         "declined": "Die nächsten Bücher bleiben unberührt: Du hast sie entfernt.",
         "unavailable": "Dieser Browser kann die nächsten Bücher nicht offline bereithalten."
       },
+      "episodes": {
+        "label": "Podcast-Folgen herunterladen, wenn du sie startest",
+        "hint": "Es gilt dieselbe Netzwerkregel wie für Bücher. Eine Folge, die noch nicht auf deinem Server ist, wird zuerst dorthin geholt."
+      },
       "autoDelete": "Download entfernen, wenn du das Buch beendet hast"
     },
     "browser": {
@@ -1118,6 +1122,8 @@
       "progress": "{{percent}} % · noch {{size}}",
       "percent": "{{percent}} %",
       "queued": "Wartet auf den Start",
+      "gettingOnServer": "Wird auf deinen Server geholt",
+      "gettingOnServerPercent": "Wird auf deinen Server geholt {{percent}} %",
       "waitingWifi": "Wartet auf WLAN",
       "noSpace": "Braucht mehr freien Speicher",
       "keptAhead": "Vorausgeladen",
@@ -1139,6 +1145,7 @@
       "unservable": "Gespeichert, aber die Offline-Wiedergabe ist noch nicht bereit. Lade die App neu und versuche es dann erneut.",
       "removed": "Du bist bei diesem Server nicht mehr angemeldet.",
       "interrupted": "Die App wurde geschlossen, bevor der Download fertig war.",
+      "serverFetch": "{{server}} konnte diese Folge nicht holen.",
       "unknown": "Der Download wurde angehalten.",
       "notInBrowser": "Dieser Browser kann dieses Buch nicht offline abspielen. Entferne es, um den Platz freizugeben.",
       "kept": "Deine {{percent}} % bleiben erhalten.",
@@ -1149,6 +1156,11 @@
       "sub_one": "{{count}} Buch · spielt ohne Verbindung",
       "sub_other": "{{count}} Bücher · spielen ohne Verbindung",
       "serverSize": "{{server}} · {{size}}"
+    },
+    "episodes": {
+      "title": "Podcast-Folgen",
+      "sub_one": "{{count}} Folge · spielt ohne Verbindung",
+      "sub_other": "{{count}} Folgen · spielen ohne Verbindung"
     },
     "remove": {
       "title": "Diesen Download entfernen?",
@@ -1353,6 +1365,7 @@
       "forOffline": "Für offline herunterladen",
       "progressCancel": "{{percent}} % · Abbrechen",
       "queuedCancel": "Wartet · Abbrechen",
+      "gettingCancel": "Wird auf deinen Server geholt · Abbrechen",
       "onDevice": "{{size}} auf diesem Gerät"
     },
     "chapters": {
@@ -2880,6 +2893,7 @@
       "gettingPercent": "Wird geholt {{percent}} %",
       "failed": "Konnte nicht geholt werden",
       "unavailable": "Gerade nicht verfügbar",
+      "onDevice": "Auf diesem Gerät",
       "play": "Abspielen",
       "resume": "Fortsetzen",
       "tryAgain": "Erneut versuchen",

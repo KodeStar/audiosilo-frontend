@@ -30,7 +30,6 @@ const mockCancelOf = jest.fn();
 let mockLatestStart: string | null = null;
 let mockFetchStarting = true;
 jest.mock('@/playback/episode-fetch', () => ({
-  isAbsentEpisode: jest.requireActual('@/playback/episode-fetch').isAbsentEpisode,
   needsEpisodeFetch: jest.requireActual('@/playback/episode-fetch').needsEpisodeFetch,
   requestEpisodeFetch: (...a: unknown[]) => mockRequestFetch(...a),
   // The real bookkeeping of the start asked for last, observed.
@@ -365,6 +364,15 @@ describe('startBookInPlace, a podcast episode', () => {
   it('plays a downloaded episode at once', async () => {
     serverFetches(true);
     mockItem.mockResolvedValue(episode(true));
+    await expect(startBookInPlace(target)).resolves.toBe(true);
+    expect(mockRequestFetch).not.toHaveBeenCalled();
+    expect(mockPlayBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('plays an episode on this device from it, though its server no longer has it (fe#166)', async () => {
+    serverFetches(true);
+    mockItem.mockResolvedValue(episode(false));
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
     await expect(startBookInPlace(target)).resolves.toBe(true);
     expect(mockRequestFetch).not.toHaveBeenCalled();
     expect(mockPlayBook).toHaveBeenCalledTimes(1);

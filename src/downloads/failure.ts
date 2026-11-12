@@ -1,5 +1,7 @@
 import type { TFunction } from 'i18next';
 
+import { fetchReasonKey } from '@/components/podcasts/podcast-model';
+
 import type { DownloadEntry, DownloadFailure, StorageEstimate } from './types';
 
 // Engines report failures as whatever the platform throws: a fetch TypeError on web
@@ -48,10 +50,14 @@ export function failureText(
     unservable: () => t('downloads.failure.unservable'),
     removed: () => t('downloads.failure.removed'),
     interrupted: () => t('downloads.failure.interrupted'),
+    // A podcast episode its server could not fetch: why, in the episode views' words.
+    serverFetch: () =>
+      `${t('downloads.failure.serverFetch', { server })} ${t(fetchReasonKey(f.code))}`,
     unknown: () => t('downloads.failure.unknown'),
   }[f.kind]();
-  // An unservable download is fully saved: the cause already says what to do.
-  if (f.kind === 'unservable' || f.kind === 'removed') return cause;
+  // An unservable download is fully saved: the cause already says what to do. Nothing of
+  // an episode its server could not fetch was downloaded.
+  if (f.kind === 'unservable' || f.kind === 'removed' || f.kind === 'serverFetch') return cause;
   const kept = f.kept ?? 0;
   const tail =
     kept > 0

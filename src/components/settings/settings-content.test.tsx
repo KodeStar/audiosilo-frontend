@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'desktop';
@@ -194,6 +194,16 @@ describe('SettingsContent, stacked', () => {
     expect(useSettings.getState().skipBackward).toBe(20);
     await fireEvent.press(screen.getByLabelText('Skip back, less'));
     expect(useSettings.getState().skipBackward).toBe(15);
+  });
+
+  it('turns on downloading podcast episodes when they start (fe#166), off by default', async () => {
+    useSettings.setState({ autoDownloadEpisodes: false });
+    await render(<SettingsContent />);
+    const group = screen.getByLabelText('Download podcast episodes when you start them');
+    await fireEvent.press(within(group).getByLabelText('On'));
+    expect(useSettings.getState().autoDownloadEpisodes).toBe(true);
+    await fireEvent.press(within(group).getByLabelText('Off'));
+    expect(useSettings.getState().autoDownloadEpisodes).toBe(false);
   });
 
   it('keeps the version line', async () => {

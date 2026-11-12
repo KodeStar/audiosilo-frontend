@@ -24,6 +24,7 @@ import {
 import { BookSkeleton } from '@/components/book/book-skeleton';
 import { LoadFailedNote } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
+import { DownloadControl, DownloadProgress } from '@/components/library/download-control';
 import { pageGutter } from '@/components/library/cover-layout';
 import { chapterStartsOf, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
@@ -36,14 +37,14 @@ import { Button } from '@/components/ui/button';
 import { Notice } from '@/components/ui/notice';
 import { Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
-import { contentKey } from '@/lib/content-key';
+import { useIsDownloaded } from '@/downloads/store';
 import { useLayout } from '@/lib/layout';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
-import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
+import { requestEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
@@ -52,8 +53,10 @@ import {
   episodeMarks,
   episodeMetaLine,
   episodeRowState,
+  offersEpisodeDownload,
   rowStateReasonKey,
 } from './podcast-model';
+import { usePendingEpisodeFetch } from './use-pending-episode-fetch';
 
 const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 
@@ -62,9 +65,10 @@ const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
  * podcast episode (`book.episode`), at the same `/book` link, so Continue listening, the
  * Now card, history and favourites reach it as any book. Its cover, title, a link to its
  * show, its date, length and marks; Play / Resume (Pause while it plays), or Try again
- * after a failed fetch (`canRetryFetch`); a note when its audio changed under a saved place (never moved);
- * the description; and the chapters an episode's own file carries. No series, community
- * metadata, rating, Generate or Download.
+ * after a failed fetch (`canRetryFetch`), beside the book page's download control (fe#166:
+ * one not on its server is fetched there first); a note when its audio changed under a
+ * saved place (never moved); the description; and the chapters an episode's own file
+ * carries. No series, community metadata, rating or Generate.
  */
 export function EpisodePage({ libraryId, path }: { libraryId: number; path: string }) {
   const { t } = useTranslation();
@@ -141,10 +145,10 @@ function EpisodeBody({
   const fetchStatus = usePodcastFetchStatus(libraryId, relPath, cid, {
     enabled: !episode.downloaded,
   }).data;
-  const pending = useEpisodeFetch((s) =>
-    s.pending?.key === contentKey(cid, libraryId, relPath) ? s.pending : null,
-  );
+  const pending = usePendingEpisodeFetch(cid, libraryId, relPath);
   const loaded = usePlayer(selectIsLoaded(target));
+  // On this device it plays from there, whatever its server holds.
+  const onDevice = useIsDownloaded(cid, libraryId, relPath);
   const live = usePlayer((s) => loaded && selectIsTransportLive(s));
   const { resume } = useBookPlace(target, progress?.position, LIVE_POSITION_BUCKET_S);
   const annotations = useBookAnnotations(target);
@@ -190,11 +194,11 @@ function EpisodeBody({
   );
   const marks = episodeMarks(episode, t);
   // Why it can't play (or wasn't fetched), beside the disabled Play or Try again.
-  const reasonKey = loaded ? null : rowStateReasonKey(state);
+  const reasonKey = loaded || onDevice ? null : rowStateReasonKey(state);
   const reason = reasonKey ? t(reasonKey) : null;
 
   const primary =
-    canRetryFetch(state) && !loaded ? (
+    canRetryFetch(state) && !loaded && !onDevice ? (
       <Button
         size="lg"
         icon="rotate"
@@ -213,7 +217,7 @@ function EpisodeBody({
               ? t('podcasts.episode.resume')
               : t('podcasts.episode.play')
         }
-        disabled={state.kind === 'unavailable' && !loaded}
+        disabled={state.kind === 'unavailable' && !loaded && !onDevice}
         onPress={() => play({ toggle: true, viaBookPage: true })}
         testID="episode-page-play"
       />
@@ -264,6 +268,13 @@ function EpisodeBody({
               }
             >
               {primary}
+              <DownloadControl
+                libraryId={libraryId}
+                path={relPath}
+                book={book}
+                chapterData={chapterData}
+                disabled={!offersEpisodeDownload(episode, state)}
+              />
               {reason ? (
                 <Text
                   variant="caption"
@@ -274,6 +285,7 @@ function EpisodeBody({
                 </Text>
               ) : null}
             </View>
+            <DownloadProgress libraryId={libraryId} path={relPath} />
           </View>
         </View>
         {episode.timeline_changed === true && (progress?.position ?? 0) > 0 ? (

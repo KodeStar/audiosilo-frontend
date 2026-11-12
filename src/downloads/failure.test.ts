@@ -1,4 +1,8 @@
-import { classifyDownloadError } from './failure';
+import type { TFunction } from 'i18next';
+
+import i18n from '@/i18n';
+
+import { classifyDownloadError, failureText } from './failure';
 
 describe('classifyDownloadError', () => {
   it('reads the browsers fetch failures as the server not responding', () => {
@@ -46,5 +50,24 @@ describe('classifyDownloadError', () => {
     expect(classifyDownloadError(undefined)).toEqual({ kind: 'unknown' });
     // A 2xx/3xx number in a message is not an HTTP failure.
     expect(classifyDownloadError(new Error('Moved (301) somewhere'))).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('failureText', () => {
+  // fe#166: a podcast episode its server could not fetch says why, in the episode views'
+  // words, and nothing about a kept share (nothing was downloaded).
+  it("says an episode's server could not get it, and why", () => {
+    const t = i18n.t.bind(i18n) as TFunction;
+    expect(
+      failureText(
+        t,
+        { failure: { kind: 'serverFetch', code: 'too_large', kept: 0 } },
+        'Home',
+        'device',
+      ),
+    ).toBe("Home couldn't get this episode. This episode is too large for your server to keep.");
+    expect(failureText(t, { failure: { kind: 'serverFetch', kept: 0 } }, 'Home', 'device')).toBe(
+      "Home couldn't get this episode. Something went wrong getting it. Try again in a while.",
+    );
   });
 });

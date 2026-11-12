@@ -266,6 +266,8 @@ function DownloadsPane() {
   const autoPlayNext = useSettings((s) => s.autoPlayNext);
   const autoDownloadNext = useSettings((s) => s.autoDownloadNext);
   const autoDeleteFinished = useSettings((s) => s.autoDeleteFinished);
+  const autoDownloadEpisodes = useSettings((s) => s.autoDownloadEpisodes);
+  const setAutoDownloadEpisodes = useSettings((s) => s.setAutoDownloadEpisodes);
   const setAutoPlayNext = useSettings((s) => s.setAutoPlayNext);
   const setAutoDownloadNext = useSettings((s) => s.setAutoDownloadNext);
   const setAutoDeleteFinished = useSettings((s) => s.setAutoDeleteFinished);
@@ -297,6 +299,18 @@ function DownloadsPane() {
           onChange={setAutoDownloadNext}
           grow
           accessibilityLabel={t('downloads.rules.mode.label')}
+        />
+      </SettingRow>
+      {/* Episodes too, under the network rule above (fe#166, D4b; the rules card's too). */}
+      <SettingRow
+        control="wide"
+        label={t('downloads.rules.episodes.label')}
+        description={t('downloads.rules.episodes.hint')}
+      >
+        <OnOff
+          value={autoDownloadEpisodes}
+          onChange={setAutoDownloadEpisodes}
+          label={t('downloads.rules.episodes.label')}
         />
       </SettingRow>
       {/* The same setting as the Downloads page's "Automatic downloads" card. */}

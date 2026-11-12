@@ -2735,6 +2735,18 @@ export function cachedPodcastLibrary(cid: string, libraryId: number): boolean {
     ?.some((l) => l.id === libraryId && isPodcastLibrary(l));
 }
 
+/** A show's title from the connection's cached show list, without asking: undefined when
+ * the list is not cached, does not hold `showPath`, or holds it untitled. */
+export function cachedShowTitle(
+  cid: string,
+  libraryId: number,
+  showPath: string | undefined,
+): string | undefined {
+  if (showPath === undefined) return undefined;
+  const shows = queryClient.getQueryData<PodcastShow[]>(qk.podcastShows(cid, libraryId));
+  return shows?.find((s) => s.path === showPath)?.title || undefined;
+}
+
 /** Whether `libraryId` is a podcast library on the connection, from its library list (a
  * list-shape book there is an episode: the lists carry no `episode`). */
 export function useIsPodcastLibrary(libraryId: number, connectionId?: string): boolean {

@@ -14,10 +14,22 @@ export type DownloadedFile = { relPath: string; localUri: string; bytes?: number
  * - `unservable`: saved, but the web service worker can't play it offline yet;
  * - `removed`: the server's connection was removed while it waited;
  * - `interrupted`: the app closed (or was killed) before it finished;
+ * - `serverFetch`: a podcast episode its server could not fetch (or can't now), `code` says
+ *   why (the server's safe code, `fetchReasonKey`); Retry asks the server to fetch it again;
  * - `unknown`: anything else. */
 export type DownloadFailure = {
-  kind: 'network' | 'server' | 'storage' | 'unservable' | 'removed' | 'interrupted' | 'unknown';
+  kind:
+    | 'network'
+    | 'server'
+    | 'storage'
+    | 'unservable'
+    | 'removed'
+    | 'interrupted'
+    | 'serverFetch'
+    | 'unknown';
   status?: number;
+  /** With `serverFetch`: the server's code for why (absent when it said none). */
+  code?: string;
   /** The share of the book (0..1) whose files finished before it stopped: they stay on
    * the device (across a restart, while every one of them is still there), and a retry
    * skips them. */
@@ -94,6 +106,10 @@ export type DownloadManifest = {
    * download from before it existed: the next server answer fills it in). */
   bookDuration?: number;
   savedAt: string;
+  /** A podcast episode's show title, as the app knew it when the download started (the
+   * Downloads page's second line); absent for a book, and when the show list was not at
+   * hand (the page falls back to the show's folder). */
+  showTitle?: string;
   /** Set once the book's community metadata was kept for offline use (`offline-meta.ts`).
    * Only this marker lives here: the payload (an envelope with its characters and recaps
    * can run to hundreds of KB) sits in its own file beside the audio, so the registry,
@@ -121,6 +137,11 @@ export type DownloadEntry = {
   failure?: DownloadFailure;
   /** Absent means `listener`. */
   origin?: DownloadOrigin;
+  /** Set while a podcast episode not on its server yet waits there before it downloads
+   * (`episode-ready.ts`, status `queued`, off the one-at-a-time queue): how far the server's
+   * fetch is (`percent` once it knows the size). Gone once it goes on the queue or fails;
+   * a launch turns a saved one into an interrupted download (`reviveEntry`). */
+  serverFetch?: { percent: number | null };
   manifest: DownloadManifest;
 };
 

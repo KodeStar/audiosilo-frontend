@@ -1104,6 +1104,10 @@
         "declined": "Leaving the next books alone: you removed them.",
         "unavailable": "This browser can't keep the next books offline."
       },
+      "episodes": {
+        "label": "Download podcast episodes when you start them",
+        "hint": "Uses the same network rule as books. An episode not on your server yet is fetched there first."
+      },
       "autoDelete": "Remove a download when you finish the book"
     },
     "browser": {
@@ -1118,6 +1122,8 @@
       "progress": "{{percent}}% · {{size}} to go",
       "percent": "{{percent}}%",
       "queued": "Waiting to start",
+      "gettingOnServer": "Getting it on your server",
+      "gettingOnServerPercent": "Getting it on your server {{percent}}%",
       "waitingWifi": "Waiting for Wi-Fi",
       "noSpace": "Needs more free space",
       "keptAhead": "Kept ahead",
@@ -1139,6 +1145,7 @@
       "unservable": "Saved, but offline playback isn't ready yet. Reload the app, then retry.",
       "removed": "You're no longer signed in to this server.",
       "interrupted": "The app closed before it finished.",
+      "serverFetch": "{{server}} couldn't get this episode.",
       "unknown": "The download stopped.",
       "notInBrowser": "This browser can't play this book offline. Remove it to free the space.",
       "kept": "Your {{percent}}% is kept.",
@@ -1149,6 +1156,11 @@
       "sub_one": "{{count}} book · plays with no connection",
       "sub_other": "{{count}} books · play with no connection",
       "serverSize": "{{server}} · {{size}}"
+    },
+    "episodes": {
+      "title": "Podcast episodes",
+      "sub_one": "{{count}} episode · plays with no connection",
+      "sub_other": "{{count}} episodes · play with no connection"
     },
     "remove": {
       "title": "Remove this download?",
@@ -1353,6 +1365,7 @@
       "forOffline": "Download for offline",
       "progressCancel": "{{percent}}% · Cancel",
       "queuedCancel": "Queued · Cancel",
+      "gettingCancel": "Getting it on your server · Cancel",
       "onDevice": "{{size}} on this device"
     },
     "chapters": {
@@ -2880,6 +2893,7 @@
       "gettingPercent": "Getting it {{percent}}%",
       "failed": "Couldn't get it",
       "unavailable": "Not available now",
+      "onDevice": "On this device",
       "play": "Play",
       "resume": "Resume",
       "tryAgain": "Try again",
