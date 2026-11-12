@@ -176,8 +176,9 @@ export interface PlaybackService {
    * then switch. Used to move a streaming book onto its just-downloaded local files
    * without an audible gap. Optional - callers fall back to `load` + `play`.
    *
-   * Resolves `true` if the swap happened, `false` if it was refused (e.g. the local
-   * source can't be served) and the original source is still playing.
+   * Resolves `true` if the swap happened, `false` if it was refused: the local source
+   * can't be served (the original source is still playing), or a load, a reset, a seek or
+   * a move to another file was made while the new source buffered (what that left stands).
    */
   swapTo?(
     tracks: PlaybackTrack[],

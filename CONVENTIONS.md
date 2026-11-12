@@ -1541,11 +1541,12 @@ media GETs only.
   during the load stands. Casting, only a download in the receiver's order is remembered
   (`rememberLoad`) and committed; one holding other files changes nothing, and the next start
   uses it. A Cast handover the receiver refuses reloads that remembered copy on the phone
-  (`RoutedPlaybackService.beginCast`). The web engine's `swapTo` reads its own intent after
-  the copy has buffered (up to 8 s), not before: a pause made meanwhile stands (the
-  listener's, or the tab giving way to another tab's play), a speed set meanwhile is applied
-  to the copy, and a load, a reset or a move to another file meanwhile (`loadSeq` moved)
-  discards the copy and refuses the swap.
+  (`RoutedPlaybackService.beginCast`), as does a start it refuses mid-session (`load`). The
+  web engine's `swapTo` reads its own intent after the copy has buffered (up to 8 s), not
+  before: a pause made meanwhile stands (the listener's, or the tab giving way to another
+  tab's play), a speed or a volume set meanwhile is applied to the copy, and a load, a reset,
+  a move to another file (`loadSeq` moved) or a seek (`seekSeq`) meanwhile discards the copy
+  and refuses the swap: the copy was buffered at the place before it.
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /

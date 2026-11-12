@@ -520,6 +520,31 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
       expect(svc.getSnapshot().trackIndex).toBe(1);
     });
 
+    it('keeps the stream where a seek made meanwhile put it', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.seekTo(45);
+      ready(pending);
+      // The copy was buffered at the place before the seek: switched in, it would undo it.
+      expect(await swap).toBe(false);
+      expect(pending.src).toBe('');
+      expect(pending.plays).toBe(0);
+      expect(streaming.currentTime).toBe(45);
+      expect(svc.getSnapshot().position).toBe(45);
+    });
+
+    it('plays the swapped-in copy at a volume set while it buffered', async () => {
+      await startPlaying(0);
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.setVolume(0.25); // the sleep timer's fade
+      ready(pending);
+      expect(await swap).toBe(true);
+      expect(pending.volume).toBe(0.25);
+    });
+
     it('plays the swapped-in copy at a speed set while it buffered', async () => {
       await startPlaying(0);
       const swap = svc.swapTo!(local, 0, 30);

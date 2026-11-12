@@ -206,6 +206,9 @@ class WebPlaybackService implements PlaybackService {
    * source (a quick second seek replaces the src before the first one loads) can't seek
    * or autoplay the new one. */
   private loadSeq = 0;
+  /** Bumped per seek made in place (a direct stream's; a transcoded one's is a `loadTrack`):
+   * a copy `swapTo` buffered at the place before it is no longer where the listener is. */
+  private seekSeq = 0;
   /** The element a load is placing at its start position, until its metadata arrives
    * and the seek is made (or it reports `seeked`). The load algorithm queues a
    * `timeupdate` at `currentTime` 0 as soon as `src` changes, before any metadata: read
@@ -574,7 +577,10 @@ class WebPlaybackService implements PlaybackService {
     this.applyRate(pending);
     // Every `load`, `reset` and file change bumps it: one while the copy buffers leaves
     // nothing to switch from (another book started, the book stopped, a cast took the route).
+    // A seek meanwhile (`seekSeq`; a transcoded stream's bumps `loadSeq` too) leaves the copy
+    // at the place the listener left: switched in, it would undo the seek.
     const seq = this.loadSeq;
+    const seeks = this.seekSeq;
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
       const done = (ok: boolean) => {
@@ -608,14 +614,16 @@ class WebPlaybackService implements PlaybackService {
     });
 
     // The local source never became playable - discard it and keep streaming rather
-    // than cutting the live element over to a dead one. So too when `loadSeq` moved: what
-    // plays now (or nothing) stands.
-    if (!ready || seq !== this.loadSeq) {
+    // than cutting the live element over to a dead one. So too when `loadSeq` or `seekSeq`
+    // moved: what plays now (or nothing) stands, where it is.
+    if (!ready || seq !== this.loadSeq || seeks !== this.seekSeq) {
       this.discard(pending);
       return false;
     }
-    // A speed set while it buffered reached only the old element (`setRate`).
+    // A speed or a volume (the sleep timer's fade) set while it buffered reached only the
+    // old element (`setRate`, `setVolume`).
     this.applyRate(pending);
+    this.applyVolume(pending);
 
     // Read now, not before the wait: a pause made while the local source buffered stands
     // (the listener's, or this tab giving way to another tab's play: the swapped-in element
@@ -744,6 +752,7 @@ class WebPlaybackService implements PlaybackService {
     // Before its metadata the load would place the element back at its start: it places
     // it here instead.
     if (this.awaitingMetadata === a) this.placeAt = clamped;
+    this.seekSeq++;
     a.currentTime = clamped;
     this.update({ position: clamped });
   }
