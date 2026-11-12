@@ -23,6 +23,8 @@ dependencies {
   implementation 'com.google.android.gms:play-services-wearable:19.0.0'
   // RemoteActivityHelper: Install on watch opens AudioSilo's Play listing on the watch.
   implementation 'androidx.wear:wear-remote-interactions:1.1.0'
+  // ListenableFuture.await() for RemoteActivityHelper's answer (wear-remote-interactions brings it).
+  implementation 'androidx.concurrent:concurrent-futures-ktx:1.1.0'
   // Task.await() for the Play services calls.
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
 

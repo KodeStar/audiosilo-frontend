@@ -27,20 +27,32 @@ object WearPaths {
   const val ROOT = "/audiosilo/v1/"
   const val WATCH_STATE = "/audiosilo/v1/watch-state"
 
+  /** Every item the phone addresses to any watch starts here. */
+  const val TO = "${ROOT}to/"
+
+  /** Every item any watch puts for the phone starts here (the listener service's filter). */
+  const val FROM = "${ROOT}from/"
+
+  /** The `pair` item's place under a watch's `to(node)`. */
+  const val PAIR = "pair"
+
+  /** Where the book items sit under a watch's `to(node)`. */
+  const val BOOKS = "book/"
+
   /** What the Wear app advertises (wear/src/main/res/values/wear.xml). */
   const val WEAR_CAPABILITY = "audiosilo_wear_app"
 
   /** Every item the phone addresses to watch node `node` starts here. */
-  fun to(node: String): String = "${ROOT}to/$node/"
+  fun to(node: String): String = "$TO$node/"
 
   /** The one `pair` item for `node`. */
-  fun pair(node: String): String = "${to(node)}pair"
+  fun pair(node: String): String = to(node) + PAIR
 
   /** A book's item for `node`, shared by `book` and `remove`. */
-  fun book(node: String, key: String): String = "${to(node)}book/$key"
+  fun book(node: String, key: String): String = to(node) + BOOKS + key
 
   /** Every item watch node `node` puts for the phone starts here (its receipts). */
-  fun from(node: String): String = "${ROOT}from/$node/"
+  fun from(node: String): String = "$FROM$node/"
 
   /** Whether `path` is one of watch `node`'s receipts. */
   fun isTaken(path: String, node: String): Boolean {
@@ -51,14 +63,14 @@ object WearPaths {
   /** Whether `path` is an item the phone addresses to `node` (its `pair` or a book's). */
   fun isAddressedTo(path: String, node: String): Boolean {
     val rest = path.removePrefix(to(node)).takeIf { it.length < path.length } ?: return false
-    if (rest == "pair") return true
-    val key = rest.removePrefix("book/").takeIf { it.length < rest.length } ?: return false
+    if (rest == PAIR) return true
+    val key = rest.removePrefix(BOOKS).takeIf { it.length < rest.length } ?: return false
     return key.isNotEmpty() && !key.contains('/')
   }
 
   /** The watch node an item path is addressed to, null for any other path. */
   fun addressee(path: String): String? {
-    val rest = path.removePrefix("${ROOT}to/").takeIf { it.length < path.length } ?: return null
+    val rest = path.removePrefix(TO).takeIf { it.length < path.length } ?: return null
     val node = rest.substringBefore('/')
     return node.takeIf { it.isNotEmpty() && isAddressedTo(path, it) }
   }
@@ -146,35 +158,45 @@ object WearRules {
   /** The `book`s and `remove`s held for `node`, named by account and book only. */
   fun outstanding(own: List<Item>, node: String): List<Map<String, Any?>> =
     own
-      .filter { it.path.startsWith(WearPaths.to(node) + "book/") && WearPaths.isAddressedTo(it.path, node) }
+      .filter { it.path.startsWith(WearPaths.to(node) + WearPaths.BOOKS) && WearPaths.isAddressedTo(it.path, node) }
       .mapNotNull { item ->
         val m = item.payload ?: return@mapNotNull null
         val type = m["type"] as? String
         if (type != "book" && type != "remove") return@mapNotNull null
-        val serverId = m["server_id"] as? String ?: return@mapNotNull null
-        val userId = integer(m["user_id"]) ?: return@mapNotNull null
-        val libraryId = integer(m["library_id"]) ?: return@mapNotNull null
-        val path = m["path"] as? String ?: return@mapNotNull null
-        mapOf("type" to type, "server_id" to serverId, "user_id" to userId, "library_id" to libraryId, "path" to path)
+        val book = bookOf(m) ?: return@mapNotNull null
+        mapOf(
+          "type" to type,
+          "server_id" to book.serverId,
+          "user_id" to book.userId,
+          "library_id" to book.libraryId,
+          "path" to book.path,
+        )
       }
 
+  /** The book a `book` or `remove` names: what its item's key is made of. */
+  private class NamedBook(val serverId: String, val userId: Long, val libraryId: Long, val path: String)
+
+  private fun bookOf(m: Map<String, Any?>): NamedBook? {
+    val serverId = (m["server_id"] as? String)?.takeIf { it.isNotEmpty() } ?: return null
+    val userId = integer(m["user_id"]) ?: return null
+    val libraryId = integer(m["library_id"]) ?: return null
+    val path = (m["path"] as? String)?.takeIf { it.isNotEmpty() } ?: return null
+    return NamedBook(serverId, userId, libraryId, path)
+  }
+
   /**
-   * Where a message for watch `node` goes, or null for one that is not a `v: 1` `pair`, `book` or
-   * `remove` naming what its path needs, or that has no `sent_at` (without it an identical send
-   * would put nothing, and the receipt could not name it).
+   * Where a message goes under the target watch's `WearPaths.to(node)` (`pair`, or `book/<key>`),
+   * or null for one that is not a `v: 1` `pair`, `book` or `remove` naming what its path needs, or
+   * that has no `sent_at` (without it an identical send would put nothing, and the receipt could
+   * not name it).
    */
-  fun pathFor(message: Map<String, Any?>, node: String): String? {
+  fun slot(message: Map<String, Any?>): String? {
     if (integer(message["v"]) != VERSION.toLong()) return null
     if ((message["sent_at"] as? String).isNullOrEmpty()) return null
     return when (message["type"]) {
-      "pair" -> WearPaths.pair(node)
-      "book", "remove" -> {
-        val serverId = (message["server_id"] as? String)?.takeIf { it.isNotEmpty() } ?: return null
-        val userId = integer(message["user_id"]) ?: return null
-        val libraryId = integer(message["library_id"]) ?: return null
-        val path = (message["path"] as? String)?.takeIf { it.isNotEmpty() } ?: return null
-        WearPaths.book(node, BookKey.of(serverId, userId, libraryId, path))
-      }
+      "pair" -> WearPaths.PAIR
+      "book", "remove" ->
+        bookOf(message)?.let { WearPaths.BOOKS + BookKey.of(it.serverId, it.userId, it.libraryId, it.path) }
       else -> null
     }
   }
@@ -247,10 +269,8 @@ object WearRules {
   /** A whole number however the bridge or the parser gave it (JS numbers arrive as Double). */
   fun integer(v: Any?): Long? =
     when (v) {
-      is Int -> v.toLong()
       is Long -> v
       is Double -> if (v == Math.floor(v) && !v.isInfinite() && Math.abs(v) <= 9.007199254740991E15) v.toLong() else null
-      is Float -> integer(v.toDouble())
       is Number -> integer(v.toDouble())
       else -> null
     }

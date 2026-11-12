@@ -3,9 +3,10 @@
 // src/watch/link.native.ts: the same functions and event, plus `openInstallOnWatch`.
 package expo.modules.audiosilowatch
 
-import expo.modules.kotlin.Promise
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 class AudiosiloWatchModule : Module() {
@@ -22,10 +23,18 @@ class AudiosiloWatchModule : Module() {
     // Listen from the first moment the app runs JS (the listener service covers the rest).
     OnCreate { if (WearLink.supported(context)) WearLink.start(context) }
 
+    // One snapshot at a time, and one more for whatever changed meanwhile: a burst of changes (a
+    // watch back in reach with several receipts, each seen by the service and the listener) is
+    // two reads of the Data Layer, not one each.
     OnStartObserving("watchState") {
       if (stopObserving != null) return@OnStartObserving
-      stopObserving = WearLink.observe {
-        WearLink.scope.launch { sendEvent("watchState", WearLink.snapshot(context)) }
+      val app = context.applicationContext
+      val changed = Channel<Unit>(Channel.CONFLATED)
+      val stop = WearLink.observe { changed.trySend(Unit) }
+      val sending = WearLink.scope.launch { for (change in changed) sendEvent("watchState", WearLink.snapshot(app)) }
+      stopObserving = {
+        stop()
+        sending.cancel()
       }
     }
 
@@ -37,45 +46,22 @@ class AudiosiloWatchModule : Module() {
     Function("isSupported") { WearLink.supported(context) }
 
     // Answers "no watch" after 5 s with no Data Layer answer, never hangs.
-    AsyncFunction("getSnapshot") { promise: Promise ->
-      WearLink.scope.launch { promise.resolve(WearLink.snapshot(context)) }
-    }
+    AsyncFunction("getSnapshot") Coroutine { -> WearLink.snapshot(context) }
 
-    // A `book` put once this answered is behind it: the watch takes the `pair` first.
-    AsyncFunction("sendPair") { message: Map<String, Any?>, promise: Promise -> send(message, promise) }
+    // A `book` put once this answered is behind it: the watch takes the `pair` first. A refusal
+    // (NoWatchException, BadMessageException, a Data Layer error) rejects; nothing was sent.
+    AsyncFunction("sendPair") Coroutine { message: Map<String, Any?> -> WearLink.send(context, message) }
 
-    AsyncFunction("sendBook") { message: Map<String, Any?>, promise: Promise -> send(message, promise) }
+    AsyncFunction("sendBook") Coroutine { message: Map<String, Any?> -> WearLink.send(context, message) }
 
     // Shares the book's item with `sendBook`: the latest of the two for a book wins.
-    AsyncFunction("sendRemove") { message: Map<String, Any?>, promise: Promise -> send(message, promise) }
+    AsyncFunction("sendRemove") Coroutine { message: Map<String, Any?> -> WearLink.send(context, message) }
 
-    AsyncFunction("openInstallOnWatch") { promise: Promise ->
-      WearLink.scope.launch {
-        try {
-          WearLink.openInstallOnWatch(context)
-          promise.resolve(null)
-        } catch (e: Exception) {
-          promise.reject("ERR_NO_WATCH", "Could not open Google Play on the watch", e)
-        }
-      }
-    }
+    AsyncFunction("openInstallOnWatch") Coroutine { -> WearLink.openInstallOnWatch(context) }
   }
 
   private fun stopWatching() {
     stopObserving?.invoke()
     stopObserving = null
-  }
-
-  private fun send(message: Map<String, Any?>, promise: Promise) {
-    WearLink.scope.launch {
-      try {
-        WearLink.send(context, message)
-        promise.resolve(null)
-      } catch (e: BadMessageException) {
-        promise.reject("ERR_BAD_MESSAGE", "The message is not one the watch takes", e)
-      } catch (e: Exception) {
-        promise.reject("ERR_NO_WATCH", "No paired watch with the app installed", e)
-      }
-    }
   }
 }

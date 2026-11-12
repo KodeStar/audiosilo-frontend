@@ -57,10 +57,14 @@ class BookKeyTest {
     val book = message("book", "path" to "Author/Book", "title" to "Book")
     val remove = message("remove", "path" to "Author/Book")
     val expected = "/audiosilo/v1/to/w1/book/eefecdf9736cd98fc6c4df24bf370c08787853e20d463c2599ce669a54bf4eaa"
-    assertEquals(expected, WearRules.pathFor(book, "w1"))
-    assertEquals(expected, WearRules.pathFor(remove, "w1"))
+    assertEquals(expected, pathFor(book, "w1"))
+    assertEquals(expected, pathFor(remove, "w1"))
   }
 }
+
+/** Where a message for watch `node` goes, as WearLink puts it. */
+private fun pathFor(message: Map<String, Any?>, node: String): String? =
+  WearRules.slot(message)?.let { WearPaths.to(node) + it }
 
 /** A message as the JS bridge gives it: every number a Double. */
 private fun message(type: String, vararg extra: Pair<String, Any?>): Map<String, Any?> =
@@ -76,19 +80,19 @@ private fun message(type: String, vararg extra: Pair<String, Any?>): Map<String,
 class PathForTest {
   @Test
   fun putsThePairAtItsOnePath() {
-    assertEquals("/audiosilo/v1/to/w1/pair", WearRules.pathFor(message("pair", "pairing_token" to "t"), "w1"))
+    assertEquals("/audiosilo/v1/to/w1/pair", pathFor(message("pair", "pairing_token" to "t"), "w1"))
   }
 
   @Test
   fun refusesWhatTheWatchWouldNotTake() {
     val book = message("book", "path" to "A/B")
-    assertNull(WearRules.pathFor(book + ("v" to 2.0), "w1"))
-    assertNull(WearRules.pathFor(book - "sent_at", "w1"))
-    assertNull(WearRules.pathFor(book + ("sent_at" to ""), "w1"))
-    assertNull(WearRules.pathFor(book - "path", "w1"))
-    assertNull(WearRules.pathFor(book + ("user_id" to 1.5), "w1"))
-    assertNull(WearRules.pathFor(book + ("server_id" to ""), "w1"))
-    assertNull(WearRules.pathFor(book + ("type" to "watch-state"), "w1"))
+    assertNull(pathFor(book + ("v" to 2.0), "w1"))
+    assertNull(pathFor(book - "sent_at", "w1"))
+    assertNull(pathFor(book + ("sent_at" to ""), "w1"))
+    assertNull(pathFor(book - "path", "w1"))
+    assertNull(pathFor(book + ("user_id" to 1.5), "w1"))
+    assertNull(pathFor(book + ("server_id" to ""), "w1"))
+    assertNull(pathFor(book + ("type" to "watch-state"), "w1"))
   }
 }
 
@@ -168,9 +172,9 @@ class TargetAndSnapshotTest {
     val remove = message("remove", "path" to "A/C")
     val own = listOf(
       Item("/audiosilo/v1/to/w1/pair", message("pair", "pairing_token" to "secret")),
-      Item(WearRules.pathFor(book, "w1")!!, book),
-      Item(WearRules.pathFor(remove, "w1")!!, remove),
-      Item(WearRules.pathFor(book, "other")!!, book),
+      Item(pathFor(book, "w1")!!, book),
+      Item(pathFor(remove, "w1")!!, remove),
+      Item(pathFor(book, "other")!!, book),
       Item("/audiosilo/v1/to/w1/book/bad", mapOf("type" to "book")),
       Item("/audiosilo/v1/to/w1/book/null", null),
     )
@@ -190,7 +194,7 @@ class TargetAndSnapshotTest {
 
 class ReceiptTest {
   private val book = message("book", "path" to "A/B")
-  private val bookPath = WearRules.pathFor(book, "w1")!!
+  private val bookPath = pathFor(book, "w1")!!
   private val key = bookPath.substringAfterLast('/')
   private val receiptPath = "/audiosilo/v1/from/w1/taken/$key"
 

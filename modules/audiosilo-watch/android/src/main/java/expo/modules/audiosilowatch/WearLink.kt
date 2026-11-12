@@ -15,6 +15,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.concurrent.futures.await
 import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -24,27 +25,26 @@ import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
+import expo.modules.kotlin.exception.CodedException
 import java.util.concurrent.CopyOnWriteArraySet
-import java.util.concurrent.ExecutionException
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** No watch with the app (or no Data Layer at all): nothing was sent. */
-class NoWatchException : Exception("No paired watch with the app installed")
+/** No watch with the app (or no Data Layer at all): nothing was sent. JS gets `ERR_NO_WATCH`. */
+class NoWatchException : CodedException("No paired watch with the app installed")
 
-/** Not a `v: 1` `pair`, `book` or `remove` with a `sent_at`: nothing was sent. */
-class BadMessageException : Exception("Not a message the watch takes")
+/** Not a `v: 1` `pair`, `book` or `remove` with a `sent_at`: nothing was sent. `ERR_BAD_MESSAGE`. */
+class BadMessageException : CodedException("The message is not one the watch takes")
 
 object WearLink {
   private const val TAG = "AudiosiloWearLink"
@@ -59,6 +59,26 @@ object WearLink {
 
   /** One Data Layer item and the node that put it. */
   private class Read(val node: String, val item: Item)
+
+  /** A watch's receipt: the node that put it, where, and what it says. */
+  private class Taken(val node: String, val path: String, val receipt: Receipt)
+
+  /** Any node's items at `path`. */
+  private fun anyNode(path: String): Uri = Uri.parse("wear://*$path")
+
+  /** The item node `node` put at `path` (the phone's own, to read or delete). */
+  private fun nodeItem(node: String, path: String): Uri = Uri.parse("wear://$node$path")
+
+  /** `block`'s answer, or null (and a log line) for anything it throws but a cancellation. */
+  private inline fun <T> quietly(what: String, block: () -> T): T? =
+    try {
+      block()
+    } catch (x: CancellationException) {
+      throw x
+    } catch (x: Exception) {
+      Log.w(TAG, "$what failed", x)
+      null
+    }
 
   val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val lock = Mutex()
@@ -92,7 +112,7 @@ object WearLink {
       app = context.applicationContext
     }
     try {
-      Wearable.getDataClient(app).addListener(dataListener, Uri.parse("wear://*" + WearPaths.ROOT), DataClient.FILTER_PREFIX)
+      Wearable.getDataClient(app).addListener(dataListener, anyNode(WearPaths.ROOT), DataClient.FILTER_PREFIX)
       Wearable.getCapabilityClient(app).addListener(capabilityListener, WearPaths.WEAR_CAPABILITY)
     } catch (e: Exception) {
       Log.w(TAG, "no Data Layer listener", e)
@@ -118,19 +138,18 @@ object WearLink {
 
   /** Changes from either way in: note who put a `watch-state`, act on receipts, then tell JS. */
   suspend fun onEvents(context: Context, events: List<Event>) {
-    for (e in events) {
-      try {
-        when {
-          e.path == WearPaths.WATCH_STATE && !e.deleted -> noteStateSeen(context, e.node)
-          !e.deleted && WearPaths.isTaken(e.path, e.node) -> {
-            val receipt = WearRules.receipt(Json.decodeObject(e.bytes)) ?: continue
-            lock.withLock { settle(context, e.node, e.path, receipt, null) }
-          }
+    val changed = events.filter { !it.deleted }
+    for (e in changed) if (e.path == WearPaths.WATCH_STATE) noteStateSeen(context, e.node)
+    val taken =
+      changed
+        .filter { WearPaths.isTaken(it.path, it.node) }
+        .mapNotNull { e -> WearRules.receipt(Json.decodeObject(e.bytes))?.let { Taken(e.node, e.path, it) } }
+    if (taken.isNotEmpty()) {
+      quietly("receipts") {
+        lock.withLock {
+          val me = me(context) ?: return@withLock
+          settle(context, me, taken, ownItems(context, me))
         }
-      } catch (x: CancellationException) {
-        throw x
-      } catch (x: Exception) {
-        Log.w(TAG, "event ${e.path} not handled", x)
       }
     }
     notifyChanged()
@@ -141,45 +160,37 @@ object WearLink {
    * process ran and the service was not started, or one the last process died on).
    */
   private suspend fun sweep(context: Context) {
-    try {
+    quietly("sweep") {
       lock.withLock {
         val me = me(context) ?: return@withLock
-        val own = ownItems(context, me)
-        drop(context, me, WearRules.stalePairs(own, System.currentTimeMillis()))
-        for (r in read(context, Uri.parse("wear://*" + WearPaths.ROOT + "from/"), prefix = true)) {
-          val receipt = WearRules.receipt(r.item.payload) ?: continue
-          settle(context, r.node, r.item.path, receipt, own)
-        }
+        val own = prune(context, me, ownItems(context, me), System.currentTimeMillis())
+        val taken =
+          read(context, anyNode(WearPaths.FROM), prefix = true).mapNotNull { r ->
+            WearRules.receipt(r.item.payload)?.let { Taken(r.node, r.item.path, it) }
+          }
+        settle(context, me, taken, own)
       }
-    } catch (x: CancellationException) {
-      throw x
-    } catch (x: Exception) {
-      Log.w(TAG, "sweep failed", x)
     }
     notifyChanged()
   }
 
-  /** Delete the phone's item a receipt names, if it still holds that very send. Under `lock`. */
-  private suspend fun settle(context: Context, node: String, receiptPath: String, receipt: Receipt, own: List<Item>?) {
-    val me = me(context) ?: return
-    val held =
-      own?.firstOrNull { it.path == receipt.path }
-        ?: if (own == null) read(context, Uri.parse("wear://$me${receipt.path}"), prefix = false).firstOrNull()?.item else null
-    val path = WearRules.deletable(receiptPath, node, receipt, held) ?: return
-    drop(context, me, listOf(path))
+  /** Delete the phone's items these receipts name, where it still holds those very sends. Under `lock`. */
+  private suspend fun settle(context: Context, me: String, taken: List<Taken>, own: List<Item>) {
+    val held = own.associateBy { it.path }
+    drop(context, me, taken.mapNotNull { WearRules.deletable(it.path, it.node, it.receipt, held[it.receipt.path]) })
+  }
+
+  /** Drop the pairs past their time at `now`; what is left of `own`. Under `lock`. */
+  private suspend fun prune(context: Context, me: String, own: List<Item>, now: Long): List<Item> {
+    val stale = WearRules.stalePairs(own, now)
+    if (stale.isEmpty()) return own
+    drop(context, me, stale)
+    return own.filter { it.path !in stale }
   }
 
   /** What `getSnapshot` answers, the expired pairs dropped first. "No watch" after `WAIT_MS`. */
   suspend fun snapshot(context: Context): Map<String, Any?> {
-    val view =
-      try {
-        withTimeoutOrNull(WAIT_MS) { lock.withLock { view(context, pruneAt = System.currentTimeMillis()) } }
-      } catch (x: CancellationException) {
-        throw x
-      } catch (x: Exception) {
-        Log.w(TAG, "snapshot failed", x)
-        null
-      }
+    val view = quietly("snapshot") { withTimeoutOrNull(WAIT_MS) { lock.withLock { view(context, System.currentTimeMillis()) } } }
     return WearRules.snapshot(view ?: LinkView.NONE)
   }
 
@@ -189,15 +200,15 @@ object WearLink {
    * the watch takes it when it is in reach, with the app closed, a `pair` ahead of the books.
    */
   suspend fun send(context: Context, message: Map<String, Any?>) {
-    if (WearRules.pathFor(message, "check") == null) throw BadMessageException()
+    val slot = WearRules.slot(message) ?: throw BadMessageException()
     lock.withLock {
       val now = System.currentTimeMillis()
-      val view = withTimeoutOrNull(WAIT_MS) { view(context, pruneAt = now) } ?: throw NoWatchException()
+      val view = withTimeoutOrNull(WAIT_MS) { view(context, now) } ?: throw NoWatchException()
       val target = WearRules.target(view) ?: throw NoWatchException()
-      val path = WearRules.pathFor(message, target) ?: throw BadMessageException()
       val me = me(context) ?: throw NoWatchException()
-      if (message["type"] == "pair") drop(context, me, WearRules.stalePairs(view.own, now, sendingTo = target))
-      val put = PutDataRequest.create(path).setData(Json.encode(message).toByteArray(Charsets.UTF_8)).setUrgent()
+      if (slot == WearPaths.PAIR) drop(context, me, WearRules.stalePairs(view.own, now, sendingTo = target))
+      val put =
+        PutDataRequest.create(WearPaths.to(target) + slot).setData(Json.encode(message).toByteArray(Charsets.UTF_8)).setUrgent()
       Wearable.getDataClient(context).putDataItem(put).await()
     }
     notifyChanged()
@@ -210,26 +221,11 @@ object WearLink {
         .addCategory(Intent.CATEGORY_BROWSABLE)
         .setData(Uri.parse("market://details?id=${context.packageName}"))
     // Null node: every connected watch (from a phone).
-    val future = RemoteActivityHelper(context.applicationContext, Dispatchers.IO.asExecutor()).startRemoteActivity(intent, null)
-    suspendCancellableCoroutine { cont ->
-      future.addListener(
-        {
-          try {
-            future.get()
-            cont.resume(Unit)
-          } catch (e: ExecutionException) {
-            cont.resumeWithException(e.cause ?: e)
-          } catch (e: Exception) {
-            cont.resumeWithException(e)
-          }
-        },
-        Runnable::run,
-      )
-    }
+    RemoteActivityHelper(context.applicationContext, Dispatchers.IO.asExecutor()).startRemoteActivity(intent, null).await()
   }
 
-  /** Everything the snapshot is made of. Under `lock`; drops the stale pairs it finds when asked. */
-  private suspend fun view(context: Context, pruneAt: Long?): LinkView {
+  /** Everything the snapshot is made of, the pairs past their time at `now` dropped. Under `lock`. */
+  private suspend fun view(context: Context, now: Long): LinkView {
     val data = Wearable.getDataClient(context)
     try {
       GoogleApiAvailability.getInstance().checkApiAvailability(data).await()
@@ -240,30 +236,30 @@ object WearLink {
       return LinkView.NONE
     }
     val me = me(context) ?: return LinkView.NONE
-    val connected = Wearable.getNodeClient(context).connectedNodes.await().map { WatchNode(it.id, it.isNearby) }
-    val capable =
-      Wearable.getCapabilityClient(context)
-        .getCapability(WearPaths.WEAR_CAPABILITY, CapabilityClient.FILTER_ALL)
-        .await()
-        .nodes
-        .map { it.id }
-        .toSet()
-    val states =
-      read(context, Uri.parse("wear://*" + WearPaths.WATCH_STATE), prefix = false)
-        .filter { it.node != me }
-        .mapNotNull { r -> r.item.payload?.let { r.node to it } }
-        .toMap()
-    var own = ownItems(context, me)
-    if (pruneAt != null) {
-      val stale = WearRules.stalePairs(own, pruneAt)
-      drop(context, me, stale)
-      own = own.filter { it.path !in stale }
+    // Four questions that do not wait on each other: asked together, the answer takes the slowest.
+    return coroutineScope {
+      val connected = async { Wearable.getNodeClient(context).connectedNodes.await().map { WatchNode(it.id, it.isNearby) } }
+      val capable = async {
+        Wearable.getCapabilityClient(context)
+          .getCapability(WearPaths.WEAR_CAPABILITY, CapabilityClient.FILTER_ALL)
+          .await()
+          .nodes
+          .map { it.id }
+          .toSet()
+      }
+      val states = async {
+        read(context, anyNode(WearPaths.WATCH_STATE), prefix = false)
+          .filter { it.node != me }
+          .mapNotNull { r -> r.item.payload?.let { r.node to it } }
+          .toMap()
+      }
+      val own = async { ownItems(context, me) }
+      LinkView(true, connected.await(), capable.await(), states.await(), stateSeen(context), prune(context, me, own.await(), now))
     }
-    return LinkView(true, connected, capable, states, stateSeen(context), own)
   }
 
   private suspend fun ownItems(context: Context, me: String): List<Item> =
-    read(context, Uri.parse("wear://$me${WearPaths.ROOT}to/"), prefix = true).map { it.item }
+    read(context, nodeItem(me, WearPaths.TO), prefix = true).map { it.item }
 
   private suspend fun read(context: Context, uri: Uri, prefix: Boolean): List<Read> {
     val buffer =
@@ -282,19 +278,12 @@ object WearLink {
 
   private suspend fun drop(context: Context, me: String, paths: List<String>) {
     val data = Wearable.getDataClient(context)
-    for (path in paths) data.deleteDataItems(Uri.parse("wear://$me$path"), DataClient.FILTER_LITERAL).await()
+    for (path in paths) data.deleteDataItems(nodeItem(me, path), DataClient.FILTER_LITERAL).await()
   }
 
   private suspend fun me(context: Context): String? {
     localNode?.let { return it }
-    return try {
-      Wearable.getNodeClient(context).localNode.await().id.also { localNode = it }
-    } catch (x: CancellationException) {
-      throw x
-    } catch (x: Exception) {
-      Log.w(TAG, "no local node", x)
-      null
-    }
+    return quietly("local node") { Wearable.getNodeClient(context).localNode.await().id.also { localNode = it } }
   }
 
   // Which watch spoke last, kept across launches for the target choice (WearRules.target).
