@@ -255,6 +255,23 @@ describe('RoutedPlaybackService', () => {
     expect(t.router.castRoute()).toBeNull();
   });
 
+  it('plays the download remembered while a book could not be cast mid-session', async () => {
+    const t = setup();
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    const localTracks = TRACKS.map((tr) => ({ ...tr, url: `file:///dl/${tr.id}` }));
+    // The book's download lands while the receiver is asked, then the receiver refuses.
+    (cast.load as jest.Mock).mockImplementationOnce(async () => {
+      t.router.rememberLoad({ tracks: localTracks, chapters: [], book: BOOK });
+      throw new CastBlockedError('local-address');
+    });
+    t.router.onCastFailed = jest.fn();
+    await t.router.load(TRACKS, 1, 7, [], BOOK);
+    expect(t.router.castRoute()).toBeNull();
+    const reload = (t.local.load as jest.Mock).mock.calls.at(-1)!;
+    expect(reload.slice(0, 3)).toEqual([localTracks, 1, 7]);
+  });
+
   it('hands the book back when the session ends: paused, at the receiver place, never playing', async () => {
     const t = setup();
     await playingLocally(t);

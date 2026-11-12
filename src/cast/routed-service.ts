@@ -320,10 +320,12 @@ export class RoutedPlaybackService implements PlaybackService {
         await this.ending;
         throw err;
       }
-      // This book can't go to the receiver: it plays here, and the session is let go.
+      // This book can't go to the receiver: it plays here, and the session is let go. From
+      // the phone's own copy when one was remembered meanwhile, as a refused handover does.
       this.dropCast();
       this.mode = 'local';
-      await this.local.load(tracks, startIndex, positionInTrack, chapters, book);
+      const here = this.lastLoad ?? mine;
+      await this.local.load(here.tracks, startIndex, positionInTrack, here.chapters, here.book);
       this.onCastFailed?.(err);
     } finally {
       if (this.pending?.load === mine) this.pending = null;
