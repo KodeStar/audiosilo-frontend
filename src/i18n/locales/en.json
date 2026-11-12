@@ -268,11 +268,18 @@
     },
     "watch": {
       "title": "Apple Watch",
+      "titleWear": "Wear OS watch",
       "install": "Install AudioSilo on your watch from the Watch app on this iPhone, then come back here.",
+      "installWear": "Install AudioSilo on your watch from Google Play, then come back here.",
+      "installOnWatch": "Install on watch",
+      "installOpened": "Check your watch: Google Play opens there at AudioSilo's page.",
+      "installFailed": "Couldn't open Google Play on your watch. Find AudioSilo in Google Play on the watch instead.",
       "setupBody": "Sign your watch in to {{server}} with no typing, then take books with you and leave the phone at home.",
       "setUp": "Set up Apple Watch",
+      "setUpWear": "Set up your watch",
       "sendAgain": "Send again",
       "sent": "Sent. Open AudioSilo on your watch to finish signing in.",
+      "sentWear": "Sent. Your watch signs in as soon as it gets this. Keep it close.",
       "expired": "The sign-in ran out before your watch took it. Nothing changed on the watch. Keep it close and send again.",
       "signedInAs": "Signed in as {{user}} on {{server}}",
       "otherAccount": "Your watch is signed in to another account. Setting it up for {{server}} replaces that account once its listening has synced.",
@@ -973,6 +980,7 @@
       "sendToWatch": "Send to watch",
       "sentToWatch": "Sent to your watch",
       "sentToWatchPair": "If AudioSilo isn't open on your watch, open it to finish signing in.",
+      "sentToWatchPairWear": "Your watch signs in first, then gets the book.",
       "sentToWatchShow": "Show",
       "markFinished": "Mark as finished",
       "markUnfinished": "Mark as not finished",
@@ -1186,6 +1194,7 @@
     },
     "watch": {
       "title": "On your Apple Watch",
+      "titleWear": "On your watch",
       "empty": "No books on your watch yet. Choose Send to watch on a book's page.",
       "notHere": "Your watch isn't on this account",
       "otherAccount": "It's signed in to another account, and that account's books aren't listed here. To use it with {{server}}, set it up on your account page.",
@@ -1204,6 +1213,7 @@
       "phase": {
         "undelivered": "Sent, not delivered yet",
         "delivered": "Delivered. Open AudioSilo on your watch.",
+        "deliveredWear": "Delivered to your watch",
         "waiting-sign-in": "Delivered. It starts once your watch is signed in here.",
         "send-failed": "Couldn't reach your watch. Send it again.",
         "stale": "Your watch hasn't taken this in 7 days. Send it again if you still want it.",
@@ -1214,6 +1224,7 @@
         "failed": "Couldn't download. Send it again to retry.",
         "removing-undelivered": "Removing once your watch is in reach",
         "removing": "Removing. Open AudioSilo on your watch to finish.",
+        "removingWear": "Removing from your watch",
         "remove-failed": "Couldn't reach your watch to remove this. Try again.",
         "remove-refused": "Not removed: your watch isn't signed in to this account."
       }

@@ -7,9 +7,18 @@ import { useWatchStore } from '@/watch/watch-store';
 
 const mockRead = jest.fn();
 const mockSendPair = jest.fn();
+const mockLink: { kind: 'apple' | 'wear'; openInstallOnWatch?: () => Promise<void> } = {
+  kind: 'apple',
+};
 jest.mock('@/watch/link', () => ({
   watchLink: {
     supported: true,
+    get kind() {
+      return mockLink.kind;
+    },
+    get openInstallOnWatch() {
+      return mockLink.openInstallOnWatch;
+    },
     read: () => mockRead(),
     subscribe: () => {},
     sendPair: (m: unknown) => mockSendPair(m),
@@ -50,7 +59,7 @@ const mockOpenDownloads = jest.fn();
 jest.mock('@/lib/open', () => ({ openDownloads: (c: string) => mockOpenDownloads(c) }));
 
 /* eslint-disable import/first */
-import { AppleWatchCard } from './apple-watch-card';
+import { WatchCard } from './watch-card';
 /* eslint-enable import/first */
 
 const installed: WatchStatus = { ...NO_WATCH, paired: true, installed: true };
@@ -66,11 +75,13 @@ const here: WatchState = {
 async function mount(status: WatchStatus, pairUntil: Record<string, number> = {}) {
   mockRead.mockResolvedValue(status);
   useWatchStore.setState({ status, pairUntil });
-  await render(<AppleWatchCard connectionId="srv.7" />);
+  await render(<WatchCard connectionId="srv.7" />);
   await act(async () => {});
 }
 
 beforeEach(() => {
+  mockLink.kind = 'apple';
+  mockLink.openInstallOnWatch = undefined;
   mockServer = { renditions: ['watch'] };
   mockUser = { id: 7, username: 'ada' };
   mockOtherConnections = [];
@@ -78,7 +89,7 @@ beforeEach(() => {
   mockSendPair.mockReset().mockResolvedValue(undefined);
 });
 
-describe('AppleWatchCard', () => {
+describe('WatchCard', () => {
   it('identifies a same-name server in its body and the watch account message', async () => {
     mockOtherConnections = [
       {
@@ -102,16 +113,16 @@ describe('AppleWatchCard', () => {
 
   it('is not there without a paired watch', async () => {
     await mount(NO_WATCH);
-    expect(screen.queryByTestId('apple-watch-card')).toBeNull();
+    expect(screen.queryByTestId('watch-card')).toBeNull();
   });
 
   it('is not there for a kid or a demo account', async () => {
     mockUser = { id: 7, member_kind: 'kid' };
     await mount(installed);
-    expect(screen.queryByTestId('apple-watch-card')).toBeNull();
+    expect(screen.queryByTestId('watch-card')).toBeNull();
     mockUser = { id: 7, is_demo: true };
     await mount(installed);
-    expect(screen.queryByTestId('apple-watch-card')).toBeNull();
+    expect(screen.queryByTestId('watch-card')).toBeNull();
   });
 
   it('asks to install the app first, with nothing to press', async () => {
@@ -240,4 +251,58 @@ describe('AppleWatchCard', () => {
     await act(async () => fireEvent.press(screen.getByText('Set up Apple Watch')));
     expect(screen.getByText(/Couldn't reach your watch/)).toBeTruthy();
   });
+});
+
+describe('WatchCard on Android (Wear OS)', () => {
+  const mockInstall = jest.fn();
+  beforeEach(() => {
+    mockLink.kind = 'wear';
+    mockLink.openInstallOnWatch = () => mockInstall();
+    mockInstall.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('says your watch, never Apple Watch', async () => {
+    await mount(installed);
+    expect(screen.getByText('Wear OS watch')).toBeTruthy();
+    expect(screen.getByText('Set up your watch')).toBeTruthy();
+    expect(screen.queryByText(/Apple/)).toBeNull();
+  });
+
+  it('offers Install on watch, which opens Play there', async () => {
+    await mount({ ...NO_WATCH, paired: true });
+    expect(screen.getByText(/from Google Play/)).toBeTruthy();
+    await act(async () => fireEvent.press(screen.getByText('Install on watch')));
+    expect(mockInstall).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Google Play opens there/)).toBeTruthy();
+    expect(screen.queryByText('Set up your watch')).toBeNull();
+  });
+
+  it('says so when Play could not open on the watch', async () => {
+    mockInstall.mockRejectedValue(new Error('ERR_NO_WATCH'));
+    await mount({ ...NO_WATCH, paired: true });
+    await act(async () => fireEvent.press(screen.getByText('Install on watch')));
+    expect(screen.getByText(/Couldn't open Google Play on your watch/)).toBeTruthy();
+  });
+
+  it('does not ask for the watch app to be opened after Set up: it signs in by itself', async () => {
+    await mount(installed);
+    await act(async () => fireEvent.press(screen.getByText('Set up your watch')));
+    expect(mockSendPair).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/signs in as soon as it gets this/)).toBeTruthy();
+    expect(screen.queryByText(/Open AudioSilo/)).toBeNull();
+  });
+
+  it('is still not there for a kid or a demo account', async () => {
+    mockUser = { id: 7, member_kind: 'kid' };
+    await mount(installed);
+    expect(screen.queryByTestId('watch-card')).toBeNull();
+    mockUser = { id: 7, is_demo: true };
+    await mount(installed);
+    expect(screen.queryByTestId('watch-card')).toBeNull();
+  });
+});
+
+it('offers no Install button on an iPhone (the Watch app installs it)', async () => {
+  await mount({ ...NO_WATCH, paired: true });
+  expect(screen.queryByText('Install on watch')).toBeNull();
 });

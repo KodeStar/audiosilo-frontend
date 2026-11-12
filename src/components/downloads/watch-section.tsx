@@ -20,6 +20,7 @@ import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { type Connection, useSession } from '@/stores/session';
+import { watchLink } from '@/watch/link';
 import { removeFromWatch, sendBookToWatch } from '@/watch/send';
 import { useWatchStatus, watchErrorText } from '@/watch/use-watch';
 import { forgetRow, ledgerRows, useWatchLedger } from '@/watch/watch-ledger';
@@ -28,6 +29,7 @@ import {
   type WatchCardStatus,
   watchCardStatus,
   watchSectionVisible,
+  watchWording,
 } from '@/watch/watch-model';
 import {
   rowActions,
@@ -55,9 +57,11 @@ function useSectionConnection(linked: string | undefined): Connection | null {
 }
 
 /**
- * The Downloads page's "On your Apple Watch" (iOS, with the app on a paired watch; never a kid's or
- * a demo's account): what the phone sent, and what the watch says it holds, for one account on this
- * watch. Rules in `src/watch/watch-rows.ts`. `onReveal` scrolls the page to it, once per link that
+ * The Downloads page's "On your Apple Watch" (iOS) or "On your watch" (Android, Wear OS), with the
+ * app on a paired watch, never for a kid's or a demo's account: what the phone sent, and what the
+ * watch says it holds, for one account on this watch. Rules in `src/watch/watch-rows.ts`; on Wear OS
+ * nothing is ever `failed` to send (a Data Layer item waits for the watch), and "delivered" means the
+ * watch app took it. `onReveal` scrolls the page to it, once per link that
  * brought the listener here.
  */
 export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
@@ -92,7 +96,7 @@ export function WatchSection({ onReveal }: { onReveal: (y: number) => void }) {
   return (
     <View className="gap-3" testID="downloads-watch" onLayout={(e) => setY(e.nativeEvent.layout.y)}>
       <SectionHead
-        title={t('downloads.watch.title')}
+        title={t(watchWording(watchLink.kind, 'downloads.watch.title'))}
         sub={rows.length > 0 ? formatCount(rows.length) : undefined}
       />
       {status === 'signed-in' ? null : <WatchAway status={status} connection={connection} />}
@@ -144,7 +148,7 @@ function WatchAway({ status, connection }: { status: WatchCardStatus; connection
     status === 'other-account'
       ? t('downloads.watch.otherAccount', { server })
       : status === 'sent'
-        ? t('account.watch.sent')
+        ? t(watchWording(watchLink.kind, 'account.watch.sent'))
         : status === 'expired'
           ? t('account.watch.expired')
           : t('downloads.watch.signedOut', { server });
@@ -219,7 +223,7 @@ const WatchBookRow = memo(
         meta={sizeMeta(t, server, row.phase === 'ready' ? (row.bytes ?? 0) : 0, false)}
         status={
           <Text variant="caption" className={cn(PHASE_TONE[row.phase])}>
-            {t(`downloads.watch.phase.${row.phase}`)}
+            {t(watchWording(watchLink.kind, `downloads.watch.phase.${row.phase}` as const))}
           </Text>
         }
         actions={

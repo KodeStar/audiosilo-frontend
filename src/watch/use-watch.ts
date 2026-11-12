@@ -12,7 +12,12 @@ import { useSession } from '@/stores/session';
 
 import { watchLink } from './link';
 import { sendBookToWatch, WatchSendError } from './send';
-import { sendToWatchVisible, type WatchableBook, type WatchStatus } from './watch-model';
+import {
+  sendToWatchVisible,
+  type WatchableBook,
+  type WatchStatus,
+  watchWording,
+} from './watch-model';
 import { startWatchLink, useWatchStore } from './watch-store';
 
 /** The watch as this phone knows it, followed while the app runs. */
@@ -46,7 +51,9 @@ function useSendToWatchLinked(connectionId: string, libraryId: number): SendToWa
         const { signInLeft } = await sendBookToWatch(api, connection, libraryId, book);
         toast({
           title: t('library.bookActions.sentToWatch'),
-          description: signInLeft ? t('library.bookActions.sentToWatchPair') : book.title,
+          description: signInLeft
+            ? t(watchWording(watchLink.kind, 'library.bookActions.sentToWatchPair'))
+            : book.title,
           action: {
             label: t('library.bookActions.sentToWatchShow'),
             onPress: () => openDownloads(connectionId),

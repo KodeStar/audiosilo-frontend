@@ -301,6 +301,7 @@ describe('the ledger', () => {
       user_id: 7,
       library_id: 3,
       path: 'A/B',
+      sent_at: new Date(NOW).toISOString(),
     });
     expect(rows()).toMatchObject([{ path: 'A/B', remove_at: NOW }]);
   });
@@ -336,7 +337,10 @@ describe('the ledger', () => {
       jest.setSystemTime(NOW + 60_000);
       await removeFromWatch(connection, target);
       expect(mockSendRemove).toHaveBeenCalledTimes(2);
-      expect(mockSendRemove.mock.calls[1]).toEqual(mockSendRemove.mock.calls[0]);
+      // The same message, sent anew: on Wear OS a new `sent_at` is a new Data Layer item.
+      expect(mockSendRemove.mock.calls[1]).toEqual([
+        { ...mockSendRemove.mock.calls[0][0], sent_at: new Date(NOW + 60_000).toISOString() },
+      ]);
       expect(rows()).toEqual([{ ...first, remove_at: NOW + 60_000 }]);
     });
 

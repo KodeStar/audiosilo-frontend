@@ -1,9 +1,12 @@
+import { Platform } from 'react-native';
+
 import AudiosiloWatch, { type NativeWatchSnapshot } from '../../modules/audiosilo-watch';
 
 import {
   NO_WATCH_LINK,
   parseTransfers,
   parseWatchState,
+  watchKindOf,
   type WatchLink,
   type WatchStatus,
 } from './watch-model';
@@ -18,10 +21,13 @@ const statusOf = (snapshot: NativeWatchSnapshot): WatchStatus => ({
 
 const native = AudiosiloWatch?.isSupported() ? AudiosiloWatch : null;
 
-/** Apple Watch, through `modules/audiosilo-watch` (WatchConnectivity). */
+/** The phone's watch, through `modules/audiosilo-watch`: an Apple Watch over WatchConnectivity on
+ * iOS, a Wear OS watch over the Wear Data Layer on Android (none without Play services). The
+ * snapshot reads the same on both. */
 export const watchLink: WatchLink = native
   ? {
       supported: true,
+      kind: watchKindOf(Platform.OS),
       read: async () => statusOf(await native.getSnapshot()),
       subscribe: (listener) => {
         native.addListener('watchState', (snapshot) => listener(statusOf(snapshot)));
@@ -29,5 +35,8 @@ export const watchLink: WatchLink = native
       sendPair: (message) => native.sendPair(message),
       sendBook: (message) => native.sendBook(message),
       sendRemove: (message) => native.sendRemove(message),
+      ...(native.openInstallOnWatch
+        ? { openInstallOnWatch: async () => void (await native.openInstallOnWatch?.()) }
+        : {}),
     }
   : NO_WATCH_LINK;

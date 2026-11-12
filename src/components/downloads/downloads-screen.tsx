@@ -81,7 +81,7 @@ const CARDS_BESIDE_MIN = 716;
 /**
  * The Downloads tab (Stacks prototype `Downloads`): what is on this device and how much
  * room it takes per server, the automatic download rules, the browser's limits (web),
- * what is downloading or waiting, what is on a paired Apple Watch (iOS), the books ready
+ * what is downloading or waiting, what is on a paired watch (Apple Watch, Wear OS), the books ready
  * offline grouped by server and the podcast episodes on this device (fe#166, each with its
  * show).
  */

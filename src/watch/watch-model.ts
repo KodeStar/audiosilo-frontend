@@ -7,8 +7,12 @@ import { isRecord } from '@/lib/storage-keys';
 
 /**
  * The phone's side of the phone-watch message contract and the rules around it, pure. The
- * watch's side is targets/watch/Core/PhoneMessages.swift: a field changed here changes there,
- * with tests on both. Every message carries `v: 1`; a newer one is ignored.
+ * watch's side is targets/watch/Core/PhoneMessages.swift (Apple Watch) and
+ * wear-core's PhoneMessages.kt (Wear OS): a field changed here changes there, with tests on both.
+ * Every message carries `v: 1`; a newer one is ignored, and so is a field a watch does not know.
+ * Every message also carries `sent_at` (RFC 3339): on Wear OS it makes each send a new Data Layer
+ * item (an identical one sends nothing), orders a `remove` against a later download and is echoed
+ * in the watch's receipt; the Apple Watch ignores it for now.
  */
 const WATCH_MESSAGE_VERSION = 1;
 
@@ -37,6 +41,8 @@ type PairMessage = {
   /** RFC 3339. Past it the watch tries nothing and asks to send again. */
   expires_at: string;
   phone_name: string;
+  /** RFC 3339, when this phone sent it. */
+  sent_at: string;
 };
 
 type BookMessage = {
@@ -48,6 +54,7 @@ type BookMessage = {
   path: string;
   title: string;
   author?: string;
+  sent_at: string;
 };
 
 type RemoveMessage = {
@@ -57,6 +64,7 @@ type RemoveMessage = {
   user_id: number;
   library_id: number;
   path: string;
+  sent_at: string;
 };
 
 const WATCH_BOOK_STATES = ['queued', 'preparing', 'downloading', 'ready', 'failed'] as const;
@@ -81,7 +89,8 @@ export type WatchState = {
   last_sync_at?: string;
 };
 
-/** A `book` or `remove` the session still holds, or (`failed`) could not deliver. */
+/** A `book` or `remove` the link still holds, or (`failed`, Apple Watch only) could not deliver.
+ * On Wear OS it is the phone's own Data Layer item, there until the watch app has taken it. */
 export type WatchTransfer = {
   type: 'book' | 'remove';
   /** `<server_id>.<user_id>`, the account it names. */
@@ -91,7 +100,8 @@ export type WatchTransfer = {
   failed: boolean;
 };
 
-/** What the phone knows of its watch. With no watch link (web, Android) never `paired`.
+/** What the phone knows of its watch. With no watch link (web, a phone without Play services)
+ * never `paired`.
  * `watchId` names this very watch, null where there is no app on it to name. */
 export type WatchStatus = {
   paired: boolean;
@@ -109,9 +119,19 @@ export const NO_WATCH: WatchStatus = {
   transfers: [],
 };
 
-/** The platform's way to the watch (`link.ts`, `link.ios.ts`; W4 adds Wear OS behind it). */
+/** Which watch a phone pairs with: an iPhone an Apple Watch, an Android phone a Wear OS watch.
+ * Only the wording differs (`watchWording`). */
+export type WatchKind = 'apple' | 'wear';
+
+/** The watch a phone of this platform pairs with. */
+export function watchKindOf(os: string): WatchKind {
+  return os === 'android' ? 'wear' : 'apple';
+}
+
+/** The platform's way to the watch (`link.ts` for web, `link.native.ts` for iOS and Android). */
 export type WatchLink = {
   supported: boolean;
+  kind: WatchKind;
   read: () => Promise<WatchStatus>;
   /** Told of every change, for as long as the app runs. */
   subscribe: (listener: (status: WatchStatus) => void) => void;
@@ -119,11 +139,14 @@ export type WatchLink = {
   sendPair: (message: PairMessage) => Promise<void>;
   sendBook: (message: BookMessage) => Promise<void>;
   sendRemove: (message: RemoveMessage) => Promise<void>;
+  /** Wear OS only: open AudioSilo's Play listing on the watch. */
+  openInstallOnWatch?: () => Promise<void>;
 };
 
 /** Where there is no way to a watch. */
 export const NO_WATCH_LINK: WatchLink = {
   supported: false,
+  kind: 'apple',
   read: async () => NO_WATCH,
   subscribe: () => {},
   sendPair: async () => {},
@@ -143,14 +166,18 @@ type WatchAccount = Pick<WatchConnection, 'id' | 'serverId' | 'user'>;
 type WatchUser = Pick<User, 'id' | 'is_demo' | 'member_kind'>;
 export type WatchableBook = Pick<Book, 'rel_path' | 'title' | 'author'>;
 
+/** RFC 3339 for a message's `sent_at` (epoch ms in). */
+const sentAt = (now: number) => new Date(now).toISOString();
+
 /** The `pair` message for `connection`, from a token just minted (`POST /auth/pair`).
- * `expiresAt` is epoch ms. */
+ * `expiresAt` and `now` are epoch ms. */
 export function buildPairMessage(
   payload: Pick<PairingPayload, 'server_name' | 'base_url' | 'pairing_token' | 'addresses'>,
   connection: WatchConnection,
   phoneName: string,
   expiresAt: number,
   connections: readonly WatchConnection[] = [connection],
+  now: number = Date.now(),
 ): PairMessage {
   return {
     v: WATCH_MESSAGE_VERSION,
@@ -168,6 +195,7 @@ export function buildPairMessage(
     pairing_token: payload.pairing_token,
     expires_at: new Date(expiresAt).toISOString(),
     phone_name: phoneName,
+    sent_at: sentAt(now),
   };
 }
 
@@ -177,6 +205,7 @@ export function buildBookMessage(
   connection: WatchAccount,
   libraryId: number,
   book: WatchableBook,
+  now: number = Date.now(),
 ): BookMessage {
   return {
     v: WATCH_MESSAGE_VERSION,
@@ -187,6 +216,7 @@ export function buildBookMessage(
     path: book.rel_path,
     title: book.title,
     ...(book.author ? { author: book.author } : {}),
+    sent_at: sentAt(now),
   };
 }
 
@@ -195,6 +225,7 @@ export function buildRemoveMessage(
   connection: WatchAccount,
   libraryId: number,
   path: string,
+  now: number = Date.now(),
 ): RemoveMessage {
   return {
     v: WATCH_MESSAGE_VERSION,
@@ -203,6 +234,7 @@ export function buildRemoveMessage(
     user_id: connection.user.id,
     library_id: libraryId,
     path,
+    sent_at: sentAt(now),
   };
 }
 
@@ -305,7 +337,7 @@ function accountCanUseWatch(user: WatchUser) {
   return usableUserId(user) !== null && !user.is_demo && !isKidAccount(user);
 }
 
-/** The account page's Apple Watch card: a paired watch and an account that can use one. */
+/** The account page's watch card: a paired watch and an account that can use one. */
 export function watchCardVisible(status: Pick<WatchStatus, 'paired'>, user: WatchUser): boolean {
   return status.paired && accountCanUseWatch(user);
 }
@@ -358,4 +390,31 @@ export function watchCardStatus(
   if (signedInHere(status.state, connection)) return 'signed-in';
   if (pairUntil !== undefined) return now < pairUntil ? 'sent' : 'expired';
   return status.state?.signed_in ? 'other-account' : 'setup';
+}
+
+/** The texts that name the watch or say what it does by itself, by their Apple Watch key. A Wear
+ * OS watch is "your watch" ("Wear OS watch" where a name is needed), never "Apple Watch", and it
+ * takes what the phone sends with the app closed (its listener service wakes it), so it is never
+ * asked to be opened. */
+const WEAR_WORDING = {
+  'account.watch.title': 'account.watch.titleWear',
+  'account.watch.install': 'account.watch.installWear',
+  'account.watch.setUp': 'account.watch.setUpWear',
+  'account.watch.sent': 'account.watch.sentWear',
+  'library.bookActions.sentToWatchPair': 'library.bookActions.sentToWatchPairWear',
+  'downloads.watch.title': 'downloads.watch.titleWear',
+  'downloads.watch.phase.delivered': 'downloads.watch.phase.deliveredWear',
+  'downloads.watch.phase.removing': 'downloads.watch.phase.removingWear',
+} as const;
+
+export type WatchWordedKey = keyof typeof WEAR_WORDING;
+
+/** The text key for this watch: `key` (worded for the Apple Watch) or its Wear OS twin. */
+export function watchWording<K extends string>(
+  kind: WatchKind,
+  key: K,
+): K | (typeof WEAR_WORDING)[WatchWordedKey] {
+  return kind === 'wear' && Object.hasOwn(WEAR_WORDING, key)
+    ? WEAR_WORDING[key as unknown as WatchWordedKey]
+    : key;
 }

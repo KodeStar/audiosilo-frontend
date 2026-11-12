@@ -1,4 +1,5 @@
 import type { Book, PairingPayload } from '@/api/types';
+import en from '@/i18n/locales/en.json';
 
 import {
   bookNeedsPair,
@@ -15,7 +16,9 @@ import {
   type WatchState,
   watchCardStatus,
   watchCardVisible,
+  watchKindOf,
   watchSectionVisible,
+  watchWording,
 } from './watch-model';
 
 const connection = {
@@ -63,7 +66,9 @@ describe('buildPairMessage', () => {
 
   it('carries the fields the watch decodes, the addresses merged', () => {
     const at = Date.UTC(2026, 10, 5, 12, 0, 0);
-    expect(buildPairMessage(payload, connection, "Ada's iPhone", at)).toEqual({
+    expect(
+      buildPairMessage(payload, connection, "Ada's iPhone", at, [connection], at - 1000),
+    ).toEqual({
       v: 1,
       type: 'pair',
       server_id: 'srv',
@@ -76,6 +81,7 @@ describe('buildPairMessage', () => {
       pairing_token: 'tok',
       expires_at: '2026-11-05T12:00:00.000Z',
       phone_name: "Ada's iPhone",
+      sent_at: '2026-11-05T11:59:59.000Z',
     });
   });
 
@@ -105,7 +111,7 @@ describe('buildBookMessage', () => {
   };
 
   it('names the book by library and path, for this account', () => {
-    expect(buildBookMessage(connection, 3, book)).toEqual({
+    expect(buildBookMessage(connection, 3, book, Date.UTC(2026, 10, 12, 10))).toEqual({
       v: 1,
       type: 'book',
       server_id: 'srv',
@@ -114,6 +120,7 @@ describe('buildBookMessage', () => {
       path: 'Author/Book',
       title: 'Book',
       author: 'Author',
+      sent_at: '2026-11-12T10:00:00.000Z',
     });
   });
 
@@ -295,14 +302,80 @@ describe('watchCardStatus', () => {
 
 describe('the remove message', () => {
   it('names the account and the book by path, and nothing else', () => {
-    expect(buildRemoveMessage(connection, 3, 'A/B')).toEqual({
+    expect(buildRemoveMessage(connection, 3, 'A/B', Date.UTC(2026, 10, 12, 10))).toEqual({
       v: 1,
       type: 'remove',
       server_id: 'srv',
       user_id: 7,
       library_id: 3,
       path: 'A/B',
+      sent_at: '2026-11-12T10:00:00.000Z',
     });
+  });
+});
+
+describe('sent_at', () => {
+  // Wear OS: each send is a new Data Layer item (an identical one sends nothing), the watch orders a
+  // remove against a later download by it, and its receipt echoes it. The Apple Watch ignores it.
+  it('stamps every message with when it was sent, by default now', () => {
+    jest.useFakeTimers({ now: Date.UTC(2026, 10, 12, 9, 30) });
+    try {
+      const book = { rel_path: 'A/B', title: 'B', author: '' };
+      expect(buildPairMessage(payload, connection, 'Pixel', 0).sent_at).toBe(
+        '2026-11-12T09:30:00.000Z',
+      );
+      expect(buildBookMessage(connection, 3, book).sent_at).toBe('2026-11-12T09:30:00.000Z');
+      expect(buildRemoveMessage(connection, 3, 'A/B').sent_at).toBe('2026-11-12T09:30:00.000Z');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('makes a send again a different message', () => {
+    const book = { rel_path: 'A/B', title: 'B', author: '' };
+    expect(buildBookMessage(connection, 3, book, 1000)).not.toEqual(
+      buildBookMessage(connection, 3, book, 2000),
+    );
+  });
+});
+
+describe('watch kind and wording', () => {
+  it('pairs an Android phone with a Wear OS watch, anything else with an Apple Watch', () => {
+    expect(watchKindOf('android')).toBe('wear');
+    expect(watchKindOf('ios')).toBe('apple');
+    expect(watchKindOf('web')).toBe('apple');
+  });
+
+  it('never names the Apple Watch on a Wear OS phone', () => {
+    expect(watchWording('wear', 'account.watch.title')).toBe('account.watch.titleWear');
+    expect(watchWording('wear', 'account.watch.setUp')).toBe('account.watch.setUpWear');
+    expect(watchWording('wear', 'downloads.watch.title')).toBe('downloads.watch.titleWear');
+    expect(en.account.watch.titleWear).not.toMatch(/Apple/);
+    expect(en.account.watch.setUpWear).not.toMatch(/Apple/);
+    expect(en.downloads.watch.titleWear).not.toMatch(/Apple/);
+  });
+
+  it('never asks a Wear OS watch to be opened: its listener takes what is sent', () => {
+    for (const key of [
+      'account.watch.sent',
+      'library.bookActions.sentToWatchPair',
+      'downloads.watch.phase.delivered',
+      'downloads.watch.phase.removing',
+    ] as const) {
+      const wear = watchWording('wear', key);
+      expect(wear).toBe(`${key}Wear`);
+      const text = wear.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], en);
+      expect(text).not.toMatch(/open/i);
+    }
+  });
+
+  it('keeps the Apple Watch texts, and every other text, as they are', () => {
+    expect(watchWording('apple', 'account.watch.title')).toBe('account.watch.title');
+    expect(watchWording('apple', 'account.watch.sent')).toBe('account.watch.sent');
+    expect(watchWording('wear', 'account.watch.sendAgain')).toBe('account.watch.sendAgain');
+    expect(watchWording('wear', 'downloads.watch.phase.undelivered')).toBe(
+      'downloads.watch.phase.undelivered',
+    );
   });
 });
 

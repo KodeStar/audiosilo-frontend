@@ -13,6 +13,7 @@ import { openDownloads } from '@/lib/open';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { useNow } from '@/lib/use-now';
 import { useSession } from '@/stores/session';
+import { watchLink } from '@/watch/link';
 import { setUpWatch } from '@/watch/send';
 import { useWatchStatus, watchErrorText } from '@/watch/use-watch';
 import {
@@ -20,18 +21,21 @@ import {
   type WatchState,
   watchCardStatus,
   watchCardVisible,
+  watchWording,
 } from '@/watch/watch-model';
 import { useWatchStore } from '@/watch/watch-store';
 
 /**
- * The account page's "Apple Watch" card, for a phone with a paired watch and an account that can
- * use one (never a kid's or a demo's): Set up signs the watch in to this server with no typing
- * (a `pair` message), Send again does it once more. Once the watch says it is signed in here, who
- * as, the listening it still has to send and when it last synced. The books on it are in Downloads
- * (`WatchSection`).
+ * The account page's watch card ("Apple Watch" on iOS, "Wear OS watch" on Android), for a phone
+ * with a paired watch and an account that can use one (never a kid's or a demo's): Set up signs the
+ * watch in to this server with no typing (a `pair` message), Send again does it once more. Once the
+ * watch says it is signed in here, who as, the listening it still has to send and when it last
+ * synced. The books on it are in Downloads (`WatchSection`). With no AudioSilo on the watch, Android
+ * offers Install on watch (Play opens on the watch); an iPhone installs from its Watch app.
  */
-export function AppleWatchCard({ connectionId }: { connectionId: string }) {
+export function WatchCard({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
+  const kind = watchLink.kind;
   const watch = useWatchStatus();
   const connections = useSession((s) => s.connections);
   const connection = connections.find((c) => c.id === connectionId) ?? null;
@@ -43,6 +47,7 @@ export function AppleWatchCard({ connectionId }: { connectionId: string }) {
   const now = useNow(pairUntil === undefined ? 60_000 : 15_000, visible);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [installAsked, setInstallAsked] = useState(false);
   if (!connection || !visible) return null;
 
   const serverName = serverDisplayName(connection, connections);
@@ -63,10 +68,22 @@ export function AppleWatchCard({ connectionId }: { connectionId: string }) {
     }
   };
 
+  const openInstall = watchLink.openInstallOnWatch;
+  const install = async () => {
+    if (!openInstall) return;
+    setError(null);
+    try {
+      await openInstall();
+      setInstallAsked(true);
+    } catch {
+      setError(t('account.watch.installFailed'));
+    }
+  };
+
   const body = {
-    install: t('account.watch.install'),
+    install: t(watchWording(kind, 'account.watch.install')),
     setup: t('account.watch.setupBody', { server: serverName }),
-    sent: t('account.watch.sent'),
+    sent: t(watchWording(kind, 'account.watch.sent')),
     expired: t('account.watch.expired'),
     'signed-in': t('account.watch.signedInAs', {
       user: connection.user.username,
@@ -76,16 +93,29 @@ export function AppleWatchCard({ connectionId }: { connectionId: string }) {
   }[status];
 
   return (
-    <Card className="gap-3" testID="apple-watch-card">
+    <Card className="gap-3" testID="watch-card">
       <View className="gap-0.5">
         <Text variant="title" accessibilityRole="header">
-          {t('account.watch.title')}
+          {t(watchWording(kind, 'account.watch.title'))}
         </Text>
         <Text variant="muted">{body}</Text>
+        {status === 'install' && installAsked ? (
+          <Text variant="caption">{t('account.watch.installOpened')}</Text>
+        ) : null}
         {here ? <WatchSyncLines state={here} now={now} /> : null}
       </View>
       {server && !serves ? (
         <Text variant="caption">{t('account.watch.serverCannot', { server: serverName })}</Text>
+      ) : null}
+      {status === 'install' && openInstall ? (
+        <View className="flex-row flex-wrap gap-2">
+          <Button
+            variant="outline"
+            icon="watch"
+            title={t('account.watch.installOnWatch')}
+            onPress={() => void install()}
+          />
+        </View>
       ) : null}
       {status !== 'install' ? (
         <View className="flex-row flex-wrap gap-2">
@@ -95,7 +125,7 @@ export function AppleWatchCard({ connectionId }: { connectionId: string }) {
               icon="watch"
               title={t(
                 status === 'setup' || status === 'other-account'
-                  ? 'account.watch.setUp'
+                  ? watchWording(kind, 'account.watch.setUp')
                   : 'account.watch.sendAgain',
               )}
               loading={sending}

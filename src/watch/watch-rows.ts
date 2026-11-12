@@ -9,7 +9,7 @@ import {
 
 /**
  * What the phone sent its watch and what it shows for it, pure: the rules of the Downloads page's
- * "On your Apple Watch" section. `watch-ledger.ts` keeps the rows; the watch only ever says what it
+ * "On your watch" section (Apple Watch and Wear OS). `watch-ledger.ts` keeps the rows; the watch only ever says what it
  * holds now (`watch-state`), so the ledger is what lets a row appear the moment Send is tapped,
  * tell "not delivered" from "delivered", and go on saying "removing" after the phone restarts.
  */

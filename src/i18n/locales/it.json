@@ -268,11 +268,18 @@
     },
     "watch": {
       "title": "Apple Watch",
+      "titleWear": "Orologio Wear OS",
       "install": "Installa AudioSilo sull'orologio dall'app Watch di questo iPhone, poi torna qui.",
+      "installWear": "Installa AudioSilo sull'orologio da Google Play, poi torna qui.",
+      "installOnWatch": "Installa sull'orologio",
+      "installOpened": "Guarda l'orologio: Google Play si apre lì sulla pagina di AudioSilo.",
+      "installFailed": "Impossibile aprire Google Play sull'orologio. Cerca invece AudioSilo in Google Play dall'orologio.",
       "setupBody": "Collega l'orologio a {{server}} senza digitare nulla, poi porta con te i libri e lascia il telefono a casa.",
       "setUp": "Configura Apple Watch",
+      "setUpWear": "Configura l'orologio",
       "sendAgain": "Invia di nuovo",
       "sent": "Inviato. Apri AudioSilo sull'orologio per completare l'accesso.",
+      "sentWear": "Inviato. L'orologio accede appena lo riceve. Tienilo vicino.",
       "expired": "L'accesso è scaduto prima di arrivare all'orologio. Sull'orologio non è cambiato nulla. Tienilo vicino e invia di nuovo.",
       "signedInAs": "Accesso effettuato come {{user}} su {{server}}",
       "otherAccount": "L'orologio ha effettuato l'accesso a un altro account. Configurarlo per {{server}} sostituisce quell'account dopo la sincronizzazione dei suoi ascolti.",
@@ -973,6 +980,7 @@
       "sendToWatch": "Invia all'orologio",
       "sentToWatch": "Inviato all'orologio",
       "sentToWatchPair": "Se AudioSilo non è aperto sull'orologio, aprilo per completare l'accesso.",
+      "sentToWatchPairWear": "L'orologio accede prima, poi riceve il libro.",
       "sentToWatchShow": "Mostra",
       "markFinished": "Segna come finito",
       "markUnfinished": "Segna come non finito",
@@ -1186,6 +1194,7 @@
     },
     "watch": {
       "title": "Sul tuo Apple Watch",
+      "titleWear": "Sul tuo orologio",
       "empty": "Ancora nessun libro sul tuo orologio. Scegli Invia all'orologio nella pagina di un libro.",
       "notHere": "Il tuo orologio non usa questo account",
       "otherAccount": "Ha effettuato l'accesso a un altro account, i cui libri non sono elencati qui. Per usarlo con {{server}}, configuralo nella pagina del tuo account.",
@@ -1204,6 +1213,7 @@
       "phase": {
         "undelivered": "Inviato, non ancora consegnato",
         "delivered": "Consegnato. Apri AudioSilo sul tuo orologio.",
+        "deliveredWear": "Consegnato al tuo orologio",
         "waiting-sign-in": "Consegnato. Parte quando il tuo orologio avrà effettuato l'accesso qui.",
         "send-failed": "Impossibile raggiungere il tuo orologio. Invialo di nuovo.",
         "stale": "Il tuo orologio non lo ha preso in 7 giorni. Invialo di nuovo se lo vuoi ancora.",
@@ -1214,6 +1224,7 @@
         "failed": "Download non riuscito. Invialo di nuovo per riprovare.",
         "removing-undelivered": "Verrà rimosso quando il tuo orologio sarà a portata",
         "removing": "Rimozione in corso. Apri AudioSilo sul tuo orologio per finire.",
+        "removingWear": "Rimozione dal tuo orologio in corso",
         "remove-failed": "Impossibile raggiungere il tuo orologio per rimuoverlo. Riprova.",
         "remove-refused": "Non rimosso: il tuo orologio non ha effettuato l'accesso a questo account."
       }
