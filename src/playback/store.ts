@@ -101,6 +101,7 @@ import {
   type PlaybackSnapshot,
   PlaybackStartError,
   type PlaybackState,
+  type SwapOutcome,
 } from './types';
 
 /**
@@ -2957,13 +2958,13 @@ async function switchCurrentBookToLocal(mayRetry = true) {
       ? { nowPlaying, trackIndex: snapshot.trackIndex, queue, live: !svc.swapTo }
       : null;
   if (hold) swapHold = hold;
-  let moved = false;
+  let outcome: SwapOutcome | undefined;
   try {
     if (svc.swapTo) {
       // Gapless: keep streaming until the local file is buffered at this position. The
       // swap can be refused (e.g. the local source isn't servable on web) - in that
       // case leave nowPlaying on the streaming queue so playback keeps going.
-      const outcome = await svc.swapTo(
+      outcome = await svc.swapTo(
         queue.tracks,
         index,
         positionInTrack,
@@ -2974,7 +2975,6 @@ async function switchCurrentBookToLocal(mayRetry = true) {
         },
       );
       if (outcome === 'swapped') commit();
-      else moved = outcome === 'moved';
     } else {
       // A play goes on through the load as a start's does: iOS's `load` pauses the player,
       // and that pause must read as the load's, not the listener's (`reloadAdopted`).
@@ -3002,7 +3002,7 @@ async function switchCurrentBookToLocal(mayRetry = true) {
   }
   // Once, from where the listener moved to (the download is read again there).
   const now = usePlayer.getState().nowPlaying;
-  if (moved && mayRetry && now && contentKeyOf(now) === contentKeyOf(nowPlaying)) {
+  if (outcome === 'moved' && mayRetry && now && sameBook(now, nowPlaying)) {
     await switchCurrentBookToLocal(false);
   }
 }
