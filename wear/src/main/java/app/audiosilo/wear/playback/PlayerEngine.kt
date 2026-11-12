@@ -578,7 +578,9 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
       if (exo?.isPlaying == true || spans.span != null) spans.tick(b.playing, spanEnd(), true, reachable(), rate)
       moved = true
     }
-    if (moved) savePlace()
+    // Held by a call or an alert nothing moved: the place keeps the time the audio last did
+    // (the hold saved it at `lastAdvance`), or it would look newer than another device's.
+    if (moved && exo?.isPlaying == true) savePlace()
   }
 
   // Now Playing
