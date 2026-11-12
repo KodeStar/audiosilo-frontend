@@ -1938,6 +1938,75 @@ describe('the download hot-swap across file orders', () => {
     expect(mockSvc.play).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a pause the engine has not reported yet when the download lands', async () => {
+    await streamIn(newOrder);
+    // Pressed, the engine asked: its `paused` has not arrived, the snapshot still plays.
+    await usePlayer.getState().pause();
+    expect(usePlayer.getState().snapshot.state).toBe('playing');
+    (mockSvc.play as jest.Mock).mockClear();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    expect(swapLoad()).toEqual({ url: urlOf('A/Folder/2.mp3'), index: 0, position: 20 });
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    // No play attempt was begun for it either: the pause settles as one, no stall error.
+    pushSnapshot(snap('paused', 20, { trackIndex: 0, duration: 70 }));
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+    jest.advanceTimersByTime(4_000);
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+  });
+
+  it('begins no play for a download landing while a stop saves the place', async () => {
+    await streamIn(newOrder);
+    let saved: () => void = () => {};
+    mockSaveProgress.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (saved = resolve)),
+    );
+    const stop = usePlayer.getState().stop();
+    await flushMicrotasks();
+    (mockSvc.play as jest.Mock).mockClear();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    // The swap's load landed with the book still the store's: it must not play it again.
+    expect(mockSvc.play).not.toHaveBeenCalled();
+    saved();
+    await stop;
+    await flushMicrotasks();
+    jest.advanceTimersByTime(4_000);
+    expect(usePlayer.getState().nowPlaying).toBeNull();
+    expect(usePlayer.getState().snapshot.state).not.toBe('error');
+  });
+
+  it("plays on a play asked for while a paused book's swap loads", async () => {
+    await streamIn(newOrder, { paused: true });
+    const land = holdNextLoad();
+    downloadLands(oldOrder);
+    await flushMicrotasks();
+    (mockSvc.play as jest.Mock).mockClear();
+    await usePlayer.getState().toggle();
+    expect(mockSvc.play).toHaveBeenCalledTimes(1);
+    land();
+    await flushMicrotasks();
+    // iOS's `load` paused the engine again: the play is made once more on the copy.
+    expect(queueUrls()).toEqual(newOrder.map(urlOf));
+    expect(mockSvc.play).toHaveBeenCalledTimes(2);
+  });
+
+  it('ends the start window of a swap whose load failed with the stream playing on', async () => {
+    await streamIn(newOrder);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      (mockSvc.load as jest.Mock).mockRejectedValueOnce(new Error('no file'));
+      downloadLands(oldOrder);
+      await flushMicrotasks();
+    } finally {
+      warn.mockRestore();
+    }
+    // The stream never left `playing`: past the stall grace, a lock-screen pause is a pause.
+    jest.advanceTimersByTime(4_000);
+    pushSnapshot(snap('paused', 25, { trackIndex: 0, duration: 70 }));
+    expect(usePlayer.getState().snapshot.state).toBe('paused');
+  });
+
   it("saves the playing file's place on a stop after the engine reported the download's index", async () => {
     // 20 s into 10.mp3: whole-book 70 + 20; the download holds it at index 2.
     await streamIn(newOrder, { file: 'A/Folder/10.mp3' });

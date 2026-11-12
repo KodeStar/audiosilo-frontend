@@ -1760,7 +1760,14 @@ function armStallWatchdog() {
     stallTimer = null;
     if (!wantsPlayback) return; // attempt abandoned (user paused/stopped)
     const { snapshot } = usePlayer.getState();
-    if (snapshot.state === 'playing') return; // we made it
+    if (snapshot.state === 'playing') {
+      // We made it. An attempt begun on a book already playing (the hot-swap's load) that
+      // never left `playing` (its load failed, the stream plays on) had no transition to
+      // end its start window: it ends here, or a later lock-screen pause would read as
+      // still connecting.
+      startingPlayback = false;
+      return;
+    }
     clearPlaybackIntent();
     usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
     haltAndPersist();
@@ -2888,13 +2895,14 @@ async function switchCurrentBookToLocal() {
   // resume floor moves with it, or the slip guard would refuse every later save of a place
   // that now reads lower.
   const shift = toBookPosition(queue.offsets, index, positionInTrack) - selectBookPosition(state);
-  // Playing on means the listener's intent, not only an engine already at `playing`. A
-  // short book downloads in under a second, while its stream is still starting (the
-  // snapshot is `loading`, or the engine has just begun and its `playing` has not reached
-  // JS yet). iOS's `load` pauses the player (Android's keeps playWhenReady), so a swap that
-  // didn't play left the story stopped on a Play button after a single tap (8b-1, a kid's
-  // first story on an iPhone).
-  const wasPlaying = snapshot.state === 'playing' || wantsPlayback;
+  // Playing on means the listener's intent, not an engine at `playing`. A short book
+  // downloads in under a second, while its stream is still starting (the snapshot is
+  // `loading`, or the engine has just begun and its `playing` has not reached JS yet).
+  // iOS's `load` pauses the player (Android's keeps playWhenReady), so a swap that didn't
+  // play left the story stopped on a Play button after a single tap (8b-1, a kid's first
+  // story on an iPhone). And an engine still at `playing` with the intent gone is a pause or
+  // a stop it has not reported yet (a stop saves the place first): playing on would undo it.
+  const wasPlaying = wantsPlayback;
   const svc = await ensureService();
 
   // Commit only once the engine has actually moved onto the local files, and only while
@@ -2975,11 +2983,10 @@ async function switchCurrentBookToLocal() {
       const committed = commit();
       if (!committed) return;
       // The speed and the intent as they stand now: a speed set or a pause made while the
-      // load was out reached the engine before it landed, and stands.
+      // load was out reached the engine before it landed, and stands. So does a play asked
+      // for while a paused book's load was out: iOS's `load` paused it again.
       await svc.setRate(usePlayer.getState().rate);
-      if (wasPlaying && wantsPlayback && usePlayer.getState().nowPlaying === committed) {
-        await svc.play();
-      }
+      if (wantsPlayback && usePlayer.getState().nowPlaying === committed) await svc.play();
     }
   } finally {
     // A refused swap or a failed load: the hold must not outlive it.
