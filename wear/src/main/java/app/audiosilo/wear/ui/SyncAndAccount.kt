@@ -34,7 +34,8 @@ fun SyncScreen(model: AppModel, onSignOut: () -> Unit) {
   var dismissing by remember { mutableStateOf<CouldNotSync?>(null) }
   val outbox = model.outbox
   val failed = remember(revision) { outbox.couldNotSync() }
-  val lines = remember(revision) { syncLines(outbox.state.lastSyncAt, outbox.unsentCount, outbox.lastFlushFailed, Instant.now()) }
+  // `syncing` too: a flush that got no answer changes `lastFlushFailed` and nothing else.
+  val lines = remember(revision, syncing) { syncLines(outbox.state.lastSyncAt, outbox.unsentCount, outbox.lastFlushFailed, Instant.now()) }
   ListScreen {
     item { ListHeader { Text("Sync") } }
     lines.forEach { item { Note(it) } }
