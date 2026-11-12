@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Wear OS app (Track W4). Playback (the media service, its OngoingActivity) and the Data
-     Layer listener (PhoneLink) come with W4a pass 2. -->
+<!-- The Wear OS app (Track W4): the screens, the media service (PlaybackService, its ongoing
+     activity), the one Data Layer listener (PhoneLinkService) and WorkManager's workers. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   xmlns:tools="http://schemas.android.com/tools">
 
@@ -48,6 +48,30 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
+
+    <!-- The media session (decision 10): Media3 keeps it in the foreground while a book plays. -->
+    <service
+      android:name=".playback.PlaybackService"
+      android:exported="true"
+      android:foregroundServiceType="mediaPlayback">
+      <intent-filter>
+        <action android:name="androidx.media3.session.MediaSessionService" />
+      </intent-filter>
+    </service>
+
+    <!-- The one Data Layer listener: GMS starts the app for the phone's items addressed to a
+         watch (PhoneLink reads only its own node's). -->
+    <service
+      android:name=".phone.PhoneLinkService"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+        <data
+          android:host="*"
+          android:pathPrefix="/audiosilo/v1/to/"
+          android:scheme="wear" />
+      </intent-filter>
+    </service>
 
     <!-- WorkManager's foreground service runs a book's download as dataSync (BookWorker). -->
     <service

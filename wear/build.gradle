@@ -99,7 +99,10 @@ dependencies {
 
   implementation 'androidx.wear:wear-remote-interactions:1.1.0'
 
-  // Media3 is the phone's (modules/audiosilo-player, strict 1.9.0); playback is W4a pass 2.
+  implementation 'androidx.wear:wear-ongoing:1.1.0'
+  implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
+
+  // Media3 is the phone's (modules/audiosilo-player, strict 1.9.0).
   def media3Version = '1.9.0'
   implementation "androidx.media3:media3-exoplayer:${media3Version}"
   implementation "androidx.media3:media3-session:${media3Version}"

@@ -1,9 +1,9 @@
 // The Wear app's screens (Compose for Wear OS, Material 3), the twin of
-// targets/watch/UI/Screens.swift: Setup, the "server too old" screen, Home (what is on its way
-// here, On this watch, Continue listening with a Download button per row) and On this watch
-// (size, remove). Every list is a ScalingLazyColumn, which scrolls with the crown or bezel
-// (rotary) by default, and fits round and square screens. Now Playing, Sync and account, Sign out
-// and the offer come with W4a pass 2.
+// targets/watch/UI/Screens.swift: Setup, the "server too old" screen, Home (Now playing, what is on
+// its way here, On this watch, Continue listening with Download or Play per row, Sync and Sign
+// out) and On this watch (play, size, remove); Now Playing, Sync and the prompts have files of
+// their own. Every list is a ScalingLazyColumn, which scrolls with the crown or bezel (rotary) by
+// default, and fits round and square screens.
 package app.audiosilo.wear.ui
 
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +19,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
@@ -32,6 +33,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.OutlinedButton
@@ -48,6 +50,7 @@ import app.audiosilo.wear.core.HeldBooks
 import app.audiosilo.wear.core.Labels
 import app.audiosilo.wear.core.WatchStateBook
 import app.audiosilo.wear.phone.PhoneApp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
@@ -57,7 +60,7 @@ fun WearApp(model: AppModel) {
       val phase by model.phase.collectAsState()
       when (val p = phase) {
         is AppModel.Phase.Setup -> SetupScreen(model, p.status)
-        is AppModel.Phase.TooOld -> TooOldScreen(model, p.version)
+        is AppModel.Phase.TooOld -> TooOldNav(model, p.version)
         AppModel.Phase.Ready -> ReadyNav(model)
       }
     }
@@ -67,15 +70,49 @@ fun WearApp(model: AppModel) {
 @Composable
 private fun ReadyNav(model: AppModel) {
   val nav = rememberSwipeDismissableNavController()
-  SwipeDismissableNavHost(navController = nav, startDestination = "home") {
-    composable("home") { HomeScreen(model, onThisWatch = { nav.navigate("on-watch") }) }
-    composable("on-watch") { OnThisWatchScreen(model) }
+  // The play a book's Play started (Now Playing shows it starting), in the model's scope so leaving
+  // the screen does not cut the pull before play short.
+  var start by remember { mutableStateOf<Job?>(null) }
+  val play: (DownloadRecord) -> Unit = { r ->
+    start = model.startPlay(r)
+    nav.navigate("now-playing")
   }
+  SwipeDismissableNavHost(navController = nav, startDestination = "home") {
+    composable("home") {
+      HomeScreen(
+        model,
+        onThisWatch = { nav.navigate("on-watch") },
+        onNowPlaying = {
+          start = null
+          nav.navigate("now-playing")
+        },
+        onPlay = play,
+        onSync = { nav.navigate("sync") },
+        onSignOut = { nav.navigate("sign-out") },
+      )
+    }
+    composable("on-watch") { OnThisWatchScreen(model, onPlay = play) }
+    composable("now-playing") {
+      NowPlayingScreen(
+        model,
+        start,
+        onChapters = { nav.navigate("chapters") },
+        onSpeed = { nav.navigate("speed") },
+        onSleep = { nav.navigate("sleep") },
+      )
+    }
+    composable("chapters") { ChaptersScreen(model, done = { nav.popBackStack() }) }
+    composable("speed") { SpeedScreen(model, done = { nav.popBackStack() }) }
+    composable("sleep") { SleepScreen(model, done = { nav.popBackStack() }) }
+    composable("sync") { SyncScreen(model, onSignOut = { nav.navigate("sign-out") }) }
+    composable("sign-out") { SignOutScreen(model) }
+  }
+  Prompts(model)
 }
 
 /** A screen of rows: the scaffold's time text and scroll indicator, crown scrolling. */
 @Composable
-private fun ListScreen(content: ScalingLazyListScope.() -> Unit) {
+internal fun ListScreen(content: ScalingLazyListScope.() -> Unit) {
   val state = rememberScalingLazyListState()
   ScreenScaffold(scrollState = state) { padding ->
     ScalingLazyColumn(state = state, contentPadding = padding, modifier = Modifier.fillMaxWidth(), content = content)
@@ -83,11 +120,12 @@ private fun ListScreen(content: ScalingLazyListScope.() -> Unit) {
 }
 
 @Composable
-private fun Note(text: String) {
+internal fun Note(text: String, center: Boolean = false) {
   Text(
     text,
     style = MaterialTheme.typography.bodySmall,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
+    textAlign = if (center) TextAlign.Center else null,
     modifier = Modifier.fillMaxWidth(),
   )
 }
@@ -139,7 +177,7 @@ private fun SigningIn() {
 
 /** The server lacks Sync v2 or the watch rendition (needs 2.6 or later, with ffmpeg). */
 @Composable
-fun TooOldScreen(model: AppModel, version: String?) {
+fun TooOldScreen(model: AppModel, version: String?, onSignOut: () -> Unit) {
   val server by model.server.collectAsState()
   val pending by model.pendingReplace.collectAsState()
   val held by model.heldBooks.collectAsState()
@@ -152,8 +190,18 @@ fun TooOldScreen(model: AppModel, version: String?) {
     item {
       Button(onClick = { model.becameActive() }, modifier = Modifier.fillMaxWidth(), label = { Text("Try again") })
     }
-    // Below the button: many rows would push it far down a small watch.
+    item { OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth(), label = { Text("Sign out") }) }
+    // Below the buttons: many rows would push them far down a small watch.
     heldRows(held)
+  }
+}
+
+@Composable
+private fun TooOldNav(model: AppModel, version: String?) {
+  val nav = rememberSwipeDismissableNavController()
+  SwipeDismissableNavHost(navController = nav, startDestination = "too-old") {
+    composable("too-old") { TooOldScreen(model, version, onSignOut = { nav.navigate("sign-out") }) }
+    composable("sign-out") { SignOutScreen(model) }
   }
 }
 
@@ -167,7 +215,15 @@ fun tooOldMessage(hasListeningSync: Boolean): String =
 // Home
 
 @Composable
-fun HomeScreen(model: AppModel, onThisWatch: () -> Unit) {
+fun HomeScreen(
+  model: AppModel,
+  onThisWatch: () -> Unit,
+  onNowPlaying: () -> Unit,
+  onPlay: (DownloadRecord) -> Unit,
+  onSync: () -> Unit,
+  onSignOut: () -> Unit,
+) {
+  val player by model.engine.state.collectAsState()
   val pending by model.pendingReplace.collectAsState()
   val records by model.downloads.records.collectAsState()
   val held by model.heldBooks.collectAsState()
@@ -186,6 +242,16 @@ fun HomeScreen(model: AppModel, onThisWatch: () -> Unit) {
   ListScreen {
     item { ListHeader { Text("AudioSilo") } }
     pending?.let { replaceRows(model, it) }
+    player.book?.let { book ->
+      item {
+        Button(
+          onClick = onNowPlaying,
+          modifier = Modifier.fillMaxWidth(),
+          secondaryLabel = { Text(if (player.playing) "Playing" else "Paused") },
+          label = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        )
+      }
+    }
     if (coming.isNotEmpty() || heldComing.isNotEmpty()) {
       item { ListHeader { Text("On the way") } }
       items(coming, key = { "r:" + it.ref.key }) { BookRow(model, it) }
@@ -199,7 +265,7 @@ fun HomeScreen(model: AppModel, onThisWatch: () -> Unit) {
       item { Note(if (loading) "Loading" else problem.ifEmpty { "Nothing in progress" }) }
     } else {
       if (problem.isNotEmpty()) item { Note(problem) }
-      items(continueRows, key = { "c:" + it.ref.key }) { row -> ContinueItem(model, row, records.firstOrNull { it.ref == row.ref }) }
+      items(continueRows, key = { "c:" + it.ref.key }) { row -> ContinueItem(model, row, records.firstOrNull { it.ref == row.ref }, onPlay) }
     }
     item {
       OutlinedButton(
@@ -209,6 +275,8 @@ fun HomeScreen(model: AppModel, onThisWatch: () -> Unit) {
         label = { Text(if (loading) "Refreshing" else "Refresh") },
       )
     }
+    item { FilledTonalButton(onClick = onSync, modifier = Modifier.fillMaxWidth(), label = { Text("Sync") }) }
+    item { OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth(), label = { Text("Sign out") }) }
   }
 }
 
@@ -265,7 +333,7 @@ private fun ScalingLazyListScope.replaceRows(model: AppModel, state: AppModel.Pe
 }
 
 @Composable
-private fun ContinueItem(model: AppModel, row: ContinueRow, record: DownloadRecord?) {
+private fun ContinueItem(model: AppModel, row: ContinueRow, record: DownloadRecord?, onPlay: (DownloadRecord) -> Unit) {
   val heard = "${(row.fraction * 100).toInt()}% heard"
   val secondary = listOfNotNull(row.author?.takeIf { it.isNotBlank() }, heard).joinToString(" · ")
   when (record?.state) {
@@ -277,7 +345,14 @@ private fun ContinueItem(model: AppModel, row: ContinueRow, record: DownloadReco
         secondaryLabel = { Text(if (record == null) "Download · $secondary" else "Try again · $secondary", maxLines = 2) },
         label = { Text(row.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
       )
-    // Ready: Play opens Now Playing (W4a pass 2); until then the row says it is here.
+    WatchStateBook.State.READY ->
+      Button(
+        onClick = { onPlay(record) },
+        modifier = Modifier.fillMaxWidth(),
+        icon = { Icon(Glyphs.play, contentDescription = null) },
+        secondaryLabel = { Text("Play · $secondary", maxLines = 2) },
+        label = { Text(row.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+      )
     else ->
       Button(
         onClick = {},
@@ -292,7 +367,7 @@ private fun ContinueItem(model: AppModel, row: ContinueRow, record: DownloadReco
 // On this watch
 
 @Composable
-fun OnThisWatchScreen(model: AppModel) {
+fun OnThisWatchScreen(model: AppModel, onPlay: (DownloadRecord) -> Unit) {
   val records by model.downloads.records.collectAsState()
   val held by model.heldBooks.collectAsState()
   var removing by remember { mutableStateOf<DownloadRecord?>(null) }
@@ -301,8 +376,18 @@ fun OnThisWatchScreen(model: AppModel) {
     if (records.isEmpty()) {
       item { Note("No books on this watch yet. Download one from Continue listening, or send one from your phone.") }
     }
-    items(records, key = { it.ref.key }) { r -> BookRow(model, r, onClick = { removing = r }) }
-    if (records.isNotEmpty()) item { Note("Tap a book to remove it.") }
+    items(records, key = { it.ref.key }) { r ->
+      // A book here plays on a tap; its Remove is the button below it (a book on its way: the tap).
+      if (r.state == WatchStateBook.State.READY) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          BookRow(model, r, onClick = { onPlay(r) })
+          OutlinedButton(onClick = { removing = r }, modifier = Modifier.fillMaxWidth(), label = { Text("Remove") })
+        }
+      } else {
+        BookRow(model, r, onClick = { removing = r })
+      }
+    }
+    if (records.any { it.state != WatchStateBook.State.READY }) item { Note("Tap a book on its way to remove it.") }
     if (held.isNotEmpty()) {
       item { ListHeader { Text("From your phone") } }
       heldRows(held)
