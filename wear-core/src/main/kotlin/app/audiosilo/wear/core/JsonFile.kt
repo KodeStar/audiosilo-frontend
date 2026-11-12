@@ -39,10 +39,7 @@ class JsonFile<T>(
   fun write(value: T?): Boolean {
     if (value == null) {
       // Durable: the removal reaches the disk too, or a power cut could bring back what was closed.
-      if (file.delete() && durable) {
-        file.absoluteFile.parentFile?.let(::syncFolder)
-        onSynced?.invoke(file)
-      }
+      if (file.delete() && durable) synced(file)
       return true
     }
     return try {
@@ -79,10 +76,13 @@ class JsonFile<T>(
         tmp.delete()
         throw e
       }
-      if (durable) {
-        dir?.let(::syncFolder)
-        onSynced?.invoke(file)
-      }
+      if (durable) synced(file)
+    }
+
+    /** Sync `file`'s folder (its rename or removal), then tell the tests' seam. */
+    private fun synced(file: File) {
+      file.absoluteFile.parentFile?.let(::syncFolder)
+      onSynced?.invoke(file)
     }
 
     /**
