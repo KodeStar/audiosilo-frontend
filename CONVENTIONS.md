@@ -2636,7 +2636,13 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   depend on `:wear:preBuild`, so a broken `:wear` breaks the phone build: `AUDIOSILO_NO_WEAR=1`
   skips the wiring (and a prebuild with it takes the block out of an `android/` already wired),
   and `wear.yml` builds both. EAS profiles: `production-wear` (AAB,
-  `:wear:bundleRelease`) and `preview-wear` (APK for emulator installs). No Horologist (its
+  `:wear:bundleRelease`, Play's Wear OS track), `production-wear-apk` (signed APK,
+  `:wear:assembleRelease`, attached to the GitHub release as `AudioSilo-wear-X.Y.Z.apk`, the
+  partner of the phone's `production-apk`: same EAS keystore, so the Data Layer pairs them) and
+  `preview-wear` (APK for emulator installs). All three extend `production`, so with
+  `appVersionSource: remote` each build, `preview-wear` included, takes the next remote
+  versionCode (`autoIncrement`): harmless (codes only have to rise) but it spends one per
+  emulator build. No Horologist (its
   alpha needs a newer Kotlin stdlib); Media3 is the phone's strict 1.9.0.
 - **The Core boundary**: `wear-core/` is pure Kotlin/JVM (package `app.audiosilo.wear.core`, no
   `android.*`), so `npm run test:wear` runs it on any JDK 17. It ports `targets/watch/Core/*`

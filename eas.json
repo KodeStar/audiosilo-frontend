@@ -31,6 +31,14 @@
         "applicationArchivePath": "wear/build/outputs/bundle/release/*.aab"
       }
     },
+    "production-wear-apk": {
+      "extends": "production",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":wear:assembleRelease",
+        "applicationArchivePath": "wear/build/outputs/apk/release/*.apk"
+      }
+    },
     "preview-wear": {
       "extends": "production",
       "distribution": "internal",
