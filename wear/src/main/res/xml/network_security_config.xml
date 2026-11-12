@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP is allowed, as the phone's usesCleartextTraffic (decision 4): the home address of a
+     server on its LAN, used only after the tokenless server_id probe proved it. An away address
+     needs trusted HTTPS; user-added CAs are not trusted (parity with the phone). -->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true">
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>

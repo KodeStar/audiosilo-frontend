@@ -1,0 +1,117 @@
+// :wear, the Wear OS app (Track W4). Included in the Expo-generated android/ build by
+// plugins/withWearApp.js; lives outside android/ so `expo prebuild --clean` keeps it.
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    // Kotlin 2's Compose compiler is a Kotlin compiler plugin at the Kotlin version the build
+    // uses (the root `kotlinVersion`, set by expo-root-project from React Native's catalog).
+    // expo-modules-core puts it on its classpath the same way.
+    classpath("org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:${kotlinVersion}")
+  }
+}
+
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+
+// RN's root plugin makes every subproject evaluate after :app, so :app's defaultConfig holds
+// the version EAS (or app.json) set. One remote versionCode counter serves both apps: a Wear
+// build takes its own increment, so phone and Wear codes never collide.
+def appConfig = project(':app').android.defaultConfig
+def wearVersionCode = (findProperty('wearVersionCode') ?: appConfig.versionCode) as Integer
+
+android {
+  namespace 'app.audiosilo.wear'
+  compileSdk rootProject.ext.compileSdkVersion
+
+  defaultConfig {
+    // The phone's package: the Data Layer only connects apps with the same package and
+    // signing certificate, and Play publishes the Wear app as a form factor of the phone listing.
+    applicationId 'app.audiosilo'
+    minSdk 30
+    targetSdk rootProject.ext.targetSdkVersion
+    versionCode wearVersionCode
+    versionName appConfig.versionName
+  }
+
+  signingConfigs {
+    // The phone's debug keystore, so debug phone and Wear builds share a certificate (the
+    // Data Layer only connects apps with the same package and signing certificate).
+    debug {
+      storeFile rootProject.file('app/debug.keystore')
+      storePassword 'android'
+      keyAlias 'androiddebugkey'
+      keyPassword 'android'
+    }
+    // The fallback when EAS does not sign: the upload keystore by Gradle properties.
+    if (project.hasProperty('wearStoreFile')) {
+      release {
+        storeFile file(project.property('wearStoreFile'))
+        storePassword project.property('wearStorePassword')
+        keyAlias project.property('wearKeyAlias')
+        keyPassword project.property('wearKeyPassword')
+      }
+    }
+  }
+
+  buildTypes {
+    debug {
+      signingConfig signingConfigs.debug
+    }
+    release {
+      minifyEnabled true
+      shrinkResources true
+      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+      signingConfig project.hasProperty('wearStoreFile') ? signingConfigs.release : signingConfigs.debug
+    }
+  }
+
+  buildFeatures {
+    compose true
+    buildConfig true
+  }
+}
+
+// EAS writes two scripts into android/app/ and applies them to :app only:
+// eas-build-inject-android-credentials.gradle (the upload keystore from credentials.json) and
+// eas-build-configure-version.gradle (the remote versionCode and versionName). Neither names
+// :app, so :wear applies them too: `eas build --profile production-wear` then signs :wear with
+// the upload key and gives it the versionCode EAS took for this build.
+['eas-build-inject-android-credentials.gradle', 'eas-build-configure-version.gradle'].each { name ->
+  def script = rootProject.file("app/${name}")
+  if (script.exists()) {
+    apply from: script
+  }
+}
+
+dependencies {
+  implementation 'app.audiosilo:wear-core'
+
+  implementation platform('androidx.compose:compose-bom:2026.09.00')
+  implementation 'androidx.activity:activity-compose:1.13.0'
+  implementation 'androidx.wear.compose:compose-material3:1.6.2'
+  implementation 'androidx.wear.compose:compose-foundation:1.6.2'
+  implementation 'androidx.wear.compose:compose-navigation:1.6.2'
+  implementation 'androidx.core:core-ktx:1.18.0'
+
+  implementation 'androidx.wear:wear-remote-interactions:1.1.0'
+
+  // Media3 is the phone's (modules/audiosilo-player, strict 1.9.0); playback is W4a pass 2.
+  def media3Version = '1.9.0'
+  implementation "androidx.media3:media3-exoplayer:${media3Version}"
+  implementation "androidx.media3:media3-session:${media3Version}"
+  implementation 'androidx.work:work-runtime-ktx:2.11.2'
+  implementation 'com.google.android.gms:play-services-wearable:19.0.0'
+  implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.10.2'
+
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+  testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+}
+
+android.testOptions.unitTests.returnDefaultValues = true
