@@ -222,8 +222,9 @@ class AppModel private constructor(private val context: Context) {
     engine.onPickedUp = { scope.launch { reconcileLoaded() } }
     scope.launch { for (work in inbox) work() }
     // A span a kill left open goes into the outbox before anything else (sent at launch, or by the
-    // worker when this start is a background one).
-    spans.recover()
+    // worker when this start is a background one), and its place, newer than the saved one when the
+    // kill came between two saves (the 5 s tick keeps the place in memory only), becomes the book's.
+    spans.recover()?.let(places::recover)
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
     publishState()

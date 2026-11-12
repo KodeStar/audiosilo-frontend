@@ -217,12 +217,14 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
 
   /**
    * Kept only as the book plays or moves, with the time that happened (`at`, else now): a place
-   * stamped later than it was heard would read as newer than another device's real one.
+   * stamped later than it was heard would read as newer than another device's real one. `save`
+   * false (the plain 5 s tick) keeps it in memory only: the open span stored on that tick carries
+   * it across a kill (CONVENTIONS.md, the Wear OS app).
    */
-  private fun savePlace(at: Instant? = null) {
+  private fun savePlace(at: Instant? = null, save: Boolean = true) {
     val b = book ?: return
     val end = spanEnd() ?: return
-    places.set(b.ref, LocalPlace.of(end, at ?: Instant.now(), rate))
+    places.set(b.ref, LocalPlace.of(end, at ?: Instant.now(), rate), save)
   }
 
   // Loading
@@ -573,21 +575,19 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
         }
       }
     }
-    var moved = false
-    if (now.secondsSince(lastKeep) >= Spans.OPEN_SPAN_KEEP) {
-      lastKeep = now
-      spans.keep(spanEnd())
-      moved = true
-    }
-    if (now.secondsSince(lastCut) >= Spans.CUT_INTERVAL) {
-      lastCut = now
-      // Held by a transient focus loss there is no span, and none opens until the audio moves.
-      if (exo?.isPlaying == true || spans.span != null) spans.tick(b.playing, spanEnd(), true, reachable(), rate)
-      moved = true
-    }
+    val keepDue = now.secondsSince(lastKeep) >= Spans.OPEN_SPAN_KEEP
+    val cutDue = now.secondsSince(lastCut) >= Spans.CUT_INTERVAL
+    if (!keepDue && !cutDue) return
+    if (keepDue) lastKeep = now
+    if (cutDue) lastCut = now
+    // Held by a transient focus loss there is no span, and none opens until the audio moves.
+    val cuttable = exo?.isPlaying == true || spans.span != null
+    // The open span is written once a tick (a cut stores the next one, so no keep then).
+    val cut = spans.playingTick(b.playing, spanEnd(), rate, keepDue, cutDue && cuttable, reachable())
     // Held by a call or an alert nothing moved: the place keeps the time the audio last did
-    // (the hold saved it at `lastAdvance`), or it would look newer than another device's.
-    if (moved && exo?.isPlaying == true) savePlace()
+    // (the hold saved it at `lastAdvance`), or it would look newer than another device's. Saved
+    // to the disk when a span closed; on the plain 5 s tick the stored open span carries it.
+    if (exo?.isPlaying == true) savePlace(save = cut)
   }
 
   // Now Playing

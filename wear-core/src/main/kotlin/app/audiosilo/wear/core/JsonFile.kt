@@ -39,7 +39,10 @@ class JsonFile<T>(
   fun write(value: T?): Boolean {
     if (value == null) {
       // Durable: the removal reaches the disk too, or a power cut could bring back what was closed.
-      if (file.delete() && durable) file.absoluteFile.parentFile?.let(::syncFolder)
+      if (file.delete() && durable) {
+        file.absoluteFile.parentFile?.let(::syncFolder)
+        onSynced?.invoke(file)
+      }
       return true
     }
     return try {
@@ -54,7 +57,7 @@ class JsonFile<T>(
     /** The watch's own files: the wire's spelling, so a stored event is the event it sends. */
     val FORMAT: Json = Wire.json
 
-    /** Told of each durable write's file once its bytes are synced (the tests' seam). */
+    /** Told of each durable write's (or removal's) file once it is synced (the tests' seam). */
     @Volatile internal var onSynced: ((File) -> Unit)? = null
 
     /**

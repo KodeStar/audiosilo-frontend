@@ -113,9 +113,9 @@ class Outbox(
     }
     val events = older + (current ?: emptyList())
     if (joined.isEmpty()) return events
-    main.write(events)
+    save(main, events)
     // Gone only once they are safely in the outbox (a full disk: tried again next launch).
-    if (main.read()?.size == events.size) joined.forEach { it.delete() }
+    if ((main.read() ?: emptyList()).size == events.size) joined.forEach { it.delete() }
     return events
   }
 
@@ -129,7 +129,7 @@ class Outbox(
       val add = given.filter { it.isFinite && have.add(it.id) }
       if (add.isEmpty()) return
       events = events + add
-      eventsFile?.write(events)
+      eventsFile?.let { save(it, events) }
     }
     onChange?.invoke()
   }
@@ -166,7 +166,7 @@ class Outbox(
       lastFlushFailed = false
       // Never joined to another account's outbox at a later launch.
       directory?.let { d -> asideFiles(d).forEach { it.delete() } }
-      eventsFile?.write(events)
+      eventsFile?.let { save(it, events) }
       stateFile?.write(state)
     }
     onChange?.invoke()
@@ -190,7 +190,7 @@ class Outbox(
     if (ids.isEmpty()) return
     val before = events.size
     events = events.filter { it.id !in ids }
-    if (events.size != before) eventsFile?.write(events)
+    if (events.size != before) eventsFile?.let { save(it, events) }
   }
 
   /**
@@ -378,6 +378,14 @@ class Outbox(
 
     private const val ASIDE_PREFIX = "outbox-unread-"
     private val EVENTS = ListSerializer(ListeningEvent.serializer())
+
+    /**
+     * Store what waits: nothing waiting removes the file (one folder sync, not a synced `[]`); a
+     * missing file reads as an empty outbox at launch.
+     */
+    private fun save(file: JsonFile<List<ListeningEvent>>, events: List<ListeningEvent>) {
+      file.write(events.ifEmpty { null })
+    }
 
     private fun asideFiles(directory: File): List<File> =
       directory.listFiles { f -> f.name.startsWith(ASIDE_PREFIX) }?.toList() ?: emptyList()

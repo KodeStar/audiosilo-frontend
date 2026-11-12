@@ -299,11 +299,28 @@ class PlaceStore(file: File?) {
 
   @Synchronized fun place(ref: BookRef): LocalPlace? = places[ref.key]
 
+  /**
+   * `save` false keeps it in memory only (the 5 s tick while playing): the open span, stored every
+   * 5 s, carries that place across a kill (`recover`), and the next saved place writes it too.
+   */
   @Synchronized
-  fun set(ref: BookRef, place: LocalPlace) {
+  fun set(ref: BookRef, place: LocalPlace, save: Boolean = true) {
     if (!place.position.isFinite()) return
     places = places + (ref.key to place)
-    file?.write(places)
+    if (save) file?.write(places)
+  }
+
+  /**
+   * The place an open span a kill left carries (`SpanRecorder.recover`), when it is newer than the
+   * one saved. Only a span kept at least once (it ended after it began): a span still at its open
+   * carries the loaded place stamped with the play's time, later than it was heard.
+   */
+  @Synchronized
+  fun recover(span: OpenSpan) {
+    if (span.endedAt <= span.startedAt) return
+    val saved = place(span.ref)
+    if (saved != null && saved.at >= span.endedAt) return
+    set(span.ref, LocalPlace.of(span.to, span.endedAt, span.speed))
   }
 
   @Synchronized

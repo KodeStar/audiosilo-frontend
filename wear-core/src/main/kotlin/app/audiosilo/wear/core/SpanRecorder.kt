@@ -174,16 +174,18 @@ class SpanRecorder(
 
   /**
    * Close a span a kill left open (at its last stored values) into the outbox. Once per launch,
-   * before the first span opens (every open runs it first).
+   * before the first span opens (every open runs it first). Returns that span (the place it
+   * carries: `PlaceStore.recover`).
    */
-  fun recover() {
-    if (recovered) return
+  fun recover(): OpenSpan? {
+    if (recovered) return null
     recovered = true
-    val left = store.load() ?: return
+    val left = store.load() ?: return null
     // In this order, as in `close`: a kill between the two sends the span twice under its one id
     // (`duplicate`), the other way round it would lose the span.
     append(left)
     store.save(null)
+    return left
   }
 
   /** The base a span goes on as it closes: the version acknowledged now, never below the one it opened on. */
@@ -245,7 +247,13 @@ class SpanRecorder(
    * `stoppedAt`: when the audio stopped, for a stop noticed late; never after now, never before the
    * span's start.
    */
-  fun close(at: SpanEnd?, stoppedAt: Instant? = null): OpenSpan? {
+  fun close(at: SpanEnd?, stoppedAt: Instant? = null): OpenSpan? = close(at, stoppedAt, clearStore = true)
+
+  /**
+   * `clearStore` false: the caller opens the next span at once, and its store replaces this one in
+   * one write (still after the event is kept), rather than a removal and a write.
+   */
+  private fun close(at: SpanEnd?, stoppedAt: Instant?, clearStore: Boolean): OpenSpan? {
     var closing = span ?: return null
     span = null
     if (at != null) closing = closing.copy(to = at)
@@ -254,7 +262,7 @@ class SpanRecorder(
     val ended = maxOf(closing.startedAt, minOf(now, stop))
     closing = closing.copy(endedAt = ended)
     append(closing)
-    store.save(null)
+    if (clearStore) store.save(null)
     // Like a paused move: the next play begins with the same reason (`isBareMove`).
     if (Spans.isBareMove(closing)) nextStart = closing.start
     return closing
@@ -268,7 +276,7 @@ class SpanRecorder(
     speed: Double,
     start: ListeningStart = ListeningStart.CONTINUE,
   ) {
-    val closed = close(at) ?: return
+    val closed = close(at, null, clearStore = !playing) ?: return
     if (!playing) return
     // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
     if (start != ListeningStart.CONTINUE || !Spans.isBareMove(closed)) nextStart = start
@@ -277,17 +285,38 @@ class SpanRecorder(
 
   /**
    * The 15 s tick: cut while reachable, else only once the span has run `MAX_SPAN`. Playing with
-   * none open (the play's own could not open one), one opens here.
+   * none open (the play's own could not open one), one opens here. True when it cut.
    */
-  fun tick(book: PlayingBook, at: SpanEnd?, playing: Boolean, reachable: Boolean, speed: Double) {
+  fun tick(book: PlayingBook, at: SpanEnd?, playing: Boolean, reachable: Boolean, speed: Double): Boolean {
     val s = span
     if (s == null) {
       if (playing && at != null) open(book, at, speed)
-      return
+      return false
     }
     if (reachable || clock().secondsSince(s.startedAt) >= Spans.MAX_SPAN) {
       cut(book, at, playing, speed)
+      return true
     }
+    return false
+  }
+
+  /**
+   * One playing tick of the engine (Wear's PlayerEngine): the 15 s `tick` when `cutDue`, then the
+   * 5 s `keep` when `keepDue`, unless the tick already stored the span (a cut or an open): the open
+   * span is written once a tick. True when it cut (a span closed: the place is kept durably then).
+   */
+  fun playingTick(
+    book: PlayingBook,
+    at: SpanEnd?,
+    speed: Double,
+    keepDue: Boolean,
+    cutDue: Boolean,
+    reachable: Boolean,
+  ): Boolean {
+    val before = span
+    val cut = cutDue && tick(book, at, true, reachable, speed)
+    if (keepDue && span === before) keep(at)
+    return cut
   }
 
   /**
