@@ -125,6 +125,12 @@ jest.mock('@/stores/session', () => ({
   onConnectionRemoved: jest.fn(() => () => {}),
 }));
 
+// The network rule an automatic episode download is asked again once its wait ends.
+const mockCanAutoDownload = jest.fn(async (_mode: string) => true);
+jest.mock('@/lib/network', () => ({
+  canAutoDownload: (mode: string) => mockCanAutoDownload(mode),
+}));
+
 // Avoid pulling the real React Query client / hooks graph into the unit test.
 // `getQueryData` answers the web transcode guard's cached `/server` read.
 const mockGetQueryData = jest.fn((..._a: unknown[]): unknown => undefined);
@@ -2510,6 +2516,62 @@ describe('podcast episodes', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['podcastEpisodes', 'c1', 2],
     });
+  });
+
+  describe('an automatic download whose wait ends', () => {
+    afterEach(() => mockCanAutoDownload.mockReset().mockResolvedValue(true));
+
+    it('downloads while the network rule still lets it', async () => {
+      await useDownloads.getState().download('c1', 2, episodeBook(false), chapters, 'auto');
+      mockWaits[0].hooks.onEnd({ kind: 'ready' });
+      await settle();
+      expect(mockCanAutoDownload).toHaveBeenCalled();
+      expect(entry()?.status).toBe('downloaded');
+    });
+
+    it('is dropped, undeclined, when the rule no longer lets it start (mobile data now)', async () => {
+      await useDownloads.getState().download('c1', 2, episodeBook(false), chapters, 'auto');
+      mockCanAutoDownload.mockResolvedValue(false);
+      mockWaits[0].hooks.onEnd({ kind: 'ready' });
+      await settle();
+      expect(entry()).toBeUndefined();
+      expect(mockEngine.downloadFile).not.toHaveBeenCalled();
+      expect(isDeclined('c1', 2, 'Show/Monday.mp3')).toBe(false);
+    });
+
+    it("never asks the rule for the listener's own download", async () => {
+      await useDownloads.getState().download('c1', 2, episodeBook(false), chapters);
+      mockCanAutoDownload.mockResolvedValue(false);
+      mockWaits[0].hooks.onEnd({ kind: 'ready' });
+      await settle();
+      expect(mockCanAutoDownload).not.toHaveBeenCalled();
+      expect(entry()?.status).toBe('downloaded');
+    });
+  });
+
+  it('drops one this browser turns out to play transcoded, once its file is known', async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      mockGetQueryData.mockImplementation((k: unknown) =>
+        Array.isArray(k) && k[0] === 'server' ? { capabilities: { transcode: true } } : undefined,
+      );
+      await useDownloads
+        .getState()
+        .download('c1', 2, episodeBook(false, { direct_playable: true }), chapters);
+      expect(mockWaits).toHaveLength(1);
+      mockFetchQuery.mockImplementation(async ({ queryKey }) =>
+        queryKey[0] === 'item'
+          ? episodeBook(true, { direct_playable: false, codec: 'ac3' })
+          : chapters,
+      );
+      mockWaits[0].hooks.onEnd({ kind: 'ready' });
+      await settle();
+      expect(entry()).toBeUndefined();
+      expect(mockEngine.downloadFile).not.toHaveBeenCalled();
+    } finally {
+      Platform.OS = prevOS;
+    }
   });
 
   it('fails as removed when its connection went while it waited', async () => {

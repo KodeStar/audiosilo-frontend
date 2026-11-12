@@ -23,6 +23,7 @@ import type { Book, ChaptersResponse, Progress } from '@/api/types';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { mapLimit } from '@/lib/map-limit';
+import { canAutoDownload } from '@/lib/network';
 import { getItem, setItem } from '@/lib/storage';
 import { DOWNLOADS_KEY } from '@/lib/storage-keys';
 import { bookFileSpecs } from '@/playback/book-queue';
@@ -32,6 +33,7 @@ import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { cachedEbookUri } from '@/reader/ebook-file';
 import { onConnectionRemoved } from '@/stores/session';
+import { useSettings } from '@/stores/settings';
 
 import { engine } from './engine';
 import { type EpisodeWaitEnd, stopWaiting, waitForEpisode } from './episode-ready';
@@ -557,9 +559,12 @@ function withoutServerFetch(entry: DownloadEntry): DownloadEntry {
  * An episode's wait on its server ended. On its server: its item and chapters are read again
  * (the file's own size and chapters, `downloaded` now true; `fetchFailFast`, so the entry
  * never sits here on a read the network holds), the show's episode lists too (a show page
- * on screen says it is on the server), and it goes on the queue. Otherwise the
- * entry fails (`serverFetch`, with the server's code; Retry POSTs), or, for a removed
- * connection, as `removed`. A cancel or remove meanwhile wins.
+ * on screen says it is on the server), and it goes on the queue. The wait can be long (it
+ * stops in the background), so what `queueBook` decided before it is decided again: an
+ * automatic download the network rule no longer lets start is dropped (no decline mark:
+ * the next start asks again), and so is one this browser turns out to play transcoded.
+ * Otherwise the entry fails (`serverFetch`, with the server's code; Retry POSTs), or, for a
+ * removed connection, as `removed`. A cancel or remove meanwhile wins.
  */
 async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void> {
   const entry = useDownloads.getState().entries[key];
@@ -593,6 +598,13 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
     return;
   }
   const stops = stopCount(key);
+  // Still the wait that ended (no cancel, remove or new download since).
+  const standing = () =>
+    stopCount(key) === stops && !!useDownloads.getState().entries[key]?.serverFetch;
+  const drop = () => {
+    void engine.removeBook(connectionId, libraryId, path);
+    removeEntry(key);
+  };
   const client = resolveClient(connectionId);
   let book = entry.manifest.book;
   let chapters = entry.manifest.chapters ?? undefined;
@@ -604,7 +616,17 @@ async function episodeWaitEnded(key: string, end: EpisodeWaitEnd): Promise<void>
     if (item.status === 'fulfilled') book = item.value;
     if (read.status === 'fulfilled') chapters = read.value;
   }
-  if (stopCount(key) !== stops || !useDownloads.getState().entries[key]?.serverFetch) return;
+  if (!standing()) return;
+  // The network may not be the one the rule let it start on (the wait stops in the
+  // background and carries on wherever the app comes back).
+  if (entry.origin === 'auto') {
+    const allowed = await canAutoDownload(useSettings.getState().autoDownloadNext);
+    if (!standing()) return;
+    if (!allowed) return drop();
+  }
+  // Its file's own format is known only now: one this browser plays through the server's
+  // transcoder is refused, as `queueBook` refuses it (the control says why).
+  if (webTranscodeFromCache(connectionId, book, chapters)) return drop();
   // Its server has the file now, whatever an older answer said (the re-read failed): the
   // manifest a later Retry starts from must not send it back to wait.
   if (book.episode && !book.episode.downloaded) {
