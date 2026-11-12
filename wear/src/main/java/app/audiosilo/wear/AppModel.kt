@@ -16,6 +16,7 @@ package app.audiosilo.wear
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import android.os.Looper
 import app.audiosilo.wear.core.APIError
 import app.audiosilo.wear.core.Account
 import app.audiosilo.wear.core.AccountChange
@@ -808,8 +809,18 @@ class AppModel private constructor(private val context: Context) {
 
   // The phone's view of the watch
 
-  /** Work out `watch-state` now and hand it on when it is news (PhoneLink puts it). */
+  /**
+   * Work out `watch-state` now and hand it on when it is news (PhoneLink puts it). Always on the
+   * main thread, one whole reading at a time: a book's worker and PhoneLink call it from their
+   * own threads, and an older reading landing after a newer one would leave the phone with the
+   * older state. Posted rather than locked: `HeldBooks.finishRemove` publishes while it holds its
+   * own lock, which a lock here would deadlock against.
+   */
   fun publishState() {
+    if (!Looper.getMainLooper().isCurrentThread) {
+      scope.launch { publishState() }
+      return
+    }
     val who = _account.value?.accountId
     // A row goes only for a record a kill can't lose (a full disk keeps it in memory alone), and
     // not for a failed one: sent again, that book still wants the retry `enqueue` gives it.

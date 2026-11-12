@@ -2690,8 +2690,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   which handles one at a time under a lock (`PhoneInbox` decides; an item seen by both ways is
   handled once). For each item: `AppModel.receive` keeps its effect, then the receipt goes; an
   unknown message type gets no receipt. `PhoneLink.start` (from `AudioSiloApp`) and every
-  return to the foreground read all of `/to/<me>/` and the receipts. `watch-state` is put under
-  its own lock, always `StatePublication.due` (an older state never lands last).
+  return to the foreground read all of `/to/<me>/` and the receipts (a sweep drops settled
+  receipts before it takes items: a newer send's receipt goes at the path of the one it
+  replaces). `watch-state` is put under its own lock, always `StatePublication.due` (an older
+  state never lands last); `AppModel.publishState` works it out on the main thread only (posted
+  from a worker or PhoneLink, never locked: `HeldBooks.finishRemove` publishes under its lock).
 - **Playback (decision 10, `playback/`)**: `PlayerEngine` (the twin of WatchAudioEngine.swift)
   owns one ExoPlayer, one MediaItem per downloaded file; speech attributes with focus handled,
   noisy handled, `setSuppressPlaybackOnUnsuitableOutput(true)` until the speaker is confirmed
