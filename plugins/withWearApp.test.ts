@@ -43,14 +43,33 @@ describe('withWearApp', () => {
     expect(twice.match(/includeBuild\('\.\.\/wear-core'\)/g)).toHaveLength(1);
   });
 
-  it('adds a settings mod, and none with AUDIOSILO_NO_WEAR=1', () => {
+  it('takes the block out again, leaving the file as prebuild wrote it', () => {
+    const wired: string = withWearApp.addWearToSettings(SETTINGS);
+    expect(withWearApp.removeWearFromSettings(wired)).toBe(SETTINGS);
+    // Nothing to take out: untouched.
+    expect(withWearApp.removeWearFromSettings(SETTINGS)).toBe(SETTINGS);
+  });
+
+  // The settings mod as prebuild runs it: `nextMod` is the base mod that reads and writes the file.
+  async function prebuild(contents: string): Promise<string> {
+    const config = withWearApp({ name: 'AudioSilo', slug: 'audiosilo' });
+    const out = await config.mods.android.settingsGradle({
+      ...config,
+      modResults: { path: 'android/settings.gradle', language: 'groovy', contents },
+      modRequest: { nextMod: async (cfg: unknown) => cfg },
+    });
+    return out.modResults.contents;
+  }
+
+  it('wires :wear at prebuild, and with AUDIOSILO_NO_WEAR=1 unwires an android/ already wired', async () => {
     delete process.env.AUDIOSILO_NO_WEAR;
-    const wired = withWearApp({ name: 'AudioSilo', slug: 'audiosilo' });
-    expect(typeof wired.mods?.android?.settingsGradle).toBe('function');
+    const wired = await prebuild(SETTINGS);
+    expect(wired).toContain("include ':wear'");
 
     process.env.AUDIOSILO_NO_WEAR = '1';
-    const skipped = withWearApp({ name: 'AudioSilo', slug: 'audiosilo' });
-    expect(skipped.mods?.android?.settingsGradle).toBeUndefined();
+    // A clean prebuild: nothing added. One over a wired android/: the block goes.
+    expect(await prebuild(SETTINGS)).toBe(SETTINGS);
+    expect(await prebuild(wired)).toBe(SETTINGS);
   });
 
   it('runs after expo-build-properties in app.json', () => {

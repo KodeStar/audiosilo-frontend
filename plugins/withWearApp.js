@@ -1,5 +1,5 @@
 const { withSettingsGradle } = require('expo/config-plugins');
-const { mergeContents } = require('@expo/config-plugins/build/utils/generateCode');
+const { mergeContents, removeContents } = require('@expo/config-plugins/build/utils/generateCode');
 
 /**
  * The Wear OS app (Track W4): wires `wear/` (the application module `:wear`) and `wear-core/`
@@ -17,7 +17,8 @@ const { mergeContents } = require('@expo/config-plugins/build/utils/generateCode
  *    `:app` (so `:wear` can read the version code EAS set on `:app`).
  *  - `AUDIOSILO_NO_WEAR=1` skips the wiring: a `:wear` that fails to configure would
  *    otherwise break the phone's build too (RN's root plugin makes `:app:preBuild` depend on
- *    every subproject's `preBuild`).
+ *    every subproject's `preBuild`). It also takes the block out of an `android/` an earlier
+ *    prebuild wired (a prebuild without `--clean` keeps the file), so the switch holds there too.
  */
 const TAG = 'audiosilo-wear-app';
 
@@ -39,16 +40,22 @@ function addWearToSettings(contents) {
   }).contents;
 }
 
+function removeWearFromSettings(contents) {
+  return removeContents({ src: contents, tag: TAG }).contents;
+}
+
 const withWearApp = (config) => {
-  if (process.env.AUDIOSILO_NO_WEAR === '1') return config;
+  const skip = process.env.AUDIOSILO_NO_WEAR === '1';
   return withSettingsGradle(config, (cfg) => {
     if (cfg.modResults.language !== 'groovy') {
       throw new Error('withWearApp: expected a Groovy settings.gradle');
     }
-    cfg.modResults.contents = addWearToSettings(cfg.modResults.contents);
+    const edit = skip ? removeWearFromSettings : addWearToSettings;
+    cfg.modResults.contents = edit(cfg.modResults.contents);
     return cfg;
   });
 };
 
 module.exports = withWearApp;
 module.exports.addWearToSettings = addWearToSettings;
+module.exports.removeWearFromSettings = removeWearFromSettings;

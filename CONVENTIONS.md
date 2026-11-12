@@ -2634,7 +2634,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `kotlinVersion`, and applies EAS's `eas-build-inject-android-credentials.gradle` and
   `eas-build-configure-version.gradle` when present. RN's root plugin makes `:app:preBuild`
   depend on `:wear:preBuild`, so a broken `:wear` breaks the phone build: `AUDIOSILO_NO_WEAR=1`
-  skips the wiring, and `wear.yml` builds both. EAS profiles: `production-wear` (AAB,
+  skips the wiring (and a prebuild with it takes the block out of an `android/` already wired),
+  and `wear.yml` builds both. EAS profiles: `production-wear` (AAB,
   `:wear:bundleRelease`) and `preview-wear` (APK for emulator installs). No Horologist (its
   alpha needs a newer Kotlin stdlib); Media3 is the phone's strict 1.9.0.
 - **The Core boundary**: `wear-core/` is pure Kotlin/JVM (package `app.audiosilo.wear.core`, no
