@@ -409,7 +409,7 @@ describe('WebPlaybackService (transcoded tracks)', () => {
       expect(pending.currentTime).toBe(300); // a local file seeks in place
       pending.readyState = 4;
       pending.emit('canplay');
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(streaming.src).toBe(''); // the transcode connection is closed
       pending.currentTime = 310;
       pending.emit('timeupdate');
@@ -467,31 +467,163 @@ describe('WebPlaybackService file boundaries (direct tracks)', () => {
     states.length = 0;
   }
 
-  it('a pause made while a downloaded copy buffers for the swap stands once it swaps in', async () => {
-    jest.useFakeTimers();
-    try {
+  describe('a swap to the local copy still buffering', () => {
+    const local = directTracks.map((t, i) => ({ ...t, url: `https://s/local/${i}.mp3` }));
+    /** The swap's element gets ready at its place. */
+    function ready(pending: FakeAudio) {
+      pending.emit('loadedmetadata');
+      pending.readyState = 4;
+      pending.emit('canplay');
+    }
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('keeps a pause made meanwhile once it swaps in', async () => {
       await startPlaying(0);
       const streaming = el();
-      const local: PlaybackTrack[] = directTracks.map((t, i) => ({
-        ...t,
-        url: `https://s/local/${i}.mp3`,
-      }));
       const swap = svc.swapTo!(local, 0, 0);
       const pending = el();
       expect(pending).not.toBe(streaming);
       // Paused while the copy buffers (the listener, or another tab began playing).
       await svc.pause();
       expect(svc.getSnapshot().state).toBe('paused');
-      pending.emit('loadedmetadata');
-      pending.readyState = 4;
-      pending.emit('canplay');
-      expect(await swap).toBe(true);
+      ready(pending);
+      expect(await swap).toBe('swapped');
       expect(pending.plays).toBe(0);
       expect(svc.getSnapshot().state).toBe('paused');
       expect(states).not.toContain('playing');
-    } finally {
-      jest.useRealTimers();
-    }
+    });
+
+    it('switches to nothing once the book was reset meanwhile (a stop, a cast taking over)', async () => {
+      await startPlaying(0);
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.reset();
+      ready(pending);
+      expect(await swap).toBe('refused');
+      expect(pending.src).toBe(''); // let go, never played
+      expect(pending.plays).toBe(0);
+      expect(svc.getSnapshot().state).toBe('idle');
+    });
+
+    it('keeps what another load put in meanwhile (another book started)', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.load(directTracks, 1, 0);
+      ready(pending);
+      expect(await swap).toBe('refused');
+      expect(pending.src).toBe('');
+      expect(pending.plays).toBe(0);
+      expect(streaming.src).toBe(FILE2);
+      expect(svc.getSnapshot().trackIndex).toBe(1);
+    });
+
+    it('keeps the stream where a seek made meanwhile put it', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.seekTo(45);
+      ready(pending);
+      // The copy was buffered at the place before the seek: switched in, it would undo it.
+      expect(await swap).toBe('moved');
+      expect(pending.src).toBe('');
+      expect(pending.plays).toBe(0);
+      expect(streaming.currentTime).toBe(45);
+      expect(svc.getSnapshot().position).toBe(45);
+    });
+
+    it('counts the auto-rewind of a play after a pause meanwhile as a move', async () => {
+      await svc.configure({
+        autoRewindMax: 30,
+        jumpForward: 30,
+        jumpBackward: 15,
+        smartSpeed: false,
+        voiceBoost: false,
+      });
+      await startPlaying(0);
+      const streaming = el();
+      streaming.currentTime = 30;
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.pause();
+      jest.advanceTimersByTime(5_000);
+      await svc.play(); // rewinds the stream in place
+      ready(pending);
+      expect(await swap).toBe('moved');
+      expect(pending.plays).toBe(0);
+      expect(streaming.currentTime).toBeLessThan(30);
+    });
+
+    it('keeps the stream on a file the listener moved to meanwhile, as a move', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.skipToTrack(1);
+      ready(pending);
+      expect(await swap).toBe('moved');
+      expect(pending.plays).toBe(0);
+      expect(streaming.src).toBe(FILE2);
+    });
+
+    it('refuses a copy that never becomes playable', async () => {
+      await startPlaying(0);
+      const streaming = el();
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      pending.emit('error');
+      expect(await swap).toBe('refused');
+      expect(pending.src).toBe('');
+      expect(streaming.src).toBe(FILE1);
+    });
+
+    it('tells the switch before its first report in the new order, and never a refusal', async () => {
+      await startPlaying(0);
+      const seen: (number | 'switch')[] = [];
+      svc.subscribe((s) => void seen.push(s.trackIndex));
+      const onSwitch = () => void seen.push('switch');
+      // The copy holds the playing file at index 1.
+      const swap = svc.swapTo!([local[1], local[0]], 1, 30, undefined, undefined, onSwitch);
+      const pending = el();
+      seen.length = 0;
+      ready(pending);
+      expect(await swap).toBe('swapped');
+      expect(seen.indexOf('switch')).toBe(0);
+      expect(seen.slice(1).every((index) => index === 1)).toBe(true);
+
+      seen.length = 0;
+      const refused = svc.swapTo!(local, 0, 30, undefined, undefined, onSwitch);
+      const dropped = el();
+      await svc.seekTo(45);
+      ready(dropped);
+      expect(await refused).toBe('moved');
+      expect(seen).not.toContain('switch');
+    });
+
+    it('plays the swapped-in copy at a volume set while it buffered', async () => {
+      await startPlaying(0);
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.setVolume(0.25); // the sleep timer's fade
+      ready(pending);
+      expect(await swap).toBe('swapped');
+      expect(pending.volume).toBe(0.25);
+    });
+
+    it('plays the swapped-in copy at a speed set while it buffered', async () => {
+      await startPlaying(0);
+      const swap = svc.swapTo!(local, 0, 30);
+      const pending = el();
+      await svc.setRate(1.5);
+      ready(pending);
+      expect(await swap).toBe('swapped');
+      expect(pending.plays).toBe(1);
+      expect(pending.playbackRate).toBe(1.5);
+      expect(pending.defaultPlaybackRate).toBe(1.5);
+    });
   });
 
   it('a `playing` that arrives after a pause is not reported: the element is paused', async () => {
@@ -1073,7 +1205,7 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
       pending.emit('loadedmetadata');
       pending.readyState = 4;
       pending.emit('canplay');
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
       expect(ctx().sources.size).toBe(2);
       expect(routeOf(pending)).toBe('compressor');
       expect(ctx().sources.get(first)!.targets).toEqual([]); // the old one is let go
@@ -1145,7 +1277,7 @@ describe('WebPlaybackService Voice Boost (Web Audio)', () => {
       pending.emit('loadedmetadata');
       pending.readyState = 4;
       pending.emit('canplay');
-      expect(await swap).toBe(true);
+      expect(await swap).toBe('swapped');
     } finally {
       jest.useRealTimers();
     }

@@ -101,6 +101,7 @@ import {
   type PlaybackSnapshot,
   PlaybackStartError,
   type PlaybackState,
+  type SwapOutcome,
 } from './types';
 
 /**
@@ -209,14 +210,24 @@ let saveHold: { timer: ReturnType<typeof setTimeout>; expiresAt: number } | null
 const SAVE_HOLD_MAX_MS = 5_000;
 /**
  * The download hot-swap moving the playing file to another track index (a download that
- * holds other files than the stream, `switchCurrentBookToLocal`): the book and the file's
- * index in the stream's queue. The engine reports the download's index before its swap or
- * load returns, and until the store commits the download's queue that index read through
- * the stream's queue is another file's place: `persist` and `onRemoteMove` refuse a place at
- * any other index of that book meanwhile. Released at the commit, or when the swap is
- * refused or fails.
+ * holds other files than the stream, `switchCurrentBookToLocal`): the book, the file's
+ * index in the stream's queue, and the download's queue. The engine reports the download's
+ * index before its swap or load returns, while the store still holds the stream's queue: the
+ * engine's reports are read back through the download's queue onto the stream's
+ * (`throughSwap`), so the saves, the sleep timer and jump undo keep reading the playing
+ * file's place. Only once the engine is on the download (`live`): a load is from the call,
+ * while a gapless swap (`swapTo`) goes on reporting the stream, in the stream's order, until
+ * it switches. A place at another index of that book is still refused meanwhile: by
+ * `persist`, one the stream moved to while the copy buffered or the mapping put on another
+ * file (the download's engine moved on), and by `onRemoteMove`, whose index is the engine's
+ * own, never mapped. Released at the commit, or when the swap is refused or fails.
  */
-let swapHold: { nowPlaying: NowPlaying; trackIndex: number } | null = null;
+let swapHold: {
+  nowPlaying: NowPlaying;
+  trackIndex: number;
+  queue: BookQueue;
+  live: boolean;
+} | null = null;
 /**
  * The book (its `contentKey`) `adoptLoaded` had to reload in its own file order (fe#134): its
  * engine's place is not new and was never checked against the server, so nothing saves it
@@ -230,6 +241,38 @@ let swapHold: { nowPlaying: NowPlaying; trackIndex: number } | null = null;
 let quietAdopted: string | null = null;
 const heldBySwap = (np: NowPlaying, trackIndex: number) =>
   swapHold !== null && swapHold.nowPlaying === np && trackIndex !== swapHold.trackIndex;
+/**
+ * A snapshot's place in one queue read onto another queue of the same book, by its file
+ * (track ids are path-keyed): the same file's index there, or `lost` for a file that queue
+ * lacks.
+ */
+function ontoQueue(
+  s: PlaybackSnapshot,
+  from: BookQueue,
+  to: BookQueue,
+  lost: Pick<PlaybackSnapshot, 'trackIndex' | 'position' | 'duration'>,
+): PlaybackSnapshot {
+  const at = trackIndexById(to, from.tracks[s.trackIndex]?.id);
+  if (at === s.trackIndex) return s;
+  return at >= 0 ? { ...s, trackIndex: at } : { ...s, ...lost };
+}
+/**
+ * An engine report read onto the queue the store holds while the hot-swap moves the playing
+ * file (`swapHold`): one at another index is the download's, so it becomes the same file's
+ * index in the stream's queue, and one in a file the stream lacks keeps the store's place
+ * (`prev`) until the commit moves it.
+ */
+function throughSwap(s: PlaybackSnapshot, prev: PlaybackSnapshot): PlaybackSnapshot {
+  const hold = swapHold;
+  if (!hold || !hold.live || s.trackIndex === hold.trackIndex) return s;
+  const np = usePlayer.getState().nowPlaying;
+  if (np !== hold.nowPlaying) return s;
+  return ontoQueue(s, hold.queue, np.queue, {
+    trackIndex: prev.trackIndex,
+    position: prev.position,
+    duration: prev.duration,
+  });
+}
 /** When the transport last settled out of `playing` (a pause, from any source), else
  * null. A play after `LONG_PAUSE_MS` of it is a book picked up again, which is when
  * another device may have moved its place on (`onPickedUpAgain`). */
@@ -241,6 +284,14 @@ let pickedUpAgainListener: (() => void) | null = null;
  * subscription beside the download hot-swap's) instead of being used up by a `playing`
  * reported during the load. */
 let pickUpDue: string | null = null;
+/** The download hot-swap of the book (its content key) whose download landed while a load
+ * held the store (`loadingBook`) or a start was on its way (`startsInFlight`: a start of the
+ * book already loaded holds nothing): the snapshot is the previous place until that load
+ * lands, and a swap's own load made meanwhile would land after the start's, at that place.
+ * Also one that landed before a start made the book the store's (nothing saw it land).
+ * It runs once both are over (`runDueSwap`), and is dropped by a start or a reload that
+ * placed nothing (a failed load releases the hold too). */
+let swapDue: string | null = null;
 
 /** Tell the pick-up listener now, or once the load holding the store lands (`pickUpDue`). */
 function pickUp() {
@@ -1710,7 +1761,14 @@ function armStallWatchdog() {
     stallTimer = null;
     if (!wantsPlayback) return; // attempt abandoned (user paused/stopped)
     const { snapshot } = usePlayer.getState();
-    if (snapshot.state === 'playing') return; // we made it
+    if (snapshot.state === 'playing') {
+      // We made it. An attempt begun on a book already playing (the hot-swap's load) that
+      // never left `playing` (its load failed, the stream plays on) had no transition to
+      // end its start window: it ends here, or a later lock-screen pause would read as
+      // still connecting.
+      startingPlayback = false;
+      return;
+    }
     clearPlaybackIntent();
     usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
     haltAndPersist();
@@ -2001,7 +2059,7 @@ async function createService(): Promise<PlaybackService> {
     // strand an endless spinner with no retry. Read it as `paused` so the play
     // button comes back (tapping it starts a fresh attempt, which the watchdog covers).
     else if (state === 'loading' && !wantsPlayback && !startingPlayback) state = 'paused';
-    const snapshot: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
+    const reported: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
     const prev = usePlayer.getState().snapshot;
     // After the stall watchdog (or an engine error) surfaces an `error`, the engine
     // keeps re-reporting around the dead stream - iOS: frozen `onProgress` ticks
@@ -2013,9 +2071,10 @@ async function createService(): Promise<PlaybackService> {
     // → this guard is skipped) or the stream actually resuming. Enumerating the "noisy"
     // states bit us repeatedly (loading, ready, idle, paused…); suppress-all-but-playing
     // is the robust rule.
-    if (prev.state === 'error' && !wantsPlayback && snapshot.state !== 'playing') {
+    if (prev.state === 'error' && !wantsPlayback && reported.state !== 'playing') {
       return;
     }
+    const snapshot = throughSwap(reported, prev);
     usePlayer.setState({ snapshot });
     // Reached online (the network came back while it played): it plays on, streaming the
     // rest, when its server answers; else the listener is told.
@@ -2183,6 +2242,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const current = () => mayActFor(connectionId);
     // In flight until it ends: an adoption reading meanwhile stands back (`startsInFlight`).
     startsInFlight++;
+    // Whether this start put its book in the engine, at its place (`swapDue`).
+    let placed = false;
     try {
       // Resolve the client from the connection id (single source of truth), mirroring the
       // downloads store - so a caller can't pass an `api` that disagrees with `connectionId`.
@@ -2396,6 +2457,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // Another book was started while this one loaded (a second tap, Up next): that start
       // owns the engine now, so this one neither sets its speed nor plays.
       if (selectBookKey(get()) !== key) return;
+      placed = true;
+      // A download that landed before this book was the store's (while its place was looked
+      // up) was seen by nothing: the book streams, and is swapped in as this start ends.
+      if (!dl && downloadedEntryOf(ref)) swapDue = key;
       // The engine holds the queue built from these chapters now: a download takes them,
       // with a new file order when its server re-ordered the files (`adoptStartedChapters`).
       if (dl && queueChapters) adoptStartedChapters(ref, queueChapters);
@@ -2410,6 +2475,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       void maybeAutoDownloadCurrent(connectionId, libraryId, book, chapterData);
     } finally {
       startsInFlight--;
+      // The book's download landed meanwhile: it is swapped in now, from the place this
+      // start put it at, or not at all when the start placed nothing (a failed load, a
+      // failed resume lookup: the snapshot is not this book's place).
+      if (!placed && swapDue === contentKey(connectionId, libraryId, book.rel_path)) {
+        swapDue = null;
+      }
+      runDueSwap();
     }
   },
 
@@ -2760,11 +2832,28 @@ const specIds = (specs: { path: string }[], libraryId: number) =>
  * book streaming: moved onto its own order, the rest of the book would play in another
  * sequence, skipping files. Only a download holding other files moves the listener: to
  * the same file when it has it, else to the same whole-book place.
+ *
+ * A web swap refused because the stream moved while the copy buffered (`'moved'`: the copy
+ * sat at the place before) runs again from the new place, each time, while the same book is
+ * still the store's and its download complete. Every such refusal needs a real move of the
+ * stream: the listener's seek, skip or auto-rewinding play, the stream's own advance to its
+ * next file or a transcoded stream's early-end reload (both move it on through the book),
+ * or a one-off move the store makes (the pick-up's place, another tab's): none comes from
+ * the swap itself, so it ends. A stop, a reset, another book or a copy that never became
+ * playable (`'refused'`) is not retried.
  */
 async function switchCurrentBookToLocal() {
   const state = usePlayer.getState();
-  const { nowPlaying, snapshot, rate } = state;
+  const { nowPlaying, snapshot } = state;
   if (!nowPlaying || !apiRef) return;
+  // A load holding the store (a start, an adoption's reload: `loadingBook`) leaves the
+  // snapshot the PREVIOUS place until it lands, and so does a start of this same book at
+  // another place, which holds nothing (`startsInFlight`): the swap runs once they are
+  // over (`swapDue`).
+  if (state.loadingBook || startsInFlight > 0) {
+    swapDue = contentKeyOf(nowPlaying);
+    return;
+  }
   const landed = downloadedEntryOf(nowPlaying);
   if (!landed || landed.manifest.files.length === 0) return;
 
@@ -2796,7 +2885,8 @@ async function switchCurrentBookToLocal() {
     local,
     useSettings.getState().virtualChapterInterval,
   );
-  if (!sameIds(idsOf(queue), idsOf(nowPlaying.queue))) {
+  const sameOrder = sameIds(idsOf(queue), idsOf(nowPlaying.queue));
+  if (!sameOrder) {
     const held = new Set(queue.tracks.map((t) => t.id));
     const sameFiles =
       queue.tracks.length === nowPlaying.queue.tracks.length &&
@@ -2815,32 +2905,46 @@ async function switchCurrentBookToLocal() {
   // resume floor moves with it, or the slip guard would refuse every later save of a place
   // that now reads lower.
   const shift = toBookPosition(queue.offsets, index, positionInTrack) - selectBookPosition(state);
-  // Playing on means the listener's intent, not only an engine already at `playing`. A
-  // short book downloads in under a second, while its stream is still starting (the
-  // snapshot is `loading`, or the engine has just begun and its `playing` has not reached
-  // JS yet). iOS's `load` pauses the player (Android's keeps playWhenReady), so a swap that
-  // didn't play left the story stopped on a Play button after a single tap (8b-1, a kid's
-  // first story on an iPhone).
-  const wasPlaying = snapshot.state === 'playing' || wantsPlayback;
+  // Playing on means the listener's intent, not an engine at `playing`. A short book
+  // downloads in under a second, while its stream is still starting (the snapshot is
+  // `loading`, or the engine has just begun and its `playing` has not reached JS yet).
+  // iOS's `load` pauses the player (Android's keeps playWhenReady), so a swap that didn't
+  // play left the story stopped on a Play button after a single tap (8b-1, a kid's first
+  // story on an iPhone). And an engine still at `playing` with the intent gone is a pause or
+  // a stop it has not reported yet (a stop saves the place first): playing on would undo it.
+  const wasPlaying = wantsPlayback;
   const svc = await ensureService();
 
   // Commit only once the engine has actually moved onto the local files, and only while
   // this book is still the store's: a stop, a sign-out, a switch of person or another
   // start while the swap was out must not bring it back, nor move another book's floor.
-  const commit = (): boolean => {
+  // The book as committed, or null when it is no longer the store's.
+  const commit = (): NowPlaying | null => {
     if (swapHold?.nowPlaying === nowPlaying) swapHold = null;
-    if (usePlayer.getState().nowPlaying !== nowPlaying) return false;
+    const { nowPlaying: now, snapshot: at } = usePlayer.getState();
+    if (now !== nowPlaying) return null;
     resumeFloor = Math.max(0, resumeFloor + shift);
-    usePlayer.setState({
-      nowPlaying: { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue },
+    const committed = { ...nowPlaying, cover: local.artwork ?? nowPlaying.cover, queue };
+    // The store's place moves onto the download's queue with it, by the file: the engine's
+    // report of the download's index can be held back (a stream in `error` holds every
+    // report but `playing`), and the stream's index read through the download's queue is
+    // another file's place. A file the download lacks lands where the swap put it.
+    const moved = ontoQueue(at, nowPlaying.queue, queue, {
+      trackIndex: index,
+      position: positionInTrack,
+      duration: queue.tracks[index]?.duration ?? at.duration,
     });
-    return true;
+    usePlayer.setState({ nowPlaying: committed, snapshot: moved });
+    return committed;
   };
 
   if (svc.isCasting?.()) {
     // Casting: the receiver streams the book from the server whatever the phone holds (a
     // cast builds server URLs from the tracks' paths), so a reload would only interrupt
-    // it. The route keeps the phone's copy for when the book comes back to the phone.
+    // it. The route keeps the phone's copy for when the book comes back to the phone. The
+    // receiver's track indices read through the store's queue, so only a download in the
+    // order it plays is taken; the next start uses one holding other files.
+    if (!sameOrder) return;
     svc.rememberLoad?.({
       tracks: queue.tracks,
       chapters: queue.chapterClips,
@@ -2850,22 +2954,34 @@ async function switchCurrentBookToLocal() {
     return;
   }
 
-  // The engine reports the download's track index before its swap or load returns.
-  if (index !== snapshot.trackIndex) swapHold = { nowPlaying, trackIndex: snapshot.trackIndex };
+  // The engine reports the download's track index before its swap or load returns: a load
+  // from its call, a gapless swap from its switch (the stream reports its own until then).
+  const hold =
+    index !== snapshot.trackIndex
+      ? { nowPlaying, trackIndex: snapshot.trackIndex, queue, live: !svc.swapTo }
+      : null;
+  if (hold) swapHold = hold;
+  let outcome: SwapOutcome | undefined;
   try {
     if (svc.swapTo) {
       // Gapless: keep streaming until the local file is buffered at this position. The
       // swap can be refused (e.g. the local source isn't servable on web) - in that
       // case leave nowPlaying on the streaming queue so playback keeps going.
-      const swapped = await svc.swapTo(
+      outcome = await svc.swapTo(
         queue.tracks,
         index,
         positionInTrack,
         queue.chapterClips,
         bookRefOf(nowPlaying),
+        () => {
+          if (hold) hold.live = true;
+        },
       );
-      if (swapped) commit();
+      if (outcome === 'swapped') commit();
     } else {
+      // A play goes on through the load as a start's does: iOS's `load` pauses the player,
+      // and that pause must read as the load's, not the listener's (`reloadAdopted`).
+      if (wasPlaying) beginPlaybackAttempt();
       await svc.load(
         queue.tracks,
         index,
@@ -2875,13 +2991,25 @@ async function switchCurrentBookToLocal() {
       );
       // Committed before the rate and the play, so the play's `playing` (and the save loop
       // it starts) reads the engine's index through the download's queue.
-      if (!commit()) return;
-      await svc.setRate(rate);
-      if (wasPlaying) await svc.play();
+      const committed = commit();
+      if (!committed) return;
+      // The speed and the intent as they stand now: a speed set or a pause made while the
+      // load was out reached the engine before it landed, and stands. So does a play asked
+      // for while a paused book's load was out: iOS's `load` paused it again.
+      await svc.setRate(usePlayer.getState().rate);
+      if (wantsPlayback && usePlayer.getState().nowPlaying === committed) await svc.play();
     }
   } finally {
     // A refused swap or a failed load: the hold must not outlive it.
     if (swapHold?.nowPlaying === nowPlaying) swapHold = null;
+  }
+  // Again from where the listener moved to (the download is read again there, so one
+  // removed meanwhile ends it).
+  const now = usePlayer.getState().nowPlaying;
+  // Returned, not awaited: this attempt's queue and download map are freed while the
+  // next one buffers.
+  if (outcome === 'moved' && now && sameBook(now, nowPlaying)) {
+    return switchCurrentBookToLocal();
   }
 }
 
@@ -3308,6 +3436,7 @@ async function reloadAdopted(
     );
   } catch (err) {
     console.warn('[player] could not reload the adopted book in its order', err);
+    if (swapDue === key) swapDue = null; // no place landed to swap from
     if (current()) {
       clearPlaybackIntent();
       const { snapshot } = usePlayer.getState();
@@ -3360,6 +3489,27 @@ usePlayer.subscribe((state, prev) => {
   else pausedAt = 0;
 });
 
+function moveOntoDownload() {
+  switchCurrentBookToLocal().catch((err) =>
+    console.warn('[player] could not move onto the downloaded copy', err),
+  );
+}
+
+/** Run the hot-swap that waited (`swapDue`) once no load holds the store and no start is on
+ * its way, on the book it waited for (its own place in the snapshot by then). Asked at both
+ * ends: the hold's release (below) and a start's end (`playBook`). */
+function runDueSwap() {
+  if (swapDue === null || startsInFlight > 0) return;
+  const { nowPlaying, loadingBook } = usePlayer.getState();
+  if (loadingBook) return;
+  const due = swapDue;
+  swapDue = null;
+  if (nowPlaying && contentKeyOf(nowPlaying) === due) moveOntoDownload();
+}
+usePlayer.subscribe((state, prev) => {
+  if (prev.loadingBook && !state.loadingBook) runDueSwap();
+});
+
 // When a download completes for the book that's currently playing, switch it to the
 // local copy (see above).
 useDownloads.subscribe((state, prev) => {
@@ -3369,9 +3519,7 @@ useDownloads.subscribe((state, prev) => {
   // server with the same (libraryId, path) can't hot-swap this book to its files.
   const key = downloadKey(np.connectionId, np.libraryId, np.path);
   if (state.entries[key]?.status === 'downloaded' && prev.entries[key]?.status !== 'downloaded') {
-    switchCurrentBookToLocal().catch((err) =>
-      console.warn('[player] could not move onto the downloaded copy', err),
-    );
+    moveOntoDownload();
   }
 });
 

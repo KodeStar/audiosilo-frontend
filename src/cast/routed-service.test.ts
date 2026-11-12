@@ -224,6 +224,24 @@ describe('RoutedPlaybackService', () => {
     expect(t.local.calls.at(-1)).toBe('local.play');
   });
 
+  it('keeps the download remembered during a refused handover on the phone, not the stream', async () => {
+    const t = setup();
+    await playingLocally(t);
+    const cast = fakeCast();
+    const localTracks = TRACKS.map((tr) => ({ ...tr, url: `file:///dl/${tr.id}` }));
+    // The book's download lands while the receiver is being asked (the store's hot-swap
+    // sees a cast route and only remembers the phone's copy), then the receiver refuses.
+    (cast.load as jest.Mock).mockImplementationOnce(async () => {
+      t.router.rememberLoad({ tracks: localTracks, chapters: [], book: BOOK });
+      throw new CastBlockedError('codec');
+    });
+    t.router.onCastFailed = jest.fn();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    expect(t.router.castRoute()).toBeNull();
+    const reload = (t.local.load as jest.Mock).mock.calls.at(-1)!;
+    expect(reload.slice(0, 3)).toEqual([localTracks, 1, 120]);
+  });
+
   it('plays a new book here when it cannot be cast mid-session', async () => {
     const t = setup();
     const cast = fakeCast();
@@ -235,6 +253,23 @@ describe('RoutedPlaybackService', () => {
     expect(t.local.calls).toEqual(['local.load(1,7)']);
     expect(failed).toHaveBeenCalled();
     expect(t.router.castRoute()).toBeNull();
+  });
+
+  it('plays the download remembered while a book could not be cast mid-session', async () => {
+    const t = setup();
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    const localTracks = TRACKS.map((tr) => ({ ...tr, url: `file:///dl/${tr.id}` }));
+    // The book's download lands while the receiver is asked, then the receiver refuses.
+    (cast.load as jest.Mock).mockImplementationOnce(async () => {
+      t.router.rememberLoad({ tracks: localTracks, chapters: [], book: BOOK });
+      throw new CastBlockedError('local-address');
+    });
+    t.router.onCastFailed = jest.fn();
+    await t.router.load(TRACKS, 1, 7, [], BOOK);
+    expect(t.router.castRoute()).toBeNull();
+    const reload = (t.local.load as jest.Mock).mock.calls.at(-1)!;
+    expect(reload.slice(0, 3)).toEqual([localTracks, 1, 7]);
   });
 
   it('hands the book back when the session ends: paused, at the receiver place, never playing', async () => {
@@ -289,17 +324,51 @@ describe('RoutedPlaybackService', () => {
   });
 
   it('only remembers a finished download while casting (the receiver streams on)', async () => {
-    const swapTo = jest.fn(async () => true);
+    const swapTo = jest.fn(async () => 'swapped' as const);
     const t = setup({ swapTo });
     await playingLocally(t);
     const cast = fakeCast();
     await t.router.beginCast(cast as unknown as CastPlaybackService);
     const localTracks = TRACKS.map((tr) => ({ ...tr, url: `file:///dl/${tr.id}` }));
-    expect(await t.router.swapTo!(localTracks, 0, 1, [], BOOK)).toBe(true);
+    expect(await t.router.swapTo!(localTracks, 0, 1, [], BOOK)).toBe('swapped');
     expect(swapTo).not.toHaveBeenCalled();
     cast.emit({ state: 'paused', trackIndex: 1, position: 10 });
     await t.router.endCast();
     expect((t.local.load as jest.Mock).mock.calls.at(-1)?.[0]).toBe(localTracks);
+  });
+
+  it('refuses a download holding other files while the route is not the phone', async () => {
+    const swapTo = jest.fn(async () => 'swapped' as const);
+    const t = setup({ swapTo });
+    await playingLocally(t);
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    // One more file, first: the receiver's index 1 would read as another file through it.
+    const extra = { id: '2:A/B/0.mp3', url: 'file:///dl/0.mp3', title: 'B', duration: 600 };
+    const otherFiles = [extra, ...TRACKS.map((tr) => ({ ...tr, url: `file:///dl/${tr.id}` }))];
+    const onSwitch = jest.fn();
+    expect(await t.router.swapTo!(otherFiles, 2, 1, [], BOOK, onSwitch)).toBe('refused');
+    expect(swapTo).not.toHaveBeenCalled();
+    expect(onSwitch).not.toHaveBeenCalled();
+    cast.emit({ state: 'paused', trackIndex: 1, position: 10 });
+    await t.router.endCast();
+    // The hand-back loads what the receiver played, in its order.
+    expect((t.local.load as jest.Mock).mock.calls.at(-1)?.[0]).toBe(TRACKS);
+  });
+
+  it('remembers no download after a reset while the route is not the phone', async () => {
+    const swapTo = jest.fn(async () => 'swapped' as const);
+    const t = setup({ swapTo });
+    await playingLocally(t);
+    const cast = fakeCast();
+    await t.router.beginCast(cast as unknown as CastPlaybackService);
+    await t.router.reset();
+    const localTracks = TRACKS.map((tr) => ({ ...tr, url: `file:///dl/${tr.id}` }));
+    expect(await t.router.swapTo!(localTracks, 0, 1, [], BOOK)).toBe('refused');
+    const loads = (t.local.load as jest.Mock).mock.calls.length;
+    await t.router.endCast();
+    // Nothing comes back to the phone: the stopped book was not remembered again.
+    expect((t.local.load as jest.Mock).mock.calls).toHaveLength(loads);
   });
 
   it('has no swapTo when the phone engine has none (the store then loads)', () => {

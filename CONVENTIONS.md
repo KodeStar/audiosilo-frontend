@@ -1525,11 +1525,42 @@ media GETs only.
   the spoiler gates and a Cast receiver read. One that can't take that order (a start given no
   chapters) leaves the book streaming. Only a download holding other files moves the listener:
   to the same file (by path-keyed track id) when it has it, else to the same whole-book place,
-  the resume floor moving with it; while that moves the track index, `persist` and
-  `onRemoteMove` refuse a place at another index of that book (`swapHold`) until the download's
-  queue is committed, which on a load is before the rate and the play. The web engine's
-  `swapTo` reads its own intent after the copy has buffered (up to 8 s), not before: a pause
-  made meanwhile stands (the listener's, or the tab giving way to another tab's play).
+  the resume floor moving with it. While that moves the track index (`swapHold`, which holds
+  the download's queue), the engine's reports at the download's index are read back onto the
+  stream's queue by file (`throughSwap`, in the snapshot intake; a file the stream lacks keeps
+  the store's place), so a stop, the sleep timer and jump undo read the playing file's place.
+  Only once the engine is on the download: a load from its call, a gapless swap from its
+  switch (`swapTo`'s `onSwitch`; while the copy buffers the web engine goes on reporting the
+  stream, in the stream's order); `persist` and `onRemoteMove` still refuse a place at
+  another index of that book until the download's queue is committed, which on a load is
+  before the rate and the play. The commit moves the store's snapshot onto the download's
+  index by file too (a stream in `error` holds back the engine's own report). A download
+  landing while a load holds the store (`loadingBook`: a start, an adoption's reload) or a
+  start is on its way (`startsInFlight`: one of the book already loaded holds nothing, and
+  one that has not made its book the store's yet is seen by nothing) swaps once they are
+  over (`swapDue`, `runDueSwap`), from the place that start put the book at, and not at all
+  when it placed nothing (a failed load or resume lookup; the next start uses the download).
+  The native load runs as a play attempt when it plays on, which is the intent
+  (`wantsPlayback`), never the engine's `playing` alone: a pause or a stop the engine has
+  not reported yet stands (`beginPlaybackAttempt`, so iOS's pause at `load` reads as the
+  load's; one that never leaves `playing` ends at the stall watchdog), then sets the store's
+  speed as it is then and plays while the intent stands: a pause, a speed set or a play
+  asked for during the load stands. Casting, only a download in the receiver's order is
+  remembered (`rememberLoad`) and committed; one holding other files changes nothing, and
+  the next start uses it (the route's own `swapTo` refuses one too while a session is handed
+  back, as it does a copy of a book no longer loaded). A Cast handover the receiver refuses
+  reloads that remembered copy on the phone
+  (`RoutedPlaybackService.beginCast`), as does a start it refuses mid-session (`load`). The
+  web engine's `swapTo` reads its own intent after the copy has buffered (up to 8 s), not
+  before: a pause made meanwhile stands (the listener's, or the tab giving way to another
+  tab's play), a speed or a volume set meanwhile is applied to the copy, and a load, a reset,
+  a move to another file (`loadSeq` moved) or a seek (`seekSeq`) meanwhile discards the copy
+  and refuses the swap: the copy was buffered at the place before it. A refusal for a seek or
+  a move (`'moved'`) is swapped again from the new place, after every such refusal, while
+  the book is still the store's and its download complete (each needs a real move of the
+  stream: the listener's, the stream's own advance to its next file or a transcoded
+  early-end reload, or a one-off move the store makes; never the swap's own, so it ends); a
+  `'refused'` copy is never retried.
 - **Native counts go through `nativeNumber`** (`src/lib/native-number.ts`): since SDK 58 the iOS
   bridge sends a Swift `Int64`/`UInt64` as a JS `bigint` (typed `number`), and a bigint throws
   where it meets a number. expo-file-system's `File.size`, `Paths.totalDiskSpace` /

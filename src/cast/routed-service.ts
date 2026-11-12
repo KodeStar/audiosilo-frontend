@@ -26,6 +26,10 @@ function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
   );
 }
 
+/** The same files in the same order (a track's id is its file's path). */
+const sameOrder = (a: PlaybackTrack[], b: PlaybackTrack[]) =>
+  a.length === b.length && a.every((t, i) => t.id === b[i].id);
+
 type Mode = 'local' | 'cast' | 'switching';
 
 /**
@@ -81,17 +85,24 @@ export class RoutedPlaybackService implements PlaybackService {
     });
     if (local.swapTo) {
       const swap = local.swapTo.bind(local);
-      this.swapTo = async (tracks, startIndex, positionInTrack, chapters, book) => {
+      this.swapTo = async (tracks, startIndex, positionInTrack, chapters, book, onSwitch) => {
         const load = { tracks, chapters, book };
         // While casting, the receiver streams from the server whatever the phone holds:
-        // only remember the local files, for when the book comes back to the phone.
+        // only remember the local files, for when the book comes back to the phone. Only
+        // the loaded book's, in the order the other side plays (its track indices read
+        // through the store's queue, which a `'swapped'` here commits): a copy holding other
+        // files, or one landing after a reset or another book's load, is refused.
         if (this.mode !== 'local') {
+          const now = this.lastLoad;
+          if (!now || !sameBookLoad(now, load) || !sameOrder(now.tracks, tracks)) {
+            return 'refused';
+          }
           this.lastLoad = load;
-          return true;
+          return 'swapped';
         }
-        const ok = await swap(tracks, startIndex, positionInTrack, chapters, book);
-        if (ok) this.lastLoad = load;
-        return ok;
+        const outcome = await swap(tracks, startIndex, positionInTrack, chapters, book, onSwitch);
+        if (outcome === 'swapped') this.lastLoad = load;
+        return outcome;
       };
     }
   }
@@ -156,7 +167,10 @@ export class RoutedPlaybackService implements PlaybackService {
     } catch (err) {
       if (!current()) return;
       this.dropCast();
-      await this.loadLocal(load, place);
+      // The book's download may have landed while the receiver was asked (`rememberLoad`,
+      // the store's hot-swap sees a cast route): the phone plays its own copy then.
+      const mine = this.lastLoad && sameBookLoad(this.lastLoad, load) ? this.lastLoad : load;
+      await this.loadLocal(mine, place);
       this.mode = 'local';
       this.onCastFailed?.(err);
     }
@@ -317,10 +331,12 @@ export class RoutedPlaybackService implements PlaybackService {
         await this.ending;
         throw err;
       }
-      // This book can't go to the receiver: it plays here, and the session is let go.
+      // This book can't go to the receiver: it plays here, and the session is let go. From
+      // the phone's own copy when one was remembered meanwhile, as a refused handover does.
       this.dropCast();
       this.mode = 'local';
-      await this.local.load(tracks, startIndex, positionInTrack, chapters, book);
+      const here = this.lastLoad ?? mine;
+      await this.local.load(here.tracks, startIndex, positionInTrack, here.chapters, here.book);
       this.onCastFailed?.(err);
     } finally {
       if (this.pending?.load === mine) this.pending = null;

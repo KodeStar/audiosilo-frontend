@@ -14,6 +14,7 @@ import {
   type PlaybackService,
   type PlaybackSnapshot,
   type PlaybackTrack,
+  type SwapOutcome,
 } from './types';
 import {
   isEarlyTranscodeEnd,
@@ -206,6 +207,12 @@ class WebPlaybackService implements PlaybackService {
    * source (a quick second seek replaces the src before the first one loads) can't seek
    * or autoplay the new one. */
   private loadSeq = 0;
+  /** Bumped per seek made in place (a direct stream's; a transcoded one's is a `loadTrack`):
+   * a copy `swapTo` buffered at the place before it is no longer where the listener is. */
+  private seekSeq = 0;
+  /** Bumped per `load` and `reset`: a new queue (or none). A `loadSeq` move without it is a
+   * move to another file of the same queue (a skip, a track's end, a transcoded seek). */
+  private queueSeq = 0;
   /** The element a load is placing at its start position, until its metadata arrives
    * and the seek is made (or it reports `seeked`). The load algorithm queues a
    * `timeupdate` at `currentTime` 0 as soon as `src` changes, before any metadata: read
@@ -535,6 +542,7 @@ class WebPlaybackService implements PlaybackService {
     // A pause belongs to what was loaded before: the first play() of a new load must not
     // auto-rewind (or, transcoded, re-request the stream early) for it.
     this.pausedAt = null;
+    this.queueSeq++;
     this.loadTrack(startIndex, positionInTrack, false);
     this.update({ state: 'ready' });
   }
@@ -545,9 +553,10 @@ class WebPlaybackService implements PlaybackService {
     positionInTrack: number,
     _chapters?: PlaybackChapter[], // ignored on web (see load)
     _book?: BookRef, // ignored on web (see load)
-  ): Promise<boolean> {
+    onSwitch?: () => void,
+  ): Promise<SwapOutcome> {
     const track = tracks[startIndex];
-    if (!track) return false;
+    if (!track) return 'refused';
 
     // Downloaded files live behind synthetic `…/_offline/…` urls that only resolve
     // when our service worker is controlling this page (it serves them from the
@@ -559,7 +568,7 @@ class WebPlaybackService implements PlaybackService {
       track.url.includes('/_offline/') &&
       !(typeof navigator !== 'undefined' && navigator.serviceWorker?.controller)
     ) {
-      return false;
+      return 'refused';
     }
 
     // Buffer the new (local) source on a separate element while the current one
@@ -572,11 +581,20 @@ class WebPlaybackService implements PlaybackService {
     pending.crossOrigin = crossOriginFor(source.url);
     pending.src = source.url;
     this.applyRate(pending);
+    // A `load` or a `reset` while the copy buffers (`queueSeq`) leaves nothing to switch
+    // from (another book started, the book stopped, a cast took the route). A seek
+    // (`seekSeq`) or a move to another file (`loadSeq` alone; a transcoded seek is one)
+    // leaves the copy at the place the listener left: switched in, it would undo the move.
+    const queues = this.queueSeq;
+    const seq = this.loadSeq;
+    const seeks = this.seekSeq;
     const ready = await new Promise<boolean>((resolve) => {
       let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const done = (ok: boolean) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         pending.removeEventListener('loadedmetadata', onLoaded);
         pending.removeEventListener('canplay', onReady);
         pending.removeEventListener('seeked', onReady);
@@ -601,15 +619,24 @@ class WebPlaybackService implements PlaybackService {
       pending.addEventListener('seeked', onReady);
       pending.addEventListener('error', onError);
       pending.load();
-      setTimeout(() => done(false), 8000); // never hang; a slow load counts as a failed swap
+      timer = setTimeout(() => done(false), 8000); // never hang; a slow load counts as a failed swap
     });
 
     // The local source never became playable - discard it and keep streaming rather
-    // than cutting the live element over to a dead one.
-    if (!ready) {
+    // than cutting the live element over to a dead one. So too when anything above moved:
+    // what plays now (or nothing) stands, where it is.
+    if (!ready || queues !== this.queueSeq) {
       this.discard(pending);
-      return false;
+      return 'refused';
     }
+    if (seq !== this.loadSeq || seeks !== this.seekSeq) {
+      this.discard(pending);
+      return 'moved';
+    }
+    // A speed or a volume (the sleep timer's fade) set while it buffered reached only the
+    // old element (`setRate`, `setVolume`).
+    this.applyRate(pending);
+    this.applyVolume(pending);
 
     // Read now, not before the wait: a pause made while the local source buffered stands
     // (the listener's, or this tab giving way to another tab's play: the swapped-in element
@@ -630,6 +657,8 @@ class WebPlaybackService implements PlaybackService {
     // The swapped-in element gets its own source node (an element's one for life).
     this.routeBoost(pending);
     this.setMediaSession(track);
+    // Told before the first report in the new queue's order (the one below).
+    onSwitch?.();
     this.update({
       trackIndex: startIndex,
       position: positionInTrack,
@@ -645,7 +674,7 @@ class WebPlaybackService implements PlaybackService {
         // autoplay shouldn't be blocked mid-session, but ignore if it is
       }
     }
-    return true;
+    return 'swapped';
   }
 
   /**
@@ -702,7 +731,11 @@ class WebPlaybackService implements PlaybackService {
       await this.playElement(a);
       return;
     }
-    if (rewind > 0.5) a.currentTime = Math.max(0, a.currentTime - rewind);
+    if (rewind > 0.5) {
+      // A seek in place like `seekTo`'s: a copy `swapTo` buffered before it is behind it.
+      this.seekSeq++;
+      a.currentTime = Math.max(0, a.currentTime - rewind);
+    }
     await this.playElement(a);
   }
 
@@ -738,6 +771,7 @@ class WebPlaybackService implements PlaybackService {
     // Before its metadata the load would place the element back at its start: it places
     // it here instead.
     if (this.awaitingMetadata === a) this.placeAt = clamped;
+    this.seekSeq++;
     a.currentTime = clamped;
     this.update({ position: clamped });
   }
@@ -782,6 +816,7 @@ class WebPlaybackService implements PlaybackService {
     this.offset = 0;
     this.pausedAt = null;
     this.loadSeq++;
+    this.queueSeq++;
     this.placing = null;
     this.pendingAutoplay = false;
     this.earlyEndRetryAt = null;
