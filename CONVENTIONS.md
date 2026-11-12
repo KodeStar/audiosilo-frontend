@@ -2722,7 +2722,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   receipts before it takes items: a newer send's receipt goes at the path of the one it
   replaces). `watch-state` is put under its own lock, always `StatePublication.due` (an older
   state never lands last); `AppModel.publishState` works it out on the main thread only (posted
-  from a worker or PhoneLink, never locked: `HeldBooks.finishRemove` publishes under its lock).
+  from a worker or PhoneLink, never locked: `HeldBooks.finishRemove` publishes under its lock);
+  a book's stage moving publishes on its own (`DownloadIndex.stages`, collected once per process).
 - **Playback (decision 10, `playback/`)**: `PlayerEngine` (the twin of WatchAudioEngine.swift)
   owns one ExoPlayer, one MediaItem per downloaded file; speech attributes with focus handled,
   noisy handled, `setSuppressPlaybackOnUnsuitableOutput(true)` until the speaker is confirmed
