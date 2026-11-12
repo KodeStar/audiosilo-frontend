@@ -1,5 +1,5 @@
 // The player's pure rules, a port of targets/watch/Core/PlayerRules.swift: speed, skips, chapter
-// moves, the Now Playing times and where a book resumes. The engine (pass 2's playback/) only
+// moves, the Now Playing times and where a book resumes. The engine (wear's playback/) only
 // carries them out, so the positions it plays and reports are the ones tested here. Every position
 // is whole-book seconds (the Timeline's), never a file's.
 package app.audiosilo.wear.core

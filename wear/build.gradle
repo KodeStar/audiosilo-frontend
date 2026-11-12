@@ -17,9 +17,11 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
-// RN's root plugin makes every subproject evaluate after :app, so :app's defaultConfig holds
-// the version EAS (or app.json) set. One remote versionCode counter serves both apps: a Wear
-// build takes its own increment, so phone and Wear codes never collide.
+// :app's defaultConfig holds the version EAS (or app.json) set, so :app is evaluated first (RN's
+// root plugin asks for the same order; said here too, where it is relied on). One remote
+// versionCode counter serves both apps: a Wear build takes its own increment, so phone and Wear
+// codes never collide.
+evaluationDependsOn(':app')
 def appConfig = project(':app').android.defaultConfig
 def wearVersionCode = (findProperty('wearVersionCode') ?: appConfig.versionCode) as Integer
 

@@ -2,8 +2,8 @@
 // Kotlin/JVM, no android.*, so its rules test on any JVM: `npm run test:wear` (JDK 17).
 plugins {
   // The Kotlin Gradle plugin the Expo build resolves (2.2.10 at SDK 58; RN's catalog says 2.2.0):
-  // the Wear app compiles with that version, so Core stays on it too. Bump them together
-  // (`test:wear` checks the two agree once android/ has been generated).
+  // the Wear app compiles with that version, so Core stays on it too. Nothing checks the two
+  // agree: bump this by hand when an Expo SDK moves the root `kotlinVersion`.
   kotlin("jvm") version "2.2.10"
   kotlin("plugin.serialization") version "2.2.10"
 }

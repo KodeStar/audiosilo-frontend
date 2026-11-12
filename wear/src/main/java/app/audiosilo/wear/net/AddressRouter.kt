@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 class AddressRouter(private val scope: CoroutineScope, private val probe: ServerIdProbe = { ApiClient.probeServerId(it) }) {
   private val pick = MutableStateFlow<String?>(null)
 
-  /** The address in use (Sync and account shows it, W4a pass 2). */
+  /** The address in use (Sync and account shows it). */
   val current: StateFlow<String?> = pick.asStateFlow()
 
   private val generation = AtomicInteger()

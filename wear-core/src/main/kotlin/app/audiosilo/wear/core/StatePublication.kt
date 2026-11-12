@@ -2,7 +2,7 @@
 // A launch starts owing the state whatever it is, so a reinstall or a sign-out corrects a phone
 // still holding an older one; after that only a change is owed. A state counts as handed over only
 // once the Data Layer took it (the put succeeded): a refused put stays owed and goes at the next
-// natural moment (pass 2's PhoneLink), with no timer of its own.
+// natural moment (PhoneLink), with no timer of its own.
 package app.audiosilo.wear.core
 
 class StatePublication {
