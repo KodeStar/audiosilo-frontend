@@ -250,9 +250,12 @@ class BookDownload(
     fetched.use { answer ->
       // 206 carries on from `from`; 200 is the whole file (the ETag changed, or no resume asked).
       val resumed = answer.status == 206 && from > 0
-      if (answer.etag != null && isStrong(answer.etag)) etagFile.writeText(answer.etag) else etagFile.delete()
+      // A whole file's old bytes go before its ETag is kept: killed between the two, the next run
+      // must not resume the old bytes under the new ETag.
+      if (!resumed) etagFile.delete()
       RandomAccessFile(part, "rw").use { raf ->
         if (resumed) raf.seek(from) else raf.setLength(0)
+        if (answer.etag != null && isStrong(answer.etag)) etagFile.writeText(answer.etag) else etagFile.delete()
         var written = if (resumed) from else 0L
         val buf = ByteArray(64 * 1024)
         var told = written
