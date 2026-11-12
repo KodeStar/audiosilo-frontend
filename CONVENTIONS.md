@@ -2521,8 +2521,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   watch's own screens show all of them. Leaving an account (sign-out, a replace that succeeded)
   deletes its rows, given up on or not, so no titles of it stay on the watch's screens; a blocked or
   failed sign-in changes nothing.
-- **The phone's side (Track W3b, `modules/audiosilo-watch`, `src/watch/`)**: an apple-only local
-  module. `ios/WatchLink.swift` is the phone's only `WCSessionDelegate` (nothing else may set
+- **The phone's side (Track W3b, `modules/audiosilo-watch`, `src/watch/`)**: a local module, iOS
+  first (Android's half is the next bullet). `ios/WatchLink.swift` is the phone's only `WCSessionDelegate` (nothing else may set
   `WCSession.default.delegate`), activated by `AudiosiloWatchAppDelegateSubscriber`
   (`appDelegateSubscribers` in `expo-module.config.json`), never by editing the AppDelegate
   text, so `withCarPlay` stays untouched and a CarPlay-first or background launch activates it
@@ -2543,7 +2543,10 @@ downloads and talks to the server directly; the phone only hands it a pairing to
     Data Layer user (nothing else puts or deletes under `/audiosilo/v1/`); its rules are pure in
     `WearRules.kt` (JVM tests: `./gradlew :audiosilo-watch:testDebugUnitTest` after prebuild).
     `isSupported` is Play services being there; with no Wear OS app on the phone the snapshot says
-    no watch. Each message is a DataItem of UTF-8 JSON (`pair` at `/audiosilo/v1/to/<node>/pair`,
+    no watch. A Data Layer that fails, or does not answer in 5 s, is not "no watch": `getSnapshot`
+    rejects (`ERR_NO_ANSWER`, or the error) and no event is sent, so JS keeps its last answer
+    (`refreshWatch`); read as no watch, a slow moment would hide the card and lose a sending
+    book's row. The exceptions spell out their codes (R8 renames the classes). Each message is a DataItem of UTF-8 JSON (`pair` at `/audiosilo/v1/to/<node>/pair`,
     `book`/`remove` sharing `/audiosilo/v1/to/<node>/book/<sha256 of server_id.user_id|library_id|path>`),
     every one with `sent_at` (`watch-model.ts`; an identical put sends nothing). The watch never
     deletes them: it puts a receipt at `/audiosilo/v1/from/<node>/taken/<last segment>`

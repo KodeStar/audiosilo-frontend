@@ -40,19 +40,33 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 
+// The codes are spelled out: one inferred from the class name would not survive R8's renaming.
+
 /** No watch with the app (or no Data Layer at all): nothing was sent. JS gets `ERR_NO_WATCH`. */
-class NoWatchException : CodedException("No paired watch with the app installed")
+class NoWatchException : CodedException("ERR_NO_WATCH", "No paired watch with the app installed", null)
 
 /** Not a `v: 1` `pair`, `book` or `remove` with a `sent_at`: nothing was sent. `ERR_BAD_MESSAGE`. */
-class BadMessageException : CodedException("The message is not one the watch takes")
+class BadMessageException : CodedException("ERR_BAD_MESSAGE", "The message is not one the watch takes", null)
+
+/**
+ * The Data Layer did not answer in time, so nothing is known of the watch: not the same as "no
+ * watch". JS gets `ERR_NO_ANSWER` and keeps its last answer.
+ */
+class NoAnswerException : CodedException("ERR_NO_ANSWER", "The Data Layer did not answer", null)
 
 object WearLink {
   private const val TAG = "AudiosiloWearLink"
   private const val PREFS = "audiosilo.watch"
   private const val STATE_SEEN = "stateSeenAt."
 
-  /** How long a question waits for the Data Layer before answering "no watch", never hanging. */
+  /** How long a question waits for the Data Layer before giving up, never hanging. */
   private const val WAIT_MS = 5_000L
+
+  /**
+   * How long receipts or the sweep at start may hold `lock`: a Data Layer call that never answers
+   * must not keep every send waiting behind it. What was not settled waits for the next start.
+   */
+  private const val HOLD_LIMIT_MS = 30_000L
 
   /** One change, copied out of the event buffer before Play services releases it. */
   class Event(val deleted: Boolean, val node: String, val path: String, val bytes: ByteArray?)
@@ -146,9 +160,11 @@ object WearLink {
         .mapNotNull { e -> WearRules.receipt(Json.decodeObject(e.bytes))?.let { Taken(e.node, e.path, it) } }
     if (taken.isNotEmpty()) {
       quietly("receipts") {
-        lock.withLock {
-          val me = me(context) ?: return@withLock
-          settle(context, me, taken, ownItems(context, me))
+        withTimeoutOrNull(HOLD_LIMIT_MS) {
+          lock.withLock {
+            val me = me(context) ?: return@withLock
+            settle(context, me, taken, ownItems(context, me))
+          }
         }
       }
     }
@@ -161,14 +177,18 @@ object WearLink {
    */
   private suspend fun sweep(context: Context) {
     quietly("sweep") {
-      lock.withLock {
-        val me = me(context) ?: return@withLock
-        val own = prune(context, me, ownItems(context, me), System.currentTimeMillis())
-        val taken =
-          read(context, anyNode(WearPaths.FROM), prefix = true).mapNotNull { r ->
-            WearRules.receipt(r.item.payload)?.let { Taken(r.node, r.item.path, it) }
-          }
-        settle(context, me, taken, own)
+      withTimeoutOrNull(HOLD_LIMIT_MS) {
+        // A phone with no Wear OS app has nothing to settle (and no local node to ask for).
+        if (!available(context)) return@withTimeoutOrNull
+        lock.withLock {
+          val me = me(context) ?: return@withLock
+          val own = prune(context, me, ownItems(context, me), System.currentTimeMillis())
+          val taken =
+            read(context, anyNode(WearPaths.FROM), prefix = true).mapNotNull { r ->
+              WearRules.receipt(r.item.payload)?.let { Taken(r.node, r.item.path, it) }
+            }
+          settle(context, me, taken, own)
+        }
       }
     }
     notifyChanged()
@@ -188,11 +208,19 @@ object WearLink {
     return own.filter { it.path !in stale }
   }
 
-  /** What `getSnapshot` answers, the expired pairs dropped first. "No watch" after `WAIT_MS`. */
+  /**
+   * What `getSnapshot` answers, the expired pairs dropped first. "No watch" only where that is
+   * known (no Wearable API on this phone). With no Data Layer answer within `WAIT_MS`, or a failed
+   * one, it throws (NoAnswerException, or the error): nothing is known, and JS keeps its last answer
+   * rather than taking a slow moment for a watch that has gone.
+   */
   suspend fun snapshot(context: Context): Map<String, Any?> {
-    val view = quietly("snapshot") { withTimeoutOrNull(WAIT_MS) { lock.withLock { view(context, System.currentTimeMillis()) } } }
-    return WearRules.snapshot(view ?: LinkView.NONE)
+    val view = withTimeoutOrNull(WAIT_MS) { lock.withLock { view(context, System.currentTimeMillis()) } }
+    return WearRules.snapshot(view ?: throw NoAnswerException())
   }
+
+  /** `snapshot` for the `watchState` event: null (and a log line) when there is nothing to tell. */
+  suspend fun snapshotOrNull(context: Context): Map<String, Any?>? = quietly("snapshot") { snapshot(context) }
 
   /**
    * Put a message for the target watch. A `pair` takes the place of any other pair held (one watch
@@ -226,16 +254,8 @@ object WearLink {
 
   /** Everything the snapshot is made of, the pairs past their time at `now` dropped. Under `lock`. */
   private suspend fun view(context: Context, now: Long): LinkView {
-    val data = Wearable.getDataClient(context)
-    try {
-      GoogleApiAvailability.getInstance().checkApiAvailability(data).await()
-    } catch (x: CancellationException) {
-      throw x
-    } catch (x: Exception) {
-      // No Wear OS app on the phone, or Play services too old: no watch to talk to.
-      return LinkView.NONE
-    }
-    val me = me(context) ?: return LinkView.NONE
+    if (!available(context)) return LinkView.NONE
+    val me = me(context) ?: throw NoAnswerException()
     // Four questions that do not wait on each other: asked together, the answer takes the slowest.
     return coroutineScope {
       val connected = async { Wearable.getNodeClient(context).connectedNodes.await().map { WatchNode(it.id, it.isNearby) } }
@@ -257,6 +277,17 @@ object WearLink {
       LinkView(true, connected.await(), capable.await(), states.await(), stateSeen(context), prune(context, me, own.await(), now))
     }
   }
+
+  /** The Wearable API answers here. No Wear OS app on the phone, or Play services too old: no watch to talk to. */
+  private suspend fun available(context: Context): Boolean =
+    try {
+      GoogleApiAvailability.getInstance().checkApiAvailability(Wearable.getDataClient(context)).await()
+      true
+    } catch (x: CancellationException) {
+      throw x
+    } catch (x: Exception) {
+      false
+    }
 
   private suspend fun ownItems(context: Context, me: String): List<Item> =
     read(context, nodeItem(me, WearPaths.TO), prefix = true).map { it.item }

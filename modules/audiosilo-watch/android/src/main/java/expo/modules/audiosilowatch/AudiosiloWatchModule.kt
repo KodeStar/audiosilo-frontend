@@ -3,6 +3,7 @@
 // src/watch/link.native.ts: the same functions and event, plus `openInstallOnWatch`.
 package expo.modules.audiosilowatch
 
+import android.util.Log
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -25,13 +26,24 @@ class AudiosiloWatchModule : Module() {
 
     // One snapshot at a time, and one more for whatever changed meanwhile: a burst of changes (a
     // watch back in reach with several receipts, each seen by the service and the listener) is
-    // two reads of the Data Layer, not one each.
+    // two reads of the Data Layer, not one each. A read with no answer tells JS nothing (it keeps
+    // what it has), and an event JS could not take must not end the app with this coroutine.
     OnStartObserving("watchState") {
       if (stopObserving != null) return@OnStartObserving
       val app = context.applicationContext
       val changed = Channel<Unit>(Channel.CONFLATED)
       val stop = WearLink.observe { changed.trySend(Unit) }
-      val sending = WearLink.scope.launch { for (change in changed) sendEvent("watchState", WearLink.snapshot(app)) }
+      val sending =
+        WearLink.scope.launch {
+          for (change in changed) {
+            val snapshot = WearLink.snapshotOrNull(app) ?: continue
+            try {
+              sendEvent("watchState", snapshot)
+            } catch (x: Exception) {
+              Log.w("AudiosiloWatch", "watchState not sent", x)
+            }
+          }
+        }
       stopObserving = {
         stop()
         sending.cancel()
@@ -45,7 +57,7 @@ class AudiosiloWatchModule : Module() {
     // Play services is here; whether a watch is reachable is the snapshot's to say.
     Function("isSupported") { WearLink.supported(context) }
 
-    // Answers "no watch" after 5 s with no Data Layer answer, never hangs.
+    // Rejects after 5 s with no Data Layer answer (JS keeps its last answer), never hangs.
     AsyncFunction("getSnapshot") Coroutine { -> WearLink.snapshot(context) }
 
     // A `book` put once this answered is behind it: the watch takes the `pair` first. A refusal

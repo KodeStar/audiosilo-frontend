@@ -17,7 +17,8 @@ type Events = { watchState: (snapshot: NativeWatchSnapshot) => void };
 
 declare class AudiosiloWatchModule extends NativeModule<Events> {
   isSupported(): boolean;
-  /** Waits for the session to activate (5 s at most). */
+  /** Waits for the session to activate (5 s at most). On Android it rejects when the Data Layer
+   * gave no answer in that time or failed: nothing is known, which is not "no watch". */
   getSnapshot(): Promise<NativeWatchSnapshot>;
   /** Rejects when no watch has the app installed. When it answers, a `sendBook` is behind it. */
   sendPair(message: Record<string, unknown>): Promise<void>;
