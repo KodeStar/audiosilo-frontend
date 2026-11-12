@@ -38,14 +38,13 @@ import { Notice } from '@/components/ui/notice';
 import { Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useIsDownloaded } from '@/downloads/store';
-import { contentKey } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useOpen } from '@/lib/open';
 import { bookTitle, pathLeaf } from '@/lib/paths';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
-import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
+import { requestEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
@@ -57,6 +56,7 @@ import {
   offersEpisodeDownload,
   rowStateReasonKey,
 } from './podcast-model';
+import { usePendingEpisodeFetch } from './use-pending-episode-fetch';
 
 const NO_LIST: ChapterList = { kind: 'chapters', rows: [] };
 
@@ -145,9 +145,7 @@ function EpisodeBody({
   const fetchStatus = usePodcastFetchStatus(libraryId, relPath, cid, {
     enabled: !episode.downloaded,
   }).data;
-  const pending = useEpisodeFetch((s) =>
-    s.pending?.key === contentKey(cid, libraryId, relPath) ? s.pending : null,
-  );
+  const pending = usePendingEpisodeFetch(cid, libraryId, relPath);
   const loaded = usePlayer(selectIsLoaded(target));
   // On this device it plays from there, whatever its server holds.
   const onDevice = useIsDownloaded(cid, libraryId, relPath);

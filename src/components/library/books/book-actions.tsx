@@ -15,6 +15,7 @@ import type { Book, Progress } from '@/api/types';
 import { RemoveDownloadConfirm } from '@/components/downloads/remove-download-confirm';
 import { usePlayBook } from '@/components/player/use-play-book';
 import { episodeRowState, offersEpisodeDownload } from '@/components/podcasts/podcast-model';
+import { usePendingEpisodeFetch } from '@/components/podcasts/use-pending-episode-fetch';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -30,8 +31,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
-import { contentKey } from '@/lib/content-key';
-import { type PendingEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
+import type { PendingEpisodeFetch } from '@/playback/episode-fetch';
 import { finishTakesEvent, undoFinish } from '@/playback/finish-route';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
@@ -129,8 +129,7 @@ export function useBookActions(
   const podcastLibrary = useIsPodcastLibrary(libraryId, connectionId);
   const podcastFetch = useCapability('podcast_fetch', connectionId);
   // The player's fetch of this item, when it is the one on its way (what the episode page reads).
-  const pendingKey = contentKey(connectionId, libraryId, path);
-  const pending = useEpisodeFetch((s) => (s.pending?.key === pendingKey ? s.pending : null));
+  const pending = usePendingEpisodeFetch(connectionId, libraryId, path);
   const unknown = playabilityUnknown(book) || (podcastLibrary && !book.episode);
   // An empty path keeps the lookup off until it is wanted.
   const full = useBook(libraryId, unknown && opened ? path : '', connectionId);

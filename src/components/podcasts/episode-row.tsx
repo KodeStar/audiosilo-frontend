@@ -13,11 +13,10 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadProgress, useDownloadServerFetch, useDownloadState } from '@/downloads/store';
-import { contentKey } from '@/lib/content-key';
 import { useOpen } from '@/lib/open';
 import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
-import { requestEpisodeFetch, useEpisodeFetch } from '@/playback/episode-fetch';
+import { requestEpisodeFetch } from '@/playback/episode-fetch';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -30,6 +29,7 @@ import {
   episodeRowState,
   rowStateReasonKey,
 } from './podcast-model';
+import { usePendingEpisodeFetch } from './use-pending-episode-fetch';
 
 /** The state line's words. */
 function stateText(state: EpisodeRowState, t: TFunction): string {
@@ -111,8 +111,7 @@ export function EpisodeRow({
   const book = episodeAsBook(episode, show);
   // The player's fetch of this episode, when it is the one on its way (only this row
   // follows its progress).
-  const key = contentKey(connectionId, libraryId, episode.path);
-  const pending = useEpisodeFetch((s) => (s.pending?.key === key ? s.pending : null));
+  const pending = usePendingEpisodeFetch(connectionId, libraryId, episode.path);
   const state = episodeRowState(episode, pending, canFetch);
   const finished = !!progress?.finished;
   // On this device (not `episode.downloaded`, which is its server's copy), or on its way.
