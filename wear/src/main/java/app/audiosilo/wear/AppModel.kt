@@ -50,6 +50,7 @@ import app.audiosilo.wear.core.StatePublication
 import app.audiosilo.wear.core.SyncSchedule
 import app.audiosilo.wear.core.WatchState
 import app.audiosilo.wear.core.WatchStateBook
+import app.audiosilo.wear.core.orNull
 import app.audiosilo.wear.net.AddressRouter
 import app.audiosilo.wear.net.ApiClient
 import app.audiosilo.wear.net.BookWorker
@@ -64,6 +65,7 @@ import app.audiosilo.wear.storage.TokenStore
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -171,8 +173,8 @@ class AppModel private constructor(private val context: Context) {
   private val _syncRevision = MutableStateFlow(0)
   val syncRevision: StateFlow<Int> = _syncRevision.asStateFlow()
 
-  private val _inForeground = MutableStateFlow(false)
-  val inForeground: StateFlow<Boolean> = _inForeground.asStateFlow()
+  /** In front now (written on the main thread; the workers and PhoneLink read the model from theirs). */
+  @Volatile private var inForeground = false
 
   /** A send runs now (Sync now shows it). */
   private val _syncing = MutableStateFlow(false)
@@ -240,7 +242,7 @@ class AppModel private constructor(private val context: Context) {
 
   /** Launch and every return to the foreground. */
   fun becameActive() {
-    _inForeground.value = true
+    inForeground = true
     releaseHeld()
     val a = _account.value ?: return
     router.startRechecks { _account.value }
@@ -249,7 +251,7 @@ class AppModel private constructor(private val context: Context) {
       scope.launch {
         while (isActive) {
           delay(RETRY_INTERVAL_MS)
-          if (SyncSchedule.foregroundTimer(outbox.unsentCount, _inForeground.value) && !_syncing.value) flush()
+          if (SyncSchedule.foregroundTimer(outbox.unsentCount, inForeground) && !_syncing.value) flush()
         }
       }
     watchNetwork(true)
@@ -265,13 +267,13 @@ class AppModel private constructor(private val context: Context) {
         if (r.state != WatchStateBook.State.READY && r.state != WatchStateBook.State.FAILED) BookWorker.enqueue(context, r.ref)
       }
       // A book loaded and not playing: another device may have moved it on (an offer only).
-      if (_inForeground.value && !engine.isPlaying) reconcileLoaded()
+      if (inForeground && !engine.isPlaying) reconcileLoaded()
       client()?.let { library.refresh(it) }
     }
   }
 
   fun wentToBackground() {
-    _inForeground.value = false
+    inForeground = false
     router.stopRechecks()
     retryTimer?.cancel()
     retryTimer = null
@@ -307,14 +309,7 @@ class AppModel private constructor(private val context: Context) {
   /** Ask the server whether it can serve the watch (kept for offline launches). */
   suspend fun checkServer() {
     val a = _account.value ?: return
-    val info =
-      try {
-        ApiClient(router.base(a), null).serverInfo()
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        return
-      }
+    val info = orNull { ApiClient(router.base(a), null).serverInfo() } ?: return
     // Signed out (or switched) while it was asked: the answer is no longer this account's.
     if (_account.value?.accountId != a.accountId) return
     _server.value = info
@@ -331,14 +326,7 @@ class AppModel private constructor(private val context: Context) {
   private suspend fun refreshAddresses(a: Account) {
     if (_server.value?.capabilities?.addresses != true) return
     val api = client() ?: return
-    val fresh =
-      try {
-        api.addresses()
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        return
-      }
+    val fresh = orNull { api.addresses() } ?: return
     val now = _account.value ?: return
     if (now.accountId != a.accountId) return
     val merged = AddressPicker.merge(now.addresses, fresh)
@@ -346,7 +334,7 @@ class AppModel private constructor(private val context: Context) {
     val next = now.copy(addresses = merged)
     accountFile.write(next)
     _account.value = next
-    if (_inForeground.value) router.repick(next)
+    if (inForeground) router.repick(next)
   }
 
   /**
@@ -359,7 +347,7 @@ class AppModel private constructor(private val context: Context) {
   /** What one trigger does (SyncSchedule): send from the app, or hand it to the worker, and the backstop. */
   private fun schedule(trigger: SyncSchedule.Trigger) {
     if (!canSync) return
-    val plan = SyncSchedule.plan(trigger, outbox.unsentCount, _inForeground.value)
+    val plan = SyncSchedule.plan(trigger, outbox.unsentCount, inForeground)
     if (plan.flushNow) scope.launch { flush() }
     if (plan.expedite) SyncWorker.expedite(context)
     setBackstop(plan.backstop)
@@ -399,7 +387,7 @@ class AppModel private constructor(private val context: Context) {
     }
     if (outbox.unsentCount > 0) {
       val base =
-        if (_inForeground.value) router.base(a) else AddressPicker.pick(a.serverUrl, a.addresses, a.serverId) { ApiClient.probeServerId(it) }
+        if (inForeground) router.base(a) else AddressPicker.pick(a.serverUrl, a.addresses, a.serverId) { ApiClient.probeServerId(it) }
       // Signed out or switched while it picked: this account's token goes nowhere now.
       if (_account.value?.accountId != a.accountId) return SyncSchedule.Outcome.DONE
       val api = ApiClient(base, token)
@@ -485,15 +473,7 @@ class AppModel private constructor(private val context: Context) {
 
   private suspend fun pull(ref: BookRef): Pulled {
     val api = client() ?: return Pulled.NoAnswer
-    return withTimeoutOrNull(PULL_TIMEOUT_MS) {
-      try {
-        Pulled.Answered(api.progress(ref))
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        Pulled.NoAnswer
-      }
-    } ?: Pulled.NoAnswer
+    return withTimeoutOrNull(PULL_TIMEOUT_MS) { orNull { Pulled.Answered(api.progress(ref)) } } ?: Pulled.NoAnswer
   }
 
   /**
@@ -540,12 +520,15 @@ class AppModel private constructor(private val context: Context) {
   // Books
 
   /** The Download button (and Try again): queue the book and start its worker. */
-  fun download(ref: BookRef, title: String, author: String?, sentAt: Instant? = null) {
-    if (downloads.enqueue(ref, title, author, Instant.now(), sentAt)) BookWorker.enqueue(context, ref)
+  fun download(row: ContinueRow) {
+    queue(row.ref, row.title, row.author, sentAt = null)
     publishState()
   }
 
-  fun download(row: ContinueRow) = download(row.ref, row.title, row.author)
+  /** Queue a book's record and start its worker; `sentAt` is the phone's, for a book it sent. */
+  private fun queue(ref: BookRef, title: String, author: String?, sentAt: Instant?) {
+    if (downloads.enqueue(ref, title, author, Instant.now(), sentAt)) BookWorker.enqueue(context, ref)
+  }
 
   /** Q3: the listener chose the phone's connection (slow) for this book. */
   fun useSlowConnection(ref: BookRef) {
@@ -589,28 +572,25 @@ class AppModel private constructor(private val context: Context) {
    * Returns when this message's turn is over, so the caller can put its receipt after.
    */
   suspend fun receive(m: PhoneMessage) {
-    val done = kotlinx.coroutines.CompletableDeferred<Unit>()
     when (m) {
-      is PhoneMessage.Pair -> serially(done) { signIn(m.message) }
+      is PhoneMessage.Pair -> serially { signIn(m.message) }
       is PhoneMessage.Book -> {
         // On disk now, not when its turn comes: a sign-in ahead of it can take a while, and the
         // phone has said "Sent", so a kill meanwhile must not lose it.
         held.hold(m.message, Instant.now())
         publishState()
-        serially(done) { releaseHeld() }
+        serially { releaseHeld() }
       }
       is PhoneMessage.Remove -> {
         val ticket = held.noteRemove(m.message)
-        serially(done) { remove(ticket) }
+        serially { remove(ticket) }
       }
     }
-    done.await()
   }
 
-  /** Sign in from a received pair (the debug sign-in's entry point). */
-  suspend fun signInFromPair(p: PairMessage) = receive(PhoneMessage.Pair(p))
-
-  private fun serially(done: kotlinx.coroutines.CompletableDeferred<Unit>, work: suspend () -> Unit) {
+  /** Give `work` its turn in the inbox and wait until that turn is over. */
+  private suspend fun serially(work: suspend () -> Unit) {
+    val done = CompletableDeferred<Unit>()
     inbox.trySend {
       try {
         work()
@@ -618,6 +598,7 @@ class AppModel private constructor(private val context: Context) {
         done.complete(Unit)
       }
     }
+    done.await()
   }
 
   /**
@@ -642,9 +623,7 @@ class AppModel private constructor(private val context: Context) {
   private fun releaseHeld() {
     if (held.books.isEmpty()) return
     val ready = _phase.value == Phase.Ready && _server.value?.supportsWatch == true
-    for (b in held.due(_account.value?.accountId, ready, Instant.now())) {
-      if (downloads.enqueue(b.ref, b.title, b.author, Instant.now(), b.sentAt)) BookWorker.enqueue(context, b.ref)
-    }
+    for (b in held.due(_account.value?.accountId, ready, Instant.now())) queue(b.ref, b.title, b.author, b.sentAt)
     publishState()
   }
 
@@ -719,17 +698,7 @@ class AppModel private constructor(private val context: Context) {
     if (change == AccountChange.Replace) {
       // Its token ends on its server too (as Sign out does): this watch forgets it now. A sign-in
       // again for the same account keeps its old token, as the phone does.
-      val leaving = client()
-      forgetAccount()
-      if (leaving != null) {
-        scope.launch {
-          try {
-            leaving.logout()
-          } catch (e: CancellationException) {
-            throw e
-          } catch (_: Exception) {}
-        }
-      }
+      leaveAccount()
     } else if (change == AccountChange.SignIn && accountFile.read()?.accountId != p.accountId) {
       // The token was lost, and what is here is another account's: never sent under this one.
       forgetAccount()
@@ -755,7 +724,7 @@ class AppModel private constructor(private val context: Context) {
     _phase.value = Phase.Ready
     _pendingReplace.value = null
     publishState()
-    if (_inForeground.value) {
+    if (inForeground) {
       becameActive()
     } else {
       // Delivered in the background (a Data Layer wake): no foreground timers and no home pick;
@@ -797,20 +766,20 @@ class AppModel private constructor(private val context: Context) {
     engine.stop()
     val gate = AccountRules.signOut(outbox.unsentCount, discard)
     if (gate != SignOutGate.Allowed) return gate
-    val leaving = client()
-    forgetAccount()
-    if (leaving != null) {
-      scope.launch {
-        try {
-          leaving.logout()
-        } catch (e: CancellationException) {
-          throw e
-        } catch (_: Exception) {}
-      }
-    }
+    leaveAccount()
     _phase.value = Phase.Setup(SetupStatus.Waiting)
     publishState()
     return gate
+  }
+
+  /**
+   * Forget the account and end its token on its server too. The client is taken first: forgetting
+   * drops the token it needs. Quiet when the server can't be told (the watch has forgotten it).
+   */
+  private fun leaveAccount() {
+    val leaving = client()
+    forgetAccount()
+    if (leaving != null) scope.launch { orNull { leaving.logout() } }
   }
 
   /** Drop everything of the account (AccountRules was asked first). */

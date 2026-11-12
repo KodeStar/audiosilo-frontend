@@ -13,6 +13,7 @@ import app.audiosilo.wear.core.ItemCache
 import app.audiosilo.wear.core.JsonFile
 import app.audiosilo.wear.core.ProgressRow
 import app.audiosilo.wear.core.RenditionPlan
+import app.audiosilo.wear.core.orNull
 import app.audiosilo.wear.storage.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -50,15 +51,7 @@ class ContinueListening(private val files: Files) {
         ContinueRows.build(
           all,
           cached = { files.loadItem(it)?.book },
-          fetch = { ref ->
-            try {
-              api.item(ref).also { if (current()) files.saveItem(ref, ItemCache(it)) }
-            } catch (e: CancellationException) {
-              throw e
-            } catch (_: Exception) {
-              null
-            }
-          },
+          fetch = { ref -> orNull { api.item(ref).also { if (current()) files.saveItem(ref, ItemCache(it)) } } },
           stillWanted = ::current,
         ) ?: return
       if (!current()) return
@@ -78,7 +71,7 @@ class ContinueListening(private val files: Files) {
 
   /**
    * The server's place for `ref` as the last refresh read it, for a downloaded book whose pull
-   * before play got no answer (W4a pass 2's player): offline it opens there, never at 0 under the
+   * before play got no answer (the player): offline it opens there, never at 0 under the
    * server's place. A newer place of the watch's own still wins (Resume.plan).
    */
   fun keptPlace(ref: BookRef): ProgressRow? = _rows.value.firstOrNull { it.ref == ref }?.keptPlace()

@@ -143,14 +143,7 @@ class BookDownload(
       } catch (e: APIError) {
         if (RenditionPlan.meansNoChapters(e)) null else throw e
       }
-    val serverPlace =
-      try {
-        server.progress(ref)
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        null
-      }
+    val serverPlace = orNull { server.progress(ref) }
     currentCoroutineContext().ensureActive()
     val cache = ItemCache(book, chapters, serverPlace)
     storage.saveItem(ref, cache)

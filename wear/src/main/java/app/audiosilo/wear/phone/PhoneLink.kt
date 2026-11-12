@@ -95,7 +95,7 @@ object PhoneLink {
       buffer.mapNotNull { e ->
         val item = e.dataItem
         val path = item.uri.path ?: return@mapNotNull null
-        if (!path.startsWith(DataPaths.ROOT + "to/")) return@mapNotNull null
+        if (!path.startsWith(DataPaths.TO_ROOT)) return@mapNotNull null
         Event(e.type == DataEvent.TYPE_DELETED, InboxItem(path, if (e.type == DataEvent.TYPE_DELETED) null else item.data))
       }
     return events.ifEmpty { null }
@@ -118,8 +118,7 @@ object PhoneLink {
   }
 
   private suspend fun changed(context: Context, me: String, item: InboxItem) {
-    val seenKey = "${item.path}|${item.sentAt}"
-    if (seenKey in handled) return
+    if (seenKey(item) in handled) return
     val receipt = readReceipt(context, me, item.path)
     if (!PhoneInbox.handles(me, item, receipt)) return
     take(context, me, item)
@@ -136,11 +135,13 @@ object PhoneLink {
   private suspend fun take(context: Context, me: String, item: InboxItem) {
     val message = PhoneMessages.decodeBytes(item.bytes) ?: return
     AppModel.get(context).receive(message)
-    remember("${item.path}|${item.sentAt}")
+    remember(seenKey(item))
     val receipt = TakenReceipt.of(item.path, item.bytes) ?: return
     val put = PutDataRequest.create(DataPaths.taken(me, item.path)).setData(PhoneMessages.encodeBytes(receipt)).setUrgent()
     Wearable.getDataClient(context).putDataItem(put).await()
   }
+
+  private fun seenKey(item: InboxItem): String = "${item.path}|${item.sentAt}"
 
   private fun remember(key: String) {
     handled.add(key)
@@ -154,7 +155,7 @@ object PhoneLink {
     lock.withLock {
       try {
         val items = items(context, Uri.parse("wear://*" + DataPaths.to(me)), exact = false)
-        val receipts = items(context, Uri.parse("wear://$me" + DataPaths.from(me) + "taken/"), exact = false)
+        val receipts = items(context, Uri.parse("wear://$me" + DataPaths.takenPrefix(me)), exact = false)
         val plan = PhoneInbox.sweep(me, items, receipts)
         for (item in plan.handle) {
           try {

@@ -2666,8 +2666,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `allowBackup=false` and `data_extraction_rules.xml` exclude every domain. `device_name` is
   `Settings.Global.DEVICE_NAME`, else `Build.MODEL`. Cleartext is allowed by
   `network_security_config.xml` (the home address after the probe; decision 4).
-- **Sign-in (decision 12)**: `AppModel.receive(PhoneMessage)` (PhoneLink's entry point,
-  `signInFromPair` for a pair alone) handles the phone's messages one at a time in order; a
+- **Sign-in (decision 12)**: `AppModel.receive(PhoneMessage)` (PhoneLink's entry point, and the
+  debug sign-in's) handles the phone's messages one at a time in order; a
   pair is exchanged at `base_url`, then away, then home http under `pairingFallback`; past
   `expires_at` it says "Send again from your phone". No typed sign-in. Setup offers "Get
   AudioSilo on your phone" (RemoteActivityHelper) when no node has `audiosilo_phone_app`.

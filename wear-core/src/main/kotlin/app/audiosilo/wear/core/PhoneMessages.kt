@@ -135,8 +135,11 @@ object DataPaths {
   const val ROOT = "/audiosilo/v1/"
   const val WATCH_STATE = "/audiosilo/v1/watch-state"
 
+  /** Every item addressed to any watch starts here (the listener's filter). */
+  const val TO_ROOT = "${ROOT}to/"
+
   /** Every item addressed to watch node `node` starts here. */
-  fun to(node: String): String = "${ROOT}to/$node/"
+  fun to(node: String): String = "$TO_ROOT$node/"
 
   /** The one `pair` item for `node` (one path, so a new pair replaces an undelivered one). */
   fun pair(node: String): String = "${to(node)}pair"
@@ -169,11 +172,14 @@ object DataPaths {
    * The receipt for the phone's item at `itemPath`, put by watch `node`: named by the item's last
    * path segment (`pair`, or a book's key), so each item has one receipt and a new send replaces it.
    */
-  fun taken(node: String, itemPath: String): String = "${from(node)}taken/${itemPath.substringAfterLast('/')}"
+  fun taken(node: String, itemPath: String): String = "${takenPrefix(node)}${itemPath.substringAfterLast('/')}"
+
+  /** Every receipt watch `node` puts starts here. */
+  fun takenPrefix(node: String): String = "${from(node)}taken/"
 
   /** Whether `path` is one of watch `node`'s receipts. */
   fun isTaken(path: String, node: String): Boolean {
-    val prefix = "${from(node)}taken/"
+    val prefix = takenPrefix(node)
     return path.startsWith(prefix) && path.length > prefix.length && !path.substring(prefix.length).contains('/')
   }
 }
@@ -235,28 +241,20 @@ object PhoneMessages {
   }
 
   /** A message given as JSON text: a DataItem's bytes, or the debug sign-in's intent extra. */
-  fun decodeJSON(text: String): PhoneMessage? {
-    val m =
-      try {
-        JSON.parseToJsonElement(text) as? JsonObject
-      } catch (_: Exception) {
-        null
-      } ?: return null
-    return decode(m)
-  }
+  fun decodeJSON(text: String): PhoneMessage? = parseObject(text)?.let(::decode)
 
   /** A DataItem's bytes (UTF-8 JSON). */
-  fun decodeBytes(bytes: ByteArray?): PhoneMessage? = bytes?.let { decodeJSON(String(it, Charsets.UTF_8)) }
+  fun decodeBytes(bytes: ByteArray?): PhoneMessage? = objectOf(bytes)?.let(::decode)
 
   /** A DataItem's bytes as a JSON object; null when they are not one. */
-  fun objectOf(bytes: ByteArray?): JsonObject? {
-    if (bytes == null) return null
-    return try {
-      JSON.parseToJsonElement(String(bytes, Charsets.UTF_8)) as? JsonObject
+  fun objectOf(bytes: ByteArray?): JsonObject? = bytes?.let { parseObject(String(it, Charsets.UTF_8)) }
+
+  private fun parseObject(text: String): JsonObject? =
+    try {
+      JSON.parseToJsonElement(text) as? JsonObject
     } catch (_: Exception) {
       null
     }
-  }
 
   /** An item's `sent_at` as the phone wrote it (text, or a number's own spelling). */
   fun sentAtText(m: JsonObject): String? = (m["sent_at"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
