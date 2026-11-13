@@ -967,8 +967,9 @@ export class ApiClient {
    * `{ matched: false }` when nothing matches (by id, or, on a newer server, by the
    * match saved in its console), with a `work` when the book has characters, recaps or
    * a description generated on this server. Which books are asked is the callers'
-   * rule (`meta-gating.ts`). Throws an `ApiError` (502) when the meta service is unreachable and nothing was generated, so
-   * the caller can render nothing rather than block the page.
+   * rule (`meta-gating.ts`). Throws an `ApiError` (502) when the meta service is
+   * unreachable and nothing was generated, so the caller can render nothing rather
+   * than block the page.
    *
    * `opts` needs the `meta_bundle` capability (an older server ignores both and
    * sends the full envelope, without saying so): `includePrevious` adds `previous`

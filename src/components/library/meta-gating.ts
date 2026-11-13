@@ -76,8 +76,9 @@ export function bookPageMetaEnabled(
 /**
  * Whether what a book's `/meta` says is in hand, for a decision that depends on it (the
  * Generate offer): the book is known and either `/meta` isn't asked for it (`enabled`,
- * `metaEnabledFor`, false: nothing to wait for) or its answer has arrived. A failed
- * lookup is no answer: the community may well have content the book just couldn't load.
+ * the caller's gate, `metaEnabledFor` or the book page's `bookPageMetaEnabled`, false:
+ * nothing to wait for) or its answer has arrived. A failed lookup is no answer: the
+ * community may well have content the book just couldn't load.
  */
 export function metaAnswered(
   enabled: boolean,

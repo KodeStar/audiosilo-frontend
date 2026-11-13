@@ -18,9 +18,10 @@ import type { DownloadEntry } from './types';
 /**
  * The offline companion: a downloaded book keeps its community metadata (the `/meta`
  * envelope, the previous book's work, and the server's `/server` answer) so the book page
- * and the player's companion read exactly what they would online, with no network. The
- * spoiler gate is unchanged: it still runs on the device against the listener's place
- * (`meta-gating.ts`); nothing here decides what to show.
+ * and the player's companion read exactly what they would online, with no network (a
+ * book that can match only by its console match is not kept, `canMatch`: offline, its
+ * page reads as unmatched). The spoiler gate is unchanged: it still runs on the device
+ * against the listener's place (`meta-gating.ts`); nothing here decides what to show.
  *
  * Where it lives: in its own file beside the book's audio (`OFFLINE_META_FILE`, through
  * `engine.writeText`: a file in the book's folder on native, a Cache API entry under the
