@@ -38,7 +38,8 @@ export function parentPath(relPath: string): string {
 }
 
 /** The browse section's pages (the hrefs below): the Library root and folders, and the
- * detail pages a browse can push (a book, a series, an author or narrator, a collection). */
+ * detail pages a browse can push (a book, a series, an author or narrator, a collection,
+ * a show, and the Library's own Find shows and Find on LibriVox). */
 export const BROWSE_PATHS = [
   '/library',
   '/book',
@@ -48,6 +49,7 @@ export const BROWSE_PATHS = [
   '/collection',
   '/podcast',
   '/find-shows',
+  '/find-librivox',
 ] as const;
 
 // Content routes are FLAT (`/book/[libraryId]`, `/library/[libraryId]`, `/account`); the

@@ -11,6 +11,9 @@ describe('isBrowsePath', () => {
       '/author',
       '/narrator',
       '/collection',
+      '/podcast',
+      '/find-shows',
+      '/find-librivox',
     ]) {
       expect(isBrowsePath(p)).toBe(true);
     }
