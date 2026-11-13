@@ -998,7 +998,9 @@ narrator; then the production facts known, the server's own `publisher` / `langu
 `Intl.DisplayNames` where the platform has it) /
 `abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
 as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
-book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts),
+book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts; under the
+other links out, a LibriVox recording's quiet "Also free on LibriVox" link, `librivoxUrl`: the matched recording's
+`librivox.url`, only an absolute http(s) URL, its scheme lower-cased, LibriVox L5),
 Other versions
 (`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
 listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
@@ -1089,11 +1091,19 @@ keeps it. Every `sidecars.generate` run writes one as it saves (its progress ste
 `describing`, its result `description` / `description_error?`), the player's Generate
 included; the player has no description-only action (the console's "Write a description"
 queues `sidecars.describe`, whose finish `latestDone` also counts, so the book's `/meta` is
-read again). **The `/meta` gate is ONE predicate, `metaEnabledFor(metadata, book)`
-(`meta-gating.ts`)**: the server's `metadata` flag and an ASIN, an ISBN **or `generated`**;
-every surface that reads `/meta` goes through it (the book page, the companion and reveal
-toast, Home's Now card and Previously on, the end credits, the character search, the offline
-copy). Two readers of the envelope, and each field is read through one of them, never both:
+read again). **The `/meta` gate is `metaEnabledFor(metadata, book)` (`meta-gating.ts`)**:
+the server's `metadata` flag and an ASIN, an ISBN **or `generated`**, never an episode; the
+companion and reveal toast, Home's Now card and Previously on, the end credits and the
+offline copy go through it. **The book page alone asks wider, `bookPageMetaEnabled`**: the
+flag and a loaded book that is not an episode, ids or not, since a newer server answers a
+book with neither from its console match (a LibriVox download, LibriVox L5) and an older one
+answers `matched:false` without asking upstream. The one page a listener opened asks; the
+surfaces that ask for a book in passing or for every download keep the id gate (so a
+console-matched book without ids shows its community content on its page and in Search's
+characters, not offline or in the player). The series page's anchor (`metadataAnchor`, an
+ASIN or ISBN) and Search's characters (`characterBooksToLoad`, the started books, capped,
+ids or not) pick their books by their own rules. Two readers of the envelope, and each
+field is read through one of them, never both:
 `matchedMeta` (the matched half only: the series rails, the AudioSilo Meta links, the end
 credits and About's recording facts need a real community match) and `bookMetaWork` (the
 matched work or an unmatched book's generated one: About's text and every work-level field,
@@ -1147,7 +1157,8 @@ places its next work, else series -> folder -> none, `source` naming who produce
 `includePrevious` request get the server's 30 s budget, not 15 s). `Book` gains
 `published`, `description` (item only), `cover_color`, `cover_version`; `BookMetaWork`
 gains `community_description` + `attribution` (render the server's text beside CC BY-SA
-content), rail entries `local`, the recording `chapter_count`. Phase 2's browse screens
+content), rail entries `local`, the recording `chapter_count` and, on a LibriVox recording only, `librivox`
+(`BookMetaLibrivox` `{id, url?, zip_url?}`, LibriVox L5). Phase 2's browse screens
 (below) consume the browse lists, `next_book`, the thumbnails and the cover colours; the book
 screen and the player still gate spoilers and pick the next book on the device.
 

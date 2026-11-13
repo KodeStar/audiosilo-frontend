@@ -830,6 +830,20 @@ export type BookMetaRecording = {
   /** Number of chapters in this recording. Absent when unknown and on older
    * servers. */
   chapter_count?: number;
+  /** The recording's LibriVox release, when it is one (LibriVox L5). Absent for every
+   * other recording and on older servers. */
+  librivox?: BookMetaLibrivox;
+};
+
+/** A LibriVox recording's links. LibriVox pages are slug-based, so none is built from the
+ * id; what the About card does with `url` is `librivoxUrl`'s rule. */
+export type BookMetaLibrivox = {
+  /** The LibriVox project id. */
+  id: number;
+  /** The recording's page on librivox.org. */
+  url?: string;
+  /** The whole recording as one zip on archive.org. */
+  zip_url?: string;
 };
 
 /** One work in a series rail. Carries its own `web_url` so the client never

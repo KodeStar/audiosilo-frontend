@@ -18,9 +18,10 @@ import type { DownloadEntry } from './types';
 /**
  * The offline companion: a downloaded book keeps its community metadata (the `/meta`
  * envelope, the previous book's work, and the server's `/server` answer) so the book page
- * and the player's companion read exactly what they would online, with no network. The
- * spoiler gate is unchanged: it still runs on the device against the listener's place
- * (`meta-gating.ts`); nothing here decides what to show.
+ * and the player's companion read exactly what they would online, with no network (a
+ * book that can match only by its console match is not kept, `canMatch`: offline, its
+ * page reads as unmatched). The spoiler gate is unchanged: it still runs on the device
+ * against the listener's place (`meta-gating.ts`); nothing here decides what to show.
  *
  * Where it lives: in its own file beside the book's audio (`OFFLINE_META_FILE`, through
  * `engine.writeText`: a file in the book's folder on native, a Cache API entry under the
@@ -180,10 +181,12 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
   }
 }
 
-/** Whether a downloaded book can have metadata at all (`metaEnabledFor`, the rule the
- * readers ask by: an ASIN or ISBN, which the server matches by, or content generated on
- * its server): the readers never ask for one without. The download's book
- * can be the list shape, so the full item is asked first. */
+/** Whether a downloaded book's metadata is kept (`metaEnabledFor`, the rule every reader
+ * but the book page asks by: an ASIN or ISBN, which the server matches by, or content
+ * generated on its server). The book page also asks for a book with neither (a console
+ * match, `bookPageMetaEnabled`), but this runs for every download, so it keeps to the
+ * books that can match by id: offline, such a book's page reads as unmatched. The
+ * download's book can be the list shape, so the full item is asked first. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;
   const item = queryClient.getQueryData<Book>(qk.item(connectionId, libraryId, path));

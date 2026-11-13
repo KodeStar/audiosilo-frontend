@@ -1032,10 +1032,53 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(mockMetaArgs).toHaveBeenLastCalledWith(1, 'Author/Book', true);
   });
 
-  it('never asks /meta for a book with no ASIN or ISBN and nothing generated', async () => {
+  // LibriVox L5: a newer server answers a book with no ASIN or ISBN from the match saved
+  // in its console; an older one answers matched:false without asking upstream.
+  it('asks /meta for a book with no ASIN or ISBN and nothing generated', async () => {
     mockCaps = { metadata: true };
     await mountAt('desktop');
+    expect(mockMetaArgs).toHaveBeenLastCalledWith(1, 'Author/Book', true);
+  });
+
+  it('never asks /meta before the book is in, nor without the metadata flag', async () => {
+    mockCaps = { metadata: true };
+    mockBook = undefined;
+    mockBookLoading = true;
+    await mountAt('desktop');
     expect(mockMetaArgs).toHaveBeenLastCalledWith(1, 'Author/Book', false);
+    mockCaps = {};
+    mockBook = BOOK;
+    mockBookLoading = false;
+    await mountAt('desktop');
+    expect(mockMetaArgs).toHaveBeenLastCalledWith(1, 'Author/Book', false);
+  });
+
+  it('renders an unmatched book with no ids as without /meta', async () => {
+    mockCaps = { metadata: true };
+    mockMeta = { matched: false };
+    await mountAt('desktop');
+    expect(screen.getByText('About')).toBeTruthy();
+    expect(screen.queryByTestId('book-tab-characters')).toBeNull();
+    expect(screen.queryByTestId('book-tab-recaps')).toBeNull();
+    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
+    expect(screen.queryByText('Also free on LibriVox')).toBeNull();
+  });
+
+  it('shows a console-matched LibriVox book with no ids as matched, with its link', async () => {
+    mockCaps = { metadata: true };
+    mockMeta = {
+      matched: true,
+      work: { id: 'w', title: 'The Way of Kings', authors: [], language: 'en' },
+      recording: {
+        id: 'r',
+        narrators: [],
+        librivox: { id: 47, url: 'https://librivox.org/the-way-of-kings/' },
+      },
+      web_url: 'https://meta.audiosilo.app/work?id=w',
+    };
+    await mountAt('desktop');
+    expect(screen.getByText('View on AudioSilo Meta')).toBeTruthy();
+    expect(screen.getByText('Also free on LibriVox')).toBeTruthy();
   });
 
   it('keeps an unmatched book with nothing generated as before: no community tabs', async () => {

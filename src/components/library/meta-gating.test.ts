@@ -1,6 +1,7 @@
 import type { BookMetaCharacter, BookMetaRecap, Chapter, PodcastEpisodeInfo } from '@/api/types';
 
 import {
+  bookPageMetaEnabled,
   chapterNumberAt,
   chapterStartsOf,
   characterIsVisible,
@@ -262,6 +263,21 @@ describe('metaEnabledFor', () => {
   it('never asks for a podcast episode, whatever its tags carry', () => {
     const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
     expect(metaEnabledFor(true, { asin: 'B0', isbn: '978', generated: true, episode })).toBe(false);
+  });
+});
+
+describe('bookPageMetaEnabled', () => {
+  // LibriVox L5: the book page asks for any loaded book, ids or not (a console match).
+  it('asks a server with metadata for any loaded book, ids or not', () => {
+    expect(bookPageMetaEnabled(true, {})).toBe(true);
+    expect(bookPageMetaEnabled(false, {})).toBe(false);
+    expect(bookPageMetaEnabled(undefined, {})).toBe(false);
+  });
+
+  it('never asks before the book is in, nor for a podcast episode', () => {
+    expect(bookPageMetaEnabled(true, undefined)).toBe(false);
+    const episode = { show_path: 'Show' } as PodcastEpisodeInfo;
+    expect(bookPageMetaEnabled(true, { episode })).toBe(false);
   });
 });
 

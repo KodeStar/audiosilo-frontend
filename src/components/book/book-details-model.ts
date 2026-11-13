@@ -10,6 +10,7 @@ import type {
 import { getLocale } from '@/i18n/locale';
 import { bitrateKbps } from '@/lib/format';
 import { bookLabels, LABEL_KINDS, type LabelKind } from '@/lib/labels';
+import { urlEndpoint } from '@/lib/url-host';
 import { codecLabel } from '@/playback/transcode';
 
 import { fileName } from './book-page-model';
@@ -229,4 +230,25 @@ export function aboutContent(
     details,
     labels: labelGroups(book),
   };
+}
+
+/**
+ * Where the About card's "Also free on LibriVox" goes (LibriVox L5): the matched
+ * recording's LibriVox page, only when it is an absolute http(s) URL with a host
+ * (`urlEndpoint` reads "https://[]" as a URL with an empty one). The server already drops
+ * any other, so this is the second check, kept because the link leaves the app. The
+ * scheme goes out lower-cased: the in-app browser on iOS (expo-web-browser) matches it by
+ * case and refuses "HTTPS://", which `openExternalUrl` swallows, leaving a link that does
+ * nothing. `undefined` hides the link (no LibriVox release, or an older server). The
+ * envelope carries one recording, the book's own match (the server falls back to the
+ * work's first when the lookup names none), so there is no list here to pick from.
+ */
+export function librivoxUrl(
+  recording: Pick<BookMetaRecording, 'librivox'> | undefined,
+): string | undefined {
+  const url = recording?.librivox?.url?.trim();
+  if (!url) return undefined;
+  const at = urlEndpoint(url);
+  if (!at?.host || (at.scheme !== 'http' && at.scheme !== 'https')) return undefined;
+  return at.scheme + url.slice(at.scheme.length);
 }

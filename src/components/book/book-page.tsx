@@ -37,11 +37,11 @@ import { bookTabs, parseBookTab, TAB_LABEL_KEY } from '@/components/library/book
 import { bookStatus } from '@/components/library/books/books-view';
 import { DownloadProgress } from '@/components/library/download-control';
 import {
+  bookPageMetaEnabled,
   chapterStartsOf,
   LIVE_POSITION_BUCKET_S,
   listeningProgressFor,
   metaAnswered,
-  metaEnabledFor,
   splitCharacters,
 } from '@/components/library/meta-gating';
 import { previousWorks, seriesRails } from '@/components/library/series-rails';
@@ -260,11 +260,11 @@ function BookPage() {
   const browsePeople = useCapability('browse_people', cid);
   const relPath = book?.rel_path ?? path;
   // Community metadata is progressive enhancement: only a server advertising it is asked,
-  // and only for a book with an ASIN or ISBN (one without can never match) or with
-  // content generated on this server (characters, recaps or a description). Asked by the
-  // book's own path, as every other surface asks (and as a finished Bridge job reads it
-  // again).
-  const bookMetaEnabled = metaEnabledFor(useCapability('metadata', cid), book);
+  // and for any book once it is in (`bookPageMetaEnabled`): one without an ASIN or ISBN
+  // can still be matched in the console (a LibriVox download), which the server answers
+  // from. Asked by the book's own path, as every other surface asks (and as a finished
+  // Bridge job reads it again).
+  const bookMetaEnabled = bookPageMetaEnabled(useCapability('metadata', cid), book);
   const { data: meta } = useBookMeta(libraryId, relPath, bookMetaEnabled);
   // What About's text and the Characters and Recaps tabs render: the matched work, or an
   // unmatched book's content generated on this server (the rails, the AudioSilo Meta links

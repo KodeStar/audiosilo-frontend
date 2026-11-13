@@ -964,11 +964,12 @@ export class ApiClient {
   /** Enriched metadata for a book (description, series rail, meta links) resolved
    * server-side from its asin/isbn against the community metadata service. Only call
    * this when the server advertises the `metadata` capability. Returns
-   * `{ matched: false }` when the book has no ids or no upstream match, with a `work`
-   * when the book has characters, recaps or a description generated on this server
-   * (then it is asked for a book with no ids too, `metaEnabledFor`); throws an
-   * `ApiError` (502) when the meta service is unreachable and nothing was generated, so
-   * the caller can render nothing rather than block the page.
+   * `{ matched: false }` when nothing matches (by id, or, on a newer server, by the
+   * match saved in its console), with a `work` when the book has characters, recaps or
+   * a description generated on this server. Which books are asked is the callers'
+   * rule (`meta-gating.ts`). Throws an `ApiError` (502) when the meta service is
+   * unreachable and nothing was generated, so the caller can render nothing rather
+   * than block the page.
    *
    * `opts` needs the `meta_bundle` capability (an older server ignores both and
    * sends the full envelope, without saying so): `includePrevious` adds `previous`
