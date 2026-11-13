@@ -88,6 +88,22 @@ describe('ProxyHeadersCard (fe#167)', () => {
     expect(screen.queryByText('proxy-secret')).toBeNull();
   });
 
+  it('offers a choice between https addresses, the home one too when it is https', async () => {
+    const httpsHome = 'https://nas.home.example:8443';
+    await useSession.getState().setSession({
+      serverUrl: AWAY,
+      serverId: 'srv',
+      token: 't',
+      user,
+      addresses: { home: httpsHome, away: AWAY },
+    });
+    await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);
+    await fireEvent.press(screen.getByTestId('proxy-headers-start'));
+    expect(screen.getAllByText('Send to').length).toBeGreaterThan(0);
+    expect(screen.getByText('books.example.com')).toBeTruthy();
+    expect(screen.getByText('nas.home.example:8443')).toBeTruthy();
+  });
+
   it('a change keeps a stored value left blank, and refuses a row with a problem', async () => {
     await signIn(SET);
     await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);

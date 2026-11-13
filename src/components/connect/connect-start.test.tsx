@@ -856,7 +856,7 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     await render(<ConnectStart />);
     await fireEvent.changeText(screen.getByLabelText('Server address'), 'http://192.168.1.5:8080');
     await enterHeader('CF-Access-Client-Secret', 'proxy-secret');
-    expect(screen.getByText(/sent over HTTPS only/)).toBeTruthy();
+    expect(screen.getByText(/need the server's https:\/\/ address/)).toBeTruthy();
     expect(useSession.getState().pendingProxyHeaders).toBeNull();
   });
 

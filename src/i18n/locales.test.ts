@@ -92,12 +92,13 @@ describe('locales', () => {
 
   // Proxy headers (fe#167): what a redirect does with a request's headers is the platform's
   // rule and not yet checked on a device (CONVENTIONS.md), so no string may claim more than
-  // "sent with requests to that address": never "and nowhere else" or "they go only to".
+  // "sent with requests to that address": never "and nowhere else", "they go only to" or
+  // "sent over HTTPS only" (an https request's redirect could name an http address).
   it.each(Object.entries(LOCALES))(
     '%s claims no more than where proxy headers are sent',
     (_, l) => {
       const banned =
-        /nowhere else|go only|goes only|sonst nirgendwohin|gehen nur|ningún otro sitio|solo van|nulle part ailleurs|ne vont qu|nessun'altra parte|vanno solo|mais nenhum sítio|vão só/i;
+        /nowhere else|go only|goes only|sonst nirgendwohin|gehen nur|ningún otro sitio|solo van|nulle part ailleurs|ne vont qu|nessun'altra parte|vanno solo|mais nenhum sítio|vão só|https only|nur über https|solo se envían por|ne sont envoyés qu'en|solo via https|só são enviados por/i;
       expect(leaves(l.proxyHeaders).length).toBeGreaterThan(0);
       for (const [key, text] of leaves(l.proxyHeaders)) {
         expect([key, text]).toEqual([key, expect.not.stringMatching(banned)]);

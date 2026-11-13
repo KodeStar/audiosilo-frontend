@@ -296,13 +296,14 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 - **One https origin.** A set names the origin (scheme, host, port) it was entered for, and
   `proxyHeaderRecord` is the one rule: only a request to that origin carries them, so the home
   address (which the proxy doesn't guard), a plain-http fallback, another port and anything else
-  get none. **Never over plain http**: a set for an http origin is refused at entry and dropped at
-  load (`cleanProxyHeaders`), `proxyHeaderRecord` sends none to an http URL whatever the set
-  says, `proxyOriginChoices` offers https addresses only, and the connect screen and the Account
-  card say so for an http address. So the tokenless `server_id` probe of the home address
-  (`probeServerId`, every 90 s) carries a set only to an https home address the set was entered
-  for, never in the clear. On the web only same-origin with the page (the server's CORS lists a fixed set of
-  request headers, so a custom one cross-origin would fail its preflight; changing that is a
+  get none. **The app never puts them on a plain-http request**: a set for an http origin is
+  refused at entry and dropped at load (`cleanProxyHeaders`), `proxyHeaderRecord` sends none to an
+  http URL whatever the set says, `proxyOriginChoices` offers https addresses only, and the
+  connect screen and the Account card say so for an http address. So the tokenless `server_id`
+  probe of the home address (`probeServerId`, every 90 s) carries a set only to an https home
+  address the set was entered for. (What a redirect from that request does is the next bullet's
+  open question.) On the web only same-origin with the page (the server's CORS lists a fixed set
+  of request headers, so a custom one cross-origin would fail its preflight; changing that is a
   server change). `ApiClient` takes the set as its sixth argument and computes the record once:
   `request()` and every hand-built request send it, `authHeaders()` hands it with the token to
   expo-image, the native player (AVURLAsset headers, Media3's origin-scoped `AuthHolder`) and the

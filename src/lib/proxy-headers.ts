@@ -11,9 +11,9 @@ import { sameOrigin } from '@/lib/same-origin';
  * set names the ONE https origin (scheme, host and port) it was entered for, and the app
  * sends it only with requests to that origin (`proxyHeaderRecord`): never to the server's
  * other address (its home address on the house network, which the proxy does not guard),
- * never to a plain-http fallback. Never over plain http at all: a set for an http origin is
- * refused at entry and dropped at load (`cleanProxyHeaders`), so a credential never crosses
- * the network in the clear (the tokenless `server_id` probe of the home address included).
+ * never to a plain-http fallback. The app never puts them on a plain-http request: a set
+ * for an http origin is refused at entry and dropped at load (`cleanProxyHeaders`), and an
+ * http URL gets none (the tokenless `server_id` probe of the home address included).
  * What a redirect does with a request's headers is the platform's rule, not this one's (not
  * yet checked on a device: CONVENTIONS.md). On the web it goes only same-origin with the page: a custom header on a cross-origin request needs the server's
  * CORS to list it, and the server lists a fixed set (`Authorization`, `Content-Type`,
