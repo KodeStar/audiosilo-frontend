@@ -22,14 +22,21 @@ import { noteAnswer } from './reachability';
  */
 export function resolveClient(connectionId: string): ApiClient | null {
   const conn = connectionOf(connectionId);
-  if (!conn) return null;
-  // Inject the dead-token callback so a 401 from the framework-free progress-sync save
-  // loop (which resolves its client here) flags this connection for reconnect too - the
-  // same detection every provider-built client gets, so no request path is a blind spot.
-  // Every answer it gets counts for reachability too (`noteAnswer`, FU-SLOWOK), as a
-  // provider-built client's does: the save loop, the car and the downloads ask through here.
+  return conn ? connectionClient(conn, effectiveUrl(conn)) : null;
+}
+
+/**
+ * A connection's client on `url` (the address it uses now, never straight from `serverUrl`),
+ * the one way one is built: `resolveClient` for the framework-free modules (the progress-sync
+ * save loop, the car, the downloads) and the provider's `buildClients` for every screen. It
+ * carries the token and the proxy headers (fe#167), and injects the dead-token callback, so a
+ * 401 on ANY request through it (query or mutation, on screen or in the save loop) flags the
+ * connection for reconnect: the client is the one choke point every request path shares. Every
+ * answer it gets counts for reachability (`noteAnswer`, FU-SLOWOK).
+ */
+export function connectionClient(conn: Connection, url: string): ApiClient {
   return new ApiClient(
-    effectiveUrl(conn),
+    url,
     conn.token,
     undefined,
     () => useSession.getState().markNeedsReconnect(conn.id, 'auth'),

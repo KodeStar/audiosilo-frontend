@@ -17,10 +17,10 @@ import { connectionsOfProfile, useProfiles, visibleConnectionIds } from '@/store
 import { onConnectionRemoved, useSession, type Connection } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
-import { ApiClient, isNotInLibraryError, isSignedOutError } from './client';
+import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
+import { connectionClient } from './connection-clients';
 import {
   anyOffline,
-  noteAnswer,
   noteFailure,
   noteSuccess,
   onReconnect,
@@ -229,19 +229,8 @@ export function buildClients(
             url,
             token: c.token,
             proxyHeaders: c.proxyHeaders,
-            // Inject the dead-token callback so a 401 on ANY request through this client
-            // (query OR mutation) flags this connection for reconnect - the client is the
-            // one choke point every request path shares. Built on the address in use now
-            // (`resolveClient` does the same), never straight from `serverUrl`.
-            // Every answer it gets is counted for reachability (`noteAnswer`, FU-SLOWOK).
-            client: new ApiClient(
-              url,
-              c.token,
-              undefined,
-              () => useSession.getState().markNeedsReconnect(c.id, 'auth'),
-              () => noteAnswer(c.id),
-              c.proxyHeaders,
-            ),
+            // Built on the address in use now, as `resolveClient` builds its own.
+            client: connectionClient(c, url),
           },
     );
   }
