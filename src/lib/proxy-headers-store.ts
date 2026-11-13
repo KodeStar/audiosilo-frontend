@@ -1,4 +1,9 @@
-import { cleanProxyHeaders, type ProxyHeader, type ProxyHeaders } from '@/lib/proxy-headers';
+import {
+  cleanProxyHeaders,
+  type ProxyHeader,
+  type ProxyHeaders,
+  sameProxyHeaders,
+} from '@/lib/proxy-headers';
 import { deleteSecure, getSecure, setSecure } from '@/lib/secure-store';
 
 /**
@@ -48,14 +53,18 @@ export async function forgetProxyHeaders(connectionId: string): Promise<void> {
   await deleteSecure(proxyHeadersKey(connectionId)).catch(() => undefined);
 }
 
-/** Move a connection's headers to the id it moved to (the identity migration), keeping a
- * set already there. Best-effort, never rejects; the old key never outlives the move. */
-export async function moveProxyHeaders(from: string, to: string): Promise<void> {
-  try {
-    const set = await readProxyHeaders(from);
-    if (set && !(await readProxyHeaders(to))) await saveProxyHeaders(to, set);
-  } catch {
-    // Not kept under the new id: the Account page offers to add them again.
+/**
+ * Copy a connection's headers to the id it moves to (the identity migration), the way its
+ * token is copied: written, read back and compared, and REJECTS when the copy is not there
+ * as written (or a read is refused), so the migration stops with the old entry untouched and
+ * tries again on the next launch. A set already under the new id is kept. The old entry is
+ * deleted only by the migration's clean-up, after every copy was verified.
+ */
+export async function copyProxyHeaders(from: string, to: string): Promise<void> {
+  const set = await readProxyHeaders(from);
+  if (!set || (await readProxyHeaders(to))) return;
+  await saveProxyHeaders(to, set);
+  if (!sameProxyHeaders(await readProxyHeaders(to), set)) {
+    throw new Error('the proxy headers copy did not read back');
   }
-  await forgetProxyHeaders(from);
 }

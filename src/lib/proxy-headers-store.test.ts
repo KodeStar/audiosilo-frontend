@@ -1,8 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 
 import {
+  copyProxyHeaders,
   forgetProxyHeaders,
-  moveProxyHeaders,
   proxyHeadersKey,
   readProxyHeaders,
   saveProxyHeaders,
@@ -60,16 +60,32 @@ describe('proxy headers storage (secure-store, beside the token)', () => {
     }
   });
 
-  it('moves a set to a new id, keeping one already there, and never leaves the old key', async () => {
+  it('copies a set to a new id, keeping one already there, and leaves the old key', async () => {
     await saveProxyHeaders('a', SET);
-    await moveProxyHeaders('a', 'b');
-    expect(await readProxyHeaders('a')).toBeNull();
+    await copyProxyHeaders('a', 'b');
     expect(await readProxyHeaders('b')).toEqual(SET);
+    expect(await readProxyHeaders('a')).toEqual(SET); // the clean-up deletes it, later
 
     const other = { ...SET, headers: [{ name: 'X-Other', value: '1' }] };
     await saveProxyHeaders('a', other);
-    await moveProxyHeaders('a', 'b');
-    expect(await readProxyHeaders('a')).toBeNull();
+    await copyProxyHeaders('a', 'b');
     expect(await readProxyHeaders('b')).toEqual(SET);
+  });
+
+  it('rejects when the copy does not read back, the old entry untouched', async () => {
+    const store = SecureStore as unknown as {
+      setItemAsync: (k: string, v: string, o?: unknown) => Promise<void>;
+    };
+    const original = store.setItemAsync;
+    await saveProxyHeaders('a', SET);
+    store.setItemAsync = (k, v, o) =>
+      k === proxyHeadersKey('b') ? Promise.resolve() : original(k, v, o);
+    try {
+      await expect(copyProxyHeaders('a', 'b')).rejects.toThrow('did not read back');
+    } finally {
+      store.setItemAsync = original;
+    }
+    expect(await readProxyHeaders('a')).toEqual(SET);
+    expect(await readProxyHeaders('b')).toBeNull();
   });
 });

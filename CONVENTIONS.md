@@ -289,7 +289,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   takes that set, stored under its own id. They go
   with the connection wherever the token and the calendar link go (sign-out, a retired identity,
   the auth reset, a connection `hydrate` drops because its token is gone) and move with the
-  identity migration (`moveProxyHeaders`). `removeConnection` deletes the token first: a delete
+  identity migration as the token does (`copyProxyHeaders`: copied, read back and compared in
+  its token step, a failure aborting the run with the old entry kept for the next launch; the
+  old entry deleted only in the clean-up). `removeConnection` deletes the token first: a delete
   that fails stops the removal with the headers still kept.
 - **One origin.** A set names the origin (scheme, host, port) it was entered for, and
   `proxyHeaderRecord` is the one rule: only a request to that origin carries them, so the home
