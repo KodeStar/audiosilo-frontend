@@ -998,7 +998,9 @@ narrator; then the production facts known, the server's own `publisher` / `langu
 `Intl.DisplayNames` where the platform has it) /
 `abridged` (absent = unknown, no row; the community only ever says true) before the community's; then the book's `genres` and `tags`
 as chips (`chipClass`, the filter chips' pill), each opening the Library's Books mode on it in the
-book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts),
+book's library, `openLabelBooks`; the publisher rule is `bookPublisher`, shared with the hero's facts; under the
+other links out, a LibriVox recording's quiet "Also free on LibriVox" link, `librivoxUrl`: the matched recording's
+`librivox.url`, only an absolute http(s) URL, its scheme lower-cased, LibriVox L5),
 Other versions
 (`BookVersions`), Your listening (`listeningFigures`: started, finished, speed, and the time
 listened summed from this book's history spans, `listeningSummary`). The panels render inside the page's own ScrollView (never a nested
@@ -1147,7 +1149,8 @@ places its next work, else series -> folder -> none, `source` naming who produce
 `includePrevious` request get the server's 30 s budget, not 15 s). `Book` gains
 `published`, `description` (item only), `cover_color`, `cover_version`; `BookMetaWork`
 gains `community_description` + `attribution` (render the server's text beside CC BY-SA
-content), rail entries `local`, the recording `chapter_count`. Phase 2's browse screens
+content), rail entries `local`, the recording `chapter_count` and, on a LibriVox recording only, `librivox`
+(`BookMetaLibrivox` `{id, url?, zip_url?}`, LibriVox L5). Phase 2's browse screens
 (below) consume the browse lists, `next_book`, the thumbnails and the cover colours; the book
 screen and the player still gate spoilers and pick the next book on the device.
 
