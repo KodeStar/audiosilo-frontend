@@ -121,7 +121,8 @@ export async function finishConnect(input: {
   // every store at once (and the screens render), so nothing goes to `serverUrl` first.
   // Under the id `setSession` gives the connection (the prior one's, else `connectionIdOf`).
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
-  // A re-pair's own set first: never another connection's for the same address. A reconnect
+  // A re-pair's own set first: another connection's for the same address only when it has
+  // none and the exchange got in on that one (`borrowed`, below). A reconnect
   // to a reset server (no `existing`: the server_id is new) keeps the set its sign-in carried
   // (`connectClientFor(server, _, reconnectId)`), else the old identity's own, never another
   // person's: given none, `setSession` would give the new connection the first set any

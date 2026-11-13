@@ -767,7 +767,8 @@ export function useConnectionName(connectionId: string | undefined): string {
  * so a reconnect's sign-in never carries another person's credentials and two people who
  * each keep their own headers for one address never take each other's. Its own set for
  * ANOTHER origin (or none) answers null (a re-pair through the home address, or a second
- * public one): `setSession` then keeps what the connection had.
+ * public one): `setSession` then keeps what the connection had, unless a re-pair with no set
+ * at all got in on another connection's (`finishConnect`'s `carried`), which it then keeps.
  */
 export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders | null {
   const origin = originOf(url);
