@@ -211,6 +211,23 @@ describe('LibrivoxSearch', () => {
     expect(screen.queryByTestId('librivox-cancel')).toBeNull();
   });
 
+  it('stays on the job it queued while the work still names the one before', async () => {
+    // The work asked again has not answered (or that ask failed): it still names job 40.
+    mockWork = { data: work({ job: { id: 40, state: 'running' } }) };
+    mockJobs = {
+      40: { data: librivoxJob({ id: 40, state: 'failed', result: { code: 'exists' } }) },
+      41: { data: librivoxJob({ id: 41, state: 'queued' }) },
+    };
+    mockAdd.mockResolvedValue({ job: librivoxJob({ id: 41, state: 'queued' }) });
+    await mount();
+    await openWork();
+    expect(screen.getByText("Couldn't add it")).toBeTruthy();
+    await fireEvent.press(await screen.findByTestId('librivox-add'));
+    expect(await screen.findByText('Adding')).toBeTruthy();
+    expect(screen.queryByText("Couldn't add it")).toBeNull();
+    expect(screen.queryByTestId('librivox-add')).toBeNull();
+  });
+
   it('says a parked fetch needs attention, in its own words', async () => {
     mockWork = { data: work({ job: { id: 41, state: 'needs_attention' } }) };
     mockJobs = {

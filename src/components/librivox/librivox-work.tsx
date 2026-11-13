@@ -324,7 +324,14 @@ function useFollowedFetch(connectionId: string, r: LibrivoxRecording) {
   const qc = useQueryClient();
   const focused = useIsFocused();
   const [followed, setFollowed] = useState(r.job?.id);
-  if (r.job && r.job.id !== followed) setFollowed(r.job.id);
+  // The work's open job is followed when the work comes to name it, not on every render:
+  // an answer that still names the job before (the work asked again and not in yet, or that
+  // ask failed and the last answer stands) would take the row back from the one it queued.
+  const [named, setNamed] = useState(r.job?.id);
+  if (r.job?.id !== named) {
+    setNamed(r.job?.id);
+    if (r.job) setFollowed(r.job.id);
+  }
   const read = useLibrivoxJob(followed, focused, connectionId);
   const cancel = useCancelBridgeJob(connectionId);
   const gone = read.error instanceof ApiError && read.error.status === 404;
