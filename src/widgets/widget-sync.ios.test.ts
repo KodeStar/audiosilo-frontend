@@ -61,10 +61,14 @@ jest.mock('expo-file-system', () => {
 });
 const mockCoverSizes: { value: boolean | undefined } = { value: undefined };
 jest.mock('@/api/hooks', () => ({ cachedCapability: () => mockCoverSizes.value }));
+const mockProxyHeadersFor = jest.fn(
+  (_url: string): Record<string, string> | undefined => undefined,
+);
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: () => ({
     coverUrl: (_lib: number, _path: string, opts?: { size?: number }) =>
       `https://s/cover?size=${opts?.size}`,
+    proxyHeadersFor: (url: string) => mockProxyHeadersFor(url),
   }),
 }));
 
@@ -487,6 +491,7 @@ describe('prepareCovers', () => {
   const np = (cover: string) =>
     ({ connectionId: 'srv', libraryId: 1, path: 'Book', cover }) as NowPlaying;
   const fetched: string[] = [];
+  const sentHeaders: (HeadersInit | undefined)[] = [];
   const bodies = new Map<string, Uint8Array>();
 
   beforeEach(() => {
@@ -494,9 +499,12 @@ describe('prepareCovers', () => {
     mockFiles.clear();
     mockCoverSizes.value = undefined;
     fetched.length = 0;
+    sentHeaders.length = 0;
     bodies.clear();
-    globalThis.fetch = jest.fn(async (url: string) => {
+    mockProxyHeadersFor.mockImplementation(() => undefined);
+    globalThis.fetch = jest.fn(async (url: string, init?: RequestInit) => {
       fetched.push(url);
+      sentHeaders.push(init?.headers);
       const body = bodies.get(url);
       return {
         ok: !!body,
@@ -521,6 +529,22 @@ describe('prepareCovers', () => {
     expect(covers.widget).toBeDefined();
     expect(covers.activity).toBeDefined();
     expect(fetched).toEqual(['https://s/full.jpg']);
+  });
+
+  it("fetches with the connection's proxy headers for the cover's address only (fe#167)", async () => {
+    mockCoverSizes.value = false;
+    mockProxyHeadersFor.mockImplementation((url) =>
+      url.startsWith('https://s/') ? { 'X-Proxy': 'v' } : undefined,
+    );
+    bodies.set('https://s/full.jpg', jpeg(150, 150));
+    await prepareCovers(new Directory('x'), np('https://s/full.jpg'));
+    expect(sentHeaders).toEqual([{ 'X-Proxy': 'v' }]);
+
+    sentHeaders.length = 0;
+    mockFiles.clear();
+    bodies.set('https://elsewhere/full.jpg', jpeg(150, 150));
+    await prepareCovers(new Directory('y'), np('https://elsewhere/full.jpg'));
+    expect(sentHeaders).toEqual([undefined]);
   });
 
   it('leaves out a cover nothing small enough was found for', async () => {

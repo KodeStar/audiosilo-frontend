@@ -22,7 +22,12 @@ import {
   switchProfile,
   useProfiles,
 } from '@/stores/profiles';
-import { sessionHydrateFailed, staleIdentities, useSession } from '@/stores/session';
+import {
+  connectProxyHeaders,
+  sessionHydrateFailed,
+  staleIdentities,
+  useSession,
+} from '@/stores/session';
 
 import { isFirstConnection, repairPlan } from './connect-model';
 
@@ -113,6 +118,7 @@ export async function finishConnect(input: {
   // every store at once (and the screens render), so nothing goes to `serverUrl` first.
   // Under the id `setSession` gives the connection (the prior one's, else `connectionIdOf`).
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
+  const proxyHeaders = connectProxyHeaders(input.serverUrl);
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,
@@ -122,6 +128,9 @@ export async function finishConnect(input: {
     ...(input.name ? { name: input.name } : {}),
     addresses: plan.addresses,
     retire,
+    // The proxy headers this sign-in reached the server with (fe#167); none keeps the
+    // connection's own.
+    ...(proxyHeaders ? { proxyHeaders } : {}),
   }).catch((e: unknown) => {
     // Nothing was stored: a new connection's pick goes with it.
     if (input.answeredAt && !existing) setAddressPick(pickId, null);

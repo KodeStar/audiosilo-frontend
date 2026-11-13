@@ -2,6 +2,7 @@ import type { PlaybackTrack } from '@/playback/types';
 
 import {
   buildCastItems,
+  behindProxy,
   castBlockReason,
   castContentType,
   castNeedsTranscode,
@@ -73,6 +74,20 @@ describe('isReachableByReceiver', () => {
   });
 });
 
+describe('behindProxy (fe#167)', () => {
+  const set = { origin: 'https://away.example', headers: [{ name: 'X-Proxy', value: 'v' }] };
+  it('is the address the headers go to, whatever the platform', () => {
+    expect(behindProxy(set, 'https://away.example')).toBe(true);
+    expect(behindProxy(set, 'https://away.example/')).toBe(true);
+  });
+  it('is no other address, and nothing without headers', () => {
+    expect(behindProxy(set, 'http://192.168.1.2:8080')).toBe(false);
+    expect(behindProxy(set, null)).toBe(false);
+    expect(behindProxy(undefined, 'https://away.example')).toBe(false);
+    expect(behindProxy({ ...set, headers: [] }, 'https://away.example')).toBe(false);
+  });
+});
+
 describe('castBlockReason', () => {
   const ok = { canCast: true, canTranscode: true, baseUrl: 'http://192.168.1.2' };
   it('allows a castable book', () => {
@@ -84,6 +99,7 @@ describe('castBlockReason', () => {
     expect(castBlockReason({ ...ok, canCast: false })).toBe('unsupported');
     expect(castBlockReason({ ...ok, baseUrl: 'http://localhost:8080' })).toBe('local-address');
     expect(castBlockReason({ ...ok, canTranscode: false, book: { codec: 'alac' } })).toBe('codec');
+    expect(castBlockReason({ ...ok, proxied: true })).toBe('proxy');
   });
   it('blocks nothing on what is not known yet', () => {
     expect(castBlockReason({ ...ok, canCast: undefined, canTranscode: undefined })).toBeNull();

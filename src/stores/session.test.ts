@@ -6,6 +6,7 @@ import { sessionReady } from '@/api/connection-clients';
 import type { User } from '@/api/types';
 import { readCalendarLink, saveCalendarLink } from '@/lib/upcoming-calendar';
 import {
+  connectProxyHeaders,
   hasExistingInstall,
   LOCKED_RETRY_MS,
   onConnectionRemoved,
@@ -1115,5 +1116,156 @@ describe('the calendar link goes with its connection', () => {
     await AsyncStorage.removeItem('audiosilo.storageVersion');
     expect((await resetStaleStorage()).authReset).toBe(true);
     expect(await readCalendarLink('old-a.1')).toBeNull();
+  });
+});
+
+describe('proxy headers (fe#167) are kept like the token', () => {
+  const set = {
+    origin: 'https://a.example',
+    headers: [{ name: 'CF-Access-Client-Secret', value: 'proxy-secret' }],
+  };
+  const stored = (id: string) => SecureStore.getItemAsync(`audiosilo.proxy-headers.${id}`);
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    reset();
+    useSession.setState({ pendingProxyHeaders: null });
+  });
+
+  it('stores them in secure-store, never in the AsyncStorage metadata, and hydrates them', async () => {
+    const id = await useSession.getState().setSession({
+      serverUrl: 'https://a.example',
+      serverId: 'srv-a',
+      token: 't',
+      user: mkUser('a'),
+      proxyHeaders: set,
+    });
+    expect(JSON.parse((await stored(id))!)).toEqual(set);
+    const meta = await AsyncStorage.getItem('audiosilo.connections');
+    expect(meta).not.toMatch(/proxy-secret|CF-Access|proxyHeaders/);
+    reset();
+    await useSession.getState().hydrate();
+    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
+  });
+
+  it('a re-pair without headers keeps the ones the connection had; a new set replaces them', async () => {
+    const s = useSession.getState();
+    const base = { serverUrl: 'https://a.example', serverId: 'srv-a', user: mkUser('a') };
+    const id = await s.setSession({ ...base, token: 't1', proxyHeaders: set });
+    await s.setSession({ ...base, token: 't2' });
+    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
+    expect(JSON.parse((await stored(id))!)).toEqual(set);
+    const other = { origin: set.origin, headers: [{ name: 'X-Auth', value: 'v2' }] };
+    await s.setSession({ ...base, token: 't3', proxyHeaders: other });
+    expect(useSession.getState().connections[0].proxyHeaders).toEqual(other);
+    expect(JSON.parse((await stored(id))!)).toEqual(other);
+  });
+
+  it('fails the hydrate when the headers cannot be read, as a token read does', async () => {
+    await useSession.getState().setSession({
+      serverUrl: 'https://a.example',
+      serverId: 'srv-a',
+      token: 't',
+      user: mkUser('a'),
+      proxyHeaders: set,
+    });
+    reset();
+    const store = SecureStore as unknown as { getItemAsync: (k: string) => Promise<string | null> };
+    const original = store.getItemAsync;
+    store.getItemAsync = (k) =>
+      k.startsWith('audiosilo.proxy-headers.')
+        ? Promise.reject(new Error('keychain locked'))
+        : original(k);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await useSession.getState().hydrate();
+      expect(sessionHydrateFailed()).toBe(true);
+      expect(useSession.getState().connections).toEqual([]);
+    } finally {
+      store.getItemAsync = original;
+      warn.mockRestore();
+    }
+    await useSession.getState().hydrate();
+    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
+  });
+
+  it('setProxyHeaders keeps, changes and drops them', async () => {
+    const id = await useSession.getState().setSession({
+      serverUrl: 'https://a.example',
+      serverId: 'srv-a',
+      token: 't',
+      user: mkUser('a'),
+    });
+    await useSession.getState().setProxyHeaders(id, set);
+    expect(useSession.getState().connections[0].proxyHeaders).toEqual(set);
+    expect(JSON.parse((await stored(id))!)).toEqual(set);
+    await useSession.getState().setProxyHeaders(id, null);
+    expect(useSession.getState().connections[0].proxyHeaders).toBeUndefined();
+    expect(await stored(id)).toBeNull();
+    // An unknown connection: nothing is written.
+    await useSession.getState().setProxyHeaders('nobody', set);
+    expect(await stored('nobody')).toBeNull();
+  });
+
+  it('go on sign-out, with a retired stale identity, and on the auth reset', async () => {
+    const s = useSession.getState();
+    const a = await s.setSession({
+      serverUrl: 'https://a.example',
+      serverId: 'srv-a',
+      token: 't',
+      user: mkUser('a'),
+      proxyHeaders: set,
+    });
+    const b = await s.setSession({
+      serverUrl: 'https://b.example',
+      serverId: 'srv-b',
+      token: 't',
+      user: mkUser('b'),
+      proxyHeaders: { ...set, origin: 'https://b.example' },
+    });
+    await useSession.getState().removeConnection(a);
+    expect(await stored(a)).toBeNull();
+    expect(await stored(b)).not.toBeNull();
+
+    // The server at b was reset: b's own identity is retired with its headers.
+    await useSession.getState().setSession({
+      serverUrl: 'https://b.example',
+      serverId: 'srv-b2',
+      token: 't2',
+      user: mkUser('b'),
+      retire: [b],
+    });
+    expect(await stored(b)).toBeNull();
+
+    const c = await useSession.getState().setSession({
+      serverUrl: 'https://c.example',
+      serverId: 'srv-c',
+      token: 't',
+      user: mkUser('c'),
+      proxyHeaders: { ...set, origin: 'https://c.example' },
+    });
+    await AsyncStorage.removeItem('audiosilo.storageVersion');
+    expect((await resetStaleStorage()).authReset).toBe(true);
+    expect(await stored(c)).toBeNull();
+  });
+
+  it("the connect flow finds the pending set for its origin, else a connection's, never another origin's", async () => {
+    expect(connectProxyHeaders('https://a.example')).toBeNull();
+    useSession.getState().setPendingProxyHeaders(set);
+    expect(connectProxyHeaders('https://a.example/')).toBe(set);
+    expect(connectProxyHeaders('https://a.example:8443')).toBeNull();
+    expect(connectProxyHeaders('http://a.example')).toBeNull();
+    expect(connectProxyHeaders('https://evil.example')).toBeNull();
+
+    // A sign-in clears the pending set; the connection's own then answers for its origin.
+    await useSession.getState().setSession({
+      serverUrl: 'https://a.example',
+      serverId: 'srv-a',
+      token: 't',
+      user: mkUser('a'),
+      proxyHeaders: set,
+    });
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+    expect(connectProxyHeaders('https://a.example')).toEqual(set);
+    expect(connectProxyHeaders('http://192.168.1.5:8080')).toBeNull();
   });
 });

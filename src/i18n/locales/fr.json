@@ -2312,6 +2312,39 @@
     "usingPaired": "Utilise l'adresse avec laquelle vous vous êtes connecté.",
     "switches": "L'application passe de l'une à l'autre toute seule."
   },
+  "proxyHeaders": {
+    "title": "En-têtes du proxy",
+    "body": "Pour un serveur derrière un proxy de connexion (Cloudflare Access, Authentik, Authelia et autres) : des en-têtes que cet appareil envoie avec chaque requête vers l'une de ses adresses, et nulle part ailleurs.",
+    "sentTo": "Envoyés avec chaque requête vers {{origin}}, et nulle part ailleurs.",
+    "toggle": "En-têtes du proxy",
+    "connectBody": "Pour un serveur derrière un proxy de connexion : les en-têtes qu'il demande (un jeton de service Cloudflare Access, par exemple). Ils ne vont qu'à {{origin}} et sont conservés avec votre connexion sur cet appareil. Ajoutez-les avant de continuer ou de scanner le code.",
+    "connectNoAddress": "Saisissez d'abord l'adresse du serveur : les en-têtes ne vont qu'à cette adresse.",
+    "name": "Nom de l'en-tête",
+    "namePlaceholder": "CF-Access-Client-Id",
+    "value": "Valeur",
+    "valueOf": "Valeur de {{name}}",
+    "valueKept": "Conservée telle quelle",
+    "add": "Ajouter un en-tête",
+    "remove": "Retirer cet en-tête",
+    "removeNamed": "Retirer {{name}}",
+    "addHeaders": "Ajouter des en-têtes",
+    "edit": "Modifier les en-têtes",
+    "save": "Enregistrer les en-têtes",
+    "saveFailed": "Impossible de conserver les en-têtes sur cet appareil. Rien n'a été modifié.",
+    "removeAll": "Retirer les en-têtes",
+    "removeTitle": "Retirer les en-têtes du proxy ?",
+    "removeBody": "Cet appareil cesse de les envoyer. Si le proxy en a besoin, le serveur reste injoignable jusqu'à ce que vous les ajoutiez de nouveau.",
+    "sendTo": "Envoyer à",
+    "hiddenValue": "{{name}}, valeur masquée",
+    "notCarried": "Chromecast, les apps de montre et les apps de calendrier ne peuvent pas les envoyer, et n'atteignent donc pas le serveur à travers le proxy.",
+    "webNote": "Dans un navigateur, ils ne vont qu'au serveur d'où vient cette page, et les couvertures et l'audio ne les transmettent pas. Connectez-vous plutôt au proxy dans ce navigateur.",
+    "problem": {
+      "name": "Utilisez des lettres, des chiffres et des tirets pour le nom.",
+      "reserved": "L'app envoie déjà {{name}} elle-même.",
+      "duplicate": "{{name}} est déjà dans la liste.",
+      "value": "Saisissez une valeur sur une seule ligne."
+    }
+  },
   "year": {
     "eyebrow": "Ton année d’écoute",
     "title": "Ton {{year}}, en histoire",
@@ -2483,7 +2516,8 @@
       "codec": "Son format audio ne se lit pas sur les appareils Cast, et le serveur ne peut pas le convertir.",
       "no-connection": "Son serveur n’est pas connecté sur cet appareil. Reconnectez-vous pour le diffuser.",
       "titleEpisode": "Cet épisode ne peut pas être diffusé",
-      "episode": "Les épisodes de podcast ne peuvent pas encore être diffusés : celui-ci reste sur cet appareil."
+      "episode": "Les épisodes de podcast ne peuvent pas encore être diffusés : celui-ci reste sur cet appareil.",
+      "proxy": "Son serveur est derrière un proxy de connexion, qu'un appareil Cast ne peut pas franchir."
     },
     "failed": {
       "title": "Impossible de lancer la diffusion",

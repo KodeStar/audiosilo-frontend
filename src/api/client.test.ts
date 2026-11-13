@@ -3774,3 +3774,123 @@ describe('ApiClient Add from LibriVox (LibriVox L6, admin)', () => {
     });
   });
 });
+
+// --- Proxy headers (fe#167) ---------------------------------------------------------
+// A connection behind an auth proxy sends its custom headers on every request to the one
+// origin they were entered for, and nowhere else; on the web only same-origin.
+
+describe('proxy headers', () => {
+  const realOS = Platform.OS;
+  const realLocation = Object.getOwnPropertyDescriptor(globalThis, 'location');
+  const SET = {
+    origin: 'https://away.example',
+    headers: [
+      { name: 'CF-Access-Client-Id', value: 'id.access' },
+      { name: 'CF-Access-Client-Secret', value: 'proxy-secret' },
+    ],
+  };
+  const PROXY = { 'CF-Access-Client-Id': 'id.access', 'CF-Access-Client-Secret': 'proxy-secret' };
+
+  function setPlatform(os: string) {
+    (Platform as { OS: string }).OS = os;
+  }
+  function setPageOrigin(origin: string | undefined) {
+    Object.defineProperty(globalThis, 'location', {
+      value: origin === undefined ? undefined : { origin },
+      configurable: true,
+      writable: true,
+    });
+  }
+  afterEach(() => {
+    setPlatform(realOS);
+    if (realLocation) Object.defineProperty(globalThis, 'location', realLocation);
+    else delete (globalThis as { location?: unknown }).location;
+  });
+
+  const client = (base: string, token: string | null = 'tok') =>
+    new ApiClient(base, token, undefined, undefined, undefined, SET);
+
+  it('sends them on every request to their origin, beside the token and identity', async () => {
+    setPlatform('ios');
+    const fetchMock = installFetch(() => ({ status: 200, body: {} }));
+    await client('https://away.example').serverInfo();
+    await client('https://away.example', null).exchange('pt', 'Phone');
+    for (const call of fetchMock.mock.calls) {
+      const init = call[1] as RequestInit;
+      expect(headerValue(init, 'CF-Access-Client-Id')).toBe('id.access');
+      expect(headerValue(init, 'CF-Access-Client-Secret')).toBe('proxy-secret');
+    }
+    const first = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(headerValue(first, 'Authorization')).toBe('Bearer tok');
+    expect(headerValue(first, 'X-AudioSilo-Client')).toMatch(/^AudioSilo\//);
+  });
+
+  it('sends none from a client on any other address (home, an http fallback, another port)', async () => {
+    setPlatform('android');
+    for (const base of [
+      'http://192.168.1.5:8080',
+      'http://away.example',
+      'https://away.example:8443',
+    ]) {
+      const fetchMock = installFetch(() => ({ status: 200, body: {} }));
+      const c = client(base);
+      await c.serverInfo();
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(headerValue(init, 'CF-Access-Client-Id')).toBeUndefined();
+      expect(c.authHeaders()).toEqual({ Authorization: 'Bearer tok' });
+      expect(c.sendsProxyHeaders).toBe(false);
+    }
+  });
+
+  it('carries them on the hand-built requests too (the ebook, OPML, episode trigger)', async () => {
+    setPlatform('ios');
+    const c = client('https://away.example');
+    expect(c.ebookRequest(1, 'B/book.epub').headers).toMatchObject(PROXY);
+    const fetchMock = installFetch(() => ({ status: 200, body: {} }));
+    await c.prepareEpisodeStream(1, 'Show/ep.mp3');
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ ...PROXY, Range: 'bytes=0-0' });
+  });
+
+  it('hands them to the media layers with the token, and alone for a URL on their origin', () => {
+    setPlatform('ios');
+    const c = client('https://away.example');
+    expect(c.authHeaders()).toEqual({ ...PROXY, Authorization: 'Bearer tok' });
+    expect(c.sendsProxyHeaders).toBe(true);
+    expect(c.proxyHeadersFor(c.coverUrl(1, 'B'))).toEqual(PROXY);
+    expect(c.proxyHeadersFor(c.streamUrl(1, 'B/1.mp3'))).toEqual(PROXY);
+    expect(c.proxyHeadersFor('https://meta.audiosilo.app/cover.jpg')).toBeUndefined();
+    expect(c.proxyHeadersFor('http://away.example/api/v1/cover')).toBeUndefined();
+    // The URLs never carry them.
+    expect(c.coverUrl(1, 'B')).not.toMatch(/proxy-secret|id\.access/);
+  });
+
+  it('on the web, only same-origin with the page (cross-origin would need the server CORS)', async () => {
+    setPlatform('web');
+    setPageOrigin('https://away.example');
+    const same = installFetch(() => ({ status: 200, body: {} }));
+    await client('https://away.example').serverInfo();
+    expect(headerValue(same.mock.calls[0][1] as RequestInit, 'CF-Access-Client-Secret')).toBe(
+      'proxy-secret',
+    );
+
+    setPageOrigin('http://localhost:8081');
+    const cross = installFetch(() => ({ status: 200, body: {} }));
+    const c = client('https://away.example');
+    await c.serverInfo();
+    expect(headerValue(cross.mock.calls[0][1] as RequestInit, 'CF-Access-Client-Secret')).toBe(
+      undefined,
+    );
+    expect(c.proxyHeadersFor(c.coverUrl(1, 'B'))).toBeUndefined();
+  });
+
+  it('a client built without them sends none (the cast client, a bare probe)', async () => {
+    setPlatform('ios');
+    const fetchMock = installFetch(() => ({ status: 200, body: {} }));
+    const c = new ApiClient('https://away.example', 'cast-token');
+    await c.serverInfo();
+    expect(headerValue(fetchMock.mock.calls[0][1] as RequestInit, 'CF-Access-Client-Id')).toBe(
+      undefined,
+    );
+    expect(c.proxyHeadersFor(c.coverUrl(1, 'B'))).toBeUndefined();
+  });
+});

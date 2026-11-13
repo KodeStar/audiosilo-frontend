@@ -1411,7 +1411,10 @@ async function runOne(key: string) {
         return undefined;
       }
     };
-    const coverUri = (await extra(COVER_FILE, api.coverUrl(libraryId, path))) ?? null;
+    // The cover and the audio carry the token in the URL; a server behind an auth proxy
+    // also takes the connection's proxy headers (fe#167, never stored with the download).
+    const coverUrl = api.coverUrl(libraryId, path);
+    const coverUri = (await extra(COVER_FILE, coverUrl, api.proxyHeadersFor(coverUrl))) ?? null;
 
     let priorBytes = 0;
     let lastTick = 0;
@@ -1435,17 +1438,19 @@ async function runOne(key: string) {
         continue;
       }
       let curBytes = 0;
+      const fileUrl = api.streamUrl(libraryId, s.path, true);
       const localUri = await engine.downloadFile(
         connectionId,
         libraryId,
         path,
         fileName(i, s.path),
-        api.streamUrl(libraryId, s.path, true),
+        fileUrl,
         (bytesWritten, totalBytes) => {
           curBytes = bytesWritten;
           tick(i + (totalBytes > 0 ? bytesWritten / totalBytes : 0), priorBytes + bytesWritten);
         },
         ctrl.signal,
+        api.proxyHeadersFor(fileUrl),
       );
       priorBytes += curBytes;
       files.push({ relPath: s.path, localUri, bytes: curBytes });

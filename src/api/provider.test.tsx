@@ -153,6 +153,32 @@ describe('buildClients', () => {
     expect(repaired.get('c2')!.client).not.toBe(switched.get('c2')!.client);
   });
 
+  it('rebuilds a client whose proxy headers changed (fe#167), and keeps it for an equal set', () => {
+    const set = { origin: 'https://m', headers: [{ name: 'X-Proxy', value: 'one' }] };
+    const first = buildClients(conns, {}, new Map());
+    expect(first.get('c2')!.client.authHeaders()).toEqual({ Authorization: 'Bearer t' });
+    const added = buildClients(
+      [conns[0], { ...(conns[1] as object), proxyHeaders: set }] as never[],
+      {},
+      first,
+    );
+    expect(added.get('c2')!.client).not.toBe(first.get('c2')!.client);
+    expect(added.get('c2')!.client.authHeaders()).toEqual({
+      'X-Proxy': 'one',
+      Authorization: 'Bearer t',
+    });
+    expect(added.get('c1')!.client).toBe(first.get('c1')!.client);
+    const same = buildClients(
+      [
+        conns[0],
+        { ...(conns[1] as object), proxyHeaders: { ...set, headers: [...set.headers] } },
+      ] as never[],
+      {},
+      added,
+    );
+    expect(same.get('c2')!.client).toBe(added.get('c2')!.client);
+  });
+
   // FU-SLOWOK: every answer a connection's client gets counts for its reachability.
   it("counts each answer its client gets against that connection's server", async () => {
     const realFetch = globalThis.fetch;

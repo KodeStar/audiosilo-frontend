@@ -2312,6 +2312,39 @@
     "usingPaired": "Usando la dirección con la que te conectaste.",
     "switches": "La app cambia entre ellas por sí sola."
   },
+  "proxyHeaders": {
+    "title": "Cabeceras del proxy",
+    "body": "Para un servidor detrás de un proxy de inicio de sesión (Cloudflare Access, Authentik, Authelia y similares): cabeceras que este dispositivo envía con cada petición a una de sus direcciones, y a ningún otro sitio.",
+    "sentTo": "Se envían con cada petición a {{origin}}, y a ningún otro sitio.",
+    "toggle": "Cabeceras del proxy",
+    "connectBody": "Para un servidor detrás de un proxy de inicio de sesión: las cabeceras que pide (por ejemplo, un token de servicio de Cloudflare Access). Solo van a {{origin}} y se guardan con tu sesión en este dispositivo. Añádelas antes de continuar o de escanear el código.",
+    "connectNoAddress": "Escribe primero la dirección del servidor: las cabeceras solo van a esa dirección.",
+    "name": "Nombre de la cabecera",
+    "namePlaceholder": "CF-Access-Client-Id",
+    "value": "Valor",
+    "valueOf": "Valor de {{name}}",
+    "valueKept": "Se mantiene igual",
+    "add": "Añadir una cabecera",
+    "remove": "Quitar esta cabecera",
+    "removeNamed": "Quitar {{name}}",
+    "addHeaders": "Añadir cabeceras",
+    "edit": "Cambiar cabeceras",
+    "save": "Guardar cabeceras",
+    "saveFailed": "No se pudieron guardar las cabeceras en este dispositivo. No se cambió nada.",
+    "removeAll": "Quitar cabeceras",
+    "removeTitle": "¿Quitar las cabeceras del proxy?",
+    "removeBody": "Este dispositivo dejará de enviarlas. Si el proxy las necesita, no se podrá llegar al servidor hasta que las vuelvas a añadir.",
+    "sendTo": "Enviar a",
+    "hiddenValue": "{{name}}, valor oculto",
+    "notCarried": "Chromecast, las apps del reloj y las apps de calendario no pueden enviarlas, así que no llegan al servidor a través del proxy.",
+    "webNote": "En un navegador solo van al servidor del que viene esta página, y las portadas y el audio no las llevan. Inicia sesión en el proxy desde este navegador.",
+    "problem": {
+      "name": "Usa letras, números y guiones para el nombre.",
+      "reserved": "La app ya envía {{name}} por sí misma.",
+      "duplicate": "{{name}} ya está en la lista.",
+      "value": "Escribe un valor en una sola línea."
+    }
+  },
   "year": {
     "eyebrow": "Tu año de escucha",
     "title": "Tu {{year}}, como una historia",
@@ -2483,7 +2516,8 @@
       "codec": "Su formato de audio no se reproduce en dispositivos Cast y el servidor no puede convertirlo.",
       "no-connection": "Su servidor no tiene la sesión iniciada en este dispositivo. Vuelve a iniciar sesión para enviarlo.",
       "titleEpisode": "Este episodio no se puede enviar",
-      "episode": "Los episodios de podcast aún no se pueden enviar, así que este se queda en este dispositivo."
+      "episode": "Los episodios de podcast aún no se pueden enviar, así que este se queda en este dispositivo.",
+      "proxy": "Su servidor está detrás de un proxy de inicio de sesión, que un dispositivo Cast no puede atravesar."
     },
     "failed": {
       "title": "No se pudo empezar a enviar",

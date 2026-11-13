@@ -266,6 +266,17 @@ describe('migrateConnectionIdentity', () => {
     expect(resolveConnectionId('srvB')).toBe('srvB.7');
   });
 
+  it("moves a connection's proxy headers (fe#167) with it, leaving none under the old id", async () => {
+    await seedLegacyInstall();
+    const set = { origin: 'https://a', headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
+    await SecureStore.setItemAsync('audiosilo.proxy-headers.srvA', JSON.stringify(set));
+    await migrateConnectionIdentity(deps());
+    expect(await SecureStore.getItemAsync('audiosilo.proxy-headers.srvA')).toBeNull();
+    expect(JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srvA.3'))!)).toEqual(
+      set,
+    );
+  });
+
   it("moves Sync v2's documents: the outbox, the open spans (a list) and the sync state", async () => {
     await seedLegacyInstall();
     const span = (connectionId: string, path: string) => ({ connectionId, libraryId: 1, path });

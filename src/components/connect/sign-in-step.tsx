@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { ApiClient } from '@/api/client';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -15,6 +14,7 @@ import { hostOf } from '@/lib/pairing';
 import type { ConnectBook } from '@/lib/paths';
 import { useSession } from '@/stores/session';
 
+import { connectClient } from './connect-client';
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
@@ -83,7 +83,8 @@ export function SignInStep({
     set(v);
     if (missing === field) setMissing(null);
   };
-  const api = useMemo(() => new ApiClient(server), [server]);
+  // With the proxy headers entered for `server` on the step before (fe#167).
+  const api = useMemo(() => connectClient(server), [server]);
 
   const modes = MODE_VALUES.map((value) => ({
     value,

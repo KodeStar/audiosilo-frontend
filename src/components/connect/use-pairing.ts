@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiClient, ApiError } from '@/api/client';
+import { ApiError } from '@/api/client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
 import { connectForNewProfile } from '@/components/profiles/connect-intent';
@@ -12,6 +12,7 @@ import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 
+import { connectClient } from './connect-client';
 import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
 import { endConnect, finishConnect } from './finish-connect';
 import { sharedRefusalText } from './sign-in-error';
@@ -147,7 +148,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
     }
     // The token's exchange at `base`, with the server's name read alongside.
     const exchangeAt = (base: string) => {
-      const client = new ApiClient(base);
+      const client = connectClient(base);
       return Promise.all([
         client.exchange(scan.token, getDeviceName()),
         client.serverInfo().catch(() => null),

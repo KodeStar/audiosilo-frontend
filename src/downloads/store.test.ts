@@ -756,6 +756,7 @@ describe('a new download names each file by fileName', () => {
   async function savedNames(): Promise<string[]> {
     mockResolveClient.mockReturnValue({
       coverUrl: () => 'cover',
+      proxyHeadersFor: () => undefined,
       streamUrl: (_lib: number, p: string) => `stream:${p}`,
     } as unknown as ApiClient);
     mockEngine.downloadFile.mockImplementation(
@@ -798,6 +799,31 @@ describe('a new download names each file by fileName', () => {
   });
 });
 
+describe('a download behind an auth proxy (fe#167)', () => {
+  it("fetches the audio and the cover with the connection's proxy headers for their URLs, never kept", async () => {
+    const proxyHeadersFor = jest.fn((url: string) =>
+      url.startsWith('https://away/') ? { 'X-Proxy': 'proxy-secret' } : undefined,
+    );
+    mockResolveClient.mockReturnValue({
+      coverUrl: () => 'https://away/cover',
+      proxyHeadersFor,
+      streamUrl: (_lib: number, p: string) => `https://away/stream?path=${p}`,
+    } as unknown as ApiClient);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `live:c1:2:A/Book:${name}`,
+    );
+    useDownloads.getState().download('c1', 2, makeBook());
+    await new Promise((r) => setTimeout(r, 0));
+
+    const calls = mockEngine.downloadFile.mock.calls;
+    expect(calls.length).toBeGreaterThan(1);
+    for (const c of calls) expect(c[7]).toEqual({ 'X-Proxy': 'proxy-secret' });
+    const e = useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')];
+    expect(e?.status).toBe('downloaded');
+    expect(JSON.stringify(e)).not.toContain('proxy-secret');
+  });
+});
+
 // v2.5.1 PLAYER-01: the place a download opens at offline is its server's.
 describe("a download keeps its server's place", () => {
   const place = {
@@ -815,6 +841,7 @@ describe("a download keeps its server's place", () => {
   function clientWith(getProgress: () => Promise<unknown>) {
     const api = {
       coverUrl: () => 'cover',
+      proxyHeadersFor: () => undefined,
       streamUrl: (_lib: number, p: string) => `stream:${p}`,
       getProgress: jest.fn(getProgress),
     };
@@ -903,6 +930,7 @@ describe("a book's ebook rides along with its download (Bridge Phase 3b-2)", () 
   function api() {
     mockResolveClient.mockReturnValue({
       coverUrl: () => 'cover',
+      proxyHeadersFor: () => undefined,
       streamUrl: (_lib: number, p: string) => `stream:${p}`,
       ebookRequest: (lib: number, p: string) => ({
         url: `ebook:${lib}:${p}`,
@@ -1127,6 +1155,7 @@ describe("a book's read-along map rides along with its EPUB (Bridge Phase 3c)", 
     });
   const API = {
     coverUrl: () => 'cover',
+    proxyHeadersFor: () => undefined,
     streamUrl: (_lib: number, p: string) => `stream:${p}`,
     ebookRequest: () => ({ url: 'ebook', headers: {} }),
   } as unknown as ApiClient;
@@ -1605,6 +1634,7 @@ describe('hydrate pruning', () => {
     await useDownloads.getState().hydrate();
     mockResolveClient.mockReturnValue({
       coverUrl: () => 'cover',
+      proxyHeadersFor: () => undefined,
       streamUrl: (_lib: number, p: string) => `stream:${p}`,
     } as unknown as ApiClient);
     mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => `live:${name}`);
@@ -2104,6 +2134,7 @@ describe("refreshing a downloaded book's chapters", () => {
     it('is taken when the download finishes', async () => {
       mockResolveClient.mockReturnValue({
         coverUrl: () => 'cover',
+        proxyHeadersFor: () => undefined,
         streamUrl: (_lib: number, p: string) => `stream:${p}`,
       } as unknown as ApiClient);
       mockEngine.downloadFile.mockImplementation(
@@ -2205,6 +2236,7 @@ describe("download() waits for the launch's offline check", () => {
   function client() {
     mockResolveClient.mockReturnValue({
       coverUrl: () => 'cover',
+      proxyHeadersFor: () => undefined,
       streamUrl: (_lib: number, p: string) => `stream:${p}`,
     } as unknown as ApiClient);
     mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => `live:${name}`);
@@ -2284,6 +2316,7 @@ describe('download() per-connection routing', () => {
   function fakeApi(): ApiClient {
     return {
       coverUrl: jest.fn((lib: number, path: string) => `cover:${lib}:${path}`),
+      proxyHeadersFor: () => undefined,
       streamUrl: jest.fn((lib: number, path: string) => `stream:${lib}:${path}`),
     } as unknown as ApiClient;
   }
@@ -2364,6 +2397,7 @@ describe('podcast episodes', () => {
   const entry = () => useDownloads.getState().entries[key];
   const api = {
     coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+    proxyHeadersFor: () => undefined,
     streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
   } as unknown as ApiClient;
   const settle = async () => {
@@ -2722,6 +2756,7 @@ describe('a cancel or a failure (observed via the download error path)', () => {
   function fakeApi(): ApiClient {
     return {
       coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+      proxyHeadersFor: () => undefined,
       streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
       ebookRequest: (lib: number, path: string) => ({ url: `ebook:${lib}:${path}`, headers: {} }),
     } as unknown as ApiClient;
@@ -2870,6 +2905,7 @@ describe('onConnectionRemoved purge', () => {
 describe('failures, retry and the session decline mark', () => {
   const api = {
     coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+    proxyHeadersFor: () => undefined,
     streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
   } as unknown as ApiClient;
   const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -3000,6 +3036,7 @@ describe('failures, retry and the session decline mark', () => {
 describe('the offline companion (community metadata kept with a download)', () => {
   const api = {
     coverUrl: (lib: number, path: string) => `cover:${lib}:${path}`,
+    proxyHeadersFor: () => undefined,
     streamUrl: (lib: number, path: string) => `stream:${lib}:${path}`,
   } as unknown as ApiClient;
   const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -3235,6 +3272,7 @@ describe('download() keeps the reserve free for automatic downloads', () => {
   beforeEach(() => {
     mockResolveClient.mockReturnValue({
       coverUrl: () => 'cover',
+      proxyHeadersFor: () => undefined,
       streamUrl: () => 'stream',
     } as unknown as ApiClient);
     mockEngine.downloadFile.mockImplementation(() => new Promise(() => {}));

@@ -54,6 +54,11 @@ describe('castButtonModel', () => {
     expect(castButtonModel({ ...base, book: { codec: 'alac' } }).blocked).toBeNull();
   });
 
+  it('explains instead of casting when the address in use is behind an auth proxy (fe#167)', () => {
+    expect(castButtonModel({ ...base, proxied: true }).blocked).toBe('proxy');
+    expect(castButtonModel({ ...base, proxied: false }).blocked).toBeNull();
+  });
+
   // Bridge Phase 2d-1: a cast token never covers a podcast episode.
   it('hides it for a podcast episode, unless a session runs', () => {
     expect(castButtonModel({ ...base, episode: true }).show).toBe(false);

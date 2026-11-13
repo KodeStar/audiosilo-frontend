@@ -192,6 +192,28 @@ it('a reset server reached through its away address retires the dead identity', 
   });
 });
 
+describe('proxy headers the sign-in came through (fe#167)', () => {
+  const SET = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'proxy-secret' }] };
+  afterEach(() => useSession.setState({ pendingProxyHeaders: null }));
+
+  it('keeps the ones held for the address signed in through, in secure-store only', async () => {
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    expect(conn('srv-1')?.proxyHeaders).toEqual(SET);
+    expect(
+      JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srv-1.1'))!),
+    ).toEqual(SET);
+    expect(await AsyncStorage.getItem(CONNECTIONS_KEY)).not.toContain('proxy-secret');
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+  });
+
+  it('keeps none held for another address (a sign-in through the home address)', async () => {
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: HOME, session: session('srv-2') });
+    expect(conn('srv-2')?.proxyHeaders).toBeUndefined();
+  });
+});
+
 describe('the addresses a pairing taught (link merged with the answer, once)', () => {
   const addressesAfter = async (link?: object, answer?: object) => {
     await finishConnect({

@@ -4,8 +4,10 @@ import { useActiveAddress } from '@/api/address-route';
 import { qk, useCapability } from '@/api/hooks';
 import type { Book, ChaptersResponse } from '@/api/types';
 import { usePlayer } from '@/playback/store';
+import { useSession } from '@/stores/session';
 
 import { type CastButtonModel, castButtonModel } from './cast-button-model';
+import { behindProxy } from './cast-media';
 import { useCast } from './cast-state';
 
 /** The Cast button's state for the playing book (its connection's flags and address, its
@@ -16,6 +18,9 @@ export function useCastButton(): CastButtonModel {
   const canCast = useCapability('cast', cid);
   const canTranscode = useCapability('transcode', cid);
   const { url } = useActiveAddress(cid ?? '');
+  const proxyHeaders = useSession((s) =>
+    cid ? s.connections.find((c) => c.id === cid)?.proxyHeaders : undefined,
+  );
   const { supported, status, deviceName } = useCast();
   const queryClient = useQueryClient();
   const book = np
@@ -37,5 +42,6 @@ export function useCastButton(): CastButtonModel {
     chapters,
     status,
     deviceName,
+    proxied: behindProxy(proxyHeaders, url || null),
   });
 }

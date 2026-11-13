@@ -14,7 +14,7 @@ import { noteAnswer } from './reachability';
 /**
  * The `ApiClient` for a connection id, or null when that connection no longer
  * exists. Built fresh per call - the client is a stateless holder of
- * (address, token), so this always reflects the current token and the address in use
+ * (address, token, proxy headers), so this always reflects the current token and the address in use
  * now (home or away, `effectiveUrl`) with nothing to invalidate. An old id the identity
  * migration moved (`resolveConnectionId`) resolves to its connection too: a record that
  * still names it (an offline save, a car bookmark) must reach its server, never be dropped
@@ -34,6 +34,7 @@ export function resolveClient(connectionId: string): ApiClient | null {
     undefined,
     () => useSession.getState().markNeedsReconnect(conn.id, 'auth'),
     () => noteAnswer(conn.id),
+    conn.proxyHeaders,
   );
 }
 

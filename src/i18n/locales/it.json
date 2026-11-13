@@ -2312,6 +2312,39 @@
     "usingPaired": "Usa l'indirizzo con cui ti sei connesso.",
     "switches": "L'app passa dall'uno all'altro da sola."
   },
+  "proxyHeaders": {
+    "title": "Intestazioni del proxy",
+    "body": "Per un server dietro un proxy di accesso (Cloudflare Access, Authentik, Authelia e simili): intestazioni che questo dispositivo invia con ogni richiesta a uno dei suoi indirizzi, e da nessun'altra parte.",
+    "sentTo": "Inviate con ogni richiesta a {{origin}}, e da nessun'altra parte.",
+    "toggle": "Intestazioni del proxy",
+    "connectBody": "Per un server dietro un proxy di accesso: le intestazioni che richiede (per esempio un token di servizio di Cloudflare Access). Vanno solo a {{origin}} e restano con il tuo accesso su questo dispositivo. Aggiungile prima di continuare o di scansionare il codice.",
+    "connectNoAddress": "Inserisci prima l'indirizzo del server: le intestazioni vanno solo a quell'indirizzo.",
+    "name": "Nome dell'intestazione",
+    "namePlaceholder": "CF-Access-Client-Id",
+    "value": "Valore",
+    "valueOf": "Valore di {{name}}",
+    "valueKept": "Resta com'è",
+    "add": "Aggiungi un'intestazione",
+    "remove": "Rimuovi questa intestazione",
+    "removeNamed": "Rimuovi {{name}}",
+    "addHeaders": "Aggiungi intestazioni",
+    "edit": "Modifica intestazioni",
+    "save": "Salva intestazioni",
+    "saveFailed": "Impossibile salvare le intestazioni su questo dispositivo. Non è cambiato nulla.",
+    "removeAll": "Rimuovi intestazioni",
+    "removeTitle": "Rimuovere le intestazioni del proxy?",
+    "removeBody": "Questo dispositivo smette di inviarle. Se il proxy ne ha bisogno, il server non sarà raggiungibile finché non le aggiungi di nuovo.",
+    "sendTo": "Invia a",
+    "hiddenValue": "{{name}}, valore nascosto",
+    "notCarried": "Chromecast, le app per orologio e le app di calendario non possono inviarle, quindi non raggiungono il server attraverso il proxy.",
+    "webNote": "In un browser vanno solo al server da cui proviene questa pagina, e copertine e audio non le portano con sé. Accedi invece al proxy in questo browser.",
+    "problem": {
+      "name": "Usa lettere, cifre e trattini per il nome.",
+      "reserved": "L'app invia già {{name}} da sola.",
+      "duplicate": "{{name}} è già nell'elenco.",
+      "value": "Inserisci un valore su una sola riga."
+    }
+  },
   "year": {
     "eyebrow": "Il tuo anno di ascolto",
     "title": "Il tuo {{year}}, come una storia",
@@ -2483,7 +2516,8 @@
       "codec": "Il suo formato audio non si riproduce sui dispositivi Cast e il server non può convertirlo.",
       "no-connection": "Il suo server non ha un accesso attivo su questo dispositivo. Accedi di nuovo per trasmetterlo.",
       "titleEpisode": "Questo episodio non può essere trasmesso",
-      "episode": "Gli episodi dei podcast non si possono ancora trasmettere, quindi questo resta su questo dispositivo."
+      "episode": "Gli episodi dei podcast non si possono ancora trasmettere, quindi questo resta su questo dispositivo.",
+      "proxy": "Il suo server è dietro un proxy di accesso, che un dispositivo Cast non può superare."
     },
     "failed": {
       "title": "Impossibile avviare la trasmissione",

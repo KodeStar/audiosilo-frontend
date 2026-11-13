@@ -6,6 +6,7 @@ import { READALONG_ALIGN } from '@/lib/bridge-jobs';
 import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
 import { isDeviceOnline } from '@/lib/device-online';
 import { cleanAddresses } from '@/lib/pairing';
+import { originOf, type ProxyHeaders, proxyHeaderRecord } from '@/lib/proxy-headers';
 import { APP_VERSION } from '@/lib/version';
 import { type CheckedReadalongMap, parseReadalongMap } from '@/reader/readalong-map';
 
@@ -532,12 +533,19 @@ function toQueryString(query?: Query): string {
  * Every request also sends `X-AudioSilo-Client: AudioSilo/<version> (<platform>)` so
  * the server can tell which app owns a session - on web only when same-origin with
  * the page (see `shouldIdentify` in `src/lib/client-id.ts` for the CORS reason).
+ * A connection behind an auth proxy also sends its custom headers (`proxy`, fe#167) on
+ * every request to the origin they were entered for (`proxyHeaderRecord`), and hands them
+ * to the media layers with the token (`authHeaders`, `proxyHeadersFor`).
  */
 export class ApiClient {
   readonly baseUrl: string;
   private readonly token: string | null;
   /** Identity header for `request()`; empty when this client must not send it. */
   private readonly clientHeaders: Record<string, string>;
+  /** The connection's proxy headers for this client's address (`proxyHeaderRecord`); empty
+   * when it has none, or they belong to another origin, or the page can't send them. */
+  private readonly proxyHeaders: Record<string, string>;
+  private readonly proxyOrigin: string | null;
   private readonly timeoutMs: number;
   private readonly onAuthError?: () => void;
   private readonly onAnswer?: () => void;
@@ -574,6 +582,11 @@ export class ApiClient {
    * resolved, any status), before the answer is read: reachability counts it, so a check
    * of a slow but healthy server that timed out never marks it down while other requests
    * were answered (FU-SLOWOK).
+   *
+   * `proxy` is the connection's custom headers for an auth proxy (fe#167), or for a bare
+   * client in the connect flow the set entered for that address. They go only when this
+   * client's address is their origin (`proxyHeaderRecord`), so a client on the server's home
+   * address, an http fallback or any other address sends none.
    */
   constructor(
     baseUrl: string,
@@ -581,15 +594,19 @@ export class ApiClient {
     timeoutMs = 15000,
     onAuthError?: () => void,
     onAnswer?: () => void,
+    proxy?: ProxyHeaders | null,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
     this.timeoutMs = timeoutMs;
     this.onAuthError = onAuthError;
     this.onAnswer = onAnswer;
-    this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, webOrigin())
+    const page = webOrigin();
+    this.clientHeaders = shouldIdentify(this.baseUrl, Platform.OS, page)
       ? { [CLIENT_HEADER]: clientIdentity(APP_VERSION, Platform.OS) }
       : {};
+    this.proxyHeaders = proxyHeaderRecord(proxy, this.baseUrl, Platform.OS, page);
+    this.proxyOrigin = Object.keys(this.proxyHeaders).length ? originOf(this.baseUrl) : null;
   }
 
   /** Absolute URL for an API path (e.g. `/server`). */
@@ -597,10 +614,28 @@ export class ApiClient {
     return `${this.baseUrl}/api/v1${path}${toQueryString(query)}`;
   }
 
-  /** Authorization header for use by the playback/image layers (expo-image,
-   * the native player module) which need to attach the token to their own requests. */
+  /** The headers a request to this server carries for access: the connection's proxy
+   * headers (fe#167, when they go to this address) and the session token's
+   * `Authorization`. Every request of this client sends them, and the playback/image
+   * layers (expo-image, the native player module, the reader's EPUB download) attach them
+   * to their own requests. Never logged or stored. */
   authHeaders(): Record<string, string> {
-    return this.token ? { Authorization: `Bearer ${this.token}` } : {};
+    return this.token
+      ? { ...this.proxyHeaders, Authorization: `Bearer ${this.token}` }
+      : { ...this.proxyHeaders };
+  }
+
+  /** The proxy headers alone, for a download of `url` that carries its token in the URL
+   * (`?token=`: a book's files and cover, the car's and the widget's covers). Undefined
+   * unless this client sends some and `url` is on their origin. */
+  proxyHeadersFor(url: string): Record<string, string> | undefined {
+    if (!this.proxyOrigin || originOf(url) !== this.proxyOrigin) return undefined;
+    return { ...this.proxyHeaders };
+  }
+
+  /** Whether this client sends proxy headers (a Cast device can't: `castBlockReason`). */
+  get sendsProxyHeaders(): boolean {
+    return this.proxyOrigin !== null;
   }
 
   private request<T>(
