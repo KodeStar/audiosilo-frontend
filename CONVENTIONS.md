@@ -1097,10 +1097,12 @@ companion and reveal toast, Home's Now card and Previously on, the end credits a
 offline copy go through it. **The book page alone asks wider, `bookPageMetaEnabled`**: the
 flag and a loaded book that is not an episode, ids or not, since a newer server answers a
 book with neither from its console match (a LibriVox download, LibriVox L5) and an older one
-answers `matched:false` without asking upstream. The one page a listener opened asks; a
-surface that asks for many books, or for a book in passing, keeps the id gate (so a
+answers `matched:false` without asking upstream. The one page a listener opened asks; the
+surfaces that ask for a book in passing or for every download keep the id gate (so a
 console-matched book without ids shows its community content on its page, not offline or
-in the player). Two readers of the envelope, and each field is read through one of them, never both:
+in the player). The series page's anchor (`metadataAnchor`, an ASIN or ISBN) and Search's
+characters (`characterBooksToLoad`, the started books, capped) pick their books by their own
+rules. Two readers of the envelope, and each field is read through one of them, never both:
 `matchedMeta` (the matched half only: the series rails, the AudioSilo Meta links, the end
 credits and About's recording facts need a real community match) and `bookMetaWork` (the
 matched work or an unmatched book's generated one: About's text and every work-level field,

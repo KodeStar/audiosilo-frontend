@@ -42,10 +42,11 @@ export const LIVE_POSITION_BUCKET_S = 15;
  * or a description a Bridge generated on this server, which `/meta` serves:
  * `matched:false` with a `work`, Bridge Phases 1a and 1c). Never for a podcast episode
  * (`episode`: the community holds books, and a feed's tags can carry an ISBN-like value).
- * The predicate for every surface that reads `/meta` but the book page (the player's
- * companion and reveal toast, Home's Now card and Previously on, the end credits, the
- * offline copy): those ask for many books, or for a book in passing, so they keep to the
- * ones that can match by id. The book page asks more often (`bookPageMetaEnabled`).
+ * The player's companion and reveal toast, Home's Now card and Previously on, the end
+ * credits and the offline copy ask by it: they ask for a book in passing, or for every
+ * download, so they keep to the books that can match by id. The book page asks wider
+ * (`bookPageMetaEnabled`); the series page's anchor and Search's characters pick their
+ * books by their own rules (`metadataAnchor`, `characterBooksToLoad`).
  */
 export function metaEnabledFor(
   metadata: boolean | undefined,
