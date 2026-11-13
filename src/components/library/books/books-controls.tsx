@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -103,16 +104,20 @@ export function BooksControls({
   onSort,
   layout,
   onLayout,
+  children,
 }: {
   sort: BooksSort;
   onSort: (sort: BooksSort) => void;
   layout: BooksLayout;
   onLayout: (layout: BooksLayout) => void;
+  /** More controls after these, in the same row (the library's menu). */
+  children?: ReactNode;
 }) {
   return (
     <View className="flex-row items-center gap-2">
       <SortMenu value={sort} onChange={onSort} />
       <LayoutToggle value={layout} onChange={onLayout} />
+      {children}
     </View>
   );
 }

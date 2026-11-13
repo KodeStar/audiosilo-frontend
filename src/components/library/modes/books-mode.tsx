@@ -212,16 +212,15 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
     : t('library.books.count', { count: total, formatted: `${formatCount(total)}${more}` });
 
   const controls = (
-    <View className="flex-row items-center gap-2">
-      <BooksControls
-        sort={view.sort}
-        onSort={(sort) => setView({ sort })}
-        layout={booksLayout}
-        onLayout={setBooksLayout}
-      />
+    <BooksControls
+      sort={view.sort}
+      onSort={(sort) => setView({ sort })}
+      layout={booksLayout}
+      onLayout={setBooksLayout}
+    >
       {/* An admin's Find on LibriVox (LibriVox L6); nothing for anyone else. */}
       <LibrivoxMenu connectionId={connectionId} libraryId={libraryId} />
-    </View>
+    </BooksControls>
   );
   const gutter = pageGutter(layout);
   // The list's columns follow the body's measured width (less the gutters), not the

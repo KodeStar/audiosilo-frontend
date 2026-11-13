@@ -51,7 +51,9 @@ jest.mock('../books/book-items', () => {
     BookListHeader: () => null,
   };
 });
-jest.mock('../books/books-controls', () => ({ BooksControls: () => null }));
+jest.mock('../books/books-controls', () => ({
+  BooksControls: ({ children }: { children?: unknown }) => children ?? null,
+}));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 // The real FlashList, its ref's scrollToOffset spied on and its keys recorded: what a
