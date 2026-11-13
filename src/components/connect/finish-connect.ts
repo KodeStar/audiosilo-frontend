@@ -59,7 +59,7 @@ export function readyHref(connectionId: string) {
  * the connection's `serverUrl`, the address used when home is not an option. `book` is the
  * book the link asked to open (the admin console's "Listen in player"): the flow ends on its
  * page instead, first connection or not. `carried` is the proxy headers set (fe#167) the
- * successful exchange or sign-in went out with (`connectClientFor`), null when none.
+ * successful exchange or sign-in went out with (`connectClientFor`).
  */
 export async function finishConnect(input: {
   serverUrl: string;
@@ -69,7 +69,7 @@ export async function finishConnect(input: {
   reconnectId?: string;
   answeredAt?: string;
   book?: ConnectBook;
-  carried?: ProxyHeaders | null;
+  carried?: ProxyHeaders;
 }): Promise<string> {
   const serverId = input.session.server_id;
   // The connections first, when they never loaded (a failed session read leaves the
@@ -123,7 +123,7 @@ export async function finishConnect(input: {
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
   // A re-pair's own set first: never another connection's for the same address. A reconnect
   // to a reset server (no `existing`: the server_id is new) keeps the set its sign-in carried
-  // (`connectClient(server, _, reconnectId)`), else the old identity's own, never another
+  // (`connectClientFor(server, _, reconnectId)`), else the old identity's own, never another
   // person's: given none, `setSession` would give the new connection the first set any
   // connection to this server has.
   // Undefined: keep the connection's own (`setSession`); null: none.
@@ -137,9 +137,7 @@ export async function finishConnect(input: {
   // later request turned away. Never for a reconnect (its own or the typed set only), and
   // never over a set of its own for another address (`setSession` keeps that one).
   const borrowed =
-    input.reconnectId === undefined && !existing?.proxyHeaders
-      ? (input.carried ?? undefined)
-      : undefined;
+    input.reconnectId === undefined && !existing?.proxyHeaders ? input.carried : undefined;
   const proxyHeaders =
     connectProxyHeaders(input.serverUrl, existing?.id ?? input.reconnectId) ??
     borrowed ??

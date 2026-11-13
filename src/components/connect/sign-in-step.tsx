@@ -121,7 +121,7 @@ export function SignInStep({
           name: payload.server_name || serverName,
           reconnectId,
           book,
-          ...(carried ? { carried } : {}),
+          carried,
         });
       } else {
         const session = await api.login(username.trim(), password, getDeviceName());
@@ -131,7 +131,7 @@ export function SignInStep({
           name: serverName,
           reconnectId,
           book,
-          ...(carried ? { carried } : {}),
+          carried,
         });
       }
     } catch (e) {

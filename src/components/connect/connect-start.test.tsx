@@ -63,7 +63,10 @@ jest.mock('@/api/client', () => {
     ApiClient: function ApiClient(base: string, ...rest: unknown[]) {
       mockBases.push(base);
       mockProxies.push(rest[4] ?? null);
-      return mockApi;
+      // Sends a set whenever it is given one (connect-client.test.ts holds the origin rule).
+      return Object.assign(Object.create(mockApi), {
+        proxyHeadersFor: () => (rest[4] ? {} : undefined),
+      });
     },
   };
 });

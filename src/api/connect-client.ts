@@ -1,7 +1,4 @@
-import { Platform } from 'react-native';
-
-import { webOrigin } from '@/lib/base-url';
-import { type ProxyHeaders, proxyHeaderRecord } from '@/lib/proxy-headers';
+import type { ProxyHeaders } from '@/lib/proxy-headers';
 import { connectProxyHeaders } from '@/stores/session';
 
 import { ApiClient } from './client';
@@ -21,17 +18,16 @@ export function connectClient(base: string, timeoutMs?: number, ownId?: string):
 }
 
 /**
- * `connectClient`, with the set its requests carry (`proxy`, null when none goes to `base`):
- * what a successful exchange or sign-in went out with, for `finishConnect` to keep.
+ * `connectClient`, with the set its requests carry (`proxy`, undefined when none goes to
+ * `base`, as the client itself decides): what a successful exchange or sign-in went out
+ * with, for `finishConnect` to keep.
  */
 export function connectClientFor(
   base: string,
   timeoutMs?: number,
   ownId?: string,
-): { client: ApiClient; proxy: ProxyHeaders | null } {
+): { client: ApiClient; proxy?: ProxyHeaders } {
   const set = connectProxyHeaders(base, ownId);
   const client = new ApiClient(base, null, timeoutMs, undefined, undefined, set);
-  const sent =
-    !!set && Object.keys(proxyHeaderRecord(set, base, Platform.OS, webOrigin())).length > 0;
-  return { client, proxy: sent ? set : null };
+  return { client, proxy: set && client.proxyHeadersFor(base) ? set : undefined };
 }

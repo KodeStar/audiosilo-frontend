@@ -154,7 +154,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         client.exchange(scan.token, getDeviceName()),
         client.serverInfo().catch(() => null),
       ]);
-      return [session, info, proxy] as const;
+      return { session, info, carried: proxy };
     };
     // The exchange is done: a failure after it is this device's (storing the connection),
     // never a server that couldn't be reached.
@@ -166,13 +166,13 @@ export function useLinkPairing(startPairing = false): LinkPairing {
       // origin, and an https page can't call http. A session from any other server there
       // is not kept (reported as the base not answering).
       const {
-        answer: [session, info, carried],
+        answer: { session, info, carried },
         base: answeredAt,
       } = await withFallback(
         scan.base,
         async (base) => {
           const answer = await exchangeAt(base);
-          if (base !== scan.base && answer[0].server_id !== scan.serverId) {
+          if (base !== scan.base && answer.session.server_id !== scan.serverId) {
             throw new Error('another server answered at the home address');
           }
           return answer;
@@ -193,7 +193,7 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         name: info?.name,
         ...(answeredAt !== scan.base ? { answeredAt } : {}),
         book: scan.book,
-        ...(carried ? { carried } : {}),
+        carried,
       });
       return 'paired';
     } catch (e) {

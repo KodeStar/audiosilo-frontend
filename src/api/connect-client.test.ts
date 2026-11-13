@@ -110,10 +110,11 @@ describe('the connect flow carries proxy headers to their address only', () => {
     expect(sent['CF-Access-Client-Secret']).toBeUndefined();
   });
 
-  it('names the set its requests carry, null where none goes (finishConnect keeps it)', () => {
+  it('names the set its requests carry, none where none goes (finishConnect keeps it)', () => {
     expect(connectClientFor('https://books.example.com/').proxy).toEqual(SET);
-    expect(connectClientFor('https://other.example.com').proxy).toBeNull();
+    expect(connectClientFor('https://other.example.com').proxy).toBeUndefined();
+    expect(connectClientFor('http://books.example.com').proxy).toBeUndefined();
     useSession.setState({ pendingProxyHeaders: null });
-    expect(connectClientFor('https://books.example.com').proxy).toBeNull();
+    expect(connectClientFor('https://books.example.com').proxy).toBeUndefined();
   });
 });

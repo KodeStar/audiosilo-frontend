@@ -13,10 +13,21 @@ jest.mock('@/api/client', () => {
     ApiClient: class {
       base: string;
       token: string | null;
-      constructor(base: string, token: string | null = null) {
+      proxy: unknown;
+      constructor(
+        base: string,
+        token: string | null = null,
+        _t?: unknown,
+        _a?: unknown,
+        _o?: unknown,
+        proxy?: unknown,
+      ) {
         this.base = base;
         this.token = token;
+        this.proxy = proxy;
       }
+      // Sends a set whenever it is given one (connect-client.test.ts holds the origin rule).
+      proxyHeadersFor = () => (this.proxy ? {} : undefined);
       exchange = (...a: unknown[]) => {
         mockExchangedAt.push(this.base);
         return mockExchange(...a);
