@@ -32,6 +32,7 @@ import { IdentityCard } from './identity-card';
 import { ListeningSyncCard } from './listening-sync-card';
 import { PairDeviceCard } from './pair-device-card';
 import { PasswordCard, PasswordDialog } from './password-card';
+import { ProxyHeadersCard } from './proxy-headers-card';
 import { SignOutConfirm } from './sign-out-confirm';
 import { useApiKeysManager } from './use-api-keys-manager';
 import { usePasswordEditor } from './use-password-editor';
@@ -185,6 +186,10 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       {watchLink.supported ? <WatchCard connectionId={cid} /> : null}
 
       <AccountAddresses cid={cid} caps={caps} />
+
+      {/* Not gated on the server's flags: needed most when a proxy turns every request
+          away (fe#167). A demo account's server has no proxy in front of it. */}
+      {!demo ? <ProxyHeadersCard connectionId={cid} /> : null}
 
       {caps?.my_devices === true ? (
         <DevicesSection connectionId={cid} serverName={serverName} />

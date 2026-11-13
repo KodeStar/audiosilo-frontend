@@ -54,12 +54,15 @@ const mockApi = {
   me: jest.fn(),
 };
 const mockBases: string[] = [];
+// The proxy headers (fe#167) each bare client was built with.
+const mockProxies: unknown[] = [];
 jest.mock('@/api/client', () => {
   const actual = jest.requireActual('@/api/client');
   return {
     ...actual,
-    ApiClient: function ApiClient(base: string) {
+    ApiClient: function ApiClient(base: string, ...rest: unknown[]) {
       mockBases.push(base);
+      mockProxies.push(rest[4] ?? null);
       return mockApi;
     },
   };
@@ -92,6 +95,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
   mockBases.length = 0;
+  mockProxies.length = 0;
   mockParams = {};
   mockLayout = 'phone';
   mockCanGoBack = true;
@@ -103,6 +107,7 @@ beforeEach(async () => {
     connections: [],
     defaultConnectionId: null,
     pendingServerUrl: null,
+    pendingProxyHeaders: null,
     user: null,
   });
 });
@@ -838,4 +843,55 @@ it('shows the cover cascade beside the steps on a desktop, not on a phone', asyn
   await render(<ConnectStart />);
   expect(screen.getByTestId('cover-cascade')).toBeTruthy();
   expect(screen.getByLabelText('Step 1 of 3')).toBeTruthy();
+});
+
+describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
+  async function enterHeader(name: string, value: string) {
+    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), name);
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-value'), value);
+  }
+
+  it('asks the typed address with the headers entered for it, and the http fallback without', async () => {
+    mockApi.serverInfo
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(info());
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'books.example.com');
+    await enterHeader('CF-Access-Client-Secret', 'proxy-secret');
+    const set = {
+      origin: AWAY,
+      headers: [{ name: 'CF-Access-Client-Secret', value: 'proxy-secret' }],
+    };
+    expect(useSession.getState().pendingProxyHeaders).toEqual(set);
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(await screen.findByText('Found Hearthside')).toBeTruthy();
+    expect(mockBases).toEqual([AWAY, 'http://books.example.com']);
+    expect(mockProxies).toEqual([set, null]);
+  });
+
+  it('never shows a value, says what is wrong with a row, and drops them when closed', async () => {
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
+    await enterHeader('Authorization', 'proxy-secret');
+    expect(screen.getByTestId('proxy-headers-editor-value').props.secureTextEntry).toBe(true);
+    expect(screen.queryByText('proxy-secret')).toBeNull();
+    expect(screen.getByText('The app sends Authorization itself.')).toBeTruthy();
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+    await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), 'X-Auth');
+    expect(useSession.getState().pendingProxyHeaders?.headers).toEqual([
+      { name: 'X-Auth', value: 'proxy-secret' },
+    ]);
+    await fireEvent.press(screen.getByTestId('proxy-headers-toggle'));
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+  });
+
+  it('follows the address: headers entered before it are for the address typed', async () => {
+    await render(<ConnectStart />);
+    await enterHeader('X-Auth', 'v');
+    expect(screen.getByText(/Enter the server's address first/)).toBeTruthy();
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'other.example.com');
+    expect(useSession.getState().pendingProxyHeaders?.origin).toBe('https://other.example.com');
+  });
 });
