@@ -315,8 +315,10 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   The platform's HTTP stack follows a redirect by itself (React Native's `fetch` has no manual
   mode), so whether a request's custom headers go on to the address the redirect names (a proxy's
   own sign-in host, for a set it no longer takes) is that stack's rule, not `proxyHeaderRecord`'s.
-  Still to be checked on a device for `fetch`, expo-image, the download tasks and the native
-  players; do not claim more than "the request goes to one origin" until it is.
+  Unverified: a device check is owed for `fetch`, expo-image, the download tasks and the native
+  players (iOS and Android), and the web's `fetch`. Until it is done, claim no more than "the
+  request goes to one origin": the UI says "sent with requests to <origin>", never "and nowhere
+  else" or "they go only to" (`src/i18n/locales.test.ts` refuses those in every locale).
 - **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
   address as the listener typed it (`pendingProxyHeaders`, in memory only; never rebound when the
   flow rewrites the field, as the plain-http fallback does; taken up again by the new screen the

@@ -89,4 +89,20 @@ describe('locales', () => {
       expect([key, text]).toEqual([key, expect.not.stringMatching(/bridge|\u2014/i)]);
     }
   });
+
+  // Proxy headers (fe#167): what a redirect does with a request's headers is the platform's
+  // rule and not yet checked on a device (CONVENTIONS.md), so no string may claim more than
+  // "sent with requests to that address": never "and nowhere else" or "they go only to".
+  it.each(Object.entries(LOCALES))(
+    '%s claims no more than where proxy headers are sent',
+    (_, l) => {
+      const banned =
+        /nowhere else|go only|goes only|sonst nirgendwohin|gehen nur|ningún otro sitio|solo van|nulle part ailleurs|ne vont qu|nessun'altra parte|vanno solo|mais nenhum sítio|vão só/i;
+      expect(leaves(l.proxyHeaders).length).toBeGreaterThan(0);
+      for (const [key, text] of leaves(l.proxyHeaders)) {
+        expect([key, text]).toEqual([key, expect.not.stringMatching(banned)]);
+      }
+      expect(Object.keys(l.proxyHeaders).sort()).toEqual(Object.keys(en.proxyHeaders).sort());
+    },
+  );
 });

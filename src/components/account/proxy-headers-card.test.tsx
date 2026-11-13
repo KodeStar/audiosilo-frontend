@@ -51,7 +51,7 @@ describe('ProxyHeadersCard (fe#167)', () => {
     expect(screen.getByText('CF-Access-Client-Id')).toBeTruthy();
     expect(screen.getByText('CF-Access-Client-Secret')).toBeTruthy();
     expect(screen.getByLabelText('CF-Access-Client-Secret, value hidden')).toBeTruthy();
-    expect(screen.getByText(`Sent with every request to ${AWAY}, and nowhere else.`)).toBeTruthy();
+    expect(screen.getByText(`Sent with requests to ${AWAY}.`)).toBeTruthy();
     expect(screen.queryByText(/proxy-secret|id\.access/)).toBeNull();
   });
 

@@ -936,7 +936,7 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
   it('follows the address: headers entered before it are for the address typed', async () => {
     await render(<ConnectStart />);
     await enterHeader('X-Auth', 'v');
-    expect(screen.getByText(/Enter the server's address first/)).toBeTruthy();
+    expect(screen.getByText(/Enter the server's https address first/)).toBeTruthy();
     expect(useSession.getState().pendingProxyHeaders).toBeNull();
     await fireEvent.changeText(screen.getByLabelText('Server address'), 'other.example.com');
     expect(useSession.getState().pendingProxyHeaders?.origin).toBe('https://other.example.com');

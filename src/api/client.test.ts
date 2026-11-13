@@ -3776,8 +3776,9 @@ describe('ApiClient Add from LibriVox (LibriVox L6, admin)', () => {
 });
 
 // --- Proxy headers (fe#167) ---------------------------------------------------------
-// A connection behind an auth proxy sends its custom headers on every request to the one
-// origin they were entered for, and nowhere else; on the web only same-origin.
+// A connection behind an auth proxy sends its custom headers on every request it makes to
+// the one origin they were entered for, and on no request to another; on the web only
+// same-origin.
 
 describe('proxy headers', () => {
   const realOS = Platform.OS;
