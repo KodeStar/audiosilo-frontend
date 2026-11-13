@@ -275,6 +275,47 @@ away" card is ONE component, `AddressesCard` (`src/components/layout/addresses-c
 shows it when the server has both addresses, Account shows whichever it knows and, on native, the
 one in use (`inUse`); the web passes no `inUse` and says only what the addresses are for.
 
+**Proxy headers (fe#167): custom headers for a server behind an auth proxy** (Cloudflare Access
+service tokens, Authentik, Authelia and the like; nothing changes on the server). Rules in
+`src/lib/proxy-headers.ts`, storage in `src/lib/proxy-headers-store.ts`. They are credentials:
+- **Kept like the token.** `Connection.proxyHeaders` is `{ origin, headers }`, held in memory and
+  in secure-store under `audiosilo.proxy-headers.<connection id>` (iOS: the after-first-unlock
+  service, so CarPlay streams on a locked phone; web: localStorage, as the token). Never in the
+  AsyncStorage metadata (`persist` strips it), the query cache, a URL or a log line. `hydrate`
+  reads them beside the token and a refused read fails the hydrate as a token read does. They go
+  with the connection wherever the token and the calendar link go (sign-out, a retired identity,
+  the auth reset) and move with the identity migration (`moveProxyHeaders`).
+- **One origin.** A set names the origin (scheme, host, port) it was entered for, and
+  `proxyHeaderRecord` is the one rule: only a request to that origin carries them, so the home
+  address (which the proxy doesn't guard), a plain-http fallback, another port and anything else
+  get none; on the web only same-origin with the page (the server's CORS lists a fixed set of
+  request headers, so a custom one cross-origin would fail its preflight; changing that is a
+  server change). `ApiClient` takes the set as its sixth argument and computes the record once:
+  `request()` and every hand-built request send it, `authHeaders()` hands it with the token to
+  expo-image, the native player (AVURLAsset headers, Media3's origin-scoped `AuthHolder`) and the
+  reader's EPUB download, `proxyHeadersFor(url)` gives it alone for a download whose URL carries
+  `?token=` (a book's files and cover, the car's covers, the widget's), and `sendsProxyHeaders`
+  says whether it sends any. `buildClients` rebuilds a client whose set changed, and the provider
+  reads failed queries again (`useReadAgainOnSignIn`).
+- **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
+  address in its field (`pendingProxyHeaders`, in memory only, dropped when the screen goes or a
+  sign-in stores it). The flow's bare clients are `connectClient(base)` and `probeServerId`, both
+  through `connectProxyHeaders(url)`: the pending set for that origin, else a signed-in
+  connection's (a second person, a re-pair). `finishConnect` keeps the set for the address signed
+  in through; a re-pair without one keeps what the connection had. A pairing QR or link pairs with
+  them when its address is the field's: type the address and the headers first, then scan.
+- **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
+  server's flags, since it is needed most when the proxy refuses everything; not for demo
+  accounts), with a choice of the connection's origins (`proxyOriginChoices`). A value is never
+  shown again: a stored row's field says "Kept as it is" and keeps it unless a new one is typed.
+  Reserved names (`Authorization`, `Cookie`, `Host`, `Range`, `Content-Type`, `X-AudioSilo-Client`
+  and framing headers) and values with control characters are refused at entry and dropped at load.
+- **Not carried:** Chromecast (`castBlockReason` `proxy`, when the address in use is the set's
+  origin, on every platform: the receiver fetches by itself), the watch apps (they talk to the
+  server themselves; the pair message is unchanged), calendar apps (the `releases.ics` link), and
+  on the web cross-origin requests and `<img>`/`<audio>` (same-origin they ride the proxy's
+  browser sign-in).
+
 **Connect and onboarding** (`src/components/connect/`, routes `src/app/connect/{index,sign-in,ready,scan}.tsx`):
 every way in (pairing link or QR, invite code, password, demo) ends in `finishConnect`, which
 stores the connection with the server's name and the addresses the link (`linkAddresses`) and the
