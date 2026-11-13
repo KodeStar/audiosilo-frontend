@@ -2,6 +2,7 @@ import {
   cleanProxyHeaders,
   MAX_PROXY_HEADERS,
   originOf,
+  type ProxyHeader,
   type ProxyHeaderProblem,
   proxyHeaderProblems,
   type ProxyHeaders,
@@ -46,12 +47,14 @@ function isBlank(row: HeaderDraftRow): boolean {
   return !row.name.trim() && !effectiveValue(row).trim();
 }
 
+/** The headers the rows make: blank rows dropped, each with the value it would be kept with. */
+function filledHeaders(rows: readonly HeaderDraftRow[]): ProxyHeader[] {
+  return rows.filter((r) => !isBlank(r)).map((r) => ({ name: r.name, value: effectiveValue(r) }));
+}
+
 /** Each row's problem (null: fine or blank). */
 export function draftProblems(rows: readonly HeaderDraftRow[]): (ProxyHeaderProblem | null)[] {
-  const filled = rows.filter((r) => !isBlank(r));
-  const problems = proxyHeaderProblems(
-    filled.map((r) => ({ name: r.name, value: effectiveValue(r) })),
-  );
+  const problems = proxyHeaderProblems(filledHeaders(rows));
   let i = 0;
   return rows.map((r) => (isBlank(r) ? null : problems[i++]));
 }
@@ -70,10 +73,7 @@ export function draftToSet(
   origin: string | null,
   rows: readonly HeaderDraftRow[],
 ): ProxyHeaders | null {
-  return cleanProxyHeaders(
-    origin,
-    rows.filter((r) => !isBlank(r)).map((r) => ({ name: r.name, value: effectiveValue(r) })),
-  );
+  return cleanProxyHeaders(origin, filledHeaders(rows));
 }
 
 /**

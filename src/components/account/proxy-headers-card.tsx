@@ -13,10 +13,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { hostOf } from '@/lib/pairing';
-import { maskProxyValue } from '@/lib/proxy-headers';
+import { MASKED_PROXY_VALUE } from '@/lib/proxy-headers';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/stores/session';
 
@@ -87,7 +88,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
         </Text>
         <Text variant="muted">
           {set && !editing
-            ? t('proxyHeaders.sentTo', { host: hostOf(set.origin), origin: set.origin })
+            ? t('proxyHeaders.sentTo', { origin: set.origin })
             : t('proxyHeaders.body')}
         </Text>
       </View>
@@ -136,7 +137,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
                   {h.name}
                 </Text>
                 <Text variant="mono" aria-hidden>
-                  {maskProxyValue(h.value)}
+                  {MASKED_PROXY_VALUE}
                 </Text>
               </View>
             ))}
@@ -169,11 +170,7 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
         />
       )}
 
-      {error ? (
-        <Text variant="caption" className="text-destructive" role="alert">
-          {error}
-        </Text>
-      ) : null}
+      <FormError error={error} />
       <Text variant="caption">
         {Platform.OS === 'web' ? t('proxyHeaders.webNote') : t('proxyHeaders.notCarried')}
       </Text>

@@ -1,3 +1,4 @@
+import { CLIENT_HEADER } from '@/lib/client-id';
 import { sameOrigin } from '@/lib/same-origin';
 
 /**
@@ -42,7 +43,7 @@ const RESERVED = new Set([
   'cookie',
   'connection',
   'transfer-encoding',
-  'x-audiosilo-client',
+  CLIENT_HEADER.toLowerCase(),
 ]);
 
 /** An HTTP header name (RFC 9110 `token`). */
@@ -136,10 +137,9 @@ export function proxyHeaderRecord(
   return Object.fromEntries(set.headers.map((h) => [h.name, h.value]));
 }
 
-/** A value as the screen shows it: never the value itself. */
-export function maskProxyValue(value: string): string {
-  return value ? '•'.repeat(8) : '';
-}
+/** What the screen shows in place of a value: the same dots for every one, so a stored
+ * value (or its length) never reaches a component. */
+export const MASKED_PROXY_VALUE = '•'.repeat(8);
 
 /** Two sets carry the same headers to the same origin. */
 export function sameProxyHeaders(

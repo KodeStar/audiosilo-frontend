@@ -1,6 +1,5 @@
 import {
   cleanProxyHeaders,
-  maskProxyValue,
   MAX_PROXY_HEADER_VALUE,
   MAX_PROXY_HEADERS,
   originOf,
@@ -131,12 +130,6 @@ describe('helpers', () => {
     expect(originOf('https://Books.Example.com/web')).toBe('https://books.example.com');
     expect(originOf('audiosilo://connect')).toBeNull();
     expect(originOf('')).toBeNull();
-  });
-
-  it('maskProxyValue never shows the value', () => {
-    expect(maskProxyValue('proxy-secret')).not.toContain('secret');
-    expect(maskProxyValue('proxy-secret')).toHaveLength(8);
-    expect(maskProxyValue('')).toBe('');
   });
 
   it('sameProxyHeaders compares origin, names and values in order', () => {
