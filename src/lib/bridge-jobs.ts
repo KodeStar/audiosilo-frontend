@@ -115,6 +115,31 @@ export function bridgePollInterval(
   return interval;
 }
 
+/** The Bridge job kind that downloads a LibriVox recording into a books library (LibriVox
+ * L6; its feature `librivox`). Queued through `POST /admin/librivox/fetch`, never `POST
+ * /admin/bridge/jobs`; about no book (`path` null), so it is followed by its id. */
+export const LIBRIVOX_FETCH = 'librivox.fetch';
+
+/** How often a followed `librivox.fetch` is read again while it is open: a book's sections
+ * download in minutes, one after another. */
+export const LIBRIVOX_POLL_MS = 5_000;
+
+/**
+ * How often a `librivox.fetch` followed by its id is read again while `active` (its page
+ * focused, the app in the foreground): every `LIBRIVOX_POLL_MS` while it is queued, claimed
+ * or running, every `BRIDGE_IDLE_POLL_MS` while it is parked (someone has to look, or its
+ * retry time has to come), never once it ended or is gone (`gone`: a 404, deleted with its
+ * library), nor before its first answer.
+ */
+export function librivoxJobPollInterval(
+  job: Pick<BridgeJob, 'state'> | undefined,
+  gone: boolean,
+  active: boolean,
+): number | false {
+  if (!active || gone || !job || !isOpenJob(job)) return false;
+  return job.state === 'needs_attention' ? BRIDGE_IDLE_POLL_MS : LIBRIVOX_POLL_MS;
+}
+
 /**
  * How often the confirmation's estimate is read again while it is open and `active` (the
  * app in the foreground): while its `open_job` is a share holding Generate back (an open

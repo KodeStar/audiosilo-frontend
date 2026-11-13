@@ -22,6 +22,7 @@ import {
   bridgePollInterval,
   estimatePollInterval,
   latestDone,
+  librivoxJobPollInterval,
   midRunCheckpoint,
   READALONG_ALIGN,
   SIDECARS_GENERATE,
@@ -93,6 +94,8 @@ import type {
   BridgeEstimate,
   BridgeJob,
   BridgeJobRequest,
+  LibrivoxSearchResult,
+  LibrivoxWork,
   ReadalongEstimate,
   Capabilities,
   ChaptersResponse,
@@ -245,6 +248,15 @@ export const qk = {
    * (its `generated_at`). */
   readalongLocal: (cid: string, lib: number, path: string, generatedAt: string) =>
     ['readalongLocal', cid, lib, path, generatedAt] as const,
+  /** One Bridge job by its id: how a job about no book (a `librivox.fetch`) is followed. */
+  bridgeJob: (cid: string, id: number) => ['bridgeJob', cid, id] as const,
+  // Add from LibriVox (LibriVox L6; admin only).
+  /** A LibriVox search, by its trimmed query. */
+  librivoxSearch: (cid: string, q: string) => ['librivoxSearch', cid, q] as const,
+  /** Every LibriVox work of a connection (a prefix: an Add or a job's end asks them again). */
+  librivoxWorks: (cid: string) => ['librivoxWork', cid] as const,
+  /** One work's LibriVox recordings, under `librivoxWorks`. */
+  librivoxWork: (cid: string, id: string) => ['librivoxWork', cid, id] as const,
   // Podcasts (Bridge Phase 2d-1): reads are core, Follow is capability `podcasts`, the
   // fetch status `podcast_fetch`.
   /** A podcast library's shows. */
@@ -2715,6 +2727,102 @@ export function useCancelBridgeJob(connectionId?: string) {
       }
     },
   );
+}
+
+// --- Add from LibriVox (LibriVox L6; admin only) --------------------------------------
+// The routes answer only an admin, and only a server whose Bridge runs `librivox.fetch`
+// (its `bridge.features`, which `/server` sends while the Bridge is online): the reads ask
+// only while the caller lets them (`allowed`: the page's gate, `mayAddLibrivox`), from a
+// server with `metadata` on (they answer 404 `metadata_off` without it); the job is a
+// Bridge read (`bridge`).
+
+/** The works with a LibriVox recording matching `q` (trimmed; nothing asked for a blank
+ * one), best first. Catalogue data: a minute old is fresh enough for a search asked again. */
+export function useLibrivoxSearch(q: string, allowed: boolean, connectionId?: string) {
+  const query = q.trim();
+  return useCapabilityQuery<LibrivoxSearchResult>(
+    'metadata',
+    (cid) => qk.librivoxSearch(cid, query),
+    (api, signal) => api.librivoxSearch(query, {}, signal),
+    connectionId,
+    { ready: allowed && query !== '', staleTime: 60_000, retry: false },
+  );
+}
+
+/** One work's LibriVox recordings: where each is on this server already and its open
+ * fetch. Not polled: each recording follows its own job (`useLibrivoxJob`), and an Add or a
+ * job's end asks the work again. */
+export function useLibrivoxWork(id: string | null, allowed: boolean, connectionId?: string) {
+  return useCapabilityQuery<LibrivoxWork>(
+    'metadata',
+    (cid) => qk.librivoxWork(cid, id ?? ''),
+    (api, signal) => api.librivoxWork(id ?? '', signal),
+    connectionId,
+    { ready: allowed && !!id, retry: false },
+  );
+}
+
+/** A Bridge job by its id (a `librivox.fetch` the page queued or saw open), read while
+ * `allowed`, polled while it is open and `active` (`librivoxJobPollInterval`) with the app
+ * in the foreground, and no more once it is gone (a 404: the last answer would read as open
+ * for ever). */
+export function useLibrivoxJob(
+  id: number | undefined,
+  opts: { allowed: boolean; active: boolean },
+  connectionId?: string,
+) {
+  return useCapabilityQuery<BridgeJob>(
+    'bridge',
+    (cid) => qk.bridgeJob(cid, id ?? 0),
+    (api, signal) => api.bridgeJob(id ?? 0, signal),
+    connectionId,
+    {
+      ready: opts.allowed && id !== undefined,
+      retry: false,
+      refetchInterval: (query) =>
+        librivoxJobPollInterval(
+          query.state.data,
+          query.state.error instanceof ApiError && query.state.error.status === 404,
+          opts.active && AppState.currentState === 'active',
+        ),
+    },
+  );
+}
+
+/** Add a LibriVox project to a books library (`POST /admin/librivox/fetch`): the answer's
+ * job is seeded as its own read (`useLibrivoxJob`), and the connection's works are asked
+ * again whatever the answer (an `in_library` refusal then shows where the recording is). */
+export function useAddLibrivox(connectionId?: string) {
+  return useCapabilityMutation(
+    'metadata',
+    connectionId,
+    (api, vars: { libraryId: number; librivoxId: number }) =>
+      api.librivoxFetch(vars.libraryId, vars.librivoxId),
+    ({ qc, cid }, answer) => qc.setQueryData(qk.bridgeJob(cid, answer.job.id), answer.job),
+    ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.librivoxWorks(cid) }),
+  );
+}
+
+/** Cancel a followed job (`useLibrivoxJob`): its answer is the job's read; a refusal (it
+ * already ended: a 409) reads it again. */
+export function useCancelLibrivoxJob(connectionId?: string) {
+  return useCapabilityMutation(
+    'bridge',
+    connectionId,
+    (api, id: number) => api.cancelBridgeJob(id),
+    ({ qc, cid }, answer) => qc.setQueryData(qk.bridgeJob(cid, answer.id), answer),
+    ({ qc, cid }, id, error) => {
+      if (error) void qc.invalidateQueries({ queryKey: qk.bridgeJob(cid, id) });
+    },
+  );
+}
+
+/** After a `librivox.fetch` placed a book in `libraryId`: the library's lists (its books,
+ * people and series, which a mounted Library under the page shows) are read again. */
+export function invalidateLibraryLists(qc: QueryClient, cid: string, libraryId: number) {
+  for (const kind of ['libraryBooks', 'authors', 'narrators', 'seriesList']) {
+    void qc.invalidateQueries({ queryKey: [kind, cid, libraryId] });
+  }
 }
 
 // --- Podcasts (Bridge Phase 2d-1) ----------------------------------------------------
