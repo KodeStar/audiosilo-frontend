@@ -479,11 +479,10 @@ export const useSession = create<SessionState>()((set, get) => ({
               getSecure(tokenKey(m.id)),
               hasProxyHeaders ? readProxyHeaders(m.id) : null,
             ]);
-            if (!token) {
-              // Dropped with its token gone: its headers must not stay behind in the store.
-              if (hasProxyHeaders) await forgetProxyHeaders(m.id);
-              return null;
-            }
+            // A set the rules drop at load (one for an http origin, a damaged item), or the
+            // set of a connection dropped with its token gone, must not stay in the store.
+            if (hasProxyHeaders && (!token || !proxyHeaders)) await forgetProxyHeaders(m.id);
+            if (!token) return null;
             return {
               ...m,
               serverId: serverIdOf(m),

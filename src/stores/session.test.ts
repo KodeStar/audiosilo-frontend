@@ -1373,6 +1373,23 @@ describe('proxy headers (fe#167) are kept like the token', () => {
     expect(connectProxyHeaders('https://a.example', member)).toBe(typed);
   });
 
+  it('a stored set the rules drop at load (an http origin) is deleted from the store', async () => {
+    const a = await signIn('a', set);
+    const b = await signIn('b', { ...set, origin: 'https://b.example' });
+    // As if written for an http origin (refused at entry today): it must not linger.
+    await SecureStore.setItemAsync(
+      `audiosilo.proxy-headers.${a}`,
+      JSON.stringify({ ...set, origin: 'http://192.168.1.5:8080' }),
+    );
+    reset();
+    await useSession.getState().hydrate();
+    const conns = useSession.getState().connections;
+    expect(conns.map((c) => c.id).sort()).toEqual([a, b].sort());
+    expect(conns.find((c) => c.id === a)?.proxyHeaders).toBeUndefined();
+    expect(await stored(a)).toBeNull();
+    expect(await stored(b)).not.toBeNull();
+  });
+
   it('a connection dropped at launch for want of its token leaves no headers behind', async () => {
     const a = await signIn('a', set);
     const b = await signIn('b', { ...set, origin: 'https://b.example' });
