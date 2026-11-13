@@ -180,10 +180,12 @@ export async function serverHasMetadata(connectionId: string): Promise<boolean> 
   }
 }
 
-/** Whether a downloaded book can have metadata at all (`metaEnabledFor`, the rule the
- * readers ask by: an ASIN or ISBN, which the server matches by, or content generated on
- * its server): the readers never ask for one without. The download's book
- * can be the list shape, so the full item is asked first. */
+/** Whether a downloaded book's metadata is kept (`metaEnabledFor`, the rule every reader
+ * but the book page asks by: an ASIN or ISBN, which the server matches by, or content
+ * generated on its server). The book page also asks for a book with neither (a console
+ * match, `bookPageMetaEnabled`), but this runs for every download, so it keeps to the
+ * books that can match by id: offline, such a book's page reads as unmatched. The
+ * download's book can be the list shape, so the full item is asked first. */
 export function canMatch(entry: DownloadEntry): boolean {
   const { connectionId, libraryId, path } = entry;
   const item = queryClient.getQueryData<Book>(qk.item(connectionId, libraryId, path));

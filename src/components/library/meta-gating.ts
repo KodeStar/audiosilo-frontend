@@ -42,15 +42,34 @@ export const LIVE_POSITION_BUCKET_S = 15;
  * or a description a Bridge generated on this server, which `/meta` serves:
  * `matched:false` with a `work`, Bridge Phases 1a and 1c). Never for a podcast episode
  * (`episode`: the community holds books, and a feed's tags can carry an ISBN-like value).
- * The one predicate for every surface that reads `/meta` (the book page, the player's
+ * The predicate for every surface that reads `/meta` but the book page (the player's
  * companion and reveal toast, Home's Now card and Previously on, the end credits, the
- * offline copy).
+ * offline copy): those ask for many books, or for a book in passing, so they keep to the
+ * ones that can match by id. The book page asks more often (`bookPageMetaEnabled`).
  */
 export function metaEnabledFor(
   metadata: boolean | undefined,
   book: Pick<Book, 'asin' | 'isbn' | 'generated' | 'episode'> | undefined,
 ): boolean {
   return metadata === true && !book?.episode && !!(book?.asin || book?.isbn || book?.generated);
+}
+
+/**
+ * Whether the book page asks for its book's `/meta`: whenever its server advertises
+ * `metadata` and the book is loaded and not a podcast episode, ids or not. A server
+ * answers a book with no ASIN or ISBN from the match an admin saved in the console (a
+ * LibriVox download rarely carries either, LibriVox L5), and an older server answers
+ * `matched:false` for it without asking upstream, so the one request is cheap either way
+ * and an unmatched answer renders as the page did without it. Only the one page a
+ * listener opened asks like this; every other surface keeps `metaEnabledFor`. Never
+ * before the book is in: until then the route's path may be a file inside the book, and
+ * an episode is not yet known to be one.
+ */
+export function bookPageMetaEnabled(
+  metadata: boolean | undefined,
+  book: Pick<Book, 'episode'> | undefined,
+): boolean {
+  return metadata === true && !!book && !book.episode;
 }
 
 /**

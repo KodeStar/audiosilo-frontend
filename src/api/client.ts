@@ -966,7 +966,9 @@ export class ApiClient {
    * this when the server advertises the `metadata` capability. Returns
    * `{ matched: false }` when the book has no ids or no upstream match, with a `work`
    * when the book has characters, recaps or a description generated on this server
-   * (then it is asked for a book with no ids too, `metaEnabledFor`); throws an
+   * (then it is asked for a book with no ids too, `metaEnabledFor`). A newer server
+   * answers a book with no ids from the match saved in its console, so the book page
+   * asks for any book (`bookPageMetaEnabled`). Throws an
    * `ApiError` (502) when the meta service is unreachable and nothing was generated, so
    * the caller can render nothing rather than block the page.
    *
