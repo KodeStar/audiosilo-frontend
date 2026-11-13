@@ -71,4 +71,26 @@ describe('the connect flow carries proxy headers to their address only', () => {
     expect(sentSecret(fetchMock, 0)).toBe('proxy-secret');
     expect(sentSecret(fetchMock, 1)).toBeUndefined();
   });
+
+  it("signs a reconnect in with its own set only, never another person's", async () => {
+    const mine = { origin: SET.origin, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
+    const base = { serverUrl: SET.origin, serverId: 'srv', token: 't' };
+    useSession.setState({
+      pendingProxyHeaders: null,
+      connections: [
+        { ...base, id: 'srv.1', user: { id: 1 }, proxyHeaders: SET },
+        { ...base, id: 'srv.2', user: { id: 2 } },
+        { ...base, id: 'srv.3', user: { id: 3 }, proxyHeaders: mine },
+      ] as never,
+    });
+    const fetchMock = installFetch();
+    // Denied: srv.2 has none of its own; srv.1's set for the same address stays with srv.1.
+    await connectClient(SET.origin, undefined, 'srv.2').login('kid', 'pw', 'Phone');
+    expect(sentSecret(fetchMock, 0)).toBeUndefined();
+    // Allowed: srv.3's own.
+    await connectClient(SET.origin, undefined, 'srv.3').login('kid', 'pw', 'Phone');
+    const sent = (fetchMock.mock.calls[1][1] as { headers: Record<string, string> }).headers;
+    expect(sent['X-Mine']).toBe('my-secret');
+    expect(sent['CF-Access-Client-Secret']).toBeUndefined();
+  });
 });

@@ -83,8 +83,9 @@ export function SignInStep({
     set(v);
     if (missing === field) setMissing(null);
   };
-  // With the proxy headers entered for `server` on the step before (fe#167).
-  const api = useMemo(() => connectClient(server), [server]);
+  // With the proxy headers entered for `server` on the step before (fe#167); a reconnect
+  // carries only those or its own connection's, never another person's.
+  const api = useMemo(() => connectClient(server, undefined, reconnectId), [server, reconnectId]);
 
   const modes = MODE_VALUES.map((value) => ({
     value,

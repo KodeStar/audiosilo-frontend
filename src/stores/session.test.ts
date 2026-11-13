@@ -1312,8 +1312,33 @@ describe('proxy headers (fe#167) are kept like the token', () => {
     expect(connectProxyHeaders('https://a.example')).toEqual(set);
     expect(connectProxyHeaders('https://a.example', owner)).toEqual(set);
     expect(connectProxyHeaders('https://a.example', member)).toEqual(mine);
-    // The set the connect screen holds still comes first, and an unknown id changes nothing.
-    expect(connectProxyHeaders('https://a.example', 'gone.9')).toEqual(set);
+    // An id this device no longer has takes no one's.
+    expect(connectProxyHeaders('https://a.example', 'gone.9')).toBeNull();
+    // The set the connect screen holds still comes first.
+    const typed = { origin: set.origin, headers: [{ name: 'X-Typed', value: 'typed' }] };
+    s.setPendingProxyHeaders(typed);
+    expect(connectProxyHeaders('https://a.example', member)).toBe(typed);
+  });
+
+  it("a reconnect with no set of its own never carries another person's (fe#167)", async () => {
+    const s = useSession.getState();
+    await signIn('a', set); // the owner, with headers for a.example
+    const member = await s.setSession(
+      {
+        serverUrl: 'https://a.example',
+        serverId: 'srv-a',
+        token: 't2',
+        user: { ...mkUser('kid'), id: 2 },
+        proxyHeaders: null,
+      },
+      { makeDefault: false },
+    );
+    expect(useSession.getState().connections.find((c) => c.id === member)?.proxyHeaders).toBe(
+      undefined,
+    );
+    // Denied: the owner's set is for the same address, but not the member's.
+    expect(connectProxyHeaders('https://a.example', member)).toBeNull();
+    // Allowed: the set typed for that address on the connect screen.
     const typed = { origin: set.origin, headers: [{ name: 'X-Typed', value: 'typed' }] };
     s.setPendingProxyHeaders(typed);
     expect(connectProxyHeaders('https://a.example', member)).toBe(typed);

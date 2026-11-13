@@ -760,22 +760,24 @@ export function useConnectionName(connectionId: string | undefined): string {
  * The proxy headers a request to `url` made outside a signed-in connection's client should
  * carry (the connect flow's bare clients, the home-address probe): the ones the connect
  * screen holds for that origin, else a signed-in connection's for that origin (a second
- * person on the same server, a re-pair, a reconnect). Null when there are none for it. The
- * client still sends them only to their own origin (`proxyHeaderRecord`).
+ * person on the same server). Null when there are none for it. The client still sends them
+ * only to their own origin (`proxyHeaderRecord`).
  *
- * `ownId` names the connection the sign-in is for (a re-pair, asking what to keep with it):
- * its own set for that origin comes before another connection's, so two people who each
- * keep their own headers for one address never take each other's. A set of its own for
- * ANOTHER origin answers null (a re-pair through the home address, or a second public
- * one): `setSession` then keeps it, where another connection's set for `url` would
- * replace it and write over it in secure-store.
+ * `ownId` names the connection the sign-in is for (a reconnect or a re-pair): then only the
+ * set typed for that origin or the connection's OWN set for it, never another connection's,
+ * so a reconnect's sign-in never carries another person's credentials and two people who
+ * each keep their own headers for one address never take each other's. Its own set for
+ * ANOTHER origin (or none) answers null (a re-pair through the home address, or a second
+ * public one): `setSession` then keeps what the connection had.
  */
 export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders | null {
   const origin = originOf(url);
   if (!origin) return null;
   const { pendingProxyHeaders, connections } = useSession.getState();
   if (pendingProxyHeaders?.origin === origin) return pendingProxyHeaders;
-  const own = ownId ? connections.find((c) => c.id === ownId)?.proxyHeaders : undefined;
-  if (own) return own.origin === origin ? own : null;
+  if (ownId !== undefined) {
+    const own = connections.find((c) => c.id === ownId)?.proxyHeaders;
+    return own?.origin === origin ? own : null;
+  }
   return connections.find((c) => c.proxyHeaders?.origin === origin)?.proxyHeaders ?? null;
 }

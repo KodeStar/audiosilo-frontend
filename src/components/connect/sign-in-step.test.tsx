@@ -28,10 +28,13 @@ jest.mock('@/lib/base-url', () => ({
 
 const mockApi = { redeemCode: jest.fn(), exchange: jest.fn(), login: jest.fn() };
 const mockBases: string[] = [];
+// The proxy headers (fe#167) each client was built with (its sixth argument).
+const mockProxies: unknown[] = [];
 jest.mock('@/api/client', () => ({
   ...jest.requireActual('@/api/client'),
-  ApiClient: function ApiClient(base: string) {
+  ApiClient: function ApiClient(base: string, ...rest: unknown[]) {
     mockBases.push(base);
+    mockProxies.push(rest[4] ?? null);
     return mockApi;
   },
 }));
@@ -54,6 +57,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
   mockBases.length = 0;
+  mockProxies.length = 0;
   useSession.setState({
     status: 'unauthenticated',
     connections: [],
@@ -241,6 +245,26 @@ it('a reconnect away from home: "At home and away" up front, and the paired addr
   // Not the first connection: straight back to the app.
   await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith('/'));
   expect(conn('srv-1')).toMatchObject({ serverUrl: HOME, token: 'fresh' });
+});
+
+it("a reconnect signs in with its own proxy headers only, never another person's (fe#167)", async () => {
+  const theirs = { origin: AWAY, headers: [{ name: 'X-Theirs', value: 'their-secret' }] };
+  const mine = { origin: AWAY, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
+  const s = useSession.getState();
+  await s.setSession({ serverUrl: AWAY, serverId: 'srv-1', token: 't', user, proxyHeaders: null });
+  const other = { ...user, id: 2, username: 'sam' };
+  await s.setSession(
+    { serverUrl: AWAY, serverId: 'srv-1', token: 't2', user: other, proxyHeaders: theirs },
+    { makeDefault: false },
+  );
+  // Denied: srv-1.1 has none; sam's set for the same address stays with sam.
+  const view = await render(<SignInStep server={AWAY} reconnectId="srv-1.1" />);
+  expect(mockProxies).toEqual([null]);
+  view.unmount();
+  // Allowed: its own set, once it has one.
+  await s.setProxyHeaders('srv-1.1', mine);
+  await render(<SignInStep server={AWAY} reconnectId="srv-1.1" />);
+  expect(mockProxies[1]).toEqual(mine);
 });
 
 it('no "At home and away" card for a new server before anything is redeemed', async () => {

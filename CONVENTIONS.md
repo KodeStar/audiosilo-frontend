@@ -318,11 +318,11 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The
   flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
   (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a
-  signed-in connection's (a second person, a re-pair). `finishConnect` keeps the set for the
-  address signed in through, a re-pair's own set before another connection's for that address
-  (`connectProxyHeaders(url, ownId)`); a re-pair without one keeps what the connection had, and
-  so does one whose own set is for another address (another connection's set for the address
-  signed in through never replaces it). A
+  signed-in connection's (a second person on the same server). With `ownId` (a reconnect's
+  sign-in, `SignInStep`'s `reconnectId`, and what `finishConnect` keeps for a re-pair) it is
+  only the pending set or that connection's OWN set for the address, never another
+  connection's: a reconnect never signs in with another person's credentials. A re-pair without
+  one keeps what the connection had, and so does one whose own set is for another address. A
   pairing QR or link pairs with them when its address is the field's: type the address and the
   headers first, then scan.
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
