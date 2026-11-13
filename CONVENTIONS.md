@@ -304,8 +304,8 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 - **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
   address as the listener typed it (`pendingProxyHeaders`, in memory only; never rebound when the
   flow rewrites the field, as the plain-http fallback does; taken up again by the new screen the
-  scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The flow's bare clients are `connectClient(base)` and `probeServerId`, both
-  through `connectProxyHeaders(url)`: the pending set for that origin, else a signed-in
+  scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
+  (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a signed-in
   connection's (a second person, a re-pair). `finishConnect` keeps the set for the address signed
   in through; a re-pair without one keeps what the connection had. A pairing QR or link pairs with
   them when its address is the field's: type the address and the headers first, then scan.

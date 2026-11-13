@@ -1,9 +1,9 @@
 import { Platform } from 'react-native';
 
-import { probeServerId } from '@/api/server-id-probe';
 import { useSession } from '@/stores/session';
 
 import { connectClient } from './connect-client';
+import { probeServerId } from './server-id-probe';
 
 // The connect flow's bare clients (fe#167): the proxy headers entered on the connect screen
 // go to the address they were entered for, and to nothing else (an http fallback, a home

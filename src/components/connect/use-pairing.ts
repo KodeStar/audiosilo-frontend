@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
 import { ApiError } from '@/api/client';
+import { connectClient } from '@/api/connect-client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
 import { connectForNewProfile } from '@/components/profiles/connect-intent';
@@ -12,7 +13,6 @@ import type { PairingScan } from '@/lib/pairing';
 import { useLatest } from '@/lib/use-latest';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 
-import { connectClient } from './connect-client';
 import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
 import { endConnect, finishConnect } from './finish-connect';
 import { sharedRefusalText } from './sign-in-error';

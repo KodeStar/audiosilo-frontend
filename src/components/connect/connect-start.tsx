@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
+import { connectClient } from '@/api/connect-client';
 import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
@@ -35,7 +36,6 @@ import { sameOrigin } from '@/lib/same-origin';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
-import { connectClient } from './connect-client';
 import { BrandLockup, ConnectFrame, ConnectInput, ConnectReveal, StepDots } from './connect-frame';
 import {
   httpFallback,
