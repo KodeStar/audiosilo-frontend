@@ -633,11 +633,6 @@ export class ApiClient {
     return { ...this.proxyHeaders };
   }
 
-  /** Whether this client sends proxy headers (a Cast device can't: `castBlockReason`). */
-  get sendsProxyHeaders(): boolean {
-    return this.proxyOrigin !== null;
-  }
-
   private request<T>(
     method: string,
     path: string,

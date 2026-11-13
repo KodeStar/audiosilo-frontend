@@ -3838,7 +3838,6 @@ describe('proxy headers', () => {
       const init = fetchMock.mock.calls[0][1] as RequestInit;
       expect(headerValue(init, 'CF-Access-Client-Id')).toBeUndefined();
       expect(c.authHeaders()).toEqual({ Authorization: 'Bearer tok' });
-      expect(c.sendsProxyHeaders).toBe(false);
     }
   });
 
@@ -3855,7 +3854,6 @@ describe('proxy headers', () => {
     setPlatform('ios');
     const c = client('https://away.example');
     expect(c.authHeaders()).toEqual({ ...PROXY, Authorization: 'Bearer tok' });
-    expect(c.sendsProxyHeaders).toBe(true);
     expect(c.proxyHeadersFor(c.coverUrl(1, 'B'))).toEqual(PROXY);
     expect(c.proxyHeadersFor(c.streamUrl(1, 'B/1.mp3'))).toEqual(PROXY);
     expect(c.proxyHeadersFor('https://meta.audiosilo.app/cover.jpg')).toBeUndefined();

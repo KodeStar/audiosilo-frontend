@@ -297,10 +297,10 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   server change). `ApiClient` takes the set as its sixth argument and computes the record once:
   `request()` and every hand-built request send it, `authHeaders()` hands it with the token to
   expo-image, the native player (AVURLAsset headers, Media3's origin-scoped `AuthHolder`) and the
-  reader's EPUB download, `proxyHeadersFor(url)` gives it alone for a download whose URL carries
-  `?token=` (a book's files and cover, the car's covers, the widget's), and `sendsProxyHeaders`
-  says whether it sends any. `buildClients` rebuilds a client whose set changed, and the provider
-  reads failed queries again (`useReadAgainOnSignIn`).
+  reader's EPUB download, and `proxyHeadersFor(url)` gives it alone for a download whose URL
+  carries `?token=` (a book's files and cover, the car's covers, the widget's). `buildClients`
+  rebuilds a client whose set changed, and the provider reads failed queries again
+  (`useReadAgainOnSignIn`).
 - **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
   address as the listener typed it (`pendingProxyHeaders`, in memory only; never rebound when the
   flow rewrites the field, as the plain-http fallback does; taken up again by the new screen the
