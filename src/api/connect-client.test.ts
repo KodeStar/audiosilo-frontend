@@ -72,6 +72,22 @@ describe('the connect flow carries proxy headers to their address only', () => {
     expect(sentSecret(fetchMock, 1)).toBeUndefined();
   });
 
+  it('never sends a set over plain http: the home-address probe asks with none', async () => {
+    const HOME = 'http://192.168.1.5:8080';
+    const homeSet = { ...SET, origin: HOME };
+    // A set bound to the http home address, as if held (one is refused at entry and load).
+    useSession.setState({
+      pendingProxyHeaders: homeSet,
+      connections: [
+        { serverUrl: HOME, serverId: 'srv', token: 't', id: 'srv.1', proxyHeaders: homeSet },
+      ] as never,
+    });
+    const fetchMock = installFetch();
+    expect(await probeServerId(HOME)).toBe('srv');
+    await connectClient(HOME).serverInfo();
+    for (let i = 0; i < 2; i++) expect(sentSecret(fetchMock, i)).toBeUndefined();
+  });
+
   it("signs a reconnect in with its own set only, never another person's", async () => {
     const mine = { origin: SET.origin, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
     const base = { serverUrl: SET.origin, serverId: 'srv', token: 't' };

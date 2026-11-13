@@ -852,6 +852,14 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-value'), value);
   }
 
+  it('holds no headers for a plain-http address, and says why', async () => {
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), 'http://192.168.1.5:8080');
+    await enterHeader('CF-Access-Client-Secret', 'proxy-secret');
+    expect(screen.getByText(/sent over HTTPS only/)).toBeTruthy();
+    expect(useSession.getState().pendingProxyHeaders).toBeNull();
+  });
+
   it('asks the typed address with the headers entered for it, and the http fallback without', async () => {
     mockApi.serverInfo
       .mockRejectedValueOnce(new TypeError('Network request failed'))

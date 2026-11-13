@@ -48,14 +48,24 @@ describe('proxy headers draft (fe#167)', () => {
     expect(
       proxyOriginChoices({
         serverUrl: 'https://books.example.com/',
-        addresses: { home: 'http://192.168.1.5:8080', away: 'https://books.example.com' },
+        addresses: { home: 'https://nas.home.example:8443', away: 'https://books.example.com' },
       }),
-    ).toEqual(['https://books.example.com', 'http://192.168.1.5:8080']);
+    ).toEqual(['https://books.example.com', 'https://nas.home.example:8443']);
     expect(
       proxyOriginChoices({
         serverUrl: 'https://a.example',
-        proxyHeaders: { ...SET, origin: 'http://192.168.1.5:8080' },
+        proxyHeaders: { ...SET, origin: 'https://b.example' },
       }),
-    ).toEqual(['http://192.168.1.5:8080', 'https://a.example']);
+    ).toEqual(['https://b.example', 'https://a.example']);
+  });
+
+  it('never offers a plain-http address (headers are never sent over http)', () => {
+    expect(
+      proxyOriginChoices({
+        serverUrl: 'http://192.168.1.5:8080',
+        addresses: { home: 'http://192.168.1.5:8080', away: 'https://books.example.com' },
+      }),
+    ).toEqual(['https://books.example.com']);
+    expect(proxyOriginChoices({ serverUrl: 'http://192.168.1.5:8080' })).toEqual([]);
   });
 });

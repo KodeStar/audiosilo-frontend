@@ -63,7 +63,7 @@ describe('proxyHeaderProblem', () => {
 });
 
 describe('cleanProxyHeaders', () => {
-  it('keeps the good headers, trimmed, for an http(s) origin', () => {
+  it('keeps the good headers, trimmed, for an https origin', () => {
     expect(
       cleanProxyHeaders('https://books.example.com/web/', [
         { name: ' CF-Access-Client-Id ', value: ' id.access ' },
@@ -78,7 +78,9 @@ describe('cleanProxyHeaders', () => {
     expect(cleanProxyHeaders(SET.origin, many)?.headers).toHaveLength(MAX_PROXY_HEADERS);
   });
 
-  it('is null with nothing to keep, or no http(s) origin', () => {
+  it('is null with nothing to keep, or no https origin (never over plain http)', () => {
+    expect(cleanProxyHeaders('http://books.example.com', SET.headers)).toBeNull();
+    expect(cleanProxyHeaders('http://192.168.1.5:8080', SET.headers)).toBeNull();
     expect(cleanProxyHeaders(SET.origin, [])).toBeNull();
     expect(cleanProxyHeaders(SET.origin, [{ name: 'Cookie', value: 'x' }])).toBeNull();
     expect(cleanProxyHeaders('ftp://books.example.com', SET.headers)).toBeNull();
@@ -117,6 +119,15 @@ describe('proxyHeaderRecord (the one origin rule)', () => {
     expect(proxyHeaderRecord(SET, url, 'web', 'https://books.example.com')).toEqual(record);
     expect(proxyHeaderRecord(SET, url, 'web', 'http://localhost:8081')).toEqual({});
     expect(proxyHeaderRecord(SET, url, 'web', null)).toEqual({});
+  });
+
+  it('never over plain http, even for a set naming an http origin', () => {
+    const http = { ...SET, origin: 'http://192.168.1.5:8080' };
+    expect(proxyHeaderRecord(http, 'http://192.168.1.5:8080/api/v1/server', 'ios', null)).toEqual(
+      {},
+    );
+    const page = 'http://192.168.1.5:8080';
+    expect(proxyHeaderRecord(http, `${page}/api/v1/server`, 'web', page)).toEqual({});
   });
 
   it('is empty with no set', () => {

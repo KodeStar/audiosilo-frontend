@@ -55,13 +55,26 @@ describe('ProxyHeadersCard (fe#167)', () => {
     expect(screen.queryByText(/proxy-secret|id\.access/)).toBeNull();
   });
 
+  it('offers no headers for a server this device reaches over plain http only', async () => {
+    await useSession.getState().setSession({
+      serverUrl: HOME,
+      serverId: 'srv',
+      token: 't',
+      user,
+      addresses: { home: HOME },
+    });
+    await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);
+    expect(screen.getByTestId('proxy-headers-https-only')).toBeTruthy();
+    expect(screen.queryByTestId('proxy-headers-start')).toBeNull();
+  });
+
   it('adds headers for the chosen address, kept in secure-store', async () => {
     await signIn();
     await mountWithPortal(<ProxyHeadersCard connectionId="srv.1" />);
     await fireEvent.press(screen.getByTestId('proxy-headers-start'));
-    // The away address first; the home one can be chosen.
-    expect(screen.getByText('books.example.com')).toBeTruthy();
-    expect(screen.getByText('192.168.1.20:8080')).toBeTruthy();
+    // The away address: the plain-http home one is never offered, so there is no choice.
+    expect(screen.queryByText('192.168.1.20:8080')).toBeNull();
+    expect(screen.queryByText('Send to')).toBeNull();
     await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-name'), 'X-Auth');
     await fireEvent.changeText(screen.getByTestId('proxy-headers-editor-value'), 'proxy-secret');
     await fireEvent.press(screen.getByTestId('proxy-headers-save'));

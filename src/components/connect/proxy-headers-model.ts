@@ -1,11 +1,11 @@
 import {
   cleanProxyHeaders,
   MAX_PROXY_HEADERS,
-  originOf,
   type ProxyHeader,
   type ProxyHeaderProblem,
   proxyHeaderProblems,
   type ProxyHeaders,
+  proxyOriginOf,
 } from '@/lib/proxy-headers';
 
 /**
@@ -66,7 +66,7 @@ export function canAddRow(rows: readonly HeaderDraftRow[]): boolean {
 
 /**
  * The set the draft makes for `origin`: null when it holds no header (blank rows dropped)
- * or the origin is not an http(s) one. Rows with a problem are left out
+ * or the origin is not an https one. Rows with a problem are left out
  * (`cleanProxyHeaders`): a caller that saves checks `draftProblems` first.
  */
 export function draftToSet(
@@ -79,7 +79,8 @@ export function draftToSet(
 /**
  * The origins a connection's headers can be for, best first: the one they are for now, the
  * server's away address (the public one a proxy guards), the address it was paired with,
- * then its home address. Distinct, http(s) only.
+ * then its home address. Distinct, https only (headers never go over plain http): none when
+ * the connection knows no https address.
  */
 export function proxyOriginChoices(conn: {
   serverUrl: string;
@@ -91,6 +92,6 @@ export function proxyOriginChoices(conn: {
     conn.addresses?.away,
     conn.serverUrl,
     conn.addresses?.home,
-  ].map((u) => (u ? originOf(u) : null));
+  ].map((u) => (u ? proxyOriginOf(u) : null));
   return [...new Set(all.filter((o): o is string => !!o))];
 }

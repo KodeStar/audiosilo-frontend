@@ -30,7 +30,7 @@ import {
   type PairingScan,
 } from '@/lib/pairing';
 import { connectBookParams, firstParam, idParam, parseConnectBook } from '@/lib/paths';
-import { originOf } from '@/lib/proxy-headers';
+import { originOf, proxyOriginOf } from '@/lib/proxy-headers';
 import { useRouteParams } from '@/lib/route-params';
 import { sameOrigin } from '@/lib/same-origin';
 import { useProfileConnections } from '@/stores/profiles';
@@ -135,7 +135,9 @@ export function ConnectStart() {
   const [proxyOpen, setProxyOpen] = useState(() => !!heldProxy);
   const [proxyRows, setProxyRows] = useState<HeaderDraftRow[]>(() => draftOf(heldProxy));
   const setPendingProxyHeaders = useSession((s) => s.setPendingProxyHeaders);
-  const proxyOrigin = originOf(normalizeUrl(typedUrl));
+  // Only an https address takes them (never sent over plain http); an http one says so.
+  const typedOrigin = originOf(normalizeUrl(typedUrl));
+  const proxyOrigin = proxyOriginOf(normalizeUrl(typedUrl));
   useEffect(() => {
     setPendingProxyHeaders(proxyOpen ? draftToSet(proxyOrigin, proxyRows) : null);
   }, [proxyOpen, proxyOrigin, proxyRows, setPendingProxyHeaders]);
@@ -514,7 +516,9 @@ export function ConnectStart() {
           <Text variant="caption">
             {proxyOrigin
               ? t('proxyHeaders.connectBody', { origin: proxyOrigin })
-              : t('proxyHeaders.connectNoAddress')}
+              : typedOrigin
+                ? t('proxyHeaders.connectHttp')
+                : t('proxyHeaders.connectNoAddress')}
           </Text>
           <ProxyHeadersEditor rows={proxyRows} onChange={setProxyRows} />
           <Text variant="caption">

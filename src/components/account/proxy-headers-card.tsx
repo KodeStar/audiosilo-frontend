@@ -159,6 +159,11 @@ export function ProxyHeadersCard({ connectionId }: { connectionId: string }) {
             />
           </View>
         </View>
+      ) : choices.length === 0 ? (
+        // Only an https address takes them, and this connection knows none.
+        <Text variant="caption" testID="proxy-headers-https-only">
+          {t('proxyHeaders.httpsOnly')}
+        </Text>
       ) : (
         <Button
           className="self-start"

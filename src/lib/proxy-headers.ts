@@ -7,11 +7,15 @@ import { sameOrigin } from '@/lib/same-origin';
  * the AudioSilo server never sees a need for them, so nothing on the server changes.
  *
  * They are credentials. Each connection keeps its set in the same storage as its session
- * token (`proxy-headers-store.ts`), never in AsyncStorage, the query cache or a log line. A set names the ONE origin (scheme, host and
- * port) it was entered for, and goes only to that origin (`proxyHeaderRecord`): never to the
- * server's other address (its home address on the house network, which the proxy does not
- * guard), never to a plain-http fallback, never anywhere else. On the web it goes only
- * same-origin with the page: a custom header on a cross-origin request needs the server's
+ * token (`proxy-headers-store.ts`), never in AsyncStorage, the query cache or a log line. A
+ * set names the ONE https origin (scheme, host and port) it was entered for, and the app
+ * sends it only with requests to that origin (`proxyHeaderRecord`): never to the server's
+ * other address (its home address on the house network, which the proxy does not guard),
+ * never to a plain-http fallback. Never over plain http at all: a set for an http origin is
+ * refused at entry and dropped at load (`cleanProxyHeaders`), so a credential never crosses
+ * the network in the clear (the tokenless `server_id` probe of the home address included).
+ * What a redirect does with a request's headers is the platform's rule, not this one's (not
+ * yet checked on a device: CONVENTIONS.md). On the web it goes only same-origin with the page: a custom header on a cross-origin request needs the server's
  * CORS to list it, and the server lists a fixed set (`Authorization`, `Content-Type`,
  * `X-AudioSilo-Client`, `Range`).
  */
@@ -93,16 +97,22 @@ export function originOf(url: string): string | null {
   }
 }
 
+/** The origin of `url` when it is an https one, the only kind proxy headers go to; else null. */
+export function proxyOriginOf(url: string): string | null {
+  const o = originOf(url);
+  return o?.startsWith('https://') ? o : null;
+}
+
 /**
  * The set to keep for `origin`: each header trimmed, every one that has a problem left out,
- * at most `MAX_PROXY_HEADERS`. Null when none is left or the origin is not an http(s) one
- * (nothing to keep).
+ * at most `MAX_PROXY_HEADERS`. Null when none is left or the origin is not an https one
+ * (nothing to keep: a set for plain http would cross the network in the clear).
  */
 export function cleanProxyHeaders(
   origin: string | null | undefined,
   headers: readonly ProxyHeader[] | null | undefined,
 ): ProxyHeaders | null {
-  const o = origin ? originOf(origin) : null;
+  const o = origin ? proxyOriginOf(origin) : null;
   if (!o || !Array.isArray(headers)) return null;
   const kept: ProxyHeader[] = [];
   const seen = new Set<string>();
@@ -118,9 +128,9 @@ export function cleanProxyHeaders(
 }
 
 /**
- * The headers to put on a request to `url`: the set's, when `url` is on the set's origin, and
- * on the web only when that is also the page's own origin (see the file comment). Empty
- * otherwise. The one rule every sender follows (`ApiClient`, the downloads, the car's and the
+ * The headers to put on a request to `url`: the set's, when `url` is an https URL on the set's
+ * origin, and on the web only when that is also the page's own origin (see the file comment).
+ * Empty otherwise, a plain-http URL always (even for a set not built by `cleanProxyHeaders`). The one rule every sender follows (`ApiClient`, the downloads, the car's and the
  * widget's covers).
  */
 export function proxyHeaderRecord(
@@ -130,7 +140,8 @@ export function proxyHeaderRecord(
   pageOrigin: string | null,
 ): Record<string, string> {
   if (!set?.headers.length) return {};
-  if (originOf(url) !== set.origin) return {};
+  const origin = proxyOriginOf(url);
+  if (!origin || origin !== set.origin) return {};
   if (platform === 'web' && !sameOrigin(url, pageOrigin ? { origin: pageOrigin } : null)) {
     return {};
   }
