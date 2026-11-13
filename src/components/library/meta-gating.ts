@@ -52,7 +52,7 @@ export function metaEnabledFor(
   metadata: boolean | undefined,
   book: Pick<Book, 'asin' | 'isbn' | 'generated' | 'episode'> | undefined,
 ): boolean {
-  return metadata === true && !book?.episode && !!(book?.asin || book?.isbn || book?.generated);
+  return bookPageMetaEnabled(metadata, book) && !!(book?.asin || book?.isbn || book?.generated);
 }
 
 /**

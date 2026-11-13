@@ -1,13 +1,13 @@
 import type { BookMetaCharacter, BookMetaRecap, Chapter, PodcastEpisodeInfo } from '@/api/types';
 
 import {
+  bookPageMetaEnabled,
   chapterNumberAt,
   chapterStartsOf,
   characterIsVisible,
   communityCredit,
   listeningProgressFor,
   metaAnswered,
-  bookPageMetaEnabled,
   metaEnabledFor,
   recapIsVisible,
   recapMarks,
