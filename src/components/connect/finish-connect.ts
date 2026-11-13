@@ -118,8 +118,10 @@ export async function finishConnect(input: {
   // every store at once (and the screens render), so nothing goes to `serverUrl` first.
   // Under the id `setSession` gives the connection (the prior one's, else `connectionIdOf`).
   const pickId = existing?.id ?? connectionIdOf(serverId, input.session.user.id);
-  // A re-pair's own set first: never another connection's for the same address.
-  const proxyHeaders = connectProxyHeaders(input.serverUrl, existing?.id);
+  // A re-pair's own set first: never another connection's for the same address. A reconnect
+  // to a reset server (no `existing`: the server_id is new) keeps the set its sign-in carried
+  // (`connectClient(server, _, reconnectId)`), never another person's for that address.
+  const proxyHeaders = connectProxyHeaders(input.serverUrl, existing?.id ?? input.reconnectId);
   if (input.answeredAt) setAddressPick(pickId, input.answeredAt);
   const id = await setSession({
     serverUrl: plan.serverUrl,

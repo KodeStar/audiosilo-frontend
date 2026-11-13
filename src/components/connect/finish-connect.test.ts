@@ -238,6 +238,31 @@ describe('proxy headers the sign-in came through (fe#167)', () => {
     expect(conn('srv-1')?.proxyHeaders).toEqual(SET);
   });
 
+  it("a reconnect to a reset server keeps the signer's own set, never another person's", async () => {
+    const sam = { ...user, id: 2, username: 'sam' };
+    useSession.setState({ pendingProxyHeaders: SET });
+    await finishConnect({ serverUrl: AWAY, session: session('old') }); // chris, with SET
+    // Sam on the same server, with no set of his own.
+    await useSession
+      .getState()
+      .setSession(
+        { serverUrl: AWAY, serverId: 'old', token: 'tok-2', user: sam, proxyHeaders: null },
+        { makeDefault: false },
+      );
+    useSession.getState().markNeedsReconnect('old.1', 'server-reset');
+    useSession.getState().markNeedsReconnect('old.2', 'server-reset');
+    // Sam's reconnect banner, the rebuilt server: Sam had none, so the new one keeps none.
+    await finishConnect({
+      serverUrl: AWAY,
+      session: session('new', { user: sam }),
+      reconnectId: 'old.2',
+    });
+    const fresh = useSession.getState().connections.find((c) => c.id === 'new.2');
+    expect(fresh).toBeDefined();
+    expect(fresh?.proxyHeaders).toBeUndefined();
+    expect(await SecureStore.getItemAsync('audiosilo.proxy-headers.new.2')).toBeNull();
+  });
+
   it("a re-pair through another address keeps its own set, not another connection's for it", async () => {
     const MINE = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'mine' }] };
     const THEIRS = { origin: HOME, headers: [{ name: 'X-Home', value: 'theirs' }] };
