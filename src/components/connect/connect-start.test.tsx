@@ -936,6 +936,27 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     expect(useSession.getState().pendingProxyHeaders).toBeNull();
   });
 
+  it('a demo again with no set of its own keeps the set the demo session got in on', async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    const { setSession } = useSession.getState();
+    await setSession({ serverUrl: AWAY, serverId: 'srv-1', token: 't1', user, proxyHeaders: set });
+    await setSession(
+      { serverUrl: AWAY, serverId: 'srv-demo', token: 'old', user, proxyHeaders: null },
+      { makeDefault: false },
+    );
+    mockApi.serverInfo.mockResolvedValue(info({ demo: { enabled: true } }));
+    mockApi.demoSession.mockResolvedValue({ token: 'demo', server_id: 'srv-demo', user });
+    await render(<ConnectStart />);
+    await fireEvent.changeText(screen.getByLabelText('Server address'), AWAY);
+    await fireEvent.press(screen.getByText('Continue'));
+    await fireEvent.press(await screen.findByText('Try the demo'));
+    const demo = () => useSession.getState().connections.find((c) => c.id === 'srv-demo.1');
+    // Not the first connection: the flow leaves onboarding (no `replace`), with no error.
+    await waitFor(() => expect(demo()?.token).toBe('demo'));
+    expect(demo()?.proxyHeaders).toEqual(set);
+    expect(screen.queryByText(/Could not (start|reach) the demo/)).toBeNull();
+  });
+
   it('follows the address: headers entered before it are for the address typed', async () => {
     await render(<ConnectStart />);
     await enterHeader('X-Auth', 'v');

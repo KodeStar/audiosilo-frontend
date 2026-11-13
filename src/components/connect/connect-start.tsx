@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Linking, Platform, View } from 'react-native';
 
 import { ApiError } from '@/api/client';
-import { connectClient } from '@/api/connect-client';
+import { connectClient, connectClientFor } from '@/api/connect-client';
 import { probeServerId } from '@/api/server-id-probe';
 import type { ServerInfo } from '@/api/types';
 import { Logo } from '@/components/brand/logo';
@@ -318,11 +318,13 @@ export function ConnectStart() {
     setDemoError(null);
     setDemoLoading(true);
     try {
-      const demo = await connectClient(base).demoSession(getDeviceName());
+      const { client, proxy: carried } = connectClientFor(base);
+      const demo = await client.demoSession(getDeviceName());
       await finishConnect({
         serverUrl: base,
         session: demo,
         name,
+        carried,
       });
     } catch (e) {
       setDemoError(
