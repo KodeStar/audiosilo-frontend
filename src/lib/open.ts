@@ -8,6 +8,7 @@ import {
   collectionHref,
   type CoreYouSection,
   downloadsHref,
+  findLibrivoxHref,
   findShowsHref,
   type FindShowsSection,
   householdHref,
@@ -174,6 +175,9 @@ export function useOpen() {
     /** Find shows for a podcast library (Bridge Phase 2d-2), on `section` when given. */
     openFindShows: (connectionId: string, libraryId: number, section?: FindShowsSection) =>
       go(findShowsHref(connectionId, libraryId, section)),
+    /** Find on LibriVox (LibriVox L6, admin only), adding to a books library first. */
+    openFindLibrivox: (connectionId: string, libraryId: number) =>
+      go(findLibrivoxHref(connectionId, libraryId)),
     /** The Journal (across every server; the You hub's Journal), on `tab` when given. */
     openJournal: (tab?: JournalTab) => openJournal(tab),
     /** The You hub (the Me tab's root) on `section`. */

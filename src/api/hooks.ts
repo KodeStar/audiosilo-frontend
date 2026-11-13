@@ -22,6 +22,7 @@ import {
   bridgePollInterval,
   estimatePollInterval,
   latestDone,
+  librivoxJobPollInterval,
   midRunCheckpoint,
   READALONG_ALIGN,
   SIDECARS_GENERATE,
@@ -73,7 +74,9 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
+  isNotInLibraryError,
   isPlainSeriesQuery,
+  isSignedOutError,
   type ApiClient,
   type BookListQuery,
   type BookMetaOptions,
@@ -93,6 +96,8 @@ import type {
   BridgeEstimate,
   BridgeJob,
   BridgeJobRequest,
+  LibrivoxSearchResult,
+  LibrivoxWork,
   ReadalongEstimate,
   Capabilities,
   ChaptersResponse,
@@ -139,6 +144,8 @@ import type {
 export const qk = {
   server: (cid: string) => ['server', cid] as const,
   libraries: (cid: string) => ['libraries', cid] as const,
+  /** Every folder listing of a library (a prefix of `browse`: whatever its path). */
+  folders: (cid: string, lib: number) => ['browse', cid, lib] as const,
   browse: (cid: string, lib: number, path: string) => ['browse', cid, lib, path] as const,
   item: (cid: string, lib: number, path: string) => ['item', cid, lib, path] as const,
   chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path] as const,
@@ -158,9 +165,13 @@ export const qk = {
   metaWork: (cid: string, workId: string) => ['metaWork', cid, workId] as const,
   authors: (cid: string, lib: number) => ['authors', cid, lib] as const,
   narrators: (cid: string, lib: number) => ['narrators', cid, lib] as const,
+  /** Every series list of a library (a prefix of `seriesList`: both variants). */
+  seriesLists: (cid: string, lib: number) => ['seriesList', cid, lib] as const,
   /** `memberships`: counted in every series a book is in (`series_memberships`). */
   seriesList: (cid: string, lib: number, memberships: boolean) =>
     ['seriesList', cid, lib, { memberships }] as const,
+  /** Every book list of a library (a prefix of `libraryBooks`: whatever its query). */
+  libraryBookLists: (cid: string, lib: number) => ['libraryBooks', cid, lib] as const,
   libraryBooks: (cid: string, lib: number, query: BookListQuery) =>
     ['libraryBooks', cid, lib, query] as const,
   nextBook: (cid: string, lib: number, path: string) => ['nextBook', cid, lib, path] as const,
@@ -185,6 +196,8 @@ export const qk = {
   favourites: (connectionId: string) => ['favourites', connectionId] as const,
   apiKeys: (cid: string) => ['apiKeys', cid] as const,
   search: (cid: string, q: string) => ['search', cid, q] as const,
+  /** Every recently added list of a connection (a prefix of `recent`: whatever its limit). */
+  recentLists: (cid: string) => ['books', 'recent', cid] as const,
   recent: (cid: string, limit: number) => ['books', 'recent', cid, limit] as const,
   copies: (cid: string, key: string) => ['copies', cid, key] as const,
   // User state (Phase 1b), one capability flag each (see the hooks below).
@@ -245,6 +258,15 @@ export const qk = {
    * (its `generated_at`). */
   readalongLocal: (cid: string, lib: number, path: string, generatedAt: string) =>
     ['readalongLocal', cid, lib, path, generatedAt] as const,
+  /** One Bridge job by its id: how a job about no book (a `librivox.fetch`) is followed. */
+  bridgeJob: (cid: string, id: number) => ['bridgeJob', cid, id] as const,
+  // Add from LibriVox (LibriVox L6; admin only).
+  /** A LibriVox search, by its trimmed query. */
+  librivoxSearch: (cid: string, q: string) => ['librivoxSearch', cid, q] as const,
+  /** Every LibriVox work of a connection (a prefix: an Add or a job's end asks them again). */
+  librivoxWorks: (cid: string) => ['librivoxWork', cid] as const,
+  /** One work's LibriVox recordings, under `librivoxWorks`. */
+  librivoxWork: (cid: string, id: string) => ['librivoxWork', cid, id] as const,
   // Podcasts (Bridge Phase 2d-1): reads are core, Follow is capability `podcasts`, the
   // fetch status `podcast_fetch`.
   /** A podcast library's shows. */
@@ -2673,9 +2695,12 @@ export function useReadalongEstimate(libraryId: number, path: string, connection
 }
 
 /** Put a job's answer into its book's job list (newest first): in place of the copy the
- * list holds, else (a new job) at its head. */
+ * list holds, else (a new job) at its head. A job about no book (a `librivox.fetch`) is
+ * its own read (`qk.bridgeJob`). */
 function storeJob(qc: QueryClient, cid: string, job: BridgeJob) {
-  if (job.library_id === null || job.path === null) return;
+  if (job.library_id === null || job.path === null) {
+    return storeAnswer<BridgeJob>(qc, qk.bridgeJob(cid, job.id), () => job);
+  }
   return storeAnswer<BridgeJob[]>(
     qc,
     qk.bridgeJobs(cid, job.library_id, job.path),
@@ -2701,8 +2726,9 @@ export function useQueueBridgeJob(connectionId?: string) {
   );
 }
 
-/** Cancel a Bridge job; its answer replaces it in its book's job list. A refusal (it
- * already ended: a 409) reads the list again. */
+/** Cancel a Bridge job; its answer replaces it in its book's job list, or in its own read
+ * for a job about no book (`storeJob`). A refusal (it already ended: a 409) reads that
+ * again. */
 export function useCancelBridgeJob(connectionId?: string) {
   return useCapabilityMutation(
     'bridge',
@@ -2710,11 +2736,106 @@ export function useCancelBridgeJob(connectionId?: string) {
     (api, job: Pick<BridgeJob, 'id' | 'library_id' | 'path'>) => api.cancelBridgeJob(job.id),
     ({ qc, cid }, answer) => storeJob(qc, cid, answer),
     ({ qc, cid }, job, error) => {
-      if (error && job.library_id !== null && job.path !== null) {
-        void qc.invalidateQueries({ queryKey: qk.bridgeJobs(cid, job.library_id, job.path) });
-      }
+      if (!error) return;
+      const queryKey =
+        job.library_id !== null && job.path !== null
+          ? qk.bridgeJobs(cid, job.library_id, job.path)
+          : qk.bridgeJob(cid, job.id);
+      void qc.invalidateQueries({ queryKey });
     },
   );
+}
+
+// --- Add from LibriVox (LibriVox L6; admin only) --------------------------------------
+// The routes answer only an admin, and only a server whose Bridge runs `librivox.fetch`
+// (its `bridge.features`, which `/server` sends while the Bridge is online). These hooks
+// know neither: Find on LibriVox mounts their callers only under its gate
+// (`librivoxAccess`), so nobody else asks. Past that, the reads need `metadata` on (they
+// answer 404 `metadata_off` without it) and the job is a Bridge read (`bridge`).
+
+/** The works with a LibriVox recording matching `q` (trimmed; nothing asked for a blank
+ * one), best first. Catalogue data: a minute old is fresh enough for a search asked again. */
+export function useLibrivoxSearch(q: string, connectionId?: string) {
+  const query = q.trim();
+  return useCapabilityQuery<LibrivoxSearchResult>(
+    'metadata',
+    (cid) => qk.librivoxSearch(cid, query),
+    (api, signal) => api.librivoxSearch(query, {}, signal),
+    connectionId,
+    { ready: query !== '', staleTime: 60_000, retry: false },
+  );
+}
+
+/** One work's LibriVox recordings: where each is on this server already and its open
+ * fetch. Not polled: each recording follows its own job (`useLibrivoxJob`), and an Add or a
+ * job's end asks the work again. */
+export function useLibrivoxWork(id: string | null, connectionId?: string) {
+  return useCapabilityQuery<LibrivoxWork>(
+    'metadata',
+    (cid) => qk.librivoxWork(cid, id ?? ''),
+    (api, signal) => api.librivoxWork(id ?? '', signal),
+    connectionId,
+    { ready: !!id, retry: false },
+  );
+}
+
+/** A Bridge job by its id (a `librivox.fetch` the page queued or saw open), polled while
+ * it is open and `active` (`librivoxJobPollInterval`) with the app in the foreground, and
+ * no more once it is gone (a 404: the last answer would read as open for ever). A first
+ * read that failed with no answer or a server error is asked again (`retry: false`, and
+ * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is
+ * not. Its Cancel is `useCancelBridgeJob`. */
+export function useLibrivoxJob(id: number | undefined, active: boolean, connectionId?: string) {
+  return useCapabilityQuery<BridgeJob>(
+    'bridge',
+    (cid) => qk.bridgeJob(cid, id ?? 0),
+    (api, signal) => api.bridgeJob(id ?? 0, signal),
+    connectionId,
+    {
+      ready: id !== undefined,
+      retry: false,
+      refetchInterval: (query) => {
+        const { data, error } = query.state;
+        return librivoxJobPollInterval(
+          data,
+          error instanceof ApiError && error.status === 404,
+          active && AppState.currentState === 'active',
+          // A refusal stays refused (the default retry's rule, `retryQuery`).
+          !!error && !isSignedOutError(error) && !isNotInLibraryError(error),
+        );
+      },
+    },
+  );
+}
+
+/** Add a LibriVox project to a books library (`POST /admin/librivox/fetch`): the answer's
+ * job is seeded as its own read (`useLibrivoxJob`), and the connection's works are asked
+ * again whatever the answer (an `in_library` refusal then shows where the recording is). */
+export function useAddLibrivox(connectionId?: string) {
+  return useCapabilityMutation(
+    'metadata',
+    connectionId,
+    (api, vars: { libraryId: number; librivoxId: number }) =>
+      api.librivoxFetch(vars.libraryId, vars.librivoxId),
+    ({ qc, cid }, answer) => storeJob(qc, cid, answer.job),
+    ({ qc, cid }) => void qc.invalidateQueries({ queryKey: qk.librivoxWorks(cid) }),
+  );
+}
+
+/** After a book landed in `libraryId` (a `librivox.fetch` placed it): the library's lists
+ * (its books, folders, people and series, which a mounted Library under the page shows)
+ * and the connection's recently added (Home's rail, a mounted tab) are read again. */
+export function invalidateLibraryLists(qc: QueryClient, cid: string, libraryId: number) {
+  for (const queryKey of [
+    qk.libraryBookLists(cid, libraryId),
+    qk.folders(cid, libraryId),
+    qk.authors(cid, libraryId),
+    qk.narrators(cid, libraryId),
+    qk.seriesLists(cid, libraryId),
+    qk.recentLists(cid),
+  ]) {
+    void qc.invalidateQueries({ queryKey });
+  }
 }
 
 // --- Podcasts (Bridge Phase 2d-1) ----------------------------------------------------

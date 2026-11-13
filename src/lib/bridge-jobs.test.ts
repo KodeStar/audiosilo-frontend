@@ -9,6 +9,8 @@ import {
   isOpenJob,
   latestDone,
   latestJob,
+  LIBRIVOX_POLL_MS,
+  librivoxJobPollInterval,
   midRunCheckpoint,
   READALONG_ALIGN,
   SIDECARS_CONTRIBUTE,
@@ -105,6 +107,35 @@ describe('estimatePollInterval', () => {
     expect(estimatePollInterval(share('done'), true)).toBe(false);
     expect(estimatePollInterval(undefined, true)).toBe(false);
     expect(estimatePollInterval(share('running'), false)).toBe(false);
+  });
+});
+
+describe('librivoxJobPollInterval', () => {
+  it('polls an open fetch quickly, a parked one slowly', () => {
+    expect(librivoxJobPollInterval(job({ state: 'queued' }), false, true)).toBe(LIBRIVOX_POLL_MS);
+    expect(librivoxJobPollInterval(job({ state: 'running' }), false, true)).toBe(LIBRIVOX_POLL_MS);
+    expect(librivoxJobPollInterval(job({ state: 'needs_attention' }), false, true)).toBe(
+      BRIDGE_IDLE_POLL_MS,
+    );
+  });
+
+  it('stops once it ended or is gone, off screen, or before its first answer', () => {
+    expect(librivoxJobPollInterval(job({ state: 'done' }), false, true)).toBe(false);
+    expect(librivoxJobPollInterval(job({ state: 'failed' }), false, true)).toBe(false);
+    expect(librivoxJobPollInterval(job({ state: 'running' }), true, true)).toBe(false);
+    expect(librivoxJobPollInterval(job({ state: 'running' }), false, false)).toBe(false);
+    expect(librivoxJobPollInterval(undefined, false, true)).toBe(false);
+  });
+
+  it('asks again, slowly, for a job whose first read failed (but never one that is gone)', () => {
+    expect(librivoxJobPollInterval(undefined, false, true, true)).toBe(BRIDGE_IDLE_POLL_MS);
+    expect(librivoxJobPollInterval(undefined, true, true, true)).toBe(false);
+    expect(librivoxJobPollInterval(undefined, false, false, true)).toBe(false);
+    // A later poll that failed leaves the last answer's pace.
+    expect(librivoxJobPollInterval(job({ state: 'running' }), false, true, true)).toBe(
+      LIBRIVOX_POLL_MS,
+    );
+    expect(librivoxJobPollInterval(job({ state: 'done' }), false, true, true)).toBe(false);
   });
 });
 

@@ -484,6 +484,21 @@ failed), the title, one caption line (the stage in plain words, the counts, the 
 error), a neutral ink progress bar (not pink: the hero's progress bar is the page's one pink thing) and Cancel,
 or "Try again" once it failed; a park says when it resumes by itself, else to open the admin console.
 
+### Find on LibriVox (admin, Bridge) *custom*
+An admin's way to add a free public-domain book (LibriVox L6), only where the server's Bridge is online with
+`librivox` and community metadata is on; nothing at all for anyone else. The entry is a `ghost` ellipsis menu beside
+the Books mode's sort and layout ("Find on LibriVox", the search icon). The page is one scroller: the display title,
+one muted sentence, a search field with a Search button (asked on submit, never while typing), an "Add to" Select
+when the server has several books libraries, then the works found as quiet rows (title, then authors · first
+release · language; a chevron). Opening one lists its recordings under it, indented, hairline-separated: "Read by
+...", a caption of length · sections · project, a `link` "LibriVox page", and an ink `sm` "Add to <library>"
+(download icon). While the Bridge works, a compact status takes Add's place like Generate's: the download icon
+(circle-exclamation in warning or destructive when parked or failed, circle-check once added), the title (Adding,
+Needs attention, Couldn't add it, Added, Cancelled), one caption line (the step and "2 of 12" sections, or why it
+stopped in plain words), a neutral ink progress bar while sections download, and Cancel while it is open; a failed
+or cancelled one offers Add again. A recording on this server says "In your library" with an outline Open. No
+cover art (the recording's cover is a third-party image); never pink.
+
 ### Companion: Text (read-along) *custom*
 The book's ebook in the reader, on the card palette, following the narration: the sentence being read is
 highlighted and the page turns with it; a tap on a sentence seeks there. The reader fills the desktop column and the
@@ -811,6 +826,10 @@ and drop zone (`src/components/upnext/`), the Downloads page's storage bar, rule
 Bridge Phase 1a's pieces (`src/components/bridge/`, rules in the tested `bridge-model.ts`): `GenerateDialog`,
 `GenerateStatus`, `GenerateCovered`, `GenerateOffer` (the companion's) and the `useGenerate` model; `GeneratedMark` and the chip it
 draws, `GeneratedChip` (also the About card's), sit in `library/book-meta.tsx` beside the Characters and Recaps blocks.
+
+LibriVox L6's pieces (`src/components/librivox/`, rules in the tested `librivox-model.ts`): `FindLibrivoxScreen`,
+`LibrivoxSearch`, `LibrivoxWorkPanel` and its recording rows with their fetch status, and `LibrivoxMenu` (the Books
+mode's admin menu).
 
 Phase 4's pieces: the book page (`src/components/book/`: `BookScreen`, the washed `BookHero` and its
 `HeroActions`, `BookTabPanel` with the Chapters and Details tabs, the aside with `BookAbout`), the bookmark and

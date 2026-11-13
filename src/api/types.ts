@@ -1594,7 +1594,12 @@ export type BridgeJob = {
   params: SidecarsGenerateParams | Record<string, unknown> | null;
   state: BridgeJobState | (string & {});
   progress: SidecarsGenerateProgress | null;
-  result: SidecarsGenerateResult | ReadalongAlignResult | Record<string, unknown> | null;
+  result:
+    | SidecarsGenerateResult
+    | ReadalongAlignResult
+    | LibrivoxFetchResult
+    | Record<string, unknown>
+    | null;
   /** Empty unless the job failed, or is parked (the park message). */
   error: string;
   /** The admin who queued it; null once that account is deleted. */
@@ -1693,6 +1698,71 @@ export type ReadalongAlignResult = {
   transcribed: boolean;
   ebook_sha256: string;
 };
+
+// --- Add from LibriVox (LibriVox L6; admin only) -----------------------------------------
+// The community metadata database's LibriVox works and recordings (never librivox.org),
+// and the Bridge's `librivox.fetch`, which downloads a recording into a books library.
+// Hand-mirrored from the server's `internal/api/handlers_librivox.go` and
+// `internal/meta/librivox.go`. Every list is a list (never null).
+
+/** One work of GET /admin/librivox/search: a work with at least one LibriVox recording. */
+export type LibrivoxHit = {
+  work_id: string;
+  title: string;
+  authors: MetaPersonRef[];
+  /** Its language tag ("en"). */
+  language: string;
+  /** The earliest release date of its recordings (YYYY, YYYY-MM or YYYY-MM-DD), "" for
+   * none. */
+  release_date: string;
+};
+
+/** Response of GET /admin/librivox/search. */
+export type LibrivoxSearchResult = { results: LibrivoxHit[] };
+
+/** One LibriVox recording of GET /admin/librivox/work. */
+export type LibrivoxRecording = {
+  recording_id: string;
+  /** The LibriVox project it is (what an Add names). */
+  librivox_id: number;
+  narrators: MetaPersonRef[];
+  /** 0 when unknown. */
+  runtime_min: number;
+  /** Its sections, 0 when unknown. */
+  chapter_count: number;
+  /** An absolute http(s) URL, else "". The player never loads it (a third-party host). */
+  cover_url: string;
+  /** Its LibriVox catalogue page, else "". */
+  url: string;
+  /** The books on this server recorded as this recording (any library). */
+  in_library: BookRef[];
+  /** Its open `librivox.fetch` job in any library, else null. */
+  job: { id: number; state: BridgeJobState | (string & {}) } | null;
+};
+
+/** Response of GET /admin/librivox/work: a work and its LibriVox recordings only. */
+export type LibrivoxWork = {
+  work: { id: string; title: string; authors: MetaPersonRef[]; language: string };
+  recordings: LibrivoxRecording[];
+};
+
+/** `librivox.fetch`'s result on `done`: where the book landed (`files` and `bytes` count
+ * the cover too); a failed one may carry `code` instead. Its progress is the shared shape
+ * ({@link SidecarsGenerateProgress}'s `step`, `message`, `done`, `total` and `park`):
+ * `step` is one of `manifest`, `download`, `cover`, `place`, `rescan`, and `done`/`total`
+ * count sections. */
+export type LibrivoxFetchResult = {
+  library_id?: number;
+  path?: string;
+  librivox_id?: number;
+  files?: number;
+  bytes?: number;
+  code?: string;
+};
+
+/** Response of POST /admin/librivox/fetch (202): the queued job, or the open one for the
+ * same library and project. */
+export type LibrivoxFetchAnswer = { job: BridgeJob };
 
 /** Response of GET /admin/bridge/estimate?kind=readalong.align (the confirmation before
  * making a book's read-along): the most transcription it may take (the book's whole audio;

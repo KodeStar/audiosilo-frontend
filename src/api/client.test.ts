@@ -3632,3 +3632,145 @@ describe('read-along (capability readalong, Bridge Phase 3c)', () => {
     }
   });
 });
+
+describe('ApiClient Add from LibriVox (LibriVox L6, admin)', () => {
+  const c = () => new ApiClient('https://h', 'tok');
+  // The server's answers (audiosilo-server internal/api/handlers_librivox.go).
+  const hit = {
+    work_id: 'johnny-crows-garden',
+    title: "Johnny Crow's Garden",
+    authors: [{ id: 'l-leslie-brooke', name: 'L. Leslie Brooke' }],
+    language: 'en',
+    release_date: '',
+  };
+  const work = {
+    work: {
+      id: 'johnny-crows-garden',
+      title: "Johnny Crow's Garden",
+      authors: [{ id: 'l-leslie-brooke', name: 'L. Leslie Brooke' }],
+      language: 'en',
+    },
+    recordings: [
+      {
+        recording_id: 'johnny-crows-garden-librivox-192',
+        librivox_id: 192,
+        narrators: [{ id: 'kara', name: 'Kara Shallenberg' }],
+        runtime_min: 12,
+        chapter_count: 3,
+        cover_url: 'https://archive.org/download/x/cover.jpg',
+        url: 'https://librivox.org/johnny-crows-garden/',
+        in_library: [{ library_id: 3, path: "L. Leslie Brooke/Johnny Crow's Garden" }],
+        job: { id: 41, state: 'running' },
+      },
+    ],
+  };
+  const job = {
+    id: 41,
+    kind: 'librivox.fetch',
+    library_id: 3,
+    path: null,
+    params: { librivox_id: 192, work_id: 'johnny-crows-garden', recording_id: 'r', library_id: 3 },
+    state: 'queued',
+    progress: null,
+    result: null,
+    error: '',
+    requested_by: { id: 1, username: 'admin' },
+    priority: 0,
+    attempts: 0,
+    lease_until: null,
+    cancel_requested: false,
+    created_at: '2026-11-13T09:00:00Z',
+    updated_at: '2026-11-13T09:00:00Z',
+    claimed_at: null,
+    finished_at: null,
+  };
+
+  it('searches with GET /admin/librivox/search?q=, leaving lang and limit out unless given', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: { results: [hit] } }));
+    await expect(c().librivoxSearch("Johnny Crow's")).resolves.toEqual({ results: [hit] });
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/admin/librivox/search?q=Johnny+Crow%27s',
+      method: 'GET',
+    });
+    await c().librivoxSearch('crow', { lang: 'en', limit: 20 });
+    expect(sent(fetchMock, 1).url).toBe(
+      'https://h/api/v1/admin/librivox/search?q=crow&lang=en&limit=20',
+    );
+  });
+
+  it('reads a search without results as none', async () => {
+    installFetch(() => ({ status: 200, body: { results: null } }));
+    await expect(c().librivoxSearch('x')).resolves.toEqual({ results: [] });
+  });
+
+  it("reads a work's recordings with GET /admin/librivox/work?id=", async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: work }));
+    await expect(c().librivoxWork('johnny-crows-garden')).resolves.toEqual(work);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/admin/librivox/work?id=johnny-crows-garden',
+      method: 'GET',
+    });
+  });
+
+  it('adds with POST /admin/librivox/fetch {library_id, librivox_id}, answering the job', async () => {
+    const fetchMock = installFetch(() => ({ status: 202, body: { job } }));
+    await expect(c().librivoxFetch(3, 192)).resolves.toEqual({ job });
+    expect(sent(fetchMock)).toEqual({
+      url: 'https://h/api/v1/admin/librivox/fetch',
+      method: 'POST',
+      body: { library_id: 3, librivox_id: 192 },
+      contentType: 'application/json',
+    });
+  });
+
+  it.each([
+    [409, 'in_library', { library_id: 3, path: 'A/B' }],
+    [409, 'kind_unavailable', {}],
+    [409, 'not_book_library', {}],
+    [409, 'library_not_writable', {}],
+    [404, 'metadata_off', {}],
+  ])('reads a %i %s refusal by its code', async (status, code, extra) => {
+    installFetch(() => ({ status, body: { error: 'English', code, ...extra } }));
+    const e = await c()
+      .librivoxFetch(3, 192)
+      .catch((err: unknown) => err);
+    expect(e).toMatchObject({ name: 'ApiError', status, code });
+    expect(apiErrorKind(e)).toBe(code);
+  });
+
+  it('reads a search refused while metadata is off by its code', async () => {
+    installFetch(() => ({ status: 404, body: { error: 'off', code: 'metadata_off' } }));
+    const e = await c()
+      .librivoxSearch('crow')
+      .catch((err: unknown) => err);
+    expect(apiErrorKind(e)).toBe('metadata_off');
+  });
+
+  it('reads a project the metadata does not know, and a missing library, as not found', async () => {
+    installFetch(() => ({ status: 404, body: { error: 'no such project', code: 'not_found' } }));
+    expect(
+      apiErrorKind(
+        await c()
+          .librivoxFetch(3, 9)
+          .catch((e: unknown) => e),
+      ),
+    ).toBe('not_found');
+    installFetch(() => ({ status: 404, body: { error: 'library not found' } }));
+    expect(
+      apiErrorKind(
+        await c()
+          .librivoxFetch(99, 9)
+          .catch((e: unknown) => e),
+      ),
+    ).toBe('not_found');
+  });
+
+  it('follows a job with GET /admin/bridge/jobs/{id}', async () => {
+    const fetchMock = installFetch(() => ({ status: 200, body: job }));
+    await expect(c().bridgeJob(41)).resolves.toEqual(job);
+    expect(sent(fetchMock)).toMatchObject({
+      url: 'https://h/api/v1/admin/bridge/jobs/41',
+      method: 'GET',
+    });
+  });
+});

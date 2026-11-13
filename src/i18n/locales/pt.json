@@ -3258,5 +3258,91 @@
         "message": "O link deixa de funcionar: um calendário assinado com ele deixa de se atualizar."
       }
     }
+  },
+  "librivox": {
+    "title": "Procurar no LibriVox",
+    "intro": "Audiolivros gratuitos de domínio público, encontrados nos metadados da comunidade. O Bridge transfere a gravação que adicionar, coloca-a na biblioteca e associa-a.",
+    "menu": {
+      "label": "Mais ações da biblioteca",
+      "find": "Procurar no LibriVox"
+    },
+    "access": {
+      "notAdmin": "Só um administrador pode adicionar livros do LibriVox.",
+      "unavailable": "Para adicionar do LibriVox, o Bridge tem de estar online e atualizado.",
+      "unavailableHint": "Verifique o Bridge nas definições do Bridge da consola de administração.",
+      "metadataOff": "Os metadados da comunidade estão desativados",
+      "metadataOffHint": "A pesquisa no LibriVox precisa deles. Ative-os nas definições de Metadados da consola de administração."
+    },
+    "search": {
+      "label": "Título ou autor",
+      "placeholder": "Pesquisar por título ou autor",
+      "submit": "Pesquisar",
+      "again": "Pesquisar de novo",
+      "loading": "A pesquisar no LibriVox",
+      "none": "Nada encontrado",
+      "noneHint": "Nenhum livro do LibriVox corresponde. Experimente outro título ou o nome do autor."
+    },
+    "library": {
+      "label": "Adicionar a"
+    },
+    "work": {
+      "show": "Gravações de {{title}}",
+      "loading": "A carregar gravações",
+      "noRecordings": "Este livro ainda não tem nenhuma gravação do LibriVox."
+    },
+    "recording": {
+      "readBy": "Lido por {{names}}",
+      "unknownReader": "Leitor não indicado",
+      "sections_one": "{{count}} secção",
+      "sections_other": "{{count}} secções",
+      "project": "Projeto {{id}}",
+      "page": "Página do LibriVox",
+      "inLibrary": "Na sua biblioteca",
+      "open": "Abrir"
+    },
+    "add": {
+      "action": "Adicionar a {{library}}",
+      "label": "Adicionar a gravação lida por {{names}} a {{library}}",
+      "noLibrary": "Primeiro adicione uma biblioteca de livros.",
+      "inLibrary": "Essa gravação já está numa biblioteca.",
+      "notBookLibrary": "Escolha uma biblioteca de livros. Uma biblioteca de podcasts não a pode guardar.",
+      "unavailable": "O Bridge não pode adicionar livros do LibriVox. Atualize-o ou associe um na consola de administração.",
+      "notWritable": "O Bridge não pode escrever nesta biblioteca.",
+      "metadataOff": "Os metadados da comunidade foram desativados.",
+      "notFound": "Esta gravação ou biblioteca já não existe. Pesquise de novo.",
+      "failed": "Não foi possível adicionar esta gravação. Tente de novo daqui a pouco."
+    },
+    "fetch": {
+      "title": "A adicionar",
+      "parkedTitle": "Precisa de atenção",
+      "failedTitle": "Não foi possível adicionar",
+      "cancelledTitle": "Cancelado",
+      "doneTitle": "Adicionado",
+      "cancelled": "Nada foi adicionado.",
+      "done": "Aparece na biblioteca daqui a pouco.",
+      "step": {
+        "manifest": "A ler as secções",
+        "download": "A transferir",
+        "cover": "A obter a capa",
+        "place": "A colocar na biblioteca",
+        "rescan": "A adicionar à biblioteca",
+        "working": "Em curso"
+      },
+      "code": {
+        "not_writable": "O Bridge não pode escrever nesta biblioteca.",
+        "exists": "Já há um livro nesse lugar da biblioteca.",
+        "disk_full": "O disco da biblioteca está cheio.",
+        "not_found": "O LibriVox já não lista esta gravação.",
+        "archive_unavailable": "Não foi possível contactar o archive.org. Tente mais tarde.",
+        "metadata_off": "Os metadados da comunidade foram desativados.",
+        "other": "Algo correu mal. As tarefas do Bridge na consola de administração dizem mais."
+      }
+    },
+    "errors": {
+      "metadataOff": "Os metadados da comunidade estão desativados neste servidor.",
+      "invalid": "Essa pesquisa não é possível. Experimente com menos palavras.",
+      "notFound": "Este livro já não está nos metadados da comunidade.",
+      "failed": "Não foi possível contactar os metadados da comunidade. Tente de novo daqui a pouco."
+    }
   }
 }

@@ -3258,5 +3258,91 @@
         "message": "Il link smette di funzionare: un calendario iscritto non si aggiorna più."
       }
     }
+  },
+  "librivox": {
+    "title": "Cerca su LibriVox",
+    "intro": "Audiolibri gratuiti di pubblico dominio, trovati nei metadati della community. Il Bridge scarica la registrazione che aggiungi, la mette nella libreria e la abbina.",
+    "menu": {
+      "label": "Altre azioni della libreria",
+      "find": "Cerca su LibriVox"
+    },
+    "access": {
+      "notAdmin": "Solo un amministratore può aggiungere libri da LibriVox.",
+      "unavailable": "Per aggiungere da LibriVox il Bridge deve essere online e aggiornato.",
+      "unavailableHint": "Controlla il Bridge nelle impostazioni Bridge della console di amministrazione.",
+      "metadataOff": "I metadati della community sono disattivati",
+      "metadataOffHint": "La ricerca su LibriVox ne ha bisogno. Attivali nelle impostazioni Metadati della console di amministrazione."
+    },
+    "search": {
+      "label": "Titolo o autore",
+      "placeholder": "Cerca per titolo o autore",
+      "submit": "Cerca",
+      "again": "Cerca di nuovo",
+      "loading": "Ricerca su LibriVox",
+      "none": "Nessun risultato",
+      "noneHint": "Nessun libro LibriVox corrisponde. Prova un altro titolo o il nome dell'autore."
+    },
+    "library": {
+      "label": "Aggiungi a"
+    },
+    "work": {
+      "show": "Registrazioni di {{title}}",
+      "loading": "Caricamento delle registrazioni",
+      "noRecordings": "Questo libro non ha ancora una registrazione LibriVox."
+    },
+    "recording": {
+      "readBy": "Letto da {{names}}",
+      "unknownReader": "Lettore non indicato",
+      "sections_one": "{{count}} sezione",
+      "sections_other": "{{count}} sezioni",
+      "project": "Progetto {{id}}",
+      "page": "Pagina LibriVox",
+      "inLibrary": "Nella tua libreria",
+      "open": "Apri"
+    },
+    "add": {
+      "action": "Aggiungi a {{library}}",
+      "label": "Aggiungi la registrazione letta da {{names}} a {{library}}",
+      "noLibrary": "Prima aggiungi una libreria di libri.",
+      "inLibrary": "Questa registrazione è già in una libreria.",
+      "notBookLibrary": "Scegli una libreria di libri. Una libreria di podcast non può contenerla.",
+      "unavailable": "Il Bridge non può aggiungere libri LibriVox. Aggiornalo o abbinane uno nella console di amministrazione.",
+      "notWritable": "Il Bridge non può scrivere in questa libreria.",
+      "metadataOff": "I metadati della community sono stati disattivati.",
+      "notFound": "Questa registrazione o libreria non esiste più. Cerca di nuovo.",
+      "failed": "Impossibile aggiungere questa registrazione. Riprova tra un momento."
+    },
+    "fetch": {
+      "title": "Aggiunta in corso",
+      "parkedTitle": "Richiede attenzione",
+      "failedTitle": "Impossibile aggiungerlo",
+      "cancelledTitle": "Annullato",
+      "doneTitle": "Aggiunto",
+      "cancelled": "Non è stato aggiunto nulla.",
+      "done": "Comparirà nella libreria tra un momento.",
+      "step": {
+        "manifest": "Lettura delle sezioni",
+        "download": "Download in corso",
+        "cover": "Recupero della copertina",
+        "place": "Sistemazione nella libreria",
+        "rescan": "Aggiunta alla libreria",
+        "working": "In corso"
+      },
+      "code": {
+        "not_writable": "Il Bridge non può scrivere in questa libreria.",
+        "exists": "In quel punto della libreria c'è già un libro.",
+        "disk_full": "Il disco della libreria è pieno.",
+        "not_found": "LibriVox non elenca più questa registrazione.",
+        "archive_unavailable": "Impossibile raggiungere archive.org. Riprova più tardi.",
+        "metadata_off": "I metadati della community sono stati disattivati.",
+        "other": "Qualcosa è andato storto. I lavori Bridge della console di amministrazione dicono di più."
+      }
+    },
+    "errors": {
+      "metadataOff": "I metadati della community sono disattivati su questo server.",
+      "invalid": "Questa ricerca non è possibile. Prova con meno parole.",
+      "notFound": "Questo libro non è più nei metadati della community.",
+      "failed": "Impossibile raggiungere i metadati della community. Riprova tra un momento."
+    }
   }
 }

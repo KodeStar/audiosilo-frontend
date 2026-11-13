@@ -541,6 +541,59 @@ Read-along); the console covers everything else.
   `GenerateStatus` under the actions. Costs format with `formatUsd` (`src/lib/format.ts`).
   Strings under `bridge.*` in all 6 locales; fixtures in `src/testing/bridge-fixtures.ts`.
 
+**Find on LibriVox (LibriVox L6, `src/components/librivox/`; admin only).** An admin searches
+the community metadata's LibriVox works (never librivox.org) and adds a recording to a books
+library; the server's Bridge (`librivox.fetch`) downloads it from archive.org, places and
+rescans it, and the server records the book as that recording. The console's Library >
+LibriVox (audiosilo-server `admin-ui/src/features/librivox/`) is the same page; keep the rules
+in step.
+- **The gate**: `librivoxAccess(user, server)` (`librivox-model.ts`) = an admin
+  (`isBridgeAdmin`), the `bridge` flag AND `bridge.features` including `librivox`, AND
+  `metadata`; `mayAddLibrivox` is its `allowed`. There is no `/server` flag of its own (owner
+  decision): the feature is the only sign a server has the routes, and `/server` names the
+  Bridge's features only while it is online, so unlike the console (which queues for an offline
+  Bridge, the job waits) the player offers nothing while the Bridge is offline. The page shows a
+  sentence (`notAdmin`, `unavailable`, `metadataOff`) and sends nothing without `allowed`: the
+  search and everything under it mount only then, and the hooks are called nowhere else (they do
+  not check the gate themselves).
+- **Wire** (`client.ts`, hand-mirrored from `handlers_librivox.go`): `librivoxSearch(q, {lang,
+  limit})` (`GET /admin/librivox/search`), `librivoxWork(id)` (`GET /admin/librivox/work`:
+  recordings with `in_library` and the open `job`, null for none), `librivoxFetch(lib, id)`
+  (`POST /admin/librivox/fetch`, 202 `{job}`), `bridgeJob(id)` (`GET /admin/bridge/jobs/{id}`).
+  Refusal codes `in_library` (409, the recording is on this server in any library; the work
+  read again shows where, the body's `library_id`/`path` are not read), `not_book_library`,
+  `kind_unavailable` (no Bridge paired, or one without the kind), `library_not_writable`,
+  `metadata_off` (404); `addRefusalKey` / `readErrorKey` word them.
+- **Hooks** (`hooks.ts`): `useLibrivoxSearch` and `useLibrivoxWork` are `metadata` reads
+  (`retry: false`), `useAddLibrivox` a `metadata` write that seeds the job's own read and asks
+  the connection's works again whatever the answer; `useLibrivoxJob` is `bridge`, and Cancel is
+  `useCancelBridgeJob` (`storeJob` puts a job about no book at its own read, `qk.bridgeJob`). A
+  `librivox.fetch` has no book path, so it is followed by its id (not `useBridgeJobs` /
+  `useBridgeJobSurface`, which are keyed on a book), polled while open and the page focused
+  (`librivoxJobPollInterval`: 5 s, 60 s parked), never after a 404. A first read that failed
+  with no answer or a server error is asked again every 60 s (nothing else would: its row has no
+  status, Cancel or Add until one gets through); a refusal (400, 401, 403) is not.
+- **The page**: `/find-librivox?connection=&library=` (`findLibrivoxHref`, `openFindLibrivox`),
+  the Library tab's own page like Find shows (a browse page too, `BROWSE_PATHS`: opening it
+  keeps the Library's scroll memory), opened from the Books mode's ... menu (`LibrivoxMenu`,
+  beside sort and layout; nothing for anyone else). One scroller: the search (on submit only),
+  the works found, the opened work's recordings under it. A read with nothing to show and no
+  network (`/server`, the search, a work) is `OfflineState` (`useUnreadQuery`), and a search or
+  a work read again that failed keeps what it shows (the foreground refresh reads both again;
+  the rows under them hold the fetches they follow). Add goes to the library the page was opened
+  from, or the one picked when the server has several books libraries (podcast libraries are
+  never offered). A row follows the last job it queued or saw open on the work
+  (`useFollowedFetch`), kept after the work stops naming it so a failure still says why
+  (`fetchView`: steps `manifest|download|cover|place|rescan`, codes in `librivox.fetch.code.*`;
+  the Bridge's English is never shown). The work's job is taken only when the work comes to name
+  another one: an answer that still names the job before never takes the row back from the one
+  it just queued. A job's end asks the works again, and a `done` one asks once more after
+  `DONE_RECHECK_MS` (the server records the book just after the job ends) and reads the
+  library's lists and the connection's recently added again (`invalidateLibraryLists`). The
+  recording's `cover_url` is never loaded (a third-party host, no server proxy). Strings under
+  `librivox.*` in all 6 locales (waiting, stopping, the count and a failed cancel are
+  `bridge.status.*`'s); fixtures in `src/testing/librivox-fixtures.ts`.
+
 **Player modules (Bridge Phase 2a, `src/modules/`; NOT the repo-root `modules/`, the native
 Expo modules).** A server module (off by default, turned on in the console's Settings >
 Modules) brings an optional player feature; its capability flag is its id and reads true only

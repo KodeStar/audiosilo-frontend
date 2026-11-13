@@ -19,6 +19,7 @@ import { ChipRow, ChipSeparator, FilterChip } from '@/components/ui/filter-chip'
 import { GhostCovers, GhostSpines } from '@/components/ui/ghost-art';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { LibrivoxMenu } from '@/components/librivox/librivox-menu';
 import { downloadedPaths } from '@/downloads/downloads-view';
 import { useDownloads } from '@/downloads/store';
 import { headIndexForLetter, presentLetters } from '@/lib/alpha-sections';
@@ -216,7 +217,10 @@ export function BooksMode({ connectionId, libraryId }: LibraryModeProps) {
       onSort={(sort) => setView({ sort })}
       layout={booksLayout}
       onLayout={setBooksLayout}
-    />
+    >
+      {/* An admin's Find on LibriVox (LibriVox L6); nothing for anyone else. */}
+      <LibrivoxMenu connectionId={connectionId} libraryId={libraryId} />
+    </BooksControls>
   );
   const gutter = pageGutter(layout);
   // The list's columns follow the body's measured width (less the gutters), not the

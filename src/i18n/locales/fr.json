@@ -3258,5 +3258,91 @@
         "message": "Le lien cesse de fonctionner : un calendrier abonné à celui-ci n'est plus mis à jour."
       }
     }
+  },
+  "librivox": {
+    "title": "Chercher sur LibriVox",
+    "intro": "Des livres audio gratuits du domaine public, trouvés dans les métadonnées de la communauté. Le Bridge télécharge l'enregistrement que vous ajoutez, le range dans la bibliothèque et l'associe.",
+    "menu": {
+      "label": "Autres actions de la bibliothèque",
+      "find": "Chercher sur LibriVox"
+    },
+    "access": {
+      "notAdmin": "Seul un administrateur peut ajouter des livres de LibriVox.",
+      "unavailable": "Pour ajouter depuis LibriVox, le Bridge doit être en ligne et à jour.",
+      "unavailableHint": "Vérifiez le Bridge dans les réglages Bridge de la console d'administration.",
+      "metadataOff": "Les métadonnées de la communauté sont désactivées",
+      "metadataOffHint": "La recherche sur LibriVox en a besoin. Activez-les dans les réglages Métadonnées de la console d'administration."
+    },
+    "search": {
+      "label": "Titre ou auteur",
+      "placeholder": "Chercher par titre ou auteur",
+      "submit": "Chercher",
+      "again": "Chercher à nouveau",
+      "loading": "Recherche sur LibriVox",
+      "none": "Aucun résultat",
+      "noneHint": "Aucun livre LibriVox ne correspond. Essayez un autre titre ou le nom de l'auteur."
+    },
+    "library": {
+      "label": "Ajouter à"
+    },
+    "work": {
+      "show": "Enregistrements de {{title}}",
+      "loading": "Chargement des enregistrements",
+      "noRecordings": "Ce livre n'a pas encore d'enregistrement LibriVox."
+    },
+    "recording": {
+      "readBy": "Lu par {{names}}",
+      "unknownReader": "Lecteur non indiqué",
+      "sections_one": "{{count}} section",
+      "sections_other": "{{count}} sections",
+      "project": "Projet {{id}}",
+      "page": "Page LibriVox",
+      "inLibrary": "Dans votre bibliothèque",
+      "open": "Ouvrir"
+    },
+    "add": {
+      "action": "Ajouter à {{library}}",
+      "label": "Ajouter l'enregistrement lu par {{names}} à {{library}}",
+      "noLibrary": "Ajoutez d'abord une bibliothèque de livres.",
+      "inLibrary": "Cet enregistrement est déjà dans une bibliothèque.",
+      "notBookLibrary": "Choisissez une bibliothèque de livres. Une bibliothèque de podcasts ne peut pas l'accueillir.",
+      "unavailable": "Le Bridge ne peut pas ajouter de livres LibriVox. Mettez-le à jour, ou associez-en un dans la console d'administration.",
+      "notWritable": "Le Bridge ne peut pas écrire dans cette bibliothèque.",
+      "metadataOff": "Les métadonnées de la communauté ont été désactivées.",
+      "notFound": "Cet enregistrement ou cette bibliothèque n'existe plus. Cherchez à nouveau.",
+      "failed": "Impossible d'ajouter cet enregistrement. Réessayez dans un instant."
+    },
+    "fetch": {
+      "title": "Ajout en cours",
+      "parkedTitle": "Demande votre attention",
+      "failedTitle": "Ajout impossible",
+      "cancelledTitle": "Annulé",
+      "doneTitle": "Ajouté",
+      "cancelled": "Rien n'a été ajouté.",
+      "done": "Il apparaît dans la bibliothèque dans un instant.",
+      "step": {
+        "manifest": "Lecture des sections",
+        "download": "Téléchargement",
+        "cover": "Récupération de la couverture",
+        "place": "Rangement dans la bibliothèque",
+        "rescan": "Ajout à la bibliothèque",
+        "working": "En cours"
+      },
+      "code": {
+        "not_writable": "Le Bridge ne peut pas écrire dans cette bibliothèque.",
+        "exists": "Un livre occupe déjà cet emplacement de la bibliothèque.",
+        "disk_full": "Le disque de la bibliothèque est plein.",
+        "not_found": "LibriVox ne propose plus cet enregistrement.",
+        "archive_unavailable": "archive.org est injoignable. Réessayez plus tard.",
+        "metadata_off": "Les métadonnées de la communauté ont été désactivées.",
+        "other": "Un problème est survenu. Les tâches Bridge de la console d'administration en disent plus."
+      }
+    },
+    "errors": {
+      "metadataOff": "Les métadonnées de la communauté sont désactivées sur ce serveur.",
+      "invalid": "Cette recherche n'est pas possible. Essayez avec moins de mots.",
+      "notFound": "Ce livre n'est plus dans les métadonnées de la communauté.",
+      "failed": "Les métadonnées de la communauté sont injoignables. Réessayez dans un instant."
+    }
   }
 }

@@ -1,4 +1,4 @@
-import type { BridgeJob, User } from '@/api/types';
+import type { BridgeJob, SidecarsGenerateProgress, User } from '@/api/types';
 
 /** The Bridge job kind that generates a book's characters and recaps (and, from Bridge
  * Phase 1c, its description). */
@@ -67,6 +67,17 @@ export function isOpenJob(job: Pick<BridgeJob, 'state'>): boolean {
   return OPEN_STATES.has(job.state);
 }
 
+/** A job's progress counts, only as a sane pair (a total above zero, `done` within it);
+ * undefined for anything else, so a status shows no "5 of 3". */
+export function progressCounts(
+  p: Pick<SidecarsGenerateProgress, 'done' | 'total'> | null | undefined,
+): { done: number; total: number } | undefined {
+  if (typeof p?.done !== 'number' || typeof p.total !== 'number') return undefined;
+  return p.total > 0 && p.done >= 0 && p.done <= p.total
+    ? { done: p.done, total: p.total }
+    : undefined;
+}
+
 /** The newest job of `kind` (the highest id: ids ascend as jobs are queued), whatever
  * order the list came in. */
 export function latestJob(jobs: readonly BridgeJob[] | undefined, kind: string) {
@@ -113,6 +124,40 @@ export function bridgePollInterval(
     if (isOpenJob(j)) interval = BRIDGE_IDLE_POLL_MS;
   }
   return interval;
+}
+
+/** The Bridge job kind that downloads a LibriVox recording into a books library (LibriVox
+ * L6; its feature `librivox`). Queued through `POST /admin/librivox/fetch`, never `POST
+ * /admin/bridge/jobs`; about no book (`path` null), so it is followed by its id. */
+export const LIBRIVOX_FETCH = 'librivox.fetch';
+
+/** The Bridge feature (`ServerInfo.bridge.features`) that offers `librivox.fetch`. */
+export const LIBRIVOX_FEATURE = 'librivox';
+
+/** How often a followed `librivox.fetch` is read again while it is open: a book's sections
+ * download in minutes, one after another. */
+export const LIBRIVOX_POLL_MS = 5_000;
+
+/**
+ * How often a `librivox.fetch` followed by its id is read again while `active` (its page
+ * focused, the app in the foreground): every `LIBRIVOX_POLL_MS` while it is queued, claimed
+ * or running, every `BRIDGE_IDLE_POLL_MS` while it is parked (someone has to look, or its
+ * retry time has to come), never once it ended or is gone (`gone`: a 404, deleted with its
+ * library), nor while its first answer is on its way. A first read that `failed` in a way
+ * asking again can mend (no answer, or a server error: the caller leaves out a refusal) is
+ * asked again every `BRIDGE_IDLE_POLL_MS`: the read is never retried by itself, and its row
+ * has nothing to show until one gets through.
+ */
+export function librivoxJobPollInterval(
+  job: Pick<BridgeJob, 'state'> | undefined,
+  gone: boolean,
+  active: boolean,
+  failed = false,
+): number | false {
+  if (!active || gone) return false;
+  if (!job) return failed ? BRIDGE_IDLE_POLL_MS : false;
+  if (!isOpenJob(job)) return false;
+  return job.state === 'needs_attention' ? BRIDGE_IDLE_POLL_MS : LIBRIVOX_POLL_MS;
 }
 
 /**

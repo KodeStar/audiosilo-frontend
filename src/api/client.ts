@@ -44,6 +44,9 @@ import type {
   HouseholdSettings,
   HouseListening,
   Library,
+  LibrivoxFetchAnswer,
+  LibrivoxSearchResult,
+  LibrivoxWork,
   ListeningGoalStatus,
   Listing,
   MyDevice,
@@ -215,6 +218,12 @@ const API_ERROR_CODES = [
   // allows, or past its expiry (401; older servers send the 401 without them).
   'invite_used',
   'invite_expired',
+  // Add from LibriVox (LibriVox L6, `/admin/librivox/*`): community metadata is off (404),
+  // the recording is already on this server (409, with its `library_id` and `path`), and an
+  // Add into a podcast library (409).
+  'metadata_off',
+  'in_library',
+  'not_book_library',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -1867,6 +1876,11 @@ export class ApiClient {
   cancelBridgeJob(id: number) {
     return this.request<BridgeJob>('POST', `/admin/bridge/jobs/${id}/cancel`);
   }
+  /** One Bridge job by its id (any kind): how a job with no book (a `librivox.fetch`) is
+   * followed. A 404 once it is gone (deleted with its library). */
+  bridgeJob(id: number, signal?: AbortSignal) {
+    return this.request<BridgeJob>('GET', `/admin/bridge/jobs/${id}`, { signal });
+  }
   /** What generating `kind` for a book would take (the confirmation): its source, the
    * transcription hours, the expected agent cost, what the book already has, the earlier
    * books of its series without recaps and any open job. A 404 for no such book, a 409
@@ -1890,6 +1904,49 @@ export class ApiClient {
     return this.request<ReadalongEstimate>('GET', '/admin/bridge/estimate', {
       query: { library_id: libraryId, path, kind: READALONG_ALIGN },
       signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
+    });
+  }
+
+  // --- Add from LibriVox (LibriVox L6; admin only: a non-admin gets a 403) ---------------
+  // The community metadata database's LibriVox works (never librivox.org): 404
+  // `metadata_off` while the lookup is off, 502 when the metadata service can't answer. The
+  // reads ask the metadata service, so they get the server's budget (`UPSTREAM_TIMEOUT_MS`).
+
+  /** The works with a LibriVox recording matching `q`, best first (`limit` 1-50, the
+   * server's default 20; `lang` a language tag such as `en`). A 400 for a blank or long
+   * `q`, a `lang` that is no language tag or a `limit` out of range. */
+  async librivoxSearch(
+    q: string,
+    opts: { lang?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<LibrivoxSearchResult> {
+    const r = await this.request<LibrivoxSearchResult>('GET', '/admin/librivox/search', {
+      query: { q, lang: opts.lang || undefined, limit: opts.limit },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
+    });
+    return { results: r.results ?? [] };
+  }
+  /** A work and its LibriVox recordings: where each is on this server already
+   * (`in_library`) and its open `librivox.fetch` (`job`, null for none). A 404 `not_found`
+   * for an unknown work, a 400 for a malformed id. */
+  librivoxWork(id: string, signal?: AbortSignal) {
+    return this.request<LibrivoxWork>('GET', '/admin/librivox/work', {
+      query: { id },
+      signal,
+      timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
+    });
+  }
+  /** Add a LibriVox project to a books library: the Bridge's `librivox.fetch` (202 with
+   * the queued job, or the open one for the same library and project). Refused 409
+   * `in_library` (the recording is on this server already, in any library), 409
+   * `not_book_library` (a podcast library), 409 `kind_unavailable` (no Bridge paired, or
+   * one that doesn't run it), 409 `library_not_writable`, 404 `not_found` (no such
+   * project), a bare 404 for no such library. */
+  librivoxFetch(libraryId: number, librivoxId: number) {
+    return this.request<LibrivoxFetchAnswer>('POST', '/admin/librivox/fetch', {
+      body: { library_id: libraryId, librivox_id: librivoxId },
       timeoutMs: Math.max(this.timeoutMs, UPSTREAM_TIMEOUT_MS),
     });
   }

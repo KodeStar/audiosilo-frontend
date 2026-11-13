@@ -6,12 +6,14 @@ import {
   bookHref,
   collectionHref,
   downloadsHref,
+  findLibrivoxHref,
   findShowsHref,
   finishedHref,
   libraryHref,
   narratorHref,
   parentPath,
   parseCollectionParams,
+  parseFindLibrivoxParams,
   parseFindShowsParams,
   parseConnectBook,
   parsePersonParams,
@@ -325,6 +327,22 @@ describe('browse detail params', () => {
     }
     expect(parseConnectBook({ book: '2', path: '  ', uid: '5' })).toBeNull();
     expect(parseConnectBook({ book: '2', uid: '5' })).toBeNull();
+  });
+});
+
+// LibriVox L6.
+describe('findLibrivoxHref / parseFindLibrivoxParams', () => {
+  it('links a library, and reads the link back', () => {
+    expect(findLibrivoxHref('c', 5)).toEqual({
+      pathname: '/find-librivox',
+      params: { connection: 'c', library: '5' },
+    });
+    expect(parseFindLibrivoxParams({ connection: 'c', library: '5' })).toEqual({
+      connectionId: 'c',
+      libraryId: 5,
+    });
+    expect(parseFindLibrivoxParams({ connection: 'c' })).toBeNull();
+    expect(parseFindLibrivoxParams({ library: 'x' })).toBeNull();
   });
 });
 
