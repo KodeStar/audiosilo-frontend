@@ -835,9 +835,8 @@ export type BookMetaRecording = {
   librivox?: BookMetaLibrivox;
 };
 
-/** A LibriVox recording's links. The server keeps a URL only when it is absolute http(s)
- * (LibriVox pages are slug-based, so none is built from the id); the About card's "Also
- * free on LibriVox" checks `url` again (`librivoxUrl`). */
+/** A LibriVox recording's links. LibriVox pages are slug-based, so none is built from the
+ * id; what the About card does with `url` is `librivoxUrl`'s rule. */
 export type BookMetaLibrivox = {
   /** The LibriVox project id. */
   id: number;
