@@ -53,7 +53,7 @@ export function LibrivoxSearch({
   const paddingBottom = useMiniPlayerInset();
   const [text, setText] = useState('');
   const [asked, setAsked] = useState('');
-  const search = useLibrivoxSearch(asked, true, connectionId);
+  const search = useLibrivoxSearch(asked, connectionId);
   const [openWork, setOpenWork] = useState<string | null>(null);
   const known = useBookLibraries(connectionId);
   const libraries = known ?? [];
@@ -140,7 +140,7 @@ export function LibrivoxSearch({
   );
 
   const empty =
-    !asked || failure ? null : search.isPending || (search.isFetching && !search.data) ? (
+    !asked || failure ? null : search.isPending ? (
       <View className="items-center py-6" accessibilityLabel={t('librivox.search.loading')}>
         <Spinner />
       </View>

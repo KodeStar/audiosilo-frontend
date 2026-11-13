@@ -1,17 +1,17 @@
 import { apiErrorKind } from '@/api/client';
-import type { BridgeJob, MetaPersonRef, ServerInfo, User } from '@/api/types';
-import { isBridgeAdmin, isOpenJob, LIBRIVOX_FETCH } from '@/lib/bridge-jobs';
+import type { BridgeJob, LibrivoxFetchResult, MetaPersonRef, ServerInfo, User } from '@/api/types';
+import {
+  isBridgeAdmin,
+  isOpenJob,
+  LIBRIVOX_FEATURE,
+  LIBRIVOX_FETCH,
+  progressCounts,
+} from '@/lib/bridge-jobs';
 
 // Find on LibriVox (LibriVox L6): who may add a LibriVox recording from the player, how a
 // recording's fetch reads and the refusals' words. Pure, so each rule is tested on its own.
 // The console's Library > LibriVox (audiosilo-server admin-ui `features/librivox`) is the
 // same page; this one follows its rules.
-
-/** The Bridge feature (`ServerInfo.bridge.features`) that offers `librivox.fetch`. */
-export const LIBRIVOX_FEATURE = 'librivox';
-
-/** Results per search (the server's default, sent as its own). */
-export const LIBRIVOX_SEARCH_LIMIT = 20;
 
 /**
  * Who may open Find on LibriVox on a server, and why not:
@@ -84,7 +84,7 @@ export function fetchCode(
   job: Pick<BridgeJob, 'state' | 'progress' | 'result' | 'error'>,
 ): LibrivoxFetchCode {
   if (job.state === 'needs_attention') return knownCode(job.progress?.park?.code) ?? 'other';
-  const own = (job.result as { code?: unknown } | null)?.code;
+  const own = (job.result as LibrivoxFetchResult | null)?.code;
   if (typeof own === 'string' && own) return knownCode(own) ?? 'other';
   return FETCH_CODES.find((c) => job.error === c || job.error.startsWith(`${c}:`)) ?? 'other';
 }
@@ -113,13 +113,7 @@ export function fetchView(job: BridgeJob): FetchView {
   const p = job.progress;
   if (job.state !== 'running' || !p?.step) return { phase: 'waiting' };
   const step = (STEPS as readonly string[]).includes(p.step) ? (p.step as LibrivoxStep) : 'working';
-  const counted =
-    typeof p.done === 'number' &&
-    typeof p.total === 'number' &&
-    p.total > 0 &&
-    p.done >= 0 &&
-    p.done <= p.total;
-  return { phase: 'running', step, ...(counted ? { done: p.done, total: p.total } : {}) };
+  return { phase: 'running', step, ...progressCounts(p) };
 }
 
 /**
@@ -140,9 +134,12 @@ export function rowState(
   return 'add';
 }
 
-/** Whether a fetch row still blocks Add (its job is open). */
-export function blocksAdd(job: BridgeJob | undefined): boolean {
-  return !!job && isOpenJob(job);
+/** Whether a row offers Add: with nothing else to show (`add`), or under a followed job
+ * that ended without adding the book (failed or cancelled: it says why, with Add back).
+ * Never while that job is open, nor once it is done (the work is about to name the book). */
+export function offersAdd(state: ReturnType<typeof rowState>, job: BridgeJob | undefined) {
+  if (state === 'add') return true;
+  return state === 'job' && !!job && !isOpenJob(job) && job.state !== 'done';
 }
 
 /**

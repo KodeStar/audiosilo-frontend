@@ -6,10 +6,10 @@ import { ApiError } from '@/api/client';
 import type { BridgeJob, ServerInfo } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
-// The LibriVox hooks (LibriVox L6): the reads ask only while the page's gate lets them
-// (`allowed`) and only a server with the flag (`metadata` for the catalogue, `bridge` for
-// the job); an Add seeds the job's own read and asks the works again whatever the answer; a
-// job is polled while open and never again once it is gone.
+// The LibriVox hooks (LibriVox L6): the reads ask only a server with the flag (`metadata`
+// for the catalogue, `bridge` for the job; the page's own gate is its mount); an Add seeds
+// the job's own read and asks the works again whatever the answer; a job is polled while
+// open and never again once it is gone.
 function makeClient() {
   return {
     serverInfo: jest.fn<Promise<ServerInfo>, []>(),
@@ -40,7 +40,7 @@ import {
   invalidateLibraryLists,
   qk,
   useAddLibrivox,
-  useCancelLibrivoxJob,
+  useCancelBridgeJob,
   useLibrivoxJob,
   useLibrivoxSearch,
   useLibrivoxWork,
@@ -86,39 +86,31 @@ const metadataOff = librivoxServer({ capabilities: { ...caps, metadata: false } 
 const bridgeOff = librivoxServer({ capabilities: { ...caps, bridge: false }, bridge: undefined });
 
 describe('useLibrivoxSearch / useLibrivoxWork', () => {
-  it('asks nothing while the page does not let it, or of a server with metadata off', async () => {
-    const a = await mount(librivoxServer(), () => ({
-      search: useLibrivoxSearch('crow', false),
-      work: useLibrivoxWork('johnny', false),
+  it('asks nothing of a server with metadata off', async () => {
+    const { result } = await mount(metadataOff, () => ({
+      search: useLibrivoxSearch('crow'),
+      work: useLibrivoxWork('johnny'),
     }));
     await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
-    expect(a.result.current.search.isPending).toBe(true);
-    expect(mockClients.c1.librivoxSearch).not.toHaveBeenCalled();
-    expect(mockClients.c1.librivoxWork).not.toHaveBeenCalled();
-
-    await mount(metadataOff, () => ({
-      search: useLibrivoxSearch('crow', true),
-      work: useLibrivoxWork('johnny', true),
-    }));
-    await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
+    expect(result.current.search.isPending).toBe(true);
     expect(mockClients.c1.librivoxSearch).not.toHaveBeenCalled();
     expect(mockClients.c1.librivoxWork).not.toHaveBeenCalled();
   });
 
   it('asks nothing for a blank query or no work', async () => {
     await mount(librivoxServer(), () => ({
-      search: useLibrivoxSearch('   ', true),
-      work: useLibrivoxWork(null, true),
+      search: useLibrivoxSearch('   '),
+      work: useLibrivoxWork(null),
     }));
     await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
     expect(mockClients.c1.librivoxSearch).not.toHaveBeenCalled();
     expect(mockClients.c1.librivoxWork).not.toHaveBeenCalled();
   });
 
-  it('searches the trimmed query and reads the work when allowed', async () => {
+  it('searches the trimmed query and reads the work', async () => {
     const { result } = await mount(
       librivoxServer(),
-      () => ({ search: useLibrivoxSearch(' crow ', true), work: useLibrivoxWork('johnny', true) }),
+      () => ({ search: useLibrivoxSearch(' crow '), work: useLibrivoxWork('johnny') }),
       (c) => {
         c.librivoxSearch.mockResolvedValue({ results: [] });
         c.librivoxWork.mockResolvedValue({ work: {}, recordings: [] });
@@ -132,10 +124,10 @@ describe('useLibrivoxSearch / useLibrivoxWork', () => {
 });
 
 describe('useLibrivoxJob', () => {
-  const useJob = (allowed = true) => useLibrivoxJob(41, { allowed, active: true });
+  const useJob = () => useLibrivoxJob(41, true);
 
-  it('asks nothing while the page does not let it, or with the Bridge off', async () => {
-    await mount(librivoxServer(), () => useJob(false));
+  it('asks nothing with the Bridge off, or with no job to follow', async () => {
+    await mount(librivoxServer(), () => useLibrivoxJob(undefined, true));
     await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
     expect(mockClients.c1.bridgeJob).not.toHaveBeenCalled();
 
@@ -249,21 +241,22 @@ describe('useAddLibrivox', () => {
   });
 });
 
-describe('useCancelLibrivoxJob', () => {
-  it("puts the answer into the job's read, and reads it again on a refusal", async () => {
-    const { result, qc } = await mount(librivoxServer(), () => useCancelLibrivoxJob());
+describe('useCancelBridgeJob, for a job about no book', () => {
+  it("puts the answer into the job's own read, and reads it again on a refusal", async () => {
+    const { result, qc } = await mount(librivoxServer(), () => useCancelBridgeJob());
     await waitFor(() => expect(mockClients.c1.serverInfo).toHaveBeenCalled());
+    const open = librivoxJob({ state: 'running' });
     const cancelled = librivoxJob({ state: 'cancelled' });
     mockClients.c1.cancelBridgeJob.mockResolvedValue(cancelled);
     await act(async () => {
-      await result.current.mutateAsync(41);
+      await result.current.mutateAsync(open);
     });
     expect(mockClients.c1.cancelBridgeJob).toHaveBeenCalledWith(41);
     expect(qc.getQueryData(qk.bridgeJob('c1', 41))).toEqual(cancelled);
 
     mockClients.c1.cancelBridgeJob.mockRejectedValue(new ApiError(409, 'done', 'finished'));
     await act(async () => {
-      await expect(result.current.mutateAsync(41)).rejects.toBeInstanceOf(ApiError);
+      await expect(result.current.mutateAsync(open)).rejects.toBeInstanceOf(ApiError);
     });
     expect(qc.getQueryState(qk.bridgeJob('c1', 41))?.isInvalidated).toBe(true);
   });

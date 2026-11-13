@@ -3318,12 +3318,8 @@
       "failedTitle": "Couldn't add it",
       "cancelledTitle": "Cancelled",
       "doneTitle": "Added",
-      "waiting": "Waiting for the Bridge",
-      "stopping": "Stopping",
-      "count": "{{done}} of {{total}}",
       "cancelled": "Nothing was added.",
       "done": "It appears in the library in a moment.",
-      "cancelFailed": "Couldn't cancel. Try again.",
       "step": {
         "manifest": "Reading the sections",
         "download": "Downloading",

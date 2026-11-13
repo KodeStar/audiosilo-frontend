@@ -3318,12 +3318,8 @@
       "failedTitle": "Não foi possível adicionar",
       "cancelledTitle": "Cancelado",
       "doneTitle": "Adicionado",
-      "waiting": "À espera do Bridge",
-      "stopping": "A parar",
-      "count": "{{done}} de {{total}}",
       "cancelled": "Nada foi adicionado.",
       "done": "Aparece na biblioteca daqui a pouco.",
-      "cancelFailed": "Não foi possível cancelar. Tente de novo.",
       "step": {
         "manifest": "A ler as secções",
         "download": "A transferir",

@@ -3318,12 +3318,8 @@
       "failedTitle": "Ajout impossible",
       "cancelledTitle": "Annulé",
       "doneTitle": "Ajouté",
-      "waiting": "En attente du Bridge",
-      "stopping": "Arrêt en cours",
-      "count": "{{done}} sur {{total}}",
       "cancelled": "Rien n'a été ajouté.",
       "done": "Il apparaît dans la bibliothèque dans un instant.",
-      "cancelFailed": "Impossible d'annuler. Réessayez.",
       "step": {
         "manifest": "Lecture des sections",
         "download": "Téléchargement",

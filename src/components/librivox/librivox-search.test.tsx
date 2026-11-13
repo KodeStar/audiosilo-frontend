@@ -57,8 +57,8 @@ jest.mock('@/api/hooks', () => {
     },
     useLibrivoxJob: (id: number | undefined) =>
       id === undefined ? {} : (mockJobs[id] ?? { isPending: true }),
-    useAddLibrivox: () => ({ mutateAsync: mockAdd }),
-    useCancelLibrivoxJob: () => ({ mutate: mockCancel, isPending: false }),
+    useAddLibrivox: () => ({ mutateAsync: mockAdd, isPending: false }),
+    useCancelBridgeJob: () => ({ mutate: mockCancel, isPending: false }),
     invalidateLibraryLists: (...a: unknown[]) => mockInvalidateLists(...a),
   };
 });
@@ -177,7 +177,7 @@ describe('LibrivoxSearch', () => {
     expect(screen.getByText('Downloading · 2 of 3')).toBeTruthy();
     expect(screen.queryByTestId('librivox-add')).toBeNull();
     await fireEvent.press(screen.getByTestId('librivox-cancel'));
-    expect(mockCancel).toHaveBeenCalledWith(41, expect.anything());
+    expect(mockCancel).toHaveBeenCalledWith(expect.objectContaining({ id: 41 }), expect.anything());
   });
 
   it("toasts a refused Add in the app's words", async () => {

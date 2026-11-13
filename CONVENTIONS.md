@@ -554,7 +554,8 @@ in step.
   Bridge's features only while it is online, so unlike the console (which queues for an
   offline Bridge, the job waits) the player offers nothing while the Bridge is offline. The
   page shows a sentence (`notAdmin`, `unavailable`, `metadataOff`) and sends nothing without
-  `allowed`; every read passes `ready: allowed`.
+  `allowed`: the search and everything under it mount only then, and the hooks are called
+  nowhere else (they do not check the gate themselves).
 - **Wire** (`client.ts`, hand-mirrored from `handlers_librivox.go`): `librivoxSearch(q, {lang,
   limit})` (`GET /admin/librivox/search`), `librivoxWork(id)` (`GET /admin/librivox/work`:
   recordings with `in_library` and the open `job`, null for none), `librivoxFetch(lib, id)`
@@ -565,8 +566,9 @@ in step.
   `metadata_off` (404); `addRefusalKey` / `readErrorKey` word them.
 - **Hooks** (`hooks.ts`): `useLibrivoxSearch` and `useLibrivoxWork` are `metadata` reads
   (`retry: false`), `useAddLibrivox` a `metadata` write that seeds the job's own read and asks
-  the connection's works again whatever the answer; `useLibrivoxJob` / `useCancelLibrivoxJob`
-  are `bridge`. A `librivox.fetch` has no book path, so it is followed by its id (not
+  the connection's works again whatever the answer; `useLibrivoxJob` is `bridge`, and Cancel
+  is `useCancelBridgeJob` (`storeJob` puts a job about no book at its own read,
+  `qk.bridgeJob`). A `librivox.fetch` has no book path, so it is followed by its id (not
   `useBridgeJobs` / `useBridgeJobSurface`, which are keyed on a book), polled while open and the
   page focused (`librivoxJobPollInterval`: 5 s, 60 s parked), never after a 404.
 - **The page**: `/find-librivox?connection=&library=` (`findLibrivoxHref`, `openFindLibrivox`),

@@ -1594,7 +1594,12 @@ export type BridgeJob = {
   params: SidecarsGenerateParams | Record<string, unknown> | null;
   state: BridgeJobState | (string & {});
   progress: SidecarsGenerateProgress | null;
-  result: SidecarsGenerateResult | ReadalongAlignResult | Record<string, unknown> | null;
+  result:
+    | SidecarsGenerateResult
+    | ReadalongAlignResult
+    | LibrivoxFetchResult
+    | Record<string, unknown>
+    | null;
   /** Empty unless the job failed, or is parked (the park message). */
   error: string;
   /** The admin who queued it; null once that account is deleted. */
@@ -1741,18 +1746,11 @@ export type LibrivoxWork = {
   recordings: LibrivoxRecording[];
 };
 
-/** `librivox.fetch`'s progress (the Bridge's; every field optional here). `step` is one of
- * `manifest`, `download`, `cover`, `place`, `rescan`; `done`/`total` count sections. */
-export type LibrivoxFetchProgress = {
-  step?: string;
-  message?: string;
-  done?: number;
-  total?: number;
-  park?: BridgeJobPark;
-};
-
 /** `librivox.fetch`'s result on `done`: where the book landed (`files` and `bytes` count
- * the cover too); a failed one may carry `code` instead. */
+ * the cover too); a failed one may carry `code` instead. Its progress is the shared shape
+ * ({@link SidecarsGenerateProgress}'s `step`, `message`, `done`, `total` and `park`):
+ * `step` is one of `manifest`, `download`, `cover`, `place`, `rescan`, and `done`/`total`
+ * count sections. */
 export type LibrivoxFetchResult = {
   library_id?: number;
   path?: string;

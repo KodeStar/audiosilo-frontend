@@ -12,6 +12,7 @@ import type {
 import {
   CHAPTERS_DETECT,
   isBridgeAdmin,
+  progressCounts,
   READALONG_ALIGN,
   SIDECARS_CONTRIBUTE,
   SIDECARS_GENERATE,
@@ -289,16 +290,10 @@ export function jobStatusView(job: BridgeJob): JobStatusView {
     };
   }
   if (job.state !== 'running') return { phase: 'waiting' };
-  const counted =
-    typeof p?.done === 'number' &&
-    typeof p.total === 'number' &&
-    p.total > 0 &&
-    p.done >= 0 &&
-    p.done <= p.total;
   return {
     phase: 'running',
     stage: stageOf(p),
-    ...(counted ? { done: p.done, total: p.total } : {}),
+    ...progressCounts(p),
     ...(typeof p?.eta_seconds === 'number' && p.eta_seconds > 0
       ? { etaSeconds: p.eta_seconds }
       : {}),

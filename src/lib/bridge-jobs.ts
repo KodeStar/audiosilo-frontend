@@ -1,4 +1,4 @@
-import type { BridgeJob, User } from '@/api/types';
+import type { BridgeJob, SidecarsGenerateProgress, User } from '@/api/types';
 
 /** The Bridge job kind that generates a book's characters and recaps (and, from Bridge
  * Phase 1c, its description). */
@@ -67,6 +67,17 @@ export function isOpenJob(job: Pick<BridgeJob, 'state'>): boolean {
   return OPEN_STATES.has(job.state);
 }
 
+/** A job's progress counts, only as a sane pair (a total above zero, `done` within it);
+ * undefined for anything else, so a status shows no "5 of 3". */
+export function progressCounts(
+  p: Pick<SidecarsGenerateProgress, 'done' | 'total'> | null | undefined,
+): { done: number; total: number } | undefined {
+  if (typeof p?.done !== 'number' || typeof p.total !== 'number') return undefined;
+  return p.total > 0 && p.done >= 0 && p.done <= p.total
+    ? { done: p.done, total: p.total }
+    : undefined;
+}
+
 /** The newest job of `kind` (the highest id: ids ascend as jobs are queued), whatever
  * order the list came in. */
 export function latestJob(jobs: readonly BridgeJob[] | undefined, kind: string) {
@@ -119,6 +130,9 @@ export function bridgePollInterval(
  * L6; its feature `librivox`). Queued through `POST /admin/librivox/fetch`, never `POST
  * /admin/bridge/jobs`; about no book (`path` null), so it is followed by its id. */
 export const LIBRIVOX_FETCH = 'librivox.fetch';
+
+/** The Bridge feature (`ServerInfo.bridge.features`) that offers `librivox.fetch`. */
+export const LIBRIVOX_FEATURE = 'librivox';
 
 /** How often a followed `librivox.fetch` is read again while it is open: a book's sections
  * download in minutes, one after another. */

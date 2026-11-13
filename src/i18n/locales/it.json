@@ -3318,12 +3318,8 @@
       "failedTitle": "Impossibile aggiungerlo",
       "cancelledTitle": "Annullato",
       "doneTitle": "Aggiunto",
-      "waiting": "In attesa del Bridge",
-      "stopping": "Interruzione in corso",
-      "count": "{{done}} di {{total}}",
       "cancelled": "Non è stato aggiunto nulla.",
       "done": "Comparirà nella libreria tra un momento.",
-      "cancelFailed": "Impossibile annullare. Riprova.",
       "step": {
         "manifest": "Lettura delle sezioni",
         "download": "Download in corso",

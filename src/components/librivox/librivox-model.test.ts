@@ -5,7 +5,7 @@ import { librivoxJob, librivoxServer } from '@/testing/librivox-fixtures';
 
 import {
   addRefusalKey,
-  blocksAdd,
+  offersAdd,
   fetchCode,
   fetchView,
   librivoxAccess,
@@ -168,7 +168,7 @@ describe('fetchView (how a librivox.fetch reads)', () => {
   });
 });
 
-describe('rowState / blocksAdd', () => {
+describe('rowState / offersAdd', () => {
   it('is in the library first, then the followed job, then an open job not read yet', () => {
     expect(rowState(true, librivoxJob(), true)).toBe('inLibrary');
     expect(rowState(false, librivoxJob(), false)).toBe('job');
@@ -176,11 +176,18 @@ describe('rowState / blocksAdd', () => {
     expect(rowState(false, undefined, false)).toBe('add');
   });
 
-  it('holds Add back only while the job is open', () => {
-    expect(blocksAdd(librivoxJob({ state: 'queued' }))).toBe(true);
-    expect(blocksAdd(librivoxJob({ state: 'needs_attention' }))).toBe(true);
-    expect(blocksAdd(librivoxJob({ state: 'failed' }))).toBe(false);
-    expect(blocksAdd(undefined)).toBe(false);
+  it('offers Add with nothing to show, and again under a job that failed or was cancelled', () => {
+    expect(offersAdd('add', undefined)).toBe(true);
+    expect(offersAdd('job', librivoxJob({ state: 'failed' }))).toBe(true);
+    expect(offersAdd('job', librivoxJob({ state: 'cancelled' }))).toBe(true);
+  });
+
+  it('holds Add back while the job is open, once it is done, in the library and while opening', () => {
+    expect(offersAdd('job', librivoxJob({ state: 'queued' }))).toBe(false);
+    expect(offersAdd('job', librivoxJob({ state: 'needs_attention' }))).toBe(false);
+    expect(offersAdd('job', librivoxJob({ state: 'done' }))).toBe(false);
+    expect(offersAdd('inLibrary', librivoxJob({ state: 'failed' }))).toBe(false);
+    expect(offersAdd('opening', undefined)).toBe(false);
   });
 });
 

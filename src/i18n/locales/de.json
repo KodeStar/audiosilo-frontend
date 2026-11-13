@@ -3318,12 +3318,8 @@
       "failedTitle": "Konnte nicht hinzugefügt werden",
       "cancelledTitle": "Abgebrochen",
       "doneTitle": "Hinzugefügt",
-      "waiting": "Wartet auf die Bridge",
-      "stopping": "Wird angehalten",
-      "count": "{{done}} von {{total}}",
       "cancelled": "Es wurde nichts hinzugefügt.",
       "done": "Es erscheint gleich in der Bibliothek.",
-      "cancelFailed": "Abbrechen hat nicht geklappt. Versuche es noch einmal.",
       "step": {
         "manifest": "Abschnitte werden gelesen",
         "download": "Wird heruntergeladen",

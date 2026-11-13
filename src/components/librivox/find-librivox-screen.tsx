@@ -33,6 +33,19 @@ export function FindLibrivoxScreen() {
   );
 }
 
+/** What the page says to someone it is closed to, by why (`librivoxAccess`). */
+const CLOSED = {
+  notAdmin: { title: 'librivox.access.notAdmin', hint: undefined },
+  unavailable: {
+    title: 'librivox.access.unavailable',
+    hint: 'librivox.access.unavailableHint',
+  },
+  metadataOff: {
+    title: 'librivox.access.metadataOff',
+    hint: 'librivox.access.metadataOffHint',
+  },
+} as const;
+
 function FindLibrivoxContent() {
   const { t } = useTranslation();
   const params = parseFindLibrivoxParams(useRouteParams());
@@ -55,20 +68,8 @@ function FindLibrivoxContent() {
       <View testID="find-librivox-closed">
         <EmptyState
           icon="book"
-          title={t(
-            access === 'notAdmin'
-              ? 'librivox.access.notAdmin'
-              : access === 'metadataOff'
-                ? 'librivox.access.metadataOff'
-                : 'librivox.access.unavailable',
-          )}
-          hint={
-            access === 'metadataOff'
-              ? t('librivox.access.metadataOffHint')
-              : access === 'unavailable'
-                ? t('librivox.access.unavailableHint')
-                : undefined
-          }
+          title={t(CLOSED[access].title)}
+          hint={CLOSED[access].hint && t(CLOSED[access].hint)}
         />
       </View>
     );
