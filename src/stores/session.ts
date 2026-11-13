@@ -756,11 +756,17 @@ export function useConnectionName(connectionId: string | undefined): string {
  * screen holds for that origin, else a signed-in connection's for that origin (a second
  * person on the same server, a re-pair, a reconnect). Null when there are none for it. The
  * client still sends them only to their own origin (`proxyHeaderRecord`).
+ *
+ * `ownId` names the connection the sign-in is for (a re-pair): its own set for that origin
+ * comes before another connection's, so two people who each keep their own headers for one
+ * address never take each other's.
  */
-export function connectProxyHeaders(url: string): ProxyHeaders | null {
+export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders | null {
   const origin = originOf(url);
   if (!origin) return null;
   const { pendingProxyHeaders, connections } = useSession.getState();
   if (pendingProxyHeaders?.origin === origin) return pendingProxyHeaders;
+  const own = ownId ? connections.find((c) => c.id === ownId)?.proxyHeaders : undefined;
+  if (own?.origin === origin) return own;
   return connections.find((c) => c.proxyHeaders?.origin === origin)?.proxyHeaders ?? null;
 }

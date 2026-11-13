@@ -1294,4 +1294,28 @@ describe('proxy headers (fe#167) are kept like the token', () => {
     expect(connectProxyHeaders('https://a.example')).toEqual(set);
     expect(connectProxyHeaders('http://192.168.1.5:8080')).toBeNull();
   });
+
+  it("a re-pair finds its own connection's set before another's for the same origin", async () => {
+    const mine = { origin: set.origin, headers: [{ name: 'X-Mine', value: 'my-secret' }] };
+    const s = useSession.getState();
+    const owner = await signIn('a', set);
+    const member = await s.setSession(
+      {
+        serverUrl: 'https://a.example',
+        serverId: 'srv-a',
+        token: 't2',
+        user: { ...mkUser('kid'), id: 2 },
+        proxyHeaders: mine,
+      },
+      { makeDefault: false },
+    );
+    expect(connectProxyHeaders('https://a.example')).toEqual(set);
+    expect(connectProxyHeaders('https://a.example', owner)).toEqual(set);
+    expect(connectProxyHeaders('https://a.example', member)).toEqual(mine);
+    // The set the connect screen holds still comes first, and an unknown id changes nothing.
+    expect(connectProxyHeaders('https://a.example', 'gone.9')).toEqual(set);
+    const typed = { origin: set.origin, headers: [{ name: 'X-Typed', value: 'typed' }] };
+    s.setPendingProxyHeaders(typed);
+    expect(connectProxyHeaders('https://a.example', member)).toBe(typed);
+  });
 });
