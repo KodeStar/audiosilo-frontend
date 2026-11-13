@@ -143,14 +143,20 @@ export const LIBRIVOX_POLL_MS = 5_000;
  * focused, the app in the foreground): every `LIBRIVOX_POLL_MS` while it is queued, claimed
  * or running, every `BRIDGE_IDLE_POLL_MS` while it is parked (someone has to look, or its
  * retry time has to come), never once it ended or is gone (`gone`: a 404, deleted with its
- * library), nor before its first answer.
+ * library), nor while its first answer is on its way. A first read that `failed` in a way
+ * asking again can mend (no answer, or a server error: the caller leaves out a refusal) is
+ * asked again every `BRIDGE_IDLE_POLL_MS`: the read is never retried by itself, and its row
+ * has nothing to show until one gets through.
  */
 export function librivoxJobPollInterval(
   job: Pick<BridgeJob, 'state'> | undefined,
   gone: boolean,
   active: boolean,
+  failed = false,
 ): number | false {
-  if (!active || gone || !job || !isOpenJob(job)) return false;
+  if (!active || gone) return false;
+  if (!job) return failed ? BRIDGE_IDLE_POLL_MS : false;
+  if (!isOpenJob(job)) return false;
   return job.state === 'needs_attention' ? BRIDGE_IDLE_POLL_MS : LIBRIVOX_POLL_MS;
 }
 

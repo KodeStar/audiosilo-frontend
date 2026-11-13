@@ -197,6 +197,31 @@ describe('useLibrivoxJob', () => {
   });
 });
 
+describe('useLibrivoxJob, a first read that failed', () => {
+  /** The poll interval after a first read that failed with `error`. */
+  async function intervalAfter(error: Error) {
+    const { result, qc } = await mount(
+      librivoxServer(),
+      () => useLibrivoxJob(41, true),
+      (c) => c.bridgeJob.mockRejectedValue(error),
+    );
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    const query = qc.getQueryCache().find({ queryKey: qk.bridgeJob('c1', 41) })!;
+    const fn = query.observers[0].options.refetchInterval as (q: typeof query) => number | false;
+    return fn(query);
+  }
+
+  it('is asked again (nothing else would), at the slow pace', async () => {
+    expect(await intervalAfter(new ApiError(500, 'boom'))).toBe(BRIDGE_IDLE_POLL_MS);
+    expect(await intervalAfter(new TypeError('Network request failed'))).toBe(BRIDGE_IDLE_POLL_MS);
+  });
+
+  it('is not asked again after a refusal (signed out, not an admin any more)', async () => {
+    expect(await intervalAfter(new ApiError(401, 'unauthorized'))).toBe(false);
+    expect(await intervalAfter(new ApiError(403, 'forbidden'))).toBe(false);
+  });
+});
+
 describe('useAddLibrivox', () => {
   const WORKS = qk.librivoxWork('c1', 'johnny');
 

@@ -74,7 +74,9 @@ import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
   ApiError,
+  isNotInLibraryError,
   isPlainSeriesQuery,
+  isSignedOutError,
   type ApiClient,
   type BookListQuery,
   type BookMetaOptions,
@@ -2775,8 +2777,10 @@ export function useLibrivoxWork(id: string | null, connectionId?: string) {
 
 /** A Bridge job by its id (a `librivox.fetch` the page queued or saw open), polled while
  * it is open and `active` (`librivoxJobPollInterval`) with the app in the foreground, and
- * no more once it is gone (a 404: the last answer would read as open for ever). Its
- * Cancel is `useCancelBridgeJob`. */
+ * no more once it is gone (a 404: the last answer would read as open for ever). A first
+ * read that failed with no answer or a server error is asked again (`retry: false`, and
+ * nothing else reads it: its row would wait for ever); a refusal (a 400, 401 or 403) is
+ * not. Its Cancel is `useCancelBridgeJob`. */
 export function useLibrivoxJob(id: number | undefined, active: boolean, connectionId?: string) {
   return useCapabilityQuery<BridgeJob>(
     'bridge',
@@ -2786,12 +2790,16 @@ export function useLibrivoxJob(id: number | undefined, active: boolean, connecti
     {
       ready: id !== undefined,
       retry: false,
-      refetchInterval: (query) =>
-        librivoxJobPollInterval(
-          query.state.data,
-          query.state.error instanceof ApiError && query.state.error.status === 404,
+      refetchInterval: (query) => {
+        const { data, error } = query.state;
+        return librivoxJobPollInterval(
+          data,
+          error instanceof ApiError && error.status === 404,
           active && AppState.currentState === 'active',
-        ),
+          // A refusal stays refused (the default retry's rule, `retryQuery`).
+          !!error && !isSignedOutError(error) && !isNotInLibraryError(error),
+        );
+      },
     },
   );
 }

@@ -126,6 +126,17 @@ describe('librivoxJobPollInterval', () => {
     expect(librivoxJobPollInterval(job({ state: 'running' }), false, false)).toBe(false);
     expect(librivoxJobPollInterval(undefined, false, true)).toBe(false);
   });
+
+  it('asks again, slowly, for a job whose first read failed (but never one that is gone)', () => {
+    expect(librivoxJobPollInterval(undefined, false, true, true)).toBe(BRIDGE_IDLE_POLL_MS);
+    expect(librivoxJobPollInterval(undefined, true, true, true)).toBe(false);
+    expect(librivoxJobPollInterval(undefined, false, false, true)).toBe(false);
+    // A later poll that failed leaves the last answer's pace.
+    expect(librivoxJobPollInterval(job({ state: 'running' }), false, true, true)).toBe(
+      LIBRIVOX_POLL_MS,
+    );
+    expect(librivoxJobPollInterval(job({ state: 'done' }), false, true, true)).toBe(false);
+  });
 });
 
 describe('latestDone', () => {
