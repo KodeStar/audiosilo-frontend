@@ -1347,4 +1347,19 @@ describe('proxy headers (fe#167) are kept like the token', () => {
     s.setPendingProxyHeaders(typed);
     expect(connectProxyHeaders('https://a.example', member)).toBe(typed);
   });
+
+  it('a sign-out whose token delete fails keeps the connection and its headers', async () => {
+    const id = await signIn('a', set);
+    const store = SecureStore as unknown as { deleteItemAsync: (k: string) => Promise<void> };
+    const original = store.deleteItemAsync;
+    store.deleteItemAsync = (k) =>
+      k.startsWith('audiosilo.token.') ? Promise.reject(new Error('keychain')) : original(k);
+    try {
+      await expect(useSession.getState().removeConnection(id)).rejects.toThrow('keychain');
+    } finally {
+      store.deleteItemAsync = original;
+    }
+    expect(useSession.getState().connections.map((c) => c.id)).toEqual([id]);
+    expect(JSON.parse((await stored(id))!)).toEqual(set);
+  });
 });

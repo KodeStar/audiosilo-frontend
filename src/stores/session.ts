@@ -704,8 +704,10 @@ export const useSession = create<SessionState>()((set, get) => ({
     const nextDefault = defaultConnectionId === id ? (next[0]?.id ?? null) : defaultConnectionId;
     // The connection's calendar link (Track U3) and proxy headers (fe#167) are credentials
     // like its token: this device forgets them with the connection (the link itself keeps
-    // working until turned off).
-    await Promise.all([deleteSecure(tokenKey(id)), forgetCalendarLink(id), forgetProxyHeaders(id)]);
+    // working until turned off). The token first: a delete of it that fails stops the
+    // removal, and the connection must then still have its headers.
+    await deleteSecure(tokenKey(id));
+    await Promise.all([forgetCalendarLink(id), forgetProxyHeaders(id)]);
     await persist(next, nextDefault);
     set({ connections: next, ...mirror(next, nextDefault) });
     // Purge the removed connection's scoped state (downloads, progress mirror/queue,
