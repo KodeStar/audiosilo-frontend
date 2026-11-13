@@ -273,8 +273,12 @@ export type Connection = {
 
 /** Connection metadata persisted to AsyncStorage (the token, the proxy headers and the
  * in-memory reconnect flag excluded - see secure-store / `needsReconnect`). `serverId` is
- * absent on a connection saved before Phase 8. */
-export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect' | 'proxyHeaders'>;
+ * absent on a connection saved before Phase 8. `hasProxyHeaders` (no secret, only that a set
+ * exists) is what makes `hydrate` read the set: a connection without one costs no extra
+ * keychain read at launch (a CarPlay start on a locked phone included). */
+export type PersistedConnection = Omit<Connection, 'token' | 'needsReconnect' | 'proxyHeaders'> & {
+  hasProxyHeaders?: true;
+};
 
 type SessionState = {
   status: SessionStatus;
@@ -442,7 +446,8 @@ async function persist(connections: Connection[], defaultId: string | null) {
   // `needsReconnect` flag, so a stale reconnect prompt never survives a restart (it's
   // recomputed from the next failure).
   const meta: PersistedConnection[] = connections.map(
-    ({ token: _t, needsReconnect: _r, proxyHeaders: _p, ...rest }) => rest,
+    ({ token: _t, needsReconnect: _r, proxyHeaders, ...rest }) =>
+      proxyHeaders ? { ...rest, hasProxyHeaders: true } : rest,
   );
   await Promise.all([setItem(CONNECTIONS_KEY, meta), setItem(DEFAULT_KEY, defaultId)]);
 }
@@ -465,13 +470,14 @@ export const useSession = create<SessionState>()((set, get) => ({
       ]);
 
       if (meta && meta.length) {
-        // A proxy-headers read that fails (a locked keychain) fails the hydrate as the
-        // token's does: never a connection that goes on without its headers.
+        // The proxy headers only for a connection marked as having them; a read of them
+        // that fails (a locked keychain) fails the hydrate as the token's does: never a
+        // connection that goes on without its headers.
         const withTokens = await Promise.all(
-          meta.map(async (m) => {
+          meta.map(async ({ hasProxyHeaders, ...m }) => {
             const [token, proxyHeaders] = await Promise.all([
               getSecure(tokenKey(m.id)),
-              readProxyHeaders(m.id),
+              hasProxyHeaders ? readProxyHeaders(m.id) : null,
             ]);
             if (!token) return null;
             return {
@@ -544,8 +550,15 @@ export const useSession = create<SessionState>()((set, get) => ({
       ? prior.addresses
       : (sameServer.find((c) => c.addresses)?.addresses ?? (await knownAddresses(serverId)));
     const known = mergeAddresses(knew, addresses);
-    // The proxy headers: the ones the sign-in came through, else the ones it had.
-    const headers = proxyHeaders === undefined ? prior?.proxyHeaders : (proxyHeaders ?? undefined);
+    // The proxy headers: the ones the sign-in came through, else the ones it had, else (a
+    // new connection: another person on the server, a member signed in here) the ones
+    // another connection to this server has. Still sent only to their own origin.
+    const headers =
+      proxyHeaders !== undefined
+        ? (proxyHeaders ?? undefined)
+        : prior
+          ? prior.proxyHeaders
+          : sameServer.find((c) => c.proxyHeaders)?.proxyHeaders;
     const conn: Connection = {
       id,
       serverId,
@@ -563,7 +576,9 @@ export const useSession = create<SessionState>()((set, get) => ({
       ? surviving.map((c) => (c === prior ? conn : c))
       : [...surviving, conn];
     await setSecure(tokenKey(id), token);
-    if (proxyHeaders !== undefined) await saveProxyHeaders(id, proxyHeaders);
+    if (proxyHeaders !== undefined || (!prior && headers)) {
+      await saveProxyHeaders(id, headers ?? null);
+    }
     // Best-effort drop each stale identity's dead token. No server revoke - the token is
     // already dead, so there's nothing to call.
     // Their calendar links (Track U3) and proxy headers (fe#167) go with them.
@@ -639,6 +654,8 @@ export const useSession = create<SessionState>()((set, get) => ({
       return headers?.headers.length ? { ...rest, proxyHeaders: headers } : rest;
     });
     set({ connections: next, ...mirror(next, defaultConnectionId) });
+    // The marker that has the next launch read them (`hasProxyHeaders`).
+    await persist(next, defaultConnectionId);
   },
 
   setConnectionUser: async (id, user) => {

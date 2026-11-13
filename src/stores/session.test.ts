@@ -1248,6 +1248,82 @@ describe('proxy headers (fe#167) are kept like the token', () => {
     expect(await stored(c)).toBeNull();
   });
 
+  it('reads them at launch only for a connection marked as having them (no extra keychain read)', async () => {
+    const s = useSession.getState();
+    const a = await s.setSession({
+      serverUrl: 'https://a.example',
+      serverId: 'srv-a',
+      token: 't',
+      user: mkUser('a'),
+      proxyHeaders: set,
+    });
+    const b = await s.setSession({
+      serverUrl: 'https://b.example',
+      serverId: 'srv-b',
+      token: 't',
+      user: mkUser('b'),
+    });
+    const meta = JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!) as {
+      id: string;
+      hasProxyHeaders?: boolean;
+    }[];
+    expect(meta.find((m) => m.id === a)?.hasProxyHeaders).toBe(true);
+    expect(meta.find((m) => m.id === b)).not.toHaveProperty('hasProxyHeaders');
+
+    reset();
+    const read = SecureStore.getItemAsync as jest.Mock;
+    read.mockClear();
+    await useSession.getState().hydrate();
+    const asked = read.mock.calls.map((c) => c[0] as string);
+    expect(asked).toContain(`audiosilo.proxy-headers.${a}`);
+    expect(asked).not.toContain(`audiosilo.proxy-headers.${b}`);
+    const conns = useSession.getState().connections;
+    expect(conns.find((c) => c.id === a)?.proxyHeaders).toEqual(set);
+    expect(conns.find((c) => c.id === a)).not.toHaveProperty('hasProxyHeaders');
+
+    // Dropping them drops the marker.
+    await useSession.getState().setProxyHeaders(a, null);
+    const after = JSON.parse((await AsyncStorage.getItem('audiosilo.connections'))!) as {
+      id: string;
+    }[];
+    expect(after.find((m) => m.id === a)).not.toHaveProperty('hasProxyHeaders');
+  });
+
+  it('a new connection to a server another connection reaches through the proxy takes that set (a member signed in here)', async () => {
+    const s = useSession.getState();
+    await s.setSession({
+      serverUrl: 'https://a.example',
+      serverId: 'srv-a',
+      token: 't',
+      user: mkUser('owner'),
+      proxyHeaders: set,
+    });
+    const member = await s.setSession(
+      {
+        serverUrl: 'https://a.example',
+        serverId: 'srv-a',
+        token: 't2',
+        user: { ...mkUser('kid'), id: 2 },
+      },
+      { makeDefault: false },
+    );
+    expect(useSession.getState().connections.find((c) => c.id === member)?.proxyHeaders).toEqual(
+      set,
+    );
+    expect(JSON.parse((await stored(member))!)).toEqual(set);
+    // Another server's connection takes none.
+    const other = await s.setSession({
+      serverUrl: 'https://b.example',
+      serverId: 'srv-b',
+      token: 't',
+      user: mkUser('b'),
+    });
+    expect(
+      useSession.getState().connections.find((c) => c.id === other)?.proxyHeaders,
+    ).toBeUndefined();
+    expect(await stored(other)).toBeNull();
+  });
+
   it("the connect flow finds the pending set for its origin, else a connection's, never another origin's", async () => {
     expect(connectProxyHeaders('https://a.example')).toBeNull();
     useSession.getState().setPendingProxyHeaders(set);

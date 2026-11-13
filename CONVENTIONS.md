@@ -281,8 +281,12 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
 - **Kept like the token.** `Connection.proxyHeaders` is `{ origin, headers }`, held in memory and
   in secure-store under `audiosilo.proxy-headers.<connection id>` (iOS: the after-first-unlock
   service, so CarPlay streams on a locked phone; web: localStorage, as the token). Never in the
-  AsyncStorage metadata (`persist` strips it), the query cache, a URL or a log line. `hydrate`
-  reads them beside the token and a refused read fails the hydrate as a token read does. They go
+  AsyncStorage metadata (`persist` strips it, keeping only the non-secret `hasProxyHeaders`
+  marker), the query cache, a URL or a log line. `hydrate` reads them beside the token only for a
+  marked connection (no extra keychain read for anyone else, a locked-phone CarPlay start
+  included), and a refused read fails the hydrate as a token read does. A new connection to a
+  server another connection here reaches with headers (a member signed in here, a second person)
+  takes that set, stored under its own id. They go
   with the connection wherever the token and the calendar link go (sign-out, a retired identity,
   the auth reset) and move with the identity migration (`moveProxyHeaders`).
 - **One origin.** A set names the origin (scheme, host, port) it was entered for, and

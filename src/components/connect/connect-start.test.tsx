@@ -873,6 +873,32 @@ describe('proxy headers for a server behind an auth proxy (fe#167)', () => {
     expect(useSession.getState().pendingProxyHeaders).toEqual(set);
   });
 
+  it("pairs a scanned code for the headers' address with them, and keeps them with the connection", async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    useSession.setState({ pendingProxyHeaders: set });
+    mockParams = { token: 'tok', server: AWAY };
+    mockApi.exchange.mockResolvedValue({ token: 'session', server_id: 'srv-1', user });
+    mockApi.serverInfo.mockResolvedValue(info());
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockBases).toEqual([AWAY]);
+    expect(mockProxies).toEqual([set]);
+    expect(conn().proxyHeaders).toEqual(set);
+  });
+
+  it('pairs a code for another server without them', async () => {
+    const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
+    useSession.setState({ pendingProxyHeaders: set });
+    mockParams = { token: 'tok', server: 'https://other.example.com' };
+    mockApi.exchange.mockResolvedValue({ token: 'session', server_id: 'srv-2', user });
+    mockApi.serverInfo.mockResolvedValue(info({ server_id: 'srv-2' }));
+    await render(<ConnectStart />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockBases).toEqual(['https://other.example.com']);
+    expect(mockProxies).toEqual([null]);
+    expect(conn().proxyHeaders).toBeUndefined();
+  });
+
   it('takes up the headers the flow holds when the scanner hands a code back (a new screen)', async () => {
     const set = { origin: AWAY, headers: [{ name: 'X-Auth', value: 'proxy-secret' }] };
     useSession.setState({ pendingProxyHeaders: set });
