@@ -288,8 +288,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   server another connection here reaches with headers (a member signed in here, a second person)
   takes that set, stored under its own id. They go
   with the connection wherever the token and the calendar link go (sign-out, a retired identity,
-  the auth reset) and move with the identity migration (`moveProxyHeaders`). `removeConnection`
-  deletes the token first: a delete that fails stops the removal with the headers still kept.
+  the auth reset, a connection `hydrate` drops because its token is gone) and move with the
+  identity migration (`moveProxyHeaders`). `removeConnection` deletes the token first: a delete
+  that fails stops the removal with the headers still kept.
 - **One origin.** A set names the origin (scheme, host, port) it was entered for, and
   `proxyHeaderRecord` is the one rule: only a request to that origin carries them, so the home
   address (which the proxy doesn't guard), a plain-http fallback, another port and anything else
