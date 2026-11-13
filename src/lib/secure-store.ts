@@ -3,7 +3,8 @@ import { Platform } from 'react-native';
 
 /**
  * Token storage. expo-secure-store (Keychain/Keystore) on native; localStorage
- * on web, where SecureStore is unavailable. Used only for the session token.
+ * on web, where SecureStore is unavailable. Used for the session token and the credentials
+ * kept beside it per connection (the calendar link, the proxy headers) and the profile PINs.
  *
  * iOS keeps tokens readable with the phone LOCKED (after its first unlock since boot): CarPlay
  * starts books with the phone in a pocket, and the default `WHEN_UNLOCKED` item can't be read

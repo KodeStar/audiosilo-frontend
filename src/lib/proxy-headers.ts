@@ -137,8 +137,8 @@ export function proxyHeaderRecord(
   return Object.fromEntries(set.headers.map((h) => [h.name, h.value]));
 }
 
-/** What the screen shows in place of a value: the same dots for every one, so a stored
- * value (or its length) never reaches a component. */
+/** What the screen shows in place of a value: the same dots for every one, so what is drawn
+ * never depends on a stored value (or its length). */
 export const MASKED_PROXY_VALUE = '•'.repeat(8);
 
 /** Two sets carry the same headers to the same origin. */

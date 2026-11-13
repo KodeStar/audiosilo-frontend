@@ -297,18 +297,28 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   server change). `ApiClient` takes the set as its sixth argument and computes the record once:
   `request()` and every hand-built request send it, `authHeaders()` hands it with the token to
   expo-image, the native player (AVURLAsset headers, Media3's origin-scoped `AuthHolder`) and the
-  reader's EPUB download, and `proxyHeadersFor(url)` gives it alone for a download whose URL
-  carries `?token=` (a book's files and cover, the car's covers, the widget's). `buildClients`
-  rebuilds a client whose set changed, and the provider reads failed queries again
-  (`useReadAgainOnSignIn`).
+  reader's EPUB download, and `proxyHeadersFor(url)` gives it alone for a request whose URL
+  carries `?token=` (a book's files and cover, the car's covers, the widget's, a community cover
+  the server serves, a podcast directory's artwork). A new image or download of the server's needs
+  one of the two, or the proxy turns it away. `buildClients` rebuilds a client whose set changed,
+  and the provider reads failed queries again (`useReadAgainOnSignIn`).
+- **Open: redirects.** The rule covers the request the app makes, not what a 3xx does with it.
+  The platform's HTTP stack follows a redirect by itself (React Native's `fetch` has no manual
+  mode), so whether a request's custom headers go on to the address the redirect names (a proxy's
+  own sign-in host, for a set it no longer takes) is that stack's rule, not `proxyHeaderRecord`'s.
+  Still to be checked on a device for `fetch`, expo-image, the download tasks and the native
+  players; do not claim more than "the request goes to one origin" until it is.
 - **Before a connection exists.** The connect screen's "Proxy headers" section holds a set for the
   address as the listener typed it (`pendingProxyHeaders`, in memory only; never rebound when the
   flow rewrites the field, as the plain-http fallback does; taken up again by the new screen the
-  scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
-  (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a signed-in
-  connection's (a second person, a re-pair). `finishConnect` keeps the set for the address signed
-  in through; a re-pair without one keeps what the connection had. A pairing QR or link pairs with
-  them when its address is the field's: type the address and the headers first, then scan.
+  scanner hands a code to; dropped when the flow's layout unmounts or a sign-in stores it). The
+  flow's bare clients are `connectClient(base)` (`src/api/connect-client.ts`) and `probeServerId`
+  (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a
+  signed-in connection's (a second person, a re-pair). `finishConnect` keeps the set for the
+  address signed in through, a re-pair's own set before another connection's for that address
+  (`connectProxyHeaders(url, ownId)`); a re-pair without one keeps what the connection had. A
+  pairing QR or link pairs with them when its address is the field's: type the address and the
+  headers first, then scan.
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the
   server's flags, since it is needed most when the proxy refuses everything; not for demo
   accounts), with a choice of the connection's origins (`proxyOriginChoices`). A value is never
