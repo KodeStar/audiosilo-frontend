@@ -103,7 +103,11 @@ describe('locales', () => {
       for (const [key, text] of leaves(l.proxyHeaders)) {
         expect([key, text]).toEqual([key, expect.not.stringMatching(banned)]);
       }
-      expect(Object.keys(l.proxyHeaders).sort()).toEqual(Object.keys(en.proxyHeaders).sort());
+      const keys = (o: unknown) =>
+        leaves(o)
+          .map(([k]) => k)
+          .sort();
+      expect(keys(l.proxyHeaders)).toEqual(keys(en.proxyHeaders));
     },
   );
 });
