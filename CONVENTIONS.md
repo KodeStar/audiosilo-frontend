@@ -316,7 +316,9 @@ service tokens, Authentik, Authelia and the like; nothing changes on the server)
   (built by it), through `connectProxyHeaders(url)`: the pending set for that origin, else a
   signed-in connection's (a second person, a re-pair). `finishConnect` keeps the set for the
   address signed in through, a re-pair's own set before another connection's for that address
-  (`connectProxyHeaders(url, ownId)`); a re-pair without one keeps what the connection had. A
+  (`connectProxyHeaders(url, ownId)`); a re-pair without one keeps what the connection had, and
+  so does one whose own set is for another address (another connection's set for the address
+  signed in through never replaces it). A
   pairing QR or link pairs with them when its address is the field's: type the address and the
   headers first, then scan.
 - **Edited** on the Account page's Proxy headers card (`ProxyHeadersCard`, shown whatever the

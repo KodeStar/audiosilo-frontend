@@ -237,6 +237,29 @@ describe('proxy headers the sign-in came through (fe#167)', () => {
     ).toEqual(MINE);
     expect(conn('srv-1')?.proxyHeaders).toEqual(SET);
   });
+
+  it("a re-pair through another address keeps its own set, not another connection's for it", async () => {
+    const MINE = { origin: AWAY, headers: [{ name: 'X-Proxy', value: 'mine' }] };
+    const THEIRS = { origin: HOME, headers: [{ name: 'X-Home', value: 'theirs' }] };
+    useSession.setState({ pendingProxyHeaders: MINE });
+    await finishConnect({ serverUrl: AWAY, session: session('srv-1') });
+    await useSession.getState().setSession(
+      {
+        serverUrl: AWAY,
+        serverId: 'srv-1',
+        token: 'tok-2',
+        user: { ...user, id: 2 },
+        proxyHeaders: THEIRS,
+      },
+      { makeDefault: false },
+    );
+    // The first person signs in again through the home address, with nothing typed.
+    await finishConnect({ serverUrl: HOME, session: session('srv-1') });
+    expect(conn('srv-1')?.proxyHeaders).toEqual(MINE);
+    expect(
+      JSON.parse((await SecureStore.getItemAsync('audiosilo.proxy-headers.srv-1.1'))!),
+    ).toEqual(MINE);
+  });
 });
 
 describe('the addresses a pairing taught (link merged with the answer, once)', () => {

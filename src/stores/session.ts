@@ -757,9 +757,12 @@ export function useConnectionName(connectionId: string | undefined): string {
  * person on the same server, a re-pair, a reconnect). Null when there are none for it. The
  * client still sends them only to their own origin (`proxyHeaderRecord`).
  *
- * `ownId` names the connection the sign-in is for (a re-pair): its own set for that origin
- * comes before another connection's, so two people who each keep their own headers for one
- * address never take each other's.
+ * `ownId` names the connection the sign-in is for (a re-pair, asking what to keep with it):
+ * its own set for that origin comes before another connection's, so two people who each
+ * keep their own headers for one address never take each other's. A set of its own for
+ * ANOTHER origin answers null (a re-pair through the home address, or a second public
+ * one): `setSession` then keeps it, where another connection's set for `url` would
+ * replace it and write over it in secure-store.
  */
 export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders | null {
   const origin = originOf(url);
@@ -767,6 +770,6 @@ export function connectProxyHeaders(url: string, ownId?: string): ProxyHeaders |
   const { pendingProxyHeaders, connections } = useSession.getState();
   if (pendingProxyHeaders?.origin === origin) return pendingProxyHeaders;
   const own = ownId ? connections.find((c) => c.id === ownId)?.proxyHeaders : undefined;
-  if (own?.origin === origin) return own;
+  if (own) return own.origin === origin ? own : null;
   return connections.find((c) => c.proxyHeaders?.origin === origin)?.proxyHeaders ?? null;
 }
