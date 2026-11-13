@@ -7,6 +7,7 @@ import {
   FILES_SHOWN,
   labelGroups,
   languageName,
+  librivoxUrl,
   playbackMode,
   visibleFiles,
 } from './book-details-model';
@@ -232,5 +233,31 @@ describe('languageName', () => {
     } finally {
       intl.DisplayNames = saved;
     }
+  });
+});
+
+describe('librivoxUrl', () => {
+  const PAGE = 'https://librivox.org/pride-and-prejudice-by-jane-austen/';
+  const rec = (url?: string) => ({ librivox: { id: 47, url } });
+
+  it("is the recording's LibriVox page when it is http(s)", () => {
+    expect(librivoxUrl(rec(PAGE))).toBe(PAGE);
+    expect(librivoxUrl(rec('http://librivox.org/x/'))).toBe('http://librivox.org/x/');
+    expect(librivoxUrl(rec(' HTTPS://librivox.org/x/ '))).toBe('HTTPS://librivox.org/x/');
+  });
+
+  it('is absent without a LibriVox page (an older server, another recording)', () => {
+    expect(librivoxUrl(undefined)).toBeUndefined();
+    expect(librivoxUrl({})).toBeUndefined();
+    expect(librivoxUrl(rec(undefined))).toBeUndefined();
+    expect(librivoxUrl(rec('  '))).toBeUndefined();
+  });
+
+  it('refuses anything but an absolute http(s) URL', () => {
+    expect(librivoxUrl(rec('javascript:alert(1)'))).toBeUndefined();
+    expect(librivoxUrl(rec('/pride-and-prejudice/'))).toBeUndefined();
+    expect(librivoxUrl(rec('librivox.org/x/'))).toBeUndefined();
+    expect(librivoxUrl(rec('ftp://librivox.org/x/'))).toBeUndefined();
+    expect(librivoxUrl(rec('https://'))).toBeUndefined();
   });
 });

@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 import { useLibrarySelection } from '@/stores/library-selection';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { aboutContent, type LabelGroup } from './book-details-model';
+import { aboutContent, type LabelGroup, librivoxUrl } from './book-details-model';
 
 const GROUP_KEY = {
   genre: 'book.about.genres',
@@ -58,8 +58,9 @@ export function openLabelBooks(
  * Bridge generated on this server wears the "Generated on this server" chip under the
  * eyebrow and never the credit or "Improve this". A matched book without community text
  * keeps the quiet "View on AudioSilo Meta" link. Then the book's genres and tags as
- * chips under their names, each opening the Library on it (`onOpenLabel`). Nothing in it
- * is pink.
+ * chips under their names, each opening the Library on it (`onOpenLabel`). A LibriVox
+ * recording adds the quiet "Also free on LibriVox" link to its page (`librivoxUrl`)
+ * under the other links out. Nothing in it is pink.
  */
 export function BookAbout({
   book,
@@ -86,6 +87,16 @@ export function BookAbout({
   // The credit comes from the same work as the text it credits.
   const attribution = source === 'community' ? work?.attribution : undefined;
   const improveUrl = attribution?.source_url || meta?.web_url;
+  const librivox = librivoxUrl(meta?.recording);
+  // With the other links out, never alone: it comes from the matched recording, so a
+  // matched envelope is always there with it.
+  const librivoxLink = librivox ? (
+    <QuietLink
+      label={t('book.about.librivox')}
+      color={themed.mutedForeground}
+      onPress={() => void openExternalUrl(librivox)}
+    />
+  ) : null;
 
   return (
     <Card className="gap-2.5">
@@ -143,13 +154,17 @@ export function BookAbout({
               onPress={() => void openExternalUrl(improveUrl)}
             />
           ) : null}
+          {librivoxLink}
         </View>
       ) : meta ? (
-        <QuietLink
-          label={t('book.meta.viewOnMeta')}
-          color={themed.mutedForeground}
-          onPress={() => void openExternalUrl(meta.web_url)}
-        />
+        <View className="gap-1">
+          <QuietLink
+            label={t('book.meta.viewOnMeta')}
+            color={themed.mutedForeground}
+            onPress={() => void openExternalUrl(meta.web_url)}
+          />
+          {librivoxLink}
+        </View>
       ) : null}
     </Card>
   );

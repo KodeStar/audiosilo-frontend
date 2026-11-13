@@ -220,6 +220,54 @@ describe('BookAbout', () => {
   });
 });
 
+describe('Also free on LibriVox', () => {
+  const PAGE = 'https://librivox.org/the-hobbit-by-j-r-r-tolkien/';
+  const withLibrivox = (url?: string): MatchedBookMeta => ({
+    ...HOBBIT,
+    recording: {
+      ...HOBBIT.recording!,
+      librivox: { id: 47, url, zip_url: 'https://archive.org/compress/hobbit' },
+    },
+  });
+
+  it("links to the recording's LibriVox page, beside the meta link", async () => {
+    const meta = withLibrivox(PAGE);
+    await mount(<BookAbout book={book()} meta={meta} work={meta.work} onOpenLabel={jest.fn()} />);
+    expect(screen.getByText('View on AudioSilo Meta')).toBeTruthy();
+    await press('Also free on LibriVox');
+    expect(mockOpenExternal).toHaveBeenCalledWith(PAGE);
+  });
+
+  it('sits with the credit and Improve this beside community text', async () => {
+    const meta = withLibrivox(PAGE);
+    const work = {
+      ...meta.work,
+      community_description: { text: 'A hobbit goes there and back again.' },
+      attribution: ATTRIBUTION,
+    };
+    await mount(<BookAbout book={book()} meta={meta} work={work} onOpenLabel={jest.fn()} />);
+    expect(screen.getByText('Improve this')).toBeTruthy();
+    await press('Also free on LibriVox');
+    expect(mockOpenExternal).toHaveBeenCalledWith(PAGE);
+  });
+
+  it('is hidden without a LibriVox page (an older server)', async () => {
+    await mount(
+      <BookAbout book={book()} meta={HOBBIT} work={HOBBIT.work} onOpenLabel={jest.fn()} />,
+    );
+    expect(screen.queryByText('Also free on LibriVox')).toBeNull();
+    const noUrl = withLibrivox(undefined);
+    await mount(<BookAbout book={book()} meta={noUrl} work={noUrl.work} onOpenLabel={jest.fn()} />);
+    expect(screen.queryByText('Also free on LibriVox')).toBeNull();
+  });
+
+  it('is hidden for a URL that is not http(s)', async () => {
+    const meta = withLibrivox('javascript:alert(1)');
+    await mount(<BookAbout book={book()} meta={meta} work={meta.work} onOpenLabel={jest.fn()} />);
+    expect(screen.queryByText('Also free on LibriVox')).toBeNull();
+  });
+});
+
 describe('openLabelBooks', () => {
   it("selects the book's library, then opens its Books mode on the label", () => {
     openLabelBooks('c2', 7, 'tag', 'Book club');
